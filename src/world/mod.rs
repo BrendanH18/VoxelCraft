@@ -4,27 +4,29 @@
 //! 1. unloads chunks that fell out of range (when the player changes chunk),
 //! 2. collects finished jobs from the worker pool,
 //! 3. submits generation jobs for the nearest missing chunks, and
-//! 4. submits mesh jobs for chunks whose 26 neighbours are all present.
+//! 4. submits light+mesh jobs for chunks whose surrounding 3x3 columns are
+//!    fully loaded.
 //!
 //! Finished meshes are queued in `mesh_uploads` for the renderer. Every
 //! chunk carries a version number so meshes built from stale data are
-//! discarded.
+//! discarded. Each chunk column also keeps a heightmap of its highest
+//! light-blocking block, which seeds skylight in mesh jobs.
 
 pub mod block;
 pub mod chunk;
-pub mod terrain;
 pub mod noise;
 pub mod storage;
+pub mod terrain;
 
 use std::sync::Arc;
 
-use glam::{DVec3, IVec3};
+use glam::{DVec3, IVec2, IVec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::mesh::{self, MeshData, Neighborhood};
+use crate::mesh::{self, MeshData, MeshInput, Neighborhood, Region, D, MARGIN, NO_HEIGHT};
 use crate::workers::{Job, JobResult, Workers};
 use block::Block;
-use chunk::{chunk_of, local_of, ChunkData, CHUNK_SIZE_I, WORLD_HEIGHT, WORLD_HEIGHT_CHUNKS};
+use chunk::{chunk_of, local_of, ChunkData, CHUNK_SIZE, CHUNK_SIZE_I, WORLD_HEIGHT, WORLD_HEIGHT_CHUNKS};
 use terrain::Generator;
 
 pub struct ChunkSlot {
@@ -35,10 +37,18 @@ pub struct ChunkSlot {
     mesh_in_flight: bool,
 }
 
+/// Per chunk-column state: skylight heightmap and how many of its chunks
+/// are loaded.
+struct Column {
+    heights: Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>,
+    loaded: i32,
+}
+
 pub struct World {
     pub generator: Arc<Generator>,
     workers: Workers,
     chunks: FxHashMap<IVec3, ChunkSlot>,
+    columns: FxHashMap<IVec2, Column>,
     /// Player-modified chunks that are currently unloaded.
     saved: FxHashMap<IVec3, Arc<ChunkData>>,
     gen_in_flight: FxHashSet<IVec3>,
@@ -49,25 +59,14 @@ pub struct World {
     load_cursor: usize,
     center: Option<IVec3>,
     render_distance: i32,
-    scratch: Box<[Block; mesh::PADDED_VOLUME]>,
+    region: Box<Region>,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
     pub mesh_removals: Vec<IVec3>,
 }
 
-const NEIGHBOR_OFFSETS: [IVec3; 26] = {
-    let mut out = [IVec3::ZERO; 26];
-    let mut i = 0;
-    let mut n = 0;
-    while n < 27 {
-        let o = IVec3::new(n % 3 - 1, n / 9 - 1, (n / 3) % 3 - 1);
-        if n != 13 {
-            out[i] = o;
-            i += 1;
-        }
-        n += 1;
-    }
-    out
-};
+fn column_of(chunk: IVec3) -> IVec2 {
+    IVec2::new(chunk.x, chunk.z)
+}
 
 impl World {
     pub fn new(generator: Arc<Generator>, saved: FxHashMap<IVec3, Arc<ChunkData>>, render_distance: i32) -> Self {
@@ -75,6 +74,7 @@ impl World {
             workers: Workers::new(generator.clone()),
             generator,
             chunks: FxHashMap::default(),
+            columns: FxHashMap::default(),
             saved,
             gen_in_flight: FxHashSet::default(),
             mesh_in_flight: 0,
@@ -83,7 +83,7 @@ impl World {
             load_cursor: 0,
             center: None,
             render_distance,
-            scratch: mesh::new_padded(),
+            region: Box::default(),
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
         }
@@ -162,8 +162,9 @@ impl World {
             .map(|s| s.data.get(l.x as usize, l.y as usize, l.z as usize))
     }
 
-    /// Changes a block and synchronously remeshes affected chunks, so edits
-    /// show up the same frame.
+    /// Changes a block. Chunks whose geometry changes are remeshed
+    /// synchronously so the edit shows up this frame; chunks whose lighting
+    /// changes are remeshed on the workers.
     pub fn set_block(&mut self, p: IVec3, block: Block) -> bool {
         if p.y < 0 || p.y >= WORLD_HEIGHT {
             return false;
@@ -174,21 +175,38 @@ impl World {
         Arc::make_mut(&mut slot.data).set(l.x as usize, l.y as usize, l.z as usize, block);
         slot.modified = true;
 
-        // The edited chunk plus any neighbour sharing the edited block's
-        // faces, edges or corners (their AO depends on it).
-        let axis_range = |v: i32| -> (i32, i32) {
-            (if v == 0 { -1 } else { 0 }, if v == CHUNK_SIZE_I - 1 { 1 } else { 0 })
+        // Keep the column heightmap current.
+        let (old_h, new_h) = self.update_height(p, block);
+
+        // Light reaches 15 blocks, plus 1 for the face-adjacent sample cell;
+        // a heightmap change also re-exposes everything between old and new.
+        let reach = MARGIN as i32 + 1;
+        let lo_y = p.y.min(old_h).min(new_h).max(0) - reach;
+        let hi_y = p.y.max(old_h).max(new_h) + reach;
+        let lo = chunk_of(IVec3::new(p.x - reach, lo_y, p.z - reach)).max(IVec3::new(i32::MIN, 0, i32::MIN));
+        let hi = chunk_of(IVec3::new(p.x + reach, hi_y, p.z + reach)).min(IVec3::new(i32::MAX, WORLD_HEIGHT_CHUNKS - 1, i32::MAX));
+        let geometry = |c: IVec3| {
+            let d = (c - cpos).abs();
+            let near = |axis: usize| {
+                let v = l[axis];
+                match (c - cpos)[axis] {
+                    0 => true,
+                    -1 => v == 0,
+                    _ => v == CHUNK_SIZE_I - 1,
+                }
+            };
+            d.max_element() <= 1 && near(0) && near(1) && near(2)
         };
-        let (x0, x1) = axis_range(l.x);
-        let (y0, y1) = axis_range(l.y);
-        let (z0, z1) = axis_range(l.z);
-        for dy in y0..=y1 {
-            for dz in z0..=z1 {
-                for dx in x0..=x1 {
-                    let c = cpos + IVec3::new(dx, dy, dz);
-                    if let Some(slot) = self.chunks.get_mut(&c) {
-                        slot.version = slot.version.wrapping_add(1);
+        for cy in lo.y..=hi.y {
+            for cz in lo.z..=hi.z {
+                for cx in lo.x..=hi.x {
+                    let c = IVec3::new(cx, cy, cz);
+                    let Some(slot) = self.chunks.get_mut(&c) else { continue };
+                    slot.version = slot.version.wrapping_add(1);
+                    if geometry(c) {
                         self.remesh_now(c);
+                    } else if self.in_mesh_range(c) {
+                        self.dirty.insert(c);
                     }
                 }
             }
@@ -196,36 +214,74 @@ impl World {
         true
     }
 
-    fn neighbors_loaded(&self, pos: IVec3) -> bool {
-        NEIGHBOR_OFFSETS.iter().all(|&o| {
-            let n = pos + o;
-            n.y < 0 || n.y >= WORLD_HEIGHT_CHUNKS || self.chunks.contains_key(&n)
+    /// Updates the heightmap for an edited block; returns (old, new) heights.
+    fn update_height(&mut self, p: IVec3, block: Block) -> (i32, i32) {
+        let key = column_of(chunk_of(p));
+        let l = local_of(p);
+        let i = (l.x + l.z * CHUNK_SIZE_I) as usize;
+        let Some(col) = self.columns.get(&key) else { return (p.y, p.y) };
+        let old = col.heights[i] as i32;
+        let new = if block.light_opacity() > 0 {
+            old.max(p.y)
+        } else if p.y == old {
+            (0..p.y)
+                .rev()
+                .find(|&y| self.get_block(IVec3::new(p.x, y, p.z)).is_some_and(|b| b.light_opacity() > 0))
+                .unwrap_or(NO_HEIGHT as i32)
+        } else {
+            old
+        };
+        self.columns.get_mut(&key).unwrap().heights[i] = new as i16;
+        (old.max(0), new.max(0))
+    }
+
+    /// A chunk can be meshed once the 3x3 columns around it are fully
+    /// loaded (skylight needs complete heightmaps).
+    fn ready_to_mesh(&self, pos: IVec3) -> bool {
+        (-1..=1).all(|dz| {
+            (-1..=1).all(|dx| {
+                self.columns
+                    .get(&IVec2::new(pos.x + dx, pos.z + dz))
+                    .is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
+            })
         })
     }
 
-    fn gather(&self, pos: IVec3) -> Box<Neighborhood> {
-        let mut n: Box<Neighborhood> = Box::default();
+    fn gather(&self, pos: IVec3) -> Box<MeshInput> {
+        let mut neighbors: Neighborhood = Default::default();
         for dy in -1..=1 {
             for dz in -1..=1 {
                 for dx in -1..=1 {
                     let i = (dx + 1) + (dz + 1) * 3 + (dy + 1) * 9;
-                    n[i as usize] = self
-                        .chunks
-                        .get(&(pos + IVec3::new(dx, dy, dz)))
-                        .map(|s| s.data.clone());
+                    neighbors[i as usize] =
+                        self.chunks.get(&(pos + IVec3::new(dx, dy, dz))).map(|s| s.data.clone());
                 }
             }
         }
-        n
+        let cols: [Option<&Column>; 9] =
+            std::array::from_fn(|i| self.columns.get(&IVec2::new(pos.x + i as i32 % 3 - 1, pos.z + i as i32 / 3 - 1)));
+        let mut heights = Box::new([NO_HEIGHT; D * D]);
+        for rz in 0..D {
+            let wz = rz as i32 - MARGIN as i32 + CHUNK_SIZE_I; // relative to the -1 column
+            let (cz, lz) = ((wz / CHUNK_SIZE_I) as usize, (wz % CHUNK_SIZE_I) as usize);
+            for rx in 0..D {
+                let wx = rx as i32 - MARGIN as i32 + CHUNK_SIZE_I;
+                let (cx, lx) = ((wx / CHUNK_SIZE_I) as usize, (wx % CHUNK_SIZE_I) as usize);
+                if let Some(col) = cols[cx + cz * 3] {
+                    heights[rx + rz * D] = col.heights[lx + lz * CHUNK_SIZE];
+                }
+            }
+        }
+        Box::new(MeshInput { neighbors, heights, base_y: pos.y * CHUNK_SIZE_I })
     }
 
     fn remesh_now(&mut self, pos: IVec3) {
-        if !self.in_mesh_range(pos) || !self.neighbors_loaded(pos) {
+        if !self.in_mesh_range(pos) || !self.ready_to_mesh(pos) {
             self.dirty.insert(pos);
             return;
         }
-        let n = self.gather(pos);
-        let mesh = mesh::mesh_neighborhood(&n, &mut self.scratch);
+        let input = self.gather(pos);
+        let mesh = mesh::build(&input, &mut self.region);
         let slot = self.chunks.get_mut(&pos).unwrap();
         slot.meshed_version = Some(slot.version);
         self.dirty.remove(&pos);
@@ -261,12 +317,7 @@ impl World {
         // Unload far chunks; keep player edits around in memory.
         let far: Vec<IVec3> = self.chunks.keys().copied().filter(|&p| !self.in_keep_range(p)).collect();
         for pos in far {
-            let slot = self.chunks.remove(&pos).unwrap();
-            if slot.modified {
-                self.saved.insert(pos, slot.data);
-            }
-            self.dirty.remove(&pos);
-            self.mesh_removals.push(pos);
+            self.remove_chunk(pos);
         }
         // Chunks that just came into mesh range, or left it.
         let mut newly_dirty = Vec::new();
@@ -301,6 +352,15 @@ impl World {
     }
 
     fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
+        let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
+        let col = self.columns.entry(column_of(pos)).or_insert_with(|| Column {
+            heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]),
+            loaded: 0,
+        });
+        col.loaded += 1;
+        for (h, new) in col.heights.iter_mut().zip(heights) {
+            *h = (*h).max(new);
+        }
         self.chunks.insert(
             pos,
             ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false },
@@ -308,6 +368,21 @@ impl World {
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
+    }
+
+    fn remove_chunk(&mut self, pos: IVec3) {
+        let slot = self.chunks.remove(&pos).unwrap();
+        if slot.modified {
+            self.saved.insert(pos, slot.data);
+        }
+        if let Some(col) = self.columns.get_mut(&column_of(pos)) {
+            col.loaded -= 1;
+            if col.loaded <= 0 {
+                self.columns.remove(&column_of(pos));
+            }
+        }
+        self.dirty.remove(&pos);
+        self.mesh_removals.push(pos);
     }
 
     pub fn update(&mut self, player: DVec3) {
@@ -366,11 +441,11 @@ impl World {
                 if self.mesh_in_flight >= cap {
                     break;
                 }
-                if !self.chunks.contains_key(&pos) {
+                let Some(slot) = self.chunks.get(&pos) else {
                     self.dirty.remove(&pos);
                     continue;
-                }
-                if !self.neighbors_loaded(pos) {
+                };
+                if slot.mesh_in_flight || !self.ready_to_mesh(pos) {
                     continue;
                 }
                 self.dirty.remove(&pos);
@@ -380,11 +455,11 @@ impl World {
                     self.mesh_uploads.push((pos, MeshData::default()));
                     continue;
                 }
-                let neighbors = self.gather(pos);
+                let input = self.gather(pos);
                 let slot = self.chunks.get_mut(&pos).unwrap();
                 slot.mesh_in_flight = true;
                 self.mesh_in_flight += 1;
-                self.workers.submit(Job::Mesh { pos, version: slot.version, neighbors });
+                self.workers.submit(Job::Mesh { pos, version: slot.version, input });
             }
         }
     }

@@ -60,7 +60,8 @@ pub struct FrameParams {
     pub fog_color: [f32; 3],
     pub fog_start: f32,
     pub fog_end: f32,
-    pub time: f32,
+    /// Skylight multiplier, 1 at noon.
+    pub daylight: f32,
     pub highlight: Option<IVec3>,
     pub hotbar: [u8; 9],
     pub selected_slot: usize,
@@ -258,9 +259,9 @@ impl Renderer {
 
         let chunk_buffers = [
             Some(wgpu::VertexBufferLayout {
-                array_stride: 4,
+                array_stride: 8,
                 step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Uint32],
+                attributes: &wgpu::vertex_attr_array![0 => Uint32x2],
             }),
             Some(wgpu::VertexBufferLayout {
                 array_stride: 12,
@@ -737,7 +738,7 @@ impl Renderer {
         let globals = Globals {
             view_proj: view_proj.to_cols_array_2d(),
             fog_color: [p.fog_color[0], p.fog_color[1], p.fog_color[2], 1.0],
-            params: [p.fog_start, p.fog_end, p.time, 0.0],
+            params: [p.fog_start, p.fog_end, p.daylight, 0.0],
         };
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 

@@ -25,7 +25,11 @@ const ACTION_REPEAT: f64 = 0.22;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
 const MOUSE_SENSITIVITY: f32 = 0.0022;
 const SKY: [f32; 3] = [0.30, 0.55, 0.95];
+const NIGHT_SKY: [f32; 3] = [0.008, 0.012, 0.035];
+const SUNSET: [f32; 3] = [0.95, 0.42, 0.18];
 const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
+/// Real seconds per in-game day.
+const DAY_LENGTH: f64 = 600.0;
 
 const HOTBAR: [Block; 9] = [
     Block::GRASS,
@@ -54,7 +58,8 @@ struct Game {
     show_hud: bool,
     last_space: Instant,
     last_frame: Instant,
-    started: Instant,
+    /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
+    day_time: f64,
     last_save: Instant,
     // Title-bar stats, refreshed twice a second.
     stats_since: Instant,
@@ -146,7 +151,7 @@ impl ApplicationHandler for App {
             show_hud: true,
             last_space: now - Duration::from_secs(1),
             last_frame: now,
-            started: now,
+            day_time: 0.08,
             last_save: now,
             stats_since: now,
             frames: 0,
@@ -253,6 +258,17 @@ impl ApplicationHandler for App {
     }
 }
 
+/// Skylight multiplier and sky colour for a time of day.
+fn sky_state(t: f64) -> (f32, [f32; 3]) {
+    let s = (t * std::f64::consts::TAU).sin() as f32;
+    let daylight = (s * 1.8 + 0.35).clamp(0.12, 1.0);
+    let k = (daylight - 0.12) / 0.88;
+    let glow = (-(s * 5.0).powi(2)).exp() * 0.55;
+    let lerp = |a: [f32; 3], b: [f32; 3], t: f32| std::array::from_fn(|i| a[i] + (b[i] - a[i]) * t);
+    let base = lerp(NIGHT_SKY, SKY, k);
+    (daylight, lerp(base, SUNSET, glow * k.max(0.3)))
+}
+
 impl Game {
     fn set_grab(&mut self, grab: bool) {
         let window = &self.renderer.window;
@@ -291,6 +307,7 @@ impl Game {
                 self.renderer.set_vsync(v);
             }
             KeyCode::F1 => self.show_hud = !self.show_hud,
+            KeyCode::KeyT => self.day_time = (self.day_time + 1.0 / 12.0).fract(),
             KeyCode::F11 => {
                 let w = &self.renderer.window;
                 w.set_fullscreen(match w.fullscreen() {
@@ -428,12 +445,14 @@ impl Game {
         }
 
         // --- Render ---------------------------------------------------------
+        self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
+        let (daylight, sky) = sky_state(self.day_time);
         let underwater = self.player.head_in_water(&self.world);
         let view_dist = (self.world.render_distance() * 32) as f32;
         let (fog_color, fog_start, fog_end) = if underwater {
-            (WATER_FOG, 0.0, 28.0)
+            (WATER_FOG.map(|c| c * daylight), 0.0, 28.0)
         } else {
-            (SKY, view_dist * 0.55, view_dist * 0.95)
+            (sky, view_dist * 0.55, view_dist * 0.95)
         };
         let params = FrameParams {
             camera: self.player.eye(),
@@ -443,7 +462,7 @@ impl Game {
             fog_color,
             fog_start,
             fog_end,
-            time: (now - self.started).as_secs_f32(),
+            daylight,
             highlight: self.target().map(|(p, _)| p),
             hotbar: self.hotbar.map(|b| b.info().tex[0]),
             selected_slot: self.selected,

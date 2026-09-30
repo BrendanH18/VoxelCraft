@@ -9,13 +9,13 @@ use std::thread;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use glam::IVec3;
 
-use crate::mesh::{mesh_neighborhood, new_padded, MeshData, Neighborhood};
+use crate::mesh::{self, MeshData, MeshInput, Region};
 use crate::world::chunk::ChunkData;
 use crate::world::terrain::Generator;
 
 pub enum Job {
     Generate(IVec3),
-    Mesh { pos: IVec3, version: u32, neighbors: Box<Neighborhood> },
+    Mesh { pos: IVec3, version: u32, input: Box<MeshInput> },
 }
 
 pub enum JobResult {
@@ -46,14 +46,14 @@ impl Workers {
             thread::Builder::new()
                 .name(format!("worker-{i}"))
                 .spawn(move || {
-                    let mut scratch = new_padded();
+                    let mut region = Region::default();
                     while let Ok(job) = job_rx.recv() {
                         let result = match job {
                             Job::Generate(pos) => JobResult::Generated(pos, generator.generate(pos)),
-                            Job::Mesh { pos, version, neighbors } => JobResult::Meshed {
+                            Job::Mesh { pos, version, input } => JobResult::Meshed {
                                 pos,
                                 version,
-                                mesh: mesh_neighborhood(&neighbors, &mut scratch),
+                                mesh: mesh::build(&input, &mut region),
                             },
                         };
                         if res_tx.send(result).is_err() {

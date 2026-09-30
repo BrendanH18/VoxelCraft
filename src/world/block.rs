@@ -112,6 +112,19 @@ impl Block {
     pub fn name(self) -> &'static str {
         self.info().name
     }
+
+    /// How much light is lost passing through this block, on top of the
+    /// usual 1 per step. 15 fully blocks light.
+    #[inline(always)]
+    pub fn light_opacity(self) -> u8 {
+        LIGHT_OPACITY[self.0 as usize]
+    }
+
+    /// Light level emitted by this block.
+    #[inline(always)]
+    pub fn emission(self) -> u8 {
+        if self == Block::GLOWSTONE { 15 } else { 0 }
+    }
 }
 
 const fn all(t: u8) -> [u8; 6] {
@@ -165,6 +178,21 @@ pub static INFO: [BlockInfo; 256] = {
     let mut i = 0;
     while i < 256 {
         arr[i] = make(i as u8);
+        i += 1;
+    }
+    arr
+};
+
+static LIGHT_OPACITY: [u8; 256] = {
+    let mut arr = [15u8; 256];
+    let mut i = 0;
+    while i < 256 {
+        arr[i] = match INFO[i].kind {
+            RenderKind::Opaque => 15,
+            RenderKind::Invisible => 0,
+            _ if i == 10 => 0, // glass
+            _ => 1,            // leaves, water: dim light passing through
+        };
         i += 1;
     }
     arr
