@@ -26,6 +26,7 @@ cargo run --release -- --help
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
 | T | Skip ahead 2 in-game hours |
+| M | Mute / unmute sound (`--mute` starts muted, `--volume 0..1` sets the master volume) |
 | V | Toggle vsync |
 | F1 | Toggle HUD |
 | F3 | Debug screen |
@@ -62,6 +63,11 @@ chunks are stored, everything else regenerates from the seed.
   Health and air are saved with the world
 - Break, place and pick blocks, with a selection outline and hotbar
 - Procedurally generated, mipmapped block textures — the game ships no assets
+- Procedural sound, synthesized in code at startup (~25 ms): material-specific
+  break/place/footstep sounds (stone, wood, dirt, grass, gravel, sand, snow,
+  leaves, glass, water), jump and landing thuds, splashes and swimming,
+  inventory clicks, wind and cave ambience with dripping water, positional
+  panning and distance falloff, and a muffled mix while underwater
 
 ## Mobs
 
@@ -131,6 +137,12 @@ src/
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool
   bench.rs           headless generation/meshing benchmark
+  audio/
+    mod.rs           game-side handle, player-state sounds, device setup (cpal)
+    sounds.rs        materials, sound ids and synthesis recipes
+    mixer.rs         real-time mixer (voices, panning, underwater filter, limiter)
+    dsp.rs           RNG, filters, envelopes, fades
+    export.rs        --export-sounds WAV dump and stats
   world/
     mod.rs           chunk streaming, edits, heightmaps, raycasting
     chunk.rs         chunk storage
@@ -156,7 +168,28 @@ cargo run --release -- --place 0,~,0,water --pose 0,120,-10,90,-30   # scripted 
 cargo run --release -- --survival --health 5 --air 6   # HUD states; --health 0 shows the death screen
 cargo run --release -- --spawn zombie,6,~,2 --spawn pig,4,~,-2 --time 0.75 \
     --pose 0.5,92,0.5,0,-8 --wait 1.5 --screenshot mobs.png          # mobs (seed 42)
+cargo run --release -- --export-sounds   # write every sound to target/sounds/*.wav with stats
 ```
+
+## Sound
+
+Every sound is synthesized from noise, damped sinusoids, envelopes and
+filters on a background thread at startup, with 2–4 seeded variants each.
+Crunchy materials use filtered random-impulse "crackle" with a resonant
+body band and a low thump; wood is a few inharmonic damped modes (a hollow
+knock); glass breaks with a bright burst and falling tinkles; water is
+swept low-passed noise plus rising-pitch bubbles. The mixer runs in the
+audio callback: the game sends small commands over a bounded lock-free
+channel, and up to 32 voices are resampled, panned and attenuated by
+distance relative to the listener, then low-passed underwater and passed
+through a peak limiter. With no audio device, the game logs a warning and
+runs silently.
+
+## Dependencies
+
+wgpu and winit (graphics and windowing), cpal (audio output), glam (math),
+bytemuck, crossbeam-channel, rustc-hash, font8x8, png, pollster, log and
+env_logger.
 
 ## License
 
