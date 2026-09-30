@@ -10,8 +10,10 @@ pub const MIP_LEVELS: u32 = 5; // 16, 8, 4, 2, 1
 
 type Rgba = [u8; 4];
 
-fn rnd(layer: u8, x: usize, y: usize, salt: i32) -> f32 {
-    hash_f(x as i32, y as i32, salt, 0xB10C ^ layer as u64)
+/// Deterministic texture noise; `variation` selects a pattern within the layer.
+/// This is a procedural graphics helper with no cryptographic purpose.
+fn rnd(layer: u8, x: usize, y: usize, variation: i32) -> f32 {
+    hash_f(x as i32, y as i32, variation, 0xB10C ^ layer as u64)
 }
 
 fn shade(c: [u8; 3], f: f32) -> Rgba {
