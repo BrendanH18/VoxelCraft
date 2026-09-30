@@ -1,6 +1,7 @@
 //! Window, input and the per-frame game loop.
 
 mod hud;
+mod mobs;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -108,6 +109,7 @@ struct Game {
     /// `--bench-render`: per-frame wall times (CPU + GPU, serialised).
     bench_render: Option<Vec<f64>>,
     frame_started: Option<Instant>,
+    mobs: mobs::Mobs,
 }
 
 pub struct App {
@@ -227,6 +229,7 @@ impl ApplicationHandler for App {
             placed: false,
             bench_render: self.args.bench_render.then(Vec::new),
             frame_started: None,
+            mobs: mobs::Mobs::new(seed, self.args.spawn.clone(), self.args.wait),
         };
         game.renderer.force_offscreen = game.bench_render.is_some();
         if game.screenshot.is_none() && game.bench_render.is_none() {
@@ -287,6 +290,9 @@ impl ApplicationHandler for App {
                     MouseButton::Left => {
                         game.left_held = pressed;
                         if !pressed {
+                            game.breaking = None;
+                            game.release_attack();
+                        } else if game.attack() {
                             game.breaking = None;
                         } else if game.mode == GameMode::Creative {
                             game.break_block();
@@ -501,6 +507,9 @@ impl Game {
 
     /// Instant break (creative).
     fn break_block(&mut self) {
+        if self.attacking() {
+            return;
+        }
         if let Some((pos, _)) = self.target()
             && self.world.get_block(pos) != Some(Block::BEDROCK)
         {
@@ -511,6 +520,10 @@ impl Game {
     /// Timed break with drops (survival). Called every frame while the
     /// button is held.
     fn continue_breaking(&mut self, dt: f64) {
+        if self.attacking() {
+            self.breaking = None;
+            return;
+        }
         let Some((pos, _)) = self.target() else {
             self.breaking = None;
             return;
@@ -572,6 +585,7 @@ impl Game {
             }
         }
         self.placed = true;
+        self.spawn_pending_mobs();
     }
 
     /// Drives `--screenshot`: once streaming settles, capture a frame and
@@ -584,7 +598,7 @@ impl Game {
                 self.apply_placements();
                 false
             }
-            0 if settled && self.world.is_idle() => {
+            0 if settled && self.world.is_idle() && self.mobs.waited() => {
                 self.screenshot_state = 1;
                 false
             }
@@ -712,6 +726,7 @@ impl Game {
         for pos in self.world.mesh_removals.drain(..) {
             self.renderer.remove_mesh(pos);
         }
+        self.update_mobs(dt);
 
         if now - self.last_save > AUTOSAVE_EVERY {
             self.save();
@@ -728,6 +743,8 @@ impl Game {
         } else {
             (sky.horizon, view_dist * 0.55, view_dist * 0.95)
         };
+        let verts = self.mobs.entities.mesh(self.player.eye(), self.player.forward(), fog_end, (now - self.started).as_secs_f32());
+        self.renderer.set_entities(verts);
         let params = FrameParams {
             camera: self.player.eye(),
             forward: self.player.forward(),
@@ -740,7 +757,7 @@ impl Game {
             zenith_color: if underwater { fog_color } else { sky.zenith },
             sun_dir: sky.sun_dir,
             time: (now - self.started).as_secs_f32(),
-            highlight: self.target().map(|(p, _)| p),
+            highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| p),
             crack: self.breaking.map(|(p, progress)| {
                 (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u8)
             }),

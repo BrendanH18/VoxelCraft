@@ -2,6 +2,7 @@
 
 use glam::{DVec3, IVec3, Vec3};
 
+use crate::physics::{self, Shape};
 use crate::world::World;
 
 pub const EYE_HEIGHT: f64 = 1.62;
@@ -15,6 +16,7 @@ const FLY_SPEED: f64 = 11.0;
 const FLY_SPRINT_SPEED: f64 = 30.0;
 const SWIM_SPEED: f64 = 2.8;
 const MAX_STEP: f64 = 1.0 / 120.0;
+const SHAPE: Shape = Shape::new(HALF_WIDTH, HEIGHT);
 
 #[derive(Default, Clone, Copy)]
 pub struct MoveInput {
@@ -70,17 +72,10 @@ impl Player {
 
     /// Whether the player's box overlaps a block cell.
     pub fn intersects_block(&self, b: IVec3) -> bool {
-        let (min, max) = self.aabb(self.pos);
+        let (min, max) = SHAPE.aabb(self.pos);
         let bmin = b.as_dvec3();
         let bmax = bmin + DVec3::ONE;
         min.cmplt(bmax).all() && max.cmpgt(bmin).all()
-    }
-
-    fn aabb(&self, pos: DVec3) -> (DVec3, DVec3) {
-        (
-            pos - DVec3::new(HALF_WIDTH, 0.0, HALF_WIDTH),
-            pos + DVec3::new(HALF_WIDTH, HEIGHT, HALF_WIDTH),
-        )
     }
 
     pub fn update(&mut self, dt: f64, input: MoveInput, world: &World) {
@@ -136,63 +131,9 @@ impl Player {
         }
 
         let delta = self.vel * dt;
-        self.on_ground = false;
-        // Resolve one axis at a time; Y first so landing takes priority.
-        for axis in [1usize, 0, 2] {
-            if delta[axis] == 0.0 {
-                continue;
-            }
-            let mut next = self.pos;
-            next[axis] += delta[axis];
-            if let Some(resolved) = self.collide(world, next, axis, delta[axis]) {
-                if axis == 1 && delta[axis] < 0.0 {
-                    self.on_ground = true;
-                }
-                self.pos = resolved;
-                self.vel[axis] = 0.0;
-            } else {
-                self.pos = next;
-            }
-        }
+        self.on_ground = physics::move_box(world, &mut self.pos, &mut self.vel, delta, SHAPE).on_ground;
         if self.flying && self.on_ground {
             self.flying = false;
         }
-    }
-
-    /// If the box at `pos` overlaps solid blocks, returns `pos` pushed back
-    /// against them along `axis`.
-    fn collide(&self, world: &World, pos: DVec3, axis: usize, dir: f64) -> Option<DVec3> {
-        const EPS: f64 = 1e-5;
-        let (min, max) = self.aabb(pos);
-        let lo = (min + DVec3::splat(EPS)).floor().as_ivec3();
-        let hi = (max - DVec3::splat(EPS)).floor().as_ivec3();
-        let mut hit: Option<f64> = None;
-        for y in lo.y..=hi.y {
-            for z in lo.z..=hi.z {
-                for x in lo.x..=hi.x {
-                    let b = IVec3::new(x, y, z);
-                    // Unloaded chunks act solid so we never fall out of the world.
-                    let solid = world.get_block(b).is_none_or(|b| b.is_solid());
-                    if !solid {
-                        continue;
-                    }
-                    let edge = if dir > 0.0 { b[axis] as f64 } else { b[axis] as f64 + 1.0 };
-                    hit = Some(match hit {
-                        Some(h) if dir > 0.0 => h.min(edge),
-                        Some(h) => h.max(edge),
-                        None => edge,
-                    });
-                }
-            }
-        }
-        let edge = hit?;
-        let mut out = pos;
-        out[axis] = match axis {
-            1 if dir > 0.0 => edge - HEIGHT - EPS,
-            1 => edge + EPS,
-            _ if dir > 0.0 => edge - HALF_WIDTH - EPS,
-            _ => edge + HALF_WIDTH + EPS,
-        };
-        Some(out)
     }
 }

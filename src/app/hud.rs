@@ -229,6 +229,7 @@ impl Game {
             format!("Vertex memory: {:.1} MB", s.gpu_bytes as f64 / 1e6),
             format!("Workers: {}, jobs in flight: {}", self.world.worker_threads(), self.world.pending_jobs()),
             format!("Water: {} active, last tick {:.2} ms", self.world.active_fluids(), self.world.fluid_tick_ms()),
+            self.mobs_debug_line(),
             format!("Seed: {}", self.world.generator.seed),
         ];
 
