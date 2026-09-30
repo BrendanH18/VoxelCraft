@@ -9,6 +9,7 @@
 //!
 //! Depth is reverse-Z with an infinite far plane.
 
+pub mod entity;
 pub mod textures;
 pub mod ui;
 
@@ -135,6 +136,7 @@ pub struct Renderer {
     sky_pipeline: wgpu::RenderPipeline,
     cloud_pipeline: wgpu::RenderPipeline,
     ui_pipeline: wgpu::RenderPipeline,
+    entities: entity::EntityPass,
     quad_indices: wgpu::Buffer,
     instances: wgpu::Buffer,
     instance_capacity: usize,
@@ -532,6 +534,8 @@ impl Renderer {
             cache: None,
         });
 
+        let entities = entity::EntityPass::new(&device, &layout, format);
+
         // --- Shared buffers ----------------------------------------------
         let indices: Vec<u32> = (0..MAX_QUADS_PER_CHUNK as u32)
             .flat_map(|q| [0, 1, 2, 2, 3, 0].map(|i| q * 4 + i))
@@ -572,6 +576,7 @@ impl Renderer {
             sky_pipeline,
             cloud_pipeline,
             ui_pipeline,
+            entities,
             quad_indices,
             instances,
             instance_capacity,
@@ -1018,6 +1023,7 @@ impl Renderer {
             };
             draw_range(&mut pass, &self.opaque_pipeline, |m| (0, m.opaque), false);
             draw_range(&mut pass, &self.cutout_pipeline, |m| (m.opaque, m.cutout), false);
+            self.entities.draw(&mut pass);
 
             // Sky after terrain so early-z skips covered pixels.
             pass.set_pipeline(&self.sky_pipeline);

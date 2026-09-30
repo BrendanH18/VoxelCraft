@@ -19,7 +19,7 @@ cargo run --release -- --help
 | Left Shift | Fly down |
 | Left Ctrl or R | Sprint |
 | F | Toggle flying (creative) |
-| Left / right click | Break / place block (hold to repeat); respawn on the death screen |
+| Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; respawn on the death screen |
 | Middle click | Pick block |
 | E | Inventory (click to move stacks; creative shows the block palette) |
 | G | Toggle survival / creative |
@@ -47,6 +47,11 @@ chunks are stored, everything else regenerates from the seed.
 - Flowing water: falls, spreads up to 7 blocks toward the nearest drop,
   dries up without a source, and forms infinite sources; lowered surfaces
 - Walking, swimming and flying with AABB collision
+- Mobs with Minecraft-style animated box models: pigs wander, graze and
+  look around, and panic when hit; zombies spawn at night, chase and hit
+  survival players, jump 1-block ledges, sidestep obstacles and burn in
+  sunlight. Mobs avoid tall drops, float in water, flash red when hurt and
+  topple over when killed. All mobs are drawn in a single draw call
 - Survival and creative modes: timed block breaking with crack overlay,
   drops, a 36-slot inventory with stacks, and a creative block palette
 - Survival health (no hunger): 10 hearts, fall damage (1 per block beyond
@@ -57,6 +62,20 @@ chunks are stored, everything else regenerates from the seed.
   Health and air are saved with the world
 - Break, place and pick blocks, with a selection outline and hotbar
 - Procedurally generated, mipmapped block textures — the game ships no assets
+
+## Mobs
+
+| | Pig | Zombie |
+|---|---|---|
+| Health | 10 | 20 |
+| Spawns | on sky-exposed grass | on sky-exposed solid ground when daylight < 0.35 |
+| Cap | 12 | 8 |
+| Behaviour | wanders, idles, looks around; panics when hit | chases survival players within 24 blocks, hits for 3 every second; burns in sunlight |
+
+Mobs spawn 24–64 blocks from the player and despawn beyond 96 blocks or
+when their chunk unloads. Player hits do 2–4 damage with knockback, at most
+every 0.5 s. Mob attacks are reported as `EntityEvent::PlayerHit` so the
+game decides what they do to the player.
 
 ## Performance design
 
@@ -101,8 +120,14 @@ src/
     mod.rs           window, input, game loop, day/night, damage entry point
     hud.rs           HUD: hotbar, hearts/bubbles, inventory, death and F3 screens
     survival.rs      health rules: falls, drowning, regeneration (unit tested)
+    mobs.rs          mob glue: melee, entity events, --spawn
   inventory.rs       inventory slots and stacking
-  player.rs          movement physics and collision
+  player.rs          player movement
+  physics.rs         shared AABB-vs-block collision, ray-vs-box test
+  entity/
+    mod.rs           mob list, spawning/despawning rules, events
+    mob.rs           mob AI, movement and combat state
+    model.rs         animated box models -> camera-relative triangles
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool
   bench.rs           headless generation/meshing benchmark
@@ -115,6 +140,7 @@ src/
     storage.rs       save files
   render/
     mod.rs           wgpu pipelines, culling, draw submission, screenshots
+    entity.rs        entity pass (one dynamic vertex buffer per frame)
     textures.rs      procedural block textures
     shaders/         WGSL
 ```
@@ -128,6 +154,8 @@ cargo run --release -- --bench-render --pose 0,100,0,0,-10
 cargo run --release -- --screenshot shot.png --pose 0,190,0,45,-35
 cargo run --release -- --place 0,~,0,water --pose 0,120,-10,90,-30   # scripted scenes
 cargo run --release -- --survival --health 5 --air 6   # HUD states; --health 0 shows the death screen
+cargo run --release -- --spawn zombie,6,~,2 --spawn pig,4,~,-2 --time 0.75 \
+    --pose 0.5,92,0.5,0,-8 --wait 1.5 --screenshot mobs.png          # mobs (seed 42)
 ```
 
 ## License
