@@ -365,7 +365,7 @@ impl Game {
                 self.screenshot_state = 2;
                 false
             }
-            2 => true,
+            2 => !self.renderer.capture_pending(),
             _ => false,
         }
     }

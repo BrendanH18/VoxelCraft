@@ -433,6 +433,10 @@ impl Renderer {
         }
     }
 
+    pub fn capture_pending(&self) -> bool {
+        self.capture.is_some()
+    }
+
     /// Saves the next rendered frame as a PNG.
     pub fn request_capture(&mut self, path: impl Into<std::path::PathBuf>) {
         self.capture = Some(path.into());
@@ -669,14 +673,37 @@ impl Renderer {
 
     pub fn render(&mut self, p: &FrameParams) {
         let frame = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+            wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => Some(f),
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 self.surface.configure(&self.device, &self.config);
+                None
+            }
+            _ => None, // occluded / timeout
+        };
+        // With no surface frame (e.g. hidden window) a pending capture still
+        // renders offscreen; otherwise back off instead of spinning.
+        let offscreen;
+        let target = match &frame {
+            Some(f) => &f.texture,
+            None if self.capture.is_some() => {
+                offscreen = self.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("offscreen"),
+                    size: wgpu::Extent3d { width: self.config.width, height: self.config.height, depth_or_array_layers: 1 },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: self.config.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                    view_formats: &[],
+                });
+                &offscreen
+            }
+            None => {
+                std::thread::sleep(std::time::Duration::from_millis(8));
                 return;
             }
-            _ => return,
         };
-        let view = frame.texture.create_view(&Default::default());
+        let view = target.create_view(&Default::default());
 
         // Camera-relative view-projection.
         // wgpu NDC is DirectX-style: Z in [0, 1], Y up.
@@ -809,15 +836,21 @@ impl Renderer {
             }
         }
         match self.capture.take() {
-            Some(path) if self.config.usage.contains(wgpu::TextureUsages::COPY_SRC) => {
-                self.save_capture(&frame.texture, encoder, &path)
+            Some(path) if target.usage().contains(wgpu::TextureUsages::COPY_SRC) => {
+                self.save_capture(target, encoder, &path)
             }
-            _ => {
+            Some(_) => {
+                log::error!("surface doesn't support COPY_SRC; can't take screenshots");
+                self.queue.submit([encoder.finish()]);
+            }
+            None => {
                 self.queue.submit([encoder.finish()]);
             }
         }
-        self.window.pre_present_notify();
-        self.queue.present(frame);
+        if let Some(frame) = frame {
+            self.window.pre_present_notify();
+            self.queue.present(frame);
+        }
 
         stats.gpu_bytes = self.meshes.values().map(|m| m.buffer.size()).sum();
         self.stats = stats;
