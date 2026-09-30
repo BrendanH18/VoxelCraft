@@ -19,7 +19,7 @@ cargo run --release -- --help
 | Left Shift | Fly down |
 | Left Ctrl or R | Sprint |
 | F | Toggle flying (creative) |
-| Left / right click | Break / place block (hold to repeat); left click on a mob attacks it |
+| Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; respawn on the death screen |
 | Middle click | Pick block |
 | E | Inventory (click to move stacks; creative shows the block palette) |
 | G | Toggle survival / creative |
@@ -54,6 +54,12 @@ chunks are stored, everything else regenerates from the seed.
   topple over when killed. All mobs are drawn in a single draw call
 - Survival and creative modes: timed block breaking with crack overlay,
   drops, a 36-slot inventory with stacks, and a creative block palette
+- Survival health (no hunger): 10 hearts, fall damage (1 per block beyond
+  3; water breaks falls), 15 s of air then drowning, natural regeneration
+  after 4 s without damage, a red hurt flash and shaking hearts. Dying shows
+  a death screen; clicking respawns at the world spawn with full health and
+  the inventory kept (like `keepInventory`). Creative is immune to damage.
+  Health and air are saved with the world
 - Break, place and pick blocks, with a selection outline and hotbar
 - Procedurally generated, mipmapped block textures — the game ships no assets
 
@@ -111,9 +117,11 @@ Render distance is measured in 32-block chunks, so `--rd 8` is 256 blocks
 src/
   main.rs            argument parsing, event loop
   app/
-    mod.rs           window, input, game loop, day/night
-    hud.rs           hotbar, inventory screen, F3 debug screen
+    mod.rs           window, input, game loop, day/night, damage entry point
+    hud.rs           HUD: hotbar, hearts/bubbles, inventory, death and F3 screens
+    survival.rs      health rules: falls, drowning, regeneration (unit tested)
     mobs.rs          mob glue: melee, entity events, --spawn
+  inventory.rs       inventory slots and stacking
   player.rs          player movement
   physics.rs         shared AABB-vs-block collision, ray-vs-box test
   entity/
@@ -145,6 +153,21 @@ cargo run --release -- --bench
 cargo run --release -- --bench-render --pose 0,100,0,0,-10
 cargo run --release -- --screenshot shot.png --pose 0,190,0,45,-35
 cargo run --release -- --place 0,~,0,water --pose 0,120,-10,90,-30   # scripted scenes
+cargo run --release -- --survival --health 5 --air 6   # HUD states; --health 0 shows the death screen
 cargo run --release -- --spawn zombie,6,~,2 --spawn pig,4,~,-2 --time 0.75 \
     --pose 0.5,92,0.5,0,-8 --wait 1.5 --screenshot mobs.png          # mobs (seed 42)
 ```
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms or
+conditions.

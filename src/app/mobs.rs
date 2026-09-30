@@ -100,9 +100,11 @@ impl Game {
         for event in self.mobs.entities.update(dt, &self.world, &ctx) {
             match event {
                 EntityEvent::PlayerHit { damage, knockback } => {
-                    self.player.vel += knockback.as_dvec3();
-                    // TODO(health): self.damage_player(damage, "zombie");
-                    let _ = damage;
+                    // Knockback only lands with damage, so hurt immunity
+                    // also stops repeated shoves.
+                    if self.damage_player(damage, "was slain by a zombie") > 0.0 {
+                        self.player.vel += knockback.as_dvec3();
+                    }
                 }
             }
         }
