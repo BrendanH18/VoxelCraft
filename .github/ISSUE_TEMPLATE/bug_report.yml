@@ -1,0 +1,73 @@
+name: Bug report
+description: Report a crash, rendering problem, or gameplay bug.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve VoxelCraft. Please search existing issues first.
+        Share enough detail to reproduce the problem, including your launch command.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the exact launch command, actions taken, and how often the issue happens.
+      placeholder: |
+        1. Run cargo run --release -- ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Commit and build
+      description: Paste the commit from `git rev-parse --short HEAD` and say whether this is a release or debug build.
+      placeholder: abc1234, cargo run --release
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Include the version; on Linux, include your distribution and X11 or Wayland session if known.
+      placeholder: macOS 26 / Windows 11 / Ubuntu 26.04, Wayland
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver
+      description: GPU model, driver version, and graphics backend if known. For build-only issues, enter N/A.
+      placeholder: Apple M5, Metal / NVIDIA RTX 4070, driver version ...
+    validations:
+      required: true
+  - type: input
+    id: rust
+    attributes:
+      label: Rust version
+      description: Paste the output of `rustc --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: world
+    attributes:
+      label: World and graphics settings
+      description: Include the seed, coordinates, game mode, render distance, resolution, vsync setting, and whether this uses a new world or an existing save, where relevant.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal output
+      description: Paste relevant logs or build errors. For a Rust panic, run with RUST_BACKTRACE=1 to capture a backtrace.
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or other context
+      description: Drag in screenshots or recordings for visual issues. For performance problems, include F3 details or benchmark output if available.

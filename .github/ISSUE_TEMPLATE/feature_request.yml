@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest a gameplay, rendering, or developer experience improvement.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search existing issues before suggesting a feature.
+        Explain the use case so the proposed change can be discussed in context.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would this improve?
+      description: Describe the problem or use case, with an example if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe how the feature would work from a player's or contributor's perspective.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and context
+      description: Share other approaches, existing workarounds, sketches, or relevant technical considerations.
