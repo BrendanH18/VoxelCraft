@@ -1,4 +1,5 @@
 mod app;
+mod audio;
 mod inventory;
 mod bench;
 mod mesh;
@@ -27,6 +28,10 @@ pub struct Args {
     pub place: Vec<(glam::IVec3, world::block::Block)>,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
+    /// Sound: start muted, master volume 0..1, dump WAVs and exit.
+    pub mute: bool,
+    pub volume: f32,
+    pub export_sounds: bool,
 }
 
 const USAGE: &str = "\
@@ -45,7 +50,10 @@ voxelcraft [options]
                     terrain surface, e.g. 0,~,0,water)
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --screenshot <f>  wait for the world to load, save a PNG and exit
-  --pose x,y,z,yaw,pitch  start flying at this position (degrees)";
+  --pose x,y,z,yaw,pitch  start flying at this position (degrees)
+  --mute            start with sound muted (M toggles in game)
+  --volume <0..1>   master volume (default: 1)
+  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit";
 
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
@@ -63,6 +71,9 @@ fn parse_args() -> Result<Args, String> {
         time: None,
         place: Vec::new(),
         pose: None,
+        mute: false,
+        volume: 1.0,
+        export_sounds: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -100,6 +111,9 @@ fn parse_args() -> Result<Args, String> {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();
                 args.pose = Some(v.try_into().map_err(|_| "--pose needs x,y,z,yaw,pitch")?);
             }
+            "--mute" => args.mute = true,
+            "--volume" => args.volume = value("--volume")?.parse::<f32>().map_err(|_| "bad --volume")?.clamp(0.0, 1.0),
+            "--export-sounds" => args.export_sounds = true,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n\n{USAGE}")),
         }
@@ -117,6 +131,13 @@ fn main() {
             std::process::exit(2);
         }
     };
+    if args.export_sounds {
+        if let Err(e) = audio::export_sounds("target/sounds") {
+            eprintln!("export failed: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if args.bench {
         bench::run(args.seed.unwrap_or(12345), args.render_distance);
         return;

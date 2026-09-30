@@ -26,6 +26,7 @@ cargo run --release -- --help
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
 | T | Skip ahead 2 in-game hours |
+| M | Mute / unmute sound (`--mute` starts muted, `--volume 0..1` sets the master volume) |
 | V | Toggle vsync |
 | F1 | Toggle HUD |
 | F3 | Debug screen |
@@ -51,6 +52,11 @@ chunks are stored, everything else regenerates from the seed.
   drops, a 36-slot inventory with stacks, and a creative block palette
 - Break, place and pick blocks, with a selection outline and hotbar
 - Procedurally generated, mipmapped block textures — the game ships no assets
+- Procedural sound, synthesized in code at startup (~25 ms): material-specific
+  break/place/footstep sounds (stone, wood, dirt, grass, gravel, sand, snow,
+  leaves, glass, water), jump and landing thuds, splashes and swimming,
+  inventory clicks, wind and cave ambience with dripping water, positional
+  panning and distance falloff, and a muffled mix while underwater
 
 ## Performance design
 
@@ -96,6 +102,12 @@ src/
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool
   bench.rs           headless generation/meshing benchmark
+  audio/
+    mod.rs           game-side handle, player-state sounds, device setup (cpal)
+    sounds.rs        materials, sound ids and synthesis recipes
+    mixer.rs         real-time mixer (voices, panning, underwater filter, limiter)
+    dsp.rs           RNG, filters, envelopes, fades
+    export.rs        --export-sounds WAV dump and stats
   world/
     mod.rs           chunk streaming, edits, heightmaps, raycasting
     chunk.rs         chunk storage
@@ -117,4 +129,25 @@ cargo run --release -- --bench
 cargo run --release -- --bench-render --pose 0,100,0,0,-10
 cargo run --release -- --screenshot shot.png --pose 0,190,0,45,-35
 cargo run --release -- --place 0,~,0,water --pose 0,120,-10,90,-30   # scripted scenes
+cargo run --release -- --export-sounds   # write every sound to target/sounds/*.wav with stats
 ```
+
+## Sound
+
+Every sound is synthesized from noise, damped sinusoids, envelopes and
+filters on a background thread at startup, with 2–4 seeded variants each.
+Crunchy materials use filtered random-impulse "crackle" with a resonant
+body band and a low thump; wood is a few inharmonic damped modes (a hollow
+knock); glass breaks with a bright burst and falling tinkles; water is
+swept low-passed noise plus rising-pitch bubbles. The mixer runs in the
+audio callback: the game sends small commands over a bounded lock-free
+channel, and up to 32 voices are resampled, panned and attenuated by
+distance relative to the listener, then low-passed underwater and passed
+through a peak limiter. With no audio device, the game logs a warning and
+runs silently.
+
+## Dependencies
+
+wgpu and winit (graphics and windowing), cpal (audio output), glam (math),
+bytemuck, crossbeam-channel, rustc-hash, font8x8, png, pollster, log and
+env_logger.

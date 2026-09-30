@@ -108,6 +108,7 @@ struct Game {
     /// `--bench-render`: per-frame wall times (CPU + GPU, serialised).
     bench_render: Option<Vec<f64>>,
     frame_started: Option<Instant>,
+    audio: crate::audio::Audio,
 }
 
 pub struct App {
@@ -227,6 +228,7 @@ impl ApplicationHandler for App {
             placed: false,
             bench_render: self.args.bench_render.then(Vec::new),
             frame_started: None,
+            audio: crate::audio::Audio::new(self.args.mute, self.args.volume),
         };
         game.renderer.force_offscreen = game.bench_render.is_some();
         if game.screenshot.is_none() && game.bench_render.is_none() {
@@ -410,6 +412,10 @@ impl Game {
                 let v = !self.renderer.vsync();
                 self.renderer.set_vsync(v);
             }
+            KeyCode::KeyM => {
+                let muted = self.audio.toggle_mute();
+                self.show_popup(if muted { "Sound off" } else { "Sound on" });
+            }
             KeyCode::F1 => self.show_hud = !self.show_hud,
             KeyCode::F3 => self.show_debug = !self.show_debug,
             KeyCode::KeyT => self.day_time = (self.day_time + 1.0 / 12.0).fract(),
@@ -482,7 +488,11 @@ impl Game {
     }
 
     fn inventory_click(&mut self, right: bool) {
-        match self.slot_under_cursor() {
+        let slot = self.slot_under_cursor();
+        if slot.is_some() {
+            self.audio.ui_click();
+        }
+        match slot {
             Some(hud::SlotRef::Inventory(i)) => self.inventory.click(i, right),
             Some(hud::SlotRef::Palette(block)) => {
                 // Creative palette: take a full stack, or trash the held one.
@@ -502,9 +512,11 @@ impl Game {
     /// Instant break (creative).
     fn break_block(&mut self) {
         if let Some((pos, _)) = self.target()
-            && self.world.get_block(pos) != Some(Block::BEDROCK)
+            && let Some(block) = self.world.get_block(pos)
+            && block != Block::BEDROCK
         {
             self.world.set_block(pos, Block::AIR);
+            self.audio.block_break(block, pos);
         }
     }
 
@@ -523,11 +535,13 @@ impl Game {
         let progress = progress + (dt / block.break_time() as f64) as f32;
         if progress < 1.0 {
             self.breaking = Some((pos, progress));
+            self.audio.block_hit(block, pos, dt);
             return;
         }
         self.breaking = None;
         self.action_cooldown = BREAK_DELAY;
         self.world.set_block(pos, Block::AIR);
+        self.audio.block_break(block, pos);
         if let Some(drop) = block.drop() {
             self.inventory.add(drop, 1);
         }
@@ -539,10 +553,12 @@ impl Game {
         let Some(stack) = self.inventory.get(self.selected) else { return };
         let block = stack.block;
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
-        if free && !(block.is_solid() && self.player.intersects_block(at)) && self.world.set_block(at, block)
-            && self.mode == GameMode::Survival {
+        if free && !(block.is_solid() && self.player.intersects_block(at)) && self.world.set_block(at, block) {
+            self.audio.block_place(block, at);
+            if self.mode == GameMode::Survival {
                 self.inventory.take_one(self.selected);
             }
+        }
     }
 
     fn pick_block(&mut self) {
@@ -684,6 +700,7 @@ impl Game {
             MoveInput::default()
         };
         self.player.update(dt, input, &self.world);
+        self.audio.update(&self.player, &self.world, dt);
 
         self.action_cooldown -= dt;
         let acting = self.mouse_grabbed && !self.inventory_open;
