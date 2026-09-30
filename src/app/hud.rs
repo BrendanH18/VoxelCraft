@@ -5,9 +5,10 @@ use std::time::Instant;
 
 use crate::inventory::{Stack, HOTBAR_SLOTS};
 use crate::render::ui::{Color, Ui, UiVertex, WHITE};
-use crate::world::block::Block;
+use crate::world::block::{tex, Block};
 use crate::world::chunk::{chunk_of, local_of};
 
+use super::survival::{self, AIR_BUBBLES, MAX_AIR, MAX_HEALTH};
 use super::{Game, GameMode};
 
 /// A clickable slot on the inventory screen.
@@ -24,6 +25,8 @@ const PANEL_H: f32 = 4.0 * SLOT + 38.0;
 
 const DEBUG_TEXT: Color = [0.88, 0.88, 0.88, 1.0];
 const HIGHLIGHT: Color = [1.0, 1.0, 0.6, 1.0];
+/// Duration of the red screen flash after taking damage.
+const HURT_FLASH: f32 = 0.3;
 
 impl Game {
     pub(super) fn build_ui(&self, now: Instant) -> Vec<UiVertex> {
@@ -35,16 +38,34 @@ impl Game {
             ui.rect(0.0, 0.0, sw, sh, [0.05, 0.15, 0.4, 0.3]);
         }
 
+        let hurt = self.vitals.since_damage();
+        if hurt < HURT_FLASH {
+            ui.rect(0.0, 0.0, sw, sh, [0.8, 0.0, 0.0, 0.35 * (1.0 - hurt / HURT_FLASH)]);
+        }
+
         // Crosshair.
-        let (cx, cy) = ((sw / 2.0).floor(), (sh / 2.0).floor());
-        ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
-        ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
+        if !self.vitals.is_dead() {
+            let (cx, cy) = ((sw / 2.0).floor(), (sh / 2.0).floor());
+            ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
+            ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
+        }
 
         self.hotbar_ui(&mut ui, now);
         if self.show_debug {
             self.debug_ui(&mut ui);
         }
-        if self.inventory_open {
+        if let Some(cause) = &self.vitals.death {
+            // Blending is in linear space: it takes a high alpha to look dark.
+            ui.rect(0.0, 0.0, sw, sh, [0.18, 0.0, 0.0, 0.9]);
+            let title = "You died!";
+            let k = 3.0;
+            let y = (sh * 0.3).floor();
+            ui.text_scaled(((sw - Ui::text_width(title) * k) / 2.0).floor(), y, title, WHITE, k);
+            let msg = format!("Player {cause}");
+            ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), y + 36.0, &msg, WHITE);
+            let hint = "Click to respawn";
+            ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), y + 64.0, hint, [1.0, 1.0, 0.6, 1.0]);
+        } else if self.inventory_open {
             self.inventory_ui(&mut ui);
         } else if !self.mouse_grabbed && self.screenshot.is_none() {
             ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.35]);
@@ -74,12 +95,46 @@ impl Game {
             }
         }
 
+        let survival = self.mode == GameMode::Survival;
+        if survival {
+            self.vitals_ui(ui, x0, x0 + total, y0 - 10.0, now);
+        }
+
         // Popup message (item names, mode changes), fading out.
         let age = (now - self.popup.1).as_secs_f32();
         let alpha = ((2.5 - age) / 0.5).clamp(0.0, 1.0);
         if alpha > 0.0 {
             let text = capitalize(&self.popup.0);
-            ui.text((sw - Ui::text_width(&text)) / 2.0, y0 - 14.0, &text, [1.0, 1.0, 1.0, alpha]);
+            let y = y0 - if survival { 24.0 } else { 14.0 };
+            ui.text((sw - Ui::text_width(&text)) / 2.0, y, &text, [1.0, 1.0, 1.0, alpha]);
+        }
+    }
+
+    /// Hearts above the left half of the hotbar and air bubbles above the
+    /// right half, like Minecraft. Hearts shake after a hit and at low
+    /// health.
+    fn vitals_ui(&self, ui: &mut Ui, left: f32, right: f32, y: f32, now: Instant) {
+        const ICON: f32 = 9.0;
+        const STEP: f32 = 8.0;
+        let v = &self.vitals;
+        let half_hearts = v.health.ceil() as u32;
+        let shaking = v.since_damage() < survival::INVULNERABLE || v.health <= 4.0;
+        // Re-roll the jitter 20 times a second.
+        let tick = ((now - self.started).as_secs_f32() * 20.0) as u32;
+        for i in 0..(MAX_HEALTH as u32 / 2) {
+            let layer = match half_hearts.saturating_sub(i * 2) {
+                0 => tex::HEART_EMPTY,
+                1 => tex::HEART_HALF,
+                _ => tex::HEART_FULL,
+            };
+            let jitter = if shaking { (hash(i, tick) % 3) as f32 - 1.0 } else { 0.0 };
+            ui.icon(left + 1.0 + i as f32 * STEP, y + jitter, ICON, layer, WHITE);
+        }
+
+        if self.player.head_in_water(&self.world) || v.air < MAX_AIR {
+            for i in 0..v.bubbles().min(AIR_BUBBLES) {
+                ui.icon(right - 1.0 - ICON - i as f32 * STEP, y, ICON, tex::BUBBLE, WHITE);
+            }
         }
     }
 
@@ -211,6 +266,14 @@ impl Game {
             format!("Facing: {facing} ({:.1} / {:.1})", self.player.yaw.to_degrees(), self.player.pitch.to_degrees()),
             format!("Biome: {biome:?}"),
             format!("Game mode: {}", self.mode.name()),
+            format!(
+                "Health: {:.1} / {}, air: {:.1} / {}{}",
+                self.vitals.health,
+                MAX_HEALTH,
+                self.vitals.air,
+                MAX_AIR,
+                if self.vitals.is_dead() { " (dead)" } else { "" }
+            ),
             format!("Time: {:02}:{:02}", hours as u32, (hours.fract() * 60.0) as u32),
             format!(
                 "Mode: {}{}{}",
@@ -243,6 +306,14 @@ impl Game {
             ui.label(sw - Ui::text_width(line) - 2.0, 2.0 + i as f32 * 10.0, line, DEBUG_TEXT);
         }
     }
+}
+
+/// Small integer hash for HUD jitter.
+fn hash(a: u32, b: u32) -> u32 {
+    let mut h = a.wrapping_mul(0x9E37_79B9) ^ b.wrapping_mul(0x85EB_CA6B);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x2C1B_3C6D);
+    h ^ (h >> 12)
 }
 
 fn capitalize(s: &str) -> String {

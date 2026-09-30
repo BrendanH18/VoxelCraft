@@ -101,6 +101,12 @@ impl Ui {
         self.quad([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], [[0.0; 2]; 4], SOLID, color);
     }
 
+    /// Square HUD icon (heart, bubble, ...) from a block texture layer.
+    pub fn icon(&mut self, x: f32, y: f32, size: f32, layer: u8, color: Color) {
+        let uv = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        self.quad([[x, y], [x + size, y], [x + size, y + size], [x, y + size]], uv, layer as f32, color);
+    }
+
     /// Isometric cube icon filling a `size` square.
     pub fn block_icon(&mut self, x: f32, y: f32, size: f32, block: Block) {
         let t = block.info().tex;
@@ -126,12 +132,23 @@ impl Ui {
         self.text_raw(x, y, s, color)
     }
 
+    /// Shadowed text magnified `k` times (titles); returns its width.
+    pub fn text_scaled(&mut self, x: f32, y: f32, s: &str, color: Color, k: f32) -> f32 {
+        let shadow = [color[0] * 0.25, color[1] * 0.25, color[2] * 0.25, color[3]];
+        self.glyphs(x + k, y + k, s, shadow, k);
+        self.glyphs(x, y, s, color, k)
+    }
+
     /// Text without a shadow (e.g. titles on light panels).
     pub fn text_flat(&mut self, x: f32, y: f32, s: &str, color: Color) -> f32 {
         self.text_raw(x, y, s, color)
     }
 
     fn text_raw(&mut self, x: f32, y: f32, s: &str, color: Color) -> f32 {
+        self.glyphs(x, y, s, color, 1.0)
+    }
+
+    fn glyphs(&mut self, x: f32, y: f32, s: &str, color: Color, k: f32) -> f32 {
         let mut pen = x;
         for c in s.chars() {
             let c = if (c as u32) < 128 { c } else { '?' };
@@ -139,15 +156,15 @@ impl Ui {
                 let (gx, gy) = ((c as u32 % 16) as f32 * 8.0, (c as u32 / 16) as f32 * 8.0);
                 let (u0, v0) = (gx / FONT_ATLAS_W as f32, gy / FONT_ATLAS_H as f32);
                 let (u1, v1) = ((gx + 8.0) / FONT_ATLAS_W as f32, (gy + 8.0) / FONT_ATLAS_H as f32);
-                let left = pen - glyph_left(c);
+                let (left, size) = (pen - glyph_left(c) * k, 8.0 * k);
                 self.quad(
-                    [[left, y], [left + 8.0, y], [left + 8.0, y + 8.0], [left, y + 8.0]],
+                    [[left, y], [left + size, y], [left + size, y + size], [left, y + size]],
                     [[u0, v0], [u1, v0], [u1, v1], [u0, v1]],
                     GLYPH,
                     color,
                 );
             }
-            pen += glyph_advance(c);
+            pen += glyph_advance(c) * k;
         }
         pen - x
     }
