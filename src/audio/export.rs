@@ -28,8 +28,18 @@ fn band_energies(buf: &[f32]) -> [f32; 4] {
     const Q: f32 = std::f32::consts::FRAC_1_SQRT_2;
     let chains: [Vec<Biquad>; 4] = [
         vec![Biquad::lowpass(250.0, Q), Biquad::lowpass(250.0, Q)],
-        vec![Biquad::highpass(250.0, Q), Biquad::highpass(250.0, Q), Biquad::lowpass(2000.0, Q), Biquad::lowpass(2000.0, Q)],
-        vec![Biquad::highpass(2000.0, Q), Biquad::highpass(2000.0, Q), Biquad::lowpass(6000.0, Q), Biquad::lowpass(6000.0, Q)],
+        vec![
+            Biquad::highpass(250.0, Q),
+            Biquad::highpass(250.0, Q),
+            Biquad::lowpass(2000.0, Q),
+            Biquad::lowpass(2000.0, Q),
+        ],
+        vec![
+            Biquad::highpass(2000.0, Q),
+            Biquad::highpass(2000.0, Q),
+            Biquad::lowpass(6000.0, Q),
+            Biquad::lowpass(6000.0, Q),
+        ],
         vec![Biquad::highpass(6000.0, Q), Biquad::highpass(6000.0, Q)],
     ];
     let e = chains.map(|mut chain| {

@@ -36,12 +36,18 @@ pub enum Command {
         /// footsteps).
         pos: Option<[f32; 3]>,
     },
-    Listener { pos: [f32; 3], yaw: f32 },
+    Listener {
+        pos: [f32; 3],
+        yaw: f32,
+    },
     Master(f32),
     /// Low-pass the whole mix (head underwater).
     Muffle(bool),
     /// Target levels of the wind and cave loops, 0..1.
-    Ambience { wind: f32, cave: f32 },
+    Ambience {
+        wind: f32,
+        cave: f32,
+    },
 }
 
 #[derive(Clone, Copy)]

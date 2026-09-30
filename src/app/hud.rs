@@ -3,9 +3,9 @@
 
 use std::time::Instant;
 
-use crate::inventory::{Stack, HOTBAR_SLOTS};
+use crate::inventory::{HOTBAR_SLOTS, Stack};
 use crate::render::ui::{Color, Ui, UiVertex, WHITE};
-use crate::world::block::{tex, Block};
+use crate::world::block::{Block, tex};
 use crate::world::chunk::{chunk_of, local_of};
 
 use super::survival::{self, AIR_BUBBLES, MAX_AIR, MAX_HEALTH};
@@ -86,7 +86,9 @@ impl Game {
             ui.rect(sx + 1.0, y0 + 2.0, slot - 2.0, slot - 2.0, [0.35, 0.35, 0.35, 0.5]);
             if i == self.selected {
                 let (x, y, s) = (sx - 1.0, y0 - 1.0, slot + 2.0);
-                for (rx, ry, rw, rh) in [(x, y, s, 2.0), (x, y + s, s, 2.0), (x, y, 2.0, s + 2.0), (x + s - 2.0, y, 2.0, s + 2.0)] {
+                for (rx, ry, rw, rh) in
+                    [(x, y, s, 2.0), (x, y + s, s, 2.0), (x, y, 2.0, s + 2.0), (x + s - 2.0, y, 2.0, s + 2.0)]
+                {
                     ui.rect(rx, ry, rw, rh, WHITE);
                 }
             }
@@ -258,7 +260,12 @@ impl Game {
 
         let left = [
             format!("VoxelCraft {}", env!("CARGO_PKG_VERSION")),
-            format!("{:.0} fps ({:.2} ms cpu){}", self.fps, self.cpu_ms, if self.renderer.vsync() { " vsync" } else { "" }),
+            format!(
+                "{:.0} fps ({:.2} ms cpu){}",
+                self.fps,
+                self.cpu_ms,
+                if self.renderer.vsync() { " vsync" } else { "" }
+            ),
             String::new(),
             format!("XYZ: {:.3} / {:.3} / {:.3}", p.x, p.y, p.z),
             format!("Block: {} {} {}", b.x, b.y, b.z),
@@ -286,10 +293,18 @@ impl Game {
         ];
         let right = [
             self.renderer.gpu_name.clone(),
-            format!("Render distance: {} chunks ({} blocks)", self.world.render_distance(), self.world.render_distance() * 32),
+            format!(
+                "Render distance: {} chunks ({} blocks)",
+                self.world.render_distance(),
+                self.world.render_distance() * 32
+            ),
             format!("Chunks: {} loaded, {} meshed, {} visible", self.world.loaded_chunks(), s.meshes, s.visible),
             format!("Draw calls: {}, quads: {:.2}M", s.draw_calls, s.quads as f64 / 1e6),
-            format!("Quad memory: {:.1} MB used, {:.1} MB reserved", s.gpu_used_bytes as f64 / 1e6, s.gpu_bytes as f64 / 1e6),
+            format!(
+                "Quad memory: {:.1} MB used, {:.1} MB reserved",
+                s.gpu_used_bytes as f64 / 1e6,
+                s.gpu_bytes as f64 / 1e6
+            ),
             format!("Workers: {}, jobs in flight: {}", self.world.worker_threads(), self.world.pending_jobs()),
             format!("Water: {} active, last tick {:.2} ms", self.world.active_fluids(), self.world.fluid_tick_ms()),
             self.mobs_debug_line(),

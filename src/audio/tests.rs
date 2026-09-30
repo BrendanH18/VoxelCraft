@@ -263,7 +263,13 @@ fn mixer_is_cheap() {
     for block in 0..94 {
         for i in 0..MAX_VOICES {
             let pos = Some([i as f32 - 16.0, 0.0, 3.0]);
-            let _ = tx.try_send(Command::Play { sound: Sound::Break(Material::Glass), variant: i as u32, gain: 1.0, pitch: 1.1, pos });
+            let _ = tx.try_send(Command::Play {
+                sound: Sound::Break(Material::Glass),
+                variant: i as u32,
+                gain: 1.0,
+                pitch: 1.1,
+                pos,
+            });
         }
         tx.send(Command::Listener { pos: [0.0, 0.0, block as f32 * 0.01], yaw: 0.3 }).unwrap();
         mixer.render(&mut out, 2);

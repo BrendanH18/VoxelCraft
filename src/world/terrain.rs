@@ -9,8 +9,8 @@
 use glam::IVec3;
 
 use super::block::Block;
-use super::chunk::{index, ChunkData, CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME};
-use super::noise::{hash3, hash_f, Perlin};
+use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
+use super::noise::{Perlin, hash_f, hash3};
 
 pub const SEA_LEVEL: i32 = 62;
 const TREE_CELL: i32 = 5;
@@ -90,8 +90,8 @@ impl Generator {
         let h = base + detail * (4.0 + hills) + ridge * mountain * 110.0;
         let height = (h as i32).clamp(4, 240);
 
-        let temp = self.temperature.fbm2(fx / 1100.0, fz / 1100.0, 3) * 1.8
-            - (height - SEA_LEVEL).max(0) as f32 / 160.0;
+        let temp =
+            self.temperature.fbm2(fx / 1100.0, fz / 1100.0, 3) * 1.8 - (height - SEA_LEVEL).max(0) as f32 / 160.0;
         let humid = self.humidity.fbm2(fx / 900.0, fz / 900.0, 3) * 1.8;
 
         let biome = if height < SEA_LEVEL - 1 {
@@ -116,7 +116,11 @@ impl Generator {
     fn surface_block(col: Column, y: i32) -> Block {
         match col.biome {
             Biome::Ocean => {
-                if col.height >= SEA_LEVEL - 4 { Block::SAND } else { Block::GRAVEL }
+                if col.height >= SEA_LEVEL - 4 {
+                    Block::SAND
+                } else {
+                    Block::GRAVEL
+                }
             }
             Biome::Beach | Biome::Desert => Block::SAND,
             Biome::Mountains => {
@@ -137,7 +141,11 @@ impl Generator {
         match col.biome {
             Biome::Beach | Biome::Ocean => Block::SAND,
             Biome::Desert => {
-                if y > col.height - 3 { Block::SAND } else { Block::SANDSTONE }
+                if y > col.height - 3 {
+                    Block::SAND
+                } else {
+                    Block::SANDSTONE
+                }
             }
             Biome::Mountains if col.height > 135 => Block::STONE,
             _ => Block::DIRT,
@@ -193,11 +201,7 @@ impl Generator {
                         } else {
                             col.height
                         };
-                        if wy > 4
-                            && wy <= carve_limit
-                            && b != Block::WATER
-                            && Self::is_cave(&field[..], x, y, z, wy)
-                        {
+                        if wy > 4 && wy <= carve_limit && b != Block::WATER && Self::is_cave(&field[..], x, y, z, wy) {
                             b = Block::AIR;
                         }
                     }
@@ -329,9 +333,7 @@ impl Generator {
         }
         let slot = &mut blocks[index(l.x as usize, l.y as usize, l.z as usize)];
         let is_leaf = matches!(b, Block::LEAVES | Block::SPRUCE_LEAVES);
-        if *slot == Block::AIR
-            || (!is_leaf && matches!(*slot, Block::LEAVES | Block::SPRUCE_LEAVES))
-        {
+        if *slot == Block::AIR || (!is_leaf && matches!(*slot, Block::LEAVES | Block::SPRUCE_LEAVES)) {
             *slot = b;
         }
     }

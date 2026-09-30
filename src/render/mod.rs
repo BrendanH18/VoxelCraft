@@ -22,10 +22,10 @@ use rustc_hash::FxHashMap;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-use crate::mesh::{MeshData, CUTOUT, FACE_ORDER, OPAQUE, PASSES, TRANSLUCENT};
+use crate::mesh::{CUTOUT, FACE_ORDER, MeshData, OPAQUE, PASSES, TRANSLUCENT};
 use crate::world::block::tex;
-use ui::UiVertex;
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I};
+use ui::UiVertex;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// Worst case (3D checkerboard): half the blocks visible on all six sides.
@@ -240,8 +240,7 @@ impl Renderer {
         let caps = surface.get_capabilities(&adapter);
         let format = caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(caps.formats[0]);
         // COPY_SRC lets `--screenshot` read the frame back.
-        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT
-            | (caps.usages & wgpu::TextureUsages::COPY_SRC);
+        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | (caps.usages & wgpu::TextureUsages::COPY_SRC);
         let config = wgpu::SurfaceConfiguration {
             usage,
             format,
@@ -385,10 +384,7 @@ impl Renderer {
                     compilation_options: Default::default(),
                     buffers: &chunk_buffers,
                 },
-                primitive: wgpu::PrimitiveState {
-                    cull_mode: Some(wgpu::Face::Back),
-                    ..Default::default()
-                },
+                primitive: wgpu::PrimitiveState { cull_mode: Some(wgpu::Face::Back), ..Default::default() },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
                     depth_write_enabled: Some(depth_write),
@@ -401,11 +397,7 @@ impl Renderer {
                     module: &chunk_shader,
                     entry_point: Some(fs),
                     compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format,
-                        blend,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
+                    targets: &[Some(wgpu::ColorTargetState { format, blend, write_mask: wgpu::ColorWrites::ALL })],
                 }),
                 multiview_mask: None,
                 cache: None,
@@ -429,10 +421,7 @@ impl Renderer {
                     attributes: &wgpu::vertex_attr_array![0 => Float32x3],
                 })],
             },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::LineList,
-                ..Default::default()
-            },
+            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::LineList, ..Default::default() },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
                 depth_write_enabled: Some(false),
@@ -592,9 +581,8 @@ impl Renderer {
         let entities = entity::EntityPass::new(&device, &layout, format);
 
         // --- Shared buffers ----------------------------------------------
-        let indices: Vec<u32> = (0..MAX_QUADS_PER_CHUNK as u32)
-            .flat_map(|q| [0, 1, 2, 2, 3, 0].map(|i| q * 4 + i))
-            .collect();
+        let indices: Vec<u32> =
+            (0..MAX_QUADS_PER_CHUNK as u32).flat_map(|q| [0, 1, 2, 2, 3, 0].map(|i| q * 4 + i)).collect();
         let quad_indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("quad indices"),
             contents: bytemuck::cast_slice(&indices),
@@ -886,11 +874,9 @@ impl Renderer {
         let mut i = 0;
         for a in [false, true] {
             for b in [false, true] {
-                for (p, q) in [
-                    (c(false, a, b), c(true, a, b)),
-                    (c(a, false, b), c(a, true, b)),
-                    (c(a, b, false), c(a, b, true)),
-                ] {
+                for (p, q) in
+                    [(c(false, a, b), c(true, a, b)), (c(a, false, b), c(a, true, b)), (c(a, b, false), c(a, b, true))]
+                {
                     out[i] = p;
                     out[i + 1] = q;
                     i += 2;
@@ -1007,12 +993,8 @@ impl Renderer {
             self.queue.write_buffer(&self.ui_buf, 0, bytemuck::cast_slice(hud));
         }
 
-        let mut stats = RenderStats {
-            meshes: self.meshes.len(),
-            visible: self.visible.len(),
-            acquire_ms,
-            ..Default::default()
-        };
+        let mut stats =
+            RenderStats { meshes: self.meshes.len(), visible: self.visible.len(), acquire_ms, ..Default::default() };
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1033,10 +1015,7 @@ impl Renderer {
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(0.0),
-                        store: wgpu::StoreOp::Discard,
-                    }),
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Discard }),
                     stencil_ops: None,
                 }),
                 timestamp_writes: None,
@@ -1050,35 +1029,33 @@ impl Renderer {
 
             // Each pass draws the face groups of every chunk that can face
             // the camera, merging adjacent groups into one draw.
-            let mut draw_range = |pass: &mut wgpu::RenderPass<'_>,
-                                  pipeline: &wgpu::RenderPipeline,
-                                  kind: usize,
-                                  back_to_front: bool| {
-                pass.set_pipeline(pipeline);
-                // Only rebind when a chunk lives in a different arena page.
-                let mut page = None;
-                let mut draw = |i: usize| {
-                    let (_, pos, _, faces) = self.visible[i];
-                    let mesh = &self.meshes[&pos];
-                    let mask = group_mask(faces, kind);
-                    face_runs(&mesh.offsets[kind * 6..kind * 6 + 7], mask, |first_quad, quads| {
-                        if page != Some(mesh.alloc.page) {
-                            pass.set_bind_group(2, self.arena.bind_group(mesh.alloc.page), &[]);
-                            page = Some(mesh.alloc.page);
-                        }
-                        // vertex_index = base_vertex + index selects the quad record.
-                        let base = (mesh.alloc.offset + first_quad) * 4;
-                        pass.draw_indexed(0..quads * 6, base as i32, i as u32..i as u32 + 1);
-                        stats.draw_calls += 1;
-                        stats.quads += quads as u64;
-                    });
+            let mut draw_range =
+                |pass: &mut wgpu::RenderPass<'_>, pipeline: &wgpu::RenderPipeline, kind: usize, back_to_front: bool| {
+                    pass.set_pipeline(pipeline);
+                    // Only rebind when a chunk lives in a different arena page.
+                    let mut page = None;
+                    let mut draw = |i: usize| {
+                        let (_, pos, _, faces) = self.visible[i];
+                        let mesh = &self.meshes[&pos];
+                        let mask = group_mask(faces, kind);
+                        face_runs(&mesh.offsets[kind * 6..kind * 6 + 7], mask, |first_quad, quads| {
+                            if page != Some(mesh.alloc.page) {
+                                pass.set_bind_group(2, self.arena.bind_group(mesh.alloc.page), &[]);
+                                page = Some(mesh.alloc.page);
+                            }
+                            // vertex_index = base_vertex + index selects the quad record.
+                            let base = (mesh.alloc.offset + first_quad) * 4;
+                            pass.draw_indexed(0..quads * 6, base as i32, i as u32..i as u32 + 1);
+                            stats.draw_calls += 1;
+                            stats.quads += quads as u64;
+                        });
+                    };
+                    if back_to_front {
+                        (0..self.visible.len()).rev().for_each(&mut draw);
+                    } else {
+                        (0..self.visible.len()).for_each(&mut draw);
+                    }
                 };
-                if back_to_front {
-                    (0..self.visible.len()).rev().for_each(&mut draw);
-                } else {
-                    (0..self.visible.len()).for_each(&mut draw);
-                }
-            };
             draw_range(&mut pass, &self.opaque_pipeline, OPAQUE, false);
             draw_range(&mut pass, &self.cutout_pipeline, CUTOUT, false);
             self.entities.draw(&mut pass);

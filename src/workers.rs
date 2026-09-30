@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::thread;
 
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use glam::IVec3;
 
 use crate::mesh::{self, MeshData, MeshInput, Region};
@@ -34,11 +34,7 @@ impl Workers {
         let (job_tx, job_rx) = unbounded::<Job>();
         let (res_tx, res_rx) = unbounded::<JobResult>();
         // Leave one core for the render/main thread.
-        let threads = thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4)
-            .saturating_sub(1)
-            .max(1);
+        let threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(4).saturating_sub(1).max(1);
         for i in 0..threads {
             let job_rx = job_rx.clone();
             let res_tx = res_tx.clone();
@@ -50,11 +46,9 @@ impl Workers {
                     while let Ok(job) = job_rx.recv() {
                         let result = match job {
                             Job::Generate(pos) => JobResult::Generated(pos, generator.generate(pos)),
-                            Job::Mesh { pos, version, input } => JobResult::Meshed {
-                                pos,
-                                version,
-                                mesh: mesh::build(&input, &mut region),
-                            },
+                            Job::Mesh { pos, version, input } => {
+                                JobResult::Meshed { pos, version, mesh: mesh::build(&input, &mut region) }
+                            }
                         };
                         if res_tx.send(result).is_err() {
                             break;

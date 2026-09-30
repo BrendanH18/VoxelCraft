@@ -194,7 +194,9 @@ impl Block {
     /// Looks a block up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<Block> {
         let name = name.replace('_', " ");
-        (0..=255u8).map(Block).find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
+        (0..=255u8)
+            .map(Block)
+            .find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
             .or((name == "air").then_some(Block::AIR))
     }
 
@@ -251,13 +253,7 @@ const fn make(id: u8) -> BlockInfo {
         31 => ("falling water", Translucent, all(tex::WATER)),
         _ => ("unknown", Invisible, all(0)),
     };
-    BlockInfo {
-        name,
-        kind,
-        solid: matches!(kind, Opaque | Cutout),
-        self_cull: id == 5 || id == 10,
-        tex,
-    }
+    BlockInfo { name, kind, solid: matches!(kind, Opaque | Cutout), self_cull: id == 5 || id == 10, tex }
 }
 
 pub static INFO: [BlockInfo; 256] = {

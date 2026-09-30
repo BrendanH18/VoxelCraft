@@ -1,13 +1,32 @@
 # VoxelCraft
 
 A Minecraft-style voxel game written from scratch in Rust with
-[wgpu](https://wgpu.rs), built for performance first.
+[wgpu](https://wgpu.rs), built for performance first: it renders a 256-block view distance in
+~1.1 ms per frame (~900 fps uncapped) on an Apple M5, and every texture
+and sound is generated in code — the game ships no asset files.
+
+![Terrain from above](docs/images/landscape.jpg)
+
+| | |
+|---|---|
+| ![Sunset](docs/images/sunset.jpg) | ![Mobs at night](docs/images/night-mobs.jpg) |
+| ![Flowing water](docs/images/water.jpg) | ![Creative inventory](docs/images/inventory.jpg) |
+
+## Getting started
+
+Requires a recent stable Rust toolchain (edition 2024; developed with
+1.98) and a GPU supported by wgpu's Metal, Vulkan or DirectX 12 backends.
+On Linux, install the ALSA headers first (`sudo apt install
+libasound2-dev pkg-config` on Debian/Ubuntu).
 
 ```sh
 cargo run --release                 # play (continues ./saves/world if it exists)
 cargo run --release -- --new --seed 42 --rd 12
 cargo run --release -- --help
 ```
+
+Worlds are saved under `./saves/<name>` (`--world <name>`); only
+player-modified chunks are stored, everything else regenerates from the seed.
 
 ## Controls
 
@@ -33,9 +52,9 @@ cargo run --release -- --help
 | F11 | Fullscreen |
 | Esc | Release mouse (press again to save and quit) |
 
-Press F3 for the debug screen (FPS, position, biome, chunk and draw stats).
-The world autosaves every two minutes and on exit; only player-modified
-chunks are stored, everything else regenerates from the seed.
+The world autosaves every two minutes and on exit.
+
+![F3 debug screen](docs/images/debug.jpg)
 
 ## Features
 
@@ -105,9 +124,9 @@ game decides what they do to the player.
 
 ```text
 $ voxelcraft --bench --rd 8
-generate (1 thread): 0.195 ms/chunk
-light+mesh (1 thread): 1.15 ms per dense chunk
-stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.17 s
+generate (1 thread): 0.16 ms/chunk
+light+mesh (1 thread): 1.18 ms per dense chunk
+stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.18 s
 
 $ voxelcraft --bench-render --rd 8     # 1600x900, GPU-synchronised each frame
 avg 1.10 ms (~900 fps) — 661 draw calls, 0.42M quads drawn
@@ -147,6 +166,7 @@ src/
     export.rs        --export-sounds WAV dump and stats
   world/
     mod.rs           chunk streaming, edits, heightmaps, raycasting
+    fluid.rs         water flow simulation
     chunk.rs         chunk storage
     block.rs         block registry
     terrain.rs       world generation
@@ -154,7 +174,9 @@ src/
     storage.rs       save files
   render/
     mod.rs           wgpu pipelines, culling, draw submission, screenshots
+    arena.rs         pooled GPU storage for chunk quads
     entity.rs        entity pass (one dynamic vertex buffer per frame)
+    ui.rs            HUD geometry: rects, bitmap text, block icons
     textures.rs      procedural block textures
     shaders/         WGSL
 ```
@@ -192,6 +214,12 @@ runs silently.
 wgpu and winit (graphics and windowing), cpal (audio output), glam (math),
 bytemuck, crossbeam-channel, rustc-hash, font8x8, png, pollster, log and
 env_logger.
+
+## Disclaimer
+
+VoxelCraft is an independent project, not affiliated with or endorsed by
+Mojang Studios or Microsoft. Minecraft is a trademark of Mojang Studios.
+It contains no Minecraft code or assets.
 
 ## License
 

@@ -115,7 +115,15 @@ impl Sound {
 
     pub fn all() -> impl Iterator<Item = Sound> {
         let per_material = Material::ALL.into_iter().flat_map(|m| [Sound::Break(m), Sound::Place(m), Sound::Step(m)]);
-        per_material.chain([Sound::Land, Sound::Splash, Sound::Swim, Sound::Click, Sound::Drip, Sound::Wind, Sound::Cave])
+        per_material.chain([
+            Sound::Land,
+            Sound::Splash,
+            Sound::Swim,
+            Sound::Click,
+            Sound::Drip,
+            Sound::Wind,
+            Sound::Cave,
+        ])
     }
 
     pub fn name(self) -> String {
@@ -242,37 +250,85 @@ struct Crunch {
 fn crunch_params(m: Material) -> Crunch {
     match m {
         Material::Stone => Crunch {
-            lo: 450.0, hi: 6000.0, density: 900.0, grain_ms: (0.8, 3.5), body: (1900.0, 1.4),
-            thump: (115.0, 0.55), hiss: 0.12, flutter: 0.0,
+            lo: 450.0,
+            hi: 6000.0,
+            density: 900.0,
+            grain_ms: (0.8, 3.5),
+            body: (1900.0, 1.4),
+            thump: (115.0, 0.55),
+            hiss: 0.12,
+            flutter: 0.0,
         },
         Material::Gravel => Crunch {
-            lo: 280.0, hi: 5200.0, density: 1600.0, grain_ms: (1.0, 5.0), body: (1300.0, 0.8),
-            thump: (85.0, 0.3), hiss: 0.25, flutter: 0.0,
+            lo: 280.0,
+            hi: 5200.0,
+            density: 1600.0,
+            grain_ms: (1.0, 5.0),
+            body: (1300.0, 0.8),
+            thump: (85.0, 0.3),
+            hiss: 0.25,
+            flutter: 0.0,
         },
         Material::Dirt => Crunch {
-            lo: 70.0, hi: 1500.0, density: 750.0, grain_ms: (2.0, 8.0), body: (380.0, 0.9),
-            thump: (90.0, 0.5), hiss: 0.3, flutter: 0.0,
+            lo: 70.0,
+            hi: 1500.0,
+            density: 750.0,
+            grain_ms: (2.0, 8.0),
+            body: (380.0, 0.9),
+            thump: (90.0, 0.5),
+            hiss: 0.3,
+            flutter: 0.0,
         },
         Material::Grass => Crunch {
-            lo: 220.0, hi: 3800.0, density: 900.0, grain_ms: (2.0, 7.0), body: (1000.0, 0.6),
-            thump: (95.0, 0.3), hiss: 0.45, flutter: 0.3,
+            lo: 220.0,
+            hi: 3800.0,
+            density: 900.0,
+            grain_ms: (2.0, 7.0),
+            body: (1000.0, 0.6),
+            thump: (95.0, 0.3),
+            hiss: 0.45,
+            flutter: 0.3,
         },
         Material::Sand => Crunch {
-            lo: 500.0, hi: 4500.0, density: 2600.0, grain_ms: (0.5, 2.0), body: (2200.0, 0.5),
-            thump: (0.0, 0.0), hiss: 0.6, flutter: 0.15,
+            lo: 500.0,
+            hi: 4500.0,
+            density: 2600.0,
+            grain_ms: (0.5, 2.0),
+            body: (2200.0, 0.5),
+            thump: (0.0, 0.0),
+            hiss: 0.6,
+            flutter: 0.15,
         },
         Material::Snow => Crunch {
-            lo: 160.0, hi: 2200.0, density: 1900.0, grain_ms: (1.0, 3.0), body: (750.0, 1.0),
-            thump: (65.0, 0.2), hiss: 0.35, flutter: 0.0,
+            lo: 160.0,
+            hi: 2200.0,
+            density: 1900.0,
+            grain_ms: (1.0, 3.0),
+            body: (750.0, 1.0),
+            thump: (65.0, 0.2),
+            hiss: 0.35,
+            flutter: 0.0,
         },
         Material::Leaves => Crunch {
-            lo: 600.0, hi: 5000.0, density: 1300.0, grain_ms: (3.0, 12.0), body: (2400.0, 0.5),
-            thump: (0.0, 0.0), hiss: 0.5, flutter: 0.8,
+            lo: 600.0,
+            hi: 5000.0,
+            density: 1300.0,
+            grain_ms: (3.0, 12.0),
+            body: (2400.0, 0.5),
+            thump: (0.0, 0.0),
+            hiss: 0.5,
+            flutter: 0.8,
         },
         // Glass footsteps: a bright, light stone tap.
         Material::Glass => Crunch {
-            lo: 900.0, hi: 9000.0, density: 700.0, grain_ms: (0.5, 2.0), body: (2800.0, 1.5),
-            thump: (140.0, 0.35), hiss: 0.05, flutter: 0.0,
+            lo: 900.0,
+            hi: 9000.0,
+            density: 700.0,
+            grain_ms: (0.5, 2.0),
+            body: (2800.0, 1.5),
+            thump: (140.0, 0.35),
+            hiss: 0.05,
+            flutter: 0.0,
         },
         // Wood and water use their own recipes; neutral fallback.
         Material::Wood | Material::Water => crunch_params(Material::Dirt),
@@ -284,7 +340,8 @@ fn crunch(p: &Crunch, rng: &mut Rng, secs: f32, tau: f32, thump_gain: f32) -> Ve
     let len = samples(secs);
     // A few clusters (sub-impacts) make breaks sound like crumbling rather
     // than a single burst.
-    let clusters: Vec<(f32, f32)> = (0..3).map(|i| (i as f32 * rng.range(0.03, 0.07) * (secs / 0.3), rng.range(0.5, 1.0))).collect();
+    let clusters: Vec<(f32, f32)> =
+        (0..3).map(|i| (i as f32 * rng.range(0.03, 0.07) * (secs / 0.3), rng.range(0.5, 1.0))).collect();
     let density = |t: f32| {
         let mut d = 0.0;
         for &(t0, a) in &clusters {
@@ -315,7 +372,11 @@ fn crunch(p: &Crunch, rng: &mut Rng, secs: f32, tau: f32, thump_gain: f32) -> Ve
     if p.thump.1 > 0.0 {
         let f = p.thump.0 * rng.range(0.9, 1.1);
         let peak = out.iter().fold(0.0f32, |m, s| m.max(s.abs())).max(0.05);
-        add_mode(&mut out, 0, Mode { freq: f * 1.6, amp: peak * p.thump.1 * thump_gain, tau: 0.03, glide: 1.0 / 1.6, glide_tau: 0.012 });
+        add_mode(
+            &mut out,
+            0,
+            Mode { freq: f * 1.6, amp: peak * p.thump.1 * thump_gain, tau: 0.03, glide: 1.0 / 1.6, glide_tau: 0.012 },
+        );
     }
     out
 }
@@ -488,7 +549,8 @@ fn drip(rng: &mut Rng) -> Vec<f32> {
     add_mode(&mut dry, 0, Mode { freq: f, amp: 1.0, tau: 0.028, glide: 1.9, glide_tau: 0.012 });
     // Cave echoes: a few delayed, darker copies.
     let mut out = dry.clone();
-    for (delay, gain, fc) in [(0.083, 0.35, 2500.0), (0.151, 0.25, 1800.0), (0.237, 0.17, 1300.0), (0.331, 0.1, 1000.0)] {
+    for (delay, gain, fc) in [(0.083, 0.35, 2500.0), (0.151, 0.25, 1800.0), (0.237, 0.17, 1300.0), (0.331, 0.1, 1000.0)]
+    {
         let mut echo = dry.clone();
         Biquad::lowpass(fc, 0.7).run(&mut echo);
         mix_into(&mut out, &echo, gain, samples(delay));

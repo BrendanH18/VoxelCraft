@@ -358,9 +358,9 @@ mod tests {
     #[test]
     fn falls_through_player_physics() {
         use crate::player::{MoveInput, Player};
+        use crate::world::World;
         use crate::world::block::Block;
         use crate::world::terrain::Generator;
-        use crate::world::World;
         use glam::{DVec3, IVec3};
         use std::sync::Arc;
         use std::time::{Duration, Instant};
@@ -376,7 +376,8 @@ mod tests {
             std::thread::sleep(Duration::from_millis(1));
         }
         let (x, z) = (spawn.x, spawn.z);
-        let ground = (0..512).rev().find(|&y| world.get_block(IVec3::new(x, y, z)).is_some_and(|b| b.is_solid())).unwrap();
+        let ground =
+            (0..512).rev().find(|&y| world.get_block(IVec3::new(x, y, z)).is_some_and(|b| b.is_solid())).unwrap();
         let top = ground as f64 + 1.0;
 
         let drop = |world: &World, height: f64| {

@@ -140,16 +140,8 @@ impl Perlin {
             ),
             lerp(
                 v,
-                lerp(
-                    u,
-                    grad3(perm[aa + 1], x, y, z - 1.0),
-                    grad3(perm[ba + 1], x - 1.0, y, z - 1.0),
-                ),
-                lerp(
-                    u,
-                    grad3(perm[ab + 1], x, y - 1.0, z - 1.0),
-                    grad3(perm[bb + 1], x - 1.0, y - 1.0, z - 1.0),
-                ),
+                lerp(u, grad3(perm[aa + 1], x, y, z - 1.0), grad3(perm[ba + 1], x - 1.0, y, z - 1.0)),
+                lerp(u, grad3(perm[ab + 1], x, y - 1.0, z - 1.0), grad3(perm[bb + 1], x - 1.0, y - 1.0, z - 1.0)),
             ),
         )
     }

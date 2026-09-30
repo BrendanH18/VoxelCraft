@@ -325,7 +325,8 @@ impl Mob {
             }
             Ai::Wander => {
                 // Turn away from walls we can't hop over.
-                if self.blocked && self.on_ground && !self.in_water && !self.can_step_up(world, yaw_dir(self.move_yaw)) {
+                if self.blocked && self.on_ground && !self.in_water && !self.can_step_up(world, yaw_dir(self.move_yaw))
+                {
                     self.move_yaw = rng.range(0.0, TAU);
                 }
                 if self.ai_timer <= 0.0 {
@@ -340,11 +341,8 @@ impl Mob {
                 self.head_timer -= dt;
                 if self.head_timer <= 0.0 {
                     self.head_timer = rng.range(1.0, 3.5);
-                    self.head_target = if rng.chance(0.6) {
-                        (rng.range(-1.1, 1.1), rng.range(-0.35, 0.3))
-                    } else {
-                        (0.0, 0.0)
-                    };
+                    self.head_target =
+                        if rng.chance(0.6) { (rng.range(-1.1, 1.1), rng.range(-0.35, 0.3)) } else { (0.0, 0.0) };
                 }
                 if self.ai_timer <= 0.0 {
                     if rng.chance(0.7) {

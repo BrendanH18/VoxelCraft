@@ -6,10 +6,10 @@ use std::time::Instant;
 
 use glam::{DVec3, IVec3};
 
-use crate::mesh::{self, MeshInput, Neighborhood, Region, D, MARGIN, NO_HEIGHT};
+use crate::mesh::{self, D, MARGIN, MeshInput, NO_HEIGHT, Neighborhood, Region};
+use crate::world::World;
 use crate::world::chunk::{ChunkData, WORLD_HEIGHT_CHUNKS};
 use crate::world::terrain::Generator;
-use crate::world::World;
 
 pub fn run(seed: u64, rd: i32) {
     let generator = Generator::new(seed);

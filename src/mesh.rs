@@ -31,7 +31,7 @@
 use std::sync::Arc;
 
 use crate::world::block::{Block, RenderKind};
-use crate::world::chunk::{ChunkData, CHUNK_SIZE, CHUNK_SIZE_I, WORLD_HEIGHT};
+use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_HEIGHT};
 
 /// Margin around the chunk that lighting needs to be exact.
 pub const MARGIN: usize = 15;
@@ -126,7 +126,11 @@ impl Region {
     /// above the world and bedrock below it.
     fn fill(&mut self, n: &Neighborhood, base_y: i32) {
         // Per axis: (neighbour offset index, first local coord, first region coord, len).
-        let spans = [(0usize, CHUNK_SIZE - MARGIN, 0usize, MARGIN), (1, 0, MARGIN, CHUNK_SIZE), (2, 0, MARGIN + CHUNK_SIZE, MARGIN)];
+        let spans = [
+            (0usize, CHUNK_SIZE - MARGIN, 0usize, MARGIN),
+            (1, 0, MARGIN, CHUNK_SIZE),
+            (2, 0, MARGIN + CHUNK_SIZE, MARGIN),
+        ];
         for &(oy, ly0, ry0, hy) in &spans {
             for &(oz, lz0, rz0, hz) in &spans {
                 for &(ox, lx0, rx0, hx) in &spans {
@@ -176,12 +180,24 @@ impl Region {
                     queue.push(pack_q(nx, ny, nz));
                 }
             };
-            if x > 0 { visit(x - 1, y, z) }
-            if x + 1 < D { visit(x + 1, y, z) }
-            if y > 0 { visit(x, y - 1, z) }
-            if y + 1 < D { visit(x, y + 1, z) }
-            if z > 0 { visit(x, y, z - 1) }
-            if z + 1 < D { visit(x, y, z + 1) }
+            if x > 0 {
+                visit(x - 1, y, z)
+            }
+            if x + 1 < D {
+                visit(x + 1, y, z)
+            }
+            if y > 0 {
+                visit(x, y - 1, z)
+            }
+            if y + 1 < D {
+                visit(x, y + 1, z)
+            }
+            if z > 0 {
+                visit(x, y, z - 1)
+            }
+            if z + 1 < D {
+                visit(x, y, z + 1)
+            }
         }
         queue.clear();
     }
@@ -295,7 +311,11 @@ fn mesh_region(r: &Region) -> MeshData {
                     // Water surfaces sit lower than a full block unless more
                     // water is stacked on top.
                     let drop_at = |idx: isize| -> u64 {
-                        if blocks[(idx + strides[1]) as usize].is_water() { 0 } else { blocks[idx as usize].water_drop() as u64 }
+                        if blocks[(idx + strides[1]) as usize].is_water() {
+                            0
+                        } else {
+                            blocks[idx as usize].water_drop() as u64
+                        }
                     };
                     let visible = if b.is_water() {
                         if n.is_water() {
@@ -317,12 +337,7 @@ fn mesh_region(r: &Region) -> MeshData {
                         let o = |off: isize| blocks[at(off)].is_opaque();
                         let (um, up, vm, vp) = (o(-su), o(su), o(-sv), o(sv));
                         // Per corner (-u-v, +u-v, +u+v, -u+v): side offsets.
-                        let corners = [
-                            (um, vm, -su, -sv),
-                            (up, vm, su, -sv),
-                            (up, vp, su, sv),
-                            (um, vp, -su, sv),
-                        ];
+                        let corners = [(um, vm, -su, -sv), (up, vm, su, -sv), (up, vp, su, sv), (um, vp, -su, sv)];
                         let (mut ao, mut light) = (0u64, 0u64);
                         for (c, &(s1, s2, du, dv)) in corners.iter().enumerate() {
                             let corner = o(du + dv);
@@ -435,10 +450,7 @@ fn mesh_region(r: &Region) -> MeshData {
     }
 
     // Concatenate the passes, reordering face groups into FACE_ORDER.
-    let mut mesh = MeshData {
-        quads: Vec::with_capacity(out.iter().map(Vec::len).sum()),
-        face_quads: [[0; 6]; PASSES],
-    };
+    let mut mesh = MeshData { quads: Vec::with_capacity(out.iter().map(Vec::len).sum()), face_quads: [[0; 6]; PASSES] };
     for pass in 0..PASSES {
         face_start[pass][6] = out[pass].len();
         for (group, &face) in FACE_ORDER[pass].iter().enumerate() {
@@ -472,7 +484,6 @@ pub fn chunk_heights(data: &ChunkData, base_y: i32) -> [i16; CHUNK_SIZE * CHUNK_
     }
     out
 }
-
 
 #[cfg(test)]
 mod tests {

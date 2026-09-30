@@ -42,9 +42,7 @@ fn voronoi(x: usize, y: usize, pts: &[(f32, f32)]) -> (f32, f32, usize) {
 }
 
 fn points(layer: u8, n: usize) -> Vec<(f32, f32)> {
-    (0..n)
-        .map(|i| (rnd(layer, i, 0, 99) * SIZE as f32, rnd(layer, i, 1, 99) * SIZE as f32))
-        .collect()
+    (0..n).map(|i| (rnd(layer, i, 0, 99) * SIZE as f32, rnd(layer, i, 1, 99) * SIZE as f32)).collect()
 }
 
 const STONE: [u8; 3] = [125, 125, 125];
@@ -93,11 +91,7 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
         }
         tex::LEAVES | tex::SPRUCE_LEAVES => {
             let base = if layer == tex::LEAVES { [58, 128, 38] } else { [44, 92, 56] };
-            if rnd(layer, x, y, 11) < 0.2 {
-                [0, 0, 0, 0]
-            } else {
-                shade(base, 0.7 + r * 0.45)
-            }
+            if rnd(layer, x, y, 11) < 0.2 { [0, 0, 0, 0] } else { shade(base, 0.7 + r * 0.45) }
         }
         tex::PLANKS => {
             let board = y / 4;
@@ -108,11 +102,7 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
         tex::COBBLESTONE => {
             let pts = points(layer, 9);
             let (d1, d2, i) = voronoi(x, y, &pts);
-            if d2 - d1 < 1.1 {
-                shade(STONE, 0.55)
-            } else {
-                shade(STONE, 0.8 + rnd(layer, i, 0, 4) * 0.35 - d1 * 0.03)
-            }
+            if d2 - d1 < 1.1 { shade(STONE, 0.55) } else { shade(STONE, 0.8 + rnd(layer, i, 0, 4) * 0.35 - d1 * 0.03) }
         }
         tex::GLASS => {
             let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
@@ -145,11 +135,7 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
         tex::CACTUS_SIDE => {
             let line = x % 4 == 1;
             let spike = rnd(layer, x, y, 8) < 0.05;
-            if spike {
-                [230, 230, 190, 255]
-            } else {
-                shade([76, 140, 48], if line { 0.75 } else { 0.95 + r * 0.1 })
-            }
+            if spike { [230, 230, 190, 255] } else { shade([76, 140, 48], if line { 0.75 } else { 0.95 + r * 0.1 }) }
         }
         tex::CACTUS_TOP => {
             let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
@@ -172,11 +158,7 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
         tex::GLOWSTONE => {
             let pts = points(layer, 7);
             let (d1, d2, i) = voronoi(x, y, &pts);
-            if d2 - d1 < 0.9 {
-                [150, 110, 60, 255]
-            } else {
-                shade([250, 215, 120], 0.8 + rnd(layer, i, 0, 4) * 0.25)
-            }
+            if d2 - d1 < 0.9 { [150, 110, 60, 255] } else { shade([250, 215, 120], 0.8 + rnd(layer, i, 0, 4) * 0.25) }
         }
         tex::HEART_FULL | tex::HEART_HALF | tex::HEART_EMPTY => heart(layer, x, y),
         tex::BUBBLE => {
@@ -256,11 +238,7 @@ fn crack(stage: u8, x: usize, y: usize) -> Rgba {
         order
     });
     let visible_steps = (stage as u32 + 1) * 14 / tex::CRACK_STAGES as u32;
-    if (order[y * SIZE + x] as u32) < visible_steps {
-        [40, 40, 40, 255]
-    } else {
-        [NEUTRAL, NEUTRAL, NEUTRAL, 255]
-    }
+    if (order[y * SIZE + x] as u32) < visible_steps { [40, 40, 40, 255] } else { [NEUTRAL, NEUTRAL, NEUTRAL, 255] }
 }
 
 /// Returns RGBA8 data for every mip level; each level contains all layers

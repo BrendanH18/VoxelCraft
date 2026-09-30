@@ -12,7 +12,7 @@ use glam::{DVec3, IVec3};
 use rustc_hash::FxHashMap;
 
 use super::block::Block;
-use super::chunk::{ChunkData, CHUNK_VOLUME};
+use super::chunk::{CHUNK_VOLUME, ChunkData};
 
 const MAGIC: &[u8; 4] = b"VXC1";
 
@@ -45,9 +45,7 @@ impl Storage {
         let mut info = LevelInfo { seed: 0, player: None, props: Default::default() };
         for line in text.lines() {
             match line.split_once('=') {
-                Some(("seed", v)) => {
-                    info.seed = v.trim().parse().map_err(|_| io::Error::other("bad seed"))?
-                }
+                Some(("seed", v)) => info.seed = v.trim().parse().map_err(|_| io::Error::other("bad seed"))?,
                 Some(("player", v)) => {
                     let n: Vec<f64> = v.split(',').filter_map(|s| s.trim().parse().ok()).collect();
                     if n.len() == 5 {
@@ -63,11 +61,7 @@ impl Storage {
         Ok(info)
     }
 
-    pub fn save(
-        &self,
-        level: &LevelInfo,
-        chunks: &[(IVec3, Arc<ChunkData>)],
-    ) -> io::Result<()> {
+    pub fn save(&self, level: &LevelInfo, chunks: &[(IVec3, Arc<ChunkData>)]) -> io::Result<()> {
         fs::create_dir_all(&self.dir)?;
         let mut text = format!("seed={}\n", level.seed);
         if let Some((p, yaw, pitch)) = level.player {

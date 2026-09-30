@@ -46,11 +46,7 @@ impl ChunkData {
     /// Wraps dense storage, collapsing it to `Uniform` when every block matches.
     pub fn from_dense(blocks: Box<[Block; CHUNK_VOLUME]>) -> Self {
         let first = blocks[0];
-        if blocks.iter().all(|&b| b == first) {
-            ChunkData::Uniform(first)
-        } else {
-            ChunkData::Dense(blocks)
-        }
+        if blocks.iter().all(|&b| b == first) { ChunkData::Uniform(first) } else { ChunkData::Dense(blocks) }
     }
 
     #[inline(always)]
