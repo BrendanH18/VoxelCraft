@@ -6,20 +6,25 @@
 //! the margin makes every border value exact: adjacent chunks agree without
 //! sharing any mutable light state, and jobs run fully in parallel.
 //!
-//! Each vertex is two `u32`s:
+//! Each quad is one 12-byte record (three `u32`s) that the vertex shader
+//! expands into its four corners (vertex pulling):
 //!
-//! | word | bits  | field                                    |
-//! |------|-------|------------------------------------------|
-//! | 0    | 0-5   | x (0..=32, chunk-local)                  |
-//! | 0    | 6-11  | y                                        |
-//! | 0    | 12-17 | z                                        |
-//! | 0    | 18-20 | face (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z)|
-//! | 0    | 21-22 | ambient occlusion (0 dark .. 3 lit)      |
-//! | 0    | 23-30 | texture array layer                      |
-//! | 1    | 0-3   | smoothed sky light                       |
-//! | 1    | 4-7   | smoothed block light                     |
-//! | 1    | 8-12  | water surface drop, 1/16 block           |
+//! | word | bits  | field                                              |
+//! |------|-------|----------------------------------------------------|
+//! | 0    | 0-5   | x of corner 0 (0..=32, chunk-local)                |
+//! | 0    | 6-11  | y                                                  |
+//! | 0    | 12-17 | z                                                  |
+//! | 0    | 18-20 | face (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z)          |
+//! | 0    | 21-25 | width - 1 (along the face's u axis)                |
+//! | 0    | 26-30 | height - 1 (along v)                               |
+//! | 0    | 31    | flip: triangulate along the other diagonal         |
+//! | 1    | 0-7   | texture array layer                                |
+//! | 1    | 8-15  | ambient occlusion per corner, 2 bits (0 dark .. 3) |
+//! | 1    | 16-20 | water surface drop of the upper edge, 1/16 block   |
+//! | 2    | 0-31  | per corner: sky light (low 4 bits), block light    |
 //!
+//! For a face on axis `d` the u and v axes are `(d + 1) % 3` and
+//! `(d + 2) % 3`; corners 0-3 are (0,0), (w,0), (w,h), (0,h) in (u,v).
 //! UVs are derived in the shader from the local position, so merged quads
 //! tile their texture. All quads share one global index buffer.
 
@@ -70,16 +75,15 @@ pub const FACE_ORDER: [[usize; 6]; PASSES] = [[0, 2, 4, 1, 3, 5], [0, 2, 4, 1, 3
 pub struct MeshData {
     /// Opaque quads, then cutout, then translucent; within each pass,
     /// grouped by face direction in [`FACE_ORDER`] so the renderer can skip
-    /// directions that face away from the camera. 4 vertices of 2 words
-    /// each per quad.
-    pub vertices: Vec<[u32; 2]>,
+    /// directions that face away from the camera.
+    pub quads: Vec<[u32; 3]>,
     /// Quad count per pass and face group (in [`FACE_ORDER`]).
     pub face_quads: [[u32; 6]; PASSES],
 }
 
 impl MeshData {
     pub fn is_empty(&self) -> bool {
-        self.vertices.is_empty()
+        self.quads.is_empty()
     }
 
     #[cfg(test)]
@@ -259,7 +263,7 @@ pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
 fn mesh_region(r: &Region) -> MeshData {
     let blocks = &r.blocks[..];
     let (sky, blk) = (&r.sky[..], &r.block_light[..]);
-    let mut out: [Vec<[u32; 2]>; PASSES] = Default::default();
+    let mut out: [Vec<[u32; 3]>; PASSES] = Default::default();
     // Where each (pass, face) run of `out` starts, in face order.
     let mut face_start = [[0usize; 7]; PASSES];
     let strides = [1isize, (D * D) as isize, D as isize]; // x, y, z
@@ -393,43 +397,37 @@ fn mesh_region(r: &Region) -> MeshData {
                         mask[row..row + w].fill(0);
                     }
 
-                    let plane = slice + positive as usize;
-                    let corners = [(uu, vv), (uu + w, vv), (uu + w, vv + h), (uu, vv + h)];
                     let ao = |c: usize| ((key >> AO_SHIFT) >> (c * 2)) as u32 & 3;
                     let light = |c: usize| ((key >> LIGHT_SHIFT) >> (c * 8)) as u32 & 0xFF;
                     // Brightness proxy for picking the triangulation diagonal.
+                    // (For water the AO bits hold the surface drop.)
                     let bright = |c: usize| ao(c) * 16 + (light(c) & 15) + (light(c) >> 4);
-                    // (For water the AO bits hold the surface drop; it's the
-                    // same for all corners so it doesn't affect this choice.)
-                    let mut order = if positive { [0, 1, 2, 3] } else { [0, 3, 2, 1] };
                     // Split along the diagonal that keeps AO/light gradients
                     // symmetric (avoids the classic anisotropy artefact).
-                    if bright(order[0]) + bright(order[2]) < bright(order[1]) + bright(order[3]) {
-                        order.rotate_left(1);
-                    }
+                    let flip = (bright(0) + bright(2) < bright(1) + bright(3)) as u32;
                     let kind = ((key >> KIND_SHIFT) & 3) as usize;
                     let layer = (key & 0xFF) as u32;
-                    let water_drop = if kind == 2 { ((key >> AO_SHIFT) & 0xFF) as u32 } else { 0 };
-                    let top_y = (if d == 1 { plane } else if u == 1 { uu + w } else { vv + h }) as u32;
-                    for c in order {
-                        let mut pos = [0u32; 3];
-                        pos[d] = plane as u32;
-                        pos[u] = corners[c].0 as u32;
-                        pos[v] = corners[c].1 as u32;
-                        let (vertex_ao, drop) = if kind == 2 {
-                            // Lower the upper edge of water faces (never the bottom face).
-                            (3, if face != 3 && pos[1] == top_y { water_drop } else { 0 })
-                        } else {
-                            (ao(c), 0)
-                        };
-                        let w0 = pos[0]
+                    // Water has no AO; its upper edge is lowered instead.
+                    let (corner_ao, drop) = if kind == 2 {
+                        (0xFF, ((key >> AO_SHIFT) & 31) as u32)
+                    } else {
+                        (((key >> AO_SHIFT) & 0xFF) as u32, 0)
+                    };
+                    let mut pos = [0u32; 3];
+                    pos[d] = (slice + positive as usize) as u32;
+                    pos[u] = uu as u32;
+                    pos[v] = vv as u32;
+                    out[kind].push([
+                        pos[0]
                             | pos[1] << 6
                             | pos[2] << 12
                             | (face as u32) << 18
-                            | vertex_ao << 21
-                            | layer << 23;
-                        out[kind].push([w0, light(c) | drop << 8]);
-                    }
+                            | (w as u32 - 1) << 21
+                            | (h as u32 - 1) << 26
+                            | flip << 31,
+                        layer | corner_ao << 8 | drop << 16,
+                        (key >> LIGHT_SHIFT) as u32,
+                    ]);
                     uu += w;
                 }
             }
@@ -438,15 +436,15 @@ fn mesh_region(r: &Region) -> MeshData {
 
     // Concatenate the passes, reordering face groups into FACE_ORDER.
     let mut mesh = MeshData {
-        vertices: Vec::with_capacity(out.iter().map(Vec::len).sum()),
+        quads: Vec::with_capacity(out.iter().map(Vec::len).sum()),
         face_quads: [[0; 6]; PASSES],
     };
     for pass in 0..PASSES {
         face_start[pass][6] = out[pass].len();
         for (group, &face) in FACE_ORDER[pass].iter().enumerate() {
             let run = &out[pass][face_start[pass][face]..face_start[pass][face + 1]];
-            mesh.vertices.extend_from_slice(run);
-            mesh.face_quads[pass][group] = (run.len() / 4) as u32;
+            mesh.quads.extend_from_slice(run);
+            mesh.face_quads[pass][group] = run.len() as u32;
         }
     }
     mesh
@@ -480,6 +478,51 @@ pub fn chunk_heights(data: &ChunkData, base_y: i32) -> [i16; CHUNK_SIZE * CHUNK_
 mod tests {
     use super::*;
 
+    /// One corner of a quad, decoded the way `chunk.wgsl` does it.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    struct Corner {
+        pos: [f32; 3],
+        face: u32,
+        ao: u32,
+        sky: u32,
+        block: u32,
+    }
+
+    /// The quad's corners in index-buffer order (triangles 0-1-2, 2-3-0).
+    fn corners(q: [u32; 3]) -> [Corner; 4] {
+        let face = (q[0] >> 18) & 7;
+        let d = (face / 2) as usize;
+        let (w, h) = ((q[0] >> 21 & 31) + 1, (q[0] >> 26 & 31) + 1);
+        let flip = q[0] >> 31;
+        std::array::from_fn(|k| {
+            let j = (k as u32 + flip) & 3;
+            let c = if face.is_multiple_of(2) { j } else { (4 - j) & 3 };
+            let du = if c == 1 || c == 2 { w } else { 0 };
+            let dv = if c >= 2 { h } else { 0 };
+            let mut p = [q[0] & 63, q[0] >> 6 & 63, q[0] >> 12 & 63];
+            p[(d + 1) % 3] += du;
+            p[(d + 2) % 3] += dv;
+            let (y_off, y_ext) = match d {
+                0 => (du, w),
+                2 => (dv, h),
+                _ => (0, 0),
+            };
+            let drop = if face != 3 && y_off == y_ext { q[1] >> 16 & 31 } else { 0 };
+            let light = q[2] >> (c * 8) & 0xFF;
+            Corner {
+                pos: [p[0] as f32, p[1] as f32 - drop as f32 / 16.0, p[2] as f32],
+                face,
+                ao: q[1] >> (8 + c * 2) & 3,
+                sky: light & 15,
+                block: light >> 4,
+            }
+        })
+    }
+
+    fn all_corners(m: &MeshData) -> impl Iterator<Item = Corner> + '_ {
+        m.quads.iter().flat_map(|&q| corners(q))
+    }
+
     /// Meshes a single chunk surrounded by air with open sky.
     fn mesh_blocks(blocks: &[([usize; 3], Block)]) -> MeshData {
         let mut data = ChunkData::Uniform(Block::AIR);
@@ -504,8 +547,14 @@ mod tests {
     fn single_block_has_six_faces() {
         let m = mesh_blocks(&[([5, 5, 5], Block::STONE)]);
         assert_eq!(m.pass_quads(OPAQUE), 6);
-        assert_eq!(m.vertices.len(), 24);
+        assert_eq!(m.quads.len(), 6);
         assert_eq!(m.face_quads[OPAQUE], [1; 6]);
+        // Every face is a unit square on the block's surface.
+        for q in &m.quads {
+            for c in corners(*q) {
+                assert!(c.pos.iter().all(|&x| x == 5.0 || x == 6.0), "{c:?}");
+            }
+        }
     }
 
     #[test]
@@ -518,7 +567,7 @@ mod tests {
         ];
         let m = mesh_blocks(&blocks);
         assert_eq!(m.face_quads, [[2; 6], [1; 6], [1; 6]]);
-        let faces: Vec<u32> = m.vertices.chunks(4).map(|q| (q[0][0] >> 18) & 7).collect();
+        let faces: Vec<u32> = m.quads.iter().map(|q| (q[0] >> 18) & 7).collect();
         let fq = m.face_quads;
         let expected: Vec<u32> = (0..PASSES)
             .flat_map(|pass| FACE_ORDER[pass].iter().flat_map(move |&f| vec![f as u32; fq[pass][0] as usize]))
@@ -536,7 +585,7 @@ mod tests {
     fn full_layer_merges_lit_faces_and_shades_underside() {
         let blocks: Vec<_> = (0..32).flat_map(|x| (0..32).map(move |z| ([x, 0, z], Block::STONE))).collect();
         let m = mesh_blocks(&blocks);
-        let quads_on = |face: u32| m.vertices.iter().filter(|v| (v[0] >> 18) & 7 == face).count() / 4;
+        let quads_on = |face: u32| m.quads.iter().filter(|q| (q[0] >> 18) & 7 == face).count();
         // Sunlit top and sides merge into one quad each...
         for face in [0, 1, 2, 4, 5] {
             assert_eq!(quads_on(face), 1, "face {face}");
@@ -556,7 +605,7 @@ mod tests {
     #[test]
     fn ambient_occlusion_darkens_corners() {
         let m = mesh_blocks(&[([5, 0, 5], Block::STONE), ([6, 1, 5], Block::STONE)]);
-        assert!(m.vertices.iter().any(|v| (v[0] >> 21) & 3 < 3));
+        assert!(all_corners(&m).any(|c| c.ao < 3));
     }
 
     #[test]
@@ -574,7 +623,7 @@ mod tests {
             }
         }
         let m = mesh_blocks(&blocks);
-        let sky_levels: Vec<u32> = m.vertices.iter().map(|v| v[1] & 15).collect();
+        let sky_levels: Vec<u32> = all_corners(&m).map(|c| c.sky).collect();
         assert!(sky_levels.contains(&15));
         assert!(sky_levels.contains(&0));
     }
@@ -595,6 +644,46 @@ mod tests {
         }
         blocks.push(([11, 11, 11], Block::GLOWSTONE));
         let m = mesh_blocks(&blocks);
-        assert!(m.vertices.iter().any(|v| (v[1] >> 4) & 15 >= 12));
+        assert!(all_corners(&m).any(|c| c.block >= 12));
+    }
+
+    #[test]
+    fn corners_wind_counter_clockwise_seen_from_outside() {
+        // Mixed AO and light so both triangulation diagonals occur.
+        let m = mesh_blocks(&[([5, 5, 5], Block::STONE), ([6, 6, 5], Block::STONE), ([5, 6, 6], Block::GLOWSTONE)]);
+        let mut flips = [0; 2];
+        for &q in &m.quads {
+            flips[(q[0] >> 31) as usize] += 1;
+            let c = corners(q);
+            let normal = [[1., 0., 0.], [-1., 0., 0.], [0., 1., 0.], [0., -1., 0.], [0., 0., 1.], [0., 0., -1.]]
+                [c[0].face as usize];
+            let v = |i: usize| glam::Vec3::from_array(c[i].pos);
+            for (a, b, t) in [(0, 1, 2), (2, 3, 0)] {
+                let n = (v(b) - v(a)).cross(v(t) - v(a));
+                assert!(n.dot(glam::Vec3::from_array(normal)) > 0.0, "{q:x?}");
+            }
+        }
+        assert!(flips[0] > 0 && flips[1] > 0, "{flips:?}");
+    }
+
+    #[test]
+    fn water_lowers_only_the_upper_edge() {
+        // A single water block with a partial level: tops and the upper edge
+        // of the sides are lowered, the bottom face is not.
+        let m = mesh_blocks(&[([5, 5, 5], Block::flowing_water(3))]);
+        assert_eq!(m.pass_quads(TRANSLUCENT), 6);
+        let drop = Block::flowing_water(3).water_drop() as f32 / 16.0;
+        assert!(drop > 0.0);
+        for &q in &m.quads {
+            for c in corners(q) {
+                assert_eq!(c.ao, 3);
+                let expected = match c.face {
+                    2 => &[6.0 - drop][..],
+                    3 => &[5.0][..],
+                    _ => &[5.0, 6.0 - drop][..],
+                };
+                assert!(expected.contains(&c.pos[1]), "{c:?}");
+            }
+        }
     }
 }

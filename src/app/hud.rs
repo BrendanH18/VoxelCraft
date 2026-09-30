@@ -289,7 +289,7 @@ impl Game {
             format!("Render distance: {} chunks ({} blocks)", self.world.render_distance(), self.world.render_distance() * 32),
             format!("Chunks: {} loaded, {} meshed, {} visible", self.world.loaded_chunks(), s.meshes, s.visible),
             format!("Draw calls: {}, quads: {:.2}M", s.draw_calls, s.quads as f64 / 1e6),
-            format!("Vertex memory: {:.1} MB", s.gpu_bytes as f64 / 1e6),
+            format!("Quad memory: {:.1} MB used, {:.1} MB reserved", s.gpu_used_bytes as f64 / 1e6, s.gpu_bytes as f64 / 1e6),
             format!("Workers: {}, jobs in flight: {}", self.world.worker_threads(), self.world.pending_jobs()),
             format!("Water: {} active, last tick {:.2} ms", self.world.active_fluids(), self.world.fluid_tick_ms()),
             self.mobs_debug_line(),

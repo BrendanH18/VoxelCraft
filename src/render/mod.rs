@@ -9,6 +9,7 @@
 //!
 //! Depth is reverse-Z with an infinite far plane.
 
+pub mod arena;
 pub mod entity;
 pub mod textures;
 pub mod ui;
@@ -52,7 +53,9 @@ const CLOUD_PERIOD: f64 = 12.0 * 5.0 * 1024.0;
 const CLOUD_SPEED: f64 = 1.2;
 
 struct ChunkMesh {
-    buffer: wgpu::Buffer,
+    /// Where the quads live in the arena.
+    alloc: arena::Allocation,
+    quads: u32,
     /// First quad of each (pass, face) group, `pass * 6 + face`; the last
     /// entry is the total.
     offsets: [u32; PASSES * 6 + 1],
@@ -103,7 +106,9 @@ pub struct RenderStats {
     pub visible: usize,
     pub draw_calls: usize,
     pub quads: u64,
+    /// GPU memory reserved for chunk quads, and the part in use.
     pub gpu_bytes: u64,
+    pub gpu_used_bytes: u64,
     /// Time spent blocked acquiring the swapchain image (vsync wait).
     pub acquire_ms: f64,
 }
@@ -187,6 +192,7 @@ pub struct Renderer {
     ui_buf: wgpu::Buffer,
     ui_capacity: usize,
     meshes: FxHashMap<IVec3, ChunkMesh>,
+    arena: arena::QuadArena,
     vsync: bool,
     pub stats: RenderStats,
     pub gpu_name: String,
@@ -224,6 +230,11 @@ impl Renderer {
             })
             .await
             .expect("request device");
+        // Chunk quads are read from storage buffers in the vertex shader.
+        if !adapter.get_downlevel_capabilities().flags.contains(wgpu::DownlevelFlags::VERTEX_STORAGE) {
+            panic!("GPU/backend doesn't support storage buffers in vertex shaders (required for chunk rendering)");
+        }
+        let arena = arena::QuadArena::new(&device, &device.limits());
 
         let size = window.inner_size();
         let caps = surface.get_capabilities(&adapter);
@@ -341,6 +352,11 @@ impl Renderer {
             bind_group_layouts: &[Some(&globals_layout), Some(&blocks_layout)],
             immediate_size: 0,
         });
+        let chunk_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("chunk pipeline layout"),
+            bind_group_layouts: &[Some(&globals_layout), Some(&blocks_layout), Some(arena.layout())],
+            immediate_size: 0,
+        });
 
         // --- Pipelines ---------------------------------------------------
         let chunk_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -352,22 +368,17 @@ impl Renderer {
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/overlay.wgsl").into()),
         });
 
-        let chunk_buffers = [
-            Some(wgpu::VertexBufferLayout {
-                array_stride: 8,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Uint32x2],
-            }),
-            Some(wgpu::VertexBufferLayout {
-                array_stride: 12,
-                step_mode: wgpu::VertexStepMode::Instance,
-                attributes: &wgpu::vertex_attr_array![1 => Float32x3],
-            }),
-        ];
+        // Quads come from the arena's storage buffers (vertex pulling); the
+        // only vertex input is the per-draw chunk origin.
+        let chunk_buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: 12,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![1 => Float32x3],
+        })];
         let make_chunk_pipeline = |label: &str, fs: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
-                layout: Some(&layout),
+                layout: Some(&chunk_layout),
                 vertex: wgpu::VertexState {
                     module: &chunk_shader,
                     entry_point: Some("vs_main"),
@@ -628,6 +639,7 @@ impl Renderer {
             ui_buf,
             ui_capacity,
             meshes: FxHashMap::default(),
+            arena,
             vsync,
             stats: RenderStats::default(),
             gpu_name,
@@ -818,24 +830,22 @@ impl Renderer {
     }
 
     pub fn upload_mesh(&mut self, pos: IVec3, mesh: MeshData) {
+        self.remove_mesh(pos);
         if mesh.is_empty() {
-            self.meshes.remove(&pos);
             return;
         }
-        let buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(&mesh.vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let alloc = self.arena.alloc(&self.device, &self.queue, &mesh);
         let mut offsets = [0; PASSES * 6 + 1];
         for (i, n) in mesh.face_quads.as_flattened().iter().enumerate() {
             offsets[i + 1] = offsets[i] + n;
         }
-        self.meshes.insert(pos, ChunkMesh { buffer, offsets });
+        self.meshes.insert(pos, ChunkMesh { alloc, quads: mesh.quads.len() as u32, offsets });
     }
 
     pub fn remove_mesh(&mut self, pos: IVec3) {
-        self.meshes.remove(&pos);
+        if let Some(m) = self.meshes.remove(&pos) {
+            self.arena.free(m.alloc, m.quads);
+        }
     }
 
     /// Cube around a block, 6 faces x 2 triangles, as (pos, uv, layer).
@@ -1036,7 +1046,7 @@ impl Renderer {
             pass.set_bind_group(0, &self.globals_bg, &[]);
             pass.set_bind_group(1, &self.blocks_bg, &[]);
             pass.set_index_buffer(self.quad_indices.slice(..), wgpu::IndexFormat::Uint32);
-            pass.set_vertex_buffer(1, self.instances.slice(..));
+            pass.set_vertex_buffer(0, self.instances.slice(..));
 
             // Each pass draws the face groups of every chunk that can face
             // the camera, merging adjacent groups into one draw.
@@ -1045,17 +1055,20 @@ impl Renderer {
                                   kind: usize,
                                   back_to_front: bool| {
                 pass.set_pipeline(pipeline);
+                // Only rebind when a chunk lives in a different arena page.
+                let mut page = None;
                 let mut draw = |i: usize| {
                     let (_, pos, _, faces) = self.visible[i];
                     let mesh = &self.meshes[&pos];
                     let mask = group_mask(faces, kind);
-                    let mut bound = false;
                     face_runs(&mesh.offsets[kind * 6..kind * 6 + 7], mask, |first_quad, quads| {
-                        if !bound {
-                            pass.set_vertex_buffer(0, mesh.buffer.slice(..));
-                            bound = true;
+                        if page != Some(mesh.alloc.page) {
+                            pass.set_bind_group(2, self.arena.bind_group(mesh.alloc.page), &[]);
+                            page = Some(mesh.alloc.page);
                         }
-                        pass.draw_indexed(0..quads * 6, (first_quad * 4) as i32, i as u32..i as u32 + 1);
+                        // vertex_index = base_vertex + index selects the quad record.
+                        let base = (mesh.alloc.offset + first_quad) * 4;
+                        pass.draw_indexed(0..quads * 6, base as i32, i as u32..i as u32 + 1);
                         stats.draw_calls += 1;
                         stats.quads += quads as u64;
                     });
@@ -1087,7 +1100,7 @@ impl Renderer {
                 pass.draw(0..24, 0..1);
             }
 
-            pass.set_vertex_buffer(1, self.instances.slice(..));
+            pass.set_vertex_buffer(0, self.instances.slice(..));
             draw_range(&mut pass, &self.translucent_pipeline, TRANSLUCENT, true);
 
             if !hud.is_empty() {
@@ -1114,7 +1127,8 @@ impl Renderer {
             self.queue.present(frame);
         }
 
-        stats.gpu_bytes = self.meshes.values().map(|m| m.buffer.size()).sum();
+        stats.gpu_bytes = self.arena.capacity_bytes();
+        stats.gpu_used_bytes = self.arena.used_bytes();
         self.stats = stats;
         true
     }

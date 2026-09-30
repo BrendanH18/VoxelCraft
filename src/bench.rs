@@ -64,7 +64,7 @@ pub fn run(seed: u64, rd: i32) {
             }
         }
         let m = mesh::build(&MeshInput { neighbors: n, heights: hm, base_y: p.y * 32 }, &mut region);
-        quads += (m.vertices.len() / 4) as u64;
+        quads += m.quads.len() as u64;
         meshed += 1;
     }
     let mesh_time = t.elapsed();
@@ -74,7 +74,7 @@ pub fn run(seed: u64, rd: i32) {
         mesh_time.as_secs_f64() * 1e3,
         mesh_time.as_secs_f64() * 1e3 / meshed.max(1) as f64,
         quads,
-        quads as f64 * 32.0 / meshed.max(1) as f64
+        (quads as usize * std::mem::size_of::<[u32; 3]>()) as f64 / meshed.max(1) as f64
     );
 
     // Full streaming pipeline on the worker pool.

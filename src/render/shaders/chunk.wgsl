@@ -1,5 +1,8 @@
-// Chunk terrain shader. Each vertex is two packed u32s (see src/mesh.rs);
-// the per-draw instance attribute is the chunk origin relative to the camera.
+// Chunk terrain shader. Quads are 12-byte records in a storage buffer (see
+// src/mesh.rs) that the vertex shader expands into corners (vertex
+// pulling): with the shared quad index buffer and base_vertex = first quad
+// * 4, vertex_index / 4 is the quad and vertex_index % 4 the corner. The
+// per-draw instance attribute is the chunk origin relative to the camera.
 
 struct Globals {
     view_proj: mat4x4<f32>,
@@ -15,6 +18,7 @@ struct Globals {
 @group(0) @binding(0) var<uniform> g: Globals;
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;
+@group(2) @binding(0) var<storage, read> quads: array<u32>;
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
@@ -27,16 +31,48 @@ struct VsOut {
 };
 
 @vertex
-fn vs_main(@location(0) data: vec2<u32>, @location(1) offset: vec3<f32>) -> VsOut {
-    let packed = data.x;
-    // Water surfaces are lowered by a per-vertex drop (word 1, bits 8-12).
-    let local = vec3<f32>(
-        f32(packed & 63u),
-        f32((packed >> 6u) & 63u),
-        f32((packed >> 12u) & 63u),
-    ) - vec3<f32>(0.0, f32((data.y >> 8u) & 31u) / 16.0, 0.0);
-    let face = (packed >> 18u) & 7u;
-    let ao = (packed >> 21u) & 3u;
+fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> VsOut {
+    let q = (vi >> 2u) * 3u;
+    let w0 = quads[q];
+    let w1 = quads[q + 1u];
+    let w2 = quads[q + 2u];
+    let face = (w0 >> 18u) & 7u;
+    let size = vec2<u32>(((w0 >> 21u) & 31u) + 1u, ((w0 >> 26u) & 31u) + 1u);
+
+    // Corners are (0,0), (w,0), (w,h), (0,h) in the face's (u, v) plane.
+    // Negative faces run in reverse for winding; `flip` rotates by one so
+    // the index pattern's diagonal becomes the other one.
+    var order = array<u32, 4>(0u, 1u, 2u, 3u);
+    if (face & 1u) == 1u {
+        order = array<u32, 4>(0u, 3u, 2u, 1u);
+    }
+    let c = order[((vi & 3u) + (w0 >> 31u)) & 3u];
+    let d = face >> 1u;
+    let u = (d + 1u) % 3u;
+    let v = (d + 2u) % 3u;
+    let base = vec3<u32>(w0 & 63u, (w0 >> 6u) & 63u, (w0 >> 12u) & 63u);
+    var corner = base;
+    if c == 1u || c == 2u {
+        corner[u] += size.x;
+    }
+    if c >= 2u {
+        corner[v] += size.y;
+    }
+    let ao = (w1 >> (8u + 2u * c)) & 3u;
+    let light = (w2 >> (8u * c)) & 255u;
+
+    // Water surfaces: lower the quad's upper edge (never the bottom face).
+    var top = base.y;
+    if u == 1u {
+        top += size.x;
+    } else if v == 1u {
+        top += size.y;
+    }
+    var drop = 0.0;
+    if face != 3u && corner.y == top {
+        drop = f32((w1 >> 16u) & 31u) / 16.0;
+    }
+    let local = vec3<f32>(corner) - vec3<f32>(0.0, drop, 0.0);
 
     var face_shade = array<f32, 6>(0.8, 0.8, 1.0, 0.55, 0.68, 0.68);
     var ao_curve = array<f32, 4>(0.42, 0.62, 0.82, 1.0);
@@ -55,10 +91,10 @@ fn vs_main(@location(0) data: vec2<u32>, @location(1) offset: vec3<f32>) -> VsOu
     var out: VsOut;
     out.clip = g.view_proj * vec4<f32>(rel, 1.0);
     out.uv = uv;
-    out.layer = (packed >> 23u) & 255u;
+    out.layer = w1 & 255u;
     out.shade = face_shade[face] * ao_curve[ao];
     out.dist = length(rel);
-    out.light = vec2<f32>(f32(data.y & 15u), f32((data.y >> 4u) & 15u)) / 15.0;
+    out.light = vec2<f32>(f32(light & 15u), f32(light >> 4u)) / 15.0;
     return out;
 }
 
