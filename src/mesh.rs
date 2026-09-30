@@ -51,18 +51,40 @@ pub struct MeshInput {
     pub base_y: i32,
 }
 
+/// Render passes, in the order their quads are stored.
+pub const PASSES: usize = 3;
+pub const OPAQUE: usize = 0;
+pub const CUTOUT: usize = 1;
+pub const TRANSLUCENT: usize = 2;
+
+/// Per pass, the face directions (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z) in
+/// the order their quad groups are stored. A camera sees at most one face
+/// of each axis per chunk (both when it's level with the chunk on that
+/// axis); +X +Y +Z -X -Y -Z puts every pair of faces from different axes
+/// next to each other, so the visible groups form fewer contiguous draws
+/// (1.75 per pass on average instead of 2.5). Translucent quads keep the
+/// plain order: their blending depends on draw order, and there are few.
+pub const FACE_ORDER: [[usize; 6]; PASSES] = [[0, 2, 4, 1, 3, 5], [0, 2, 4, 1, 3, 5], [0, 1, 2, 3, 4, 5]];
+
 #[derive(Default, Debug)]
 pub struct MeshData {
-    /// Opaque quads, then cutout, then translucent; 4 vertices of 2 words each.
+    /// Opaque quads, then cutout, then translucent; within each pass,
+    /// grouped by face direction in [`FACE_ORDER`] so the renderer can skip
+    /// directions that face away from the camera. 4 vertices of 2 words
+    /// each per quad.
     pub vertices: Vec<[u32; 2]>,
-    pub opaque_quads: u32,
-    pub cutout_quads: u32,
-    pub translucent_quads: u32,
+    /// Quad count per pass and face group (in [`FACE_ORDER`]).
+    pub face_quads: [[u32; 6]; PASSES],
 }
 
 impl MeshData {
     pub fn is_empty(&self) -> bool {
         self.vertices.is_empty()
+    }
+
+    #[cfg(test)]
+    pub fn pass_quads(&self, pass: usize) -> u32 {
+        self.face_quads[pass].iter().sum()
     }
 }
 
@@ -237,11 +259,16 @@ pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
 fn mesh_region(r: &Region) -> MeshData {
     let blocks = &r.blocks[..];
     let (sky, blk) = (&r.sky[..], &r.block_light[..]);
-    let mut out: [Vec<[u32; 2]>; 3] = Default::default();
+    let mut out: [Vec<[u32; 2]>; PASSES] = Default::default();
+    // Where each (pass, face) run of `out` starts, in face order.
+    let mut face_start = [[0usize; 7]; PASSES];
     let strides = [1isize, (D * D) as isize, D as isize]; // x, y, z
     let mut mask = [0u64; CHUNK_SIZE * CHUNK_SIZE];
 
     for face in 0..6 {
+        for (starts, quads) in face_start.iter_mut().zip(&out) {
+            starts[face] = quads.len();
+        }
         let d = face / 2;
         let positive = face % 2 == 0;
         let (u, v) = ((d + 1) % 3, (d + 2) % 3);
@@ -409,15 +436,19 @@ fn mesh_region(r: &Region) -> MeshData {
         }
     }
 
-    let [opaque, cutout, translucent] = out;
+    // Concatenate the passes, reordering face groups into FACE_ORDER.
     let mut mesh = MeshData {
-        opaque_quads: (opaque.len() / 4) as u32,
-        cutout_quads: (cutout.len() / 4) as u32,
-        translucent_quads: (translucent.len() / 4) as u32,
-        vertices: opaque,
+        vertices: Vec::with_capacity(out.iter().map(Vec::len).sum()),
+        face_quads: [[0; 6]; PASSES],
     };
-    mesh.vertices.extend_from_slice(&cutout);
-    mesh.vertices.extend_from_slice(&translucent);
+    for pass in 0..PASSES {
+        face_start[pass][6] = out[pass].len();
+        for (group, &face) in FACE_ORDER[pass].iter().enumerate() {
+            let run = &out[pass][face_start[pass][face]..face_start[pass][face + 1]];
+            mesh.vertices.extend_from_slice(run);
+            mesh.face_quads[pass][group] = (run.len() / 4) as u32;
+        }
+    }
     mesh
 }
 
@@ -472,14 +503,33 @@ mod tests {
     #[test]
     fn single_block_has_six_faces() {
         let m = mesh_blocks(&[([5, 5, 5], Block::STONE)]);
-        assert_eq!(m.opaque_quads, 6);
+        assert_eq!(m.pass_quads(OPAQUE), 6);
         assert_eq!(m.vertices.len(), 24);
+        assert_eq!(m.face_quads[OPAQUE], [1; 6]);
+    }
+
+    #[test]
+    fn quads_are_grouped_by_face_in_face_order() {
+        let blocks = [
+            ([5, 5, 5], Block::STONE),
+            ([9, 5, 5], Block::STONE),
+            ([9, 9, 9], Block::LEAVES),
+            ([20, 20, 20], Block::WATER),
+        ];
+        let m = mesh_blocks(&blocks);
+        assert_eq!(m.face_quads, [[2; 6], [1; 6], [1; 6]]);
+        let faces: Vec<u32> = m.vertices.chunks(4).map(|q| (q[0][0] >> 18) & 7).collect();
+        let fq = m.face_quads;
+        let expected: Vec<u32> = (0..PASSES)
+            .flat_map(|pass| FACE_ORDER[pass].iter().flat_map(move |&f| vec![f as u32; fq[pass][0] as usize]))
+            .collect();
+        assert_eq!(faces, expected);
     }
 
     #[test]
     fn adjacent_blocks_merge() {
         let m = mesh_blocks(&[([5, 5, 5], Block::STONE), ([6, 5, 5], Block::STONE)]);
-        assert_eq!(m.opaque_quads, 6);
+        assert_eq!(m.pass_quads(OPAQUE), 6);
     }
 
     #[test]
@@ -498,9 +548,9 @@ mod tests {
     #[test]
     fn water_and_leaves_go_to_their_passes() {
         let m = mesh_blocks(&[([1, 1, 1], Block::WATER), ([2, 1, 1], Block::WATER), ([10, 10, 10], Block::LEAVES)]);
-        assert_eq!(m.opaque_quads, 0);
-        assert_eq!(m.cutout_quads, 6);
-        assert_eq!(m.translucent_quads, 6);
+        assert_eq!(m.pass_quads(OPAQUE), 0);
+        assert_eq!(m.pass_quads(CUTOUT), 6);
+        assert_eq!(m.pass_quads(TRANSLUCENT), 6);
     }
 
     #[test]
