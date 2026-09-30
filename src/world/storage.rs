@@ -19,6 +19,8 @@ const MAGIC: &[u8; 4] = b"VXC1";
 pub struct LevelInfo {
     pub seed: u64,
     pub player: Option<(DVec3, f32, f32)>,
+    /// Other `key=value` lines (game mode, inventory, ...).
+    pub props: std::collections::BTreeMap<String, String>,
 }
 
 pub struct Storage {
@@ -40,7 +42,7 @@ impl Storage {
 
     pub fn load_level(&self) -> io::Result<LevelInfo> {
         let text = fs::read_to_string(self.dir.join("level.txt"))?;
-        let mut info = LevelInfo { seed: 0, player: None };
+        let mut info = LevelInfo { seed: 0, player: None, props: Default::default() };
         for line in text.lines() {
             match line.split_once('=') {
                 Some(("seed", v)) => {
@@ -52,7 +54,10 @@ impl Storage {
                         info.player = Some((DVec3::new(n[0], n[1], n[2]), n[3] as f32, n[4] as f32));
                     }
                 }
-                _ => {}
+                Some((k, v)) => {
+                    info.props.insert(k.to_string(), v.to_string());
+                }
+                None => {}
             }
         }
         Ok(info)
@@ -67,6 +72,9 @@ impl Storage {
         let mut text = format!("seed={}\n", level.seed);
         if let Some((p, yaw, pitch)) = level.player {
             text += &format!("player={},{},{},{},{}\n", p.x, p.y, p.z, yaw, pitch);
+        }
+        for (k, v) in &level.props {
+            text += &format!("{k}={v}\n");
         }
 
         let mut buf = Vec::with_capacity(chunks.len() * 256);

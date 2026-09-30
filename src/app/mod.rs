@@ -5,7 +5,7 @@ mod hud;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use glam::DVec3;
+use glam::{DVec3, IVec3};
 use rustc_hash::FxHashSet;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -14,6 +14,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, Fullscreen, Window, WindowId};
 
+use crate::inventory::{Inventory, Stack, HOTBAR_SLOTS};
 use crate::player::{MoveInput, Player};
 use crate::render::{FrameParams, Renderer};
 use crate::world::block::Block;
@@ -24,6 +25,8 @@ use crate::Args;
 
 const REACH: f64 = 6.0;
 const ACTION_REPEAT: f64 = 0.22;
+/// Pause between breaking one block and starting the next in survival.
+const BREAK_DELAY: f64 = 0.15;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
 const MOUSE_SENSITIVITY: f32 = 0.0022;
 /// Horizon colour at noon (also the fog colour).
@@ -36,7 +39,8 @@ const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
 /// Real seconds per in-game day.
 const DAY_LENGTH: f64 = 600.0;
 
-const HOTBAR: [Block; 9] = [
+/// Creative mode's starting hotbar.
+const CREATIVE_HOTBAR: [Block; 9] = [
     Block::DIRT,
     Block::STONE,
     Block::COBBLESTONE,
@@ -48,6 +52,21 @@ const HOTBAR: [Block; 9] = [
     Block::WATER,
 ];
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GameMode {
+    Survival,
+    Creative,
+}
+
+impl GameMode {
+    fn name(self) -> &'static str {
+        match self {
+            GameMode::Survival => "survival",
+            GameMode::Creative => "creative",
+        }
+    }
+}
+
 struct Game {
     renderer: Renderer,
     world: World,
@@ -58,7 +77,13 @@ struct Game {
     left_held: bool,
     right_held: bool,
     action_cooldown: f64,
-    hotbar: [Block; 9],
+    mode: GameMode,
+    inventory: Inventory,
+    inventory_open: bool,
+    /// Mouse position in physical pixels (for the inventory screen).
+    cursor_px: (f32, f32),
+    /// Block being broken in survival and progress 0..1.
+    breaking: Option<(IVec3, f32)>,
     selected: usize,
     show_hud: bool,
     last_space: Instant,
@@ -74,8 +99,8 @@ struct Game {
     fps: f64,
     cpu_ms: f64,
     show_debug: bool,
-    /// When the hotbar selection last changed (for the item name popup).
-    selection_changed: Instant,
+    /// Short message above the hotbar (item names, mode changes).
+    popup: (String, Instant),
     screenshot: Option<String>,
     screenshot_state: u32,
     place: Vec<(glam::IVec3, Block)>,
@@ -135,9 +160,23 @@ impl ApplicationHandler for App {
         };
         log::info!("world '{}' seed {seed}, {} modified chunks", self.args.world, saved.len());
 
+        let mode = match (self.args.mode, existing.as_ref().and_then(|l| l.props.get("mode"))) {
+            (Some(m), _) => m,
+            (None, Some(m)) if m == "creative" => GameMode::Creative,
+            _ => GameMode::Survival,
+        };
+        let inventory = existing
+            .as_ref()
+            .and_then(|l| l.props.get("inventory"))
+            .and_then(|s| Inventory::deserialize(s))
+            .unwrap_or_else(|| match mode {
+                GameMode::Creative => Inventory::with_hotbar(&CREATIVE_HOTBAR),
+                GameMode::Survival => Inventory::default(),
+            });
+
         let generator = Arc::new(Generator::new(seed));
         let mut player = Player::new(generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
-        if let Some((pos, yaw, pitch)) = existing.and_then(|l| l.player) {
+        if let Some((pos, yaw, pitch)) = existing.as_ref().and_then(|l| l.player) {
             player.pos = pos;
             player.yaw = yaw;
             player.pitch = pitch;
@@ -148,6 +187,7 @@ impl ApplicationHandler for App {
             player.pitch = (pitch as f32).to_radians();
             player.flying = true;
         }
+        player.can_fly = mode == GameMode::Creative;
         let world = World::new(generator, saved, self.args.render_distance);
         log::info!("{} worker threads", world.worker_threads());
 
@@ -162,7 +202,11 @@ impl ApplicationHandler for App {
             left_held: false,
             right_held: false,
             action_cooldown: 0.0,
-            hotbar: HOTBAR,
+            mode,
+            inventory,
+            inventory_open: self.args.open_inventory,
+            cursor_px: (0.0, 0.0),
+            breaking: None,
             selected: 0,
             show_hud: true,
             last_space: now - Duration::from_secs(1),
@@ -176,7 +220,7 @@ impl ApplicationHandler for App {
             fps: 0.0,
             cpu_ms: 0.0,
             show_debug: self.args.debug_overlay,
-            selection_changed: now - Duration::from_secs(10),
+            popup: (String::new(), now - Duration::from_secs(10)),
             screenshot: self.args.screenshot.clone(),
             screenshot_state: 0,
             place: self.args.place.clone(),
@@ -199,6 +243,9 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => game.renderer.resize(size.width, size.height),
+            WindowEvent::CursorMoved { position, .. } => {
+                game.cursor_px = (position.x as f32, position.y as f32);
+            }
             WindowEvent::Focused(false) => {
                 game.set_grab(false);
                 game.keys.clear();
@@ -210,7 +257,7 @@ impl ApplicationHandler for App {
                 match event.state {
                     ElementState::Pressed => {
                         if !event.repeat {
-                            if code == KeyCode::Escape && !game.mouse_grabbed {
+                            if code == KeyCode::Escape && !game.mouse_grabbed && !game.inventory_open {
                                 game.save();
                                 event_loop.exit();
                                 return;
@@ -226,6 +273,12 @@ impl ApplicationHandler for App {
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let pressed = state == ElementState::Pressed;
+                if game.inventory_open {
+                    if pressed {
+                        game.inventory_click(button == MouseButton::Right);
+                    }
+                    return;
+                }
                 if pressed && !game.mouse_grabbed {
                     game.set_grab(true);
                     return;
@@ -233,7 +286,9 @@ impl ApplicationHandler for App {
                 match button {
                     MouseButton::Left => {
                         game.left_held = pressed;
-                        if pressed {
+                        if !pressed {
+                            game.breaking = None;
+                        } else if game.mode == GameMode::Creative {
                             game.break_block();
                             game.action_cooldown = ACTION_REPEAT;
                         }
@@ -271,7 +326,9 @@ impl ApplicationHandler for App {
 
     fn device_event(&mut self, _el: &ActiveEventLoop, _id: DeviceId, event: DeviceEvent) {
         if let (Some(game), DeviceEvent::MouseMotion { delta }) = (self.game.as_mut(), event)
-            && game.mouse_grabbed {
+            && game.mouse_grabbed
+            && !game.inventory_open
+        {
                 game.player.look(delta.0 as f32 * MOUSE_SENSITIVITY, delta.1 as f32 * MOUSE_SENSITIVITY);
             }
     }
@@ -326,15 +383,24 @@ impl Game {
 
     fn on_key(&mut self, code: KeyCode) {
         match code {
+            KeyCode::Escape if self.inventory_open => self.toggle_inventory(),
             KeyCode::Escape => self.set_grab(false),
-            KeyCode::KeyF => {
+            KeyCode::KeyE => self.toggle_inventory(),
+            KeyCode::KeyG => {
+                let mode = match self.mode {
+                    GameMode::Survival => GameMode::Creative,
+                    GameMode::Creative => GameMode::Survival,
+                };
+                self.set_mode(mode);
+            }
+            KeyCode::KeyF if self.player.can_fly => {
                 self.player.flying = !self.player.flying;
                 self.player.vel = DVec3::ZERO;
             }
             KeyCode::Space => {
                 // Double-tap space toggles flight, like Minecraft creative.
                 let now = Instant::now();
-                if now - self.last_space < Duration::from_millis(280) {
+                if self.player.can_fly && now - self.last_space < Duration::from_millis(280) {
                     self.player.flying = !self.player.flying;
                     self.player.vel.y = 0.0;
                 }
@@ -377,7 +443,55 @@ impl Game {
     fn select(&mut self, slot: usize) {
         if slot != self.selected {
             self.selected = slot;
-            self.selection_changed = Instant::now();
+            self.show_selected_name();
+        }
+    }
+
+    fn show_selected_name(&mut self) {
+        if let Some(s) = self.inventory.get(self.selected) {
+            self.show_popup(s.block.name());
+        }
+    }
+
+    fn show_popup(&mut self, text: &str) {
+        self.popup = (text.to_string(), Instant::now());
+    }
+
+    fn set_mode(&mut self, mode: GameMode) {
+        self.mode = mode;
+        self.player.can_fly = mode == GameMode::Creative;
+        if !self.player.can_fly {
+            self.player.flying = false;
+        }
+        self.breaking = None;
+        self.show_popup(&format!("{} mode", capitalize(mode.name())));
+    }
+
+    fn toggle_inventory(&mut self) {
+        self.inventory_open = !self.inventory_open;
+        if self.inventory_open {
+            self.set_grab(false);
+            self.keys.clear();
+            self.left_held = false;
+            self.right_held = false;
+            self.breaking = None;
+        } else {
+            self.inventory.return_cursor();
+            self.set_grab(true);
+        }
+    }
+
+    fn inventory_click(&mut self, right: bool) {
+        match self.slot_under_cursor() {
+            Some(hud::SlotRef::Inventory(i)) => self.inventory.click(i, right),
+            Some(hud::SlotRef::Palette(block)) => {
+                // Creative palette: take a full stack, or trash the held one.
+                self.inventory.cursor = match self.inventory.cursor {
+                    Some(_) => None,
+                    None => Some(Stack::new(block, crate::inventory::MAX_STACK)),
+                };
+            }
+            None => {}
         }
     }
 
@@ -385,31 +499,66 @@ impl Game {
         self.world.raycast(self.player.eye(), self.player.forward().as_dvec3(), REACH)
     }
 
+    /// Instant break (creative).
     fn break_block(&mut self) {
         if let Some((pos, _)) = self.target()
-            && self.world.get_block(pos) != Some(Block::BEDROCK) {
-                self.world.set_block(pos, Block::AIR);
-            }
+            && self.world.get_block(pos) != Some(Block::BEDROCK)
+        {
+            self.world.set_block(pos, Block::AIR);
+        }
+    }
+
+    /// Timed break with drops (survival). Called every frame while the
+    /// button is held.
+    fn continue_breaking(&mut self, dt: f64) {
+        let Some((pos, _)) = self.target() else {
+            self.breaking = None;
+            return;
+        };
+        let Some(block) = self.world.get_block(pos) else { return };
+        let progress = match self.breaking {
+            Some((p, progress)) if p == pos => progress,
+            _ => 0.0,
+        };
+        let progress = progress + (dt / block.break_time() as f64) as f32;
+        if progress < 1.0 {
+            self.breaking = Some((pos, progress));
+            return;
+        }
+        self.breaking = None;
+        self.action_cooldown = BREAK_DELAY;
+        self.world.set_block(pos, Block::AIR);
+        if let Some(drop) = block.drop() {
+            self.inventory.add(drop, 1);
+        }
     }
 
     fn place_block(&mut self) {
         let Some((pos, normal)) = self.target() else { return };
         let at = pos + normal;
-        let block = self.hotbar[self.selected];
+        let Some(stack) = self.inventory.get(self.selected) else { return };
+        let block = stack.block;
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
-        if free && !(block.is_solid() && self.player.intersects_block(at)) {
-            self.world.set_block(at, block);
+        if free && !(block.is_solid() && self.player.intersects_block(at)) && self.world.set_block(at, block) {
+            if self.mode == GameMode::Survival {
+                self.inventory.take_one(self.selected);
+            }
         }
     }
 
     fn pick_block(&mut self) {
-        if let Some(b) = self.target().and_then(|(pos, _)| self.world.get_block(pos)) {
-            if let Some(i) = self.hotbar.iter().position(|&h| h == b) {
-                self.select(i);
-            } else {
-                self.hotbar[self.selected] = b;
-                self.selection_changed = Instant::now();
+        let Some(b) = self.target().and_then(|(pos, _)| self.world.get_block(pos)) else { return };
+        match self.inventory.find(b) {
+            Some(i) if i < HOTBAR_SLOTS => self.select(i),
+            Some(i) => {
+                self.inventory.slots.swap(i, self.selected);
+                self.show_selected_name();
             }
+            None if self.mode == GameMode::Creative => {
+                self.inventory.slots[self.selected] = Some(Stack::new(b, crate::inventory::MAX_STACK));
+                self.show_selected_name();
+            }
+            None => {}
         }
     }
 
@@ -498,9 +647,15 @@ impl Game {
     }
 
     fn save(&mut self) {
+        let mut props = std::collections::BTreeMap::new();
+        props.insert("mode".to_string(), self.mode.name().to_string());
+        let mut inventory = self.inventory.clone();
+        inventory.return_cursor();
+        props.insert("inventory".to_string(), inventory.serialize());
         let level = LevelInfo {
             seed: self.world.generator.seed,
             player: Some((self.player.pos, self.player.yaw, self.player.pitch)),
+            props,
         };
         let chunks = self.world.modified_chunks();
         match self.storage.save(&level, &chunks) {
@@ -518,7 +673,7 @@ impl Game {
         // --- Simulation ---------------------------------------------------
         let held = |k: KeyCode| self.keys.contains(&k);
         let axis = |pos: KeyCode, neg: KeyCode| held(pos) as i32 as f64 - held(neg) as i32 as f64;
-        let input = if self.mouse_grabbed {
+        let input = if self.mouse_grabbed && !self.inventory_open {
             MoveInput {
                 forward: axis(KeyCode::KeyW, KeyCode::KeyS),
                 right: axis(KeyCode::KeyD, KeyCode::KeyA),
@@ -532,7 +687,12 @@ impl Game {
         self.player.update(dt, input, &self.world);
 
         self.action_cooldown -= dt;
-        if self.action_cooldown <= 0.0 && (self.left_held || self.right_held) && self.mouse_grabbed {
+        let acting = self.mouse_grabbed && !self.inventory_open;
+        if acting && self.left_held && self.mode == GameMode::Survival {
+            if self.action_cooldown <= 0.0 {
+                self.continue_breaking(dt);
+            }
+        } else if acting && self.action_cooldown <= 0.0 && (self.left_held || self.right_held) {
             if self.left_held {
                 self.break_block();
             } else {
@@ -582,6 +742,9 @@ impl Game {
             sun_dir: sky.sun_dir,
             time: (now - self.started).as_secs_f32(),
             highlight: self.target().map(|(p, _)| p),
+            crack: self.breaking.map(|(p, progress)| {
+                (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u8)
+            }),
             ui: if self.show_hud { self.build_ui(now) } else { Vec::new() },
         };
         if !self.renderer.render(&params) {
@@ -600,4 +763,9 @@ impl Game {
             self.stats_since = now;
         }
     }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }

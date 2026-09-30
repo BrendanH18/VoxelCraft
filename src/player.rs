@@ -33,12 +33,14 @@ pub struct Player {
     pub pitch: f32,
     pub on_ground: bool,
     pub flying: bool,
+    /// Creative mode: flight allowed.
+    pub can_fly: bool,
     pub in_water: bool,
 }
 
 impl Player {
     pub fn new(pos: DVec3) -> Self {
-        Self { pos, vel: DVec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, in_water: false }
+        Self { pos, vel: DVec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, can_fly: false, in_water: false }
     }
 
     pub fn eye(&self) -> DVec3 {

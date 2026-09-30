@@ -178,10 +178,88 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 shade([250, 215, 120], 0.8 + rnd(layer, i, 0, 4) * 0.25)
             }
         }
+        tex::HEART_FULL | tex::HEART_HALF | tex::HEART_EMPTY => heart(layer, x, y),
+        tex::BUBBLE => {
+            let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
+            let d = (dx * dx + dy * dy).sqrt();
+            if (5.0..6.5).contains(&d) {
+                [60, 110, 200, 255]
+            } else if d < 5.0 {
+                let shine = dx < -1.0 && dy < -1.0 && d > 2.0 && d < 4.0;
+                if shine { [230, 245, 255, 255] } else { [120, 180, 250, 200] }
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
+        l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES).contains(&l) => crack(l - tex::CRACK_0, x, y),
         _ => {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
         }
+    }
+}
+
+/// Heart icon: full, half (left side filled) or empty outline.
+fn heart(layer: u8, x: usize, y: usize) -> Rgba {
+    // Implicit heart curve (x²+y²-1)³ - x²y³ <= 0, mapped onto the tile.
+    let inside = |px: f32, py: f32| {
+        let (hx, hy) = ((px - 7.5) / 6.2, (8.0 - py) / 6.2);
+        (hx * hx + hy * hy - 1.0).powi(3) - hx * hx * hy.powi(3) <= 0.0
+    };
+    let (fx, fy) = (x as f32, y as f32);
+    if !inside(fx, fy) {
+        return [0, 0, 0, 0];
+    }
+    let edge = !(inside(fx - 1.0, fy) && inside(fx + 1.0, fy) && inside(fx, fy - 1.0) && inside(fx, fy + 1.0));
+    if edge {
+        return [30, 10, 10, 255];
+    }
+    let filled = match layer {
+        tex::HEART_FULL => true,
+        tex::HEART_HALF => x < 8,
+        _ => false,
+    };
+    if !filled {
+        [60, 30, 30, 200]
+    } else if x < 6 && (3..6).contains(&y) {
+        [255, 170, 170, 255] // highlight
+    } else {
+        [220, 30, 30, 255]
+    }
+}
+
+/// Crack overlay used with multiplicative blending: mid-grey (linear 0.5)
+/// leaves the block unchanged, darker pixels are cracks. Each stage shows
+/// more of the same crack pattern.
+fn crack(stage: u8, x: usize, y: usize) -> Rgba {
+    const NEUTRAL: u8 = 188; // sRGB for linear 0.5
+    // Crack pixels are laid down by random walks from the centre; each
+    // pixel records the walk step at which it appears.
+    static ORDER: std::sync::OnceLock<[u8; SIZE * SIZE]> = std::sync::OnceLock::new();
+    let order = ORDER.get_or_init(|| {
+        let mut order = [u8::MAX; SIZE * SIZE];
+        for branch in 0..7 {
+            let (mut px, mut py) = (7.5f32, 7.5f32);
+            let angle = branch as f32 / 7.0 * std::f32::consts::TAU + rnd(99, branch, 0, 1) * 0.8;
+            for step in 0..14u8 {
+                let wobble = (rnd(99, branch, step as usize, 2) - 0.5) * 1.4;
+                px += (angle + wobble).cos();
+                py += (angle + wobble).sin();
+                let (ix, iy) = (px as isize, py as isize);
+                if !(0..SIZE as isize).contains(&ix) || !(0..SIZE as isize).contains(&iy) {
+                    break;
+                }
+                let i = iy as usize * SIZE + ix as usize;
+                order[i] = order[i].min(step);
+            }
+        }
+        order
+    });
+    let visible_steps = (stage as u32 + 1) * 14 / tex::CRACK_STAGES as u32;
+    if (order[y * SIZE + x] as u32) < visible_steps {
+        [40, 40, 40, 255]
+    } else {
+        [NEUTRAL, NEUTRAL, NEUTRAL, 255]
     }
 }
 

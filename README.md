@@ -15,12 +15,14 @@ cargo run --release -- --help
 |---|---|
 | Mouse | Look (click the window to capture the mouse) |
 | W A S D | Move |
-| Space | Jump / swim up / fly up — double-tap to toggle flying |
+| Space | Jump / swim up / fly up — double-tap to toggle flying (creative) |
 | Left Shift | Fly down |
 | Left Ctrl or R | Sprint |
-| F | Toggle flying |
+| F | Toggle flying (creative) |
 | Left / right click | Break / place block (hold to repeat) |
 | Middle click | Pick block |
+| E | Inventory (click to move stacks; creative shows the block palette) |
+| G | Toggle survival / creative |
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
 | T | Skip ahead 2 in-game hours |
@@ -45,6 +47,8 @@ chunks are stored, everything else regenerates from the seed.
 - Flowing water: falls, spreads up to 7 blocks toward the nearest drop,
   dries up without a source, and forms infinite sources; lowered surfaces
 - Walking, swimming and flying with AABB collision
+- Survival and creative modes: timed block breaking with crack overlay,
+  drops, a 36-slot inventory with stacks, and a creative block palette
 - Break, place and pick blocks, with a selection outline and hotbar
 - Procedurally generated, mipmapped block textures — the game ships no assets
 

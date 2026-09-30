@@ -73,6 +73,8 @@ pub struct FrameParams {
     /// Seconds since start (animations).
     pub time: f32,
     pub highlight: Option<IVec3>,
+    /// Block being broken and the crack texture layer to overlay on it.
+    pub crack: Option<(IVec3, u8)>,
     /// HUD geometry, drawn last.
     pub ui: Vec<UiVertex>,
 }
@@ -128,6 +130,8 @@ pub struct Renderer {
     cutout_pipeline: wgpu::RenderPipeline,
     translucent_pipeline: wgpu::RenderPipeline,
     line_pipeline: wgpu::RenderPipeline,
+    decal_pipeline: wgpu::RenderPipeline,
+    decal_buf: wgpu::Buffer,
     sky_pipeline: wgpu::RenderPipeline,
     cloud_pipeline: wgpu::RenderPipeline,
     ui_pipeline: wgpu::RenderPipeline,
@@ -394,6 +398,61 @@ impl Renderer {
             cache: None,
         });
 
+        // Crack overlay: multiplies the block's colour by 2x the crack
+        // texture, so mid-grey texels leave it unchanged.
+        let decal_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("crack decal"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &overlay_shader,
+                entry_point: Some("vs_decal"),
+                compilation_options: Default::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: 24,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Uint32],
+                })],
+            },
+            primitive: Default::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &overlay_shader,
+                entry_point: Some("fs_decal"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::Dst,
+                            dst_factor: wgpu::BlendFactor::Src,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::Zero,
+                            dst_factor: wgpu::BlendFactor::One,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                    }),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+        let decal_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("crack decal"),
+            size: 36 * 24,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let sky_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sky shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/sky.wgsl").into()),
@@ -508,6 +567,8 @@ impl Renderer {
             cutout_pipeline,
             translucent_pipeline,
             line_pipeline,
+            decal_pipeline,
+            decal_buf,
             sky_pipeline,
             cloud_pipeline,
             ui_pipeline,
@@ -732,6 +793,33 @@ impl Renderer {
         self.meshes.remove(&pos);
     }
 
+    /// Cube around a block, 6 faces x 2 triangles, as (pos, uv, layer).
+    fn decal_vertices(block: IVec3, camera: DVec3, layer: u8) -> Vec<u8> {
+        let e = 0.003;
+        let min = (block.as_dvec3() - camera - DVec3::splat(e)).as_vec3();
+        let s = 1.0 + 2.0 * e as f32;
+        let mut out = Vec::with_capacity(36 * 24);
+        for axis in 0..3 {
+            for side in [0.0, 1.0] {
+                let (u, v) = ((axis + 1) % 3, (axis + 2) % 3);
+                let corner = |a: f32, b: f32| {
+                    let mut p = [0.0f32; 3];
+                    p[axis] = side * s;
+                    p[u] = a * s;
+                    p[v] = b * s;
+                    (min + Vec3::from_array(p), [a, b])
+                };
+                for (a, b) in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0), (1.0, 1.0), (0.0, 1.0)] {
+                    let (p, uv) = corner(a, b);
+                    out.extend_from_slice(bytemuck::cast_slice(&p.to_array()));
+                    out.extend_from_slice(bytemuck::cast_slice(&uv));
+                    out.extend_from_slice(&(layer as u32).to_le_bytes());
+                }
+            }
+        }
+        out
+    }
+
     fn outline_vertices(&self, block: IVec3, camera: DVec3) -> [[f32; 3]; 24] {
         let e = 0.004;
         let min = (block.as_dvec3() - camera - DVec3::splat(e)).as_vec3();
@@ -848,6 +936,9 @@ impl Renderer {
         };
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 
+        if let Some((b, layer)) = p.crack {
+            self.queue.write_buffer(&self.decal_buf, 0, &Self::decal_vertices(b, p.camera, layer));
+        }
         if let Some(b) = p.highlight {
             let verts = self.outline_vertices(b, p.camera);
             self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
@@ -934,6 +1025,11 @@ impl Renderer {
             pass.set_pipeline(&self.cloud_pipeline);
             pass.draw(0..6, 0..1);
 
+            if p.crack.is_some() {
+                pass.set_pipeline(&self.decal_pipeline);
+                pass.set_vertex_buffer(0, self.decal_buf.slice(..));
+                pass.draw(0..36, 0..1);
+            }
             if p.highlight.is_some() {
                 pass.set_pipeline(&self.line_pipeline);
                 pass.set_vertex_buffer(0, self.line_buf.slice(..));

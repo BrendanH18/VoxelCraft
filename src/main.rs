@@ -1,4 +1,5 @@
 mod app;
+mod inventory;
 mod bench;
 mod mesh;
 mod player;
@@ -18,6 +19,8 @@ pub struct Args {
     pub screenshot: Option<String>,
     pub bench_render: bool,
     pub debug_overlay: bool,
+    pub mode: Option<app::GameMode>,
+    pub open_inventory: bool,
     /// Starting time of day, 0..1 (0 sunrise, 0.25 noon, 0.75 midnight).
     pub time: Option<f64>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
@@ -35,7 +38,9 @@ voxelcraft [options]
   --no-vsync        uncapped frame rate
   --bench           headless terrain generation + meshing benchmark
   --bench-render    load the world, render a 360° sweep offscreen, report frame times
+  --creative, --survival  game mode (default: survival, or the saved mode)
   --f3              start with the debug overlay open
+  --open-inventory  start with the inventory screen open (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water)
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
@@ -53,6 +58,8 @@ fn parse_args() -> Result<Args, String> {
         screenshot: None,
         bench_render: false,
         debug_overlay: false,
+        mode: None,
+        open_inventory: false,
         time: None,
         place: Vec::new(),
         pose: None,
@@ -69,6 +76,9 @@ fn parse_args() -> Result<Args, String> {
             "--bench" => args.bench = true,
             "--bench-render" => args.bench_render = true,
             "--f3" => args.debug_overlay = true,
+            "--open-inventory" => args.open_inventory = true,
+            "--creative" => args.mode = Some(app::GameMode::Creative),
+            "--survival" => args.mode = Some(app::GameMode::Survival),
             "--place" => {
                 let v = value("--place")?;
                 let parts: Vec<&str> = v.split(',').collect();

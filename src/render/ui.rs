@@ -72,8 +72,12 @@ pub struct Ui {
 
 impl Ui {
     pub fn new(width: f32, height: f32, dpi: f32) -> Self {
-        let scale = (dpi * 1.5).round().max(1.0);
-        Self { verts: Vec::with_capacity(4096), width, height, scale }
+        Self { verts: Vec::with_capacity(4096), width, height, scale: Self::scale_for(dpi) }
+    }
+
+    /// Physical pixels per UI pixel for a display scale factor.
+    pub fn scale_for(dpi: f32) -> f32 {
+        (dpi * 1.5).round().max(1.0)
     }
 
     /// UI-pixel dimensions of the screen.
@@ -119,6 +123,11 @@ impl Ui {
     pub fn text(&mut self, x: f32, y: f32, s: &str, color: Color) -> f32 {
         let shadow = [color[0] * 0.25, color[1] * 0.25, color[2] * 0.25, color[3]];
         self.text_raw(x + 1.0, y + 1.0, s, shadow);
+        self.text_raw(x, y, s, color)
+    }
+
+    /// Text without a shadow (e.g. titles on light panels).
+    pub fn text_flat(&mut self, x: f32, y: f32, s: &str, color: Color) -> f32 {
         self.text_raw(x, y, s, color)
     }
 

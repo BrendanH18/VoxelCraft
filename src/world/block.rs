@@ -60,7 +60,15 @@ pub mod tex {
     pub const SANDSTONE_TOP: u8 = 24;
     pub const GLOWSTONE: u8 = 25;
     pub const SPRUCE_LEAVES: u8 = 26;
-    pub const COUNT: u32 = 27;
+    // HUD icons.
+    pub const HEART_FULL: u8 = 27;
+    pub const HEART_HALF: u8 = 28;
+    pub const HEART_EMPTY: u8 = 29;
+    pub const BUBBLE: u8 = 30;
+    /// Block-breaking crack overlays, stages 0..10.
+    pub const CRACK_0: u8 = 31;
+    pub const CRACK_STAGES: u8 = 10;
+    pub const COUNT: u32 = 41;
 }
 
 impl Block {
@@ -132,6 +140,41 @@ impl Block {
             24..=30 => 2 + (self.0 - 23) * 12 / 7,
             _ => 0,
         }
+    }
+
+    /// What breaking this block yields in survival.
+    pub fn drop(self) -> Option<Block> {
+        match self {
+            Block::STONE => Some(Block::COBBLESTONE),
+            Block::GRASS | Block::SNOWY_GRASS => Some(Block::DIRT),
+            Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK => None,
+            b if b.is_water() || b == Block::AIR => None,
+            b => Some(b),
+        }
+    }
+
+    /// Seconds to break by hand in survival (infinite for unbreakable).
+    pub fn break_time(self) -> f32 {
+        match self {
+            Block::LEAVES | Block::SPRUCE_LEAVES | Block::SNOW => 0.25,
+            Block::GLASS | Block::GLOWSTONE => 0.35,
+            Block::CACTUS => 0.45,
+            Block::DIRT | Block::SAND => 0.55,
+            Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL => 0.65,
+            Block::SANDSTONE => 1.2,
+            Block::LOG | Block::PLANKS => 1.5,
+            Block::STONE | Block::COBBLESTONE | Block::BRICKS => 2.0,
+            Block::COAL_ORE | Block::IRON_ORE => 2.5,
+            Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
+            Block::BEDROCK | Block::AIR => f32::INFINITY,
+            b if b.is_water() => f32::INFINITY,
+            _ => 1.0,
+        }
+    }
+
+    /// Every block a creative player can pick from.
+    pub fn creative_palette() -> impl Iterator<Item = Block> {
+        (1..=23u8).map(Block)
     }
 
     /// Blocks that can be placed into or flowed over.

@@ -26,6 +26,26 @@ fn fs_line() -> @location(0) vec4<f32> {
     return vec4<f32>(0.0, 0.0, 0.0, 0.7);
 }
 
+struct DecalOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) @interpolate(flat) layer: u32,
+};
+
+@vertex
+fn vs_decal(@location(0) pos: vec3<f32>, @location(1) uv: vec2<f32>, @location(2) layer: u32) -> DecalOut {
+    var out: DecalOut;
+    out.clip = g.view_proj * vec4<f32>(pos, 1.0);
+    out.uv = uv;
+    out.layer = layer;
+    return out;
+}
+
+@fragment
+fn fs_decal(in: DecalOut) -> @location(0) vec4<f32> {
+    return textureSample(blocks, blocks_sampler, in.uv, in.layer);
+}
+
 struct UiOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) uv: vec2<f32>,
