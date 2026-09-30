@@ -496,7 +496,7 @@ mod tests {
         let flip = q[0] >> 31;
         std::array::from_fn(|k| {
             let j = (k as u32 + flip) & 3;
-            let c = if face % 2 == 0 { j } else { (4 - j) & 3 };
+            let c = if face.is_multiple_of(2) { j } else { (4 - j) & 3 };
             let du = if c == 1 || c == 2 { w } else { 0 };
             let dv = if c >= 2 { h } else { 0 };
             let mut p = [q[0] & 63, q[0] >> 6 & 63, q[0] >> 12 & 63];

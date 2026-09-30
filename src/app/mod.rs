@@ -728,11 +728,12 @@ impl Game {
                 sorted[sorted.len() - 1],
             );
             println!(
-                "last frame: {} meshes, {} visible, {} draw calls, {:.2}M quads, {:.0} MB vertex data",
+                "last frame: {} meshes, {} visible, {} draw calls, {:.2}M quads, {:.0} MB quad data ({:.0} MB reserved)",
                 s.meshes,
                 s.visible,
                 s.draw_calls,
                 s.quads as f64 / 1e6,
+                s.gpu_used_bytes as f64 / 1e6,
                 s.gpu_bytes as f64 / 1e6
             );
             return true;

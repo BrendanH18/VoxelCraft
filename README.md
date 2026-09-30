@@ -90,7 +90,8 @@ game decides what they do to the player.
 | 32³ chunks; uniform chunks stored as a single block | Most sky and deep-rock chunks cost 1 byte instead of 32 KiB |
 | Greedy meshing | Merges coplanar faces with identical texture/AO/light into one quad |
 | Face-direction culling | Quads are grouped by facing per chunk; groups facing away from the camera are skipped (~45% fewer quads drawn) |
-| 8-byte vertices, UVs derived in shader | Roughly 4x smaller than Minecraft's vertex format |
+| 12-byte quad records with vertex pulling | The vertex shader expands each quad from a storage buffer; ~9x smaller than Minecraft's 4 vertices x 28 bytes |
+| Pooled quad arena | All chunk meshes share a few large GPU buffers (best-fit free list), so drawing needs no per-chunk buffer binds |
 | One shared quad index buffer | No per-chunk index data |
 | Lighting computed inside mesh jobs over a 15-block margin | Exact at chunk borders with zero shared mutable light state, so every job runs in parallel |
 | Worker thread pool with nearest-first scheduling and chunk versioning | Generation and meshing never block the render thread; stale results are dropped |
@@ -109,10 +110,10 @@ light+mesh (1 thread): 1.15 ms per dense chunk
 stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.17 s
 
 $ voxelcraft --bench-render --rd 8     # 1600x900, GPU-synchronised each frame
-avg 1.19 ms (~840 fps) — 661 draw calls, 0.42M quads drawn
+avg 1.10 ms (~900 fps) — 661 draw calls, 0.42M quads drawn
 
 $ voxelcraft --bench-render --rd 16    # 512-block view distance
-avg 2.18 ms (~460 fps) — 1708 draw calls, 0.89M quads drawn
+avg 2.05 ms (~490 fps) — 1708 draw calls, 0.89M quads drawn, 52 MB of quad data
 ```
 
 Render distance is measured in 32-block chunks, so `--rd 8` is 256 blocks

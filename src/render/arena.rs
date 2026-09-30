@@ -160,7 +160,8 @@ impl QuadArena {
             if needed <= self.max_page_quads {
                 let capacity = (last.capacity * 2).max(needed).min(self.max_page_quads);
                 let (buffer, bind_group) = self.create_page(device, capacity);
-                let last = self.pages.last_mut().unwrap();
+                let index = self.pages.len() - 1;
+                let last = &mut self.pages[index];
                 let mut encoder = device.create_command_encoder(&Default::default());
                 encoder.copy_buffer_to_buffer(&last.buffer, 0, &buffer, 0, last.buffer.size());
                 queue.submit([encoder.finish()]);
@@ -168,9 +169,9 @@ impl QuadArena {
                 last.capacity = capacity;
                 last.buffer = buffer;
                 last.bind_group = bind_group;
-                log::debug!("chunk quad page {} grown to {} MB", self.pages.len() - 1, capacity as u64 * QUAD_BYTES >> 20);
+                log::debug!("chunk quad page {index} grown to {} MB", (capacity as u64 * QUAD_BYTES) >> 20);
                 let offset = last.free.alloc(len).expect("grown page fits the range");
-                return Allocation { page: self.pages.len() as u32 - 1, offset, len };
+                return Allocation { page: index as u32, offset, len };
             }
         }
         let capacity = INITIAL_PAGE_QUADS.max(len).min(self.max_page_quads);
