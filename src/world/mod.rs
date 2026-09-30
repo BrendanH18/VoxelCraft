@@ -156,6 +156,22 @@ impl World {
         block.y < 0 || block.y >= WORLD_HEIGHT || self.chunks.contains_key(&chunk_of(block))
     }
 
+    /// Highest light-blocking block (including leaves and water) in a fully
+    /// loaded column; `None` if the column isn't loaded or is empty.
+    pub fn surface_height(&self, x: i32, z: i32) -> Option<i32> {
+        let key = column_of(chunk_of(IVec3::new(x, 0, z)));
+        let col = self.columns.get(&key).filter(|c| c.loaded == WORLD_HEIGHT_CHUNKS)?;
+        let l = local_of(IVec3::new(x, 0, z));
+        let h = col.heights[(l.x + l.z * CHUNK_SIZE_I) as usize];
+        (h != NO_HEIGHT).then_some(h as i32)
+    }
+
+    /// Whether a cell sees the sky straight up (nothing light-blocking
+    /// above it). Unloaded columns count as exposed.
+    pub fn sky_exposed(&self, p: IVec3) -> bool {
+        self.surface_height(p.x, p.z).is_none_or(|h| p.y > h)
+    }
+
     /// Block at a world position; `None` if the chunk isn't loaded.
     pub fn get_block(&self, p: IVec3) -> Option<Block> {
         if p.y < 0 {

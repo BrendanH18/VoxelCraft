@@ -2,7 +2,9 @@ mod app;
 mod audio;
 mod inventory;
 mod bench;
+mod entity;
 mod mesh;
+mod physics;
 mod player;
 mod render;
 mod workers;
@@ -26,8 +28,15 @@ pub struct Args {
     pub time: Option<f64>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
     pub place: Vec<(glam::IVec3, world::block::Block)>,
+    /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
+    pub spawn: Vec<(entity::MobKind, glam::IVec3)>,
+    /// Seconds to keep running after loading before `--screenshot`.
+    pub wait: f64,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
+    /// Starting health / air overrides (debugging/screenshots).
+    pub health: Option<f32>,
+    pub air: Option<f32>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
     pub mute: bool,
     pub volume: f32,
@@ -48,6 +57,11 @@ voxelcraft [options]
   --open-inventory  start with the inventory screen open (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water)
+  --health <0..20>  starting health in half hearts (0 opens the death screen)
+  --air <0..15>     starting air in seconds
+  --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig or zombie, y may
+                    be ~ for the terrain surface, e.g. zombie,4,~,10)
+  --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --screenshot <f>  wait for the world to load, save a PNG and exit
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
@@ -70,7 +84,11 @@ fn parse_args() -> Result<Args, String> {
         open_inventory: false,
         time: None,
         place: Vec::new(),
+        spawn: Vec::new(),
+        wait: 0.0,
         pose: None,
+        health: None,
+        air: None,
         mute: false,
         volume: 1.0,
         export_sounds: false,
@@ -105,7 +123,24 @@ fn parse_args() -> Result<Args, String> {
                 let block = world::block::Block::from_name(parts[3].trim()).ok_or_else(bad)?;
                 args.place.push((glam::IVec3::new(n[0], n[1], n[2]), block));
             }
+            "--spawn" => {
+                let v = value("--spawn")?;
+                let parts: Vec<&str> = v.split(',').map(str::trim).collect();
+                let bad = || format!("--spawn needs kind,x,y,z (got {v})");
+                if parts.len() != 4 {
+                    return Err(bad());
+                }
+                let kind = entity::MobKind::from_name(parts[0]).ok_or_else(bad)?;
+                let n: Vec<i32> = parts[1..]
+                    .iter()
+                    .map(|s| if *s == "~" { Ok(i32::MIN) } else { s.parse().map_err(|_| bad()) })
+                    .collect::<Result<_, _>>()?;
+                args.spawn.push((kind, glam::IVec3::new(n[0], n[1], n[2])));
+            }
+            "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
+            "--health" => args.health = Some(value("--health")?.parse().map_err(|_| "bad --health")?),
+            "--air" => args.air = Some(value("--air")?.parse().map_err(|_| "bad --air")?),
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--pose" => {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();

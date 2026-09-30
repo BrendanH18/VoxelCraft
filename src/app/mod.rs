@@ -1,6 +1,8 @@
 //! Window, input and the per-frame game loop.
 
 mod hud;
+mod mobs;
+pub mod survival;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -22,6 +24,8 @@ use crate::world::storage::{LevelInfo, Storage};
 use crate::world::terrain::Generator;
 use crate::world::World;
 use crate::Args;
+
+use survival::Vitals;
 
 const REACH: f64 = 6.0;
 const ACTION_REPEAT: f64 = 0.22;
@@ -101,6 +105,8 @@ struct Game {
     show_debug: bool,
     /// Short message above the hotbar (item names, mode changes).
     popup: (String, Instant),
+    /// Health, air and fall tracking (survival).
+    vitals: Vitals,
     screenshot: Option<String>,
     screenshot_state: u32,
     place: Vec<(glam::IVec3, Block)>,
@@ -109,6 +115,7 @@ struct Game {
     bench_render: Option<Vec<f64>>,
     frame_started: Option<Instant>,
     audio: crate::audio::Audio,
+    mobs: mobs::Mobs,
 }
 
 pub struct App {
@@ -175,6 +182,19 @@ impl ApplicationHandler for App {
                 GameMode::Survival => Inventory::default(),
             });
 
+        let prop = |k: &str| existing.as_ref().and_then(|l| l.props.get(k));
+        let mut vitals = Vitals::restore(
+            prop("health").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_HEALTH),
+            prop("air").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_AIR),
+            prop("death").cloned(),
+        );
+        if let Some(h) = self.args.health {
+            vitals = Vitals::restore(h, vitals.air, None);
+        }
+        if let Some(a) = self.args.air {
+            vitals.air = a.clamp(0.0, survival::MAX_AIR);
+        }
+
         let generator = Arc::new(Generator::new(seed));
         let mut player = Player::new(generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
         if let Some((pos, yaw, pitch)) = existing.as_ref().and_then(|l| l.player) {
@@ -222,6 +242,7 @@ impl ApplicationHandler for App {
             cpu_ms: 0.0,
             show_debug: self.args.debug_overlay,
             popup: (String::new(), now - Duration::from_secs(10)),
+            vitals,
             screenshot: self.args.screenshot.clone(),
             screenshot_state: 0,
             place: self.args.place.clone(),
@@ -229,9 +250,12 @@ impl ApplicationHandler for App {
             bench_render: self.args.bench_render.then(Vec::new),
             frame_started: None,
             audio: crate::audio::Audio::new(self.args.mute, self.args.volume),
+            mobs: mobs::Mobs::new(seed, self.args.spawn.clone(), self.args.wait),
         };
         game.renderer.force_offscreen = game.bench_render.is_some();
-        if game.screenshot.is_none() && game.bench_render.is_none() {
+        if game.vitals.is_dead() {
+            game.on_death();
+        } else if game.screenshot.is_none() && game.bench_render.is_none() {
             game.set_grab(true);
         }
         self.game = Some(game);
@@ -275,6 +299,12 @@ impl ApplicationHandler for App {
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let pressed = state == ElementState::Pressed;
+                if game.vitals.is_dead() {
+                    if pressed && button == MouseButton::Left {
+                        game.respawn();
+                    }
+                    return;
+                }
                 if game.inventory_open {
                     if pressed {
                         game.inventory_click(button == MouseButton::Right);
@@ -289,6 +319,9 @@ impl ApplicationHandler for App {
                     MouseButton::Left => {
                         game.left_held = pressed;
                         if !pressed {
+                            game.breaking = None;
+                            game.release_attack();
+                        } else if game.attack() {
                             game.breaking = None;
                         } else if game.mode == GameMode::Creative {
                             game.break_block();
@@ -384,6 +417,9 @@ impl Game {
     }
 
     fn on_key(&mut self, code: KeyCode) {
+        if self.vitals.is_dead() && matches!(code, KeyCode::KeyE | KeyCode::KeyG | KeyCode::KeyF | KeyCode::Space) {
+            return;
+        }
         match code {
             KeyCode::Escape if self.inventory_open => self.toggle_inventory(),
             KeyCode::Escape => self.set_grab(false),
@@ -463,6 +499,43 @@ impl Game {
         self.popup = (text.to_string(), Instant::now());
     }
 
+    /// The single entry point for hurting the player (falls, drowning,
+    /// mobs, ...). `amount` is in half hearts; `cause` completes the death
+    /// message "Player <cause>", e.g. "drowned" or "was slain by a zombie".
+    /// Returns the damage actually taken: zero in creative, while dead, or
+    /// when absorbed by the 0.5 s hurt immunity that follows each hit (a
+    /// stronger hit within it only deals the difference).
+    pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
+        let taken = self.vitals.damage(amount, cause, self.mode == GameMode::Creative);
+        if taken > 0.0 && self.vitals.is_dead() {
+            self.on_death();
+        }
+        taken
+    }
+
+    /// Releases the mouse and stops all actions for the death screen.
+    fn on_death(&mut self) {
+        log::info!("player {}", self.vitals.death.as_deref().unwrap_or("died"));
+        if self.inventory_open {
+            self.inventory_open = false;
+            self.inventory.return_cursor();
+        }
+        self.set_grab(false);
+        self.keys.clear();
+        self.left_held = false;
+        self.right_held = false;
+        self.breaking = None;
+    }
+
+    /// Back to the world spawn with full health; the inventory is kept.
+    fn respawn(&mut self) {
+        self.player.pos = self.world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+        self.player.vel = DVec3::ZERO;
+        self.player.flying = false;
+        self.vitals.respawn();
+        self.set_grab(true);
+    }
+
     fn set_mode(&mut self, mode: GameMode) {
         self.mode = mode;
         self.player.can_fly = mode == GameMode::Creative;
@@ -511,6 +584,9 @@ impl Game {
 
     /// Instant break (creative).
     fn break_block(&mut self) {
+        if self.attacking() {
+            return;
+        }
         if let Some((pos, _)) = self.target()
             && let Some(block) = self.world.get_block(pos)
             && block != Block::BEDROCK
@@ -523,6 +599,10 @@ impl Game {
     /// Timed break with drops (survival). Called every frame while the
     /// button is held.
     fn continue_breaking(&mut self, dt: f64) {
+        if self.attacking() {
+            self.breaking = None;
+            return;
+        }
         let Some((pos, _)) = self.target() else {
             self.breaking = None;
             return;
@@ -588,6 +668,7 @@ impl Game {
             }
         }
         self.placed = true;
+        self.spawn_pending_mobs();
     }
 
     /// Drives `--screenshot`: once streaming settles, capture a frame and
@@ -600,7 +681,7 @@ impl Game {
                 self.apply_placements();
                 false
             }
-            0 if settled && self.world.is_idle() => {
+            0 if settled && self.world.is_idle() && self.mobs.waited() => {
                 self.screenshot_state = 1;
                 false
             }
@@ -667,6 +748,11 @@ impl Game {
         let mut inventory = self.inventory.clone();
         inventory.return_cursor();
         props.insert("inventory".to_string(), inventory.serialize());
+        props.insert("health".to_string(), self.vitals.health.to_string());
+        props.insert("air".to_string(), format!("{:.2}", self.vitals.air));
+        if let Some(cause) = &self.vitals.death {
+            props.insert("death".to_string(), cause.clone());
+        }
         let level = LevelInfo {
             seed: self.world.generator.seed,
             player: Some((self.player.pos, self.player.yaw, self.player.pitch)),
@@ -688,7 +774,7 @@ impl Game {
         // --- Simulation ---------------------------------------------------
         let held = |k: KeyCode| self.keys.contains(&k);
         let axis = |pos: KeyCode, neg: KeyCode| held(pos) as i32 as f64 - held(neg) as i32 as f64;
-        let input = if self.mouse_grabbed && !self.inventory_open {
+        let input = if self.mouse_grabbed && !self.inventory_open && !self.vitals.is_dead() {
             MoveInput {
                 forward: axis(KeyCode::KeyW, KeyCode::KeyS),
                 right: axis(KeyCode::KeyD, KeyCode::KeyA),
@@ -701,6 +787,20 @@ impl Game {
         };
         self.player.update(dt, input, &self.world);
         self.audio.update(&self.player, &self.world, dt);
+        let env = survival::Env {
+            y: self.player.pos.y,
+            on_ground: self.player.on_ground,
+            flying: self.player.flying,
+            in_water: self.player.in_water,
+            head_in_water: self.player.head_in_water(&self.world),
+        };
+        let hurts = self.vitals.tick(dt as f32, &env, self.mode == GameMode::Creative);
+        if hurts.fall > 0.0 {
+            self.damage_player(hurts.fall, survival::CAUSE_FALL);
+        }
+        if hurts.drown > 0.0 {
+            self.damage_player(hurts.drown, survival::CAUSE_DROWN);
+        }
 
         self.action_cooldown -= dt;
         let acting = self.mouse_grabbed && !self.inventory_open;
@@ -729,6 +829,7 @@ impl Game {
         for pos in self.world.mesh_removals.drain(..) {
             self.renderer.remove_mesh(pos);
         }
+        self.update_mobs(dt);
 
         if now - self.last_save > AUTOSAVE_EVERY {
             self.save();
@@ -738,13 +839,15 @@ impl Game {
         self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
         let sky = sky_state(self.day_time);
         let daylight = sky.daylight;
-        let underwater = self.player.head_in_water(&self.world);
+        let underwater = env.head_in_water;
         let view_dist = (self.world.render_distance() * 32) as f32;
         let (fog_color, fog_start, fog_end) = if underwater {
             (WATER_FOG.map(|c| c * daylight), 0.0, 28.0)
         } else {
             (sky.horizon, view_dist * 0.55, view_dist * 0.95)
         };
+        let verts = self.mobs.entities.mesh(self.player.eye(), self.player.forward(), fog_end, (now - self.started).as_secs_f32());
+        self.renderer.set_entities(verts);
         let params = FrameParams {
             camera: self.player.eye(),
             forward: self.player.forward(),
@@ -757,11 +860,11 @@ impl Game {
             zenith_color: if underwater { fog_color } else { sky.zenith },
             sun_dir: sky.sun_dir,
             time: (now - self.started).as_secs_f32(),
-            highlight: self.target().map(|(p, _)| p),
+            highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| p),
             crack: self.breaking.map(|(p, progress)| {
                 (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u8)
             }),
-            ui: if self.show_hud { self.build_ui(now) } else { Vec::new() },
+            ui: if self.show_hud || self.vitals.is_dead() { self.build_ui(now) } else { Vec::new() },
         };
         if !self.renderer.render(&params) {
             return; // hidden window: don't count this frame in the stats

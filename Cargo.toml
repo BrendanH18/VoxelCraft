@@ -2,6 +2,8 @@
 name = "voxelcraft"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "A Minecraft-style voxel game written from scratch in Rust, built for performance"
 
 [dependencies]
 bytemuck = { version = "1.25.2", features = ["derive"] }
