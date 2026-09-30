@@ -2,7 +2,6 @@
 
 use glam::{DVec3, IVec3, Vec3};
 
-use crate::world::block::Block;
 use crate::world::World;
 
 pub const EYE_HEIGHT: f64 = 1.62;
@@ -58,7 +57,13 @@ impl Player {
     }
 
     pub fn head_in_water(&self, world: &World) -> bool {
-        world.get_block(self.eye().floor().as_ivec3()) == Some(Block::WATER)
+        let eye = self.eye();
+        world.get_block(eye.floor().as_ivec3()).is_some_and(|b| {
+            let above = world.get_block(eye.floor().as_ivec3() + IVec3::Y);
+            // Respect the lowered surface of the top water block.
+            let drop = if above.is_some_and(|a| a.is_water()) { 0.0 } else { b.water_drop() as f64 / 16.0 };
+            b.is_water() && eye.y - eye.y.floor() < 1.0 - drop
+        })
     }
 
     /// Whether the player's box overlaps a block cell.
@@ -90,7 +95,7 @@ impl Player {
 
     fn step(&mut self, dt: f64, input: MoveInput, world: &World) {
         let feet = self.pos + DVec3::new(0.0, 0.3, 0.0);
-        self.in_water = world.get_block(feet.floor().as_ivec3()) == Some(Block::WATER);
+        self.in_water = world.get_block(feet.floor().as_ivec3()).is_some_and(|b| b.is_water());
 
         let yaw = self.yaw as f64;
         let fwd = DVec3::new(yaw.cos(), 0.0, yaw.sin());

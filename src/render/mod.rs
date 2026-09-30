@@ -757,7 +757,8 @@ impl Renderer {
         out
     }
 
-    pub fn render(&mut self, p: &FrameParams) {
+    /// Draws a frame; returns `false` if it was skipped (window hidden).
+    pub fn render(&mut self, p: &FrameParams) -> bool {
         let acquire_start = std::time::Instant::now();
         let frame = if self.force_offscreen {
             None
@@ -777,7 +778,7 @@ impl Renderer {
         if frame.is_none() {
             if !self.force_offscreen && self.capture.is_none() {
                 std::thread::sleep(std::time::Duration::from_millis(8));
-                return;
+                return false;
             }
             let size = (self.config.width, self.config.height);
             if self.offscreen.as_ref().is_none_or(|t| (t.width(), t.height()) != size) {
@@ -968,5 +969,6 @@ impl Renderer {
 
         stats.gpu_bytes = self.meshes.values().map(|m| m.buffer.size()).sum();
         self.stats = stats;
+        true
     }
 }

@@ -37,15 +37,15 @@ const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
 const DAY_LENGTH: f64 = 600.0;
 
 const HOTBAR: [Block; 9] = [
-    Block::GRASS,
     Block::DIRT,
     Block::STONE,
     Block::COBBLESTONE,
     Block::PLANKS,
     Block::LOG,
-    Block::GLASS,
     Block::BRICKS,
+    Block::GLASS,
     Block::GLOWSTONE,
+    Block::WATER,
 ];
 
 struct Game {
@@ -78,6 +78,8 @@ struct Game {
     selection_changed: Instant,
     screenshot: Option<String>,
     screenshot_state: u32,
+    place: Vec<(glam::IVec3, Block)>,
+    placed: bool,
     /// `--bench-render`: per-frame wall times (CPU + GPU, serialised).
     bench_render: Option<Vec<f64>>,
     frame_started: Option<Instant>,
@@ -177,6 +179,8 @@ impl ApplicationHandler for App {
             selection_changed: now - Duration::from_secs(10),
             screenshot: self.args.screenshot.clone(),
             screenshot_state: 0,
+            place: self.args.place.clone(),
+            placed: false,
             bench_render: self.args.bench_render.then(Vec::new),
             frame_started: None,
         };
@@ -392,7 +396,7 @@ impl Game {
         let Some((pos, normal)) = self.target() else { return };
         let at = pos + normal;
         let block = self.hotbar[self.selected];
-        let free = matches!(self.world.get_block(at), Some(Block::AIR | Block::WATER));
+        let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
         if free && !(block.is_solid() && self.player.intersects_block(at)) {
             self.world.set_block(at, block);
         }
@@ -409,12 +413,30 @@ impl Game {
         }
     }
 
+    /// Applies `--place` edits (once).
+    fn apply_placements(&mut self) {
+        for &(mut pos, block) in &self.place {
+            if pos.y == i32::MIN {
+                pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
+            }
+            if !self.world.set_block(pos, block) {
+                log::warn!("--place {pos} {}: chunk not loaded", block.name());
+            }
+        }
+        self.placed = true;
+    }
+
     /// Drives `--screenshot`: once streaming settles, capture a frame and
     /// report completion on the frame after.
     fn screenshot_done(&mut self) -> bool {
         let Some(path) = self.screenshot.clone() else { return false };
+        let settled = self.world.loaded_chunks() > 0 && self.world.pending_jobs() == 0;
         match self.screenshot_state {
-            0 if self.world.loaded_chunks() > 0 && self.world.pending_jobs() == 0 => {
+            0 if settled && !self.placed => {
+                self.apply_placements();
+                false
+            }
+            0 if settled && self.world.is_idle() => {
                 self.screenshot_state = 1;
                 false
             }
@@ -520,6 +542,10 @@ impl Game {
         }
 
         // --- World streaming ------------------------------------------------
+        if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0 {
+            self.apply_placements();
+        }
+        self.world.tick_fluids(dt);
         self.world.update(self.player.pos);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);
@@ -558,7 +584,9 @@ impl Game {
             highlight: self.target().map(|(p, _)| p),
             ui: if self.show_hud { self.build_ui(now) } else { Vec::new() },
         };
-        self.renderer.render(&params);
+        if !self.renderer.render(&params) {
+            return; // hidden window: don't count this frame in the stats
+        }
 
         // --- Stats ----------------------------------------------------------
         self.frames += 1;

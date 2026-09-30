@@ -42,6 +42,8 @@ chunks are stored, everything else regenerates from the seed.
 - Flood-fill sky and block light with smooth lighting and ambient occlusion
 - Day/night cycle with a procedural sky: square sun and moon, sunset glow,
   rotating stars and drifting blocky clouds; distance and underwater fog
+- Flowing water: falls, spreads up to 7 blocks toward the nearest drop,
+  dries up without a source, and forms infinite sources; lowered surfaces
 - Walking, swimming and flying with AABB collision
 - Break, place and pick blocks, with a selection outline and hotbar
 - Procedurally generated, mipmapped block textures — the game ships no assets
@@ -60,6 +62,7 @@ chunks are stored, everything else regenerates from the seed.
 | Frustum culling, front-to-back opaque and back-to-front translucent sorting | Less overdraw; correct water blending |
 | Camera-relative rendering, reverse-Z infinite projection | Stable precision far from the origin and at long view distances |
 | Synchronous remesh of edited chunks only | Block edits appear the same frame; lighting ripples update on workers |
+| Event-driven water simulation, batched per tick | Untouched oceans cost nothing; a flood tick takes ~0.5 ms and remeshes on workers |
 
 ### Numbers (Apple M5, release build)
 
@@ -109,4 +112,5 @@ cargo test --release
 cargo run --release -- --bench
 cargo run --release -- --bench-render --pose 0,100,0,0,-10
 cargo run --release -- --screenshot shot.png --pose 0,190,0,45,-35
+cargo run --release -- --place 0,~,0,water --pose 0,120,-10,90,-30   # scripted scenes
 ```

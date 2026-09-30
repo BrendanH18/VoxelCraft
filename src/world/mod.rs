@@ -14,6 +14,7 @@
 
 pub mod block;
 pub mod chunk;
+mod fluid;
 pub mod noise;
 pub mod storage;
 pub mod terrain;
@@ -60,6 +61,7 @@ pub struct World {
     center: Option<IVec3>,
     render_distance: i32,
     region: Box<Region>,
+    fluids: fluid::FluidState,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
     pub mesh_removals: Vec<IVec3>,
 }
@@ -84,6 +86,7 @@ impl World {
             center: None,
             render_distance,
             region: Box::default(),
+            fluids: Default::default(),
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
         }
@@ -103,6 +106,11 @@ impl World {
 
     pub fn loaded_chunks(&self) -> usize {
         self.chunks.len()
+    }
+
+    /// No generation, meshing or water flow left to do.
+    pub fn is_idle(&self) -> bool {
+        self.pending_jobs() == 0 && self.dirty.is_empty() && self.active_fluids() == 0
     }
 
     pub fn pending_jobs(&self) -> usize {
@@ -162,10 +170,20 @@ impl World {
             .map(|s| s.data.get(l.x as usize, l.y as usize, l.z as usize))
     }
 
-    /// Changes a block. Chunks whose geometry changes are remeshed
-    /// synchronously so the edit shows up this frame; chunks whose lighting
-    /// changes are remeshed on the workers.
+    /// Player edit. Chunks whose geometry changes are remeshed synchronously
+    /// so the edit shows up this frame; chunks whose lighting changes are
+    /// remeshed on the workers. Nearby water is woken up to flow.
     pub fn set_block(&mut self, p: IVec3, block: Block) -> bool {
+        let changed = self.edit(p, block, true);
+        if changed {
+            self.wake_fluids(p);
+        }
+        changed
+    }
+
+    /// Changes a block and schedules remeshing of every chunk whose geometry
+    /// or lighting depends on it (synchronously for geometry if `sync`).
+    fn edit(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
         if p.y < 0 || p.y >= WORLD_HEIGHT {
             return false;
         }
@@ -203,7 +221,7 @@ impl World {
                     let c = IVec3::new(cx, cy, cz);
                     let Some(slot) = self.chunks.get_mut(&c) else { continue };
                     slot.version = slot.version.wrapping_add(1);
-                    if geometry(c) {
+                    if sync && geometry(c) {
                         self.remesh_now(c);
                     } else if self.in_mesh_range(c) {
                         self.dirty.insert(c);
@@ -594,5 +612,60 @@ mod tests {
         }
         assert!(player.pos.x <= wall_x as f64 - 0.3 + 1e-3, "walked through wall: x={}", player.pos.x);
         assert!(player.pos.x > wall_x as f64 - 0.4);
+    }
+
+    #[test]
+    fn water_spreads_seven_blocks_and_dries_up() {
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        // A 21x21 stone platform high in the sky.
+        let y = 200;
+        for x in -10..=10 {
+            for z in -10..=10 {
+                world.edit(IVec3::new(x, y, z), Block::STONE, false);
+            }
+        }
+        let tick = |world: &mut World, n: usize| {
+            for _ in 0..n {
+                world.tick_fluids(0.25);
+            }
+        };
+        let at = |world: &World, x: i32, z: i32| world.get_block(IVec3::new(x, y + 1, z)).unwrap();
+
+        world.set_block(IVec3::new(0, y + 1, 0), Block::WATER);
+        tick(&mut world, 30);
+        assert_eq!(at(&world, 0, 0), Block::WATER);
+        assert_eq!(at(&world, 1, 0).water_level(), Some(1));
+        assert_eq!(at(&world, 7, 0).water_level(), Some(7));
+        assert_eq!(at(&world, 3, 4).water_level(), Some(7), "spreads in a diamond");
+        assert_eq!(at(&world, 8, 0), Block::AIR);
+        assert_eq!(world.active_fluids(), 0, "flow should settle");
+
+        // Water pours off the platform edge once it reaches it.
+        world.set_block(IVec3::new(9, y + 1, 0), Block::WATER);
+        tick(&mut world, 12);
+        assert!(world.get_block(IVec3::new(11, y, 0)).unwrap().is_water(), "should pour over the edge");
+        assert!(world.get_block(IVec3::new(11, y - 5, 0)).unwrap().is_water(), "and fall");
+
+        // Removing both sources dries everything up.
+        world.set_block(IVec3::new(0, y + 1, 0), Block::AIR);
+        world.set_block(IVec3::new(9, y + 1, 0), Block::AIR);
+        tick(&mut world, 60);
+        for x in -10..=10 {
+            for z in -10..=10 {
+                assert_eq!(at(&world, x, z), Block::AIR, "water left at {x},{z}");
+            }
+        }
+        assert!(!world.get_block(IVec3::new(11, y - 5, 0)).unwrap().is_water());
+
+        // Two adjacent sources fill a 1x3 trench's middle into a new source.
+        for x in 0..3 {
+            world.edit(IVec3::new(x, y + 1, 5), Block::AIR, false);
+            world.edit(IVec3::new(x, y + 1, 4), Block::STONE, false);
+            world.edit(IVec3::new(x, y + 1, 6), Block::STONE, false);
+        }
+        world.set_block(IVec3::new(0, y + 1, 5), Block::WATER);
+        world.set_block(IVec3::new(2, y + 1, 5), Block::WATER);
+        tick(&mut world, 10);
+        assert_eq!(at(&world, 1, 5), Block::WATER, "infinite source");
     }
 }

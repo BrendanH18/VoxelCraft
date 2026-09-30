@@ -18,6 +18,7 @@
 //! | 0    | 23-30 | texture array layer                      |
 //! | 1    | 0-3   | smoothed sky light                       |
 //! | 1    | 4-7   | smoothed block light                     |
+//! | 1    | 8-12  | water surface drop, 1/16 block           |
 //!
 //! UVs are derived in the shader from the local position, so merged quads
 //! tile their texture. All quads share one global index buffer.
@@ -260,7 +261,22 @@ fn mesh_region(r: &Region) -> MeshData {
                     let ni = i + sd;
                     let n = blocks[ni as usize];
                     let mut key = 0;
-                    if b.kind() != RenderKind::Invisible && face_visible(b, n) {
+                    // Water surfaces sit lower than a full block unless more
+                    // water is stacked on top.
+                    let drop_at = |idx: isize| -> u64 {
+                        if blocks[(idx + strides[1]) as usize].is_water() { 0 } else { blocks[idx as usize].water_drop() as u64 }
+                    };
+                    let visible = if b.is_water() {
+                        if n.is_water() {
+                            // Only a side stepping down to lower water shows.
+                            d != 1 && drop_at(ni) > drop_at(i)
+                        } else {
+                            !n.is_opaque()
+                        }
+                    } else {
+                        b.kind() != RenderKind::Invisible && face_visible(b, n)
+                    };
+                    if visible {
                         let kind: u64 = match b.kind() {
                             RenderKind::Cutout => 1,
                             RenderKind::Translucent => 2,
@@ -309,6 +325,9 @@ fn mesh_region(r: &Region) -> MeshData {
                             ao |= a << (c * 2);
                             light |= (ls | lb << 4) << (c * 8);
                         }
+                        if kind == 2 {
+                            ao = drop_at(i); // water has no AO; carry the surface drop instead
+                        }
                         let layer = b.info().tex[face] as u64;
                         key = PRESENT | kind << KIND_SHIFT | ao << AO_SHIFT | layer | light << LIGHT_SHIFT;
                         any = true;
@@ -353,6 +372,8 @@ fn mesh_region(r: &Region) -> MeshData {
                     let light = |c: usize| ((key >> LIGHT_SHIFT) >> (c * 8)) as u32 & 0xFF;
                     // Brightness proxy for picking the triangulation diagonal.
                     let bright = |c: usize| ao(c) * 16 + (light(c) & 15) + (light(c) >> 4);
+                    // (For water the AO bits hold the surface drop; it's the
+                    // same for all corners so it doesn't affect this choice.)
                     let mut order = if positive { [0, 1, 2, 3] } else { [0, 3, 2, 1] };
                     // Split along the diagonal that keeps AO/light gradients
                     // symmetric (avoids the classic anisotropy artefact).
@@ -361,18 +382,26 @@ fn mesh_region(r: &Region) -> MeshData {
                     }
                     let kind = ((key >> KIND_SHIFT) & 3) as usize;
                     let layer = (key & 0xFF) as u32;
+                    let water_drop = if kind == 2 { ((key >> AO_SHIFT) & 0xFF) as u32 } else { 0 };
+                    let top_y = (if d == 1 { plane } else if u == 1 { uu + w } else { vv + h }) as u32;
                     for c in order {
                         let mut pos = [0u32; 3];
                         pos[d] = plane as u32;
                         pos[u] = corners[c].0 as u32;
                         pos[v] = corners[c].1 as u32;
+                        let (vertex_ao, drop) = if kind == 2 {
+                            // Lower the upper edge of water faces (never the bottom face).
+                            (3, if face != 3 && pos[1] == top_y { water_drop } else { 0 })
+                        } else {
+                            (ao(c), 0)
+                        };
                         let w0 = pos[0]
                             | pos[1] << 6
                             | pos[2] << 12
                             | (face as u32) << 18
-                            | ao(c) << 21
+                            | vertex_ao << 21
                             | layer << 23;
-                        out[kind].push([w0, light(c)]);
+                        out[kind].push([w0, light(c) | drop << 8]);
                     }
                     uu += w;
                 }

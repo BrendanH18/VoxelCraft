@@ -29,11 +29,12 @@ struct VsOut {
 @vertex
 fn vs_main(@location(0) data: vec2<u32>, @location(1) offset: vec3<f32>) -> VsOut {
     let packed = data.x;
+    // Water surfaces are lowered by a per-vertex drop (word 1, bits 8-12).
     let local = vec3<f32>(
         f32(packed & 63u),
         f32((packed >> 6u) & 63u),
         f32((packed >> 12u) & 63u),
-    );
+    ) - vec3<f32>(0.0, f32((data.y >> 8u) & 31u) / 16.0, 0.0);
     let face = (packed >> 18u) & 7u;
     let ao = (packed >> 21u) & 3u;
 

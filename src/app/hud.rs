@@ -113,6 +113,7 @@ impl Game {
             format!("Draw calls: {}, quads: {:.2}M", s.draw_calls, s.quads as f64 / 1e6),
             format!("Vertex memory: {:.1} MB", s.gpu_bytes as f64 / 1e6),
             format!("Workers: {}, jobs in flight: {}", self.world.worker_threads(), self.world.pending_jobs()),
+            format!("Water: {} active, last tick {:.2} ms", self.world.active_fluids(), self.world.fluid_tick_ms()),
             format!("Seed: {}", self.world.generator.seed),
         ];
 

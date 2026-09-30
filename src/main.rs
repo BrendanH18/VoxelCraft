@@ -20,6 +20,8 @@ pub struct Args {
     pub debug_overlay: bool,
     /// Starting time of day, 0..1 (0 sunrise, 0.25 noon, 0.75 midnight).
     pub time: Option<f64>,
+    /// Blocks to set once the world has loaded (debugging/screenshots).
+    pub place: Vec<(glam::IVec3, world::block::Block)>,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
 }
@@ -34,6 +36,8 @@ voxelcraft [options]
   --bench           headless terrain generation + meshing benchmark
   --bench-render    load the world, render a 360° sweep offscreen, report frame times
   --f3              start with the debug overlay open
+  --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
+                    terrain surface, e.g. 0,~,0,water)
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --screenshot <f>  wait for the world to load, save a PNG and exit
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)";
@@ -50,6 +54,7 @@ fn parse_args() -> Result<Args, String> {
         bench_render: false,
         debug_overlay: false,
         time: None,
+        place: Vec::new(),
         pose: None,
     };
     let mut it = std::env::args().skip(1);
@@ -64,6 +69,21 @@ fn parse_args() -> Result<Args, String> {
             "--bench" => args.bench = true,
             "--bench-render" => args.bench_render = true,
             "--f3" => args.debug_overlay = true,
+            "--place" => {
+                let v = value("--place")?;
+                let parts: Vec<&str> = v.split(',').collect();
+                let bad = || format!("--place needs x,y,z,block (got {v})");
+                if parts.len() != 4 {
+                    return Err(bad());
+                }
+                // `~` for y means "on the terrain surface".
+                let n: Vec<i32> = parts[..3]
+                    .iter()
+                    .map(|s| if s.trim() == "~" { Ok(i32::MIN) } else { s.trim().parse().map_err(|_| bad()) })
+                    .collect::<Result<_, _>>()?;
+                let block = world::block::Block::from_name(parts[3].trim()).ok_or_else(bad)?;
+                args.place.push((glam::IVec3::new(n[0], n[1], n[2]), block));
+            }
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--pose" => {

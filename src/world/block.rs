@@ -88,6 +88,12 @@ impl Block {
     pub const SANDSTONE: Block = Block(21);
     pub const GLOWSTONE: Block = Block(22);
     pub const SPRUCE_LEAVES: Block = Block(23);
+    /// Flowing water levels 1 (strongest) to 7 are ids 24..=30.
+    pub const FALLING_WATER: Block = Block(31);
+
+    pub const fn flowing_water(level: u8) -> Block {
+        Block(23 + level)
+    }
 
     #[inline(always)]
     pub fn info(self) -> &'static BlockInfo {
@@ -105,12 +111,48 @@ impl Block {
     }
 
     #[inline(always)]
+    pub fn is_water(self) -> bool {
+        self.0 == 5 || (24..=31).contains(&self.0)
+    }
+
+    /// Water flow level: 0 for sources and falling water, 1..=7 for flowing.
+    pub fn water_level(self) -> Option<u8> {
+        match self.0 {
+            5 | 31 => Some(0),
+            24..=30 => Some(self.0 - 23),
+            _ => None,
+        }
+    }
+
+    /// How far (in 1/16 block) this water's surface sits below the top of
+    /// its cell when nothing but air is above it.
+    pub fn water_drop(self) -> u8 {
+        match self.0 {
+            5 => 2,
+            24..=30 => 2 + (self.0 - 23) * 12 / 7,
+            _ => 0,
+        }
+    }
+
+    /// Blocks that can be placed into or flowed over.
+    pub fn is_replaceable(self) -> bool {
+        self == Block::AIR || self.is_water()
+    }
+
+    #[inline(always)]
     pub fn is_solid(self) -> bool {
         self.info().solid
     }
 
     pub fn name(self) -> &'static str {
         self.info().name
+    }
+
+    /// Looks a block up by name (spaces or underscores).
+    pub fn from_name(name: &str) -> Option<Block> {
+        let name = name.replace('_', " ");
+        (0..=255u8).map(Block).find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
+            .or((name == "air").then_some(Block::AIR))
     }
 
     /// How much light is lost passing through this block, on top of the
@@ -162,6 +204,8 @@ const fn make(id: u8) -> BlockInfo {
         21 => ("sandstone", Opaque, column(tex::SANDSTONE_SIDE, tex::SANDSTONE_TOP, tex::SANDSTONE_TOP)),
         22 => ("glowstone", Opaque, all(tex::GLOWSTONE)),
         23 => ("spruce leaves", Cutout, all(tex::SPRUCE_LEAVES)),
+        24..=30 => ("flowing water", Translucent, all(tex::WATER)),
+        31 => ("falling water", Translucent, all(tex::WATER)),
         _ => ("unknown", Invisible, all(0)),
     };
     BlockInfo {
