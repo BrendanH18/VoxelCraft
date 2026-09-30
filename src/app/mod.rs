@@ -26,8 +26,11 @@ const REACH: f64 = 6.0;
 const ACTION_REPEAT: f64 = 0.22;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
 const MOUSE_SENSITIVITY: f32 = 0.0022;
-const SKY: [f32; 3] = [0.30, 0.55, 0.95];
+/// Horizon colour at noon (also the fog colour).
+const SKY: [f32; 3] = [0.42, 0.62, 0.98];
+const ZENITH: [f32; 3] = [0.10, 0.27, 0.80];
 const NIGHT_SKY: [f32; 3] = [0.008, 0.012, 0.035];
+const NIGHT_ZENITH: [f32; 3] = [0.002, 0.003, 0.012];
 const SUNSET: [f32; 3] = [0.95, 0.42, 0.18];
 const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
 /// Real seconds per in-game day.
@@ -62,6 +65,7 @@ struct Game {
     last_frame: Instant,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     day_time: f64,
+    started: Instant,
     last_save: Instant,
     // Title-bar stats, refreshed twice a second.
     stats_since: Instant,
@@ -161,7 +165,8 @@ impl ApplicationHandler for App {
             show_hud: true,
             last_space: now - Duration::from_secs(1),
             last_frame: now,
-            day_time: 0.08,
+            day_time: self.args.time.unwrap_or(0.08),
+            started: now,
             last_save: now,
             stats_since: now,
             frames: 0,
@@ -274,15 +279,28 @@ impl ApplicationHandler for App {
     }
 }
 
-/// Skylight multiplier and sky colour for a time of day.
-fn sky_state(t: f64) -> (f32, [f32; 3]) {
-    let s = (t * std::f64::consts::TAU).sin() as f32;
+struct SkyState {
+    daylight: f32,
+    horizon: [f32; 3],
+    zenith: [f32; 3],
+    sun_dir: glam::Vec3,
+}
+
+/// Lighting and sky colours for a time of day.
+fn sky_state(t: f64) -> SkyState {
+    let angle = (t * std::f64::consts::TAU) as f32;
+    let s = angle.sin();
     let daylight = (s * 1.8 + 0.35).clamp(0.12, 1.0);
     let k = (daylight - 0.12) / 0.88;
     let glow = (-(s * 5.0).powi(2)).exp() * 0.55;
     let lerp = |a: [f32; 3], b: [f32; 3], t: f32| std::array::from_fn(|i| a[i] + (b[i] - a[i]) * t);
-    let base = lerp(NIGHT_SKY, SKY, k);
-    (daylight, lerp(base, SUNSET, glow * k.max(0.3)))
+    SkyState {
+        daylight,
+        horizon: lerp(lerp(NIGHT_SKY, SKY, k), SUNSET, glow * k.max(0.3)),
+        zenith: lerp(NIGHT_ZENITH, ZENITH, k),
+        // Rises in the east (+X), sets in the west, tilted slightly south.
+        sun_dir: glam::Vec3::new(angle.cos(), s, 0.25).normalize(),
+    }
 }
 
 impl Game {
@@ -516,13 +534,14 @@ impl Game {
 
         // --- Render ---------------------------------------------------------
         self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
-        let (daylight, sky) = sky_state(self.day_time);
+        let sky = sky_state(self.day_time);
+        let daylight = sky.daylight;
         let underwater = self.player.head_in_water(&self.world);
         let view_dist = (self.world.render_distance() * 32) as f32;
         let (fog_color, fog_start, fog_end) = if underwater {
             (WATER_FOG.map(|c| c * daylight), 0.0, 28.0)
         } else {
-            (sky, view_dist * 0.55, view_dist * 0.95)
+            (sky.horizon, view_dist * 0.55, view_dist * 0.95)
         };
         let params = FrameParams {
             camera: self.player.eye(),
@@ -533,6 +552,9 @@ impl Game {
             fog_start,
             fog_end,
             daylight,
+            zenith_color: if underwater { fog_color } else { sky.zenith },
+            sun_dir: sky.sun_dir,
+            time: (now - self.started).as_secs_f32(),
             highlight: self.target().map(|(p, _)| p),
             ui: if self.show_hud { self.build_ui(now) } else { Vec::new() },
         };

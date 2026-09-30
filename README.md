@@ -40,7 +40,8 @@ chunks are stored, everything else regenerates from the seed.
   forests, deserts, snowy tundra, taiga and mountains, with spaghetti caves,
   deep caverns, ores, oak and spruce trees and cacti
 - Flood-fill sky and block light with smooth lighting and ambient occlusion
-- Day/night cycle, distance fog, underwater fog
+- Day/night cycle with a procedural sky: square sun and moon, sunset glow,
+  rotating stars and drifting blocky clouds; distance and underwater fog
 - Walking, swimming and flying with AABB collision
 - Break, place and pick blocks, with a selection outline and hotbar
 - Procedurally generated, mipmapped block textures — the game ships no assets

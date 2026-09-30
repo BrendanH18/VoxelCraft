@@ -18,6 +18,8 @@ pub struct Args {
     pub screenshot: Option<String>,
     pub bench_render: bool,
     pub debug_overlay: bool,
+    /// Starting time of day, 0..1 (0 sunrise, 0.25 noon, 0.75 midnight).
+    pub time: Option<f64>,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
 }
@@ -32,6 +34,7 @@ voxelcraft [options]
   --bench           headless terrain generation + meshing benchmark
   --bench-render    load the world, render a 360° sweep offscreen, report frame times
   --f3              start with the debug overlay open
+  --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --screenshot <f>  wait for the world to load, save a PNG and exit
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)";
 
@@ -46,6 +49,7 @@ fn parse_args() -> Result<Args, String> {
         screenshot: None,
         bench_render: false,
         debug_overlay: false,
+        time: None,
         pose: None,
     };
     let mut it = std::env::args().skip(1);
@@ -60,6 +64,7 @@ fn parse_args() -> Result<Args, String> {
             "--bench" => args.bench = true,
             "--bench-render" => args.bench_render = true,
             "--f3" => args.debug_overlay = true,
+            "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--pose" => {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();

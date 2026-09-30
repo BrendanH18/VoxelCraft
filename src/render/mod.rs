@@ -33,9 +33,22 @@ const MAX_QUADS_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 2 * 6;
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct Globals {
     view_proj: [[f32; 4]; 4],
+    inv_view_proj: [[f32; 4]; 4],
     fog_color: [f32; 4],
+    zenith_color: [f32; 4],
+    /// xyz: direction to the sun, w: time in seconds.
+    sun: [f32; 4],
+    /// x: fog start, y: fog end, z: daylight.
     params: [f32; 4],
+    /// xy: wrapped cloud pattern origin, z: cloud plane y relative to the
+    /// camera, w: cloud radius.
+    clouds: [f32; 4],
 }
+
+const CLOUD_HEIGHT: f64 = 192.0;
+/// Cloud pattern wraps after this many blocks (keeps shader math precise).
+const CLOUD_PERIOD: f64 = 12.0 * 5.0 * 1024.0;
+const CLOUD_SPEED: f64 = 1.2;
 
 struct ChunkMesh {
     buffer: wgpu::Buffer,
@@ -55,6 +68,10 @@ pub struct FrameParams {
     pub fog_end: f32,
     /// Skylight multiplier, 1 at noon.
     pub daylight: f32,
+    pub zenith_color: [f32; 3],
+    pub sun_dir: Vec3,
+    /// Seconds since start (animations).
+    pub time: f32,
     pub highlight: Option<IVec3>,
     /// HUD geometry, drawn last.
     pub ui: Vec<UiVertex>,
@@ -111,6 +128,8 @@ pub struct Renderer {
     cutout_pipeline: wgpu::RenderPipeline,
     translucent_pipeline: wgpu::RenderPipeline,
     line_pipeline: wgpu::RenderPipeline,
+    sky_pipeline: wgpu::RenderPipeline,
+    cloud_pipeline: wgpu::RenderPipeline,
     ui_pipeline: wgpu::RenderPipeline,
     quad_indices: wgpu::Buffer,
     instances: wgpu::Buffer,
@@ -375,6 +394,49 @@ impl Renderer {
             cache: None,
         });
 
+        let sky_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("sky shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/sky.wgsl").into()),
+        });
+        let make_sky_pipeline = |label: &str, vs: &str, fs: &str, compare, blend: Option<wgpu::BlendState>| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &sky_shader,
+                    entry_point: Some(vs),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                primitive: Default::default(),
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(compare),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &sky_shader,
+                    entry_point: Some(fs),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState { format, blend, write_mask: wgpu::ColorWrites::ALL })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        // The sky only fills pixels still at the cleared far depth.
+        let sky_pipeline = make_sky_pipeline("sky", "vs_sky", "fs_sky", wgpu::CompareFunction::GreaterEqual, None);
+        let cloud_pipeline = make_sky_pipeline(
+            "clouds",
+            "vs_clouds",
+            "fs_clouds",
+            wgpu::CompareFunction::Greater,
+            Some(wgpu::BlendState::ALPHA_BLENDING),
+        );
+
         let ui_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("hud"),
             layout: Some(&ui_layout),
@@ -446,6 +508,8 @@ impl Renderer {
             cutout_pipeline,
             translucent_pipeline,
             line_pipeline,
+            sky_pipeline,
+            cloud_pipeline,
             ui_pipeline,
             quad_indices,
             instances,
@@ -765,10 +829,21 @@ impl Renderer {
             self.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&instance_data));
         }
 
+        let cloud_origin = (DVec3::new(p.camera.x + p.time as f64 * CLOUD_SPEED, 0.0, p.camera.z))
+            .rem_euclid(DVec3::splat(CLOUD_PERIOD));
         let globals = Globals {
             view_proj: view_proj.to_cols_array_2d(),
+            inv_view_proj: view_proj.inverse().to_cols_array_2d(),
             fog_color: [p.fog_color[0], p.fog_color[1], p.fog_color[2], 1.0],
+            zenith_color: [p.zenith_color[0], p.zenith_color[1], p.zenith_color[2], 1.0],
+            sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
             params: [p.fog_start, p.fog_end, p.daylight, 0.0],
+            clouds: [
+                cloud_origin.x as f32,
+                cloud_origin.z as f32,
+                (CLOUD_HEIGHT - p.camera.y) as f32,
+                p.fog_end.max(64.0) * 1.6,
+            ],
         };
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 
@@ -851,6 +926,12 @@ impl Renderer {
             };
             draw_range(&mut pass, &self.opaque_pipeline, |m| (0, m.opaque), false);
             draw_range(&mut pass, &self.cutout_pipeline, |m| (m.opaque, m.cutout), false);
+
+            // Sky after terrain so early-z skips covered pixels.
+            pass.set_pipeline(&self.sky_pipeline);
+            pass.draw(0..3, 0..1);
+            pass.set_pipeline(&self.cloud_pipeline);
+            pass.draw(0..6, 0..1);
 
             if p.highlight.is_some() {
                 pass.set_pipeline(&self.line_pipeline);

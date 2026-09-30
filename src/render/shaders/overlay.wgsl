@@ -2,8 +2,13 @@
 
 struct Globals {
     view_proj: mat4x4<f32>,
+    inv_view_proj: mat4x4<f32>,
     fog_color: vec4<f32>,
+    zenith_color: vec4<f32>,
+    sun: vec4<f32>,
+    // x: fog start, y: fog end, z: daylight (skylight multiplier), w: unused
     params: vec4<f32>,
+    clouds: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
