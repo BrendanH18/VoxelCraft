@@ -21,7 +21,7 @@ use rustc_hash::FxHashMap;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-use crate::mesh::MeshData;
+use crate::mesh::{MeshData, CUTOUT, FACE_ORDER, OPAQUE, PASSES, TRANSLUCENT};
 use crate::world::block::tex;
 use ui::UiVertex;
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I};
@@ -53,9 +53,26 @@ const CLOUD_SPEED: f64 = 1.2;
 
 struct ChunkMesh {
     buffer: wgpu::Buffer,
-    opaque: u32,
-    cutout: u32,
-    translucent: u32,
+    /// First quad of each (pass, face) group, `pass * 6 + face`; the last
+    /// entry is the total.
+    offsets: [u32; PASSES * 6 + 1],
+}
+
+/// Face directions (bit per face, +X -X +Y -Y +Z -Z) that can face a
+/// camera at `origin` = chunk min corner minus camera position. Positive
+/// faces lie on planes 1..=32 of the chunk (water tops dip up to 2 blocks
+/// lower), negative ones on 0..=31; a face is back-facing when the camera
+/// is behind its plane.
+fn facing_faces(origin: Vec3) -> u8 {
+    let c = -origin;
+    let s = CHUNK_SIZE as f32;
+    let faces = [c.x > 0.0, c.x < s, c.y > -2.0, c.y < s, c.z > 0.0, c.z < s];
+    faces.iter().enumerate().fold(0, |m, (face, &f)| m | (f as u8) << face)
+}
+
+/// Maps a face bitmask to a pass's group bitmask (see [`FACE_ORDER`]).
+fn group_mask(faces: u8, pass: usize) -> u8 {
+    FACE_ORDER[pass].iter().enumerate().fold(0, |m, (group, &face)| m | (faces >> face & 1) << group)
 }
 
 /// Everything the renderer needs to know about the current frame.
@@ -116,6 +133,32 @@ impl Frustum {
     }
 }
 
+/// Calls `f(first_quad, quads)` for each contiguous run of face groups in
+/// `mask`, given one pass's 7 group offsets. Empty groups never split a run.
+fn face_runs(offsets: &[u32], mask: u8, mut f: impl FnMut(u32, u32)) {
+    let mut mask = mask;
+    for g in 0..6 {
+        if offsets[g] == offsets[g + 1] {
+            mask |= 1 << g;
+        }
+    }
+    let mut g = 0;
+    while g < 6 {
+        if mask & 1 << g == 0 {
+            g += 1;
+            continue;
+        }
+        let first = g;
+        while g < 6 && mask & 1 << g != 0 {
+            g += 1;
+        }
+        let quads = offsets[g] - offsets[first];
+        if quads > 0 {
+            f(offsets[first], quads);
+        }
+    }
+}
+
 pub struct Renderer {
     pub window: Arc<Window>,
     surface: wgpu::Surface<'static>,
@@ -147,7 +190,8 @@ pub struct Renderer {
     vsync: bool,
     pub stats: RenderStats,
     pub gpu_name: String,
-    visible: Vec<(f32, IVec3, [f32; 3])>,
+    /// (distance², chunk, camera-relative origin, faces that can face the camera).
+    visible: Vec<(f32, IVec3, [f32; 3], u8)>,
     capture: Option<std::path::PathBuf>,
     offscreen: Option<wgpu::Texture>,
     /// Render to `offscreen` instead of the window (benchmarks).
@@ -783,15 +827,11 @@ impl Renderer {
             contents: bytemuck::cast_slice(&mesh.vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        self.meshes.insert(
-            pos,
-            ChunkMesh {
-                buffer,
-                opaque: mesh.opaque_quads,
-                cutout: mesh.cutout_quads,
-                translucent: mesh.translucent_quads,
-            },
-        );
+        let mut offsets = [0; PASSES * 6 + 1];
+        for (i, n) in mesh.face_quads.as_flattened().iter().enumerate() {
+            offsets[i + 1] = offsets[i] + n;
+        }
+        self.meshes.insert(pos, ChunkMesh { buffer, offsets });
     }
 
     pub fn remove_mesh(&mut self, pos: IVec3) {
@@ -909,7 +949,7 @@ impl Renderer {
             let origin = (pos.as_dvec3() * size - p.camera).as_vec3();
             if frustum.intersects(origin, origin + Vec3::splat(size as f32)) {
                 let center = origin + Vec3::splat(size as f32 / 2.0);
-                self.visible.push((center.length_squared(), pos, origin.to_array()));
+                self.visible.push((center.length_squared(), pos, origin.to_array(), facing_faces(origin)));
             }
         }
         self.visible.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
@@ -998,22 +1038,27 @@ impl Renderer {
             pass.set_index_buffer(self.quad_indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(1, self.instances.slice(..));
 
-            // Each pass draws one sub-range of every chunk's vertex buffer.
+            // Each pass draws the face groups of every chunk that can face
+            // the camera, merging adjacent groups into one draw.
             let mut draw_range = |pass: &mut wgpu::RenderPass<'_>,
                                   pipeline: &wgpu::RenderPipeline,
-                                  range: fn(&ChunkMesh) -> (u32, u32),
+                                  kind: usize,
                                   back_to_front: bool| {
                 pass.set_pipeline(pipeline);
                 let mut draw = |i: usize| {
-                    let mesh = &self.meshes[&self.visible[i].1];
-                    let (first_quad, quads) = range(mesh);
-                    if quads == 0 {
-                        return;
-                    }
-                    pass.set_vertex_buffer(0, mesh.buffer.slice(..));
-                    pass.draw_indexed(0..quads * 6, (first_quad * 4) as i32, i as u32..i as u32 + 1);
-                    stats.draw_calls += 1;
-                    stats.quads += quads as u64;
+                    let (_, pos, _, faces) = self.visible[i];
+                    let mesh = &self.meshes[&pos];
+                    let mask = group_mask(faces, kind);
+                    let mut bound = false;
+                    face_runs(&mesh.offsets[kind * 6..kind * 6 + 7], mask, |first_quad, quads| {
+                        if !bound {
+                            pass.set_vertex_buffer(0, mesh.buffer.slice(..));
+                            bound = true;
+                        }
+                        pass.draw_indexed(0..quads * 6, (first_quad * 4) as i32, i as u32..i as u32 + 1);
+                        stats.draw_calls += 1;
+                        stats.quads += quads as u64;
+                    });
                 };
                 if back_to_front {
                     (0..self.visible.len()).rev().for_each(&mut draw);
@@ -1021,8 +1066,8 @@ impl Renderer {
                     (0..self.visible.len()).for_each(&mut draw);
                 }
             };
-            draw_range(&mut pass, &self.opaque_pipeline, |m| (0, m.opaque), false);
-            draw_range(&mut pass, &self.cutout_pipeline, |m| (m.opaque, m.cutout), false);
+            draw_range(&mut pass, &self.opaque_pipeline, OPAQUE, false);
+            draw_range(&mut pass, &self.cutout_pipeline, CUTOUT, false);
             self.entities.draw(&mut pass);
 
             // Sky after terrain so early-z skips covered pixels.
@@ -1043,7 +1088,7 @@ impl Renderer {
             }
 
             pass.set_vertex_buffer(1, self.instances.slice(..));
-            draw_range(&mut pass, &self.translucent_pipeline, |m| (m.opaque + m.cutout, m.translucent), true);
+            draw_range(&mut pass, &self.translucent_pipeline, TRANSLUCENT, true);
 
             if !hud.is_empty() {
                 pass.set_pipeline(&self.ui_pipeline);
@@ -1072,5 +1117,46 @@ impl Renderer {
         stats.gpu_bytes = self.meshes.values().map(|m| m.buffer.size()).sum();
         self.stats = stats;
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn runs(offsets: &[u32], mask: u8) -> Vec<(u32, u32)> {
+        let mut out = Vec::new();
+        face_runs(offsets, mask, |a, b| out.push((a, b)));
+        out
+    }
+
+    #[test]
+    fn face_runs_merge_adjacent_and_empty_groups() {
+        let offsets = [0, 1, 3, 6, 10, 15, 21];
+        assert_eq!(runs(&offsets, 0b111111), [(0, 21)]);
+        assert_eq!(runs(&offsets, 0b101001), [(0, 1), (6, 4), (15, 6)]);
+        assert_eq!(runs(&offsets, 0), []);
+        // Group 1 is empty, so it bridges groups 0 and 2.
+        let offsets = [0, 4, 4, 6, 6, 6, 9];
+        assert_eq!(runs(&offsets, 0b000101), [(0, 6)]);
+        assert_eq!(runs(&offsets, 0b100001), [(0, 4), (6, 3)]);
+    }
+
+    #[test]
+    fn facing_faces_culls_faces_pointing_away() {
+        // Chunk entirely in front of the camera on +X, above it, and level on Z.
+        assert_eq!(facing_faces(Vec3::new(10.0, 40.0, -16.0)), 0b111010);
+        // Camera inside the chunk sees every direction.
+        assert_eq!(facing_faces(Vec3::splat(-16.0)), 0b111111);
+        // Water tops can dip below the chunk's min corner.
+        assert_ne!(facing_faces(Vec3::new(-16.0, 1.0, -16.0)) & 0b100, 0);
+    }
+
+    #[test]
+    fn group_mask_follows_face_order() {
+        assert_eq!(group_mask(0b000101, TRANSLUCENT), 0b000101);
+        // +X +Y +Z -X -Y -Z
+        assert_eq!(group_mask(0b000101, OPAQUE), 0b000011);
+        assert_eq!(group_mask(0b101010, OPAQUE), 0b111000);
     }
 }

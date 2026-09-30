@@ -89,6 +89,7 @@ game decides what they do to the player.
 |---|---|
 | 32³ chunks; uniform chunks stored as a single block | Most sky and deep-rock chunks cost 1 byte instead of 32 KiB |
 | Greedy meshing | Merges coplanar faces with identical texture/AO/light into one quad |
+| Face-direction culling | Quads are grouped by facing per chunk; groups facing away from the camera are skipped (~45% fewer quads drawn) |
 | 8-byte vertices, UVs derived in shader | Roughly 4x smaller than Minecraft's vertex format |
 | One shared quad index buffer | No per-chunk index data |
 | Lighting computed inside mesh jobs over a 15-block margin | Exact at chunk borders with zero shared mutable light state, so every job runs in parallel |
@@ -108,10 +109,10 @@ light+mesh (1 thread): 1.15 ms per dense chunk
 stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.17 s
 
 $ voxelcraft --bench-render --rd 8     # 1600x900, GPU-synchronised each frame
-avg 1.22 ms (818 fps), p99 1.71 ms — 355 draw calls, 0.75M quads
+avg 1.19 ms (~840 fps) — 661 draw calls, 0.42M quads drawn
 
 $ voxelcraft --bench-render --rd 16    # 512-block view distance
-avg 2.55 ms (392 fps), p99 5.26 ms — 1016 draw calls, 1.64M quads
+avg 2.18 ms (~460 fps) — 1708 draw calls, 0.89M quads drawn
 ```
 
 Render distance is measured in 32-block chunks, so `--rd 8` is 256 blocks
