@@ -19,7 +19,7 @@ cargo run --release -- --help
 | Left Shift | Fly down |
 | Left Ctrl or R | Sprint |
 | F | Toggle flying (creative) |
-| Left / right click | Break / place block (hold to repeat) |
+| Left / right click | Break / place block (hold to repeat); respawn on the death screen |
 | Middle click | Pick block |
 | E | Inventory (click to move stacks; creative shows the block palette) |
 | G | Toggle survival / creative |
@@ -49,6 +49,12 @@ chunks are stored, everything else regenerates from the seed.
 - Walking, swimming and flying with AABB collision
 - Survival and creative modes: timed block breaking with crack overlay,
   drops, a 36-slot inventory with stacks, and a creative block palette
+- Survival health (no hunger): 10 hearts, fall damage (1 per block beyond
+  3; water breaks falls), 15 s of air then drowning, natural regeneration
+  after 4 s without damage, a red hurt flash and shaking hearts. Dying shows
+  a death screen; clicking respawns at the world spawn with full health and
+  the inventory kept (like `keepInventory`). Creative is immune to damage.
+  Health and air are saved with the world
 - Break, place and pick blocks, with a selection outline and hotbar
 - Procedurally generated, mipmapped block textures — the game ships no assets
 
@@ -91,7 +97,11 @@ Render distance is measured in 32-block chunks, so `--rd 8` is 256 blocks
 ```text
 src/
   main.rs            argument parsing, event loop
-  app.rs             window, input, game loop, HUD state, day/night
+  app/
+    mod.rs           window, input, game loop, day/night, damage entry point
+    hud.rs           HUD: hotbar, hearts/bubbles, inventory, death and F3 screens
+    survival.rs      health rules: falls, drowning, regeneration (unit tested)
+  inventory.rs       inventory slots and stacking
   player.rs          movement physics and collision
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool
@@ -117,6 +127,7 @@ cargo run --release -- --bench
 cargo run --release -- --bench-render --pose 0,100,0,0,-10
 cargo run --release -- --screenshot shot.png --pose 0,190,0,45,-35
 cargo run --release -- --place 0,~,0,water --pose 0,120,-10,90,-30   # scripted scenes
+cargo run --release -- --survival --health 5 --air 6   # HUD states; --health 0 shows the death screen
 ```
 
 ## License
