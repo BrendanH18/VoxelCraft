@@ -539,11 +539,10 @@ impl Game {
         let Some(stack) = self.inventory.get(self.selected) else { return };
         let block = stack.block;
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
-        if free && !(block.is_solid() && self.player.intersects_block(at)) && self.world.set_block(at, block) {
-            if self.mode == GameMode::Survival {
+        if free && !(block.is_solid() && self.player.intersects_block(at)) && self.world.set_block(at, block)
+            && self.mode == GameMode::Survival {
                 self.inventory.take_one(self.selected);
             }
-        }
     }
 
     fn pick_block(&mut self) {
