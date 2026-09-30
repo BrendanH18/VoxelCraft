@@ -24,10 +24,10 @@ use std::sync::Arc;
 use glam::{DVec3, IVec2, IVec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::mesh::{self, MeshData, MeshInput, Neighborhood, Region, D, MARGIN, NO_HEIGHT};
+use crate::mesh::{self, D, MARGIN, MeshData, MeshInput, NO_HEIGHT, Neighborhood, Region};
 use crate::workers::{Job, JobResult, Workers};
 use block::Block;
-use chunk::{chunk_of, local_of, ChunkData, CHUNK_SIZE, CHUNK_SIZE_I, WORLD_HEIGHT, WORLD_HEIGHT_CHUNKS};
+use chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_HEIGHT, WORLD_HEIGHT_CHUNKS, chunk_of, local_of};
 use terrain::Generator;
 
 pub struct ChunkSlot {
@@ -181,9 +181,7 @@ impl World {
             return Some(Block::AIR);
         }
         let l = local_of(p);
-        self.chunks
-            .get(&chunk_of(p))
-            .map(|s| s.data.get(l.x as usize, l.y as usize, l.z as usize))
+        self.chunks.get(&chunk_of(p)).map(|s| s.data.get(l.x as usize, l.y as usize, l.z as usize))
     }
 
     /// Player edit. Chunks whose geometry changes are remeshed synchronously
@@ -218,7 +216,11 @@ impl World {
         let lo_y = p.y.min(old_h).min(new_h).max(0) - reach;
         let hi_y = p.y.max(old_h).max(new_h) + reach;
         let lo = chunk_of(IVec3::new(p.x - reach, lo_y, p.z - reach)).max(IVec3::new(i32::MIN, 0, i32::MIN));
-        let hi = chunk_of(IVec3::new(p.x + reach, hi_y, p.z + reach)).min(IVec3::new(i32::MAX, WORLD_HEIGHT_CHUNKS - 1, i32::MAX));
+        let hi = chunk_of(IVec3::new(p.x + reach, hi_y, p.z + reach)).min(IVec3::new(
+            i32::MAX,
+            WORLD_HEIGHT_CHUNKS - 1,
+            i32::MAX,
+        ));
         let geometry = |c: IVec3| {
             let d = (c - cpos).abs();
             let near = |axis: usize| {
@@ -274,9 +276,7 @@ impl World {
     fn ready_to_mesh(&self, pos: IVec3) -> bool {
         (-1..=1).all(|dz| {
             (-1..=1).all(|dx| {
-                self.columns
-                    .get(&IVec2::new(pos.x + dx, pos.z + dz))
-                    .is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
+                self.columns.get(&IVec2::new(pos.x + dx, pos.z + dz)).is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
             })
         })
     }
@@ -287,8 +287,7 @@ impl World {
             for dz in -1..=1 {
                 for dx in -1..=1 {
                     let i = (dx + 1) + (dz + 1) * 3 + (dy + 1) * 9;
-                    neighbors[i as usize] =
-                        self.chunks.get(&(pos + IVec3::new(dx, dy, dz))).map(|s| s.data.clone());
+                    neighbors[i as usize] = self.chunks.get(&(pos + IVec3::new(dx, dy, dz))).map(|s| s.data.clone());
                 }
             }
         }
@@ -328,19 +327,12 @@ impl World {
         let data = &self.chunks[&pos].data;
         match data.uniform() {
             Some(Block::AIR) => true,
-            Some(b) if b.is_opaque() => [
-                IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z,
-            ]
-            .iter()
-            .all(|&o| {
-                let n = pos + o;
-                n.y < 0
-                    || self
-                        .chunks
-                        .get(&n)
-                        .and_then(|s| s.data.uniform())
-                        .is_some_and(|b| b.is_opaque())
-            }),
+            Some(b) if b.is_opaque() => {
+                [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z].iter().all(|&o| {
+                    let n = pos + o;
+                    n.y < 0 || self.chunks.get(&n).and_then(|s| s.data.uniform()).is_some_and(|b| b.is_opaque())
+                })
+            }
             _ => false,
         }
     }
@@ -387,18 +379,15 @@ impl World {
 
     fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
-        let col = self.columns.entry(column_of(pos)).or_insert_with(|| Column {
-            heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]),
-            loaded: 0,
-        });
+        let col = self
+            .columns
+            .entry(column_of(pos))
+            .or_insert_with(|| Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0 });
         col.loaded += 1;
         for (h, new) in col.heights.iter_mut().zip(heights) {
             *h = (*h).max(new);
         }
-        self.chunks.insert(
-            pos,
-            ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false },
-        );
+        self.chunks.insert(pos, ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false });
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
@@ -468,8 +457,7 @@ impl World {
 
         // Mesh the nearest ready chunks.
         if !self.dirty.is_empty() && self.mesh_in_flight < cap {
-            let mut candidates: Vec<(i32, IVec3)> =
-                self.dirty.iter().map(|&p| (self.priority(p), p)).collect();
+            let mut candidates: Vec<(i32, IVec3)> = self.dirty.iter().map(|&p| (self.priority(p), p)).collect();
             candidates.sort_unstable_by_key(|&(k, _)| k);
             for (_, pos) in candidates {
                 if self.mesh_in_flight >= cap {
@@ -520,18 +508,17 @@ impl World {
         );
         let frac = origin - origin.floor();
         let first = |f: f64, s: i32| if s > 0 { 1.0 - f } else { f };
-        let mut t_max = DVec3::new(
-            first(frac.x, step.x) * inv.x,
-            first(frac.y, step.y) * inv.y,
-            first(frac.z, step.z) * inv.z,
-        );
+        let mut t_max =
+            DVec3::new(first(frac.x, step.x) * inv.x, first(frac.y, step.y) * inv.y, first(frac.z, step.z) * inv.z);
         let mut normal = IVec3::ZERO;
         let mut t = 0.0;
         while t <= max_dist {
             if let Some(b) = self.get_block(cell)
-                && b.is_solid() && cell.y >= 0 {
-                    return Some((cell, normal));
-                }
+                && b.is_solid()
+                && cell.y >= 0
+            {
+                return Some((cell, normal));
+            }
             if t_max.x < t_max.y && t_max.x < t_max.z {
                 cell.x += step.x;
                 t = t_max.x;

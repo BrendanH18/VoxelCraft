@@ -22,8 +22,8 @@ use crate::world::World;
 use crate::world::block::Block;
 use crate::world::terrain::SEA_LEVEL;
 use dsp::Rng;
-use mixer::{Command, Mixer};
 pub use export::export_sounds;
+use mixer::{Command, Mixer};
 pub use sounds::{Bank, Material, Sound, material};
 
 /// Horizontal distance between footsteps, in blocks (Minecraft's ~1.67).
@@ -87,9 +87,8 @@ impl Audio {
                 (None, None)
             }
         };
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(1, |d| d.as_nanos() as u64);
+        let seed =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
         Self {
             tx,
             _stop: stop,

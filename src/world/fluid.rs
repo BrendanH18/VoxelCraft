@@ -19,8 +19,8 @@
 use glam::IVec3;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::block::Block;
 use super::World;
+use super::block::Block;
 
 const TICK: f64 = 0.25;
 const MAX_UPDATES_PER_TICK: usize = 4096;

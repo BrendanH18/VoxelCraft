@@ -1,8 +1,8 @@
 mod app;
 mod audio;
-mod inventory;
 mod bench;
 mod entity;
+mod inventory;
 mod mesh;
 mod physics;
 mod player;

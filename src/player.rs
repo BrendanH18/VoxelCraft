@@ -42,7 +42,16 @@ pub struct Player {
 
 impl Player {
     pub fn new(pos: DVec3) -> Self {
-        Self { pos, vel: DVec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, can_fly: false, in_water: false }
+        Self {
+            pos,
+            vel: DVec3::ZERO,
+            yaw: 0.0,
+            pitch: 0.0,
+            on_ground: false,
+            flying: false,
+            can_fly: false,
+            in_water: false,
+        }
     }
 
     pub fn eye(&self) -> DVec3 {

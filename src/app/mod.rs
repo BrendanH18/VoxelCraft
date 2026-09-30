@@ -16,14 +16,14 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, Fullscreen, Window, WindowId};
 
-use crate::inventory::{Inventory, Stack, HOTBAR_SLOTS};
+use crate::Args;
+use crate::inventory::{HOTBAR_SLOTS, Inventory, Stack};
 use crate::player::{MoveInput, Player};
 use crate::render::{FrameParams, Renderer};
+use crate::world::World;
 use crate::world::block::Block;
 use crate::world::storage::{LevelInfo, Storage};
 use crate::world::terrain::Generator;
-use crate::world::World;
-use crate::Args;
 
 use survival::Vitals;
 
@@ -134,9 +134,7 @@ impl ApplicationHandler for App {
         if self.game.is_some() {
             return;
         }
-        let attrs = Window::default_attributes()
-            .with_title("VoxelCraft")
-            .with_inner_size(PhysicalSize::new(1600, 900));
+        let attrs = Window::default_attributes().with_title("VoxelCraft").with_inner_size(PhysicalSize::new(1600, 900));
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         let renderer = pollster::block_on(Renderer::new(window, !self.args.no_vsync));
 
@@ -153,10 +151,7 @@ impl ApplicationHandler for App {
             }
         };
         let seed = existing.as_ref().map(|l| l.seed).or(self.args.seed).unwrap_or_else(|| {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos() as u64)
-                .unwrap_or(1)
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
         });
         let saved = if existing.is_some() {
             storage.load_chunks().unwrap_or_else(|e| {
@@ -364,8 +359,8 @@ impl ApplicationHandler for App {
             && game.mouse_grabbed
             && !game.inventory_open
         {
-                game.player.look(delta.0 as f32 * MOUSE_SENSITIVITY, delta.1 as f32 * MOUSE_SENSITIVITY);
-            }
+            game.player.look(delta.0 as f32 * MOUSE_SENSITIVITY, delta.1 as f32 * MOUSE_SENSITIVITY);
+        }
     }
 
     fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
@@ -472,8 +467,15 @@ impl Game {
             }
             _ => {
                 let digits = [
-                    KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5,
-                    KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8, KeyCode::Digit9,
+                    KeyCode::Digit1,
+                    KeyCode::Digit2,
+                    KeyCode::Digit3,
+                    KeyCode::Digit4,
+                    KeyCode::Digit5,
+                    KeyCode::Digit6,
+                    KeyCode::Digit7,
+                    KeyCode::Digit8,
+                    KeyCode::Digit9,
                 ];
                 if let Some(i) = digits.iter().position(|&d| d == code) {
                     self.select(i);
@@ -819,7 +821,8 @@ impl Game {
         }
 
         // --- World streaming ------------------------------------------------
-        if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0 {
+        if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0
+        {
             self.apply_placements();
         }
         self.world.tick_fluids(dt);
@@ -847,7 +850,12 @@ impl Game {
         } else {
             (sky.horizon, view_dist * 0.55, view_dist * 0.95)
         };
-        let verts = self.mobs.entities.mesh(self.player.eye(), self.player.forward(), fog_end, (now - self.started).as_secs_f32());
+        let verts = self.mobs.entities.mesh(
+            self.player.eye(),
+            self.player.forward(),
+            fog_end,
+            (now - self.started).as_secs_f32(),
+        );
         self.renderer.set_entities(verts);
         let params = FrameParams {
             camera: self.player.eye(),
@@ -862,9 +870,9 @@ impl Game {
             sun_dir: sky.sun_dir,
             time: (now - self.started).as_secs_f32(),
             highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| p),
-            crack: self.breaking.map(|(p, progress)| {
-                (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u8)
-            }),
+            crack: self
+                .breaking
+                .map(|(p, progress)| (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u8)),
             ui: if self.show_hud || self.vitals.is_dead() { self.build_ui(now) } else { Vec::new() },
         };
         if !self.renderer.render(&params) {

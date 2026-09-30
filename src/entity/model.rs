@@ -115,7 +115,14 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
 
 /// Appends triangles for every mob within `max_dist` of the camera that
 /// isn't behind it; returns how many mobs were drawn.
-pub fn build(mobs: &[Mob], camera: DVec3, forward: Vec3, max_dist: f32, time: f32, out: &mut Vec<EntityVertex>) -> usize {
+pub fn build(
+    mobs: &[Mob],
+    camera: DVec3,
+    forward: Vec3,
+    max_dist: f32,
+    time: f32,
+    out: &mut Vec<EntityVertex>,
+) -> usize {
     let mut drawn = 0;
     for m in mobs {
         let rel = (m.pos - camera).as_vec3();
@@ -132,12 +139,7 @@ pub fn build(mobs: &[Mob], camera: DVec3, forward: Vec3, max_dist: f32, time: f3
         let body = Quat::from_rotation_y(FRAC_PI_2 - m.yaw) * Quat::from_rotation_z(death * FRAC_PI_2);
         let origin = rel + Vec3::Y * (m.shape().half_width as f32 * death);
         let hurt = if m.dying.is_some() { 1.0 } else { m.hurt / HURT_TIME };
-        let light = [
-            (m.sky_light.clamp(0.0, 1.0) * 255.0) as u8,
-            0,
-            (hurt.clamp(0.0, 1.0) * 255.0) as u8,
-            0,
-        ];
+        let light = [(m.sky_light.clamp(0.0, 1.0) * 255.0) as u8, 0, (hurt.clamp(0.0, 1.0) * 255.0) as u8, 0];
         let tint = if m.burning { 0.3 } else { 0.0 };
         for (pi, p) in pose(m, time).iter().enumerate() {
             let rot = body * p.rot;
@@ -163,7 +165,13 @@ fn flames(out: &mut Vec<EntityVertex>, m: &Mob, rel: Vec3, time: f32) {
         let angle = fi * 2.4 + (time * 1.3 + fi * 0.618).floor() * 1.7;
         let size = 3.0 * (1.0 - t) + 0.5;
         let center = Vec3::new(angle.cos() * r, t * h * 1.1, angle.sin() * r);
-        let color = if t < 0.4 { [255, 214, 80] } else if t < 0.75 { [255, 140, 30] } else { [220, 60, 20] };
+        let color = if t < 0.4 {
+            [255, 214, 80]
+        } else if t < 0.75 {
+            [255, 140, 30]
+        } else {
+            [220, 60, 20]
+        };
         let c = Cuboid {
             min: (center - Vec3::splat(size / 2.0)).to_array(),
             max: (center + Vec3::splat(size / 2.0)).to_array(),
@@ -242,7 +250,10 @@ mod tests {
             assert!(hi.x > 10.3, "{kind:?} should extend forward along +X");
             // Behind the camera: culled.
             out.clear();
-            assert_eq!(build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::NEG_X, 100.0, 0.0, &mut out), 0);
+            assert_eq!(
+                build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::NEG_X, 100.0, 0.0, &mut out),
+                0
+            );
         }
     }
 }
