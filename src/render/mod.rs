@@ -1,0 +1,825 @@
+//! wgpu renderer.
+//!
+//! Chunk meshes live in one vertex buffer per chunk (opaque, cutout and
+//! translucent quads back to back) and all share a single quad index buffer.
+//! Each frame the visible chunks are frustum culled and sorted, and their
+//! camera-relative origins are written into one instance buffer; every
+//! chunk draw then selects its origin with `first_instance`. Positions stay
+//! camera-relative end to end, so precision holds far from the origin.
+//!
+//! Depth is reverse-Z with an infinite far plane.
+
+pub mod textures;
+
+use std::sync::Arc;
+
+use bytemuck::{Pod, Zeroable};
+use glam::{DVec3, IVec3, Mat4, Vec3, Vec4};
+use rustc_hash::FxHashMap;
+use wgpu::util::DeviceExt;
+use winit::window::Window;
+
+use crate::mesh::MeshData;
+use crate::world::block::tex;
+use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I};
+
+const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+/// Worst case (3D checkerboard): half the blocks visible on all six sides.
+const MAX_QUADS_PER_CHUNK: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 2 * 6;
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct Globals {
+    view_proj: [[f32; 4]; 4],
+    fog_color: [f32; 4],
+    params: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct UiVertex {
+    pos: [f32; 2],
+    uv: [f32; 2],
+    layer: f32,
+    color: [f32; 4],
+}
+
+struct ChunkMesh {
+    buffer: wgpu::Buffer,
+    opaque: u32,
+    cutout: u32,
+    translucent: u32,
+}
+
+/// Everything the renderer needs to know about the current frame.
+pub struct FrameParams {
+    pub camera: DVec3,
+    pub forward: Vec3,
+    pub fov_y: f32,
+    pub sky_color: [f64; 3],
+    pub fog_color: [f32; 3],
+    pub fog_start: f32,
+    pub fog_end: f32,
+    pub time: f32,
+    pub highlight: Option<IVec3>,
+    pub hotbar: [u8; 9],
+    pub selected_slot: usize,
+    pub show_hud: bool,
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct RenderStats {
+    pub meshes: usize,
+    pub visible: usize,
+    pub draw_calls: usize,
+    pub quads: u64,
+    pub gpu_bytes: u64,
+}
+
+/// Plane-based view frustum (left, right, bottom, top); the far plane is
+/// infinite and near-plane culling isn't worth it for chunks.
+struct Frustum {
+    planes: [Vec4; 4],
+}
+
+impl Frustum {
+    fn new(m: Mat4) -> Self {
+        let (r0, r1, r3) = (m.row(0), m.row(1), m.row(3));
+        let n = |p: Vec4| p / p.truncate().length();
+        Self { planes: [n(r3 + r0), n(r3 - r0), n(r3 + r1), n(r3 - r1)] }
+    }
+
+    fn intersects(&self, min: Vec3, max: Vec3) -> bool {
+        self.planes.iter().all(|p| {
+            let v = Vec3::new(
+                if p.x > 0.0 { max.x } else { min.x },
+                if p.y > 0.0 { max.y } else { min.y },
+                if p.z > 0.0 { max.z } else { min.z },
+            );
+            p.truncate().dot(v) + p.w >= 0.0
+        })
+    }
+}
+
+pub struct Renderer {
+    pub window: Arc<Window>,
+    surface: wgpu::Surface<'static>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
+    depth: wgpu::TextureView,
+    globals_buf: wgpu::Buffer,
+    globals_bg: wgpu::BindGroup,
+    blocks_bg: wgpu::BindGroup,
+    opaque_pipeline: wgpu::RenderPipeline,
+    cutout_pipeline: wgpu::RenderPipeline,
+    translucent_pipeline: wgpu::RenderPipeline,
+    line_pipeline: wgpu::RenderPipeline,
+    ui_pipeline: wgpu::RenderPipeline,
+    quad_indices: wgpu::Buffer,
+    instances: wgpu::Buffer,
+    instance_capacity: usize,
+    line_buf: wgpu::Buffer,
+    ui_buf: wgpu::Buffer,
+    ui_capacity: usize,
+    meshes: FxHashMap<IVec3, ChunkMesh>,
+    vsync: bool,
+    pub stats: RenderStats,
+    visible: Vec<(f32, IVec3, [f32; 3])>,
+    capture: Option<std::path::PathBuf>,
+}
+
+impl Renderer {
+    pub async fn new(window: Arc<Window>, vsync: bool) -> Self {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let surface = instance.create_surface(window.clone()).expect("create surface");
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+                apply_limit_buckets: false,
+            })
+            .await
+            .expect("no suitable GPU adapter");
+        log::info!("GPU: {:?}", adapter.get_info());
+
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("device"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                ..Default::default()
+            })
+            .await
+            .expect("request device");
+
+        let size = window.inner_size();
+        let caps = surface.get_capabilities(&adapter);
+        let format = caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(caps.formats[0]);
+        // COPY_SRC lets `--screenshot` read the frame back.
+        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT
+            | (caps.usages & wgpu::TextureUsages::COPY_SRC);
+        let config = wgpu::SurfaceConfiguration {
+            usage,
+            format,
+            width: size.width.max(1),
+            height: size.height.max(1),
+            present_mode: Self::present_mode(vsync),
+            desired_maximum_frame_latency: 2,
+            alpha_mode: caps.alpha_modes[0],
+            view_formats: vec![],
+            color_space: Default::default(),
+        };
+        surface.configure(&device, &config);
+        let depth = Self::create_depth(&device, &config);
+
+        // --- Bind groups -------------------------------------------------
+        let globals_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("globals"),
+            size: std::mem::size_of::<Globals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("globals layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let globals_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("globals"),
+            layout: &globals_layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals_buf.as_entire_binding() }],
+        });
+
+        let blocks_view = Self::create_block_textures(&device, &queue);
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("blocks sampler"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
+        let blocks_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("blocks layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let blocks_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("blocks"),
+            layout: &blocks_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&blocks_view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+            ],
+        });
+
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("pipeline layout"),
+            bind_group_layouts: &[Some(&globals_layout), Some(&blocks_layout)],
+            immediate_size: 0,
+        });
+
+        // --- Pipelines ---------------------------------------------------
+        let chunk_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("chunk shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/chunk.wgsl").into()),
+        });
+        let overlay_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("overlay shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/overlay.wgsl").into()),
+        });
+
+        let chunk_buffers = [
+            Some(wgpu::VertexBufferLayout {
+                array_stride: 4,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &wgpu::vertex_attr_array![0 => Uint32],
+            }),
+            Some(wgpu::VertexBufferLayout {
+                array_stride: 12,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &wgpu::vertex_attr_array![1 => Float32x3],
+            }),
+        ];
+        let make_chunk_pipeline = |label: &str, fs: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &chunk_shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &chunk_buffers,
+                },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(depth_write),
+                    depth_compare: Some(wgpu::CompareFunction::Greater),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &chunk_shader,
+                    entry_point: Some(fs),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let opaque_pipeline = make_chunk_pipeline("opaque", "fs_opaque", None, true);
+        let cutout_pipeline = make_chunk_pipeline("cutout", "fs_cutout", None, true);
+        let translucent_pipeline =
+            make_chunk_pipeline("translucent", "fs_translucent", Some(wgpu::BlendState::ALPHA_BLENDING), false);
+
+        let line_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("outline"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &overlay_shader,
+                entry_point: Some("vs_line"),
+                compilation_options: Default::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: 12,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x3],
+                })],
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::LineList,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &overlay_shader,
+                entry_point: Some("fs_line"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let ui_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("hud"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &overlay_shader,
+                entry_point: Some("vs_ui"),
+                compilation_options: Default::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<UiVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32, 3 => Float32x4],
+                })],
+            },
+            primitive: Default::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &overlay_shader,
+                entry_point: Some("fs_ui"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        // --- Shared buffers ----------------------------------------------
+        let indices: Vec<u32> = (0..MAX_QUADS_PER_CHUNK as u32)
+            .flat_map(|q| [0, 1, 2, 2, 3, 0].map(|i| q * 4 + i))
+            .collect();
+        let quad_indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("quad indices"),
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let instance_capacity = 1024;
+        let instances = Self::create_instance_buffer(&device, instance_capacity);
+        let line_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("outline"),
+            size: 24 * 12,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let ui_capacity = 256;
+        let ui_buf = Self::create_ui_buffer(&device, ui_capacity);
+
+        Self {
+            window,
+            surface,
+            device,
+            queue,
+            config,
+            depth,
+            globals_buf,
+            globals_bg,
+            blocks_bg,
+            opaque_pipeline,
+            cutout_pipeline,
+            translucent_pipeline,
+            line_pipeline,
+            ui_pipeline,
+            quad_indices,
+            instances,
+            instance_capacity,
+            line_buf,
+            ui_buf,
+            ui_capacity,
+            meshes: FxHashMap::default(),
+            vsync,
+            stats: RenderStats::default(),
+            visible: Vec::new(),
+            capture: None,
+        }
+    }
+
+    /// Saves the next rendered frame as a PNG.
+    pub fn request_capture(&mut self, path: impl Into<std::path::PathBuf>) {
+        self.capture = Some(path.into());
+    }
+
+    fn save_capture(&self, texture: &wgpu::Texture, encoder: wgpu::CommandEncoder, path: &std::path::Path) {
+        let (w, h) = (self.config.width, self.config.height);
+        let row = (w * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("capture"),
+            size: (row * h) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = encoder;
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(h) },
+            },
+            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        );
+        self.queue.submit([encoder.finish()]);
+        buffer.slice(..).map_async(wgpu::MapMode::Read, |r| r.expect("map capture buffer"));
+        self.device.poll(wgpu::PollType::wait_indefinitely()).expect("poll device");
+
+        let bgra = matches!(self.config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
+        let mapped = buffer.slice(..).get_mapped_range().expect("read capture buffer");
+        let mut pixels = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            let line = &mapped[(y * row) as usize..(y * row + w * 4) as usize];
+            for px in line.chunks_exact(4) {
+                pixels.extend_from_slice(&if bgra { [px[2], px[1], px[0], 255] } else { [px[0], px[1], px[2], 255] });
+            }
+        }
+        let result = std::fs::File::create(path).map_err(|e| e.to_string()).and_then(|f| {
+            let mut enc = png::Encoder::new(std::io::BufWriter::new(f), w, h);
+            enc.set_color(png::ColorType::Rgba);
+            enc.set_depth(png::BitDepth::Eight);
+            enc.write_header().and_then(|mut wr| wr.write_image_data(&pixels)).map_err(|e| e.to_string())
+        });
+        match result {
+            Ok(()) => log::info!("saved screenshot {}", path.display()),
+            Err(e) => log::error!("screenshot failed: {e}"),
+        }
+    }
+
+    fn present_mode(vsync: bool) -> wgpu::PresentMode {
+        if vsync { wgpu::PresentMode::AutoVsync } else { wgpu::PresentMode::AutoNoVsync }
+    }
+
+    fn create_depth(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> wgpu::TextureView {
+        device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("depth"),
+                size: wgpu::Extent3d { width: config.width, height: config.height, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: DEPTH_FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            })
+            .create_view(&Default::default())
+    }
+
+    fn create_instance_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("chunk instances"),
+            size: (capacity * 12) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    }
+
+    fn create_ui_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("hud"),
+            size: (capacity * std::mem::size_of::<UiVertex>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    }
+
+    fn create_block_textures(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::TextureView {
+        let size = textures::SIZE as u32;
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("block textures"),
+            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: tex::COUNT },
+            mip_level_count: textures::MIP_LEVELS,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        for (level, data) in textures::generate_mips().iter().enumerate() {
+            let s = size >> level;
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: level as u32,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                data,
+                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(s * 4), rows_per_image: Some(s) },
+                wgpu::Extent3d { width: s, height: s, depth_or_array_layers: tex::COUNT },
+            );
+        }
+        texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        })
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 {
+            return;
+        }
+        self.config.width = width;
+        self.config.height = height;
+        self.surface.configure(&self.device, &self.config);
+        self.depth = Self::create_depth(&self.device, &self.config);
+    }
+
+    pub fn vsync(&self) -> bool {
+        self.vsync
+    }
+
+    pub fn set_vsync(&mut self, vsync: bool) {
+        self.vsync = vsync;
+        self.config.present_mode = Self::present_mode(vsync);
+        self.surface.configure(&self.device, &self.config);
+    }
+
+    pub fn aspect(&self) -> f32 {
+        self.config.width as f32 / self.config.height as f32
+    }
+
+    pub fn upload_mesh(&mut self, pos: IVec3, mesh: MeshData) {
+        if mesh.is_empty() {
+            self.meshes.remove(&pos);
+            return;
+        }
+        let buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&mesh.vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        self.meshes.insert(
+            pos,
+            ChunkMesh {
+                buffer,
+                opaque: mesh.opaque_quads,
+                cutout: mesh.cutout_quads,
+                translucent: mesh.translucent_quads,
+            },
+        );
+    }
+
+    pub fn remove_mesh(&mut self, pos: IVec3) {
+        self.meshes.remove(&pos);
+    }
+
+    fn build_hud(&self, p: &FrameParams) -> Vec<UiVertex> {
+        let (w, h) = (self.config.width as f32, self.config.height as f32);
+        let scale = self.window.scale_factor() as f32;
+        let mut v = Vec::with_capacity(128);
+        // Pixel-space rectangle to two NDC triangles.
+        let mut rect = |x: f32, y: f32, rw: f32, rh: f32, layer: f32, color: [f32; 4]| {
+            let (x0, x1) = (x / w * 2.0 - 1.0, (x + rw) / w * 2.0 - 1.0);
+            let (y0, y1) = (1.0 - y / h * 2.0, 1.0 - (y + rh) / h * 2.0);
+            let c = [
+                UiVertex { pos: [x0, y0], uv: [0.0, 0.0], layer, color },
+                UiVertex { pos: [x1, y0], uv: [1.0, 0.0], layer, color },
+                UiVertex { pos: [x1, y1], uv: [1.0, 1.0], layer, color },
+                UiVertex { pos: [x0, y1], uv: [0.0, 1.0], layer, color },
+            ];
+            v.extend_from_slice(&[c[0], c[2], c[1], c[0], c[3], c[2]]);
+        };
+
+        // Crosshair.
+        let (cx, cy) = (w / 2.0, h / 2.0);
+        let (len, thick) = (10.0 * scale, 2.0 * scale);
+        let white = [1.0, 1.0, 1.0, 0.85];
+        rect(cx - len, cy - thick / 2.0, len * 2.0, thick, -1.0, white);
+        rect(cx - thick / 2.0, cy - len, thick, len * 2.0, -1.0, white);
+
+        // Hotbar.
+        let slot = 40.0 * scale;
+        let pad = 4.0 * scale;
+        let total = slot * 9.0;
+        let x0 = (w - total) / 2.0;
+        let y0 = h - slot - 10.0 * scale;
+        rect(x0 - pad, y0 - pad, total + pad * 2.0, slot + pad * 2.0, -1.0, [0.0, 0.0, 0.0, 0.45]);
+        for (i, &layer) in p.hotbar.iter().enumerate() {
+            let sx = x0 + i as f32 * slot;
+            if i == p.selected_slot {
+                rect(sx - pad, y0 - pad, slot + pad * 2.0, slot + pad * 2.0, -1.0, [1.0, 1.0, 1.0, 0.9]);
+                rect(sx, y0, slot, slot, -1.0, [0.15, 0.15, 0.15, 0.9]);
+            }
+            let inset = 6.0 * scale;
+            rect(sx + inset, y0 + inset, slot - inset * 2.0, slot - inset * 2.0, layer as f32, [1.0; 4]);
+        }
+        v
+    }
+
+    fn outline_vertices(&self, block: IVec3, camera: DVec3) -> [[f32; 3]; 24] {
+        let e = 0.004;
+        let min = (block.as_dvec3() - camera - DVec3::splat(e)).as_vec3();
+        let max = min + Vec3::splat(1.0 + 2.0 * e as f32);
+        let c = |x: bool, y: bool, z: bool| {
+            [if x { max.x } else { min.x }, if y { max.y } else { min.y }, if z { max.z } else { min.z }]
+        };
+        let mut out = [[0.0; 3]; 24];
+        let mut i = 0;
+        for a in [false, true] {
+            for b in [false, true] {
+                for (p, q) in [
+                    (c(false, a, b), c(true, a, b)),
+                    (c(a, false, b), c(a, true, b)),
+                    (c(a, b, false), c(a, b, true)),
+                ] {
+                    out[i] = p;
+                    out[i + 1] = q;
+                    i += 2;
+                }
+            }
+        }
+        out
+    }
+
+    pub fn render(&mut self, p: &FrameParams) {
+        let frame = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                self.surface.configure(&self.device, &self.config);
+                return;
+            }
+            _ => return,
+        };
+        let view = frame.texture.create_view(&Default::default());
+
+        // Camera-relative view-projection.
+        // wgpu NDC is DirectX-style: Z in [0, 1], Y up.
+        let proj = glam::camera::rh::proj::directx::perspective_infinite_reverse(p.fov_y, self.aspect(), 0.05);
+        let view_mat = glam::camera::rh::view::look_to_mat4(Vec3::ZERO, p.forward, Vec3::Y);
+        let view_proj = proj * view_mat;
+        let frustum = Frustum::new(view_proj);
+
+        // Cull and sort (front to back for early-z; translucents walk it
+        // backwards).
+        self.visible.clear();
+        let size = CHUNK_SIZE_I as f64;
+        for (&pos, _) in &self.meshes {
+            let origin = (pos.as_dvec3() * size - p.camera).as_vec3();
+            if frustum.intersects(origin, origin + Vec3::splat(size as f32)) {
+                let center = origin + Vec3::splat(size as f32 / 2.0);
+                self.visible.push((center.length_squared(), pos, origin.to_array()));
+            }
+        }
+        self.visible.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+
+        if self.visible.len() > self.instance_capacity {
+            self.instance_capacity = self.visible.len().next_power_of_two();
+            self.instances = Self::create_instance_buffer(&self.device, self.instance_capacity);
+        }
+        let instance_data: Vec<[f32; 3]> = self.visible.iter().map(|v| v.2).collect();
+        if !instance_data.is_empty() {
+            self.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&instance_data));
+        }
+
+        let globals = Globals {
+            view_proj: view_proj.to_cols_array_2d(),
+            fog_color: [p.fog_color[0], p.fog_color[1], p.fog_color[2], 1.0],
+            params: [p.fog_start, p.fog_end, p.time, 0.0],
+        };
+        self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
+
+        if let Some(b) = p.highlight {
+            let verts = self.outline_vertices(b, p.camera);
+            self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
+        }
+        let hud = if p.show_hud { self.build_hud(p) } else { Vec::new() };
+        if hud.len() > self.ui_capacity {
+            self.ui_capacity = hud.len().next_power_of_two();
+            self.ui_buf = Self::create_ui_buffer(&self.device, self.ui_capacity);
+        }
+        if !hud.is_empty() {
+            self.queue.write_buffer(&self.ui_buf, 0, bytemuck::cast_slice(&hud));
+        }
+
+        let mut stats = RenderStats {
+            meshes: self.meshes.len(),
+            visible: self.visible.len(),
+            ..Default::default()
+        };
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("main"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: p.sky_color[0],
+                            g: p.sky_color[1],
+                            b: p.sky_color[2],
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_bind_group(0, &self.globals_bg, &[]);
+            pass.set_bind_group(1, &self.blocks_bg, &[]);
+            pass.set_index_buffer(self.quad_indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.set_vertex_buffer(1, self.instances.slice(..));
+
+            // Each pass draws one sub-range of every chunk's vertex buffer.
+            let mut draw_range = |pass: &mut wgpu::RenderPass<'_>,
+                                  pipeline: &wgpu::RenderPipeline,
+                                  range: fn(&ChunkMesh) -> (u32, u32),
+                                  back_to_front: bool| {
+                pass.set_pipeline(pipeline);
+                let mut draw = |i: usize| {
+                    let mesh = &self.meshes[&self.visible[i].1];
+                    let (first_quad, quads) = range(mesh);
+                    if quads == 0 {
+                        return;
+                    }
+                    pass.set_vertex_buffer(0, mesh.buffer.slice(..));
+                    pass.draw_indexed(0..quads * 6, (first_quad * 4) as i32, i as u32..i as u32 + 1);
+                    stats.draw_calls += 1;
+                    stats.quads += quads as u64;
+                };
+                if back_to_front {
+                    (0..self.visible.len()).rev().for_each(&mut draw);
+                } else {
+                    (0..self.visible.len()).for_each(&mut draw);
+                }
+            };
+            draw_range(&mut pass, &self.opaque_pipeline, |m| (0, m.opaque), false);
+            draw_range(&mut pass, &self.cutout_pipeline, |m| (m.opaque, m.cutout), false);
+
+            if p.highlight.is_some() {
+                pass.set_pipeline(&self.line_pipeline);
+                pass.set_vertex_buffer(0, self.line_buf.slice(..));
+                pass.draw(0..24, 0..1);
+            }
+
+            pass.set_vertex_buffer(1, self.instances.slice(..));
+            draw_range(&mut pass, &self.translucent_pipeline, |m| (m.opaque + m.cutout, m.translucent), true);
+
+            if !hud.is_empty() {
+                pass.set_pipeline(&self.ui_pipeline);
+                pass.set_vertex_buffer(0, self.ui_buf.slice(..));
+                pass.draw(0..hud.len() as u32, 0..1);
+            }
+        }
+        match self.capture.take() {
+            Some(path) if self.config.usage.contains(wgpu::TextureUsages::COPY_SRC) => {
+                self.save_capture(&frame.texture, encoder, &path)
+            }
+            _ => {
+                self.queue.submit([encoder.finish()]);
+            }
+        }
+        self.window.pre_present_notify();
+        self.queue.present(frame);
+
+        stats.gpu_bytes = self.meshes.values().map(|m| m.buffer.size()).sum();
+        self.stats = stats;
+    }
+}
