@@ -26,10 +26,11 @@ cargo run --release -- --help
 | T | Skip ahead 2 in-game hours |
 | V | Toggle vsync |
 | F1 | Toggle HUD |
+| F3 | Debug screen |
 | F11 | Fullscreen |
 | Esc | Release mouse (press again to save and quit) |
 
-Stats (FPS, position, chunk and draw counts) are shown in the window title.
+Press F3 for the debug screen (FPS, position, biome, chunk and draw stats).
 The world autosaves every two minutes and on exit; only player-modified
 chunks are stored, everything else regenerates from the seed.
 

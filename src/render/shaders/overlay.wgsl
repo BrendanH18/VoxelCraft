@@ -9,6 +9,7 @@ struct Globals {
 @group(0) @binding(0) var<uniform> g: Globals;
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;
+@group(2) @binding(0) var font: texture_2d<f32>;
 
 @vertex
 fn vs_line(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
@@ -44,7 +45,11 @@ fn vs_ui(
 
 @fragment
 fn fs_ui(in: UiOut) -> @location(0) vec4<f32> {
-    // Negative layer: flat colour. Otherwise a block texture tinted by colour.
+    // layer -2: font glyph, -1: flat colour, >= 0: tinted block texture.
+    if in.layer < -1.5 {
+        let coverage = textureSampleLevel(font, blocks_sampler, in.uv, 0.0).r;
+        return vec4<f32>(in.color.rgb, in.color.a * coverage);
+    }
     if in.layer < 0.0 {
         return in.color;
     }

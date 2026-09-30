@@ -10,6 +10,7 @@
 //! Depth is reverse-Z with an infinite far plane.
 
 pub mod textures;
+pub mod ui;
 
 use std::sync::Arc;
 
@@ -21,6 +22,7 @@ use winit::window::Window;
 
 use crate::mesh::MeshData;
 use crate::world::block::tex;
+use ui::UiVertex;
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I};
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -33,15 +35,6 @@ struct Globals {
     view_proj: [[f32; 4]; 4],
     fog_color: [f32; 4],
     params: [f32; 4],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct UiVertex {
-    pos: [f32; 2],
-    uv: [f32; 2],
-    layer: f32,
-    color: [f32; 4],
 }
 
 struct ChunkMesh {
@@ -63,9 +56,8 @@ pub struct FrameParams {
     /// Skylight multiplier, 1 at noon.
     pub daylight: f32,
     pub highlight: Option<IVec3>,
-    pub hotbar: [u8; 9],
-    pub selected_slot: usize,
-    pub show_hud: bool,
+    /// HUD geometry, drawn last.
+    pub ui: Vec<UiVertex>,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -75,6 +67,8 @@ pub struct RenderStats {
     pub draw_calls: usize,
     pub quads: u64,
     pub gpu_bytes: u64,
+    /// Time spent blocked acquiring the swapchain image (vsync wait).
+    pub acquire_ms: f64,
 }
 
 /// Plane-based view frustum (left, right, bottom, top); the far plane is
@@ -112,6 +106,7 @@ pub struct Renderer {
     globals_buf: wgpu::Buffer,
     globals_bg: wgpu::BindGroup,
     blocks_bg: wgpu::BindGroup,
+    font_bg: wgpu::BindGroup,
     opaque_pipeline: wgpu::RenderPipeline,
     cutout_pipeline: wgpu::RenderPipeline,
     translucent_pipeline: wgpu::RenderPipeline,
@@ -126,6 +121,7 @@ pub struct Renderer {
     meshes: FxHashMap<IVec3, ChunkMesh>,
     vsync: bool,
     pub stats: RenderStats,
+    pub gpu_name: String,
     visible: Vec<(f32, IVec3, [f32; 3])>,
     capture: Option<std::path::PathBuf>,
     offscreen: Option<wgpu::Texture>,
@@ -146,7 +142,9 @@ impl Renderer {
             })
             .await
             .expect("no suitable GPU adapter");
-        log::info!("GPU: {:?}", adapter.get_info());
+        let info = adapter.get_info();
+        log::info!("GPU: {} ({:?})", info.name, info.backend);
+        let gpu_name = format!("{} ({:?})", info.name, info.backend);
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -242,6 +240,31 @@ impl Renderer {
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&blocks_view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
             ],
+        });
+
+        let font_view = Self::create_font_texture(&device, &queue);
+        let font_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("font layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            }],
+        });
+        let font_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("font"),
+            layout: &font_layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&font_view) }],
+        });
+        let ui_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("ui pipeline layout"),
+            bind_group_layouts: &[Some(&globals_layout), Some(&blocks_layout), Some(&font_layout)],
+            immediate_size: 0,
         });
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -354,7 +377,7 @@ impl Renderer {
 
         let ui_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("hud"),
-            layout: Some(&layout),
+            layout: Some(&ui_layout),
             vertex: wgpu::VertexState {
                 module: &overlay_shader,
                 entry_point: Some("vs_ui"),
@@ -418,6 +441,7 @@ impl Renderer {
             globals_buf,
             globals_bg,
             blocks_bg,
+            font_bg,
             opaque_pipeline,
             cutout_pipeline,
             translucent_pipeline,
@@ -432,6 +456,7 @@ impl Renderer {
             meshes: FxHashMap::default(),
             vsync,
             stats: RenderStats::default(),
+            gpu_name,
             visible: Vec::new(),
             capture: None,
             offscreen: None,
@@ -565,6 +590,31 @@ impl Renderer {
         })
     }
 
+    fn create_font_texture(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::TextureView {
+        let size = wgpu::Extent3d { width: ui::FONT_ATLAS_W, height: ui::FONT_ATLAS_H, depth_or_array_layers: 1 };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("font"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            texture.as_image_copy(),
+            &ui::font_atlas(),
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(ui::FONT_ATLAS_W), rows_per_image: None },
+            size,
+        );
+        texture.create_view(&Default::default())
+    }
+
+    pub fn scale_factor(&self) -> f32 {
+        self.window.scale_factor() as f32
+    }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 {
             return;
@@ -618,49 +668,6 @@ impl Renderer {
         self.meshes.remove(&pos);
     }
 
-    fn build_hud(&self, p: &FrameParams) -> Vec<UiVertex> {
-        let (w, h) = (self.config.width as f32, self.config.height as f32);
-        let scale = self.window.scale_factor() as f32;
-        let mut v = Vec::with_capacity(128);
-        // Pixel-space rectangle to two NDC triangles.
-        let mut rect = |x: f32, y: f32, rw: f32, rh: f32, layer: f32, color: [f32; 4]| {
-            let (x0, x1) = (x / w * 2.0 - 1.0, (x + rw) / w * 2.0 - 1.0);
-            let (y0, y1) = (1.0 - y / h * 2.0, 1.0 - (y + rh) / h * 2.0);
-            let c = [
-                UiVertex { pos: [x0, y0], uv: [0.0, 0.0], layer, color },
-                UiVertex { pos: [x1, y0], uv: [1.0, 0.0], layer, color },
-                UiVertex { pos: [x1, y1], uv: [1.0, 1.0], layer, color },
-                UiVertex { pos: [x0, y1], uv: [0.0, 1.0], layer, color },
-            ];
-            v.extend_from_slice(&[c[0], c[2], c[1], c[0], c[3], c[2]]);
-        };
-
-        // Crosshair.
-        let (cx, cy) = (w / 2.0, h / 2.0);
-        let (len, thick) = (10.0 * scale, 2.0 * scale);
-        let white = [1.0, 1.0, 1.0, 0.85];
-        rect(cx - len, cy - thick / 2.0, len * 2.0, thick, -1.0, white);
-        rect(cx - thick / 2.0, cy - len, thick, len * 2.0, -1.0, white);
-
-        // Hotbar.
-        let slot = 40.0 * scale;
-        let pad = 4.0 * scale;
-        let total = slot * 9.0;
-        let x0 = (w - total) / 2.0;
-        let y0 = h - slot - 10.0 * scale;
-        rect(x0 - pad, y0 - pad, total + pad * 2.0, slot + pad * 2.0, -1.0, [0.0, 0.0, 0.0, 0.45]);
-        for (i, &layer) in p.hotbar.iter().enumerate() {
-            let sx = x0 + i as f32 * slot;
-            if i == p.selected_slot {
-                rect(sx - pad, y0 - pad, slot + pad * 2.0, slot + pad * 2.0, -1.0, [1.0, 1.0, 1.0, 0.9]);
-                rect(sx, y0, slot, slot, -1.0, [0.15, 0.15, 0.15, 0.9]);
-            }
-            let inset = 6.0 * scale;
-            rect(sx + inset, y0 + inset, slot - inset * 2.0, slot - inset * 2.0, layer as f32, [1.0; 4]);
-        }
-        v
-    }
-
     fn outline_vertices(&self, block: IVec3, camera: DVec3) -> [[f32; 3]; 24] {
         let e = 0.004;
         let min = (block.as_dvec3() - camera - DVec3::splat(e)).as_vec3();
@@ -687,6 +694,7 @@ impl Renderer {
     }
 
     pub fn render(&mut self, p: &FrameParams) {
+        let acquire_start = std::time::Instant::now();
         let frame = if self.force_offscreen {
             None
         } else {
@@ -721,6 +729,7 @@ impl Renderer {
                 }));
             }
         }
+        let acquire_ms = acquire_start.elapsed().as_secs_f64() * 1000.0;
         let target = match &frame {
             Some(f) => &f.texture,
             None => self.offscreen.as_ref().unwrap(),
@@ -767,18 +776,19 @@ impl Renderer {
             let verts = self.outline_vertices(b, p.camera);
             self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
         }
-        let hud = if p.show_hud { self.build_hud(p) } else { Vec::new() };
+        let hud = &p.ui;
         if hud.len() > self.ui_capacity {
             self.ui_capacity = hud.len().next_power_of_two();
             self.ui_buf = Self::create_ui_buffer(&self.device, self.ui_capacity);
         }
         if !hud.is_empty() {
-            self.queue.write_buffer(&self.ui_buf, 0, bytemuck::cast_slice(&hud));
+            self.queue.write_buffer(&self.ui_buf, 0, bytemuck::cast_slice(hud));
         }
 
         let mut stats = RenderStats {
             meshes: self.meshes.len(),
             visible: self.visible.len(),
+            acquire_ms,
             ..Default::default()
         };
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -853,6 +863,7 @@ impl Renderer {
 
             if !hud.is_empty() {
                 pass.set_pipeline(&self.ui_pipeline);
+                pass.set_bind_group(2, &self.font_bg, &[]);
                 pass.set_vertex_buffer(0, self.ui_buf.slice(..));
                 pass.draw(0..hud.len() as u32, 0..1);
             }

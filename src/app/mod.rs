@@ -1,5 +1,7 @@
 //! Window, input and the per-frame game loop.
 
+mod hud;
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -65,6 +67,11 @@ struct Game {
     stats_since: Instant,
     frames: u32,
     frame_time_sum: f64,
+    fps: f64,
+    cpu_ms: f64,
+    show_debug: bool,
+    /// When the hotbar selection last changed (for the item name popup).
+    selection_changed: Instant,
     screenshot: Option<String>,
     screenshot_state: u32,
     /// `--bench-render`: per-frame wall times (CPU + GPU, serialised).
@@ -159,6 +166,10 @@ impl ApplicationHandler for App {
             stats_since: now,
             frames: 0,
             frame_time_sum: 0.0,
+            fps: 0.0,
+            cpu_ms: 0.0,
+            show_debug: self.args.debug_overlay,
+            selection_changed: now - Duration::from_secs(10),
             screenshot: self.args.screenshot.clone(),
             screenshot_state: 0,
             bench_render: self.args.bench_render.then(Vec::new),
@@ -236,7 +247,7 @@ impl ApplicationHandler for App {
                 };
                 if dy.abs() >= 0.5 {
                     let step = if dy > 0.0 { 8 } else { 1 };
-                    game.selected = (game.selected + step) % 9;
+                    game.select((game.selected + step) % 9);
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -312,6 +323,7 @@ impl Game {
                 self.renderer.set_vsync(v);
             }
             KeyCode::F1 => self.show_hud = !self.show_hud,
+            KeyCode::F3 => self.show_debug = !self.show_debug,
             KeyCode::KeyT => self.day_time = (self.day_time + 1.0 / 12.0).fract(),
             KeyCode::F11 => {
                 let w = &self.renderer.window;
@@ -334,9 +346,16 @@ impl Game {
                     KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8, KeyCode::Digit9,
                 ];
                 if let Some(i) = digits.iter().position(|&d| d == code) {
-                    self.selected = i;
+                    self.select(i);
                 }
             }
+        }
+    }
+
+    fn select(&mut self, slot: usize) {
+        if slot != self.selected {
+            self.selected = slot;
+            self.selection_changed = Instant::now();
         }
     }
 
@@ -364,9 +383,10 @@ impl Game {
     fn pick_block(&mut self) {
         if let Some(b) = self.target().and_then(|(pos, _)| self.world.get_block(pos)) {
             if let Some(i) = self.hotbar.iter().position(|&h| h == b) {
-                self.selected = i;
+                self.select(i);
             } else {
                 self.hotbar[self.selected] = b;
+                self.selection_changed = Instant::now();
             }
         }
     }
@@ -514,35 +534,17 @@ impl Game {
             fog_end,
             daylight,
             highlight: self.target().map(|(p, _)| p),
-            hotbar: self.hotbar.map(|b| b.info().tex[0]),
-            selected_slot: self.selected,
-            show_hud: self.show_hud,
+            ui: if self.show_hud { self.build_ui(now) } else { Vec::new() },
         };
         self.renderer.render(&params);
 
         // --- Stats ----------------------------------------------------------
         self.frames += 1;
-        self.frame_time_sum += (Instant::now() - now).as_secs_f64();
+        self.frame_time_sum += (Instant::now() - now).as_secs_f64() - self.renderer.stats.acquire_ms / 1000.0;
         let elapsed = (now - self.stats_since).as_secs_f64();
         if elapsed >= 0.5 {
-            let s = self.renderer.stats;
-            let p = self.player.pos;
-            self.renderer.window.set_title(&format!(
-                "VoxelCraft | {:.0} fps ({:.2} ms cpu) | xyz {:.1} {:.1} {:.1} | rd {} | chunks {} loaded, {} meshed, {} visible | {} draws, {:.2}M quads, {:.0} MB | {}{}{}",
-                self.frames as f64 / elapsed,
-                self.frame_time_sum / self.frames as f64 * 1000.0,
-                p.x, p.y, p.z,
-                self.world.render_distance(),
-                self.world.loaded_chunks(),
-                s.meshes,
-                s.visible,
-                s.draw_calls,
-                s.quads as f64 / 1e6,
-                s.gpu_bytes as f64 / 1e6,
-                self.hotbar[self.selected].name(),
-                if self.player.flying { " | flying" } else { "" },
-                if self.renderer.vsync() { "" } else { " | no vsync" },
-            ));
+            self.fps = self.frames as f64 / elapsed;
+            self.cpu_ms = self.frame_time_sum / self.frames as f64 * 1000.0;
             self.frames = 0;
             self.frame_time_sum = 0.0;
             self.stats_since = now;
