@@ -78,7 +78,7 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             [c[0], c[1], c[2], 170]
         }
         tex::LOG_SIDE => {
-            let stripe = (x + (rnd(layer, 0, y / 4, 3) * 2.0) as usize) % 4 == 0;
+            let stripe = (x + (rnd(layer, 0, y / 4, 3) * 2.0) as usize).is_multiple_of(4);
             shade([104, 82, 51], if stripe { 0.72 } else { 0.9 + r * 0.15 })
         }
         tex::LOG_TOP => {
@@ -157,7 +157,7 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
         }
         tex::BRICKS => {
             let row = y / 4;
-            let offset = if row % 2 == 0 { 0 } else { 4 };
+            let offset = if row.is_multiple_of(2) { 0 } else { 4 };
             if y % 4 == 3 || (x + offset) % 8 == 7 {
                 shade([200, 195, 185], 0.9 + r * 0.1)
             } else {
@@ -180,7 +180,7 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
         }
         _ => {
             // Missing texture: magenta checkerboard.
-            if (x / 4 + y / 4) % 2 == 0 { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
+            if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
         }
     }
 }
@@ -219,7 +219,7 @@ pub fn generate_mips() -> Vec<Vec<u8>> {
                     let mut out = [0u8; 4];
                     for (c, o) in out.iter_mut().take(3).enumerate() {
                         let w: u32 = px.iter().map(|p| p[c] as u32 * p[3] as u32).sum();
-                        *o = if a > 0 { (w / a) as u8 } else { 0 };
+                        *o = w.checked_div(a).unwrap_or(0) as u8;
                     }
                     out[3] = (a / 4) as u8;
                     next.push(out);

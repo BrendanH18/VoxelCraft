@@ -146,7 +146,7 @@ fn encode(data: &ChunkData) -> Vec<u8> {
 fn decode(rle: &[u8]) -> Option<ChunkData> {
     let mut blocks = ChunkData::new_dense(Block::AIR);
     let mut i = 0;
-    for triple in rle.chunks_exact(3) {
+    for triple in rle.as_chunks::<3>().0 {
         let n = u16::from_le_bytes([triple[0], triple[1]]) as usize;
         blocks.get_mut(i..i + n)?.fill(Block(triple[2]));
         i += n;

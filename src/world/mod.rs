@@ -494,11 +494,10 @@ impl World {
         let mut normal = IVec3::ZERO;
         let mut t = 0.0;
         while t <= max_dist {
-            if let Some(b) = self.get_block(cell) {
-                if b.is_solid() && cell.y >= 0 {
+            if let Some(b) = self.get_block(cell)
+                && b.is_solid() && cell.y >= 0 {
                     return Some((cell, normal));
                 }
-            }
             if t_max.x < t_max.y && t_max.x < t_max.z {
                 cell.x += step.x;
                 t = t_max.x;
@@ -517,5 +516,83 @@ impl World {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::player::{MoveInput, Player};
+    use std::time::{Duration, Instant};
+
+    /// Streams the world around `at` until all jobs are done.
+    fn settled_world(at: DVec3) -> World {
+        let generator = Arc::new(Generator::new(7));
+        let mut world = World::new(generator, Default::default(), 3);
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            world.update(at);
+            world.mesh_uploads.clear();
+            if world.loaded_chunks() > 0 && world.pending_jobs() == 0 && world.dirty.is_empty() {
+                return world;
+            }
+            assert!(Instant::now() < deadline, "world never settled");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    fn surface_y(world: &World, x: i32, z: i32) -> i32 {
+        (0..WORLD_HEIGHT).rev().find(|&y| world.get_block(IVec3::new(x, y, z)).unwrap().is_solid()).unwrap()
+    }
+
+    #[test]
+    fn edits_raycast_and_physics() {
+        let spawn = Generator::new(7).find_spawn();
+        let world_pos = spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+        let mut world = settled_world(world_pos);
+        let (x, z) = (spawn.x, spawn.z);
+        let ground = surface_y(&world, x, z);
+
+        // Looking straight down from above hits the surface block.
+        let eye = DVec3::new(x as f64 + 0.5, ground as f64 + 4.5, z as f64 + 0.5);
+        let (hit, normal) = world.raycast(eye, DVec3::NEG_Y, 10.0).expect("ray should hit ground");
+        assert_eq!(hit, IVec3::new(x, ground, z));
+        assert_eq!(normal, IVec3::Y);
+
+        // Placing a block on top is visible to both reads and the raycast.
+        assert!(world.set_block(hit + normal, Block::GLOWSTONE));
+        assert_eq!(world.get_block(hit + normal), Some(Block::GLOWSTONE));
+        assert_eq!(world.raycast(eye, DVec3::NEG_Y, 10.0).unwrap().0, hit + normal);
+        assert!(!world.mesh_uploads.is_empty(), "edit should remesh synchronously");
+        assert!(world.modified_chunks().iter().any(|(p, _)| *p == chunk_of(hit)));
+
+        // The heightmap follows the edit up and back down.
+        let col = column_of(chunk_of(hit));
+        let i = ((x & 31) + (z & 31) * 32) as usize;
+        assert_eq!(world.columns[&col].heights[i] as i32, ground + 1);
+        world.set_block(hit + normal, Block::AIR);
+        assert_eq!(world.columns[&col].heights[i] as i32, surface_y(&world, x, z));
+
+        // A player dropped from above lands on the ground and stays there.
+        let mut player = Player::new(DVec3::new(x as f64 + 0.5, ground as f64 + 6.0, z as f64 + 0.5));
+        for _ in 0..240 {
+            player.update(1.0 / 60.0, MoveInput::default(), &world);
+        }
+        let top = surface_y(&world, x, z) as f64 + 1.0;
+        assert!(player.on_ground, "player should land");
+        assert!((player.pos.y - top).abs() < 0.01, "feet at {} vs ground {top}", player.pos.y);
+
+        // Walking into a wall stops at the wall.
+        let wall_x = x + 2;
+        for y in 0..3 {
+            world.set_block(IVec3::new(wall_x, top as i32 + y, z), Block::STONE);
+        }
+        let walk = MoveInput { forward: 1.0, ..Default::default() };
+        player.yaw = 0.0; // facing +X
+        for _ in 0..120 {
+            player.update(1.0 / 60.0, walk, &world);
+        }
+        assert!(player.pos.x <= wall_x as f64 - 0.3 + 1e-3, "walked through wall: x={}", player.pos.x);
+        assert!(player.pos.x > wall_x as f64 - 0.4);
     }
 }

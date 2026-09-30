@@ -67,6 +67,9 @@ struct Game {
     frame_time_sum: f64,
     screenshot: Option<String>,
     screenshot_state: u32,
+    /// `--bench-render`: per-frame wall times (CPU + GPU, serialised).
+    bench_render: Option<Vec<f64>>,
+    frame_started: Option<Instant>,
 }
 
 pub struct App {
@@ -158,8 +161,11 @@ impl ApplicationHandler for App {
             frame_time_sum: 0.0,
             screenshot: self.args.screenshot.clone(),
             screenshot_state: 0,
+            bench_render: self.args.bench_render.then(Vec::new),
+            frame_started: None,
         };
-        if game.screenshot.is_none() {
+        game.renderer.force_offscreen = game.bench_render.is_some();
+        if game.screenshot.is_none() && game.bench_render.is_none() {
             game.set_grab(true);
         }
         self.game = Some(game);
@@ -235,7 +241,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 game.frame();
-                if game.screenshot_done() {
+                if game.screenshot_done() || game.bench_render_done() {
                     event_loop.exit();
                 }
             }
@@ -244,11 +250,10 @@ impl ApplicationHandler for App {
     }
 
     fn device_event(&mut self, _el: &ActiveEventLoop, _id: DeviceId, event: DeviceEvent) {
-        if let (Some(game), DeviceEvent::MouseMotion { delta }) = (self.game.as_mut(), event) {
-            if game.mouse_grabbed {
+        if let (Some(game), DeviceEvent::MouseMotion { delta }) = (self.game.as_mut(), event)
+            && game.mouse_grabbed {
                 game.player.look(delta.0 as f32 * MOUSE_SENSITIVITY, delta.1 as f32 * MOUSE_SENSITIVITY);
             }
-        }
     }
 
     fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
@@ -340,11 +345,10 @@ impl Game {
     }
 
     fn break_block(&mut self) {
-        if let Some((pos, _)) = self.target() {
-            if self.world.get_block(pos) != Some(Block::BEDROCK) {
+        if let Some((pos, _)) = self.target()
+            && self.world.get_block(pos) != Some(Block::BEDROCK) {
                 self.world.set_block(pos, Block::AIR);
             }
-        }
     }
 
     fn place_block(&mut self) {
@@ -385,6 +389,52 @@ impl Game {
             2 => !self.renderer.capture_pending(),
             _ => false,
         }
+    }
+
+    /// Drives `--bench-render`: after streaming settles, spins the camera a
+    /// full turn, waiting for the GPU every frame, then prints timings.
+    fn bench_render_done(&mut self) -> bool {
+        const FRAMES: usize = 360;
+        let settled = self.world.loaded_chunks() > 0 && self.world.pending_jobs() == 0;
+        let Some(times) = self.bench_render.as_mut() else { return false };
+        if times.is_empty() && !settled {
+            self.frame_started = None;
+            return false;
+        }
+        self.renderer.wait_idle();
+        if let Some(start) = self.frame_started.take() {
+            times.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+        if times.len() >= FRAMES {
+            let mut sorted = std::mem::take(times);
+            self.bench_render = None;
+            sorted.sort_by(f64::total_cmp);
+            let avg = sorted.iter().sum::<f64>() / sorted.len() as f64;
+            let s = self.renderer.stats;
+            println!(
+                "render {}x{} rd={}: avg {:.2} ms ({:.0} fps), p50 {:.2} ms, p99 {:.2} ms, max {:.2} ms",
+                self.renderer.size().0,
+                self.renderer.size().1,
+                self.world.render_distance(),
+                avg,
+                1000.0 / avg,
+                sorted[sorted.len() / 2],
+                sorted[sorted.len() * 99 / 100],
+                sorted[sorted.len() - 1],
+            );
+            println!(
+                "last frame: {} meshes, {} visible, {} draw calls, {:.2}M quads, {:.0} MB vertex data",
+                s.meshes,
+                s.visible,
+                s.draw_calls,
+                s.quads as f64 / 1e6,
+                s.gpu_bytes as f64 / 1e6
+            );
+            return true;
+        }
+        self.player.yaw += std::f32::consts::TAU / FRAMES as f32;
+        self.frame_started = Some(Instant::now());
+        false
     }
 
     fn save(&mut self) {

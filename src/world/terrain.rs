@@ -174,9 +174,8 @@ impl Generator {
                 let depth = if col.biome == Biome::Desert { 6 } else { 4 };
                 for wy in base.y..=fill_top {
                     let y = (wy - base.y) as usize;
-                    let mut b = if wy == 0 {
-                        Block::BEDROCK
-                    } else if wy < 4 && hash_f(wx, wy, wz, self.seed) < (4 - wy) as f32 / 4.0 {
+                    // Solid bedrock at y=0, thinning out randomly up to y=3.
+                    let mut b = if wy == 0 || (wy < 4 && hash_f(wx, wy, wz, self.seed) < (4 - wy) as f32 / 4.0) {
                         Block::BEDROCK
                     } else if wy < col.height - depth {
                         self.ore_or_stone(wx, wy, wz)
@@ -223,7 +222,7 @@ impl Generator {
             22..=23 if y < 16 => Block::DIAMOND_ORE,
             _ => return Block::STONE,
         };
-        if hash3(x, y, z, self.seed ^ 0x0E6) % 3 != 0 { ore } else { Block::STONE }
+        if !hash3(x, y, z, self.seed ^ 0x0E6).is_multiple_of(3) { ore } else { Block::STONE }
     }
 
     /// Samples the cave noises on a coarse grid; per-block values are

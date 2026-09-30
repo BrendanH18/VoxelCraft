@@ -16,6 +16,7 @@ pub struct Args {
     pub new_world: bool,
     pub bench: bool,
     pub screenshot: Option<String>,
+    pub bench_render: bool,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
 }
@@ -28,6 +29,7 @@ voxelcraft [options]
   --new             ignore any existing save and start a fresh world
   --no-vsync        uncapped frame rate
   --bench           headless terrain generation + meshing benchmark
+  --bench-render    load the world, render a 360° sweep offscreen, report frame times
   --screenshot <f>  wait for the world to load, save a PNG and exit
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)";
 
@@ -40,6 +42,7 @@ fn parse_args() -> Result<Args, String> {
         new_world: false,
         bench: false,
         screenshot: None,
+        bench_render: false,
         pose: None,
     };
     let mut it = std::env::args().skip(1);
@@ -52,6 +55,7 @@ fn parse_args() -> Result<Args, String> {
             "--no-vsync" => args.no_vsync = true,
             "--new" => args.new_world = true,
             "--bench" => args.bench = true,
+            "--bench-render" => args.bench_render = true,
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--pose" => {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();

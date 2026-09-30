@@ -128,6 +128,9 @@ pub struct Renderer {
     pub stats: RenderStats,
     visible: Vec<(f32, IVec3, [f32; 3])>,
     capture: Option<std::path::PathBuf>,
+    offscreen: Option<wgpu::Texture>,
+    /// Render to `offscreen` instead of the window (benchmarks).
+    pub force_offscreen: bool,
 }
 
 impl Renderer {
@@ -431,7 +434,14 @@ impl Renderer {
             stats: RenderStats::default(),
             visible: Vec::new(),
             capture: None,
+            offscreen: None,
+            force_offscreen: false,
         }
+    }
+
+    /// Blocks until the GPU has finished all submitted work.
+    pub fn wait_idle(&self) {
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
     }
 
     pub fn capture_pending(&self) -> bool {
@@ -470,7 +480,7 @@ impl Renderer {
         let mut pixels = Vec::with_capacity((w * h * 4) as usize);
         for y in 0..h {
             let line = &mapped[(y * row) as usize..(y * row + w * 4) as usize];
-            for px in line.chunks_exact(4) {
+            for px in line.as_chunks::<4>().0 {
                 pixels.extend_from_slice(&if bgra { [px[2], px[1], px[0], 255] } else { [px[0], px[1], px[2], 255] });
             }
         }
@@ -575,6 +585,10 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
     }
 
+    pub fn size(&self) -> (u32, u32) {
+        (self.config.width, self.config.height)
+    }
+
     pub fn aspect(&self) -> f32 {
         self.config.width as f32 / self.config.height as f32
     }
@@ -673,36 +687,43 @@ impl Renderer {
     }
 
     pub fn render(&mut self, p: &FrameParams) {
-        let frame = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => Some(f),
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface.configure(&self.device, &self.config);
-                None
+        let frame = if self.force_offscreen {
+            None
+        } else {
+            match self.surface.get_current_texture() {
+                wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => Some(f),
+                wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                    self.surface.configure(&self.device, &self.config);
+                    None
+                }
+                _ => None, // occluded / timeout
             }
-            _ => None, // occluded / timeout
         };
-        // With no surface frame (e.g. hidden window) a pending capture still
-        // renders offscreen; otherwise back off instead of spinning.
-        let offscreen;
-        let target = match &frame {
-            Some(f) => &f.texture,
-            None if self.capture.is_some() => {
-                offscreen = self.device.create_texture(&wgpu::TextureDescriptor {
+        // Without a surface frame (e.g. hidden window) captures and
+        // benchmarks still render offscreen; otherwise back off instead of
+        // spinning.
+        if frame.is_none() {
+            if !self.force_offscreen && self.capture.is_none() {
+                std::thread::sleep(std::time::Duration::from_millis(8));
+                return;
+            }
+            let size = (self.config.width, self.config.height);
+            if self.offscreen.as_ref().is_none_or(|t| (t.width(), t.height()) != size) {
+                self.offscreen = Some(self.device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("offscreen"),
-                    size: wgpu::Extent3d { width: self.config.width, height: self.config.height, depth_or_array_layers: 1 },
+                    size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format: self.config.format,
                     usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
                     view_formats: &[],
-                });
-                &offscreen
+                }));
             }
-            None => {
-                std::thread::sleep(std::time::Duration::from_millis(8));
-                return;
-            }
+        }
+        let target = match &frame {
+            Some(f) => &f.texture,
+            None => self.offscreen.as_ref().unwrap(),
         };
         let view = target.create_view(&Default::default());
 
@@ -717,7 +738,7 @@ impl Renderer {
         // backwards).
         self.visible.clear();
         let size = CHUNK_SIZE_I as f64;
-        for (&pos, _) in &self.meshes {
+        for &pos in self.meshes.keys() {
             let origin = (pos.as_dvec3() * size - p.camera).as_vec3();
             if frustum.intersects(origin, origin + Vec3::splat(size as f32)) {
                 let center = origin + Vec3::splat(size as f32 / 2.0);
