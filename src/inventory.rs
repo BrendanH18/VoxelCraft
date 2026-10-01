@@ -1,21 +1,41 @@
 //! Player inventory: 36 stack slots (the first 9 are the hotbar) plus the
 //! stack held on the mouse cursor while the inventory screen is open.
 
-use crate::world::block::Block;
+use crate::item::Item;
 
 pub const HOTBAR_SLOTS: usize = 9;
 pub const SLOTS: usize = 36;
-pub const MAX_STACK: u8 = 64;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Stack {
-    pub block: Block,
+    pub item: Item,
     pub count: u8,
+    /// Uses taken off a tool's durability (0 for everything else).
+    pub damage: u16,
 }
 
 impl Stack {
-    pub fn new(block: Block, count: u8) -> Self {
-        Self { block, count }
+    pub fn new(item: impl Into<Item>, count: u8) -> Self {
+        Self { item: item.into(), count, damage: 0 }
+    }
+
+    /// Whether `other` can merge into this stack (same item, same wear).
+    pub fn stacks_with(&self, other: &Stack) -> bool {
+        self.item == other.item && self.damage == other.damage
+    }
+
+    pub fn max(&self) -> u8 {
+        self.item.max_stack()
+    }
+
+    /// Remaining durability as a fraction, for tools that have been used.
+    pub fn wear(&self) -> Option<f32> {
+        let max = self.item.durability()?;
+        (self.damage > 0).then(|| 1.0 - self.damage as f32 / max as f32)
+    }
+
+    fn with_count(self, count: u8) -> Option<Stack> {
+        (count > 0).then_some(Stack { count, ..self })
     }
 }
 
@@ -32,10 +52,10 @@ impl Default for Inventory {
 }
 
 impl Inventory {
-    pub fn with_hotbar(blocks: &[Block]) -> Self {
+    pub fn with_hotbar(items: &[Item]) -> Self {
         let mut inv = Self::default();
-        for (slot, &b) in inv.slots.iter_mut().zip(blocks) {
-            *slot = Some(Stack::new(b, MAX_STACK));
+        for (slot, &i) in inv.slots.iter_mut().zip(items) {
+            *slot = Some(Stack::new(i, i.max_stack()));
         }
         inv
     }
@@ -44,12 +64,20 @@ impl Inventory {
         self.slots[slot]
     }
 
-    /// Adds blocks, filling existing stacks first (hotbar before the main
-    /// grid), then empty slots. Returns how many didn't fit.
-    pub fn add(&mut self, block: Block, mut count: u8) -> u8 {
+    /// Adds new (unworn) items, filling existing stacks first (hotbar
+    /// before the main grid), then empty slots. Returns how many didn't fit.
+    pub fn add(&mut self, item: impl Into<Item>, count: u8) -> u8 {
+        self.add_stack(Stack::new(item, count))
+    }
+
+    /// Adds a stack like [`Inventory::add`], keeping its wear. Returns how
+    /// many didn't fit.
+    pub fn add_stack(&mut self, stack: Stack) -> u8 {
+        let max = stack.max();
+        let mut count = stack.count;
         for s in self.slots.iter_mut().flatten() {
-            if s.block == block && s.count < MAX_STACK {
-                let n = count.min(MAX_STACK - s.count);
+            if s.stacks_with(&stack) && s.count < max {
+                let n = count.min(max - s.count);
                 s.count += n;
                 count -= n;
                 if count == 0 {
@@ -59,8 +87,8 @@ impl Inventory {
         }
         for slot in self.slots.iter_mut() {
             if slot.is_none() {
-                let n = count.min(MAX_STACK);
-                *slot = Some(Stack::new(block, n));
+                let n = count.min(max);
+                *slot = Some(Stack { count: n, ..stack });
                 count -= n;
                 if count == 0 {
                     return 0;
@@ -70,70 +98,43 @@ impl Inventory {
         count
     }
 
-    /// Removes one block from a slot, returning it.
-    pub fn take_one(&mut self, slot: usize) -> Option<Block> {
-        let s = self.slots[slot].as_mut()?;
-        let block = s.block;
-        s.count -= 1;
-        if s.count == 0 {
-            self.slots[slot] = None;
-        }
-        Some(block)
+    /// Removes one item from a slot, returning it.
+    pub fn take_one(&mut self, slot: usize) -> Option<Item> {
+        let s = self.slots[slot]?;
+        self.slots[slot] = s.with_count(s.count - 1);
+        Some(s.item)
     }
 
-    pub fn find(&self, block: Block) -> Option<usize> {
-        self.slots.iter().position(|s| s.is_some_and(|s| s.block == block))
+    pub fn find(&self, item: impl Into<Item>) -> Option<usize> {
+        let item = item.into();
+        self.slots.iter().position(|s| s.is_some_and(|s| s.item == item))
     }
 
     /// Minecraft-style slot click with the cursor stack. Left click picks
     /// up, places, merges or swaps whole stacks; right click picks up half
     /// or places a single item.
     pub fn click(&mut self, slot: usize, right: bool) {
-        let s = &mut self.slots[slot];
-        match (self.cursor, *s, right) {
-            (None, None, _) => {}
-            (None, Some(st), false) => {
-                self.cursor = Some(st);
-                *s = None;
-            }
-            (None, Some(st), true) => {
-                let half = st.count.div_ceil(2);
-                self.cursor = Some(Stack::new(st.block, half));
-                *s = (st.count > half).then(|| Stack::new(st.block, st.count - half));
-            }
-            (Some(c), None, false) => {
-                *s = Some(c);
-                self.cursor = None;
-            }
-            (Some(c), None, true) => {
-                *s = Some(Stack::new(c.block, 1));
-                self.cursor = (c.count > 1).then(|| Stack::new(c.block, c.count - 1));
-            }
-            (Some(c), Some(st), _) if c.block == st.block => {
-                let n = if right { 1.min(c.count) } else { c.count }.min(MAX_STACK - st.count);
-                *s = Some(Stack::new(st.block, st.count + n));
-                self.cursor = (c.count > n).then(|| Stack::new(c.block, c.count - n));
-            }
-            (Some(c), Some(st), _) => {
-                *s = Some(c);
-                self.cursor = Some(st);
-            }
-        }
+        click_slot(&mut self.slots[slot], &mut self.cursor, right);
     }
 
     /// Puts the cursor stack back into the inventory (when the screen
     /// closes). Anything that doesn't fit is lost.
     pub fn return_cursor(&mut self) {
         if let Some(c) = self.cursor.take() {
-            self.add(c.block, c.count);
+            self.add_stack(c);
         }
     }
 
-    /// `id:count` pairs, `-` for empty slots, comma separated.
+    /// `id:count` (or `id:count:damage` for worn tools) per slot, `-` for
+    /// empty slots, comma separated.
     pub fn serialize(&self) -> String {
         self.slots
             .iter()
-            .map(|s| s.map_or("-".to_string(), |s| format!("{}:{}", s.block.0, s.count)))
+            .map(|s| match s {
+                None => "-".to_string(),
+                Some(s) if s.damage > 0 => format!("{}:{}:{}", s.item.0, s.count, s.damage),
+                Some(s) => format!("{}:{}", s.item.0, s.count),
+            })
             .collect::<Vec<_>>()
             .join(",")
     }
@@ -146,10 +147,14 @@ impl Inventory {
         }
         for (slot, part) in inv.slots.iter_mut().zip(parts) {
             if part != "-" {
-                let (id, count) = part.split_once(':')?;
-                let (id, count): (u8, u8) = (id.parse().ok()?, count.parse().ok()?);
-                if count > 0 {
-                    *slot = Some(Stack::new(Block(id), count.min(MAX_STACK)));
+                let mut fields = part.split(':');
+                let id: u16 = fields.next()?.parse().ok()?;
+                let count: u8 = fields.next()?.parse().ok()?;
+                let damage: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
+                let item = Item(id);
+                // Unknown ids (e.g. from a newer version) are dropped.
+                if count > 0 && item.is_valid() {
+                    *slot = Some(Stack { item, count: count.min(item.max_stack()), damage });
                 }
             }
         }
@@ -157,9 +162,46 @@ impl Inventory {
     }
 }
 
+/// Minecraft-style click on one slot with the cursor stack; shared by every
+/// container screen. Left click picks up, places, merges or swaps whole
+/// stacks; right click picks up half or places a single item.
+pub fn click_slot(slot: &mut Option<Stack>, cursor: &mut Option<Stack>, right: bool) {
+    match (*cursor, *slot, right) {
+        (None, None, _) => {}
+        (None, Some(st), false) => {
+            *cursor = Some(st);
+            *slot = None;
+        }
+        (None, Some(st), true) => {
+            let half = st.count.div_ceil(2);
+            *cursor = st.with_count(half);
+            *slot = st.with_count(st.count - half);
+        }
+        (Some(c), None, false) => {
+            *slot = Some(c);
+            *cursor = None;
+        }
+        (Some(c), None, true) => {
+            *slot = c.with_count(1);
+            *cursor = c.with_count(c.count - 1);
+        }
+        (Some(c), Some(st), _) if c.stacks_with(&st) && st.max() > 1 => {
+            let n = if right { 1.min(c.count) } else { c.count }.min(st.max().saturating_sub(st.count));
+            *slot = st.with_count(st.count + n);
+            *cursor = c.with_count(c.count - n);
+        }
+        (Some(c), Some(st), _) => {
+            *slot = Some(c);
+            *cursor = Some(st);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::item::{Tier, ToolKind};
+    use crate::world::block::Block;
 
     #[test]
     fn add_fills_existing_stacks_then_empty_slots() {
@@ -210,6 +252,43 @@ mod tests {
         let mut inv = Inventory::default();
         inv.add(Block::PLANKS, 70);
         inv.slots[20] = Some(Stack::new(Block::GLASS, 3));
+        inv.slots[21] = Some(Stack::new(Item::COAL, 12));
+        inv.slots[22] = Some(Stack { damage: 17, ..Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Iron), 1) });
         assert_eq!(Inventory::deserialize(&inv.serialize()), Some(inv));
+    }
+
+    #[test]
+    fn old_block_only_saves_still_load() {
+        let mut text = vec!["-"; SLOTS];
+        text[0] = "3:64";
+        text[5] = "9:2";
+        let inv = Inventory::deserialize(&text.join(",")).unwrap();
+        assert_eq!(inv.get(0), Some(Stack::new(Block::GRASS, 64)));
+        assert_eq!(inv.get(5), Some(Stack::new(Block::COBBLESTONE, 2)));
+    }
+
+    #[test]
+    fn tools_do_not_stack() {
+        let pick = Item::tool(ToolKind::Pickaxe, Tier::Stone);
+        let mut inv = Inventory::default();
+        assert_eq!(inv.add(pick, 2), 0);
+        assert_eq!(inv.get(0), Some(Stack::new(pick, 1)));
+        assert_eq!(inv.get(1), Some(Stack::new(pick, 1)));
+
+        // Clicking one tool onto another swaps rather than merging.
+        inv.click(0, false);
+        inv.click(1, false);
+        assert_eq!(inv.cursor, Some(Stack::new(pick, 1)));
+        assert_eq!(inv.get(1), Some(Stack::new(pick, 1)));
+    }
+
+    #[test]
+    fn worn_stacks_keep_their_damage() {
+        let sword = Stack { damage: 30, ..Stack::new(Item::tool(ToolKind::Sword, Tier::Wood), 1) };
+        let mut inv = Inventory::default();
+        inv.add_stack(sword);
+        assert_eq!(inv.get(0), Some(sword));
+        assert!((sword.wear().unwrap() - (1.0 - 30.0 / 59.0)).abs() < 1e-6);
+        assert_eq!(Stack::new(Item::COAL, 1).wear(), None);
     }
 }

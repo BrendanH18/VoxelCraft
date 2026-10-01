@@ -176,6 +176,10 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             }
         }
         l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES).contains(&l) => crack(l - tex::CRACK_0, x, y),
+        l if l >= tex::ITEM_0 => match crate::item::sprite_for_layer(l - tex::ITEM_0) {
+            Some(sprite) => super::item_sprites::pixel(sprite, x, y),
+            None => [0, 0, 0, 0],
+        },
         _ => {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }

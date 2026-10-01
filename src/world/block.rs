@@ -3,6 +3,8 @@
 //! Block properties live in a 256-entry static table so hot loops (meshing,
 //! physics) resolve them with a single indexed load instead of a `match`.
 
+use crate::item::Item;
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 #[repr(transparent)]
 pub struct Block(pub u8);
@@ -68,7 +70,9 @@ pub mod tex {
     /// Block-breaking crack overlays, stages 0..10.
     pub const CRACK_0: u8 = 31;
     pub const CRACK_STAGES: u8 = 10;
-    pub const COUNT: u32 = 41;
+    /// Flat item icons (see `item::Item::icon_layer`), up to 64 of them.
+    pub const ITEM_0: u8 = 96;
+    pub const COUNT: u32 = 160;
 }
 
 impl Block {
@@ -143,13 +147,15 @@ impl Block {
     }
 
     /// What breaking this block yields in survival.
-    pub fn drop(self) -> Option<Block> {
+    pub fn drop(self) -> Option<Item> {
         match self {
-            Block::STONE => Some(Block::COBBLESTONE),
-            Block::GRASS | Block::SNOWY_GRASS => Some(Block::DIRT),
+            Block::STONE => Some(Block::COBBLESTONE.into()),
+            Block::GRASS | Block::SNOWY_GRASS => Some(Block::DIRT.into()),
+            Block::COAL_ORE => Some(Item::COAL),
+            Block::DIAMOND_ORE => Some(Item::DIAMOND),
             Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK => None,
             b if b.is_water() || b == Block::AIR => None,
-            b => Some(b),
+            b => Some(b.into()),
         }
     }
 

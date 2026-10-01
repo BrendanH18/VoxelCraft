@@ -18,6 +18,7 @@ use winit::window::{CursorGrabMode, Fullscreen, Window, WindowId};
 
 use crate::Args;
 use crate::inventory::{HOTBAR_SLOTS, Inventory, Stack};
+use crate::item::Item;
 use crate::player::{MoveInput, Player};
 use crate::render::{FrameParams, Renderer};
 use crate::world::World;
@@ -44,16 +45,16 @@ const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
 const DAY_LENGTH: f64 = 600.0;
 
 /// Creative mode's starting hotbar.
-const CREATIVE_HOTBAR: [Block; 9] = [
-    Block::DIRT,
-    Block::STONE,
-    Block::COBBLESTONE,
-    Block::PLANKS,
-    Block::LOG,
-    Block::BRICKS,
-    Block::GLASS,
-    Block::GLOWSTONE,
-    Block::WATER,
+const CREATIVE_HOTBAR: [Item; 9] = [
+    Item::from_block(Block::DIRT),
+    Item::from_block(Block::STONE),
+    Item::from_block(Block::COBBLESTONE),
+    Item::from_block(Block::PLANKS),
+    Item::from_block(Block::LOG),
+    Item::from_block(Block::BRICKS),
+    Item::from_block(Block::GLASS),
+    Item::from_block(Block::GLOWSTONE),
+    Item::from_block(Block::WATER),
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -84,6 +85,8 @@ struct Game {
     mode: GameMode,
     inventory: Inventory,
     inventory_open: bool,
+    /// First visible row of the creative palette.
+    creative_scroll: usize,
     /// Mouse position in physical pixels (for the inventory screen).
     cursor_px: (f32, f32),
     /// Block being broken in survival and progress 0..1.
@@ -177,6 +180,11 @@ impl ApplicationHandler for App {
                 GameMode::Survival => Inventory::default(),
             });
 
+        let mut inventory = inventory;
+        for &(item, count) in &self.args.give {
+            inventory.add(item, count);
+        }
+
         let prop = |k: &str| existing.as_ref().and_then(|l| l.props.get(k));
         let mut vitals = Vitals::restore(
             prop("health").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_HEALTH),
@@ -221,6 +229,7 @@ impl ApplicationHandler for App {
             mode,
             inventory,
             inventory_open: self.args.open_inventory,
+            creative_scroll: 0,
             cursor_px: (0.0, 0.0),
             breaking: None,
             selected: 0,
@@ -339,7 +348,9 @@ impl ApplicationHandler for App {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(p) => (p.y / 30.0) as f32,
                 };
-                if dy.abs() >= 0.5 {
+                if dy.abs() >= 0.5 && game.inventory_open {
+                    game.scroll_palette(if dy > 0.0 { -1 } else { 1 });
+                } else if dy.abs() >= 0.5 {
                     let step = if dy > 0.0 { 8 } else { 1 };
                     game.select((game.selected + step) % 9);
                 }
@@ -493,7 +504,7 @@ impl Game {
 
     fn show_selected_name(&mut self) {
         if let Some(s) = self.inventory.get(self.selected) {
-            self.show_popup(s.block.name());
+            self.show_popup(s.item.name());
         }
     }
 
@@ -569,14 +580,22 @@ impl Game {
         }
         match slot {
             Some(hud::SlotRef::Inventory(i)) => self.inventory.click(i, right),
-            Some(hud::SlotRef::Palette(block)) => {
+            Some(hud::SlotRef::Palette(item)) => {
                 // Creative palette: take a full stack, or trash the held one.
                 self.inventory.cursor = match self.inventory.cursor {
                     Some(_) => None,
-                    None => Some(Stack::new(block, crate::inventory::MAX_STACK)),
+                    None => Some(Stack::new(item, item.max_stack())),
                 };
             }
             None => {}
+        }
+    }
+
+    /// Scrolls the creative palette by whole rows.
+    fn scroll_palette(&mut self, rows: i32) {
+        if self.mode == GameMode::Creative {
+            let max = hud::palette_rows().saturating_sub(hud::PALETTE_ROWS);
+            self.creative_scroll = self.creative_scroll.saturating_add_signed(rows as isize).min(max);
         }
     }
 
@@ -632,8 +651,7 @@ impl Game {
     fn place_block(&mut self) {
         let Some((pos, normal)) = self.target() else { return };
         let at = pos + normal;
-        let Some(stack) = self.inventory.get(self.selected) else { return };
-        let block = stack.block;
+        let Some(block) = self.inventory.get(self.selected).and_then(|s| s.item.block()) else { return };
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
         if free && !(block.is_solid() && self.player.intersects_block(at)) && self.world.set_block(at, block) {
             self.audio.block_place(block, at);
@@ -652,7 +670,7 @@ impl Game {
                 self.show_selected_name();
             }
             None if self.mode == GameMode::Creative => {
-                self.inventory.slots[self.selected] = Some(Stack::new(b, crate::inventory::MAX_STACK));
+                self.inventory.slots[self.selected] = Some(Stack::new(b, Item::from(b).max_stack()));
                 self.show_selected_name();
             }
             None => {}

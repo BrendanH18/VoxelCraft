@@ -47,7 +47,11 @@ The world autosaves every two minutes and on exit.
   sunlight. Mobs avoid tall drops, float in water, flash red when hurt and
   topple over when killed. All mobs are drawn in a single draw call
 - Survival and creative modes: timed block breaking with crack overlay,
-  drops, a 36-slot inventory with stacks, and a creative block palette
+  drops, a 36-slot inventory with stacks, and a scrollable creative palette
+- Items beyond blocks, each with a procedurally drawn icon: sticks, coal,
+  ingots, diamonds, food, mob materials, and pickaxes, shovels, axes, hoes
+  and swords in five tiers with durability bars. Coal and diamond ore drop
+  their items
 - Survival health (no hunger): 10 hearts, fall damage (1 per block beyond
   3; water breaks falls), 15 s of air then drowning, natural regeneration
   after 4 s without damage, a red hurt flash and shaking hearts. Dying shows

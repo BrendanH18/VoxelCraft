@@ -4,8 +4,9 @@
 use std::time::Instant;
 
 use crate::inventory::{HOTBAR_SLOTS, Stack};
+use crate::item::Item;
 use crate::render::ui::{Color, Ui, UiVertex, WHITE};
-use crate::world::block::{Block, tex};
+use crate::world::block::tex;
 use crate::world::chunk::{chunk_of, local_of};
 
 use super::survival::{self, AIR_BUBBLES, MAX_AIR, MAX_HEALTH};
@@ -16,7 +17,15 @@ use super::{Game, GameMode};
 pub(super) enum SlotRef {
     Inventory(usize),
     /// Creative palette entry.
-    Palette(Block),
+    Palette(Item),
+}
+
+/// Visible rows of the creative palette.
+pub(super) const PALETTE_ROWS: usize = 3;
+
+/// Total rows in the creative palette.
+pub(super) fn palette_rows() -> usize {
+    Item::creative_palette().count().div_ceil(9)
 }
 
 const SLOT: f32 = 18.0;
@@ -140,9 +149,20 @@ impl Game {
         }
     }
 
-    /// Item icon plus stack count in an 18x18 slot at (x, y).
+    /// Item icon, durability bar and stack count in an 18x18 slot at (x, y).
     fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
-        ui.block_icon(x + 2.0, y + 2.0, 14.0, stack.block);
+        match (stack.item.block(), stack.item.icon_layer()) {
+            (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
+            (None, Some(layer)) => ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE),
+            (None, None) => {}
+        }
+        if let Some(wear) = stack.wear() {
+            // Minecraft's bar: green when new, through yellow to red.
+            let w = (13.0 * wear).round().max(1.0);
+            let color = [(2.0 - 2.0 * wear).min(1.0), (2.0 * wear).min(1.0), 0.0, 1.0];
+            ui.rect(x + 2.0, y + 14.0, 13.0, 2.0, [0.0, 0.0, 0.0, 1.0]);
+            ui.rect(x + 2.0, y + 14.0, w, 1.0, color);
+        }
         if self.mode == GameMode::Survival && stack.count > 1 {
             let n = stack.count.to_string();
             ui.text(x + 17.0 - Ui::text_width(&n), y + 9.0, &n, WHITE);
@@ -163,9 +183,10 @@ impl Game {
                 }
             }
             GameMode::Creative => {
-                for (i, b) in Block::creative_palette().enumerate().take(27) {
+                let first = self.creative_scroll * 9;
+                for (i, item) in Item::creative_palette().skip(first).take(PALETTE_ROWS * 9).enumerate() {
                     let (x, y) = grid(i);
-                    out.push((SlotRef::Palette(b), x, y));
+                    out.push((SlotRef::Palette(item), x, y));
                 }
             }
         }
@@ -196,9 +217,18 @@ impl Game {
         ui.rect(px + PANEL_W - 1.0, py, 1.0, PANEL_H, [0.33, 0.33, 0.33, 1.0]);
         let title = match self.mode {
             GameMode::Survival => "Inventory",
-            GameMode::Creative => "Creative - pick blocks",
+            GameMode::Creative => "Creative",
         };
         ui.text_flat(px + 8.0, py + 6.0, title, [0.25, 0.25, 0.25, 1.0]);
+        if self.mode == GameMode::Creative {
+            // Scrollbar beside the palette grid.
+            let (x, y, h) = (px + PANEL_W - 6.0, py + 18.0, PALETTE_ROWS as f32 * SLOT);
+            let rows = palette_rows().max(1) as f32;
+            let thumb = h * (PALETTE_ROWS as f32 / rows).min(1.0);
+            let top = y + (h - thumb) * self.creative_scroll as f32 / (rows - PALETTE_ROWS as f32).max(1.0);
+            ui.rect(x, y, 4.0, h, [0.45, 0.45, 0.45, 1.0]);
+            ui.rect(x, top, 4.0, thumb, WHITE);
+        }
 
         let hovered = self.slot_under_cursor();
         for (r, x, y) in self.inventory_slots((sw, sh)) {
@@ -218,9 +248,9 @@ impl Game {
         if let Some(SlotRef::Inventory(i)) = hovered
             && let Some(s) = self.inventory.get(i)
         {
-            self.tooltip(ui, s.block.name());
-        } else if let Some(SlotRef::Palette(b)) = hovered {
-            self.tooltip(ui, b.name());
+            self.tooltip(ui, s.item.name());
+        } else if let Some(SlotRef::Palette(item)) = hovered {
+            self.tooltip(ui, item.name());
         }
         // The held stack follows the mouse.
         if let Some(stack) = self.inventory.cursor {
