@@ -46,6 +46,14 @@ The world autosaves every two minutes and on exit.
   rotating stars and drifting blocky clouds; distance and underwater fog
 - Flowing water: falls, spreads up to 7 blocks toward the nearest drop,
   dries up without a source, and forms infinite sources; lowered surfaces
+- Lava: flows like water but six times slower and only 3 blocks, glows
+  (light 15), fills caves below y = 10, burns players (4 damage every
+  0.5 s) and mobs, and can be swum through with an orange haze. Where lava
+  meets water a source hardens into obsidian, flowing lava into
+  cobblestone, and lava pouring onto water turns it to stone
+- Sand and gravel fall when unsupported, as free-moving blocks that land
+  on the first solid block (replacing plants and fluids in the way);
+  knocking out a column's base drops the whole column
 - Walking, swimming and flying with AABB collision
 - Mobs with Minecraft-style animated box models: pigs wander, graze and
   look around, and panic when hit; zombies spawn at night, chase and hit

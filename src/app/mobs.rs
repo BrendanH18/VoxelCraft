@@ -116,11 +116,12 @@ impl Game {
     pub(super) fn mobs_debug_line(&self) -> String {
         let e = &self.mobs.entities;
         format!(
-            "Entities: {} (pigs: {}, zombies: {}), {} rendered",
+            "Entities: {} (pigs: {}, zombies: {}), {} rendered, {} falling blocks",
             e.mobs.len(),
             e.count(MobKind::Pig),
             e.count(MobKind::Zombie),
-            e.rendered
+            e.rendered,
+            self.world.falling_blocks().len()
         )
     }
 }

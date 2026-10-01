@@ -41,6 +41,7 @@ const NIGHT_SKY: [f32; 3] = [0.008, 0.012, 0.035];
 const NIGHT_ZENITH: [f32; 3] = [0.002, 0.003, 0.012];
 const SUNSET: [f32; 3] = [0.95, 0.42, 0.18];
 const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
+const LAVA_FOG: [f32; 3] = [0.75, 0.25, 0.03];
 /// Real seconds per in-game day.
 const DAY_LENGTH: f64 = 600.0;
 
@@ -820,6 +821,7 @@ impl Game {
             flying: self.player.flying,
             in_water: self.player.in_water,
             head_in_water: self.player.head_in_water(&self.world),
+            in_lava: self.player.in_lava(&self.world),
         };
         let hurts = self.vitals.tick(dt as f32, &env, self.mode == GameMode::Creative);
         if hurts.fall > 0.0 {
@@ -827,6 +829,9 @@ impl Game {
         }
         if hurts.drown > 0.0 {
             self.damage_player(hurts.drown, survival::CAUSE_DROWN);
+        }
+        if hurts.lava > 0.0 {
+            self.damage_player(hurts.lava, survival::CAUSE_LAVA);
         }
 
         self.action_cooldown -= dt;
@@ -850,6 +855,7 @@ impl Game {
             self.apply_placements();
         }
         self.world.tick_fluids(dt);
+        self.world.tick_falling(dt);
         self.world.update(self.player.pos);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);
@@ -867,9 +873,12 @@ impl Game {
         self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
         let sky = sky_state(self.day_time);
         let daylight = sky.daylight;
-        let underwater = env.head_in_water;
+        let in_lava = self.player.head_in_lava(&self.world);
+        let underwater = env.head_in_water || in_lava;
         let view_dist = (self.world.render_distance() * 32) as f32;
-        let (fog_color, fog_start, fog_end) = if underwater {
+        let (fog_color, fog_start, fog_end) = if in_lava {
+            (LAVA_FOG, 0.0, 2.0)
+        } else if underwater {
             (WATER_FOG.map(|c| c * daylight), 0.0, 28.0)
         } else {
             (sky.horizon, view_dist * 0.55, view_dist * 0.95)
@@ -897,6 +906,17 @@ impl Game {
             crack: self
                 .breaking
                 .map(|(p, progress)| (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u8)),
+            block_models: self
+                .world
+                .falling_blocks()
+                .iter()
+                .map(|f| crate::render::BlockModel {
+                    min: f.pos,
+                    size: 1.0,
+                    block: f.block,
+                    sky_light: crate::entity::sky_light(&self.world, f.pos + glam::DVec3::splat(0.5)),
+                })
+                .collect(),
             ui: if self.show_hud || self.vitals.is_dead() { self.build_ui(now) } else { Vec::new() },
         };
         if !self.renderer.render(&params) {

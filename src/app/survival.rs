@@ -11,6 +11,8 @@ pub const AIR_BUBBLES: u32 = 10;
 const AIR_REFILL_RATE: f32 = 4.0;
 const DROWN_DAMAGE: f32 = 2.0;
 const DROWN_INTERVAL: f32 = 1.0;
+/// Damage per hit while in lava; hurt immunity spaces hits 0.5 s apart.
+const LAVA_DAMAGE: f32 = 4.0;
 /// Seconds without damage before health starts regenerating.
 const REGEN_DELAY: f32 = 4.0;
 /// Seconds per half heart regenerated.
@@ -24,6 +26,7 @@ const SAFE_FALL: f64 = 3.0;
 
 pub const CAUSE_FALL: &str = "fell from a high place";
 pub const CAUSE_DROWN: &str = "drowned";
+pub const CAUSE_LAVA: &str = "tried to swim in lava";
 
 /// Damage for landing after falling `distance` blocks.
 pub fn fall_damage(distance: f64) -> f32 {
@@ -43,6 +46,8 @@ pub struct Env {
     pub in_water: bool,
     /// Eyes under water: uses up air.
     pub head_in_water: bool,
+    /// Body touching lava: burns.
+    pub in_lava: bool,
 }
 
 /// Damage produced by one [`Vitals::tick`]; the caller applies it through
@@ -51,6 +56,7 @@ pub struct Env {
 pub struct Hurts {
     pub fall: f32,
     pub drown: f32,
+    pub lava: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -145,7 +151,7 @@ impl Vitals {
     }
 
     /// Advances air, regeneration and fall tracking by `dt` seconds and
-    /// returns fall/drowning damage for the caller to apply.
+    /// returns fall/drowning/lava damage for the caller to apply.
     pub fn tick(&mut self, dt: f32, env: &Env, creative: bool) -> Hurts {
         let mut hurts = Hurts::default();
         self.since_damage = (self.since_damage + dt).min(1e3);
@@ -180,6 +186,10 @@ impl Vitals {
         } else {
             self.air = (self.air + dt * AIR_REFILL_RATE).min(MAX_AIR);
             self.drown_timer = 0.0;
+        }
+
+        if env.in_lava && !creative {
+            hurts.lava = LAVA_DAMAGE;
         }
 
         // Natural regeneration.
@@ -328,6 +338,20 @@ mod tests {
     }
 
     #[test]
+    fn lava_burns_every_half_second() {
+        let mut v = Vitals::default();
+        let lava = Env { y: 10.0, in_water: true, in_lava: true, ..Env::default() };
+        let mut taken = 0.0;
+        for _ in 0..60 {
+            let h = v.tick(1.0 / 60.0, &lava, false);
+            taken += v.damage(h.lava, CAUSE_LAVA, false);
+        }
+        // One second in lava: hits at 0 s and 0.5 s.
+        assert_eq!(taken, 8.0);
+        assert_eq!(v.tick(0.1, &lava, true).lava, 0.0, "creative is immune");
+    }
+
+    #[test]
     fn creative_is_immune() {
         let mut v = Vitals::default();
         assert_eq!(v.damage(100.0, "test", true), 0.0);
@@ -393,6 +417,7 @@ mod tests {
                     flying: player.flying,
                     in_water: player.in_water,
                     head_in_water: player.head_in_water(world),
+                    in_lava: player.in_lava(world),
                 };
                 let h = v.tick(DT, &env, false);
                 taken += v.damage(h.fall, CAUSE_FALL, false);

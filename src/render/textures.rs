@@ -208,6 +208,20 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             (7..=8, 7..=15) => shade([138, 106, 62], if x == 7 { 1.0 } else { 0.78 }),
             _ => [0, 0, 0, 0],
         },
+        tex::LAVA => {
+            // Molten cells: bright yellow-orange centres, darker red crust between.
+            let pts = points(layer, 8);
+            let (d1, d2, _) = voronoi(x, y, &pts);
+            let edge = ((d2 - d1) / 3.0).min(1.0);
+            let heat = edge * 0.7 + r * 0.3;
+            let c = [255, (90.0 + heat * 140.0) as u8, (20.0 + heat * 40.0) as u8];
+            shade(c, 0.75 + heat * 0.3)
+        }
+        tex::OBSIDIAN => {
+            let speck = rnd(layer, x, y, 13) < 0.08;
+            let c = if speck { [80, 60, 110] } else { [22, 16, 34] };
+            shade(c, 0.85 + r * 0.3)
+        }
         tex::HEART_FULL | tex::HEART_HALF | tex::HEART_EMPTY => heart(layer, x, y),
         tex::BUBBLE => {
             let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);

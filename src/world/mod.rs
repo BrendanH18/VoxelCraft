@@ -14,6 +14,7 @@
 
 pub mod block;
 pub mod chunk;
+pub mod falling;
 mod fluid;
 pub mod noise;
 pub mod storage;
@@ -62,6 +63,7 @@ pub struct World {
     render_distance: i32,
     region: Box<Region>,
     fluids: fluid::FluidState,
+    falling: Vec<falling::FallingBlock>,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
     pub mesh_removals: Vec<IVec3>,
 }
@@ -87,6 +89,7 @@ impl World {
             render_distance,
             region: Box::default(),
             fluids: Default::default(),
+            falling: Vec::new(),
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
         }
@@ -110,7 +113,7 @@ impl World {
 
     /// No generation, meshing or water flow left to do.
     pub fn is_idle(&self) -> bool {
-        self.pending_jobs() == 0 && self.dirty.is_empty() && self.active_fluids() == 0
+        self.pending_jobs() == 0 && self.dirty.is_empty() && self.active_fluids() == 0 && self.falling.is_empty()
     }
 
     pub fn pending_jobs(&self) -> usize {
@@ -186,19 +189,12 @@ impl World {
 
     /// Player edit. Chunks whose geometry changes are remeshed synchronously
     /// so the edit shows up this frame; chunks whose lighting changes are
-    /// remeshed on the workers. Nearby water is woken up to flow.
+    /// remeshed on the workers. Nearby fluid is woken up to flow, and
+    /// unsupported sand, gravel and plants fall or pop off.
     pub fn set_block(&mut self, p: IVec3, block: Block) -> bool {
         let changed = self.edit(p, block, true);
         if changed {
-            self.wake_fluids(p);
-            // A plant or torch that just lost its support pops off.
-            let above = p + IVec3::Y;
-            if let Some(b) = self.get_block(above)
-                && !b.can_stay_on(block)
-            {
-                self.edit(above, Block::AIR, true);
-                self.wake_fluids(above);
-            }
+            self.settle(p);
         }
         changed
     }
@@ -710,5 +706,86 @@ mod tests {
         world.set_block(IVec3::new(2, y + 1, 5), Block::WATER);
         tick(&mut world, 10);
         assert_eq!(at(&world, 1, 5), Block::WATER, "infinite source");
+    }
+
+    #[test]
+    fn lava_spreads_slowly_and_hardens_against_water() {
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let y = 200;
+        for x in -10..=10 {
+            for z in -10..=10 {
+                world.edit(IVec3::new(x, y, z), Block::STONE, false);
+            }
+        }
+        let tick = |world: &mut World, n: usize| {
+            for _ in 0..n {
+                world.tick_fluids(0.25);
+            }
+        };
+        let at = |world: &World, x: i32, z: i32| world.get_block(IVec3::new(x, y + 1, z)).unwrap();
+
+        // Lava moves once per six water ticks and stops after three blocks.
+        world.set_block(IVec3::new(0, y + 1, 0), Block::LAVA);
+        tick(&mut world, 5);
+        assert_eq!(at(&world, 1, 0), Block::AIR, "lava is slow");
+        tick(&mut world, 60);
+        assert_eq!(at(&world, 1, 0), Block::flowing_lava(1));
+        assert_eq!(at(&world, 3, 0), Block::flowing_lava(3));
+        assert_eq!(at(&world, 4, 0), Block::AIR);
+
+        // Water reaching flowing lava turns it to cobblestone, and the
+        // source it touches to obsidian.
+        world.set_block(IVec3::new(-1, y + 1, 0), Block::WATER);
+        world.set_block(IVec3::new(4, y + 1, 0), Block::WATER);
+        tick(&mut world, 12);
+        assert_eq!(at(&world, 0, 0), Block::OBSIDIAN);
+        assert_eq!(at(&world, 3, 0), Block::COBBLESTONE);
+
+        // Lava pouring onto water turns the water to stone.
+        for x in 5..=7 {
+            world.edit(IVec3::new(x, y + 1, 8), Block::STONE, false);
+        }
+        world.set_block(IVec3::new(6, y + 2, 8), Block::WATER);
+        world.set_block(IVec3::new(6, y + 3, 8), Block::LAVA);
+        tick(&mut world, 12);
+        assert_eq!(world.get_block(IVec3::new(6, y + 2, 8)), Some(Block::STONE));
+    }
+
+    #[test]
+    fn sand_and_gravel_fall_and_stack() {
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let y = 200;
+        for x in -2..=2 {
+            for z in -2..=2 {
+                world.edit(IVec3::new(x, y, z), Block::STONE, false);
+            }
+        }
+        let fall = |world: &mut World| {
+            for _ in 0..180 {
+                world.tick_falling(1.0 / 60.0);
+            }
+        };
+        let at = |world: &World, x: i32, y: i32| world.get_block(IVec3::new(x, y, 0)).unwrap();
+
+        // Sand placed in mid-air leaves the grid and lands on the platform.
+        world.set_block(IVec3::new(0, y + 6, 0), Block::SAND);
+        assert_eq!(at(&world, 0, y + 6), Block::AIR);
+        assert_eq!(world.falling_blocks().len(), 1);
+        fall(&mut world);
+        assert_eq!(at(&world, 0, y + 1), Block::SAND);
+        assert!(world.falling_blocks().is_empty());
+
+        // Knocking out a pedestal drops the whole column in order; the dead
+        // bush on top pops off.
+        let column = [Block::DIRT, Block::GRAVEL, Block::GRAVEL, Block::SAND, Block::DEAD_BUSH];
+        for (i, &b) in column.iter().enumerate() {
+            world.edit(IVec3::new(1, y + 1 + i as i32, 0), b, false);
+        }
+        world.set_block(IVec3::new(1, y + 1, 0), Block::AIR);
+        assert_eq!(world.falling_blocks().len(), 3);
+        assert_eq!(at(&world, 1, y + 5), Block::AIR, "bush pops off");
+        fall(&mut world);
+        assert_eq!([at(&world, 1, y + 1), at(&world, 1, y + 2), at(&world, 1, y + 3)], column[1..4]);
+        assert_eq!(at(&world, 1, y + 4), Block::AIR);
     }
 }

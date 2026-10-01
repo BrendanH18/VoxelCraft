@@ -319,18 +319,15 @@ fn mesh_region(r: &Region) -> MeshData {
                     let ni = i + sd;
                     let n = blocks[ni as usize];
                     let mut key = 0;
-                    // Water surfaces sit lower than a full block unless more
-                    // water is stacked on top.
+                    // Fluid surfaces sit lower than a full block unless more
+                    // of the same fluid is stacked on top.
                     let drop_at = |idx: isize| -> u64 {
-                        if blocks[(idx + strides[1]) as usize].is_water() {
-                            0
-                        } else {
-                            blocks[idx as usize].water_drop() as u64
-                        }
+                        let f = blocks[idx as usize];
+                        if blocks[(idx + strides[1]) as usize].fluid() == f.fluid() { 0 } else { f.fluid_drop() as u64 }
                     };
-                    let visible = if b.is_water() {
-                        if n.is_water() {
-                            // Only a side stepping down to lower water shows.
+                    let visible = if let Some(fluid) = b.fluid() {
+                        if n.fluid() == Some(fluid) {
+                            // Only a side stepping down to a lower level shows.
                             d != 1 && drop_at(ni) > drop_at(i)
                         } else {
                             !n.is_opaque()
@@ -360,7 +357,7 @@ fn mesh_region(r: &Region) -> MeshData {
                         for (c, &(s1, s2, du, dv)) in corners.iter().enumerate() {
                             let corner = o(du + dv);
                             let a = if kind == 2 {
-                                3 // no occlusion on water
+                                3 // no occlusion on fluids
                             } else if s1 && s2 {
                                 0
                             } else {
@@ -390,7 +387,7 @@ fn mesh_region(r: &Region) -> MeshData {
                             light |= (ls | lb << 4) << (c * 8);
                         }
                         if kind == 2 {
-                            ao = drop_at(i); // water has no AO; carry the surface drop instead
+                            ao = drop_at(i); // fluids have no AO; carry the surface drop instead
                         }
                         let layer = b.info().tex[face] as u64;
                         key = PRESENT | kind << KIND_SHIFT | ao << AO_SHIFT | layer | light << LIGHT_SHIFT;
@@ -756,12 +753,22 @@ mod tests {
     }
 
     #[test]
+    fn lava_and_water_show_faces_to_each_other() {
+        let m = mesh_blocks(&[([5, 5, 5], Block::LAVA), ([6, 5, 5], Block::WATER)]);
+        // Each keeps the face it shares with the other fluid: no merged blob.
+        assert_eq!(m.pass_quads(TRANSLUCENT), 12);
+        let top =
+            m.quads.iter().find(|q| (q[0] >> 18) & 7 == 2 && q[1] & 0xFF == crate::world::block::tex::LAVA as u32);
+        assert_eq!(top.unwrap()[1] >> 16 & 31, Block::LAVA.fluid_drop() as u32);
+    }
+
+    #[test]
     fn water_lowers_only_the_upper_edge() {
         // A single water block with a partial level: tops and the upper edge
         // of the sides are lowered, the bottom face is not.
         let m = mesh_blocks(&[([5, 5, 5], Block::flowing_water(3))]);
         assert_eq!(m.pass_quads(TRANSLUCENT), 6);
-        let drop = Block::flowing_water(3).water_drop() as f32 / 16.0;
+        let drop = Block::flowing_water(3).fluid_drop() as f32 / 16.0;
         assert!(drop > 0.0);
         for &q in &m.quads {
             for c in corners(q) {

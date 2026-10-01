@@ -21,7 +21,7 @@ use crate::world::World;
 use crate::world::block::Block;
 use crate::world::noise::splitmix64;
 
-pub use mob::{Mob, MobKind};
+pub use mob::{Mob, MobKind, sky_light};
 
 /// Spawns happen this far from the player (blocks).
 pub const SPAWN_MIN_DIST: f64 = 24.0;
@@ -260,7 +260,7 @@ fn spawn_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, da
         return None;
     }
     let pos = DVec3::new(x as f64 + 0.5, h as f64 + 1.0, z as f64 + 0.5);
-    let clear = !physics::overlaps_solid(world, pos, kind.shape()) && !physics::is_water_at(world, pos);
+    let clear = !physics::overlaps_solid(world, pos, kind.shape()) && !physics::is_fluid_at(world, pos);
     clear.then_some(pos)
 }
 

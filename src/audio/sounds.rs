@@ -68,7 +68,7 @@ pub fn material(block: Block) -> Material {
         Block::SNOW | Block::SNOWY_GRASS => Material::Snow,
         Block::LEAVES | Block::SPRUCE_LEAVES => Material::Leaves,
         Block::GLASS | Block::GLOWSTONE => Material::Glass,
-        b if b.is_water() => Material::Water,
+        b if b.is_fluid() => Material::Water,
         // Stone, cobblestone, ores, bricks, sandstone, bedrock and unknowns.
         _ => Material::Stone,
     }

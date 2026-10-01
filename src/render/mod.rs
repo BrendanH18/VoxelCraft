@@ -10,6 +10,7 @@
 //! Depth is reverse-Z with an infinite far plane.
 
 pub mod arena;
+pub mod block_model;
 pub mod entity;
 mod item_sprites;
 pub mod textures;
@@ -26,6 +27,7 @@ use winit::window::Window;
 use crate::mesh::{CROSS, CUTOUT, FACE_ORDER, MeshData, OPAQUE, PASSES, TRANSLUCENT};
 use crate::world::block::tex;
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I};
+pub use block_model::BlockModel;
 use ui::UiVertex;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -97,6 +99,8 @@ pub struct FrameParams {
     pub highlight: Option<IVec3>,
     /// Block being broken and the crack texture layer to overlay on it.
     pub crack: Option<(IVec3, u8)>,
+    /// Free-standing blocks (falling sand and gravel).
+    pub block_models: Vec<BlockModel>,
     /// HUD geometry, drawn last.
     pub ui: Vec<UiVertex>,
 }
@@ -187,6 +191,7 @@ pub struct Renderer {
     cloud_pipeline: wgpu::RenderPipeline,
     ui_pipeline: wgpu::RenderPipeline,
     entities: entity::EntityPass,
+    block_models: block_model::BlockModelPass,
     quad_indices: wgpu::Buffer,
     instances: wgpu::Buffer,
     instance_capacity: usize,
@@ -588,6 +593,7 @@ impl Renderer {
         });
 
         let entities = entity::EntityPass::new(&device, &layout, format);
+        let block_models = block_model::BlockModelPass::new(&device, &layout, format);
 
         // --- Shared buffers ----------------------------------------------
         let indices: Vec<u32> =
@@ -630,6 +636,7 @@ impl Renderer {
             cloud_pipeline,
             ui_pipeline,
             entities,
+            block_models,
             quad_indices,
             instances,
             instance_capacity,
@@ -994,6 +1001,7 @@ impl Renderer {
             let verts = self.outline_vertices(b, p.camera);
             self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
         }
+        self.block_models.set(&self.device, &self.queue, &p.block_models, p.camera);
         let hud = &p.ui;
         if hud.len() > self.ui_capacity {
             self.ui_capacity = hud.len().next_power_of_two();
@@ -1071,6 +1079,7 @@ impl Renderer {
             draw_range(&mut pass, &self.cutout_pipeline, CUTOUT, false);
             draw_range(&mut pass, &self.cross_pipeline, CROSS, false);
             self.entities.draw(&mut pass);
+            self.block_models.draw(&mut pass);
 
             // Sky after terrain so early-z skips covered pixels.
             pass.set_pipeline(&self.sky_pipeline);

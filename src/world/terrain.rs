@@ -13,6 +13,8 @@ use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
 use super::noise::{Perlin, hash_f, hash3};
 
 pub const SEA_LEVEL: i32 = 62;
+/// Caves carved at or below this height fill with lava.
+pub const LAVA_LEVEL: i32 = 10;
 const TREE_CELL: i32 = 5;
 /// How far a tree's leaves can extend from its trunk.
 const TREE_REACH: i32 = 3;
@@ -202,7 +204,8 @@ impl Generator {
                             col.height
                         };
                         if wy > 4 && wy <= carve_limit && b != Block::WATER && Self::is_cave(&field[..], x, y, z, wy) {
-                            b = Block::AIR;
+                            // Deep caves flood with lava, like Minecraft's lava level.
+                            b = if wy <= LAVA_LEVEL { Block::LAVA } else { Block::AIR };
                         }
                     }
                     blocks[index(x, y, z)] = b;
@@ -495,5 +498,28 @@ mod tests {
         }
         assert!(counts.get(&Block::TALL_GRASS).copied().unwrap_or(0) > 100, "{counts:?}");
         assert!(counts.contains_key(&Block::DANDELION) || counts.contains_key(&Block::POPPY), "{counts:?}");
+    }
+
+    #[test]
+    fn deep_caves_hold_lava() {
+        let g = Generator::new(99);
+        let mut lava_heights = Vec::new();
+        for cx in -6..6 {
+            for cz in -6..6 {
+                let base = IVec3::new(cx, 0, cz) * CHUNK_SIZE_I;
+                let data = g.generate(IVec3::new(cx, 0, cz));
+                for y in 0..CHUNK_SIZE {
+                    for z in 0..CHUNK_SIZE {
+                        for x in 0..CHUNK_SIZE {
+                            if data.get(x, y, z) == Block::LAVA {
+                                lava_heights.push(base.y + y as i32);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(!lava_heights.is_empty(), "no lava generated");
+        assert!(lava_heights.iter().all(|&y| y <= LAVA_LEVEL));
     }
 }

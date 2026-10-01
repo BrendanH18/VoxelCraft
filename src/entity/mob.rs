@@ -360,7 +360,7 @@ impl Mob {
 
     fn physics_step<W: BlockSource + ?Sized>(&mut self, dt: f64, world: &W, wish: Option<DVec3>, speed: f64) {
         let shape = self.shape();
-        self.in_water = physics::is_water_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
+        self.in_water = physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
         let target = wish.map_or(DVec3::ZERO, |d| d * speed);
 
         if self.in_water {
@@ -368,7 +368,7 @@ impl Mob {
             self.vel.x += (target.x * 0.6 - self.vel.x) * k;
             self.vel.z += (target.z * 0.6 - self.vel.z) * k;
             // Buoyant below ~0.6 blocks of depth, so mobs bob at the surface.
-            if physics::is_water_at(world, self.pos + DVec3::new(0.0, 0.6, 0.0)) {
+            if physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.6, 0.0)) {
                 self.vel.y = (self.vel.y + 22.0 * dt).min(2.0);
             } else {
                 self.vel.y -= GRAVITY * 0.25 * dt;
@@ -413,22 +413,22 @@ impl Mob {
             && !physics::overlaps_solid(world, raised + dir * 0.4, self.shape())
     }
 
-    /// Zombies burn in direct sunlight.
+    /// Zombies burn in direct sunlight; every mob burns in lava, faster.
     fn burn<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx, rng: &mut Rng) {
         let head = (self.pos + DVec3::new(0.0, self.shape().height - 0.1, 0.0)).floor().as_ivec3();
-        self.burning = self.kind == MobKind::Zombie
-            && self.alive()
-            && ctx.daylight > BURN_DAYLIGHT
-            && !self.in_water
-            && world.exposed(head);
+        let in_lava = physics::is_lava_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
+        let sunburn =
+            self.kind == MobKind::Zombie && ctx.daylight > BURN_DAYLIGHT && !self.in_water && world.exposed(head);
+        self.burning = self.alive() && (sunburn || in_lava);
         if !self.burning {
             self.burn_timer = 0.0;
             return;
         }
+        let (interval, amount) = if in_lava { (0.5, 4.0) } else { (1.0, 2.0) };
         self.burn_timer += dt;
-        if self.burn_timer >= 1.0 {
-            self.burn_timer -= 1.0;
-            self.damage(2.0, None, rng);
+        if self.burn_timer >= interval {
+            self.burn_timer -= interval;
+            self.damage(amount, None, rng);
         }
     }
 
