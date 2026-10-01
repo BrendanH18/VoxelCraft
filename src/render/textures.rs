@@ -249,6 +249,25 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 pixel(tex::PLANKS, x, y)
             }
         }
+        tex::FURNACE_TOP => noisy(layer, x, y, [118, 118, 118], 0.1),
+        tex::FURNACE_FRONT | tex::FURNACE_LIT => {
+            // Cobbled face with a dark mouth; a lit furnace shows flames in it.
+            let mouth = (4..12).contains(&x) && (8..14).contains(&y);
+            let rim = (3..13).contains(&x) && (7..15).contains(&y) && !mouth;
+            if mouth {
+                let flame = layer == tex::FURNACE_LIT && y as f32 > 9.0 + 2.5 * rnd(layer, x, 0, 4);
+                if flame {
+                    let hot = (y as f32 - 9.0) / 5.0;
+                    [255, (200.0 - hot * 110.0) as u8, (60.0 - hot * 40.0) as u8, 255]
+                } else {
+                    shade([24, 22, 22], 0.9 + r * 0.2)
+                }
+            } else if rim {
+                shade([80, 80, 80], 0.9 + r * 0.15)
+            } else {
+                pixel(tex::COBBLESTONE, x, y)
+            }
+        }
         tex::OBSIDIAN => {
             let speck = rnd(layer, x, y, 13) < 0.08;
             let c = if speck { [80, 60, 110] } else { [22, 16, 34] };

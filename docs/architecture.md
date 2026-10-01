@@ -80,6 +80,7 @@ src/
     mod.rs           chunk streaming, edits, heightmaps, raycasting
     fluid.rs         water and lava flow simulation
     falling.rs       falling sand/gravel, edit settling, explosion craters
+    furnace.rs       furnace contents, smelting and fuel
     chunk.rs         chunk storage
     block.rs         block registry
     terrain.rs       world generation

@@ -128,15 +128,7 @@ impl Inventory {
     /// `id:count` (or `id:count:damage` for worn tools) per slot, `-` for
     /// empty slots, comma separated.
     pub fn serialize(&self) -> String {
-        self.slots
-            .iter()
-            .map(|s| match s {
-                None => "-".to_string(),
-                Some(s) if s.damage > 0 => format!("{}:{}:{}", s.item.0, s.count, s.damage),
-                Some(s) => format!("{}:{}", s.item.0, s.count),
-            })
-            .collect::<Vec<_>>()
-            .join(",")
+        self.slots.iter().map(|&s| stack_to_string(s)).collect::<Vec<_>>().join(",")
     }
 
     pub fn deserialize(text: &str) -> Option<Self> {
@@ -146,20 +138,33 @@ impl Inventory {
             return None;
         }
         for (slot, part) in inv.slots.iter_mut().zip(parts) {
-            if part != "-" {
-                let mut fields = part.split(':');
-                let id: u16 = fields.next()?.parse().ok()?;
-                let count: u8 = fields.next()?.parse().ok()?;
-                let damage: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
-                let item = Item(id);
-                // Unknown ids (e.g. from a newer version) are dropped.
-                if count > 0 && item.is_valid() {
-                    *slot = Some(Stack { item, count: count.min(item.max_stack()), damage });
-                }
-            }
+            *slot = stack_from_str(part)?;
         }
         Some(inv)
     }
+}
+
+/// `id:count` (or `id:count:damage` for worn tools), or `-` for nothing.
+pub fn stack_to_string(stack: Option<Stack>) -> String {
+    match stack {
+        None => "-".to_string(),
+        Some(s) if s.damage > 0 => format!("{}:{}:{}", s.item.0, s.count, s.damage),
+        Some(s) => format!("{}:{}", s.item.0, s.count),
+    }
+}
+
+/// Parses [`stack_to_string`]'s format; `None` if malformed. Unknown item
+/// ids (e.g. from a newer version) read as an empty slot.
+pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
+    if text == "-" {
+        return Some(None);
+    }
+    let mut fields = text.split(':');
+    let id: u16 = fields.next()?.parse().ok()?;
+    let count: u8 = fields.next()?.parse().ok()?;
+    let damage: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
+    let item = Item(id);
+    Some((count > 0 && item.is_valid()).then(|| Stack { item, count: count.min(item.max_stack()), damage }))
 }
 
 /// Minecraft-style click on one slot with the cursor stack; shared by every

@@ -80,6 +80,14 @@ session.
   sticks, crafting table, torches (coal or charcoal over a stick),
   sandstone, wool (from string), arrows, and pickaxes, shovels, axes,
   hoes and swords in wood, stone, iron, gold and diamond
+- Furnaces (8 cobblestone in a ring): right-click to open; put something
+  to smelt on top and fuel below. Each item takes 10 s; coal and charcoal
+  burn 80 s, logs, planks and crafting tables 15 s, wooden tools 10 s and
+  sticks 5 s. Smelts iron and gold ore into ingots, sand into glass,
+  cobblestone into stone, logs into charcoal and raw meat into cooked
+  meat. A burning furnace glows (light 13), keeps smelting with its
+  screen closed while its chunk is loaded, and is saved with the world;
+  breaking one returns its contents to your inventory
 - Items beyond blocks, each with a procedurally drawn icon: sticks, coal,
   ingots, diamonds, food, mob materials, and pickaxes, shovels, axes, hoes
   and swords in five tiers with durability bars. Coal and diamond ore drop

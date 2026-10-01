@@ -16,6 +16,7 @@ pub mod block;
 pub mod chunk;
 pub mod falling;
 mod fluid;
+pub mod furnace;
 pub mod noise;
 pub mod storage;
 pub mod terrain;
@@ -64,6 +65,11 @@ pub struct World {
     region: Box<Region>,
     fluids: fluid::FluidState,
     falling: Vec<falling::FallingBlock>,
+    /// Furnace contents by position (see [`furnace`]).
+    furnaces: FxHashMap<IVec3, furnace::Furnace>,
+    /// Items spilled by broken containers, with where they spilled; the
+    /// game collects them.
+    pub drops: Vec<(IVec3, crate::inventory::Stack)>,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
     pub mesh_removals: Vec<IVec3>,
 }
@@ -90,6 +96,8 @@ impl World {
             region: Box::default(),
             fluids: Default::default(),
             falling: Vec::new(),
+            furnaces: FxHashMap::default(),
+            drops: Vec::new(),
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
         }
@@ -208,8 +216,10 @@ impl World {
         let cpos = chunk_of(p);
         let l = local_of(p);
         let Some(slot) = self.chunks.get_mut(&cpos) else { return false };
+        let old = slot.data.get(l.x as usize, l.y as usize, l.z as usize);
         Arc::make_mut(&mut slot.data).set(l.x as usize, l.y as usize, l.z as usize, block);
         slot.modified = true;
+        self.track_furnace(p, old, block);
 
         // Keep the column heightmap current.
         let (old_h, new_h) = self.update_height(p, block);
@@ -815,5 +825,35 @@ mod tests {
         assert_eq!(world.get_block(IVec3::new(0, y + 1, 0)), Some(Block::AIR));
         let falling = world.falling_blocks().len();
         assert!((3..=4).contains(&falling), "{falling} sand blocks falling");
+    }
+
+    #[test]
+    fn furnaces_light_up_smelt_save_and_spill() {
+        use crate::inventory::Stack;
+        use crate::item::Item;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let p = IVec3::new(0, 200, 0);
+        world.set_block(p, Block::FURNACE);
+        let f = world.furnace_mut(p).expect("placing a furnace creates its contents");
+        f.input = Some(Stack::new(Block::SAND, 4));
+        f.fuel = Some(Stack::new(Item::COAL, 1));
+        world.tick_furnaces(0.1);
+        assert_eq!(world.get_block(p), Some(Block::LIT_FURNACE), "burning furnaces glow");
+        for _ in 0..21 {
+            world.tick_furnaces(1.0);
+        }
+        assert_eq!(world.furnace(p).unwrap().output, Some(Stack::new(Block::GLASS, 2)));
+
+        // Saved and restored furnaces carry on where they were.
+        let saved = world.furnaces_to_string();
+        let mut other = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        other.load_furnaces(&saved);
+        assert_eq!(other.furnace(p).unwrap().output, world.furnace(p).unwrap().output);
+
+        // Breaking it spills everything, and the state is gone.
+        world.set_block(p, Block::AIR);
+        assert!(world.furnace(p).is_none());
+        let spilled: Vec<_> = world.drops.iter().map(|&(_, s)| s.item).collect();
+        assert_eq!(spilled, [Item::from_block(Block::SAND), Item::from_block(Block::GLASS)]);
     }
 }

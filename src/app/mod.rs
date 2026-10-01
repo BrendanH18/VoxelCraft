@@ -60,6 +60,15 @@ const CREATIVE_HOTBAR: [Item; 9] = [
     Item::from_block(Block::WATER),
 ];
 
+/// What the inventory screen is open on.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Container {
+    /// The player's own inventory (2x2 crafting in survival).
+    Inventory,
+    CraftingTable,
+    Furnace(IVec3),
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GameMode {
     Survival,
@@ -91,6 +100,7 @@ struct Game {
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
     /// crafting table. Emptied back into the inventory when it closes.
     craft: crate::crafting::Grid,
+    container: Container,
     /// First visible row of the creative palette.
     creative_scroll: usize,
     /// Mouse position in physical pixels (for the inventory screen).
@@ -242,7 +252,10 @@ impl ApplicationHandler for App {
             player.flying = true;
         }
         player.can_fly = mode == GameMode::Creative;
-        let world = World::new(generator, saved, settings.render_distance);
+        let mut world = World::new(generator, saved, settings.render_distance);
+        if let Some(f) = existing.as_ref().and_then(|l| l.props.get("furnaces")) {
+            world.load_furnaces(f);
+        }
         log::info!("{} worker threads", world.worker_threads());
 
         let now = Instant::now();
@@ -260,6 +273,7 @@ impl ApplicationHandler for App {
             inventory,
             inventory_open: self.args.open_inventory,
             craft: crate::crafting::Grid::new(2),
+            container: Container::Inventory,
             creative_scroll: 0,
             cursor_px: (0.0, 0.0),
             breaking: None,
@@ -633,7 +647,26 @@ impl Game {
                 self.inventory.add_stack(stack);
             }
             self.craft = crate::crafting::Grid::new(2);
+            self.container = Container::Inventory;
             self.set_grab(true);
+        }
+    }
+
+    /// Picks up what broken containers spilled nearby (survival); there are
+    /// no item entities yet, so anything else is lost. Closes a furnace
+    /// screen whose furnace is gone.
+    fn collect_drops(&mut self) {
+        for (p, stack) in std::mem::take(&mut self.world.drops) {
+            let near = (p.as_dvec3() + DVec3::splat(0.5)).distance(self.player.pos) < 8.0;
+            if near && self.mode == GameMode::Survival {
+                self.inventory.add_stack(stack);
+            }
+        }
+        if let Container::Furnace(pos) = self.container
+            && self.inventory_open
+            && self.world.furnace(pos).is_none()
+        {
+            self.toggle_inventory();
         }
     }
 
@@ -643,7 +676,44 @@ impl Game {
             return;
         }
         self.craft = crate::crafting::Grid::new(3);
+        self.container = Container::CraftingTable;
         self.toggle_inventory();
+    }
+
+    /// Right-click on a furnace: its input, fuel and output with the inventory.
+    fn open_furnace(&mut self, pos: IVec3) {
+        if self.inventory_open || self.world.furnace(pos).is_none() {
+            return;
+        }
+        self.container = Container::Furnace(pos);
+        self.toggle_inventory();
+    }
+
+    /// A click on a furnace slot. Fuel only takes things that burn; the
+    /// output can only be taken from.
+    fn furnace_click(&mut self, pos: IVec3, slot: hud::SlotRef, right: bool) {
+        let cursor = &mut self.inventory.cursor;
+        let Some(f) = self.world.furnace_mut(pos) else { return };
+        match slot {
+            hud::SlotRef::FurnaceInput => crate::inventory::click_slot(&mut f.input, cursor, right),
+            hud::SlotRef::FurnaceFuel => {
+                if cursor.is_none_or(|c| crate::world::furnace::burn_time(c.item).is_some()) {
+                    crate::inventory::click_slot(&mut f.fuel, cursor, right)
+                }
+            }
+            hud::SlotRef::FurnaceOutput => match (cursor.as_mut(), f.output) {
+                (None, out) => {
+                    *cursor = out;
+                    f.output = None;
+                }
+                (Some(c), Some(out)) if c.stacks_with(&out) && c.count as u16 + out.count as u16 <= c.max() as u16 => {
+                    c.count += out.count;
+                    f.output = None;
+                }
+                _ => {}
+            },
+            _ => {}
+        }
     }
 
     /// Clicking the crafting result: takes one craft onto the cursor (or
@@ -671,6 +741,11 @@ impl Game {
                 crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
             }
             Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
+            Some(s @ (hud::SlotRef::FurnaceInput | hud::SlotRef::FurnaceFuel | hud::SlotRef::FurnaceOutput)) => {
+                if let Container::Furnace(pos) = self.container {
+                    self.furnace_click(pos, s, right);
+                }
+            }
             Some(hud::SlotRef::Palette(item)) => {
                 // Creative palette: take a full stack, or trash the held one.
                 self.inventory.cursor = match self.inventory.cursor {
@@ -741,9 +816,10 @@ impl Game {
 
     fn place_block(&mut self) {
         let Some((pos, normal)) = self.target() else { return };
-        if self.world.get_block(pos) == Some(Block::CRAFTING_TABLE) {
-            self.open_crafting_table();
-            return;
+        match self.world.get_block(pos) {
+            Some(Block::CRAFTING_TABLE) => return self.open_crafting_table(),
+            Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
+            _ => {}
         }
         // Clicking tall grass replaces it instead of building against it.
         let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
@@ -879,6 +955,7 @@ impl Game {
         if let Some(cause) = &self.vitals.death {
             props.insert("death".to_string(), cause.clone());
         }
+        props.insert("furnaces".to_string(), self.world.furnaces_to_string());
         let level = LevelInfo {
             seed: self.world.generator.seed,
             player: Some((self.player.pos, self.player.yaw, self.player.pitch)),
@@ -955,6 +1032,8 @@ impl Game {
         }
         self.world.tick_fluids(dt);
         self.world.tick_falling(dt);
+        self.world.tick_furnaces(dt);
+        self.collect_drops();
         self.world.update(self.player.pos);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);

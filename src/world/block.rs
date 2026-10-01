@@ -84,6 +84,9 @@ pub mod tex {
     pub const WOOL: u8 = 48;
     pub const TABLE_TOP: u8 = 49;
     pub const TABLE_SIDE: u8 = 50;
+    pub const FURNACE_FRONT: u8 = 51;
+    pub const FURNACE_LIT: u8 = 52;
+    pub const FURNACE_TOP: u8 = 53;
     /// Flat item icons (see `item::Item::icon_layer`), up to 64 of them.
     pub const ITEM_0: u8 = 96;
     pub const COUNT: u32 = 160;
@@ -127,6 +130,9 @@ impl Block {
     pub const OBSIDIAN: Block = Block(42);
     pub const WOOL: Block = Block(43);
     pub const CRAFTING_TABLE: Block = Block(44);
+    pub const FURNACE: Block = Block(45);
+    /// A burning furnace: glows, and breaks into a plain furnace.
+    pub const LIT_FURNACE: Block = Block(46);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -215,6 +221,7 @@ impl Block {
             Block::COAL_ORE => Some(Item::COAL),
             Block::DIAMOND_ORE => Some(Item::DIAMOND),
             Block::DEAD_BUSH => Some(Item::STICK),
+            Block::LIT_FURNACE => Some(Block::FURNACE.into()),
             Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK | Block::TALL_GRASS => None,
             b if b.is_fluid() || b == Block::AIR => None,
             b => Some(b.into()),
@@ -235,6 +242,7 @@ impl Block {
             Block::LOG | Block::PLANKS => 1.5,
             Block::CRAFTING_TABLE => 1.9,
             Block::STONE | Block::COBBLESTONE | Block::BRICKS => 2.0,
+            Block::FURNACE | Block::LIT_FURNACE => 2.5,
             Block::COAL_ORE | Block::IRON_ORE => 2.5,
             Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
             Block::OBSIDIAN => 15.0,
@@ -246,7 +254,7 @@ impl Block {
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).chain(32..=37).chain(42..=44).map(Block)
+        (1..=23u8).chain(32..=37).chain(42..=45).map(Block)
     }
 
     /// Blocks that placing another block overwrites (air, fluids, grass).
@@ -309,6 +317,7 @@ impl Block {
         match self {
             Block::GLOWSTONE => 15,
             Block::TORCH => 14,
+            Block::LIT_FURNACE => 13,
             b if b.is_lava() => 15,
             _ => 0,
         }
@@ -402,6 +411,8 @@ const fn make(id: u8) -> BlockInfo {
         42 => ("obsidian", Opaque, all(tex::OBSIDIAN)),
         43 => ("wool", Opaque, all(tex::WOOL)),
         44 => ("crafting table", Opaque, column(tex::TABLE_SIDE, tex::TABLE_TOP, tex::PLANKS)),
+        45 => ("furnace", Opaque, column(tex::FURNACE_FRONT, tex::FURNACE_TOP, tex::FURNACE_TOP)),
+        46 => ("lit furnace", Opaque, column(tex::FURNACE_LIT, tex::FURNACE_TOP, tex::FURNACE_TOP)),
         _ => ("unknown", Invisible, all(0)),
     };
     BlockInfo { name, kind, solid: matches!(kind, Opaque | Cutout), self_cull: id == 5 || id == 10, tex }
