@@ -18,6 +18,7 @@ pub mod chunk;
 pub mod falling;
 mod fluid;
 pub mod furnace;
+mod growth;
 pub mod noise;
 pub mod storage;
 pub mod terrain;
@@ -70,6 +71,12 @@ pub struct World {
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
     /// Chest contents by position (see [`chest`]).
     chests: FxHashMap<IVec3, chest::Chest>,
+    /// Leaves waiting to decay (seconds left) after a log near them went.
+    leaf_decay: FxHashMap<IVec3, f32>,
+    /// Fractional random block ticks carried over between frames.
+    random_ticks: f64,
+    /// Random state for growth and chance drops.
+    rng: u64,
     /// Items the world let go of (mined blocks, container contents, plants
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
@@ -84,6 +91,7 @@ fn column_of(chunk: IVec3) -> IVec2 {
 
 impl World {
     pub fn new(generator: Arc<Generator>, saved: FxHashMap<IVec3, Arc<ChunkData>>, render_distance: i32) -> Self {
+        let rng = generator.seed ^ 0x6772_6f77;
         Self {
             workers: Workers::new(generator.clone()),
             generator,
@@ -102,6 +110,9 @@ impl World {
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
+            leaf_decay: FxHashMap::default(),
+            random_ticks: 0.0,
+            rng,
             drops: Vec::new(),
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -226,6 +237,9 @@ impl World {
         slot.modified = true;
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
+        if old == Block::LOG && block != Block::LOG {
+            self.log_removed(p);
+        }
 
         // Keep the column heightmap current.
         let (old_h, new_h) = self.update_height(p, block);
@@ -268,13 +282,6 @@ impl World {
             }
         }
         true
-    }
-
-    /// Queues what `block`, gone from `p`, drops (see [`Block::drop`]).
-    pub fn spill_block(&mut self, p: IVec3, block: Block) {
-        if let Some(item) = block.drop() {
-            self.drops.push((p, crate::inventory::Stack::new(item, 1)));
-        }
     }
 
     /// Updates the heightmap for an edited block; returns (old, new) heights.
@@ -843,6 +850,67 @@ mod tests {
         assert_eq!(world.get_block(IVec3::new(0, y + 1, 0)), Some(Block::AIR));
         let falling = world.falling_blocks().len();
         assert!((3..=4).contains(&falling), "{falling} sand blocks falling");
+    }
+
+    #[test]
+    fn crops_ripen_saplings_grow_and_leaves_decay() {
+        use crate::item::Item;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let y = 200;
+        for x in -8..=8 {
+            for z in -8..=8 {
+                world.edit(IVec3::new(x, y, z), Block::DIRT, false);
+            }
+        }
+        // Farmland by water gets wet, and wheat on it ripens.
+        let soil = IVec3::new(0, y, 0);
+        world.set_block(soil, Block::FARMLAND);
+        world.edit(IVec3::new(2, y, 0), Block::WATER, false);
+        assert!(world.set_block(soil + IVec3::Y, Block::wheat(0)));
+        world.random_tick(soil);
+        assert_eq!(world.get_block(soil), Some(Block::WET_FARMLAND));
+        for _ in 0..400 {
+            world.random_tick(soil + IVec3::Y);
+        }
+        assert_eq!(world.get_block(soil + IVec3::Y), Some(Block::wheat(7)));
+
+        // Ripe wheat drops wheat and one to four seeds.
+        world.drops.clear();
+        world.spill_block(soil + IVec3::Y, Block::wheat(7));
+        let got: Vec<_> = world.drops.iter().map(|&(_, s)| (s.item, s.count)).collect();
+        assert_eq!(got[0], (Item::WHEAT, 1));
+        assert!(got[1].0 == Item::WHEAT_SEEDS && (1..=4).contains(&got[1].1), "{got:?}");
+
+        // Dry farmland with nothing growing turns back to dirt; trampling it
+        // pops the crop off.
+        let dry = IVec3::new(-7, y, -7);
+        world.set_block(dry, Block::FARMLAND);
+        world.random_tick(dry);
+        assert_eq!(world.get_block(dry), Some(Block::DIRT));
+        world.set_block(soil, Block::DIRT);
+        assert_eq!(world.get_block(soil + IVec3::Y), Some(Block::AIR), "wheat needs farmland");
+
+        // A sapling grows into a tree; felling it makes its leaves decay.
+        let sapling = IVec3::new(-4, y + 1, 4);
+        world.set_block(sapling, Block::OAK_SAPLING);
+        assert!(world.grow_tree(sapling));
+        assert_eq!(world.get_block(sapling), Some(Block::LOG));
+        let leaves = |w: &World| {
+            (-3..=3)
+                .flat_map(|dx| (0..=8).flat_map(move |dy| (-3..=3).map(move |dz| IVec3::new(dx, dy, dz))))
+                .filter(|&d| w.get_block(sapling + d) == Some(Block::LEAVES))
+                .count()
+        };
+        assert!(leaves(&world) > 10);
+        let mut trunk = sapling;
+        while world.get_block(trunk) == Some(Block::LOG) {
+            world.set_block(trunk, Block::AIR);
+            trunk += IVec3::Y;
+        }
+        for _ in 0..30 {
+            world.tick_leaf_decay(0.5);
+        }
+        assert_eq!(leaves(&world), 0, "leaves decay without their logs");
     }
 
     #[test]

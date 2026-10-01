@@ -58,11 +58,11 @@ impl Material {
 pub fn material(block: Block) -> Material {
     match block.base() {
         Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE | Block::CHEST => Material::Wood,
-        Block::DIRT => Material::Dirt,
-        Block::GRASS | Block::CACTUS | Block::TALL_GRASS | Block::DANDELION | Block::POPPY | Block::DEAD_BUSH => {
+        Block::DIRT | Block::FARMLAND | Block::WET_FARMLAND => Material::Dirt,
+        Block::TORCH => Material::Wood,
+        b if b == Block::GRASS || b == Block::CACTUS || b.kind() == crate::world::block::RenderKind::Cross => {
             Material::Grass
         }
-        Block::TORCH => Material::Wood,
         Block::GRAVEL => Material::Gravel,
         Block::SAND => Material::Sand,
         Block::SNOW | Block::SNOWY_GRASS | Block::WOOL => Material::Snow,

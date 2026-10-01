@@ -61,6 +61,7 @@ src/
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
     items.rs         dropped items: spawning, pickup, throwing, death drops
     containers.rs    chest screens and shift-click quick moves
+    farming.rs       hoe tilling, bone meal, trampling farmland
   inventory.rs       inventory slots, stacking, saved container overflow
   crafting.rs        crafting grids and recipes
   mining.rs          mining speed, harvest rules, tool wear, melee damage
@@ -88,6 +89,7 @@ src/
     falling.rs       falling sand/gravel, edit settling, explosion craters
     furnace.rs       furnace contents, smelting and fuel
     chest.rs         chest contents
+    growth.rs        random block ticks: crops, saplings, grass, farmland, leaf decay
     chunk.rs         chunk storage
     block.rs         block registry
     terrain.rs       world generation

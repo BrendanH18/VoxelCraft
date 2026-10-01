@@ -2,6 +2,7 @@
 
 mod actions;
 mod containers;
+mod farming;
 mod hud;
 mod items;
 mod menu;
@@ -913,9 +914,12 @@ impl Game {
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
             _ => {}
         }
+        if self.use_item_on(pos, normal) {
+            return;
+        }
         // Clicking tall grass replaces it instead of building against it.
         let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
-        let Some(block) = self.inventory.get(self.actions.selected).and_then(|s| s.item.block()) else { return };
+        let Some(block) = self.inventory.get(self.actions.selected).and_then(|s| s.item.places()) else { return };
         // Furnaces and chests face whoever places them.
         let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
@@ -934,11 +938,8 @@ impl Game {
 
     fn pick_block(&mut self) {
         let Some(b) = self.target().and_then(|(pos, _)| self.world.get_block(pos)) else { return };
-        let b = match b.base() {
-            Block::LIT_FURNACE => Block::FURNACE,
-            b => b,
-        };
-        match self.inventory.find(b) {
+        let item = farming::picked_item(b);
+        match self.inventory.find(item) {
             Some(i) if i < HOTBAR_SLOTS => self.select(i),
             Some(i) => {
                 self.actions.reset();
@@ -947,7 +948,7 @@ impl Game {
             }
             None if self.mode == GameMode::Creative => {
                 self.actions.reset();
-                self.inventory.slots[self.actions.selected] = Some(Stack::new(b, Item::from(b).max_stack()));
+                self.inventory.slots[self.actions.selected] = Some(Stack::new(item, item.max_stack()));
                 self.show_selected_name();
             }
             None => {}
@@ -1115,6 +1116,7 @@ impl Game {
             jumped: self.player.jumped,
         };
         let hurts = self.vitals.tick(dt as f32, &env, self.mode == GameMode::Creative);
+        self.trample(hurts.landed);
         if hurts.fall > 0.0 {
             self.damage_player(hurts.fall, survival::CAUSE_FALL);
         }
@@ -1152,6 +1154,8 @@ impl Game {
         self.world.tick_fluids(dt);
         self.world.tick_falling(dt);
         self.world.tick_furnaces(dt);
+        self.world.tick_random(dt, self.player.pos);
+        self.world.tick_leaf_decay(dt);
         self.world.update(self.player.pos);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);

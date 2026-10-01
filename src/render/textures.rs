@@ -289,6 +289,36 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 pixel(tex::COBBLESTONE, x, y)
             }
         }
+        tex::FARMLAND | tex::WET_FARMLAND => {
+            // Tilled dirt: furrows across, darker and richer when wet.
+            let wet = if layer == tex::WET_FARMLAND { 0.62 } else { 1.0 };
+            let furrow = match y % 4 {
+                0 => 0.72,
+                1 => 1.12,
+                _ => 0.95 + r * 0.12,
+            };
+            shade([134, 96, 64], furrow * wet)
+        }
+        l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat(l - tex::WHEAT_0, x, y),
+        tex::OAK_SAPLING | tex::SPRUCE_SAPLING => {
+            let spruce = layer == tex::SPRUCE_SAPLING;
+            let (px, py) = (x as f32 - 7.5, y as f32);
+            let stem = (x == 7 || x == 8) && y >= 10;
+            let crown = if spruce {
+                // Stacked triangles.
+                y < 12 && px.abs() <= ((y % 4) as f32 + 1.0 + (y / 4) as f32 * 0.8).min(6.0)
+            } else {
+                px * px + (py - 6.5) * (py - 6.5) <= 22.0 && rnd(layer, x, y, 5) > 0.15
+            };
+            if crown {
+                let c = if spruce { [46, 92, 50] } else { [72, 146, 44] };
+                shade(c, 0.75 + r * 0.45)
+            } else if stem {
+                shade([110, 80, 46], if x == 7 { 1.0 } else { 0.8 })
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
         tex::OBSIDIAN => {
             let speck = rnd(layer, x, y, 13) < 0.08;
             let c = if speck { [80, 60, 110] } else { [22, 16, 34] };
@@ -321,6 +351,30 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
 }
 
 /// A flower: stem with two leaves, and a yellow (dandelion) or red (poppy) head.
+/// Wheat at growth `stage` 0..8: stalks rise and turn from green to gold;
+/// ripe wheat carries grain heads.
+fn wheat(stage: u8, x: usize, y: usize) -> Rgba {
+    const STALKS: [usize; 5] = [2, 5, 8, 11, 14];
+    let Some(i) = STALKS.iter().position(|&sx| sx == x || sx + 1 == x && x.is_multiple_of(3)) else {
+        return [0, 0, 0, 0];
+    };
+    let height = 3 + stage as usize * 12 / 7 - (i % 2) * (1 + stage as usize / 3);
+    if y + height < 16 {
+        return [0, 0, 0, 0];
+    }
+    let ripe = stage as f32 / 7.0;
+    let green = [72.0, 150.0, 40.0];
+    let gold = [206.0, 176.0, 70.0];
+    let c: [u8; 3] = std::array::from_fn(|k| (green[k] + (gold[k] - green[k]) * ripe * ripe) as u8);
+    let top = 16 - height;
+    if stage == 7 && y < top + 4 {
+        // Grain head: wider, golden, notched.
+        let notch = (x + y).is_multiple_of(2);
+        return shade([224, 190, 84], if notch { 0.82 } else { 1.05 });
+    }
+    shade(c, 0.85 + rnd(tex::WHEAT_0 + stage, x, y, 9) * 0.25)
+}
+
 fn flower(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
     let (dx, dy) = (x as f32 - 7.5, y as f32 - 5.0);
     let d = (dx * dx + dy * dy * 1.3).sqrt();

@@ -184,6 +184,8 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', PLANKS)], b(Block::CRAFTING_TABLE), 1),
             shaped(&["###", "# #", "###"], &[('#', COBBLESTONE)], b(Block::FURNACE), 1),
             shaped(&["###", "# #", "###"], &[('#', PLANKS)], b(Block::CHEST), 1),
+            shaped(&["###"], &[('#', &[Item::WHEAT])], Item::BREAD, 1),
+            shapeless(&[&[Item::BONE]], Item::BONE_MEAL, 3),
             shaped(&["c", "#"], &[('c', FUEL_LUMP), ('#', STICK)], b(Block::TORCH), 4),
             shaped(&["##", "##"], &[('#', SAND)], b(Block::SANDSTONE), 1),
             shaped(&["##", "##"], &[('#', &[Item::STRING])], b(Block::WOOL), 1),

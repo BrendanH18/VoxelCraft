@@ -95,6 +95,12 @@ pub mod tex {
     pub const CHEST_TOP: u8 = 58;
     pub const CHEST_SIDE: u8 = 59;
     pub const CHEST_FRONT: u8 = 60;
+    pub const FARMLAND: u8 = 61;
+    pub const WET_FARMLAND: u8 = 62;
+    /// Wheat growth stages 0..8.
+    pub const WHEAT_0: u8 = 63;
+    pub const OAK_SAPLING: u8 = 71;
+    pub const SPRUCE_SAPLING: u8 = 72;
     /// Flat item icons (see `item::Item::icon_layer`), up to 64 of them.
     pub const ITEM_0: u8 = 96;
     pub const COUNT: u32 = 160;
@@ -146,6 +152,12 @@ impl Block {
     /// 27 slots of storage (see `world::chest`); facing south, then north,
     /// east and west up to id 56.
     pub const CHEST: Block = Block(53);
+    /// Tilled soil for crops; wet when water is within 4 blocks.
+    pub const FARMLAND: Block = Block(57);
+    pub const WET_FARMLAND: Block = Block(58);
+    // Wheat crops at growth stages 0..=7 are ids 59..=66 (see `Block::wheat`).
+    pub const OAK_SAPLING: Block = Block(67);
+    pub const SPRUCE_SAPLING: Block = Block(68);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -153,6 +165,20 @@ impl Block {
 
     pub const fn flowing_lava(level: u8) -> Block {
         Block(37 + level)
+    }
+
+    /// Wheat crops at growth `stage` 0..=7 (7 is ripe).
+    pub const fn wheat(stage: u8) -> Block {
+        Block(59 + stage)
+    }
+
+    /// Growth stage of a wheat crop.
+    pub fn crop_stage(self) -> Option<u8> {
+        (59..=66).contains(&self.0).then(|| self.0 - 59)
+    }
+
+    pub fn is_farmland(self) -> bool {
+        self == Block::FARMLAND || self == Block::WET_FARMLAND
     }
 
     /// The block items, recipes and rules use for an oriented block (a
@@ -266,6 +292,9 @@ impl Block {
             Block::DIAMOND_ORE => Some(Item::DIAMOND),
             Block::DEAD_BUSH => Some(Item::STICK),
             Block::LIT_FURNACE => Some(Block::FURNACE.into()),
+            Block::FARMLAND | Block::WET_FARMLAND => Some(Block::DIRT.into()),
+            b if b.crop_stage() == Some(7) => Some(Item::WHEAT),
+            b if b.crop_stage().is_some() => Some(Item::WHEAT_SEEDS),
             Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK | Block::TALL_GRASS => None,
             b if b.is_fluid() || b == Block::AIR => None,
             b => Some(b.into()),
@@ -282,7 +311,7 @@ impl Block {
             Block::GLASS | Block::GLOWSTONE => 0.3,
             Block::CACTUS => 0.4,
             Block::DIRT | Block::SAND => 0.5,
-            Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL => 0.6,
+            Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL | Block::FARMLAND | Block::WET_FARMLAND => 0.6,
             Block::SANDSTONE | Block::WOOL => 0.8,
             Block::STONE => 1.5,
             Block::LOG | Block::PLANKS | Block::COBBLESTONE | Block::BRICKS => 2.0,
@@ -310,9 +339,14 @@ impl Block {
             | Block::OBSIDIAN
             | Block::FURNACE
             | Block::LIT_FURNACE => Some(ToolKind::Pickaxe),
-            Block::DIRT | Block::GRASS | Block::SNOWY_GRASS | Block::SAND | Block::GRAVEL | Block::SNOW => {
-                Some(ToolKind::Shovel)
-            }
+            Block::DIRT
+            | Block::GRASS
+            | Block::SNOWY_GRASS
+            | Block::SAND
+            | Block::GRAVEL
+            | Block::SNOW
+            | Block::FARMLAND
+            | Block::WET_FARMLAND => Some(ToolKind::Shovel),
             Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE | Block::CHEST => Some(ToolKind::Axe),
             _ => None,
         }
@@ -338,7 +372,7 @@ impl Block {
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).chain(32..=37).chain(42..=45).chain([53]).map(Block)
+        (1..=23u8).chain(32..=37).chain(42..=45).chain([53, 57, 67, 68]).map(Block)
     }
 
     /// Blocks that placing another block overwrites (air, fluids, grass).
@@ -366,6 +400,10 @@ impl Block {
             }
             Block::DEAD_BUSH => matches!(below, Block::SAND | Block::DIRT | Block::GRASS),
             Block::TORCH => below.is_opaque(),
+            Block::OAK_SAPLING | Block::SPRUCE_SAPLING => {
+                matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS) || below.is_farmland()
+            }
+            b if b.crop_stage().is_some() => below.is_farmland(),
             _ => true,
         }
     }
@@ -553,6 +591,11 @@ const fn make(id: u8) -> BlockInfo {
             let f = Facing::ALL[id as usize - 53];
             ("chest", Opaque, fronted(tex::CHEST_FRONT, tex::CHEST_SIDE, tex::CHEST_TOP, f))
         }
+        57 => ("farmland", Opaque, column(tex::DIRT, tex::FARMLAND, tex::DIRT)),
+        58 => ("wet farmland", Opaque, column(tex::DIRT, tex::WET_FARMLAND, tex::DIRT)),
+        59..=66 => ("wheat crops", Cross, all(tex::WHEAT_0 + (id - 59))),
+        67 => ("oak sapling", Cross, all(tex::OAK_SAPLING)),
+        68 => ("spruce sapling", Cross, all(tex::SPRUCE_SAPLING)),
         _ => ("unknown", Invisible, all(0)),
     };
     BlockInfo { name, kind, solid: matches!(kind, Opaque | Cutout), self_cull: id == 5 || id == 10, tex }
@@ -643,6 +686,21 @@ mod tests {
         // Placed by someone looking east, the front faces west, back at them.
         assert_eq!(Facing::toward(glam::Vec3::new(0.9, -0.3, 0.2)), Facing::West);
         assert_eq!(Facing::toward(glam::Vec3::new(0.1, 0.0, -1.0)), Facing::South);
+    }
+
+    #[test]
+    fn crops_and_saplings_need_the_right_soil() {
+        for stage in 0..8 {
+            let wheat = Block::wheat(stage);
+            assert_eq!(wheat.crop_stage(), Some(stage));
+            assert_eq!(wheat.kind(), RenderKind::Cross);
+            assert!(wheat.can_stay_on(Block::WET_FARMLAND) && !wheat.can_stay_on(Block::DIRT));
+        }
+        assert_eq!(Block::wheat(3).drop(), Some(Item::WHEAT_SEEDS));
+        assert_eq!(Block::wheat(7).drop(), Some(Item::WHEAT));
+        assert_eq!(Block::FARMLAND.drop(), Some(Block::DIRT.into()));
+        assert!(Block::OAK_SAPLING.can_stay_on(Block::GRASS) && !Block::OAK_SAPLING.can_stay_on(Block::SAND));
+        assert_eq!(Block::from_name("wheat crops"), Some(Block::wheat(0)));
     }
 
     #[test]

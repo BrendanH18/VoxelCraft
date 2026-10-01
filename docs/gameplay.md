@@ -18,6 +18,8 @@
 | E | Inventory (click to move stacks; creative shows the block palette) |
 | Shift + click | In the inventory: move a stack between the open chest or furnace and the inventory (or between hotbar and main grid); on a crafting result, craft as many as fit |
 | Shift + right click | Build against a crafting table, furnace or chest instead of opening it |
+| Right click with a hoe | Till grass or dirt (with air above) into farmland |
+| Right click with seeds / bone meal | Sow wheat on farmland / make a crop, sapling or patch of grass grow |
 | G | Toggle survival / creative |
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
@@ -46,6 +48,21 @@ session.
 - Infinite procedurally generated terrain: oceans, beaches, plains,
   forests, deserts, snowy tundra, taiga and mountains, with spaghetti caves,
   deep caverns, ores, oak and spruce trees and cacti
+- Farming and growth, driven by Minecraft-style random block ticks in the
+  chunks within 128 blocks (each block is picked about once a minute).
+  Breaking tall grass sometimes drops wheat seeds; till grass or dirt with
+  a hoe and sow them on the farmland. Farmland with water within 4 blocks
+  turns dark and wet; wheat grows through 8 stages under open sky, about
+  twice as fast on wet farmland, and ripe wheat drops wheat and 1-4 seeds
+  (unripe wheat just its seed). Bare dry farmland turns back to dirt, and
+  jumping or falling onto farmland can trample it. Leaves drop oak or
+  spruce saplings (1 in 20; oak leaves also apples, 1 in 200); planted on
+  grass or dirt, saplings grow into trees. Leaves that can't reach a log
+  within 6 blocks decay a few seconds after a tree is felled. Grass spreads
+  to lit dirt nearby and dies under blocks. Bone meal advances a crop 2-5
+  stages, sometimes grows a sapling at once, and sprouts grass and flowers
+  around a grass block. Crops and saplings only grow in sunlight (torches
+  don't count yet)
 - Tall grass, dandelions and poppies (flowers grow in patches) on plains,
   forests and taiga, and dead bushes in deserts. Plants and torches are
   drawn as two crossed planes, break instantly, need soil (torches a full
@@ -85,7 +102,7 @@ session.
   On narrower windows, Back closes the recipe overlay so you can craft.
   Recipes: planks (from a log),
   sticks, crafting table, chest (8 planks in a ring), torches (coal or
-  charcoal over a stick),
+  charcoal over a stick), bread (3 wheat in a row), bone meal (from a bone),
   sandstone, wool (from string), arrows, and pickaxes, shovels, axes,
   hoes and swords in wood, stone, iron, gold and diamond
 - Tools follow Minecraft's mining rules: a block takes its hardness x 1.5

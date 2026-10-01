@@ -35,6 +35,9 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
 - **Craft, cook and store.** Make tools in five tiers, craft torches and
   building blocks, smelt ores and cook food in furnaces, and keep your haul in
   chests. Tools wear out; food restores hunger and supports natural healing.
+- **Farm and grow.** Till soil with a hoe, sow seeds found in tall grass and
+  harvest wheat for bread. Saplings grow into trees, leaves fall from felled
+  trees, and grass creeps back over bare dirt.
 - **A world that moves.** Flowing water and lava, falling sand, a day/night
   cycle, drifting clouds, herds of animals, and zombies, skeletons, creepers
   and spiders that come out at night.
@@ -155,6 +158,10 @@ See the [gameplay guide](docs/gameplay.md) for all controls, survival rules, and
   <tr>
     <td width="50%"><img src="docs/images/hunger.png" alt="Survival hearts and hunger bar, with an eating progress indicator below the crosshair"><br><strong>A bite to eat</strong><br>Hold right-click with food and watch the bite progress.</td>
     <td width="50%"><img src="docs/images/dropped-items.jpg" alt="Dropped items lying on grass: a steak, glass, a torch, a poppy, an apple, a diamond pickaxe and cobblestone"><br><strong>Pick it up</strong><br>Mined blocks and loot drop as spinning items you walk over to collect.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/farming.jpg" alt="Rows of wheat at every growth stage on wet and dry farmland, with oak and spruce saplings behind"><br><strong>Sow and reap</strong><br>Wheat ripens from green shoots to golden ears on tilled soil.</td>
+    <td width="50%"><img src="docs/images/chest.jpg" alt="Chest screen with diamonds, logs, iron ingots and steak above the player's inventory"><br><strong>Stash it</strong><br>Chests hold 27 stacks; shift-click to move whole stacks.</td>
   </tr>
 </table>
 
