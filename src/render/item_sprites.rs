@@ -18,8 +18,10 @@ fn centre(x: i32, y: i32) -> (f32, f32) {
     (x as f32 + 0.5, y as f32 + 0.5)
 }
 
-fn noise(x: i32, y: i32, salt: u64) -> f32 {
-    hash_f(x, y, 0, 0x17E3 ^ salt)
+/// Deterministic sprite noise; `variation` picks an independent pattern.
+/// A procedural graphics helper with no cryptographic purpose.
+fn noise(x: i32, y: i32, variation: u64) -> f32 {
+    hash_f(x, y, 0, 0x17E3 ^ variation)
 }
 
 fn tint(c: [u8; 3], f: f32) -> Rgba {
