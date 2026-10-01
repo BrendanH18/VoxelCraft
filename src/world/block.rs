@@ -135,7 +135,34 @@ pub mod tex {
     pub const FERN: u8 = 192;
     pub const BLUE_ORCHID: u8 = 193;
     pub const ICE: u8 = 194;
-    pub const COUNT: u32 = 195;
+    /// Biome-coloured copies of [`FOLIAGE`] textures: for each foliage
+    /// group from 1 (see `terrain::Biome::foliage`), one layer per entry.
+    pub const FOLIAGE_0: u8 = 195;
+    pub const FOLIAGE: [u8; 5] = [GRASS_TOP, GRASS_SIDE, LEAVES, TALL_GRASS, FERN];
+    pub const FOLIAGE_GROUPS: u8 = 5;
+    pub const COUNT: u32 = FOLIAGE_0 as u32 + (FOLIAGE_GROUPS as u32 - 1) * FOLIAGE.len() as u32;
+    // Layers are stored in a byte.
+    const _: () = assert!(COUNT <= 256);
+
+    /// The layer to draw `layer` with in a column of foliage `group`:
+    /// grass and oak leaves take on the colour of the biome.
+    #[inline]
+    pub fn tinted(layer: u8, group: u8) -> u8 {
+        if group == 0 {
+            return layer;
+        }
+        match FOLIAGE.iter().position(|&l| l == layer) {
+            Some(i) => FOLIAGE_0 + (group - 1) * FOLIAGE.len() as u8 + i as u8,
+            None => layer,
+        }
+    }
+
+    /// The plain layer and foliage group a tinted layer was made from.
+    pub fn untinted(layer: u8) -> Option<(u8, u8)> {
+        let i = layer.checked_sub(FOLIAGE_0)? as usize;
+        (i < (FOLIAGE_GROUPS as usize - 1) * FOLIAGE.len())
+            .then(|| (FOLIAGE[i % FOLIAGE.len()], (i / FOLIAGE.len()) as u8 + 1))
+    }
 }
 
 impl Block {
@@ -935,6 +962,25 @@ mod tests {
         assert_eq!(Block::ICE.drop(), None);
         assert!(Block::SUGAR_CANE.can_stay_on(Block::SAND) && Block::SUGAR_CANE.can_stay_on(Block::SUGAR_CANE));
         assert!(!Block::SUGAR_CANE.can_stay_on(Block::STONE));
+    }
+
+    #[test]
+    fn foliage_layers_round_trip() {
+        for group in 0..tex::FOLIAGE_GROUPS {
+            for layer in tex::FOLIAGE {
+                let t = tex::tinted(layer, group);
+                assert!((t as u32) < tex::COUNT);
+                if group == 0 {
+                    assert_eq!(t, layer);
+                } else {
+                    assert_eq!(tex::untinted(t), Some((layer, group)));
+                }
+            }
+        }
+        // Only grass and oak leaves change colour.
+        assert_eq!(tex::tinted(tex::STONE, 3), tex::STONE);
+        assert_eq!(tex::tinted(tex::SPRUCE_LEAVES, 4), tex::SPRUCE_LEAVES);
+        assert_eq!(tex::untinted(tex::ITEM_0), None);
     }
 
     #[test]

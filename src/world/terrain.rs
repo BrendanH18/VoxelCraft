@@ -46,6 +46,21 @@ pub enum Biome {
     Taiga,
 }
 
+impl Biome {
+    /// Which colour grass and leaves take on here (see `block::tex::tinted`):
+    /// 0 temperate green, 1 murky swamp, 2 dry and yellow, 3 lush jungle,
+    /// 4 cold and blue.
+    pub fn foliage(self) -> u8 {
+        match self {
+            Biome::Swamp => 1,
+            Biome::Savanna | Biome::Desert | Biome::Badlands => 2,
+            Biome::Jungle => 3,
+            Biome::Taiga | Biome::Snowy => 4,
+            _ => 0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Column {
     pub height: i32,
@@ -192,6 +207,21 @@ impl Generator {
             Biome::Plains
         };
         Column { height, biome, frozen }
+    }
+
+    /// Foliage colour group (see [`Biome::foliage`]) of every column in
+    /// chunk column `(cx, cz)`, indexed `x + z * CHUNK_SIZE`. Each column
+    /// samples the biome a few blocks off at random, so colours dither
+    /// into each other across biome borders instead of changing in a line.
+    pub fn foliage(&self, cx: i32, cz: i32) -> Box<[u8; CHUNK_SIZE * CHUNK_SIZE]> {
+        let mut out = Box::new([0u8; CHUNK_SIZE * CHUNK_SIZE]);
+        for (i, f) in out.iter_mut().enumerate() {
+            let (x, z) = (cx * CHUNK_SIZE_I + (i % CHUNK_SIZE) as i32, cz * CHUNK_SIZE_I + (i / CHUNK_SIZE) as i32);
+            let h = hash3(x, 7, z, self.seed ^ 0xF01);
+            let (dx, dz) = ((h % 9) as i32 - 4, ((h >> 8) % 9) as i32 - 4);
+            *f = self.column(x + dx, z + dz).biome.foliage();
+        }
+        out
     }
 
     /// Whether a column under water gets a patch of clay on its floor.
@@ -878,6 +908,17 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn foliage_follows_the_biomes() {
+        let g = Generator::new(99);
+        // A jungle column well inside the biome (see the biome map).
+        let (cx, cz) = (112 >> 5, -1024 >> 5);
+        let f = g.foliage(cx, cz);
+        let lush = f.iter().filter(|&&group| group == Biome::Jungle.foliage()).count();
+        assert!(lush > f.len() / 2, "{lush} of {} columns lush", f.len());
+        assert_eq!(*g.foliage(cx, cz), *f, "deterministic");
     }
 
     #[test]

@@ -35,7 +35,7 @@
 
 use std::sync::Arc;
 
-use crate::world::block::{Block, RenderKind};
+use crate::world::block::{Block, RenderKind, tex};
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_HEIGHT};
 
 /// Margin around the chunk that lighting needs to be exact.
@@ -59,6 +59,9 @@ pub struct MeshInput {
     pub heights: Box<[i16; D * D]>,
     /// World Y of the chunk's lowest block.
     pub base_y: i32,
+    /// Foliage colour group of each of the chunk's columns, indexed
+    /// `x + z * CHUNK_SIZE` (see `block::tex::tinted`).
+    pub foliage: Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>,
 }
 
 /// Render passes, in the order their quads are stored.
@@ -281,11 +284,11 @@ const PRESENT: u64 = 1 << 31;
 pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
     region.fill(&input.neighbors, input.base_y);
     region.light(&input.heights, input.base_y);
-    mesh_region(region)
+    mesh_region(region, &input.foliage)
 }
 
 /// Greedy-meshes the centre chunk of a lit region.
-fn mesh_region(r: &Region) -> MeshData {
+fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData {
     let blocks = &r.blocks[..];
     let (sky, blk) = (&r.sky[..], &r.block_light[..]);
     let mut out: [Vec<[u32; 3]>; PASSES] = Default::default();
@@ -390,7 +393,12 @@ fn mesh_region(r: &Region) -> MeshData {
                         if kind == 2 {
                             ao = drop_at(i); // fluids have no AO; carry the surface drop instead
                         }
-                        let layer = b.info().tex[face] as u64;
+                        let (x, z) = match d {
+                            0 => (slice, vv),
+                            1 => (vv, uu),
+                            _ => (uu, slice),
+                        };
+                        let layer = tex::tinted(b.info().tex[face], foliage[x + z * CHUNK_SIZE]) as u64;
                         key = PRESENT | kind << KIND_SHIFT | ao << AO_SHIFT | layer | light << LIGHT_SHIFT;
                         any = true;
                     }
@@ -472,7 +480,7 @@ fn mesh_region(r: &Region) -> MeshData {
         let (x, y, z) = (i % D - MARGIN, i / (D * D) - MARGIN, i / D % D - MARGIN);
         let l = (sky[i] | blk[i] << 4) as u32;
         let pos = (x | y << 6 | z << 12) as u32;
-        let layer = b.info().tex[0] as u32;
+        let layer = tex::tinted(b.info().tex[0], foliage[x + z * CHUNK_SIZE]) as u32;
         for face in [6u32, 7] {
             cross.push([pos | face << 18, layer | 0xFF << 8, l * 0x0101_0101]);
         }
@@ -592,7 +600,8 @@ mod tests {
                 heights[(x + MARGIN) + (z + MARGIN) * D] = hm[x + z * CHUNK_SIZE];
             }
         }
-        build(&MeshInput { neighbors: n, heights, base_y: 64 }, &mut Region::default())
+        let foliage = Box::new([0; CHUNK_SIZE * CHUNK_SIZE]);
+        build(&MeshInput { neighbors: n, heights, base_y: 64, foliage }, &mut Region::default())
     }
 
     #[test]

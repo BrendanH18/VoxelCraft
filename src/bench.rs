@@ -41,6 +41,8 @@ pub fn run(seed: u64, rd: i32) {
             *a = (*a).max(b);
         }
     }
+    let foliage: rustc_hash::FxHashMap<(i32, i32), _> =
+        heights.keys().map(|&(x, z)| ((x, z), generator.foliage(x, z))).collect();
     let mut region = Region::default();
     let (mut meshed, mut quads) = (0, 0u64);
     let t = Instant::now();
@@ -63,7 +65,8 @@ pub fn run(seed: u64, rd: i32) {
                 }
             }
         }
-        let m = mesh::build(&MeshInput { neighbors: n, heights: hm, base_y: p.y * 32 }, &mut region);
+        let foliage = foliage[&(p.x, p.z)].clone();
+        let m = mesh::build(&MeshInput { neighbors: n, heights: hm, base_y: p.y * 32, foliage }, &mut region);
         quads += m.quads.len() as u64;
         meshed += 1;
     }

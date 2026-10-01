@@ -7,19 +7,26 @@ use std::sync::Arc;
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
-use glam::IVec3;
+use glam::{IVec2, IVec3};
 
 use crate::mesh::{self, MeshData, MeshInput, Region};
-use crate::world::chunk::ChunkData;
+use crate::world::chunk::{CHUNK_SIZE, ChunkData};
 use crate::world::terrain::Generator;
 
 pub enum Job {
     Generate(IVec3),
-    Mesh { pos: IVec3, version: u32, input: Box<MeshInput> },
+    /// Biome colours of a chunk column (see `Generator::foliage`).
+    Foliage(IVec2),
+    Mesh {
+        pos: IVec3,
+        version: u32,
+        input: Box<MeshInput>,
+    },
 }
 
 pub enum JobResult {
     Generated(IVec3, ChunkData),
+    Foliage(IVec2, Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>),
     Meshed { pos: IVec3, version: u32, mesh: MeshData },
 }
 
@@ -46,6 +53,7 @@ impl Workers {
                     while let Ok(job) = job_rx.recv() {
                         let result = match job {
                             Job::Generate(pos) => JobResult::Generated(pos, generator.generate(pos)),
+                            Job::Foliage(col) => JobResult::Foliage(col, generator.foliage(col.x, col.y)),
                             Job::Mesh { pos, version, input } => {
                                 JobResult::Meshed { pos, version, mesh: mesh::build(&input, &mut region) }
                             }

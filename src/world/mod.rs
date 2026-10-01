@@ -47,6 +47,8 @@ pub struct ChunkSlot {
 struct Column {
     heights: Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>,
     loaded: i32,
+    /// Biome colours, once a worker has worked them out.
+    foliage: Option<Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>>,
 }
 
 pub struct World {
@@ -306,13 +308,17 @@ impl World {
     }
 
     /// A chunk can be meshed once the 3x3 columns around it are fully
-    /// loaded (skylight needs complete heightmaps).
+    /// loaded (skylight needs complete heightmaps) and its own column's
+    /// biome colours are known.
     fn ready_to_mesh(&self, pos: IVec3) -> bool {
-        (-1..=1).all(|dz| {
-            (-1..=1).all(|dx| {
-                self.columns.get(&IVec2::new(pos.x + dx, pos.z + dz)).is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
+        self.columns.get(&column_of(pos)).is_some_and(|c| c.foliage.is_some())
+            && (-1..=1).all(|dz| {
+                (-1..=1).all(|dx| {
+                    self.columns
+                        .get(&IVec2::new(pos.x + dx, pos.z + dz))
+                        .is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
+                })
             })
-        })
     }
 
     fn gather(&self, pos: IVec3) -> Box<MeshInput> {
@@ -339,7 +345,8 @@ impl World {
                 }
             }
         }
-        Box::new(MeshInput { neighbors, heights, base_y: pos.y * CHUNK_SIZE_I })
+        let foliage = cols[4].and_then(|c| c.foliage.clone()).unwrap_or_else(|| Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
+        Box::new(MeshInput { neighbors, heights, base_y: pos.y * CHUNK_SIZE_I, foliage })
     }
 
     fn remesh_now(&mut self, pos: IVec3) {
@@ -413,10 +420,11 @@ impl World {
 
     fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
-        let col = self
-            .columns
-            .entry(column_of(pos))
-            .or_insert_with(|| Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0 });
+        let workers = &self.workers;
+        let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
+            workers.submit(Job::Foliage(column_of(pos)));
+            Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None }
+        });
         col.loaded += 1;
         for (h, new) in col.heights.iter_mut().zip(heights) {
             *h = (*h).max(new);
@@ -457,6 +465,11 @@ impl World {
                     self.gen_in_flight.remove(&pos);
                     if self.in_keep_range(pos) && !self.chunks.contains_key(&pos) {
                         self.insert_chunk(pos, Arc::new(data), false);
+                    }
+                }
+                JobResult::Foliage(key, foliage) => {
+                    if let Some(col) = self.columns.get_mut(&key) {
+                        col.foliage = Some(foliage);
                     }
                 }
                 JobResult::Meshed { pos, version, mesh } => {

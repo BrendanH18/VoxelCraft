@@ -155,7 +155,8 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
         }
         tex::ICE => {
             // Pale blue and see-through, with bright fracture lines.
-            let crack = (x + 2 * y).is_multiple_of(11) && rnd(layer, x, y, 4) < 0.7 || (3 * x + y).is_multiple_of(13) && y < 9;
+            let crack =
+                (x + 2 * y).is_multiple_of(11) && rnd(layer, x, y, 4) < 0.7 || (3 * x + y).is_multiple_of(13) && y < 9;
             let c = if crack { [230, 240, 255] } else { [150, 186, 246] };
             let s = shade(c, 0.95 + r * 0.08);
             [s[0], s[1], s[2], if crack { 220 } else { 160 }]
@@ -475,6 +476,7 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             }
         }
         l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES).contains(&l) => crack(l - tex::CRACK_0, x, y),
+        l if let Some((base, group)) = tex::untinted(l) => tint_foliage(pixel(base, x, y), group),
         l if (tex::ITEM_0..tex::ITEM_0 + tex::ITEM_COUNT).contains(&l) => {
             match crate::item::sprite_for_layer(l - tex::ITEM_0) {
                 Some(sprite) => super::item_sprites::pixel(sprite, x, y),
@@ -486,6 +488,23 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
         }
     }
+}
+
+/// Recolours the green parts of a grass or leaf pixel for a biome's
+/// foliage group (see `tex::tinted`); dirt and transparent pixels stay.
+fn tint_foliage(p: Rgba, group: u8) -> Rgba {
+    let (r, g, b) = (p[0], p[1], p[2]);
+    if p[3] == 0 || g <= r || g < b {
+        return p;
+    }
+    let f: [f32; 3] = match group {
+        1 => [0.85, 0.66, 0.75], // swamp: dark and murky
+        2 => [1.35, 0.98, 0.85], // savanna and badlands: dry, yellow
+        3 => [0.7, 1.08, 0.62],  // jungle: vivid
+        _ => [0.92, 0.95, 1.45], // taiga and snow: cool, blue
+    };
+    let c = |v: u8, k: f32| (v as f32 * k).clamp(0.0, 255.0) as u8;
+    [c(r, f[0]), c(g, f[1]), c(b, f[2]), p[3]]
 }
 
 /// A flower: stem with two leaves, and a yellow (dandelion) or red (poppy) head.

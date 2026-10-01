@@ -50,7 +50,10 @@ session.
   beaches, winding rivers, plains, oak and birch forests, swamps with
   shallow pools, deserts, terraced badlands striped with terracotta,
   savannas, jungles, snowy tundra, taiga and mountains. Cold seas and rivers
-  freeze over (broken ice turns back into water). Clay (4 clay balls when
+  freeze over (broken ice turns back into water). Grass and oak leaves take
+  on the colour of their biome: murky in swamps, dry and yellow in savannas
+  and badlands, vivid in jungles and cool in the snow, blending across
+  biome borders. Clay (4 clay balls when
   broken) lines river and swamp beds. Spaghetti caves, deep caverns and ores lie below. Five kinds
   of tree grow there: oak, birch, spruce, acacia (leaning trunks under flat
   canopies) and jungle (tall trees, giant 2x2 trees and bushes), plus cacti
