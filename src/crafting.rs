@@ -183,6 +183,9 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["#", "#"], &[('#', PLANKS)], Item::STICK, 4),
             shaped(&["##", "##"], &[('#', PLANKS)], b(Block::CRAFTING_TABLE), 1),
             shaped(&["###", "# #", "###"], &[('#', COBBLESTONE)], b(Block::FURNACE), 1),
+            shaped(&["###", "# #", "###"], &[('#', PLANKS)], b(Block::CHEST), 1),
+            shaped(&["###"], &[('#', &[Item::WHEAT])], Item::BREAD, 1),
+            shapeless(&[&[Item::BONE]], Item::BONE_MEAL, 3),
             shaped(&["c", "#"], &[('c', FUEL_LUMP), ('#', STICK)], b(Block::TORCH), 4),
             shaped(&["##", "##"], &[('#', SAND)], b(Block::SANDSTONE), 1),
             shaped(&["##", "##"], &[('#', &[Item::STRING])], b(Block::WOOL), 1),
@@ -318,23 +321,13 @@ mod tests {
         snapshot.return_stacks(g.cells.iter().flatten().copied());
         let saved = snapshot.serialize();
         assert_eq!(g.cells[0], Some(Stack::new(Block::LOG, 63)));
-        assert!(!inv.has_pending_returns());
 
-        // Closing uses the same return path; switching containers can now
-        // replace the grid safely without duplicating the saved returns.
+        // Closing uses the same return path; what doesn't fit spills.
         inv.return_stacks(g.take_all());
         assert!(g.cells.iter().all(Option::is_none));
         assert_eq!(inv.serialize(), saved);
-        for text in [saved, inv.serialize()] {
-            let mut restored = Inventory::deserialize(&text).unwrap();
-            assert!(restored.has_pending_returns());
-            assert_eq!(restored.get(0), Some(Stack::new(Block::PLANKS, 4)));
-            // Move the planks onto the cursor to make space for the logs.
-            restored.click(0, false);
-            restored.retry_returns();
-            assert_eq!(restored.get(0), Some(Stack::new(Block::LOG, 63)));
-            assert_eq!(restored.cursor, Some(Stack::new(Block::PLANKS, 4)));
-            assert!(!restored.has_pending_returns());
-        }
+        let mut restored = Inventory::deserialize(&saved).unwrap();
+        assert_eq!(restored.get(0), Some(Stack::new(Block::PLANKS, 4)));
+        assert_eq!(restored.take_spill(), vec![Stack::new(Block::LOG, 63)]);
     }
 }

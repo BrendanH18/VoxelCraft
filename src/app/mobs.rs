@@ -71,13 +71,9 @@ impl Game {
             if self.mode == GameMode::Survival {
                 self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
             }
-            if let Some(kind) = killed
-                && self.mode == GameMode::Survival
-            {
-                // Loot goes straight to the inventory until items can lie in the world.
-                for (item, count) in self.mobs.entities.drops(kind) {
-                    self.inventory.add(item, count);
-                }
+            if let Some(kind) = killed {
+                let pos = self.mobs.entities.mobs[i].pos;
+                self.mobs.entities.drop_loot(kind, pos);
             }
         }
         true
@@ -155,11 +151,12 @@ impl Game {
         let (passive, hostile): (Vec<_>, Vec<_>) = MobKind::ALL.iter().partition(|k| !k.is_hostile());
         let total = |kinds: Vec<&MobKind>| kinds.into_iter().map(|&k| e.count(k)).sum::<usize>();
         format!(
-            "Entities: {} (passive: {}, hostile: {}, arrows: {}), {} rendered, {} falling blocks",
+            "Entities: {} (passive: {}, hostile: {}, arrows: {}, items: {}), {} rendered, {} falling blocks",
             e.mobs.len(),
             total(passive),
             total(hostile),
             e.arrows.len(),
+            e.items.len(),
             e.rendered,
             self.world.falling_blocks().len()
         )

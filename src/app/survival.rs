@@ -78,6 +78,8 @@ pub struct Env {
 /// its single damage entry point.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Hurts {
+    /// Blocks fallen by a landing this tick (0 otherwise), for trampling.
+    pub landed: f64,
     pub fall: f32,
     pub drown: f32,
     pub lava: f32,
@@ -276,6 +278,7 @@ impl Vitals {
             self.fall_peak = None;
         } else if env.on_ground {
             if let Some(peak) = self.fall_peak {
+                hurts.landed = peak - env.y;
                 hurts.fall = fall_damage(peak - env.y);
             }
             self.fall_peak = Some(env.y);

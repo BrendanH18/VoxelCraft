@@ -318,8 +318,10 @@ impl Generator {
                 let ground = IVec3::new(tx, col.height, tz);
                 match (col.biome, Self::surface_block(col, col.height)) {
                     (Biome::Desert, Block::SAND) => Self::cactus(blocks, base, ground, variant),
-                    (Biome::Taiga | Biome::Snowy, _) => Self::spruce(blocks, base, ground, variant),
-                    (_, Block::GRASS) => Self::oak(blocks, base, ground, variant),
+                    (Biome::Taiga | Biome::Snowy, _) => {
+                        spruce(ground, variant, &mut |p, b| Self::put(blocks, base, p, b))
+                    }
+                    (_, Block::GRASS) => oak(ground, variant, &mut |p, b| Self::put(blocks, base, p, b)),
                     _ => {}
                 }
             }
@@ -377,52 +379,6 @@ impl Generator {
         }
     }
 
-    fn oak(blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, ground: IVec3, v: u32) {
-        let height = 4 + (v % 3) as i32;
-        let top = ground.y + height;
-        for dy in -2..=1 {
-            let r: i32 = if dy >= 0 { 1 } else { 2 };
-            for dz in -r..=r {
-                for dx in -r..=r {
-                    // Trim corners randomly for a less boxy canopy.
-                    let corner = dx.abs() == r && dz.abs() == r;
-                    if corner && (dy == 1 || (v >> ((dx + dz * 3 + dy * 7) & 15)) & 1 == 0) {
-                        continue;
-                    }
-                    Self::put(blocks, base, IVec3::new(ground.x + dx, top + dy, ground.z + dz), Block::LEAVES);
-                }
-            }
-        }
-        for y in ground.y + 1..top {
-            Self::put(blocks, base, IVec3::new(ground.x, y, ground.z), Block::LOG);
-        }
-    }
-
-    fn spruce(blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, ground: IVec3, v: u32) {
-        let height = 6 + (v % 4) as i32;
-        let top = ground.y + height;
-        Self::put(blocks, base, IVec3::new(ground.x, top + 1, ground.z), Block::SPRUCE_LEAVES);
-        for i in 0..height - 2 {
-            let y = top - i;
-            let r = match i {
-                0 => 0,
-                _ if i % 2 == 1 => 1,
-                _ => (i / 2).min(TREE_REACH) - (i / 6),
-            };
-            for dz in -r..=r {
-                for dx in -r..=r {
-                    if r > 1 && dx.abs() == r && dz.abs() == r {
-                        continue;
-                    }
-                    Self::put(blocks, base, IVec3::new(ground.x + dx, y, ground.z + dz), Block::SPRUCE_LEAVES);
-                }
-            }
-        }
-        for y in ground.y + 1..top {
-            Self::put(blocks, base, IVec3::new(ground.x, y, ground.z), Block::LOG);
-        }
-    }
-
     fn cactus(blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, ground: IVec3, v: u32) {
         for y in 1..=1 + (v % 3) as i32 {
             Self::put(blocks, base, ground + IVec3::new(0, y, 0), Block::CACTUS);
@@ -443,6 +399,55 @@ impl Generator {
             }
         }
         IVec3::new(0, self.column(0, 0).height.max(SEA_LEVEL) + 1, 0)
+    }
+}
+
+/// An oak standing on `ground` (variant `v` picks its height and canopy),
+/// as blocks handed to `put`: leaves first, then the trunk.
+pub fn oak(ground: IVec3, v: u32, put: &mut impl FnMut(IVec3, Block)) {
+    let height = 4 + (v % 3) as i32;
+    let top = ground.y + height;
+    for dy in -2..=1 {
+        let r: i32 = if dy >= 0 { 1 } else { 2 };
+        for dz in -r..=r {
+            for dx in -r..=r {
+                // Trim corners randomly for a less boxy canopy.
+                let corner = dx.abs() == r && dz.abs() == r;
+                if corner && (dy == 1 || (v >> ((dx + dz * 3 + dy * 7) & 15)) & 1 == 0) {
+                    continue;
+                }
+                put(IVec3::new(ground.x + dx, top + dy, ground.z + dz), Block::LEAVES);
+            }
+        }
+    }
+    for y in ground.y + 1..top {
+        put(IVec3::new(ground.x, y, ground.z), Block::LOG);
+    }
+}
+
+/// A spruce standing on `ground`, like [`oak`].
+pub fn spruce(ground: IVec3, v: u32, put: &mut impl FnMut(IVec3, Block)) {
+    let height = 6 + (v % 4) as i32;
+    let top = ground.y + height;
+    put(IVec3::new(ground.x, top + 1, ground.z), Block::SPRUCE_LEAVES);
+    for i in 0..height - 2 {
+        let y = top - i;
+        let r = match i {
+            0 => 0,
+            _ if i % 2 == 1 => 1,
+            _ => (i / 2).min(TREE_REACH) - (i / 6),
+        };
+        for dz in -r..=r {
+            for dx in -r..=r {
+                if r > 1 && dx.abs() == r && dz.abs() == r {
+                    continue;
+                }
+                put(IVec3::new(ground.x + dx, y, ground.z + dz), Block::SPRUCE_LEAVES);
+            }
+        }
+    }
+    for y in ground.y + 1..top {
+        put(IVec3::new(ground.x, y, ground.z), Block::LOG);
     }
 }
 

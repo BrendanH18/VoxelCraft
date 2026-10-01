@@ -1,7 +1,8 @@
-//! Free-standing textured blocks (falling sand and gravel): cubes, or two
-//! crossed planes for plants, built on the CPU each frame from the block
-//! texture array and drawn in one call. Lit like entities: an estimated sky
-//! light, the time of day and per-face shading.
+//! Free-standing textured blocks (falling sand and gravel, dropped items):
+//! cubes, two crossed planes for plants, or a flat item icon, built on the
+//! CPU each frame from the block texture array and drawn in one call. Lit
+//! like entities: an estimated sky light, the time of day and per-face
+//! shading.
 
 use bytemuck::{Pod, Zeroable};
 use glam::{DVec3, Vec3};
@@ -19,6 +20,11 @@ pub struct BlockModel {
     pub block: Block,
     /// Sky light at the block, 0..1.
     pub sky_light: f32,
+    /// Turn about the vertical axis through the centre, in radians.
+    pub yaw: f32,
+    /// Draw this texture layer as a flat, upright square (an item icon)
+    /// instead of the block.
+    pub icon: Option<u8>,
 }
 
 #[repr(C)]
@@ -42,6 +48,12 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
         let min = (m.min - camera).as_vec3();
         let s = m.size;
         let tex = m.block.info().tex;
+        let (sin, cos) = m.yaw.sin_cos();
+        // Unit-cube corner -> camera-relative position, turned about the centre.
+        let place = |c: Vec3| {
+            let (x, z) = (c.x - 0.5, c.z - 0.5);
+            min + Vec3::new(x * cos - z * sin + 0.5, c.y, x * sin + z * cos + 0.5) * s
+        };
         // UVs as in `chunk.wgsl`: sides map (horizontal, down), tops map (x, z).
         let mut quad = |corners: [Vec3; 4], layer: u8, shade: f32, axis: usize| {
             for i in [0, 1, 2, 2, 3, 0] {
@@ -52,13 +64,18 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
                     _ => [c.x, 1.0 - c.y],
                 };
                 out.push(BlockVertex {
-                    pos: (min + c * s).to_array(),
+                    pos: place(c).to_array(),
                     uv,
                     layer: layer as u32,
                     light: [m.sky_light, shade],
                 });
             }
         };
+        if let Some(layer) = m.icon {
+            let v = |x: f32, y: f32| Vec3::new(x, y, 0.5);
+            quad([v(0., 0.), v(1., 0.), v(1., 1.), v(0., 1.)], layer, 1.0, 2);
+            continue;
+        }
         if m.block.kind() == RenderKind::Cross {
             // Both diagonal planes run 0 -> 1 in z, so z works as u.
             let v = |x: f32, y: f32, z: f32| Vec3::new(x, y, z);
@@ -177,11 +194,20 @@ mod tests {
 
     #[test]
     fn cubes_and_plants_get_their_triangles() {
-        let at = |block| BlockModel { min: DVec3::new(10.0, 64.0, 5.0), size: 1.0, block, sky_light: 1.0 };
-        let v = vertices(&[at(Block::SAND), at(Block::POPPY)], DVec3::new(10.0, 64.0, 5.0));
-        assert_eq!(v.len(), 36 + 12);
-        // Camera-relative and within the unit cube.
-        assert!(v.iter().all(|v| v.pos.iter().all(|&c| (0.0..=1.0).contains(&c))));
+        let at = |block| BlockModel {
+            min: DVec3::new(10.0, 64.0, 5.0),
+            size: 1.0,
+            block,
+            sky_light: 1.0,
+            yaw: 0.0,
+            icon: None,
+        };
+        let icon = BlockModel { icon: Some(crate::world::block::tex::ITEM_0), yaw: 1.0, ..at(Block::AIR) };
+        let v = vertices(&[at(Block::SAND), at(Block::POPPY), icon], DVec3::new(10.0, 64.0, 5.0));
+        assert_eq!(v.len(), 36 + 12 + 6);
+        // Camera-relative and within the unit cube (a turned icon too).
+        assert!(v.iter().all(|v| v.pos.iter().all(|&c| (-1e-6..=1.0 + 1e-6).contains(&c))));
         assert_eq!(v[36].layer, crate::world::block::tex::POPPY as u32);
+        assert_eq!(v[48].layer, crate::world::block::tex::ITEM_0 as u32);
     }
 }

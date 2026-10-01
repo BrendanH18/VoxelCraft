@@ -51,7 +51,7 @@ pub fn burn_time(item: Item) -> Option<f32> {
     let b = Item::from_block;
     match item {
         Item::COAL | Item::CHARCOAL => Some(80.0),
-        i if i == b(Block::LOG) || i == b(Block::PLANKS) || i == b(Block::CRAFTING_TABLE) => Some(15.0),
+        i if [Block::LOG, Block::PLANKS, Block::CRAFTING_TABLE, Block::CHEST].map(b).contains(&i) => Some(15.0),
         Item::STICK => Some(5.0),
         i if i.as_tool().is_some_and(|(_, tier)| tier == Tier::Wood) => Some(10.0),
         _ => None,
@@ -163,7 +163,7 @@ fn take_one(stack: Option<Stack>) -> Option<Stack> {
 }
 
 pub fn is_furnace(b: Block) -> bool {
-    b == Block::FURNACE || b == Block::LIT_FURNACE
+    matches!(b.base(), Block::FURNACE | Block::LIT_FURNACE)
 }
 
 impl World {
@@ -198,8 +198,11 @@ impl World {
             relight.push((p, f.is_lit()));
         }
         for (p, lit) in relight {
-            let want = if lit { Block::LIT_FURNACE } else { Block::FURNACE };
-            if self.get_block(p).is_some_and(|b| is_furnace(b) && b != want) {
+            let Some((_, facing)) = self.get_block(p).filter(|&b| is_furnace(b)).and_then(Block::oriented) else {
+                continue;
+            };
+            let want = if lit { Block::LIT_FURNACE } else { Block::FURNACE }.with_facing(facing);
+            if self.get_block(p) != Some(want) {
                 self.edit(p, want, false);
             }
         }

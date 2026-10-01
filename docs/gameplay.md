@@ -14,7 +14,12 @@
 | F | Toggle flying (creative) |
 | Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; respawn on the death screen |
 | Middle click | Pick block |
+| Q / Ctrl+Q | Drop one of the selected item / the whole stack (with the inventory open: from the slot under the mouse) |
 | E | Inventory (click to move stacks; creative shows the block palette) |
+| Shift + click | In the inventory: move a stack between the open chest or furnace and the inventory (or between hotbar and main grid); on a crafting result, craft as many as fit |
+| Shift + right click | Build against a crafting table, furnace or chest instead of opening it |
+| Right click with a hoe | Till grass or dirt (with air above) into farmland |
+| Right click with seeds / bone meal | Sow wheat on farmland / make a crop, sapling or patch of grass grow |
 | G | Toggle survival / creative |
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
@@ -43,6 +48,21 @@ session.
 - Infinite procedurally generated terrain: oceans, beaches, plains,
   forests, deserts, snowy tundra, taiga and mountains, with spaghetti caves,
   deep caverns, ores, oak and spruce trees and cacti
+- Farming and growth, driven by Minecraft-style random block ticks in the
+  chunks within 128 blocks (each block is picked about once a minute).
+  Breaking tall grass sometimes drops wheat seeds; till grass or dirt with
+  a hoe and sow them on the farmland. Farmland with water within 4 blocks
+  turns dark and wet; wheat grows through 8 stages under open sky, about
+  twice as fast on wet farmland, and ripe wheat drops wheat and 1-4 seeds
+  (unripe wheat just its seed). Bare dry farmland turns back to dirt, and
+  jumping or falling onto farmland can trample it. Leaves drop oak or
+  spruce saplings (1 in 20; oak leaves also apples, 1 in 200); planted on
+  grass or dirt, saplings grow into trees. Leaves that can't reach a log
+  within 6 blocks decay a few seconds after a tree is felled. Grass spreads
+  to lit dirt nearby and dies under blocks. Bone meal advances a crop 2-5
+  stages, sometimes grows a sapling at once, and sprouts grass and flowers
+  around a grass block. Crops and saplings only grow in sunlight (torches
+  don't count yet)
 - Tall grass, dandelions and poppies (flowers grow in patches) on plains,
   forests and taiga, and dead bushes in deserts. Plants and torches are
   drawn as two crossed planes, break instantly, need soil (torches a full
@@ -69,21 +89,20 @@ session.
   arcing arrows that stick in blocks, creepers hiss, swell and explode
   (blowing a crater in the world), spiders climb walls. Mobs avoid tall
   drops, float in water, flash red when hurt and topple over when killed;
-  killing one in survival puts its loot in your inventory. All mobs,
+  killing one drops its loot. All mobs,
   arrows and explosion smoke are drawn in a single draw call
 - Survival and creative modes: timed block breaking with crack overlay,
   drops, a 36-slot inventory with stacks, and a scrollable creative palette
 - Crafting: a 2x2 grid in the survival inventory and a 3x3 grid at a
   crafting table (right-click it). Shaped recipes work anywhere in the
   grid and mirrored; click the result to craft one, and leftovers return
-  to the inventory when the screen closes. If the inventory is full,
-  leftovers are kept in the save and return automatically when space opens.
-  The HUD and inventory show the number of items waiting. Click Recipes
+  to the inventory when the screen closes (thrown out if it's full). Click Recipes
   to browse layouts with the arrow buttons or scroll wheel; hover ingredients
   for names and alternatives, then copy the preview into your crafting grid.
   On narrower windows, Back closes the recipe overlay so you can craft.
   Recipes: planks (from a log),
-  sticks, crafting table, torches (coal or charcoal over a stick),
+  sticks, crafting table, chest (8 planks in a ring), torches (coal or
+  charcoal over a stick), bread (3 wheat in a row), bone meal (from a bone),
   sandstone, wool (from string), arrows, and pickaxes, shovels, axes,
   hoes and swords in wood, stone, iron, gold and diamond
 - Tools follow Minecraft's mining rules: a block takes its hardness x 1.5
@@ -99,12 +118,12 @@ session.
   pickaxes and shovels less
 - Furnaces (8 cobblestone in a ring): right-click to open; put something
   to smelt on top and fuel below. Each item takes 10 s; coal and charcoal
-  burn 80 s, logs, planks and crafting tables 15 s, wooden tools 10 s and
+  burn 80 s, logs, planks, crafting tables and chests 15 s, wooden tools 10 s and
   sticks 5 s. Smelts iron and gold ore into ingots, sand into glass,
   cobblestone into stone, logs into charcoal and raw meat into cooked
   meat. A burning furnace glows (light 13), keeps smelting with its
   screen closed while its chunk is loaded, and is saved with the world;
-  breaking one returns its contents to your inventory
+  breaking one drops its contents
 - Items beyond blocks, each with a procedurally drawn icon: sticks, coal,
   ingots, diamonds, food, mob materials, and pickaxes, shovels, axes, hoes
   and swords in five tiers with durability bars. Coal and diamond ore drop
@@ -112,8 +131,8 @@ session.
 - Survival health: 10 hearts, fall damage (1 per block beyond 3; water
   breaks falls), 15 s of air then drowning, a red hurt flash and shaking
   hearts. Dying shows
-  a death screen; clicking respawns at the world spawn with full health and
-  the inventory kept (like `keepInventory`). Creative is immune to damage.
+  a death screen; everything you carried drops where you died, and clicking
+  respawns at the world spawn with full health. Creative is immune to damage.
   Health and air are saved with the world
 - Hunger, like Minecraft: 10 drumsticks plus a hidden saturation buffer
   (5 at spawn). Exhaustion from sprinting (0.1 per block), swimming (0.01
@@ -127,6 +146,19 @@ session.
   bar shows on the right above the hotbar, with air bubbles above it.
   Creative players don't get hungry. Hunger is saved with the world
 - Break, place and pick blocks, with a selection outline and hotbar
+- Chests (8 planks in a ring): right-click to open 27 slots of storage
+  above your inventory. Their contents are saved with the world and drop
+  when the chest is broken. Chests and furnaces face you when placed
+- Dropped items, like Minecraft's: mined blocks, mob loot, furnace
+  contents, plants that pop off or wash away, and a third of what an
+  explosion destroys drop as small spinning blocks or item icons (extra
+  copies for bigger stacks). They fall, slide, float up in water, burn in
+  lava, merge with matching stacks nearby, and vanish after five minutes
+  (the timer stops while their chunk is unloaded). Walk over them to pick
+  them up (thrown items wait 2 s first). Q drops the selected item, Ctrl+Q
+  the stack; clicking off the inventory window throws the held stack (right
+  click: one item). Items that don't fit when a crafting screen closes are
+  thrown out. Dropped items are saved with the world
 - Procedurally generated, mipmapped block textures — the game ships no assets
 - Procedural sound, synthesized in code at startup (~25 ms): material-specific
   break/place/footstep sounds (stone, wood, dirt, grass, gravel, sand, snow,
@@ -137,7 +169,7 @@ session.
 
 ## Mobs
 
-| Mob | Health | Behaviour | Loot (survival kills) |
+| Mob | Health | Behaviour | Loot (player kills) |
 |---|---|---|---|
 | Pig | 10 | wanders, idles, looks around; panics when hit | 1–3 raw porkchop |
 | Cow | 10 | like pigs | 1–3 raw beef, 0–2 leather |

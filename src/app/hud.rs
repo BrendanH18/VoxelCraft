@@ -25,6 +25,8 @@ pub(super) enum SlotRef {
     FurnaceInput,
     FurnaceFuel,
     FurnaceOutput,
+    /// Chest slot (row-major).
+    Chest(usize),
 }
 
 /// Visible rows of the creative palette.
@@ -128,11 +130,6 @@ impl Game {
             self.vitals_ui(ui, x0, x0 + total, y0 - 10.0, now);
         }
 
-        if self.inventory.has_pending_returns() && !self.inventory_open {
-            let text = waiting_label(self.inventory.pending_return_count());
-            ui.label((sw - Ui::text_width(&text)) / 2.0, y0 - 38.0, &text, HIGHLIGHT);
-        }
-
         // Popup message (item names, mode changes), fading out.
         let age = (now - self.popup.1).as_secs_f32();
         let alpha = ((2.5 - age) / 0.5).clamp(0.0, 1.0);
@@ -218,14 +215,12 @@ impl Game {
     }
 
     pub(super) fn shows_recipes(&self) -> bool {
-        self.has_top_section() && !matches!(self.container, Container::Furnace(_))
+        self.has_top_section() && !matches!(self.container, Container::Furnace(_) | Container::Chest(_))
     }
 
     /// Top-left corner and height of the inventory panel.
     fn panel(&self, screen: (f32, f32)) -> (f32, f32, f32) {
-        let h = PANEL_H
-            + if self.has_top_section() { CRAFT_H } else { 0.0 }
-            + if self.inventory.has_pending_returns() { 26.0 } else { 0.0 };
+        let h = PANEL_H + if self.has_top_section() { CRAFT_H } else { 0.0 };
         let extra = if self.recipe_book.open && self.shows_recipes() && recipe_book::fits_beside(screen.0, PANEL_W) {
             recipe_book::WIDTH + recipe_book::GAP
         } else {
@@ -249,13 +244,19 @@ impl Game {
             .control((self.cursor_px.0 / scale, self.cursor_px.1 / scale), self.recipe_book.open)
     }
 
-    /// Screen positions of every slot on the inventory screen: the crafting
-    /// grid and its result (outside creative), a 3x9 grid (main inventory,
-    /// or the block palette in creative) and the hotbar.
+    /// Screen positions of every slot on the inventory screen: the open
+    /// container's slots (a crafting grid and its result outside creative, a
+    /// furnace or a chest), a 3x9 grid (main inventory, or the block palette
+    /// in creative) and the hotbar.
     fn inventory_slots(&self, screen: (f32, f32)) -> Vec<(SlotRef, f32, f32)> {
         let (px, py, _) = self.panel(screen);
         let mut out = Vec::with_capacity(46);
-        let top = if let Container::Furnace(_) = self.container {
+        let top = if let Container::Chest(_) = self.container {
+            for i in 0..crate::world::chest::SLOTS {
+                out.push((SlotRef::Chest(i), px + 7.0 + (i % 9) as f32 * SLOT, py + 18.0 + (i / 9) as f32 * SLOT));
+            }
+            CRAFT_H
+        } else if let Container::Furnace(_) = self.container {
             // Input over fuel (with the flame between), the output past the arrow.
             let x = px + 7.0 + 3.0 * SLOT;
             out.push((SlotRef::FurnaceInput, x, py + 18.0));
@@ -295,6 +296,19 @@ impl Game {
         out
     }
 
+    /// Whether the mouse is off the inventory panel and the recipe book:
+    /// clicking there throws the held stack out, like Minecraft.
+    pub(super) fn cursor_off_panel(&self) -> bool {
+        let scale = Ui::scale_for(self.renderer.scale_factor());
+        let (w, h) = self.renderer.size();
+        let screen = (w as f32 / scale, h as f32 / scale);
+        let mouse = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
+        let (x, y, h) = self.panel(screen);
+        let on_book =
+            self.shows_recipes() && self.recipe_book.open && self.recipe_layout(screen).bounds.contains(mouse);
+        !Rect { x, y, w: PANEL_W, h }.contains(mouse) && !on_book
+    }
+
     pub(super) fn slot_under_cursor(&self) -> Option<SlotRef> {
         let scale = Ui::scale_for(self.renderer.scale_factor());
         let (w, h) = self.renderer.size();
@@ -323,6 +337,7 @@ impl Game {
         let title = match (self.container, self.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
+            (Container::Chest(_), _) => "Chest",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
         };
@@ -331,7 +346,7 @@ impl Game {
             let layout = self.recipe_layout((sw, sh));
             self.recipe_button(ui, layout.toggle, if self.recipe_book.open { "Hide" } else { "Recipes" });
         }
-        if self.has_top_section() {
+        if self.has_top_section() && !matches!(self.container, Container::Chest(_)) {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
             let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + SLOT + 5.0);
@@ -361,6 +376,9 @@ impl Game {
             }
         }
         let py = py + if self.has_top_section() { CRAFT_H } else { 0.0 };
+        if matches!(self.container, Container::Chest(_)) {
+            ui.text_flat(px + 8.0, py + 6.0, "Inventory", [0.25, 0.25, 0.25, 1.0]);
+        }
         if self.shows_palette() {
             // Scrollbar beside the palette grid.
             let (x, y, h) = (px + PANEL_W - 6.0, py + 18.0, PALETTE_ROWS as f32 * SLOT);
@@ -380,7 +398,7 @@ impl Game {
                 SlotRef::Palette(b) => Some(Stack::new(b, 1)),
                 SlotRef::Craft(i) => self.craft.cells[i],
                 SlotRef::CraftResult => self.craft.result(),
-                f => self.furnace_slot(f),
+                f => self.container_slot(f),
             };
             if let Some(stack) = stack {
                 self.stack_ui(ui, x, y, stack);
@@ -394,16 +412,10 @@ impl Game {
             Some(SlotRef::Palette(item)) => Some(item),
             Some(SlotRef::Craft(i)) => self.craft.cells[i].map(|s| s.item),
             Some(SlotRef::CraftResult) => self.craft.result().map(|s| s.item),
-            Some(f) => self.furnace_slot(f).map(|s| s.item),
+            Some(f) => self.container_slot(f).map(|s| s.item),
             None => None,
         };
         let recipe_hint = if self.recipe_book.open && self.shows_recipes() { self.recipe_book_ui(ui) } else { None };
-        if self.inventory.has_pending_returns() {
-            let (_, top, height) = self.panel((sw, sh));
-            let count = waiting_label(self.inventory.pending_return_count());
-            ui.text_flat(px + 8.0, top + height - 22.0, &count, [0.3, 0.2, 0.05, 1.0]);
-            ui.text_flat(px + 8.0, top + height - 11.0, "Returns when space opens", [0.25, 0.25, 0.25, 1.0]);
-        }
         if let Some(hint) = recipe_hint {
             self.tooltip(ui, &hint);
         } else if let Some(item) = hovered_item {
@@ -483,8 +495,11 @@ impl Game {
         hint
     }
 
-    /// Contents of a furnace slot on the open furnace screen.
-    fn furnace_slot(&self, slot: SlotRef) -> Option<Stack> {
+    /// Contents of a furnace or chest slot on the open screen.
+    fn container_slot(&self, slot: SlotRef) -> Option<Stack> {
+        if let (Container::Chest(p), SlotRef::Chest(i)) = (self.container, slot) {
+            return self.world.chest(p)?.slots[i];
+        }
         let Container::Furnace(p) = self.container else { return None };
         let f = self.world.furnace(p)?;
         match slot {
@@ -603,8 +618,4 @@ fn hash(a: u32, b: u32) -> u32 {
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
-}
-
-fn waiting_label(count: usize) -> String {
-    format!("{count} {} waiting", if count == 1 { "item" } else { "items" })
 }

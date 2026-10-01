@@ -43,6 +43,7 @@ impl World {
                 Some(a) if !a.can_stay_on(b) => {
                     // A plant or torch that just lost its support pops off.
                     self.edit(above, Block::AIR, true);
+                    self.spill_block(above, a);
                     p = above;
                 }
                 Some(a) if a.has_gravity() && can_fall_into(b) => p = above,
@@ -89,8 +90,9 @@ impl World {
 
     /// Destroys the blocks in a ragged sphere around `center` (radius about
     /// `0.9 * power`, like a Minecraft blast in open stone). Bedrock,
-    /// obsidian and fluids resist. Chunks are remeshed on the workers; what
-    /// rested on the blasted blocks falls or pops off. Returns how many
+    /// obsidian and fluids resist. Like Minecraft, each destroyed block drops
+    /// with a chance of `1 / power`. Chunks are remeshed on the workers;
+    /// what rested on the blasted blocks falls or pops off. Returns how many
     /// blocks were destroyed.
     pub fn explode(&mut self, center: DVec3, power: f64) -> usize {
         let radius = power * 0.9 + 0.5;
@@ -110,6 +112,9 @@ impl World {
                     let resists = b == Block::AIR || b == Block::BEDROCK || b == Block::OBSIDIAN || b.is_fluid();
                     if !resists && self.edit(p, Block::AIR, false) {
                         removed.push(p);
+                        if (super::noise::hash_f(p.x, p.y, p.z, seed ^ 0xD20F) as f64) < 1.0 / power {
+                            self.spill_block(p, b);
+                        }
                     }
                 }
             }

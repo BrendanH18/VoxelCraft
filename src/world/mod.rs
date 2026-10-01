@@ -13,10 +13,12 @@
 //! light-blocking block, which seeds skylight in mesh jobs.
 
 pub mod block;
+pub mod chest;
 pub mod chunk;
 pub mod falling;
 mod fluid;
 pub mod furnace;
+mod growth;
 pub mod noise;
 pub mod storage;
 pub mod terrain;
@@ -67,8 +69,17 @@ pub struct World {
     falling: Vec<falling::FallingBlock>,
     /// Furnace contents by position (see [`furnace`]).
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
-    /// Items spilled by broken containers, with where they spilled; the
-    /// game collects them.
+    /// Chest contents by position (see [`chest`]).
+    chests: FxHashMap<IVec3, chest::Chest>,
+    /// Leaves waiting to decay (seconds left) after a log near them went.
+    leaf_decay: FxHashMap<IVec3, f32>,
+    /// Fractional random block ticks carried over between frames.
+    random_ticks: f64,
+    /// Random state for growth and chance drops.
+    rng: u64,
+    /// Items the world let go of (mined blocks, container contents, plants
+    /// that popped off or washed away, explosion debris) and the cell they
+    /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
     pub mesh_removals: Vec<IVec3>,
@@ -80,6 +91,7 @@ fn column_of(chunk: IVec3) -> IVec2 {
 
 impl World {
     pub fn new(generator: Arc<Generator>, saved: FxHashMap<IVec3, Arc<ChunkData>>, render_distance: i32) -> Self {
+        let rng = generator.seed ^ 0x6772_6f77;
         Self {
             workers: Workers::new(generator.clone()),
             generator,
@@ -97,6 +109,10 @@ impl World {
             fluids: Default::default(),
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
+            chests: FxHashMap::default(),
+            leaf_decay: FxHashMap::default(),
+            random_ticks: 0.0,
+            rng,
             drops: Vec::new(),
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -220,6 +236,10 @@ impl World {
         Arc::make_mut(&mut slot.data).set(l.x as usize, l.y as usize, l.z as usize, block);
         slot.modified = true;
         self.track_furnace(p, old, block);
+        self.track_chest(p, old, block);
+        if old == Block::LOG && block != Block::LOG {
+            self.log_removed(p);
+        }
 
         // Keep the column heightmap current.
         let (old_h, new_h) = self.update_height(p, block);
@@ -647,9 +667,12 @@ mod tests {
         let eye = DVec3::new(0.5, y as f64 + 4.5, 0.5);
         assert_eq!(world.raycast(eye, DVec3::NEG_Y, 10.0).unwrap().0, flower);
 
-        // Removing the dirt drops the flower.
+        // Removing the dirt pops the flower off as an item.
         world.set_block(flower - IVec3::Y, Block::AIR);
         assert_eq!(world.get_block(flower), Some(Block::AIR));
+        let dropped = |world: &mut World| std::mem::take(&mut world.drops).into_iter().map(|(_, s)| s.item).collect();
+        let poppy: Vec<crate::item::Item> = dropped(&mut world);
+        assert_eq!(poppy, [Block::POPPY.into()]);
 
         // Water flowing past a torch washes it away (refill the hole first,
         // or the water would head for that drop instead).
@@ -661,6 +684,8 @@ mod tests {
             world.tick_fluids(0.25);
         }
         assert!(world.get_block(torch).unwrap().is_water());
+        let torch: Vec<crate::item::Item> = dropped(&mut world);
+        assert_eq!(torch, [Block::TORCH.into()], "washed away as an item");
     }
 
     #[test]
@@ -828,17 +853,100 @@ mod tests {
     }
 
     #[test]
+    fn crops_ripen_saplings_grow_and_leaves_decay() {
+        use crate::item::Item;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let y = 200;
+        for x in -8..=8 {
+            for z in -8..=8 {
+                world.edit(IVec3::new(x, y, z), Block::DIRT, false);
+            }
+        }
+        // Farmland by water gets wet, and wheat on it ripens.
+        let soil = IVec3::new(0, y, 0);
+        world.set_block(soil, Block::FARMLAND);
+        world.edit(IVec3::new(2, y, 0), Block::WATER, false);
+        assert!(world.set_block(soil + IVec3::Y, Block::wheat(0)));
+        world.random_tick(soil);
+        assert_eq!(world.get_block(soil), Some(Block::WET_FARMLAND));
+        for _ in 0..400 {
+            world.random_tick(soil + IVec3::Y);
+        }
+        assert_eq!(world.get_block(soil + IVec3::Y), Some(Block::wheat(7)));
+
+        // Ripe wheat drops wheat and one to four seeds.
+        world.drops.clear();
+        world.spill_block(soil + IVec3::Y, Block::wheat(7));
+        let got: Vec<_> = world.drops.iter().map(|&(_, s)| (s.item, s.count)).collect();
+        assert_eq!(got[0], (Item::WHEAT, 1));
+        assert!(got[1].0 == Item::WHEAT_SEEDS && (1..=4).contains(&got[1].1), "{got:?}");
+
+        // Dry farmland with nothing growing turns back to dirt; trampling it
+        // pops the crop off.
+        let dry = IVec3::new(-7, y, -7);
+        world.set_block(dry, Block::FARMLAND);
+        world.random_tick(dry);
+        assert_eq!(world.get_block(dry), Some(Block::DIRT));
+        world.set_block(soil, Block::DIRT);
+        assert_eq!(world.get_block(soil + IVec3::Y), Some(Block::AIR), "wheat needs farmland");
+
+        // A sapling grows into a tree; felling it makes its leaves decay.
+        let sapling = IVec3::new(-4, y + 1, 4);
+        world.set_block(sapling, Block::OAK_SAPLING);
+        assert!(world.grow_tree(sapling));
+        assert_eq!(world.get_block(sapling), Some(Block::LOG));
+        let leaves = |w: &World| {
+            (-3..=3)
+                .flat_map(|dx| (0..=8).flat_map(move |dy| (-3..=3).map(move |dz| IVec3::new(dx, dy, dz))))
+                .filter(|&d| w.get_block(sapling + d) == Some(Block::LEAVES))
+                .count()
+        };
+        assert!(leaves(&world) > 10);
+        let mut trunk = sapling;
+        while world.get_block(trunk) == Some(Block::LOG) {
+            world.set_block(trunk, Block::AIR);
+            trunk += IVec3::Y;
+        }
+        for _ in 0..30 {
+            world.tick_leaf_decay(0.5);
+        }
+        assert_eq!(leaves(&world), 0, "leaves decay without their logs");
+    }
+
+    #[test]
+    fn chests_keep_their_contents_save_and_spill() {
+        use crate::inventory::Stack;
+        use crate::item::Item;
+        use block::Facing;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let p = IVec3::new(0, 200, 0);
+        world.set_block(p, Block::CHEST.with_facing(Facing::East));
+        world.chest_mut(p).expect("placing a chest creates its contents").slots[4] = Some(Stack::new(Item::COAL, 7));
+        world.chest_mut(p).unwrap().slots[26] = Some(Stack::new(Block::DIRT, 64));
+
+        let mut other = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        other.load_chests(&world.chests_to_string());
+        assert_eq!(other.chest(p), world.chest(p));
+
+        world.set_block(p, Block::AIR);
+        assert!(world.chest(p).is_none());
+        let spilled: Vec<_> = world.drops.iter().map(|&(_, s)| s).collect();
+        assert_eq!(spilled, [Stack::new(Item::COAL, 7), Stack::new(Block::DIRT, 64)]);
+    }
+
+    #[test]
     fn furnaces_light_up_smelt_save_and_spill() {
         use crate::inventory::Stack;
         use crate::item::Item;
         let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
         let p = IVec3::new(0, 200, 0);
-        world.set_block(p, Block::FURNACE);
+        world.set_block(p, Block::FURNACE.with_facing(block::Facing::West));
         let f = world.furnace_mut(p).expect("placing a furnace creates its contents");
         f.input = Some(Stack::new(Block::SAND, 4));
         f.fuel = Some(Stack::new(Item::COAL, 1));
         world.tick_furnaces(0.1);
-        assert_eq!(world.get_block(p), Some(Block::LIT_FURNACE), "burning furnaces glow");
+        let lit = Block::LIT_FURNACE.with_facing(block::Facing::West);
+        assert_eq!(world.get_block(p), Some(lit), "burning furnaces glow, facing the same way");
         for _ in 0..21 {
             world.tick_furnaces(1.0);
         }

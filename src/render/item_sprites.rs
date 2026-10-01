@@ -239,6 +239,33 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             };
             shaded(&hide, x, y, [150, 82, 42], 0.1)
         }
+        Sprite::Seeds => {
+            // A scatter of small grains, lit from the top left.
+            const GRAINS: [(i32, i32); 7] = [(4, 4), (9, 3), (12, 7), (6, 8), (10, 11), (3, 12), (7, 13)];
+            GRAINS.iter().find_map(|&(gx, gy)| {
+                let shade = match (x - gx, y - gy) {
+                    (0, 0) => 1.3,
+                    (1, 0) => 1.0,
+                    (1, 1) => 0.7,
+                    _ => return None,
+                };
+                Some(tint([110, 140, 48], shade))
+            })
+        }
+        Sprite::Wheat => {
+            // Three stalks fanning up from a tied base, with grain heads.
+            (-1..=1).find_map(|k: i32| {
+                let sx = 8.0 + k as f32 * (15 - y) as f32 / 3.0;
+                let col = sx.round() as i32;
+                let head = (2..=7).contains(&y);
+                let on = (2..=15).contains(&y) && (x == col || head && x == col + 1);
+                on.then(|| match y {
+                    11 => tint([120, 82, 40], 1.0),
+                    _ if head => tint([226, 184, 72], if (x + y) % 2 == 0 { 1.1 } else { 0.85 }),
+                    _ => tint([196, 168, 84], 0.95 + noise(x, y, 8) * 0.1),
+                })
+            })
+        }
         Sprite::Arrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);

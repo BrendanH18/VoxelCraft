@@ -32,9 +32,12 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
   mountains, oceans, caves, ores, and trees.
 - **Two ways to play.** Build freely in creative, or play survival with timed
   mining, block drops, a stackable inventory, health, hunger, and respawning.
-- **Craft and cook.** Make tools in five tiers, craft torches and building
-  blocks, smelt ores, and cook food in furnaces. Tools wear out; food restores
-  hunger and supports natural healing.
+- **Craft, cook and store.** Make tools in five tiers, craft torches and
+  building blocks, smelt ores and cook food in furnaces, and keep your haul in
+  chests. Tools wear out; food restores hunger and supports natural healing.
+- **Farm and grow.** Till soil with a hoe, sow seeds found in tall grass and
+  harvest wheat for bread. Saplings grow into trees, leaves fall from felled
+  trees, and grass creeps back over bare dirt.
 - **A world that moves.** Flowing water and lava, falling sand, a day/night
   cycle, drifting clouds, herds of animals, and zombies, skeletons, creepers
   and spiders that come out at night.
@@ -43,9 +46,7 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
 - **Built for speed.** Parallel chunk generation, greedy meshing, compact GPU
   quad records, and a shared mesh arena keep the world streaming around you.
 
-VoxelCraft is an early sandbox project. Inventory is kept on death, and mined
-blocks and mob loot go straight into the inventory. Furnaces currently have no
-facing direction. See the [gameplay guide](docs/gameplay.md) for the survival
+VoxelCraft is an early sandbox project. See the [gameplay guide](docs/gameplay.md) for the survival
 rules and available recipes.
 
 ## Play
@@ -92,7 +93,8 @@ and replaces it when saving, so choose a new `--world` name to keep an old world
 
 Click the window to capture the mouse. Move with **W A S D**, look with the
 mouse, and press **Space** to jump. **Left click** breaks blocks or attacks mobs;
-**right click** places blocks or opens a crafting table or furnace. Press **E**
+**right click** places blocks or opens a crafting table, furnace or chest
+(hold **Shift** to build against one instead). Press **E**
 for inventory and its 2×2 crafting grid in survival, and **G** to switch modes.
 
 For a new survival world:
@@ -111,9 +113,11 @@ For a new survival world:
    for 1.6 seconds to eat when hungry.
 
 Stone mined by hand drops nothing. Sprinting needs more than six food points
-(three drumsticks). Crafting leftovers return when the screen closes; if the
-inventory is full, the HUD and inventory show how many items are waiting.
-They are saved and return automatically when space opens.
+(three drumsticks). Mined blocks and mob loot drop as items: walk over them
+to pick them up. Press **Q** to drop the selected item (**Ctrl+Q** for the
+whole stack), or click outside the inventory window to throw what you're
+holding. Dying drops everything you carry where you fell, and dropped items
+vanish after five minutes, so go back for them.
 
 Click **Recipes** in the inventory or crafting screen to browse ingredient
 layouts with the arrow buttons or scroll wheel. Hover an ingredient to see its
@@ -126,6 +130,8 @@ bar appears below the crosshair while you hold right-click with food.
 | Left Ctrl or R | Sprint (survival needs more than three drumsticks) |
 | 1–9 or scroll wheel | Select hotbar slot |
 | Middle click | Pick block |
+| Q / Ctrl+Q | Drop one item / the whole stack |
+| Shift + click | Move a stack between a container and the inventory, or craft as many as fit |
 | F or double-tap Space | Toggle flight in creative |
 | Space / Left Shift | Fly up / down |
 | `[` / `]` | Decrease / increase view distance |
@@ -151,7 +157,11 @@ See the [gameplay guide](docs/gameplay.md) for all controls, survival rules, and
   </tr>
   <tr>
     <td width="50%"><img src="docs/images/hunger.png" alt="Survival hearts and hunger bar, with an eating progress indicator below the crosshair"><br><strong>A bite to eat</strong><br>Hold right-click with food and watch the bite progress.</td>
-    <td width="50%"><img src="docs/images/leftovers.png" alt="Full inventory displaying 63 items waiting to return when space opens"><br><strong>Keep your leftovers</strong><br>Items waiting for inventory space survive closing the screen and saving.</td>
+    <td width="50%"><img src="docs/images/dropped-items.jpg" alt="Dropped items lying on grass: a steak, glass, a torch, a poppy, an apple, a diamond pickaxe and cobblestone"><br><strong>Pick it up</strong><br>Mined blocks and loot drop as spinning items you walk over to collect.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/farming.jpg" alt="Rows of wheat at every growth stage on wet and dry farmland, with oak and spruce saplings behind"><br><strong>Sow and reap</strong><br>Wheat ripens from green shoots to golden ears on tilled soil.</td>
+    <td width="50%"><img src="docs/images/chest.jpg" alt="Chest screen with diamonds, logs, iron ingots and steak above the player's inventory"><br><strong>Stash it</strong><br>Chests hold 27 stacks; shift-click to move whole stacks.</td>
   </tr>
 </table>
 

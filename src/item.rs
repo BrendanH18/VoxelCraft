@@ -101,6 +101,8 @@ pub enum Sprite {
     Powder([u8; 3]),
     Leather,
     Arrow,
+    Seeds,
+    Wheat,
     Tool(ToolKind, Tier),
 }
 
@@ -127,7 +129,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 22] = [
+static ITEMS: [ItemInfo; 25] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -150,6 +152,9 @@ static ITEMS: [ItemInfo; 22] = [
     item("gunpowder", Sprite::Powder([120, 120, 120])),
     item("leather", Sprite::Leather),
     item("arrow", Sprite::Arrow),
+    item("wheat seeds", Sprite::Seeds),
+    item("wheat", Sprite::Wheat),
+    item("bone meal", Sprite::Powder([238, 236, 226])),
 ];
 
 /// Tools start at this id: `FIRST_TOOL + tier * 5 + kind`.
@@ -179,6 +184,9 @@ impl Item {
     pub const GUNPOWDER: Item = Item(275);
     pub const LEATHER: Item = Item(276);
     pub const ARROW: Item = Item(277);
+    pub const WHEAT_SEEDS: Item = Item(278);
+    pub const WHEAT: Item = Item(279);
+    pub const BONE_MEAL: Item = Item(280);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
@@ -188,7 +196,16 @@ impl Item {
         Item(block.0 as u16)
     }
 
-    /// The block this item places, if any.
+    /// The block placing this item puts down: the block itself, or what a
+    /// non-block item plants (seeds sow wheat).
+    pub fn places(self) -> Option<Block> {
+        match self {
+            Item::WHEAT_SEEDS => Some(Block::wheat(0)),
+            i => i.block(),
+        }
+    }
+
+    /// The block this item is, if any.
     pub fn block(self) -> Option<Block> {
         if self.0 < FIRST_ITEM {
             let b = Block(self.0 as u8);

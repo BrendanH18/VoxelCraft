@@ -120,7 +120,12 @@ impl World {
         }
         let changed = changes.len();
         for (p, b) in changes {
-            if self.get_block(p).is_some_and(|cur| cur != b) && self.edit(p, b, false) {
+            let Some(old) = self.get_block(p).filter(|&cur| cur != b) else { continue };
+            if self.edit(p, b, false) {
+                // Water washes plants and torches away as items; lava burns them.
+                if washes_away(old) && b.is_water() {
+                    self.spill_block(p, old);
+                }
                 self.wake_fluids(p);
             }
         }

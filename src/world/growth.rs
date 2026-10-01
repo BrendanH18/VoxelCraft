@@ -1,0 +1,303 @@
+//! Things that grow and decay on their own, driven by Minecraft-style random
+//! block ticks: wheat ripens, saplings become trees, grass spreads over lit
+//! dirt (and dies under cover), farmland gets wet near water or dries back
+//! to dirt. Leaves cut off from their tree's logs decay a few seconds after
+//! the last log near them goes.
+
+use glam::{DVec3, IVec3};
+
+use super::World;
+use super::block::Block;
+use super::chunk::{CHUNK_SIZE_I, WORLD_HEIGHT_CHUNKS, chunk_of};
+use super::noise::splitmix64;
+use crate::inventory::Stack;
+use crate::item::Item;
+
+/// Random block ticks per chunk per second: Minecraft's 3 per 16³ section
+/// per game tick, so each block is picked about once every 68 seconds.
+const TICKS_PER_CHUNK: f64 = 480.0;
+/// Chunks within this many chunks (horizontally) of the player get random
+/// ticks: Minecraft's default simulation distance of 128 blocks.
+const TICK_RADIUS: i32 = 4;
+/// Leaves farther than this (in steps through leaves) from a log decay.
+const LEAF_REACH: i32 = 6;
+
+/// One in this many random ticks grows a crop on wet farmland (twice as
+/// many on dry), roughly Minecraft's rate for a lone crop.
+const CROP_GROWTH: u64 = 7;
+/// One in this many random ticks grows a sapling into a tree.
+const SAPLING_GROWTH: u64 = 7;
+
+impl World {
+    fn roll(&mut self) -> u64 {
+        splitmix64(&mut self.rng)
+    }
+
+    /// True with probability `1 / n`.
+    fn one_in(&mut self, n: u64) -> bool {
+        self.roll().is_multiple_of(n)
+    }
+
+    /// Queues what `block`, gone from `p`, drops: its usual item, plus
+    /// Minecraft's chance drops (seeds from grass and ripe wheat, saplings
+    /// and apples from leaves).
+    pub fn spill_block(&mut self, p: IVec3, block: Block) {
+        let mut out = Vec::new();
+        out.extend(block.drop().map(|item| Stack::new(item, 1)));
+        match block {
+            b if b.crop_stage() == Some(7) => {
+                // One seed, plus three tries at 4 in 7.
+                let seeds = 1 + (0..3).filter(|_| self.roll() % 7 < 4).count() as u8;
+                out.push(Stack::new(Item::WHEAT_SEEDS, seeds));
+            }
+            Block::TALL_GRASS if self.one_in(8) => out.push(Stack::new(Item::WHEAT_SEEDS, 1)),
+            Block::LEAVES | Block::SPRUCE_LEAVES => {
+                if self.one_in(20) {
+                    let sapling = if block == Block::LEAVES { Block::OAK_SAPLING } else { Block::SPRUCE_SAPLING };
+                    out.push(Stack::new(sapling, 1));
+                }
+                if block == Block::LEAVES && self.one_in(200) {
+                    out.push(Stack::new(Item::APPLE, 1));
+                }
+            }
+            _ => {}
+        }
+        self.drops.extend(out.into_iter().map(|s| (p, s)));
+    }
+
+    /// Runs random block ticks in the chunks around `player`.
+    pub fn tick_random(&mut self, dt: f64, player: DVec3) {
+        self.random_ticks += dt * TICKS_PER_CHUNK;
+        let n = self.random_ticks as u32;
+        self.random_ticks -= n as f64;
+        if n == 0 {
+            return;
+        }
+        let center = chunk_of(player.floor().as_ivec3());
+        for cz in center.z - TICK_RADIUS..=center.z + TICK_RADIUS {
+            for cx in center.x - TICK_RADIUS..=center.x + TICK_RADIUS {
+                for cy in 0..WORLD_HEIGHT_CHUNKS {
+                    let cpos = IVec3::new(cx, cy, cz);
+                    // Uniform chunks (all air, all stone) have nothing to tick.
+                    if self.chunks.get(&cpos).is_none_or(|s| s.data.uniform().is_some()) {
+                        continue;
+                    }
+                    for _ in 0..n {
+                        let r = self.roll();
+                        let l = IVec3::new((r & 31) as i32, (r >> 5 & 31) as i32, (r >> 10 & 31) as i32);
+                        self.random_tick(cpos * CHUNK_SIZE_I + l);
+                    }
+                }
+            }
+        }
+    }
+
+    pub(super) fn random_tick(&mut self, p: IVec3) {
+        let Some(b) = self.get_block(p) else { return };
+        match b {
+            Block::GRASS => self.tick_grass(p),
+            Block::FARMLAND | Block::WET_FARMLAND => self.tick_farmland(p, b),
+            Block::OAK_SAPLING | Block::SPRUCE_SAPLING => {
+                if self.grows_here(p) && self.one_in(SAPLING_GROWTH) {
+                    self.grow_tree(p);
+                }
+            }
+            b if b.crop_stage().is_some_and(|s| s < 7) => {
+                let wet = self.get_block(p - IVec3::Y) == Some(Block::WET_FARMLAND);
+                if self.grows_here(p) && self.one_in(if wet { CROP_GROWTH } else { 2 * CROP_GROWTH }) {
+                    self.edit(p, Block::wheat(b.crop_stage().unwrap() + 1), false);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Plants need light to grow: open sky above (block light isn't
+    /// tracked outside mesh jobs, so torches don't count).
+    fn grows_here(&self, p: IVec3) -> bool {
+        self.sky_exposed(p)
+    }
+
+    /// Grass dies under opaque blocks and spreads to lit dirt nearby (one
+    /// block across, three down or one up).
+    fn tick_grass(&mut self, p: IVec3) {
+        let covered = |w: &World, q: IVec3| w.get_block(q + IVec3::Y).is_some_and(|a| a.is_opaque() || a.is_fluid());
+        if covered(self, p) {
+            self.edit(p, Block::DIRT, false);
+            return;
+        }
+        let r = self.roll();
+        let q = p + IVec3::new((r % 3) as i32 - 1, (r / 3 % 5) as i32 - 3, (r / 15 % 3) as i32 - 1);
+        if self.get_block(q) == Some(Block::DIRT) && !covered(self, q) && self.sky_exposed(q + IVec3::Y) {
+            self.edit(q, Block::GRASS, false);
+        }
+    }
+
+    /// Farmland is wet with water within 4 blocks across (at its level or
+    /// one up); dry farmland with no crop on it turns back to dirt.
+    fn tick_farmland(&mut self, p: IVec3, b: Block) {
+        let above = self.get_block(p + IVec3::Y);
+        if above.is_some_and(|a| a.is_solid()) {
+            self.edit(p, Block::DIRT, false);
+            return;
+        }
+        let wet = (-4..=4).any(|dx| {
+            (-4..=4)
+                .any(|dz| (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.is_water())))
+        });
+        let crop = above.is_some_and(|a| a.crop_stage().is_some());
+        match (wet, b) {
+            (true, Block::FARMLAND) => {
+                self.edit(p, Block::WET_FARMLAND, false);
+            }
+            (false, Block::WET_FARMLAND) => {
+                self.edit(p, Block::FARMLAND, false);
+            }
+            (false, _) if !crop => {
+                self.edit(p, Block::DIRT, false);
+            }
+            _ => {}
+        }
+    }
+
+    /// Grows the sapling at `p` into a tree if there's room for its trunk.
+    /// Leaves only fill air, like world generation. Returns whether it grew.
+    pub fn grow_tree(&mut self, p: IVec3) -> bool {
+        let Some(sapling) = self.get_block(p) else { return false };
+        let v = self.roll() as u32;
+        let mut blocks = Vec::new();
+        let ground = p - IVec3::Y;
+        match sapling {
+            Block::OAK_SAPLING => super::terrain::oak(ground, v, &mut |q, b| blocks.push((q, b))),
+            Block::SPRUCE_SAPLING => super::terrain::spruce(ground, v, &mut |q, b| blocks.push((q, b))),
+            _ => return false,
+        }
+        let room = blocks.iter().filter(|(_, b)| *b == Block::LOG).all(|&(q, _)| {
+            q == p || self.get_block(q).is_some_and(|b| b == Block::AIR || b.is_replaceable() || is_leaves(b))
+        });
+        if !room {
+            return false;
+        }
+        for (q, b) in blocks {
+            let free = self.get_block(q).is_some_and(|cur| cur == Block::AIR || (b == Block::LOG && cur != Block::LOG));
+            if free {
+                self.edit(q, b, false);
+            }
+        }
+        if self.get_block(ground) == Some(Block::GRASS) || self.get_block(ground).is_some_and(Block::is_farmland) {
+            self.edit(ground, Block::DIRT, false);
+        }
+        true
+    }
+
+    /// Bone meal on the block at `p`: crops grow 2-5 stages, saplings have a
+    /// 45% chance to grow, and grass sprouts tall grass and flowers around.
+    /// Returns whether the bone meal was used.
+    pub fn apply_bone_meal(&mut self, p: IVec3) -> bool {
+        let Some(b) = self.get_block(p) else { return false };
+        match b {
+            b if b.crop_stage().is_some_and(|s| s < 7) => {
+                let stage = (b.crop_stage().unwrap() + 2 + (self.roll() % 4) as u8).min(7);
+                self.edit(p, Block::wheat(stage), true);
+                true
+            }
+            Block::OAK_SAPLING | Block::SPRUCE_SAPLING => {
+                if self.roll() % 100 < 45 {
+                    self.grow_tree(p);
+                }
+                true
+            }
+            Block::GRASS if self.get_block(p + IVec3::Y) == Some(Block::AIR) => {
+                for _ in 0..16 {
+                    let r = self.roll();
+                    let q = p + IVec3::new((r % 7) as i32 - 3, (r / 7 % 3) as i32 - 1, (r / 21 % 7) as i32 - 3);
+                    if self.get_block(q) == Some(Block::GRASS) && self.get_block(q + IVec3::Y) == Some(Block::AIR) {
+                        let plant = match r / 147 % 10 {
+                            0 => Block::DANDELION,
+                            1 => Block::POPPY,
+                            _ => Block::TALL_GRASS,
+                        };
+                        self.edit(q + IVec3::Y, plant, true);
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// A log at `p` is gone: leaves around it that no longer reach a log
+    /// will decay after a short random delay.
+    pub(super) fn log_removed(&mut self, p: IVec3) {
+        const R: i32 = LEAF_REACH - 1;
+        for dy in -R..=R {
+            for dz in -R..=R {
+                for dx in -R..=R {
+                    let q = p + IVec3::new(dx, dy, dz);
+                    if self.get_block(q).is_some_and(is_leaves) && !self.leaf_decay.contains_key(&q) {
+                        let delay = 1.0 + (self.roll() % 1000) as f32 / 1000.0 * 9.0;
+                        self.leaf_decay.insert(q, delay);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Decays leaves whose timer ran out and that still can't reach a log.
+    pub fn tick_leaf_decay(&mut self, dt: f64) {
+        if self.leaf_decay.is_empty() {
+            return;
+        }
+        let mut due = Vec::new();
+        self.leaf_decay.retain(|&p, t| {
+            *t -= dt as f32;
+            if *t <= 0.0 {
+                due.push(p);
+            }
+            *t > 0.0
+        });
+        for p in due {
+            match self.get_block(p) {
+                Some(b) if is_leaves(b) && !self.reaches_log(p) => {
+                    self.edit(p, Block::AIR, false);
+                    self.spill_block(p, b);
+                    self.settle(p);
+                }
+                // Unloaded: try again later.
+                None => {
+                    self.leaf_decay.insert(p, 5.0);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Whether a log is within [`LEAF_REACH`] steps of `p` through leaves.
+    fn reaches_log(&self, p: IVec3) -> bool {
+        let mut seen = rustc_hash::FxHashSet::default();
+        let mut frontier = vec![p];
+        seen.insert(p);
+        for _ in 0..LEAF_REACH {
+            let mut next = Vec::new();
+            for q in frontier {
+                for d in [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z] {
+                    let n = q + d;
+                    if !seen.insert(n) {
+                        continue;
+                    }
+                    match self.get_block(n) {
+                        Some(Block::LOG) | None => return true,
+                        Some(b) if is_leaves(b) => next.push(n),
+                        _ => {}
+                    }
+                }
+            }
+            frontier = next;
+        }
+        false
+    }
+}
+
+fn is_leaves(b: Block) -> bool {
+    b == Block::LEAVES || b == Block::SPRUCE_LEAVES
+}

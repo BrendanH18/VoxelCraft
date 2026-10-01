@@ -56,13 +56,13 @@ impl Material {
 
 /// The one place blocks are mapped to sound materials.
 pub fn material(block: Block) -> Material {
-    match block {
-        Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE => Material::Wood,
-        Block::DIRT => Material::Dirt,
-        Block::GRASS | Block::CACTUS | Block::TALL_GRASS | Block::DANDELION | Block::POPPY | Block::DEAD_BUSH => {
+    match block.base() {
+        Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE | Block::CHEST => Material::Wood,
+        Block::DIRT | Block::FARMLAND | Block::WET_FARMLAND => Material::Dirt,
+        Block::TORCH => Material::Wood,
+        b if b == Block::GRASS || b == Block::CACTUS || b.kind() == crate::world::block::RenderKind::Cross => {
             Material::Grass
         }
-        Block::TORCH => Material::Wood,
         Block::GRAVEL => Material::Gravel,
         Block::SAND => Material::Sand,
         Block::SNOW | Block::SNOWY_GRASS | Block::WOOL => Material::Snow,
@@ -99,12 +99,14 @@ pub enum Sound {
     Fuse,
     /// Skeleton bow release.
     Bow,
+    /// Picking up an item.
+    Pop,
 }
 
 const M: usize = Material::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 10;
+    pub const COUNT: usize = 3 * M + 11;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -122,6 +124,7 @@ impl Sound {
             Sound::Explosion => 3 * M + 7,
             Sound::Fuse => 3 * M + 8,
             Sound::Bow => 3 * M + 9,
+            Sound::Pop => 3 * M + 10,
         }
     }
 
@@ -138,6 +141,7 @@ impl Sound {
             Sound::Explosion,
             Sound::Fuse,
             Sound::Bow,
+            Sound::Pop,
         ])
     }
 
@@ -156,6 +160,7 @@ impl Sound {
             Sound::Explosion => "explosion".into(),
             Sound::Fuse => "fuse".into(),
             Sound::Bow => "bow".into(),
+            Sound::Pop => "pop".into(),
         }
     }
 
@@ -168,7 +173,7 @@ impl Sound {
             Sound::Step(_) => 4,
             Sound::Break(_) | Sound::Place(_) | Sound::Swim | Sound::Drip => 3,
             Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow => 2,
-            Sound::Click | Sound::Wind | Sound::Cave | Sound::Fuse => 1,
+            Sound::Click | Sound::Wind | Sound::Cave | Sound::Fuse | Sound::Pop => 1,
         }
     }
 
@@ -189,6 +194,7 @@ impl Sound {
             Sound::Explosion => explosion(&mut rng),
             Sound::Fuse => fuse(&mut rng),
             Sound::Bow => bow(&mut rng),
+            Sound::Pop => pop(),
         }
     }
 }
@@ -593,6 +599,15 @@ fn bow(rng: &mut Rng) -> Vec<f32> {
     Biquad::bandpass(2200.0, 1.2).run(&mut whoosh);
     mix_into(&mut out, &whoosh, 0.3, 0);
     dsp::finish(out, 0.4)
+}
+
+fn pop() -> Vec<f32> {
+    // A quick upward "bloop", like a cork: a sine chirp with a soft second
+    // partial (pitch varies per pickup at playback).
+    let mut out = vec![0.0; samples(0.09)];
+    add_mode(&mut out, 0, Mode { freq: 620.0, amp: 1.0, tau: 0.025, glide: 1.8, glide_tau: 0.02 });
+    add_mode(&mut out, 0, Mode { freq: 1240.0, amp: 0.15, tau: 0.012, glide: 1.8, glide_tau: 0.02 });
+    dsp::finish(out, 0.3)
 }
 
 fn click() -> Vec<f32> {

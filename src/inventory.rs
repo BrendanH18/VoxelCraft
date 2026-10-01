@@ -43,14 +43,15 @@ impl Stack {
 pub struct Inventory {
     pub slots: [Option<Stack>; SLOTS],
     pub cursor: Option<Stack>,
-    /// Container leftovers waiting for space, retained in saves until item
-    /// entities can represent them in the world.
-    pending_returns: Vec<Stack>,
+    /// Stacks that didn't fit back (container leftovers, the cursor): the
+    /// game drops them in the world. Saved with the inventory, so a save
+    /// taken with a full inventory and a crafting screen open loses nothing.
+    spill: Vec<Stack>,
 }
 
 impl Default for Inventory {
     fn default() -> Self {
-        Self { slots: [None; SLOTS], cursor: None, pending_returns: Vec::new() }
+        Self { slots: [None; SLOTS], cursor: None, spill: Vec::new() }
     }
 }
 
@@ -133,48 +134,39 @@ impl Inventory {
         click_slot(&mut self.slots[slot], &mut self.cursor, right);
     }
 
-    /// Returns the cursor and container leftovers, keeping anything that
-    /// doesn't fit until inventory space becomes available.
+    /// Puts the cursor and container leftovers back in the inventory;
+    /// whatever doesn't fit goes to the spill (see [`Inventory::take_spill`]).
     pub fn return_stacks(&mut self, stacks: impl IntoIterator<Item = Stack>) {
-        if let Some(c) = self.cursor.take() {
-            self.pending_returns.push(c);
+        for stack in self.cursor.take().into_iter().chain(stacks) {
+            let left = self.add_stack(stack);
+            if left > 0 {
+                self.spill.push(Stack { count: left, ..stack });
+            }
         }
-        self.pending_returns.extend(stacks);
-        self.retry_returns();
     }
 
-    pub fn has_pending_returns(&self) -> bool {
-        !self.pending_returns.is_empty()
+    /// Takes the stacks that didn't fit, for the game to drop.
+    pub fn take_spill(&mut self) -> Vec<Stack> {
+        std::mem::take(&mut self.spill)
     }
 
-    /// Item count, rather than stack count, for the inventory status.
-    pub fn pending_return_count(&self) -> usize {
-        self.pending_returns.iter().map(|stack| stack.count as usize).sum()
-    }
-
-    /// Retries only the stacks still waiting, preserving counts and wear.
-    pub fn retry_returns(&mut self) {
-        if self.pending_returns.is_empty() {
-            return;
-        }
-        let mut pending = std::mem::take(&mut self.pending_returns);
-        pending.retain_mut(|stack| {
-            stack.count = self.add_stack(*stack);
-            stack.count > 0
-        });
-        self.pending_returns = pending;
+    /// Empties every slot and the cursor (a dying player drops it all).
+    pub fn take_all(&mut self) -> Vec<Stack> {
+        let mut all: Vec<Stack> = self.slots.iter_mut().filter_map(Option::take).collect();
+        all.extend(self.cursor.take());
+        all.append(&mut self.spill);
+        all
     }
 
     /// `id:count` (or `id:count:damage` for worn tools) per slot, `-` for
-    /// empty slots, comma separated. An optional `|` suffix holds pending
-    /// container returns; old saves without it still load.
+    /// empty slots, comma separated. An optional `|` suffix holds the spill
+    /// (older versions kept container leftovers there); saves without it
+    /// still load.
     pub fn serialize(&self) -> String {
         let mut text = self.slots.iter().map(|&s| stack_to_string(s)).collect::<Vec<_>>().join(",");
-        if self.has_pending_returns() {
+        if !self.spill.is_empty() {
             text.push('|');
-            text.push_str(
-                &self.pending_returns.iter().map(|&s| stack_to_string(Some(s))).collect::<Vec<_>>().join(","),
-            );
+            text.push_str(&self.spill.iter().map(|&s| stack_to_string(Some(s))).collect::<Vec<_>>().join(","));
         }
         text
     }
@@ -191,7 +183,7 @@ impl Inventory {
         }
         for part in returns.split(',').filter(|s| !s.is_empty()) {
             if let Some(stack) = stack_from_str(part)? {
-                inv.pending_returns.push(stack);
+                inv.spill.push(stack);
             }
         }
         Some(inv)
@@ -219,6 +211,30 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
     let damage: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
     let item = Item(id);
     Some((count > 0 && item.is_valid()).then(|| Stack { item, count: count.min(item.max_stack()), damage }))
+}
+
+/// Moves as much of `stack` as fits into `slots`, visiting them in
+/// `order`: onto matching stacks first, then into empty slots (shift-click).
+/// Returns what's left.
+pub fn move_into(stack: Stack, slots: &mut [Option<Stack>], order: &[usize]) -> Option<Stack> {
+    let mut count = stack.count;
+    for &i in order {
+        if let Some(s) = &mut slots[i]
+            && s.stacks_with(&stack)
+        {
+            let n = count.min(s.max().saturating_sub(s.count));
+            s.count += n;
+            count -= n;
+        }
+    }
+    for &i in order {
+        if count > 0 && slots[i].is_none() {
+            let n = count.min(stack.max());
+            slots[i] = Some(Stack { count: n, ..stack });
+            count -= n;
+        }
+    }
+    stack.with_count(count)
 }
 
 /// Minecraft-style click on one slot with the cursor stack; shared by every
@@ -366,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_cursor_returns_and_worn_tools_survive_a_full_inventory_and_save() {
+    fn leftovers_that_do_not_fit_spill_and_survive_a_save() {
         let mut inv = Inventory::default();
         inv.slots.fill(Some(Stack::new(Block::STONE, 64)));
         inv.slots[0] = Some(Stack::new(Block::LOG, 63));
@@ -375,21 +391,31 @@ mod tests {
         inv.return_stacks([sword]);
         assert!(inv.cursor.is_none());
         assert_eq!(inv.get(0), Some(Stack::new(Block::LOG, 64)));
-        assert_eq!(inv.pending_returns, vec![Stack::new(Block::LOG, 9), sword]);
-        assert_eq!(inv.pending_return_count(), 10);
+        assert_eq!(inv.spill, vec![Stack::new(Block::LOG, 9), sword]);
 
         let mut restored = Inventory::deserialize(&inv.serialize()).unwrap();
         assert_eq!(restored, inv);
-        restored.retry_returns();
-        assert_eq!(restored, inv, "retrying a full inventory cannot lose or duplicate items");
-        restored.slots[1] = None;
-        restored.slots[2] = None;
-        restored.retry_returns();
-        assert_eq!(restored.get(1), Some(Stack::new(Block::LOG, 9)));
-        assert_eq!(restored.get(2), Some(sword));
-        assert!(!restored.has_pending_returns());
-        assert_eq!(restored.pending_return_count(), 0);
-        restored.retry_returns();
-        assert_eq!(restored.get(1), Some(Stack::new(Block::LOG, 9)));
+        assert_eq!(restored.take_spill(), vec![Stack::new(Block::LOG, 9), sword]);
+        assert!(restored.take_spill().is_empty());
+        assert!(!restored.serialize().contains('|'));
+    }
+
+    #[test]
+    fn move_into_tops_up_stacks_before_filling_gaps_in_order() {
+        let mut slots = [None, Some(Stack::new(Block::DIRT, 60)), None, Some(Stack::new(Block::DIRT, 10))];
+        let left = move_into(Stack::new(Block::DIRT, 64), &mut slots, &[3, 2, 1, 0]);
+        assert_eq!(left, None);
+        assert_eq!(slots.map(|s| s.map_or(0, |s| s.count)), [0, 64, 6, 64]);
+        let left = move_into(Stack::new(Block::DIRT, 64), &mut slots, &[1, 3]);
+        assert_eq!(left, Some(Stack::new(Block::DIRT, 64)), "nowhere to go");
+    }
+
+    #[test]
+    fn take_all_empties_slots_cursor_and_spill() {
+        let mut inv = Inventory::with_hotbar(&[Item::STICK, Item::COAL]);
+        inv.cursor = Some(Stack::new(Block::DIRT, 3));
+        inv.spill.push(Stack::new(Block::SAND, 1));
+        assert_eq!(inv.take_all().len(), 4);
+        assert_eq!(inv, Inventory::default());
     }
 }

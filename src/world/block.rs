@@ -91,6 +91,16 @@ pub mod tex {
     pub const FOOD_FULL: u8 = 54;
     pub const FOOD_HALF: u8 = 55;
     pub const FOOD_EMPTY: u8 = 56;
+    pub const FURNACE_SIDE: u8 = 57;
+    pub const CHEST_TOP: u8 = 58;
+    pub const CHEST_SIDE: u8 = 59;
+    pub const CHEST_FRONT: u8 = 60;
+    pub const FARMLAND: u8 = 61;
+    pub const WET_FARMLAND: u8 = 62;
+    /// Wheat growth stages 0..8.
+    pub const WHEAT_0: u8 = 63;
+    pub const OAK_SAPLING: u8 = 71;
+    pub const SPRUCE_SAPLING: u8 = 72;
     /// Flat item icons (see `item::Item::icon_layer`), up to 64 of them.
     pub const ITEM_0: u8 = 96;
     pub const COUNT: u32 = 160;
@@ -137,6 +147,17 @@ impl Block {
     pub const FURNACE: Block = Block(45);
     /// A burning furnace: glows, and breaks into a plain furnace.
     pub const LIT_FURNACE: Block = Block(46);
+    // Furnaces facing north, east and west are ids 47..=49, lit ones 50..=52
+    // (see `Block::with_facing`); the ids above face south.
+    /// 27 slots of storage (see `world::chest`); facing south, then north,
+    /// east and west up to id 56.
+    pub const CHEST: Block = Block(53);
+    /// Tilled soil for crops; wet when water is within 4 blocks.
+    pub const FARMLAND: Block = Block(57);
+    pub const WET_FARMLAND: Block = Block(58);
+    // Wheat crops at growth stages 0..=7 are ids 59..=66 (see `Block::wheat`).
+    pub const OAK_SAPLING: Block = Block(67);
+    pub const SPRUCE_SAPLING: Block = Block(68);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -144,6 +165,51 @@ impl Block {
 
     pub const fn flowing_lava(level: u8) -> Block {
         Block(37 + level)
+    }
+
+    /// Wheat crops at growth `stage` 0..=7 (7 is ripe).
+    pub const fn wheat(stage: u8) -> Block {
+        Block(59 + stage)
+    }
+
+    /// Growth stage of a wheat crop.
+    pub fn crop_stage(self) -> Option<u8> {
+        (59..=66).contains(&self.0).then(|| self.0 - 59)
+    }
+
+    pub fn is_farmland(self) -> bool {
+        self == Block::FARMLAND || self == Block::WET_FARMLAND
+    }
+
+    /// The block items, recipes and rules use for an oriented block (a
+    /// furnace or chest facing any way), and the way it faces.
+    pub fn oriented(self) -> Option<(Block, Facing)> {
+        let f = |i: u8| Facing::ALL[i as usize];
+        match self.0 {
+            45 => Some((Block::FURNACE, Facing::South)),
+            46 => Some((Block::LIT_FURNACE, Facing::South)),
+            47..=49 => Some((Block::FURNACE, f(self.0 - 46))),
+            50..=52 => Some((Block::LIT_FURNACE, f(self.0 - 49))),
+            53..=56 => Some((Block::CHEST, f(self.0 - 53))),
+            _ => None,
+        }
+    }
+
+    /// This block without its orientation (itself if it has none).
+    pub fn base(self) -> Block {
+        self.oriented().map_or(self, |(b, _)| b)
+    }
+
+    /// The same block facing `facing` (unchanged if it has no front).
+    pub fn with_facing(self, facing: Facing) -> Block {
+        let i = facing as u8;
+        match self.base() {
+            b if i == 0 => b,
+            Block::FURNACE => Block(46 + i),
+            Block::LIT_FURNACE => Block(49 + i),
+            Block::CHEST => Block(53 + i),
+            _ => self,
+        }
     }
 
     #[inline(always)]
@@ -219,13 +285,16 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
-        match self {
+        match self.base() {
             Block::STONE => Some(Block::COBBLESTONE.into()),
             Block::GRASS | Block::SNOWY_GRASS => Some(Block::DIRT.into()),
             Block::COAL_ORE => Some(Item::COAL),
             Block::DIAMOND_ORE => Some(Item::DIAMOND),
             Block::DEAD_BUSH => Some(Item::STICK),
             Block::LIT_FURNACE => Some(Block::FURNACE.into()),
+            Block::FARMLAND | Block::WET_FARMLAND => Some(Block::DIRT.into()),
+            b if b.crop_stage() == Some(7) => Some(Item::WHEAT),
+            b if b.crop_stage().is_some() => Some(Item::WHEAT_SEEDS),
             Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK | Block::TALL_GRASS => None,
             b if b.is_fluid() || b == Block::AIR => None,
             b => Some(b.into()),
@@ -236,17 +305,17 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
-        match self {
+        match self.base() {
             b if b.kind() == RenderKind::Cross => 0.0,
             Block::LEAVES | Block::SPRUCE_LEAVES | Block::SNOW => 0.2,
             Block::GLASS | Block::GLOWSTONE => 0.3,
             Block::CACTUS => 0.4,
             Block::DIRT | Block::SAND => 0.5,
-            Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL => 0.6,
+            Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL | Block::FARMLAND | Block::WET_FARMLAND => 0.6,
             Block::SANDSTONE | Block::WOOL => 0.8,
             Block::STONE => 1.5,
             Block::LOG | Block::PLANKS | Block::COBBLESTONE | Block::BRICKS => 2.0,
-            Block::CRAFTING_TABLE => 2.5,
+            Block::CRAFTING_TABLE | Block::CHEST => 2.5,
             Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
             Block::FURNACE | Block::LIT_FURNACE => 3.5,
             Block::OBSIDIAN => 50.0,
@@ -258,7 +327,7 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
-        match self {
+        match self.base() {
             Block::STONE
             | Block::COBBLESTONE
             | Block::BRICKS
@@ -270,10 +339,15 @@ impl Block {
             | Block::OBSIDIAN
             | Block::FURNACE
             | Block::LIT_FURNACE => Some(ToolKind::Pickaxe),
-            Block::DIRT | Block::GRASS | Block::SNOWY_GRASS | Block::SAND | Block::GRAVEL | Block::SNOW => {
-                Some(ToolKind::Shovel)
-            }
-            Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE => Some(ToolKind::Axe),
+            Block::DIRT
+            | Block::GRASS
+            | Block::SNOWY_GRASS
+            | Block::SAND
+            | Block::GRAVEL
+            | Block::SNOW
+            | Block::FARMLAND
+            | Block::WET_FARMLAND => Some(ToolKind::Shovel),
+            Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE | Block::CHEST => Some(ToolKind::Axe),
             _ => None,
         }
     }
@@ -281,7 +355,7 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
-        match self {
+        match self.base() {
             Block::STONE
             | Block::COBBLESTONE
             | Block::BRICKS
@@ -298,7 +372,7 @@ impl Block {
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).chain(32..=37).chain(42..=45).map(Block)
+        (1..=23u8).chain(32..=37).chain(42..=45).chain([53, 57, 67, 68]).map(Block)
     }
 
     /// Blocks that placing another block overwrites (air, fluids, grass).
@@ -326,6 +400,10 @@ impl Block {
             }
             Block::DEAD_BUSH => matches!(below, Block::SAND | Block::DIRT | Block::GRASS),
             Block::TORCH => below.is_opaque(),
+            Block::OAK_SAPLING | Block::SPRUCE_SAPLING => {
+                matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS) || below.is_farmland()
+            }
+            b if b.crop_stage().is_some() => below.is_farmland(),
             _ => true,
         }
     }
@@ -358,12 +436,51 @@ impl Block {
     /// Light level emitted by this block.
     #[inline(always)]
     pub fn emission(self) -> u8 {
-        match self {
+        match self.base() {
             Block::GLOWSTONE => 15,
             Block::TORCH => 14,
             Block::LIT_FURNACE => 13,
             b if b.is_lava() => 15,
             _ => 0,
+        }
+    }
+}
+
+/// Which way the front of a furnace or chest faces.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Facing {
+    /// +Z
+    South,
+    /// -Z
+    North,
+    /// +X
+    East,
+    /// -X
+    West,
+}
+
+impl Facing {
+    pub const ALL: [Facing; 4] = [Facing::South, Facing::North, Facing::East, Facing::West];
+
+    /// Index into [`BlockInfo::tex`] (+X, -X, +Y, -Y, +Z, -Z).
+    pub const fn face(self) -> usize {
+        match self {
+            Facing::East => 0,
+            Facing::West => 1,
+            Facing::South => 4,
+            Facing::North => 5,
+        }
+    }
+
+    /// The front a block placed by someone looking along `forward` gets:
+    /// facing back at them, like Minecraft.
+    pub fn toward(forward: glam::Vec3) -> Facing {
+        if forward.x.abs() > forward.z.abs() {
+            if forward.x > 0.0 { Facing::West } else { Facing::East }
+        } else if forward.z > 0.0 {
+            Facing::North
+        } else {
+            Facing::South
         }
     }
 }
@@ -415,6 +532,13 @@ const fn column(side: u8, top: u8, bottom: u8) -> [u8; 6] {
     [side, side, top, bottom, side, side]
 }
 
+/// Side textures with `front` on the face `facing` points out of.
+const fn fronted(front: u8, side: u8, top: u8, facing: Facing) -> [u8; 6] {
+    let mut t = [side, side, top, top, side, side];
+    t[facing.face()] = front;
+    t
+}
+
 const fn make(id: u8) -> BlockInfo {
     use RenderKind::*;
     let (name, kind, tex) = match id {
@@ -455,8 +579,23 @@ const fn make(id: u8) -> BlockInfo {
         42 => ("obsidian", Opaque, all(tex::OBSIDIAN)),
         43 => ("wool", Opaque, all(tex::WOOL)),
         44 => ("crafting table", Opaque, column(tex::TABLE_SIDE, tex::TABLE_TOP, tex::PLANKS)),
-        45 => ("furnace", Opaque, column(tex::FURNACE_FRONT, tex::FURNACE_TOP, tex::FURNACE_TOP)),
-        46 => ("lit furnace", Opaque, column(tex::FURNACE_LIT, tex::FURNACE_TOP, tex::FURNACE_TOP)),
+        45 | 47..=49 => {
+            let f = if id == 45 { Facing::South } else { Facing::ALL[id as usize - 46] };
+            ("furnace", Opaque, fronted(tex::FURNACE_FRONT, tex::FURNACE_SIDE, tex::FURNACE_TOP, f))
+        }
+        46 | 50..=52 => {
+            let f = if id == 46 { Facing::South } else { Facing::ALL[id as usize - 49] };
+            ("lit furnace", Opaque, fronted(tex::FURNACE_LIT, tex::FURNACE_SIDE, tex::FURNACE_TOP, f))
+        }
+        53..=56 => {
+            let f = Facing::ALL[id as usize - 53];
+            ("chest", Opaque, fronted(tex::CHEST_FRONT, tex::CHEST_SIDE, tex::CHEST_TOP, f))
+        }
+        57 => ("farmland", Opaque, column(tex::DIRT, tex::FARMLAND, tex::DIRT)),
+        58 => ("wet farmland", Opaque, column(tex::DIRT, tex::WET_FARMLAND, tex::DIRT)),
+        59..=66 => ("wheat crops", Cross, all(tex::WHEAT_0 + (id - 59))),
+        67 => ("oak sapling", Cross, all(tex::OAK_SAPLING)),
+        68 => ("spruce sapling", Cross, all(tex::SPRUCE_SAPLING)),
         _ => ("unknown", Invisible, all(0)),
     };
     BlockInfo { name, kind, solid: matches!(kind, Opaque | Cutout), self_cull: id == 5 || id == 10, tex }
@@ -523,6 +662,45 @@ mod tests {
         assert!(Block::TORCH.can_stay_on(Block::COBBLESTONE));
         assert!(!Block::TORCH.can_stay_on(Block::GLASS) && !Block::TORCH.can_stay_on(Block::AIR));
         assert!(Block::STONE.can_stay_on(Block::AIR));
+    }
+
+    #[test]
+    fn oriented_blocks_turn_and_keep_their_rules() {
+        for base in [Block::FURNACE, Block::LIT_FURNACE, Block::CHEST] {
+            for f in Facing::ALL {
+                let b = base.with_facing(f);
+                assert_eq!(b.oriented(), Some((base, f)));
+                assert_eq!(b.base(), base);
+                assert_eq!(b.name(), base.name());
+                assert_eq!(b.info().tex[f.face()], base.info().tex[Facing::South.face()], "front on the {f:?} face");
+                assert_eq!(
+                    (b.hardness(), b.best_tool(), b.emission()),
+                    (base.hardness(), base.best_tool(), base.emission())
+                );
+                assert_eq!(b.with_facing(Facing::South), base);
+            }
+        }
+        assert_eq!(Block::LIT_FURNACE.with_facing(Facing::East).drop(), Some(Block::FURNACE.into()));
+        assert_eq!(Block::STONE.with_facing(Facing::East), Block::STONE);
+        assert_eq!(Block::from_name("chest"), Some(Block::CHEST));
+        // Placed by someone looking east, the front faces west, back at them.
+        assert_eq!(Facing::toward(glam::Vec3::new(0.9, -0.3, 0.2)), Facing::West);
+        assert_eq!(Facing::toward(glam::Vec3::new(0.1, 0.0, -1.0)), Facing::South);
+    }
+
+    #[test]
+    fn crops_and_saplings_need_the_right_soil() {
+        for stage in 0..8 {
+            let wheat = Block::wheat(stage);
+            assert_eq!(wheat.crop_stage(), Some(stage));
+            assert_eq!(wheat.kind(), RenderKind::Cross);
+            assert!(wheat.can_stay_on(Block::WET_FARMLAND) && !wheat.can_stay_on(Block::DIRT));
+        }
+        assert_eq!(Block::wheat(3).drop(), Some(Item::WHEAT_SEEDS));
+        assert_eq!(Block::wheat(7).drop(), Some(Item::WHEAT));
+        assert_eq!(Block::FARMLAND.drop(), Some(Block::DIRT.into()));
+        assert!(Block::OAK_SAPLING.can_stay_on(Block::GRASS) && !Block::OAK_SAPLING.can_stay_on(Block::SAND));
+        assert_eq!(Block::from_name("wheat crops"), Some(Block::wheat(0)));
     }
 
     #[test]
