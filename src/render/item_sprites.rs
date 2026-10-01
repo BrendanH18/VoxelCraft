@@ -299,6 +299,19 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 })
             })
         }
+        Sprite::Bed => {
+            // Side view: pillow on the left, red blanket, wooden frame, legs.
+            let bed = |x: i32, y: i32| {
+                ((5..=11).contains(&y) && (1..=14).contains(&x))
+                    || ((12..=13).contains(&y) && ((1..=2).contains(&x) || (13..=14).contains(&x)))
+            };
+            let c = match (x, y) {
+                (_, 10..) => [137, 103, 39],
+                (1..=4, _) => [236, 236, 230],
+                _ => [178, 34, 34],
+            };
+            shaded(&bed, x, y, c, 0.05)
+        }
         Sprite::MelonSlice => {
             // A half-disc wedge: green rind on the curve, red flesh with seeds.
             let wedge = |x: i32, y: i32| {

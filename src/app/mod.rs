@@ -1,6 +1,7 @@
 //! Window, input and the per-frame game loop.
 
 mod actions;
+mod bed;
 mod containers;
 mod farming;
 mod hud;
@@ -132,6 +133,10 @@ struct Game {
     last_frame: Instant,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     day_time: f64,
+    /// Seconds spent asleep so far (the screen fades out), if in bed.
+    sleeping: Option<f32>,
+    /// Foot of the bed the player respawns at.
+    spawn_bed: Option<glam::IVec3>,
     weather: weather::Weather,
     weather_verts: Vec<crate::render::weather::WeatherVertex>,
     started: Instant,
@@ -333,6 +338,11 @@ impl ApplicationHandler for App {
                 .time
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
                 .unwrap_or(0.08),
+            sleeping: None,
+            spawn_bed: existing.as_ref().and_then(|l| l.props.get("bed")).and_then(|t| {
+                let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
+                (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
+            }),
             weather: {
                 let mut w = weather::Weather::new(seed);
                 if let Some(text) = existing.as_ref().and_then(|l| l.props.get("weather")) {
@@ -679,6 +689,7 @@ impl Game {
     pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
         let taken = self.vitals.damage(amount, cause, self.mode == GameMode::Creative);
         if taken > 0.0 {
+            self.sleeping = None;
             self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
         }
         if taken > 0.0 && self.vitals.is_dead() {
@@ -721,7 +732,7 @@ impl Game {
 
     /// Back to the world spawn with full health.
     fn respawn(&mut self) {
-        self.player.pos = self.world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+        self.player.pos = self.respawn_point();
         self.player.vel = DVec3::ZERO;
         self.player.flying = false;
         self.vitals.respawn();
@@ -893,6 +904,9 @@ impl Game {
         {
             self.world.set_block(pos, Block::AIR);
             self.audio.block_break(block, pos);
+            if block.is_bed() {
+                self.break_bed_partner(pos, block);
+            }
         }
     }
 
@@ -923,6 +937,9 @@ impl Game {
         // Stone, ores and the like only drop with a good enough pickaxe.
         if crate::mining::can_harvest(block, held) {
             self.world.spill_block(pos, block);
+        }
+        if block.is_bed() {
+            self.break_bed_partner(pos, block);
         }
         self.vitals.hunger.exhaust(survival::EXHAUST_MINE);
         if block.hardness() > 0.0 {
@@ -995,6 +1012,7 @@ impl Game {
             Some(Block::CRAFTING_TABLE) => return self.open_crafting_table(),
             Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
+            Some(b) if b.is_bed() => return self.use_bed(pos),
             _ => {}
         }
         if self.use_item_on(pos, normal) {
@@ -1002,6 +1020,12 @@ impl Game {
         }
         // Clicking tall grass replaces it instead of building against it.
         let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
+        if self.held_item() == Some(Item::BED) {
+            if self.place_bed(at) && self.mode == GameMode::Survival {
+                self.inventory.take_one(self.actions.selected);
+            }
+            return;
+        }
         let Some(block) = self.inventory.get(self.actions.selected).and_then(|s| s.item.places()) else { return };
         // Furnaces and chests face whoever places them.
         let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
@@ -1152,6 +1176,9 @@ impl Game {
         props.insert("items".to_string(), self.mobs.entities.items_to_string());
         props.insert("time".to_string(), format!("{:.5}", self.day_time));
         props.insert("weather".to_string(), self.weather.serialize());
+        if let Some(b) = self.spawn_bed {
+            props.insert("bed".to_string(), format!("{},{},{}", b.x, b.y, b.z));
+        }
         let level = LevelInfo {
             seed: self.world.generator.seed,
             player: Some((self.player.pos, self.player.yaw, self.player.pitch)),
@@ -1174,7 +1201,7 @@ impl Game {
         // --- Simulation ---------------------------------------------------
         let held = |k: KeyCode| self.keys.contains(&k);
         let axis = |pos: KeyCode, neg: KeyCode| held(pos) as i32 as f64 - held(neg) as i32 as f64;
-        let input = if self.mouse_grabbed && !self.inventory_open && !self.vitals.is_dead() {
+        let input = if self.mouse_grabbed && !self.inventory_open && !self.vitals.is_dead() && self.sleeping.is_none() {
             MoveInput {
                 forward: axis(KeyCode::KeyW, KeyCode::KeyS),
                 right: axis(KeyCode::KeyD, KeyCode::KeyA),
@@ -1191,6 +1218,7 @@ impl Game {
         self.player.update(dt, input, &self.world);
         let moved = (self.player.pos - before).with_y(0.0).length();
         self.weather.update(dt);
+        self.update_sleep(dt);
         self.world.raining = self.weather.raining;
         let rain_here = weather::rain_at(&self.world, &self.weather, self.player.pos);
         self.audio.update(&self.player, &self.world, rain_here, dt);
@@ -1298,7 +1326,10 @@ impl Game {
             zenith_color: if underwater { fog_color } else { sky.zenith },
             sun_dir: sky.sun_dir,
             time: (now - self.started).as_secs_f32(),
-            highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| p),
+            highlight: self
+                .target()
+                .filter(|_| self.mob_target().is_none())
+                .map(|(p, _)| (p, self.world.get_block(p).map_or(1.0, |b| b.height() as f32))),
             crack: self
                 .actions
                 .breaking

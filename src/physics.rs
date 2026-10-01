@@ -64,7 +64,9 @@ pub fn overlaps_solid<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Sha
     for y in lo.y..=hi.y {
         for z in lo.z..=hi.z {
             for x in lo.x..=hi.x {
-                if world.block(IVec3::new(x, y, z)).is_none_or(|b| b.is_solid()) {
+                let block = world.block(IVec3::new(x, y, z));
+                // Low blocks (beds) only reach part way up their cell.
+                if block.is_none_or(|b| b.is_solid() && min.y + EPS < y as f64 + b.height()) {
                     return true;
                 }
             }
@@ -85,11 +87,14 @@ pub fn collide<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape, axi
             for x in lo.x..=hi.x {
                 let b = IVec3::new(x, y, z);
                 // Unloaded chunks act solid so we never fall out of the world.
-                let solid = world.block(b).is_none_or(|b| b.is_solid());
-                if !solid {
+                let block = world.block(b);
+                let solid = block.is_none_or(|b| b.is_solid());
+                let height = block.map_or(1.0, |b| b.height());
+                if !solid || min.y + EPS >= b.y as f64 + height {
                     continue;
                 }
-                let edge = if dir > 0.0 { b[axis] as f64 } else { b[axis] as f64 + 1.0 };
+                let far = if axis == 1 { height } else { 1.0 };
+                let edge = if dir > 0.0 { b[axis] as f64 } else { b[axis] as f64 + far };
                 hit = Some(match hit {
                     Some(h) if dir > 0.0 => h.min(edge),
                     Some(h) => h.max(edge),
@@ -248,5 +253,20 @@ mod tests {
         assert!((pos.x - 2.7).abs() < 1e-3, "x = {}", pos.x);
         assert!(!overlaps_solid(&grid, pos, shape));
         assert!(overlaps_solid(&grid, pos + DVec3::X * 0.1, shape));
+    }
+
+    #[test]
+    fn beds_are_stood_on_at_their_height() {
+        let mut grid = Grid::flat(10);
+        grid.set(IVec3::new(0, 10, 0), Block::BED_FOOT);
+        let shape = Shape::new(0.3, 1.8);
+        let (mut pos, mut vel) = (DVec3::new(0.5, 12.0, 0.5), DVec3::ZERO);
+        for _ in 0..50 {
+            move_box(&grid, &mut pos, &mut vel, DVec3::new(0.0, -0.1, 0.0), shape);
+        }
+        assert!((pos.y - 10.5625).abs() < 1e-3, "y = {}", pos.y);
+        // Walking off the bed isn't blocked by the bed itself.
+        let c = move_box(&grid, &mut pos, &mut vel, DVec3::new(1.0, 0.0, 0.0), shape);
+        assert!(!c.horizontal);
     }
 }

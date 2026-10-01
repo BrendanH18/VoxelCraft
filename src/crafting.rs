@@ -169,6 +169,7 @@ const PLANKS: Ingredient = &[
 ];
 const MELON: Ingredient = &[b(Block::MELON)];
 const SAND: Ingredient = &[b(Block::SAND)];
+const WOOL: Ingredient = &[b(Block::WOOL)];
 const COBBLESTONE: Ingredient = &[b(Block::COBBLESTONE)];
 const STICK: Ingredient = &[Item::STICK];
 const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
@@ -198,6 +199,7 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["c", "#"], &[('c', FUEL_LUMP), ('#', STICK)], b(Block::TORCH), 4),
             shaped(&["##", "##"], &[('#', SAND)], b(Block::SANDSTONE), 1),
             shaped(&["##", "##"], &[('#', &[Item::STRING])], b(Block::WOOL), 1),
+            shaped(&["WWW", "###"], &[('W', WOOL), ('#', PLANKS)], Item::BED, 1),
             shaped(&["f", "#", "e"], &[('f', &[Item::FLINT]), ('#', STICK), ('e', &[Item::FEATHER])], Item::ARROW, 4),
         ];
         const LOGS: [(Ingredient, Block); 5] = [

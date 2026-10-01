@@ -154,6 +154,7 @@ pub enum Sprite {
     Seeds,
     Wheat,
     MelonSlice,
+    Bed,
     Tool(ToolKind, Tier),
     Armor(ArmorPiece, ArmorMaterial),
 }
@@ -181,7 +182,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 28] = [
+static ITEMS: [ItemInfo; 29] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -210,6 +211,7 @@ static ITEMS: [ItemInfo; 28] = [
     item("clay ball", Sprite::Lump([150, 156, 172])),
     item("brick", Sprite::Ingot([178, 92, 66])),
     food("melon slice", 2, 1.2, Sprite::MelonSlice),
+    ItemInfo { name: "bed", kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Bed },
 ];
 
 /// Tools start at this id: `FIRST_TOOL + tier * 5 + kind`.
@@ -249,6 +251,7 @@ impl Item {
     pub const CLAY_BALL: Item = Item(281);
     pub const BRICK: Item = Item(282);
     pub const MELON_SLICE: Item = Item(283);
+    pub const BED: Item = Item(284);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)

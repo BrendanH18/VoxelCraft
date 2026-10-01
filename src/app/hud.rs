@@ -82,6 +82,11 @@ impl Game {
         if self.show_debug {
             self.debug_ui(&mut ui);
         }
+        if let Some(t) = self.sleeping {
+            // Falling asleep: the screen fades to black.
+            let k = (t / super::bed::SLEEP_TIME).min(1.0);
+            ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.02, 0.97 * k]);
+        }
         if let Some(cause) = &self.vitals.death {
             // Blending is in linear space: it takes a high alpha to look dark.
             ui.rect(0.0, 0.0, sw, sh, [0.18, 0.0, 0.0, 0.9]);
