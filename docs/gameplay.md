@@ -50,7 +50,7 @@ session.
   beaches, winding rivers, plains, oak and birch forests, swamps with
   shallow pools, deserts, terraced badlands striped with terracotta,
   savannas, jungles, snowy tundra, taiga and mountains. Cold seas and rivers
-  freeze over (broken ice turns back into water). Grass and oak leaves take
+  freeze over (ice is slippery underfoot, and broken ice turns back into water). Grass and oak leaves take
   on the colour of their biome: murky in swamps, dry and yellow in savannas
   and badlands, vivid in jungles and cool in the snow, blending across
   biome borders. Clay (4 clay balls when

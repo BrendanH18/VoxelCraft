@@ -4,6 +4,7 @@ use glam::{DVec3, IVec3, Vec3};
 
 use crate::physics::{self, Shape};
 use crate::world::World;
+use crate::world::block::Block;
 
 pub const EYE_HEIGHT: f64 = 1.62;
 pub const HALF_WIDTH: f64 = 0.3;
@@ -148,8 +149,15 @@ impl Player {
         } else {
             let speed = if input.sprint { SPRINT_SPEED } else { WALK_SPEED };
             let target = wish * speed;
-            // Snappy on the ground, limited air control.
-            let k = (dt * if self.on_ground { 18.0 } else { 3.5 }).min(1.0);
+            // Snappy on the ground, slippery on ice, limited air control.
+            let below = (self.pos - DVec3::Y * 0.05).floor().as_ivec3();
+            let on_ice = self.on_ground && world.get_block(below) == Some(Block::ICE);
+            let grip = match (self.on_ground, on_ice) {
+                (true, true) => 1.6,
+                (true, false) => 18.0,
+                _ => 3.5,
+            };
+            let k = (dt * grip).min(1.0);
             self.vel.x += (target.x - self.vel.x) * k;
             self.vel.z += (target.z - self.vel.z) * k;
             self.vel.y = (self.vel.y - GRAVITY * dt).max(-78.0);
