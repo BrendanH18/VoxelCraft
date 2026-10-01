@@ -1,7 +1,8 @@
-//! Player inventory: 36 stack slots (the first 9 are the hotbar) plus the
-//! stack held on the mouse cursor while the inventory screen is open.
+//! Player inventory: 36 stack slots (the first 9 are the hotbar), four
+//! armor slots, plus the stack held on the mouse cursor while the inventory
+//! screen is open.
 
-use crate::item::Item;
+use crate::item::{ArmorPiece, Item};
 
 pub const HOTBAR_SLOTS: usize = 9;
 pub const SLOTS: usize = 36;
@@ -43,6 +44,8 @@ impl Stack {
 pub struct Inventory {
     pub slots: [Option<Stack>; SLOTS],
     pub cursor: Option<Stack>,
+    /// Worn armor, indexed by [`ArmorPiece`].
+    pub armor: [Option<Stack>; 4],
     /// Stacks that didn't fit back (container leftovers, the cursor): the
     /// game drops them in the world. Saved with the inventory, so a save
     /// taken with a full inventory and a crafting screen open loses nothing.
@@ -51,7 +54,7 @@ pub struct Inventory {
 
 impl Default for Inventory {
     fn default() -> Self {
-        Self { slots: [None; SLOTS], cursor: None, spill: Vec::new() }
+        Self { slots: [None; SLOTS], cursor: None, armor: [None; 4], spill: Vec::new() }
     }
 }
 
@@ -122,6 +125,44 @@ impl Inventory {
         false
     }
 
+    /// Total armor points worn (0..=20).
+    pub fn armor_points(&self) -> u32 {
+        self.armor.iter().flatten().filter_map(|s| s.item.as_armor()).map(|(p, m)| m.defense(p) as u32).sum()
+    }
+
+    /// Puts on the armor in `slot`, swapping out whatever piece was worn
+    /// there. Returns `false` if the slot holds no armor.
+    pub fn equip(&mut self, slot: usize) -> bool {
+        let Some((piece, _)) = self.slots[slot].and_then(|s| s.item.as_armor()) else { return false };
+        std::mem::swap(&mut self.slots[slot], &mut self.armor[piece as usize]);
+        true
+    }
+
+    /// Clicks an armor slot: only the matching piece goes in.
+    pub fn click_armor(&mut self, piece: ArmorPiece, right: bool) {
+        let fits = self.cursor.is_none_or(|c| c.item.as_armor().is_some_and(|(p, _)| p == piece));
+        if fits {
+            click_slot(&mut self.armor[piece as usize], &mut self.cursor, right);
+        }
+    }
+
+    /// Wears every armor piece for a hit of `damage` half hearts (a quarter
+    /// of it, at least one use). Returns the pieces that broke.
+    pub fn wear_armor(&mut self, damage: f32) -> Vec<Item> {
+        let uses = ((damage / 4.0) as u16).max(1);
+        let mut broken = Vec::new();
+        for slot in &mut self.armor {
+            let Some(s) = slot else { continue };
+            let Some(max) = s.item.durability() else { continue };
+            s.damage = s.damage.saturating_add(uses);
+            if s.damage >= max {
+                broken.push(s.item);
+                *slot = None;
+            }
+        }
+        broken
+    }
+
     pub fn find(&self, item: impl Into<Item>) -> Option<usize> {
         let item = item.into();
         self.slots.iter().position(|s| s.is_some_and(|s| s.item == item))
@@ -152,7 +193,7 @@ impl Inventory {
 
     /// Empties every slot and the cursor (a dying player drops it all).
     pub fn take_all(&mut self) -> Vec<Stack> {
-        let mut all: Vec<Stack> = self.slots.iter_mut().filter_map(Option::take).collect();
+        let mut all: Vec<Stack> = self.slots.iter_mut().chain(&mut self.armor).filter_map(Option::take).collect();
         all.extend(self.cursor.take());
         all.append(&mut self.spill);
         all
@@ -161,19 +202,27 @@ impl Inventory {
     /// `id:count` (or `id:count:damage` for worn tools) per slot, `-` for
     /// empty slots, comma separated. An optional `|` suffix holds the spill
     /// (older versions kept container leftovers there); saves without it
-    /// still load.
+    /// still load. Worn armor follows a `#`, when there is any.
     pub fn serialize(&self) -> String {
         let mut text = self.slots.iter().map(|&s| stack_to_string(s)).collect::<Vec<_>>().join(",");
         if !self.spill.is_empty() {
             text.push('|');
             text.push_str(&self.spill.iter().map(|&s| stack_to_string(Some(s))).collect::<Vec<_>>().join(","));
         }
+        if self.armor.iter().any(Option::is_some) {
+            text.push('#');
+            text.push_str(&self.armor.iter().map(|&s| stack_to_string(s)).collect::<Vec<_>>().join(","));
+        }
         text
     }
 
     pub fn deserialize(text: &str) -> Option<Self> {
         let mut inv = Self::default();
-        let (slots, returns) = text.trim().split_once('|').unwrap_or((text.trim(), ""));
+        let (text, armor) = text.trim().split_once('#').unwrap_or((text.trim(), ""));
+        for (slot, part) in inv.armor.iter_mut().zip(armor.split(',').filter(|s| !s.is_empty())) {
+            *slot = stack_from_str(part)?;
+        }
+        let (slots, returns) = text.split_once('|').unwrap_or((text, ""));
         let parts: Vec<&str> = slots.split(',').collect();
         if parts.len() != SLOTS {
             return None;
@@ -330,6 +379,34 @@ mod tests {
         inv.slots[21] = Some(Stack::new(Item::COAL, 12));
         inv.slots[22] = Some(Stack { damage: 17, ..Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Iron), 1) });
         assert_eq!(Inventory::deserialize(&inv.serialize()), Some(inv));
+    }
+
+    #[test]
+    fn armor_equips_wears_and_saves() {
+        use crate::item::ArmorMaterial;
+        let helmet = Item::armor(ArmorPiece::Helmet, ArmorMaterial::Iron);
+        let boots = Item::armor(ArmorPiece::Boots, ArmorMaterial::Leather);
+        let mut inv = Inventory::with_hotbar(&[helmet, Item::STICK, boots]);
+        assert!(inv.equip(0) && inv.equip(2) && !inv.equip(1));
+        assert_eq!(inv.get(0), None);
+        assert_eq!(inv.armor_points(), 3);
+
+        // Only the matching piece fits a slot.
+        inv.cursor = Some(Stack::new(Item::STICK, 1));
+        inv.click_armor(ArmorPiece::Chestplate, false);
+        assert_eq!(inv.armor[1], None);
+        inv.cursor = None;
+
+        let restored = Inventory::deserialize(&inv.serialize()).unwrap();
+        assert_eq!(restored, inv);
+
+        // Leather boots last 65 hits.
+        for _ in 0..64 {
+            assert!(inv.wear_armor(2.0).is_empty());
+        }
+        assert_eq!(inv.wear_armor(2.0), vec![boots]);
+        assert_eq!(inv.armor_points(), 2);
+        assert_eq!(inv.take_all(), vec![Stack::new(Item::STICK, 64), Stack { damage: 65, ..Stack::new(helmet, 1) }]);
     }
 
     #[test]

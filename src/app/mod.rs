@@ -253,6 +253,11 @@ impl ApplicationHandler for App {
         for &(item, count) in &self.args.give {
             inventory.add(item, count);
         }
+        for &item in &self.args.wear {
+            if let Some((piece, _)) = item.as_armor() {
+                inventory.armor[piece as usize] = Some(Stack::new(item, 1));
+            }
+        }
 
         let prop = |k: &str| existing.as_ref().and_then(|l| l.props.get(k));
         let mut vitals = Vitals::restore(
@@ -461,7 +466,7 @@ impl ApplicationHandler for App {
                     }
                     MouseButton::Right => {
                         game.right_held = pressed;
-                        if pressed {
+                        if pressed && !game.equip_held() {
                             game.place_block();
                             game.action_cooldown = ACTION_REPEAT;
                         } else {
@@ -682,6 +687,21 @@ impl Game {
         taken
     }
 
+    /// Hurts the player through their armor (mobs, arrows, blasts, lava),
+    /// wearing it down when the hit lands.
+    pub(crate) fn damage_player_armored(&mut self, amount: f32, cause: &str) -> f32 {
+        let reduced = survival::armor_reduce(amount, self.inventory.armor_points());
+        let taken = self.damage_player(reduced, cause);
+        if taken > 0.0 && self.mode == GameMode::Survival {
+            for item in self.inventory.wear_armor(amount) {
+                self.show_popup(&format!("{} broke", capitalize(item.name())));
+                let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
+                self.audio.play(sound, None, 0.8, (1.3, 1.5));
+            }
+        }
+        taken
+    }
+
     /// Releases the mouse and stops all actions for the death screen. A
     /// survival player drops everything they carried.
     fn on_death(&mut self) {
@@ -826,6 +846,7 @@ impl Game {
                 crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
             }
             Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
+            Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right),
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Chest(pos) = self.container
                     && let Some(chest) = self.world.chest_mut(pos)
@@ -929,6 +950,20 @@ impl Game {
             self.inventory.take_one(self.actions.selected);
             self.vitals.hunger.eat(hunger, saturation);
         }
+    }
+
+    /// Right-click with armor in hand puts it on (swapping out the worn
+    /// piece), unless aimed at a container. Returns whether it did.
+    fn equip_held(&mut self) -> bool {
+        let at_container = self.target().and_then(|(pos, _)| self.world.get_block(pos)).is_some_and(|b| {
+            b == Block::CRAFTING_TABLE || crate::world::furnace::is_furnace(b) || crate::world::chest::is_chest(b)
+        });
+        if self.mode != GameMode::Survival || at_container || !self.inventory.equip(self.actions.selected) {
+            return false;
+        }
+        let sound = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Wood);
+        self.audio.play(sound, None, 0.6, (1.4, 1.6));
+        true
     }
 
     /// The item in the selected hotbar slot.
@@ -1179,7 +1214,7 @@ impl Game {
             self.damage_player(hurts.drown, survival::CAUSE_DROWN);
         }
         if hurts.lava > 0.0 {
-            self.damage_player(hurts.lava, survival::CAUSE_LAVA);
+            self.damage_player_armored(hurts.lava, survival::CAUSE_LAVA);
         }
         if hurts.starve > 0.0 {
             self.damage_player(hurts.starve, survival::CAUSE_STARVE);

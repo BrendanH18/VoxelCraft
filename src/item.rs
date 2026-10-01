@@ -69,11 +69,61 @@ impl Tier {
     }
 }
 
+/// Where a piece of armor is worn; also its armor slot index.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ArmorPiece {
+    Helmet,
+    Chestplate,
+    Leggings,
+    Boots,
+}
+
+impl ArmorPiece {
+    pub const ALL: [ArmorPiece; 4] =
+        [ArmorPiece::Helmet, ArmorPiece::Chestplate, ArmorPiece::Leggings, ArmorPiece::Boots];
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ArmorMaterial {
+    Leather,
+    Iron,
+    Gold,
+    Diamond,
+}
+
+impl ArmorMaterial {
+    pub const ALL: [ArmorMaterial; 4] =
+        [ArmorMaterial::Leather, ArmorMaterial::Iron, ArmorMaterial::Gold, ArmorMaterial::Diamond];
+
+    /// Armor points (half chestplates on the HUD) per piece, as in Minecraft.
+    pub fn defense(self, piece: ArmorPiece) -> u8 {
+        let points = match self {
+            ArmorMaterial::Leather => [1, 3, 2, 1],
+            ArmorMaterial::Gold => [2, 5, 3, 1],
+            ArmorMaterial::Iron => [2, 6, 5, 2],
+            ArmorMaterial::Diamond => [3, 8, 6, 3],
+        };
+        points[piece as usize]
+    }
+
+    /// Hits a piece takes before breaking.
+    pub fn durability(self, piece: ArmorPiece) -> u16 {
+        let base = match self {
+            ArmorMaterial::Leather => 5,
+            ArmorMaterial::Gold => 7,
+            ArmorMaterial::Iron => 15,
+            ArmorMaterial::Diamond => 33,
+        };
+        base * [11, 16, 15, 13][piece as usize]
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ItemKind {
     /// Places this block.
     Block(Block),
     Tool(ToolKind, Tier),
+    Armor(ArmorPiece, ArmorMaterial),
     /// Restores `hunger` half-drumsticks and `saturation` points when eaten.
     Food {
         hunger: u8,
@@ -105,6 +155,7 @@ pub enum Sprite {
     Wheat,
     MelonSlice,
     Tool(ToolKind, Tier),
+    Armor(ArmorPiece, ArmorMaterial),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -164,6 +215,10 @@ static ITEMS: [ItemInfo; 28] = [
 /// Tools start at this id: `FIRST_TOOL + tier * 5 + kind`.
 const FIRST_TOOL: u16 = 320;
 const TOOL_KINDS: [ToolKind; 5] = [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword];
+const TOOL_COUNT: u16 = (Tier::ALL.len() * TOOL_KINDS.len()) as u16;
+/// Armor starts at this id: `FIRST_ARMOR + material * 4 + piece`.
+const FIRST_ARMOR: u16 = FIRST_TOOL + TOOL_COUNT;
+const ARMOR_COUNT: u16 = 16;
 
 impl Item {
     pub const STICK: Item = Item(256);
@@ -197,6 +252,10 @@ impl Item {
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
+    }
+
+    pub const fn armor(piece: ArmorPiece, material: ArmorMaterial) -> Item {
+        Item(FIRST_ARMOR + material as u16 * 4 + piece as u16)
     }
 
     pub const fn from_block(block: Block) -> Item {
@@ -239,6 +298,15 @@ impl Item {
                 sprite: Sprite::Tool(kind, tier),
             };
         }
+        if let Some(i) = self.0.checked_sub(FIRST_ARMOR).filter(|&i| i < ARMOR_COUNT) {
+            let (material, piece) = (ArmorMaterial::ALL[i as usize / 4], ArmorPiece::ALL[i as usize % 4]);
+            return ItemInfo {
+                name: armor_name(piece, material),
+                kind: ItemKind::Armor(piece, material),
+                max_stack: 1,
+                sprite: Sprite::Armor(piece, material),
+            };
+        }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
     }
 
@@ -262,9 +330,20 @@ impl Item {
         }
     }
 
-    /// Uses before breaking, for tools.
+    pub fn as_armor(self) -> Option<(ArmorPiece, ArmorMaterial)> {
+        match self.info().kind {
+            ItemKind::Armor(piece, material) => Some((piece, material)),
+            _ => None,
+        }
+    }
+
+    /// Uses before breaking, for tools and armor.
     pub fn durability(self) -> Option<u16> {
-        self.as_tool().map(|(_, tier)| tier.durability())
+        match self.info().kind {
+            ItemKind::Tool(_, tier) => Some(tier.durability()),
+            ItemKind::Armor(piece, material) => Some(material.durability(piece)),
+            _ => None,
+        }
     }
 
     /// Hunger and saturation restored, for food.
@@ -277,7 +356,7 @@ impl Item {
 
     /// Texture layer of the flat inventory icon (non-block items only).
     pub fn icon_layer(self) -> Option<u8> {
-        sprite_index(self).map(|i| tex::ITEM_0 + i)
+        sprite_index(self).map(tex::item_layer)
     }
 
     /// Looks an item or block up by name (spaces or underscores).
@@ -292,7 +371,7 @@ impl Item {
     /// Every non-block item, in id order.
     pub fn all_items() -> impl Iterator<Item = Item> {
         let materials = (0..ITEMS.len() as u16).map(|i| Item(FIRST_ITEM + i));
-        let tools = (0..(Tier::ALL.len() * TOOL_KINDS.len()) as u16).map(|i| Item(FIRST_TOOL + i));
+        let tools = (0..TOOL_COUNT + ARMOR_COUNT).map(|i| Item(FIRST_TOOL + i));
         materials.chain(tools)
     }
 
@@ -313,12 +392,12 @@ fn sprite_index(item: Item) -> Option<u8> {
     let materials = ITEMS.len() as u16;
     match item.0 {
         i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some((i - FIRST_ITEM) as u8),
-        i if item.as_tool().is_some() => Some((materials + i - FIRST_TOOL) as u8),
+        i if item.as_tool().is_some() || item.as_armor().is_some() => Some((materials + i - FIRST_TOOL) as u8),
         _ => None,
     }
 }
 
-/// The sprite drawn on item texture layer `index` (see `tex::ITEM_0`).
+/// The sprite drawn on item icon `index` (see `tex::item_layer`).
 pub fn sprite_for_layer(index: u8) -> Option<Sprite> {
     Item::all_items().nth(index as usize).map(|i| i.info().sprite)
 }
@@ -334,9 +413,31 @@ fn tool_name(kind: ToolKind, tier: Tier) -> &'static str {
     NAMES[tier as usize][kind as usize]
 }
 
+fn armor_name(piece: ArmorPiece, material: ArmorMaterial) -> &'static str {
+    const NAMES: [[&str; 4]; 4] = [
+        ["leather cap", "leather tunic", "leather pants", "leather boots"],
+        ["iron helmet", "iron chestplate", "iron leggings", "iron boots"],
+        ["golden helmet", "golden chestplate", "golden leggings", "golden boots"],
+        ["diamond helmet", "diamond chestplate", "diamond leggings", "diamond boots"],
+    ];
+    NAMES[material as usize][piece as usize]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn armor_has_names_defense_and_durability() {
+        let chest = Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Iron);
+        assert_eq!(chest.name(), "iron chestplate");
+        assert_eq!(chest.as_armor(), Some((ArmorPiece::Chestplate, ArmorMaterial::Iron)));
+        assert_eq!(chest.durability(), Some(240));
+        assert_eq!(chest.max_stack(), 1);
+        assert_eq!(Item::tool(ToolKind::Sword, Tier::Diamond).as_armor(), None);
+        let full: u8 = ArmorPiece::ALL.iter().map(|&p| ArmorMaterial::Diamond.defense(p)).sum();
+        assert_eq!(full, 20);
+    }
 
     #[test]
     fn blocks_are_items_with_the_same_id() {
@@ -375,7 +476,7 @@ mod tests {
         for i in Item::all_items() {
             let layer = i.icon_layer().unwrap();
             assert!((layer as u32) < tex::COUNT);
-            assert_eq!(sprite_for_layer(layer - tex::ITEM_0), Some(i.info().sprite));
+            assert_eq!(sprite_for_layer(tex::item_index(layer).unwrap()), Some(i.info().sprite));
         }
         assert_eq!(Item::from(Block::STONE).icon_layer(), None);
     }

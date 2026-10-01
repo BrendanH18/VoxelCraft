@@ -140,9 +140,28 @@ pub mod tex {
     pub const FOLIAGE_0: u8 = 195;
     pub const FOLIAGE: [u8; 5] = [GRASS_TOP, GRASS_SIDE, LEAVES, TALL_GRASS, FERN];
     pub const FOLIAGE_GROUPS: u8 = 5;
-    pub const COUNT: u32 = FOLIAGE_0 as u32 + (FOLIAGE_GROUPS as u32 - 1) * FOLIAGE.len() as u32;
+    /// More item icons, once the first `ITEM_COUNT` are used up.
+    pub const ITEM_MORE_0: u8 = FOLIAGE_0 + (FOLIAGE_GROUPS - 1) * FOLIAGE.len() as u8;
+    pub const ITEM_MORE_COUNT: u8 = 32;
+    pub const COUNT: u32 = ITEM_MORE_0 as u32 + ITEM_MORE_COUNT as u32;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
+
+    /// Texture layer of item icon `index` (see `item::sprite_for_layer`).
+    pub const fn item_layer(index: u8) -> u8 {
+        if index < ITEM_COUNT { ITEM_0 + index } else { ITEM_MORE_0 + index - ITEM_COUNT }
+    }
+
+    /// The item icon index drawn on `layer`, if it holds one.
+    pub fn item_index(layer: u8) -> Option<u8> {
+        if (ITEM_0..ITEM_0 + ITEM_COUNT).contains(&layer) {
+            Some(layer - ITEM_0)
+        } else if (ITEM_MORE_0 as u32..COUNT).contains(&(layer as u32)) {
+            Some(layer - ITEM_MORE_0 + ITEM_COUNT)
+        } else {
+            None
+        }
+    }
 
     /// The layer to draw `layer` with in a column of foliage `group`:
     /// grass and oak leaves take on the colour of the biome.

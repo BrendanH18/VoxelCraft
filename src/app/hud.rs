@@ -4,7 +4,7 @@
 use std::time::Instant;
 
 use crate::inventory::{HOTBAR_SLOTS, Stack};
-use crate::item::Item;
+use crate::item::{ArmorMaterial, ArmorPiece, Item};
 use crate::render::ui::{Color, Ui, UiVertex, WHITE};
 use crate::world::block::tex;
 use crate::world::chunk::{chunk_of, local_of};
@@ -27,6 +27,8 @@ pub(super) enum SlotRef {
     FurnaceOutput,
     /// Chest slot (row-major).
     Chest(usize),
+    /// Worn armor (survival inventory).
+    Armor(ArmorPiece),
 }
 
 /// Visible rows of the creative palette.
@@ -161,6 +163,21 @@ impl Game {
             ui.icon(left + 1.0 + i as f32 * STEP, y + jitter, ICON, layer, WHITE);
         }
 
+        // Armor points sit above the hearts: a full chestplate per two
+        // points, a dim one for an odd point.
+        let armor = self.inventory.armor_points();
+        if armor > 0 {
+            let layer = Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Iron).icon_layer().unwrap_or(0);
+            for i in 0..10 {
+                let color = match armor.saturating_sub(i * 2) {
+                    0 => [0.0, 0.0, 0.0, 0.35],
+                    1 => [0.55, 0.55, 0.55, 1.0],
+                    _ => WHITE,
+                };
+                ui.icon(left + 1.0 + i as f32 * STEP, y - 10.0, ICON, layer, color);
+            }
+        }
+
         // Hunger, right to left; drumsticks shiver when nearly empty.
         let half_food = v.hunger.food.ceil() as u32;
         let starving = v.hunger.food <= 0.0;
@@ -210,6 +227,25 @@ impl Game {
 
     /// Whether the middle grid shows the creative palette instead of the
     /// main inventory.
+    fn shows_armor(&self) -> bool {
+        self.mode == GameMode::Survival && self.container == Container::Inventory
+    }
+
+    /// Height of the top section: room for the four armor slots in the
+    /// survival inventory, three rows of slots otherwise.
+    fn top_h(&self) -> f32 {
+        match (self.has_top_section(), self.shows_armor()) {
+            (false, _) => 0.0,
+            (true, true) => CRAFT_H + SLOT,
+            (true, false) => CRAFT_H,
+        }
+    }
+
+    /// Vertical offset of the top section's middle row of slots.
+    fn top_mid(&self) -> f32 {
+        if self.shows_armor() { 1.5 * SLOT } else { SLOT }
+    }
+
     fn shows_palette(&self) -> bool {
         self.mode == GameMode::Creative && self.container == Container::Inventory
     }
@@ -220,7 +256,7 @@ impl Game {
 
     /// Top-left corner and height of the inventory panel.
     fn panel(&self, screen: (f32, f32)) -> (f32, f32, f32) {
-        let h = PANEL_H + if self.has_top_section() { CRAFT_H } else { 0.0 };
+        let h = PANEL_H + self.top_h();
         let extra = if self.recipe_book.open && self.shows_recipes() && recipe_book::fits_beside(screen.0, PANEL_W) {
             recipe_book::WIDTH + recipe_book::GAP
         } else {
@@ -265,14 +301,20 @@ impl Game {
             CRAFT_H
         } else if self.has_top_section() {
             let n = self.craft.size;
-            // The grid sits left of centre, the result to its right past an arrow.
+            // The grid sits left of centre, the result to its right past an
+            // arrow; worn armor runs down the left edge.
             let gx = px + 7.0 + if n == 3 { SLOT } else { 2.0 * SLOT };
-            let gy = py + 18.0 + (3 - n) as f32 * SLOT / 2.0;
+            let gy = py + 18.0 + self.top_mid() - (n - 1) as f32 * SLOT / 2.0;
             for i in 0..n * n {
                 out.push((SlotRef::Craft(i), gx + (i % n) as f32 * SLOT, gy + (i / n) as f32 * SLOT));
             }
-            out.push((SlotRef::CraftResult, px + 7.0 + 6.0 * SLOT, py + 18.0 + SLOT));
-            CRAFT_H
+            out.push((SlotRef::CraftResult, px + 7.0 + 6.0 * SLOT, py + 18.0 + self.top_mid()));
+            if self.shows_armor() {
+                for (i, piece) in ArmorPiece::ALL.into_iter().enumerate() {
+                    out.push((SlotRef::Armor(piece), px + 7.0, py + 18.0 + i as f32 * SLOT));
+                }
+            }
+            self.top_h()
         } else {
             0.0
         };
@@ -349,7 +391,7 @@ impl Game {
         if self.has_top_section() && !matches!(self.container, Container::Chest(_)) {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
-            let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + SLOT + 5.0);
+            let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0);
             let furnace = match self.container {
                 Container::Furnace(p) => self.world.furnace(p).copied(),
                 _ => None,
@@ -375,7 +417,7 @@ impl Game {
                 ui.rect(fx + 3.0, fy + 13.0 - h * 0.6, 4.0, h * 0.6, [1.0, 0.9, 0.3, 1.0]);
             }
         }
-        let py = py + if self.has_top_section() { CRAFT_H } else { 0.0 };
+        let py = py + self.top_h();
         if matches!(self.container, Container::Chest(_)) {
             ui.text_flat(px + 8.0, py + 6.0, "Inventory", [0.25, 0.25, 0.25, 1.0]);
         }
@@ -398,8 +440,14 @@ impl Game {
                 SlotRef::Palette(b) => Some(Stack::new(b, 1)),
                 SlotRef::Craft(i) => self.craft.cells[i],
                 SlotRef::CraftResult => self.craft.result(),
+                SlotRef::Armor(p) => self.inventory.armor[p as usize],
                 f => self.container_slot(f),
             };
+            if let (SlotRef::Armor(p), None) = (r, stack) {
+                // Faint outline of the piece that goes here.
+                let layer = Item::armor(p, ArmorMaterial::Iron).icon_layer().unwrap_or(0);
+                ui.icon(x + 1.0, y + 1.0, 16.0, layer, [0.0, 0.0, 0.0, 0.25]);
+            }
             if let Some(stack) = stack {
                 self.stack_ui(ui, x, y, stack);
             }
@@ -412,6 +460,7 @@ impl Game {
             Some(SlotRef::Palette(item)) => Some(item),
             Some(SlotRef::Craft(i)) => self.craft.cells[i].map(|s| s.item),
             Some(SlotRef::CraftResult) => self.craft.result().map(|s| s.item),
+            Some(SlotRef::Armor(p)) => self.inventory.armor[p as usize].map(|s| s.item),
             Some(f) => self.container_slot(f).map(|s| s.item),
             None => None,
         };

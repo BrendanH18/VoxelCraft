@@ -4,7 +4,7 @@
 //! and shaded like Minecraft's item art: light from the top left, a dark rim
 //! on the bottom right.
 
-use crate::item::{Sprite, Tier, ToolKind};
+use crate::item::{ArmorMaterial, ArmorPiece, Sprite, Tier, ToolKind};
 use crate::world::noise::hash_f;
 
 type Rgba = [u8; 4];
@@ -121,6 +121,38 @@ fn tool(kind: ToolKind, tier: Tier, x: i32, y: i32) -> Option<Rgba> {
     handle(x, y, 1, top)
 }
 
+fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
+    match material {
+        ArmorMaterial::Leather => [160, 101, 64],
+        ArmorMaterial::Iron => [206, 206, 206],
+        ArmorMaterial::Gold => [246, 208, 62],
+        ArmorMaterial::Diamond => [70, 222, 210],
+    }
+}
+
+/// Armor icons, symmetric about the vertical centre line.
+fn armor(piece: ArmorPiece, material: ArmorMaterial, x: i32, y: i32) -> Option<Rgba> {
+    let shape = |x: i32, y: i32| {
+        // Distance from the centre line: 0 for the middle two columns.
+        let d = if x < 8 { 7 - x } else { x - 8 };
+        match piece {
+            // A dome, open at the bottom for the face.
+            ArmorPiece::Helmet => (3..=11).contains(&y) && d <= if y == 3 { 3 } else { 5 } && !(y >= 8 && d <= 2),
+            // Wide shoulders, a neck cutout and a narrower body.
+            ArmorPiece::Chestplate => {
+                ((2..=5).contains(&y) && d <= 6 && !(y <= 3 && d <= 1)) || ((6..=13).contains(&y) && d <= 4)
+            }
+            // A waistband over two legs.
+            ArmorPiece::Leggings => ((2..=4).contains(&y) && d <= 5) || ((5..=13).contains(&y) && (2..=5).contains(&d)),
+            // Two boots, toes pointing out.
+            ArmorPiece::Boots => {
+                ((7..=10).contains(&y) && (2..=4).contains(&d)) || ((11..=13).contains(&y) && (2..=6).contains(&d))
+            }
+        }
+    };
+    shaded(&shape, x, y, armor_colour(material), 0.06)
+}
+
 pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
     let (x, y) = (x as i32, y as i32);
     let (px, py) = centre(x, y);
@@ -133,6 +165,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
     let out = match sprite {
         Sprite::Stick => handle(x, y, 2, 13),
         Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
+        Sprite::Armor(piece, material) => armor(piece, material, x, y),
         Sprite::Lump(c) => {
             let lump = |x: i32, y: i32| {
                 let (px, py) = centre(x, y);

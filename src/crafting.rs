@@ -7,7 +7,7 @@
 //! of exactly their ingredients.
 
 use crate::inventory::Stack;
-use crate::item::{Item, Tier, ToolKind};
+use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 use crate::world::block::Block;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -226,6 +226,19 @@ pub fn recipes() -> &'static [Recipe] {
             r.push(tool(ToolKind::Hoe, &["XX", " #", " #"]));
             r.push(tool(ToolKind::Sword, &["X", "X", "#"]));
         }
+        const ARMOR: [(ArmorMaterial, Ingredient); 4] = [
+            (ArmorMaterial::Leather, &[Item::LEATHER]),
+            (ArmorMaterial::Iron, &[Item::IRON_INGOT]),
+            (ArmorMaterial::Gold, &[Item::GOLD_INGOT]),
+            (ArmorMaterial::Diamond, &[Item::DIAMOND]),
+        ];
+        for (material, m) in ARMOR {
+            let armor = |piece, rows| shaped(rows, &[('X', m)], Item::armor(piece, material), 1);
+            r.push(armor(ArmorPiece::Helmet, &["XXX", "X X"]));
+            r.push(armor(ArmorPiece::Chestplate, &["X X", "XXX", "XXX"]));
+            r.push(armor(ArmorPiece::Leggings, &["XXX", "X X", "X X"]));
+            r.push(armor(ArmorPiece::Boots, &["X X", "X X"]));
+        }
         r
     })
 }
@@ -233,6 +246,25 @@ pub fn recipes() -> &'static [Recipe] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn armor_recipes() {
+        let iron = Some(Stack::new(Item::IRON_INGOT, 1));
+        let mut g = Grid::new(3);
+        for i in [0, 2, 3, 4, 5, 6, 7, 8] {
+            g.cells[i] = iron;
+        }
+        assert_eq!(g.result().unwrap().item, Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Iron));
+        let mut g = Grid::new(2);
+        let leather = Some(Stack::new(Item::LEATHER, 1));
+        g.cells = [leather, None, leather, None, None, None, None, None, None];
+        assert_eq!(g.result(), None);
+        let mut g = Grid::new(3);
+        for i in [3, 5, 6, 8] {
+            g.cells[i] = leather;
+        }
+        assert_eq!(g.result().unwrap().item, Item::armor(ArmorPiece::Boots, ArmorMaterial::Leather));
+    }
 
     fn grid(size: usize, cells: &[(usize, usize, Item)]) -> Grid {
         let mut g = Grid::new(size);
