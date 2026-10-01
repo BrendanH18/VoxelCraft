@@ -31,7 +31,10 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
 - **A world to explore.** Infinite terrain with forests, deserts, snowy biomes,
   mountains, oceans, caves, ores, and trees.
 - **Two ways to play.** Build freely in creative, or play survival with timed
-  mining, block drops, a stackable inventory, health, and respawning.
+  mining, block drops, a stackable inventory, health, hunger, and respawning.
+- **Craft and cook.** Make tools in five tiers, craft torches and building
+  blocks, smelt ores, and cook food in furnaces. Tools wear out; food restores
+  hunger and supports natural healing.
 - **A world that moves.** Flowing water and lava, falling sand, a day/night
   cycle, drifting clouds, herds of animals, and zombies, skeletons, creepers
   and spiders that come out at night.
@@ -40,8 +43,10 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
 - **Built for speed.** Parallel chunk generation, greedy meshing, compact GPU
   quad records, and a shared mesh arena keep the world streaming around you.
 
-VoxelCraft is an early sandbox project. Survival currently has health and air,
-with inventory kept on death; hunger and crafting are not implemented.
+VoxelCraft is an early sandbox project. Inventory is kept on death, and mined
+blocks and mob loot go straight into the inventory. Furnaces currently have no
+facing direction. See the [gameplay guide](docs/gameplay.md) for the survival
+rules and available recipes.
 
 ## Play
 
@@ -79,18 +84,46 @@ cargo run --release -- --creative --world creative --seed 42
 | `--help` | Show all options, including benchmarks and screenshots |
 
 Worlds autosave every two minutes and on exit. Only modified chunks are stored;
-the rest regenerates from the seed. `--new` starts fresh in the selected save
+the rest regenerates from the seed. Inventory, health, air, hunger, and furnace
+contents are saved too. `--new` starts fresh in the selected save
 and replaces it when saving, so choose a new `--world` name to keep an old world.
 
 ### First steps
 
 Click the window to capture the mouse. Move with **W A S D**, look with the
 mouse, and press **Space** to jump. **Left click** breaks blocks or attacks mobs;
-**right click** places blocks. Press **E** for inventory and **G** to switch modes.
+**right click** places blocks or opens a crafting table or furnace. Press **E**
+for inventory and its 2×2 crafting grid in survival, and **G** to switch modes.
+
+For a new survival world:
+
+1. Punch a few logs from a tree. Open the inventory with **E**, put a log in
+   the crafting grid, and click the result to turn it into four planks.
+2. Arrange four planks in a 2×2 square to make a crafting table. Two planks
+   stacked vertically make four sticks.
+3. Place the table and right-click it for a 3×3 grid. Make a wooden pickaxe
+   with three planks across the top row and two sticks down the middle below.
+4. Mine stone with the pickaxe to collect cobblestone. Eight cobblestone in
+   a ring around an empty center make a furnace. Make a stone pickaxe before
+   mining iron ore; gold and diamond ore need an iron pickaxe or better.
+5. Put ore or raw meat in the furnace's top slot and fuel below: coal,
+   charcoal, logs, planks, or sticks. Hold **right click** with food selected
+   for 1.6 seconds to eat when hungry.
+
+Stone mined by hand drops nothing. Sprinting needs more than six food points
+(three drumsticks). Crafting leftovers return when the screen closes; if the
+inventory is full, the HUD and inventory show how many items are waiting.
+They are saved and return automatically when space opens.
+
+Click **Recipes** in the inventory or crafting screen to browse ingredient
+layouts with the arrow buttons or scroll wheel. Hover an ingredient to see its
+name and alternatives. Copy the preview into your own grid to craft; recipes
+that need a larger grid point you to a crafting table. An **Eating** progress
+bar appears below the crosshair while you hold right-click with food.
 
 | Input | Action |
 | --- | --- |
-| Left Ctrl or R | Sprint |
+| Left Ctrl or R | Sprint (survival needs more than three drumsticks) |
 | 1–9 or scroll wheel | Select hotbar slot |
 | Middle click | Pick block |
 | F or double-tap Space | Toggle flight in creative |
@@ -111,6 +144,14 @@ See the [gameplay guide](docs/gameplay.md) for all controls, survival rules, and
   <tr>
     <td width="50%"><img src="docs/images/water.jpg" alt="Water flowing down stepped voxel terrain"><br><strong>Water finds its way</strong><br>Flowing sources, waterfalls, and underwater fog.</td>
     <td width="50%"><img src="docs/images/inventory.jpg" alt="Creative inventory showing the available block palette"><br><strong>Build something</strong><br>A creative block palette and nine-slot hotbar.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/crafting.png" alt="Wooden pickaxe recipe in a crafting table, with its ingredient guide alongside"><br><strong>From wood to tools</strong><br>Browse recipes and copy their ingredients into the crafting grid.</td>
+    <td width="50%"><img src="docs/images/furnace.png" alt="Lit furnace smelting iron ore, with fuel and cooking progress visible"><br><strong>Smelt and cook</strong><br>Turn ore into ingots and raw food into cooked meals.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/hunger.png" alt="Survival hearts and hunger bar, with an eating progress indicator below the crosshair"><br><strong>A bite to eat</strong><br>Hold right-click with food and watch the bite progress.</td>
+    <td width="50%"><img src="docs/images/leftovers.png" alt="Full inventory displaying 63 items waiting to return when space opens"><br><strong>Keep your leftovers</strong><br>Items waiting for inventory space survive closing the screen and saving.</td>
   </tr>
 </table>
 

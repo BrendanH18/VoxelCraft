@@ -222,12 +222,59 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let ridge = (x + y) % 4 < 2;
             shade([234, 234, 228], if ridge { 0.96 + r * 0.06 } else { 0.86 + r * 0.06 })
         }
+        tex::TABLE_TOP => {
+            // Planks framed by a dark border, with a 2x2 grid scored in the middle.
+            let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+            let grid = (3..13).contains(&x)
+                && (3..13).contains(&y)
+                && (x == 3 || x == 8 || x == 12 || y == 3 || y == 8 || y == 12);
+            if border || grid { shade([104, 74, 44], 0.85 + r * 0.1) } else { pixel(tex::PLANKS, x, y) }
+        }
+        tex::TABLE_SIDE => {
+            // Planks with a saw blade (left) and hammer (right) hung on them.
+            let top_band = y < 3;
+            let saw = (2..7).contains(&x) && (5..12).contains(&y);
+            let saw_teeth = x == 2 && y.is_multiple_of(2) && (5..12).contains(&y);
+            let handle = (9..11).contains(&x) && (6..14).contains(&y);
+            let head = (8..13).contains(&x) && (4..6).contains(&y);
+            if top_band {
+                shade([104, 74, 44], 0.85 + r * 0.1)
+            } else if saw && !saw_teeth {
+                shade([170, 170, 176], 0.9 + r * 0.15)
+            } else if head {
+                shade([110, 110, 116], 0.9 + r * 0.1)
+            } else if handle {
+                shade([96, 64, 36], 0.9 + r * 0.1)
+            } else {
+                pixel(tex::PLANKS, x, y)
+            }
+        }
+        tex::FURNACE_TOP => noisy(layer, x, y, [118, 118, 118], 0.1),
+        tex::FURNACE_FRONT | tex::FURNACE_LIT => {
+            // Cobbled face with a dark mouth; a lit furnace shows flames in it.
+            let mouth = (4..12).contains(&x) && (8..14).contains(&y);
+            let rim = (3..13).contains(&x) && (7..15).contains(&y) && !mouth;
+            if mouth {
+                let flame = layer == tex::FURNACE_LIT && y as f32 > 9.0 + 2.5 * rnd(layer, x, 0, 4);
+                if flame {
+                    let hot = (y as f32 - 9.0) / 5.0;
+                    [255, (200.0 - hot * 110.0) as u8, (60.0 - hot * 40.0) as u8, 255]
+                } else {
+                    shade([24, 22, 22], 0.9 + r * 0.2)
+                }
+            } else if rim {
+                shade([80, 80, 80], 0.9 + r * 0.15)
+            } else {
+                pixel(tex::COBBLESTONE, x, y)
+            }
+        }
         tex::OBSIDIAN => {
             let speck = rnd(layer, x, y, 13) < 0.08;
             let c = if speck { [80, 60, 110] } else { [22, 16, 34] };
             shade(c, 0.85 + r * 0.3)
         }
         tex::HEART_FULL | tex::HEART_HALF | tex::HEART_EMPTY => heart(layer, x, y),
+        tex::FOOD_FULL | tex::FOOD_HALF | tex::FOOD_EMPTY => drumstick(layer, x, y),
         tex::BUBBLE => {
             let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
             let d = (dx * dx + dy * dy).sqrt();
@@ -268,6 +315,39 @@ fn flower(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
         shade([70, 140, 45], 0.85 + r * 0.2)
     } else {
         [0, 0, 0, 0]
+    }
+}
+
+/// Hunger icon: a drumstick (meat upper left, bone lower right); full,
+/// half (left side) or an empty outline.
+fn drumstick(layer: u8, x: usize, y: usize) -> Rgba {
+    let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
+    let meat = |px: f32, py: f32| (px - 6.5).powi(2) + (py - 6.5).powi(2) * 1.2 < 22.0;
+    let bone = |px: f32, py: f32| {
+        // A shaft along the diagonal with a knob at the end.
+        let t = ((px + py) / 2.0).clamp(8.0, 13.0);
+        let shaft = (px - t).powi(2) + (py - t).powi(2) < 2.0;
+        shaft || (px - 13.0).powi(2) + (py - 12.0).powi(2) < 2.5 || (px - 12.0).powi(2) + (py - 13.0).powi(2) < 2.5
+    };
+    let inside = |px: f32, py: f32| meat(px, py) || bone(px, py);
+    if !inside(fx, fy) {
+        return [0, 0, 0, 0];
+    }
+    let edge = !(inside(fx - 1.0, fy) && inside(fx + 1.0, fy) && inside(fx, fy - 1.0) && inside(fx, fy + 1.0));
+    if edge {
+        return [40, 20, 10, 255];
+    }
+    let filled = match layer {
+        tex::FOOD_FULL => true,
+        tex::FOOD_HALF => x < 8,
+        _ => false,
+    };
+    if !filled {
+        [60, 40, 30, 200]
+    } else if meat(fx, fy) {
+        if x < 6 && (3..6).contains(&y) { [240, 150, 90, 255] } else { [196, 96, 44, 255] }
+    } else {
+        [236, 228, 210, 255]
     }
 }
 

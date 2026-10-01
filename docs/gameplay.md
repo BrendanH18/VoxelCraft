@@ -73,16 +73,59 @@ session.
   arrows and explosion smoke are drawn in a single draw call
 - Survival and creative modes: timed block breaking with crack overlay,
   drops, a 36-slot inventory with stacks, and a scrollable creative palette
+- Crafting: a 2x2 grid in the survival inventory and a 3x3 grid at a
+  crafting table (right-click it). Shaped recipes work anywhere in the
+  grid and mirrored; click the result to craft one, and leftovers return
+  to the inventory when the screen closes. If the inventory is full,
+  leftovers are kept in the save and return automatically when space opens.
+  The HUD and inventory show the number of items waiting. Click Recipes
+  to browse layouts with the arrow buttons or scroll wheel; hover ingredients
+  for names and alternatives, then copy the preview into your crafting grid.
+  On narrower windows, Back closes the recipe overlay so you can craft.
+  Recipes: planks (from a log),
+  sticks, crafting table, torches (coal or charcoal over a stick),
+  sandstone, wool (from string), arrows, and pickaxes, shovels, axes,
+  hoes and swords in wood, stone, iron, gold and diamond
+- Tools follow Minecraft's mining rules: a block takes its hardness x 1.5
+  seconds to mine with something that can harvest it and x 5 otherwise,
+  divided by the tool's speed when it's the right kind (pickaxe for stone
+  and ores, shovel for dirt, sand and gravel, axe for wood). Stone and ores
+  only drop with a pickaxe of a high enough tier: wood or gold for stone
+  and coal, stone for iron, iron for gold and diamond, diamond for
+  obsidian. Stone by hand takes 7.5 s; with a wooden pickaxe 1.1 s, down
+  to 0.19 s with gold. Tools lose 1 durability per block (swords 2) and 1
+  per hit (other tools 2), and break when worn out. Melee damage comes from
+  the held item: a fist 1, swords 4 (wood, gold) to 7 (diamond), axes,
+  pickaxes and shovels less
+- Furnaces (8 cobblestone in a ring): right-click to open; put something
+  to smelt on top and fuel below. Each item takes 10 s; coal and charcoal
+  burn 80 s, logs, planks and crafting tables 15 s, wooden tools 10 s and
+  sticks 5 s. Smelts iron and gold ore into ingots, sand into glass,
+  cobblestone into stone, logs into charcoal and raw meat into cooked
+  meat. A burning furnace glows (light 13), keeps smelting with its
+  screen closed while its chunk is loaded, and is saved with the world;
+  breaking one returns its contents to your inventory
 - Items beyond blocks, each with a procedurally drawn icon: sticks, coal,
   ingots, diamonds, food, mob materials, and pickaxes, shovels, axes, hoes
   and swords in five tiers with durability bars. Coal and diamond ore drop
   their items
-- Survival health (no hunger): 10 hearts, fall damage (1 per block beyond
-  3; water breaks falls), 15 s of air then drowning, natural regeneration
-  after 4 s without damage, a red hurt flash and shaking hearts. Dying shows
+- Survival health: 10 hearts, fall damage (1 per block beyond 3; water
+  breaks falls), 15 s of air then drowning, a red hurt flash and shaking
+  hearts. Dying shows
   a death screen; clicking respawns at the world spawn with full health and
   the inventory kept (like `keepInventory`). Creative is immune to damage.
   Health and air are saved with the world
+- Hunger, like Minecraft: 10 drumsticks plus a hidden saturation buffer
+  (5 at spawn). Exhaustion from sprinting (0.1 per block), swimming (0.01
+  per block), jumping (0.05, 0.2 sprinting), mining (0.005), attacking
+  (0.1) and taking damage (0.1) costs a point of saturation, then food,
+  every 4. Health regenerates half a heart every 4 s from 18 food (costing
+  6 exhaustion), or every 0.5 s with a full bar and saturation left; an
+  empty bar starves you down to half a heart. You can't sprint at 6 food or
+  less. Hold right-click with food for 1.6 s to eat (not when full); the
+  Eating indicator below the crosshair shows the bite's progress. The hunger
+  bar shows on the right above the hotbar, with air bubbles above it.
+  Creative players don't get hungry. Hunger is saved with the world
 - Break, place and pick blocks, with a selection outline and hotbar
 - Procedurally generated, mipmapped block textures — the game ships no assets
 - Procedural sound, synthesized in code at startup (~25 ms): material-specific
@@ -109,5 +152,6 @@ Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to
 4 zombies and 3 of the others). Mobs spawn 24–64 blocks from the player
 and despawn beyond 96 blocks or when their chunk unloads. Every mob burns
-in lava. Player hits do 2–4 damage with knockback, at most every 0.5 s.
+in lava. Player hits deal damage based on the held item, with knockback, at most
+every 0.5 s: a fist deals 1, and swords deal 4–7 depending on their tier.
 Hostile mobs ignore creative players.

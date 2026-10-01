@@ -65,7 +65,13 @@ impl Game {
         self.mobs.attack_held = true;
         if self.mobs.attack_cooldown <= 0.0 {
             self.mobs.attack_cooldown = entity::ATTACK_COOLDOWN;
-            if let Some(kind) = self.mobs.entities.attack(i, self.player.forward().as_dvec3())
+            let damage = crate::mining::attack_damage(self.held_item());
+            let killed = self.mobs.entities.attack(i, self.player.forward().as_dvec3(), damage);
+            self.wear_held(true);
+            if self.mode == GameMode::Survival {
+                self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
+            }
+            if let Some(kind) = killed
                 && self.mode == GameMode::Survival
             {
                 // Loot goes straight to the inventory until items can lie in the world.

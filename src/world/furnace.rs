@@ -1,0 +1,329 @@
+//! Furnaces: smelt one input at a time while fuel burns, like Minecraft.
+//!
+//! A furnace's contents live in [`World`] keyed by position (block
+//! entities). They appear when a furnace block is placed, spill into
+//! [`World::drops`] when it's removed, keep smelting whenever their chunk
+//! is loaded, and swap the block between `FURNACE` and `LIT_FURNACE` (which
+//! glows) as the fire starts and goes out.
+
+use glam::IVec3;
+
+use super::World;
+use super::block::Block;
+use crate::inventory::{Stack, stack_from_str, stack_to_string};
+use crate::item::{Item, Tier};
+
+/// Seconds to smelt one item.
+pub const COOK_TIME: f32 = 10.0;
+
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
+pub struct Furnace {
+    pub input: Option<Stack>,
+    pub fuel: Option<Stack>,
+    pub output: Option<Stack>,
+    /// Seconds the current piece of fuel keeps burning, and its total.
+    pub burn_left: f32,
+    pub burn_total: f32,
+    /// Seconds spent on the current item.
+    pub cook: f32,
+}
+
+/// What smelting `item` produces.
+pub fn smelt(item: Item) -> Option<Item> {
+    let b = Item::from_block;
+    Some(match item {
+        i if i == b(Block::IRON_ORE) => Item::IRON_INGOT,
+        i if i == b(Block::GOLD_ORE) => Item::GOLD_INGOT,
+        i if i == b(Block::COAL_ORE) => Item::COAL,
+        i if i == b(Block::DIAMOND_ORE) => Item::DIAMOND,
+        i if i == b(Block::SAND) => b(Block::GLASS),
+        i if i == b(Block::COBBLESTONE) => b(Block::STONE),
+        i if i == b(Block::LOG) => Item::CHARCOAL,
+        Item::RAW_PORKCHOP => Item::COOKED_PORKCHOP,
+        Item::RAW_BEEF => Item::STEAK,
+        Item::RAW_CHICKEN => Item::COOKED_CHICKEN,
+        _ => return None,
+    })
+}
+
+/// Seconds one of `item` burns as fuel (Minecraft's values / 20).
+pub fn burn_time(item: Item) -> Option<f32> {
+    let b = Item::from_block;
+    match item {
+        Item::COAL | Item::CHARCOAL => Some(80.0),
+        i if i == b(Block::LOG) || i == b(Block::PLANKS) || i == b(Block::CRAFTING_TABLE) => Some(15.0),
+        Item::STICK => Some(5.0),
+        i if i.as_tool().is_some_and(|(_, tier)| tier == Tier::Wood) => Some(10.0),
+        _ => None,
+    }
+}
+
+impl Furnace {
+    /// Changes the input through the same slot interaction as the inventory.
+    /// Adding or removing some of the same item keeps cooking progress;
+    /// replacing it or emptying the slot starts a fresh cook.
+    pub fn click_input(&mut self, cursor: &mut Option<Stack>, right: bool) {
+        let before = self.input.map(|s| (s.item, s.damage));
+        crate::inventory::click_slot(&mut self.input, cursor, right);
+        if self.input.map(|s| (s.item, s.damage)) != before {
+            self.cook = 0.0;
+        }
+    }
+
+    pub fn is_lit(&self) -> bool {
+        self.burn_left > 0.0
+    }
+
+    /// The smelted result of the current input, if it can go to the output.
+    fn product(&self) -> Option<Item> {
+        let out = smelt(self.input?.item)?;
+        match self.output {
+            None => Some(out),
+            Some(o) if o.item == out && o.count < o.max() => Some(out),
+            Some(_) => None,
+        }
+    }
+
+    /// Advances burning and smelting by `dt` seconds.
+    pub fn tick(&mut self, mut dt: f32) {
+        // Step through fuel changes so a long dt can't skip lighting the next piece.
+        while dt > 0.0 {
+            if !self.is_lit()
+                && self.product().is_some()
+                && let Some(t) = self.fuel.and_then(|f| burn_time(f.item))
+            {
+                self.fuel = take_one(self.fuel);
+                self.burn_left = t;
+                self.burn_total = t;
+            }
+            if !self.is_lit() {
+                // Cold: progress slips back.
+                self.cook = (self.cook - 2.0 * dt).max(0.0);
+                return;
+            }
+            // Stop at the next finished item so big steps smelt everything.
+            let product = self.product();
+            let mut step = dt.min(self.burn_left);
+            if product.is_some() {
+                step = step.min(COOK_TIME - self.cook);
+            }
+            self.burn_left -= step;
+            dt -= step;
+            match product {
+                Some(out) => {
+                    self.cook += step;
+                    if self.cook >= COOK_TIME {
+                        self.cook -= COOK_TIME;
+                        self.input = take_one(self.input);
+                        match &mut self.output {
+                            Some(o) => o.count += 1,
+                            None => self.output = Some(Stack::new(out, 1)),
+                        }
+                    }
+                }
+                None => self.cook = 0.0,
+            }
+        }
+    }
+
+    /// Everything inside, for when the furnace is broken.
+    pub fn take_all(&mut self) -> Vec<Stack> {
+        [self.input.take(), self.fuel.take(), self.output.take()].into_iter().flatten().collect()
+    }
+
+    pub fn serialize(&self) -> String {
+        format!(
+            "{};{};{};{:.2};{:.2};{:.2}",
+            stack_to_string(self.input),
+            stack_to_string(self.fuel),
+            stack_to_string(self.output),
+            self.burn_left,
+            self.burn_total,
+            self.cook
+        )
+    }
+
+    pub fn deserialize(text: &str) -> Option<Self> {
+        let f: Vec<&str> = text.split(';').collect();
+        let [input, fuel, output, left, total, cook] = f[..] else { return None };
+        let num = |s: &str| s.parse::<f32>().ok().filter(|v| v.is_finite() && *v >= 0.0);
+        Some(Self {
+            input: stack_from_str(input)?,
+            fuel: stack_from_str(fuel)?,
+            output: stack_from_str(output)?,
+            burn_left: num(left)?,
+            burn_total: num(total)?,
+            cook: num(cook)?.min(COOK_TIME),
+        })
+    }
+}
+
+fn take_one(stack: Option<Stack>) -> Option<Stack> {
+    stack.filter(|s| s.count > 1).map(|s| Stack { count: s.count - 1, ..s })
+}
+
+pub fn is_furnace(b: Block) -> bool {
+    b == Block::FURNACE || b == Block::LIT_FURNACE
+}
+
+impl World {
+    pub fn furnace(&self, p: IVec3) -> Option<&Furnace> {
+        self.furnaces.get(&p)
+    }
+
+    pub fn furnace_mut(&mut self, p: IVec3) -> Option<&mut Furnace> {
+        self.furnaces.get_mut(&p)
+    }
+
+    /// Keeps the furnace table in step with a block change at `p`.
+    pub(super) fn track_furnace(&mut self, p: IVec3, old: Block, new: Block) {
+        if is_furnace(old) && !is_furnace(new) {
+            if let Some(mut f) = self.furnaces.remove(&p) {
+                self.drops.extend(f.take_all().into_iter().map(|s| (p, s)));
+            }
+        } else if is_furnace(new) {
+            self.furnaces.entry(p).or_default();
+        }
+    }
+
+    /// Smelts in every furnace whose chunk is loaded and lights or puts out
+    /// their blocks to match.
+    pub fn tick_furnaces(&mut self, dt: f64) {
+        let mut relight = Vec::new();
+        for (&p, f) in self.furnaces.iter_mut() {
+            if !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
+                continue;
+            }
+            f.tick(dt as f32);
+            relight.push((p, f.is_lit()));
+        }
+        for (p, lit) in relight {
+            let want = if lit { Block::LIT_FURNACE } else { Block::FURNACE };
+            if self.get_block(p).is_some_and(|b| is_furnace(b) && b != want) {
+                self.edit(p, want, false);
+            }
+        }
+    }
+
+    /// `x,y,z=furnace|...` for the level file.
+    pub fn furnaces_to_string(&self) -> String {
+        self.furnaces
+            .iter()
+            .map(|(p, f)| format!("{},{},{}={}", p.x, p.y, p.z, f.serialize()))
+            .collect::<Vec<_>>()
+            .join("|")
+    }
+
+    /// Restores furnaces saved by [`World::furnaces_to_string`]; malformed
+    /// entries are skipped.
+    pub fn load_furnaces(&mut self, text: &str) {
+        for entry in text.split('|').filter(|e| !e.is_empty()) {
+            let Some((pos, state)) = entry.split_once('=') else { continue };
+            let c: Vec<i32> = pos.split(',').filter_map(|v| v.parse().ok()).collect();
+            if let (&[x, y, z], Some(f)) = (&c[..], Furnace::deserialize(state)) {
+                self.furnaces.insert(IVec3::new(x, y, z), f);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn furnace(input: Item, n: u8, fuel: Item, m: u8) -> Furnace {
+        Furnace { input: Some(Stack::new(input, n)), fuel: Some(Stack::new(fuel, m)), ..Default::default() }
+    }
+
+    fn run(f: &mut Furnace, secs: f32) {
+        for _ in 0..(secs * 20.0) as usize {
+            f.tick(0.05);
+        }
+    }
+
+    #[test]
+    fn smelts_one_item_per_cook_time_while_fuel_lasts() {
+        let ore = Item::from_block(Block::IRON_ORE);
+        // A stick burns 5 s: half an ingot's worth, then the fire is out.
+        let mut f = furnace(ore, 3, Item::STICK, 1);
+        run(&mut f, 1.0);
+        assert!(f.is_lit() && f.fuel.is_none());
+        run(&mut f, 6.0);
+        assert!(!f.is_lit() && f.output.is_none() && f.cook < 5.0);
+
+        // Coal burns 80 s: all three ores, then idles on until it burns out.
+        let mut f = furnace(ore, 3, Item::COAL, 1);
+        run(&mut f, 10.1);
+        assert_eq!(f.output, Some(Stack::new(Item::IRON_INGOT, 1)));
+        run(&mut f, 20.0);
+        assert_eq!(f.output, Some(Stack::new(Item::IRON_INGOT, 3)));
+        assert!(f.input.is_none() && f.is_lit());
+        // A big time step behaves the same as small ones.
+        let mut g = furnace(ore, 3, Item::COAL, 1);
+        g.tick(30.1);
+        assert_eq!(g.output, f.output);
+    }
+
+    #[test]
+    fn needs_a_smeltable_input_and_room_for_the_output() {
+        // Nothing to smelt: the fuel isn't wasted.
+        let mut f = furnace(Item::STICK, 1, Item::COAL, 1);
+        run(&mut f, 1.0);
+        assert!(!f.is_lit() && f.fuel.is_some());
+        // Output full of something else: no burning either.
+        let mut f = furnace(Item::RAW_BEEF, 1, Item::COAL, 1);
+        f.output = Some(Stack::new(Item::COAL, 1));
+        run(&mut f, 1.0);
+        assert!(!f.is_lit());
+        assert_eq!(smelt(Item::RAW_BEEF), Some(Item::STEAK));
+        assert!(burn_time(Item::IRON_INGOT).is_none());
+    }
+
+    #[test]
+    fn round_trips_through_text() {
+        let mut f = furnace(Item::from_block(Block::SAND), 5, Item::COAL, 2);
+        run(&mut f, 12.0);
+        let g = Furnace::deserialize(&f.serialize()).unwrap();
+        assert_eq!(g.output, f.output);
+        assert_eq!((g.input, g.fuel), (f.input, f.fuel));
+        assert!((g.burn_left - f.burn_left).abs() < 0.01 && (g.cook - f.cook).abs() < 0.01);
+        assert!(Furnace::deserialize("junk").is_none());
+    }
+
+    #[test]
+    fn replacing_input_requires_a_full_new_cook() {
+        let mut f = furnace(Item::from_block(Block::SAND), 1, Item::COAL, 1);
+        f.tick(9.9);
+        let burn = f.burn_left;
+        let mut cursor = Some(Stack::new(Block::IRON_ORE, 1));
+        f.click_input(&mut cursor, false);
+        assert_eq!(cursor, Some(Stack::new(Block::SAND, 1)));
+        assert_eq!(f.cook, 0.0);
+        assert_eq!(f.burn_left, burn, "replacing input keeps the fire burning");
+        f.tick(0.2);
+        assert!(f.output.is_none());
+        f.tick(9.9);
+        assert_eq!(f.output, Some(Stack::new(Item::IRON_INGOT, 1)));
+    }
+
+    #[test]
+    fn same_input_keeps_progress_but_emptying_the_slot_resets_it() {
+        let mut f = furnace(Item::from_block(Block::SAND), 2, Item::COAL, 1);
+        f.tick(5.0);
+        let mut cursor = Some(Stack::new(Block::SAND, 1));
+        f.click_input(&mut cursor, true);
+        assert_eq!(f.cook, 5.0, "adding the same ingredient preserves progress");
+        assert_eq!(f.input.unwrap().count, 3);
+        f.click_input(&mut cursor, true);
+        assert_eq!(f.cook, 5.0, "taking half also leaves the same ingredient");
+        // Put the picked-up sand back, then remove the whole stack.
+        f.click_input(&mut cursor, false);
+        f.click_input(&mut cursor, false);
+        assert!(f.input.is_none());
+        assert_eq!(f.cook, 0.0);
+        f.click_input(&mut cursor, false);
+        f.tick(0.2);
+        assert!(f.output.is_none());
+        assert!(f.cook < 1.0);
+    }
+}

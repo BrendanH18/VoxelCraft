@@ -1,5 +1,5 @@
-//! Survival health rules: fall damage, drowning, natural regeneration and
-//! death. Pure logic with no world or rendering access, so it is unit
+//! Survival health rules: fall damage, drowning, hunger, natural
+//! regeneration and death. Pure logic with no world or rendering access, so it is unit
 //! tested below; `Game` feeds it the player's surroundings every frame.
 
 /// 10 hearts, in half-heart units.
@@ -13,10 +13,28 @@ const DROWN_DAMAGE: f32 = 2.0;
 const DROWN_INTERVAL: f32 = 1.0;
 /// Damage per hit while in lava; hurt immunity spaces hits 0.5 s apart.
 const LAVA_DAMAGE: f32 = 4.0;
-/// Seconds without damage before health starts regenerating.
-const REGEN_DELAY: f32 = 4.0;
-/// Seconds per half heart regenerated.
-const REGEN_INTERVAL: f32 = 2.5;
+/// Full hunger bar, in half drumsticks.
+pub const MAX_FOOD: f32 = 20.0;
+/// Hunger and saturation of a fresh player (Minecraft's).
+const START_SATURATION: f32 = 5.0;
+/// Exhaustion that costs one point of saturation (or food).
+const EXHAUSTION_PER_POINT: f32 = 4.0;
+/// Health regenerates from this much food, and starvation hurts at zero.
+const REGEN_FOOD: f32 = 18.0;
+/// Seconds between natural regeneration (or starvation) ticks, and between
+/// the fast heals of a full, saturated bar.
+const FOOD_TICK: f32 = 4.0;
+const FAST_FOOD_TICK: f32 = 0.5;
+/// Sprinting needs more food than this.
+pub const SPRINT_FOOD: f32 = 6.0;
+/// Exhaustion per action (Minecraft's).
+pub const EXHAUST_SPRINT_PER_BLOCK: f32 = 0.1;
+pub const EXHAUST_SWIM_PER_BLOCK: f32 = 0.01;
+pub const EXHAUST_JUMP: f32 = 0.05;
+pub const EXHAUST_SPRINT_JUMP: f32 = 0.2;
+pub const EXHAUST_ATTACK: f32 = 0.1;
+pub const EXHAUST_DAMAGE: f32 = 0.1;
+pub const EXHAUST_MINE: f32 = 0.005;
 /// After a hit, further damage only applies the amount exceeding it for
 /// this long (Minecraft's 10-tick hurt immunity), so mobs hitting every
 /// frame do not stack.
@@ -27,6 +45,7 @@ const SAFE_FALL: f64 = 3.0;
 pub const CAUSE_FALL: &str = "fell from a high place";
 pub const CAUSE_DROWN: &str = "drowned";
 pub const CAUSE_LAVA: &str = "tried to swim in lava";
+pub const CAUSE_STARVE: &str = "starved to death";
 
 /// Damage for landing after falling `distance` blocks.
 pub fn fall_damage(distance: f64) -> f32 {
@@ -48,6 +67,11 @@ pub struct Env {
     pub head_in_water: bool,
     /// Body touching lava: burns.
     pub in_lava: bool,
+    /// Horizontal distance moved this frame, and whether sprinting /
+    /// jumping (hunger).
+    pub moved: f64,
+    pub sprinting: bool,
+    pub jumped: bool,
 }
 
 /// Damage produced by one [`Vitals::tick`]; the caller applies it through
@@ -57,6 +81,98 @@ pub struct Hurts {
     pub fall: f32,
     pub drown: f32,
     pub lava: f32,
+    pub starve: f32,
+}
+
+/// Minecraft's hunger: a food bar backed by a hidden saturation buffer that
+/// drains first, both worn down by exhaustion from activity.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hunger {
+    /// 0..=MAX_FOOD, in half drumsticks.
+    pub food: f32,
+    /// 0..=food.
+    pub saturation: f32,
+    /// Accumulated effort; every 4 points cost a point of saturation or food.
+    pub exhaustion: f32,
+    /// Counts up to the next regeneration or starvation tick.
+    timer: f32,
+}
+
+impl Default for Hunger {
+    fn default() -> Self {
+        Self { food: MAX_FOOD, saturation: START_SATURATION, exhaustion: 0.0, timer: 0.0 }
+    }
+}
+
+impl Hunger {
+    pub fn restore(food: f32, saturation: f32, exhaustion: f32) -> Self {
+        let food = food.clamp(0.0, MAX_FOOD);
+        Self {
+            food,
+            saturation: saturation.clamp(0.0, food),
+            exhaustion: exhaustion.clamp(0.0, EXHAUSTION_PER_POINT),
+            timer: 0.0,
+        }
+    }
+
+    pub fn exhaust(&mut self, amount: f32) {
+        self.exhaustion += amount;
+        while self.exhaustion >= EXHAUSTION_PER_POINT {
+            self.exhaustion -= EXHAUSTION_PER_POINT;
+            if self.saturation > 0.0 {
+                self.saturation = (self.saturation - 1.0).max(0.0);
+            } else {
+                self.food = (self.food - 1.0).max(0.0);
+            }
+        }
+    }
+
+    /// Whether eating would do anything (Minecraft won't let you eat full).
+    pub fn can_eat(&self) -> bool {
+        self.food < MAX_FOOD
+    }
+
+    pub fn eat(&mut self, food: u8, saturation: f32) {
+        self.food = (self.food + food as f32).min(MAX_FOOD);
+        self.saturation = (self.saturation + saturation).min(self.food);
+    }
+
+    pub fn can_sprint(&self) -> bool {
+        self.food > SPRINT_FOOD
+    }
+
+    /// Advances regeneration and starvation; returns (health healed,
+    /// starvation damage).
+    fn tick(&mut self, dt: f32, health: f32) -> (f32, f32) {
+        let hurt = health < MAX_HEALTH;
+        if self.food >= MAX_FOOD && self.saturation > 0.0 && hurt {
+            // Full and saturated: heal fast, paying in saturation.
+            self.timer += dt;
+            if self.timer >= FAST_FOOD_TICK {
+                self.timer = 0.0;
+                let spend = self.saturation.min(6.0);
+                self.exhaust(spend);
+                return (spend / 6.0, 0.0);
+            }
+        } else if self.food >= REGEN_FOOD && hurt {
+            self.timer += dt;
+            if self.timer >= FOOD_TICK {
+                self.timer = 0.0;
+                self.exhaust(6.0);
+                return (1.0, 0.0);
+            }
+        } else if self.food <= 0.0 {
+            self.timer += dt;
+            if self.timer >= FOOD_TICK {
+                self.timer = 0.0;
+                // Normal difficulty: starving stops at half a heart.
+                return (0.0, if health > 1.0 { 1.0 } else { 0.0 });
+            }
+        } else {
+            self.timer = 0.0;
+        }
+        (0.0, 0.0)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -65,10 +181,9 @@ pub struct Vitals {
     pub health: f32,
     /// Seconds of air left, 0..=MAX_AIR.
     pub air: f32,
-    /// Seconds since the last damage (drives the hurt flash and regen).
+    pub hunger: Hunger,
+    /// Seconds since the last damage (drives the hurt flash).
     since_damage: f32,
-    /// Counts down to the next regenerated half heart.
-    regen_timer: f32,
     drown_timer: f32,
     /// Damage of the hit that started the current immunity window.
     last_damage: f32,
@@ -84,8 +199,8 @@ impl Default for Vitals {
         Self {
             health: MAX_HEALTH,
             air: MAX_AIR,
+            hunger: Hunger::default(),
             since_damage: 1e3,
-            regen_timer: 0.0,
             drown_timer: 0.0,
             last_damage: 0.0,
             fall_peak: None,
@@ -97,13 +212,7 @@ impl Default for Vitals {
 impl Vitals {
     /// Restores saved values; zero health means the player died.
     pub fn restore(health: f32, air: f32, death: Option<String>) -> Self {
-        let mut v = Self {
-            health: health.clamp(0.0, MAX_HEALTH),
-            air: air.clamp(0.0, MAX_AIR),
-            // Reloading must not skip the regeneration delay.
-            regen_timer: REGEN_DELAY,
-            ..Self::default()
-        };
+        let mut v = Self { health: health.clamp(0.0, MAX_HEALTH), air: air.clamp(0.0, MAX_AIR), ..Self::default() };
         if v.health <= 0.0 {
             v.death = Some(death.unwrap_or_else(|| "died".into()));
         }
@@ -143,15 +252,16 @@ impl Vitals {
             amount
         };
         self.health = (self.health - taken).max(0.0);
-        self.regen_timer = REGEN_DELAY;
+        self.hunger.exhaust(EXHAUST_DAMAGE);
         if self.health <= 0.0 {
             self.death = Some(cause.to_string());
         }
         taken
     }
 
-    /// Advances air, regeneration and fall tracking by `dt` seconds and
-    /// returns fall/drowning/lava damage for the caller to apply.
+    /// Advances air, hunger, regeneration and fall tracking by `dt` seconds
+    /// and returns fall/drowning/lava/starvation damage for the caller to
+    /// apply.
     pub fn tick(&mut self, dt: f32, env: &Env, creative: bool) -> Hurts {
         let mut hurts = Hurts::default();
         self.since_damage = (self.since_damage + dt).min(1e3);
@@ -192,13 +302,23 @@ impl Vitals {
             hurts.lava = LAVA_DAMAGE;
         }
 
-        // Natural regeneration.
-        self.regen_timer -= dt;
-        if self.health >= MAX_HEALTH {
-            self.regen_timer = self.regen_timer.max(0.0);
-        } else if self.regen_timer <= 0.0 {
-            self.health = (self.health + 1.0).min(MAX_HEALTH);
-            self.regen_timer += REGEN_INTERVAL;
+        // Hunger: activity wears it down; it drives regeneration and starvation.
+        if !creative {
+            let h = &mut self.hunger;
+            let per_block = if env.in_water {
+                EXHAUST_SWIM_PER_BLOCK
+            } else if env.sprinting {
+                EXHAUST_SPRINT_PER_BLOCK
+            } else {
+                0.0
+            };
+            h.exhaust(env.moved as f32 * per_block);
+            if env.jumped {
+                h.exhaust(if env.sprinting { EXHAUST_SPRINT_JUMP } else { EXHAUST_JUMP });
+            }
+            let (heal, starve) = h.tick(dt, self.health);
+            self.health = (self.health + heal).min(MAX_HEALTH);
+            hurts.starve = starve;
         }
         hurts
     }
@@ -309,32 +429,85 @@ mod tests {
         assert_eq!(v.bubbles(), AIR_BUBBLES);
     }
 
+    /// Ticks `secs` of standing still.
+    fn wait(v: &mut Vitals, secs: f32) {
+        for _ in 0..(secs / DT) as usize {
+            v.tick(DT, &ground(0.0), false);
+        }
+    }
+
     #[test]
-    fn regen_after_delay() {
+    fn regeneration_runs_on_food() {
+        // Full and saturated: half a heart every 0.5 s, paid in saturation.
         let mut v = Vitals::default();
-        assert_eq!(v.damage(6.0, "test", false), 6.0);
+        v.damage(6.0, "test", false);
+        wait(&mut v, 1.1);
+        assert!(v.health >= 15.5, "fast regen: {}", v.health);
+        // Saturation gone, food 18-19: half a heart every 4 s.
+        let mut v = Vitals { hunger: Hunger::restore(18.0, 0.0, 0.0), ..Vitals::default() };
+        v.damage(6.0, "test", false);
+        wait(&mut v, 3.9);
         assert_eq!(v.health, 14.0);
-        let mut t = 0.0;
-        while t < REGEN_DELAY - 0.1 {
-            v.tick(DT, &ground(0.0), false);
-            t += DT;
-        }
-        assert_eq!(v.health, 14.0, "healed before the delay");
-        while t < REGEN_DELAY + 0.1 {
-            v.tick(DT, &ground(0.0), false);
-            t += DT;
-        }
+        wait(&mut v, 0.2);
         assert_eq!(v.health, 15.0);
-        while t < REGEN_DELAY + REGEN_INTERVAL * 2.0 + 0.1 {
-            v.tick(DT, &ground(0.0), false);
-            t += DT;
+        // Each heal costs 6 exhaustion, so healing eats into the bar.
+        wait(&mut v, 4.0 * 6.0);
+        assert!(v.hunger.food < 18.0 && v.hunger.food > 15.0, "food {}", v.hunger.food);
+        // Below 18 food there is no regeneration.
+        let healed = v.health;
+        wait(&mut v, 10.0);
+        assert_eq!(v.health, healed);
+    }
+
+    #[test]
+    fn exhaustion_drains_saturation_then_food() {
+        let mut h = Hunger::default();
+        h.exhaust(4.0 * 5.0);
+        assert_eq!((h.food, h.saturation), (MAX_FOOD, 0.0));
+        h.exhaust(4.0 * 3.0);
+        assert_eq!(h.food, 17.0);
+        // Sprinting 40 blocks costs one point (a little more, for rounding);
+        // walking costs nothing.
+        let mut v = Vitals { hunger: Hunger::restore(17.0, 0.0, 0.0), ..Vitals::default() };
+        let sprint = Env { on_ground: true, moved: 0.1, sprinting: true, ..Env::default() };
+        for _ in 0..410 {
+            v.tick(DT, &sprint, false);
         }
-        assert_eq!(v.health, 17.0);
-        // Never exceeds the maximum.
-        for _ in 0..(60.0 / DT) as usize {
-            v.tick(DT, &ground(0.0), false);
+        assert_eq!(v.hunger.food, 16.0);
+        let walk = Env { sprinting: false, ..sprint };
+        for _ in 0..4000 {
+            v.tick(DT, &walk, false);
         }
-        assert_eq!(v.health, MAX_HEALTH);
+        assert_eq!(v.hunger.food, 16.0);
+        assert!(!Hunger::restore(6.0, 0.0, 0.0).can_sprint() && Hunger::restore(7.0, 0.0, 0.0).can_sprint());
+    }
+
+    #[test]
+    fn eating_and_starving() {
+        let mut h = Hunger::restore(10.0, 0.0, 0.0);
+        h.eat(8, 12.8);
+        assert_eq!((h.food, h.saturation), (18.0, 12.8));
+        h.eat(8, 12.8);
+        assert_eq!((h.food, h.saturation), (MAX_FOOD, MAX_FOOD), "both capped");
+        assert!(!h.can_eat());
+
+        // An empty bar hurts every 4 s, down to half a heart.
+        let mut v = Vitals { hunger: Hunger::restore(0.0, 0.0, 0.0), ..Vitals::default() };
+        let mut taken = 0.0;
+        for _ in 0..(200.0 / DT) as usize {
+            let h = v.tick(DT, &ground(0.0), false);
+            taken += v.damage(h.starve, CAUSE_STARVE, false);
+        }
+        assert_eq!(v.health, 1.0);
+        assert_eq!(taken, 19.0);
+        assert!(!v.is_dead());
+        // Creative players don't get hungry.
+        let mut v = Vitals::default();
+        let sprint = Env { on_ground: true, moved: 1.0, sprinting: true, ..Env::default() };
+        for _ in 0..1000 {
+            v.tick(DT, &sprint, true);
+        }
+        assert_eq!(v.hunger, Hunger::default());
     }
 
     #[test]
@@ -418,6 +591,7 @@ mod tests {
                     in_water: player.in_water,
                     head_in_water: player.head_in_water(world),
                     in_lava: player.in_lava(world),
+                    ..Env::default()
                 };
                 let h = v.tick(DT, &env, false);
                 taken += v.damage(h.fall, CAUSE_FALL, false);
@@ -450,6 +624,7 @@ mod tests {
         v.respawn();
         assert!(!v.is_dead());
         assert_eq!((v.health, v.air), (MAX_HEALTH, MAX_AIR));
+        assert_eq!(v.hunger, Hunger::default());
 
         let restored = Vitals::restore(0.0, 3.0, None);
         assert!(restored.is_dead());

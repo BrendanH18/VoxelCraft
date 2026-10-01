@@ -38,6 +38,8 @@ pub struct Player {
     /// Creative mode: flight allowed.
     pub can_fly: bool,
     pub in_water: bool,
+    /// Jumped off the ground during the last `update` (hunger).
+    pub jumped: bool,
 }
 
 impl Player {
@@ -51,6 +53,7 @@ impl Player {
             flying: false,
             can_fly: false,
             in_water: false,
+            jumped: false,
         }
     }
 
@@ -108,6 +111,7 @@ impl Player {
         }
         let steps = (dt / MAX_STEP).ceil().max(1.0) as u32;
         let h = dt / steps as f64;
+        self.jumped = false;
         for _ in 0..steps {
             self.step(h, input, world);
         }
@@ -151,6 +155,7 @@ impl Player {
             self.vel.y = (self.vel.y - GRAVITY * dt).max(-78.0);
             if input.jump && self.on_ground {
                 self.vel.y = JUMP_VELOCITY;
+                self.jumped = true;
             }
         }
 

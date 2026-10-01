@@ -148,7 +148,7 @@ impl Game {
         self.keys.clear();
         self.left_held = false;
         self.right_held = false;
-        self.breaking = None;
+        self.actions.reset();
         self.release_attack();
     }
 

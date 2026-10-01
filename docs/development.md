@@ -56,7 +56,7 @@ cargo run --release -- --world screenshots --new --seed 42 --creative \
 
 For UI captures, add `--f3` for the debug overlay, `--open-inventory` for
 the inventory or `--open-menu pause|options` for the menus, and `--give iron_pickaxe --give coal,16` to fill it. In
-survival, `--health 5 --air 6` sets the vitals; `--health 0` opens the death
+survival, `--health 5 --air 6 --food 8` sets the vitals; `--health 0` opens the death
 screen. `cargo test --release icon_sheet -- --ignored` writes every item icon
 to `target/item_icons.png`.
 

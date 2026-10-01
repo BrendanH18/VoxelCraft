@@ -43,11 +43,14 @@ impl Stack {
 pub struct Inventory {
     pub slots: [Option<Stack>; SLOTS],
     pub cursor: Option<Stack>,
+    /// Container leftovers waiting for space, retained in saves until item
+    /// entities can represent them in the world.
+    pending_returns: Vec<Stack>,
 }
 
 impl Default for Inventory {
     fn default() -> Self {
-        Self { slots: [None; SLOTS], cursor: None }
+        Self { slots: [None; SLOTS], cursor: None, pending_returns: Vec::new() }
     }
 }
 
@@ -105,6 +108,19 @@ impl Inventory {
         Some(s.item)
     }
 
+    /// Wears the tool in `slot` by `uses`; returns `true` if that broke it
+    /// (the slot is then empty). Non-tools are untouched.
+    pub fn wear(&mut self, slot: usize, uses: u16) -> bool {
+        let Some(s) = &mut self.slots[slot] else { return false };
+        let Some(max) = s.item.durability() else { return false };
+        s.damage = s.damage.saturating_add(uses);
+        if s.damage >= max {
+            self.slots[slot] = None;
+            return true;
+        }
+        false
+    }
+
     pub fn find(&self, item: impl Into<Item>) -> Option<usize> {
         let item = item.into();
         self.slots.iter().position(|s| s.is_some_and(|s| s.item == item))
@@ -117,49 +133,92 @@ impl Inventory {
         click_slot(&mut self.slots[slot], &mut self.cursor, right);
     }
 
-    /// Puts the cursor stack back into the inventory (when the screen
-    /// closes). Anything that doesn't fit is lost.
-    pub fn return_cursor(&mut self) {
+    /// Returns the cursor and container leftovers, keeping anything that
+    /// doesn't fit until inventory space becomes available.
+    pub fn return_stacks(&mut self, stacks: impl IntoIterator<Item = Stack>) {
         if let Some(c) = self.cursor.take() {
-            self.add_stack(c);
+            self.pending_returns.push(c);
         }
+        self.pending_returns.extend(stacks);
+        self.retry_returns();
+    }
+
+    pub fn has_pending_returns(&self) -> bool {
+        !self.pending_returns.is_empty()
+    }
+
+    /// Item count, rather than stack count, for the inventory status.
+    pub fn pending_return_count(&self) -> usize {
+        self.pending_returns.iter().map(|stack| stack.count as usize).sum()
+    }
+
+    /// Retries only the stacks still waiting, preserving counts and wear.
+    pub fn retry_returns(&mut self) {
+        if self.pending_returns.is_empty() {
+            return;
+        }
+        let mut pending = std::mem::take(&mut self.pending_returns);
+        pending.retain_mut(|stack| {
+            stack.count = self.add_stack(*stack);
+            stack.count > 0
+        });
+        self.pending_returns = pending;
     }
 
     /// `id:count` (or `id:count:damage` for worn tools) per slot, `-` for
-    /// empty slots, comma separated.
+    /// empty slots, comma separated. An optional `|` suffix holds pending
+    /// container returns; old saves without it still load.
     pub fn serialize(&self) -> String {
-        self.slots
-            .iter()
-            .map(|s| match s {
-                None => "-".to_string(),
-                Some(s) if s.damage > 0 => format!("{}:{}:{}", s.item.0, s.count, s.damage),
-                Some(s) => format!("{}:{}", s.item.0, s.count),
-            })
-            .collect::<Vec<_>>()
-            .join(",")
+        let mut text = self.slots.iter().map(|&s| stack_to_string(s)).collect::<Vec<_>>().join(",");
+        if self.has_pending_returns() {
+            text.push('|');
+            text.push_str(
+                &self.pending_returns.iter().map(|&s| stack_to_string(Some(s))).collect::<Vec<_>>().join(","),
+            );
+        }
+        text
     }
 
     pub fn deserialize(text: &str) -> Option<Self> {
         let mut inv = Self::default();
-        let parts: Vec<&str> = text.trim().split(',').collect();
+        let (slots, returns) = text.trim().split_once('|').unwrap_or((text.trim(), ""));
+        let parts: Vec<&str> = slots.split(',').collect();
         if parts.len() != SLOTS {
             return None;
         }
         for (slot, part) in inv.slots.iter_mut().zip(parts) {
-            if part != "-" {
-                let mut fields = part.split(':');
-                let id: u16 = fields.next()?.parse().ok()?;
-                let count: u8 = fields.next()?.parse().ok()?;
-                let damage: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
-                let item = Item(id);
-                // Unknown ids (e.g. from a newer version) are dropped.
-                if count > 0 && item.is_valid() {
-                    *slot = Some(Stack { item, count: count.min(item.max_stack()), damage });
-                }
+            *slot = stack_from_str(part)?;
+        }
+        for part in returns.split(',').filter(|s| !s.is_empty()) {
+            if let Some(stack) = stack_from_str(part)? {
+                inv.pending_returns.push(stack);
             }
         }
         Some(inv)
     }
+}
+
+/// `id:count` (or `id:count:damage` for worn tools), or `-` for nothing.
+pub fn stack_to_string(stack: Option<Stack>) -> String {
+    match stack {
+        None => "-".to_string(),
+        Some(s) if s.damage > 0 => format!("{}:{}:{}", s.item.0, s.count, s.damage),
+        Some(s) => format!("{}:{}", s.item.0, s.count),
+    }
+}
+
+/// Parses [`stack_to_string`]'s format; `None` if malformed. Unknown item
+/// ids (e.g. from a newer version) read as an empty slot.
+pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
+    if text == "-" {
+        return Some(None);
+    }
+    let mut fields = text.split(':');
+    let id: u16 = fields.next()?.parse().ok()?;
+    let count: u8 = fields.next()?.parse().ok()?;
+    let damage: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
+    let item = Item(id);
+    Some((count > 0 && item.is_valid()).then(|| Stack { item, count: count.min(item.max_stack()), damage }))
 }
 
 /// Minecraft-style click on one slot with the cursor stack; shared by every
@@ -290,5 +349,47 @@ mod tests {
         assert_eq!(inv.get(0), Some(sword));
         assert!((sword.wear().unwrap() - (1.0 - 30.0 / 59.0)).abs() < 1e-6);
         assert_eq!(Stack::new(Item::COAL, 1).wear(), None);
+    }
+
+    #[test]
+    fn tools_wear_out_and_break() {
+        use crate::item::{Tier, ToolKind};
+        let pick = Item::tool(ToolKind::Pickaxe, Tier::Wood);
+        let mut inv = Inventory::with_hotbar(&[pick, Item::STICK]);
+        for _ in 0..58 {
+            assert!(!inv.wear(0, 1));
+        }
+        assert_eq!(inv.get(0).unwrap().damage, 58);
+        assert!(inv.wear(0, 1), "59 uses breaks a wooden pickaxe");
+        assert_eq!(inv.get(0), None);
+        assert!(!inv.wear(1, 1) && inv.get(1).unwrap().damage == 0, "sticks don't wear");
+    }
+
+    #[test]
+    fn partial_cursor_returns_and_worn_tools_survive_a_full_inventory_and_save() {
+        let mut inv = Inventory::default();
+        inv.slots.fill(Some(Stack::new(Block::STONE, 64)));
+        inv.slots[0] = Some(Stack::new(Block::LOG, 63));
+        inv.cursor = Some(Stack::new(Block::LOG, 10));
+        let sword = Stack { damage: 30, ..Stack::new(Item::tool(ToolKind::Sword, Tier::Wood), 1) };
+        inv.return_stacks([sword]);
+        assert!(inv.cursor.is_none());
+        assert_eq!(inv.get(0), Some(Stack::new(Block::LOG, 64)));
+        assert_eq!(inv.pending_returns, vec![Stack::new(Block::LOG, 9), sword]);
+        assert_eq!(inv.pending_return_count(), 10);
+
+        let mut restored = Inventory::deserialize(&inv.serialize()).unwrap();
+        assert_eq!(restored, inv);
+        restored.retry_returns();
+        assert_eq!(restored, inv, "retrying a full inventory cannot lose or duplicate items");
+        restored.slots[1] = None;
+        restored.slots[2] = None;
+        restored.retry_returns();
+        assert_eq!(restored.get(1), Some(Stack::new(Block::LOG, 9)));
+        assert_eq!(restored.get(2), Some(sword));
+        assert!(!restored.has_pending_returns());
+        assert_eq!(restored.pending_return_count(), 0);
+        restored.retry_returns();
+        assert_eq!(restored.get(1), Some(Stack::new(Block::LOG, 9)));
     }
 }

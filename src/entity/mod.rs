@@ -36,8 +36,7 @@ pub const DESPAWN_DIST: f64 = 96.0;
 /// Hostile mobs only spawn when it's darker than this.
 pub const HOSTILE_SPAWN_DAYLIGHT: f32 = 0.35;
 const SPAWN_INTERVAL: f32 = 0.25;
-/// Player melee: damage range and cooldown between hits.
-pub const ATTACK_DAMAGE: (f32, f32) = (2.0, 4.0);
+/// Player melee: cooldown between hits.
 pub const ATTACK_COOLDOWN: f64 = 0.5;
 
 /// Sounds entities make (the game maps them to audio).
@@ -334,10 +333,9 @@ impl Entities {
             .min_by(|a, b| a.1.total_cmp(&b.1))
     }
 
-    /// Player melee hit on mob `index`, pushed along `dir`. Returns the
-    /// kind of mob if this killed it.
-    pub fn attack(&mut self, index: usize, dir: DVec3) -> Option<MobKind> {
-        let damage = self.rng.range(ATTACK_DAMAGE.0, ATTACK_DAMAGE.1 + 0.999).floor();
+    /// Player melee hit for `damage` on mob `index`, pushed along `dir`.
+    /// Returns the kind of mob if this killed it.
+    pub fn attack(&mut self, index: usize, dir: DVec3, damage: f32) -> Option<MobKind> {
         let flat = DVec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
         let knockback = flat * 6.0 + DVec3::Y * 5.0;
         let mob = self.mobs.get_mut(index)?;
@@ -555,10 +553,10 @@ mod tests {
         assert!(e.raycast(eye, DVec3::X, 2.0).is_none(), "out of reach");
         assert!(e.raycast(eye, DVec3::NEG_X, 6.0).is_none());
 
-        // Pigs have 10 HP and hits do 2-4: dead within five hits.
-        let killed = (0..5).any(|_| {
+        // Pigs have 10 HP: three hits with a wooden sword (4 each).
+        let killed = (0..3).any(|_| {
             e.mobs[1].hurt = 0.0;
-            e.attack(1, DVec3::X).is_some()
+            e.attack(1, DVec3::X, 4.0).is_some()
         });
         assert!(killed && !e.mobs[1].alive());
         assert!(e.mobs[1].vel.x > 0.0, "knocked back along the hit");

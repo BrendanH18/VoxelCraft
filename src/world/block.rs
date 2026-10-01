@@ -3,7 +3,7 @@
 //! Block properties live in a 256-entry static table so hot loops (meshing,
 //! physics) resolve them with a single indexed load instead of a `match`.
 
-use crate::item::Item;
+use crate::item::{Item, ToolKind};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 #[repr(transparent)]
@@ -82,6 +82,15 @@ pub mod tex {
     pub const LAVA: u8 = 46;
     pub const OBSIDIAN: u8 = 47;
     pub const WOOL: u8 = 48;
+    pub const TABLE_TOP: u8 = 49;
+    pub const TABLE_SIDE: u8 = 50;
+    pub const FURNACE_FRONT: u8 = 51;
+    pub const FURNACE_LIT: u8 = 52;
+    pub const FURNACE_TOP: u8 = 53;
+    // Hunger bar icons.
+    pub const FOOD_FULL: u8 = 54;
+    pub const FOOD_HALF: u8 = 55;
+    pub const FOOD_EMPTY: u8 = 56;
     /// Flat item icons (see `item::Item::icon_layer`), up to 64 of them.
     pub const ITEM_0: u8 = 96;
     pub const COUNT: u32 = 160;
@@ -124,6 +133,10 @@ impl Block {
     pub const FALLING_LAVA: Block = Block(41);
     pub const OBSIDIAN: Block = Block(42);
     pub const WOOL: Block = Block(43);
+    pub const CRAFTING_TABLE: Block = Block(44);
+    pub const FURNACE: Block = Block(45);
+    /// A burning furnace: glows, and breaks into a plain furnace.
+    pub const LIT_FURNACE: Block = Block(46);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -212,37 +225,80 @@ impl Block {
             Block::COAL_ORE => Some(Item::COAL),
             Block::DIAMOND_ORE => Some(Item::DIAMOND),
             Block::DEAD_BUSH => Some(Item::STICK),
+            Block::LIT_FURNACE => Some(Block::FURNACE.into()),
             Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK | Block::TALL_GRASS => None,
             b if b.is_fluid() || b == Block::AIR => None,
             b => Some(b.into()),
         }
     }
 
-    /// Seconds to break by hand in survival (infinite for unbreakable).
-    pub fn break_time(self) -> f32 {
+    /// Minecraft's hardness: mining takes 1.5x this many seconds when the
+    /// held item can harvest the block and 5x when it can't, divided by the
+    /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
+    pub fn hardness(self) -> f32 {
         match self {
             b if b.kind() == RenderKind::Cross => 0.0,
-            Block::LEAVES | Block::SPRUCE_LEAVES | Block::SNOW => 0.25,
-            Block::WOOL => 0.4,
-            Block::GLASS | Block::GLOWSTONE => 0.35,
-            Block::CACTUS => 0.45,
-            Block::DIRT | Block::SAND => 0.55,
-            Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL => 0.65,
-            Block::SANDSTONE => 1.2,
-            Block::LOG | Block::PLANKS => 1.5,
-            Block::STONE | Block::COBBLESTONE | Block::BRICKS => 2.0,
-            Block::COAL_ORE | Block::IRON_ORE => 2.5,
-            Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
-            Block::OBSIDIAN => 15.0,
+            Block::LEAVES | Block::SPRUCE_LEAVES | Block::SNOW => 0.2,
+            Block::GLASS | Block::GLOWSTONE => 0.3,
+            Block::CACTUS => 0.4,
+            Block::DIRT | Block::SAND => 0.5,
+            Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL => 0.6,
+            Block::SANDSTONE | Block::WOOL => 0.8,
+            Block::STONE => 1.5,
+            Block::LOG | Block::PLANKS | Block::COBBLESTONE | Block::BRICKS => 2.0,
+            Block::CRAFTING_TABLE => 2.5,
+            Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
+            Block::FURNACE | Block::LIT_FURNACE => 3.5,
+            Block::OBSIDIAN => 50.0,
             Block::BEDROCK | Block::AIR => f32::INFINITY,
             b if b.is_fluid() => f32::INFINITY,
             _ => 1.0,
         }
     }
 
+    /// The tool kind that mines this block faster.
+    pub fn best_tool(self) -> Option<ToolKind> {
+        match self {
+            Block::STONE
+            | Block::COBBLESTONE
+            | Block::BRICKS
+            | Block::SANDSTONE
+            | Block::COAL_ORE
+            | Block::IRON_ORE
+            | Block::GOLD_ORE
+            | Block::DIAMOND_ORE
+            | Block::OBSIDIAN
+            | Block::FURNACE
+            | Block::LIT_FURNACE => Some(ToolKind::Pickaxe),
+            Block::DIRT | Block::GRASS | Block::SNOWY_GRASS | Block::SAND | Block::GRAVEL | Block::SNOW => {
+                Some(ToolKind::Shovel)
+            }
+            Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE => Some(ToolKind::Axe),
+            _ => None,
+        }
+    }
+
+    /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
+    /// 2 iron, 3 diamond); `None` if a bare hand will do.
+    pub fn harvest_level(self) -> Option<u8> {
+        match self {
+            Block::STONE
+            | Block::COBBLESTONE
+            | Block::BRICKS
+            | Block::SANDSTONE
+            | Block::COAL_ORE
+            | Block::FURNACE
+            | Block::LIT_FURNACE => Some(0),
+            Block::IRON_ORE => Some(1),
+            Block::GOLD_ORE | Block::DIAMOND_ORE => Some(2),
+            Block::OBSIDIAN => Some(3),
+            _ => None,
+        }
+    }
+
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).chain(32..=37).chain(42..=43).map(Block)
+        (1..=23u8).chain(32..=37).chain(42..=45).map(Block)
     }
 
     /// Blocks that placing another block overwrites (air, fluids, grass).
@@ -305,6 +361,7 @@ impl Block {
         match self {
             Block::GLOWSTONE => 15,
             Block::TORCH => 14,
+            Block::LIT_FURNACE => 13,
             b if b.is_lava() => 15,
             _ => 0,
         }
@@ -397,6 +454,9 @@ const fn make(id: u8) -> BlockInfo {
         41 => ("falling lava", Translucent, all(tex::LAVA)),
         42 => ("obsidian", Opaque, all(tex::OBSIDIAN)),
         43 => ("wool", Opaque, all(tex::WOOL)),
+        44 => ("crafting table", Opaque, column(tex::TABLE_SIDE, tex::TABLE_TOP, tex::PLANKS)),
+        45 => ("furnace", Opaque, column(tex::FURNACE_FRONT, tex::FURNACE_TOP, tex::FURNACE_TOP)),
+        46 => ("lit furnace", Opaque, column(tex::FURNACE_LIT, tex::FURNACE_TOP, tex::FURNACE_TOP)),
         _ => ("unknown", Invisible, all(0)),
     };
     BlockInfo { name, kind, solid: matches!(kind, Opaque | Cutout), self_cull: id == 5 || id == 10, tex }
@@ -447,7 +507,7 @@ mod tests {
             assert_eq!(b.kind(), RenderKind::Cross, "{}", b.name());
             assert!(!b.is_solid() && !b.is_opaque() && b.is_targetable());
             assert_eq!(b.light_opacity(), 0);
-            assert_eq!(b.break_time(), 0.0);
+            assert_eq!(b.hardness(), 0.0);
             assert!(Block::creative_palette().any(|p| p == b));
         }
         assert!(!Block::WATER.is_targetable() && !Block::AIR.is_targetable());
@@ -479,7 +539,7 @@ mod tests {
         }
         assert!(Block::LAVA.is_lava() && !Block::LAVA.is_water());
         assert_eq!(Block::flowing_lava(2).emission(), 15);
-        assert!(Block::OBSIDIAN.is_opaque() && Block::OBSIDIAN.break_time() > Block::STONE.break_time());
+        assert!(Block::OBSIDIAN.is_opaque() && Block::OBSIDIAN.hardness() > Block::STONE.hardness());
         assert_eq!(Block::LAVA.drop(), None);
     }
 }
