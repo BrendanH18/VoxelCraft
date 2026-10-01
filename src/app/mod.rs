@@ -1,6 +1,7 @@
 //! Window, input and the per-frame game loop.
 
 mod actions;
+mod containers;
 mod hud;
 mod items;
 mod menu;
@@ -72,6 +73,7 @@ pub(crate) enum Container {
     Inventory,
     CraftingTable,
     Furnace(IVec3),
+    Chest(IVec3),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -95,6 +97,8 @@ struct Game {
     player: Player,
     storage: Storage,
     keys: FxHashSet<KeyCode>,
+    /// Shift / Ctrl state (shift-click, Ctrl+Q, sneak-placing).
+    modifiers: winit::keyboard::ModifiersState,
     mouse_grabbed: bool,
     left_held: bool,
     right_held: bool,
@@ -271,6 +275,9 @@ impl ApplicationHandler for App {
         if let Some(f) = existing.as_ref().and_then(|l| l.props.get("furnaces")) {
             world.load_furnaces(f);
         }
+        if let Some(c) = existing.as_ref().and_then(|l| l.props.get("chests")) {
+            world.load_chests(c);
+        }
         log::info!("{} worker threads", world.worker_threads());
 
         let now = Instant::now();
@@ -280,6 +287,7 @@ impl ApplicationHandler for App {
             player,
             storage,
             keys: FxHashSet::default(),
+            modifiers: Default::default(),
             mouse_grabbed: false,
             left_held: false,
             right_held: false,
@@ -351,6 +359,7 @@ impl ApplicationHandler for App {
                 game.menu_cursor_moved();
             }
             WindowEvent::Focused(true) => game.had_focus = true,
+            WindowEvent::ModifiersChanged(m) => game.modifiers = m.state(),
             WindowEvent::Focused(false) => {
                 // Like Minecraft: switching away pauses (not in scripted runs).
                 if game.had_focus && game.settings_path.is_some() && game.menu.is_none() && !game.vitals.is_dead() {
@@ -531,10 +540,7 @@ impl Game {
             KeyCode::Escape if self.inventory_open => self.toggle_inventory(),
             KeyCode::Escape => self.open_menu(),
             KeyCode::KeyE => self.toggle_inventory(),
-            KeyCode::KeyQ => {
-                let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
-                self.drop_selected(ctrl);
-            }
+            KeyCode::KeyQ => self.drop_selected(self.modifiers.control_key()),
             KeyCode::KeyG => {
                 let mode = match self.mode {
                     GameMode::Survival => GameMode::Creative,
@@ -674,6 +680,9 @@ impl Game {
             self.right_held = false;
             self.actions.reset();
         } else {
+            if let Container::Chest(pos) = self.container {
+                self.chest_sound(pos, 0.8);
+            }
             self.inventory.return_stacks(self.craft.take_all());
             self.craft = crate::crafting::Grid::new(2);
             self.container = Container::Inventory;
@@ -758,12 +767,25 @@ impl Game {
         if slot.is_some() {
             self.audio.ui_click();
         }
+        if self.modifiers.shift_key() && self.inventory.cursor.is_none() {
+            if let Some(slot) = slot {
+                self.quick_move(slot);
+            }
+            return;
+        }
         match slot {
             Some(hud::SlotRef::Inventory(i)) => self.inventory.click(i, right),
             Some(hud::SlotRef::Craft(i)) => {
                 crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
             }
             Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
+            Some(hud::SlotRef::Chest(i)) => {
+                if let Container::Chest(pos) = self.container
+                    && let Some(chest) = self.world.chest_mut(pos)
+                {
+                    crate::inventory::click_slot(&mut chest.slots[i], &mut self.inventory.cursor, right);
+                }
+            }
             Some(s @ (hud::SlotRef::FurnaceInput | hud::SlotRef::FurnaceFuel | hud::SlotRef::FurnaceOutput)) => {
                 if let Container::Furnace(pos) = self.container {
                     self.furnace_click(pos, s, right);
@@ -883,14 +905,19 @@ impl Game {
 
     fn place_block(&mut self) {
         let Some((pos, normal)) = self.target() else { return };
+        // Containers open on right-click; holding Shift builds against them.
         match self.world.get_block(pos) {
+            _ if self.modifiers.shift_key() => {}
             Some(Block::CRAFTING_TABLE) => return self.open_crafting_table(),
             Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
+            Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
             _ => {}
         }
         // Clicking tall grass replaces it instead of building against it.
         let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
         let Some(block) = self.inventory.get(self.actions.selected).and_then(|s| s.item.block()) else { return };
+        // Furnaces and chests face whoever places them.
+        let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
         let supported = self.world.get_block(at - glam::IVec3::Y).is_some_and(|below| block.can_stay_on(below));
         if free
@@ -907,6 +934,10 @@ impl Game {
 
     fn pick_block(&mut self) {
         let Some(b) = self.target().and_then(|(pos, _)| self.world.get_block(pos)) else { return };
+        let b = match b.base() {
+            Block::LIT_FURNACE => Block::FURNACE,
+            b => b,
+        };
         match self.inventory.find(b) {
             Some(i) if i < HOTBAR_SLOTS => self.select(i),
             Some(i) => {
@@ -1031,6 +1062,7 @@ impl Game {
             props.insert("death".to_string(), cause.clone());
         }
         props.insert("furnaces".to_string(), self.world.furnaces_to_string());
+        props.insert("chests".to_string(), self.world.chests_to_string());
         props.insert("items".to_string(), self.mobs.entities.items_to_string());
         let level = LevelInfo {
             seed: self.world.generator.seed,

@@ -32,9 +32,9 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
   mountains, oceans, caves, ores, and trees.
 - **Two ways to play.** Build freely in creative, or play survival with timed
   mining, block drops, a stackable inventory, health, hunger, and respawning.
-- **Craft and cook.** Make tools in five tiers, craft torches and building
-  blocks, smelt ores, and cook food in furnaces. Tools wear out; food restores
-  hunger and supports natural healing.
+- **Craft, cook and store.** Make tools in five tiers, craft torches and
+  building blocks, smelt ores and cook food in furnaces, and keep your haul in
+  chests. Tools wear out; food restores hunger and supports natural healing.
 - **A world that moves.** Flowing water and lava, falling sand, a day/night
   cycle, drifting clouds, herds of animals, and zombies, skeletons, creepers
   and spiders that come out at night.
@@ -43,8 +43,7 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
 - **Built for speed.** Parallel chunk generation, greedy meshing, compact GPU
   quad records, and a shared mesh arena keep the world streaming around you.
 
-VoxelCraft is an early sandbox project. Furnaces currently have no facing
-direction. See the [gameplay guide](docs/gameplay.md) for the survival
+VoxelCraft is an early sandbox project. See the [gameplay guide](docs/gameplay.md) for the survival
 rules and available recipes.
 
 ## Play
@@ -91,7 +90,8 @@ and replaces it when saving, so choose a new `--world` name to keep an old world
 
 Click the window to capture the mouse. Move with **W A S D**, look with the
 mouse, and press **Space** to jump. **Left click** breaks blocks or attacks mobs;
-**right click** places blocks or opens a crafting table or furnace. Press **E**
+**right click** places blocks or opens a crafting table, furnace or chest
+(hold **Shift** to build against one instead). Press **E**
 for inventory and its 2×2 crafting grid in survival, and **G** to switch modes.
 
 For a new survival world:
@@ -128,6 +128,7 @@ bar appears below the crosshair while you hold right-click with food.
 | 1–9 or scroll wheel | Select hotbar slot |
 | Middle click | Pick block |
 | Q / Ctrl+Q | Drop one item / the whole stack |
+| Shift + click | Move a stack between a container and the inventory, or craft as many as fit |
 | F or double-tap Space | Toggle flight in creative |
 | Space / Left Shift | Fly up / down |
 | `[` / `]` | Decrease / increase view distance |

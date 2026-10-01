@@ -213,6 +213,30 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
     Some((count > 0 && item.is_valid()).then(|| Stack { item, count: count.min(item.max_stack()), damage }))
 }
 
+/// Moves as much of `stack` as fits into `slots`, visiting them in
+/// `order`: onto matching stacks first, then into empty slots (shift-click).
+/// Returns what's left.
+pub fn move_into(stack: Stack, slots: &mut [Option<Stack>], order: &[usize]) -> Option<Stack> {
+    let mut count = stack.count;
+    for &i in order {
+        if let Some(s) = &mut slots[i]
+            && s.stacks_with(&stack)
+        {
+            let n = count.min(s.max().saturating_sub(s.count));
+            s.count += n;
+            count -= n;
+        }
+    }
+    for &i in order {
+        if count > 0 && slots[i].is_none() {
+            let n = count.min(stack.max());
+            slots[i] = Some(Stack { count: n, ..stack });
+            count -= n;
+        }
+    }
+    stack.with_count(count)
+}
+
 /// Minecraft-style click on one slot with the cursor stack; shared by every
 /// container screen. Left click picks up, places, merges or swaps whole
 /// stacks; right click picks up half or places a single item.
@@ -374,6 +398,16 @@ mod tests {
         assert_eq!(restored.take_spill(), vec![Stack::new(Block::LOG, 9), sword]);
         assert!(restored.take_spill().is_empty());
         assert!(!restored.serialize().contains('|'));
+    }
+
+    #[test]
+    fn move_into_tops_up_stacks_before_filling_gaps_in_order() {
+        let mut slots = [None, Some(Stack::new(Block::DIRT, 60)), None, Some(Stack::new(Block::DIRT, 10))];
+        let left = move_into(Stack::new(Block::DIRT, 64), &mut slots, &[3, 2, 1, 0]);
+        assert_eq!(left, None);
+        assert_eq!(slots.map(|s| s.map_or(0, |s| s.count)), [0, 64, 6, 64]);
+        let left = move_into(Stack::new(Block::DIRT, 64), &mut slots, &[1, 3]);
+        assert_eq!(left, Some(Stack::new(Block::DIRT, 64)), "nowhere to go");
     }
 
     #[test]

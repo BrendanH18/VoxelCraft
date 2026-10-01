@@ -250,6 +250,27 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             }
         }
         tex::FURNACE_TOP => noisy(layer, x, y, [118, 118, 118], 0.1),
+        tex::FURNACE_SIDE => {
+            // Smooth stone with a darker band at the top and bottom.
+            let band = !(2..SIZE - 2).contains(&y);
+            noisy(layer, x, y, if band { [96, 96, 96] } else { [128, 128, 128] }, 0.08)
+        }
+        tex::CHEST_TOP | tex::CHEST_SIDE | tex::CHEST_FRONT => {
+            // Planks in a dark frame; sides have the lid seam, the front a latch.
+            let edge = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+            let seam = layer != tex::CHEST_TOP && (y == 5 || y == 6);
+            let latch = layer == tex::CHEST_FRONT && (7..9).contains(&x) && (4..9).contains(&y);
+            let board = y / 4;
+            if latch {
+                let rim = x == 7 && y == 4 || y == 8;
+                shade([196, 196, 204], if rim { 0.7 } else { 1.0 + r * 0.1 })
+            } else if edge || seam {
+                shade([76, 52, 30], 0.85 + r * 0.15)
+            } else {
+                let grain = if (x + board * 5).is_multiple_of(7) { 0.8 } else { 0.95 + rnd(layer, x, board, 2) * 0.1 };
+                shade([170, 120, 60], grain)
+            }
+        }
         tex::FURNACE_FRONT | tex::FURNACE_LIT => {
             // Cobbled face with a dark mouth; a lit furnace shows flames in it.
             let mouth = (4..12).contains(&x) && (8..14).contains(&y);

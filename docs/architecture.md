@@ -60,6 +60,7 @@ src/
     survival.rs      health, hunger, exhaustion, regeneration (unit tested)
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
     items.rs         dropped items: spawning, pickup, throwing, death drops
+    containers.rs    chest screens and shift-click quick moves
   inventory.rs       inventory slots, stacking, saved container overflow
   crafting.rs        crafting grids and recipes
   mining.rs          mining speed, harvest rules, tool wear, melee damage
@@ -86,6 +87,7 @@ src/
     fluid.rs         water and lava flow simulation
     falling.rs       falling sand/gravel, edit settling, explosion craters
     furnace.rs       furnace contents, smelting and fuel
+    chest.rs         chest contents
     chunk.rs         chunk storage
     block.rs         block registry
     terrain.rs       world generation

@@ -16,8 +16,8 @@ const DRAW_DIST: f64 = 64.0;
 
 impl Game {
     /// Spawns what the world dropped and what didn't fit in the inventory,
-    /// then picks up items the player is touching. Closes a furnace screen
-    /// whose furnace is gone.
+    /// then picks up items the player is touching. Closes a furnace or chest
+    /// screen whose block is gone.
     pub(super) fn update_items(&mut self) {
         for (cell, stack) in std::mem::take(&mut self.world.drops) {
             self.mobs.entities.drop_from_block(stack, cell);
@@ -28,10 +28,12 @@ impl Game {
         if !self.vitals.is_dead() {
             self.pick_up_items();
         }
-        if let Container::Furnace(pos) = self.container
-            && self.inventory_open
-            && self.world.furnace(pos).is_none()
-        {
+        let gone = match self.container {
+            Container::Furnace(pos) => self.world.furnace(pos).is_none(),
+            Container::Chest(pos) => self.world.chest(pos).is_none(),
+            _ => false,
+        };
+        if gone && self.inventory_open {
             self.toggle_inventory();
         }
     }

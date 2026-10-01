@@ -16,6 +16,8 @@
 | Middle click | Pick block |
 | Q / Ctrl+Q | Drop one of the selected item / the whole stack (with the inventory open: from the slot under the mouse) |
 | E | Inventory (click to move stacks; creative shows the block palette) |
+| Shift + click | In the inventory: move a stack between the open chest or furnace and the inventory (or between hotbar and main grid); on a crafting result, craft as many as fit |
+| Shift + right click | Build against a crafting table, furnace or chest instead of opening it |
 | G | Toggle survival / creative |
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
@@ -82,7 +84,8 @@ session.
   for names and alternatives, then copy the preview into your crafting grid.
   On narrower windows, Back closes the recipe overlay so you can craft.
   Recipes: planks (from a log),
-  sticks, crafting table, torches (coal or charcoal over a stick),
+  sticks, crafting table, chest (8 planks in a ring), torches (coal or
+  charcoal over a stick),
   sandstone, wool (from string), arrows, and pickaxes, shovels, axes,
   hoes and swords in wood, stone, iron, gold and diamond
 - Tools follow Minecraft's mining rules: a block takes its hardness x 1.5
@@ -98,7 +101,7 @@ session.
   pickaxes and shovels less
 - Furnaces (8 cobblestone in a ring): right-click to open; put something
   to smelt on top and fuel below. Each item takes 10 s; coal and charcoal
-  burn 80 s, logs, planks and crafting tables 15 s, wooden tools 10 s and
+  burn 80 s, logs, planks, crafting tables and chests 15 s, wooden tools 10 s and
   sticks 5 s. Smelts iron and gold ore into ingots, sand into glass,
   cobblestone into stone, logs into charcoal and raw meat into cooked
   meat. A burning furnace glows (light 13), keeps smelting with its
@@ -126,6 +129,9 @@ session.
   bar shows on the right above the hotbar, with air bubbles above it.
   Creative players don't get hungry. Hunger is saved with the world
 - Break, place and pick blocks, with a selection outline and hotbar
+- Chests (8 planks in a ring): right-click to open 27 slots of storage
+  above your inventory. Their contents are saved with the world and drop
+  when the chest is broken. Chests and furnaces face you when placed
 - Dropped items, like Minecraft's: mined blocks, mob loot, furnace
   contents, plants that pop off or wash away, and a third of what an
   explosion destroys drop as small spinning blocks or item icons (extra

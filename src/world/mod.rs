@@ -13,6 +13,7 @@
 //! light-blocking block, which seeds skylight in mesh jobs.
 
 pub mod block;
+pub mod chest;
 pub mod chunk;
 pub mod falling;
 mod fluid;
@@ -67,6 +68,8 @@ pub struct World {
     falling: Vec<falling::FallingBlock>,
     /// Furnace contents by position (see [`furnace`]).
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
+    /// Chest contents by position (see [`chest`]).
+    chests: FxHashMap<IVec3, chest::Chest>,
     /// Items the world let go of (mined blocks, container contents, plants
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
@@ -98,6 +101,7 @@ impl World {
             fluids: Default::default(),
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
+            chests: FxHashMap::default(),
             drops: Vec::new(),
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -221,6 +225,7 @@ impl World {
         Arc::make_mut(&mut slot.data).set(l.x as usize, l.y as usize, l.z as usize, block);
         slot.modified = true;
         self.track_furnace(p, old, block);
+        self.track_chest(p, old, block);
 
         // Keep the column heightmap current.
         let (old_h, new_h) = self.update_height(p, block);
@@ -841,17 +846,39 @@ mod tests {
     }
 
     #[test]
+    fn chests_keep_their_contents_save_and_spill() {
+        use crate::inventory::Stack;
+        use crate::item::Item;
+        use block::Facing;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let p = IVec3::new(0, 200, 0);
+        world.set_block(p, Block::CHEST.with_facing(Facing::East));
+        world.chest_mut(p).expect("placing a chest creates its contents").slots[4] = Some(Stack::new(Item::COAL, 7));
+        world.chest_mut(p).unwrap().slots[26] = Some(Stack::new(Block::DIRT, 64));
+
+        let mut other = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        other.load_chests(&world.chests_to_string());
+        assert_eq!(other.chest(p), world.chest(p));
+
+        world.set_block(p, Block::AIR);
+        assert!(world.chest(p).is_none());
+        let spilled: Vec<_> = world.drops.iter().map(|&(_, s)| s).collect();
+        assert_eq!(spilled, [Stack::new(Item::COAL, 7), Stack::new(Block::DIRT, 64)]);
+    }
+
+    #[test]
     fn furnaces_light_up_smelt_save_and_spill() {
         use crate::inventory::Stack;
         use crate::item::Item;
         let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
         let p = IVec3::new(0, 200, 0);
-        world.set_block(p, Block::FURNACE);
+        world.set_block(p, Block::FURNACE.with_facing(block::Facing::West));
         let f = world.furnace_mut(p).expect("placing a furnace creates its contents");
         f.input = Some(Stack::new(Block::SAND, 4));
         f.fuel = Some(Stack::new(Item::COAL, 1));
         world.tick_furnaces(0.1);
-        assert_eq!(world.get_block(p), Some(Block::LIT_FURNACE), "burning furnaces glow");
+        let lit = Block::LIT_FURNACE.with_facing(block::Facing::West);
+        assert_eq!(world.get_block(p), Some(lit), "burning furnaces glow, facing the same way");
         for _ in 0..21 {
             world.tick_furnaces(1.0);
         }
