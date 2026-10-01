@@ -8,7 +8,7 @@ struct Globals {
     zenith_color: vec4<f32>,
     // xyz: direction towards the sun, w: time in seconds.
     sun: vec4<f32>,
-    // x: fog start, y: fog end, z: daylight, w: unused
+    // x: fog start, y: fog end, z: daylight, w: rain strength
     params: vec4<f32>,
     // xy: camera xz wrapped to the cloud pattern period, z: cloud plane y
     // relative to the camera, w: cloud draw radius.
@@ -64,7 +64,8 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     color += vec3<f32>(1.0, 0.45, 0.15) * pow(toward_sun, 6.0) * low_sun * horizon * 0.7;
 
     // Stars rotate with the sun and fade in at night.
-    let night = 1.0 - smoothstep(0.15, 0.5, daylight);
+    let rain = g.params.w;
+    let night = (1.0 - smoothstep(0.15, 0.5, daylight)) * (1.0 - rain);
     if night > 0.0 && dir.y > -0.1 {
         // Rotate into a frame that turns with the sun (around Z).
         let c = sun.x;
@@ -78,7 +79,8 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
         }
     }
 
-    // Square sun and moon, like Minecraft.
+    // Square sun and moon, like Minecraft (hidden behind rain clouds).
+    let clear = color;
     let right = normalize(cross(sun, vec3<f32>(0.0, 0.0, 1.0)));
     let top = cross(right, sun);
     let ds = dot(dir, sun);
@@ -100,7 +102,7 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
             color = select(vec3<f32>(0.85, 0.87, 0.92), vec3<f32>(0.6, 0.62, 0.7), crater);
         }
     }
-    return vec4<f32>(color, 1.0);
+    return vec4<f32>(mix(color, clear, rain), 1.0);
 }
 
 // ------------------------------------------------------------- clouds
@@ -144,14 +146,15 @@ fn fs_clouds(in: CloudOut) -> @location(0) vec4<f32> {
     // Evaluate coverage once per cell for crisp blocky edges.
     let cell = floor(world / CLOUD_CELL);
     let n = value_noise(cell / 5.0) * 0.65 + value_noise(cell / 2.0) * 0.35;
-    if n < 0.58 {
+    // Rain clouds over most of the sky.
+    if n < 0.58 - 0.3 * g.params.w {
         discard;
     }
     let dist = length(in.rel.xz);
     let fade = 1.0 - smoothstep(g.clouds.w * 0.6, g.clouds.w, dist);
     // Daylight bottoms out at 0.12 (moonlight); map that to near-black clouds.
     let k = clamp((g.params.z - 0.12) / 0.88, 0.0, 1.0);
-    let lit = mix(vec3<f32>(0.012, 0.014, 0.025), vec3<f32>(1.0, 1.0, 1.0), k * k);
+    let lit = mix(vec3<f32>(0.012, 0.014, 0.025), vec3<f32>(1.0, 1.0, 1.0), k * k) * (1.0 - 0.5 * g.params.w);
     let color = mix(lit, g.fog_color.rgb, smoothstep(0.0, g.clouds.w, dist) * 0.6);
     return vec4<f32>(color, 0.8 * fade);
 }

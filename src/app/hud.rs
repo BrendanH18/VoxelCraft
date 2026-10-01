@@ -555,6 +555,11 @@ impl Game {
             format!("Chunk: {} {} {} in {} {} {}", l.x, l.y, l.z, c.x, c.y, c.z),
             format!("Facing: {facing} ({:.1} / {:.1})", self.player.yaw.to_degrees(), self.player.pitch.to_degrees()),
             format!("Biome: {biome:?}"),
+            format!(
+                "Weather: {} ({:.0} s left)",
+                if self.weather.raining { "rain" } else { "clear" },
+                self.weather.timer
+            ),
             format!("Game mode: {}", self.mode.name()),
             format!(
                 "Health: {:.1} / {}, air: {:.1} / {}{}",

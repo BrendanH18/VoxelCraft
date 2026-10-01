@@ -50,11 +50,16 @@ impl World {
                 let seeds = 1 + (0..3).filter(|_| self.roll() % 7 < 4).count() as u8;
                 out.push(Stack::new(Item::WHEAT_SEEDS, seeds));
             }
-            Block::TALL_GRASS if self.one_in(8) => out.push(Stack::new(Item::WHEAT_SEEDS, 1)),
-            Block::LEAVES | Block::SPRUCE_LEAVES => {
-                if self.one_in(20) {
-                    let sapling = if block == Block::LEAVES { Block::OAK_SAPLING } else { Block::SPRUCE_SAPLING };
-                    out.push(Stack::new(sapling, 1));
+            Block::TALL_GRASS | Block::FERN if self.one_in(8) => out.push(Stack::new(Item::WHEAT_SEEDS, 1)),
+            Block::CLAY => out.push(Stack::new(Item::CLAY_BALL, 3)),
+            Block::MELON => out.push(Stack::new(Item::MELON_SLICE, 2 + (self.roll() % 5) as u8)),
+            b if b.is_leaves() => {
+                // Jungle leaves drop saplings less often, like Minecraft.
+                let odds = if b == Block::JUNGLE_LEAVES { 40 } else { 20 };
+                if self.one_in(odds)
+                    && let Some(wood) = b.wood()
+                {
+                    out.push(Stack::new(wood.sapling(), 1));
                 }
                 if block == Block::LEAVES && self.one_in(200) {
                     out.push(Stack::new(Item::APPLE, 1));
@@ -97,11 +102,12 @@ impl World {
         match b {
             Block::GRASS => self.tick_grass(p),
             Block::FARMLAND | Block::WET_FARMLAND => self.tick_farmland(p, b),
-            Block::OAK_SAPLING | Block::SPRUCE_SAPLING => {
+            b if b.is_sapling() => {
                 if self.grows_here(p) && self.one_in(SAPLING_GROWTH) {
                     self.grow_tree(p);
                 }
             }
+            Block::SUGAR_CANE => self.tick_cane(p),
             b if b.crop_stage().is_some_and(|s| s < 7) => {
                 let wet = self.get_block(p - IVec3::Y) == Some(Block::WET_FARMLAND);
                 if self.grows_here(p) && self.one_in(if wet { CROP_GROWTH } else { 2 * CROP_GROWTH }) {
@@ -141,10 +147,12 @@ impl World {
             self.edit(p, Block::DIRT, false);
             return;
         }
-        let wet = (-4..=4).any(|dx| {
-            (-4..=4)
-                .any(|dz| (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.is_water())))
-        });
+        let wet = self.rains_on(p + IVec3::Y)
+            || (-4..=4).any(|dx| {
+                (-4..=4).any(|dz| {
+                    (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.is_water()))
+                })
+            });
         let crop = above.is_some_and(|a| a.crop_stage().is_some());
         match (wet, b) {
             (true, Block::FARMLAND) => {
@@ -167,19 +175,16 @@ impl World {
         let v = self.roll() as u32;
         let mut blocks = Vec::new();
         let ground = p - IVec3::Y;
-        match sapling {
-            Block::OAK_SAPLING => super::terrain::oak(ground, v, &mut |q, b| blocks.push((q, b))),
-            Block::SPRUCE_SAPLING => super::terrain::spruce(ground, v, &mut |q, b| blocks.push((q, b))),
-            _ => return false,
-        }
-        let room = blocks.iter().filter(|(_, b)| *b == Block::LOG).all(|&(q, _)| {
-            q == p || self.get_block(q).is_some_and(|b| b == Block::AIR || b.is_replaceable() || is_leaves(b))
+        let Some(wood) = sapling.wood().filter(|_| sapling.is_sapling()) else { return false };
+        super::terrain::tree(wood, ground, v, &mut |q, b| blocks.push((q, b)));
+        let room = blocks.iter().filter(|(_, b)| b.is_log()).all(|&(q, _)| {
+            q == p || self.get_block(q).is_some_and(|b| b == Block::AIR || b.is_replaceable() || b.is_leaves())
         });
         if !room {
             return false;
         }
         for (q, b) in blocks {
-            let free = self.get_block(q).is_some_and(|cur| cur == Block::AIR || (b == Block::LOG && cur != Block::LOG));
+            let free = self.get_block(q).is_some_and(|cur| cur == Block::AIR || (b.is_log() && !cur.is_log()));
             if free {
                 self.edit(q, b, false);
             }
@@ -201,7 +206,7 @@ impl World {
                 self.edit(p, Block::wheat(stage), true);
                 true
             }
-            Block::OAK_SAPLING | Block::SPRUCE_SAPLING => {
+            b if b.is_sapling() => {
                 if self.roll() % 100 < 45 {
                     self.grow_tree(p);
                 }
@@ -234,7 +239,7 @@ impl World {
             for dz in -R..=R {
                 for dx in -R..=R {
                     let q = p + IVec3::new(dx, dy, dz);
-                    if self.get_block(q).is_some_and(is_leaves) && !self.leaf_decay.contains_key(&q) {
+                    if self.get_block(q).is_some_and(Block::is_leaves) && !self.leaf_decay.contains_key(&q) {
                         let delay = 1.0 + (self.roll() % 1000) as f32 / 1000.0 * 9.0;
                         self.leaf_decay.insert(q, delay);
                     }
@@ -258,7 +263,7 @@ impl World {
         });
         for p in due {
             match self.get_block(p) {
-                Some(b) if is_leaves(b) && !self.reaches_log(p) => {
+                Some(b) if b.is_leaves() && !self.reaches_log(p) => {
                     self.edit(p, Block::AIR, false);
                     self.spill_block(p, b);
                     self.settle(p);
@@ -286,8 +291,9 @@ impl World {
                         continue;
                     }
                     match self.get_block(n) {
-                        Some(Block::LOG) | None => return true,
-                        Some(b) if is_leaves(b) => next.push(n),
+                        None => return true,
+                        Some(b) if b.is_log() => return true,
+                        Some(b) if b.is_leaves() => next.push(n),
                         _ => {}
                     }
                 }
@@ -298,6 +304,31 @@ impl World {
     }
 }
 
-fn is_leaves(b: Block) -> bool {
-    b == Block::LEAVES || b == Block::SPRUCE_LEAVES
+/// Sugar cane stops growing at this height.
+const CANE_HEIGHT: i32 = 3;
+
+impl World {
+    /// Sugar cane grows a block taller now and then, up to [`CANE_HEIGHT`],
+    /// while water touches the soil it stands on.
+    fn tick_cane(&mut self, p: IVec3) {
+        if self.get_block(p + IVec3::Y) != Some(Block::AIR) || !self.one_in(4) {
+            return;
+        }
+        let mut base = p;
+        while self.get_block(base - IVec3::Y) == Some(Block::SUGAR_CANE) {
+            base -= IVec3::Y;
+        }
+        if p.y - base.y + 1 < CANE_HEIGHT && self.cane_has_water(base) {
+            self.edit(p + IVec3::Y, Block::SUGAR_CANE, false);
+        }
+    }
+
+    /// Whether sugar cane at `p` (its lowest block) has water beside the
+    /// block it's planted on.
+    pub fn cane_has_water(&self, p: IVec3) -> bool {
+        let soil = p - IVec3::Y;
+        [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
+            .iter()
+            .any(|&d| self.get_block(soil + d).is_some_and(|b| b.is_water() || b == Block::ICE))
+    }
 }

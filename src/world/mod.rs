@@ -47,6 +47,8 @@ pub struct ChunkSlot {
 struct Column {
     heights: Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>,
     loaded: i32,
+    /// Biome colours, once a worker has worked them out.
+    foliage: Option<Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>>,
 }
 
 pub struct World {
@@ -81,6 +83,8 @@ pub struct World {
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
+    /// Whether it's raining (set by the game each frame).
+    pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
     pub mesh_removals: Vec<IVec3>,
 }
@@ -114,6 +118,7 @@ impl World {
             random_ticks: 0.0,
             rng,
             drops: Vec::new(),
+            raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
         }
@@ -193,6 +198,20 @@ impl World {
         (h != NO_HEIGHT).then_some(h as i32)
     }
 
+    /// Foliage colour group of a column (see `terrain::Biome::foliage`),
+    /// once known.
+    pub fn foliage_at(&self, x: i32, z: i32) -> Option<u8> {
+        let col = self.columns.get(&column_of(chunk_of(IVec3::new(x, 0, z))))?;
+        let l = local_of(IVec3::new(x, 0, z));
+        col.foliage.as_ref().map(|f| f[(l.x + l.z * CHUNK_SIZE_I) as usize])
+    }
+
+    /// Whether rain (not snow) is falling on cell `p` right now.
+    pub fn rains_on(&self, p: IVec3) -> bool {
+        // Deserts, savannas and badlands stay dry; cold biomes get snow.
+        self.raining && self.sky_exposed(p) && matches!(self.foliage_at(p.x, p.z), Some(0 | 1 | 3))
+    }
+
     /// Whether a cell sees the sky straight up (nothing light-blocking
     /// above it). Unloaded columns count as exposed.
     pub fn sky_exposed(&self, p: IVec3) -> bool {
@@ -237,7 +256,7 @@ impl World {
         slot.modified = true;
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
-        if old == Block::LOG && block != Block::LOG {
+        if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }
 
@@ -306,13 +325,17 @@ impl World {
     }
 
     /// A chunk can be meshed once the 3x3 columns around it are fully
-    /// loaded (skylight needs complete heightmaps).
+    /// loaded (skylight needs complete heightmaps) and its own column's
+    /// biome colours are known.
     fn ready_to_mesh(&self, pos: IVec3) -> bool {
-        (-1..=1).all(|dz| {
-            (-1..=1).all(|dx| {
-                self.columns.get(&IVec2::new(pos.x + dx, pos.z + dz)).is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
+        self.columns.get(&column_of(pos)).is_some_and(|c| c.foliage.is_some())
+            && (-1..=1).all(|dz| {
+                (-1..=1).all(|dx| {
+                    self.columns
+                        .get(&IVec2::new(pos.x + dx, pos.z + dz))
+                        .is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
+                })
             })
-        })
     }
 
     fn gather(&self, pos: IVec3) -> Box<MeshInput> {
@@ -339,7 +362,8 @@ impl World {
                 }
             }
         }
-        Box::new(MeshInput { neighbors, heights, base_y: pos.y * CHUNK_SIZE_I })
+        let foliage = cols[4].and_then(|c| c.foliage.clone()).unwrap_or_else(|| Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
+        Box::new(MeshInput { neighbors, heights, base_y: pos.y * CHUNK_SIZE_I, foliage })
     }
 
     fn remesh_now(&mut self, pos: IVec3) {
@@ -413,10 +437,11 @@ impl World {
 
     fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
-        let col = self
-            .columns
-            .entry(column_of(pos))
-            .or_insert_with(|| Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0 });
+        let workers = &self.workers;
+        let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
+            workers.submit(Job::Foliage(column_of(pos)));
+            Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None }
+        });
         col.loaded += 1;
         for (h, new) in col.heights.iter_mut().zip(heights) {
             *h = (*h).max(new);
@@ -457,6 +482,11 @@ impl World {
                     self.gen_in_flight.remove(&pos);
                     if self.in_keep_range(pos) && !self.chunks.contains_key(&pos) {
                         self.insert_chunk(pos, Arc::new(data), false);
+                    }
+                }
+                JobResult::Foliage(key, foliage) => {
+                    if let Some(col) = self.columns.get_mut(&key) {
+                        col.foliage = Some(foliage);
                     }
                 }
                 JobResult::Meshed { pos, version, mesh } => {

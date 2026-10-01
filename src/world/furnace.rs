@@ -38,7 +38,9 @@ pub fn smelt(item: Item) -> Option<Item> {
         i if i == b(Block::DIAMOND_ORE) => Item::DIAMOND,
         i if i == b(Block::SAND) => b(Block::GLASS),
         i if i == b(Block::COBBLESTONE) => b(Block::STONE),
-        i if i == b(Block::LOG) => Item::CHARCOAL,
+        i if i.block().is_some_and(Block::is_log) => Item::CHARCOAL,
+        Item::CLAY_BALL => Item::BRICK,
+        i if i == b(Block::CLAY) => b(Block::TERRACOTTA),
         Item::RAW_PORKCHOP => Item::COOKED_PORKCHOP,
         Item::RAW_BEEF => Item::STEAK,
         Item::RAW_CHICKEN => Item::COOKED_CHICKEN,
@@ -51,7 +53,8 @@ pub fn burn_time(item: Item) -> Option<f32> {
     let b = Item::from_block;
     match item {
         Item::COAL | Item::CHARCOAL => Some(80.0),
-        i if [Block::LOG, Block::PLANKS, Block::CRAFTING_TABLE, Block::CHEST].map(b).contains(&i) => Some(15.0),
+        i if i.block().is_some_and(|b| b.is_log() || b.is_planks()) => Some(15.0),
+        i if [Block::CRAFTING_TABLE, Block::CHEST].map(b).contains(&i) => Some(15.0),
         Item::STICK => Some(5.0),
         i if i.as_tool().is_some_and(|(_, tier)| tier == Tier::Wood) => Some(10.0),
         _ => None,

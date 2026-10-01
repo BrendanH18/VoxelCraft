@@ -5,10 +5,15 @@
 //! Features that straddle chunk borders, such as trees, are placed
 //! deterministically from hashed world coordinates and each chunk writes
 //! only its own part of them.
+//!
+//! Each column gets a height from layered noise (continents, erosion,
+//! mountain ridges, detail), reshaped by the climate: rivers carve valleys
+//! down to sea level, swamps flatten into shallow pools and badlands rise
+//! into terraced plateaus. Temperature and humidity then pick the biome.
 
 use glam::IVec3;
 
-use super::block::Block;
+use super::block::{Block, Wood};
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
 use super::noise::{Perlin, hash_f, hash3};
 
@@ -16,8 +21,10 @@ pub const SEA_LEVEL: i32 = 62;
 /// Caves carved at or below this height fill with lava.
 pub const LAVA_LEVEL: i32 = 10;
 const TREE_CELL: i32 = 5;
-/// How far a tree's leaves can extend from its trunk.
-const TREE_REACH: i32 = 3;
+/// How far a tree's leaves can extend from its trunk (mega jungle trees).
+const TREE_REACH: i32 = 5;
+/// How far above the ground the tallest tree reaches.
+const TREE_TOP: i32 = 32;
 const CAVE_STEP: usize = 4;
 const CAVE_GRID: usize = CHUNK_SIZE / CAVE_STEP + 1;
 
@@ -25,18 +32,41 @@ const CAVE_GRID: usize = CHUNK_SIZE / CAVE_STEP + 1;
 pub enum Biome {
     Ocean,
     Beach,
+    River,
     Plains,
     Forest,
+    BirchForest,
+    Swamp,
     Desert,
+    Badlands,
+    Savanna,
+    Jungle,
     Mountains,
     Snowy,
     Taiga,
+}
+
+impl Biome {
+    /// Which colour grass and leaves take on here (see `block::tex::tinted`):
+    /// 0 temperate green, 1 murky swamp, 2 dry and yellow, 3 lush jungle,
+    /// 4 cold and blue.
+    pub fn foliage(self) -> u8 {
+        match self {
+            Biome::Swamp => 1,
+            Biome::Savanna | Biome::Desert | Biome::Badlands => 2,
+            Biome::Jungle => 3,
+            Biome::Taiga | Biome::Snowy => 4,
+            _ => 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Column {
     pub height: i32,
     pub biome: Biome,
+    /// Cold enough for the sea and rivers to freeze over.
+    pub frozen: bool,
 }
 
 pub struct Generator {
@@ -50,6 +80,9 @@ pub struct Generator {
     cave_a: Perlin,
     cave_b: Perlin,
     cavern: Perlin,
+    /// Picks variants within a climate: birch woods, badlands.
+    weird: Perlin,
+    river: Perlin,
 }
 
 #[inline]
@@ -57,6 +90,15 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
+
+#[inline]
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
+/// Badlands strata, bottom to top, as terracotta colours (see
+/// [`Block::terracotta`]); the pattern repeats every `BANDS.len()` blocks.
+const BANDS: [u8; 16] = [1, 1, 0, 2, 0, 0, 3, 1, 0, 4, 0, 5, 0, 1, 6, 0];
 
 impl Generator {
     pub fn new(seed: u64) -> Self {
@@ -72,6 +114,8 @@ impl Generator {
             cave_a: p(7),
             cave_b: p(8),
             cavern: p(9),
+            weird: p(10),
+            river: p(11),
         }
     }
 
@@ -83,48 +127,140 @@ impl Generator {
         let ridge = 1.0 - self.ridge.fbm2(fx / 260.0, fz / 260.0, 5).abs() * 2.2;
         let ridge = ridge.max(0.0).powi(2);
         let detail = self.detail.fbm2(fx / 60.0, fz / 60.0, 4);
+        let climate = self.temperature.fbm2(fx / 1100.0, fz / 1100.0, 2) * 2.0;
+        let humid = self.humidity.fbm2(fx / 900.0, fz / 900.0, 3) * 1.8;
+        let weird = self.weird.fbm2(fx / 700.0, fz / 700.0, 3) * 1.8;
 
         // Land rises gently out of the ocean; mountains only appear inland
         // where erosion is low.
         let base = SEA_LEVEL as f32 + 4.0 + cont * 34.0;
         let mountain = smoothstep(0.05, 0.45, cont) * smoothstep(0.1, -0.4, erosion);
         let hills = smoothstep(-0.2, 0.4, cont) * 10.0;
-        let h = base + detail * (4.0 + hills) + ridge * mountain * 110.0;
+        let mut h = base + detail * (4.0 + hills) + ridge * mountain * 110.0;
+        let inland = smoothstep(-0.08, 0.12, cont) * (1.0 - mountain);
+
+        // Badlands: hot, dry and odd. The land lifts into plateaus whose
+        // terraced cliffs expose the strata.
+        let badland = smoothstep(0.2, 0.35, climate)
+            * smoothstep(0.05, -0.1, humid)
+            * smoothstep(0.1, 0.3, weird)
+            * smoothstep(0.0, 0.2, cont)
+            * (1.0 - mountain);
+        if badland > 0.0 {
+            let raised = h + badland * (14.0 + detail.max(-0.5) * 16.0 + smoothstep(0.35, 0.7, weird) * 14.0);
+            let t = raised / 7.0;
+            let terraced = (t.floor() + smoothstep(0.6, 0.9, t.fract())) * 7.0;
+            h = lerp(raised, terraced, smoothstep(0.2, 0.6, badland));
+        }
+
+        // Swamps: temperate, soaking wet lowland pressed flat around sea
+        // level, with shallow pools where the ground dips.
+        let temperate = 1.0 - smoothstep(0.25, 0.4, climate.abs());
+        let swampy = smoothstep(0.25, 0.45, humid)
+            * temperate
+            * inland
+            * smoothstep(SEA_LEVEL as f32 + 16.0, SEA_LEVEL as f32 + 6.0, h);
+        if swampy > 0.0 {
+            let pools = self.weird.noise2(fx / 14.0, fz / 14.0) * 2.5 + detail * 2.0;
+            h = lerp(h, SEA_LEVEL as f32 + 0.3 + pools, swampy);
+        }
+
+        // Rivers wind along the zero line of their own noise and cut a
+        // valley down to just below sea level.
+        let rv = self.river.fbm2(fx / 700.0, fz / 700.0, 3).abs();
+        let valley =
+            smoothstep(0.05, 0.011, rv) * smoothstep(-0.05, 0.1, cont) * (1.0 - smoothstep(0.3, 0.6, mountain));
+        let bed = SEA_LEVEL as f32 - 1.0 - 3.0 * smoothstep(0.011, 0.0, rv);
+        if h > bed {
+            h = lerp(h, bed, valley);
+        }
+
         let height = (h as i32).clamp(4, 240);
+        let temp = climate - (height - SEA_LEVEL).max(0) as f32 / 160.0;
+        let frozen = temp < -0.3;
 
-        let temp =
-            self.temperature.fbm2(fx / 1100.0, fz / 1100.0, 3) * 1.8 - (height - SEA_LEVEL).max(0) as f32 / 160.0;
-        let humid = self.humidity.fbm2(fx / 900.0, fz / 900.0, 3) * 1.8;
-
-        let biome = if height < SEA_LEVEL - 1 {
+        let biome = if valley > 0.75 && height < SEA_LEVEL {
+            Biome::River
+        } else if swampy > 0.5 && height >= SEA_LEVEL - 3 {
+            Biome::Swamp
+        } else if height < SEA_LEVEL - 1 {
             Biome::Ocean
-        } else if height <= SEA_LEVEL + 2 && mountain < 0.2 {
+        } else if height <= SEA_LEVEL + 1 && mountain < 0.2 && valley < 0.3 && badland < 0.3 {
             Biome::Beach
         } else if height > 125 || mountain > 0.55 {
             Biome::Mountains
-        } else if temp < -0.35 {
+        } else if badland > 0.3 {
+            Biome::Badlands
+        } else if temp < -0.3 {
             if humid > 0.0 { Biome::Taiga } else { Biome::Snowy }
-        } else if temp > 0.35 && humid < 0.1 {
-            Biome::Desert
+        } else if temp > 0.22 {
+            if humid < -0.05 {
+                Biome::Desert
+            } else if humid < 0.25 {
+                Biome::Savanna
+            } else {
+                Biome::Jungle
+            }
         } else if humid > 0.05 {
-            Biome::Forest
+            if weird > 0.25 { Biome::BirchForest } else { Biome::Forest }
         } else {
             Biome::Plains
         };
-        Column { height, biome }
+        Column { height, biome, frozen }
+    }
+
+    /// Foliage colour group (see [`Biome::foliage`]) of every column in
+    /// chunk column `(cx, cz)`, indexed `x + z * CHUNK_SIZE`. Each column
+    /// samples the biome a few blocks off at random, so colours dither
+    /// into each other across biome borders instead of changing in a line.
+    pub fn foliage(&self, cx: i32, cz: i32) -> Box<[u8; CHUNK_SIZE * CHUNK_SIZE]> {
+        let mut out = Box::new([0u8; CHUNK_SIZE * CHUNK_SIZE]);
+        for (i, f) in out.iter_mut().enumerate() {
+            let (x, z) = (cx * CHUNK_SIZE_I + (i % CHUNK_SIZE) as i32, cz * CHUNK_SIZE_I + (i / CHUNK_SIZE) as i32);
+            let h = hash3(x, 7, z, self.seed ^ 0xF01);
+            let (dx, dz) = ((h % 9) as i32 - 4, ((h >> 8) % 9) as i32 - 4);
+            *f = self.column(x + dx, z + dz).biome.foliage();
+        }
+        out
+    }
+
+    /// Whether a column under water gets a patch of clay on its floor.
+    fn clay_patch(&self, x: i32, z: i32) -> bool {
+        hash3(x >> 2, 0, z >> 2, self.seed ^ 0xC1A).is_multiple_of(7) && hash_f(x, 1, z, self.seed ^ 0xC1B) < 0.8
     }
 
     /// The block at the very top of a column, before caves and decoration.
-    fn surface_block(col: Column, y: i32) -> Block {
+    fn surface_block(&self, col: Column, x: i32, z: i32) -> Block {
+        let y = col.height;
+        let wet = y < SEA_LEVEL;
         match col.biome {
+            Biome::Ocean | Biome::River | Biome::Swamp if wet && y >= SEA_LEVEL - 6 && self.clay_patch(x, z) => {
+                Block::CLAY
+            }
             Biome::Ocean => {
-                if col.height >= SEA_LEVEL - 4 {
+                if y >= SEA_LEVEL - 4 {
                     Block::SAND
                 } else {
                     Block::GRAVEL
                 }
             }
+            Biome::River => {
+                if y < SEA_LEVEL - 3 {
+                    Block::GRAVEL
+                } else {
+                    Block::SAND
+                }
+            }
+            Biome::Swamp if wet => Block::DIRT,
             Biome::Beach | Biome::Desert => Block::SAND,
+            Biome::Badlands => {
+                // Red sand on the low ground, bare strata up high.
+                if y < SEA_LEVEL + 14 || hash_f(x, 2, z, self.seed ^ 0xBAD) < 0.3 {
+                    Block::RED_SAND
+                } else {
+                    self.stratum(y)
+                }
+            }
             Biome::Mountains => {
                 if y > 165 {
                     Block::SNOW
@@ -135,13 +271,13 @@ impl Generator {
                 }
             }
             Biome::Snowy | Biome::Taiga => Block::SNOWY_GRASS,
-            Biome::Plains | Biome::Forest => Block::GRASS,
+            _ => Block::GRASS,
         }
     }
 
-    fn filler_block(col: Column, y: i32) -> Block {
+    fn filler_block(&self, col: Column, y: i32) -> Block {
         match col.biome {
-            Biome::Beach | Biome::Ocean => Block::SAND,
+            Biome::Beach | Biome::Ocean | Biome::River => Block::SAND,
             Biome::Desert => {
                 if y > col.height - 3 {
                     Block::SAND
@@ -149,14 +285,37 @@ impl Generator {
                     Block::SANDSTONE
                 }
             }
+            Biome::Badlands => {
+                if y > col.height - 2 && col.height < SEA_LEVEL + 14 {
+                    Block::RED_SAND
+                } else {
+                    self.stratum(y)
+                }
+            }
             Biome::Mountains if col.height > 135 => Block::STONE,
             _ => Block::DIRT,
         }
     }
 
+    /// The terracotta band at height `y` in badlands.
+    fn stratum(&self, y: i32) -> Block {
+        let shift = (self.seed % BANDS.len() as u64) as i32;
+        Block::terracotta(BANDS[(y + shift).rem_euclid(BANDS.len() as i32) as usize])
+    }
+
+    /// How deep the surface and filler layers go before stone.
+    fn soil_depth(col: Column) -> i32 {
+        match col.biome {
+            Biome::Desert => 6,
+            // Strata run down to below sea level so whole cliffs are banded.
+            Biome::Badlands => (col.height - SEA_LEVEL + 6).max(4),
+            _ => 4,
+        }
+    }
+
     pub fn generate(&self, cpos: IVec3) -> ChunkData {
         let base = cpos * CHUNK_SIZE_I;
-        let mut cols = [[Column { height: 0, biome: Biome::Plains }; CHUNK_SIZE]; CHUNK_SIZE];
+        let mut cols = [[Column { height: 0, biome: Biome::Plains, frozen: false }; CHUNK_SIZE]; CHUNK_SIZE];
         let mut max_h = i32::MIN;
         let mut min_h = i32::MAX;
         for (z, row) in cols.iter_mut().enumerate() {
@@ -169,7 +328,7 @@ impl Generator {
 
         let top = base.y + CHUNK_SIZE_I - 1;
         // Open sky: nothing (not even tree canopies) reaches this chunk.
-        if base.y > (max_h + 12).max(SEA_LEVEL) {
+        if base.y > (max_h + TREE_TOP).max(SEA_LEVEL) {
             return ChunkData::Uniform(Block::AIR);
         }
 
@@ -181,7 +340,7 @@ impl Generator {
                 let col = cols[z][x];
                 let (wx, wz) = (base.x + x as i32, base.z + z as i32);
                 let fill_top = col.height.max(SEA_LEVEL).min(top);
-                let depth = if col.biome == Biome::Desert { 6 } else { 4 };
+                let depth = Self::soil_depth(col);
                 for wy in base.y..=fill_top {
                     let y = (wy - base.y) as usize;
                     // Solid bedrock at y=0, thinning out randomly up to y=3.
@@ -190,9 +349,11 @@ impl Generator {
                     } else if wy < col.height - depth {
                         self.ore_or_stone(wx, wy, wz)
                     } else if wy < col.height {
-                        Self::filler_block(col, wy)
+                        self.filler_block(col, wy)
                     } else if wy == col.height {
-                        Self::surface_block(col, wy)
+                        self.surface_block(col, wx, wz)
+                    } else if wy == SEA_LEVEL && col.frozen {
+                        Block::ICE
                     } else {
                         Block::WATER
                     };
@@ -213,7 +374,7 @@ impl Generator {
             }
         }
 
-        if base.y <= max_h + 12 && top >= min_h {
+        if base.y <= max_h + TREE_TOP && top >= min_h {
             self.place_trees(&mut blocks, base);
             self.place_plants(&mut blocks, base, &cols);
         }
@@ -301,13 +462,22 @@ impl Generator {
                     continue;
                 }
                 let col = self.column(tx, tz);
+                // Nothing this chunk could hold: skip the rest of the work.
+                if col.height + TREE_TOP < base.y || col.height > base.y + CHUNK_SIZE_I {
+                    continue;
+                }
                 let density = match col.biome {
+                    Biome::Jungle => 0.95,
                     Biome::Forest => 0.75,
+                    Biome::BirchForest => 0.7,
                     Biome::Taiga => 0.6,
+                    Biome::Swamp => 0.3,
+                    Biome::Savanna => 0.14,
                     Biome::Plains => 0.06,
                     Biome::Snowy => 0.08,
                     Biome::Mountains if col.height < 125 => 0.12,
                     Biome::Desert => 0.1,
+                    Biome::Badlands => 0.05,
                     _ => 0.0,
                 };
                 let roll = ((h >> 16) & 0xFFFF) as f32 / 65536.0;
@@ -315,22 +485,32 @@ impl Generator {
                     continue;
                 }
                 let variant = (h >> 32) as u32;
+                let pick = (h >> 24) % 100;
                 let ground = IVec3::new(tx, col.height, tz);
-                match (col.biome, Self::surface_block(col, col.height)) {
-                    (Biome::Desert, Block::SAND) => Self::cactus(blocks, base, ground, variant),
-                    (Biome::Taiga | Biome::Snowy, _) => {
-                        spruce(ground, variant, &mut |p, b| Self::put(blocks, base, p, b))
-                    }
-                    (_, Block::GRASS) => oak(ground, variant, &mut |p, b| Self::put(blocks, base, p, b)),
+                let put = &mut |p, b| Self::put(blocks, base, p, b);
+                match (col.biome, self.surface_block(col, tx, tz)) {
+                    (Biome::Desert, Block::SAND) | (Biome::Badlands, Block::RED_SAND) => cactus(ground, variant, put),
+                    (Biome::Taiga | Biome::Snowy, _) => spruce(ground, variant, put),
+                    (biome, Block::GRASS) => match biome {
+                        Biome::BirchForest => birch(ground, variant, put),
+                        Biome::Forest if pick < 20 => birch(ground, variant, put),
+                        Biome::Jungle if pick < 15 => mega_jungle(ground, variant, put),
+                        Biome::Jungle if pick < 55 => jungle(ground, variant, put),
+                        Biome::Jungle => jungle_bush(ground, variant, put),
+                        Biome::Savanna if pick < 80 => acacia(ground, variant, put),
+                        Biome::Swamp => swamp_oak(ground, variant, put),
+                        _ => oak(ground, variant, put),
+                    },
                     _ => {}
                 }
             }
         }
     }
 
-    /// Scatters grass, flowers and dead bushes on the untouched surface
-    /// (after trees, so trunks keep their spot). Only columns whose ground
-    /// and the cell above both lie in this chunk get plants.
+    /// Scatters grass, flowers, ferns, dead bushes, sugar cane, pumpkins
+    /// and melons on the untouched surface (after trees, so trunks keep
+    /// their spot). Only columns whose ground and the cell above both lie
+    /// in this chunk get plants.
     fn place_plants(&self, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, cols: &[[Column; CHUNK_SIZE]; CHUNK_SIZE]) {
         for (z, row) in cols.iter().enumerate() {
             for (x, col) in row.iter().enumerate() {
@@ -338,29 +518,63 @@ impl Generator {
                 if !(0..CHUNK_SIZE_I - 1).contains(&y) || col.height < SEA_LEVEL {
                     continue;
                 }
+                let (wx, wz) = (base.x + x as i32, base.z + z as i32);
                 let (ground, above) = (index(x, y as usize, z), index(x, y as usize + 1, z));
-                if blocks[above] != Block::AIR || blocks[ground] != Self::surface_block(*col, col.height) {
+                if blocks[above] != Block::AIR || blocks[ground] != self.surface_block(*col, wx, wz) {
                     continue; // carved by a cave, or covered by a tree
                 }
-                let (wx, wz) = (base.x + x as i32, base.z + z as i32);
                 let roll = hash_f(wx, 0, wz, self.seed ^ 0x9A5);
+
+                // Sugar cane on the banks of rivers, lakes and the sea.
+                let soil = blocks[ground];
+                if matches!(soil, Block::GRASS | Block::SAND | Block::RED_SAND | Block::DIRT)
+                    && hash_f(wx, 1, wz, self.seed ^ 0xCA5) < 0.12
+                    && Self::water_beside(blocks, x, y as usize, z)
+                {
+                    let tall = 1 + (hash3(wx, 2, wz, self.seed ^ 0xCA5) % 3) as usize;
+                    for dy in 1..=tall.min(CHUNK_SIZE - 1 - y as usize) {
+                        blocks[index(x, y as usize + dy, z)] = Block::SUGAR_CANE;
+                    }
+                    continue;
+                }
+
                 // Flowers grow in patches: a coarse cell decides the colour.
                 let patch = hash3(wx >> 3, 0, wz >> 3, self.seed ^ 0xF10);
                 let flower = if patch.is_multiple_of(2) { Block::DANDELION } else { Block::POPPY };
                 let flower_chance = if patch % 5 < 2 { 0.06 } else { 0.0 };
-                let plant = match (col.biome, blocks[ground]) {
-                    (Biome::Plains, Block::GRASS) if roll < flower_chance => flower,
-                    (Biome::Plains, Block::GRASS) if roll < 0.3 => Block::TALL_GRASS,
-                    (Biome::Forest, Block::GRASS) if roll < flower_chance * 0.5 => flower,
-                    (Biome::Forest, Block::GRASS) if roll < 0.15 => Block::TALL_GRASS,
-                    (Biome::Mountains, Block::GRASS) if roll < 0.08 => Block::TALL_GRASS,
-                    (Biome::Taiga, Block::SNOWY_GRASS) if roll < 0.04 => Block::TALL_GRASS,
-                    (Biome::Desert, Block::SAND) if roll < 0.01 => Block::DEAD_BUSH,
+                // Pumpkins are rare, and come in small clusters.
+                let pumpkins = hash3(wx >> 4, 1, wz >> 4, self.seed ^ 0x9C1).is_multiple_of(24);
+                use Biome::*;
+                let plant = match (col.biome, soil) {
+                    (Plains | Forest | BirchForest, Block::GRASS) if pumpkins && roll > 0.96 => Block::PUMPKIN,
+                    (Plains, Block::GRASS) if roll < flower_chance => flower,
+                    (Plains, Block::GRASS) if roll < 0.3 => Block::TALL_GRASS,
+                    (Forest | BirchForest, Block::GRASS) if roll < flower_chance * 0.5 => flower,
+                    (Forest | BirchForest, Block::GRASS) if roll < 0.15 => Block::TALL_GRASS,
+                    (Savanna, Block::GRASS) if roll < 0.45 => Block::TALL_GRASS,
+                    (Jungle, Block::GRASS) if roll < 0.006 => Block::MELON,
+                    (Jungle, Block::GRASS) if roll < 0.2 => Block::FERN,
+                    (Jungle, Block::GRASS) if roll < 0.5 => Block::TALL_GRASS,
+                    (Swamp, Block::GRASS) if roll < 0.03 => Block::BLUE_ORCHID,
+                    (Swamp, Block::GRASS) if roll < 0.2 => Block::TALL_GRASS,
+                    (Mountains, Block::GRASS) if roll < 0.08 => Block::TALL_GRASS,
+                    (Taiga, Block::SNOWY_GRASS) if roll < 0.06 => Block::FERN,
+                    (Taiga, Block::SNOWY_GRASS) if roll < 0.1 => Block::TALL_GRASS,
+                    (Desert, Block::SAND) if roll < 0.01 => Block::DEAD_BUSH,
+                    (Badlands, Block::RED_SAND) if roll < 0.015 => Block::DEAD_BUSH,
                     _ => continue,
                 };
                 blocks[above] = plant;
             }
         }
+    }
+
+    /// Whether water touches the side of the block at local (x, y, z),
+    /// looking only inside this chunk.
+    fn water_beside(blocks: &[Block; CHUNK_VOLUME], x: usize, y: usize, z: usize) -> bool {
+        let n = CHUNK_SIZE - 1;
+        let at = |x: usize, z: usize| blocks[index(x, y, z)] == Block::WATER;
+        (x > 0 && at(x - 1, z)) || (x < n && at(x + 1, z)) || (z > 0 && at(x, z - 1)) || (z < n && at(x, z + 1))
     }
 
     /// Writes a block if it falls inside this chunk. Trunks may replace
@@ -373,15 +587,8 @@ impl Generator {
             return;
         }
         let slot = &mut blocks[index(l.x as usize, l.y as usize, l.z as usize)];
-        let is_leaf = matches!(b, Block::LEAVES | Block::SPRUCE_LEAVES);
-        if *slot == Block::AIR || (!is_leaf && matches!(*slot, Block::LEAVES | Block::SPRUCE_LEAVES)) {
+        if *slot == Block::AIR || (!b.is_leaves() && slot.is_leaves()) {
             *slot = b;
-        }
-    }
-
-    fn cactus(blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, ground: IVec3, v: u32) {
-        for y in 1..=1 + (v % 3) as i32 {
-            Self::put(blocks, base, ground + IVec3::new(0, y, 0), Block::CACTUS);
         }
     }
 
@@ -402,52 +609,201 @@ impl Generator {
     }
 }
 
-/// An oak standing on `ground` (variant `v` picks its height and canopy),
-/// as blocks handed to `put`: leaves first, then the trunk.
-pub fn oak(ground: IVec3, v: u32, put: &mut impl FnMut(IVec3, Block)) {
-    let height = 4 + (v % 3) as i32;
+type Put<'a> = &'a mut dyn FnMut(IVec3, Block);
+
+const DIRS: [IVec3; 4] = [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z];
+
+/// A tree of `wood` grown from a sapling: blocks handed to `put`, leaves
+/// before logs. `v` picks the variant.
+pub fn tree(wood: Wood, ground: IVec3, v: u32, put: Put) {
+    match wood {
+        Wood::Oak => oak(ground, v, put),
+        Wood::Spruce => spruce(ground, v, put),
+        Wood::Birch => birch(ground, v, put),
+        Wood::Jungle => jungle(ground, v, put),
+        Wood::Acacia => acacia(ground, v, put),
+    }
+}
+
+/// The classic round-topped tree: a trunk of `height` with two wide
+/// leaf layers (radius `wide`) under two narrow ones.
+fn round_tree(ground: IVec3, height: i32, wood: Wood, wide: i32, v: u32, put: Put) {
     let top = ground.y + height;
     for dy in -2..=1 {
-        let r: i32 = if dy >= 0 { 1 } else { 2 };
+        let r: i32 = if dy >= 0 { 1 } else { wide };
         for dz in -r..=r {
             for dx in -r..=r {
                 // Trim corners randomly for a less boxy canopy.
                 let corner = dx.abs() == r && dz.abs() == r;
-                if corner && (dy == 1 || (v >> ((dx + dz * 3 + dy * 7) & 15)) & 1 == 0) {
+                if corner && (dy == 1 || r > 2 || (v >> ((dx + dz * 3 + dy * 7) & 15)) & 1 == 0) {
                     continue;
                 }
-                put(IVec3::new(ground.x + dx, top + dy, ground.z + dz), Block::LEAVES);
+                put(IVec3::new(ground.x + dx, top + dy, ground.z + dz), wood.leaves());
             }
         }
     }
     for y in ground.y + 1..top {
-        put(IVec3::new(ground.x, y, ground.z), Block::LOG);
+        put(IVec3::new(ground.x, y, ground.z), wood.log());
     }
 }
 
-/// A spruce standing on `ground`, like [`oak`].
-pub fn spruce(ground: IVec3, v: u32, put: &mut impl FnMut(IVec3, Block)) {
+pub fn oak(ground: IVec3, v: u32, put: Put) {
+    round_tree(ground, 4 + (v % 3) as i32, Wood::Oak, 2, v, put);
+}
+
+/// Taller and slimmer than an oak, with white bark.
+fn birch(ground: IVec3, v: u32, put: Put) {
+    round_tree(ground, 5 + (v % 3) as i32, Wood::Birch, 2, v, put);
+}
+
+/// A squat oak with a broad, drooping canopy.
+fn swamp_oak(ground: IVec3, v: u32, put: Put) {
+    round_tree(ground, 5 + (v % 3) as i32, Wood::Oak, 3, v, put);
+}
+
+/// A tall, thin jungle tree (what a single jungle sapling grows into).
+fn jungle(ground: IVec3, v: u32, put: Put) {
+    round_tree(ground, 7 + (v % 5) as i32, Wood::Jungle, 2, v, put);
+}
+
+/// A jungle floor shrub: one log under a mound of oak leaves.
+fn jungle_bush(ground: IVec3, v: u32, put: Put) {
+    for dy in 1..=2i32 {
+        let r = 3 - dy;
+        for dz in -r..=r {
+            for dx in -r..=r {
+                if dx.abs() == r && dz.abs() == r && (v >> ((dx + dz * 5) & 15)) & 1 == 0 {
+                    continue;
+                }
+                put(ground + IVec3::new(dx, dy, dz), Block::LEAVES);
+            }
+        }
+    }
+    put(ground + IVec3::Y, Block::JUNGLE_LOG);
+}
+
+/// A giant jungle tree: a 2x2 trunk up to 28 blocks tall under a wide
+/// dome, with a couple of leafy side branches.
+fn mega_jungle(ground: IVec3, v: u32, put: Put) {
+    let height = 18 + (v % 10) as i32;
+    let top = ground.y + height;
+    let leaves = Wood::Jungle.leaves();
+    for (dy, r) in [(-2, 4.5f32), (-1, 4.2), (0, 3.4), (1, 2.3)] {
+        for dz in -4..=5 {
+            for dx in -4..=5 {
+                let (cx, cz) = (dx as f32 - 0.5, dz as f32 - 0.5);
+                if cx * cx + cz * cz <= r * r {
+                    put(IVec3::new(ground.x + dx, top + dy, ground.z + dz), leaves);
+                }
+            }
+        }
+    }
+    let mut logs = Vec::new();
+    for i in 0..2u32 {
+        let y = top - 6 - i as i32 * 5 - ((v >> (4 + i * 2)) & 3) as i32;
+        let dir = DIRS[((v >> (10 + i * 2)) & 3) as usize];
+        // Start from the trunk block on that side.
+        let start = IVec3::new(ground.x + (dir.x > 0) as i32, y, ground.z + (dir.z > 0) as i32);
+        let end = start + dir * 2 + IVec3::Y;
+        logs.extend([start + dir, start + dir * 2, end]);
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                for dy in 0..=1 {
+                    if dy == 1 && dx != 0 && dz != 0 {
+                        continue;
+                    }
+                    put(end + IVec3::new(dx, dy, dz), leaves);
+                }
+            }
+        }
+    }
+    for y in ground.y - 1..top {
+        for (dx, dz) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            put(IVec3::new(ground.x + dx, y, ground.z + dz), Wood::Jungle.log());
+        }
+    }
+    for p in logs {
+        put(p, Wood::Jungle.log());
+    }
+}
+
+/// A savanna acacia: a trunk that leans off to one side and ends in a
+/// flat, umbrella-like canopy, sometimes with a second smaller branch.
+fn acacia(ground: IVec3, v: u32, put: Put) {
+    let (log, leaves) = (Wood::Acacia.log(), Wood::Acacia.leaves());
+    let rise = 2 + (v % 3) as i32;
+    let dir = DIRS[((v >> 3) & 3) as usize];
+    let lean = 1 + ((v >> 5) & 1) as i32;
+    let mut logs = Vec::new();
+    let mut p = ground;
+    for _ in 0..rise {
+        p += IVec3::Y;
+        logs.push(p);
+    }
+    let fork = p;
+    for _ in 0..lean {
+        p += dir + IVec3::Y;
+        logs.push(p);
+    }
+    let canopy = |c: IVec3, wide: i32, put: Put| {
+        for dz in -wide..=wide {
+            for dx in -wide..=wide {
+                if dx.abs() + dz.abs() <= wide + 1 && !(dx.abs() == wide && dz.abs() == wide) {
+                    put(c + IVec3::new(dx, 1, dz), leaves);
+                }
+                if dx.abs() <= 1 && dz.abs() <= 1 && wide > 2 {
+                    put(c + IVec3::new(dx, 2, dz), leaves);
+                }
+            }
+        }
+    };
+    canopy(p, 3, put);
+    if (v >> 7) & 1 == 1 {
+        // A second branch the other way, with its own small canopy.
+        let other = -dir;
+        let mut q = fork - IVec3::Y;
+        for _ in 0..2 {
+            q += other + IVec3::Y;
+            logs.push(q);
+        }
+        canopy(q, 2, put);
+    }
+    for p in logs {
+        put(p, log);
+    }
+}
+
+/// A spruce standing on `ground`: a cone of alternating wide and narrow
+/// leaf rings.
+pub fn spruce(ground: IVec3, v: u32, put: Put) {
     let height = 6 + (v % 4) as i32;
     let top = ground.y + height;
-    put(IVec3::new(ground.x, top + 1, ground.z), Block::SPRUCE_LEAVES);
+    let leaves = Wood::Spruce.leaves();
+    put(IVec3::new(ground.x, top + 1, ground.z), leaves);
     for i in 0..height - 2 {
         let y = top - i;
         let r = match i {
             0 => 0,
             _ if i % 2 == 1 => 1,
-            _ => (i / 2).min(TREE_REACH) - (i / 6),
+            _ => (i / 2).min(3) - (i / 6),
         };
         for dz in -r..=r {
             for dx in -r..=r {
                 if r > 1 && dx.abs() == r && dz.abs() == r {
                     continue;
                 }
-                put(IVec3::new(ground.x + dx, y, ground.z + dz), Block::SPRUCE_LEAVES);
+                put(IVec3::new(ground.x + dx, y, ground.z + dz), leaves);
             }
         }
     }
     for y in ground.y + 1..top {
-        put(IVec3::new(ground.x, y, ground.z), Block::LOG);
+        put(IVec3::new(ground.x, y, ground.z), Wood::Spruce.log());
+    }
+}
+
+fn cactus(ground: IVec3, v: u32, put: Put) {
+    for y in 1..=1 + (v % 3) as i32 {
+        put(ground + IVec3::new(0, y, 0), Block::CACTUS);
     }
 }
 
@@ -483,7 +839,7 @@ mod tests {
         let min = *heights.iter().min().unwrap();
         let max = *heights.iter().max().unwrap();
         assert!(min < SEA_LEVEL && max > 110, "height range {min}..{max}");
-        assert!(biomes.len() >= 5, "biomes: {biomes:?}");
+        assert!(biomes.len() >= 12, "biomes: {biomes:?}");
     }
 
     #[test]
@@ -503,6 +859,66 @@ mod tests {
         }
         assert!(counts.get(&Block::TALL_GRASS).copied().unwrap_or(0) > 100, "{counts:?}");
         assert!(counts.contains_key(&Block::DANDELION) || counts.contains_key(&Block::POPPY), "{counts:?}");
+    }
+
+    #[test]
+    fn badlands_are_banded_and_rivers_run_below_sea_level() {
+        let g = Generator::new(99);
+        let (mut bands, mut river_depths) = (std::collections::HashSet::new(), Vec::new());
+        for i in -150..150 {
+            for j in -150..150 {
+                let (x, z) = (i * 16, j * 16);
+                let c = g.column(x, z);
+                match c.biome {
+                    Biome::Badlands => {
+                        for y in SEA_LEVEL..c.height {
+                            bands.insert(g.filler_block(c, y));
+                        }
+                    }
+                    Biome::River => river_depths.push(c.height),
+                    _ => {}
+                }
+            }
+        }
+        assert!(bands.iter().filter(|b| b.terracotta_colour().is_some()).count() >= 5, "{bands:?}");
+        assert!(!river_depths.is_empty() && river_depths.iter().all(|&h| h < SEA_LEVEL));
+    }
+
+    #[test]
+    fn every_tree_has_a_trunk_of_its_wood_under_its_leaves() {
+        for wood in Wood::ALL {
+            for v in 0..20u32 {
+                let mut blocks = Vec::new();
+                tree(wood, IVec3::ZERO, v.wrapping_mul(0x9E37_79B9), &mut |p, b| blocks.push((p, b)));
+                assert!(blocks.contains(&(IVec3::Y, wood.log())), "{wood:?} trunk starts on the ground");
+                assert!(blocks.iter().any(|&(_, b)| b == wood.leaves()), "{wood:?} has leaves");
+                for &(p, _) in &blocks {
+                    assert!(p.x.abs() <= TREE_REACH && p.z.abs() <= TREE_REACH && p.y <= TREE_TOP, "{wood:?} {p}");
+                }
+            }
+        }
+        // Worldgen-only trees also stay within reach.
+        for v in 0..50u32 {
+            let v = v.wrapping_mul(0x9E37_79B9);
+            for grow in [mega_jungle, jungle_bush, swamp_oak, acacia] {
+                let mut blocks = Vec::new();
+                grow(IVec3::ZERO, v, &mut |p, b| blocks.push((p, b)));
+                assert!(
+                    blocks.iter().all(|&(p, _)| p.x.abs() <= TREE_REACH && p.z.abs() <= TREE_REACH && p.y <= TREE_TOP)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn foliage_follows_the_biomes() {
+        let g = Generator::new(99);
+        // A jungle column well inside the biome (see the biome map).
+        let (cx, cz) = (112 >> 5, -1024 >> 5);
+        let f = g.foliage(cx, cz);
+        let lush = f.iter().filter(|&&group| group == Biome::Jungle.foliage()).count();
+        assert!(lush > f.len() / 2, "{lush} of {} columns lush", f.len());
+        assert_eq!(*g.foliage(cx, cz), *f, "deterministic");
     }
 
     #[test]

@@ -159,8 +159,15 @@ const fn b(block: Block) -> Item {
     Item::from_block(block)
 }
 
-const PLANKS: Ingredient = &[b(Block::PLANKS)];
-const LOG: Ingredient = &[b(Block::LOG)];
+/// Any kind of planks (oak first, so guides show oak).
+const PLANKS: Ingredient = &[
+    b(Block::PLANKS),
+    b(Block::SPRUCE_PLANKS),
+    b(Block::BIRCH_PLANKS),
+    b(Block::JUNGLE_PLANKS),
+    b(Block::ACACIA_PLANKS),
+];
+const MELON: Ingredient = &[b(Block::MELON)];
 const SAND: Ingredient = &[b(Block::SAND)];
 const COBBLESTONE: Ingredient = &[b(Block::COBBLESTONE)];
 const STICK: Ingredient = &[Item::STICK];
@@ -179,7 +186,9 @@ pub fn recipes() -> &'static [Recipe] {
     static RECIPES: std::sync::OnceLock<Vec<Recipe>> = std::sync::OnceLock::new();
     RECIPES.get_or_init(|| {
         let mut r = vec![
-            shapeless(&[LOG], b(Block::PLANKS), 4),
+            shaped(&["##", "##"], &[('#', &[Item::CLAY_BALL])], b(Block::CLAY), 1),
+            shaped(&["##", "##"], &[('#', &[Item::BRICK])], b(Block::BRICKS), 1),
+            shapeless(&[MELON], Item::MELON_SLICE, 9),
             shaped(&["#", "#"], &[('#', PLANKS)], Item::STICK, 4),
             shaped(&["##", "##"], &[('#', PLANKS)], b(Block::CRAFTING_TABLE), 1),
             shaped(&["###", "# #", "###"], &[('#', COBBLESTONE)], b(Block::FURNACE), 1),
@@ -191,6 +200,17 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', &[Item::STRING])], b(Block::WOOL), 1),
             shaped(&["f", "#", "e"], &[('f', &[Item::FLINT]), ('#', STICK), ('e', &[Item::FEATHER])], Item::ARROW, 4),
         ];
+        const LOGS: [(Ingredient, Block); 5] = [
+            (&[b(Block::LOG)], Block::PLANKS),
+            (&[b(Block::SPRUCE_LOG)], Block::SPRUCE_PLANKS),
+            (&[b(Block::BIRCH_LOG)], Block::BIRCH_PLANKS),
+            (&[b(Block::JUNGLE_LOG)], Block::JUNGLE_PLANKS),
+            (&[b(Block::ACACIA_LOG)], Block::ACACIA_PLANKS),
+        ];
+        // Planks first: the recipe guide lists them before everything else.
+        for (i, (log, planks)) in LOGS.into_iter().enumerate() {
+            r.insert(i, shapeless(&[log], b(planks), 4));
+        }
         const MATERIALS: [(Tier, Ingredient); 5] = [
             (Tier::Wood, PLANKS),
             (Tier::Stone, COBBLESTONE),
@@ -251,6 +271,24 @@ mod tests {
         let mut spoiled = pick.to_vec();
         spoiled.push((0, 2, P));
         assert_eq!(grid(3, &spoiled).result(), None);
+    }
+
+    #[test]
+    fn every_wood_makes_its_own_planks_and_shares_recipes() {
+        use crate::world::block::Wood;
+        for wood in Wood::ALL {
+            let planks = Item::from(wood.planks());
+            assert_eq!(grid(2, &[(0, 0, wood.log().into())]).result(), Some(Stack::new(wood.planks(), 4)));
+            assert_eq!(grid(2, &[(0, 0, planks), (0, 1, planks)]).result(), Some(Stack::new(Item::STICK, 4)));
+        }
+        // Mixed planks still make a crafting table.
+        let (s, j) = (b(Block::SPRUCE_PLANKS), b(Block::JUNGLE_PLANKS));
+        assert_eq!(
+            grid(2, &[(0, 0, P), (1, 0, s), (0, 1, j), (1, 1, P)]).result().unwrap().item,
+            b(Block::CRAFTING_TABLE)
+        );
+        let clay = [(0, 0, Item::CLAY_BALL), (1, 0, Item::CLAY_BALL), (0, 1, Item::CLAY_BALL), (1, 1, Item::CLAY_BALL)];
+        assert_eq!(grid(2, &clay).result(), Some(Stack::new(Block::CLAY, 1)));
     }
 
     #[test]

@@ -10,6 +10,7 @@ mod mobs;
 mod recipe_book;
 mod settings;
 pub mod survival;
+mod weather;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -131,6 +132,8 @@ struct Game {
     last_frame: Instant,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     day_time: f64,
+    weather: weather::Weather,
+    weather_verts: Vec<crate::render::weather::WeatherVertex>,
     started: Instant,
     last_save: Instant,
     // Title-bar stats, refreshed twice a second.
@@ -320,7 +323,22 @@ impl ApplicationHandler for App {
             show_hud: true,
             last_space: now - Duration::from_secs(1),
             last_frame: now,
-            day_time: self.args.time.unwrap_or(0.08),
+            day_time: self
+                .args
+                .time
+                .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
+                .unwrap_or(0.08),
+            weather: {
+                let mut w = weather::Weather::new(seed);
+                if let Some(text) = existing.as_ref().and_then(|l| l.props.get("weather")) {
+                    w.deserialize(text);
+                }
+                if let Some(rain) = self.args.weather {
+                    w.set(rain, true);
+                }
+                w
+            },
+            weather_verts: Vec::new(),
             started: now,
             last_save: now,
             stats_since: now,
@@ -655,6 +673,9 @@ impl Game {
     /// stronger hit within it only deals the difference).
     pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
         let taken = self.vitals.damage(amount, cause, self.mode == GameMode::Creative);
+        if taken > 0.0 {
+            self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
+        }
         if taken > 0.0 && self.vitals.is_dead() {
             self.on_death();
         }
@@ -874,7 +895,9 @@ impl Game {
         }
         self.actions.breaking = None;
         self.action_cooldown = BREAK_DELAY;
-        self.world.set_block(pos, Block::AIR);
+        // Broken ice melts into water, unless it was floating over nothing.
+        let melts = block == Block::ICE && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
+        self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
         if crate::mining::can_harvest(block, held) {
@@ -948,7 +971,9 @@ impl Game {
         // Furnaces and chests face whoever places them.
         let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
-        let supported = self.world.get_block(at - glam::IVec3::Y).is_some_and(|below| block.can_stay_on(below));
+        let below = self.world.get_block(at - glam::IVec3::Y);
+        let supported = below.is_some_and(|below| block.can_stay_on(below))
+            && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || self.world.cane_has_water(at));
         if free
             && supported
             && !(block.is_solid() && self.player.intersects_block(at))
@@ -1090,6 +1115,8 @@ impl Game {
         props.insert("furnaces".to_string(), self.world.furnaces_to_string());
         props.insert("chests".to_string(), self.world.chests_to_string());
         props.insert("items".to_string(), self.mobs.entities.items_to_string());
+        props.insert("time".to_string(), format!("{:.5}", self.day_time));
+        props.insert("weather".to_string(), self.weather.serialize());
         let level = LevelInfo {
             seed: self.world.generator.seed,
             player: Some((self.player.pos, self.player.yaw, self.player.pitch)),
@@ -1128,7 +1155,10 @@ impl Game {
         let before = self.player.pos;
         self.player.update(dt, input, &self.world);
         let moved = (self.player.pos - before).with_y(0.0).length();
-        self.audio.update(&self.player, &self.world, dt);
+        self.weather.update(dt);
+        self.world.raining = self.weather.raining;
+        let rain_here = weather::rain_at(&self.world, &self.weather, self.player.pos);
+        self.audio.update(&self.player, &self.world, rain_here, dt);
         let env = survival::Env {
             y: self.player.pos.y,
             on_ground: self.player.on_ground,
@@ -1197,7 +1227,10 @@ impl Game {
 
         // --- Render ---------------------------------------------------------
         self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
-        let sky = sky_state(self.day_time);
+        let mut sky = sky_state(self.day_time);
+        sky.daylight = self.weather.dim(sky.daylight);
+        sky.horizon = self.weather.overcast(sky.horizon);
+        sky.zenith = self.weather.overcast(sky.zenith);
         let daylight = sky.daylight;
         let in_lava = self.player.head_in_lava(&self.world);
         let underwater = env.head_in_water || in_lava;
@@ -1216,6 +1249,8 @@ impl Game {
             (now - self.started).as_secs_f32(),
         );
         self.renderer.set_entities(verts);
+        weather::sheets(&self.world, self.player.eye(), self.weather.strength, &mut self.weather_verts);
+        self.renderer.set_weather(&self.weather_verts);
         let params = FrameParams {
             camera: self.player.eye(),
             forward: self.player.forward(),
@@ -1247,6 +1282,7 @@ impl Game {
                 })
                 .chain(self.item_models())
                 .collect(),
+            rain: self.weather.strength,
             ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() {
                 self.build_ui(now)
             } else {

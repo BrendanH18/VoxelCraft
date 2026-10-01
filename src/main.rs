@@ -36,6 +36,8 @@ pub struct Args {
     pub open_menu: Option<String>,
     /// Starting time of day, 0..1 (0 sunrise, 0.25 noon, 0.75 midnight).
     pub time: Option<f64>,
+    /// `--weather`: start raining (true) or clear (false).
+    pub weather: Option<bool>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
     pub place: Vec<(glam::IVec3, world::block::Block)>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
@@ -88,6 +90,7 @@ voxelcraft [options]
                     for the terrain surface, e.g. zombie,4,~,10)
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
+  --weather <w>     start with clear skies or rain (clear, rain)
   --screenshot <f>  wait for the world to load, save a PNG and exit
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
   --mute            start with sound muted (M toggles in game)
@@ -110,6 +113,7 @@ fn parse_args() -> Result<Args, String> {
         open_inventory: false,
         open_menu: None,
         time: None,
+        weather: None,
         place: Vec::new(),
         spawn: Vec::new(),
         wait: 0.0,
@@ -177,6 +181,13 @@ fn parse_args() -> Result<Args, String> {
             }
             "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
+            "--weather" => {
+                args.weather = Some(match value("--weather")?.as_str() {
+                    "rain" => true,
+                    "clear" => false,
+                    _ => return Err("--weather needs clear or rain".into()),
+                })
+            }
             "--health" => args.health = Some(value("--health")?.parse().map_err(|_| "bad --health")?),
             "--air" => args.air = Some(value("--air")?.parse().map_err(|_| "bad --air")?),
             "--food" => args.food = Some(value("--food")?.parse().map_err(|_| "bad --food")?),

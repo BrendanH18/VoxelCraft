@@ -43,10 +43,11 @@ pub enum Command {
     Master(f32),
     /// Low-pass the whole mix (head underwater).
     Muffle(bool),
-    /// Target levels of the wind and cave loops, 0..1.
+    /// Target levels of the wind, cave and rain loops, 0..1.
     Ambience {
         wind: f32,
         cave: f32,
+        rain: f32,
     },
 }
 
@@ -115,7 +116,7 @@ pub struct Mixer {
     muffle_target: f32,
     lp: [OnePole; 4],
     limiter: f32,
-    ambient: [Loop; 2],
+    ambient: [Loop; 3],
     left: [f32; BLOCK],
     right: [f32; BLOCK],
 }
@@ -126,6 +127,7 @@ impl Mixer {
         let ambient = [
             Loop { buf: loop_buf(Sound::Wind), ..Default::default() },
             Loop { buf: loop_buf(Sound::Cave), ..Default::default() },
+            Loop { buf: loop_buf(Sound::Rain), ..Default::default() },
         ];
         Self {
             bank,
@@ -183,9 +185,10 @@ impl Mixer {
             }
             Command::Master(g) => self.master_target = g.clamp(0.0, 2.0),
             Command::Muffle(on) => self.muffle_target = if on { 1.0 } else { 0.0 },
-            Command::Ambience { wind, cave } => {
+            Command::Ambience { wind, cave, rain } => {
                 self.ambient[0].target = wind.clamp(0.0, 1.0);
                 self.ambient[1].target = cave.clamp(0.0, 1.0);
+                self.ambient[2].target = rain.clamp(0.0, 1.0);
             }
         }
     }

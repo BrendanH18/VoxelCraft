@@ -51,6 +51,10 @@ pub enum MobSound {
     Fuse,
     /// A skeleton loosed an arrow.
     Bow,
+    /// An idle call (oink, moo, groan).
+    Ambient(MobKind),
+    Hurt(MobKind),
+    Death(MobKind),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -132,6 +136,8 @@ pub struct Ctx {
     pub daylight: f32,
     /// Natural spawning on/off.
     pub spawning: bool,
+    /// Rain keeps undead mobs from burning in the sun.
+    pub raining: bool,
 }
 
 /// Small deterministic RNG (splitmix64).
@@ -444,7 +450,7 @@ mod tests {
     }
 
     fn ctx(player: DVec3) -> Ctx {
-        Ctx { player_pos: player, player_targetable: false, daylight: 1.0, spawning: false }
+        Ctx { player_pos: player, player_targetable: false, daylight: 1.0, spawning: false, raining: false }
     }
 
     /// Runs one mob for `secs` at 60 Hz, forcing it to walk along +X.
@@ -547,16 +553,41 @@ mod tests {
         assert!(pig.pos.y > 9.0 && pig.pos.y < 10.0, "should bob at the surface: y = {}", pig.pos.y);
     }
 
+    fn is_hit(ev: &EntityEvent) -> bool {
+        matches!(ev, EntityEvent::PlayerHit { .. })
+    }
+
+    #[test]
+    fn mobs_cry_when_hurt_and_call_when_idle() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(6);
+        e.spawn(MobKind::Cow, DVec3::new(0.5, 10.0, 0.5));
+        let c = ctx(DVec3::new(30.0, 10.0, 0.0));
+        let sounds = |events: Vec<EntityEvent>| -> Vec<MobSound> {
+            events
+                .into_iter()
+                .filter_map(|ev| if let EntityEvent::Sound { sound, .. } = ev { Some(sound) } else { None })
+                .collect()
+        };
+        let idle = sounds(run(&mut e, &world, &c, 20.0));
+        assert!(idle.contains(&MobSound::Ambient(MobKind::Cow)), "{idle:?}");
+        e.attack(0, DVec3::X, 1.0);
+        assert_eq!(sounds(e.update(1.0 / 60.0, &world, &c)), vec![MobSound::Hurt(MobKind::Cow)]);
+        e.mobs[0].hurt = 0.0;
+        e.attack(0, DVec3::X, 100.0);
+        assert!(sounds(e.update(1.0 / 60.0, &world, &c)).contains(&MobSound::Death(MobKind::Cow)));
+    }
+
     #[test]
     fn zombie_attacks_with_cooldown() {
         let world = Grid::flat(10);
         let mut e = Entities::new(5);
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         let player = DVec3::new(1.5, 10.0, 0.5);
-        let c = Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false };
+        let c = Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false, raining: false };
         let mut hits = Vec::new();
         for _ in 0..90 {
-            hits.extend(e.update(1.0 / 60.0, &world, &c));
+            hits.extend(e.update(1.0 / 60.0, &world, &c).into_iter().filter(is_hit));
         }
         // 1.5 s: an immediate hit plus one after the 1 s cooldown.
         assert_eq!(hits.len(), 2, "{hits:?}");
@@ -566,7 +597,7 @@ mod tests {
 
         // Creative players are ignored.
         let c = Ctx { player_targetable: false, ..c };
-        assert!((0..120).all(|_| e.update(1.0 / 60.0, &world, &c).is_empty()));
+        assert!((0..120).all(|_| !e.update(1.0 / 60.0, &world, &c).iter().any(is_hit)));
     }
 
     #[test]
@@ -577,8 +608,14 @@ mod tests {
         }
         let mut e = Entities::new(8);
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
-        let c = Ctx { player_pos: DVec3::new(8.5, 10.0, 0.5), player_targetable: true, daylight: 0.1, spawning: false };
-        let hit = (0..60 * 10).any(|_| !e.update(1.0 / 60.0, &world, &c).is_empty());
+        let c = Ctx {
+            player_pos: DVec3::new(8.5, 10.0, 0.5),
+            player_targetable: true,
+            daylight: 0.1,
+            spawning: false,
+            raining: false,
+        };
+        let hit = (0..60 * 10).any(|_| e.update(1.0 / 60.0, &world, &c).iter().any(is_hit));
         assert!(hit, "zombie stuck at {:?}", e.mobs[0].pos);
     }
 
@@ -636,7 +673,7 @@ mod tests {
         let world = Grid::flat(64);
         let mut e = Entities::new(11);
         let player = DVec3::new(0.0, 64.0, 0.0);
-        let c = Ctx { player_pos: player, player_targetable: false, daylight: 0.12, spawning: true };
+        let c = Ctx { player_pos: player, player_targetable: false, daylight: 0.12, spawning: true, raining: false };
         for _ in 0..600 {
             e.update(0.05, &world, &c);
         }
@@ -648,7 +685,7 @@ mod tests {
     }
 
     fn night(player: DVec3) -> Ctx {
-        Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false }
+        Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false, raining: false }
     }
 
     fn run(e: &mut Entities, world: &Grid, c: &Ctx, secs: f64) -> Vec<EntityEvent> {

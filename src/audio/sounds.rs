@@ -7,6 +7,7 @@
 use std::f32::consts::TAU;
 
 use super::dsp::{self, Biquad, Mode, OnePole, RATE, Rng, add_mode, crackle, mix_into, noise, samples};
+pub use super::voices::{Call, Voice};
 use crate::world::block::Block;
 
 /// Sound category of a block.
@@ -57,17 +58,18 @@ impl Material {
 /// The one place blocks are mapped to sound materials.
 pub fn material(block: Block) -> Material {
     match block.base() {
-        Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE | Block::CHEST => Material::Wood,
+        b if b.is_log() || b.is_planks() => Material::Wood,
+        Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON => Material::Wood,
         Block::DIRT | Block::FARMLAND | Block::WET_FARMLAND => Material::Dirt,
         Block::TORCH => Material::Wood,
         b if b == Block::GRASS || b == Block::CACTUS || b.kind() == crate::world::block::RenderKind::Cross => {
             Material::Grass
         }
-        Block::GRAVEL => Material::Gravel,
-        Block::SAND => Material::Sand,
+        Block::GRAVEL | Block::CLAY => Material::Gravel,
+        Block::SAND | Block::RED_SAND => Material::Sand,
         Block::SNOW | Block::SNOWY_GRASS | Block::WOOL => Material::Snow,
-        Block::LEAVES | Block::SPRUCE_LEAVES => Material::Leaves,
-        Block::GLASS | Block::GLOWSTONE => Material::Glass,
+        b if b.is_leaves() => Material::Leaves,
+        Block::GLASS | Block::GLOWSTONE | Block::ICE => Material::Glass,
         b if b.is_fluid() => Material::Water,
         // Stone, cobblestone, ores, bricks, sandstone, bedrock and unknowns.
         _ => Material::Stone,
@@ -101,12 +103,21 @@ pub enum Sound {
     Bow,
     /// Picking up an item.
     Pop,
+    /// The player taking damage.
+    Hurt,
+    /// A melee blow landing on a mob.
+    Hit,
+    /// A mob's idle call, hurt cry or death sound.
+    Mob(Voice, Call),
+    /// Rainfall (seamless loop).
+    Rain,
 }
 
 const M: usize = Material::ALL.len();
+const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 11;
+    pub const COUNT: usize = 3 * M + 14 + Voice::ALL.len() * CALLS;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -125,24 +136,33 @@ impl Sound {
             Sound::Fuse => 3 * M + 8,
             Sound::Bow => 3 * M + 9,
             Sound::Pop => 3 * M + 10,
+            Sound::Hurt => 3 * M + 11,
+            Sound::Hit => 3 * M + 12,
+            Sound::Rain => 3 * M + 13,
+            Sound::Mob(v, c) => 3 * M + 14 + v as usize * CALLS + c as usize,
         }
     }
 
     pub fn all() -> impl Iterator<Item = Sound> {
         let per_material = Material::ALL.into_iter().flat_map(|m| [Sound::Break(m), Sound::Place(m), Sound::Step(m)]);
-        per_material.chain([
-            Sound::Land,
-            Sound::Splash,
-            Sound::Swim,
-            Sound::Click,
-            Sound::Drip,
-            Sound::Wind,
-            Sound::Cave,
-            Sound::Explosion,
-            Sound::Fuse,
-            Sound::Bow,
-            Sound::Pop,
-        ])
+        per_material
+            .chain([
+                Sound::Land,
+                Sound::Splash,
+                Sound::Swim,
+                Sound::Click,
+                Sound::Drip,
+                Sound::Wind,
+                Sound::Cave,
+                Sound::Explosion,
+                Sound::Fuse,
+                Sound::Bow,
+                Sound::Pop,
+                Sound::Hurt,
+                Sound::Hit,
+                Sound::Rain,
+            ])
+            .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
     }
 
     pub fn name(self) -> String {
@@ -161,19 +181,25 @@ impl Sound {
             Sound::Fuse => "fuse".into(),
             Sound::Bow => "bow".into(),
             Sound::Pop => "pop".into(),
+            Sound::Hurt => "hurt".into(),
+            Sound::Hit => "hit".into(),
+            Sound::Rain => "rain".into(),
+            Sound::Mob(v, c) => format!("{}_{}", v.name(), c.name()),
         }
     }
 
     pub fn is_loop(self) -> bool {
-        matches!(self, Sound::Wind | Sound::Cave)
+        matches!(self, Sound::Wind | Sound::Cave | Sound::Rain)
     }
 
     pub fn variants(self) -> u32 {
         match self {
             Sound::Step(_) => 4,
             Sound::Break(_) | Sound::Place(_) | Sound::Swim | Sound::Drip => 3,
-            Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow => 2,
-            Sound::Click | Sound::Wind | Sound::Cave | Sound::Fuse | Sound::Pop => 1,
+            Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow | Sound::Hurt | Sound::Hit => 2,
+            Sound::Mob(_, Call::Death) => 1,
+            Sound::Mob(..) => 2,
+            Sound::Click | Sound::Wind | Sound::Cave | Sound::Fuse | Sound::Pop | Sound::Rain => 1,
         }
     }
 
@@ -195,6 +221,10 @@ impl Sound {
             Sound::Fuse => fuse(&mut rng),
             Sound::Bow => bow(&mut rng),
             Sound::Pop => pop(),
+            Sound::Hurt => super::voices::player_hurt(&mut rng),
+            Sound::Hit => super::voices::hit(&mut rng),
+            Sound::Rain => rain(&mut rng),
+            Sound::Mob(v, c) => super::voices::render(v, c, &mut rng),
         }
     }
 }
@@ -682,6 +712,23 @@ fn cave(rng: &mut Rng) -> Vec<f32> {
         })
         .collect();
     dsp::make_loop(out, n, x, 0.1)
+}
+
+fn rain(rng: &mut Rng) -> Vec<f32> {
+    let loop_secs = 8.0;
+    let (n, x) = (samples(loop_secs), samples(0.5));
+    // Countless tiny droplet ticks over a soft hiss, with a gentle swell
+    // whose period divides the loop length.
+    let mut drops = crackle(rng, n + x, (0.3, 1.2), |t| 2400.0 * (0.8 + 0.2 * (TAU * t / loop_secs * 2.0).sin()));
+    Biquad::highpass(1800.0, 0.7).run(&mut drops);
+    Biquad::lowpass(9000.0, 0.7).run(&mut drops);
+    let mut hiss = noise(rng, n + x, |_| 1.0);
+    Biquad::bandpass(1400.0, 0.6).run(&mut hiss);
+    let mut rumble = noise(rng, n + x, |_| 1.0);
+    Biquad::lowpass(220.0, 0.7).run(&mut rumble);
+    mix_into(&mut drops, &hiss, 0.5, 0);
+    mix_into(&mut drops, &rumble, 0.8, 0);
+    dsp::make_loop(drops, n, x, 0.12)
 }
 
 #[derive(Clone, Copy)]

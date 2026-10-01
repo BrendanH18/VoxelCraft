@@ -214,7 +214,7 @@ fn ambience_loops_fade_in() {
     let mut out = vec![0.0; 2 * 4800];
     mixer.render(&mut out, 2);
     assert!(out.iter().all(|&s| s == 0.0), "silent until requested");
-    tx.send(Command::Ambience { wind: 1.0, cave: 0.0 }).unwrap();
+    tx.send(Command::Ambience { wind: 1.0, cave: 0.0, rain: 0.0 }).unwrap();
     for _ in 0..20 {
         mixer.render(&mut out, 2);
     }
@@ -256,7 +256,7 @@ fn mixer_is_cheap() {
     // both ambient loops and the underwater filter.
     let (tx, rx) = crossbeam_channel::bounded(1024);
     let mut mixer = Mixer::new(bank(), rx, RATE, 1.0);
-    tx.send(Command::Ambience { wind: 1.0, cave: 1.0 }).unwrap();
+    tx.send(Command::Ambience { wind: 1.0, cave: 1.0, rain: 1.0 }).unwrap();
     tx.send(Command::Muffle(true)).unwrap();
     let mut out = vec![0.0; 2 * 512];
     let start = std::time::Instant::now();
