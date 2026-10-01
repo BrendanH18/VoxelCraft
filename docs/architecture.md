@@ -58,6 +58,7 @@ src/
     survival.rs      health rules: falls, drowning, regeneration (unit tested)
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
   inventory.rs       inventory slots and stacking
+  crafting.rs        crafting grids and recipes
   item.rs            item registry: blocks, materials, food and tools
   player.rs          player movement
   physics.rs         shared AABB-vs-block collision, ray-vs-box test

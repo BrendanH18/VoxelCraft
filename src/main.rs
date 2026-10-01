@@ -1,6 +1,7 @@
 mod app;
 mod audio;
 mod bench;
+mod crafting;
 mod entity;
 mod inventory;
 mod item;

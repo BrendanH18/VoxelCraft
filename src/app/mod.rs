@@ -88,6 +88,9 @@ struct Game {
     mode: GameMode,
     inventory: Inventory,
     inventory_open: bool,
+    /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
+    /// crafting table. Emptied back into the inventory when it closes.
+    craft: crate::crafting::Grid,
     /// First visible row of the creative palette.
     creative_scroll: usize,
     /// Mouse position in physical pixels (for the inventory screen).
@@ -126,6 +129,9 @@ struct Game {
     menu: Option<menu::Screen>,
     /// Slider being dragged.
     menu_drag: Option<menu::Widget>,
+    /// The window has had keyboard focus at some point (losing focus only
+    /// pauses after that, not when the game starts in the background).
+    had_focus: bool,
     settings: settings::Settings,
     /// Where options are saved; `None` for scripted runs (screenshots,
     /// benchmarks), which neither read nor write them.
@@ -253,6 +259,7 @@ impl ApplicationHandler for App {
             mode,
             inventory,
             inventory_open: self.args.open_inventory,
+            craft: crate::crafting::Grid::new(2),
             creative_scroll: 0,
             cursor_px: (0.0, 0.0),
             breaking: None,
@@ -285,6 +292,7 @@ impl ApplicationHandler for App {
                 _ => None,
             },
             menu_drag: None,
+            had_focus: false,
             settings,
             settings_path,
         };
@@ -309,9 +317,10 @@ impl ApplicationHandler for App {
                 game.cursor_px = (position.x as f32, position.y as f32);
                 game.menu_cursor_moved();
             }
+            WindowEvent::Focused(true) => game.had_focus = true,
             WindowEvent::Focused(false) => {
                 // Like Minecraft: switching away pauses (not in scripted runs).
-                if game.settings_path.is_some() && game.menu.is_none() && !game.vitals.is_dead() {
+                if game.had_focus && game.settings_path.is_some() && game.menu.is_none() && !game.vitals.is_dead() {
                     game.open_menu();
                 } else {
                     game.set_grab(false);
@@ -581,8 +590,7 @@ impl Game {
     fn on_death(&mut self) {
         log::info!("player {}", self.vitals.death.as_deref().unwrap_or("died"));
         if self.inventory_open {
-            self.inventory_open = false;
-            self.inventory.return_cursor();
+            self.toggle_inventory();
         }
         self.set_grab(false);
         self.keys.clear();
@@ -620,8 +628,36 @@ impl Game {
             self.breaking = None;
         } else {
             self.inventory.return_cursor();
+            // Whatever is left on the crafting grid goes back too.
+            for stack in self.craft.take_all() {
+                self.inventory.add_stack(stack);
+            }
+            self.craft = crate::crafting::Grid::new(2);
             self.set_grab(true);
         }
+    }
+
+    /// Right-click on a crafting table: its 3x3 grid with the inventory.
+    fn open_crafting_table(&mut self) {
+        if self.inventory_open {
+            return;
+        }
+        self.craft = crate::crafting::Grid::new(3);
+        self.toggle_inventory();
+    }
+
+    /// Clicking the crafting result: takes one craft onto the cursor (or
+    /// onto a matching held stack, if it fits) and uses up the ingredients.
+    fn take_craft_result(&mut self) {
+        let Some(result) = self.craft.result() else { return };
+        match &mut self.inventory.cursor {
+            None => self.inventory.cursor = Some(result),
+            Some(c) if c.stacks_with(&result) && c.count as u16 + result.count as u16 <= c.max() as u16 => {
+                c.count += result.count
+            }
+            Some(_) => return,
+        }
+        self.craft.consume();
     }
 
     fn inventory_click(&mut self, right: bool) {
@@ -631,6 +667,10 @@ impl Game {
         }
         match slot {
             Some(hud::SlotRef::Inventory(i)) => self.inventory.click(i, right),
+            Some(hud::SlotRef::Craft(i)) => {
+                crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
+            }
+            Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
             Some(hud::SlotRef::Palette(item)) => {
                 // Creative palette: take a full stack, or trash the held one.
                 self.inventory.cursor = match self.inventory.cursor {
@@ -701,6 +741,10 @@ impl Game {
 
     fn place_block(&mut self) {
         let Some((pos, normal)) = self.target() else { return };
+        if self.world.get_block(pos) == Some(Block::CRAFTING_TABLE) {
+            self.open_crafting_table();
+            return;
+        }
         // Clicking tall grass replaces it instead of building against it.
         let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
         let Some(block) = self.inventory.get(self.selected).and_then(|s| s.item.block()) else { return };
@@ -823,8 +867,12 @@ impl Game {
     fn save(&mut self) {
         let mut props = std::collections::BTreeMap::new();
         props.insert("mode".to_string(), self.mode.name().to_string());
+        // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
         inventory.return_cursor();
+        for stack in self.craft.cells.iter().flatten() {
+            inventory.add_stack(*stack);
+        }
         props.insert("inventory".to_string(), inventory.serialize());
         props.insert("health".to_string(), self.vitals.health.to_string());
         props.insert("air".to_string(), format!("{:.2}", self.vitals.air));

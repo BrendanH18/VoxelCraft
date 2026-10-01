@@ -57,7 +57,7 @@ impl Material {
 /// The one place blocks are mapped to sound materials.
 pub fn material(block: Block) -> Material {
     match block {
-        Block::LOG | Block::PLANKS => Material::Wood,
+        Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE => Material::Wood,
         Block::DIRT => Material::Dirt,
         Block::GRASS | Block::CACTUS | Block::TALL_GRASS | Block::DANDELION | Block::POPPY | Block::DEAD_BUSH => {
             Material::Grass

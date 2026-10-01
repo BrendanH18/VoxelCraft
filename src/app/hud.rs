@@ -18,6 +18,9 @@ pub(super) enum SlotRef {
     Inventory(usize),
     /// Creative palette entry.
     Palette(Item),
+    /// Crafting grid cell (row-major in the grid's own size).
+    Craft(usize),
+    CraftResult,
 }
 
 /// Visible rows of the creative palette.
@@ -31,6 +34,8 @@ pub(super) fn palette_rows() -> usize {
 const SLOT: f32 = 18.0;
 const PANEL_W: f32 = 9.0 * SLOT + 14.0;
 const PANEL_H: f32 = 4.0 * SLOT + 38.0;
+/// Extra height for the crafting area above the inventory grid.
+const CRAFT_H: f32 = 3.0 * SLOT + 14.0;
 
 const DEBUG_TEXT: Color = [0.88, 0.88, 0.88, 1.0];
 const HIGHLIGHT: Color = [1.0, 1.0, 0.6, 1.0];
@@ -171,13 +176,46 @@ impl Game {
         }
     }
 
-    /// Screen positions of every slot on the inventory screen: a 3x9 grid
-    /// (main inventory, or the block palette in creative) and the hotbar.
+    /// Whether the screen shows a crafting grid (survival inventory or a
+    /// crafting table) rather than the creative palette.
+    fn shows_crafting(&self) -> bool {
+        self.mode == GameMode::Survival || self.craft.size == 3
+    }
+
+    /// Top-left corner and height of the inventory panel.
+    fn panel(&self, screen: (f32, f32)) -> (f32, f32, f32) {
+        let h = PANEL_H + if self.shows_crafting() { CRAFT_H } else { 0.0 };
+        (((screen.0 - PANEL_W) / 2.0).floor(), ((screen.1 - h) / 2.0).floor(), h)
+    }
+
+    /// Screen positions of every slot on the inventory screen: the crafting
+    /// grid and its result (outside creative), a 3x9 grid (main inventory,
+    /// or the block palette in creative) and the hotbar.
     fn inventory_slots(&self, screen: (f32, f32)) -> Vec<(SlotRef, f32, f32)> {
-        let (px, py) = (((screen.0 - PANEL_W) / 2.0).floor(), ((screen.1 - PANEL_H) / 2.0).floor());
-        let mut out = Vec::with_capacity(36);
+        let (px, py, _) = self.panel(screen);
+        let mut out = Vec::with_capacity(46);
+        let top = if self.shows_crafting() {
+            let n = self.craft.size;
+            // The grid sits left of centre, the result to its right past an arrow.
+            let gx = px + 7.0 + if n == 3 { SLOT } else { 2.0 * SLOT };
+            let gy = py + 18.0 + (3 - n) as f32 * SLOT / 2.0;
+            for i in 0..n * n {
+                out.push((SlotRef::Craft(i), gx + (i % n) as f32 * SLOT, gy + (i / n) as f32 * SLOT));
+            }
+            out.push((SlotRef::CraftResult, px + 7.0 + 6.0 * SLOT, py + 18.0 + SLOT));
+            CRAFT_H
+        } else {
+            0.0
+        };
+        let py = py + top;
         let grid = |i: usize| (px + 7.0 + (i % 9) as f32 * SLOT, py + 18.0 + (i / 9) as f32 * SLOT);
         match self.mode {
+            _ if self.craft.size == 3 => {
+                for i in 0..27 {
+                    let (x, y) = grid(i);
+                    out.push((SlotRef::Inventory(HOTBAR_SLOTS + i), x, y));
+                }
+            }
             GameMode::Survival => {
                 for i in 0..27 {
                     let (x, y) = grid(i);
@@ -211,18 +249,30 @@ impl Game {
     fn inventory_ui(&self, ui: &mut Ui) {
         let (sw, sh) = ui.size();
         ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.45]);
-        let (px, py) = (((sw - PANEL_W) / 2.0).floor(), ((sh - PANEL_H) / 2.0).floor());
-        ui.rect(px, py, PANEL_W, PANEL_H, [0.78, 0.78, 0.78, 1.0]);
+        let (px, py, panel_h) = self.panel((sw, sh));
+        ui.rect(px, py, PANEL_W, panel_h, [0.78, 0.78, 0.78, 1.0]);
         ui.rect(px, py, PANEL_W, 1.0, WHITE);
-        ui.rect(px, py, 1.0, PANEL_H, WHITE);
-        ui.rect(px, py + PANEL_H - 1.0, PANEL_W, 1.0, [0.33, 0.33, 0.33, 1.0]);
-        ui.rect(px + PANEL_W - 1.0, py, 1.0, PANEL_H, [0.33, 0.33, 0.33, 1.0]);
+        ui.rect(px, py, 1.0, panel_h, WHITE);
+        ui.rect(px, py + panel_h - 1.0, PANEL_W, 1.0, [0.33, 0.33, 0.33, 1.0]);
+        ui.rect(px + PANEL_W - 1.0, py, 1.0, panel_h, [0.33, 0.33, 0.33, 1.0]);
         let title = match self.mode {
+            _ if self.craft.size == 3 => "Crafting",
             GameMode::Survival => "Inventory",
             GameMode::Creative => "Creative",
         };
         ui.text_flat(px + 8.0, py + 6.0, title, [0.25, 0.25, 0.25, 1.0]);
-        if self.mode == GameMode::Creative {
+        if self.shows_crafting() {
+            // Arrow from the grid to the result.
+            let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + SLOT + 5.0);
+            let dark = [0.45, 0.45, 0.45, 1.0];
+            ui.rect(ax, ay + 3.0, 16.0, 2.0, dark);
+            for i in 0..5 {
+                let fi = i as f32;
+                ui.rect(ax + 12.0 + fi, ay + fi - 1.0, 1.0, 10.0 - 2.0 * fi, dark);
+            }
+        }
+        let py = py + if self.shows_crafting() { CRAFT_H } else { 0.0 };
+        if self.mode == GameMode::Creative && self.craft.size == 2 {
             // Scrollbar beside the palette grid.
             let (x, y, h) = (px + PANEL_W - 6.0, py + 18.0, PALETTE_ROWS as f32 * SLOT);
             let rows = palette_rows().max(1) as f32;
@@ -239,6 +289,8 @@ impl Game {
             let stack = match r {
                 SlotRef::Inventory(i) => self.inventory.get(i),
                 SlotRef::Palette(b) => Some(Stack::new(b, 1)),
+                SlotRef::Craft(i) => self.craft.cells[i],
+                SlotRef::CraftResult => self.craft.result(),
             };
             if let Some(stack) = stack {
                 self.stack_ui(ui, x, y, stack);
@@ -247,11 +299,14 @@ impl Game {
                 ui.rect(x + 1.0, y + 1.0, SLOT - 2.0, SLOT - 2.0, [1.0, 1.0, 1.0, 0.35]);
             }
         }
-        if let Some(SlotRef::Inventory(i)) = hovered
-            && let Some(s) = self.inventory.get(i)
-        {
-            self.tooltip(ui, s.item.name());
-        } else if let Some(SlotRef::Palette(item)) = hovered {
+        let hovered_item = match hovered {
+            Some(SlotRef::Inventory(i)) => self.inventory.get(i).map(|s| s.item),
+            Some(SlotRef::Palette(item)) => Some(item),
+            Some(SlotRef::Craft(i)) => self.craft.cells[i].map(|s| s.item),
+            Some(SlotRef::CraftResult) => self.craft.result().map(|s| s.item),
+            None => None,
+        };
+        if let Some(item) = hovered_item {
             self.tooltip(ui, item.name());
         }
         // The held stack follows the mouse.

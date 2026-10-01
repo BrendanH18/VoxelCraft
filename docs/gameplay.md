@@ -73,6 +73,13 @@ session.
   arrows and explosion smoke are drawn in a single draw call
 - Survival and creative modes: timed block breaking with crack overlay,
   drops, a 36-slot inventory with stacks, and a scrollable creative palette
+- Crafting: a 2x2 grid in the survival inventory and a 3x3 grid at a
+  crafting table (right-click it). Shaped recipes work anywhere in the
+  grid and mirrored; click the result to craft one, and leftovers return
+  to the inventory when the screen closes. Recipes: planks (from a log),
+  sticks, crafting table, torches (coal or charcoal over a stick),
+  sandstone, wool (from string), arrows, and pickaxes, shovels, axes,
+  hoes and swords in wood, stone, iron, gold and diamond
 - Items beyond blocks, each with a procedurally drawn icon: sticks, coal,
   ingots, diamonds, food, mob materials, and pickaxes, shovels, axes, hoes
   and swords in five tiers with durability bars. Coal and diamond ore drop

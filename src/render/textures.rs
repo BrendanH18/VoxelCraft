@@ -222,6 +222,33 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let ridge = (x + y) % 4 < 2;
             shade([234, 234, 228], if ridge { 0.96 + r * 0.06 } else { 0.86 + r * 0.06 })
         }
+        tex::TABLE_TOP => {
+            // Planks framed by a dark border, with a 2x2 grid scored in the middle.
+            let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+            let grid = (3..13).contains(&x)
+                && (3..13).contains(&y)
+                && (x == 3 || x == 8 || x == 12 || y == 3 || y == 8 || y == 12);
+            if border || grid { shade([104, 74, 44], 0.85 + r * 0.1) } else { pixel(tex::PLANKS, x, y) }
+        }
+        tex::TABLE_SIDE => {
+            // Planks with a saw blade (left) and hammer (right) hung on them.
+            let top_band = y < 3;
+            let saw = (2..7).contains(&x) && (5..12).contains(&y);
+            let saw_teeth = x == 2 && y.is_multiple_of(2) && (5..12).contains(&y);
+            let handle = (9..11).contains(&x) && (6..14).contains(&y);
+            let head = (8..13).contains(&x) && (4..6).contains(&y);
+            if top_band {
+                shade([104, 74, 44], 0.85 + r * 0.1)
+            } else if saw && !saw_teeth {
+                shade([170, 170, 176], 0.9 + r * 0.15)
+            } else if head {
+                shade([110, 110, 116], 0.9 + r * 0.1)
+            } else if handle {
+                shade([96, 64, 36], 0.9 + r * 0.1)
+            } else {
+                pixel(tex::PLANKS, x, y)
+            }
+        }
         tex::OBSIDIAN => {
             let speck = rnd(layer, x, y, 13) < 0.08;
             let c = if speck { [80, 60, 110] } else { [22, 16, 34] };
