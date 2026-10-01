@@ -76,7 +76,13 @@ session.
 - Crafting: a 2x2 grid in the survival inventory and a 3x3 grid at a
   crafting table (right-click it). Shaped recipes work anywhere in the
   grid and mirrored; click the result to craft one, and leftovers return
-  to the inventory when the screen closes. Recipes: planks (from a log),
+  to the inventory when the screen closes. If the inventory is full,
+  leftovers are kept in the save and return automatically when space opens.
+  The HUD and inventory show the number of items waiting. Click Recipes
+  to browse layouts with the arrow buttons or scroll wheel; hover ingredients
+  for names and alternatives, then copy the preview into your crafting grid.
+  On narrower windows, Back closes the recipe overlay so you can craft.
+  Recipes: planks (from a log),
   sticks, crafting table, torches (coal or charcoal over a stick),
   sandstone, wool (from string), arrows, and pickaxes, shovels, axes,
   hoes and swords in wood, stone, iron, gold and diamond
@@ -117,6 +123,7 @@ session.
   6 exhaustion), or every 0.5 s with a full bar and saturation left; an
   empty bar starves you down to half a heart. You can't sprint at 6 food or
   less. Hold right-click with food for 1.6 s to eat (not when full); the
+  Eating indicator below the crosshair shows the bite's progress. The hunger
   bar shows on the right above the hotbar, with air bubbles above it.
   Creative players don't get hungry. Hunger is saved with the world
 - Break, place and pick blocks, with a selection outline and hotbar
@@ -145,5 +152,6 @@ Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to
 4 zombies and 3 of the others). Mobs spawn 24–64 blocks from the player
 and despawn beyond 96 blocks or when their chunk unloads. Every mob burns
-in lava. Player hits do 2–4 damage with knockback, at most every 0.5 s.
+in lava. Player hits deal damage based on the held item, with knockback, at most
+every 0.5 s: a fist deals 1, and swords deal 4–7 depending on their tier.
 Hostile mobs ignore creative players.

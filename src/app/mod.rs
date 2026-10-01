@@ -1,8 +1,10 @@
 //! Window, input and the per-frame game loop.
 
+mod actions;
 mod hud;
 mod menu;
 mod mobs;
+mod recipe_book;
 mod settings;
 pub mod survival;
 
@@ -103,13 +105,12 @@ struct Game {
     /// crafting table. Emptied back into the inventory when it closes.
     craft: crate::crafting::Grid,
     container: Container,
+    recipe_book: recipe_book::RecipeBook,
     /// First visible row of the creative palette.
     creative_scroll: usize,
     /// Mouse position in physical pixels (for the inventory screen).
     cursor_px: (f32, f32),
-    /// Block being broken in survival and progress 0..1.
-    breaking: Option<(IVec3, f32)>,
-    selected: usize,
+    actions: actions::Actions,
     show_hud: bool,
     last_space: Instant,
     last_frame: Instant,
@@ -128,8 +129,6 @@ struct Game {
     popup: (String, Instant),
     /// Health, air, hunger and fall tracking (survival).
     vitals: Vitals,
-    /// Seconds spent eating the held food so far.
-    eat_timer: f64,
     screenshot: Option<String>,
     screenshot_state: u32,
     place: Vec<(glam::IVec3, Block)>,
@@ -287,10 +286,10 @@ impl ApplicationHandler for App {
             inventory_open: self.args.open_inventory,
             craft: crate::crafting::Grid::new(2),
             container: Container::Inventory,
+            recipe_book: recipe_book::RecipeBook::default(),
             creative_scroll: 0,
             cursor_px: (0.0, 0.0),
-            breaking: None,
-            selected: 0,
+            actions: actions::Actions::default(),
             show_hud: true,
             last_space: now - Duration::from_secs(1),
             last_frame: now,
@@ -305,7 +304,6 @@ impl ApplicationHandler for App {
             show_debug: self.args.debug_overlay,
             popup: (String::new(), now - Duration::from_secs(10)),
             vitals,
-            eat_timer: 0.0,
             screenshot: self.args.screenshot.clone(),
             screenshot_state: 0,
             place: self.args.place.clone(),
@@ -403,10 +401,10 @@ impl ApplicationHandler for App {
                     MouseButton::Left => {
                         game.left_held = pressed;
                         if !pressed {
-                            game.breaking = None;
+                            game.actions.breaking = None;
                             game.release_attack();
                         } else if game.attack() {
-                            game.breaking = None;
+                            game.actions.breaking = None;
                         } else if game.mode == GameMode::Creative {
                             game.break_block();
                             game.action_cooldown = ACTION_REPEAT;
@@ -417,6 +415,8 @@ impl ApplicationHandler for App {
                         if pressed {
                             game.place_block();
                             game.action_cooldown = ACTION_REPEAT;
+                        } else {
+                            game.actions.eat_timer = 0.0;
                         }
                     }
                     MouseButton::Middle if pressed => game.pick_block(),
@@ -430,10 +430,14 @@ impl ApplicationHandler for App {
                     MouseScrollDelta::PixelDelta(p) => (p.y / 30.0) as f32,
                 };
                 if dy.abs() >= 0.5 && game.inventory_open {
-                    game.scroll_palette(if dy > 0.0 { -1 } else { 1 });
+                    if game.recipe_book.open && game.shows_recipes() {
+                        game.recipe_book.step(if dy > 0.0 { -1 } else { 1 });
+                    } else {
+                        game.scroll_palette(if dy > 0.0 { -1 } else { 1 });
+                    }
                 } else if dy.abs() >= 0.5 {
                     let step = if dy > 0.0 { 8 } else { 1 };
-                    game.select((game.selected + step) % 9);
+                    game.select((game.actions.selected + step) % 9);
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -584,14 +588,13 @@ impl Game {
     }
 
     fn select(&mut self, slot: usize) {
-        if slot != self.selected {
-            self.selected = slot;
+        if self.actions.select(slot) {
             self.show_selected_name();
         }
     }
 
     fn show_selected_name(&mut self) {
-        if let Some(s) = self.inventory.get(self.selected) {
+        if let Some(s) = self.inventory.get(self.actions.selected) {
             self.show_popup(s.item.name());
         }
     }
@@ -624,7 +627,7 @@ impl Game {
         self.keys.clear();
         self.left_held = false;
         self.right_held = false;
-        self.breaking = None;
+        self.actions.reset();
     }
 
     /// Back to the world spawn with full health; the inventory is kept.
@@ -642,7 +645,7 @@ impl Game {
         if !self.player.can_fly {
             self.player.flying = false;
         }
-        self.breaking = None;
+        self.actions.reset();
         self.show_popup(&format!("{} mode", capitalize(mode.name())));
     }
 
@@ -653,12 +656,11 @@ impl Game {
             self.keys.clear();
             self.left_held = false;
             self.right_held = false;
-            self.breaking = None;
+            self.actions.reset();
         } else {
-            self.inventory.return_cursor();
-            // Whatever is left on the crafting grid goes back too.
-            for stack in self.craft.take_all() {
-                self.inventory.add_stack(stack);
+            self.inventory.return_stacks(self.craft.take_all());
+            if self.inventory.has_pending_returns() {
+                self.show_popup("Inventory full; leftovers kept");
             }
             self.craft = crate::crafting::Grid::new(2);
             self.container = Container::Inventory;
@@ -709,7 +711,7 @@ impl Game {
         let cursor = &mut self.inventory.cursor;
         let Some(f) = self.world.furnace_mut(pos) else { return };
         match slot {
-            hud::SlotRef::FurnaceInput => crate::inventory::click_slot(&mut f.input, cursor, right),
+            hud::SlotRef::FurnaceInput => f.click_input(cursor, right),
             hud::SlotRef::FurnaceFuel => {
                 if cursor.is_none_or(|c| crate::world::furnace::burn_time(c.item).is_some()) {
                     crate::inventory::click_slot(&mut f.fuel, cursor, right)
@@ -745,6 +747,15 @@ impl Game {
     }
 
     fn inventory_click(&mut self, right: bool) {
+        if !right && let Some(control) = self.recipe_control_under_cursor() {
+            match control {
+                recipe_book::Control::Toggle => self.recipe_book.open = !self.recipe_book.open,
+                recipe_book::Control::Previous => self.recipe_book.step(-1),
+                recipe_book::Control::Next => self.recipe_book.step(1),
+            }
+            self.audio.ui_click();
+            return;
+        }
         let slot = self.slot_under_cursor();
         if slot.is_some() {
             self.audio.ui_click();
@@ -801,26 +812,21 @@ impl Game {
     /// button is held.
     fn continue_breaking(&mut self, dt: f64) {
         if self.attacking() {
-            self.breaking = None;
+            self.actions.breaking = None;
             return;
         }
         let Some((pos, _)) = self.target() else {
-            self.breaking = None;
+            self.actions.breaking = None;
             return;
         };
         let Some(block) = self.world.get_block(pos) else { return };
-        let progress = match self.breaking {
-            Some((p, progress)) if p == pos => progress,
-            _ => 0.0,
-        };
         let held = self.held_item();
-        let progress = progress + (dt / crate::mining::break_time(block, held) as f64) as f32;
+        let progress = self.actions.mine(pos, block, held, dt);
         if progress < 1.0 {
-            self.breaking = Some((pos, progress));
             self.audio.block_hit(block, pos, dt);
             return;
         }
-        self.breaking = None;
+        self.actions.breaking = None;
         self.action_cooldown = BREAK_DELAY;
         self.world.set_block(pos, Block::AIR);
         self.audio.block_break(block, pos);
@@ -842,32 +848,32 @@ impl Game {
         let food = self.held_item().and_then(|i| i.food());
         let eating = acting && self.right_held && self.mode == GameMode::Survival && self.vitals.hunger.can_eat();
         let Some((hunger, saturation)) = food.filter(|_| eating) else {
-            self.eat_timer = 0.0;
+            self.actions.eat_timer = 0.0;
             return;
         };
-        let before = self.eat_timer;
-        self.eat_timer += dt;
+        let before = self.actions.eat_timer;
+        let finished = self.actions.eat(dt);
         // Chewing sounds four times a second.
-        if (before / 0.25).floor() != (self.eat_timer / 0.25).floor() {
+        if (before / 0.25).floor() != ((before + dt) / 0.25).floor() {
             let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
             self.audio.play(sound, None, 0.7, (1.4, 1.7));
         }
-        if self.eat_timer >= EAT_TIME {
-            self.eat_timer = 0.0;
-            self.inventory.take_one(self.selected);
+        if finished {
+            self.inventory.take_one(self.actions.selected);
             self.vitals.hunger.eat(hunger, saturation);
         }
     }
 
     /// The item in the selected hotbar slot.
     pub(super) fn held_item(&self) -> Option<Item> {
-        self.inventory.get(self.selected).map(|s| s.item)
+        self.inventory.get(self.actions.selected).map(|s| s.item)
     }
 
     /// Wears the held tool for a block broken or a mob hit (survival).
     pub(super) fn wear_held(&mut self, hitting_mob: bool) {
         let Some(held) = self.held_item() else { return };
-        if self.mode == GameMode::Survival && self.inventory.wear(self.selected, crate::mining::wear(held, hitting_mob))
+        if self.mode == GameMode::Survival
+            && self.inventory.wear(self.actions.selected, crate::mining::wear(held, hitting_mob))
         {
             self.show_popup(&format!("{} broke", capitalize(held.name())));
             self.audio.play(
@@ -888,7 +894,7 @@ impl Game {
         }
         // Clicking tall grass replaces it instead of building against it.
         let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
-        let Some(block) = self.inventory.get(self.selected).and_then(|s| s.item.block()) else { return };
+        let Some(block) = self.inventory.get(self.actions.selected).and_then(|s| s.item.block()) else { return };
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
         let supported = self.world.get_block(at - glam::IVec3::Y).is_some_and(|below| block.can_stay_on(below));
         if free
@@ -898,7 +904,7 @@ impl Game {
         {
             self.audio.block_place(block, at);
             if self.mode == GameMode::Survival {
-                self.inventory.take_one(self.selected);
+                self.inventory.take_one(self.actions.selected);
             }
         }
     }
@@ -908,11 +914,13 @@ impl Game {
         match self.inventory.find(b) {
             Some(i) if i < HOTBAR_SLOTS => self.select(i),
             Some(i) => {
-                self.inventory.slots.swap(i, self.selected);
+                self.actions.reset();
+                self.inventory.slots.swap(i, self.actions.selected);
                 self.show_selected_name();
             }
             None if self.mode == GameMode::Creative => {
-                self.inventory.slots[self.selected] = Some(Stack::new(b, Item::from(b).max_stack()));
+                self.actions.reset();
+                self.inventory.slots[self.actions.selected] = Some(Stack::new(b, Item::from(b).max_stack()));
                 self.show_selected_name();
             }
             None => {}
@@ -1010,10 +1018,7 @@ impl Game {
         props.insert("mode".to_string(), self.mode.name().to_string());
         // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
-        inventory.return_cursor();
-        for stack in self.craft.cells.iter().flatten() {
-            inventory.add_stack(*stack);
-        }
+        inventory.return_stacks(self.craft.cells.iter().flatten().copied());
         props.insert("inventory".to_string(), inventory.serialize());
         props.insert("health".to_string(), self.vitals.health.to_string());
         props.insert("air".to_string(), format!("{:.2}", self.vitals.air));
@@ -1120,6 +1125,7 @@ impl Game {
             self.renderer.remove_mesh(pos);
         }
         self.update_mobs(dt);
+        self.inventory.retry_returns();
 
         if now - self.last_save > AUTOSAVE_EVERY {
             self.save();
@@ -1160,6 +1166,7 @@ impl Game {
             time: (now - self.started).as_secs_f32(),
             highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| p),
             crack: self
+                .actions
                 .breaking
                 .map(|(p, progress)| (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u8)),
             block_models: self

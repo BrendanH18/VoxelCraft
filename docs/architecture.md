@@ -52,12 +52,14 @@ src/
   main.rs            argument parsing, event loop
   app/
     mod.rs           window, input, game loop, day/night, damage entry point
-    hud.rs           HUD: hotbar, hearts/bubbles, inventory, death and F3 screens
+    actions.rs       hotbar selection, mining and eating progress (unit tested)
+    recipe_book.rs   recipe navigation, responsive layout and hit testing
+    hud.rs           HUD: hotbar, hearts/food/bubbles, containers, death and F3
     menu.rs          pause menu and options screen
     settings.rs      options file (saves/options.txt)
-    survival.rs      health rules: falls, drowning, regeneration (unit tested)
+    survival.rs      health, hunger, exhaustion, regeneration (unit tested)
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
-  inventory.rs       inventory slots and stacking
+  inventory.rs       inventory slots, stacking, saved container overflow
   crafting.rs        crafting grids and recipes
   mining.rs          mining speed, harvest rules, tool wear, melee damage
   item.rs            item registry: blocks, materials, food and tools

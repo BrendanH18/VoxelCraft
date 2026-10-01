@@ -81,6 +81,42 @@ pub struct Recipe {
 }
 
 impl Recipe {
+    /// A valid ingredient layout for the guide, using the first alternative
+    /// for each slot. These previews are never placed in the player's grid.
+    pub fn preview(&self) -> Grid {
+        match &self.shape {
+            Shape::Shaped(rows, key) => {
+                let mut grid = Grid::new(if rows.len() > 2 || rows[0].len() > 2 { 3 } else { 2 });
+                for (y, row) in rows.iter().enumerate() {
+                    for (x, c) in row.chars().enumerate() {
+                        grid.cells[y * grid.size + x] =
+                            key.iter().find(|(k, _)| *k == c).map(|(_, options)| Stack::new(options[0], 1));
+                    }
+                }
+                grid
+            }
+            Shape::Shapeless(ingredients) => {
+                let mut grid = Grid::new(if ingredients.len() > 4 { 3 } else { 2 });
+                for (cell, options) in grid.cells.iter_mut().zip(ingredients) {
+                    *cell = Some(Stack::new(options[0], 1));
+                }
+                grid
+            }
+        }
+    }
+
+    /// Alternative ingredients in the currently displayed preview slot.
+    pub fn alternatives(&self, slot: usize) -> Option<Ingredient> {
+        match &self.shape {
+            Shape::Shaped(rows, key) => {
+                let size = if rows.len() > 2 || rows[0].len() > 2 { 3 } else { 2 };
+                let c = rows.get(slot / size)?.chars().nth(slot % size)?;
+                key.iter().find(|(k, _)| *k == c).map(|(_, options)| *options)
+            }
+            Shape::Shapeless(ingredients) => ingredients.get(slot).copied(),
+        }
+    }
+
     fn matches(&self, w: usize, h: usize, items: &[Option<Item>]) -> bool {
         match &self.shape {
             Shape::Shaped(rows, key) => {
@@ -242,6 +278,63 @@ mod tests {
             for kind in [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword] {
                 assert!(craftable.contains(&Item::tool(kind, tier)), "{kind:?} {tier:?}");
             }
+        }
+    }
+
+    #[test]
+    fn guide_previews_match_their_recipes_and_display_alternatives() {
+        for recipe in recipes() {
+            let preview = recipe.preview();
+            assert_eq!(preview.result(), Some(recipe.result), "{} preview", recipe.result.item.name());
+            for (i, stack) in preview.cells.iter().enumerate() {
+                if let Some(stack) = stack {
+                    assert!(recipe.alternatives(i).unwrap().contains(&stack.item));
+                } else {
+                    assert!(recipe.alternatives(i).is_none());
+                }
+            }
+        }
+        let torches = recipes().iter().find(|r| r.result.item == Item::from_block(Block::TORCH)).unwrap();
+        assert_eq!(torches.alternatives(0), Some(&[Item::COAL, Item::CHARCOAL][..]));
+    }
+
+    #[test]
+    fn crafting_leftovers_survive_close_and_save_with_a_full_inventory() {
+        use crate::inventory::{Inventory, click_slot};
+
+        let mut inv = Inventory::default();
+        inv.slots.fill(Some(Stack::new(Block::STONE, 64)));
+        inv.slots[0] = Some(Stack::new(Block::LOG, 64));
+        let mut g = Grid::new(2);
+        inv.click(0, false);
+        click_slot(&mut g.cells[0], &mut inv.cursor, false);
+        inv.cursor = g.result();
+        g.consume();
+        inv.click(0, false);
+        assert!(inv.slots.iter().all(Option::is_some));
+
+        // Autosave uses a copy, so the open crafting grid remains usable.
+        let mut snapshot = inv.clone();
+        snapshot.return_stacks(g.cells.iter().flatten().copied());
+        let saved = snapshot.serialize();
+        assert_eq!(g.cells[0], Some(Stack::new(Block::LOG, 63)));
+        assert!(!inv.has_pending_returns());
+
+        // Closing uses the same return path; switching containers can now
+        // replace the grid safely without duplicating the saved returns.
+        inv.return_stacks(g.take_all());
+        assert!(g.cells.iter().all(Option::is_none));
+        assert_eq!(inv.serialize(), saved);
+        for text in [saved, inv.serialize()] {
+            let mut restored = Inventory::deserialize(&text).unwrap();
+            assert!(restored.has_pending_returns());
+            assert_eq!(restored.get(0), Some(Stack::new(Block::PLANKS, 4)));
+            // Move the planks onto the cursor to make space for the logs.
+            restored.click(0, false);
+            restored.retry_returns();
+            assert_eq!(restored.get(0), Some(Stack::new(Block::LOG, 63)));
+            assert_eq!(restored.cursor, Some(Stack::new(Block::PLANKS, 4)));
+            assert!(!restored.has_pending_returns());
         }
     }
 }

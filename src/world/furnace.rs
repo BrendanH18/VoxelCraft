@@ -59,6 +59,17 @@ pub fn burn_time(item: Item) -> Option<f32> {
 }
 
 impl Furnace {
+    /// Changes the input through the same slot interaction as the inventory.
+    /// Adding or removing some of the same item keeps cooking progress;
+    /// replacing it or emptying the slot starts a fresh cook.
+    pub fn click_input(&mut self, cursor: &mut Option<Stack>, right: bool) {
+        let before = self.input.map(|s| (s.item, s.damage));
+        crate::inventory::click_slot(&mut self.input, cursor, right);
+        if self.input.map(|s| (s.item, s.damage)) != before {
+            self.cook = 0.0;
+        }
+    }
+
     pub fn is_lit(&self) -> bool {
         self.burn_left > 0.0
     }
@@ -277,5 +288,42 @@ mod tests {
         assert_eq!((g.input, g.fuel), (f.input, f.fuel));
         assert!((g.burn_left - f.burn_left).abs() < 0.01 && (g.cook - f.cook).abs() < 0.01);
         assert!(Furnace::deserialize("junk").is_none());
+    }
+
+    #[test]
+    fn replacing_input_requires_a_full_new_cook() {
+        let mut f = furnace(Item::from_block(Block::SAND), 1, Item::COAL, 1);
+        f.tick(9.9);
+        let burn = f.burn_left;
+        let mut cursor = Some(Stack::new(Block::IRON_ORE, 1));
+        f.click_input(&mut cursor, false);
+        assert_eq!(cursor, Some(Stack::new(Block::SAND, 1)));
+        assert_eq!(f.cook, 0.0);
+        assert_eq!(f.burn_left, burn, "replacing input keeps the fire burning");
+        f.tick(0.2);
+        assert!(f.output.is_none());
+        f.tick(9.9);
+        assert_eq!(f.output, Some(Stack::new(Item::IRON_INGOT, 1)));
+    }
+
+    #[test]
+    fn same_input_keeps_progress_but_emptying_the_slot_resets_it() {
+        let mut f = furnace(Item::from_block(Block::SAND), 2, Item::COAL, 1);
+        f.tick(5.0);
+        let mut cursor = Some(Stack::new(Block::SAND, 1));
+        f.click_input(&mut cursor, true);
+        assert_eq!(f.cook, 5.0, "adding the same ingredient preserves progress");
+        assert_eq!(f.input.unwrap().count, 3);
+        f.click_input(&mut cursor, true);
+        assert_eq!(f.cook, 5.0, "taking half also leaves the same ingredient");
+        // Put the picked-up sand back, then remove the whole stack.
+        f.click_input(&mut cursor, false);
+        f.click_input(&mut cursor, false);
+        assert!(f.input.is_none());
+        assert_eq!(f.cook, 0.0);
+        f.click_input(&mut cursor, false);
+        f.tick(0.2);
+        assert!(f.output.is_none());
+        assert!(f.cook < 1.0);
     }
 }
