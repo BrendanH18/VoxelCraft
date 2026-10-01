@@ -10,6 +10,7 @@ mod dsp;
 mod export;
 pub mod mixer;
 pub mod sounds;
+mod voices;
 
 use std::sync::Arc;
 use std::time::Instant;

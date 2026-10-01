@@ -655,6 +655,9 @@ impl Game {
     /// stronger hit within it only deals the difference).
     pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
         let taken = self.vitals.damage(amount, cause, self.mode == GameMode::Creative);
+        if taken > 0.0 {
+            self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
+        }
         if taken > 0.0 && self.vitals.is_dead() {
             self.on_death();
         }

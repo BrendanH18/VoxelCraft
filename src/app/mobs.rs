@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use glam::{DVec3, IVec3};
 
-use crate::audio::sounds::Sound;
+use crate::audio::sounds::{Call, Sound, Voice};
 use crate::entity::{self, Entities, EntityEvent, MobKind, MobSound};
 use crate::physics;
 
@@ -67,6 +67,8 @@ impl Game {
             self.mobs.attack_cooldown = entity::ATTACK_COOLDOWN;
             let damage = crate::mining::attack_damage(self.held_item());
             let killed = self.mobs.entities.attack(i, self.player.forward().as_dvec3(), damage);
+            let at = self.mobs.entities.mobs[i].pos + DVec3::Y * 0.5;
+            self.audio.play(Sound::Hit, Some(at), 0.8, (0.9, 1.1));
             self.wear_held(true);
             if self.mode == GameMode::Survival {
                 self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
@@ -118,15 +120,31 @@ impl Game {
                 }
                 EntityEvent::Explosion { center, power } => self.explode(center, power),
                 EntityEvent::Sound { sound, pos } => {
-                    let sound = match sound {
-                        MobSound::Fuse => Sound::Fuse,
-                        MobSound::Bow => Sound::Bow,
+                    let (sound, gain) = match sound {
+                        MobSound::Fuse => (Sound::Fuse, 1.0),
+                        MobSound::Bow => (Sound::Bow, 1.0),
+                        MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7),
+                        MobSound::Hurt(kind) => (Sound::Mob(voice(kind), Call::Hurt), 0.9),
+                        MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9),
                     };
-                    self.audio.play(sound, Some(pos), 1.0, (0.95, 1.05));
+                    self.audio.play(sound, Some(pos), gain, (0.9, 1.1));
                 }
                 EntityEvent::Shoot { .. } => {}
             }
         }
+    }
+}
+
+fn voice(kind: MobKind) -> Voice {
+    match kind {
+        MobKind::Pig => Voice::Pig,
+        MobKind::Cow => Voice::Cow,
+        MobKind::Sheep => Voice::Sheep,
+        MobKind::Chicken => Voice::Chicken,
+        MobKind::Zombie => Voice::Zombie,
+        MobKind::Skeleton => Voice::Skeleton,
+        MobKind::Creeper => Voice::Creeper,
+        MobKind::Spider => Voice::Spider,
     }
 }
 

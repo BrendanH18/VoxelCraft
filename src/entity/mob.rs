@@ -229,6 +229,10 @@ pub struct Mob {
     /// which side (+1 / -1).
     detour: f32,
     detour_side: f64,
+    /// Seconds until the next idle call.
+    ambient_timer: f32,
+    /// A hurt or death cry waiting to be reported by the next update.
+    cry: Option<MobSound>,
 }
 
 impl Mob {
@@ -263,6 +267,8 @@ impl Mob {
             blocked: false,
             detour: 0.0,
             detour_side: 1.0,
+            ambient_timer: 2.0 + (yaw * 1000.0).rem_euclid(10.0),
+            cry: None,
         }
     }
 
@@ -299,8 +305,10 @@ impl Mob {
         self.provoked = PROVOKED_TIME;
         if self.health <= 0.0 {
             self.dying = Some(0.0);
+            self.cry = Some(MobSound::Death(self.kind));
             return true;
         }
+        self.cry = Some(MobSound::Hurt(self.kind));
         false
     }
 
@@ -314,6 +322,17 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) {
         let dtf = dt as f32;
+        if let Some(sound) = self.cry.take() {
+            events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
+        }
+        self.ambient_timer -= dtf;
+        if self.ambient_timer <= 0.0 {
+            self.ambient_timer = rng.range(7.0, 18.0);
+            if self.alive() && self.kind != MobKind::Creeper {
+                let sound = MobSound::Ambient(self.kind);
+                events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
+            }
+        }
         self.hurt = (self.hurt - dtf).max(0.0);
         self.provoked = (self.provoked - dtf).max(0.0);
         self.attack_cooldown -= dtf;
