@@ -877,7 +877,9 @@ impl Game {
         }
         self.actions.breaking = None;
         self.action_cooldown = BREAK_DELAY;
-        self.world.set_block(pos, Block::AIR);
+        // Broken ice melts into water, unless it was floating over nothing.
+        let melts = block == Block::ICE && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
+        self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
         if crate::mining::can_harvest(block, held) {
@@ -951,7 +953,9 @@ impl Game {
         // Furnaces and chests face whoever places them.
         let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
-        let supported = self.world.get_block(at - glam::IVec3::Y).is_some_and(|below| block.can_stay_on(below));
+        let below = self.world.get_block(at - glam::IVec3::Y);
+        let supported = below.is_some_and(|below| block.can_stay_on(below))
+            && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || self.world.cane_has_water(at));
         if free
             && supported
             && !(block.is_solid() && self.player.intersects_block(at))

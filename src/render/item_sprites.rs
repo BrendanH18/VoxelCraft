@@ -266,6 +266,26 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 })
             })
         }
+        Sprite::MelonSlice => {
+            // A half-disc wedge: green rind on the curve, red flesh with seeds.
+            let wedge = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                py >= 5.0 && (px - 8.0).powi(2) + (py - 5.0).powi(2) <= 7.0 * 7.0
+            };
+            let (px, py) = centre(x, y);
+            let r = ((px - 8.0).powi(2) + (py - 5.0).powi(2)).sqrt();
+            let seed = (x + 2 * y) % 5 == 0 && r < 4.5 && py > 6.0;
+            let c = if r > 5.6 {
+                [70, 140, 40]
+            } else if r > 4.9 {
+                [210, 230, 150]
+            } else if seed {
+                [40, 30, 20]
+            } else {
+                [220, 60, 50]
+            };
+            shaded(&wedge, x, y, c, 0.04)
+        }
         Sprite::Arrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);

@@ -101,9 +101,41 @@ pub mod tex {
     pub const WHEAT_0: u8 = 63;
     pub const OAK_SAPLING: u8 = 71;
     pub const SPRUCE_SAPLING: u8 = 72;
-    /// Flat item icons (see `item::Item::icon_layer`), up to 64 of them.
+    /// Flat item icons (see `item::Item::icon_layer`), up to `ITEM_COUNT` of them.
     pub const ITEM_0: u8 = 96;
-    pub const COUNT: u32 = 160;
+    pub const ITEM_COUNT: u8 = 64;
+    // More block textures, after the item icons.
+    pub const SPRUCE_LOG_SIDE: u8 = 160;
+    pub const SPRUCE_LOG_TOP: u8 = 161;
+    pub const BIRCH_LOG_SIDE: u8 = 162;
+    pub const BIRCH_LOG_TOP: u8 = 163;
+    pub const JUNGLE_LOG_SIDE: u8 = 164;
+    pub const JUNGLE_LOG_TOP: u8 = 165;
+    pub const ACACIA_LOG_SIDE: u8 = 166;
+    pub const ACACIA_LOG_TOP: u8 = 167;
+    pub const BIRCH_LEAVES: u8 = 168;
+    pub const JUNGLE_LEAVES: u8 = 169;
+    pub const ACACIA_LEAVES: u8 = 170;
+    pub const SPRUCE_PLANKS: u8 = 171;
+    pub const BIRCH_PLANKS: u8 = 172;
+    pub const JUNGLE_PLANKS: u8 = 173;
+    pub const ACACIA_PLANKS: u8 = 174;
+    pub const BIRCH_SAPLING: u8 = 175;
+    pub const JUNGLE_SAPLING: u8 = 176;
+    pub const ACACIA_SAPLING: u8 = 177;
+    pub const RED_SAND: u8 = 178;
+    /// Plain terracotta, then the six dyed colours (see `Block::TERRACOTTA`).
+    pub const TERRACOTTA: u8 = 179;
+    pub const CLAY: u8 = 186;
+    pub const SUGAR_CANE: u8 = 187;
+    pub const PUMPKIN_SIDE: u8 = 188;
+    pub const PUMPKIN_TOP: u8 = 189;
+    pub const MELON_SIDE: u8 = 190;
+    pub const MELON_TOP: u8 = 191;
+    pub const FERN: u8 = 192;
+    pub const BLUE_ORCHID: u8 = 193;
+    pub const ICE: u8 = 194;
+    pub const COUNT: u32 = 195;
 }
 
 impl Block {
@@ -158,6 +190,31 @@ impl Block {
     // Wheat crops at growth stages 0..=7 are ids 59..=66 (see `Block::wheat`).
     pub const OAK_SAPLING: Block = Block(67);
     pub const SPRUCE_SAPLING: Block = Block(68);
+    pub const SPRUCE_LOG: Block = Block(69);
+    pub const BIRCH_LOG: Block = Block(70);
+    pub const JUNGLE_LOG: Block = Block(71);
+    pub const ACACIA_LOG: Block = Block(72);
+    pub const BIRCH_LEAVES: Block = Block(73);
+    pub const JUNGLE_LEAVES: Block = Block(74);
+    pub const ACACIA_LEAVES: Block = Block(75);
+    pub const SPRUCE_PLANKS: Block = Block(76);
+    pub const BIRCH_PLANKS: Block = Block(77);
+    pub const JUNGLE_PLANKS: Block = Block(78);
+    pub const ACACIA_PLANKS: Block = Block(79);
+    pub const BIRCH_SAPLING: Block = Block(80);
+    pub const JUNGLE_SAPLING: Block = Block(81);
+    pub const ACACIA_SAPLING: Block = Block(82);
+    pub const RED_SAND: Block = Block(83);
+    /// Plain terracotta; the dyed colours of badlands strata follow it up
+    /// to id 90 (see [`Block::terracotta`]).
+    pub const TERRACOTTA: Block = Block(84);
+    pub const CLAY: Block = Block(91);
+    pub const SUGAR_CANE: Block = Block(92);
+    pub const PUMPKIN: Block = Block(93);
+    pub const MELON: Block = Block(94);
+    pub const FERN: Block = Block(95);
+    pub const BLUE_ORCHID: Block = Block(96);
+    pub const ICE: Block = Block(97);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -175,6 +232,33 @@ impl Block {
     /// Growth stage of a wheat crop.
     pub fn crop_stage(self) -> Option<u8> {
         (59..=66).contains(&self.0).then(|| self.0 - 59)
+    }
+
+    /// Badlands terracotta: 0 plain, then orange, yellow, red, brown, white
+    /// and light grey.
+    pub const fn terracotta(colour: u8) -> Block {
+        Block(84 + colour)
+    }
+
+    /// The kind of wood a log, leaves, planks or sapling block is made of.
+    pub fn wood(self) -> Option<Wood> {
+        Wood::ALL.into_iter().find(|w| [w.log(), w.leaves(), w.planks(), w.sapling()].contains(&self))
+    }
+
+    pub fn is_log(self) -> bool {
+        matches!(self.0, 6 | 69..=72)
+    }
+
+    pub fn is_leaves(self) -> bool {
+        matches!(self.0, 7 | 23 | 73..=75)
+    }
+
+    pub fn is_planks(self) -> bool {
+        matches!(self.0, 8 | 76..=79)
+    }
+
+    pub fn is_sapling(self) -> bool {
+        matches!(self.0, 67 | 68 | 80..=82)
     }
 
     pub fn is_farmland(self) -> bool {
@@ -295,7 +379,10 @@ impl Block {
             Block::FARMLAND | Block::WET_FARMLAND => Some(Block::DIRT.into()),
             b if b.crop_stage() == Some(7) => Some(Item::WHEAT),
             b if b.crop_stage().is_some() => Some(Item::WHEAT_SEEDS),
-            Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK | Block::TALL_GRASS => None,
+            Block::CLAY => Some(Item::CLAY_BALL),
+            Block::MELON => Some(Item::MELON_SLICE),
+            b if b.is_leaves() => None,
+            Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
             b if b.is_fluid() || b == Block::AIR => None,
             b => Some(b.into()),
         }
@@ -307,14 +394,20 @@ impl Block {
     pub fn hardness(self) -> f32 {
         match self.base() {
             b if b.kind() == RenderKind::Cross => 0.0,
-            Block::LEAVES | Block::SPRUCE_LEAVES | Block::SNOW => 0.2,
+            b if b.is_leaves() => 0.2,
+            Block::SNOW => 0.2,
             Block::GLASS | Block::GLOWSTONE => 0.3,
             Block::CACTUS => 0.4,
-            Block::DIRT | Block::SAND => 0.5,
-            Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL | Block::FARMLAND | Block::WET_FARMLAND => 0.6,
+            Block::DIRT | Block::SAND | Block::RED_SAND | Block::ICE => 0.5,
+            Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL | Block::FARMLAND | Block::WET_FARMLAND | Block::CLAY => {
+                0.6
+            }
             Block::SANDSTONE | Block::WOOL => 0.8,
+            Block::PUMPKIN | Block::MELON => 1.0,
+            b if b.terracotta_colour().is_some() => 1.25,
             Block::STONE => 1.5,
-            Block::LOG | Block::PLANKS | Block::COBBLESTONE | Block::BRICKS => 2.0,
+            b if b.is_log() || b.is_planks() => 2.0,
+            Block::COBBLESTONE | Block::BRICKS => 2.0,
             Block::CRAFTING_TABLE | Block::CHEST => 2.5,
             Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
             Block::FURNACE | Block::LIT_FURNACE => 3.5,
@@ -338,7 +431,9 @@ impl Block {
             | Block::DIAMOND_ORE
             | Block::OBSIDIAN
             | Block::FURNACE
-            | Block::LIT_FURNACE => Some(ToolKind::Pickaxe),
+            | Block::LIT_FURNACE
+            | Block::ICE => Some(ToolKind::Pickaxe),
+            b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
             Block::DIRT
             | Block::GRASS
             | Block::SNOWY_GRASS
@@ -346,8 +441,11 @@ impl Block {
             | Block::GRAVEL
             | Block::SNOW
             | Block::FARMLAND
-            | Block::WET_FARMLAND => Some(ToolKind::Shovel),
-            Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE | Block::CHEST => Some(ToolKind::Axe),
+            | Block::WET_FARMLAND
+            | Block::RED_SAND
+            | Block::CLAY => Some(ToolKind::Shovel),
+            b if b.is_log() || b.is_planks() => Some(ToolKind::Axe),
+            Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON => Some(ToolKind::Axe),
             _ => None,
         }
     }
@@ -363,6 +461,7 @@ impl Block {
             | Block::COAL_ORE
             | Block::FURNACE
             | Block::LIT_FURNACE => Some(0),
+            b if b.terracotta_colour().is_some() => Some(0),
             Block::IRON_ORE => Some(1),
             Block::GOLD_ORE | Block::DIAMOND_ORE => Some(2),
             Block::OBSIDIAN => Some(3),
@@ -372,12 +471,21 @@ impl Block {
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).chain(32..=37).chain(42..=45).chain([53, 57, 67, 68]).map(Block)
+        (1..=23u8).chain(32..=37).chain(42..=45).chain([53, 57, 67, 68]).chain(69..=97).map(Block)
     }
 
     /// Blocks that placing another block overwrites (air, fluids, grass).
     pub fn is_replaceable(self) -> bool {
-        self == Block::AIR || self.is_fluid() || self == Block::TALL_GRASS || self == Block::DEAD_BUSH
+        self == Block::AIR
+            || self.is_fluid()
+            || self == Block::TALL_GRASS
+            || self == Block::DEAD_BUSH
+            || self == Block::FERN
+    }
+
+    /// Colour index of a terracotta block (see [`Block::terracotta`]).
+    pub fn terracotta_colour(self) -> Option<u8> {
+        (84..=90).contains(&self.0).then(|| self.0 - 84)
     }
 
     /// Whether the crosshair can select this block (anything visible but fluids).
@@ -388,19 +496,27 @@ impl Block {
 
     /// Sand and gravel fall when nothing holds them up.
     pub fn has_gravity(self) -> bool {
-        matches!(self, Block::SAND | Block::GRAVEL)
+        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL)
     }
 
     /// Whether this block can rest on `below`. Plants need soil and torches
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
         match self {
-            Block::TALL_GRASS | Block::DANDELION | Block::POPPY => {
+            Block::TALL_GRASS | Block::DANDELION | Block::POPPY | Block::FERN | Block::BLUE_ORCHID => {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS)
             }
-            Block::DEAD_BUSH => matches!(below, Block::SAND | Block::DIRT | Block::GRASS),
+            Block::DEAD_BUSH => {
+                matches!(below, Block::SAND | Block::RED_SAND | Block::DIRT | Block::GRASS)
+                    || below.terracotta_colour().is_some()
+            }
+            // Sugar cane also needs water next to its lowest block; see
+            // `World::cane_has_water`.
+            Block::SUGAR_CANE => {
+                matches!(below, Block::SUGAR_CANE | Block::GRASS | Block::DIRT | Block::SAND | Block::RED_SAND)
+            }
             Block::TORCH => below.is_opaque(),
-            Block::OAK_SAPLING | Block::SPRUCE_SAPLING => {
+            b if b.is_sapling() => {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS) || below.is_farmland()
             }
             b if b.crop_stage().is_some() => below.is_farmland(),
@@ -442,6 +558,60 @@ impl Block {
             Block::LIT_FURNACE => 13,
             b if b.is_lava() => 15,
             _ => 0,
+        }
+    }
+}
+
+/// A kind of tree: its log, leaves, planks and sapling blocks.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Wood {
+    Oak,
+    Spruce,
+    Birch,
+    Jungle,
+    Acacia,
+}
+
+impl Wood {
+    pub const ALL: [Wood; 5] = [Wood::Oak, Wood::Spruce, Wood::Birch, Wood::Jungle, Wood::Acacia];
+
+    pub const fn log(self) -> Block {
+        match self {
+            Wood::Oak => Block::LOG,
+            Wood::Spruce => Block::SPRUCE_LOG,
+            Wood::Birch => Block::BIRCH_LOG,
+            Wood::Jungle => Block::JUNGLE_LOG,
+            Wood::Acacia => Block::ACACIA_LOG,
+        }
+    }
+
+    pub const fn leaves(self) -> Block {
+        match self {
+            Wood::Oak => Block::LEAVES,
+            Wood::Spruce => Block::SPRUCE_LEAVES,
+            Wood::Birch => Block::BIRCH_LEAVES,
+            Wood::Jungle => Block::JUNGLE_LEAVES,
+            Wood::Acacia => Block::ACACIA_LEAVES,
+        }
+    }
+
+    pub const fn planks(self) -> Block {
+        match self {
+            Wood::Oak => Block::PLANKS,
+            Wood::Spruce => Block::SPRUCE_PLANKS,
+            Wood::Birch => Block::BIRCH_PLANKS,
+            Wood::Jungle => Block::JUNGLE_PLANKS,
+            Wood::Acacia => Block::ACACIA_PLANKS,
+        }
+    }
+
+    pub const fn sapling(self) -> Block {
+        match self {
+            Wood::Oak => Block::OAK_SAPLING,
+            Wood::Spruce => Block::SPRUCE_SAPLING,
+            Wood::Birch => Block::BIRCH_SAPLING,
+            Wood::Jungle => Block::JUNGLE_SAPLING,
+            Wood::Acacia => Block::ACACIA_SAPLING,
         }
     }
 }
@@ -548,9 +718,9 @@ const fn make(id: u8) -> BlockInfo {
         3 => ("grass", Opaque, column(tex::GRASS_SIDE, tex::GRASS_TOP, tex::DIRT)),
         4 => ("sand", Opaque, all(tex::SAND)),
         5 => ("water", Translucent, all(tex::WATER)),
-        6 => ("log", Opaque, column(tex::LOG_SIDE, tex::LOG_TOP, tex::LOG_TOP)),
-        7 => ("leaves", Cutout, all(tex::LEAVES)),
-        8 => ("planks", Opaque, all(tex::PLANKS)),
+        6 => ("oak log", Opaque, column(tex::LOG_SIDE, tex::LOG_TOP, tex::LOG_TOP)),
+        7 => ("oak leaves", Cutout, all(tex::LEAVES)),
+        8 => ("oak planks", Opaque, all(tex::PLANKS)),
         9 => ("cobblestone", Opaque, all(tex::COBBLESTONE)),
         10 => ("glass", Cutout, all(tex::GLASS)),
         11 => ("bedrock", Opaque, all(tex::BEDROCK)),
@@ -596,9 +766,45 @@ const fn make(id: u8) -> BlockInfo {
         59..=66 => ("wheat crops", Cross, all(tex::WHEAT_0 + (id - 59))),
         67 => ("oak sapling", Cross, all(tex::OAK_SAPLING)),
         68 => ("spruce sapling", Cross, all(tex::SPRUCE_SAPLING)),
+        69 => ("spruce log", Opaque, column(tex::SPRUCE_LOG_SIDE, tex::SPRUCE_LOG_TOP, tex::SPRUCE_LOG_TOP)),
+        70 => ("birch log", Opaque, column(tex::BIRCH_LOG_SIDE, tex::BIRCH_LOG_TOP, tex::BIRCH_LOG_TOP)),
+        71 => ("jungle log", Opaque, column(tex::JUNGLE_LOG_SIDE, tex::JUNGLE_LOG_TOP, tex::JUNGLE_LOG_TOP)),
+        72 => ("acacia log", Opaque, column(tex::ACACIA_LOG_SIDE, tex::ACACIA_LOG_TOP, tex::ACACIA_LOG_TOP)),
+        73 => ("birch leaves", Cutout, all(tex::BIRCH_LEAVES)),
+        74 => ("jungle leaves", Cutout, all(tex::JUNGLE_LEAVES)),
+        75 => ("acacia leaves", Cutout, all(tex::ACACIA_LEAVES)),
+        76 => ("spruce planks", Opaque, all(tex::SPRUCE_PLANKS)),
+        77 => ("birch planks", Opaque, all(tex::BIRCH_PLANKS)),
+        78 => ("jungle planks", Opaque, all(tex::JUNGLE_PLANKS)),
+        79 => ("acacia planks", Opaque, all(tex::ACACIA_PLANKS)),
+        80 => ("birch sapling", Cross, all(tex::BIRCH_SAPLING)),
+        81 => ("jungle sapling", Cross, all(tex::JUNGLE_SAPLING)),
+        82 => ("acacia sapling", Cross, all(tex::ACACIA_SAPLING)),
+        83 => ("red sand", Opaque, all(tex::RED_SAND)),
+        84..=90 => {
+            const NAMES: [&str; 7] = [
+                "terracotta",
+                "orange terracotta",
+                "yellow terracotta",
+                "red terracotta",
+                "brown terracotta",
+                "white terracotta",
+                "light gray terracotta",
+            ];
+            (NAMES[id as usize - 84], Opaque, all(tex::TERRACOTTA + (id - 84)))
+        }
+        91 => ("clay", Opaque, all(tex::CLAY)),
+        92 => ("sugar cane", Cross, all(tex::SUGAR_CANE)),
+        93 => ("pumpkin", Opaque, column(tex::PUMPKIN_SIDE, tex::PUMPKIN_TOP, tex::PUMPKIN_TOP)),
+        94 => ("melon", Opaque, column(tex::MELON_SIDE, tex::MELON_TOP, tex::MELON_TOP)),
+        95 => ("fern", Cross, all(tex::FERN)),
+        96 => ("blue orchid", Cross, all(tex::BLUE_ORCHID)),
+        97 => ("ice", Translucent, all(tex::ICE)),
         _ => ("unknown", Invisible, all(0)),
     };
-    BlockInfo { name, kind, solid: matches!(kind, Opaque | Cutout), self_cull: id == 5 || id == 10, tex }
+    // Ice is see-through like water but solid underfoot.
+    let solid = matches!(kind, Opaque | Cutout) || id == 97;
+    BlockInfo { name, kind, solid, self_cull: id == 5 || id == 10 || id == 97, tex }
 }
 
 pub static INFO: [BlockInfo; 256] = {
@@ -701,6 +907,34 @@ mod tests {
         assert_eq!(Block::FARMLAND.drop(), Some(Block::DIRT.into()));
         assert!(Block::OAK_SAPLING.can_stay_on(Block::GRASS) && !Block::OAK_SAPLING.can_stay_on(Block::SAND));
         assert_eq!(Block::from_name("wheat crops"), Some(Block::wheat(0)));
+    }
+
+    #[test]
+    fn woods_and_biome_blocks() {
+        for wood in Wood::ALL {
+            for b in [wood.log(), wood.leaves(), wood.planks(), wood.sapling()] {
+                assert_eq!(b.wood(), Some(wood), "{}", b.name());
+                assert!(Block::creative_palette().any(|p| p == b), "{}", b.name());
+            }
+            assert!(wood.log().is_log() && wood.leaves().is_leaves() && wood.planks().is_planks());
+            assert!(wood.sapling().is_sapling() && wood.sapling().can_stay_on(Block::GRASS));
+            assert_eq!(wood.log().best_tool(), Some(ToolKind::Axe));
+            assert_eq!(wood.leaves().drop(), None);
+        }
+        assert_eq!(Block::from_name("oak log"), Some(Block::LOG));
+        assert!(Block::RED_SAND.has_gravity());
+        assert!(Block::DEAD_BUSH.can_stay_on(Block::terracotta(3)));
+        for c in 0..7 {
+            assert_eq!(Block::terracotta(c).terracotta_colour(), Some(c));
+            assert_eq!(Block::terracotta(c).harvest_level(), Some(0));
+        }
+        assert_eq!(Block::CLAY.drop(), Some(Item::CLAY_BALL));
+        // Ice: see-through and blended like water, but solid and minable.
+        assert!(Block::ICE.is_solid() && !Block::ICE.is_opaque() && Block::ICE.is_targetable());
+        assert_eq!(Block::ICE.kind(), RenderKind::Translucent);
+        assert_eq!(Block::ICE.drop(), None);
+        assert!(Block::SUGAR_CANE.can_stay_on(Block::SAND) && Block::SUGAR_CANE.can_stay_on(Block::SUGAR_CANE));
+        assert!(!Block::SUGAR_CANE.can_stay_on(Block::STONE));
     }
 
     #[test]

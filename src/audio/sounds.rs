@@ -58,17 +58,18 @@ impl Material {
 /// The one place blocks are mapped to sound materials.
 pub fn material(block: Block) -> Material {
     match block.base() {
-        Block::LOG | Block::PLANKS | Block::CRAFTING_TABLE | Block::CHEST => Material::Wood,
+        b if b.is_log() || b.is_planks() => Material::Wood,
+        Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON => Material::Wood,
         Block::DIRT | Block::FARMLAND | Block::WET_FARMLAND => Material::Dirt,
         Block::TORCH => Material::Wood,
         b if b == Block::GRASS || b == Block::CACTUS || b.kind() == crate::world::block::RenderKind::Cross => {
             Material::Grass
         }
-        Block::GRAVEL => Material::Gravel,
-        Block::SAND => Material::Sand,
+        Block::GRAVEL | Block::CLAY => Material::Gravel,
+        Block::SAND | Block::RED_SAND => Material::Sand,
         Block::SNOW | Block::SNOWY_GRASS | Block::WOOL => Material::Snow,
-        Block::LEAVES | Block::SPRUCE_LEAVES => Material::Leaves,
-        Block::GLASS | Block::GLOWSTONE => Material::Glass,
+        b if b.is_leaves() => Material::Leaves,
+        Block::GLASS | Block::GLOWSTONE | Block::ICE => Material::Glass,
         b if b.is_fluid() => Material::Water,
         // Stone, cobblestone, ores, bricks, sandstone, bedrock and unknowns.
         _ => Material::Stone,

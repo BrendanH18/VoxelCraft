@@ -334,7 +334,8 @@ fn mesh_region(r: &Region) -> MeshData {
                         }
                     } else {
                         match b.kind() {
-                            RenderKind::Opaque | RenderKind::Cutout => face_visible(b, n),
+                            // Ice: the only translucent block that isn't a fluid.
+                            RenderKind::Opaque | RenderKind::Cutout | RenderKind::Translucent => face_visible(b, n),
                             RenderKind::Cross if face == 0 => {
                                 cross_cells.push(i as usize);
                                 false

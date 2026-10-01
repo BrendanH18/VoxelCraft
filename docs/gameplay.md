@@ -46,9 +46,14 @@ session.
 
 ## World and survival features
 
-- Infinite procedurally generated terrain: oceans, beaches, plains,
-  forests, deserts, snowy tundra, taiga and mountains, with spaghetti caves,
-  deep caverns, ores, oak and spruce trees and cacti
+- Infinite procedurally generated terrain in fourteen biomes: oceans,
+  beaches, winding rivers, plains, oak and birch forests, swamps with
+  shallow pools, deserts, terraced badlands striped with terracotta,
+  savannas, jungles, snowy tundra, taiga and mountains. Cold seas and rivers
+  freeze over (broken ice turns back into water). Clay (4 clay balls when
+  broken) lines river and swamp beds. Spaghetti caves, deep caverns and ores lie below. Five kinds
+  of tree grow there: oak, birch, spruce, acacia (leaning trunks under flat
+  canopies) and jungle (tall trees, giant 2x2 trees and bushes), plus cacti
 - Farming and growth, driven by Minecraft-style random block ticks in the
   chunks within 128 blocks (each block is picked about once a minute).
   Breaking tall grass sometimes drops wheat seeds; till grass or dirt with
@@ -56,16 +61,19 @@ session.
   turns dark and wet; wheat grows through 8 stages under open sky, about
   twice as fast on wet farmland, and ripe wheat drops wheat and 1-4 seeds
   (unripe wheat just its seed). Bare dry farmland turns back to dirt, and
-  jumping or falling onto farmland can trample it. Leaves drop oak or
-  spruce saplings (1 in 20; oak leaves also apples, 1 in 200); planted on
-  grass or dirt, saplings grow into trees. Leaves that can't reach a log
+  jumping or falling onto farmland can trample it. Leaves drop their tree's
+  sapling (1 in 20, jungle 1 in 40; oak leaves also apples, 1 in 200);
+  planted on grass or dirt, saplings grow into trees.
+  Sugar cane grows next to water up to 3 blocks tall, and must be planted
+  on grass, dirt or sand beside water. Leaves that can't reach a log
   within 6 blocks decay a few seconds after a tree is felled. Grass spreads
   to lit dirt nearby and dies under blocks. Bone meal advances a crop 2-5
   stages, sometimes grows a sapling at once, and sprouts grass and flowers
   around a grass block. Crops and saplings only grow in sunlight (torches
   don't count yet)
-- Tall grass, dandelions and poppies (flowers grow in patches) on plains,
-  forests and taiga, and dead bushes in deserts. Plants and torches are
+- Tall grass, ferns, dandelions, poppies and blue orchids (flowers grow in
+  patches), dead bushes in deserts and badlands, sugar cane along the
+  water, pumpkins on the plains and melons in jungles. Plants and torches are
   drawn as two crossed planes, break instantly, need soil (torches a full
   block) beneath them and pop off when it goes, and are washed away by
   water. Clicking tall grass with a block replaces it
@@ -101,10 +109,11 @@ session.
   to browse layouts with the arrow buttons or scroll wheel; hover ingredients
   for names and alternatives, then copy the preview into your crafting grid.
   On narrower windows, Back closes the recipe overlay so you can craft.
-  Recipes: planks (from a log),
-  sticks, crafting table, chest (8 planks in a ring), torches (coal or
-  charcoal over a stick), bread (3 wheat in a row), bone meal (from a bone),
-  sandstone, wool (from string), arrows, and pickaxes, shovels, axes,
+  Recipes: planks (each log makes its own kind; any planks work in
+  recipes), sticks, crafting table, chest (8 planks in a ring), torches
+  (coal or charcoal over a stick), bread (3 wheat in a row), bone meal (from
+  a bone), sandstone, wool (from string), clay and bricks (4 clay balls or
+  bricks), melon slices (from a melon), arrows, and pickaxes, shovels, axes,
   hoes and swords in wood, stone, iron, gold and diamond
 - Tools follow Minecraft's mining rules: a block takes its hardness x 1.5
   seconds to mine with something that can harvest it and x 5 otherwise,
@@ -121,8 +130,8 @@ session.
   to smelt on top and fuel below. Each item takes 10 s; coal and charcoal
   burn 80 s, logs, planks, crafting tables and chests 15 s, wooden tools 10 s and
   sticks 5 s. Smelts iron and gold ore into ingots, sand into glass,
-  cobblestone into stone, logs into charcoal and raw meat into cooked
-  meat. A burning furnace glows (light 13), keeps smelting with its
+  cobblestone into stone, logs into charcoal, clay balls into bricks, clay
+  into terracotta and raw meat into cooked meat. A burning furnace glows (light 13), keeps smelting with its
   screen closed while its chunk is loaded, and is saved with the world;
   breaking one drops its contents
 - Items beyond blocks, each with a procedurally drawn icon: sticks, coal,

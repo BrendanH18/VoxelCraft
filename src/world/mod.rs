@@ -237,7 +237,7 @@ impl World {
         slot.modified = true;
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
-        if old == Block::LOG && block != Block::LOG {
+        if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }
 

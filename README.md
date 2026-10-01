@@ -28,8 +28,9 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
 
 ## Explore, build, survive
 
-- **A world to explore.** Infinite terrain with forests, deserts, snowy biomes,
-  mountains, oceans, caves, ores, and trees.
+- **A world to explore.** Infinite terrain across fourteen biomes: forests,
+  jungles, savannas, swamps, deserts, terraced badlands, snowy taiga,
+  mountains, rivers and oceans, with caves, ores, and five kinds of tree.
 - **Two ways to play.** Build freely in creative, or play survival with timed
   mining, block drops, a stackable inventory, health, hunger, and respawning.
 - **Craft, cook and store.** Make tools in five tiers, craft torches and

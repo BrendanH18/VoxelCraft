@@ -77,29 +77,151 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let c = noisy(layer, x, y, [44, 90, 200], 0.08);
             [c[0], c[1], c[2], 170]
         }
-        tex::LOG_SIDE => {
+        tex::LOG_SIDE | tex::SPRUCE_LOG_SIDE | tex::JUNGLE_LOG_SIDE | tex::ACACIA_LOG_SIDE => {
+            let bark = match layer {
+                tex::LOG_SIDE => [104, 82, 51],
+                tex::SPRUCE_LOG_SIDE => [70, 50, 30],
+                tex::JUNGLE_LOG_SIDE => [88, 70, 32],
+                _ => [104, 96, 88],
+            };
             let stripe = (x + (rnd(layer, 0, y / 4, 3) * 2.0) as usize).is_multiple_of(4);
-            shade([104, 82, 51], if stripe { 0.72 } else { 0.9 + r * 0.15 })
+            // Jungle bark is mottled with moss.
+            if layer == tex::JUNGLE_LOG_SIDE && rnd(layer, x / 2, y / 3, 6) < 0.18 {
+                return shade([84, 100, 40], 0.85 + r * 0.2);
+            }
+            shade(bark, if stripe { 0.72 } else { 0.9 + r * 0.15 })
         }
-        tex::LOG_TOP => {
+        tex::BIRCH_LOG_SIDE => {
+            // White bark with short dark horizontal marks.
+            let mark = rnd(layer, x / 3, y, 4) < 0.16 && rnd(layer, x, y, 5) < 0.85;
+            if mark { shade([50, 46, 40], 0.8 + r * 0.3) } else { shade([216, 214, 204], 0.9 + r * 0.12) }
+        }
+        tex::LOG_TOP | tex::SPRUCE_LOG_TOP | tex::BIRCH_LOG_TOP | tex::JUNGLE_LOG_TOP | tex::ACACIA_LOG_TOP => {
+            let (bark, light, dark) = match layer {
+                tex::LOG_TOP => ([104, 82, 51], [176, 142, 88], [150, 118, 70]),
+                tex::SPRUCE_LOG_TOP => ([70, 50, 30], [128, 96, 58], [106, 78, 46]),
+                tex::BIRCH_LOG_TOP => ([216, 214, 204], [200, 182, 128], [178, 160, 108]),
+                tex::JUNGLE_LOG_TOP => ([88, 70, 32], [170, 124, 86], [146, 104, 70]),
+                _ => ([104, 96, 88], [176, 96, 54], [150, 80, 44]),
+            };
             let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
             let d = (dx * dx + dy * dy).sqrt();
             if d > 6.6 {
-                shade([104, 82, 51], 0.9 + r * 0.1)
+                shade(bark, 0.9 + r * 0.1)
             } else {
                 let ring = (d * 1.1) as i32 % 2 == 0;
-                shade(if ring { [176, 142, 88] } else { [150, 118, 70] }, 0.95 + r * 0.08)
+                shade(if ring { light } else { dark }, 0.95 + r * 0.08)
             }
         }
-        tex::LEAVES | tex::SPRUCE_LEAVES => {
-            let base = if layer == tex::LEAVES { [58, 128, 38] } else { [44, 92, 56] };
-            if rnd(layer, x, y, 11) < 0.2 { [0, 0, 0, 0] } else { shade(base, 0.7 + r * 0.45) }
+        tex::LEAVES | tex::SPRUCE_LEAVES | tex::BIRCH_LEAVES | tex::JUNGLE_LEAVES | tex::ACACIA_LEAVES => {
+            let (base, holes) = match layer {
+                tex::LEAVES => ([58, 128, 38], 0.2),
+                tex::SPRUCE_LEAVES => ([44, 92, 56], 0.2),
+                tex::BIRCH_LEAVES => ([100, 148, 62], 0.22),
+                tex::JUNGLE_LEAVES => ([44, 136, 28], 0.12),
+                _ => ([88, 124, 40], 0.24),
+            };
+            if rnd(layer, x, y, 11) < holes { [0, 0, 0, 0] } else { shade(base, 0.7 + r * 0.45) }
         }
-        tex::PLANKS => {
+        tex::PLANKS | tex::SPRUCE_PLANKS | tex::BIRCH_PLANKS | tex::JUNGLE_PLANKS | tex::ACACIA_PLANKS => {
+            let colour = match layer {
+                tex::PLANKS => [162, 130, 78],
+                tex::SPRUCE_PLANKS => [114, 84, 50],
+                tex::BIRCH_PLANKS => [196, 180, 124],
+                tex::JUNGLE_PLANKS => [160, 114, 80],
+                _ => [170, 92, 50],
+            };
             let board = y / 4;
             let seam_x = (board * 7 + 3) % SIZE;
             let seam = y % 4 == 3 || x == seam_x;
-            shade([162, 130, 78], if seam { 0.68 } else { 0.92 + rnd(layer, x, board, 2) * 0.12 })
+            shade(colour, if seam { 0.68 } else { 0.92 + rnd(layer, x, board, 2) * 0.12 })
+        }
+        tex::RED_SAND => noisy(layer, x, y, [190, 102, 36], 0.07),
+        l if (tex::TERRACOTTA..tex::TERRACOTTA + 7).contains(&l) => {
+            const COLOURS: [[u8; 3]; 7] = [
+                [152, 94, 67],
+                [162, 84, 38],
+                [186, 134, 36],
+                [144, 62, 48],
+                [78, 52, 36],
+                [210, 178, 160],
+                [136, 108, 98],
+            ];
+            noisy(layer, x, y, COLOURS[(l - tex::TERRACOTTA) as usize], 0.05)
+        }
+        tex::CLAY => {
+            let spot = rnd(layer, x / 2, y / 2, 3) < 0.15;
+            shade([160, 166, 180], if spot { 0.9 } else { 0.97 + r * 0.06 })
+        }
+        tex::ICE => {
+            // Pale blue and see-through, with bright fracture lines.
+            let crack = (x + 2 * y).is_multiple_of(11) && rnd(layer, x, y, 4) < 0.7 || (3 * x + y).is_multiple_of(13) && y < 9;
+            let c = if crack { [230, 240, 255] } else { [150, 186, 246] };
+            let s = shade(c, 0.95 + r * 0.08);
+            [s[0], s[1], s[2], if crack { 220 } else { 160 }]
+        }
+        tex::PUMPKIN_SIDE | tex::MELON_SIDE => {
+            // Vertical ribs (pumpkin) or stripes (melon).
+            let pumpkin = layer == tex::PUMPKIN_SIDE;
+            let rib = if pumpkin { x.is_multiple_of(4) } else { (x + (y / 5) % 2) % 5 < 2 };
+            let c = match (pumpkin, rib) {
+                (true, true) => [190, 110, 20],
+                (true, false) => [226, 140, 28],
+                (false, true) => [58, 98, 22],
+                (false, false) => [110, 156, 36],
+            };
+            shade(c, 0.92 + r * 0.12)
+        }
+        tex::PUMPKIN_TOP | tex::MELON_TOP => {
+            let pumpkin = layer == tex::PUMPKIN_TOP;
+            let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
+            let d = (dx * dx + dy * dy).sqrt();
+            if pumpkin && d < 1.6 {
+                shade([110, 86, 40], 0.9 + r * 0.1) // the stalk
+            } else {
+                let base = if pumpkin { [214, 130, 26] } else { [104, 146, 34] };
+                shade(base, 0.9 - (d / 12.0).min(0.2) + r * 0.1)
+            }
+        }
+        tex::SUGAR_CANE => {
+            // Three stalks with pale joints, and a leaf or two.
+            let stalk = [3, 8, 12].iter().any(|&sx| x == sx || x == sx + 1);
+            let joint = (y + x / 4 * 3).is_multiple_of(6);
+            let leaf = (y == 4 && (4..8).contains(&x)) || (y == 11 && (9..12).contains(&x));
+            if stalk {
+                shade(if joint { [196, 222, 140] } else { [140, 192, 84] }, 0.85 + r * 0.2)
+            } else if leaf {
+                shade([110, 170, 60], 0.85 + r * 0.2)
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
+        tex::FERN => {
+            // Arching fronds: a stem per frond with leaflets on both sides.
+            let fronds = [(7.5f32, 0.0f32), (4.0, -0.35), (11.0, 0.35)];
+            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
+            let on = fronds.iter().any(|&(base, lean)| {
+                let top = 2.0 + (lean.abs() * 8.0);
+                if fy < top {
+                    return false;
+                }
+                let cx = base + lean * (16.0 - fy) * 0.6;
+                let half = 0.6 + ((fy - top) / 3.0).min(2.6) * if y.is_multiple_of(2) { 1.0 } else { 0.5 };
+                (fx - cx).abs() < half
+            });
+            if on { shade([82, 140, 52], 0.75 + r * 0.35) } else { [0, 0, 0, 0] }
+        }
+        tex::BLUE_ORCHID => {
+            let heads = [(5.5f32, 4.0f32), (10.5, 6.0), (7.5, 8.5)];
+            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
+            if heads.iter().any(|&(hx, hy)| (fx - hx).powi(2) + (fy - hy).powi(2) < 3.2) {
+                let centre = heads.iter().any(|&(hx, hy)| (fx - hx).powi(2) + (fy - hy).powi(2) < 0.6);
+                if centre { [200, 220, 255, 255] } else { shade([50, 150, 230], 0.85 + r * 0.25) }
+            } else if (x == 7 || x == 8) && y >= 9 || (y == 12 && (4..7).contains(&x)) {
+                shade([60, 125, 40], 0.85 + r * 0.2)
+            } else {
+                [0, 0, 0, 0]
+            }
         }
         tex::COBBLESTONE => {
             let pts = points(layer, 9);
@@ -300,21 +422,35 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             shade([134, 96, 64], furrow * wet)
         }
         l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat(l - tex::WHEAT_0, x, y),
-        tex::OAK_SAPLING | tex::SPRUCE_SAPLING => {
-            let spruce = layer == tex::SPRUCE_SAPLING;
+        tex::OAK_SAPLING | tex::SPRUCE_SAPLING | tex::BIRCH_SAPLING | tex::JUNGLE_SAPLING | tex::ACACIA_SAPLING => {
             let (px, py) = (x as f32 - 7.5, y as f32);
             let stem = (x == 7 || x == 8) && y >= 10;
-            let crown = if spruce {
+            let round = px * px + (py - 6.5) * (py - 6.5) <= 22.0 && rnd(layer, x, y, 5) > 0.15;
+            let (crown, leaf, bark) = match layer {
                 // Stacked triangles.
-                y < 12 && px.abs() <= ((y % 4) as f32 + 1.0 + (y / 4) as f32 * 0.8).min(6.0)
-            } else {
-                px * px + (py - 6.5) * (py - 6.5) <= 22.0 && rnd(layer, x, y, 5) > 0.15
+                tex::SPRUCE_SAPLING => (
+                    y < 12 && px.abs() <= ((y % 4) as f32 + 1.0 + (y / 4) as f32 * 0.8).min(6.0),
+                    [46, 92, 50],
+                    [110, 80, 46],
+                ),
+                tex::BIRCH_SAPLING => (round, [104, 156, 64], [220, 218, 208]),
+                // Broad, dark leaves fanning out.
+                tex::JUNGLE_SAPLING => (
+                    y < 11 && (px.abs() < 1.5 + py * 0.5 || (py - 7.0).abs() < 1.5) && rnd(layer, x, y, 5) > 0.1,
+                    [40, 128, 26],
+                    [110, 84, 40],
+                ),
+                // A flat-topped umbrella.
+                tex::ACACIA_SAPLING => {
+                    ((3..7).contains(&y) && px.abs() < 6.5 - (y as f32 - 3.0), [90, 126, 40], [120, 110, 100])
+                }
+                _ => (round, [72, 146, 44], [110, 80, 46]),
             };
+            let stem = stem || (layer == tex::ACACIA_SAPLING && y >= 6 && x == 7 + (y < 10) as usize);
             if crown {
-                let c = if spruce { [46, 92, 50] } else { [72, 146, 44] };
-                shade(c, 0.75 + r * 0.45)
+                shade(leaf, 0.75 + r * 0.45)
             } else if stem {
-                shade([110, 80, 46], if x == 7 { 1.0 } else { 0.8 })
+                shade(bark, if x == 7 { 1.0 } else { 0.8 })
             } else {
                 [0, 0, 0, 0]
             }
@@ -339,10 +475,12 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             }
         }
         l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES).contains(&l) => crack(l - tex::CRACK_0, x, y),
-        l if l >= tex::ITEM_0 => match crate::item::sprite_for_layer(l - tex::ITEM_0) {
-            Some(sprite) => super::item_sprites::pixel(sprite, x, y),
-            None => [0, 0, 0, 0],
-        },
+        l if (tex::ITEM_0..tex::ITEM_0 + tex::ITEM_COUNT).contains(&l) => {
+            match crate::item::sprite_for_layer(l - tex::ITEM_0) {
+                Some(sprite) => super::item_sprites::pixel(sprite, x, y),
+                None => [0, 0, 0, 0],
+            }
+        }
         _ => {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
