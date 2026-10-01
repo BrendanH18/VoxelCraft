@@ -5,6 +5,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "A Minecraft-style voxel game written from scratch in Rust, built for performance"
 readme = "README.md"
+repository = "https://github.com/BrendanH18/VoxelCraft"
 keywords = ["voxel", "game", "wgpu", "minecraft", "procedural"]
 categories = ["games"]
 

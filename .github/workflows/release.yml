@@ -41,7 +41,7 @@ jobs:
     env:
       RUSTFLAGS: ${{ matrix.rustflags }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.98.1'
@@ -50,6 +50,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.platform }}
+          cache-on-failure: true
       - name: Check version tag
         shell: bash
         run: python3 packaging/check-version.py
@@ -58,9 +59,13 @@ jobs:
       - run: cargo test --release --locked --target ${{ matrix.target }}
       - run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Install license notice generator
+        if: matrix.platform != 'macos-intel'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-about@0.9.2
+      - name: Build license notice generator for Intel Mac
+        if: matrix.platform == 'macos-intel'
+        run: cargo install cargo-about --locked --features cli --version 0.9.2 --target-dir target/release-tools
       - name: Generate bundled license notices
         run: cargo about generate --locked --fail --target ${{ matrix.target }} --output-file packaging/THIRD-PARTY-LICENSES.html packaging/licenses.hbs
       - name: Install Inno Setup
@@ -85,7 +90,7 @@ jobs:
       - name: Test macOS package
         if: runner.os == 'macOS'
         run: bash packaging/macos/smoke-test.sh dist/*.dmg
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ matrix.platform }}
           path: dist/*
@@ -100,8 +105,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.1
         with:
           path: dist
           merge-multiple: true

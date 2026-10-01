@@ -12,7 +12,7 @@
 {{#each licenses}}
 <section>
   <h2>{{name}}</h2>
-  <ul>{{#each used_by}}<li><a href="{{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}}">{{crate.name}} {{crate.version}}</a> (<a href="https://crates.io/api/v1/crates/{{crate.name}}/{{crate.version}}/download">source archive</a>)</li>{{/each}}</ul>
+  <ul>{{#each used_by}}<li><a href="{{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}}">{{crate.name}} {{crate.version}}</a> (<a href="{{#if (eq crate.name "voxelcraft")}}https://github.com/BrendanH18/VoxelCraft/archive/refs/tags/v{{crate.version}}.tar.gz{{else}}https://crates.io/api/v1/crates/{{crate.name}}/{{crate.version}}/download{{/if}}">source archive</a>)</li>{{/each}}</ul>
   <pre>{{text}}</pre>
 </section>
 {{/each}}
