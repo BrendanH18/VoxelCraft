@@ -118,4 +118,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" dist/* --verify-tag --draft --title "VoxelCraft $RELEASE_TAG" --notes-file packaging/RELEASE-NOTES.md
+          if gh release view "$RELEASE_TAG" --json isDraft > release-state.json 2>/dev/null; then
+            if python3 -c 'import json,sys; sys.exit(0 if json.load(open("release-state.json"))["isDraft"] else 1)'; then
+              gh release upload "$RELEASE_TAG" dist/* --clobber
+            else
+              echo "Release is already published; keeping its downloads unchanged."
+            fi
+          else
+            gh release create "$RELEASE_TAG" dist/* --verify-tag --draft --title "VoxelCraft $RELEASE_TAG" --notes-file packaging/RELEASE-NOTES.md
+          fi

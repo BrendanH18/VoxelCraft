@@ -17,6 +17,8 @@ Visual C++ redistributable installation.
 - Push a tag matching Cargo.toml, such as `v0.1.0`, to build all three packages
   and create a **draft** GitHub Release with SHA-256 checksums and the notes from
   `packaging/RELEASE-NOTES.md`. The workflow never publishes automatically.
+  Rerunning a tag build refreshes an existing draft's downloads; published
+  releases are left unchanged.
 
 Update Cargo.toml, Cargo.lock and the release notes together for each version.
 Review all three packages before publishing the draft through GitHub Releases.
