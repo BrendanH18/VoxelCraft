@@ -14,7 +14,7 @@
 //! | 0    | 0-5   | x of corner 0 (0..=32, chunk-local)                |
 //! | 0    | 6-11  | y                                                  |
 //! | 0    | 12-17 | z                                                  |
-//! | 0    | 18-20 | face (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z)          |
+//! | 0    | 18-20 | face (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z, 6-7 X)   |
 //! | 0    | 21-25 | width - 1 (along the face's u axis)                |
 //! | 0    | 26-30 | height - 1 (along v)                               |
 //! | 0    | 31    | flip: triangulate along the other diagonal         |
@@ -27,6 +27,11 @@
 //! `(d + 2) % 3`; corners 0-3 are (0,0), (w,0), (w,h), (0,h) in (u,v).
 //! UVs are derived in the shader from the local position, so merged quads
 //! tile their texture. All quads share one global index buffer.
+//!
+//! Faces 6 and 7 are the two diagonal planes of a cross-shaped block
+//! (plants, torches) at the cell `(x, y, z)`: face 6 runs from (0, 0) to
+//! (1, 1) in (x, z), face 7 from (1, 0) to (0, 1). They are always unit
+//! sized, lit by the cell itself, and live in their own double-sided pass.
 
 use std::sync::Arc;
 
@@ -57,10 +62,12 @@ pub struct MeshInput {
 }
 
 /// Render passes, in the order their quads are stored.
-pub const PASSES: usize = 3;
+pub const PASSES: usize = 4;
 pub const OPAQUE: usize = 0;
 pub const CUTOUT: usize = 1;
 pub const TRANSLUCENT: usize = 2;
+/// Cross-shaped blocks: all quads in face group 0, drawn without culling.
+pub const CROSS: usize = 3;
 
 /// Per pass, the face directions (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z) in
 /// the order their quad groups are stored. A camera sees at most one face
@@ -69,7 +76,9 @@ pub const TRANSLUCENT: usize = 2;
 /// next to each other, so the visible groups form fewer contiguous draws
 /// (1.75 per pass on average instead of 2.5). Translucent quads keep the
 /// plain order: their blending depends on draw order, and there are few.
-pub const FACE_ORDER: [[usize; 6]; PASSES] = [[0, 2, 4, 1, 3, 5], [0, 2, 4, 1, 3, 5], [0, 1, 2, 3, 4, 5]];
+/// Cross quads face no particular direction and sit entirely in group 0.
+pub const FACE_ORDER: [[usize; 6]; PASSES] =
+    [[0, 2, 4, 1, 3, 5], [0, 2, 4, 1, 3, 5], [0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5]];
 
 #[derive(Default, Debug)]
 pub struct MeshData {
@@ -284,6 +293,8 @@ fn mesh_region(r: &Region) -> MeshData {
     let mut face_start = [[0usize; 7]; PASSES];
     let strides = [1isize, (D * D) as isize, D as isize]; // x, y, z
     let mut mask = [0u64; CHUNK_SIZE * CHUNK_SIZE];
+    // Region indices of cross-shaped blocks, collected during the +X sweep.
+    let mut cross_cells = Vec::new();
 
     for face in 0..6 {
         for (starts, quads) in face_start.iter_mut().zip(&out) {
@@ -325,7 +336,14 @@ fn mesh_region(r: &Region) -> MeshData {
                             !n.is_opaque()
                         }
                     } else {
-                        b.kind() != RenderKind::Invisible && face_visible(b, n)
+                        match b.kind() {
+                            RenderKind::Opaque | RenderKind::Cutout => face_visible(b, n),
+                            RenderKind::Cross if face == 0 => {
+                                cross_cells.push(i as usize);
+                                false
+                            }
+                            _ => false,
+                        }
                     };
                     if visible {
                         let kind: u64 = match b.kind() {
@@ -449,6 +467,21 @@ fn mesh_region(r: &Region) -> MeshData {
         }
     }
 
+    // Cross-shaped blocks: two diagonal planes each, lit by their own cell.
+    let cross = &mut out[CROSS];
+    for &i in &cross_cells {
+        let b = blocks[i];
+        let (x, y, z) = (i % D - MARGIN, i / (D * D) - MARGIN, i / D % D - MARGIN);
+        let l = (sky[i] | blk[i] << 4) as u32;
+        let pos = (x | y << 6 | z << 12) as u32;
+        let layer = b.info().tex[0] as u32;
+        for face in [6u32, 7] {
+            cross.push([pos | face << 18, layer | 0xFF << 8, l * 0x0101_0101]);
+        }
+    }
+    // Every cross quad belongs to face group 0.
+    face_start[CROSS] = [0, cross.len(), cross.len(), cross.len(), cross.len(), cross.len(), 0];
+
     // Concatenate the passes, reordering face groups into FACE_ORDER.
     let mut mesh = MeshData { quads: Vec::with_capacity(out.iter().map(Vec::len).sum()), face_quads: [[0; 6]; PASSES] };
     for pass in 0..PASSES {
@@ -534,6 +567,16 @@ mod tests {
         m.quads.iter().flat_map(|&q| corners(q))
     }
 
+    impl MeshData {
+        /// A mesh holding only one pass's quads.
+        fn quads_of(&self, pass: usize) -> MeshData {
+            let start: u32 = self.face_quads[..pass].iter().flatten().sum();
+            let n = self.pass_quads(pass);
+            let quads = self.quads[start as usize..(start + n) as usize].to_vec();
+            MeshData { quads, face_quads: Default::default() }
+        }
+    }
+
     /// Meshes a single chunk surrounded by air with open sky.
     fn mesh_blocks(blocks: &[([usize; 3], Block)]) -> MeshData {
         let mut data = ChunkData::Uniform(Block::AIR);
@@ -577,7 +620,7 @@ mod tests {
             ([20, 20, 20], Block::WATER),
         ];
         let m = mesh_blocks(&blocks);
-        assert_eq!(m.face_quads, [[2; 6], [1; 6], [1; 6]]);
+        assert_eq!(m.face_quads, [[2; 6], [1; 6], [1; 6], [0; 6]]);
         let faces: Vec<u32> = m.quads.iter().map(|q| (q[0] >> 18) & 7).collect();
         let fq = m.face_quads;
         let expected: Vec<u32> = (0..PASSES)
@@ -675,6 +718,41 @@ mod tests {
             }
         }
         assert!(flips[0] > 0 && flips[1] > 0, "{flips:?}");
+    }
+
+    #[test]
+    fn plants_are_two_crossed_quads_that_hide_nothing() {
+        let m = mesh_blocks(&[([5, 5, 5], Block::STONE), ([6, 5, 5], Block::TALL_GRASS), ([9, 9, 9], Block::TORCH)]);
+        // The stone keeps all six faces, including the one behind the grass.
+        assert_eq!(m.pass_quads(OPAQUE), 6);
+        assert_eq!(m.pass_quads(CROSS), 4);
+        assert_eq!(m.face_quads[CROSS], [4, 0, 0, 0, 0, 0]);
+        let cross = &m.quads[m.quads.len() - 4..];
+        let faces: Vec<u32> = cross.iter().map(|q| (q[0] >> 18) & 7).collect();
+        assert_eq!(faces, [6, 7, 6, 7]);
+        let grass = cross[0];
+        assert_eq!([grass[0] & 63, grass[0] >> 6 & 63, grass[0] >> 12 & 63], [6, 5, 5]);
+        assert_eq!(grass[1] & 0xFF, crate::world::block::tex::TALL_GRASS as u32);
+        // Open sky: full skylight on every corner. The torch lights its own cell.
+        assert_eq!(grass[2] & 15, 15);
+        assert_eq!(cross[2][2] >> 4 & 15, 14);
+    }
+
+    #[test]
+    fn torch_lights_a_sealed_room() {
+        let mut blocks = Vec::new();
+        for x in 8..15 {
+            for y in 8..15 {
+                for z in 8..15 {
+                    if x == 8 || x == 14 || y == 8 || y == 14 || z == 8 || z == 14 {
+                        blocks.push(([x, y, z], Block::STONE));
+                    }
+                }
+            }
+        }
+        blocks.push(([11, 9, 11], Block::TORCH));
+        let m = mesh_blocks(&blocks);
+        assert!(all_corners(&m.quads_of(OPAQUE)).any(|c| c.block >= 11));
     }
 
     #[test]

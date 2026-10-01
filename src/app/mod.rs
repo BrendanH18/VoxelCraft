@@ -650,10 +650,16 @@ impl Game {
 
     fn place_block(&mut self) {
         let Some((pos, normal)) = self.target() else { return };
-        let at = pos + normal;
+        // Clicking tall grass replaces it instead of building against it.
+        let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
         let Some(block) = self.inventory.get(self.selected).and_then(|s| s.item.block()) else { return };
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
-        if free && !(block.is_solid() && self.player.intersects_block(at)) && self.world.set_block(at, block) {
+        let supported = self.world.get_block(at - glam::IVec3::Y).is_some_and(|below| block.can_stay_on(below));
+        if free
+            && supported
+            && !(block.is_solid() && self.player.intersects_block(at))
+            && self.world.set_block(at, block)
+        {
             self.audio.block_place(block, at);
             if self.mode == GameMode::Survival {
                 self.inventory.take_one(self.selected);

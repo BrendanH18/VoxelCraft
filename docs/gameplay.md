@@ -35,6 +35,12 @@ The world autosaves every two minutes and on exit.
 - Infinite procedurally generated terrain: oceans, beaches, plains,
   forests, deserts, snowy tundra, taiga and mountains, with spaghetti caves,
   deep caverns, ores, oak and spruce trees and cacti
+- Tall grass, dandelions and poppies (flowers grow in patches) on plains,
+  forests and taiga, and dead bushes in deserts. Plants and torches are
+  drawn as two crossed planes, break instantly, need soil (torches a full
+  block) beneath them and pop off when it goes, and are washed away by
+  water. Clicking tall grass with a block replaces it
+- Torches give off light level 14 (glowstone 15)
 - Flood-fill sky and block light with smooth lighting and ambient occlusion
 - Day/night cycle with a procedural sky: square sun and moon, sunset glow,
   rotating stars and drifting blocky clouds; distance and underwater fog

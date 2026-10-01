@@ -19,6 +19,9 @@ pub enum RenderKind {
     Cutout,
     /// Alpha-blended (water). Rendered last, sorted back to front.
     Translucent,
+    /// Two crossed diagonal planes (plants, torches): alpha-tested, drawn
+    /// from both sides, never hides or occludes neighbours.
+    Cross,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -70,6 +73,12 @@ pub mod tex {
     /// Block-breaking crack overlays, stages 0..10.
     pub const CRACK_0: u8 = 31;
     pub const CRACK_STAGES: u8 = 10;
+    // Cross-shaped plants and torches.
+    pub const TALL_GRASS: u8 = 41;
+    pub const DANDELION: u8 = 42;
+    pub const POPPY: u8 = 43;
+    pub const DEAD_BUSH: u8 = 44;
+    pub const TORCH: u8 = 45;
     /// Flat item icons (see `item::Item::icon_layer`), up to 64 of them.
     pub const ITEM_0: u8 = 96;
     pub const COUNT: u32 = 160;
@@ -102,6 +111,11 @@ impl Block {
     pub const SPRUCE_LEAVES: Block = Block(23);
     /// Flowing water levels 1 (strongest) to 7 are ids 24..=30.
     pub const FALLING_WATER: Block = Block(31);
+    pub const TALL_GRASS: Block = Block(32);
+    pub const DANDELION: Block = Block(33);
+    pub const POPPY: Block = Block(34);
+    pub const DEAD_BUSH: Block = Block(35);
+    pub const TORCH: Block = Block(36);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -153,7 +167,8 @@ impl Block {
             Block::GRASS | Block::SNOWY_GRASS => Some(Block::DIRT.into()),
             Block::COAL_ORE => Some(Item::COAL),
             Block::DIAMOND_ORE => Some(Item::DIAMOND),
-            Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK => None,
+            Block::DEAD_BUSH => Some(Item::STICK),
+            Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK | Block::TALL_GRASS => None,
             b if b.is_water() || b == Block::AIR => None,
             b => Some(b.into()),
         }
@@ -162,6 +177,7 @@ impl Block {
     /// Seconds to break by hand in survival (infinite for unbreakable).
     pub fn break_time(self) -> f32 {
         match self {
+            b if b.kind() == RenderKind::Cross => 0.0,
             Block::LEAVES | Block::SPRUCE_LEAVES | Block::SNOW => 0.25,
             Block::GLASS | Block::GLOWSTONE => 0.35,
             Block::CACTUS => 0.45,
@@ -180,12 +196,31 @@ impl Block {
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).map(Block)
+        (1..=23u8).chain(32..=36).map(Block)
     }
 
-    /// Blocks that can be placed into or flowed over.
+    /// Blocks that placing another block overwrites (air, water, grass).
     pub fn is_replaceable(self) -> bool {
-        self == Block::AIR || self.is_water()
+        self == Block::AIR || self.is_water() || self == Block::TALL_GRASS || self == Block::DEAD_BUSH
+    }
+
+    /// Whether the crosshair can select this block (anything visible but water).
+    #[inline(always)]
+    pub fn is_targetable(self) -> bool {
+        self.kind() != RenderKind::Invisible && !self.is_water()
+    }
+
+    /// Whether this block can rest on `below`. Plants need soil and torches
+    /// a full block; everything else stays put.
+    pub fn can_stay_on(self, below: Block) -> bool {
+        match self {
+            Block::TALL_GRASS | Block::DANDELION | Block::POPPY => {
+                matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS)
+            }
+            Block::DEAD_BUSH => matches!(below, Block::SAND | Block::DIRT | Block::GRASS),
+            Block::TORCH => below.is_opaque(),
+            _ => true,
+        }
     }
 
     #[inline(always)]
@@ -216,7 +251,11 @@ impl Block {
     /// Light level emitted by this block.
     #[inline(always)]
     pub fn emission(self) -> u8 {
-        if self == Block::GLOWSTONE { 15 } else { 0 }
+        match self {
+            Block::GLOWSTONE => 15,
+            Block::TORCH => 14,
+            _ => 0,
+        }
     }
 }
 
@@ -257,6 +296,11 @@ const fn make(id: u8) -> BlockInfo {
         23 => ("spruce leaves", Cutout, all(tex::SPRUCE_LEAVES)),
         24..=30 => ("flowing water", Translucent, all(tex::WATER)),
         31 => ("falling water", Translucent, all(tex::WATER)),
+        32 => ("tall grass", Cross, all(tex::TALL_GRASS)),
+        33 => ("dandelion", Cross, all(tex::DANDELION)),
+        34 => ("poppy", Cross, all(tex::POPPY)),
+        35 => ("dead bush", Cross, all(tex::DEAD_BUSH)),
+        36 => ("torch", Cross, all(tex::TORCH)),
         _ => ("unknown", Invisible, all(0)),
     };
     BlockInfo { name, kind, solid: matches!(kind, Opaque | Cutout), self_cull: id == 5 || id == 10, tex }
@@ -278,7 +322,7 @@ static LIGHT_OPACITY: [u8; 256] = {
     while i < 256 {
         arr[i] = match INFO[i].kind {
             RenderKind::Opaque => 15,
-            RenderKind::Invisible => 0,
+            RenderKind::Invisible | RenderKind::Cross => 0,
             _ if i == 10 => 0, // glass
             _ => 1,            // leaves, water: dim light passing through
         };
@@ -296,3 +340,32 @@ static OPAQUE: [bool; 256] = {
     }
     arr
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cross_blocks_are_targetable_but_not_solid() {
+        for b in [Block::TALL_GRASS, Block::DANDELION, Block::POPPY, Block::DEAD_BUSH, Block::TORCH] {
+            assert_eq!(b.kind(), RenderKind::Cross, "{}", b.name());
+            assert!(!b.is_solid() && !b.is_opaque() && b.is_targetable());
+            assert_eq!(b.light_opacity(), 0);
+            assert_eq!(b.break_time(), 0.0);
+            assert!(Block::creative_palette().any(|p| p == b));
+        }
+        assert!(!Block::WATER.is_targetable() && !Block::AIR.is_targetable());
+        assert_eq!(Block::TORCH.emission(), 14);
+        assert!(Block::TALL_GRASS.is_replaceable() && !Block::POPPY.is_replaceable());
+    }
+
+    #[test]
+    fn plants_need_soil_and_torches_a_full_block() {
+        assert!(Block::POPPY.can_stay_on(Block::GRASS));
+        assert!(!Block::POPPY.can_stay_on(Block::SAND));
+        assert!(Block::DEAD_BUSH.can_stay_on(Block::SAND));
+        assert!(Block::TORCH.can_stay_on(Block::COBBLESTONE));
+        assert!(!Block::TORCH.can_stay_on(Block::GLASS) && !Block::TORCH.can_stay_on(Block::AIR));
+        assert!(Block::STONE.can_stay_on(Block::AIR));
+    }
+}

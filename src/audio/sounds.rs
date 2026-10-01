@@ -59,7 +59,10 @@ pub fn material(block: Block) -> Material {
     match block {
         Block::LOG | Block::PLANKS => Material::Wood,
         Block::DIRT => Material::Dirt,
-        Block::GRASS | Block::CACTUS => Material::Grass,
+        Block::GRASS | Block::CACTUS | Block::TALL_GRASS | Block::DANDELION | Block::POPPY | Block::DEAD_BUSH => {
+            Material::Grass
+        }
+        Block::TORCH => Material::Wood,
         Block::GRAVEL => Material::Gravel,
         Block::SAND => Material::Sand,
         Block::SNOW | Block::SNOWY_GRASS => Material::Snow,

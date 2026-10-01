@@ -191,6 +191,14 @@ impl World {
         let changed = self.edit(p, block, true);
         if changed {
             self.wake_fluids(p);
+            // A plant or torch that just lost its support pops off.
+            let above = p + IVec3::Y;
+            if let Some(b) = self.get_block(above)
+                && !b.can_stay_on(block)
+            {
+                self.edit(above, Block::AIR, true);
+                self.wake_fluids(above);
+            }
         }
         changed
     }
@@ -496,8 +504,8 @@ impl World {
             .collect()
     }
 
-    /// DDA voxel traversal. Returns the first solid block hit and the face
-    /// normal it was entered through.
+    /// DDA voxel traversal. Returns the first targetable block hit and the
+    /// face normal it was entered through.
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
         let mut cell = origin.floor().as_ivec3();
         let step = IVec3::new(dir.x.signum() as i32, dir.y.signum() as i32, dir.z.signum() as i32);
@@ -514,7 +522,7 @@ impl World {
         let mut t = 0.0;
         while t <= max_dist {
             if let Some(b) = self.get_block(cell)
-                && b.is_solid()
+                && b.is_targetable()
                 && cell.y >= 0
             {
                 return Some((cell, normal));
@@ -573,6 +581,7 @@ mod tests {
         let mut world = settled_world(world_pos);
         let (x, z) = (spawn.x, spawn.z);
         let ground = surface_y(&world, x, z);
+        world.set_block(IVec3::new(x, ground + 1, z), Block::AIR); // any tall grass
 
         // Looking straight down from above hits the surface block.
         let eye = DVec3::new(x as f64 + 0.5, ground as f64 + 4.5, z as f64 + 0.5);
@@ -615,6 +624,37 @@ mod tests {
         }
         assert!(player.pos.x <= wall_x as f64 - 0.3 + 1e-3, "walked through wall: x={}", player.pos.x);
         assert!(player.pos.x > wall_x as f64 - 0.4);
+    }
+
+    #[test]
+    fn plants_are_targeted_pop_off_and_wash_away() {
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let y = 200;
+        for x in -4..=4 {
+            for z in -4..=4 {
+                world.edit(IVec3::new(x, y, z), Block::DIRT, false);
+            }
+        }
+        let flower = IVec3::new(0, y + 1, 0);
+        assert!(world.set_block(flower, Block::POPPY));
+        // The crosshair selects the flower, not the dirt under it.
+        let eye = DVec3::new(0.5, y as f64 + 4.5, 0.5);
+        assert_eq!(world.raycast(eye, DVec3::NEG_Y, 10.0).unwrap().0, flower);
+
+        // Removing the dirt drops the flower.
+        world.set_block(flower - IVec3::Y, Block::AIR);
+        assert_eq!(world.get_block(flower), Some(Block::AIR));
+
+        // Water flowing past a torch washes it away (refill the hole first,
+        // or the water would head for that drop instead).
+        world.set_block(flower - IVec3::Y, Block::DIRT);
+        let torch = IVec3::new(3, y + 1, 0);
+        world.set_block(torch, Block::TORCH);
+        world.set_block(IVec3::new(2, y + 1, 0), Block::WATER);
+        for _ in 0..20 {
+            world.tick_fluids(0.25);
+        }
+        assert!(world.get_block(torch).unwrap().is_water());
     }
 
     #[test]

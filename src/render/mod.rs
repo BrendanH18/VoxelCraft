@@ -23,7 +23,7 @@ use rustc_hash::FxHashMap;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-use crate::mesh::{CUTOUT, FACE_ORDER, MeshData, OPAQUE, PASSES, TRANSLUCENT};
+use crate::mesh::{CROSS, CUTOUT, FACE_ORDER, MeshData, OPAQUE, PASSES, TRANSLUCENT};
 use crate::world::block::tex;
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I};
 use ui::UiVertex;
@@ -178,6 +178,7 @@ pub struct Renderer {
     font_bg: wgpu::BindGroup,
     opaque_pipeline: wgpu::RenderPipeline,
     cutout_pipeline: wgpu::RenderPipeline,
+    cross_pipeline: wgpu::RenderPipeline,
     translucent_pipeline: wgpu::RenderPipeline,
     line_pipeline: wgpu::RenderPipeline,
     decal_pipeline: wgpu::RenderPipeline,
@@ -375,7 +376,11 @@ impl Renderer {
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &wgpu::vertex_attr_array![1 => Float32x3],
         })];
-        let make_chunk_pipeline = |label: &str, fs: &str, blend: Option<wgpu::BlendState>, depth_write: bool| {
+        let make_chunk_pipeline = |label: &str,
+                                   fs: &str,
+                                   blend: Option<wgpu::BlendState>,
+                                   depth_write: bool,
+                                   cull_mode: Option<wgpu::Face>| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(&chunk_layout),
@@ -385,7 +390,7 @@ impl Renderer {
                     compilation_options: Default::default(),
                     buffers: &chunk_buffers,
                 },
-                primitive: wgpu::PrimitiveState { cull_mode: Some(wgpu::Face::Back), ..Default::default() },
+                primitive: wgpu::PrimitiveState { cull_mode, ..Default::default() },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
                     depth_write_enabled: Some(depth_write),
@@ -404,10 +409,13 @@ impl Renderer {
                 cache: None,
             })
         };
-        let opaque_pipeline = make_chunk_pipeline("opaque", "fs_opaque", None, true);
-        let cutout_pipeline = make_chunk_pipeline("cutout", "fs_cutout", None, true);
+        let back = Some(wgpu::Face::Back);
+        let opaque_pipeline = make_chunk_pipeline("opaque", "fs_opaque", None, true, back);
+        let cutout_pipeline = make_chunk_pipeline("cutout", "fs_cutout", None, true, back);
+        // Cross planes are seen from both sides.
+        let cross_pipeline = make_chunk_pipeline("cross", "fs_cutout", None, true, None);
         let translucent_pipeline =
-            make_chunk_pipeline("translucent", "fs_translucent", Some(wgpu::BlendState::ALPHA_BLENDING), false);
+            make_chunk_pipeline("translucent", "fs_translucent", Some(wgpu::BlendState::ALPHA_BLENDING), false, back);
 
         let line_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("outline"),
@@ -613,6 +621,7 @@ impl Renderer {
             font_bg,
             opaque_pipeline,
             cutout_pipeline,
+            cross_pipeline,
             translucent_pipeline,
             line_pipeline,
             decal_pipeline,
@@ -1038,7 +1047,8 @@ impl Renderer {
                     let mut draw = |i: usize| {
                         let (_, pos, _, faces) = self.visible[i];
                         let mesh = &self.meshes[&pos];
-                        let mask = group_mask(faces, kind);
+                        // Cross quads face every way; they all sit in group 0.
+                        let mask = if kind == CROSS { 1 } else { group_mask(faces, kind) };
                         face_runs(&mesh.offsets[kind * 6..kind * 6 + 7], mask, |first_quad, quads| {
                             if page != Some(mesh.alloc.page) {
                                 pass.set_bind_group(2, self.arena.bind_group(mesh.alloc.page), &[]);
@@ -1059,6 +1069,7 @@ impl Renderer {
                 };
             draw_range(&mut pass, &self.opaque_pipeline, OPAQUE, false);
             draw_range(&mut pass, &self.cutout_pipeline, CUTOUT, false);
+            draw_range(&mut pass, &self.cross_pipeline, CROSS, false);
             self.entities.draw(&mut pass);
 
             // Sky after terrain so early-z skips covered pixels.

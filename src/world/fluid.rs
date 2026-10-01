@@ -46,6 +46,11 @@ fn strength(b: Block) -> u8 {
     }
 }
 
+/// Plants and torches: water flows into them and destroys them.
+fn washes_away(b: Block) -> bool {
+    b.kind() == super::block::RenderKind::Cross
+}
+
 /// Flowing (not source, not falling) water.
 fn is_flowing(b: Block) -> bool {
     b.is_water() && b != Block::WATER && b != Block::FALLING_WATER
@@ -119,7 +124,7 @@ impl World {
     /// Water can fall from `p` if the cell below is air or weaker flowing water.
     fn can_fall(&self, p: IVec3) -> bool {
         let below = self.cell(p - IVec3::Y);
-        below == Block::AIR || is_flowing(below)
+        below == Block::AIR || is_flowing(below) || washes_away(below)
     }
 
     /// The level water at `p` pushes into its horizontal neighbours, or
@@ -187,7 +192,7 @@ impl World {
         let target = Block::flowing_water(level);
         let open = |q: IVec3| {
             let n = self.cell(q);
-            n == Block::AIR || (is_flowing(n) && n.water_level().unwrap() > level)
+            n == Block::AIR || washes_away(n) || (is_flowing(n) && n.water_level().unwrap() > level)
         };
         let dirs: Vec<IVec3> = HORIZONTAL.into_iter().filter(|&o| open(p + o)).collect();
         let preferred = if dirs.len() > 1 { self.directions_to_drop(p) } else { 0 };
@@ -216,7 +221,7 @@ impl World {
         let mut frontier: Vec<IVec3> = Vec::with_capacity(16);
         for (i, &o) in HORIZONTAL.iter().enumerate() {
             let q = p + o;
-            if self.cell(q).is_replaceable() {
+            if self.cell(q).is_replaceable() || washes_away(self.cell(q)) {
                 dist[slot(q)] = 1;
                 first[slot(q)] = 1 << i;
                 frontier.push(q);
@@ -236,7 +241,7 @@ impl World {
                     }
                     let si = slot(n);
                     if dist[si] == u8::MAX {
-                        if !self.cell(n).is_replaceable() {
+                        if !(self.cell(n).is_replaceable() || washes_away(self.cell(n))) {
                             dist[si] = 0;
                             continue;
                         }

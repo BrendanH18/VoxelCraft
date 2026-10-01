@@ -47,45 +47,57 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         order = array<u32, 4>(0u, 3u, 2u, 1u);
     }
     let c = order[((vi & 3u) + (w0 >> 31u)) & 3u];
-    let d = face >> 1u;
-    let u = (d + 1u) % 3u;
-    let v = (d + 2u) % 3u;
-    let base = vec3<u32>(w0 & 63u, (w0 >> 6u) & 63u, (w0 >> 12u) & 63u);
-    var corner = base;
-    if c == 1u || c == 2u {
-        corner[u] += size.x;
-    }
-    if c >= 2u {
-        corner[v] += size.y;
-    }
     let ao = (w1 >> (8u + 2u * c)) & 3u;
     let light = (w2 >> (8u * c)) & 255u;
+    let base = vec3<u32>(w0 & 63u, (w0 >> 6u) & 63u, (w0 >> 12u) & 63u);
 
-    // Water surfaces: lower the quad's upper edge (never the bottom face).
-    var top = base.y;
-    if u == 1u {
-        top += size.x;
-    } else if v == 1u {
-        top += size.y;
-    }
-    var drop = 0.0;
-    if face != 3u && corner.y == top {
-        drop = f32((w1 >> 16u) & 31u) / 16.0;
-    }
-    let local = vec3<f32>(corner) - vec3<f32>(0.0, drop, 0.0);
-
-    var face_shade = array<f32, 6>(0.8, 0.8, 1.0, 0.55, 0.68, 0.68);
-    var ao_curve = array<f32, 4>(0.42, 0.62, 0.82, 1.0);
-
-    // Planar UVs from the chunk-local position: merged quads tile the texture.
+    var local: vec3<f32>;
     var uv: vec2<f32>;
-    if face < 2u {
-        uv = vec2<f32>(local.z, -local.y);
-    } else if face < 4u {
-        uv = local.xz;
+    if face >= 6u {
+        // Cross-shaped block: a unit diagonal plane through the cell, (0,0)
+        // to (1,1) in xz for face 6 and (1,0) to (0,1) for face 7.
+        let t = select(0u, 1u, c == 1u || c == 2u);
+        let up = select(0u, 1u, c >= 2u);
+        let corner = base + vec3<u32>(select(t, 1u - t, face == 7u), up, t);
+        local = vec3<f32>(corner);
+        uv = vec2<f32>(f32(t), f32(1u - up));
     } else {
-        uv = vec2<f32>(local.x, -local.y);
+        let d = face >> 1u;
+        let u = (d + 1u) % 3u;
+        let v = (d + 2u) % 3u;
+        var corner = base;
+        if c == 1u || c == 2u {
+            corner[u] += size.x;
+        }
+        if c >= 2u {
+            corner[v] += size.y;
+        }
+
+        // Water surfaces: lower the quad's upper edge (never the bottom face).
+        var top = base.y;
+        if u == 1u {
+            top += size.x;
+        } else if v == 1u {
+            top += size.y;
+        }
+        var drop = 0.0;
+        if face != 3u && corner.y == top {
+            drop = f32((w1 >> 16u) & 31u) / 16.0;
+        }
+        local = vec3<f32>(corner) - vec3<f32>(0.0, drop, 0.0);
+
+        // Planar UVs from the chunk-local position: merged quads tile the texture.
+        if face < 2u {
+            uv = vec2<f32>(local.z, -local.y);
+        } else if face < 4u {
+            uv = local.xz;
+        } else {
+            uv = vec2<f32>(local.x, -local.y);
+        }
     }
+
+    var face_shade = array<f32, 8>(0.8, 0.8, 1.0, 0.55, 0.68, 0.68, 0.9, 0.9);
+    var ao_curve = array<f32, 4>(0.42, 0.62, 0.82, 1.0);
 
     let rel = offset + local;
     var out: VsOut;
