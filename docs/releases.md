@@ -106,7 +106,8 @@ On clean personal test machines, with the actual downloaded artifacts:
 1. Install and launch through Finder or the Start Menu, without Rust installed.
 2. Confirm the unsigned-app prompt instructions match the device's policy.
 3. Play survival and creative; check graphics, audio, input and fullscreen.
-4. Change options, modify a world, quit and reopen; verify both persist.
+4. Change options, modify a world, quit and reopen; verify both persist. On Mac,
+   check Command-Q as well as closing the window or using Save and Quit.
 5. Reinstall/replace the app, then uninstall; verify saves remain.
 6. Test the oldest supported OS and each advertised architecture before claiming
    full compatibility. A minimum deployment target does not replace those tests.

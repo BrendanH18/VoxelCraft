@@ -171,12 +171,14 @@ struct Game {
 pub struct App {
     args: Args,
     saves_dir: std::path::PathBuf,
+    save_on_exit: bool,
     game: Option<Game>,
 }
 
 impl App {
     pub fn new(args: Args, saves_dir: std::path::PathBuf) -> Self {
-        Self { args, saves_dir, game: None }
+        let save_on_exit = args.screenshot.is_none() && !args.bench_render;
+        Self { args, saves_dir, save_on_exit, game: None }
     }
 }
 
@@ -364,7 +366,7 @@ impl ApplicationHandler for App {
         let Some(game) = self.game.as_mut() else { return };
         match event {
             WindowEvent::CloseRequested => {
-                game.save();
+                self.save_on_exit = true;
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => game.renderer.resize(size.width, size.height),
@@ -405,8 +407,7 @@ impl ApplicationHandler for App {
                 let pressed = state == ElementState::Pressed;
                 if game.menu.is_some() {
                     if button == MouseButton::Left && game.menu_click(pressed) == Some(menu::MenuAction::Quit) {
-                        game.save();
-                        game.save_settings();
+                        self.save_on_exit = true;
                         event_loop.exit();
                     }
                     return;
@@ -487,6 +488,17 @@ impl ApplicationHandler for App {
         {
             let k = MOUSE_SENSITIVITY * game.settings.sensitivity;
             game.player.look(delta.0 as f32 * k, delta.1 as f32 * k);
+        }
+    }
+
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        // macOS Command-Q emits LoopExiting without a CloseRequested event.
+        // Scripted captures/benchmarks only save if the user explicitly quits.
+        if self.save_on_exit
+            && let Some(game) = &mut self.game
+        {
+            game.save();
+            game.save_settings();
         }
     }
 
