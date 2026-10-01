@@ -56,7 +56,7 @@ src/
     recipe_book.rs   recipe navigation, responsive layout and hit testing
     hud.rs           HUD: hotbar, hearts/food/bubbles, containers, death and F3
     menu.rs          pause menu and options screen
-    settings.rs      options file (saves/options.txt)
+    settings.rs      options file (per-user data folder: saves/options.txt)
     survival.rs      health, hunger, exhaustion, regeneration (unit tested)
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
     items.rs         dropped items: spawning, pickup, throwing, death drops

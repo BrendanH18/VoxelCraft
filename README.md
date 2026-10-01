@@ -6,7 +6,7 @@
 Explore, build, and survive in a procedurally generated sandbox powered by wgpu.</p>
 
 <p>
-  <a href="https://github.com/BrendanH18/minecraft_rust/actions/workflows/ci.yml"><img src="https://github.com/BrendanH18/minecraft_rust/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/BrendanH18/VoxelCraft/actions/workflows/ci.yml"><img src="https://github.com/BrendanH18/VoxelCraft/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/Rust-2024_edition-dea584?style=flat" alt="Rust 2024 edition"></a>
   <a href="https://wgpu.rs"><img src="https://img.shields.io/badge/graphics-wgpu-478cbf?style=flat" alt="Graphics powered by wgpu"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-62a86b?style=flat" alt="License: MIT or Apache 2.0"></a>
@@ -51,6 +51,15 @@ rules and available recipes.
 
 ## Play
 
+Windows and Mac installers are distributed through
+[GitHub Releases](https://github.com/BrendanH18/VoxelCraft/releases).
+Windows uses a setup wizard; on Mac, open the matching Apple Silicon or Intel
+DMG and drag VoxelCraft into Applications. These early builds have no verified
+publisher signature, so read the bundled installation notes for first-launch
+security prompts. See the [release guide](docs/releases.md) for packaging details.
+
+### Build from source
+
 Build from source with a **recent stable Rust toolchain** (edition 2024;
 developed with Rust 1.98) and a GPU supported by wgpu's Metal, Vulkan, or
 DirectX 12 backends. CI checks builds on macOS, Linux, and Windows.
@@ -62,12 +71,13 @@ sudo apt-get install libasound2-dev libudev-dev pkg-config
 ```
 
 ```sh
-git clone https://github.com/BrendanH18/minecraft_rust.git
-cd minecraft_rust
+git clone https://github.com/BrendanH18/VoxelCraft.git
+cd VoxelCraft
 cargo run --release
 ```
 
-This starts survival and resumes `./saves/world` when a save exists. To try
+This starts survival and resumes `saves/world` in your
+[per-user data folder](docs/releases.md#player-data-and-old-saves) when a save exists. To try
 creative with a fixed seed in a separate world:
 
 ```sh
@@ -77,7 +87,8 @@ cargo run --release -- --creative --world creative --seed 42
 | Option | What it does |
 | --- | --- |
 | `--creative` / `--survival` | Choose a game mode |
-| `--world <name>` | Choose a save under `./saves/<name>` |
+| `--world <name>` | Choose a save under the data folder's `saves/<name>` |
+| `--data-dir <dir>` | Use an isolated folder for saves, options and logs |
 | `--seed <n>` | Set the seed for a new world |
 | `--rd <chunks>` | Set view distance in 32-block chunks; default `8` = 256 blocks |
 | `--no-vsync` | Uncap the frame rate |

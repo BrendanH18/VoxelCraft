@@ -32,7 +32,9 @@ Render distance uses **32-block chunks**: `--rd 8` spans 256 blocks,
 `--screenshot` waits for the world to load, writes a PNG, then exits.
 `--pose` sets `x,y,z,yaw,pitch` (angles in degrees) and starts the player flying.
 Use `--wait` to let the scene simulate before capture. Scripted runs
-(`--screenshot`, `--bench-render`) ignore `saves/options.txt`. In `--place` and
+(`--screenshot`, `--bench-render`) ignore saved options. Saves and logs normally
+use the [per-user data folder](releases.md#player-data-and-old-saves); add
+`--data-dir target/screenshots` to isolate a scripted run. In `--place` and
 `--spawn`, `~` for the y coordinate means the terrain surface.
 
 These examples use a separate `screenshots` save. `--new` ignores its existing
@@ -77,5 +79,5 @@ for synthesis and mixer details.
 cargo run --release -- --help
 ```
 
-The parser currently prints help and exits with status 2. Its flags and defaults
+`--help` and `--version` exit successfully when used alone. Flags and defaults
 are defined in [src/main.rs](../src/main.rs).

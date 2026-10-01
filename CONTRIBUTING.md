@@ -26,7 +26,8 @@ cargo run --release
 See the [README](README.md) for setup and controls, the
 [development guide](docs/development.md) for command-line examples, and the
 [architecture notes](docs/architecture.md#code-layout) for the code layout.
-Worlds are saved under `./saves/<name>`. Use a separate world name when testing;
+Worlds are saved in the [per-user data folder](docs/releases.md#player-data-and-old-saves).
+Use `--data-dir target/playtest` for isolated testing;
 `--new` ignores an existing save and can replace it when the game saves.
 
 ## Make and check a change
