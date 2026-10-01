@@ -47,6 +47,14 @@ pub const CAUSE_DROWN: &str = "drowned";
 pub const CAUSE_LAVA: &str = "tried to swim in lava";
 pub const CAUSE_STARVE: &str = "starved to death";
 
+/// Damage left after armor worth `points` (Minecraft's formula without
+/// toughness): each point blocks 4%, up to 80%, though big hits punch
+/// through some of it.
+pub fn armor_reduce(amount: f32, points: u32) -> f32 {
+    let defense = (points as f32 - amount / 2.0).max(points as f32 / 5.0).min(20.0);
+    amount * (1.0 - defense / 25.0)
+}
+
 /// Damage for landing after falling `distance` blocks.
 pub fn fall_damage(distance: f64) -> f32 {
     // The epsilon (above the collision skin) keeps exact block drops from
@@ -354,6 +362,15 @@ mod tests {
             v.tick(DT, &air(y), false);
         }
         v.tick(DT, &landing, false)
+    }
+
+    #[test]
+    fn armor_blocks_most_of_small_hits() {
+        assert_eq!(armor_reduce(4.0, 0), 4.0);
+        assert!((armor_reduce(4.0, 20) - 4.0 * 7.0 / 25.0).abs() < 1e-5, "full diamond blocks 72%");
+        assert!((armor_reduce(4.0, 7) - 4.0 * (1.0 - 5.0 / 25.0)).abs() < 1e-5);
+        // A huge blast gets through more of it.
+        assert!(armor_reduce(40.0, 20) / 40.0 > 0.2);
     }
 
     #[test]

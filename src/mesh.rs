@@ -279,6 +279,8 @@ const KIND_SHIFT: u64 = 24;
 const AO_SHIFT: u64 = 16;
 const LIGHT_SHIFT: u64 = 32;
 const PRESENT: u64 = 1 << 31;
+/// Top drop of a low block (see `Block::top_drop`), in 1/16 block.
+const DROP_SHIFT: u64 = 8;
 
 /// Lights and meshes one chunk.
 pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
@@ -337,6 +339,8 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         }
                     } else {
                         match b.kind() {
+                            // Low blocks (beds) show their lowered top under anything.
+                            RenderKind::Cutout if face == 2 && b.top_drop() > 0 => true,
                             // Ice: the only translucent block that isn't a fluid.
                             RenderKind::Opaque | RenderKind::Cutout | RenderKind::Translucent => face_visible(b, n),
                             RenderKind::Cross if face == 0 => {
@@ -399,7 +403,8 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                             _ => (uu, slice),
                         };
                         let layer = tex::tinted(b.info().tex[face], foliage[x + z * CHUNK_SIZE]) as u64;
-                        key = PRESENT | kind << KIND_SHIFT | ao << AO_SHIFT | layer | light << LIGHT_SHIFT;
+                        let drop = (b.top_drop() as u64) << DROP_SHIFT;
+                        key = PRESENT | kind << KIND_SHIFT | ao << AO_SHIFT | layer | drop | light << LIGHT_SHIFT;
                         any = true;
                     }
                     mask[vv * CHUNK_SIZE + uu] = key;
@@ -419,12 +424,15 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         uu += 1;
                         continue;
                     }
+                    // Low blocks never merge: the shader only lowers a
+                    // quad's upper edge.
+                    let low = (key >> DROP_SHIFT) & 31 != 0;
                     let mut w = 1;
-                    while uu + w < CHUNK_SIZE && mask[vv * CHUNK_SIZE + uu + w] == key {
+                    while !low && uu + w < CHUNK_SIZE && mask[vv * CHUNK_SIZE + uu + w] == key {
                         w += 1;
                     }
                     let mut h = 1;
-                    while vv + h < CHUNK_SIZE {
+                    while !low && vv + h < CHUNK_SIZE {
                         let row = (vv + h) * CHUNK_SIZE + uu;
                         if mask[row..row + w].iter().any(|&k| k != key) {
                             break;
@@ -450,7 +458,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                     let (corner_ao, drop) = if kind == 2 {
                         (0xFF, ((key >> AO_SHIFT) & 31) as u32)
                     } else {
-                        (((key >> AO_SHIFT) & 0xFF) as u32, 0)
+                        (((key >> AO_SHIFT) & 0xFF) as u32, ((key >> DROP_SHIFT) & 31) as u32)
                     };
                     let mut pos = [0u32; 3];
                     pos[d] = (slice + positive as usize) as u32;
@@ -770,6 +778,16 @@ mod tests {
         let top =
             m.quads.iter().find(|q| (q[0] >> 18) & 7 == 2 && q[1] & 0xFF == crate::world::block::tex::LAVA as u32);
         assert_eq!(top.unwrap()[1] >> 16 & 31, Block::LAVA.fluid_drop() as u32);
+    }
+
+    #[test]
+    fn beds_are_low_and_unmerged() {
+        let m = mesh_blocks(&[([1, 1, 1], Block::BED_FOOT), ([2, 1, 1], Block::BED_HEAD), ([1, 2, 1], Block::STONE)]);
+        let cutout = m.quads_of(CUTOUT);
+        // Six faces per half: the top shows under the stone, and the
+        // faces between the halves stay.
+        assert_eq!(cutout.quads.len(), 12);
+        assert!(cutout.quads.iter().all(|q| (q[1] >> 16) & 31 == 7));
     }
 
     #[test]

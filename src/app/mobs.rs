@@ -115,7 +115,7 @@ impl Game {
                 EntityEvent::PlayerHit { damage, knockback, cause } => {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
-                    if self.damage_player(damage, cause) > 0.0 {
+                    if self.damage_player_armored(damage, cause) > 0.0 {
                         self.player.vel += knockback.as_dvec3();
                     }
                 }
@@ -157,7 +157,7 @@ impl Game {
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
         let mid = self.player.pos + DVec3::Y * 0.9;
         if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center))
-            && self.damage_player(damage, "was blown up by a creeper") > 0.0
+            && self.damage_player_armored(damage, "was blown up by a creeper") > 0.0
         {
             let away = (mid - center).normalize_or(DVec3::Y);
             self.player.vel += away * (impact as f64 * 14.0) + DVec3::Y * 4.0;

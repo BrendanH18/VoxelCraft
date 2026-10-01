@@ -1,6 +1,7 @@
 //! Window, input and the per-frame game loop.
 
 mod actions;
+mod bed;
 mod containers;
 mod farming;
 mod hud;
@@ -132,6 +133,10 @@ struct Game {
     last_frame: Instant,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     day_time: f64,
+    /// Seconds spent asleep so far (the screen fades out), if in bed.
+    sleeping: Option<f32>,
+    /// Foot of the bed the player respawns at.
+    spawn_bed: Option<glam::IVec3>,
     weather: weather::Weather,
     weather_verts: Vec<crate::render::weather::WeatherVertex>,
     started: Instant,
@@ -253,6 +258,11 @@ impl ApplicationHandler for App {
         for &(item, count) in &self.args.give {
             inventory.add(item, count);
         }
+        for &item in &self.args.wear {
+            if let Some((piece, _)) = item.as_armor() {
+                inventory.armor[piece as usize] = Some(Stack::new(item, 1));
+            }
+        }
 
         let prop = |k: &str| existing.as_ref().and_then(|l| l.props.get(k));
         let mut vitals = Vitals::restore(
@@ -328,6 +338,11 @@ impl ApplicationHandler for App {
                 .time
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
                 .unwrap_or(0.08),
+            sleeping: None,
+            spawn_bed: existing.as_ref().and_then(|l| l.props.get("bed")).and_then(|t| {
+                let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
+                (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
+            }),
             weather: {
                 let mut w = weather::Weather::new(seed);
                 if let Some(text) = existing.as_ref().and_then(|l| l.props.get("weather")) {
@@ -461,7 +476,7 @@ impl ApplicationHandler for App {
                     }
                     MouseButton::Right => {
                         game.right_held = pressed;
-                        if pressed {
+                        if pressed && !game.equip_held() {
                             game.place_block();
                             game.action_cooldown = ACTION_REPEAT;
                         } else {
@@ -674,10 +689,26 @@ impl Game {
     pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
         let taken = self.vitals.damage(amount, cause, self.mode == GameMode::Creative);
         if taken > 0.0 {
+            self.sleeping = None;
             self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
         }
         if taken > 0.0 && self.vitals.is_dead() {
             self.on_death();
+        }
+        taken
+    }
+
+    /// Hurts the player through their armor (mobs, arrows, blasts, lava),
+    /// wearing it down when the hit lands.
+    pub(crate) fn damage_player_armored(&mut self, amount: f32, cause: &str) -> f32 {
+        let reduced = survival::armor_reduce(amount, self.inventory.armor_points());
+        let taken = self.damage_player(reduced, cause);
+        if taken > 0.0 && self.mode == GameMode::Survival {
+            for item in self.inventory.wear_armor(amount) {
+                self.show_popup(&format!("{} broke", capitalize(item.name())));
+                let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
+                self.audio.play(sound, None, 0.8, (1.3, 1.5));
+            }
         }
         taken
     }
@@ -701,7 +732,7 @@ impl Game {
 
     /// Back to the world spawn with full health.
     fn respawn(&mut self) {
-        self.player.pos = self.world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+        self.player.pos = self.respawn_point();
         self.player.vel = DVec3::ZERO;
         self.player.flying = false;
         self.vitals.respawn();
@@ -826,6 +857,7 @@ impl Game {
                 crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
             }
             Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
+            Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right),
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Chest(pos) = self.container
                     && let Some(chest) = self.world.chest_mut(pos)
@@ -872,6 +904,9 @@ impl Game {
         {
             self.world.set_block(pos, Block::AIR);
             self.audio.block_break(block, pos);
+            if block.is_bed() {
+                self.break_bed_partner(pos, block);
+            }
         }
     }
 
@@ -903,6 +938,9 @@ impl Game {
         if crate::mining::can_harvest(block, held) {
             self.world.spill_block(pos, block);
         }
+        if block.is_bed() {
+            self.break_bed_partner(pos, block);
+        }
         self.vitals.hunger.exhaust(survival::EXHAUST_MINE);
         if block.hardness() > 0.0 {
             self.wear_held(false);
@@ -929,6 +967,20 @@ impl Game {
             self.inventory.take_one(self.actions.selected);
             self.vitals.hunger.eat(hunger, saturation);
         }
+    }
+
+    /// Right-click with armor in hand puts it on (swapping out the worn
+    /// piece), unless aimed at a container. Returns whether it did.
+    fn equip_held(&mut self) -> bool {
+        let at_container = self.target().and_then(|(pos, _)| self.world.get_block(pos)).is_some_and(|b| {
+            b == Block::CRAFTING_TABLE || crate::world::furnace::is_furnace(b) || crate::world::chest::is_chest(b)
+        });
+        if self.mode != GameMode::Survival || at_container || !self.inventory.equip(self.actions.selected) {
+            return false;
+        }
+        let sound = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Wood);
+        self.audio.play(sound, None, 0.6, (1.4, 1.6));
+        true
     }
 
     /// The item in the selected hotbar slot.
@@ -960,6 +1012,7 @@ impl Game {
             Some(Block::CRAFTING_TABLE) => return self.open_crafting_table(),
             Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
+            Some(b) if b.is_bed() => return self.use_bed(pos),
             _ => {}
         }
         if self.use_item_on(pos, normal) {
@@ -967,6 +1020,12 @@ impl Game {
         }
         // Clicking tall grass replaces it instead of building against it.
         let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
+        if self.held_item() == Some(Item::BED) {
+            if self.place_bed(at) && self.mode == GameMode::Survival {
+                self.inventory.take_one(self.actions.selected);
+            }
+            return;
+        }
         let Some(block) = self.inventory.get(self.actions.selected).and_then(|s| s.item.places()) else { return };
         // Furnaces and chests face whoever places them.
         let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
@@ -1117,6 +1176,9 @@ impl Game {
         props.insert("items".to_string(), self.mobs.entities.items_to_string());
         props.insert("time".to_string(), format!("{:.5}", self.day_time));
         props.insert("weather".to_string(), self.weather.serialize());
+        if let Some(b) = self.spawn_bed {
+            props.insert("bed".to_string(), format!("{},{},{}", b.x, b.y, b.z));
+        }
         let level = LevelInfo {
             seed: self.world.generator.seed,
             player: Some((self.player.pos, self.player.yaw, self.player.pitch)),
@@ -1139,7 +1201,7 @@ impl Game {
         // --- Simulation ---------------------------------------------------
         let held = |k: KeyCode| self.keys.contains(&k);
         let axis = |pos: KeyCode, neg: KeyCode| held(pos) as i32 as f64 - held(neg) as i32 as f64;
-        let input = if self.mouse_grabbed && !self.inventory_open && !self.vitals.is_dead() {
+        let input = if self.mouse_grabbed && !self.inventory_open && !self.vitals.is_dead() && self.sleeping.is_none() {
             MoveInput {
                 forward: axis(KeyCode::KeyW, KeyCode::KeyS),
                 right: axis(KeyCode::KeyD, KeyCode::KeyA),
@@ -1156,6 +1218,7 @@ impl Game {
         self.player.update(dt, input, &self.world);
         let moved = (self.player.pos - before).with_y(0.0).length();
         self.weather.update(dt);
+        self.update_sleep(dt);
         self.world.raining = self.weather.raining;
         let rain_here = weather::rain_at(&self.world, &self.weather, self.player.pos);
         self.audio.update(&self.player, &self.world, rain_here, dt);
@@ -1179,7 +1242,7 @@ impl Game {
             self.damage_player(hurts.drown, survival::CAUSE_DROWN);
         }
         if hurts.lava > 0.0 {
-            self.damage_player(hurts.lava, survival::CAUSE_LAVA);
+            self.damage_player_armored(hurts.lava, survival::CAUSE_LAVA);
         }
         if hurts.starve > 0.0 {
             self.damage_player(hurts.starve, survival::CAUSE_STARVE);
@@ -1263,7 +1326,10 @@ impl Game {
             zenith_color: if underwater { fog_color } else { sky.zenith },
             sun_dir: sky.sun_dir,
             time: (now - self.started).as_secs_f32(),
-            highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| p),
+            highlight: self
+                .target()
+                .filter(|_| self.mob_target().is_none())
+                .map(|(p, _)| (p, self.world.get_block(p).map_or(1.0, |b| b.height() as f32))),
             crack: self
                 .actions
                 .breaking

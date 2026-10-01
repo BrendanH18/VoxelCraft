@@ -52,6 +52,8 @@ pub struct Args {
     pub food: Option<f32>,
     /// Items added to the inventory at startup (debugging/screenshots).
     pub give: Vec<(item::Item, u8)>,
+    /// Armor worn at startup (`--wear`).
+    pub wear: Vec<item::Item>,
     /// Items thrown in front of the player once the world has loaded.
     pub drop: Vec<(item::Item, u8)>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
@@ -85,6 +87,7 @@ voxelcraft [options]
                     (repeatable; e.g. --give iron_pickaxe --give coal,16)
   --drop item[,n]   throw n of an item in front of the player once loaded
                     (repeatable; like --give)
+  --wear item       put on a piece of armor at startup (repeatable)
   --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig, cow, sheep,
                     chicken, zombie, skeleton, creeper or spider; y may be ~
                     for the terrain surface, e.g. zombie,4,~,10)
@@ -122,6 +125,7 @@ fn parse_args() -> Result<Args, String> {
         air: None,
         food: None,
         give: Vec::new(),
+        wear: Vec::new(),
         drop: Vec::new(),
         mute: false,
         volume: None,
@@ -197,6 +201,11 @@ fn parse_args() -> Result<Args, String> {
                 let item = item::Item::from_name(name.trim()).ok_or(format!("{flag}: unknown item {name}"))?;
                 let count = count.trim().parse().map_err(|_| format!("{flag}: bad count in {v}"))?;
                 if flag == "--give" { &mut args.give } else { &mut args.drop }.push((item, count));
+            }
+            "--wear" => {
+                let v = value("--wear")?;
+                let item = item::Item::from_name(v.trim()).filter(|i| i.as_armor().is_some());
+                args.wear.push(item.ok_or(format!("--wear: not armor: {v}"))?);
             }
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--pose" => {

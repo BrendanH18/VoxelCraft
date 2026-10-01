@@ -84,6 +84,10 @@ impl Game {
                     }
                 }
             }
+            SlotRef::Armor(piece) => {
+                let Some(stack) = self.inventory.armor[piece as usize].take() else { return };
+                self.inventory.armor[piece as usize] = self.move_to_player(stack);
+            }
             SlotRef::Palette(item) => {
                 if self.mode == GameMode::Creative {
                     self.inventory.add(item, item.max_stack());
@@ -116,6 +120,15 @@ impl Game {
                 {
                     let cell = if smeltable { &mut f.input } else { &mut f.fuel };
                     return move_into(stack, std::slice::from_mut(cell), &[0]);
+                }
+            }
+            Container::Inventory if self.mode == GameMode::Survival => {
+                // Armor goes on, if that slot is free.
+                if let Some((piece, _)) = stack.item.as_armor()
+                    && self.inventory.armor[piece as usize].is_none()
+                {
+                    self.inventory.armor[piece as usize] = Some(stack);
+                    return None;
                 }
             }
             Container::Inventory | Container::CraftingTable => {}

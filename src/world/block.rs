@@ -101,6 +101,10 @@ pub mod tex {
     pub const WHEAT_0: u8 = 63;
     pub const OAK_SAPLING: u8 = 71;
     pub const SPRUCE_SAPLING: u8 = 72;
+    pub const BED_TOP_FOOT: u8 = 73;
+    pub const BED_TOP_HEAD: u8 = 74;
+    pub const BED_SIDE_FOOT: u8 = 75;
+    pub const BED_SIDE_HEAD: u8 = 76;
     /// Flat item icons (see `item::Item::icon_layer`), up to `ITEM_COUNT` of them.
     pub const ITEM_0: u8 = 96;
     pub const ITEM_COUNT: u8 = 64;
@@ -140,9 +144,28 @@ pub mod tex {
     pub const FOLIAGE_0: u8 = 195;
     pub const FOLIAGE: [u8; 5] = [GRASS_TOP, GRASS_SIDE, LEAVES, TALL_GRASS, FERN];
     pub const FOLIAGE_GROUPS: u8 = 5;
-    pub const COUNT: u32 = FOLIAGE_0 as u32 + (FOLIAGE_GROUPS as u32 - 1) * FOLIAGE.len() as u32;
+    /// More item icons, once the first `ITEM_COUNT` are used up.
+    pub const ITEM_MORE_0: u8 = FOLIAGE_0 + (FOLIAGE_GROUPS - 1) * FOLIAGE.len() as u8;
+    pub const ITEM_MORE_COUNT: u8 = 32;
+    pub const COUNT: u32 = ITEM_MORE_0 as u32 + ITEM_MORE_COUNT as u32;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
+
+    /// Texture layer of item icon `index` (see `item::sprite_for_layer`).
+    pub const fn item_layer(index: u8) -> u8 {
+        if index < ITEM_COUNT { ITEM_0 + index } else { ITEM_MORE_0 + index - ITEM_COUNT }
+    }
+
+    /// The item icon index drawn on `layer`, if it holds one.
+    pub fn item_index(layer: u8) -> Option<u8> {
+        if (ITEM_0..ITEM_0 + ITEM_COUNT).contains(&layer) {
+            Some(layer - ITEM_0)
+        } else if (ITEM_MORE_0 as u32..COUNT).contains(&(layer as u32)) {
+            Some(layer - ITEM_MORE_0 + ITEM_COUNT)
+        } else {
+            None
+        }
+    }
 
     /// The layer to draw `layer` with in a column of foliage `group`:
     /// grass and oak leaves take on the colour of the biome.
@@ -242,6 +265,9 @@ impl Block {
     pub const FERN: Block = Block(95);
     pub const BLUE_ORCHID: Block = Block(96);
     pub const ICE: Block = Block(97);
+    /// The two halves of a bed (see `Item::BED`), 9/16 of a block tall.
+    pub const BED_FOOT: Block = Block(98);
+    pub const BED_HEAD: Block = Block(99);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -394,6 +420,21 @@ impl Block {
         }
     }
 
+    pub fn is_bed(self) -> bool {
+        matches!(self, Block::BED_FOOT | Block::BED_HEAD)
+    }
+
+    /// How far (in 1/16 block) the top of this block sits below the top of
+    /// its cell; 0 for full blocks.
+    pub fn top_drop(self) -> u8 {
+        if self.is_bed() { 7 } else { 0 }
+    }
+
+    /// Height of the block's collision box.
+    pub fn height(self) -> f64 {
+        1.0 - self.top_drop() as f64 / 16.0
+    }
+
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
         match self.base() {
@@ -408,6 +449,9 @@ impl Block {
             b if b.crop_stage().is_some() => Some(Item::WHEAT_SEEDS),
             Block::CLAY => Some(Item::CLAY_BALL),
             Block::MELON => Some(Item::MELON_SLICE),
+            // The foot drops the bed; breaking either half breaks both.
+            Block::BED_FOOT => Some(Item::BED),
+            Block::BED_HEAD => None,
             b if b.is_leaves() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
             b if b.is_fluid() || b == Block::AIR => None,
@@ -430,6 +474,7 @@ impl Block {
                 0.6
             }
             Block::SANDSTONE | Block::WOOL => 0.8,
+            Block::BED_FOOT | Block::BED_HEAD => 0.2,
             Block::PUMPKIN | Block::MELON => 1.0,
             b if b.terracotta_colour().is_some() => 1.25,
             Block::STONE => 1.5,
@@ -827,6 +872,8 @@ const fn make(id: u8) -> BlockInfo {
         95 => ("fern", Cross, all(tex::FERN)),
         96 => ("blue orchid", Cross, all(tex::BLUE_ORCHID)),
         97 => ("ice", Translucent, all(tex::ICE)),
+        98 => ("bed foot", Cutout, column(tex::BED_SIDE_FOOT, tex::BED_TOP_FOOT, tex::PLANKS)),
+        99 => ("bed head", Cutout, column(tex::BED_SIDE_HEAD, tex::BED_TOP_HEAD, tex::PLANKS)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.
@@ -851,8 +898,8 @@ static LIGHT_OPACITY: [u8; 256] = {
         arr[i] = match INFO[i].kind {
             RenderKind::Opaque => 15,
             RenderKind::Invisible | RenderKind::Cross => 0,
-            _ if i == 10 => 0, // glass
-            _ => 1,            // leaves, water: dim light passing through
+            _ if i == 10 || i == 98 || i == 99 => 0, // glass, beds
+            _ => 1,                                  // leaves, water: dim light passing through
         };
         i += 1;
     }

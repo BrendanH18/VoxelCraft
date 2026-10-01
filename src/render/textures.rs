@@ -345,6 +345,41 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let ridge = (x + y) % 4 < 2;
             shade([234, 234, 228], if ridge { 0.96 + r * 0.06 } else { 0.86 + r * 0.06 })
         }
+        tex::BED_TOP_FOOT => {
+            // Red blanket with a lighter hem around the edge.
+            let hem = x == 1 || y == 1 || x == SIZE - 2 || y == SIZE - 2;
+            let weave = (x + y) % 4 < 2;
+            shade(
+                [178, 34, 34],
+                if hem {
+                    1.18
+                } else if weave {
+                    0.96 + r * 0.06
+                } else {
+                    0.88 + r * 0.06
+                },
+            )
+        }
+        tex::BED_TOP_HEAD => {
+            // A white pillow framed by the blanket.
+            if (3..SIZE - 3).contains(&x) && (3..SIZE - 3).contains(&y) {
+                let edge = x == 3 || y == 3 || x == SIZE - 4 || y == SIZE - 4;
+                shade([236, 236, 230], if edge { 0.86 } else { 0.97 + r * 0.05 })
+            } else {
+                pixel(tex::BED_TOP_FOOT, x, y)
+            }
+        }
+        tex::BED_SIDE_FOOT | tex::BED_SIDE_HEAD => {
+            // Only the bottom 9 rows show (the bed is 9/16 tall): blanket
+            // (a pillow on the head half), a wooden frame, then corner legs.
+            match y {
+                0..=9 if layer == tex::BED_SIDE_HEAD => shade([236, 236, 230], 0.92 + r * 0.06),
+                0..=9 => shade([178, 34, 34], if y == 7 { 1.15 } else { 0.9 + r * 0.06 }),
+                10..=12 => pixel(tex::PLANKS, x, y),
+                _ if !(3..SIZE - 3).contains(&x) => shade([104, 74, 44], 0.85 + r * 0.1),
+                _ => [0, 0, 0, 0],
+            }
+        }
         tex::TABLE_TOP => {
             // Planks framed by a dark border, with a 2x2 grid scored in the middle.
             let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
@@ -477,12 +512,10 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
         }
         l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES).contains(&l) => crack(l - tex::CRACK_0, x, y),
         l if let Some((base, group)) = tex::untinted(l) => tint_foliage(pixel(base, x, y), group),
-        l if (tex::ITEM_0..tex::ITEM_0 + tex::ITEM_COUNT).contains(&l) => {
-            match crate::item::sprite_for_layer(l - tex::ITEM_0) {
-                Some(sprite) => super::item_sprites::pixel(sprite, x, y),
-                None => [0, 0, 0, 0],
-            }
-        }
+        l if let Some(index) = tex::item_index(l) => match crate::item::sprite_for_layer(index) {
+            Some(sprite) => super::item_sprites::pixel(sprite, x, y),
+            None => [0, 0, 0, 0],
+        },
         _ => {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
