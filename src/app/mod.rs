@@ -35,6 +35,8 @@ const ACTION_REPEAT: f64 = 0.22;
 /// Pause between breaking one block and starting the next in survival.
 const BREAK_DELAY: f64 = 0.15;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
+/// Seconds of holding right-click to eat (Minecraft's 32 ticks).
+const EAT_TIME: f64 = 1.6;
 const MOUSE_SENSITIVITY: f32 = 0.0022;
 /// Horizon colour at noon (also the fog colour).
 const SKY: [f32; 3] = [0.42, 0.62, 0.98];
@@ -124,8 +126,10 @@ struct Game {
     show_debug: bool,
     /// Short message above the hotbar (item names, mode changes).
     popup: (String, Instant),
-    /// Health, air and fall tracking (survival).
+    /// Health, air, hunger and fall tracking (survival).
     vitals: Vitals,
+    /// Seconds spent eating the held food so far.
+    eat_timer: f64,
     screenshot: Option<String>,
     screenshot_state: u32,
     place: Vec<(glam::IVec3, Block)>,
@@ -237,6 +241,15 @@ impl ApplicationHandler for App {
         if let Some(a) = self.args.air {
             vitals.air = a.clamp(0.0, survival::MAX_AIR);
         }
+        if let Some(text) = prop("hunger") {
+            let n: Vec<f32> = text.split(',').filter_map(|v| v.parse().ok()).collect();
+            if let [food, saturation, exhaustion] = n[..] {
+                vitals.hunger = survival::Hunger::restore(food, saturation, exhaustion);
+            }
+        }
+        if let Some(f) = self.args.food {
+            vitals.hunger = survival::Hunger::restore(f, 0.0, 0.0);
+        }
 
         let generator = Arc::new(Generator::new(seed));
         let mut player = Player::new(generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
@@ -292,6 +305,7 @@ impl ApplicationHandler for App {
             show_debug: self.args.debug_overlay,
             popup: (String::new(), now - Duration::from_secs(10)),
             vitals,
+            eat_timer: 0.0,
             screenshot: self.args.screenshot.clone(),
             screenshot_state: 0,
             place: self.args.place.clone(),
@@ -816,8 +830,32 @@ impl Game {
         {
             self.inventory.add(drop, 1);
         }
+        self.vitals.hunger.exhaust(survival::EXHAUST_MINE);
         if block.hardness() > 0.0 {
             self.wear_held(false);
+        }
+    }
+
+    /// Eating: holding right-click with food in survival, when not full,
+    /// finishes a bite after [`EAT_TIME`] seconds.
+    fn eat(&mut self, acting: bool, dt: f64) {
+        let food = self.held_item().and_then(|i| i.food());
+        let eating = acting && self.right_held && self.mode == GameMode::Survival && self.vitals.hunger.can_eat();
+        let Some((hunger, saturation)) = food.filter(|_| eating) else {
+            self.eat_timer = 0.0;
+            return;
+        };
+        let before = self.eat_timer;
+        self.eat_timer += dt;
+        // Chewing sounds four times a second.
+        if (before / 0.25).floor() != (self.eat_timer / 0.25).floor() {
+            let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
+            self.audio.play(sound, None, 0.7, (1.4, 1.7));
+        }
+        if self.eat_timer >= EAT_TIME {
+            self.eat_timer = 0.0;
+            self.inventory.take_one(self.selected);
+            self.vitals.hunger.eat(hunger, saturation);
         }
     }
 
@@ -979,6 +1017,8 @@ impl Game {
         props.insert("inventory".to_string(), inventory.serialize());
         props.insert("health".to_string(), self.vitals.health.to_string());
         props.insert("air".to_string(), format!("{:.2}", self.vitals.air));
+        let h = self.vitals.hunger;
+        props.insert("hunger".to_string(), format!("{:.2},{:.2},{:.3}", h.food, h.saturation, h.exhaustion));
         if let Some(cause) = &self.vitals.death {
             props.insert("death".to_string(), cause.clone());
         }
@@ -1011,12 +1051,16 @@ impl Game {
                 right: axis(KeyCode::KeyD, KeyCode::KeyA),
                 jump: held(KeyCode::Space),
                 descend: held(KeyCode::ShiftLeft),
-                sprint: held(KeyCode::ControlLeft) || held(KeyCode::KeyR),
+                // Too hungry to sprint at 6 food or less (survival).
+                sprint: (held(KeyCode::ControlLeft) || held(KeyCode::KeyR))
+                    && (self.mode == GameMode::Creative || self.vitals.hunger.can_sprint()),
             }
         } else {
             MoveInput::default()
         };
+        let before = self.player.pos;
         self.player.update(dt, input, &self.world);
+        let moved = (self.player.pos - before).with_y(0.0).length();
         self.audio.update(&self.player, &self.world, dt);
         let env = survival::Env {
             y: self.player.pos.y,
@@ -1025,6 +1069,9 @@ impl Game {
             in_water: self.player.in_water,
             head_in_water: self.player.head_in_water(&self.world),
             in_lava: self.player.in_lava(&self.world),
+            moved: if self.player.flying { 0.0 } else { moved },
+            sprinting: input.sprint && moved > 0.0,
+            jumped: self.player.jumped,
         };
         let hurts = self.vitals.tick(dt as f32, &env, self.mode == GameMode::Creative);
         if hurts.fall > 0.0 {
@@ -1035,6 +1082,9 @@ impl Game {
         }
         if hurts.lava > 0.0 {
             self.damage_player(hurts.lava, survival::CAUSE_LAVA);
+        }
+        if hurts.starve > 0.0 {
+            self.damage_player(hurts.starve, survival::CAUSE_STARVE);
         }
 
         self.action_cooldown -= dt;
@@ -1051,6 +1101,7 @@ impl Game {
             }
             self.action_cooldown = ACTION_REPEAT;
         }
+        self.eat(acting, dt);
 
         // --- World streaming ------------------------------------------------
         if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0

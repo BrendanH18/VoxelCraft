@@ -43,6 +43,7 @@ pub struct Args {
     /// Starting health / air overrides (debugging/screenshots).
     pub health: Option<f32>,
     pub air: Option<f32>,
+    pub food: Option<f32>,
     /// Items added to the inventory at startup (debugging/screenshots).
     pub give: Vec<(item::Item, u8)>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
@@ -69,6 +70,7 @@ voxelcraft [options]
                     terrain surface, e.g. 0,~,0,water)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
   --air <0..15>     starting air in seconds
+  --food <0..20>    starting hunger in half drumsticks (no saturation)
   --give item[,n]   add n (default 1) of an item to the inventory at startup
                     (repeatable; e.g. --give iron_pickaxe --give coal,16)
   --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig, cow, sheep,
@@ -103,6 +105,7 @@ fn parse_args() -> Result<Args, String> {
         pose: None,
         health: None,
         air: None,
+        food: None,
         give: Vec::new(),
         mute: false,
         volume: None,
@@ -163,6 +166,7 @@ fn parse_args() -> Result<Args, String> {
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
             "--health" => args.health = Some(value("--health")?.parse().map_err(|_| "bad --health")?),
             "--air" => args.air = Some(value("--air")?.parse().map_err(|_| "bad --air")?),
+            "--food" => args.food = Some(value("--food")?.parse().map_err(|_| "bad --food")?),
             "--give" => {
                 let v = value("--give")?;
                 let (name, count) = v.split_once(',').unwrap_or((&v, "1"));

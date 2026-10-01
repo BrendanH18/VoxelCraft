@@ -152,9 +152,23 @@ impl Game {
             ui.icon(left + 1.0 + i as f32 * STEP, y + jitter, ICON, layer, WHITE);
         }
 
+        // Hunger, right to left; drumsticks shiver when nearly empty.
+        let half_food = v.hunger.food.ceil() as u32;
+        let starving = v.hunger.food <= 0.0;
+        for i in 0..(survival::MAX_FOOD as u32 / 2) {
+            let layer = match half_food.saturating_sub(i * 2) {
+                0 => tex::FOOD_EMPTY,
+                1 => tex::FOOD_HALF,
+                _ => tex::FOOD_FULL,
+            };
+            let jitter = if half_food <= 6 || starving { (hash(i + 50, tick) % 3) as f32 - 1.0 } else { 0.0 };
+            ui.icon(right - 1.0 - ICON - i as f32 * STEP, y + jitter, ICON, layer, WHITE);
+        }
+
+        // Air bubbles sit above the hunger bar.
         if self.player.head_in_water(&self.world) || v.air < MAX_AIR {
             for i in 0..v.bubbles().min(AIR_BUBBLES) {
-                ui.icon(right - 1.0 - ICON - i as f32 * STEP, y, ICON, tex::BUBBLE, WHITE);
+                ui.icon(right - 1.0 - ICON - i as f32 * STEP, y - 10.0, ICON, tex::BUBBLE, WHITE);
             }
         }
     }

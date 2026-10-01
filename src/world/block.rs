@@ -87,6 +87,10 @@ pub mod tex {
     pub const FURNACE_FRONT: u8 = 51;
     pub const FURNACE_LIT: u8 = 52;
     pub const FURNACE_TOP: u8 = 53;
+    // Hunger bar icons.
+    pub const FOOD_FULL: u8 = 54;
+    pub const FOOD_HALF: u8 = 55;
+    pub const FOOD_EMPTY: u8 = 56;
     /// Flat item icons (see `item::Item::icon_layer`), up to 64 of them.
     pub const ITEM_0: u8 = 96;
     pub const COUNT: u32 = 160;

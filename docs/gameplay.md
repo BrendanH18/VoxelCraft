@@ -103,12 +103,22 @@ session.
   ingots, diamonds, food, mob materials, and pickaxes, shovels, axes, hoes
   and swords in five tiers with durability bars. Coal and diamond ore drop
   their items
-- Survival health (no hunger): 10 hearts, fall damage (1 per block beyond
-  3; water breaks falls), 15 s of air then drowning, natural regeneration
-  after 4 s without damage, a red hurt flash and shaking hearts. Dying shows
+- Survival health: 10 hearts, fall damage (1 per block beyond 3; water
+  breaks falls), 15 s of air then drowning, a red hurt flash and shaking
+  hearts. Dying shows
   a death screen; clicking respawns at the world spawn with full health and
   the inventory kept (like `keepInventory`). Creative is immune to damage.
   Health and air are saved with the world
+- Hunger, like Minecraft: 10 drumsticks plus a hidden saturation buffer
+  (5 at spawn). Exhaustion from sprinting (0.1 per block), swimming (0.01
+  per block), jumping (0.05, 0.2 sprinting), mining (0.005), attacking
+  (0.1) and taking damage (0.1) costs a point of saturation, then food,
+  every 4. Health regenerates half a heart every 4 s from 18 food (costing
+  6 exhaustion), or every 0.5 s with a full bar and saturation left; an
+  empty bar starves you down to half a heart. You can't sprint at 6 food or
+  less. Hold right-click with food for 1.6 s to eat (not when full); the
+  bar shows on the right above the hotbar, with air bubbles above it.
+  Creative players don't get hungry. Hunger is saved with the world
 - Break, place and pick blocks, with a selection outline and hotbar
 - Procedurally generated, mipmapped block textures — the game ships no assets
 - Procedural sound, synthesized in code at startup (~25 ms): material-specific

@@ -68,6 +68,9 @@ impl Game {
             let damage = crate::mining::attack_damage(self.held_item());
             let killed = self.mobs.entities.attack(i, self.player.forward().as_dvec3(), damage);
             self.wear_held(true);
+            if self.mode == GameMode::Survival {
+                self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
+            }
             if let Some(kind) = killed
                 && self.mode == GameMode::Survival
             {
