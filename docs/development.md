@@ -31,7 +31,8 @@ Render distance uses **32-block chunks**: `--rd 8` spans 256 blocks,
 
 `--screenshot` waits for the world to load, writes a PNG, then exits.
 `--pose` sets `x,y,z,yaw,pitch` (angles in degrees) and starts the player flying.
-Use `--wait` to let the scene simulate before capture. In `--place` and
+Use `--wait` to let the scene simulate before capture. Scripted runs
+(`--screenshot`, `--bench-render`) ignore `saves/options.txt`. In `--place` and
 `--spawn`, `~` for the y coordinate means the terrain surface.
 
 These examples use a separate `screenshots` save. `--new` ignores its existing
@@ -53,8 +54,8 @@ cargo run --release -- --world screenshots --new --seed 42 --creative \
     --pose 0.5,92,0.5,0,-8 --wait 1.5 --screenshot mobs.png
 ```
 
-For UI captures, add `--f3` for the debug overlay or `--open-inventory` for
-the inventory, and `--give iron_pickaxe --give coal,16` to fill it. In
+For UI captures, add `--f3` for the debug overlay, `--open-inventory` for
+the inventory or `--open-menu pause|options` for the menus, and `--give iron_pickaxe --give coal,16` to fill it. In
 survival, `--health 5 --air 6` sets the vitals; `--health 0` opens the death
 screen. `cargo test --release icon_sheet -- --ignored` writes every item icon
 to `target/item_icons.png`.

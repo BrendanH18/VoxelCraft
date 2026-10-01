@@ -97,7 +97,7 @@ mouse, and press **Space** to jump. **Left click** breaks blocks or attacks mobs
 | Space / Left Shift | Fly up / down |
 | `[` / `]` | Decrease / increase view distance |
 | F3 / F11 | Debug overlay / fullscreen |
-| Esc | Release the mouse; press again to save and quit |
+| Esc | Pause menu: back to game, options (render distance, FOV, sensitivity, volume, vsync), save and quit |
 
 See the [gameplay guide](docs/gameplay.md) for all controls, survival rules, and mob behavior.
 

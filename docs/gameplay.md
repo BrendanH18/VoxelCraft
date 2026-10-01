@@ -24,9 +24,17 @@
 | F1 | Toggle HUD |
 | F3 | Debug screen |
 | F11 | Fullscreen |
-| Esc | Release mouse (press again to save and quit) |
+| Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit; Esc again goes back |
 
-The world autosaves every two minutes and on exit.
+The world autosaves every two minutes and on exit. Switching away from
+the window also pauses the game.
+
+**Options** (Esc → Options...): render distance (2–32 chunks), field of
+view (30–110°), mouse sensitivity (25–300%), master volume and vsync.
+Changes apply immediately and are saved to `saves/options.txt` when you
+leave the screen; `[`/`]` and V adjust render distance and vsync in game.
+`--rd`, `--volume` and `--no-vsync` override the saved options for one
+session.
 
 ![F3 debug screen](images/debug.jpg)
 

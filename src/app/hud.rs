@@ -74,11 +74,13 @@ impl Game {
             ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), y + 36.0, &msg, WHITE);
             let hint = "Click to respawn";
             ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), y + 64.0, hint, [1.0, 1.0, 0.6, 1.0]);
+        } else if self.menu.is_some() {
+            self.menu_ui(&mut ui);
         } else if self.inventory_open {
             self.inventory_ui(&mut ui);
         } else if !self.mouse_grabbed && self.screenshot.is_none() {
             ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.35]);
-            let msg = "Click to play  -  Esc to save and quit";
+            let msg = "Click to play  -  Esc for the menu";
             ui.text((sw - Ui::text_width(msg)) / 2.0, sh / 2.0 - 24.0, msg, WHITE);
         }
         ui.verts

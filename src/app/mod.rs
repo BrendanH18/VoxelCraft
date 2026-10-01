@@ -1,7 +1,9 @@
 //! Window, input and the per-frame game loop.
 
 mod hud;
+mod menu;
 mod mobs;
+mod settings;
 pub mod survival;
 
 use std::sync::Arc;
@@ -120,6 +122,14 @@ struct Game {
     frame_started: Option<Instant>,
     audio: crate::audio::Audio,
     mobs: mobs::Mobs,
+    /// Open menu screen, if any (the game is paused while one is up).
+    menu: Option<menu::Screen>,
+    /// Slider being dragged.
+    menu_drag: Option<menu::Widget>,
+    settings: settings::Settings,
+    /// Where options are saved; `None` for scripted runs (screenshots,
+    /// benchmarks), which neither read nor write them.
+    settings_path: Option<std::path::PathBuf>,
 }
 
 pub struct App {
@@ -140,7 +150,20 @@ impl ApplicationHandler for App {
         }
         let attrs = Window::default_attributes().with_title("VoxelCraft").with_inner_size(PhysicalSize::new(1600, 900));
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
-        let renderer = pollster::block_on(Renderer::new(window, !self.args.no_vsync));
+
+        // Saved options, with command-line overrides for this session.
+        let scripted = self.args.screenshot.is_some() || self.args.bench_render;
+        let settings_path = (!scripted).then(|| std::path::PathBuf::from("saves/options.txt"));
+        let mut settings = settings_path.as_deref().map(settings::Settings::load).unwrap_or_default();
+        if let Some(rd) = self.args.render_distance {
+            settings.render_distance = rd;
+        }
+        if let Some(v) = self.args.volume {
+            settings.volume = v;
+        }
+        settings.vsync &= !self.args.no_vsync;
+
+        let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
 
         let storage = Storage::new(format!("saves/{}", self.args.world));
         let existing = if self.args.new_world || !storage.exists() {
@@ -213,7 +236,7 @@ impl ApplicationHandler for App {
             player.flying = true;
         }
         player.can_fly = mode == GameMode::Creative;
-        let world = World::new(generator, saved, self.args.render_distance);
+        let world = World::new(generator, saved, settings.render_distance);
         log::info!("{} worker threads", world.worker_threads());
 
         let now = Instant::now();
@@ -254,8 +277,16 @@ impl ApplicationHandler for App {
             placed: false,
             bench_render: self.args.bench_render.then(Vec::new),
             frame_started: None,
-            audio: crate::audio::Audio::new(self.args.mute, self.args.volume),
+            audio: crate::audio::Audio::new(self.args.mute, settings.volume),
             mobs: mobs::Mobs::new(seed, self.args.spawn.clone(), self.args.wait),
+            menu: match self.args.open_menu.as_deref() {
+                Some("pause") => Some(menu::Screen::Pause),
+                Some("options") => Some(menu::Screen::Options),
+                _ => None,
+            },
+            menu_drag: None,
+            settings,
+            settings_path,
         };
         game.renderer.force_offscreen = game.bench_render.is_some();
         if game.vitals.is_dead() {
@@ -276,26 +307,29 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => game.renderer.resize(size.width, size.height),
             WindowEvent::CursorMoved { position, .. } => {
                 game.cursor_px = (position.x as f32, position.y as f32);
+                game.menu_cursor_moved();
             }
             WindowEvent::Focused(false) => {
-                game.set_grab(false);
-                game.keys.clear();
-                game.left_held = false;
-                game.right_held = false;
+                // Like Minecraft: switching away pauses (not in scripted runs).
+                if game.settings_path.is_some() && game.menu.is_none() && !game.vitals.is_dead() {
+                    game.open_menu();
+                } else {
+                    game.set_grab(false);
+                    game.keys.clear();
+                    game.left_held = false;
+                    game.right_held = false;
+                }
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 let PhysicalKey::Code(code) = event.physical_key else { return };
                 match event.state {
                     ElementState::Pressed => {
                         if !event.repeat {
-                            if code == KeyCode::Escape && !game.mouse_grabbed && !game.inventory_open {
-                                game.save();
-                                event_loop.exit();
-                                return;
-                            }
                             game.on_key(code);
                         }
-                        game.keys.insert(code);
+                        if game.menu.is_none() {
+                            game.keys.insert(code);
+                        }
                     }
                     ElementState::Released => {
                         game.keys.remove(&code);
@@ -304,6 +338,14 @@ impl ApplicationHandler for App {
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let pressed = state == ElementState::Pressed;
+                if game.menu.is_some() {
+                    if button == MouseButton::Left && game.menu_click(pressed) == Some(menu::MenuAction::Quit) {
+                        game.save();
+                        game.save_settings();
+                        event_loop.exit();
+                    }
+                    return;
+                }
                 if game.vitals.is_dead() {
                     if pressed && button == MouseButton::Left {
                         game.respawn();
@@ -344,6 +386,7 @@ impl ApplicationHandler for App {
                     _ => {}
                 }
             }
+            WindowEvent::MouseWheel { .. } if game.menu.is_some() => {}
             WindowEvent::MouseWheel { delta, .. } => {
                 let dy = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
@@ -371,7 +414,8 @@ impl ApplicationHandler for App {
             && game.mouse_grabbed
             && !game.inventory_open
         {
-            game.player.look(delta.0 as f32 * MOUSE_SENSITIVITY, delta.1 as f32 * MOUSE_SENSITIVITY);
+            let k = MOUSE_SENSITIVITY * game.settings.sensitivity;
+            game.player.look(delta.0 as f32 * k, delta.1 as f32 * k);
         }
     }
 
@@ -424,12 +468,19 @@ impl Game {
     }
 
     fn on_key(&mut self, code: KeyCode) {
-        if self.vitals.is_dead() && matches!(code, KeyCode::KeyE | KeyCode::KeyG | KeyCode::KeyF | KeyCode::Space) {
+        if self.menu.is_some() {
+            if code == KeyCode::Escape {
+                self.menu_back();
+            }
+            return;
+        }
+        let blocked_when_dead = [KeyCode::KeyE, KeyCode::KeyG, KeyCode::KeyF, KeyCode::Space, KeyCode::Escape];
+        if self.vitals.is_dead() && blocked_when_dead.contains(&code) {
             return;
         }
         match code {
             KeyCode::Escape if self.inventory_open => self.toggle_inventory(),
-            KeyCode::Escape => self.set_grab(false),
+            KeyCode::Escape => self.open_menu(),
             KeyCode::KeyE => self.toggle_inventory(),
             KeyCode::KeyG => {
                 let mode = match self.mode {
@@ -452,8 +503,9 @@ impl Game {
                 self.last_space = now;
             }
             KeyCode::KeyV => {
-                let v = !self.renderer.vsync();
-                self.renderer.set_vsync(v);
+                self.settings.vsync = !self.settings.vsync;
+                self.apply_settings();
+                self.show_popup(if self.settings.vsync { "VSync on" } else { "VSync off" });
             }
             KeyCode::KeyM => {
                 let muted = self.audio.toggle_mute();
@@ -469,13 +521,11 @@ impl Game {
                     None => Some(Fullscreen::Borderless(None)),
                 });
             }
-            KeyCode::BracketLeft | KeyCode::Minus => {
-                let rd = self.world.render_distance() - 1;
-                self.world.set_render_distance(rd);
-            }
-            KeyCode::BracketRight | KeyCode::Equal => {
-                let rd = self.world.render_distance() + 1;
-                self.world.set_render_distance(rd);
+            KeyCode::BracketLeft | KeyCode::Minus | KeyCode::BracketRight | KeyCode::Equal => {
+                let step = if matches!(code, KeyCode::BracketLeft | KeyCode::Minus) { -1 } else { 1 };
+                self.settings.render_distance = (self.settings.render_distance + step)
+                    .clamp(settings::RENDER_DISTANCE.0, settings::RENDER_DISTANCE.1);
+                self.apply_settings();
             }
             _ => {
                 let digits = [
@@ -796,7 +846,8 @@ impl Game {
 
     fn frame(&mut self) {
         let now = Instant::now();
-        let dt = (now - self.last_frame).as_secs_f64().min(0.1);
+        // The world stands still while a menu is open.
+        let dt = if self.menu.is_some() { 0.0 } else { (now - self.last_frame).as_secs_f64().min(0.1) };
         self.last_frame = now;
 
         // --- Simulation ---------------------------------------------------
@@ -893,7 +944,7 @@ impl Game {
         let params = FrameParams {
             camera: self.player.eye(),
             forward: self.player.forward(),
-            fov_y: 70f32.to_radians() * if input.sprint && input.forward > 0.0 { 1.08 } else { 1.0 },
+            fov_y: self.settings.fov.to_radians() * if input.sprint && input.forward > 0.0 { 1.08 } else { 1.0 },
             sky_color: fog_color.map(|c| c as f64),
             fog_color,
             fog_start,
@@ -917,7 +968,11 @@ impl Game {
                     sky_light: crate::entity::sky_light(&self.world, f.pos + glam::DVec3::splat(0.5)),
                 })
                 .collect(),
-            ui: if self.show_hud || self.vitals.is_dead() { self.build_ui(now) } else { Vec::new() },
+            ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() {
+                self.build_ui(now)
+            } else {
+                Vec::new()
+            },
         };
         if !self.renderer.render(&params) {
             return; // hidden window: don't count this frame in the stats

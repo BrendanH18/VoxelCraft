@@ -53,6 +53,8 @@ src/
   app/
     mod.rs           window, input, game loop, day/night, damage entry point
     hud.rs           HUD: hotbar, hearts/bubbles, inventory, death and F3 screens
+    menu.rs          pause menu and options screen
+    settings.rs      options file (saves/options.txt)
     survival.rs      health rules: falls, drowning, regeneration (unit tested)
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
   inventory.rs       inventory slots and stacking
