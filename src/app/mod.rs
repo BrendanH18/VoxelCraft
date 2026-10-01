@@ -799,7 +799,8 @@ impl Game {
             Some((p, progress)) if p == pos => progress,
             _ => 0.0,
         };
-        let progress = progress + (dt / block.break_time() as f64) as f32;
+        let held = self.held_item();
+        let progress = progress + (dt / crate::mining::break_time(block, held) as f64) as f32;
         if progress < 1.0 {
             self.breaking = Some((pos, progress));
             self.audio.block_hit(block, pos, dt);
@@ -809,8 +810,34 @@ impl Game {
         self.action_cooldown = BREAK_DELAY;
         self.world.set_block(pos, Block::AIR);
         self.audio.block_break(block, pos);
-        if let Some(drop) = block.drop() {
+        // Stone, ores and the like only drop with a good enough pickaxe.
+        if crate::mining::can_harvest(block, held)
+            && let Some(drop) = block.drop()
+        {
             self.inventory.add(drop, 1);
+        }
+        if block.hardness() > 0.0 {
+            self.wear_held(false);
+        }
+    }
+
+    /// The item in the selected hotbar slot.
+    pub(super) fn held_item(&self) -> Option<Item> {
+        self.inventory.get(self.selected).map(|s| s.item)
+    }
+
+    /// Wears the held tool for a block broken or a mob hit (survival).
+    pub(super) fn wear_held(&mut self, hitting_mob: bool) {
+        let Some(held) = self.held_item() else { return };
+        if self.mode == GameMode::Survival && self.inventory.wear(self.selected, crate::mining::wear(held, hitting_mob))
+        {
+            self.show_popup(&format!("{} broke", capitalize(held.name())));
+            self.audio.play(
+                crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood),
+                None,
+                0.8,
+                (1.3, 1.5),
+            );
         }
     }
 

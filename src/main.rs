@@ -6,6 +6,7 @@ mod entity;
 mod inventory;
 mod item;
 mod mesh;
+mod mining;
 mod physics;
 mod player;
 mod render;

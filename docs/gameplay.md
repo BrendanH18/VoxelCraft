@@ -80,6 +80,17 @@ session.
   sticks, crafting table, torches (coal or charcoal over a stick),
   sandstone, wool (from string), arrows, and pickaxes, shovels, axes,
   hoes and swords in wood, stone, iron, gold and diamond
+- Tools follow Minecraft's mining rules: a block takes its hardness x 1.5
+  seconds to mine with something that can harvest it and x 5 otherwise,
+  divided by the tool's speed when it's the right kind (pickaxe for stone
+  and ores, shovel for dirt, sand and gravel, axe for wood). Stone and ores
+  only drop with a pickaxe of a high enough tier: wood or gold for stone
+  and coal, stone for iron, iron for gold and diamond, diamond for
+  obsidian. Stone by hand takes 7.5 s; with a wooden pickaxe 1.1 s, down
+  to 0.19 s with gold. Tools lose 1 durability per block (swords 2) and 1
+  per hit (other tools 2), and break when worn out. Melee damage comes from
+  the held item: a fist 1, swords 4 (wood, gold) to 7 (diamond), axes,
+  pickaxes and shovels less
 - Furnaces (8 cobblestone in a ring): right-click to open; put something
   to smelt on top and fuel below. Each item takes 10 s; coal and charcoal
   burn 80 s, logs, planks and crafting tables 15 s, wooden tools 10 s and

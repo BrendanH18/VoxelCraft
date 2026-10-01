@@ -105,6 +105,19 @@ impl Inventory {
         Some(s.item)
     }
 
+    /// Wears the tool in `slot` by `uses`; returns `true` if that broke it
+    /// (the slot is then empty). Non-tools are untouched.
+    pub fn wear(&mut self, slot: usize, uses: u16) -> bool {
+        let Some(s) = &mut self.slots[slot] else { return false };
+        let Some(max) = s.item.durability() else { return false };
+        s.damage = s.damage.saturating_add(uses);
+        if s.damage >= max {
+            self.slots[slot] = None;
+            return true;
+        }
+        false
+    }
+
     pub fn find(&self, item: impl Into<Item>) -> Option<usize> {
         let item = item.into();
         self.slots.iter().position(|s| s.is_some_and(|s| s.item == item))
@@ -295,5 +308,19 @@ mod tests {
         assert_eq!(inv.get(0), Some(sword));
         assert!((sword.wear().unwrap() - (1.0 - 30.0 / 59.0)).abs() < 1e-6);
         assert_eq!(Stack::new(Item::COAL, 1).wear(), None);
+    }
+
+    #[test]
+    fn tools_wear_out_and_break() {
+        use crate::item::{Tier, ToolKind};
+        let pick = Item::tool(ToolKind::Pickaxe, Tier::Wood);
+        let mut inv = Inventory::with_hotbar(&[pick, Item::STICK]);
+        for _ in 0..58 {
+            assert!(!inv.wear(0, 1));
+        }
+        assert_eq!(inv.get(0).unwrap().damage, 58);
+        assert!(inv.wear(0, 1), "59 uses breaks a wooden pickaxe");
+        assert_eq!(inv.get(0), None);
+        assert!(!inv.wear(1, 1) && inv.get(1).unwrap().damage == 0, "sticks don't wear");
     }
 }
