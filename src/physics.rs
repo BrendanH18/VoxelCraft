@@ -140,9 +140,14 @@ pub fn move_box<W: BlockSource + ?Sized>(
     out
 }
 
-/// Whether the cell containing `p` holds water.
-pub fn is_water_at<W: BlockSource + ?Sized>(world: &W, p: DVec3) -> bool {
-    world.block(p.floor().as_ivec3()).is_some_and(|b| b.is_water())
+/// Whether the cell containing `p` holds water or lava.
+pub fn is_fluid_at<W: BlockSource + ?Sized>(world: &W, p: DVec3) -> bool {
+    world.block(p.floor().as_ivec3()).is_some_and(|b| b.is_fluid())
+}
+
+/// Whether the cell containing `p` holds lava.
+pub fn is_lava_at<W: BlockSource + ?Sized>(world: &W, p: DVec3) -> bool {
+    world.block(p.floor().as_ivec3()).is_some_and(|b| b.is_lava())
 }
 
 /// Slab test: distance along `dir` (not necessarily normalised; the result

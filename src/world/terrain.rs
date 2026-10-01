@@ -13,6 +13,8 @@ use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
 use super::noise::{Perlin, hash_f, hash3};
 
 pub const SEA_LEVEL: i32 = 62;
+/// Caves carved at or below this height fill with lava.
+pub const LAVA_LEVEL: i32 = 10;
 const TREE_CELL: i32 = 5;
 /// How far a tree's leaves can extend from its trunk.
 const TREE_REACH: i32 = 3;
@@ -202,7 +204,8 @@ impl Generator {
                             col.height
                         };
                         if wy > 4 && wy <= carve_limit && b != Block::WATER && Self::is_cave(&field[..], x, y, z, wy) {
-                            b = Block::AIR;
+                            // Deep caves flood with lava, like Minecraft's lava level.
+                            b = if wy <= LAVA_LEVEL { Block::LAVA } else { Block::AIR };
                         }
                     }
                     blocks[index(x, y, z)] = b;
@@ -212,6 +215,7 @@ impl Generator {
 
         if base.y <= max_h + 12 && top >= min_h {
             self.place_trees(&mut blocks, base);
+            self.place_plants(&mut blocks, base, &cols);
         }
         ChunkData::from_dense(blocks)
     }
@@ -318,6 +322,41 @@ impl Generator {
                     (_, Block::GRASS) => Self::oak(blocks, base, ground, variant),
                     _ => {}
                 }
+            }
+        }
+    }
+
+    /// Scatters grass, flowers and dead bushes on the untouched surface
+    /// (after trees, so trunks keep their spot). Only columns whose ground
+    /// and the cell above both lie in this chunk get plants.
+    fn place_plants(&self, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, cols: &[[Column; CHUNK_SIZE]; CHUNK_SIZE]) {
+        for (z, row) in cols.iter().enumerate() {
+            for (x, col) in row.iter().enumerate() {
+                let y = col.height - base.y;
+                if !(0..CHUNK_SIZE_I - 1).contains(&y) || col.height < SEA_LEVEL {
+                    continue;
+                }
+                let (ground, above) = (index(x, y as usize, z), index(x, y as usize + 1, z));
+                if blocks[above] != Block::AIR || blocks[ground] != Self::surface_block(*col, col.height) {
+                    continue; // carved by a cave, or covered by a tree
+                }
+                let (wx, wz) = (base.x + x as i32, base.z + z as i32);
+                let roll = hash_f(wx, 0, wz, self.seed ^ 0x9A5);
+                // Flowers grow in patches: a coarse cell decides the colour.
+                let patch = hash3(wx >> 3, 0, wz >> 3, self.seed ^ 0xF10);
+                let flower = if patch.is_multiple_of(2) { Block::DANDELION } else { Block::POPPY };
+                let flower_chance = if patch % 5 < 2 { 0.06 } else { 0.0 };
+                let plant = match (col.biome, blocks[ground]) {
+                    (Biome::Plains, Block::GRASS) if roll < flower_chance => flower,
+                    (Biome::Plains, Block::GRASS) if roll < 0.3 => Block::TALL_GRASS,
+                    (Biome::Forest, Block::GRASS) if roll < flower_chance * 0.5 => flower,
+                    (Biome::Forest, Block::GRASS) if roll < 0.15 => Block::TALL_GRASS,
+                    (Biome::Mountains, Block::GRASS) if roll < 0.08 => Block::TALL_GRASS,
+                    (Biome::Taiga, Block::SNOWY_GRASS) if roll < 0.04 => Block::TALL_GRASS,
+                    (Biome::Desert, Block::SAND) if roll < 0.01 => Block::DEAD_BUSH,
+                    _ => continue,
+                };
+                blocks[above] = plant;
             }
         }
     }
@@ -440,5 +479,47 @@ mod tests {
         let max = *heights.iter().max().unwrap();
         assert!(min < SEA_LEVEL && max > 110, "height range {min}..{max}");
         assert!(biomes.len() >= 5, "biomes: {biomes:?}");
+    }
+
+    #[test]
+    fn surface_grows_grass_and_flowers() {
+        let g = Generator::new(99);
+        let mut counts = std::collections::HashMap::new();
+        for cx in -8..8 {
+            for cz in -8..8 {
+                for cy in 1..4 {
+                    g.generate(IVec3::new(cx, cy, cz)).for_each_block(|b| {
+                        if b.kind() == crate::world::block::RenderKind::Cross {
+                            *counts.entry(b).or_insert(0) += 1;
+                        }
+                    });
+                }
+            }
+        }
+        assert!(counts.get(&Block::TALL_GRASS).copied().unwrap_or(0) > 100, "{counts:?}");
+        assert!(counts.contains_key(&Block::DANDELION) || counts.contains_key(&Block::POPPY), "{counts:?}");
+    }
+
+    #[test]
+    fn deep_caves_hold_lava() {
+        let g = Generator::new(99);
+        let mut lava_heights = Vec::new();
+        for cx in -6..6 {
+            for cz in -6..6 {
+                let base = IVec3::new(cx, 0, cz) * CHUNK_SIZE_I;
+                let data = g.generate(IVec3::new(cx, 0, cz));
+                for y in 0..CHUNK_SIZE {
+                    for z in 0..CHUNK_SIZE {
+                        for x in 0..CHUNK_SIZE {
+                            if data.get(x, y, z) == Block::LAVA {
+                                lava_heights.push(base.y + y as i32);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(!lava_heights.is_empty(), "no lava generated");
+        assert!(lava_heights.iter().all(|&y| y <= LAVA_LEVEL));
     }
 }

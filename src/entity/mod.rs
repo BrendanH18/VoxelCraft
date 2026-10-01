@@ -1,15 +1,19 @@
-//! Entities: passive pigs and hostile zombies.
+//! Entities: passive pigs, cows, sheep and chickens; hostile zombies,
+//! skeletons, creepers and spiders; skeleton arrows and explosion smoke.
 //!
 //! Mobs live in a flat `Vec` (removal is `swap_remove`). Each frame
 //! [`Entities::update`] spawns new mobs around the player, runs AI and
-//! physics, and despawns far-away or dead ones. Things that affect the rest
-//! of the game (a zombie hitting the player) come back as [`EntityEvent`]s
-//! so this module stays independent of the player and health code.
+//! physics, moves arrows, and despawns far-away or dead ones. Things that
+//! affect the rest of the game (a hit on the player, an explosion, a sound)
+//! come back as [`EntityEvent`]s so this module stays independent of the
+//! player, world edits, health and audio code.
 //!
-//! Rendering: [`model`] turns mobs into camera-relative box-model vertices.
+//! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
+//! box-model vertices.
 
 mod mob;
 pub mod model;
+mod projectile;
 
 use std::f32::consts::TAU;
 
@@ -21,28 +25,75 @@ use crate::world::World;
 use crate::world::block::Block;
 use crate::world::noise::splitmix64;
 
-pub use mob::{Mob, MobKind};
+pub use mob::{Mob, MobKind, sky_light};
+pub use projectile::Arrow;
 
 /// Spawns happen this far from the player (blocks).
 pub const SPAWN_MIN_DIST: f64 = 24.0;
 pub const SPAWN_MAX_DIST: f64 = 64.0;
 /// Mobs farther than this are removed.
 pub const DESPAWN_DIST: f64 = 96.0;
-pub const PIG_CAP: usize = 12;
-pub const ZOMBIE_CAP: usize = 8;
-/// Zombies only spawn when it's darker than this.
-pub const ZOMBIE_SPAWN_DAYLIGHT: f32 = 0.35;
+/// Hostile mobs only spawn when it's darker than this.
+pub const HOSTILE_SPAWN_DAYLIGHT: f32 = 0.35;
 const SPAWN_INTERVAL: f32 = 0.25;
 /// Player melee: damage range and cooldown between hits.
 pub const ATTACK_DAMAGE: (f32, f32) = (2.0, 4.0);
 pub const ATTACK_COOLDOWN: f64 = 0.5;
 
+/// Sounds entities make (the game maps them to audio).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MobSound {
+    /// A creeper lit its fuse.
+    Fuse,
+    /// A skeleton loosed an arrow.
+    Bow,
+}
+
 /// Something an entity did that the game needs to react to.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EntityEvent {
-    /// A mob hit the player: apply `damage` and add `knockback` to the
-    /// player's velocity.
-    PlayerHit { damage: f32, knockback: Vec3 },
+    /// A mob or arrow hit the player: apply `damage` and add `knockback` to
+    /// the player's velocity; `cause` is the death message.
+    PlayerHit {
+        damage: f32,
+        knockback: Vec3,
+        cause: &'static str,
+    },
+    /// A creeper exploded: break blocks and hurt everything nearby (see
+    /// [`explosion_damage`]). [`Entities::explode`] handles the mobs.
+    Explosion {
+        center: DVec3,
+        power: f32,
+    },
+    Sound {
+        sound: MobSound,
+        pos: DVec3,
+    },
+    /// A skeleton shot at `target` (turned into an arrow internally).
+    Shoot {
+        from: DVec3,
+        target: DVec3,
+    },
+}
+
+/// Damage and knockback strength (0..1) of an explosion of `power` at
+/// `dist` blocks, following Minecraft: reaches `2 * power` blocks.
+pub fn explosion_damage(power: f32, dist: f64) -> Option<(f32, f32)> {
+    let reach = 2.0 * power as f64;
+    if dist >= reach {
+        return None;
+    }
+    let impact = (1.0 - dist / reach) as f32;
+    Some((((impact * impact + impact) / 2.0 * 7.0 * reach as f32 + 1.0).floor(), impact))
+}
+
+/// One cube of explosion smoke.
+pub struct Puff {
+    pub pos: DVec3,
+    vel: DVec3,
+    pub age: f32,
+    pub life: f32,
+    pub size: f32,
 }
 
 /// World queries mobs need beyond plain block access.
@@ -102,6 +153,8 @@ impl Rng {
 
 pub struct Entities {
     pub mobs: Vec<Mob>,
+    pub arrows: Vec<Arrow>,
+    pub puffs: Vec<Puff>,
     rng: Rng,
     spawn_timer: f32,
     /// Mobs drawn last frame (F3).
@@ -111,7 +164,15 @@ pub struct Entities {
 
 impl Entities {
     pub fn new(seed: u64) -> Self {
-        Self { mobs: Vec::new(), rng: Rng::new(seed ^ 0x6d6f_6273), spawn_timer: 0.0, rendered: 0, verts: Vec::new() }
+        Self {
+            mobs: Vec::new(),
+            arrows: Vec::new(),
+            puffs: Vec::new(),
+            rng: Rng::new(seed ^ 0x6d6f_6273),
+            spawn_timer: 0.0,
+            rendered: 0,
+            verts: Vec::new(),
+        }
     }
 
     pub fn count(&self, kind: MobKind) -> usize {
@@ -147,7 +208,54 @@ impl Entities {
             i += 1;
         }
         self.separate(dt);
+
+        // Skeleton shots become arrows.
+        for e in &events {
+            if let EntityEvent::Shoot { from, target } = *e {
+                self.arrows.push(Arrow::aimed(from, target, &mut self.rng));
+            }
+        }
+        events.retain(|e| !matches!(e, EntityEvent::Shoot { .. }));
+        self.arrows.retain_mut(|a| a.update(dt, world, ctx, &mut events));
+
+        let dtf = dt as f32;
+        self.puffs.retain_mut(|p| {
+            p.age += dtf;
+            p.pos += p.vel * dt;
+            p.vel *= 1.0 - (dt * 3.0).min(1.0);
+            p.vel.y += 1.5 * dt;
+            p.age < p.life
+        });
         events
+    }
+
+    /// Hurts and flings mobs caught in an explosion, and puffs smoke.
+    pub fn explode(&mut self, center: DVec3, power: f32) {
+        for m in &mut self.mobs {
+            let mid = m.pos + DVec3::Y * (m.shape().height * 0.5);
+            let Some((damage, impact)) = explosion_damage(power, mid.distance(center)) else { continue };
+            let away = (mid - center).normalize_or(DVec3::Y);
+            m.damage(damage, Some(away * (impact as f64 * 14.0) + DVec3::Y * 6.0), &mut self.rng);
+        }
+        for _ in 0..28 {
+            let dir = DVec3::new(
+                self.rng.range(-1.0, 1.0) as f64,
+                self.rng.range(-0.4, 1.0) as f64,
+                self.rng.range(-1.0, 1.0) as f64,
+            );
+            self.puffs.push(Puff {
+                pos: center + dir * 0.6,
+                vel: dir * self.rng.range(3.0, 8.0) as f64,
+                age: 0.0,
+                life: self.rng.range(0.6, 1.3),
+                size: self.rng.range(0.4, 1.0),
+            });
+        }
+    }
+
+    /// Rolls the loot for a mob of `kind` the player killed.
+    pub fn drops(&mut self, kind: MobKind) -> Vec<(crate::item::Item, u8)> {
+        kind.drops(&mut self.rng)
     }
 
     /// Gently pushes overlapping mobs apart.
@@ -174,10 +282,7 @@ impl Entities {
     /// One spawn attempt per mob type that is under its cap.
     fn natural_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx) {
         for kind in MobKind::ALL {
-            let cap = match kind {
-                MobKind::Pig => PIG_CAP,
-                MobKind::Zombie => ZOMBIE_CAP,
-            };
+            let cap = kind.spawn_cap();
             if self.count(kind) >= cap {
                 continue;
             }
@@ -190,8 +295,8 @@ impl Entities {
                 continue;
             }
             self.spawn(kind, pos);
-            // Pigs come in small herds.
-            if kind == MobKind::Pig {
+            // Animals come in small herds.
+            if !kind.is_hostile() {
                 let extra = (self.rng.next_f32() * 3.0) as i32;
                 for _ in 0..extra {
                     let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
@@ -209,6 +314,8 @@ impl Entities {
     pub fn mesh(&mut self, camera: DVec3, forward: Vec3, max_dist: f32, time: f32) -> &[EntityVertex] {
         self.verts.clear();
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, &mut self.verts);
+        model::build_arrows(&self.arrows, camera, &mut self.verts);
+        model::build_puffs(&self.puffs, camera, &mut self.verts);
         &self.verts
     }
 
@@ -227,21 +334,23 @@ impl Entities {
             .min_by(|a, b| a.1.total_cmp(&b.1))
     }
 
-    /// Player melee hit on mob `index`, pushed along `dir`.
-    pub fn attack(&mut self, index: usize, dir: DVec3) -> bool {
+    /// Player melee hit on mob `index`, pushed along `dir`. Returns the
+    /// kind of mob if this killed it.
+    pub fn attack(&mut self, index: usize, dir: DVec3) -> Option<MobKind> {
         let damage = self.rng.range(ATTACK_DAMAGE.0, ATTACK_DAMAGE.1 + 0.999).floor();
         let flat = DVec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
         let knockback = flat * 6.0 + DVec3::Y * 5.0;
-        let Some(mob) = self.mobs.get_mut(index) else { return false };
-        mob.damage(damage, Some(knockback), &mut self.rng)
+        let mob = self.mobs.get_mut(index)?;
+        mob.damage(damage, Some(knockback), &mut self.rng).then_some(mob.kind)
     }
 }
 
 /// Whether `kind` may spawn standing on `ground` at this daylight level.
 pub fn can_spawn_on(kind: MobKind, ground: Block, daylight: f32) -> bool {
-    match kind {
-        MobKind::Pig => ground == Block::GRASS,
-        MobKind::Zombie => daylight < ZOMBIE_SPAWN_DAYLIGHT && ground.is_solid() && ground.is_opaque(),
+    if kind.is_hostile() {
+        daylight < HOSTILE_SPAWN_DAYLIGHT && ground.is_solid() && ground.is_opaque()
+    } else {
+        ground == Block::GRASS
     }
 }
 
@@ -260,7 +369,7 @@ fn spawn_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, da
         return None;
     }
     let pos = DVec3::new(x as f64 + 0.5, h as f64 + 1.0, z as f64 + 0.5);
-    let clear = !physics::overlaps_solid(world, pos, kind.shape()) && !physics::is_water_at(world, pos);
+    let clear = !physics::overlaps_solid(world, pos, kind.shape()) && !physics::is_fluid_at(world, pos);
     clear.then_some(pos)
 }
 
@@ -399,8 +508,9 @@ mod tests {
         }
         // 1.5 s: an immediate hit plus one after the 1 s cooldown.
         assert_eq!(hits.len(), 2, "{hits:?}");
-        let EntityEvent::PlayerHit { damage, knockback } = hits[0];
+        let EntityEvent::PlayerHit { damage, knockback, cause } = hits[0] else { panic!("{hits:?}") };
         assert!(damage > 0.0 && knockback.x > 0.0 && knockback.y > 0.0);
+        assert_eq!(cause, "was slain by a zombie");
 
         // Creative players are ignored.
         let c = Ctx { player_targetable: false, ..c };
@@ -448,7 +558,7 @@ mod tests {
         // Pigs have 10 HP and hits do 2-4: dead within five hits.
         let killed = (0..5).any(|_| {
             e.mobs[1].hurt = 0.0;
-            e.attack(1, DVec3::X)
+            e.attack(1, DVec3::X).is_some()
         });
         assert!(killed && !e.mobs[1].alive());
         assert!(e.mobs[1].vel.x > 0.0, "knocked back along the hit");
@@ -478,8 +588,129 @@ mod tests {
         for _ in 0..600 {
             e.update(0.05, &world, &c);
         }
-        // The grid is stone, so only zombies can spawn.
-        assert_eq!(e.count(MobKind::Pig), 0);
-        assert_eq!(e.count(MobKind::Zombie), ZOMBIE_CAP);
+        // The grid is stone, so only hostile mobs spawn, each up to its cap.
+        for kind in MobKind::ALL {
+            let expected = if kind.is_hostile() { kind.spawn_cap() } else { 0 };
+            assert_eq!(e.count(kind), expected, "{kind:?}");
+        }
+    }
+
+    fn night(player: DVec3) -> Ctx {
+        Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false }
+    }
+
+    fn run(e: &mut Entities, world: &Grid, c: &Ctx, secs: f64) -> Vec<EntityEvent> {
+        (0..(secs * 60.0) as usize).flat_map(|_| e.update(1.0 / 60.0, world, c)).collect()
+    }
+
+    #[test]
+    fn creeper_hisses_then_explodes_unless_you_run() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));
+        let events = run(&mut e, &world, &night(DVec3::new(2.5, 10.0, 0.5)), 2.0);
+        let fuse = events.iter().position(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fuse, .. }));
+        let boom = events.iter().position(|ev| matches!(ev, EntityEvent::Explosion { .. }));
+        assert!(fuse.unwrap() < boom.unwrap(), "{events:?}");
+        assert!(e.mobs.is_empty(), "the creeper is gone");
+
+        // Running out of range puts the fuse out.
+        e.spawn(MobKind::Creeper, DVec3::new(0.5, 10.0, 0.5));
+        run(&mut e, &world, &night(DVec3::new(2.5, 10.0, 0.5)), 0.5);
+        assert!(e.mobs[0].fuse > 0.0);
+        let events = run(&mut e, &world, &night(DVec3::new(20.5, 10.0, 0.5)), 1.5);
+        assert!(!events.iter().any(|ev| matches!(ev, EntityEvent::Explosion { .. })));
+        assert_eq!(e.mobs[0].fuse, 0.0);
+    }
+
+    #[test]
+    fn skeleton_arrows_hit_the_player() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Skeleton, DVec3::new(0.5, 10.0, 0.5));
+        let events = run(&mut e, &world, &night(DVec3::new(9.5, 10.0, 0.5)), 5.0);
+        assert!(events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Bow, .. })));
+        let shot = |ev: &EntityEvent| matches!(ev, EntityEvent::PlayerHit { cause: "was shot by a skeleton", .. });
+        assert!(events.iter().any(shot), "{events:?}");
+
+        // Arrows that miss stick in the ground.
+        let mut arrow = Arrow::aimed(DVec3::new(0.5, 12.0, 0.5), DVec3::new(6.0, 10.0, 0.5), &mut Rng::new(1));
+        let c = ctx(DVec3::new(50.0, 10.0, 0.0));
+        for _ in 0..120 {
+            arrow.update(1.0 / 60.0, &world, &c, &mut Vec::new());
+        }
+        assert!(arrow.is_stuck() && (9.5..10.5).contains(&arrow.pos.y), "{:?}", arrow.pos);
+    }
+
+    #[test]
+    fn spiders_hunt_at_night_or_when_hit_and_climb_walls() {
+        let world = Grid::flat(10);
+        let day = Ctx { daylight: 1.0, ..night(DVec3::new(5.5, 10.0, 0.5)) };
+        let mut e = Entities::new(6);
+        e.spawn(MobKind::Spider, DVec3::new(0.5, 10.0, 0.5));
+        run(&mut e, &world, &day, 1.0);
+        assert_ne!(e.mobs[0].ai, Ai::Chase, "calm in daylight");
+        e.mobs[0].damage(1.0, None, &mut Rng::new(2));
+        run(&mut e, &world, &day, 0.2);
+        assert_eq!(e.mobs[0].ai, Ai::Chase, "provoked");
+        let mut e = Entities::new(6);
+        e.spawn(MobKind::Spider, DVec3::new(0.5, 10.0, 0.5));
+        run(&mut e, &world, &night(DVec3::new(5.5, 10.0, 0.5)), 0.2);
+        assert_eq!(e.mobs[0].ai, Ai::Chase, "hunts at night");
+
+        // A 4-high wall stops a pig but not a spider, which climbs onto it
+        // (and, wandering, won't jump off the far side).
+        let mut world = Grid::flat(10);
+        for y in 10..14 {
+            for z in -3..=3 {
+                world.set(IVec3::new(3, y, z), Block::STONE);
+            }
+        }
+        let spider = walk_east(&world, Mob::new(MobKind::Spider, DVec3::new(0.5, 10.0, 0.5), 0.0), 4.0);
+        assert!(spider.pos.y > 13.9 && spider.pos.x > 2.5, "spider at {:?}", spider.pos);
+        let pig = walk_east(&world, Mob::new(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5), 0.0), 4.0);
+        assert!(pig.pos.x < 3.0);
+    }
+
+    #[test]
+    fn chickens_flutter_down() {
+        let world = Grid::flat(10);
+        let mut chicken = Mob::new(MobKind::Chicken, DVec3::new(0.5, 30.0, 0.5), 0.0);
+        let mut rng = Rng::new(1);
+        for _ in 0..60 {
+            chicken.update(1.0 / 60.0, &world, &ctx(DVec3::new(50.0, 10.0, 0.0)), &mut rng, &mut Vec::new());
+        }
+        assert!(chicken.vel.y >= -2.5 && chicken.pos.y > 26.0, "{:?}", chicken.pos);
+    }
+
+    #[test]
+    fn explosions_fall_off_with_distance_and_kill_nearby_mobs() {
+        assert_eq!(explosion_damage(3.0, 0.0), Some((43.0, 1.0)));
+        assert_eq!(explosion_damage(3.0, 3.0).unwrap().0, 16.0);
+        assert_eq!(explosion_damage(3.0, 6.0), None);
+
+        let mut e = Entities::new(7);
+        e.spawn(MobKind::Pig, DVec3::new(1.0, 10.0, 0.0));
+        e.spawn(MobKind::Pig, DVec3::new(20.0, 10.0, 0.0));
+        e.explode(DVec3::new(0.0, 10.5, 0.0), 3.0);
+        assert!(!e.mobs[0].alive() && e.mobs[0].vel.x > 0.0);
+        assert!(e.mobs[1].alive());
+        assert!(!e.puffs.is_empty());
+    }
+
+    #[test]
+    fn loot_rolls_stay_in_range() {
+        let mut rng = Rng::new(9);
+        for kind in MobKind::ALL {
+            let mut seen_any = false;
+            for _ in 0..200 {
+                for (item, n) in kind.drops(&mut rng) {
+                    let &(_, lo, hi) = kind.loot().iter().find(|l| l.0 == item).unwrap();
+                    assert!((lo.max(1)..=hi).contains(&n), "{kind:?} dropped {n} of {}", item.name());
+                    seen_any = true;
+                }
+            }
+            assert!(seen_any, "{kind:?} never dropped anything");
+        }
     }
 }

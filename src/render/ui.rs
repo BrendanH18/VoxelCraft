@@ -3,7 +3,7 @@
 
 use bytemuck::{Pod, Zeroable};
 
-use crate::world::block::Block;
+use crate::world::block::{Block, RenderKind};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -110,6 +110,11 @@ impl Ui {
     /// Isometric cube icon filling a `size` square.
     pub fn block_icon(&mut self, x: f32, y: f32, size: f32, block: Block) {
         let t = block.info().tex;
+        if block.kind() == RenderKind::Cross {
+            // Plants and torches show their flat sprite, like items.
+            self.icon(x - 1.0, y - 1.0, size + 2.0, t[0], WHITE);
+            return;
+        }
         // Half width `s`; the top diamond is `s` tall, each side face `s` tall.
         let (cx, s) = (x + size / 2.0, size / 2.0);
         let q = s / 2.0;

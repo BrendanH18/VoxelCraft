@@ -156,6 +156,14 @@ impl Audio {
         self.play(Sound::Click, None, 0.8, (0.97, 1.03));
     }
 
+    /// Sets the master volume (0..1); takes effect when not muted.
+    pub fn set_volume(&mut self, volume: f32) {
+        self.volume = volume.clamp(0.0, 1.0);
+        if !self.muted {
+            self.send(Command::Master(self.volume));
+        }
+    }
+
     /// Toggles mute; returns whether sound is now muted.
     pub fn toggle_mute(&mut self) -> bool {
         self.muted = !self.muted;

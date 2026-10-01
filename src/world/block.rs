@@ -19,6 +19,9 @@ pub enum RenderKind {
     Cutout,
     /// Alpha-blended (water). Rendered last, sorted back to front.
     Translucent,
+    /// Two crossed diagonal planes (plants, torches): alpha-tested, drawn
+    /// from both sides, never hides or occludes neighbours.
+    Cross,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -70,6 +73,15 @@ pub mod tex {
     /// Block-breaking crack overlays, stages 0..10.
     pub const CRACK_0: u8 = 31;
     pub const CRACK_STAGES: u8 = 10;
+    // Cross-shaped plants and torches.
+    pub const TALL_GRASS: u8 = 41;
+    pub const DANDELION: u8 = 42;
+    pub const POPPY: u8 = 43;
+    pub const DEAD_BUSH: u8 = 44;
+    pub const TORCH: u8 = 45;
+    pub const LAVA: u8 = 46;
+    pub const OBSIDIAN: u8 = 47;
+    pub const WOOL: u8 = 48;
     /// Flat item icons (see `item::Item::icon_layer`), up to 64 of them.
     pub const ITEM_0: u8 = 96;
     pub const COUNT: u32 = 160;
@@ -102,9 +114,23 @@ impl Block {
     pub const SPRUCE_LEAVES: Block = Block(23);
     /// Flowing water levels 1 (strongest) to 7 are ids 24..=30.
     pub const FALLING_WATER: Block = Block(31);
+    pub const TALL_GRASS: Block = Block(32);
+    pub const DANDELION: Block = Block(33);
+    pub const POPPY: Block = Block(34);
+    pub const DEAD_BUSH: Block = Block(35);
+    pub const TORCH: Block = Block(36);
+    pub const LAVA: Block = Block(37);
+    /// Flowing lava levels 1 (strongest) to 3 are ids 38..=40.
+    pub const FALLING_LAVA: Block = Block(41);
+    pub const OBSIDIAN: Block = Block(42);
+    pub const WOOL: Block = Block(43);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
+    }
+
+    pub const fn flowing_lava(level: u8) -> Block {
+        Block(37 + level)
     }
 
     #[inline(always)]
@@ -136,12 +162,44 @@ impl Block {
         }
     }
 
-    /// How far (in 1/16 block) this water's surface sits below the top of
-    /// its cell when nothing but air is above it.
-    pub fn water_drop(self) -> u8 {
+    #[inline(always)]
+    pub fn is_lava(self) -> bool {
+        (37..=41).contains(&self.0)
+    }
+
+    #[inline(always)]
+    pub fn fluid(self) -> Option<Fluid> {
         match self.0 {
-            5 => 2,
+            5 | 24..=31 => Some(Fluid::Water),
+            37..=41 => Some(Fluid::Lava),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn is_fluid(self) -> bool {
+        self.fluid().is_some()
+    }
+
+    /// Flow level of any fluid: 0 for sources and falling fluid, then
+    /// 1..=`max_level` for flowing.
+    pub fn fluid_level(self) -> Option<u8> {
+        match self.0 {
+            5 | 31 | 37 | 41 => Some(0),
+            24..=30 => Some(self.0 - 23),
+            38..=40 => Some(self.0 - 37),
+            _ => None,
+        }
+    }
+
+    /// How far (in 1/16 block) this fluid's surface sits below the top of
+    /// its cell when no fluid of the same kind is above it. Lava's three
+    /// levels drop like water's levels 2, 4 and 6.
+    pub fn fluid_drop(self) -> u8 {
+        match self.0 {
+            5 | 37 => 2,
             24..=30 => 2 + (self.0 - 23) * 12 / 7,
+            38..=40 => 2 + (self.0 - 37) * 24 / 7,
             _ => 0,
         }
     }
@@ -153,8 +211,9 @@ impl Block {
             Block::GRASS | Block::SNOWY_GRASS => Some(Block::DIRT.into()),
             Block::COAL_ORE => Some(Item::COAL),
             Block::DIAMOND_ORE => Some(Item::DIAMOND),
-            Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK => None,
-            b if b.is_water() || b == Block::AIR => None,
+            Block::DEAD_BUSH => Some(Item::STICK),
+            Block::LEAVES | Block::SPRUCE_LEAVES | Block::GLASS | Block::BEDROCK | Block::TALL_GRASS => None,
+            b if b.is_fluid() || b == Block::AIR => None,
             b => Some(b.into()),
         }
     }
@@ -162,7 +221,9 @@ impl Block {
     /// Seconds to break by hand in survival (infinite for unbreakable).
     pub fn break_time(self) -> f32 {
         match self {
+            b if b.kind() == RenderKind::Cross => 0.0,
             Block::LEAVES | Block::SPRUCE_LEAVES | Block::SNOW => 0.25,
+            Block::WOOL => 0.4,
             Block::GLASS | Block::GLOWSTONE => 0.35,
             Block::CACTUS => 0.45,
             Block::DIRT | Block::SAND => 0.55,
@@ -172,20 +233,45 @@ impl Block {
             Block::STONE | Block::COBBLESTONE | Block::BRICKS => 2.0,
             Block::COAL_ORE | Block::IRON_ORE => 2.5,
             Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
+            Block::OBSIDIAN => 15.0,
             Block::BEDROCK | Block::AIR => f32::INFINITY,
-            b if b.is_water() => f32::INFINITY,
+            b if b.is_fluid() => f32::INFINITY,
             _ => 1.0,
         }
     }
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).map(Block)
+        (1..=23u8).chain(32..=37).chain(42..=43).map(Block)
     }
 
-    /// Blocks that can be placed into or flowed over.
+    /// Blocks that placing another block overwrites (air, fluids, grass).
     pub fn is_replaceable(self) -> bool {
-        self == Block::AIR || self.is_water()
+        self == Block::AIR || self.is_fluid() || self == Block::TALL_GRASS || self == Block::DEAD_BUSH
+    }
+
+    /// Whether the crosshair can select this block (anything visible but fluids).
+    #[inline(always)]
+    pub fn is_targetable(self) -> bool {
+        self.kind() != RenderKind::Invisible && !self.is_fluid()
+    }
+
+    /// Sand and gravel fall when nothing holds them up.
+    pub fn has_gravity(self) -> bool {
+        matches!(self, Block::SAND | Block::GRAVEL)
+    }
+
+    /// Whether this block can rest on `below`. Plants need soil and torches
+    /// a full block; everything else stays put.
+    pub fn can_stay_on(self, below: Block) -> bool {
+        match self {
+            Block::TALL_GRASS | Block::DANDELION | Block::POPPY => {
+                matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS)
+            }
+            Block::DEAD_BUSH => matches!(below, Block::SAND | Block::DIRT | Block::GRASS),
+            Block::TORCH => below.is_opaque(),
+            _ => true,
+        }
     }
 
     #[inline(always)]
@@ -216,7 +302,51 @@ impl Block {
     /// Light level emitted by this block.
     #[inline(always)]
     pub fn emission(self) -> u8 {
-        if self == Block::GLOWSTONE { 15 } else { 0 }
+        match self {
+            Block::GLOWSTONE => 15,
+            Block::TORCH => 14,
+            b if b.is_lava() => 15,
+            _ => 0,
+        }
+    }
+}
+
+/// A block type that flows: each has a source, a falling form and
+/// `max_level` flowing levels.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Fluid {
+    Water,
+    Lava,
+}
+
+impl Fluid {
+    pub const fn source(self) -> Block {
+        match self {
+            Fluid::Water => Block::WATER,
+            Fluid::Lava => Block::LAVA,
+        }
+    }
+
+    pub const fn falling(self) -> Block {
+        match self {
+            Fluid::Water => Block::FALLING_WATER,
+            Fluid::Lava => Block::FALLING_LAVA,
+        }
+    }
+
+    pub const fn flowing(self, level: u8) -> Block {
+        match self {
+            Fluid::Water => Block::flowing_water(level),
+            Fluid::Lava => Block::flowing_lava(level),
+        }
+    }
+
+    /// Weakest flowing level: how far the fluid spreads over flat ground.
+    pub const fn max_level(self) -> u8 {
+        match self {
+            Fluid::Water => 7,
+            Fluid::Lava => 3,
+        }
     }
 }
 
@@ -257,6 +387,16 @@ const fn make(id: u8) -> BlockInfo {
         23 => ("spruce leaves", Cutout, all(tex::SPRUCE_LEAVES)),
         24..=30 => ("flowing water", Translucent, all(tex::WATER)),
         31 => ("falling water", Translucent, all(tex::WATER)),
+        32 => ("tall grass", Cross, all(tex::TALL_GRASS)),
+        33 => ("dandelion", Cross, all(tex::DANDELION)),
+        34 => ("poppy", Cross, all(tex::POPPY)),
+        35 => ("dead bush", Cross, all(tex::DEAD_BUSH)),
+        36 => ("torch", Cross, all(tex::TORCH)),
+        37 => ("lava", Translucent, all(tex::LAVA)),
+        38..=40 => ("flowing lava", Translucent, all(tex::LAVA)),
+        41 => ("falling lava", Translucent, all(tex::LAVA)),
+        42 => ("obsidian", Opaque, all(tex::OBSIDIAN)),
+        43 => ("wool", Opaque, all(tex::WOOL)),
         _ => ("unknown", Invisible, all(0)),
     };
     BlockInfo { name, kind, solid: matches!(kind, Opaque | Cutout), self_cull: id == 5 || id == 10, tex }
@@ -278,7 +418,7 @@ static LIGHT_OPACITY: [u8; 256] = {
     while i < 256 {
         arr[i] = match INFO[i].kind {
             RenderKind::Opaque => 15,
-            RenderKind::Invisible => 0,
+            RenderKind::Invisible | RenderKind::Cross => 0,
             _ if i == 10 => 0, // glass
             _ => 1,            // leaves, water: dim light passing through
         };
@@ -296,3 +436,50 @@ static OPAQUE: [bool; 256] = {
     }
     arr
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cross_blocks_are_targetable_but_not_solid() {
+        for b in [Block::TALL_GRASS, Block::DANDELION, Block::POPPY, Block::DEAD_BUSH, Block::TORCH] {
+            assert_eq!(b.kind(), RenderKind::Cross, "{}", b.name());
+            assert!(!b.is_solid() && !b.is_opaque() && b.is_targetable());
+            assert_eq!(b.light_opacity(), 0);
+            assert_eq!(b.break_time(), 0.0);
+            assert!(Block::creative_palette().any(|p| p == b));
+        }
+        assert!(!Block::WATER.is_targetable() && !Block::AIR.is_targetable());
+        assert_eq!(Block::TORCH.emission(), 14);
+        assert!(Block::TALL_GRASS.is_replaceable() && !Block::POPPY.is_replaceable());
+    }
+
+    #[test]
+    fn plants_need_soil_and_torches_a_full_block() {
+        assert!(Block::POPPY.can_stay_on(Block::GRASS));
+        assert!(!Block::POPPY.can_stay_on(Block::SAND));
+        assert!(Block::DEAD_BUSH.can_stay_on(Block::SAND));
+        assert!(Block::TORCH.can_stay_on(Block::COBBLESTONE));
+        assert!(!Block::TORCH.can_stay_on(Block::GLASS) && !Block::TORCH.can_stay_on(Block::AIR));
+        assert!(Block::STONE.can_stay_on(Block::AIR));
+    }
+
+    #[test]
+    fn fluids_have_sources_levels_and_drops() {
+        for fluid in [Fluid::Water, Fluid::Lava] {
+            assert_eq!(fluid.source().fluid(), Some(fluid));
+            assert_eq!(fluid.falling().fluid_level(), Some(0));
+            for l in 1..=fluid.max_level() {
+                let b = fluid.flowing(l);
+                assert_eq!((b.fluid(), b.fluid_level()), (Some(fluid), Some(l)));
+                assert!(b.fluid_drop() > fluid.source().fluid_drop());
+                assert!(!b.is_targetable() && b.is_replaceable() && !b.is_solid());
+            }
+        }
+        assert!(Block::LAVA.is_lava() && !Block::LAVA.is_water());
+        assert_eq!(Block::flowing_lava(2).emission(), 15);
+        assert!(Block::OBSIDIAN.is_opaque() && Block::OBSIDIAN.break_time() > Block::STONE.break_time());
+        assert_eq!(Block::LAVA.drop(), None);
+    }
+}

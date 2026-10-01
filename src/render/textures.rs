@@ -162,6 +162,71 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let (d1, d2, i) = voronoi(x, y, &pts);
             if d2 - d1 < 0.9 { [150, 110, 60, 255] } else { shade([250, 215, 120], 0.8 + rnd(layer, i, 0, 4) * 0.25) }
         }
+        tex::TALL_GRASS => {
+            // Blades rising from the bottom edge to varying heights, leaning a little.
+            let blade = |bx: usize| {
+                let top = 2 + (rnd(layer, bx, 0, 12) * 9.0) as usize;
+                let lean = (rnd(layer, bx, 1, 12) - 0.5) * 0.5;
+                let at = (bx as f32 + lean * (SIZE - y) as f32).round() as usize;
+                y >= top && at == x
+            };
+            if (0..SIZE).any(|bx| rnd(layer, bx, 2, 12) < 0.7 && blade(bx)) {
+                shade(GRASS, 0.75 + r * 0.25 + (y as f32 / SIZE as f32) * -0.15)
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
+        tex::DANDELION | tex::POPPY => flower(layer, x, y, r),
+        tex::DEAD_BUSH => {
+            // A trunk forking into thin bare twigs.
+            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
+            let twig = |x0: f32, y0: f32, x1: f32, y1: f32| {
+                let (dx, dy) = (x1 - x0, y1 - y0);
+                let t = (((fx - x0) * dx + (fy - y0) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+                let (px, py) = (x0 + dx * t - fx, y0 + dy * t - fy);
+                px * px + py * py < 0.36
+            };
+            let branches = [
+                (8.0, 16.0, 8.0, 10.0),
+                (8.0, 10.0, 3.0, 4.0),
+                (8.0, 10.0, 13.0, 3.0),
+                (8.0, 12.0, 12.0, 8.0),
+                (6.0, 8.0, 7.0, 2.0),
+                (5.0, 6.0, 1.0, 5.0),
+                (11.0, 6.0, 15.0, 7.0),
+            ];
+            if branches.iter().any(|&(a, b, c, d)| twig(a, b, c, d)) {
+                shade([148, 102, 52], 0.75 + r * 0.3)
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
+        tex::TORCH => match (x, y) {
+            (7..=8, 5) => [255, 250, 210, 255],
+            (7..=8, 4) => [255, 216, 90, 255],
+            (7..=8, 6) => [255, 160, 40, 255],
+            (7..=8, 7..=15) => shade([138, 106, 62], if x == 7 { 1.0 } else { 0.78 }),
+            _ => [0, 0, 0, 0],
+        },
+        tex::LAVA => {
+            // Molten cells: bright yellow-orange centres, darker red crust between.
+            let pts = points(layer, 8);
+            let (d1, d2, _) = voronoi(x, y, &pts);
+            let edge = ((d2 - d1) / 3.0).min(1.0);
+            let heat = edge * 0.7 + r * 0.3;
+            let c = [255, (90.0 + heat * 140.0) as u8, (20.0 + heat * 40.0) as u8];
+            shade(c, 0.75 + heat * 0.3)
+        }
+        tex::WOOL => {
+            // Soft weave: alternating diagonal ridges.
+            let ridge = (x + y) % 4 < 2;
+            shade([234, 234, 228], if ridge { 0.96 + r * 0.06 } else { 0.86 + r * 0.06 })
+        }
+        tex::OBSIDIAN => {
+            let speck = rnd(layer, x, y, 13) < 0.08;
+            let c = if speck { [80, 60, 110] } else { [22, 16, 34] };
+            shade(c, 0.85 + r * 0.3)
+        }
         tex::HEART_FULL | tex::HEART_HALF | tex::HEART_EMPTY => heart(layer, x, y),
         tex::BUBBLE => {
             let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
@@ -184,6 +249,25 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
         }
+    }
+}
+
+/// A flower: stem with two leaves, and a yellow (dandelion) or red (poppy) head.
+fn flower(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
+    let (dx, dy) = (x as f32 - 7.5, y as f32 - 5.0);
+    let d = (dx * dx + dy * dy * 1.3).sqrt();
+    let (petal, centre) =
+        if layer == tex::DANDELION { ([245, 210, 40], [220, 170, 20]) } else { ([210, 30, 30], [40, 30, 20]) };
+    if layer == tex::POPPY && d < 1.0 {
+        shade(centre, 1.0)
+    } else if d < if layer == tex::DANDELION { 2.6 } else { 3.3 } {
+        shade(petal, 0.85 + r * 0.25)
+    } else if (7..=8).contains(&x) && y >= 7 && x == 7 + (y / 5) % 2 {
+        shade([60, 125, 40], 0.85 + r * 0.2)
+    } else if (y == 10 && (4..7).contains(&x)) || (y == 12 && (9..12).contains(&x)) {
+        shade([70, 140, 45], 0.85 + r * 0.2)
+    } else {
+        [0, 0, 0, 0]
     }
 }
 

@@ -59,13 +59,16 @@ pub fn material(block: Block) -> Material {
     match block {
         Block::LOG | Block::PLANKS => Material::Wood,
         Block::DIRT => Material::Dirt,
-        Block::GRASS | Block::CACTUS => Material::Grass,
+        Block::GRASS | Block::CACTUS | Block::TALL_GRASS | Block::DANDELION | Block::POPPY | Block::DEAD_BUSH => {
+            Material::Grass
+        }
+        Block::TORCH => Material::Wood,
         Block::GRAVEL => Material::Gravel,
         Block::SAND => Material::Sand,
-        Block::SNOW | Block::SNOWY_GRASS => Material::Snow,
+        Block::SNOW | Block::SNOWY_GRASS | Block::WOOL => Material::Snow,
         Block::LEAVES | Block::SPRUCE_LEAVES => Material::Leaves,
         Block::GLASS | Block::GLOWSTONE => Material::Glass,
-        b if b.is_water() => Material::Water,
+        b if b.is_fluid() => Material::Water,
         // Stone, cobblestone, ores, bricks, sandstone, bedrock and unknowns.
         _ => Material::Stone,
     }
@@ -90,12 +93,18 @@ pub enum Sound {
     Wind,
     /// Underground room tone (seamless loop).
     Cave,
+    /// Creeper blast.
+    Explosion,
+    /// Creeper fuse hiss.
+    Fuse,
+    /// Skeleton bow release.
+    Bow,
 }
 
 const M: usize = Material::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 7;
+    pub const COUNT: usize = 3 * M + 10;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -110,6 +119,9 @@ impl Sound {
             Sound::Drip => 3 * M + 4,
             Sound::Wind => 3 * M + 5,
             Sound::Cave => 3 * M + 6,
+            Sound::Explosion => 3 * M + 7,
+            Sound::Fuse => 3 * M + 8,
+            Sound::Bow => 3 * M + 9,
         }
     }
 
@@ -123,6 +135,9 @@ impl Sound {
             Sound::Drip,
             Sound::Wind,
             Sound::Cave,
+            Sound::Explosion,
+            Sound::Fuse,
+            Sound::Bow,
         ])
     }
 
@@ -138,6 +153,9 @@ impl Sound {
             Sound::Drip => "drip".into(),
             Sound::Wind => "wind".into(),
             Sound::Cave => "cave".into(),
+            Sound::Explosion => "explosion".into(),
+            Sound::Fuse => "fuse".into(),
+            Sound::Bow => "bow".into(),
         }
     }
 
@@ -149,8 +167,8 @@ impl Sound {
         match self {
             Sound::Step(_) => 4,
             Sound::Break(_) | Sound::Place(_) | Sound::Swim | Sound::Drip => 3,
-            Sound::Land | Sound::Splash => 2,
-            Sound::Click | Sound::Wind | Sound::Cave => 1,
+            Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow => 2,
+            Sound::Click | Sound::Wind | Sound::Cave | Sound::Fuse => 1,
         }
     }
 
@@ -168,6 +186,9 @@ impl Sound {
             Sound::Drip => drip(&mut rng),
             Sound::Wind => wind(&mut rng),
             Sound::Cave => cave(&mut rng),
+            Sound::Explosion => explosion(&mut rng),
+            Sound::Fuse => fuse(&mut rng),
+            Sound::Bow => bow(&mut rng),
         }
     }
 }
@@ -527,6 +548,51 @@ fn land(rng: &mut Rng) -> Vec<f32> {
     }
     add_mode(&mut out, 0, Mode { freq: rng.range(105.0, 120.0), amp: 1.0, tau: 0.06, glide: 0.62, glide_tau: 0.025 });
     dsp::finish(out, 0.65)
+}
+
+fn explosion(rng: &mut Rng) -> Vec<f32> {
+    let len = samples(2.2);
+    // A sharp crack into a long low rumble: noise through a low-pass whose
+    // cutoff falls as the blast decays, plus a sub-bass thump.
+    let src = noise(rng, len, |t| dsp::ad(t, 0.004, 0.55) + 0.25 * dsp::ad(t, 0.0, 0.02));
+    let mut lp = OnePole::new(2500.0);
+    let mut out: Vec<f32> = src
+        .iter()
+        .enumerate()
+        .map(|(i, &x)| {
+            let t = i as f32 / RATE;
+            lp.a = OnePole::coef(180.0 + 2600.0 * (-t / 0.08).exp(), RATE);
+            lp.process(x) * 2.6
+        })
+        .collect();
+    add_mode(&mut out, 0, Mode { freq: rng.range(48.0, 56.0), amp: 1.2, tau: 0.35, glide: 0.7, glide_tau: 0.3 });
+    let mut debris = crackle(rng, len, (2.0, 8.0), |t| 260.0 * dsp::ad(t, 0.05, 0.4));
+    Biquad::bandpass(1800.0, 0.8).run(&mut debris);
+    mix_into(&mut out, &debris, 0.12, 0);
+    dsp::finish(out, 0.95)
+}
+
+fn fuse(rng: &mut Rng) -> Vec<f32> {
+    // A rising hiss for the length of the fuse.
+    let len = samples(1.5);
+    let mut out =
+        noise(rng, len, |t| (t / 0.1).min(1.0) * (0.6 + 0.4 * t / 1.5) * (1.0 - ((t - 1.42) / 0.08).max(0.0)));
+    Biquad::highpass(3000.0, 0.7).run(&mut out);
+    Biquad::lowpass(9000.0, 0.7).run(&mut out);
+    dsp::finish(out, 0.35)
+}
+
+fn bow(rng: &mut Rng) -> Vec<f32> {
+    // String twang: a short plucked tone with a falling pitch and a whoosh.
+    let len = samples(0.35);
+    let mut out = vec![0.0; len];
+    let f = rng.range(380.0, 440.0);
+    add_mode(&mut out, 0, Mode { freq: f, amp: 1.0, tau: 0.06, glide: 0.85, glide_tau: 0.05 });
+    add_mode(&mut out, 0, Mode { freq: f * 2.02, amp: 0.35, tau: 0.03, glide: 0.85, glide_tau: 0.05 });
+    let mut whoosh = noise(rng, len, |t| dsp::ad(t, 0.02, 0.08));
+    Biquad::bandpass(2200.0, 1.2).run(&mut whoosh);
+    mix_into(&mut out, &whoosh, 0.3, 0);
+    dsp::finish(out, 0.4)
 }
 
 fn click() -> Vec<f32> {

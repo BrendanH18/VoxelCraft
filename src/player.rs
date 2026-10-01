@@ -74,9 +74,23 @@ impl Player {
         world.get_block(eye.floor().as_ivec3()).is_some_and(|b| {
             let above = world.get_block(eye.floor().as_ivec3() + IVec3::Y);
             // Respect the lowered surface of the top water block.
-            let drop = if above.is_some_and(|a| a.is_water()) { 0.0 } else { b.water_drop() as f64 / 16.0 };
+            let drop = if above.is_some_and(|a| a.is_water()) { 0.0 } else { b.fluid_drop() as f64 / 16.0 };
             b.is_water() && eye.y - eye.y.floor() < 1.0 - drop
         })
+    }
+
+    /// Whether any part of the player's box is in lava.
+    pub fn in_lava(&self, world: &World) -> bool {
+        let (min, max) = SHAPE.aabb(self.pos);
+        let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
+        (lo.y..=hi.y).any(|y| {
+            (lo.z..=hi.z)
+                .any(|z| (lo.x..=hi.x).any(|x| world.get_block(IVec3::new(x, y, z)).is_some_and(|b| b.is_lava())))
+        })
+    }
+
+    pub fn head_in_lava(&self, world: &World) -> bool {
+        world.get_block(self.eye().floor().as_ivec3()).is_some_and(|b| b.is_lava())
     }
 
     /// Whether the player's box overlaps a block cell.
@@ -101,7 +115,8 @@ impl Player {
 
     fn step(&mut self, dt: f64, input: MoveInput, world: &World) {
         let feet = self.pos + DVec3::new(0.0, 0.3, 0.0);
-        self.in_water = world.get_block(feet.floor().as_ivec3()).is_some_and(|b| b.is_water());
+        // Lava swims like (slow) water.
+        self.in_water = world.get_block(feet.floor().as_ivec3()).is_some_and(|b| b.is_fluid());
 
         let yaw = self.yaw as f64;
         let fwd = DVec3::new(yaw.cos(), 0.0, yaw.sin());

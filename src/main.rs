@@ -16,7 +16,8 @@ use winit::event_loop::{ControlFlow, EventLoop};
 pub struct Args {
     pub seed: Option<u64>,
     pub world: String,
-    pub render_distance: i32,
+    /// Overrides the saved option for this session.
+    pub render_distance: Option<i32>,
     pub no_vsync: bool,
     pub new_world: bool,
     pub bench: bool,
@@ -25,6 +26,8 @@ pub struct Args {
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
     pub open_inventory: bool,
+    /// Start with the pause menu or options screen open (screenshots).
+    pub open_menu: Option<String>,
     /// Starting time of day, 0..1 (0 sunrise, 0.25 noon, 0.75 midnight).
     pub time: Option<f64>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
@@ -42,7 +45,7 @@ pub struct Args {
     pub give: Vec<(item::Item, u8)>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
     pub mute: bool,
-    pub volume: f32,
+    pub volume: Option<f32>,
     pub export_sounds: bool,
 }
 
@@ -50,7 +53,8 @@ const USAGE: &str = "\
 voxelcraft [options]
   --seed <n>        world seed (new worlds only)
   --world <name>    save name under ./saves (default: world)
-  --rd <chunks>     render distance in 32-block chunks (default: 8)
+  --rd <chunks>     render distance in 32-block chunks (default: 8, or the
+                    saved option)
   --new             ignore any existing save and start a fresh world
   --no-vsync        uncapped frame rate
   --bench           headless terrain generation + meshing benchmark
@@ -58,27 +62,29 @@ voxelcraft [options]
   --creative, --survival  game mode (default: survival, or the saved mode)
   --f3              start with the debug overlay open
   --open-inventory  start with the inventory screen open (screenshots)
+  --open-menu <m>   start with a menu open: pause or options (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
   --air <0..15>     starting air in seconds
   --give item[,n]   add n (default 1) of an item to the inventory at startup
                     (repeatable; e.g. --give iron_pickaxe --give coal,16)
-  --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig or zombie, y may
-                    be ~ for the terrain surface, e.g. zombie,4,~,10)
+  --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig, cow, sheep,
+                    chicken, zombie, skeleton, creeper or spider; y may be ~
+                    for the terrain surface, e.g. zombie,4,~,10)
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --screenshot <f>  wait for the world to load, save a PNG and exit
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
   --mute            start with sound muted (M toggles in game)
-  --volume <0..1>   master volume (default: 1)
+  --volume <0..1>   master volume (default: 1, or the saved option)
   --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit";
 
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         seed: None,
         world: "world".into(),
-        render_distance: 8,
+        render_distance: None,
         no_vsync: false,
         new_world: false,
         bench: false,
@@ -87,6 +93,7 @@ fn parse_args() -> Result<Args, String> {
         debug_overlay: false,
         mode: None,
         open_inventory: false,
+        open_menu: None,
         time: None,
         place: Vec::new(),
         spawn: Vec::new(),
@@ -96,7 +103,7 @@ fn parse_args() -> Result<Args, String> {
         air: None,
         give: Vec::new(),
         mute: false,
-        volume: 1.0,
+        volume: None,
         export_sounds: false,
     };
     let mut it = std::env::args().skip(1);
@@ -105,13 +112,20 @@ fn parse_args() -> Result<Args, String> {
         match a.as_str() {
             "--seed" => args.seed = Some(value("--seed")?.parse().map_err(|_| "bad seed")?),
             "--world" => args.world = value("--world")?,
-            "--rd" => args.render_distance = value("--rd")?.parse().map_err(|_| "bad --rd")?,
+            "--rd" => args.render_distance = Some(value("--rd")?.parse::<i32>().map_err(|_| "bad --rd")?.clamp(2, 32)),
             "--no-vsync" => args.no_vsync = true,
             "--new" => args.new_world = true,
             "--bench" => args.bench = true,
             "--bench-render" => args.bench_render = true,
             "--f3" => args.debug_overlay = true,
             "--open-inventory" => args.open_inventory = true,
+            "--open-menu" => {
+                let m = value("--open-menu")?;
+                if !matches!(m.as_str(), "pause" | "options") {
+                    return Err(format!("--open-menu: expected pause or options, got {m}"));
+                }
+                args.open_menu = Some(m);
+            }
             "--creative" => args.mode = Some(app::GameMode::Creative),
             "--survival" => args.mode = Some(app::GameMode::Survival),
             "--place" => {
@@ -160,13 +174,14 @@ fn parse_args() -> Result<Args, String> {
                 args.pose = Some(v.try_into().map_err(|_| "--pose needs x,y,z,yaw,pitch")?);
             }
             "--mute" => args.mute = true,
-            "--volume" => args.volume = value("--volume")?.parse::<f32>().map_err(|_| "bad --volume")?.clamp(0.0, 1.0),
+            "--volume" => {
+                args.volume = Some(value("--volume")?.parse::<f32>().map_err(|_| "bad --volume")?.clamp(0.0, 1.0))
+            }
             "--export-sounds" => args.export_sounds = true,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n\n{USAGE}")),
         }
     }
-    args.render_distance = args.render_distance.clamp(2, 32);
     Ok(args)
 }
 
@@ -187,7 +202,7 @@ fn main() {
         return;
     }
     if args.bench {
-        bench::run(args.seed.unwrap_or(12345), args.render_distance);
+        bench::run(args.seed.unwrap_or(12345), args.render_distance.unwrap_or(8));
         return;
     }
     let event_loop = EventLoop::new().expect("create event loop");
