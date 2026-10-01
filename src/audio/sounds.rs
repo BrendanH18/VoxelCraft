@@ -109,13 +109,15 @@ pub enum Sound {
     Hit,
     /// A mob's idle call, hurt cry or death sound.
     Mob(Voice, Call),
+    /// Rainfall (seamless loop).
+    Rain,
 }
 
 const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 13 + Voice::ALL.len() * CALLS;
+    pub const COUNT: usize = 3 * M + 14 + Voice::ALL.len() * CALLS;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -136,7 +138,8 @@ impl Sound {
             Sound::Pop => 3 * M + 10,
             Sound::Hurt => 3 * M + 11,
             Sound::Hit => 3 * M + 12,
-            Sound::Mob(v, c) => 3 * M + 13 + v as usize * CALLS + c as usize,
+            Sound::Rain => 3 * M + 13,
+            Sound::Mob(v, c) => 3 * M + 14 + v as usize * CALLS + c as usize,
         }
     }
 
@@ -157,6 +160,7 @@ impl Sound {
                 Sound::Pop,
                 Sound::Hurt,
                 Sound::Hit,
+                Sound::Rain,
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
     }
@@ -179,12 +183,13 @@ impl Sound {
             Sound::Pop => "pop".into(),
             Sound::Hurt => "hurt".into(),
             Sound::Hit => "hit".into(),
+            Sound::Rain => "rain".into(),
             Sound::Mob(v, c) => format!("{}_{}", v.name(), c.name()),
         }
     }
 
     pub fn is_loop(self) -> bool {
-        matches!(self, Sound::Wind | Sound::Cave)
+        matches!(self, Sound::Wind | Sound::Cave | Sound::Rain)
     }
 
     pub fn variants(self) -> u32 {
@@ -194,7 +199,7 @@ impl Sound {
             Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow | Sound::Hurt | Sound::Hit => 2,
             Sound::Mob(_, Call::Death) => 1,
             Sound::Mob(..) => 2,
-            Sound::Click | Sound::Wind | Sound::Cave | Sound::Fuse | Sound::Pop => 1,
+            Sound::Click | Sound::Wind | Sound::Cave | Sound::Fuse | Sound::Pop | Sound::Rain => 1,
         }
     }
 
@@ -218,6 +223,7 @@ impl Sound {
             Sound::Pop => pop(),
             Sound::Hurt => super::voices::player_hurt(&mut rng),
             Sound::Hit => super::voices::hit(&mut rng),
+            Sound::Rain => rain(&mut rng),
             Sound::Mob(v, c) => super::voices::render(v, c, &mut rng),
         }
     }
@@ -706,6 +712,23 @@ fn cave(rng: &mut Rng) -> Vec<f32> {
         })
         .collect();
     dsp::make_loop(out, n, x, 0.1)
+}
+
+fn rain(rng: &mut Rng) -> Vec<f32> {
+    let loop_secs = 8.0;
+    let (n, x) = (samples(loop_secs), samples(0.5));
+    // Countless tiny droplet ticks over a soft hiss, with a gentle swell
+    // whose period divides the loop length.
+    let mut drops = crackle(rng, n + x, (0.3, 1.2), |t| 2400.0 * (0.8 + 0.2 * (TAU * t / loop_secs * 2.0).sin()));
+    Biquad::highpass(1800.0, 0.7).run(&mut drops);
+    Biquad::lowpass(9000.0, 0.7).run(&mut drops);
+    let mut hiss = noise(rng, n + x, |_| 1.0);
+    Biquad::bandpass(1400.0, 0.6).run(&mut hiss);
+    let mut rumble = noise(rng, n + x, |_| 1.0);
+    Biquad::lowpass(220.0, 0.7).run(&mut rumble);
+    mix_into(&mut drops, &hiss, 0.5, 0);
+    mix_into(&mut drops, &rumble, 0.8, 0);
+    dsp::make_loop(drops, n, x, 0.12)
 }
 
 #[derive(Clone, Copy)]

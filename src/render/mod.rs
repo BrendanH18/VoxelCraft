@@ -15,6 +15,7 @@ pub mod entity;
 mod item_sprites;
 pub mod textures;
 pub mod ui;
+pub mod weather;
 
 use std::sync::Arc;
 
@@ -103,6 +104,9 @@ pub struct FrameParams {
     pub block_models: Vec<BlockModel>,
     /// HUD geometry, drawn last.
     pub ui: Vec<UiVertex>,
+    /// Rain strength 0..1: hides the sun, moon and stars and thickens the
+    /// clouds.
+    pub rain: f32,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -192,6 +196,7 @@ pub struct Renderer {
     ui_pipeline: wgpu::RenderPipeline,
     entities: entity::EntityPass,
     block_models: block_model::BlockModelPass,
+    weather: weather::WeatherPass,
     quad_indices: wgpu::Buffer,
     instances: wgpu::Buffer,
     instance_capacity: usize,
@@ -594,6 +599,7 @@ impl Renderer {
 
         let entities = entity::EntityPass::new(&device, &layout, format);
         let block_models = block_model::BlockModelPass::new(&device, &layout, format);
+        let weather = weather::WeatherPass::new(&device, &layout, format);
 
         // --- Shared buffers ----------------------------------------------
         let indices: Vec<u32> =
@@ -637,6 +643,7 @@ impl Renderer {
             ui_pipeline,
             entities,
             block_models,
+            weather,
             quad_indices,
             instances,
             instance_capacity,
@@ -984,7 +991,7 @@ impl Renderer {
             fog_color: [p.fog_color[0], p.fog_color[1], p.fog_color[2], 1.0],
             zenith_color: [p.zenith_color[0], p.zenith_color[1], p.zenith_color[2], 1.0],
             sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
-            params: [p.fog_start, p.fog_end, p.daylight, 0.0],
+            params: [p.fog_start, p.fog_end, p.daylight, p.rain],
             clouds: [
                 cloud_origin.x as f32,
                 cloud_origin.z as f32,
@@ -1100,6 +1107,7 @@ impl Renderer {
 
             pass.set_vertex_buffer(0, self.instances.slice(..));
             draw_range(&mut pass, &self.translucent_pipeline, TRANSLUCENT, true);
+            self.weather.draw(&mut pass);
 
             if !hud.is_empty() {
                 pass.set_pipeline(&self.ui_pipeline);

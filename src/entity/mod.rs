@@ -136,6 +136,8 @@ pub struct Ctx {
     pub daylight: f32,
     /// Natural spawning on/off.
     pub spawning: bool,
+    /// Rain keeps undead mobs from burning in the sun.
+    pub raining: bool,
 }
 
 /// Small deterministic RNG (splitmix64).
@@ -448,7 +450,7 @@ mod tests {
     }
 
     fn ctx(player: DVec3) -> Ctx {
-        Ctx { player_pos: player, player_targetable: false, daylight: 1.0, spawning: false }
+        Ctx { player_pos: player, player_targetable: false, daylight: 1.0, spawning: false, raining: false }
     }
 
     /// Runs one mob for `secs` at 60 Hz, forcing it to walk along +X.
@@ -582,7 +584,7 @@ mod tests {
         let mut e = Entities::new(5);
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         let player = DVec3::new(1.5, 10.0, 0.5);
-        let c = Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false };
+        let c = Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false, raining: false };
         let mut hits = Vec::new();
         for _ in 0..90 {
             hits.extend(e.update(1.0 / 60.0, &world, &c).into_iter().filter(is_hit));
@@ -606,7 +608,13 @@ mod tests {
         }
         let mut e = Entities::new(8);
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
-        let c = Ctx { player_pos: DVec3::new(8.5, 10.0, 0.5), player_targetable: true, daylight: 0.1, spawning: false };
+        let c = Ctx {
+            player_pos: DVec3::new(8.5, 10.0, 0.5),
+            player_targetable: true,
+            daylight: 0.1,
+            spawning: false,
+            raining: false,
+        };
         let hit = (0..60 * 10).any(|_| e.update(1.0 / 60.0, &world, &c).iter().any(is_hit));
         assert!(hit, "zombie stuck at {:?}", e.mobs[0].pos);
     }
@@ -665,7 +673,7 @@ mod tests {
         let world = Grid::flat(64);
         let mut e = Entities::new(11);
         let player = DVec3::new(0.0, 64.0, 0.0);
-        let c = Ctx { player_pos: player, player_targetable: false, daylight: 0.12, spawning: true };
+        let c = Ctx { player_pos: player, player_targetable: false, daylight: 0.12, spawning: true, raining: false };
         for _ in 0..600 {
             e.update(0.05, &world, &c);
         }
@@ -677,7 +685,7 @@ mod tests {
     }
 
     fn night(player: DVec3) -> Ctx {
-        Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false }
+        Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false, raining: false }
     }
 
     fn run(e: &mut Entities, world: &Grid, c: &Ctx, secs: f64) -> Vec<EntityEvent> {

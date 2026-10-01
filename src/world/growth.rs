@@ -147,10 +147,12 @@ impl World {
             self.edit(p, Block::DIRT, false);
             return;
         }
-        let wet = (-4..=4).any(|dx| {
-            (-4..=4)
-                .any(|dz| (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.is_water())))
-        });
+        let wet = self.rains_on(p + IVec3::Y)
+            || (-4..=4).any(|dx| {
+                (-4..=4).any(|dz| {
+                    (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.is_water()))
+                })
+            });
         let crop = above.is_some_and(|a| a.crop_stage().is_some());
         match (wet, b) {
             (true, Block::FARMLAND) => {

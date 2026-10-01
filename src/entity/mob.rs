@@ -625,7 +625,11 @@ impl Mob {
     fn burn<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx, rng: &mut Rng) {
         let head = (self.pos + DVec3::new(0.0, self.shape().height - 0.1, 0.0)).floor().as_ivec3();
         let in_lava = physics::is_lava_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
-        let sunburn = self.kind.burns_in_sun() && ctx.daylight > BURN_DAYLIGHT && !self.in_water && world.exposed(head);
+        let sunburn = self.kind.burns_in_sun()
+            && ctx.daylight > BURN_DAYLIGHT
+            && !ctx.raining
+            && !self.in_water
+            && world.exposed(head);
         self.burning = self.alive() && (sunburn || in_lava);
         if !self.burning {
             self.burn_timer = 0.0;

@@ -180,7 +180,8 @@ impl Audio {
     /// Per-frame update from the player's state: listener position,
     /// footsteps, jumps, landings, water entry, underwater muffling and
     /// ambience.
-    pub fn update(&mut self, player: &Player, world: &World, dt: f64) {
+    /// `rain` is how hard it's raining where the player stands (0..1).
+    pub fn update(&mut self, player: &Player, world: &World, rain: f32, dt: f64) {
         if self.tx.is_none() {
             return;
         }
@@ -253,10 +254,20 @@ impl Audio {
         self.ambience_timer -= dt;
         if self.ambience_timer <= 0.0 {
             self.ambience_timer = 0.5;
-            let (wind, cave) = ambience(eye, world);
+            let (wind, cave, covered) = ambience(eye, world);
             self.cave = cave;
             let wind = if underwater { wind * 0.3 } else { wind };
-            self.send(Command::Ambience { wind, cave });
+            // Rain drums on the roof when sheltered and fades out deep underground.
+            let rain = rain
+                * (1.0 - cave)
+                * if underwater {
+                    0.2
+                } else if covered {
+                    0.4
+                } else {
+                    1.0
+                };
+            self.send(Command::Ambience { wind, cave, rain });
         }
         if self.cave > 0.5 {
             self.drip_timer -= dt;
@@ -284,8 +295,9 @@ fn ground_block(player: &Player, world: &World) -> Option<Block> {
     })
 }
 
-/// Wind and cave ambience levels (0..1) at the listener.
-fn ambience(eye: DVec3, world: &World) -> (f32, f32) {
+/// Wind and cave ambience levels (0..1) at the listener, and whether
+/// something overhead shelters it.
+fn ambience(eye: DVec3, world: &World) -> (f32, f32, bool) {
     let p = eye.floor().as_ivec3();
     let covered = (1..=32).any(|dy| world.get_block(p + IVec3::Y * dy).is_some_and(|b| b.is_opaque()));
     let surface = world.generator.column(p.x, p.z).height;
@@ -294,7 +306,7 @@ fn ambience(eye: DVec3, world: &World) -> (f32, f32) {
     let altitude = ((eye.y as f32 - SEA_LEVEL as f32) / 80.0).clamp(0.0, 1.0);
     let shelter = if covered { 0.5 } else { 1.0 };
     let wind = (1.0 - cave) * (0.35 + 0.65 * altitude) * shelter;
-    (wind, cave)
+    (wind, cave, covered)
 }
 
 /// Output device setup (cpal).

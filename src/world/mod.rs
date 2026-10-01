@@ -83,6 +83,8 @@ pub struct World {
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
+    /// Whether it's raining (set by the game each frame).
+    pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
     pub mesh_removals: Vec<IVec3>,
 }
@@ -116,6 +118,7 @@ impl World {
             random_ticks: 0.0,
             rng,
             drops: Vec::new(),
+            raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
         }
@@ -193,6 +196,20 @@ impl World {
         let l = local_of(IVec3::new(x, 0, z));
         let h = col.heights[(l.x + l.z * CHUNK_SIZE_I) as usize];
         (h != NO_HEIGHT).then_some(h as i32)
+    }
+
+    /// Foliage colour group of a column (see `terrain::Biome::foliage`),
+    /// once known.
+    pub fn foliage_at(&self, x: i32, z: i32) -> Option<u8> {
+        let col = self.columns.get(&column_of(chunk_of(IVec3::new(x, 0, z))))?;
+        let l = local_of(IVec3::new(x, 0, z));
+        col.foliage.as_ref().map(|f| f[(l.x + l.z * CHUNK_SIZE_I) as usize])
+    }
+
+    /// Whether rain (not snow) is falling on cell `p` right now.
+    pub fn rains_on(&self, p: IVec3) -> bool {
+        // Deserts, savannas and badlands stay dry; cold biomes get snow.
+        self.raining && self.sky_exposed(p) && matches!(self.foliage_at(p.x, p.z), Some(0 | 1 | 3))
     }
 
     /// Whether a cell sees the sky straight up (nothing light-blocking

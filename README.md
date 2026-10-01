@@ -40,7 +40,7 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
   harvest wheat for bread. Saplings grow into trees, leaves fall from felled
   trees, and grass creeps back over bare dirt.
 - **A world that moves.** Flowing water and lava, falling sand, a day/night
-  cycle, drifting clouds, herds of animals, and zombies, skeletons, creepers
+  cycle, rain and snow, drifting clouds, herds of animals, and zombies, skeletons, creepers
   and spiders that come out at night.
 - **Light and sound from code.** Smooth sky and block lighting, ambient
   occlusion, material-specific footsteps, positional audio, and underwater effects.

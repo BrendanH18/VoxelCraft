@@ -106,7 +106,8 @@ impl Game {
         let ctx = entity::Ctx {
             player_pos: self.player.pos,
             player_targetable: self.mode == GameMode::Survival,
-            daylight: super::sky_state(self.day_time).daylight,
+            daylight: self.weather.dim(super::sky_state(self.day_time).daylight),
+            raining: self.weather.raining,
             spawning: true,
         };
         for event in self.mobs.entities.update(dt, &self.world, &ctx) {

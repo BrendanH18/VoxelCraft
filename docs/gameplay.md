@@ -80,6 +80,14 @@ session.
   drawn as two crossed planes, break instantly, need soil (torches a full
   block) beneath them and pop off when it goes, and are washed away by
   water. Clicking tall grass with a block replaces it
+- Weather, like Minecraft: clear spells of one to five days alternate with
+  rain lasting half a day to a day and a half. Rain falls as snow in cold
+  biomes and above y = 150, and not at all in deserts, savannas and
+  badlands. It greys and darkens the sky, hides the sun, moon and stars
+  behind thicker clouds, stops at the first block overhead, waters
+  farmland under open sky, keeps zombies and skeletons from burning, and
+  can be heard drumming on the roof. The time of day and the weather are
+  saved with the world
 - Torches give off light level 14 (glowstone 15)
 - Flood-fill sky and block light with smooth lighting and ambient occlusion
 - Day/night cycle with a procedural sky: square sun and moon, sunset glow,
