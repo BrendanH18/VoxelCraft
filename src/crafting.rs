@@ -318,23 +318,13 @@ mod tests {
         snapshot.return_stacks(g.cells.iter().flatten().copied());
         let saved = snapshot.serialize();
         assert_eq!(g.cells[0], Some(Stack::new(Block::LOG, 63)));
-        assert!(!inv.has_pending_returns());
 
-        // Closing uses the same return path; switching containers can now
-        // replace the grid safely without duplicating the saved returns.
+        // Closing uses the same return path; what doesn't fit spills.
         inv.return_stacks(g.take_all());
         assert!(g.cells.iter().all(Option::is_none));
         assert_eq!(inv.serialize(), saved);
-        for text in [saved, inv.serialize()] {
-            let mut restored = Inventory::deserialize(&text).unwrap();
-            assert!(restored.has_pending_returns());
-            assert_eq!(restored.get(0), Some(Stack::new(Block::PLANKS, 4)));
-            // Move the planks onto the cursor to make space for the logs.
-            restored.click(0, false);
-            restored.retry_returns();
-            assert_eq!(restored.get(0), Some(Stack::new(Block::LOG, 63)));
-            assert_eq!(restored.cursor, Some(Stack::new(Block::PLANKS, 4)));
-            assert!(!restored.has_pending_returns());
-        }
+        let mut restored = Inventory::deserialize(&saved).unwrap();
+        assert_eq!(restored.get(0), Some(Stack::new(Block::PLANKS, 4)));
+        assert_eq!(restored.take_spill(), vec![Stack::new(Block::LOG, 63)]);
     }
 }

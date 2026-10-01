@@ -59,6 +59,7 @@ src/
     settings.rs      options file (saves/options.txt)
     survival.rs      health, hunger, exhaustion, regeneration (unit tested)
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
+    items.rs         dropped items: spawning, pickup, throwing, death drops
   inventory.rs       inventory slots, stacking, saved container overflow
   crafting.rs        crafting grids and recipes
   mining.rs          mining speed, harvest rules, tool wear, melee damage
@@ -69,6 +70,7 @@ src/
     mod.rs           mob list, spawning/despawning rules, events, explosions
     mob.rs           mob kinds, AI, movement and combat state
     projectile.rs    skeleton arrows
+    item.rs          dropped items: physics, merging, despawning, saving
     model.rs         animated box models -> camera-relative triangles
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool

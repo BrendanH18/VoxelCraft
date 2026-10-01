@@ -46,6 +46,8 @@ pub struct Args {
     pub food: Option<f32>,
     /// Items added to the inventory at startup (debugging/screenshots).
     pub give: Vec<(item::Item, u8)>,
+    /// Items thrown in front of the player once the world has loaded.
+    pub drop: Vec<(item::Item, u8)>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
     pub mute: bool,
     pub volume: Option<f32>,
@@ -73,6 +75,8 @@ voxelcraft [options]
   --food <0..20>    starting hunger in half drumsticks (no saturation)
   --give item[,n]   add n (default 1) of an item to the inventory at startup
                     (repeatable; e.g. --give iron_pickaxe --give coal,16)
+  --drop item[,n]   throw n of an item in front of the player once loaded
+                    (repeatable; like --give)
   --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig, cow, sheep,
                     chicken, zombie, skeleton, creeper or spider; y may be ~
                     for the terrain surface, e.g. zombie,4,~,10)
@@ -107,6 +111,7 @@ fn parse_args() -> Result<Args, String> {
         air: None,
         food: None,
         give: Vec::new(),
+        drop: Vec::new(),
         mute: false,
         volume: None,
         export_sounds: false,
@@ -167,12 +172,12 @@ fn parse_args() -> Result<Args, String> {
             "--health" => args.health = Some(value("--health")?.parse().map_err(|_| "bad --health")?),
             "--air" => args.air = Some(value("--air")?.parse().map_err(|_| "bad --air")?),
             "--food" => args.food = Some(value("--food")?.parse().map_err(|_| "bad --food")?),
-            "--give" => {
-                let v = value("--give")?;
+            flag @ ("--give" | "--drop") => {
+                let v = value(flag)?;
                 let (name, count) = v.split_once(',').unwrap_or((&v, "1"));
-                let item = item::Item::from_name(name.trim()).ok_or(format!("--give: unknown item {name}"))?;
-                let count = count.trim().parse().map_err(|_| format!("--give: bad count in {v}"))?;
-                args.give.push((item, count));
+                let item = item::Item::from_name(name.trim()).ok_or(format!("{flag}: unknown item {name}"))?;
+                let count = count.trim().parse().map_err(|_| format!("{flag}: bad count in {v}"))?;
+                if flag == "--give" { &mut args.give } else { &mut args.drop }.push((item, count));
             }
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--pose" => {

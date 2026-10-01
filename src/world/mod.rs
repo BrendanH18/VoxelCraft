@@ -67,8 +67,9 @@ pub struct World {
     falling: Vec<falling::FallingBlock>,
     /// Furnace contents by position (see [`furnace`]).
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
-    /// Items spilled by broken containers, with where they spilled; the
-    /// game collects them.
+    /// Items the world let go of (mined blocks, container contents, plants
+    /// that popped off or washed away, explosion debris) and the cell they
+    /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
     pub mesh_removals: Vec<IVec3>,
@@ -262,6 +263,13 @@ impl World {
             }
         }
         true
+    }
+
+    /// Queues what `block`, gone from `p`, drops (see [`Block::drop`]).
+    pub fn spill_block(&mut self, p: IVec3, block: Block) {
+        if let Some(item) = block.drop() {
+            self.drops.push((p, crate::inventory::Stack::new(item, 1)));
+        }
     }
 
     /// Updates the heightmap for an edited block; returns (old, new) heights.
@@ -647,9 +655,12 @@ mod tests {
         let eye = DVec3::new(0.5, y as f64 + 4.5, 0.5);
         assert_eq!(world.raycast(eye, DVec3::NEG_Y, 10.0).unwrap().0, flower);
 
-        // Removing the dirt drops the flower.
+        // Removing the dirt pops the flower off as an item.
         world.set_block(flower - IVec3::Y, Block::AIR);
         assert_eq!(world.get_block(flower), Some(Block::AIR));
+        let dropped = |world: &mut World| std::mem::take(&mut world.drops).into_iter().map(|(_, s)| s.item).collect();
+        let poppy: Vec<crate::item::Item> = dropped(&mut world);
+        assert_eq!(poppy, [Block::POPPY.into()]);
 
         // Water flowing past a torch washes it away (refill the hole first,
         // or the water would head for that drop instead).
@@ -661,6 +672,8 @@ mod tests {
             world.tick_fluids(0.25);
         }
         assert!(world.get_block(torch).unwrap().is_water());
+        let torch: Vec<crate::item::Item> = dropped(&mut world);
+        assert_eq!(torch, [Block::TORCH.into()], "washed away as an item");
     }
 
     #[test]

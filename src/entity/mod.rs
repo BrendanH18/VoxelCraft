@@ -1,5 +1,6 @@
 //! Entities: passive pigs, cows, sheep and chickens; hostile zombies,
-//! skeletons, creepers and spiders; skeleton arrows and explosion smoke.
+//! skeletons, creepers and spiders; skeleton arrows, dropped items and
+//! explosion smoke.
 //!
 //! Mobs live in a flat `Vec` (removal is `swap_remove`). Each frame
 //! [`Entities::update`] spawns new mobs around the player, runs AI and
@@ -11,6 +12,7 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod item;
 mod mob;
 pub mod model;
 mod projectile;
@@ -25,6 +27,7 @@ use crate::world::World;
 use crate::world::block::Block;
 use crate::world::noise::splitmix64;
 
+pub use item::ItemEntity;
 pub use mob::{Mob, MobKind, sky_light};
 pub use projectile::Arrow;
 
@@ -36,6 +39,8 @@ pub const DESPAWN_DIST: f64 = 96.0;
 /// Hostile mobs only spawn when it's darker than this.
 pub const HOSTILE_SPAWN_DAYLIGHT: f32 = 0.35;
 const SPAWN_INTERVAL: f32 = 0.25;
+/// Seconds between passes that merge dropped items lying together.
+const MERGE_INTERVAL: f32 = 0.5;
 /// Player melee: cooldown between hits.
 pub const ATTACK_COOLDOWN: f64 = 0.5;
 
@@ -154,8 +159,12 @@ pub struct Entities {
     pub mobs: Vec<Mob>,
     pub arrows: Vec<Arrow>,
     pub puffs: Vec<Puff>,
+    /// Dropped items. They stay put (and don't age) while their chunk is
+    /// unloaded, and are saved with the world.
+    pub items: Vec<ItemEntity>,
     rng: Rng,
     spawn_timer: f32,
+    merge_timer: f32,
     /// Mobs drawn last frame (F3).
     pub rendered: usize,
     verts: Vec<EntityVertex>,
@@ -167,8 +176,10 @@ impl Entities {
             mobs: Vec::new(),
             arrows: Vec::new(),
             puffs: Vec::new(),
+            items: Vec::new(),
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawn_timer: 0.0,
+            merge_timer: 0.0,
             rendered: 0,
             verts: Vec::new(),
         }
@@ -216,6 +227,12 @@ impl Entities {
         }
         events.retain(|e| !matches!(e, EntityEvent::Shoot { .. }));
         self.arrows.retain_mut(|a| a.update(dt, world, ctx, &mut events));
+        self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
+        self.merge_timer -= dt as f32;
+        if self.merge_timer <= 0.0 {
+            self.merge_timer = MERGE_INTERVAL;
+            item::merge(&mut self.items);
+        }
 
         let dtf = dt as f32;
         self.puffs.retain_mut(|p| {
@@ -252,9 +269,46 @@ impl Entities {
         }
     }
 
-    /// Rolls the loot for a mob of `kind` the player killed.
-    pub fn drops(&mut self, kind: MobKind) -> Vec<(crate::item::Item, u8)> {
-        kind.drops(&mut self.rng)
+    /// Drops the loot of a mob of `kind` the player killed at `pos`.
+    pub fn drop_loot(&mut self, kind: MobKind, pos: DVec3) {
+        for (item, count) in kind.drops(&mut self.rng) {
+            let vel = DVec3::new(self.rng.range(-1.5, 1.5) as f64, 4.0, self.rng.range(-1.5, 1.5) as f64);
+            let stack = crate::inventory::Stack::new(item, count);
+            self.items.push(ItemEntity::new(stack, pos + DVec3::Y * 0.5, vel, item::PICKUP_DELAY, &mut self.rng));
+        }
+    }
+
+    /// Drops a stack that popped out of the block at `cell` (mined, spilled
+    /// from a container, blown up).
+    pub fn drop_from_block(&mut self, stack: crate::inventory::Stack, cell: IVec3) {
+        self.items.push(item::block_drop(stack, cell, &mut self.rng));
+    }
+
+    /// Throws a stack from `eye` along `dir` (the player dropping items).
+    pub fn throw(&mut self, stack: crate::inventory::Stack, eye: DVec3, dir: DVec3) {
+        let spread = DVec3::new(self.rng.range(-0.3, 0.3) as f64, 0.0, self.rng.range(-0.3, 0.3) as f64);
+        let vel = dir * 6.0 + DVec3::Y * 2.0 + spread;
+        let pos = eye - DVec3::Y * 0.3;
+        self.items.push(ItemEntity::new(stack, pos, vel, item::THROWN_PICKUP_DELAY, &mut self.rng));
+    }
+
+    /// Scatters a stack around `pos` in a random direction (a dying
+    /// player's inventory).
+    pub fn scatter(&mut self, stack: crate::inventory::Stack, pos: DVec3) {
+        let a = self.rng.range(0.0, TAU);
+        let speed = self.rng.range(0.5, 3.0) as f64;
+        let vel = DVec3::new(a.cos() as f64 * speed, 4.0, a.sin() as f64 * speed);
+        self.items.push(ItemEntity::new(stack, pos + DVec3::Y, vel, item::THROWN_PICKUP_DELAY, &mut self.rng));
+    }
+
+    /// `;`-separated dropped items for the level file.
+    pub fn items_to_string(&self) -> String {
+        self.items.iter().map(ItemEntity::serialize).collect::<Vec<_>>().join(";")
+    }
+
+    pub fn load_items(&mut self, text: &str) {
+        let rng = &mut self.rng;
+        self.items.extend(text.split(';').filter(|s| !s.is_empty()).filter_map(|s| ItemEntity::deserialize(s, rng)));
     }
 
     /// Gently pushes overlapping mobs apart.

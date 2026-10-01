@@ -2,6 +2,7 @@
 
 mod actions;
 mod hud;
+mod items;
 mod menu;
 mod mobs;
 mod recipe_book;
@@ -132,6 +133,8 @@ struct Game {
     screenshot: Option<String>,
     screenshot_state: u32,
     place: Vec<(glam::IVec3, Block)>,
+    /// `--drop`: thrown once the world has loaded.
+    drop: Vec<(Item, u8)>,
     placed: bool,
     /// `--bench-render`: per-frame wall times (CPU + GPU, serialised).
     bench_render: Option<Vec<f64>>,
@@ -307,6 +310,7 @@ impl ApplicationHandler for App {
             screenshot: self.args.screenshot.clone(),
             screenshot_state: 0,
             place: self.args.place.clone(),
+            drop: self.args.drop.clone(),
             placed: false,
             bench_render: self.args.bench_render.then(Vec::new),
             frame_started: None,
@@ -323,6 +327,9 @@ impl ApplicationHandler for App {
             settings_path,
         };
         game.renderer.force_offscreen = game.bench_render.is_some();
+        if let Some(items) = existing.as_ref().and_then(|l| l.props.get("items")) {
+            game.mobs.entities.load_items(items);
+        }
         if game.vitals.is_dead() {
             game.on_death();
         } else if game.screenshot.is_none() && game.bench_render.is_none() {
@@ -515,7 +522,8 @@ impl Game {
             }
             return;
         }
-        let blocked_when_dead = [KeyCode::KeyE, KeyCode::KeyG, KeyCode::KeyF, KeyCode::Space, KeyCode::Escape];
+        let blocked_when_dead =
+            [KeyCode::KeyE, KeyCode::KeyG, KeyCode::KeyF, KeyCode::KeyQ, KeyCode::Space, KeyCode::Escape];
         if self.vitals.is_dead() && blocked_when_dead.contains(&code) {
             return;
         }
@@ -523,6 +531,10 @@ impl Game {
             KeyCode::Escape if self.inventory_open => self.toggle_inventory(),
             KeyCode::Escape => self.open_menu(),
             KeyCode::KeyE => self.toggle_inventory(),
+            KeyCode::KeyQ => {
+                let ctrl = self.keys.contains(&KeyCode::ControlLeft) || self.keys.contains(&KeyCode::ControlRight);
+                self.drop_selected(ctrl);
+            }
             KeyCode::KeyG => {
                 let mode = match self.mode {
                     GameMode::Survival => GameMode::Creative,
@@ -617,11 +629,15 @@ impl Game {
         taken
     }
 
-    /// Releases the mouse and stops all actions for the death screen.
+    /// Releases the mouse and stops all actions for the death screen. A
+    /// survival player drops everything they carried.
     fn on_death(&mut self) {
         log::info!("player {}", self.vitals.death.as_deref().unwrap_or("died"));
         if self.inventory_open {
             self.toggle_inventory();
+        }
+        if self.mode == GameMode::Survival {
+            self.drop_everything();
         }
         self.set_grab(false);
         self.keys.clear();
@@ -630,7 +646,7 @@ impl Game {
         self.actions.reset();
     }
 
-    /// Back to the world spawn with full health; the inventory is kept.
+    /// Back to the world spawn with full health.
     fn respawn(&mut self) {
         self.player.pos = self.world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
         self.player.vel = DVec3::ZERO;
@@ -659,30 +675,9 @@ impl Game {
             self.actions.reset();
         } else {
             self.inventory.return_stacks(self.craft.take_all());
-            if self.inventory.has_pending_returns() {
-                self.show_popup("Inventory full; leftovers kept");
-            }
             self.craft = crate::crafting::Grid::new(2);
             self.container = Container::Inventory;
             self.set_grab(true);
-        }
-    }
-
-    /// Picks up what broken containers spilled nearby (survival); there are
-    /// no item entities yet, so anything else is lost. Closes a furnace
-    /// screen whose furnace is gone.
-    fn collect_drops(&mut self) {
-        for (p, stack) in std::mem::take(&mut self.world.drops) {
-            let near = (p.as_dvec3() + DVec3::splat(0.5)).distance(self.player.pos) < 8.0;
-            if near && self.mode == GameMode::Survival {
-                self.inventory.add_stack(stack);
-            }
-        }
-        if let Container::Furnace(pos) = self.container
-            && self.inventory_open
-            && self.world.furnace(pos).is_none()
-        {
-            self.toggle_inventory();
         }
     }
 
@@ -747,6 +742,9 @@ impl Game {
     }
 
     fn inventory_click(&mut self, right: bool) {
+        if self.throw_cursor(right) {
+            return;
+        }
         if !right && let Some(control) = self.recipe_control_under_cursor() {
             match control {
                 recipe_book::Control::Toggle => self.recipe_book.open = !self.recipe_book.open,
@@ -831,10 +829,8 @@ impl Game {
         self.world.set_block(pos, Block::AIR);
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
-        if crate::mining::can_harvest(block, held)
-            && let Some(drop) = block.drop()
-        {
-            self.inventory.add(drop, 1);
+        if crate::mining::can_harvest(block, held) {
+            self.world.spill_block(pos, block);
         }
         self.vitals.hunger.exhaust(survival::EXHAUST_MINE);
         if block.hardness() > 0.0 {
@@ -937,6 +933,13 @@ impl Game {
                 log::warn!("--place {pos} {}: chunk not loaded", block.name());
             }
         }
+        // Fanned out so each one can be seen.
+        let drops = std::mem::take(&mut self.drop);
+        for (i, &(item, count)) in drops.iter().enumerate() {
+            let turn = (i as f64 - (drops.len() as f64 - 1.0) / 2.0) * 0.22;
+            let dir = glam::DQuat::from_rotation_y(turn) * self.player.forward().as_dvec3();
+            self.mobs.entities.throw(Stack::new(item, count), self.player.eye(), dir);
+        }
         self.placed = true;
         self.spawn_pending_mobs();
     }
@@ -1028,6 +1031,7 @@ impl Game {
             props.insert("death".to_string(), cause.clone());
         }
         props.insert("furnaces".to_string(), self.world.furnaces_to_string());
+        props.insert("items".to_string(), self.mobs.entities.items_to_string());
         let level = LevelInfo {
             seed: self.world.generator.seed,
             player: Some((self.player.pos, self.player.yaw, self.player.pitch)),
@@ -1116,7 +1120,6 @@ impl Game {
         self.world.tick_fluids(dt);
         self.world.tick_falling(dt);
         self.world.tick_furnaces(dt);
-        self.collect_drops();
         self.world.update(self.player.pos);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);
@@ -1125,7 +1128,7 @@ impl Game {
             self.renderer.remove_mesh(pos);
         }
         self.update_mobs(dt);
-        self.inventory.retry_returns();
+        self.update_items();
 
         if now - self.last_save > AUTOSAVE_EVERY {
             self.save();
@@ -1178,7 +1181,10 @@ impl Game {
                     size: 1.0,
                     block: f.block,
                     sky_light: crate::entity::sky_light(&self.world, f.pos + glam::DVec3::splat(0.5)),
+                    yaw: 0.0,
+                    icon: None,
                 })
+                .chain(self.item_models())
                 .collect(),
             ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() {
                 self.build_ui(now)

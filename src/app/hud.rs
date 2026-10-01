@@ -128,11 +128,6 @@ impl Game {
             self.vitals_ui(ui, x0, x0 + total, y0 - 10.0, now);
         }
 
-        if self.inventory.has_pending_returns() && !self.inventory_open {
-            let text = waiting_label(self.inventory.pending_return_count());
-            ui.label((sw - Ui::text_width(&text)) / 2.0, y0 - 38.0, &text, HIGHLIGHT);
-        }
-
         // Popup message (item names, mode changes), fading out.
         let age = (now - self.popup.1).as_secs_f32();
         let alpha = ((2.5 - age) / 0.5).clamp(0.0, 1.0);
@@ -223,9 +218,7 @@ impl Game {
 
     /// Top-left corner and height of the inventory panel.
     fn panel(&self, screen: (f32, f32)) -> (f32, f32, f32) {
-        let h = PANEL_H
-            + if self.has_top_section() { CRAFT_H } else { 0.0 }
-            + if self.inventory.has_pending_returns() { 26.0 } else { 0.0 };
+        let h = PANEL_H + if self.has_top_section() { CRAFT_H } else { 0.0 };
         let extra = if self.recipe_book.open && self.shows_recipes() && recipe_book::fits_beside(screen.0, PANEL_W) {
             recipe_book::WIDTH + recipe_book::GAP
         } else {
@@ -293,6 +286,19 @@ impl Game {
             out.push((SlotRef::Inventory(i), px + 7.0 + i as f32 * SLOT, py + 18.0 + 3.0 * SLOT + 6.0));
         }
         out
+    }
+
+    /// Whether the mouse is off the inventory panel and the recipe book:
+    /// clicking there throws the held stack out, like Minecraft.
+    pub(super) fn cursor_off_panel(&self) -> bool {
+        let scale = Ui::scale_for(self.renderer.scale_factor());
+        let (w, h) = self.renderer.size();
+        let screen = (w as f32 / scale, h as f32 / scale);
+        let mouse = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
+        let (x, y, h) = self.panel(screen);
+        let on_book =
+            self.shows_recipes() && self.recipe_book.open && self.recipe_layout(screen).bounds.contains(mouse);
+        !Rect { x, y, w: PANEL_W, h }.contains(mouse) && !on_book
     }
 
     pub(super) fn slot_under_cursor(&self) -> Option<SlotRef> {
@@ -398,12 +404,6 @@ impl Game {
             None => None,
         };
         let recipe_hint = if self.recipe_book.open && self.shows_recipes() { self.recipe_book_ui(ui) } else { None };
-        if self.inventory.has_pending_returns() {
-            let (_, top, height) = self.panel((sw, sh));
-            let count = waiting_label(self.inventory.pending_return_count());
-            ui.text_flat(px + 8.0, top + height - 22.0, &count, [0.3, 0.2, 0.05, 1.0]);
-            ui.text_flat(px + 8.0, top + height - 11.0, "Returns when space opens", [0.25, 0.25, 0.25, 1.0]);
-        }
         if let Some(hint) = recipe_hint {
             self.tooltip(ui, &hint);
         } else if let Some(item) = hovered_item {
@@ -603,8 +603,4 @@ fn hash(a: u32, b: u32) -> u32 {
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
-}
-
-fn waiting_label(count: usize) -> String {
-    format!("{count} {} waiting", if count == 1 { "item" } else { "items" })
 }
