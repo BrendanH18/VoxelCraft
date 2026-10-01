@@ -788,4 +788,32 @@ mod tests {
         assert_eq!([at(&world, 1, y + 1), at(&world, 1, y + 2), at(&world, 1, y + 3)], column[1..4]);
         assert_eq!(at(&world, 1, y + 4), Block::AIR);
     }
+
+    #[test]
+    fn explosions_carve_a_crater_but_spare_obsidian() {
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let y = 200;
+        for x in -6..=6 {
+            for z in -6..=6 {
+                for dy in -4..=0 {
+                    world.edit(IVec3::new(x, y + dy, z), Block::STONE, false);
+                }
+            }
+        }
+        world.edit(IVec3::new(1, y, 0), Block::OBSIDIAN, false);
+        // A sand column through the blast: the bottom is blown away (well
+        // inside the ragged edge), the top survives (beyond it) and falls.
+        for dy in 1..=6 {
+            world.edit(IVec3::new(0, y + dy, 0), Block::SAND, false);
+        }
+
+        let removed = world.explode(DVec3::new(0.5, y as f64 + 1.0, 0.5), 3.0);
+        assert!(removed > 30, "only {removed} blocks");
+        assert_eq!(world.get_block(IVec3::new(0, y, 0)), Some(Block::AIR));
+        assert_eq!(world.get_block(IVec3::new(1, y, 0)), Some(Block::OBSIDIAN));
+        assert_eq!(world.get_block(IVec3::new(6, y - 4, 6)), Some(Block::STONE), "outside the blast");
+        assert_eq!(world.get_block(IVec3::new(0, y + 1, 0)), Some(Block::AIR));
+        let falling = world.falling_blocks().len();
+        assert!((3..=4).contains(&falling), "{falling} sand blocks falling");
+    }
 }

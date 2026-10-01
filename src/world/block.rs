@@ -81,6 +81,7 @@ pub mod tex {
     pub const TORCH: u8 = 45;
     pub const LAVA: u8 = 46;
     pub const OBSIDIAN: u8 = 47;
+    pub const WOOL: u8 = 48;
     /// Flat item icons (see `item::Item::icon_layer`), up to 64 of them.
     pub const ITEM_0: u8 = 96;
     pub const COUNT: u32 = 160;
@@ -122,6 +123,7 @@ impl Block {
     /// Flowing lava levels 1 (strongest) to 3 are ids 38..=40.
     pub const FALLING_LAVA: Block = Block(41);
     pub const OBSIDIAN: Block = Block(42);
+    pub const WOOL: Block = Block(43);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -221,6 +223,7 @@ impl Block {
         match self {
             b if b.kind() == RenderKind::Cross => 0.0,
             Block::LEAVES | Block::SPRUCE_LEAVES | Block::SNOW => 0.25,
+            Block::WOOL => 0.4,
             Block::GLASS | Block::GLOWSTONE => 0.35,
             Block::CACTUS => 0.45,
             Block::DIRT | Block::SAND => 0.55,
@@ -239,7 +242,7 @@ impl Block {
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).chain(32..=37).chain(std::iter::once(42)).map(Block)
+        (1..=23u8).chain(32..=37).chain(42..=43).map(Block)
     }
 
     /// Blocks that placing another block overwrites (air, fluids, grass).
@@ -393,6 +396,7 @@ const fn make(id: u8) -> BlockInfo {
         38..=40 => ("flowing lava", Translucent, all(tex::LAVA)),
         41 => ("falling lava", Translucent, all(tex::LAVA)),
         42 => ("obsidian", Opaque, all(tex::OBSIDIAN)),
+        43 => ("wool", Opaque, all(tex::WOOL)),
         _ => ("unknown", Invisible, all(0)),
     };
     BlockInfo { name, kind, solid: matches!(kind, Opaque | Cutout), self_cull: id == 5 || id == 10, tex }

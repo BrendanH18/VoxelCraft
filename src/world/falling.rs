@@ -87,6 +87,39 @@ impl World {
         }
     }
 
+    /// Destroys the blocks in a ragged sphere around `center` (radius about
+    /// `0.9 * power`, like a Minecraft blast in open stone). Bedrock,
+    /// obsidian and fluids resist. Chunks are remeshed on the workers; what
+    /// rested on the blasted blocks falls or pops off. Returns how many
+    /// blocks were destroyed.
+    pub fn explode(&mut self, center: DVec3, power: f64) -> usize {
+        let radius = power * 0.9 + 0.5;
+        let c = center.floor().as_ivec3();
+        let r = radius.ceil() as i32;
+        let seed = self.generator.seed ^ 0xB1A5;
+        let mut removed = Vec::new();
+        for dy in -r..=r {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    let p = c + IVec3::new(dx, dy, dz);
+                    let dist = (p.as_dvec3() + DVec3::splat(0.5) - center).length();
+                    if dist > radius * (0.7 + 0.3 * super::noise::hash_f(p.x, p.y, p.z, seed) as f64) {
+                        continue;
+                    }
+                    let Some(b) = self.get_block(p) else { continue };
+                    let resists = b == Block::AIR || b == Block::BEDROCK || b == Block::OBSIDIAN || b.is_fluid();
+                    if !resists && self.edit(p, Block::AIR, false) {
+                        removed.push(p);
+                    }
+                }
+            }
+        }
+        for &p in &removed {
+            self.settle(p);
+        }
+        removed.len()
+    }
+
     pub fn falling_blocks(&self) -> &[FallingBlock] {
         &self.falling
     }

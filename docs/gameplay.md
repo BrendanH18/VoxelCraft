@@ -55,11 +55,14 @@ The world autosaves every two minutes and on exit.
   on the first solid block (replacing plants and fluids in the way);
   knocking out a column's base drops the whole column
 - Walking, swimming and flying with AABB collision
-- Mobs with Minecraft-style animated box models: pigs wander, graze and
-  look around, and panic when hit; zombies spawn at night, chase and hit
-  survival players, jump 1-block ledges, sidestep obstacles and burn in
-  sunlight. Mobs avoid tall drops, float in water, flash red when hurt and
-  topple over when killed. All mobs are drawn in a single draw call
+- Eight mobs with Minecraft-style animated box models (see [Mobs](#mobs)):
+  pigs, cows, sheep and chickens wander in herds and panic when hit;
+  zombies, skeletons, creepers and spiders hunt at night. Skeletons shoot
+  arcing arrows that stick in blocks, creepers hiss, swell and explode
+  (blowing a crater in the world), spiders climb walls. Mobs avoid tall
+  drops, float in water, flash red when hurt and topple over when killed;
+  killing one in survival puts its loot in your inventory. All mobs,
+  arrows and explosion smoke are drawn in a single draw call
 - Survival and creative modes: timed block breaking with crack overlay,
   drops, a 36-slot inventory with stacks, and a scrollable creative palette
 - Items beyond blocks, each with a procedurally drawn icon: sticks, coal,
@@ -77,18 +80,26 @@ The world autosaves every two minutes and on exit.
 - Procedural sound, synthesized in code at startup (~25 ms): material-specific
   break/place/footstep sounds (stone, wood, dirt, grass, gravel, sand, snow,
   leaves, glass, water), jump and landing thuds, splashes and swimming,
+  creeper hisses and explosions, bow twangs,
   inventory clicks, wind and cave ambience with dripping water, positional
   panning and distance falloff, and a muffled mix while underwater
 
 ## Mobs
 
-| | Pig | Zombie |
-|---|---|---|
-| Health | 10 | 20 |
-| Spawns | on sky-exposed grass | on sky-exposed solid ground when daylight < 0.35 |
-| Cap | 12 | 8 |
-| Behaviour | wanders, idles, looks around; panics when hit | chases survival players within 24 blocks, hits for 3 every second; burns in sunlight |
+| Mob | Health | Behaviour | Loot (survival kills) |
+|---|---|---|---|
+| Pig | 10 | wanders, idles, looks around; panics when hit | 1–3 raw porkchop |
+| Cow | 10 | like pigs | 1–3 raw beef, 0–2 leather |
+| Sheep | 8 | like pigs | 1 wool |
+| Chicken | 4 | like pigs; flutters down instead of falling | 1 raw chicken, 0–2 feathers |
+| Zombie | 20 | chases within 24 blocks, hits for 3 every second; burns in sunlight | 0–2 rotten flesh |
+| Skeleton | 20 | keeps 5–10 blocks away, strafes, and shoots arrows (about 3 damage) when it can see you; burns in sunlight | 0–2 bones, 0–2 arrows |
+| Creeper | 20 | walks up and lights a 1.5 s fuse within 3 blocks (kept lit within 7); explodes for up to 43 damage over 6 blocks, destroying blocks (not bedrock, obsidian or fluids) | 0–2 gunpowder |
+| Spider | 16 | fast; climbs walls; hunts only in the dark or after being hit, bites for 2 | 0–2 string |
 
-Mobs spawn 24–64 blocks from the player and despawn beyond 96 blocks or
-when their chunk unloads. Player hits do 2–4 damage with knockback, at most
-every 0.5 s.
+Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
+hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to
+4 zombies and 3 of the others). Mobs spawn 24–64 blocks from the player
+and despawn beyond 96 blocks or when their chunk unloads. Every mob burns
+in lava. Player hits do 2–4 damage with knockback, at most every 0.5 s.
+Hostile mobs ignore creative players.

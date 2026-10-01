@@ -5,7 +5,8 @@ use std::time::Instant;
 
 use glam::{DVec3, IVec3};
 
-use crate::entity::{self, Entities, EntityEvent, MobKind};
+use crate::audio::sounds::Sound;
+use crate::entity::{self, Entities, EntityEvent, MobKind, MobSound};
 use crate::physics;
 
 use super::{Game, GameMode, REACH};
@@ -64,7 +65,14 @@ impl Game {
         self.mobs.attack_held = true;
         if self.mobs.attack_cooldown <= 0.0 {
             self.mobs.attack_cooldown = entity::ATTACK_COOLDOWN;
-            self.mobs.entities.attack(i, self.player.forward().as_dvec3());
+            if let Some(kind) = self.mobs.entities.attack(i, self.player.forward().as_dvec3())
+                && self.mode == GameMode::Survival
+            {
+                // Loot goes straight to the inventory until items can lie in the world.
+                for (item, count) in self.mobs.entities.drops(kind) {
+                    self.inventory.add(item, count);
+                }
+            }
         }
         true
     }
@@ -99,27 +107,53 @@ impl Game {
         };
         for event in self.mobs.entities.update(dt, &self.world, &ctx) {
             match event {
-                EntityEvent::PlayerHit { damage, knockback } => {
+                EntityEvent::PlayerHit { damage, knockback, cause } => {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
-                    if self.damage_player(damage, "was slain by a zombie") > 0.0 {
+                    if self.damage_player(damage, cause) > 0.0 {
                         self.player.vel += knockback.as_dvec3();
                     }
                 }
+                EntityEvent::Explosion { center, power } => self.explode(center, power),
+                EntityEvent::Sound { sound, pos } => {
+                    let sound = match sound {
+                        MobSound::Fuse => Sound::Fuse,
+                        MobSound::Bow => Sound::Bow,
+                    };
+                    self.audio.play(sound, Some(pos), 1.0, (0.95, 1.05));
+                }
+                EntityEvent::Shoot { .. } => {}
             }
         }
     }
 }
 
 impl Game {
+    /// Blows a hole in the world and hurts everything around `center`.
+    pub(super) fn explode(&mut self, center: DVec3, power: f32) {
+        self.world.explode(center, power as f64);
+        self.mobs.entities.explode(center, power);
+        self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
+        let mid = self.player.pos + DVec3::Y * 0.9;
+        if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center))
+            && self.damage_player(damage, "was blown up by a creeper") > 0.0
+        {
+            let away = (mid - center).normalize_or(DVec3::Y);
+            self.player.vel += away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
+        }
+    }
+
     /// F3 line with entity counts.
     pub(super) fn mobs_debug_line(&self) -> String {
         let e = &self.mobs.entities;
+        let (passive, hostile): (Vec<_>, Vec<_>) = MobKind::ALL.iter().partition(|k| !k.is_hostile());
+        let total = |kinds: Vec<&MobKind>| kinds.into_iter().map(|&k| e.count(k)).sum::<usize>();
         format!(
-            "Entities: {} (pigs: {}, zombies: {}), {} rendered, {} falling blocks",
+            "Entities: {} (passive: {}, hostile: {}, arrows: {}), {} rendered, {} falling blocks",
             e.mobs.len(),
-            e.count(MobKind::Pig),
-            e.count(MobKind::Zombie),
+            total(passive),
+            total(hostile),
+            e.arrows.len(),
             e.rendered,
             self.world.falling_blocks().len()
         )

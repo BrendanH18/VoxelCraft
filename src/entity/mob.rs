@@ -4,9 +4,11 @@ use std::f32::consts::{PI, TAU};
 
 use glam::{DVec3, IVec3};
 
+use crate::item::Item;
 use crate::physics::{self, BlockSource, Shape};
+use crate::world::block::Block;
 
-use super::{Ctx, EntityEvent, MobWorld, Rng};
+use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng};
 
 const GRAVITY: f64 = 28.0;
 /// Clears a 1-block ledge with a little margin (peak ~1.26 blocks).
@@ -16,29 +18,63 @@ const MAX_STEP: f64 = 1.0 / 60.0;
 pub const HURT_TIME: f32 = 0.5;
 /// Length of the death animation before the mob is removed.
 pub const DEATH_TIME: f32 = 0.9;
-/// Zombies notice players within this many blocks.
+/// Hostile mobs notice players within this many blocks.
 const CHASE_RANGE: f64 = 24.0;
 const ATTACK_RANGE: f64 = 1.2;
 const ATTACK_COOLDOWN: f32 = 1.0;
-const ZOMBIE_DAMAGE: f32 = 3.0;
-/// Zombies burn in sunlight above this daylight level.
+/// Zombies and skeletons burn in sunlight above this daylight level.
 const BURN_DAYLIGHT: f32 = 0.45;
+/// Spiders only hunt when it's darker than this (or after being hit).
+const SPIDER_CALM_DAYLIGHT: f32 = 0.45;
+/// Seconds a hit spider stays hostile in daylight.
+const PROVOKED_TIME: f32 = 12.0;
+/// Skeletons shoot from up to this far, and keep between these distances.
+const SHOOT_RANGE: f64 = 16.0;
+const SKELETON_NEAR: f64 = 5.0;
+const SKELETON_FAR: f64 = 10.0;
+/// Creepers light their fuse this close and keep it lit within `FUSE_KEEP`.
+const FUSE_START: f64 = 3.0;
+const FUSE_KEEP: f64 = 7.0;
+/// Seconds from lighting the fuse to the explosion.
+pub const FUSE_TIME: f32 = 1.5;
+pub const CREEPER_POWER: f32 = 3.0;
 /// Falls deeper than this are avoided (blocks).
 const MAX_SAFE_DROP: i32 = 3;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MobKind {
     Pig,
+    Cow,
+    Sheep,
+    Chicken,
     Zombie,
+    Skeleton,
+    Creeper,
+    Spider,
 }
 
 impl MobKind {
-    pub const ALL: [MobKind; 2] = [MobKind::Pig, MobKind::Zombie];
+    pub const ALL: [MobKind; 8] = [
+        MobKind::Pig,
+        MobKind::Cow,
+        MobKind::Sheep,
+        MobKind::Chicken,
+        MobKind::Zombie,
+        MobKind::Skeleton,
+        MobKind::Creeper,
+        MobKind::Spider,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
             MobKind::Pig => "pig",
+            MobKind::Cow => "cow",
+            MobKind::Sheep => "sheep",
+            MobKind::Chicken => "chicken",
             MobKind::Zombie => "zombie",
+            MobKind::Skeleton => "skeleton",
+            MobKind::Creeper => "creeper",
+            MobKind::Spider => "spider",
         }
     }
 
@@ -49,22 +85,92 @@ impl MobKind {
     pub fn shape(self) -> Shape {
         match self {
             MobKind::Pig => Shape::new(0.45, 0.9),
+            MobKind::Cow => Shape::new(0.45, 1.4),
+            MobKind::Sheep => Shape::new(0.45, 1.3),
+            MobKind::Chicken => Shape::new(0.2, 0.7),
             MobKind::Zombie => Shape::new(0.3, 1.95),
+            MobKind::Skeleton => Shape::new(0.3, 1.99),
+            MobKind::Creeper => Shape::new(0.3, 1.7),
+            MobKind::Spider => Shape::new(0.7, 0.9),
         }
     }
 
     pub fn max_health(self) -> f32 {
         match self {
-            MobKind::Pig => 10.0,
-            MobKind::Zombie => 20.0,
+            MobKind::Pig | MobKind::Cow => 10.0,
+            MobKind::Sheep => 8.0,
+            MobKind::Chicken => 4.0,
+            MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper => 20.0,
+            MobKind::Spider => 16.0,
         }
+    }
+
+    pub fn is_hostile(self) -> bool {
+        matches!(self, MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::Spider)
+    }
+
+    /// Most mobs of this kind that spawn naturally around the player.
+    pub fn spawn_cap(self) -> usize {
+        match self {
+            MobKind::Zombie => 4,
+            k if k.is_hostile() => 3,
+            _ => 4,
+        }
+    }
+
+    fn burns_in_sun(self) -> bool {
+        matches!(self, MobKind::Zombie | MobKind::Skeleton)
     }
 
     fn wander_speed(self) -> f64 {
         match self {
             MobKind::Pig => 1.3,
-            MobKind::Zombie => 1.1,
+            MobKind::Cow | MobKind::Zombie | MobKind::Creeper => 1.1,
+            MobKind::Sheep | MobKind::Skeleton => 1.2,
+            MobKind::Chicken => 1.0,
+            MobKind::Spider => 1.4,
         }
+    }
+
+    fn chase_speed(self) -> f64 {
+        match self {
+            MobKind::Spider => 3.0,
+            MobKind::Skeleton => 2.2,
+            MobKind::Creeper => 2.0,
+            _ => 2.4,
+        }
+    }
+
+    /// Melee damage and the death message it gives.
+    fn melee(self) -> (f32, &'static str) {
+        match self {
+            MobKind::Spider => (2.0, "was slain by a spider"),
+            _ => (3.0, "was slain by a zombie"),
+        }
+    }
+
+    /// Loot for a player kill: (item, min, max) rolls.
+    pub(super) fn loot(self) -> &'static [(Item, u8, u8)] {
+        const WOOL: Item = Item::from_block(Block::WOOL);
+        match self {
+            MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
+            MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
+            MobKind::Sheep => &[(WOOL, 1, 1)],
+            MobKind::Chicken => &[(Item::RAW_CHICKEN, 1, 1), (Item::FEATHER, 0, 2)],
+            MobKind::Zombie => &[(Item::ROTTEN_FLESH, 0, 2)],
+            MobKind::Skeleton => &[(Item::BONE, 0, 2), (Item::ARROW, 0, 2)],
+            MobKind::Creeper => &[(Item::GUNPOWDER, 0, 2)],
+            MobKind::Spider => &[(Item::STRING, 0, 2)],
+        }
+    }
+
+    /// Rolls the drops for killing one of these.
+    pub fn drops(self, rng: &mut Rng) -> Vec<(Item, u8)> {
+        self.loot()
+            .iter()
+            .map(|&(item, lo, hi)| (item, lo + (rng.next_f32() * (hi - lo + 1) as f32) as u8))
+            .filter(|&(_, n)| n > 0)
+            .collect()
     }
 }
 
@@ -74,9 +180,9 @@ pub(super) enum Ai {
     Idle,
     /// Walking in `move_yaw`.
     Wander,
-    /// Running from an attacker (pigs), changing direction every so often.
+    /// Running from an attacker (passive mobs), changing direction every so often.
     Panic,
-    /// Walking straight at the player (zombies).
+    /// Going after the player (hostile mobs), each in its own way.
     Chase,
 }
 
@@ -105,6 +211,10 @@ pub struct Mob {
     pub attack_anim: f32,
     /// Sky light estimate at the mob, 0..1 (refreshed a few times a second).
     pub sky_light: f32,
+    /// Creeper fuse: seconds lit, 0 when not fusing.
+    pub fuse: f32,
+    /// Seconds a hit spider stays angry in daylight.
+    provoked: f32,
     pub(super) ai: Ai,
     pub(super) ai_timer: f32,
     pub(super) move_yaw: f32,
@@ -148,6 +258,8 @@ impl Mob {
             attack_cooldown: 0.0,
             burn_timer: 0.0,
             light_timer: 0.0,
+            fuse: 0.0,
+            provoked: 0.0,
             blocked: false,
             detour: 0.0,
             detour_side: 1.0,
@@ -179,11 +291,12 @@ impl Mob {
             self.vel.z = kb.z;
             self.vel.y = self.vel.y.max(kb.y);
         }
-        if self.kind == MobKind::Pig {
+        if !self.kind.is_hostile() {
             self.ai = Ai::Panic;
             self.ai_timer = rng.range(3.0, 5.0);
             self.move_yaw = rng.range(0.0, TAU);
         }
+        self.provoked = PROVOKED_TIME;
         if self.health <= 0.0 {
             self.dying = Some(0.0);
             return true;
@@ -202,6 +315,7 @@ impl Mob {
     ) {
         let dtf = dt as f32;
         self.hurt = (self.hurt - dtf).max(0.0);
+        self.provoked = (self.provoked - dtf).max(0.0);
         self.attack_cooldown -= dtf;
         self.attack_anim = (self.attack_anim - dtf).max(0.0);
 
@@ -268,14 +382,18 @@ impl Mob {
         let flat = DVec3::new(to_player.x, 0.0, to_player.z);
         let hdist = flat.length();
 
-        if self.kind == MobKind::Zombie {
-            let chasing = ctx.player_targetable && hdist < CHASE_RANGE && to_player.y.abs() < 12.0;
+        if self.kind.is_hostile() {
+            let aggressive = self.kind != MobKind::Spider || ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0;
+            let chasing = aggressive && ctx.player_targetable && hdist < CHASE_RANGE && to_player.y.abs() < 12.0;
             if chasing {
                 self.ai = Ai::Chase;
             } else if self.ai == Ai::Chase {
                 self.ai = Ai::Idle;
                 self.ai_timer = 1.0;
             }
+        }
+        if self.ai != Ai::Chase {
+            self.fuse = (self.fuse - dt).max(0.0);
         }
 
         match self.ai {
@@ -284,12 +402,23 @@ impl Mob {
                 let eye = to_player.y + 1.62 - self.shape().height * 0.9;
                 let face_yaw = (to_player.z as f32).atan2(to_player.x as f32);
                 self.head_target = (wrap(face_yaw - self.yaw).clamp(-1.2, 1.2), (eye as f32).atan2(hdist as f32));
-                if hdist <= ATTACK_RANGE && to_player.y.abs() < 1.6 && self.attack_cooldown <= 0.0 {
-                    self.attack_cooldown = ATTACK_COOLDOWN;
-                    self.attack_anim = 0.35;
-                    let dir = if hdist > 1e-6 { flat / hdist } else { DVec3::X };
-                    let knockback = dir * 6.0 + DVec3::Y * 5.0;
-                    events.push(EntityEvent::PlayerHit { damage: ZOMBIE_DAMAGE, knockback: knockback.as_vec3() });
+                let dir = if hdist > 1e-6 { flat / hdist } else { DVec3::X };
+                match self.kind {
+                    MobKind::Skeleton => return self.skeleton_tactics(dt, world, ctx, dir, hdist, rng, events),
+                    MobKind::Creeper => {
+                        if let Some(stop) = self.creeper_fuse(dt, hdist, events) {
+                            return stop;
+                        }
+                    }
+                    _ => {
+                        if hdist <= ATTACK_RANGE && to_player.y.abs() < 1.6 && self.attack_cooldown <= 0.0 {
+                            self.attack_cooldown = ATTACK_COOLDOWN;
+                            self.attack_anim = 0.35;
+                            let knockback = dir * 6.0 + DVec3::Y * 5.0;
+                            let (damage, cause) = self.kind.melee();
+                            events.push(EntityEvent::PlayerHit { damage, knockback: knockback.as_vec3(), cause });
+                        }
+                    }
                 }
                 // Stop just short so we don't stand inside the player.
                 if hdist <= 0.8 {
@@ -297,7 +426,6 @@ impl Mob {
                 }
                 // No pathfinding: head straight for the player, and if a
                 // wall we can't jump is in the way, sidestep for a moment.
-                let dir = flat / hdist;
                 self.detour -= dt;
                 if self.detour <= 0.0 && self.blocked && self.on_ground && !self.can_step_up(world, dir) {
                     self.detour = rng.range(0.6, 1.2);
@@ -309,7 +437,7 @@ impl Mob {
                 } else {
                     dir
                 };
-                (Some(dir), 2.4)
+                (Some(dir), self.kind.chase_speed())
             }
             Ai::Panic => {
                 if self.ai_timer <= 0.0 {
@@ -358,6 +486,62 @@ impl Mob {
         }
     }
 
+    /// Skeletons keep their distance and shoot when they can see the
+    /// player.
+    #[allow(clippy::too_many_arguments)]
+    fn skeleton_tactics<W: MobWorld + ?Sized>(
+        &mut self,
+        dt: f32,
+        world: &W,
+        ctx: &Ctx,
+        dir: DVec3,
+        hdist: f64,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) -> (Option<DVec3>, f64) {
+        let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
+        let target = ctx.player_pos + DVec3::Y * 1.2;
+        if self.attack_cooldown <= 0.0 && hdist < SHOOT_RANGE && line_of_sight(world, eye, target) {
+            self.attack_cooldown = rng.range(1.6, 2.4);
+            self.attack_anim = 0.35;
+            events.push(EntityEvent::Shoot { from: eye + dir * 0.5, target });
+            events.push(EntityEvent::Sound { sound: MobSound::Bow, pos: eye });
+        }
+        if rng.chance(dt * 0.4) {
+            self.detour_side = -self.detour_side;
+        }
+        let side = DVec3::new(-dir.z, 0.0, dir.x) * self.detour_side;
+        if hdist > SKELETON_FAR {
+            (Some(dir), self.kind.chase_speed())
+        } else if hdist < SKELETON_NEAR {
+            (Some((-dir + side * 0.3).normalize()), 2.0)
+        } else {
+            (Some(side), 1.0)
+        }
+    }
+
+    /// Creepers stop and hiss when close; returns the movement to use
+    /// while fusing (or `None` to keep approaching).
+    fn creeper_fuse(&mut self, dt: f32, hdist: f64, events: &mut Vec<EntityEvent>) -> Option<(Option<DVec3>, f64)> {
+        let fusing = if self.fuse > 0.0 { hdist < FUSE_KEEP } else { hdist < FUSE_START };
+        if !fusing {
+            self.fuse = (self.fuse - dt).max(0.0);
+            return None;
+        }
+        if self.fuse == 0.0 {
+            events.push(EntityEvent::Sound { sound: MobSound::Fuse, pos: self.pos });
+        }
+        self.fuse += dt;
+        if self.fuse >= FUSE_TIME {
+            let center = self.pos + DVec3::Y * (self.shape().height * 0.5);
+            events.push(EntityEvent::Explosion { center, power: CREEPER_POWER });
+            // Gone in the blast: no death animation, no loot.
+            self.health = 0.0;
+            self.dying = Some(DEATH_TIME);
+        }
+        Some((None, 0.0))
+    }
+
     fn physics_step<W: BlockSource + ?Sized>(&mut self, dt: f64, world: &W, wish: Option<DVec3>, speed: f64) {
         let shape = self.shape();
         self.in_water = physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
@@ -386,7 +570,12 @@ impl Mob {
                 self.vel.z += (target.z - self.vel.z) * k;
             }
             self.vel.y = (self.vel.y - GRAVITY * dt).max(-78.0);
-            if let Some(dir) = wish
+            if self.kind == MobKind::Chicken {
+                self.vel.y = self.vel.y.max(-2.5); // flaps its way down
+            }
+            if self.kind == MobKind::Spider && self.blocked && wish.is_some() && self.alive() {
+                self.vel.y = self.vel.y.max(3.0); // climbs walls
+            } else if let Some(dir) = wish
                 && self.on_ground
                 && self.blocked
                 && self.can_step_up(world, dir)
@@ -413,12 +602,11 @@ impl Mob {
             && !physics::overlaps_solid(world, raised + dir * 0.4, self.shape())
     }
 
-    /// Zombies burn in direct sunlight; every mob burns in lava, faster.
+    /// The undead burn in direct sunlight; every mob burns in lava, faster.
     fn burn<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx, rng: &mut Rng) {
         let head = (self.pos + DVec3::new(0.0, self.shape().height - 0.1, 0.0)).floor().as_ivec3();
         let in_lava = physics::is_lava_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
-        let sunburn =
-            self.kind == MobKind::Zombie && ctx.daylight > BURN_DAYLIGHT && !self.in_water && world.exposed(head);
+        let sunburn = self.kind.burns_in_sun() && ctx.daylight > BURN_DAYLIGHT && !self.in_water && world.exposed(head);
         self.burning = self.alive() && (sunburn || in_lava);
         if !self.burning {
             self.burn_timer = 0.0;
@@ -490,6 +678,16 @@ pub fn sky_light<W: MobWorld + ?Sized>(world: &W, p: DVec3) -> f32 {
         }
     }
     level.max(0) as f32 / 15.0
+}
+
+/// Whether nothing solid lies on the straight line between two points.
+fn line_of_sight<W: BlockSource + ?Sized>(world: &W, from: DVec3, to: DVec3) -> bool {
+    let d = to - from;
+    let steps = (d.length() * 4.0).ceil().max(1.0) as i32;
+    (1..steps).all(|i| {
+        let p = from + d * (i as f64 / steps as f64);
+        !world.block(p.floor().as_ivec3()).is_some_and(|b| b.is_solid())
+    })
 }
 
 pub fn yaw_dir(yaw: f32) -> DVec3 {

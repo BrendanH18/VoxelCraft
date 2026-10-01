@@ -32,8 +32,9 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
   mountains, oceans, caves, ores, and trees.
 - **Two ways to play.** Build freely in creative, or play survival with timed
   mining, block drops, a stackable inventory, health, and respawning.
-- **A world that moves.** Flowing water, a day/night cycle, drifting clouds,
-  wandering pigs, and zombies that chase you at night and burn in sunlight.
+- **A world that moves.** Flowing water and lava, falling sand, a day/night
+  cycle, drifting clouds, herds of animals, and zombies, skeletons, creepers
+  and spiders that come out at night.
 - **Light and sound from code.** Smooth sky and block lighting, ambient
   occlusion, material-specific footsteps, positional audio, and underwater effects.
 - **Built for speed.** Parallel chunk generation, greedy meshing, compact GPU

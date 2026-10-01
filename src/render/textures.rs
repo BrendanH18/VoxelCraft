@@ -217,6 +217,11 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let c = [255, (90.0 + heat * 140.0) as u8, (20.0 + heat * 40.0) as u8];
             shade(c, 0.75 + heat * 0.3)
         }
+        tex::WOOL => {
+            // Soft weave: alternating diagonal ridges.
+            let ridge = (x + y) % 4 < 2;
+            shade([234, 234, 228], if ridge { 0.96 + r * 0.06 } else { 0.86 + r * 0.06 })
+        }
         tex::OBSIDIAN => {
             let speck = rnd(layer, x, y, 13) < 0.08;
             let c = if speck { [80, 60, 110] } else { [22, 16, 34] };

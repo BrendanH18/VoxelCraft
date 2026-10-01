@@ -54,13 +54,15 @@ src/
     mod.rs           window, input, game loop, day/night, damage entry point
     hud.rs           HUD: hotbar, hearts/bubbles, inventory, death and F3 screens
     survival.rs      health rules: falls, drowning, regeneration (unit tested)
-    mobs.rs          mob glue: melee, entity events, --spawn
+    mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
   inventory.rs       inventory slots and stacking
+  item.rs            item registry: blocks, materials, food and tools
   player.rs          player movement
   physics.rs         shared AABB-vs-block collision, ray-vs-box test
   entity/
-    mod.rs           mob list, spawning/despawning rules, events
-    mob.rs           mob AI, movement and combat state
+    mod.rs           mob list, spawning/despawning rules, events, explosions
+    mob.rs           mob kinds, AI, movement and combat state
+    projectile.rs    skeleton arrows
     model.rs         animated box models -> camera-relative triangles
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool
@@ -73,7 +75,8 @@ src/
     export.rs        --export-sounds WAV dump and stats
   world/
     mod.rs           chunk streaming, edits, heightmaps, raycasting
-    fluid.rs         water flow simulation
+    fluid.rs         water and lava flow simulation
+    falling.rs       falling sand/gravel, edit settling, explosion craters
     chunk.rs         chunk storage
     block.rs         block registry
     terrain.rs       world generation
@@ -83,6 +86,8 @@ src/
     mod.rs           wgpu pipelines, culling, draw submission, screenshots
     arena.rs         pooled GPU storage for chunk quads
     entity.rs        entity pass (one dynamic vertex buffer per frame)
+    block_model.rs   free-standing textured blocks (falling sand)
+    item_sprites.rs  procedural item icons
     ui.rs            HUD geometry: rects, bitmap text, block icons
     textures.rs      procedural block textures
     shaders/         WGSL
