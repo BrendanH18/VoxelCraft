@@ -11,6 +11,7 @@
 
 pub mod arena;
 pub mod entity;
+mod item_sprites;
 pub mod textures;
 pub mod ui;
 

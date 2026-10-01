@@ -3,6 +3,7 @@ mod audio;
 mod bench;
 mod entity;
 mod inventory;
+mod item;
 mod mesh;
 mod physics;
 mod player;
@@ -37,6 +38,8 @@ pub struct Args {
     /// Starting health / air overrides (debugging/screenshots).
     pub health: Option<f32>,
     pub air: Option<f32>,
+    /// Items added to the inventory at startup (debugging/screenshots).
+    pub give: Vec<(item::Item, u8)>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
     pub mute: bool,
     pub volume: f32,
@@ -59,6 +62,8 @@ voxelcraft [options]
                     terrain surface, e.g. 0,~,0,water)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
   --air <0..15>     starting air in seconds
+  --give item[,n]   add n (default 1) of an item to the inventory at startup
+                    (repeatable; e.g. --give iron_pickaxe --give coal,16)
   --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig or zombie, y may
                     be ~ for the terrain surface, e.g. zombie,4,~,10)
   --wait <secs>     with --screenshot: keep simulating this long first
@@ -89,6 +94,7 @@ fn parse_args() -> Result<Args, String> {
         pose: None,
         health: None,
         air: None,
+        give: Vec::new(),
         mute: false,
         volume: 1.0,
         export_sounds: false,
@@ -141,6 +147,13 @@ fn parse_args() -> Result<Args, String> {
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
             "--health" => args.health = Some(value("--health")?.parse().map_err(|_| "bad --health")?),
             "--air" => args.air = Some(value("--air")?.parse().map_err(|_| "bad --air")?),
+            "--give" => {
+                let v = value("--give")?;
+                let (name, count) = v.split_once(',').unwrap_or((&v, "1"));
+                let item = item::Item::from_name(name.trim()).ok_or(format!("--give: unknown item {name}"))?;
+                let count = count.trim().parse().map_err(|_| format!("--give: bad count in {v}"))?;
+                args.give.push((item, count));
+            }
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--pose" => {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();

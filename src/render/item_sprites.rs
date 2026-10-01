@@ -1,0 +1,303 @@
+//! Procedural 16x16 inventory icons for non-block items.
+//!
+//! Each sprite is built from simple shapes (diagonal handles, arcs, blobs)
+//! and shaded like Minecraft's item art: light from the top left, a dark rim
+//! on the bottom right.
+
+use crate::item::{Sprite, Tier, ToolKind};
+use crate::world::noise::hash_f;
+
+type Rgba = [u8; 4];
+
+const CLEAR: Rgba = [0, 0, 0, 0];
+const HANDLE: [u8; 3] = [137, 103, 39];
+const HANDLE_DARK: [u8; 3] = [86, 64, 26];
+
+/// Pixel centre, so shapes are symmetric on the 16x16 grid.
+fn centre(x: i32, y: i32) -> (f32, f32) {
+    (x as f32 + 0.5, y as f32 + 0.5)
+}
+
+fn noise(x: i32, y: i32, salt: u64) -> f32 {
+    hash_f(x, y, 0, 0x17E3 ^ salt)
+}
+
+fn tint(c: [u8; 3], f: f32) -> Rgba {
+    let s = |v: u8| (v as f32 * f).clamp(0.0, 255.0) as u8;
+    [s(c[0]), s(c[1]), s(c[2]), 255]
+}
+
+/// Shades a pixel of a filled shape: a highlight where the shape's top or
+/// left edge is, a dark rim on its bottom and right edges.
+fn shaded(inside: &dyn Fn(i32, i32) -> bool, x: i32, y: i32, c: [u8; 3], grain: f32) -> Option<Rgba> {
+    if !inside(x, y) {
+        return None;
+    }
+    let f = if !inside(x + 1, y) || !inside(x, y + 1) {
+        0.62
+    } else if !inside(x - 1, y) || !inside(x, y - 1) {
+        1.22
+    } else {
+        1.0
+    };
+    Some(tint(c, f * (1.0 - grain + noise(x, y, c[0] as u64) * grain * 2.0)))
+}
+
+/// Tool material colour.
+fn tier_colour(tier: Tier) -> [u8; 3] {
+    match tier {
+        Tier::Wood => [160, 128, 76],
+        Tier::Stone => [128, 128, 128],
+        Tier::Iron => [212, 212, 212],
+        Tier::Gold => [246, 208, 62],
+        Tier::Diamond => [70, 222, 210],
+    }
+}
+
+/// Two-pixel diagonal stick from the bottom left up to column `top`.
+fn handle(x: i32, y: i32, from: i32, top: i32) -> Option<Rgba> {
+    if !(from..=top).contains(&x) {
+        return None;
+    }
+    match x + y {
+        15 => Some(tint(HANDLE, 0.95 + noise(x, y, 1) * 0.1)),
+        16 => Some(tint(HANDLE_DARK, 1.0)),
+        _ => None,
+    }
+}
+
+fn tool(kind: ToolKind, tier: Tier, x: i32, y: i32) -> Option<Rgba> {
+    let c = tier_colour(tier);
+    // Coordinates along the handle: `u` across it (15..16 on the handle,
+    // smaller towards the top left), `v` along it (grows towards the top right).
+    let head: Box<dyn Fn(i32, i32) -> bool> = match kind {
+        ToolKind::Pickaxe => Box::new(|x, y| {
+            // An arc around the grip, tapering to points at both ends.
+            let (px, py) = centre(x, y);
+            let (dx, dy) = (px - 0.5, 15.5 - py);
+            let (r, a) = ((dx * dx + dy * dy).sqrt(), dy.atan2(dx).to_degrees());
+            let taper = ((a - 45.0).abs() - 20.0).max(0.0) * 0.1;
+            (4.0..=86.0).contains(&a) && r >= 10.6 + taper && r <= 13.6 - taper * 0.4
+        }),
+        ToolKind::Axe => Box::new(|x, y| {
+            let (u, v) = (x + y, x - y);
+            let half = 1.6 + (14 - u) as f32 * 0.5;
+            (7..=14).contains(&u) && (v as f32 - 4.5).abs() <= half
+        }),
+        ToolKind::Shovel => Box::new(|x, y| {
+            let (u, v) = ((x + y) as f32 - 15.5, (x - y) as f32 - 7.5);
+            (u / 3.6).powi(2) + (v / 5.2).powi(2) <= 1.0 && v >= -4.0
+        }),
+        ToolKind::Hoe => Box::new(|x, y| {
+            let (u, v) = (x + y, x - y);
+            (8..=16).contains(&u) && (6..=9).contains(&v)
+        }),
+        ToolKind::Sword => Box::new(|x, y| {
+            let (u, v) = (x + y, x - y);
+            let blade = (-4..=11).contains(&v) && (14..=16).contains(&u) || v == 12 && u == 15;
+            let guard = (-7..=-5).contains(&v) && (11..=19).contains(&u) && (v == -6 || (12..=18).contains(&u));
+            blade || guard
+        }),
+    };
+    if let Some(p) = shaded(&*head, x, y, c, 0.05) {
+        // A bright ridge down the middle of sword blades.
+        if kind == ToolKind::Sword && x + y == 15 && (-4..=10).contains(&(x - y)) {
+            return Some(tint(c, 1.3));
+        }
+        return Some(p);
+    }
+    let top = match kind {
+        ToolKind::Sword => -1,
+        ToolKind::Shovel => 8,
+        ToolKind::Pickaxe => 9,
+        ToolKind::Hoe | ToolKind::Axe => 11,
+    };
+    if kind == ToolKind::Sword {
+        // Short grip and pommel below the guard.
+        return handle(x, y, 1, 4);
+    }
+    handle(x, y, 1, top)
+}
+
+pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
+    let (x, y) = (x as i32, y as i32);
+    let (px, py) = centre(x, y);
+    let disc = |cx: f32, cy: f32, r: f32| {
+        move |x: i32, y: i32| {
+            let (px, py) = centre(x, y);
+            (px - cx).powi(2) + (py - cy).powi(2) <= r * r
+        }
+    };
+    let out = match sprite {
+        Sprite::Stick => handle(x, y, 2, 13),
+        Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
+        Sprite::Lump(c) => {
+            let lump = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let d = ((px - 8.0).powi(2) + (py - 8.5).powi(2)).sqrt();
+                d < 4.6 + noise(x / 2, y / 2, 3) * 1.8
+            };
+            let fleck = noise(x, y, 4) < 0.12;
+            shaded(&lump, x, y, if fleck { [c[0] + 40, c[1] + 40, c[2] + 40] } else { c }, 0.1)
+        }
+        Sprite::Ingot(c) => {
+            // A bar seen from above at an angle: a lighter top face and a
+            // darker front face.
+            let bar = |x: i32, y: i32| {
+                let skew = x as f32 - (11 - y) as f32 * 0.5;
+                (5..=11).contains(&y) && (1.5..=11.5).contains(&skew)
+            };
+            let face = if y <= 7 { 1.1 } else { 0.86 };
+            shaded(&bar, x, y, c, 0.03).map(|p| tint([p[0], p[1], p[2]], face))
+        }
+        Sprite::Gem(c) => {
+            let gem = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                (px - 8.0).abs() / 6.5 + (py - 8.0).abs() / 7.0 <= 1.0 && py >= 2.5
+            };
+            let facet = if py < 5.0 {
+                1.25
+            } else if px + py > 17.0 {
+                0.8
+            } else {
+                1.0
+            };
+            shaded(&gem, x, y, c, 0.03).map(|p| tint([p[0], p[1], p[2]], facet))
+        }
+        Sprite::Apple => {
+            let stem = (x == 8 && (2..=4).contains(&y)).then_some(tint([90, 60, 25], 1.0));
+            let leaf = ((x == 9 || x == 10) && y == 3 || x == 10 && y == 2).then_some(tint([70, 150, 40], 1.0));
+            let body = |x: i32, y: i32| disc(6.5, 9.5, 4.6)(x, y) || disc(9.5, 9.5, 4.6)(x, y);
+            let shine = (5..=6).contains(&x) && (7..=8).contains(&y);
+            stem.or(leaf).or_else(|| {
+                shaded(&body, x, y, [210, 30, 35], 0.06).map(|p| if shine { [255, 200, 200, 255] } else { p })
+            })
+        }
+        Sprite::Bread => {
+            let loaf = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let (u, v) = ((px + py - 16.0) / 1.414, (px - py) / 1.414);
+                (u / 3.2).powi(2) + (v / 7.0).powi(2) <= 1.0
+            };
+            let score = (x - y).rem_euclid(4) == 0 && (x + y - 15).abs() <= 1;
+            shaded(&loaf, x, y, if score { [230, 190, 110] } else { [190, 125, 50] }, 0.06)
+        }
+        Sprite::Meat(flesh, fat) => {
+            let cut = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let (u, v) = ((px + py - 16.0) / 1.414, (px - py) / 1.414);
+                (u / 4.6).powi(2) + (v / 6.6).powi(2) <= 1.0
+            };
+            // Fat along the upper-right rim.
+            let rim = !cut(x + 1, y - 1) || !cut(x + 2, y - 2);
+            shaded(&cut, x, y, if rim { fat } else { flesh }, 0.08)
+        }
+        Sprite::Drumstick(c) => {
+            let meat = disc(6.5, 6.5, 4.6);
+            let bone = |x: i32, y: i32| {
+                (x - y).abs() <= 1 && (8..=12).contains(&x) && (8..=12).contains(&y)
+                    || disc(13.0, 12.0, 1.3)(x, y)
+                    || disc(12.0, 13.0, 1.3)(x, y)
+            };
+            shaded(&meat, x, y, c, 0.08).or_else(|| shaded(&bone, x, y, [235, 230, 215], 0.02))
+        }
+        Sprite::Bone => {
+            let bone = |x: i32, y: i32| {
+                let shaft = (x + y == 15 || x + y == 16) && (4..=11).contains(&x);
+                let knob = |cx: i32, cy: i32| (x - cx).abs() <= 1 && (y - cy).abs() <= 1 && (x - cx) + (y - cy) != 2;
+                shaft || knob(3, 12) || knob(12, 3) || (x, y) == (2, 11) || (x, y) == (4, 13) || (x, y) == (11, 2)
+            };
+            shaded(&bone, x, y, [232, 228, 210], 0.03)
+        }
+        Sprite::String => {
+            let wave = 7.5 + (px * 0.9).sin() * 3.0 + (px - 8.0) * 0.3;
+            ((py - wave).abs() < 0.8 && (1..=14).contains(&x))
+                .then_some(tint([235, 235, 235], 0.9 + noise(x, y, 5) * 0.2))
+        }
+        Sprite::Feather => {
+            let quill = (x + y == 15) && (2..=13).contains(&x);
+            let vane = |x: i32, y: i32| {
+                let (u, v) = ((x + y) as f32 - 15.0, (x - y) as f32 - 1.0);
+                u <= 0.0 && (u / 3.8).powi(2) + (v / 10.0).powi(2) <= 1.0
+            };
+            if quill { Some(tint([200, 200, 200], 1.0)) } else { shaded(&vane, x, y, [245, 245, 245], 0.04) }
+        }
+        Sprite::Powder(c) => {
+            let pile = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                py >= 6.5 + (px - 8.0).abs() * 0.7 && py <= 13.5 && (1..=14).contains(&x)
+            };
+            let grain = if noise(x, y, 6) < 0.3 { 0.6 } else { 1.0 };
+            shaded(&pile, x, y, c, 0.15).map(|p| tint([p[0], p[1], p[2]], grain))
+        }
+        Sprite::Leather => {
+            let hide = |x: i32, y: i32| {
+                let notch = noise(x / 3, y / 3, 7) < 0.25 && (x == 3 || x == 12 || y == 3 || y == 12);
+                (3..=12).contains(&x) && (3..=12).contains(&y) && !notch
+            };
+            shaded(&hide, x, y, [150, 82, 42], 0.1)
+        }
+        Sprite::Arrow => {
+            let head = |x: i32, y: i32| {
+                let (u, v) = (x + y, x - y);
+                (6..=11).contains(&v) && (u - 15).abs() <= (12 - v) / 2
+            };
+            let fletch = |x: i32, y: i32| {
+                let (u, v) = (x + y, x - y);
+                (-12..=-7).contains(&v) && (13..=17).contains(&u) && u != 15
+            };
+            shaded(&head, x, y, [160, 160, 160], 0.02)
+                .or_else(|| (x + y == 15 && (1..=10).contains(&x)).then_some(tint(HANDLE, 1.0)))
+                .or_else(|| fletch(x, y).then_some(tint([235, 235, 235], if (x + y) % 2 == 0 { 1.0 } else { 0.8 })))
+        }
+    };
+    out.unwrap_or(CLEAR)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::item::Item;
+
+    #[test]
+    fn every_sprite_draws_something_and_leaves_a_border() {
+        for item in Item::all_items() {
+            let sprite = item.info().sprite;
+            let opaque =
+                (0..16).flat_map(|y| (0..16).map(move |x| (x, y))).filter(|&(x, y)| pixel(sprite, x, y)[3] > 0);
+            let count = opaque.clone().count();
+            assert!(count > 12, "{} draws only {count} pixels", item.name());
+        }
+    }
+
+    /// `cargo test --release icon_sheet -- --ignored` writes every item icon,
+    /// magnified, to target/item_icons.png for eyeballing.
+    #[test]
+    #[ignore]
+    fn icon_sheet() {
+        const K: usize = 8;
+        let items: Vec<Item> = Item::all_items().collect();
+        let cols = 8;
+        let rows = items.len().div_ceil(cols);
+        let (w, h) = (cols * 17 * K, rows * 17 * K);
+        let mut img = vec![60u8; w * h * 4];
+        for (i, item) in items.iter().enumerate() {
+            let (ox, oy) = ((i % cols) * 17 * K, (i / cols) * 17 * K);
+            for y in 0..16 * K {
+                for x in 0..16 * K {
+                    let p = pixel(item.info().sprite, x / K, y / K);
+                    let o = ((oy + y) * w + ox + x) * 4;
+                    let bg = if (x / K + y / K).is_multiple_of(2) { 90 } else { 110 };
+                    for c in 0..3 {
+                        img[o + c] = ((p[c] as u32 * p[3] as u32 + bg * (255 - p[3] as u32)) / 255) as u8;
+                    }
+                    img[o + 3] = 255;
+                }
+            }
+        }
+        let file = std::fs::File::create("target/item_icons.png").unwrap();
+        let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
+        enc.set_color(png::ColorType::Rgba);
+        enc.write_header().unwrap().write_image_data(&img).unwrap();
+    }
+}
