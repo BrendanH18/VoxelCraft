@@ -36,7 +36,8 @@ the window also pauses the game.
 
 **Options** (Esc → Options...): render distance (2–32 chunks), field of
 view (30–110°), mouse sensitivity (25–300%), master volume and vsync.
-Changes apply immediately and are saved to `saves/options.txt` when you
+Changes apply immediately and are saved to `saves/options.txt` inside the
+[per-user data folder](releases.md#player-data-and-old-saves) when you
 leave the screen; `[`/`]` and V adjust render distance and vsync in game.
 `--rd`, `--volume` and `--no-vsync` override the saved options for one
 session.

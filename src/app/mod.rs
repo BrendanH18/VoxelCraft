@@ -21,7 +21,7 @@ use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{CursorGrabMode, Fullscreen, Window, WindowId};
+use winit::window::{CursorGrabMode, Fullscreen, Icon, Window, WindowId};
 
 use crate::Args;
 use crate::inventory::{HOTBAR_SLOTS, Inventory, Stack};
@@ -53,6 +53,15 @@ const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
 const LAVA_FOG: [f32; 3] = [0.75, 0.25, 0.03];
 /// Real seconds per in-game day.
 const DAY_LENGTH: f64 = 600.0;
+
+fn window_icon() -> Icon {
+    let decoder = png::Decoder::new(std::io::Cursor::new(include_bytes!("../../packaging/icons/VoxelCraft.png")));
+    let mut reader = decoder.read_info().expect("embedded icon header");
+    let mut rgba = vec![0; reader.output_buffer_size().expect("embedded icon size")];
+    let frame = reader.next_frame(&mut rgba).expect("embedded icon pixels");
+    rgba.truncate(frame.buffer_size());
+    Icon::from_rgba(rgba, frame.width, frame.height).expect("embedded RGBA icon")
+}
 
 /// Creative mode's starting hotbar.
 const CREATIVE_HOTBAR: [Item; 9] = [
@@ -161,12 +170,13 @@ struct Game {
 
 pub struct App {
     args: Args,
+    saves_dir: std::path::PathBuf,
     game: Option<Game>,
 }
 
 impl App {
-    pub fn new(args: Args) -> Self {
-        Self { args, game: None }
+    pub fn new(args: Args, saves_dir: std::path::PathBuf) -> Self {
+        Self { args, saves_dir, game: None }
     }
 }
 
@@ -175,12 +185,15 @@ impl ApplicationHandler for App {
         if self.game.is_some() {
             return;
         }
-        let attrs = Window::default_attributes().with_title("VoxelCraft").with_inner_size(PhysicalSize::new(1600, 900));
+        let attrs = Window::default_attributes()
+            .with_title("VoxelCraft")
+            .with_window_icon(Some(window_icon()))
+            .with_inner_size(PhysicalSize::new(1600, 900));
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
 
         // Saved options, with command-line overrides for this session.
         let scripted = self.args.screenshot.is_some() || self.args.bench_render;
-        let settings_path = (!scripted).then(|| std::path::PathBuf::from("saves/options.txt"));
+        let settings_path = (!scripted).then(|| self.saves_dir.join("options.txt"));
         let mut settings = settings_path.as_deref().map(settings::Settings::load).unwrap_or_default();
         if let Some(rd) = self.args.render_distance {
             settings.render_distance = rd;
@@ -192,7 +205,7 @@ impl ApplicationHandler for App {
 
         let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
 
-        let storage = Storage::new(format!("saves/{}", self.args.world));
+        let storage = Storage::new(self.saves_dir.join(&self.args.world));
         let existing = if self.args.new_world || !storage.exists() {
             None
         } else {

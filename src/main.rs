@@ -1,7 +1,10 @@
+#![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
+
 mod app;
 mod audio;
 mod bench;
 mod crafting;
+mod data;
 mod entity;
 mod inventory;
 mod item;
@@ -18,6 +21,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 pub struct Args {
     pub seed: Option<u64>,
     pub world: String,
+    pub data_dir: Option<std::path::PathBuf>,
     /// Overrides the saved option for this session.
     pub render_distance: Option<i32>,
     pub no_vsync: bool,
@@ -57,7 +61,9 @@ pub struct Args {
 const USAGE: &str = "\
 voxelcraft [options]
   --seed <n>        world seed (new worlds only)
-  --world <name>    save name under ./saves (default: world)
+  --world <name>    save name (letters, digits, - or _; default: world)
+  --data-dir <dir>  override the per-user data folder (saves and logs)
+  --version         show the game version
   --rd <chunks>     render distance in 32-block chunks (default: 8, or the
                     saved option)
   --new             ignore any existing save and start a fresh world
@@ -92,6 +98,7 @@ fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         seed: None,
         world: "world".into(),
+        data_dir: None,
         render_distance: None,
         no_vsync: false,
         new_world: false,
@@ -122,6 +129,7 @@ fn parse_args() -> Result<Args, String> {
         match a.as_str() {
             "--seed" => args.seed = Some(value("--seed")?.parse().map_err(|_| "bad seed")?),
             "--world" => args.world = value("--world")?,
+            "--data-dir" => args.data_dir = Some(value("--data-dir")?.into()),
             "--rd" => args.render_distance = Some(value("--rd")?.parse::<i32>().map_err(|_| "bad --rd")?.clamp(2, 32)),
             "--no-vsync" => args.no_vsync = true,
             "--new" => args.new_world = true,
@@ -193,11 +201,24 @@ fn parse_args() -> Result<Args, String> {
             other => return Err(format!("unknown argument {other}\n\n{USAGE}")),
         }
     }
+    data::validate_world_name(&args.world)?;
     Ok(args)
 }
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,voxelcraft=info")).init();
+    if std::env::args().len() == 2 {
+        match std::env::args().nth(1).as_deref() {
+            Some("--version") => {
+                println!("VoxelCraft {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
+            Some("--help" | "-h") => {
+                println!("{USAGE}");
+                return;
+            }
+            _ => {}
+        }
+    }
     let args = match parse_args() {
         Ok(a) => a,
         Err(msg) => {
@@ -213,10 +234,18 @@ fn main() {
         return;
     }
     if args.bench {
+        env_logger::init();
         bench::run(args.seed.unwrap_or(12345), args.render_distance.unwrap_or(8));
         return;
     }
+    let data_dir = data::prepare(args.data_dir.as_deref()).unwrap_or_else(|e| {
+        eprintln!("Could not prepare VoxelCraft's data folder: {e}");
+        std::process::exit(1);
+    });
+    data::init_logging(&data_dir);
+    log::info!("VoxelCraft {} ({}/{})", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
+    log::info!("data folder: {}", data_dir.display());
     let event_loop = EventLoop::new().expect("create event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
-    event_loop.run_app(&mut app::App::new(args)).expect("event loop");
+    event_loop.run_app(&mut app::App::new(args, data_dir.join("saves"))).expect("event loop");
 }

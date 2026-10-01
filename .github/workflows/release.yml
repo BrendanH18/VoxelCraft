@@ -1,0 +1,116 @@
+name: Release packages
+
+on:
+  push:
+    branches: ['release/**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+  MACOSX_DEPLOYMENT_TARGET: '13.0'
+
+jobs:
+  package:
+    name: Package ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            rustflags: '-C target-feature=+crt-static'
+          - platform: macos-apple-silicon
+            runner: macos-15
+            target: aarch64-apple-darwin
+            rustflags: ''
+          - platform: macos-intel
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            rustflags: ''
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.98.1'
+          targets: ${{ matrix.target }}
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.platform }}
+      - name: Check version tag
+        shell: bash
+        run: python3 packaging/check-version.py
+      - run: cargo fmt --check
+      - run: cargo clippy --release --all-targets --locked --target ${{ matrix.target }} -- -D warnings
+      - run: cargo test --release --locked --target ${{ matrix.target }}
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Install license notice generator
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+      - name: Generate bundled license notices
+        run: cargo about generate --locked --fail --target ${{ matrix.target }} --output-file packaging/THIRD-PARTY-LICENSES.html packaging/licenses.hbs
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe")) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "Could not install Inno Setup" }
+          }
+      - name: Package Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./packaging/windows/package.ps1 -Target '${{ matrix.target }}'
+      - name: Test Windows installation, reinstall and uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./packaging/windows/smoke-test.ps1
+      - name: Package macOS disk image
+        if: runner.os == 'macOS'
+        run: bash packaging/macos/package.sh '${{ matrix.target }}'
+      - name: Test macOS package
+        if: runner.os == 'macOS'
+        run: bash packaging/macos/smoke-test.sh dist/*.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  draft-release:
+    name: Create draft release
+    needs: package
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create checksums
+        working-directory: dist
+        run: sha256sum *.exe *.dmg > SHA256SUMS.txt
+      - name: Upload draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/* --verify-tag --draft --title "VoxelCraft $RELEASE_TAG" --notes-file packaging/RELEASE-NOTES.md

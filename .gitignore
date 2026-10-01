@@ -1,4 +1,6 @@
 /target
 /saves
+/dist
+/packaging/THIRD-PARTY-LICENSES.html
 .DS_Store
 /.claude

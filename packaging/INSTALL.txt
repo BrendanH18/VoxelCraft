@@ -1,0 +1,54 @@
+VoxelCraft - early access installation notes
+
+These builds have no verified publisher signature. macOS builds are not
+notarized. Download only from the project's GitHub Releases page:
+https://github.com/BrendanH18/VoxelCraft/releases
+
+WINDOWS
+Run VoxelCraft-<version>-windows-x64-Setup.exe and follow the installer.
+No administrator privileges are required. Launch from the Start Menu.
+If SmartScreen shows "Windows protected your PC", and you trust this
+download, choose "More info" and then "Run anyway" if available.
+Smart App Control and managed-device policies may block unsigned software
+without offering an exception. Do not disable device-wide protection to
+install this game; use a personal test device that permits it.
+Requires Windows 10/11 x64 and a DirectX 12 or Vulkan-capable GPU/driver.
+
+MAC
+Choose the Apple Silicon download for M-series Macs, or Intel for Intel Macs.
+Open the DMG and drag VoxelCraft.app onto the Applications shortcut.
+Eject the disk image and launch VoxelCraft from Applications.
+If macOS blocks the first launch, try opening the app once, then visit
+System Settings > Privacy & Security > Open Anyway, and confirm Open.
+The app has a local ad-hoc integrity signature, with no developer identity
+or notarization. No Apple Developer account was used to build it.
+Requires macOS 13 or later and a Metal-capable GPU.
+
+UPDATES AND UNINSTALLING
+Quit the game before updating. Windows: run the new installer over the old
+version. Mac: replace the old app in Applications with the new one.
+Worlds and options are kept outside the installation, so upgrades and
+uninstalling preserve them. Back up worlds before trying a newer release;
+loading a newer world's data in an older game version is not guaranteed.
+Windows: uninstall through Settings > Apps. Mac: move the app to Trash.
+
+SAVES, OPTIONS AND LOGS
+Windows: %LOCALAPPDATA%\VoxelCraft
+Mac: ~/Library/Application Support/VoxelCraft
+Worlds: saves/<world-name>; options: saves/options.txt.
+The current launch writes voxelcraft.log; the previous launch's log is
+voxelcraft.previous.log. Include a log with a bug report.
+Old ./saves are copied (originals retained) when launching from the old
+project folder for the first time, before a new saves directory exists.
+If already installed, quit the game and manually copy individual world
+folders into the new saves directory; do not replace newer worlds.
+Advanced users can pass --data-dir <folder> to choose isolated saves/logs.
+
+PLAY
+WASD to move, mouse to look, Space to jump.
+Left click to break/attack, right click to place/use.
+E opens inventory, Esc opens the pause menu, F11 toggles fullscreen.
+Survival is the default; G switches between survival and creative.
+Worlds save every two minutes and on normal exit.
+Gameplay guide: https://github.com/BrendanH18/VoxelCraft/blob/main/docs/gameplay.md
+Bug reports: https://github.com/BrendanH18/VoxelCraft/issues

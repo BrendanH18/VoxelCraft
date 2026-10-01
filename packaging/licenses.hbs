@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>VoxelCraft third-party licenses</title>
+  <style>body{font:16px system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px}pre{white-space:pre-wrap;font:13px monospace}section{border-top:1px solid #ccc;margin-top:32px}a{color:#246b39}</style>
+</head>
+<body>
+<h1>VoxelCraft third-party licenses</h1>
+<p>Notices for the dependencies included in this build.</p>
+<p>Unmodified dependency source is available through each source archive link below.</p>
+{{#each licenses}}
+<section>
+  <h2>{{name}}</h2>
+  <ul>{{#each used_by}}<li><a href="{{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}}">{{crate.name}} {{crate.version}}</a> (<a href="https://crates.io/api/v1/crates/{{crate.name}}/{{crate.version}}/download">source archive</a>)</li>{{/each}}</ul>
+  <pre>{{text}}</pre>
+</section>
+{{/each}}
+</body>
+</html>
