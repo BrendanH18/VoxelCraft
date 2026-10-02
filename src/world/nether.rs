@@ -120,7 +120,7 @@ impl NetherGen {
                         Block::LAVA
                     } else if wy > 60
                         && (1..=3).any(|k| solid(x, y + k, z))
-                        && self.glow.noise3(wx as f32 / 6.0, wy as f32 / 6.0, wz as f32 / 6.0) > 0.42
+                        && self.glow.noise3(wx as f32 / 6.0, wy as f32 / 6.0, wz as f32 / 6.0) > 0.5
                     {
                         Block::GLOWSTONE
                     } else {

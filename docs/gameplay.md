@@ -106,7 +106,7 @@ session.
   on the first solid block (replacing plants and fluids in the way);
   knocking out a column's base drops the whole column
 - Walking, swimming and flying with AABB collision
-- Eight mobs with Minecraft-style animated box models (see [Mobs](#mobs)):
+- Nine mobs with Minecraft-style animated box models (see [Mobs](#mobs)):
   pigs, cows, sheep and chickens wander in herds and panic when hit;
   zombies, skeletons, creepers and spiders hunt at night. Skeletons shoot
   arcing arrows that stick in blocks, creepers hiss, swell and explode
@@ -242,6 +242,7 @@ session there, as if you had just come through a portal.
 | Skeleton | 20 | keeps 5–10 blocks away, strafes, and shoots arrows (about 3 damage) when it can see you; burns in sunlight | 0–2 bones, 0–2 arrows |
 | Creeper | 20 | walks up and lights a 1.5 s fuse within 3 blocks (kept lit within 7); explodes for up to 43 damage over 6 blocks, destroying blocks (not bedrock, obsidian or fluids) | 0–2 gunpowder |
 | Spider | 16 | fast; climbs walls; hunts only in the dark or after being hit, bites for 2 | 0–2 string |
+| Zombified piglin | 20 | Nether only, in packs; ignores you until you hit one, then the whole pack within 32 blocks chases you for 30 s and strikes with gold swords for 5 | 0–1 rotten flesh, 0–1 gold nuggets |
 
 Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to

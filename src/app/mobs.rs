@@ -114,6 +114,7 @@ impl Game {
             },
             raining: self.weather.raining,
             spawning: true,
+            nether: !self.dimension.has_sky(),
         };
         for event in self.mobs.entities.update(dt, &self.world, &ctx) {
             match event {
@@ -154,6 +155,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Skeleton => Voice::Skeleton,
         MobKind::Creeper => Voice::Creeper,
         MobKind::Spider => Voice::Spider,
+        MobKind::ZombifiedPiglin => Voice::Zombie,
     }
 }
 
