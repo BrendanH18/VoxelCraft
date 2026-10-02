@@ -42,3 +42,16 @@ jobs:
       - run: cargo test --release
       - name: Headless generation/meshing benchmark
         run: cargo run --release -- --bench --rd 4
+
+  headless:
+    name: simulation without client dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --release --no-default-features --all-targets -- -D warnings
+      - run: cargo test --release --no-default-features
+      - run: cargo run --release --no-default-features --example headless

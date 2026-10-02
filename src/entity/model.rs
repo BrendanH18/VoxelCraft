@@ -11,7 +11,22 @@ use glam::{DVec3, Quat, Vec3};
 
 use super::mob::{Ai, FUSE_TIME, HURT_TIME, Mob, MobKind};
 use super::{Arrow, Puff};
-use crate::render::entity::EntityVertex;
+use bytemuck::{Pod, Zeroable};
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug)]
+pub struct EntityVertex {
+    /// Camera-relative position.
+    pub pos: [f32; 3],
+    /// Model-space texel coordinates on the face (drives the pixel noise).
+    pub uv: [f32; 2],
+    /// rgb, a: strength of the per-texel noise.
+    pub color: [u8; 4],
+    /// x: sky light, y: face shade, z: hurt tint, w: emissive (flames).
+    pub light: [u8; 4],
+    /// x: block light (torches); the rest is padding.
+    pub torch: [u8; 4],
+}
 
 type Rgb = [u8; 3];
 
@@ -374,11 +389,12 @@ pub fn build(
     forward: Vec3,
     max_dist: f32,
     time: f32,
+    alpha: f64,
     out: &mut Vec<EntityVertex>,
 ) -> usize {
     let mut drawn = 0;
     for m in mobs {
-        let rel = (m.pos - camera).as_vec3();
+        let rel = (m.previous_pos.lerp(m.pos, alpha) - camera).as_vec3();
         let center = rel + Vec3::Y * m.shape().height as f32 * 0.5;
         let radius = 1.5;
         if center.length() > max_dist + radius || center.dot(forward) < -radius {
@@ -446,9 +462,9 @@ fn flames(out: &mut Vec<EntityVertex>, m: &Mob, rel: Vec3, time: f32) {
 }
 
 /// Arrows, pointing along their flight.
-pub fn build_arrows(arrows: &[Arrow], camera: DVec3, out: &mut Vec<EntityVertex>) {
+pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
     for a in arrows {
-        let rel = (a.pos - camera).as_vec3();
+        let rel = (a.previous_pos.lerp(a.pos, alpha) - camera).as_vec3();
         let rot = Quat::from_rotation_arc(Vec3::Z, a.dir.normalize_or(Vec3::Z));
         // Stuck arrows sit with the tip buried.
         let origin = if a.is_stuck() { rel - a.dir * 0.2 } else { rel };
@@ -459,13 +475,13 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, out: &mut Vec<EntityVertex>
 }
 
 /// Explosion smoke: grey cubes that swell, then shrink as they fade.
-pub fn build_puffs(puffs: &[Puff], camera: DVec3, out: &mut Vec<EntityVertex>) {
+pub fn build_puffs(puffs: &[Puff], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
     for (i, p) in puffs.iter().enumerate() {
         let t = p.age / p.life;
         let size = p.size * 16.0 * (t * 4.0).min(1.0) * (1.0 - t);
         let grey = (230.0 - 120.0 * t) as u8;
         let c = Cuboid { min: [-size / 2.0; 3], max: [size / 2.0; 3], color: [grey; 3], noise: 30 };
-        let rel = (p.pos - camera).as_vec3();
+        let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
         // Emissive while hot, so the flash reads at night too.
         let glow = ((1.0 - t * 3.0).max(0.0) * 255.0) as u8;
         push_cuboid(
@@ -535,12 +551,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn interpolated_models_leave_simulation_positions_unchanged() {
+        let mut mob = Mob::new(MobKind::Pig, DVec3::new(10.0, 64.0, 0.0), 0.0);
+        mob.pos.x += 2.0;
+        let mut halfway = Vec::new();
+        let mut current = Vec::new();
+        let camera = DVec3::new(0.0, 64.0, 0.0);
+        build(std::slice::from_ref(&mob), camera, Vec3::X, 100.0, 0.0, 0.5, &mut halfway);
+        build(std::slice::from_ref(&mob), camera, Vec3::X, 100.0, 0.0, 1.0, &mut current);
+        assert!(!current.is_empty());
+        assert_eq!(halfway.len(), current.len());
+        for (a, b) in halfway.iter().zip(&current) {
+            assert!((b.pos[0] - a.pos[0] - 1.0).abs() < 1e-5);
+            assert_eq!(a.pos[1..], b.pos[1..]);
+        }
+        assert_eq!(mob.pos, DVec3::new(12.0, 64.0, 0.0));
+        assert_eq!(mob.previous_pos, DVec3::new(10.0, 64.0, 0.0));
+    }
+
+    #[test]
     fn models_face_their_yaw_and_stand_on_the_ground() {
         for kind in MobKind::ALL {
             // Facing +X (yaw 0): the head is the part furthest along +X.
             let mob = Mob::new(kind, DVec3::new(10.0, 64.0, 0.0), 0.0);
             let mut out = Vec::new();
-            assert_eq!(build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 0.0, &mut out), 1);
+            assert_eq!(
+                build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 0.0, 1.0, &mut out),
+                1
+            );
             let (lo, hi) = out.iter().fold((Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)), |(lo, hi), v| {
                 let p = Vec3::from_array(v.pos);
                 (lo.min(p), hi.max(p))
@@ -552,7 +590,7 @@ mod tests {
             // Behind the camera: culled.
             out.clear();
             assert_eq!(
-                build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::NEG_X, 100.0, 0.0, &mut out),
+                build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::NEG_X, 100.0, 0.0, 1.0, &mut out),
                 0
             );
         }

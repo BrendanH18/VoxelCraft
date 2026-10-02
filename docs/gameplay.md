@@ -76,8 +76,10 @@ session.
   within 6 blocks decay a few seconds after a tree is felled. Grass spreads
   to lit dirt nearby and dies under blocks. Bone meal advances a crop 2-5
   stages, sometimes grows a sapling at once, and sprouts grass and flowers
-  around a grass block. Crops and saplings only grow in sunlight (torches
-  don't count yet)
+  around a grass block. Crops and saplings grow with open sky or block light
+  of at least 9, including torchlight under a roof. Crops sample their own
+  cell; saplings sample the cell above. Skylight still uses an open-sky
+  approximation.
 - Tall grass, ferns, dandelions, poppies and blue orchids (flowers grow in
   patches), dead bushes in deserts and badlands, sugar cane along the
   water, pumpkins on the plains and melons in jungles. Plants and torches are

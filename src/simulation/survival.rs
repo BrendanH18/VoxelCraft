@@ -124,7 +124,12 @@ impl Default for Hunger {
 }
 
 impl Hunger {
+    /// Restore saved hunger values within their limits and restart the regeneration timer.
+    /// Reset to fresh-player defaults if any saved value is non-finite.
     pub fn restore(food: f32, saturation: f32, exhaustion: f32) -> Self {
+        if !food.is_finite() || !saturation.is_finite() || !exhaustion.is_finite() {
+            return Self::default();
+        }
         let food = food.clamp(0.0, MAX_FOOD);
         Self {
             food,
@@ -134,6 +139,7 @@ impl Hunger {
         }
     }
 
+    /// Spend accumulated effort in four-point units, draining saturation before food.
     pub fn exhaust(&mut self, amount: f32) {
         self.exhaustion += amount;
         while self.exhaustion >= EXHAUSTION_PER_POINT {
@@ -151,11 +157,13 @@ impl Hunger {
         self.food < MAX_FOOD
     }
 
+    /// Add food and saturation, capping food at its maximum and saturation at current food.
     pub fn eat(&mut self, food: u8, saturation: f32) {
         self.food = (self.food + food as f32).min(MAX_FOOD);
         self.saturation = (self.saturation + saturation).min(self.food);
     }
 
+    /// Whether food exceeds the survival sprint threshold of six points.
     pub fn can_sprint(&self) -> bool {
         self.food > SPRINT_FOOD
     }
@@ -242,14 +250,17 @@ impl Vitals {
         v
     }
 
+    /// Whether a death cause has been recorded; damage and survival ticks respect this state.
     pub fn is_dead(&self) -> bool {
         self.death.is_some()
     }
 
+    /// Whether a living player has time remaining on their fire effect.
     pub fn burning(&self) -> bool {
         self.fire_left > 0.0 && !self.is_dead()
     }
 
+    /// Seconds since the hit that started the immunity window; stronger hits within it do not reset this.
     pub fn since_damage(&self) -> f32 {
         self.since_damage
     }
@@ -578,6 +589,33 @@ mod tests {
         }
         assert_eq!(v.hunger.food, 16.0);
         assert!(!Hunger::restore(6.0, 0.0, 0.0).can_sprint() && Hunger::restore(7.0, 0.0, 0.0).can_sprint());
+    }
+
+    #[test]
+    fn hunger_restore_rejects_non_finite_saved_values() {
+        for text in ["NaN", "inf", "-inf"] {
+            let invalid = text.parse::<f32>().unwrap();
+            for field in 0..3 {
+                let mut saved = [12.0, 3.0, 1.0];
+                saved[field] = invalid;
+                let restored = Hunger::restore(saved[0], saved[1], saved[2]);
+                assert_eq!(restored, Hunger::default(), "field {field} contained {text}");
+            }
+        }
+    }
+
+    #[test]
+    fn hunger_restore_preserves_finite_values_and_clamps_bounds() {
+        for (saved, expected) in [
+            ([12.0, 3.0, 1.0], [12.0, 3.0, 1.0]),
+            ([-1.0, -2.0, -3.0], [0.0, 0.0, 0.0]),
+            ([30.0, 40.0, 5.0], [MAX_FOOD, MAX_FOOD, EXHAUSTION_PER_POINT]),
+            ([6.0, 8.0, 0.5], [6.0, 6.0, 0.5]),
+        ] {
+            let restored = Hunger::restore(saved[0], saved[1], saved[2]);
+            assert_eq!([restored.food, restored.saturation, restored.exhaustion], expected);
+            assert_eq!(restored.timer, 0.0);
+        }
     }
 
     #[test]

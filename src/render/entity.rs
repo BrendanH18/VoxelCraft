@@ -1,24 +1,9 @@
 //! Entity pass: all mobs in one draw from a per-frame vertex buffer of
 //! camera-relative box-model triangles (built by `crate::entity::model`).
 
-use bytemuck::{Pod, Zeroable};
-
 use super::{DEPTH_FORMAT, Renderer};
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable, Debug)]
-pub struct EntityVertex {
-    /// Camera-relative position.
-    pub pos: [f32; 3],
-    /// Model-space texel coordinates on the face (drives the pixel noise).
-    pub uv: [f32; 2],
-    /// rgb, a: strength of the per-texel noise.
-    pub color: [u8; 4],
-    /// x: sky light, y: face shade, z: hurt tint, w: emissive (flames).
-    pub light: [u8; 4],
-    /// x: block light (torches); the rest is padding.
-    pub torch: [u8; 4],
-}
+pub use crate::entity::model::EntityVertex;
 
 pub(super) struct EntityPass {
     pipeline: wgpu::RenderPipeline,

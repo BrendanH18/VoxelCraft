@@ -852,8 +852,8 @@ impl Block {
             .or((name == "air").then_some(Block::AIR))
     }
 
-    /// How much light is lost passing through this block, on top of the
-    /// usual 1 per step. 15 fully blocks light.
+    /// Light opacity: propagation loses at least one level per step,
+    /// or this value if larger. 15 fully blocks light.
     #[inline(always)]
     pub fn light_opacity(self) -> u8 {
         LIGHT_OPACITY[self.0 as usize]
@@ -1254,7 +1254,7 @@ static LIGHT_OPACITY: [u8; 256] = {
             _ if matches!(i, 106..=135) => 15,
             RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
             _ if matches!(i, 10 | 98 | 99) => 0, // glass, beds
-            _ => 1,                              // leaves, water: dim light passing through
+            _ => 1,                              // leaves, water: attenuate skylight too
         };
         i += 1;
     }

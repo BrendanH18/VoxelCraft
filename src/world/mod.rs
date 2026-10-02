@@ -20,6 +20,7 @@ mod fire;
 mod fluid;
 pub mod furnace;
 mod growth;
+pub(crate) mod lighting;
 pub mod nether;
 pub mod noise;
 mod portal;
@@ -44,8 +45,8 @@ pub struct ChunkSlot {
     version: u32,
     meshed_version: Option<u32>,
     mesh_in_flight: bool,
-    /// Block light from the last mesh, for lighting entities.
-    block_light: Option<mesh::BlockLight>,
+    /// Authoritative block light; dark chunks allocate no light array.
+    block_light: Option<lighting::BlockLight>,
 }
 
 /// Per chunk-column state: skylight heightmap and how many of its chunks
@@ -72,7 +73,9 @@ pub struct World {
     load_cursor: usize,
     center: Option<IVec3>,
     render_distance: i32,
-    region: Box<Region>,
+    region: Option<Box<Region>>,
+    meshes_enabled: bool,
+    light_updates: lighting::LightUpdates,
     fluids: fluid::FluidState,
     fire: fire::FireState,
     falling: Vec<falling::FallingBlock>,
@@ -104,7 +107,26 @@ fn column_of(chunk: IVec3) -> IVec2 {
 }
 
 impl World {
+    /// Create a world that generates terrain and submits render meshes as `update` polls streaming.
+    /// `saved` contains edited chunks; `render_distance` is measured in 32-block chunks.
     pub fn new(generator: Arc<Generator>, saved: FxHashMap<IVec3, Arc<ChunkData>>, render_distance: i32) -> Self {
+        Self::with_meshing(generator, saved, render_distance, true)
+    }
+
+    /// Stream and simulate terrain without submitting render-mesh jobs or
+    /// allocating meshing scratch space. Gameplay light is maintained by
+    /// the same authority as a graphical world.
+    pub fn new_headless(generator: Arc<Generator>, saved: FxHashMap<IVec3, Arc<ChunkData>>, distance: i32) -> Self {
+        Self::with_meshing(generator, saved, distance, false)
+    }
+
+    /// Initialize shared world state and workers, selecting whether streaming also builds render meshes.
+    fn with_meshing(
+        generator: Arc<Generator>,
+        saved: FxHashMap<IVec3, Arc<ChunkData>>,
+        render_distance: i32,
+        meshes_enabled: bool,
+    ) -> Self {
         let rng = generator.seed ^ 0x6772_6f77;
         Self {
             workers: Workers::new(generator.clone()),
@@ -119,7 +141,9 @@ impl World {
             load_cursor: 0,
             center: None,
             render_distance,
-            region: Box::default(),
+            region: None,
+            meshes_enabled,
+            light_updates: Default::default(),
             fluids: Default::default(),
             fire: Default::default(),
             falling: Vec::new(),
@@ -154,7 +178,11 @@ impl World {
 
     /// No generation, meshing or water flow left to do.
     pub fn is_idle(&self) -> bool {
-        self.pending_jobs() == 0 && self.dirty.is_empty() && self.active_fluids() == 0 && self.falling.is_empty()
+        self.pending_jobs() == 0
+            && self.dirty.is_empty()
+            && self.active_fluids() == 0
+            && self.falling.is_empty()
+            && self.light_updates.is_empty()
     }
 
     pub fn pending_jobs(&self) -> usize {
@@ -179,7 +207,7 @@ impl World {
 
     /// Chunks within this radius are meshed and drawn.
     fn in_mesh_range(&self, pos: IVec3) -> bool {
-        self.horizontal_dist2(pos) <= self.render_distance * self.render_distance
+        self.meshes_enabled && self.horizontal_dist2(pos) <= self.render_distance * self.render_distance
     }
 
     /// Loaded radius is one ring larger than the mesh radius so every meshed
@@ -263,6 +291,7 @@ impl World {
             self.settle(p);
             self.break_unsupported_portals(p);
         }
+        self.update_block_light();
         changed
     }
 
@@ -276,6 +305,8 @@ impl World {
         let l = local_of(p);
         let Some(slot) = self.chunks.get_mut(&cpos) else { return false };
         let old = slot.data.get(l.x as usize, l.y as usize, l.z as usize);
+        let old_light =
+            slot.block_light.as_ref().map_or(0, |light| light.get(l.x as usize, l.y as usize, l.z as usize));
         Arc::make_mut(&mut slot.data).set(l.x as usize, l.y as usize, l.z as usize, block);
         slot.modified = true;
         // Fire ages are saved state, but all ages have identical geometry
@@ -283,6 +314,7 @@ impl World {
         if old.is_fire() && block.is_fire() {
             return true;
         }
+        self.light_block_changed(p, old, block, old_light);
         self.track_fire(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
@@ -293,6 +325,9 @@ impl World {
 
         // Keep the column heightmap current.
         let (old_h, new_h) = self.update_height(p, block);
+        if !self.meshes_enabled {
+            return true;
+        }
 
         // Light reaches 15 blocks, plus 1 for the face-adjacent sample cell;
         // a heightmap change also re-exposes everything between old and new.
@@ -400,16 +435,20 @@ impl World {
         Box::new(MeshInput { neighbors, heights, base_y: pos.y * CHUNK_SIZE_I, foliage })
     }
 
+    /// Build a ready chunk's mesh immediately and queue it for upload; defer unready chunks.
+    /// Headless worlds skip both paths.
     fn remesh_now(&mut self, pos: IVec3) {
+        if !self.meshes_enabled {
+            return;
+        }
         if !self.in_mesh_range(pos) || !self.ready_to_mesh(pos) {
             self.dirty.insert(pos);
             return;
         }
         let input = self.gather(pos);
-        let mut mesh = mesh::build(&input, &mut self.region);
+        let mesh = mesh::build(&input, self.region.get_or_insert_with(Box::default));
         let slot = self.chunks.get_mut(&pos).unwrap();
         slot.meshed_version = Some(slot.version);
-        slot.block_light = mesh.block_light.take();
         self.dirty.remove(&pos);
         self.mesh_uploads.push((pos, mesh));
     }
@@ -470,6 +509,8 @@ impl World {
         self.load_cursor = 0;
     }
 
+    /// Install chunk data, seed gameplay light and update column state.
+    /// Queue render work when in mesh range; saved chunks also restore scheduled fire.
     fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         if modified {
             self.load_fires(pos, &data);
@@ -492,13 +533,17 @@ impl World {
             pos,
             ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false, block_light: None },
         );
+        self.load_block_light(pos);
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
     }
 
+    /// Unload a present chunk, retaining edited data and queuing removal of its outgoing light.
+    /// Only graphical worlds emit a renderer removal message.
     fn remove_chunk(&mut self, pos: IVec3) {
         let slot = self.chunks.remove(&pos).unwrap();
+        self.unload_block_light(pos, slot.block_light.as_ref());
         if slot.modified {
             self.saved.insert(pos, slot.data);
         }
@@ -509,9 +554,13 @@ impl World {
             }
         }
         self.dirty.remove(&pos);
-        self.mesh_removals.push(pos);
+        if self.meshes_enabled {
+            self.mesh_removals.push(pos);
+        }
     }
 
+    /// Poll terrain/mesh workers and stream chunks around the player without advancing game time.
+    /// Resolve gameplay light before scheduling meshes; drain render messages separately.
     pub fn update(&mut self, player: DVec3) {
         let center = chunk_of(player.floor().as_ivec3());
         if self.center != Some(center) {
@@ -534,14 +583,13 @@ impl World {
                         col.foliage = Some(foliage);
                     }
                 }
-                JobResult::Meshed { pos, version, mut mesh } => {
+                JobResult::Meshed { pos, version, mesh } => {
                     self.mesh_in_flight -= 1;
                     let in_range = self.in_mesh_range(pos);
                     let Some(slot) = self.chunks.get_mut(&pos) else { continue };
                     slot.mesh_in_flight = false;
                     if slot.version == version {
                         slot.meshed_version = Some(version);
-                        slot.block_light = mesh.block_light.take();
                         self.mesh_uploads.push((pos, mesh));
                     } else if slot.meshed_version != Some(slot.version) && in_range {
                         self.dirty.insert(pos);
@@ -565,6 +613,8 @@ impl World {
             }
         }
 
+        self.update_block_light();
+
         // Mesh the nearest ready chunks.
         if !self.dirty.is_empty() && self.mesh_in_flight < cap {
             let mut candidates: Vec<(i32, IVec3)> = self.dirty.iter().map(|&p| (self.priority(p), p)).collect();
@@ -584,7 +634,6 @@ impl World {
                 if self.trivially_empty(pos) {
                     let slot = self.chunks.get_mut(&pos).unwrap();
                     slot.meshed_version = Some(slot.version);
-                    slot.block_light = None;
                     self.mesh_uploads.push((pos, MeshData::default()));
                     continue;
                 }
@@ -611,16 +660,6 @@ impl World {
     /// face normal it was entered through.
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
         self.raycast_by(origin, dir, max_dist, Block::is_targetable)
-    }
-
-    /// Block light (torches, fire, lava, glowstone) at `p` as of its chunk's last
-    /// mesh: 0 where unknown.
-    pub fn block_light(&self, p: IVec3) -> u8 {
-        let l = local_of(p);
-        self.chunks
-            .get(&chunk_of(p))
-            .and_then(|slot| slot.block_light.as_ref())
-            .map_or(0, |light| light.get(l.x as usize, l.y as usize, l.z as usize))
     }
 
     /// The selection outline of the block at `p`: min and max corners

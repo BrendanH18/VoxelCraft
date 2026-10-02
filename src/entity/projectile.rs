@@ -22,6 +22,8 @@ const STEP: f64 = 0.2;
 
 pub struct Arrow {
     pub pos: DVec3,
+    /// Position at the start of the last simulation step, for rendering.
+    pub previous_pos: DVec3,
     vel: DVec3,
     /// Direction it points (kept once stuck).
     pub dir: Vec3,
@@ -46,6 +48,7 @@ impl Arrow {
         let vel = (aim.normalize_or(DVec3::X) + spread * 0.03) * SPEED;
         Self {
             pos: from,
+            previous_pos: from,
             vel,
             dir: vel.normalize().as_vec3(),
             age: 0.0,
@@ -63,6 +66,7 @@ impl Arrow {
         let vel = dir * BOW_SPEED * power as f64;
         Self {
             pos: eye + dir * 0.3,
+            previous_pos: eye + dir * 0.3,
             vel,
             dir: dir.as_vec3(),
             age: 0.0,

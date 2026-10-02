@@ -37,6 +37,8 @@ pub struct Workers {
 }
 
 impl Workers {
+    /// Start terrain/mesh workers, leaving one available core for the main thread when possible.
+    /// Each worker allocates meshing scratch space only when it receives a mesh job.
     pub fn new(generator: Arc<Generator>) -> Self {
         let (job_tx, job_rx) = unbounded::<Job>();
         let (res_tx, res_rx) = unbounded::<JobResult>();
@@ -49,14 +51,16 @@ impl Workers {
             thread::Builder::new()
                 .name(format!("worker-{i}"))
                 .spawn(move || {
-                    let mut region = Region::default();
+                    let mut region = None;
                     while let Ok(job) = job_rx.recv() {
                         let result = match job {
                             Job::Generate(pos) => JobResult::Generated(pos, generator.generate(pos)),
                             Job::Foliage(col) => JobResult::Foliage(col, generator.foliage(col.x, col.y)),
-                            Job::Mesh { pos, version, input } => {
-                                JobResult::Meshed { pos, version, mesh: mesh::build(&input, &mut region) }
-                            }
+                            Job::Mesh { pos, version, input } => JobResult::Meshed {
+                                pos,
+                                version,
+                                mesh: mesh::build(&input, region.get_or_insert_with(Region::default)),
+                            },
                         };
                         if res_tx.send(result).is_err() {
                             break;

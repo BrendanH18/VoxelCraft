@@ -143,11 +143,17 @@ impl Game {
             self.toggle_inventory();
         }
         self.menu = Some(Screen::Pause);
+        self.clock.advance(std::time::Duration::ZERO, true);
+        self.previous_eye = self.player.eye();
+        self.mobs.entities.snapshot_positions();
+        self.world.snapshot_falling_positions();
         self.menu_drag = None;
         self.set_grab(false);
         self.keys.clear();
         self.left_held = false;
         self.right_held = false;
+        self.jump_pressed = false;
+        self.mine_pressed = false;
         self.actions.reset();
         self.release_attack();
     }
@@ -161,6 +167,9 @@ impl Game {
             }
             Some(Screen::Pause) => {
                 self.menu = None;
+                // A hidden/minimized window may not have redrawn while
+                // paused. Do not charge that elapsed wall time on resume.
+                self.last_frame = std::time::Instant::now();
                 self.set_grab(true);
             }
             None => {}

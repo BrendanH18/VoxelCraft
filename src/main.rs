@@ -3,18 +3,10 @@
 mod app;
 mod audio;
 mod bench;
-mod crafting;
 mod data;
-mod entity;
-mod inventory;
-mod item;
-mod mesh;
-mod mining;
-mod physics;
-mod player;
 mod render;
-mod workers;
-mod world;
+
+use voxelcraft::{crafting, entity, inventory, item, mesh, mining, physics, player, simulation, world};
 
 use winit::event_loop::{ControlFlow, EventLoop};
 

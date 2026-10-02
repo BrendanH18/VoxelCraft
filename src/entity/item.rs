@@ -26,6 +26,8 @@ pub struct ItemEntity {
     pub stack: Stack,
     /// Bottom centre.
     pub pos: DVec3,
+    /// Position at the start of the last simulation step, for rendering.
+    pub previous_pos: DVec3,
     pub vel: DVec3,
     /// Seconds since dropped (only counts in loaded chunks).
     pub age: f32,
@@ -36,8 +38,17 @@ pub struct ItemEntity {
 }
 
 impl ItemEntity {
+    /// Create a fresh dropped stack with pickup delay in seconds and coincident interpolation positions.
     pub fn new(stack: Stack, pos: DVec3, vel: DVec3, pickup_delay: f32, rng: &mut Rng) -> Self {
-        Self { stack, pos, vel, age: 0.0, pickup_delay, phase: rng.range(0.0, std::f32::consts::TAU) }
+        Self {
+            stack,
+            pos,
+            previous_pos: pos,
+            vel,
+            age: 0.0,
+            pickup_delay,
+            phase: rng.range(0.0, std::f32::consts::TAU),
+        }
     }
 
     /// Steps physics; returns `false` when the item is gone (burnt or

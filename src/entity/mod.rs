@@ -23,10 +23,10 @@ use std::f32::consts::TAU;
 use glam::{DVec3, IVec3, Vec3};
 
 use crate::physics::{self, BlockSource};
-use crate::render::entity::EntityVertex;
 use crate::world::World;
 use crate::world::block::Block;
 use crate::world::noise::splitmix64;
+use model::EntityVertex;
 
 pub use item::ItemEntity;
 pub use mob::{Mob, MobKind, sky_light};
@@ -107,6 +107,7 @@ pub fn explosion_damage(power: f32, dist: f64) -> Option<(f32, f32)> {
 /// One cube of explosion smoke.
 pub struct Puff {
     pub pos: DVec3,
+    pub previous_pos: DVec3,
     vel: DVec3,
     pub age: f32,
     pub life: f32,
@@ -227,7 +228,10 @@ impl Entities {
         self.mobs.push(Mob::new(kind, pos, yaw));
     }
 
+    /// Snapshot positions and advance entity simulation by `dt` game seconds.
+    /// Return events for the caller to apply world edits, damage, loot and sounds.
     pub fn update<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, ctx: &Ctx) -> Vec<EntityEvent> {
+        self.snapshot_positions();
         let mut events = Vec::new();
         if ctx.spawning {
             self.spawn_timer -= dt as f32;
@@ -306,6 +310,7 @@ impl Entities {
             );
             self.puffs.push(Puff {
                 pos: center + dir * 0.6,
+                previous_pos: center + dir * 0.6,
                 vel: dir * self.rng.range(3.0, 8.0) as f64,
                 age: 0.0,
                 life: self.rng.range(0.6, 1.3),
@@ -419,12 +424,31 @@ impl Entities {
         }
     }
 
+    /// Capture positions before a game tick, or snap them while paused.
+    pub fn snapshot_positions(&mut self) {
+        for m in &mut self.mobs {
+            m.previous_pos = m.pos;
+        }
+        for a in &mut self.arrows {
+            a.previous_pos = a.pos;
+        }
+        for item in &mut self.items {
+            item.previous_pos = item.pos;
+        }
+        for t in &mut self.tnt {
+            t.previous_pos = t.pos;
+        }
+        for p in &mut self.puffs {
+            p.previous_pos = p.pos;
+        }
+    }
+
     /// Camera-relative triangles for every visible mob.
-    pub fn mesh(&mut self, camera: DVec3, forward: Vec3, max_dist: f32, time: f32) -> &[EntityVertex] {
+    pub fn mesh(&mut self, camera: DVec3, forward: Vec3, max_dist: f32, time: f32, alpha: f64) -> &[EntityVertex] {
         self.verts.clear();
-        self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, &mut self.verts);
-        model::build_arrows(&self.arrows, camera, &mut self.verts);
-        model::build_puffs(&self.puffs, camera, &mut self.verts);
+        self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
+        model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
+        model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
         &self.verts
     }
 
