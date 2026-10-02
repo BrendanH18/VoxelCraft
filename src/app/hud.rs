@@ -602,6 +602,7 @@ impl Game {
         ui.text(x, y, &text, WHITE);
     }
 
+    /// Draw F3 world/player statistics, including completed gameplay ticks and offline pause state.
     fn debug_ui(&self, ui: &mut Ui) {
         let p = self.player.pos;
         let b = p.floor().as_ivec3();

@@ -261,6 +261,7 @@ pub struct Mob {
 }
 
 impl Mob {
+    /// Create a healthy, idle mob at `pos` with `yaw` in radians; snap its initial render position.
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,

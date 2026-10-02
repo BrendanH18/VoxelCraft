@@ -37,6 +37,7 @@ pub enum Precipitation {
 }
 
 impl Weather {
+    /// Start a clear spell using a deterministic weather RNG derived from the world seed.
     pub fn new(seed: u64) -> Self {
         let mut w = Weather { raining: false, timer: 0.0, strength: 0.0, rng: seed ^ 0x3EA7_4E12 };
         w.timer = w.spell(CLEAR);
@@ -49,6 +50,7 @@ impl Weather {
         range.0 + (range.1 - range.0) * r
     }
 
+    /// Advance the spell timer and rain fade by `dt` game seconds.
     pub fn update(&mut self, dt: f64) {
         self.timer -= dt;
         if self.timer <= 0.0 {
@@ -77,6 +79,8 @@ impl Weather {
         format!("{},{:.0}", self.raining as u8, self.timer)
     }
 
+    /// Restore rain and remaining seconds from a level-file entry, snapping the rain fade.
+    /// Leave state unchanged if the entry cannot be parsed.
     pub fn deserialize(&mut self, text: &str) {
         let mut parts = text.split(',');
         if let (Some(r), Some(t)) = (parts.next(), parts.next().and_then(|t| t.parse::<f64>().ok())) {

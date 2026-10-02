@@ -24,6 +24,7 @@ pub struct PrimedTnt {
 }
 
 impl PrimedTnt {
+    /// Create a moving charge with a fuse in seconds and coincident interpolation positions.
     pub fn new(pos: DVec3, vel: DVec3, fuse: f32) -> Self {
         Self { pos, previous_pos: pos, vel, fuse }
     }

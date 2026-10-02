@@ -17,15 +17,18 @@ pub(crate) struct BlockLight {
 }
 
 impl BlockLight {
+    /// Allocate a dark packed array; the owning chunk drops it again when no cells remain lit.
     fn new() -> Self {
         Self { cells: Box::new([0; CHUNK_VOLUME / 2]), lit: 0 }
     }
 
+    /// Read a light level in 0..=15 at chunk-local coordinates in 0..32.
     pub(crate) fn get(&self, x: usize, y: usize, z: usize) -> u8 {
         let i = index(x, y, z);
         self.cells[i / 2] >> (i % 2 * 4) & 15
     }
 
+    /// Write a light level in 0..=15 at a chunk-linear index, maintaining the count of lit cells.
     fn set(&mut self, i: usize, level: u8) {
         let shift = i % 2 * 4;
         let old = self.cells[i / 2] >> shift & 15;
@@ -33,12 +36,14 @@ impl BlockLight {
         self.cells[i / 2] = (self.cells[i / 2] & !(15 << shift)) | level << shift;
     }
 
+    /// Construct packed mesh-reference light for tests, counting its nonzero cells.
     #[cfg(test)]
     pub(crate) fn from_nibbles(cells: Box<[u8; CHUNK_VOLUME / 2]>) -> Self {
         let lit = cells.iter().map(|v| usize::from(v & 15 != 0) + usize::from(v >> 4 != 0)).sum();
         Self { cells, lit }
     }
 
+    /// Initialize light from the chunk's own emitters, allocating nothing for source-free chunks.
     fn emitters(data: &ChunkData) -> Option<Self> {
         if let Some(b) = data.uniform() {
             let e = b.emission();
@@ -64,6 +69,7 @@ pub(super) struct LightUpdates {
 }
 
 impl LightUpdates {
+    /// Whether all pending light removals and increases have been resolved.
     pub fn is_empty(&self) -> bool {
         self.remove.is_empty() && self.increase.is_empty()
     }
@@ -77,6 +83,7 @@ impl World {
         self.chunks.get(&chunk_of(p)).map(|s| s.data.get(l.x as usize, l.y as usize, l.z as usize))
     }
 
+    /// Read stored light without borrowing from adjacent cells; unloaded or unlit cells return zero.
     fn raw_block_light(&self, p: IVec3) -> u8 {
         let l = local_of(p);
         self.chunks
@@ -85,6 +92,7 @@ impl World {
             .map_or(0, |light| light.get(l.x as usize, l.y as usize, l.z as usize))
     }
 
+    /// Update a loaded cell, allocating on first light and releasing storage when its chunk becomes dark.
     fn set_block_light(&mut self, p: IVec3, level: u8) {
         let Some(slot) = self.chunks.get_mut(&chunk_of(p)) else { return };
         if level == 0 && slot.block_light.is_none() {
@@ -113,6 +121,8 @@ impl World {
         }
     }
 
+    /// Queue removal and relighting after an edit changes emission or opacity.
+    /// `old_level` is the cell's stored light before the edit.
     pub(super) fn light_block_changed(&mut self, p: IVec3, old: Block, new: Block, old_level: u8) {
         if old.emission() == new.emission() && old.light_opacity() == new.light_opacity() {
             return;
@@ -130,6 +140,7 @@ impl World {
         }
     }
 
+    /// Seed a newly installed chunk's sources and queue incoming light from loaded neighbours.
     pub(super) fn load_block_light(&mut self, pos: IVec3) {
         let data = &self.chunks[&pos].data;
         let base = pos * CHUNK_SIZE_I;
@@ -185,6 +196,7 @@ impl World {
         }
     }
 
+    /// Queue removal at an unloaded chunk's lit borders so surviving chunks can relight.
     pub(super) fn unload_block_light(&mut self, pos: IVec3, light: Option<&BlockLight>) {
         let Some(light) = light else { return };
         let base = pos * CHUNK_SIZE_I;

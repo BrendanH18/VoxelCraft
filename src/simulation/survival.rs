@@ -124,6 +124,7 @@ impl Default for Hunger {
 }
 
 impl Hunger {
+    /// Restore saved hunger values within their limits and restart the regeneration timer.
     pub fn restore(food: f32, saturation: f32, exhaustion: f32) -> Self {
         let food = food.clamp(0.0, MAX_FOOD);
         Self {
@@ -134,6 +135,7 @@ impl Hunger {
         }
     }
 
+    /// Spend accumulated effort in four-point units, draining saturation before food.
     pub fn exhaust(&mut self, amount: f32) {
         self.exhaustion += amount;
         while self.exhaustion >= EXHAUSTION_PER_POINT {
@@ -151,11 +153,13 @@ impl Hunger {
         self.food < MAX_FOOD
     }
 
+    /// Add food and saturation, capping food at its maximum and saturation at current food.
     pub fn eat(&mut self, food: u8, saturation: f32) {
         self.food = (self.food + food as f32).min(MAX_FOOD);
         self.saturation = (self.saturation + saturation).min(self.food);
     }
 
+    /// Whether food exceeds the survival sprint threshold of six points.
     pub fn can_sprint(&self) -> bool {
         self.food > SPRINT_FOOD
     }
@@ -242,14 +246,17 @@ impl Vitals {
         v
     }
 
+    /// Whether a death cause has been recorded; damage and survival ticks respect this state.
     pub fn is_dead(&self) -> bool {
         self.death.is_some()
     }
 
+    /// Whether a living player has time remaining on their fire effect.
     pub fn burning(&self) -> bool {
         self.fire_left > 0.0 && !self.is_dead()
     }
 
+    /// Seconds since the hit that started the immunity window; stronger hits within it do not reset this.
     pub fn since_damage(&self) -> f32 {
         self.since_damage
     }

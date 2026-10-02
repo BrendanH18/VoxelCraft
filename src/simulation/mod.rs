@@ -41,6 +41,7 @@ impl FixedClock {
         ticks
     }
 
+    /// Number of steps returned by `advance` since creation; paused time does not count.
     pub fn ticks(&self) -> u64 {
         self.ticks
     }
@@ -85,6 +86,7 @@ pub fn tick_player(
     PlayerStep { moved, hurts: vitals.tick(TICK_SECONDS as f32, &env, creative) }
 }
 
+/// Collect survival inputs after movement; `moved` is horizontal distance for this step.
 pub fn player_environment(player: &Player, world: &World, input: MoveInput, moved: f64) -> Env {
     Env {
         y: player.pos.y,

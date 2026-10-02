@@ -12,6 +12,7 @@ use voxelcraft::world::{
     terrain::{Dimension, Generator},
 };
 
+/// Stream the selected dimension and run 200 fixed ticks without client devices or meshes.
 fn main() {
     let dimension = match std::env::args().nth(1).as_deref() {
         None => Dimension::Overworld,

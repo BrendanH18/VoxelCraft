@@ -38,6 +38,7 @@ pub struct ItemEntity {
 }
 
 impl ItemEntity {
+    /// Create a fresh dropped stack with pickup delay in seconds and coincident interpolation positions.
     pub fn new(stack: Stack, pos: DVec3, vel: DVec3, pickup_delay: f32, rng: &mut Rng) -> Self {
         Self {
             stack,

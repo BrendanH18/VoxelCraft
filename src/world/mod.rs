@@ -107,6 +107,8 @@ fn column_of(chunk: IVec3) -> IVec2 {
 }
 
 impl World {
+    /// Create a world that generates terrain and submits render meshes as `update` polls streaming.
+    /// `saved` contains edited chunks; `render_distance` is measured in 32-block chunks.
     pub fn new(generator: Arc<Generator>, saved: FxHashMap<IVec3, Arc<ChunkData>>, render_distance: i32) -> Self {
         Self::with_meshing(generator, saved, render_distance, true)
     }
@@ -118,6 +120,7 @@ impl World {
         Self::with_meshing(generator, saved, distance, false)
     }
 
+    /// Initialize shared world state and workers, selecting whether streaming also builds render meshes.
     fn with_meshing(
         generator: Arc<Generator>,
         saved: FxHashMap<IVec3, Arc<ChunkData>>,
@@ -432,6 +435,8 @@ impl World {
         Box::new(MeshInput { neighbors, heights, base_y: pos.y * CHUNK_SIZE_I, foliage })
     }
 
+    /// Build a ready chunk's mesh immediately and queue it for upload; defer unready chunks.
+    /// Headless worlds skip both paths.
     fn remesh_now(&mut self, pos: IVec3) {
         if !self.meshes_enabled {
             return;
@@ -504,6 +509,8 @@ impl World {
         self.load_cursor = 0;
     }
 
+    /// Install chunk data, seed gameplay light and update column state.
+    /// Queue render work when in mesh range; saved chunks also restore scheduled fire.
     fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         if modified {
             self.load_fires(pos, &data);
@@ -532,6 +539,8 @@ impl World {
         }
     }
 
+    /// Unload a present chunk, retaining edited data and queuing removal of its outgoing light.
+    /// Only graphical worlds emit a renderer removal message.
     fn remove_chunk(&mut self, pos: IVec3) {
         let slot = self.chunks.remove(&pos).unwrap();
         self.unload_block_light(pos, slot.block_light.as_ref());
@@ -550,6 +559,8 @@ impl World {
         }
     }
 
+    /// Poll terrain/mesh workers and stream chunks around the player without advancing game time.
+    /// Resolve gameplay light before scheduling meshes; drain render messages separately.
     pub fn update(&mut self, player: DVec3) {
         let center = chunk_of(player.floor().as_ivec3());
         if self.center != Some(center) {

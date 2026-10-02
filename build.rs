@@ -1,3 +1,4 @@
+/// Embed Windows icon/version resources only when building the desktop client.
 fn main() {
     println!("cargo:rerun-if-changed=packaging/icons/VoxelCraft.ico");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")

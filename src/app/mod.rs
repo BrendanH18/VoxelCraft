@@ -286,6 +286,7 @@ impl ApplicationHandler for App {
         }
     }
 
+    /// Route window events to the active title/game screen and handle exit requests.
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         if let Some(title) = self.title.as_mut() {
             if matches!(event, WindowEvent::CloseRequested) {
@@ -734,6 +735,7 @@ impl Game {
         }
     }
 
+    /// Dispatch a key press through menu/death guards and retain gameplay taps for the next tick.
     fn on_key(&mut self, code: KeyCode) {
         if self.menu.is_some() {
             if code == KeyCode::Escape {
@@ -909,6 +911,7 @@ impl Game {
         self.show_popup(&format!("{} mode", capitalize(mode.name())));
     }
 
+    /// Open or close the inventory, clearing queued input on entry and returning crafting stacks on exit.
     fn toggle_inventory(&mut self) {
         self.inventory_open = !self.inventory_open;
         if self.inventory_open {
@@ -1419,6 +1422,7 @@ impl Game {
         self.last_save = Instant::now();
     }
 
+    /// Sample held keys and a queued jump tap for a gameplay tick; return neutral input while control is blocked.
     fn movement_input(&self, arriving: bool) -> MoveInput {
         let held = |k: KeyCode| self.keys.contains(&k);
         let axis = |pos: KeyCode, neg: KeyCode| held(pos) as i32 as f64 - held(neg) as i32 as f64;
@@ -1517,6 +1521,8 @@ impl Game {
         self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
     }
 
+    /// Poll streaming, run due fixed gameplay ticks and render interpolated positions.
+    /// Offline pause keeps streaming active and snaps interpolation to the current state.
     fn frame(&mut self) {
         let now = Instant::now();
         let paused = self.menu.is_some();

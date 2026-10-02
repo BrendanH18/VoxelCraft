@@ -228,6 +228,8 @@ impl Entities {
         self.mobs.push(Mob::new(kind, pos, yaw));
     }
 
+    /// Snapshot positions and advance entity simulation by `dt` game seconds.
+    /// Return events for the caller to apply world edits, damage, loot and sounds.
     pub fn update<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, ctx: &Ctx) -> Vec<EntityEvent> {
         self.snapshot_positions();
         let mut events = Vec::new();

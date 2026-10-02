@@ -37,6 +37,8 @@ pub struct Workers {
 }
 
 impl Workers {
+    /// Start terrain/mesh workers, leaving one available core for the main thread when possible.
+    /// Each worker allocates meshing scratch space only when it receives a mesh job.
     pub fn new(generator: Arc<Generator>) -> Self {
         let (job_tx, job_rx) = unbounded::<Job>();
         let (res_tx, res_rx) = unbounded::<JobResult>();
