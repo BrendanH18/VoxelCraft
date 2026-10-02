@@ -20,8 +20,8 @@ struct VsOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) @interpolate(flat) layer: u32,
-    // x: sky light, y: face shade
-    @location(2) light: vec2<f32>,
+    // x: sky light, y: face shade, z: torch light
+    @location(2) light: vec3<f32>,
     @location(3) dist: f32,
 };
 
@@ -30,7 +30,7 @@ fn vs_main(
     @location(0) pos: vec3<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) layer: u32,
-    @location(3) light: vec2<f32>,
+    @location(3) light: vec3<f32>,
 ) -> VsOut {
     var out: VsOut;
     out.clip = g.view_proj * vec4<f32>(pos, 1.0);
@@ -47,8 +47,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if tex.a < 0.5 {
         discard;
     }
-    let l = in.light.x / (4.0 - 3.0 * in.light.x);
-    let lit = (l * g.params.z * 0.96 + 0.04) * in.light.y;
+    let l = in.light.xz / (4.0 - 3.0 * in.light.xz);
+    let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
+    let lit = (max(vec3<f32>(l.x * g.params.z), torch) * 0.96 + 0.04) * in.light.y;
     let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
     let c = mix(tex.rgb * lit, g.fog_color.rgb, f * f * (3.0 - 2.0 * f));
     return vec4<f32>(c, 1.0);

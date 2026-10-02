@@ -99,6 +99,21 @@ pub struct MeshData {
     pub quads: Vec<[u32; 3]>,
     /// Quad count per pass and face group (in [`FACE_ORDER`]).
     pub face_quads: [[u32; 6]; PASSES],
+    /// The chunk's block light (torches, lava), if any reaches it: for
+    /// lighting entities. See [`BlockLight`].
+    pub block_light: Option<BlockLight>,
+}
+
+/// Block light of every cell of a chunk, two cells per byte.
+#[derive(Clone, Debug)]
+pub struct BlockLight(Box<[u8; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 2]>);
+
+impl BlockLight {
+    /// Light level (0..=15) at chunk-local `(x, y, z)`.
+    pub fn get(&self, x: usize, y: usize, z: usize) -> u8 {
+        let i = x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+        self.0[i / 2] >> (i % 2 * 4) & 15
+    }
 }
 
 impl MeshData {
@@ -175,6 +190,24 @@ impl Region {
                 }
             }
         }
+    }
+
+    /// The centre chunk's block light, if any of it is lit.
+    fn centre_block_light(&self) -> Option<BlockLight> {
+        let mut out = Box::new([0u8; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 2]);
+        let mut any = 0;
+        for y in 0..CHUNK_SIZE {
+            for z in 0..CHUNK_SIZE {
+                let row = ridx(MARGIN, y + MARGIN, z + MARGIN);
+                let src = &self.block_light[row..row + CHUNK_SIZE];
+                let dst = (z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE) / 2;
+                for (o, pair) in out[dst..dst + CHUNK_SIZE / 2].iter_mut().zip(src.chunks_exact(2)) {
+                    *o = pair[0] | pair[1] << 4;
+                    any |= *o;
+                }
+            }
+        }
+        (any != 0).then_some(BlockLight(out))
     }
 
     /// Breadth-first light propagation from everything already in the queue.
@@ -378,7 +411,9 @@ const DROP_SHIFT: u64 = 8;
 pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
     region.fill(&input.neighbors, input.base_y);
     region.light(&input.heights, input.base_y);
-    mesh_region(region, &input.foliage)
+    let mut mesh = mesh_region(region, &input.foliage);
+    mesh.block_light = region.centre_block_light();
+    mesh
 }
 
 /// Greedy-meshes the centre chunk of a lit region.
@@ -587,7 +622,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
     face_start[CROSS] = [0, cross.len(), cross.len(), cross.len(), cross.len(), cross.len(), 0];
 
     // Concatenate the passes, reordering face groups into FACE_ORDER.
-    let mut mesh = MeshData { quads: Vec::with_capacity(out.iter().map(Vec::len).sum()), face_quads: [[0; 6]; PASSES] };
+    let mut mesh = MeshData { quads: Vec::with_capacity(out.iter().map(Vec::len).sum()), ..Default::default() };
     for pass in 0..PASSES {
         face_start[pass][6] = out[pass].len();
         for (group, &face) in FACE_ORDER[pass].iter().enumerate() {
@@ -685,7 +720,7 @@ mod tests {
             let start: u32 = self.face_quads[..pass].iter().flatten().sum();
             let n = self.pass_quads(pass);
             let quads = self.quads[start as usize..(start + n) as usize].to_vec();
-            MeshData { quads, face_quads: Default::default() }
+            MeshData { quads, ..Default::default() }
         }
     }
 
@@ -965,5 +1000,16 @@ mod tests {
         assert!(floor < 15, "floor sky {floor}");
         let roof = all_corners(&m).filter(|c| c.face == 2 && c.pos[1] == 8.5).map(|c| c.sky).min().unwrap();
         assert_eq!(roof, 15);
+    }
+
+    #[test]
+    fn meshes_hand_back_block_light_for_entities() {
+        assert!(mesh_blocks(&[([5, 5, 5], Block::STONE)]).block_light.is_none());
+        let m = mesh_blocks(&[([5, 5, 5], Block::TORCH)]);
+        let light = m.block_light.expect("a torch lights its chunk");
+        assert_eq!(light.get(5, 5, 5), 14);
+        assert_eq!(light.get(6, 5, 5), 13);
+        assert_eq!(light.get(5, 8, 7), 9);
+        assert_eq!(light.get(30, 30, 30), 0);
     }
 }

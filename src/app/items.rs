@@ -128,6 +128,7 @@ impl Game {
             let spin = item.age + item.phase;
             let bob = 0.1 + 0.07 * (item.age * 2.0 + item.phase).sin() as f64;
             let sky_light = crate::entity::sky_light(&self.world, item.pos + DVec3::Y * 0.25);
+            let block_light = self.torch_light(item.pos + DVec3::Y * 0.25);
             let copies = match item.stack.count {
                 1 => 1,
                 2..=16 => 2,
@@ -144,6 +145,7 @@ impl Game {
                     size: size as f32,
                     block: block.unwrap_or(Block::AIR),
                     sky_light,
+                    block_light,
                     yaw: spin,
                     icon,
                 });

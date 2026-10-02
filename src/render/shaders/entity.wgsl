@@ -22,6 +22,7 @@ struct VsOut {
     // x: sky light, y: face shade, z: hurt, w: emissive
     @location(2) light: vec4<f32>,
     @location(3) dist: f32,
+    @location(4) torch: f32,
 };
 
 @vertex
@@ -30,8 +31,10 @@ fn vs_main(
     @location(1) uv: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) light: vec4<f32>,
+    @location(4) torch: vec4<f32>,
 ) -> VsOut {
     var out: VsOut;
+    out.torch = torch.x;
     out.clip = g.view_proj * vec4<f32>(pos, 1.0);
     out.uv = uv;
     out.color = color;
@@ -63,10 +66,12 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // Colours are authored in sRGB, like the block textures.
     var base = pow(in.color.rgb, vec3<f32>(2.2)) * (1.0 + n * in.color.a);
 
-    let sky = curve(in.light.x) * g.params.z;
-    let lit = mix((sky * 0.96 + 0.04) * in.light.y, 1.0, in.light.w);
+    // Sky light scaled by daylight, or warm torch light, whichever is brighter.
+    let sky = vec3<f32>(curve(in.light.x) * g.params.z);
+    let torch = curve(in.torch) * vec3<f32>(1.0, 0.86, 0.66);
+    let lit = mix((max(sky, torch) * 0.96 + 0.04) * in.light.y, vec3<f32>(1.0), in.light.w);
     var c = base * lit;
     // Hurt: Minecraft-style red overlay.
-    c = mix(c, vec3<f32>(0.8, 0.0, 0.0) * max(lit, 0.25), in.light.z * 0.6);
+    c = mix(c, vec3<f32>(0.8, 0.0, 0.0) * max(lit, vec3<f32>(0.25)), in.light.z * 0.6);
     return vec4<f32>(apply_fog(c, in.dist), 1.0);
 }

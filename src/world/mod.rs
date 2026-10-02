@@ -43,6 +43,8 @@ pub struct ChunkSlot {
     version: u32,
     meshed_version: Option<u32>,
     mesh_in_flight: bool,
+    /// Block light from the last mesh, for lighting entities.
+    block_light: Option<mesh::BlockLight>,
 }
 
 /// Per chunk-column state: skylight heightmap and how many of its chunks
@@ -388,9 +390,10 @@ impl World {
             return;
         }
         let input = self.gather(pos);
-        let mesh = mesh::build(&input, &mut self.region);
+        let mut mesh = mesh::build(&input, &mut self.region);
         let slot = self.chunks.get_mut(&pos).unwrap();
         slot.meshed_version = Some(slot.version);
+        slot.block_light = mesh.block_light.take();
         self.dirty.remove(&pos);
         self.mesh_uploads.push((pos, mesh));
     }
@@ -466,7 +469,10 @@ impl World {
                 *h = (*h).max(new);
             }
         }
-        self.chunks.insert(pos, ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false });
+        self.chunks.insert(
+            pos,
+            ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false, block_light: None },
+        );
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
@@ -509,13 +515,14 @@ impl World {
                         col.foliage = Some(foliage);
                     }
                 }
-                JobResult::Meshed { pos, version, mesh } => {
+                JobResult::Meshed { pos, version, mut mesh } => {
                     self.mesh_in_flight -= 1;
                     let in_range = self.in_mesh_range(pos);
                     let Some(slot) = self.chunks.get_mut(&pos) else { continue };
                     slot.mesh_in_flight = false;
                     if slot.version == version {
                         slot.meshed_version = Some(version);
+                        slot.block_light = mesh.block_light.take();
                         self.mesh_uploads.push((pos, mesh));
                     } else if slot.meshed_version != Some(slot.version) && in_range {
                         self.dirty.insert(pos);
@@ -558,6 +565,7 @@ impl World {
                 if self.trivially_empty(pos) {
                     let slot = self.chunks.get_mut(&pos).unwrap();
                     slot.meshed_version = Some(slot.version);
+                    slot.block_light = None;
                     self.mesh_uploads.push((pos, MeshData::default()));
                     continue;
                 }
@@ -584,6 +592,16 @@ impl World {
     /// face normal it was entered through.
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
         self.raycast_by(origin, dir, max_dist, Block::is_targetable)
+    }
+
+    /// Block light (torches, lava, glowstone) at `p` as of its chunk's last
+    /// mesh: 0 where unknown.
+    pub fn block_light(&self, p: IVec3) -> u8 {
+        let l = local_of(p);
+        self.chunks
+            .get(&chunk_of(p))
+            .and_then(|slot| slot.block_light.as_ref())
+            .map_or(0, |light| light.get(l.x as usize, l.y as usize, l.z as usize))
     }
 
     /// The selection outline of the block at `p`: min and max corners

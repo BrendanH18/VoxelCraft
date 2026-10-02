@@ -1120,6 +1120,12 @@ impl Game {
         true
     }
 
+    /// Torch light at a point, 0..1, for lighting things drawn outside the
+    /// chunk meshes.
+    pub(super) fn torch_light(&self, p: glam::DVec3) -> f32 {
+        self.world.block_light(p.floor().as_ivec3()) as f32 / 15.0
+    }
+
     /// The item in the selected hotbar slot.
     pub(super) fn held_item(&self) -> Option<Item> {
         self.inventory.get(self.actions.selected).map(|s| s.item)
@@ -1563,6 +1569,7 @@ impl Game {
                     size: 1.0,
                     block: f.block,
                     sky_light: crate::entity::sky_light(&self.world, f.pos + glam::DVec3::splat(0.5)),
+                    block_light: self.torch_light(f.pos + glam::DVec3::splat(0.5)),
                     yaw: 0.0,
                     icon: None,
                 })
@@ -1574,6 +1581,7 @@ impl Game {
                         // White flashes count down to the blast.
                         block: if t.flash() { Block::WOOL } else { Block::TNT },
                         sky_light: crate::entity::sky_light(&self.world, t.pos + glam::DVec3::Y * 0.5),
+                        block_light: self.torch_light(t.pos + glam::DVec3::Y * 0.5),
                         yaw: 0.0,
                         icon: None,
                     }

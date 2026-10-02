@@ -21,6 +21,8 @@ pub struct BlockModel {
     pub block: Block,
     /// Sky light at the block, 0..1.
     pub sky_light: f32,
+    /// Torch light at the block, 0..1.
+    pub block_light: f32,
     /// Turn about the vertical axis through the centre, in radians.
     pub yaw: f32,
     /// Draw this texture layer as a flat, upright square (an item icon)
@@ -35,8 +37,8 @@ pub struct BlockVertex {
     pos: [f32; 3],
     uv: [f32; 2],
     layer: u32,
-    /// x: sky light, y: face shade.
-    light: [f32; 2],
+    /// x: sky light, y: face shade, z: torch light.
+    light: [f32; 3],
 }
 
 /// Face shading, ordered +X, -X, +Y, -Y, +Z, -Z (as in `chunk.wgsl`).
@@ -68,7 +70,7 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
                     pos: place(c).to_array(),
                     uv,
                     layer: layer as u32,
-                    light: [m.sky_light, shade],
+                    light: [m.sky_light, shade, m.block_light],
                 });
             }
         };
@@ -138,7 +140,7 @@ impl BlockModelPass {
                     array_stride: std::mem::size_of::<BlockVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &wgpu::vertex_attr_array![
-                        0 => Float32x3, 1 => Float32x2, 2 => Uint32, 3 => Float32x2
+                        0 => Float32x3, 1 => Float32x2, 2 => Uint32, 3 => Float32x3
                     ],
                 })],
             },
@@ -207,6 +209,7 @@ mod tests {
             size: 1.0,
             block,
             sky_light: 1.0,
+            block_light: 0.0,
             yaw: 0.0,
             icon: None,
         };

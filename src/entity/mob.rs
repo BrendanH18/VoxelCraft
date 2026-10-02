@@ -231,6 +231,8 @@ pub struct Mob {
     pub attack_anim: f32,
     /// Sky light estimate at the mob, 0..1 (refreshed a few times a second).
     pub sky_light: f32,
+    /// Torch light where it stands, 0..1.
+    pub block_light: f32,
     /// Creeper fuse: seconds lit, 0 when not fusing.
     pub fuse: f32,
     /// Seconds a hit spider stays angry in daylight.
@@ -274,6 +276,7 @@ impl Mob {
             limb_amp: 0.0,
             attack_anim: 0.0,
             sky_light: 1.0,
+            block_light: 0.0,
             ai: Ai::Idle,
             ai_timer: 1.0,
             move_yaw: yaw,
@@ -366,7 +369,9 @@ impl Mob {
         self.light_timer -= dtf;
         if self.light_timer <= 0.0 {
             self.light_timer = 0.25;
-            self.sky_light = sky_light(world, self.pos + DVec3::new(0.0, self.shape().height * 0.6, 0.0));
+            let at = self.pos + DVec3::new(0.0, self.shape().height * 0.6, 0.0);
+            self.sky_light = sky_light(world, at);
+            self.block_light = world.block_light(at.floor().as_ivec3()) as f32 / 15.0;
         }
 
         let (wish, speed) = if let Some(t) = &mut self.dying {
