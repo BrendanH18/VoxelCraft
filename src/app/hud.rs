@@ -1,5 +1,5 @@
 //! Heads-up display: crosshair, hotbar, item name popup and the F3 debug
-//! screen.
+//! screen and optional FPS counter.
 
 use std::time::Instant;
 
@@ -138,6 +138,13 @@ impl Game {
         }
         if self.console.open {
             self.console_ui(&mut ui);
+        }
+        // F3 already includes the same FPS measurement. Draw last so the
+        // compact counter stays readable above menus and screen effects.
+        if self.settings.show_fps && self.show_hud && !self.show_debug {
+            let text = if self.fps > 0.0 { format!("{:.0} FPS", self.fps) } else { "-- FPS".into() };
+            ui.rect(3.0, 3.0, Ui::text_width(&text) + 6.0, 13.0, [0.0, 0.0, 0.0, 0.65]);
+            ui.text(6.0, 6.0, &text, WHITE);
         }
         ui.verts
     }

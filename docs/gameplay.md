@@ -40,7 +40,7 @@ the window also pauses offline play. A host started with `--agent-listen` keeps
 simulating while menus are open. See [hosted agent CLI and console commands](agents.md).
 
 **Options** (Esc → Options...): render distance (2–32 chunks), field of
-view (30–110°), mouse sensitivity (25–300%), master volume, vsync and Classic/Enhanced graphics.
+view (30–110°), mouse sensitivity (25–300%), master volume, vsync, Classic/Enhanced graphics and the FPS counter.
 Changes apply immediately and are saved to `saves/options.txt` inside the
 [per-user data folder](releases.md#player-data-and-old-saves) when you
 leave the screen; `[`/`]` and V adjust render distance and vsync in game.
@@ -51,6 +51,11 @@ and sun/moon glints. Block lighting and ambient occlusion still illuminate
 caves. Water reflects the sky rather than nearby objects; geometry shadows,
 PBR materials and screen-space reflections remain future work. Classic
 keeps the original lighting and water appearance.
+
+A compact FPS counter is on by default at the top left. It averages
+presented frames over half a second and stays readable in inventories and
+menus. Options → FPS Counter hides it; F1 hides the HUD, and F3 shows the
+full performance display instead of duplicating the compact counter.
 
 ![F3 debug screen](images/debug.jpg)
 

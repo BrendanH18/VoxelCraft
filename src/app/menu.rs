@@ -27,6 +27,7 @@ pub(super) enum Widget {
     Volume,
     Vsync,
     Graphics,
+    Fps,
     Done,
 }
 
@@ -61,6 +62,7 @@ impl Widget {
             },
             Widget::Vsync => format!("VSync: {}", if s.vsync { "On" } else { "Off" }),
             Widget::Graphics => format!("Graphics: {}", if s.enhanced_graphics { "Enhanced" } else { "Classic" }),
+            Widget::Fps => format!("FPS Counter: {}", if s.show_fps { "On" } else { "Off" }),
             Widget::Done => "Done".into(),
         }
     }
@@ -107,6 +109,7 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
             Widget::Volume,
             Widget::Vsync,
             Widget::Graphics,
+            Widget::Fps,
             Widget::Done,
         ],
     };
@@ -208,6 +211,10 @@ impl Game {
             }
             Widget::Graphics => {
                 self.settings.enhanced_graphics = !self.settings.enhanced_graphics;
+                self.apply_settings();
+            }
+            Widget::Fps => {
+                self.settings.show_fps = !self.settings.show_fps;
                 self.apply_settings();
             }
             Widget::SaveAndQuit => return Some(MenuAction::Quit),
@@ -324,9 +331,15 @@ mod tests {
         assert_eq!(s.render_distance, 8);
         assert_eq!(Widget::RenderDistance.label(&s), "Render Distance: 8 chunks");
         // Every label fits inside its button.
-        for w in
-            [Widget::RenderDistance, Widget::Fov, Widget::Sensitivity, Widget::Volume, Widget::Vsync, Widget::Graphics]
-        {
+        for w in [
+            Widget::RenderDistance,
+            Widget::Fov,
+            Widget::Sensitivity,
+            Widget::Volume,
+            Widget::Vsync,
+            Widget::Graphics,
+            Widget::Fps,
+        ] {
             let longest = Settings {
                 render_distance: 32,
                 fov: 110.0,
@@ -334,6 +347,7 @@ mod tests {
                 volume: 1.0,
                 vsync: false,
                 enhanced_graphics: true,
+                show_fps: true,
             };
             assert!(Ui::text_width(&w.label(&longest)) < BUTTON_W - 8.0, "{w:?} label too wide");
         }

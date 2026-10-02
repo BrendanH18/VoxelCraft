@@ -160,7 +160,7 @@ struct Game {
     weather_verts: Vec<crate::render::weather::WeatherVertex>,
     started: Instant,
     last_save: Instant,
-    // Title-bar stats, refreshed twice a second.
+    // HUD/F3 stats, refreshed twice a second using presented frames.
     stats_since: Instant,
     frames: u32,
     frame_time_sum: f64,
