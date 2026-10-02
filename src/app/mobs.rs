@@ -65,10 +65,14 @@ impl Game {
         self.mobs.attack_held = true;
         if self.mobs.attack_cooldown <= 0.0 {
             self.mobs.attack_cooldown = entity::ATTACK_COOLDOWN;
-            let damage = crate::mining::attack_damage(self.held_item());
+            // A hit while falling is a critical one, like Minecraft.
+            let p = &self.player;
+            let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
+            let damage = crate::mining::attack_damage(self.held_item()) * if critical { 1.5 } else { 1.0 };
             let killed = self.mobs.entities.attack(i, self.player.forward().as_dvec3(), damage);
             let at = self.mobs.entities.mobs[i].pos + DVec3::Y * 0.5;
-            self.audio.play(Sound::Hit, Some(at), 0.8, (0.9, 1.1));
+            let pitch = if critical { (1.25, 1.4) } else { (0.9, 1.1) };
+            self.audio.play(Sound::Hit, Some(at), 0.8, pitch);
             self.wear_held(true);
             if self.mode == GameMode::Survival {
                 self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);

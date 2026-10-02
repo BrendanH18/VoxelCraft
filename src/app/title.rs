@@ -41,6 +41,8 @@ struct Entry {
     dir: String,
     name: String,
     mode: String,
+    /// Where the player was when the world was last saved.
+    nether: bool,
     played: Option<SystemTime>,
 }
 
@@ -429,11 +431,12 @@ impl Title {
                         ui.rect(x, y, w, h, [1.0, 1.0, 1.0, 0.08]);
                     }
                     ui.text(x + 6.0, y + 4.0, &e.name, WHITE);
-                    let mut detail = format!("{} - {}", super::capitalize(&e.mode), played_ago(e.played));
+                    let place = if e.nether { ", in the Nether" } else { "" };
+                    let mut detail = format!("{}{place} - {}", super::capitalize(&e.mode), played_ago(e.played));
                     if e.dir != e.name {
                         detail = format!("{detail} ({})", e.dir);
                     }
-                    ui.text(x + 6.0, y + 15.0, &detail, grey);
+                    ui.text(x + 6.0, y + 15.0, &fit(&detail, w - 12.0), grey);
                 }
                 Widget::NameField | Widget::SeedField => {
                     let focused = (widget == Widget::NameField) == (self.focus == Field::Name);
@@ -527,6 +530,7 @@ fn list_worlds(saves_dir: &Path) -> Vec<Entry> {
             Some(Entry {
                 name: prop("name").unwrap_or_else(|| dir.clone()),
                 mode: prop("mode").unwrap_or_else(|| "survival".into()),
+                nether: prop("dimension").as_deref() == Some("nether"),
                 dir,
                 played,
             })
@@ -534,6 +538,18 @@ fn list_worlds(saves_dir: &Path) -> Vec<Entry> {
         .collect();
     worlds.sort_by(|a, b| b.played.cmp(&a.played).then_with(|| a.dir.cmp(&b.dir)));
     worlds
+}
+
+/// `text`, cut short with "..." if it's wider than `width` UI pixels.
+fn fit(text: &str, width: f32) -> String {
+    if Ui::text_width(text) <= width {
+        return text.to_string();
+    }
+    let mut cut = text.to_string();
+    while !cut.is_empty() && Ui::text_width(&format!("{cut}...")) > width {
+        cut.pop();
+    }
+    format!("{}...", cut.trim_end())
 }
 
 fn played_ago(t: Option<SystemTime>) -> String {
@@ -630,5 +646,8 @@ mod tests {
         );
         assert_eq!((worlds[1].name.as_str(), worlds[1].mode.as_str()), ("Old Times", "creative"));
         assert_eq!(played_ago(Some(SystemTime::now())), "just now");
+        assert_eq!(fit("short", 100.0), "short");
+        let long = fit("Survival, in the Nether - 12 minutes ago (My_Long_World_Name)", 200.0);
+        assert!(long.ends_with("...") && Ui::text_width(&long) <= 200.0, "{long}");
     }
 }
