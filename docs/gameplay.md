@@ -27,7 +27,7 @@
 | G | Toggle survival / creative |
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
-| T | Skip ahead 2 in-game hours |
+| /, T, backtick | Open slash command console (Enter runs, Esc closes, Up/Down history, Tab completion) |
 | M | Mute / unmute sound (`--mute` starts muted, `--volume 0..1` sets the master volume) |
 | V | Toggle vsync |
 | F1 | Toggle HUD |
@@ -36,7 +36,8 @@
 | Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
 
 The world autosaves every two minutes and on exit. Switching away from
-the window also pauses the game.
+the window also pauses offline play. A host started with `--agent-listen` keeps
+simulating while menus are open. See [hosted agent CLI and console commands](agents.md).
 
 **Options** (Esc → Options...): render distance (2–32 chunks), field of
 view (30–110°), mouse sensitivity (25–300%), master volume and vsync.

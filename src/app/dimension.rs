@@ -192,6 +192,7 @@ impl Game {
             }
             Arrival::Respawn => self.respawn_point(),
         };
+        self.relocate_agents();
         self.player.vel = DVec3::ZERO;
         self.player.flying = self.player.flying && self.mode == GameMode::Creative;
         self.vitals.reset_fall();

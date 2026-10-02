@@ -229,3 +229,5 @@ conditions.
 VoxelCraft is an independent project, not affiliated with or endorsed by
 Mojang Studios or Microsoft. Minecraft is a trademark of Mojang Studios.
 It contains no Minecraft code or assets.
+
+CLI-controlled players can share a desktop host’s world. See [hosted agents and in-game commands](docs/agents.md) for setup and the current multiplayer limits.

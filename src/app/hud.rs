@@ -136,6 +136,9 @@ impl Game {
             let msg = "Click to play  -  Esc for the menu";
             ui.text((sw - Ui::text_width(msg)) / 2.0, sh / 2.0 - 24.0, msg, WHITE);
         }
+        if self.console.open {
+            self.console_ui(&mut ui);
+        }
         ui.verts
     }
 
@@ -657,7 +660,11 @@ impl Game {
                 if self.vitals.is_dead() { " (dead)" } else { "" }
             ),
             format!("Time: {:02}:{:02}", hours as u32, (hours.fract() * 60.0) as u32),
-            format!("Tick: {} (20 Hz{})", self.clock.ticks(), if self.menu.is_some() { ", paused" } else { "" }),
+            format!(
+                "Tick: {} (20 Hz{})",
+                self.clock.ticks(),
+                if (self.menu.is_some() || self.console.open) && self.agents.host.is_none() { ", paused" } else { "" }
+            ),
             format!(
                 "Mode: {}{}{}",
                 if self.player.flying { "flying" } else { "walking" },

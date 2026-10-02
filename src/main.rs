@@ -12,6 +12,10 @@ use winit::event_loop::{ControlFlow, EventLoop};
 
 pub struct Args {
     pub seed: Option<u64>,
+    pub agent_listen: Option<std::net::SocketAddr>,
+    pub agent_token: Option<String>,
+    pub agent_cheats: bool,
+    pub open_console: bool,
     /// `--world`: load this save directly instead of showing the title screen.
     pub world: Option<String>,
     pub data_dir: Option<std::path::PathBuf>,
@@ -59,6 +63,10 @@ pub struct Args {
 
 const USAGE: &str = "\
 voxelcraft [options]
+  --agent-listen <IP:PORT>  host CLI players (default recommended: 127.0.0.1:4242)
+  --agent-token <token>    shared token (required for LAN, at least 16 characters)
+  --agent-cheats           permit agents to use give, gamemode, tp and world commands
+  --open-console          start with the slash command console open
   --seed <n>        world seed (new worlds only)
   --world <name>    load or create this save, skipping the title screen
                     (letters, digits, - or _)
@@ -103,6 +111,10 @@ voxelcraft [options]
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         seed: None,
+        agent_listen: None,
+        agent_token: None,
+        agent_cheats: false,
+        open_console: false,
         world: None,
         data_dir: None,
         render_distance: None,
@@ -136,6 +148,12 @@ fn parse_args() -> Result<Args, String> {
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
         match a.as_str() {
+            "--agent-listen" => {
+                args.agent_listen = Some(value("--agent-listen")?.parse().map_err(|_| "bad --agent-listen IP:PORT")?)
+            }
+            "--agent-token" => args.agent_token = Some(value("--agent-token")?),
+            "--agent-cheats" => args.agent_cheats = true,
+            "--open-console" => args.open_console = true,
             "--seed" => args.seed = Some(value("--seed")?.parse().map_err(|_| "bad seed")?),
             "--world" => args.world = Some(value("--world")?),
             "--data-dir" => args.data_dir = Some(value("--data-dir")?.into()),
@@ -246,6 +264,7 @@ impl Args {
         self.seed = None;
         self.mode = None;
         self.open_inventory = false;
+        self.open_console = false;
         self.open_menu = None;
         self.time = None;
         self.weather = None;

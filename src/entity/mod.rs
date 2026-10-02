@@ -444,12 +444,19 @@ impl Entities {
     }
 
     /// Camera-relative triangles for every visible mob.
-    pub fn mesh(&mut self, camera: DVec3, forward: Vec3, max_dist: f32, time: f32, alpha: f64) -> &[EntityVertex] {
+    pub fn mesh(
+        &mut self,
+        camera: DVec3,
+        forward: Vec3,
+        max_dist: f32,
+        time: f32,
+        alpha: f64,
+    ) -> &mut Vec<EntityVertex> {
         self.verts.clear();
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
-        &self.verts
+        &mut self.verts
     }
 
     /// Nearest living mob hit by a ray within `max_dist` (in units of

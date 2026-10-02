@@ -72,6 +72,7 @@ pub struct World {
     load_list: Vec<IVec3>,
     load_cursor: usize,
     center: Option<IVec3>,
+    agent_centers: Vec<IVec3>,
     render_distance: i32,
     region: Option<Box<Region>>,
     meshes_enabled: bool,
@@ -140,6 +141,7 @@ impl World {
             load_list: Vec::new(),
             load_cursor: 0,
             center: None,
+            agent_centers: Vec::new(),
             render_distance,
             region: None,
             meshes_enabled,
@@ -215,6 +217,10 @@ impl World {
     fn in_load_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance as f32 + 1.5;
         (self.horizontal_dist2(pos) as f32) <= r * r
+            || self.agent_centers.iter().any(|c| {
+                let d = (pos - *c).with_y(0);
+                d.length_squared() <= 16
+            })
     }
 
     /// Extra hysteresis before unloading so walking back and forth across a
@@ -222,6 +228,10 @@ impl World {
     fn in_keep_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance + 3;
         self.horizontal_dist2(pos) <= r * r
+            || self.agent_centers.iter().any(|c| {
+                let d = (pos - *c).with_y(0);
+                d.length_squared() <= 25
+            })
     }
 
     /// Whether every chunk of the column holding `(x, z)` is loaded.
@@ -503,6 +513,20 @@ impl World {
                 }
             }
         }
+        for c in &self.agent_centers {
+            for dz in -4..=4 {
+                for dx in -4..=4 {
+                    if dx * dx + dz * dz > 16 {
+                        continue;
+                    }
+                    for y in 0..WORLD_HEIGHT_CHUNKS {
+                        self.load_list.push(IVec3::new(c.x + dx, y, c.z + dz));
+                    }
+                }
+            }
+        }
+        self.load_list.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+        self.load_list.dedup();
         let mut keyed: Vec<(i32, IVec3)> = self.load_list.iter().map(|&p| (self.priority(p), p)).collect();
         keyed.sort_unstable_by_key(|&(k, _)| k);
         self.load_list = keyed.into_iter().map(|(_, p)| p).collect();
@@ -562,6 +586,19 @@ impl World {
     /// Poll terrain/mesh workers and stream chunks around the player without advancing game time.
     /// Resolve gameplay light before scheduling meshes; drain render messages separately.
     pub fn update(&mut self, player: DVec3) {
+        self.update_players(player, &[]);
+    }
+
+    /// Stream the host view and the union of agents' smaller simulation ranges.
+    /// Agent-only chunks remain unmeshed outside the host's view distance.
+    pub fn update_players(&mut self, player: DVec3, agents: &[DVec3]) {
+        let mut centers: Vec<_> = agents.iter().map(|p| chunk_of(p.floor().as_ivec3())).collect();
+        centers.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+        centers.dedup();
+        if centers != self.agent_centers {
+            self.agent_centers = centers;
+            self.center = None;
+        }
         let center = chunk_of(player.floor().as_ivec3());
         if self.center != Some(center) {
             self.recenter(center);

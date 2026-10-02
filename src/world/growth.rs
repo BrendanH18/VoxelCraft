@@ -8,7 +8,7 @@ use glam::{DVec3, IVec3};
 
 use super::World;
 use super::block::Block;
-use super::chunk::{CHUNK_SIZE_I, WORLD_HEIGHT_CHUNKS, chunk_of};
+use super::chunk::{CHUNK_SIZE_I, chunk_of};
 use super::noise::splitmix64;
 use crate::inventory::Stack;
 use crate::item::Item;
@@ -81,26 +81,25 @@ impl World {
         if n == 0 {
             return;
         }
-        let center = chunk_of(player.floor().as_ivec3());
-        for cz in center.z - TICK_RADIUS..=center.z + TICK_RADIUS {
-            for cx in center.x - TICK_RADIUS..=center.x + TICK_RADIUS {
-                for cy in 0..WORLD_HEIGHT_CHUNKS {
-                    let cpos = IVec3::new(cx, cy, cz);
-                    // Uniform air/stone have nothing to tick; a lava sea
-                    // still gets ignition ticks.
-                    if self
-                        .chunks
-                        .get(&cpos)
-                        .is_none_or(|s| s.data.uniform().is_some_and(|b| !b.is_lava() && !b.is_fire()))
-                    {
-                        continue;
-                    }
-                    for _ in 0..n {
-                        let r = self.roll();
-                        let l = IVec3::new((r & 31) as i32, (r >> 5 & 31) as i32, (r >> 10 & 31) as i32);
-                        self.random_tick(cpos * CHUNK_SIZE_I + l);
-                    }
-                }
+        let mut centers = self.agent_centers.clone();
+        centers.push(chunk_of(player.floor().as_ivec3()));
+        // Visit the union once: overlapping sessions never accelerate random ticks.
+        let chunks: Vec<_> = self
+            .chunks
+            .keys()
+            .copied()
+            .filter(|p| centers.iter().any(|c| (p.x - c.x).abs() <= TICK_RADIUS && (p.z - c.z).abs() <= TICK_RADIUS))
+            .collect();
+        let mut chunks = chunks;
+        chunks.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+        for cpos in chunks {
+            if self.chunks.get(&cpos).is_none_or(|s| s.data.uniform().is_some_and(|b| !b.is_lava() && !b.is_fire())) {
+                continue;
+            }
+            for _ in 0..n {
+                let r = self.roll();
+                let l = IVec3::new((r & 31) as i32, (r >> 5 & 31) as i32, (r >> 10 & 31) as i32);
+                self.random_tick(cpos * CHUNK_SIZE_I + l);
             }
         }
     }
@@ -349,6 +348,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::world::chunk::ChunkData;
+    use crate::world::chunk::WORLD_HEIGHT_CHUNKS;
     use crate::world::terrain::Generator;
     use std::sync::Arc;
 

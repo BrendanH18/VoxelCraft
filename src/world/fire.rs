@@ -90,7 +90,12 @@ impl World {
                 continue;
             }
             let distance = (chunk_of(p) - center).abs();
-            if distance.x <= super::growth::TICK_RADIUS && distance.z <= super::growth::TICK_RADIUS {
+            if (distance.x <= super::growth::TICK_RADIUS && distance.z <= super::growth::TICK_RADIUS)
+                || self.agent_centers.iter().any(|c| {
+                    let d = (chunk_of(p) - *c).abs();
+                    d.x <= super::growth::TICK_RADIUS && d.z <= super::growth::TICK_RADIUS
+                })
+            {
                 self.random_tick(p);
             }
             if self.get_block(p).is_some_and(|b| b.is_fire()) {

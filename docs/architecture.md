@@ -67,9 +67,16 @@ waiting for meshes. Render jobs still compute their own light snapshots;
 their results cannot replace gameplay light. Crops and saplings use this
 light even in headless worlds.
 
-Session ownership, authoritative action/damage handling, authoritative
-skylight, shape-aware light occlusion, multiple players/dimensions and
-networking are still future work.
+The optional desktop agent host accepts bounded, versioned JSON-lines TCP
+requests. Network workers enqueue commands; the game thread validates and
+executes them. Device-free agent sessions own independent movement, vitals and
+inventory. Streaming, fire and growth use the union of active player ranges;
+agent-only chunks outside the host view stay unmeshed. Named agent profiles
+persist in the root level file. See [the CLI protocol and limitations](agents.md).
+
+Full client/session action extraction, mob target identities, independent
+simultaneous dimensions, authoritative skylight, shape-aware light occlusion,
+desktop networking and split-screen remain future work.
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
 
 ## Code layout
