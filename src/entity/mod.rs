@@ -16,6 +16,7 @@ pub mod item;
 mod mob;
 pub mod model;
 mod projectile;
+pub mod tnt;
 
 use std::f32::consts::TAU;
 
@@ -67,11 +68,13 @@ pub enum EntityEvent {
         knockback: Vec3,
         cause: &'static str,
     },
-    /// A creeper exploded: break blocks and hurt everything nearby (see
-    /// [`explosion_damage`]). [`Entities::explode`] handles the mobs.
+    /// A creeper or TNT exploded: break blocks and hurt everything nearby
+    /// (see [`explosion_damage`]). [`Entities::explode`] handles the mobs;
+    /// `cause` is the death message.
     Explosion {
         center: DVec3,
         power: f32,
+        cause: &'static str,
     },
     Sound {
         sound: MobSound,
@@ -81,6 +84,12 @@ pub enum EntityEvent {
     Shoot {
         from: DVec3,
         target: DVec3,
+    },
+    /// One of the player's arrows hit a mob (loot is dropped internally).
+    MobShot {
+        kind: MobKind,
+        pos: DVec3,
+        killed: bool,
     },
 }
 
@@ -138,6 +147,8 @@ pub struct Ctx {
     pub spawning: bool,
     /// Rain keeps undead mobs from burning in the sun.
     pub raining: bool,
+    /// In the Nether: only Nether mobs spawn, in its caverns.
+    pub nether: bool,
 }
 
 /// Small deterministic RNG (splitmix64).
@@ -165,6 +176,7 @@ pub struct Entities {
     pub mobs: Vec<Mob>,
     pub arrows: Vec<Arrow>,
     pub puffs: Vec<Puff>,
+    pub tnt: Vec<tnt::PrimedTnt>,
     /// Dropped items. They stay put (and don't age) while their chunk is
     /// unloaded, and are saved with the world.
     pub items: Vec<ItemEntity>,
@@ -182,6 +194,7 @@ impl Entities {
             mobs: Vec::new(),
             arrows: Vec::new(),
             puffs: Vec::new(),
+            tnt: Vec::new(),
             items: Vec::new(),
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawn_timer: 0.0,
@@ -232,8 +245,20 @@ impl Entities {
             }
         }
         events.retain(|e| !matches!(e, EntityEvent::Shoot { .. }));
-        self.arrows.retain_mut(|a| a.update(dt, world, ctx, &mut events));
+        let (mobs, rng) = (&mut self.mobs, &mut self.rng);
+        self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, rng, &mut events));
+        for e in &events {
+            if let EntityEvent::MobShot { kind, pos, killed } = *e {
+                if killed {
+                    self.drop_loot(kind, pos);
+                }
+                if kind == MobKind::ZombifiedPiglin {
+                    self.anger_piglins(pos);
+                }
+            }
+        }
         self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
+        self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
         self.merge_timer -= dt as f32;
         if self.merge_timer <= 0.0 {
             self.merge_timer = MERGE_INTERVAL;
@@ -342,25 +367,36 @@ impl Entities {
     fn natural_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx) {
         for kind in MobKind::ALL {
             let cap = kind.spawn_cap();
-            if self.count(kind) >= cap {
+            if self.count(kind) >= cap || kind.spawns_in_nether() != ctx.nether {
                 continue;
             }
             let angle = self.rng.range(0.0, TAU) as f64;
             let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
             let x = (ctx.player_pos.x + angle.cos() * dist).floor() as i32;
             let z = (ctx.player_pos.z + angle.sin() * dist).floor() as i32;
-            let Some(pos) = spawn_spot(world, kind, x, z, ctx.daylight) else { continue };
+            let spot = if ctx.nether {
+                let top = self.rng.range(40.0, 118.0) as i32;
+                cavern_spot(world, kind, x, z, top)
+            } else {
+                spawn_spot(world, kind, x, z, ctx.daylight)
+            };
+            let Some(pos) = spot else { continue };
             if !in_spawn_ring(ctx.player_pos, pos) {
                 continue;
             }
             self.spawn(kind, pos);
-            // Animals come in small herds.
-            if !kind.is_hostile() {
+            // Animals come in small herds, zombified piglins in packs.
+            if !kind.is_hostile() || kind.spawns_in_nether() {
                 let extra = (self.rng.next_f32() * 3.0) as i32;
                 for _ in 0..extra {
                     let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
+                    let spot = if ctx.nether {
+                        cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 2)
+                    } else {
+                        spawn_spot(world, kind, x + dx, z + dz, ctx.daylight)
+                    };
                     if self.count(kind) < cap
-                        && let Some(p) = spawn_spot(world, kind, x + dx, z + dz, ctx.daylight)
+                        && let Some(p) = spot
                     {
                         self.spawn(kind, p);
                     }
@@ -393,13 +429,55 @@ impl Entities {
             .min_by(|a, b| a.1.total_cmp(&b.1))
     }
 
+    /// Lights the TNT block at `cell` (now gone from the world): a short
+    /// random fuse if a blast `chained` it, the full four seconds otherwise.
+    pub fn prime_tnt(&mut self, cell: IVec3, chained: bool) {
+        let fuse = if chained { self.rng.range(0.5, 1.5) } else { tnt::FUSE };
+        let a = self.rng.range(0.0, TAU);
+        let vel = DVec3::new(a.cos() as f64 * 0.4, 2.0, a.sin() as f64 * 0.4);
+        self.tnt.push(tnt::PrimedTnt::new(cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), vel, fuse));
+    }
+
+    /// The player looses an arrow with bow `power` 0..1.
+    pub fn shoot_arrow(&mut self, eye: DVec3, dir: DVec3, power: f32, pickup: bool) {
+        self.arrows.push(Arrow::shot(eye, dir, power, pickup));
+    }
+
+    /// Stuck player arrows within reach of a player at `feet`, removed.
+    /// Returns how many were collected (at most 255 at a time; the rest
+    /// stay for the next call).
+    pub fn collect_arrows(&mut self, feet: DVec3) -> u8 {
+        let mut taken: u8 = 0;
+        self.arrows.retain(|a| {
+            let near = (a.pos - (feet + DVec3::Y * 0.9)).abs().cmple(DVec3::new(1.3, 1.5, 1.3)).all();
+            let take = a.pickup && a.is_stuck() && near && taken < u8::MAX;
+            taken += take as u8;
+            !take
+        });
+        taken
+    }
+
     /// Player melee hit for `damage` on mob `index`, pushed along `dir`.
     /// Returns the kind of mob if this killed it.
     pub fn attack(&mut self, index: usize, dir: DVec3, damage: f32) -> Option<MobKind> {
         let flat = DVec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
         let knockback = flat * 6.0 + DVec3::Y * 5.0;
         let mob = self.mobs.get_mut(index)?;
-        mob.damage(damage, Some(knockback), &mut self.rng).then_some(mob.kind)
+        let (kind, pos) = (mob.kind, mob.pos);
+        let killed = mob.damage(damage, Some(knockback), &mut self.rng);
+        if kind == MobKind::ZombifiedPiglin {
+            self.anger_piglins(pos);
+        }
+        killed.then_some(kind)
+    }
+
+    /// Hitting one zombified piglin angers every one nearby.
+    fn anger_piglins(&mut self, at: DVec3) {
+        for m in &mut self.mobs {
+            if m.kind == MobKind::ZombifiedPiglin && m.pos.distance_squared(at) < 32.0 * 32.0 {
+                m.anger(mob::PIGLIN_ANGER_TIME);
+            }
+        }
     }
 }
 
@@ -431,6 +509,18 @@ fn spawn_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, da
     clear.then_some(pos)
 }
 
+/// Feet position on the first floor at or below `top` in column (x, z)
+/// with room to stand (for cavern dimensions with no sky).
+fn cavern_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, top: i32) -> Option<DVec3> {
+    let floor = (top - 24..=top).rev().find(|&y| {
+        world.block(IVec3::new(x, y, z)).is_some_and(|b| b.is_solid() && b.is_opaque())
+            && world.block(IVec3::new(x, y + 1, z)) == Some(Block::AIR)
+    })?;
+    let pos = DVec3::new(x as f64 + 0.5, floor as f64 + 1.0, z as f64 + 0.5);
+    let clear = !physics::overlaps_solid(world, pos, kind.shape()) && !physics::is_fluid_at(world, pos);
+    clear.then_some(pos)
+}
+
 #[cfg(test)]
 mod tests {
     use super::mob::{Ai, is_cliff};
@@ -450,7 +540,14 @@ mod tests {
     }
 
     fn ctx(player: DVec3) -> Ctx {
-        Ctx { player_pos: player, player_targetable: false, daylight: 1.0, spawning: false, raining: false }
+        Ctx {
+            player_pos: player,
+            player_targetable: false,
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            nether: false,
+        }
     }
 
     /// Runs one mob for `secs` at 60 Hz, forcing it to walk along +X.
@@ -584,7 +681,14 @@ mod tests {
         let mut e = Entities::new(5);
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         let player = DVec3::new(1.5, 10.0, 0.5);
-        let c = Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false, raining: false };
+        let c = Ctx {
+            player_pos: player,
+            player_targetable: true,
+            daylight: 0.1,
+            spawning: false,
+            raining: false,
+            nether: false,
+        };
         let mut hits = Vec::new();
         for _ in 0..90 {
             hits.extend(e.update(1.0 / 60.0, &world, &c).into_iter().filter(is_hit));
@@ -614,6 +718,7 @@ mod tests {
             daylight: 0.1,
             spawning: false,
             raining: false,
+            nether: false,
         };
         let hit = (0..60 * 10).any(|_| e.update(1.0 / 60.0, &world, &c).iter().any(is_hit));
         assert!(hit, "zombie stuck at {:?}", e.mobs[0].pos);
@@ -673,19 +778,33 @@ mod tests {
         let world = Grid::flat(64);
         let mut e = Entities::new(11);
         let player = DVec3::new(0.0, 64.0, 0.0);
-        let c = Ctx { player_pos: player, player_targetable: false, daylight: 0.12, spawning: true, raining: false };
+        let c = Ctx {
+            player_pos: player,
+            player_targetable: false,
+            daylight: 0.12,
+            spawning: true,
+            raining: false,
+            nether: false,
+        };
         for _ in 0..600 {
             e.update(0.05, &world, &c);
         }
         // The grid is stone, so only hostile mobs spawn, each up to its cap.
         for kind in MobKind::ALL {
-            let expected = if kind.is_hostile() { kind.spawn_cap() } else { 0 };
+            let expected = if kind.is_hostile() && !kind.spawns_in_nether() { kind.spawn_cap() } else { 0 };
             assert_eq!(e.count(kind), expected, "{kind:?}");
         }
     }
 
     fn night(player: DVec3) -> Ctx {
-        Ctx { player_pos: player, player_targetable: true, daylight: 0.1, spawning: false, raining: false }
+        Ctx {
+            player_pos: player,
+            player_targetable: true,
+            daylight: 0.1,
+            spawning: false,
+            raining: false,
+            nether: false,
+        }
     }
 
     fn run(e: &mut Entities, world: &Grid, c: &Ctx, secs: f64) -> Vec<EntityEvent> {
@@ -726,9 +845,41 @@ mod tests {
         let mut arrow = Arrow::aimed(DVec3::new(0.5, 12.0, 0.5), DVec3::new(6.0, 10.0, 0.5), &mut Rng::new(1));
         let c = ctx(DVec3::new(50.0, 10.0, 0.0));
         for _ in 0..120 {
-            arrow.update(1.0 / 60.0, &world, &c, &mut Vec::new());
+            arrow.update(1.0 / 60.0, &world, &c, &mut [], &mut Rng::new(1), &mut Vec::new());
         }
         assert!(arrow.is_stuck() && (9.5..10.5).contains(&arrow.pos.y), "{:?}", arrow.pos);
+    }
+
+    #[test]
+    fn player_arrows_hit_mobs_and_can_be_collected() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Zombie, DVec3::new(10.5, 10.0, 0.5));
+        let c = night(DVec3::new(0.5, 10.0, 0.5));
+        e.shoot_arrow(DVec3::new(0.5, 11.6, 0.5), DVec3::X, 1.0, true);
+        let events = run(&mut e, &world, &c, 0.5);
+        let hit = events.iter().any(|ev| matches!(ev, EntityEvent::MobShot { kind: MobKind::Zombie, .. }));
+        assert!(hit, "{events:?}");
+        assert!(e.mobs[0].health < MobKind::Zombie.max_health(), "zombie hurt");
+        assert!(!events.iter().any(is_hit), "the shooter isn't hit");
+
+        // A miss sticks in the ground and is picked up by walking over it.
+        let mut e = Entities::new(5);
+        e.shoot_arrow(DVec3::new(0.5, 11.6, 0.5), DVec3::new(1.0, -0.6, 0.0), 0.5, true);
+        run(&mut e, &world, &c, 2.0);
+        assert!(e.arrows[0].is_stuck());
+        let spot = e.arrows[0].pos.with_y(10.0);
+        assert_eq!(e.collect_arrows(spot + DVec3::X * 5.0), 0);
+        assert_eq!(e.collect_arrows(spot), 1);
+        assert!(e.arrows.is_empty());
+
+        // More than 255 at once: the rest wait for the next pickup.
+        for _ in 0..300 {
+            e.shoot_arrow(DVec3::new(0.5, 11.6, 0.5), DVec3::new(1.0, -0.6, 0.0), 0.5, true);
+        }
+        run(&mut e, &world, &c, 2.0);
+        assert_eq!(e.collect_arrows(spot), 255);
+        assert_eq!(e.collect_arrows(spot), 45);
     }
 
     #[test]
@@ -759,6 +910,58 @@ mod tests {
         assert!(spider.pos.y > 13.9 && spider.pos.x > 2.5, "spider at {:?}", spider.pos);
         let pig = walk_east(&world, Mob::new(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5), 0.0), 4.0);
         assert!(pig.pos.x < 3.0);
+    }
+
+    #[test]
+    fn zombified_piglins_ignore_you_until_one_is_hit() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(12);
+        e.spawn(MobKind::ZombifiedPiglin, DVec3::new(0.5, 10.0, 0.5));
+        e.spawn(MobKind::ZombifiedPiglin, DVec3::new(8.5, 10.0, 8.5));
+        let c = Ctx { nether: true, ..night(DVec3::new(2.5, 10.0, 0.5)) };
+        assert!(!run(&mut e, &world, &c, 3.0).iter().any(is_hit), "neutral");
+        e.attack(0, DVec3::X, 1.0);
+        let events = run(&mut e, &world, &c, 3.0);
+        let slain =
+            |ev: &EntityEvent| matches!(ev, EntityEvent::PlayerHit { cause: "was slain by a zombified piglin", .. });
+        assert!(events.iter().any(slain), "{events:?}");
+        assert_eq!(e.mobs[1].ai, Ai::Chase, "the whole pack is angry");
+        assert_eq!(MobKind::from_name("zombified_piglin"), Some(MobKind::ZombifiedPiglin));
+    }
+
+    #[test]
+    fn nether_spawns_only_nether_mobs_in_caverns() {
+        // A cavern: floor at y = 40, roof of stone above y = 60.
+        let mut world = Grid::flat(41);
+        for x in -80..=80 {
+            for z in -80..=80 {
+                world.set(IVec3::new(x, 60, z), Block::STONE);
+            }
+        }
+        let mut e = Entities::new(13);
+        let c = Ctx { spawning: true, nether: true, ..night(DVec3::new(0.0, 41.0, 0.0)) };
+        for _ in 0..600 {
+            e.update(0.05, &world, &c);
+        }
+        assert!(e.count(MobKind::ZombifiedPiglin) > 0);
+        assert!(e.mobs.iter().all(|m| m.kind == MobKind::ZombifiedPiglin));
+    }
+
+    #[test]
+    fn tnt_blows_after_its_fuse() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(14);
+        e.prime_tnt(IVec3::new(0, 10, 0), false);
+        let c = ctx(DVec3::new(30.0, 10.0, 0.0));
+        let early = run(&mut e, &world, &c, 3.5);
+        assert!(!early.iter().any(|ev| matches!(ev, EntityEvent::Explosion { .. })));
+        assert!((e.tnt[0].pos.y - 10.0).abs() < 1e-3, "landed: {:?}", e.tnt[0].pos);
+        let late = run(&mut e, &world, &c, 1.0);
+        let boom = |ev: &EntityEvent| {
+            matches!(ev, EntityEvent::Explosion { power: tnt::POWER, cause: "was blown up by TNT", .. })
+        };
+        assert!(late.iter().any(boom), "{late:?}");
+        assert!(e.tnt.is_empty());
     }
 
     #[test]

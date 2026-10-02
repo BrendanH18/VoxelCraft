@@ -31,11 +31,17 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
 - **A world to explore.** Infinite terrain across fourteen biomes: forests,
   jungles, savannas, swamps, deserts, terraced badlands, snowy taiga,
   mountains, rivers and oceans, with caves, ores, and five kinds of tree.
+- **Two dimensions.** Light an obsidian portal with flint and steel to
+  cross into the Nether: lava seas, netherrack caverns, soul sand and
+  glowstone under a bedrock roof, eight overworld blocks to every one.
 - **Two ways to play.** Build freely in creative, or play survival with timed
   mining, block drops, a stackable inventory, health, hunger, and respawning.
-- **Craft, cook and store.** Make tools in five tiers, craft torches and
-  building blocks, smelt ores and cook food in furnaces, and keep your haul in
-  chests. Tools wear out; food restores hunger and supports natural healing.
+- **Craft, fight, cook and store.** Make tools and swords in five tiers and
+  bows and arrows, craft torches and building blocks, smelt ores and cook
+  food in furnaces, and keep your haul in chests. Tools wear out; food
+  restores hunger and supports natural healing.
+- **Many worlds.** A title screen lists your saved worlds; create new ones
+  with a name, a seed and a game mode, or delete old ones.
 - **Farm and grow.** Till soil with a hoe, sow seeds found in tall grass and
   harvest wheat for bread. Saplings grow into trees, leaves fall from felled
   trees, and grass creeps back over bare dirt.
@@ -77,9 +83,16 @@ cd VoxelCraft
 cargo run --release
 ```
 
-This starts survival and resumes `saves/world` in your
-[per-user data folder](docs/releases.md#player-data-and-old-saves) when a save exists. To try
-creative with a fixed seed in a separate world:
+This opens the title screen, which lists your worlds (most recently played
+first) from `saves/` in your
+[per-user data folder](docs/releases.md#player-data-and-old-saves). Pick one and click
+**Play World** (or double-click it), or **Create New World** to name a new
+one, choose survival or creative and optionally type a seed. **Delete**
+removes a world after asking. In game, **Esc → Save and Quit to Title**
+returns to the list.
+
+To skip the title screen, name a world on the command line. For example, to
+try creative with a fixed seed in a separate world:
 
 ```sh
 cargo run --release -- --creative --world creative --seed 42
@@ -88,7 +101,7 @@ cargo run --release -- --creative --world creative --seed 42
 | Option | What it does |
 | --- | --- |
 | `--creative` / `--survival` | Choose a game mode |
-| `--world <name>` | Choose a save under the data folder's `saves/<name>` |
+| `--world <name>` | Load or create `saves/<name>` directly, skipping the title screen |
 | `--data-dir <dir>` | Use an isolated folder for saves, options and logs |
 | `--seed <n>` | Set the seed for a new world |
 | `--rd <chunks>` | Set view distance in 32-block chunks; default `8` = 256 blocks |
@@ -98,8 +111,9 @@ cargo run --release -- --creative --world creative --seed 42
 
 Worlds autosave every two minutes and on exit. Only modified chunks are stored;
 the rest regenerates from the seed. Inventory, health, air, hunger, and furnace
-contents are saved too. `--new` starts fresh in the selected save
-and replaces it when saving, so choose a new `--world` name to keep an old world.
+contents are saved too. `--new` starts fresh in the selected save (`world`
+unless `--world` names another) and replaces it when saving, so choose a new
+`--world` name to keep an old world.
 
 ### First steps
 

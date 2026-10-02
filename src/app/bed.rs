@@ -67,6 +67,9 @@ impl Game {
     /// Right-click on a bed: sets the respawn point and, at night or in the
     /// rain with no monsters about, goes to sleep.
     pub(super) fn use_bed(&mut self, pos: IVec3) {
+        if self.bed_explodes(pos) {
+            return;
+        }
         let Some(half) = self.world.get_block(pos) else { return };
         let foot = if half == Block::BED_FOOT { Some(pos) } else { partner(&self.world, pos, half) };
         let Some(foot) = foot else { return };

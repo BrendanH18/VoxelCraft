@@ -332,6 +332,65 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             };
             shaded(&wedge, x, y, c, 0.04)
         }
+        Sprite::Bow => {
+            // A wooden limb bowed toward the top left, strung corner to
+            // corner along the other diagonal.
+            let bend = |s: i32| 7.5 * (1.0 - (s as f32 / 11.0).powi(2));
+            let limb = |x: i32, y: i32| {
+                let (s, k) = (x - y, 15 - (x + y));
+                s.abs() <= 11 && (k as f32 - bend(s)).abs() <= 1.0
+            };
+            let (s, k) = (x - y, 15 - (x + y));
+            let grip = s.abs() <= 1 && (k as f32 - bend(s)).abs() <= 1.0;
+            if grip {
+                Some(tint(HANDLE_DARK, 1.0))
+            } else if limb(x, y) {
+                shaded(&limb, x, y, HANDLE, 0.05)
+            } else {
+                (k == 0 && s.abs() <= 11).then_some(tint([225, 225, 225], 0.95))
+            }
+        }
+        Sprite::FlintAndSteel => {
+            // A curled steel striker (top right) and a flint chip (bottom left).
+            let ring = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let d = ((px - 10.0).powi(2) + (py - 6.0).powi(2)).sqrt();
+                (2.2..=4.2).contains(&d) && !(px < 9.0 && py > 7.0)
+            };
+            let flint = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                (px - 5.0).abs() / 3.8 + (py - 11.0).abs() / 3.0 <= 1.0
+            };
+            shaded(&ring, x, y, [200, 200, 205], 0.04).or_else(|| shaded(&flint, x, y, [70, 70, 74], 0.08))
+        }
+        Sprite::Nugget(c) => {
+            let nugget = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                ((px - 8.0) / 4.2).powi(2) + ((py - 9.0) / 3.4).powi(2) <= 1.0
+            };
+            shaded(&nugget, x, y, c, 0.08)
+        }
+        Sprite::Bucket(fluid) => {
+            // A tapered pail seen from slightly above: rim, inside, handle.
+            let pail = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let half = 5.8 - (py - 6.0) * 0.18;
+                (6.0..=14.0).contains(&py) && (px - 8.0).abs() <= half
+            };
+            let (px, py) = centre(x, y);
+            let inside = (5.0..7.5).contains(&py) && (px - 8.0).abs() <= 4.6;
+            let handle = py < 6.0 && ((px - 8.0).powi(2) / 36.0 + (py - 6.0).powi(2) / 20.0 - 1.0).abs() < 0.18;
+            if inside {
+                Some(match fluid {
+                    Some(c) => tint(c, 0.9 + noise(x, y, 9) * 0.2),
+                    None => tint([70, 70, 74], 1.0),
+                })
+            } else if handle {
+                Some(tint([150, 150, 155], 1.0))
+            } else {
+                shaded(&pail, x, y, [200, 200, 205], 0.03)
+            }
+        }
         Sprite::Arrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);

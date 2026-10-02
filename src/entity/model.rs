@@ -72,6 +72,44 @@ const ZOMBIE_HEAD: &[Cuboid] = &[
     cube([-2.0, 1.0, 4.0], [2.0, 1.6, 4.05], ZOMBIE_EYES, 10),
 ];
 
+// ---------------------------------------------------------------- zombified piglin
+
+const PIGLIN_SKIN: Rgb = [226, 150, 140];
+const PIGLIN_ROT: Rgb = [116, 150, 80];
+const PIGLIN_CLOTH: Rgb = [112, 78, 46];
+const GOLD: Rgb = [250, 210, 60];
+
+const PIGLIN_BODY: &[Cuboid] = &[
+    cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], PIGLIN_SKIN, 36),
+    // Rotted-through ribs and a loincloth.
+    cube([-3.0, 16.0, 2.0], [1.0, 21.0, 2.1], PIGLIN_ROT, 40),
+    cube([-4.1, 11.0, -2.1], [4.1, 14.0, 2.1], PIGLIN_CLOTH, 30),
+];
+const PIGLIN_LEG: &[Cuboid] = &[
+    cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], PIGLIN_SKIN, 36),
+    cube([-2.05, -3.0, -2.05], [2.05, 0.0, 2.05], PIGLIN_CLOTH, 30),
+];
+const PIGLIN_ARM: &[Cuboid] = &[cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], PIGLIN_ROT, 40)];
+const PIGLIN_SWORD_ARM: &[Cuboid] = &[
+    cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], PIGLIN_SKIN, 36),
+    // A golden sword gripped in the fist, pointing forward.
+    cube([-0.5, -10.0, 1.0], [0.5, -9.0, 3.0], [100, 70, 30], 10),
+    cube([-1.5, -10.0, 3.0], [1.5, -9.0, 3.5], GOLD, 10),
+    cube([-0.5, -10.0, 3.5], [0.5, -9.0, 11.0], GOLD, 10),
+];
+const PIGLIN_HEAD: &[Cuboid] = &[
+    cube([-5.0, 0.0, -4.0], [5.0, 8.0, 4.0], PIGLIN_SKIN, 36),
+    cube([-2.0, 0.0, 4.0], [2.0, 3.0, 5.0], [236, 168, 160], 14),
+    cube([-1.5, 1.0, 5.0], [-0.5, 2.0, 5.1], DARK, 0),
+    cube([0.5, 1.0, 5.0], [1.5, 2.0, 5.1], DARK, 0),
+    cube([-4.0, 4.0, 4.0], [-2.0, 5.0, 4.1], WHITE, 0),
+    cube([2.0, 4.0, 4.0], [4.0, 5.0, 4.1], DARK, 0),
+    // Floppy ears, one half rotted.
+    cube([-6.0, 2.0, -1.0], [-5.0, 7.0, 2.0], PIGLIN_SKIN, 36),
+    cube([5.0, 2.0, -1.0], [6.0, 7.0, 2.0], PIGLIN_ROT, 40),
+    cube([-1.0, 4.0, -4.1], [3.0, 8.0, 0.0], PIGLIN_ROT, 40),
+];
+
 // ---------------------------------------------------------------- cow
 
 const COW_HIDE: Rgb = [88, 62, 46];
@@ -296,6 +334,20 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             }
             parts.push(part(SPIDER_HEAD, [0.0, 8.0, 3.0], head));
             parts
+        }
+        MobKind::ZombifiedPiglin => {
+            // Sword raised while angry, swinging down to strike; arms at
+            // the sides otherwise.
+            let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.9 } else { 0.0 };
+            let sword = if m.ai == Ai::Chase { rx(-1.1 + chop) } else { rx(-0.4 - swing * 0.5) };
+            vec![
+                part(PIGLIN_BODY, [0.0; 3], Quat::IDENTITY),
+                part(PIGLIN_LEG, [-2.0, 12.0, 0.0], rx(swing)),
+                part(PIGLIN_LEG, [2.0, 12.0, 0.0], rx(-swing)),
+                part(PIGLIN_ARM, [-6.0, 22.0, 0.0], rx(swing * 0.6)),
+                part(PIGLIN_SWORD_ARM, [6.0, 22.0, 0.0], sword),
+                part(PIGLIN_HEAD, [0.0, 24.0, 0.0], head),
+            ]
         }
         MobKind::Zombie => {
             // Arms held forward, bobbing a little, chopping down on attack.

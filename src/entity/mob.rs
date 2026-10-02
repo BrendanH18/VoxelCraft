@@ -28,6 +28,8 @@ const BURN_DAYLIGHT: f32 = 0.45;
 const SPIDER_CALM_DAYLIGHT: f32 = 0.45;
 /// Seconds a hit spider stays hostile in daylight.
 const PROVOKED_TIME: f32 = 12.0;
+/// Seconds zombified piglins stay angry after one of them is hit.
+pub const PIGLIN_ANGER_TIME: f32 = 30.0;
 /// Skeletons shoot from up to this far, and keep between these distances.
 const SHOOT_RANGE: f64 = 16.0;
 const SKELETON_NEAR: f64 = 5.0;
@@ -51,10 +53,12 @@ pub enum MobKind {
     Skeleton,
     Creeper,
     Spider,
+    /// Neutral Nether mob: leaves you alone until you hit one of them.
+    ZombifiedPiglin,
 }
 
 impl MobKind {
-    pub const ALL: [MobKind; 8] = [
+    pub const ALL: [MobKind; 9] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -63,6 +67,7 @@ impl MobKind {
         MobKind::Skeleton,
         MobKind::Creeper,
         MobKind::Spider,
+        MobKind::ZombifiedPiglin,
     ];
 
     pub fn name(self) -> &'static str {
@@ -75,10 +80,13 @@ impl MobKind {
             MobKind::Skeleton => "skeleton",
             MobKind::Creeper => "creeper",
             MobKind::Spider => "spider",
+            MobKind::ZombifiedPiglin => "zombified piglin",
         }
     }
 
+    /// Looks a mob up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<MobKind> {
+        let name = name.replace('_', " ");
         Self::ALL.into_iter().find(|k| k.name() == name)
     }
 
@@ -88,7 +96,7 @@ impl MobKind {
             MobKind::Cow => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
             MobKind::Chicken => Shape::new(0.2, 0.7),
-            MobKind::Zombie => Shape::new(0.3, 1.95),
+            MobKind::Zombie | MobKind::ZombifiedPiglin => Shape::new(0.3, 1.95),
             MobKind::Skeleton => Shape::new(0.3, 1.99),
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
@@ -100,19 +108,28 @@ impl MobKind {
             MobKind::Pig | MobKind::Cow => 10.0,
             MobKind::Sheep => 8.0,
             MobKind::Chicken => 4.0,
-            MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper => 20.0,
+            MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::ZombifiedPiglin => 20.0,
             MobKind::Spider => 16.0,
         }
     }
 
     pub fn is_hostile(self) -> bool {
-        matches!(self, MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::Spider)
+        matches!(
+            self,
+            MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::Spider | MobKind::ZombifiedPiglin
+        )
+    }
+
+    /// Spawns in the Nether rather than the overworld.
+    pub fn spawns_in_nether(self) -> bool {
+        self == MobKind::ZombifiedPiglin
     }
 
     /// Most mobs of this kind that spawn naturally around the player.
     pub fn spawn_cap(self) -> usize {
         match self {
             MobKind::Zombie => 4,
+            MobKind::ZombifiedPiglin => 8,
             k if k.is_hostile() => 3,
             _ => 4,
         }
@@ -125,7 +142,7 @@ impl MobKind {
     fn wander_speed(self) -> f64 {
         match self {
             MobKind::Pig => 1.3,
-            MobKind::Cow | MobKind::Zombie | MobKind::Creeper => 1.1,
+            MobKind::Cow | MobKind::Zombie | MobKind::Creeper | MobKind::ZombifiedPiglin => 1.1,
             MobKind::Sheep | MobKind::Skeleton => 1.2,
             MobKind::Chicken => 1.0,
             MobKind::Spider => 1.4,
@@ -135,6 +152,7 @@ impl MobKind {
     fn chase_speed(self) -> f64 {
         match self {
             MobKind::Spider => 3.0,
+            MobKind::ZombifiedPiglin => 2.8,
             MobKind::Skeleton => 2.2,
             MobKind::Creeper => 2.0,
             _ => 2.4,
@@ -145,6 +163,7 @@ impl MobKind {
     fn melee(self) -> (f32, &'static str) {
         match self {
             MobKind::Spider => (2.0, "was slain by a spider"),
+            MobKind::ZombifiedPiglin => (5.0, "was slain by a zombified piglin"),
             _ => (3.0, "was slain by a zombie"),
         }
     }
@@ -161,6 +180,7 @@ impl MobKind {
             MobKind::Skeleton => &[(Item::BONE, 0, 2), (Item::ARROW, 0, 2)],
             MobKind::Creeper => &[(Item::GUNPOWDER, 0, 2)],
             MobKind::Spider => &[(Item::STRING, 0, 2)],
+            MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
         }
     }
 
@@ -284,6 +304,11 @@ impl Mob {
         self.dying.is_none()
     }
 
+    /// Turns a neutral mob hostile for `secs`.
+    pub fn anger(&mut self, secs: f32) {
+        self.provoked = self.provoked.max(secs);
+    }
+
     /// Takes a hit. `knockback` replaces the horizontal velocity (its y is
     /// the upward pop). Returns `true` if this killed the mob.
     pub fn damage(&mut self, amount: f32, knockback: Option<DVec3>, rng: &mut Rng) -> bool {
@@ -302,7 +327,7 @@ impl Mob {
             self.ai_timer = rng.range(3.0, 5.0);
             self.move_yaw = rng.range(0.0, TAU);
         }
-        self.provoked = PROVOKED_TIME;
+        self.provoked = self.provoked.max(PROVOKED_TIME);
         if self.health <= 0.0 {
             self.dying = Some(0.0);
             self.cry = Some(MobSound::Death(self.kind));
@@ -402,7 +427,11 @@ impl Mob {
         let hdist = flat.length();
 
         if self.kind.is_hostile() {
-            let aggressive = self.kind != MobKind::Spider || ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0;
+            let aggressive = match self.kind {
+                MobKind::Spider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
+                MobKind::ZombifiedPiglin => self.provoked > 0.0,
+                _ => true,
+            };
             let chasing = aggressive && ctx.player_targetable && hdist < CHASE_RANGE && to_player.y.abs() < 12.0;
             if chasing {
                 self.ai = Ai::Chase;
@@ -553,7 +582,7 @@ impl Mob {
         self.fuse += dt;
         if self.fuse >= FUSE_TIME {
             let center = self.pos + DVec3::Y * (self.shape().height * 0.5);
-            events.push(EntityEvent::Explosion { center, power: CREEPER_POWER });
+            events.push(EntityEvent::Explosion { center, power: CREEPER_POWER, cause: "was blown up by a creeper" });
             // Gone in the blast: no death animation, no loot.
             self.health = 0.0;
             self.dying = Some(DEATH_TIME);

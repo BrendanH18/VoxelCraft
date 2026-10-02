@@ -19,7 +19,9 @@ pub mod falling;
 mod fluid;
 pub mod furnace;
 mod growth;
+pub mod nether;
 pub mod noise;
+mod portal;
 pub mod storage;
 pub mod terrain;
 
@@ -83,6 +85,8 @@ pub struct World {
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
+    /// TNT blocks a blast took out; the game lights them.
+    pub primed_tnt: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -118,6 +122,7 @@ impl World {
             random_ticks: 0.0,
             rng,
             drops: Vec::new(),
+            primed_tnt: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -184,6 +189,12 @@ impl World {
         self.horizontal_dist2(pos) <= r * r
     }
 
+    /// Whether every chunk of the column holding `(x, z)` is loaded.
+    pub fn column_loaded(&self, x: i32, z: i32) -> bool {
+        let key = column_of(chunk_of(IVec3::new(x, 0, z)));
+        self.columns.get(&key).is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
+    }
+
     pub fn is_loaded(&self, block: IVec3) -> bool {
         block.y < 0 || block.y >= WORLD_HEIGHT || self.chunks.contains_key(&chunk_of(block))
     }
@@ -238,6 +249,7 @@ impl World {
         let changed = self.edit(p, block, true);
         if changed {
             self.settle(p);
+            self.break_unsupported_portals(p);
         }
         changed
     }
@@ -305,6 +317,9 @@ impl World {
 
     /// Updates the heightmap for an edited block; returns (old, new) heights.
     fn update_height(&mut self, p: IVec3, block: Block) -> (i32, i32) {
+        if !self.generator.dimension.has_sky() {
+            return (p.y, p.y);
+        }
         let key = column_of(chunk_of(p));
         let l = local_of(p);
         let i = (l.x + l.z * CHUNK_SIZE_I) as usize;
@@ -443,8 +458,12 @@ impl World {
             Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None }
         });
         col.loaded += 1;
-        for (h, new) in col.heights.iter_mut().zip(heights) {
-            *h = (*h).max(new);
+        // Without a sky (the Nether) every cell counts as open: the
+        // dimension's dim, even light is daylight at a fixed low level.
+        if self.generator.dimension.has_sky() {
+            for (h, new) in col.heights.iter_mut().zip(heights) {
+                *h = (*h).max(new);
+            }
         }
         self.chunks.insert(pos, ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false });
         if self.in_mesh_range(pos) {
@@ -563,6 +582,22 @@ impl World {
     /// DDA voxel traversal. Returns the first targetable block hit and the
     /// face normal it was entered through.
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
+        self.raycast_by(origin, dir, max_dist, Block::is_targetable)
+    }
+
+    /// Like [`World::raycast`], but also stops at water and lava sources
+    /// (for buckets).
+    pub fn raycast_sources(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
+        self.raycast_by(origin, dir, max_dist, |b| b.is_targetable() || b == Block::WATER || b == Block::LAVA)
+    }
+
+    fn raycast_by(
+        &self,
+        origin: DVec3,
+        dir: DVec3,
+        max_dist: f64,
+        hits: impl Fn(Block) -> bool,
+    ) -> Option<(IVec3, IVec3)> {
         let mut cell = origin.floor().as_ivec3();
         let step = IVec3::new(dir.x.signum() as i32, dir.y.signum() as i32, dir.z.signum() as i32);
         let inv = DVec3::new(
@@ -578,7 +613,7 @@ impl World {
         let mut t = 0.0;
         while t <= max_dist {
             if let Some(b) = self.get_block(cell)
-                && b.is_targetable()
+                && hits(b)
                 && cell.y >= 0
             {
                 return Some((cell, normal));

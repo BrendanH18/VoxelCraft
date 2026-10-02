@@ -17,7 +17,7 @@ const FLY_SPEED: f64 = 11.0;
 const FLY_SPRINT_SPEED: f64 = 30.0;
 const SWIM_SPEED: f64 = 2.8;
 const MAX_STEP: f64 = 1.0 / 120.0;
-const SHAPE: Shape = Shape::new(HALF_WIDTH, HEIGHT);
+pub const SHAPE: Shape = Shape::new(HALF_WIDTH, HEIGHT);
 
 #[derive(Default, Clone, Copy)]
 pub struct MoveInput {
@@ -148,10 +148,12 @@ impl Player {
             self.vel.y = self.vel.y.max(-4.0);
         } else {
             let speed = if input.sprint { SPRINT_SPEED } else { WALK_SPEED };
-            let target = wish * speed;
-            // Snappy on the ground, slippery on ice, limited air control.
+            // Snappy on the ground, slippery on ice, limited air control;
+            // soul sand drags at your feet.
             let below = (self.pos - DVec3::Y * 0.05).floor().as_ivec3();
-            let on_ice = self.on_ground && world.get_block(below) == Some(Block::ICE);
+            let ground = world.get_block(below).filter(|_| self.on_ground);
+            let on_ice = ground == Some(Block::ICE);
+            let target = wish * speed * if ground == Some(Block::SOUL_SAND) { 0.4 } else { 1.0 };
             let grip = match (self.on_ground, on_ice) {
                 (true, true) => 1.6,
                 (true, false) => 18.0,

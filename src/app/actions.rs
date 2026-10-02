@@ -12,6 +12,8 @@ pub(super) struct Actions {
     pub breaking: Option<(IVec3, f32)>,
     /// Seconds spent on the current uninterrupted bite.
     pub eat_timer: f64,
+    /// Seconds the bow has been drawn, while drawing.
+    pub bow_draw: Option<f64>,
 }
 
 impl Actions {
@@ -29,6 +31,7 @@ impl Actions {
     pub fn reset(&mut self) {
         self.breaking = None;
         self.eat_timer = 0.0;
+        self.bow_draw = None;
     }
 
     pub fn mine(&mut self, pos: IVec3, block: Block, held: Option<Item>, dt: f64) -> f32 {

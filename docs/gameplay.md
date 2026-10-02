@@ -18,6 +18,9 @@
 | E | Inventory (click to move stacks; creative shows the block palette) |
 | Shift + click | In the inventory: move a stack between the open chest or furnace and the inventory (or between hotbar and main grid); on a crafting result, craft as many as fit |
 | Shift + right click | Build against a crafting table, furnace or chest instead of opening it |
+| Hold / release right click with a bow | Draw / shoot an arrow (needs arrows in survival) |
+| Right click with flint and steel | Light an obsidian portal frame or a TNT block |
+| Right click with a bucket | Scoop up a water or lava source / pour it out again |
 | Right click with a hoe | Till grass or dirt (with air above) into farmland |
 | Right click with seeds / bone meal | Sow wheat on farmland / make a crop, sapling or patch of grass grow |
 | G | Toggle survival / creative |
@@ -29,7 +32,7 @@
 | F1 | Toggle HUD |
 | F3 | Debug screen |
 | F11 | Fullscreen |
-| Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit; Esc again goes back |
+| Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
 
 The world autosaves every two minutes and on exit. Switching away from
 the window also pauses the game.
@@ -103,7 +106,7 @@ session.
   on the first solid block (replacing plants and fluids in the way);
   knocking out a column's base drops the whole column
 - Walking, swimming and flying with AABB collision
-- Eight mobs with Minecraft-style animated box models (see [Mobs](#mobs)):
+- Nine mobs with Minecraft-style animated box models (see [Mobs](#mobs)):
   pigs, cows, sheep and chickens wander in herds and panic when hit;
   zombies, skeletons, creepers and spiders hunt at night. Skeletons shoot
   arcing arrows that stick in blocks, creepers hiss, swell and explode
@@ -124,7 +127,8 @@ session.
   recipes), sticks, crafting table, chest (8 planks in a ring), torches
   (coal or charcoal over a stick), bread (3 wheat in a row), bone meal (from
   a bone), sandstone, wool (from string), clay and bricks (4 clay balls or
-  bricks), melon slices (from a melon), arrows, and pickaxes, shovels, axes,
+  bricks), melon slices (from a melon), bows (3 sticks and 3 string),
+  arrows (flint, stick and feather; gravel drops flint 1 time in 10), and pickaxes, shovels, axes,
   hoes and swords in wood, stone, iron, gold and diamond
 - Tools follow Minecraft's mining rules: a block takes its hardness x 1.5
   seconds to mine with something that can harvest it and x 5 otherwise,
@@ -136,7 +140,27 @@ session.
   to 0.19 s with gold. Tools lose 1 durability per block (swords 2) and 1
   per hit (other tools 2), and break when worn out. Melee damage comes from
   the held item: a fist 1, swords 4 (wood, gold) to 7 (diamond), axes,
-  pickaxes and shovels less
+  pickaxes and shovels less. Hitting while falling is a critical hit for
+  1.5x damage
+- Slabs: three stone, cobblestone, planks, sandstone, bricks or nether
+  bricks in a row make six half-height slabs that mine like their full
+  block. Placing a slab on top of the same slab makes the full block
+- TNT (5 gunpowder and 4 sand in a checkerboard): light it with flint and
+  steel and it hops out of its block, flashing white and swelling for 4
+  seconds before a blast stronger than a creeper's (power 4). TNT caught in
+  a blast goes off within a second and a half, so stacks chain. Explosions
+  hurt through armor, knock you back and drop some of what they destroy
+- Buckets (3 iron ingots in a V, stack to 16): right-click a water or lava
+  source to fill one and right-click a block to pour it out next to it.
+  Creative keeps its empty bucket. A lava bucket smelts for 1000 s and
+  leaves the empty bucket behind in the furnace
+- Bows: hold right-click to draw (fully drawn after 1 s; the bar under the
+  crosshair turns gold and the view zooms in a little) and release to
+  shoot. A full draw deals 6 damage plus a random critical bonus of up to
+  4; weaker draws fly slower and hit softer. Arrows arc, knock mobs back,
+  stick in blocks and drop out when the block is broken. Walk over a stuck
+  arrow to pick it back up (arrows shot in creative can't be collected).
+  Bows have 384 uses
 - Furnaces (8 cobblestone in a ring): right-click to open; put something
   to smelt on top and fuel below. Each item takes 10 s; coal and charcoal
   burn 80 s, logs, planks, crafting tables and chests 15 s, wooden tools 10 s and
@@ -188,6 +212,33 @@ session.
   inventory clicks, wind and cave ambience with dripping water, positional
   panning and distance falloff, and a muffled mix while underwater
 
+## The Nether
+
+Build a frame of obsidian (pour a water bucket over lava source blocks,
+then mine the obsidian with a diamond pickaxe) at least 4 wide and 5 tall around an
+empty inside of 2x3 up to 21x21; the corners can be left out. Light it
+with flint and steel (iron ingot and flint, shapeless; 64 uses) to fill it
+with a swirling portal. Stand in it for 4 seconds (half a second in
+creative) to travel to the Nether, and the same way back. Each block in
+the Nether is eight in the overworld: the game looks for a portal within
+16 blocks of the matching spot on the other side, and builds one (on an
+obsidian ledge if there's nowhere to stand) if there isn't. Breaking any
+part of a frame puts its portal out.
+
+The Nether is a cavern world between a bedrock floor and roof: netherrack
+cliffs and islands over a lava sea at y = 31, soul sand shores that drag
+at your feet, gravel by the lava, quartz ore in the rock and glowstone
+hanging from the ceilings. There is no sky, weather or day and night,
+just a steady dim glow in a red haze; water boils away, and beds explode.
+Netherrack smelts into nether bricks (four make a nether bricks block),
+quartz ore drops nether quartz, and glowstone breaks into 2–4 glowstone
+dust (four make a block). Nine gold nuggets make a gold ingot and back.
+
+Each dimension keeps its own blocks, furnaces, chests and dropped items in
+the save (the Nether in a `nether` folder inside the world's). Dying in
+the Nether respawns you in the overworld. `--dimension nether` starts a
+session there, as if you had just come through a portal.
+
 ## Mobs
 
 | Mob | Health | Behaviour | Loot (player kills) |
@@ -200,6 +251,7 @@ session.
 | Skeleton | 20 | keeps 5–10 blocks away, strafes, and shoots arrows (about 3 damage) when it can see you; burns in sunlight | 0–2 bones, 0–2 arrows |
 | Creeper | 20 | walks up and lights a 1.5 s fuse within 3 blocks (kept lit within 7); explodes for up to 43 damage over 6 blocks, destroying blocks (not bedrock, obsidian or fluids) | 0–2 gunpowder |
 | Spider | 16 | fast; climbs walls; hunts only in the dark or after being hit, bites for 2 | 0–2 string |
+| Zombified piglin | 20 | Nether only, in packs; ignores you until you hit one, then the whole pack within 32 blocks chases you for 30 s and strikes with gold swords for 5 | 0–1 rotten flesh, 0–1 gold nuggets |
 
 Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to

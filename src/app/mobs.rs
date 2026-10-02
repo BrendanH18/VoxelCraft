@@ -65,10 +65,14 @@ impl Game {
         self.mobs.attack_held = true;
         if self.mobs.attack_cooldown <= 0.0 {
             self.mobs.attack_cooldown = entity::ATTACK_COOLDOWN;
-            let damage = crate::mining::attack_damage(self.held_item());
+            // A hit while falling is a critical one, like Minecraft.
+            let p = &self.player;
+            let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
+            let damage = crate::mining::attack_damage(self.held_item()) * if critical { 1.5 } else { 1.0 };
             let killed = self.mobs.entities.attack(i, self.player.forward().as_dvec3(), damage);
             let at = self.mobs.entities.mobs[i].pos + DVec3::Y * 0.5;
-            self.audio.play(Sound::Hit, Some(at), 0.8, (0.9, 1.1));
+            let pitch = if critical { (1.25, 1.4) } else { (0.9, 1.1) };
+            self.audio.play(Sound::Hit, Some(at), 0.8, pitch);
             self.wear_held(true);
             if self.mode == GameMode::Survival {
                 self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
@@ -106,9 +110,15 @@ impl Game {
         let ctx = entity::Ctx {
             player_pos: self.player.pos,
             player_targetable: self.mode == GameMode::Survival,
-            daylight: self.weather.dim(super::sky_state(self.day_time).daylight),
+            // The Nether has no sun to burn the undead.
+            daylight: if self.dimension.has_sky() {
+                self.weather.dim(super::sky_state(self.day_time).daylight)
+            } else {
+                0.0
+            },
             raining: self.weather.raining,
             spawning: true,
+            nether: !self.dimension.has_sky(),
         };
         for event in self.mobs.entities.update(dt, &self.world, &ctx) {
             match event {
@@ -119,7 +129,7 @@ impl Game {
                         self.player.vel += knockback.as_dvec3();
                     }
                 }
-                EntityEvent::Explosion { center, power } => self.explode(center, power),
+                EntityEvent::Explosion { center, power, cause } => self.explode(center, power, cause),
                 EntityEvent::Sound { sound, pos } => {
                     let (sound, gain) = match sound {
                         MobSound::Fuse => (Sound::Fuse, 1.0),
@@ -129,6 +139,9 @@ impl Game {
                         MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9),
                     };
                     self.audio.play(sound, Some(pos), gain, (0.9, 1.1));
+                }
+                EntityEvent::MobShot { pos, .. } => {
+                    self.audio.play(Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
                 EntityEvent::Shoot { .. } => {}
             }
@@ -146,18 +159,24 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Skeleton => Voice::Skeleton,
         MobKind::Creeper => Voice::Creeper,
         MobKind::Spider => Voice::Spider,
+        MobKind::ZombifiedPiglin => Voice::Zombie,
     }
 }
 
 impl Game {
     /// Blows a hole in the world and hurts everything around `center`.
-    pub(super) fn explode(&mut self, center: DVec3, power: f32) {
+    /// `cause` completes the death message, as for [`Game::damage_player`].
+    pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str) {
         self.world.explode(center, power as f64);
         self.mobs.entities.explode(center, power);
+        // TNT caught in the blast goes off soon after.
+        for cell in std::mem::take(&mut self.world.primed_tnt) {
+            self.mobs.entities.prime_tnt(cell, true);
+        }
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
         let mid = self.player.pos + DVec3::Y * 0.9;
         if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center))
-            && self.damage_player_armored(damage, "was blown up by a creeper") > 0.0
+            && self.damage_player_armored(damage, cause) > 0.0
         {
             let away = (mid - center).normalize_or(DVec3::Y);
             self.player.vel += away * (impact as f64 * 14.0) + DVec3::Y * 4.0;

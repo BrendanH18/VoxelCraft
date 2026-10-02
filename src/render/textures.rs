@@ -491,6 +491,64 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 [0, 0, 0, 0]
             }
         }
+        tex::NETHERRACK => {
+            // Lumpy dark red rock with darker cracks between the lumps.
+            let pts = points(layer, 9);
+            let (d1, d2, i) = voronoi(x, y, &pts);
+            let crack = d2 - d1 < 0.8;
+            let lump = 0.8 + rnd(layer, i, 0, 3) * 0.3;
+            shade([111, 54, 52], if crack { 0.62 } else { lump + r * 0.14 })
+        }
+        tex::SOUL_SAND => {
+            // Brown sand with a few dark, face-like hollows.
+            let (cx, cy) = (x % 8, y % 8);
+            let hollow = ((cx == 2 || cx == 5) && cy == 2) || ((2..=5).contains(&cx) && cy == 5);
+            shade([84, 64, 51], if hollow { 0.55 } else { 0.85 + r * 0.3 })
+        }
+        tex::QUARTZ_ORE => {
+            let pts = points(layer, 6);
+            let (d1, _, _) = voronoi(x, y, &pts);
+            if d1 < 1.3 { shade([235, 228, 220], 0.9 + r * 0.12) } else { pixel(tex::NETHERRACK, x, y) }
+        }
+        tex::NETHER_BRICKS => {
+            // Small dark bricks, half-offset every row.
+            let row = y / 4;
+            let offset = if row.is_multiple_of(2) { 0 } else { 4 };
+            if y % 4 == 3 || (x + offset) % 8 == 7 {
+                shade([30, 15, 18], 1.0 + r * 0.2)
+            } else {
+                shade([68, 34, 40], 0.85 + rnd(layer, (x + offset) / 8, row, 1) * 0.2 + r * 0.1)
+            }
+        }
+        tex::PORTAL => {
+            // Swirling violet, see-through at the dark streaks.
+            let (fx, fy) = (x as f32 / SIZE as f32, y as f32 / SIZE as f32);
+            let tau = std::f32::consts::TAU;
+            let swirl = (fx * tau + (fy * tau).sin() * 1.5).sin() * 0.5 + (fy * tau * 2.0 + fx * tau).cos() * 0.5;
+            let k = (swirl * 0.5 + 0.5) * 0.7 + r * 0.3;
+            let c = [(90.0 + 110.0 * k) as u8, (20.0 + 50.0 * k) as u8, (160.0 + 90.0 * k) as u8];
+            [c[0], c[1], c[2], (150.0 + 90.0 * k) as u8]
+        }
+        tex::TNT_SIDE => {
+            // Red paper with a white band across the middle and a fuse-dark
+            // "TNT" stencilled on it.
+            const LETTERS: [&str; 6] =
+                ["### #  # ###", " #  ## #  # ", " #  ## #  # ", " #  # ##  # ", " #  # ##  # ", " #  #  #  # "];
+            if (4..=11).contains(&y) {
+                let ink = LETTERS.get(y.wrapping_sub(5)).and_then(|row| row.as_bytes().get(x.wrapping_sub(2)));
+                if ink == Some(&b'#') { shade([40, 30, 30], 1.0) } else { shade([228, 226, 220], 0.92 + r * 0.08) }
+            } else {
+                let stripe = x.is_multiple_of(4);
+                shade([200, 50, 38], if stripe { 0.78 } else { 0.9 + r * 0.15 })
+            }
+        }
+        tex::TNT_TOP | tex::TNT_BOTTOM => {
+            // Ends of the sticks, with a fuse in the middle on top.
+            let (cx, cy) = (x % 4, y % 4);
+            let edge = cx == 0 || cy == 0;
+            let fuse = layer == tex::TNT_TOP && (7..=8).contains(&x) && (7..=8).contains(&y);
+            if fuse { shade([60, 60, 60], 1.0) } else { shade([200, 50, 38], if edge { 0.7 } else { 0.95 + r * 0.1 }) }
+        }
         tex::OBSIDIAN => {
             let speck = rnd(layer, x, y, 13) < 0.08;
             let c = if speck { [80, 60, 110] } else { [22, 16, 34] };

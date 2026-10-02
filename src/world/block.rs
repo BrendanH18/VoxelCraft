@@ -105,6 +105,14 @@ pub mod tex {
     pub const BED_TOP_HEAD: u8 = 74;
     pub const BED_SIDE_FOOT: u8 = 75;
     pub const BED_SIDE_HEAD: u8 = 76;
+    pub const NETHERRACK: u8 = 77;
+    pub const SOUL_SAND: u8 = 78;
+    pub const QUARTZ_ORE: u8 = 79;
+    pub const NETHER_BRICKS: u8 = 80;
+    pub const PORTAL: u8 = 81;
+    pub const TNT_SIDE: u8 = 82;
+    pub const TNT_TOP: u8 = 83;
+    pub const TNT_BOTTOM: u8 = 84;
     /// Flat item icons (see `item::Item::icon_layer`), up to `ITEM_COUNT` of them.
     pub const ITEM_0: u8 = 96;
     pub const ITEM_COUNT: u8 = 64;
@@ -268,6 +276,20 @@ impl Block {
     /// The two halves of a bed (see `Item::BED`), 9/16 of a block tall.
     pub const BED_FOOT: Block = Block(98);
     pub const BED_HEAD: Block = Block(99);
+    pub const NETHERRACK: Block = Block(100);
+    /// Slows whatever walks on it, which sinks in by 2/16 of a block.
+    pub const SOUL_SAND: Block = Block(101);
+    pub const QUARTZ_ORE: Block = Block(102);
+    pub const NETHER_BRICKS: Block = Block(103);
+    /// Fills a lit obsidian frame (see `world::portal`); standing in it
+    /// takes you between the overworld and the Nether.
+    pub const NETHER_PORTAL: Block = Block(104);
+    /// Lit with flint and steel (or set off by a nearby blast), it blows up
+    /// four seconds later (see `entity::tnt`).
+    pub const TNT: Block = Block(105);
+    /// Half-height slabs of stone, cobblestone, oak planks, sandstone,
+    /// bricks and nether bricks, ids 106..=111 (see [`Block::slab_of`]).
+    pub const STONE_SLAB: Block = Block(106);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -420,6 +442,30 @@ impl Block {
         }
     }
 
+    /// The full blocks slabs are cut from, in slab id order.
+    pub const SLAB_BASES: [Block; 6] =
+        [Block::STONE, Block::COBBLESTONE, Block::PLANKS, Block::SANDSTONE, Block::BRICKS, Block::NETHER_BRICKS];
+
+    /// The slab cut from `base`, if there is one.
+    pub fn slab_of(base: Block) -> Option<Block> {
+        Self::SLAB_BASES.iter().position(|&b| b == base).map(|i| Block(106 + i as u8))
+    }
+
+    /// The full block a slab was cut from (two stacked slabs make it).
+    pub fn slab_base(self) -> Option<Block> {
+        (106..=111).contains(&self.0).then(|| Self::SLAB_BASES[self.0 as usize - 106])
+    }
+
+    pub fn is_slab(self) -> bool {
+        self.slab_base().is_some()
+    }
+
+    /// What mining rules treat this block as: a slab mines like its full
+    /// block, an oriented block like its plain form.
+    fn material(self) -> Block {
+        self.slab_base().unwrap_or(self.base())
+    }
+
     pub fn is_bed(self) -> bool {
         matches!(self, Block::BED_FOOT | Block::BED_HEAD)
     }
@@ -427,12 +473,18 @@ impl Block {
     /// How far (in 1/16 block) the top of this block sits below the top of
     /// its cell; 0 for full blocks.
     pub fn top_drop(self) -> u8 {
-        if self.is_bed() { 7 } else { 0 }
+        match self {
+            b if b.is_bed() => 7,
+            b if b.is_slab() => 8,
+            _ => 0,
+        }
     }
 
     /// Height of the block's collision box.
     pub fn height(self) -> f64 {
-        1.0 - self.top_drop() as f64 / 16.0
+        // Soul sand looks like a full block, but you sink into it a little.
+        let sink = if self == Block::SOUL_SAND { 2.0 } else { 0.0 };
+        1.0 - (self.top_drop() as f64 + sink) / 16.0
     }
 
     /// What breaking this block yields in survival.
@@ -452,6 +504,9 @@ impl Block {
             // The foot drops the bed; breaking either half breaks both.
             Block::BED_FOOT => Some(Item::BED),
             Block::BED_HEAD => None,
+            Block::QUARTZ_ORE => Some(Item::NETHER_QUARTZ),
+            // Glowstone breaks into dust (see `World::spill_block`).
+            Block::GLOWSTONE | Block::NETHER_PORTAL => None,
             b if b.is_leaves() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
             b if b.is_fluid() || b == Block::AIR => None,
@@ -463,12 +518,17 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
-        match self.base() {
+        match self.material() {
             b if b.kind() == RenderKind::Cross => 0.0,
+            Block::TNT => 0.0,
             b if b.is_leaves() => 0.2,
             Block::SNOW => 0.2,
             Block::GLASS | Block::GLOWSTONE => 0.3,
-            Block::CACTUS => 0.4,
+            Block::CACTUS | Block::NETHERRACK => 0.4,
+            Block::SOUL_SAND => 0.5,
+            Block::NETHER_BRICKS => 2.0,
+            Block::QUARTZ_ORE => 3.0,
+            Block::NETHER_PORTAL => f32::INFINITY,
             Block::DIRT | Block::SAND | Block::RED_SAND | Block::ICE => 0.5,
             Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL | Block::FARMLAND | Block::WET_FARMLAND | Block::CLAY => {
                 0.6
@@ -492,7 +552,7 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
-        match self.base() {
+        match self.material() {
             Block::STONE
             | Block::COBBLESTONE
             | Block::BRICKS
@@ -504,6 +564,9 @@ impl Block {
             | Block::OBSIDIAN
             | Block::FURNACE
             | Block::LIT_FURNACE
+            | Block::NETHERRACK
+            | Block::QUARTZ_ORE
+            | Block::NETHER_BRICKS
             | Block::ICE => Some(ToolKind::Pickaxe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
             Block::DIRT
@@ -515,6 +578,7 @@ impl Block {
             | Block::FARMLAND
             | Block::WET_FARMLAND
             | Block::RED_SAND
+            | Block::SOUL_SAND
             | Block::CLAY => Some(ToolKind::Shovel),
             b if b.is_log() || b.is_planks() => Some(ToolKind::Axe),
             Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON => Some(ToolKind::Axe),
@@ -525,14 +589,17 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
-        match self.base() {
+        match self.material() {
             Block::STONE
             | Block::COBBLESTONE
             | Block::BRICKS
             | Block::SANDSTONE
             | Block::COAL_ORE
             | Block::FURNACE
-            | Block::LIT_FURNACE => Some(0),
+            | Block::LIT_FURNACE
+            | Block::NETHERRACK
+            | Block::QUARTZ_ORE
+            | Block::NETHER_BRICKS => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
             Block::IRON_ORE => Some(1),
             Block::GOLD_ORE | Block::DIAMOND_ORE => Some(2),
@@ -543,7 +610,14 @@ impl Block {
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).chain(32..=37).chain(42..=45).chain([53, 57, 67, 68]).chain(69..=97).map(Block)
+        (1..=23u8)
+            .chain(32..=37)
+            .chain(42..=45)
+            .chain([53, 57, 67, 68])
+            .chain(69..=97)
+            .chain(100..=103)
+            .chain(105..=111)
+            .map(Block)
     }
 
     /// Blocks that placing another block overwrites (air, fluids, grass).
@@ -563,7 +637,7 @@ impl Block {
     /// Whether the crosshair can select this block (anything visible but fluids).
     #[inline(always)]
     pub fn is_targetable(self) -> bool {
-        self.kind() != RenderKind::Invisible && !self.is_fluid()
+        self.kind() != RenderKind::Invisible && !self.is_fluid() && self != Block::NETHER_PORTAL
     }
 
     /// Sand and gravel fall when nothing holds them up.
@@ -628,6 +702,7 @@ impl Block {
             Block::GLOWSTONE => 15,
             Block::TORCH => 14,
             Block::LIT_FURNACE => 13,
+            Block::NETHER_PORTAL => 11,
             b if b.is_lava() => 15,
             _ => 0,
         }
@@ -874,11 +949,31 @@ const fn make(id: u8) -> BlockInfo {
         97 => ("ice", Translucent, all(tex::ICE)),
         98 => ("bed foot", Cutout, column(tex::BED_SIDE_FOOT, tex::BED_TOP_FOOT, tex::PLANKS)),
         99 => ("bed head", Cutout, column(tex::BED_SIDE_HEAD, tex::BED_TOP_HEAD, tex::PLANKS)),
+        100 => ("netherrack", Opaque, all(tex::NETHERRACK)),
+        101 => ("soul sand", Opaque, all(tex::SOUL_SAND)),
+        102 => ("nether quartz ore", Opaque, all(tex::QUARTZ_ORE)),
+        103 => ("nether bricks", Opaque, all(tex::NETHER_BRICKS)),
+        104 => ("nether portal", Translucent, all(tex::PORTAL)),
+        105 => ("tnt", Opaque, column(tex::TNT_SIDE, tex::TNT_TOP, tex::TNT_BOTTOM)),
+        106..=111 => {
+            const NAMES: [&str; 6] =
+                ["stone slab", "cobblestone slab", "oak slab", "sandstone slab", "brick slab", "nether brick slab"];
+            let base = make(match id {
+                106 => 1,
+                107 => 9,
+                108 => 8,
+                109 => 21,
+                110 => 20,
+                _ => 103,
+            });
+            // Cutout, not opaque: the faces above and beside a slab show.
+            (NAMES[id as usize - 106], Cutout, base.tex)
+        }
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.
     let solid = matches!(kind, Opaque | Cutout) || id == 97;
-    BlockInfo { name, kind, solid, self_cull: id == 5 || id == 10 || id == 97, tex }
+    BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104), tex }
 }
 
 pub static INFO: [BlockInfo; 256] = {
@@ -898,8 +993,8 @@ static LIGHT_OPACITY: [u8; 256] = {
         arr[i] = match INFO[i].kind {
             RenderKind::Opaque => 15,
             RenderKind::Invisible | RenderKind::Cross => 0,
-            _ if i == 10 || i == 98 || i == 99 => 0, // glass, beds
-            _ => 1,                                  // leaves, water: dim light passing through
+            _ if matches!(i, 10 | 98 | 99 | 106..=111) => 0, // glass, beds, slabs
+            _ => 1,                                          // leaves, water: dim light passing through
         };
         i += 1;
     }
@@ -1028,6 +1123,27 @@ mod tests {
         assert_eq!(tex::tinted(tex::STONE, 3), tex::STONE);
         assert_eq!(tex::tinted(tex::SPRUCE_LEAVES, 4), tex::SPRUCE_LEAVES);
         assert_eq!(tex::untinted(tex::ITEM_0), None);
+    }
+
+    #[test]
+    fn slabs_are_half_blocks_that_mine_like_their_base() {
+        for (i, &base) in Block::SLAB_BASES.iter().enumerate() {
+            let slab = Block::slab_of(base).unwrap();
+            assert_eq!(slab, Block(Block::STONE_SLAB.0 + i as u8));
+            assert_eq!(slab.slab_base(), Some(base));
+            assert_eq!(slab.height(), 0.5);
+            assert!(slab.is_solid() && !slab.is_opaque() && slab.is_targetable());
+            assert_eq!(slab.light_opacity(), 0);
+            assert_eq!(
+                (slab.hardness(), slab.best_tool(), slab.harvest_level()),
+                (base.hardness(), base.best_tool(), base.harvest_level())
+            );
+            assert_eq!(slab.drop(), Some(slab.into()), "{}", slab.name());
+            assert_eq!(slab.info().tex, base.info().tex);
+            assert!(Block::creative_palette().any(|p| p == slab));
+        }
+        assert_eq!(Block::slab_of(Block::DIRT), None);
+        assert_eq!(Block::from_name("oak_slab"), Some(Block::slab_of(Block::PLANKS).unwrap()));
     }
 
     #[test]

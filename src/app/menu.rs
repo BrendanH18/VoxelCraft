@@ -50,7 +50,7 @@ impl Widget {
         match self {
             Widget::Resume => "Back to Game".into(),
             Widget::Options => "Options...".into(),
-            Widget::SaveAndQuit => "Save and Quit".into(),
+            Widget::SaveAndQuit => "Save and Quit to Title".into(),
             Widget::RenderDistance => format!("Render Distance: {} chunks", s.render_distance),
             Widget::Fov => format!("FOV: {}", s.fov as i32),
             Widget::Sensitivity => format!("Sensitivity: {}%", (s.sensitivity * 100.0).round() as i32),
@@ -119,7 +119,7 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
         .collect()
 }
 
-fn inside([x, y, w, h]: [f32; 4], (mx, my): (f32, f32)) -> bool {
+pub(super) fn inside([x, y, w, h]: [f32; 4], (mx, my): (f32, f32)) -> bool {
     mx >= x && mx < x + w && my >= y && my < y + h
 }
 
@@ -265,12 +265,12 @@ impl Game {
     }
 }
 
-const BUTTON: Color = [0.42, 0.42, 0.42, 1.0];
-const HOT: Color = [0.48, 0.52, 0.72, 1.0];
+pub(super) const BUTTON: Color = [0.42, 0.42, 0.42, 1.0];
+pub(super) const HOT: Color = [0.48, 0.52, 0.72, 1.0];
 
 /// A filled box with a black outline and (if `raised`) light top-left and
 /// dark bottom-right edges.
-fn bevel(ui: &mut Ui, [x, y, w, h]: [f32; 4], fill: Color, raised: bool) {
+pub(super) fn bevel(ui: &mut Ui, [x, y, w, h]: [f32; 4], fill: Color, raised: bool) {
     ui.rect(x, y, w, h, [0.0, 0.0, 0.0, 1.0]);
     ui.rect(x + 1.0, y + 1.0, w - 2.0, h - 2.0, fill);
     if raised {

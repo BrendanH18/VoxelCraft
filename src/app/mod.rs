@@ -2,7 +2,10 @@
 
 mod actions;
 mod bed;
+mod bow;
+mod bucket;
 mod containers;
+mod dimension;
 mod farming;
 mod hud;
 mod items;
@@ -11,6 +14,7 @@ mod mobs;
 mod recipe_book;
 mod settings;
 pub mod survival;
+mod title;
 mod weather;
 
 use std::sync::Arc;
@@ -33,7 +37,7 @@ use crate::render::{FrameParams, Renderer};
 use crate::world::World;
 use crate::world::block::Block;
 use crate::world::storage::{LevelInfo, Storage};
-use crate::world::terrain::Generator;
+use crate::world::terrain::{Dimension, Generator};
 
 use survival::Vitals;
 
@@ -174,6 +178,18 @@ struct Game {
     /// Where options are saved; `None` for scripted runs (screenshots,
     /// benchmarks), which neither read nor write them.
     settings_path: Option<std::path::PathBuf>,
+    /// Name shown in the world list (the save folder's name may differ).
+    world_name: String,
+    dimension: Dimension,
+    /// The overworld's furnaces, chests and items while the player is in
+    /// the Nether (saved in the root level file).
+    overworld_props: std::collections::BTreeMap<String, String>,
+    /// Travelling: where the player goes once the ground there has loaded.
+    arrival: Option<dimension::Arrival>,
+    /// Seconds spent standing in a portal.
+    portal_time: f32,
+    /// Just came out of a portal: stepping out of it rearms it.
+    portal_locked: bool,
 }
 
 pub struct App {
@@ -181,18 +197,50 @@ pub struct App {
     saves_dir: std::path::PathBuf,
     save_on_exit: bool,
     game: Option<Game>,
+    /// The title screen, while no world is loaded.
+    title: Option<title::Title>,
 }
 
 impl App {
     pub fn new(args: Args, saves_dir: std::path::PathBuf) -> Self {
         let save_on_exit = args.screenshot.is_none() && !args.bench_render;
-        Self { args, saves_dir, save_on_exit, game: None }
+        Self { args, saves_dir, save_on_exit, game: None, title: None }
     }
+
+    /// Loads (or creates) a world and leaves the title screen. Debug
+    /// options like `--give` only apply to the first world of a session.
+    fn play(&mut self, shell: Shell, world_dir: &str, new: Option<title::NewWorld>) {
+        let mut game = Game::start(shell, &self.args, &self.saves_dir, world_dir, new);
+        game.apply_settings();
+        self.args.clear_one_shot();
+        self.title = None;
+        self.game = Some(game);
+    }
+
+    /// Saves the world and goes back to the title screen.
+    fn quit_to_title(&mut self) {
+        let Some(mut game) = self.game.take() else { return };
+        game.save();
+        game.save_settings();
+        let shell = game.into_shell();
+        self.title = Some(title::Title::new(shell, &self.saves_dir));
+    }
+}
+
+/// What outlives a world: the window's renderer, sound and options. A game
+/// takes it on start and hands it back to the title screen on quit.
+pub(crate) struct Shell {
+    renderer: Renderer,
+    audio: crate::audio::Audio,
+    settings: settings::Settings,
+    /// Where options are saved; `None` for scripted runs (screenshots,
+    /// benchmarks), which neither read nor write them.
+    settings_path: Option<std::path::PathBuf>,
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.game.is_some() {
+        if self.game.is_some() || self.title.is_some() {
             return;
         }
         let attrs = Window::default_attributes()
@@ -214,188 +262,36 @@ impl ApplicationHandler for App {
         settings.vsync &= !self.args.no_vsync;
 
         let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
-
-        let storage = Storage::new(self.saves_dir.join(&self.args.world));
-        let existing = if self.args.new_world || !storage.exists() {
-            None
-        } else {
-            match storage.load_level() {
-                Ok(level) => Some(level),
-                Err(e) => {
-                    log::error!("failed to load level, starting fresh: {e}");
-                    None
-                }
-            }
-        };
-        let seed = existing.as_ref().map(|l| l.seed).or(self.args.seed).unwrap_or_else(|| {
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
-        });
-        let saved = if existing.is_some() {
-            storage.load_chunks().unwrap_or_else(|e| {
-                log::error!("failed to load chunks: {e}");
-                Default::default()
-            })
-        } else {
-            Default::default()
-        };
-        log::info!("world '{}' seed {seed}, {} modified chunks", self.args.world, saved.len());
-
-        let mode = match (self.args.mode, existing.as_ref().and_then(|l| l.props.get("mode"))) {
-            (Some(m), _) => m,
-            (None, Some(m)) if m == "creative" => GameMode::Creative,
-            _ => GameMode::Survival,
-        };
-        let inventory = existing
-            .as_ref()
-            .and_then(|l| l.props.get("inventory"))
-            .and_then(|s| Inventory::deserialize(s))
-            .unwrap_or_else(|| match mode {
-                GameMode::Creative => Inventory::with_hotbar(&CREATIVE_HOTBAR),
-                GameMode::Survival => Inventory::default(),
-            });
-
-        let mut inventory = inventory;
-        for &(item, count) in &self.args.give {
-            inventory.add(item, count);
-        }
-        for &item in &self.args.wear {
-            if let Some((piece, _)) = item.as_armor() {
-                inventory.armor[piece as usize] = Some(Stack::new(item, 1));
+        let audio = crate::audio::Audio::new(self.args.mute, settings.volume);
+        let shell = Shell { renderer, audio, settings, settings_path };
+        // A named world, a fresh one or a scripted run skips the title screen.
+        let to_title = self.args.open_menu.as_deref() == Some("title");
+        match self.args.world.clone() {
+            Some(world) if !to_title => self.play(shell, &world, None),
+            None if !to_title && (self.args.new_world || scripted) => self.play(shell, "world", None),
+            _ => {
+                let mut title = title::Title::new(shell, &self.saves_dir);
+                title.screenshot = self.args.screenshot.take();
+                self.title = Some(title);
             }
         }
-
-        let prop = |k: &str| existing.as_ref().and_then(|l| l.props.get(k));
-        let mut vitals = Vitals::restore(
-            prop("health").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_HEALTH),
-            prop("air").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_AIR),
-            prop("death").cloned(),
-        );
-        if let Some(h) = self.args.health {
-            vitals = Vitals::restore(h, vitals.air, None);
-        }
-        if let Some(a) = self.args.air {
-            vitals.air = a.clamp(0.0, survival::MAX_AIR);
-        }
-        if let Some(text) = prop("hunger") {
-            let n: Vec<f32> = text.split(',').filter_map(|v| v.parse().ok()).collect();
-            if let [food, saturation, exhaustion] = n[..] {
-                vitals.hunger = survival::Hunger::restore(food, saturation, exhaustion);
-            }
-        }
-        if let Some(f) = self.args.food {
-            vitals.hunger = survival::Hunger::restore(f, 0.0, 0.0);
-        }
-
-        let generator = Arc::new(Generator::new(seed));
-        let mut player = Player::new(generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
-        if let Some((pos, yaw, pitch)) = existing.as_ref().and_then(|l| l.player) {
-            player.pos = pos;
-            player.yaw = yaw;
-            player.pitch = pitch;
-        }
-        if let Some([x, y, z, yaw, pitch]) = self.args.pose {
-            player.pos = DVec3::new(x, y, z);
-            player.yaw = (yaw as f32).to_radians();
-            player.pitch = (pitch as f32).to_radians();
-            player.flying = true;
-        }
-        player.can_fly = mode == GameMode::Creative;
-        let mut world = World::new(generator, saved, settings.render_distance);
-        if let Some(f) = existing.as_ref().and_then(|l| l.props.get("furnaces")) {
-            world.load_furnaces(f);
-        }
-        if let Some(c) = existing.as_ref().and_then(|l| l.props.get("chests")) {
-            world.load_chests(c);
-        }
-        log::info!("{} worker threads", world.worker_threads());
-
-        let now = Instant::now();
-        let mut game = Game {
-            renderer,
-            world,
-            player,
-            storage,
-            keys: FxHashSet::default(),
-            modifiers: Default::default(),
-            mouse_grabbed: false,
-            left_held: false,
-            right_held: false,
-            action_cooldown: 0.0,
-            mode,
-            inventory,
-            inventory_open: self.args.open_inventory,
-            craft: crate::crafting::Grid::new(2),
-            container: Container::Inventory,
-            recipe_book: recipe_book::RecipeBook::default(),
-            creative_scroll: 0,
-            cursor_px: (0.0, 0.0),
-            actions: actions::Actions::default(),
-            show_hud: true,
-            last_space: now - Duration::from_secs(1),
-            last_frame: now,
-            day_time: self
-                .args
-                .time
-                .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
-                .unwrap_or(0.08),
-            sleeping: None,
-            spawn_bed: existing.as_ref().and_then(|l| l.props.get("bed")).and_then(|t| {
-                let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
-                (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
-            }),
-            weather: {
-                let mut w = weather::Weather::new(seed);
-                if let Some(text) = existing.as_ref().and_then(|l| l.props.get("weather")) {
-                    w.deserialize(text);
-                }
-                if let Some(rain) = self.args.weather {
-                    w.set(rain, true);
-                }
-                w
-            },
-            weather_verts: Vec::new(),
-            started: now,
-            last_save: now,
-            stats_since: now,
-            frames: 0,
-            frame_time_sum: 0.0,
-            fps: 0.0,
-            cpu_ms: 0.0,
-            show_debug: self.args.debug_overlay,
-            popup: (String::new(), now - Duration::from_secs(10)),
-            vitals,
-            screenshot: self.args.screenshot.clone(),
-            screenshot_state: 0,
-            place: self.args.place.clone(),
-            drop: self.args.drop.clone(),
-            placed: false,
-            bench_render: self.args.bench_render.then(Vec::new),
-            frame_started: None,
-            audio: crate::audio::Audio::new(self.args.mute, settings.volume),
-            mobs: mobs::Mobs::new(seed, self.args.spawn.clone(), self.args.wait),
-            menu: match self.args.open_menu.as_deref() {
-                Some("pause") => Some(menu::Screen::Pause),
-                Some("options") => Some(menu::Screen::Options),
-                _ => None,
-            },
-            menu_drag: None,
-            had_focus: false,
-            settings,
-            settings_path,
-        };
-        game.renderer.force_offscreen = game.bench_render.is_some();
-        if let Some(items) = existing.as_ref().and_then(|l| l.props.get("items")) {
-            game.mobs.entities.load_items(items);
-        }
-        if game.vitals.is_dead() {
-            game.on_death();
-        } else if game.screenshot.is_none() && game.bench_render.is_none() {
-            game.set_grab(true);
-        }
-        self.game = Some(game);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if let Some(title) = self.title.as_mut() {
+            if matches!(event, WindowEvent::CloseRequested) {
+                event_loop.exit();
+            }
+            match title.event(event) {
+                Some(title::Action::Play(dir, new)) => {
+                    let shell = self.title.take().expect("title screen").into_shell();
+                    self.play(shell, &dir, new);
+                }
+                Some(title::Action::Quit) => event_loop.exit(),
+                None => {}
+            }
+            return;
+        }
         let Some(game) = self.game.as_mut() else { return };
         match event {
             WindowEvent::CloseRequested => {
@@ -440,8 +336,7 @@ impl ApplicationHandler for App {
                 let pressed = state == ElementState::Pressed;
                 if game.menu.is_some() {
                     if button == MouseButton::Left && game.menu_click(pressed) == Some(menu::MenuAction::Quit) {
-                        self.save_on_exit = true;
-                        event_loop.exit();
+                        self.quit_to_title();
                     }
                     return;
                 }
@@ -476,11 +371,12 @@ impl ApplicationHandler for App {
                     }
                     MouseButton::Right => {
                         game.right_held = pressed;
-                        if pressed && !game.equip_held() {
+                        if pressed && !game.equip_held() && !game.start_draw() {
                             game.place_block();
                             game.action_cooldown = ACTION_REPEAT;
-                        } else {
+                        } else if !pressed {
                             game.actions.eat_timer = 0.0;
+                            game.release_bow();
                         }
                     }
                     MouseButton::Middle if pressed => game.pick_block(),
@@ -533,11 +429,17 @@ impl ApplicationHandler for App {
             game.save();
             game.save_settings();
         }
+        if let Some(title) = &self.title {
+            title.save_settings();
+        }
     }
 
     fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
         if let Some(game) = &self.game {
             game.renderer.window.request_redraw();
+        }
+        if let Some(title) = &self.title {
+            title.request_redraw();
         }
     }
 }
@@ -567,6 +469,229 @@ fn sky_state(t: f64) -> SkyState {
 }
 
 impl Game {
+    /// Loads the world saved in `saves_dir/world_dir`, or creates it (also
+    /// when `new` describes a world made on the title screen).
+    fn start(
+        shell: Shell,
+        args: &Args,
+        saves_dir: &std::path::Path,
+        world_dir: &str,
+        new: Option<title::NewWorld>,
+    ) -> Game {
+        let Shell { renderer, audio, settings, settings_path } = shell;
+        let storage = Storage::new(saves_dir.join(world_dir));
+        let existing = if args.new_world || new.is_some() || !storage.exists() {
+            None
+        } else {
+            match storage.load_level() {
+                Ok(level) => Some(level),
+                Err(e) => {
+                    log::error!("failed to load level, starting fresh: {e}");
+                    None
+                }
+            }
+        };
+        // `--new` replaces the save, so the old world's Nether must not carry
+        // over into the new one. Scripted runs never write saves.
+        if args.new_world && settings_path.is_some() {
+            let nether = dimension::storage_for(&storage, Dimension::Nether);
+            if nether.exists()
+                && let Err(e) = std::fs::remove_dir_all(nether.dir())
+            {
+                log::error!("failed to remove the old Nether save {}: {e}", nether.dir().display());
+            }
+        }
+        let seed =
+            existing.as_ref().map(|l| l.seed).or(new.as_ref().and_then(|n| n.seed)).or(args.seed).unwrap_or_else(
+                || {
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_nanos() as u64)
+                        .unwrap_or(1)
+                },
+            );
+        let root_props = existing.as_ref().map(|l| l.props.clone()).unwrap_or_default();
+        let saved_dimension = root_props.get("dimension").and_then(|d| Dimension::from_name(d)).unwrap_or_default();
+        let dimension = args.dimension.unwrap_or(saved_dimension);
+        let overworld_props = dimension::dimension_props(&root_props);
+        let (saved, dimension_props) = if existing.is_some() {
+            dimension::load_dimension(&storage, dimension, &overworld_props)
+        } else {
+            Default::default()
+        };
+        log::info!("world '{world_dir}' seed {seed}, {} modified chunks in the {}", saved.len(), dimension.name());
+
+        let mode =
+            match (new.as_ref().map(|n| n.mode).or(args.mode), existing.as_ref().and_then(|l| l.props.get("mode"))) {
+                (Some(m), _) => m,
+                (None, Some(m)) if m == "creative" => GameMode::Creative,
+                _ => GameMode::Survival,
+            };
+        let inventory = existing
+            .as_ref()
+            .and_then(|l| l.props.get("inventory"))
+            .and_then(|s| Inventory::deserialize(s))
+            .unwrap_or_else(|| match mode {
+                GameMode::Creative => Inventory::with_hotbar(&CREATIVE_HOTBAR),
+                GameMode::Survival => Inventory::default(),
+            });
+
+        let mut inventory = inventory;
+        for &(item, count) in &args.give {
+            inventory.add(item, count);
+        }
+        for &item in &args.wear {
+            if let Some((piece, _)) = item.as_armor() {
+                inventory.armor[piece as usize] = Some(Stack::new(item, 1));
+            }
+        }
+
+        let prop = |k: &str| existing.as_ref().and_then(|l| l.props.get(k));
+        let mut vitals = Vitals::restore(
+            prop("health").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_HEALTH),
+            prop("air").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_AIR),
+            prop("death").cloned(),
+        );
+        if let Some(h) = args.health {
+            vitals = Vitals::restore(h, vitals.air, None);
+        }
+        if let Some(a) = args.air {
+            vitals.air = a.clamp(0.0, survival::MAX_AIR);
+        }
+        if let Some(text) = prop("hunger") {
+            let n: Vec<f32> = text.split(',').filter_map(|v| v.parse().ok()).collect();
+            if let [food, saturation, exhaustion] = n[..] {
+                vitals.hunger = survival::Hunger::restore(food, saturation, exhaustion);
+            }
+        }
+        if let Some(f) = args.food {
+            vitals.hunger = survival::Hunger::restore(f, 0.0, 0.0);
+        }
+
+        let generator = Arc::new(Generator::for_dimension(seed, dimension));
+        let mut player = Player::new(Generator::new(seed).find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+        if let Some((pos, yaw, pitch)) = existing.as_ref().and_then(|l| l.player) {
+            player.pos = pos;
+            player.yaw = yaw;
+            player.pitch = pitch;
+        }
+        // `--dimension` into the other world: arrive by portal, as if the
+        // player had walked through one where they stood.
+        let arrival = (dimension != saved_dimension && args.pose.is_none()).then(|| {
+            let scale = if dimension == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
+            let p = (player.pos * DVec3::new(scale, 0.0, scale)).floor().as_ivec3();
+            dimension::Arrival::Portal(p.with_y(if dimension == Dimension::Nether { 64 } else { 100 }))
+        });
+        if let Some([x, y, z, yaw, pitch]) = args.pose {
+            player.pos = DVec3::new(x, y, z);
+            player.yaw = (yaw as f32).to_radians();
+            player.pitch = (pitch as f32).to_radians();
+            player.flying = true;
+        }
+        player.can_fly = mode == GameMode::Creative;
+        let world = World::new(generator, saved, settings.render_distance);
+        log::info!("{} worker threads", world.worker_threads());
+
+        let now = Instant::now();
+        let mut game = Game {
+            renderer,
+            world,
+            player,
+            storage,
+            keys: FxHashSet::default(),
+            modifiers: Default::default(),
+            mouse_grabbed: false,
+            left_held: false,
+            right_held: false,
+            action_cooldown: 0.0,
+            mode,
+            inventory,
+            inventory_open: args.open_inventory,
+            craft: crate::crafting::Grid::new(2),
+            container: Container::Inventory,
+            recipe_book: recipe_book::RecipeBook::default(),
+            creative_scroll: 0,
+            cursor_px: (0.0, 0.0),
+            actions: actions::Actions::default(),
+            show_hud: true,
+            last_space: now - Duration::from_secs(1),
+            last_frame: now,
+            day_time: args
+                .time
+                .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
+                .unwrap_or(0.08),
+            sleeping: None,
+            spawn_bed: existing.as_ref().and_then(|l| l.props.get("bed")).and_then(|t| {
+                let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
+                (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
+            }),
+            weather: {
+                let mut w = weather::Weather::new(seed);
+                if let Some(text) = existing.as_ref().and_then(|l| l.props.get("weather")) {
+                    w.deserialize(text);
+                }
+                if let Some(rain) = args.weather {
+                    w.set(rain, true);
+                }
+                w
+            },
+            weather_verts: Vec::new(),
+            started: now,
+            last_save: now,
+            stats_since: now,
+            frames: 0,
+            frame_time_sum: 0.0,
+            fps: 0.0,
+            cpu_ms: 0.0,
+            show_debug: args.debug_overlay,
+            popup: (String::new(), now - Duration::from_secs(10)),
+            vitals,
+            screenshot: args.screenshot.clone(),
+            screenshot_state: 0,
+            place: args.place.clone(),
+            drop: args.drop.clone(),
+            placed: false,
+            bench_render: args.bench_render.then(Vec::new),
+            frame_started: None,
+            audio,
+            mobs: mobs::Mobs::new(seed, args.spawn.clone(), args.wait),
+            menu: match args.open_menu.as_deref() {
+                Some("pause") => Some(menu::Screen::Pause),
+                Some("options") => Some(menu::Screen::Options),
+                _ => None,
+            },
+            menu_drag: None,
+            had_focus: false,
+            settings,
+            settings_path,
+            dimension,
+            overworld_props: if dimension == Dimension::Nether { overworld_props } else { Default::default() },
+            arrival,
+            portal_time: 0.0,
+            portal_locked: false,
+            world_name: new
+                .map(|n| n.name)
+                .or_else(|| existing.as_ref().and_then(|l| l.props.get("name")).cloned())
+                .unwrap_or_else(|| world_dir.to_string()),
+        };
+        game.renderer.force_offscreen = game.bench_render.is_some();
+        game.restore_dimension(&dimension_props);
+        if game.vitals.is_dead() {
+            game.on_death();
+        } else if game.screenshot.is_none() && game.bench_render.is_none() {
+            game.set_grab(true);
+        }
+        game
+    }
+
+    /// Ends the game, keeping what the title screen needs.
+    fn into_shell(self) -> Shell {
+        let Game { mut renderer, mut audio, settings, settings_path, .. } = self;
+        renderer.clear_world();
+        audio.leave_world();
+        Shell { renderer, audio, settings, settings_path }
+    }
+
     fn set_grab(&mut self, grab: bool) {
         let window = &self.renderer.window;
         if grab {
@@ -732,6 +857,12 @@ impl Game {
 
     /// Back to the world spawn with full health.
     fn respawn(&mut self) {
+        if self.dimension != Dimension::Overworld {
+            self.vitals.respawn();
+            self.switch_dimension(Dimension::Overworld, dimension::Arrival::Respawn);
+            self.set_grab(true);
+            return;
+        }
         self.player.pos = self.respawn_point();
         self.player.vel = DVec3::ZERO;
         self.player.flying = false;
@@ -931,7 +1062,9 @@ impl Game {
         self.actions.breaking = None;
         self.action_cooldown = BREAK_DELAY;
         // Broken ice melts into water, unless it was floating over nothing.
-        let melts = block == Block::ICE && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
+        let melts = block == Block::ICE
+            && self.dimension.has_sky()
+            && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
         self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
@@ -972,10 +1105,7 @@ impl Game {
     /// Right-click with armor in hand puts it on (swapping out the worn
     /// piece), unless aimed at a container. Returns whether it did.
     fn equip_held(&mut self) -> bool {
-        let at_container = self.target().and_then(|(pos, _)| self.world.get_block(pos)).is_some_and(|b| {
-            b == Block::CRAFTING_TABLE || crate::world::furnace::is_furnace(b) || crate::world::chest::is_chest(b)
-        });
-        if self.mode != GameMode::Survival || at_container || !self.inventory.equip(self.actions.selected) {
+        if self.mode != GameMode::Survival || self.aiming_at_usable() || !self.inventory.equip(self.actions.selected) {
             return false;
         }
         let sound = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Wood);
@@ -1005,6 +1135,9 @@ impl Game {
     }
 
     fn place_block(&mut self) {
+        if !self.aiming_at_usable() && self.use_bucket() {
+            return;
+        }
         let Some((pos, normal)) = self.target() else { return };
         // Containers open on right-click; holding Shift builds against them.
         match self.world.get_block(pos) {
@@ -1015,7 +1148,7 @@ impl Game {
             Some(b) if b.is_bed() => return self.use_bed(pos),
             _ => {}
         }
-        if self.use_item_on(pos, normal) {
+        if self.strike_flint(pos, normal) || self.use_item_on(pos, normal) {
             return;
         }
         // Clicking tall grass replaces it instead of building against it.
@@ -1027,8 +1160,28 @@ impl Game {
             return;
         }
         let Some(block) = self.inventory.get(self.actions.selected).and_then(|s| s.item.places()) else { return };
+        // A slab on top of the same slab makes the full block.
+        if block.is_slab()
+            && normal == IVec3::Y
+            && self.world.get_block(pos) == Some(block)
+            && let Some(full) = block.slab_base()
+        {
+            if !self.player.intersects_block(pos) {
+                self.world.set_block(pos, full);
+                self.audio.block_place(full, pos);
+                if self.mode == GameMode::Survival {
+                    self.inventory.take_one(self.actions.selected);
+                }
+            }
+            return;
+        }
         // Furnaces and chests face whoever places them.
         let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
+        if block.is_water() && !self.dimension.has_sky() {
+            // Water boils away in the Nether.
+            self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
+            return;
+        }
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
         let below = self.world.get_block(at - glam::IVec3::Y);
         let supported = below.is_some_and(|below| block.can_stay_on(below))
@@ -1160,6 +1313,7 @@ impl Game {
     fn save(&mut self) {
         let mut props = std::collections::BTreeMap::new();
         props.insert("mode".to_string(), self.mode.name().to_string());
+        props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
         inventory.return_stacks(self.craft.cells.iter().flatten().copied());
@@ -1171,22 +1325,37 @@ impl Game {
         if let Some(cause) = &self.vitals.death {
             props.insert("death".to_string(), cause.clone());
         }
-        props.insert("furnaces".to_string(), self.world.furnaces_to_string());
-        props.insert("chests".to_string(), self.world.chests_to_string());
-        props.insert("items".to_string(), self.mobs.entities.items_to_string());
+        props.insert("dimension".to_string(), self.dimension.name().to_string());
         props.insert("time".to_string(), format!("{:.5}", self.day_time));
         props.insert("weather".to_string(), self.weather.serialize());
         if let Some(b) = self.spawn_bed {
             props.insert("bed".to_string(), format!("{},{},{}", b.x, b.y, b.z));
         }
-        let level = LevelInfo {
-            seed: self.world.generator.seed,
-            player: Some((self.player.pos, self.player.yaw, self.player.pitch)),
-            props,
-        };
+        let seed = self.world.generator.seed;
         let chunks = self.world.modified_chunks();
-        match self.storage.save(&level, &chunks) {
-            Ok(()) => log::info!("saved {} modified chunks to {}", chunks.len(), self.storage.dir().display()),
+        // The overworld saves with the player; the Nether in its own folder.
+        let result = match self.dimension {
+            Dimension::Overworld => {
+                props.extend(self.dimension_props());
+                let player = Some((self.player.pos, self.player.yaw, self.player.pitch));
+                self.storage.save(&LevelInfo { seed, player, props }, &chunks)
+            }
+            Dimension::Nether => {
+                let nether = LevelInfo { seed, player: None, props: self.dimension_props() };
+                dimension::storage_for(&self.storage, Dimension::Nether).save(&nether, &chunks).and_then(|()| {
+                    props.extend(self.overworld_props.clone());
+                    let player = Some((self.player.pos, self.player.yaw, self.player.pitch));
+                    self.storage.save_level(&LevelInfo { seed, player, props })
+                })
+            }
+        };
+        match result {
+            Ok(()) => log::info!(
+                "saved {} modified {} chunks to {}",
+                chunks.len(),
+                self.dimension.name(),
+                self.storage.dir().display()
+            ),
             Err(e) => log::error!("save failed: {e}"),
         }
         self.last_save = Instant::now();
@@ -1199,9 +1368,16 @@ impl Game {
         self.last_frame = now;
 
         // --- Simulation ---------------------------------------------------
+        // Travelling between dimensions: frozen until the far side loads.
+        let arriving = self.update_arrival();
         let held = |k: KeyCode| self.keys.contains(&k);
         let axis = |pos: KeyCode, neg: KeyCode| held(pos) as i32 as f64 - held(neg) as i32 as f64;
-        let input = if self.mouse_grabbed && !self.inventory_open && !self.vitals.is_dead() && self.sleeping.is_none() {
+        let input = if self.mouse_grabbed
+            && !self.inventory_open
+            && !self.vitals.is_dead()
+            && self.sleeping.is_none()
+            && !arriving
+        {
             MoveInput {
                 forward: axis(KeyCode::KeyW, KeyCode::KeyS),
                 right: axis(KeyCode::KeyD, KeyCode::KeyA),
@@ -1215,11 +1391,14 @@ impl Game {
             MoveInput::default()
         };
         let before = self.player.pos;
-        self.player.update(dt, input, &self.world);
+        if !arriving {
+            self.player.update(dt, input, &self.world);
+            self.update_portal(dt);
+        }
         let moved = (self.player.pos - before).with_y(0.0).length();
         self.weather.update(dt);
         self.update_sleep(dt);
-        self.world.raining = self.weather.raining;
+        self.world.raining = self.weather.raining && self.dimension.has_sky();
         let rain_here = weather::rain_at(&self.world, &self.weather, self.player.pos);
         self.audio.update(&self.player, &self.world, rain_here, dt);
         let env = survival::Env {
@@ -1233,7 +1412,11 @@ impl Game {
             sprinting: input.sprint && moved > 0.0,
             jumped: self.player.jumped,
         };
-        let hurts = self.vitals.tick(dt as f32, &env, self.mode == GameMode::Creative);
+        let hurts = if arriving || self.arrival.is_some() {
+            Default::default()
+        } else {
+            self.vitals.tick(dt as f32, &env, self.mode == GameMode::Creative)
+        };
         self.trample(hurts.landed);
         if hurts.fall > 0.0 {
             self.damage_player(hurts.fall, survival::CAUSE_FALL);
@@ -1254,7 +1437,13 @@ impl Game {
             if self.action_cooldown <= 0.0 {
                 self.continue_breaking(dt);
             }
-        } else if acting && self.action_cooldown <= 0.0 && (self.left_held || self.right_held) {
+        } else if acting
+            && self.action_cooldown <= 0.0
+            && (self.left_held || self.right_held)
+            && self.actions.bow_draw.is_none()
+            // Buckets act once per click.
+            && !(self.right_held && !self.left_held && self.holding_bucket())
+        {
             if self.left_held {
                 self.break_block();
             } else {
@@ -1263,6 +1452,7 @@ impl Game {
             self.action_cooldown = ACTION_REPEAT;
         }
         self.eat(acting, dt);
+        self.update_bow(acting, dt);
 
         // --- World streaming ------------------------------------------------
         if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0
@@ -1294,6 +1484,14 @@ impl Game {
         sky.daylight = self.weather.dim(sky.daylight);
         sky.horizon = self.weather.overcast(sky.horizon);
         sky.zenith = self.weather.overcast(sky.zenith);
+        let nether = !self.dimension.has_sky();
+        if nether {
+            // No sun, no weather: a steady dim glow in a red haze.
+            sky.daylight = dimension::NETHER_LIGHT;
+            sky.horizon = dimension::NETHER_FOG;
+            sky.zenith = dimension::NETHER_FOG;
+        }
+        let rain = if nether { 0.0 } else { self.weather.strength };
         let daylight = sky.daylight;
         let in_lava = self.player.head_in_lava(&self.world);
         let underwater = env.head_in_water || in_lava;
@@ -1302,6 +1500,8 @@ impl Game {
             (LAVA_FOG, 0.0, 2.0)
         } else if underwater {
             (WATER_FOG.map(|c| c * daylight), 0.0, 28.0)
+        } else if nether {
+            (sky.horizon, 8.0, view_dist.min(160.0) * 0.8)
         } else {
             (sky.horizon, view_dist * 0.55, view_dist * 0.95)
         };
@@ -1312,12 +1512,14 @@ impl Game {
             (now - self.started).as_secs_f32(),
         );
         self.renderer.set_entities(verts);
-        weather::sheets(&self.world, self.player.eye(), self.weather.strength, &mut self.weather_verts);
+        weather::sheets(&self.world, self.player.eye(), rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
         let params = FrameParams {
             camera: self.player.eye(),
             forward: self.player.forward(),
-            fov_y: self.settings.fov.to_radians() * if input.sprint && input.forward > 0.0 { 1.08 } else { 1.0 },
+            fov_y: self.settings.fov.to_radians()
+                * if input.sprint && input.forward > 0.0 { 1.08 } else { 1.0 }
+                * (1.0 - 0.15 * self.bow_power().unwrap_or(0.0)),
             sky_color: fog_color.map(|c| c as f64),
             fog_color,
             fog_start,
@@ -1346,9 +1548,21 @@ impl Game {
                     yaw: 0.0,
                     icon: None,
                 })
+                .chain(self.mobs.entities.tnt.iter().map(|t| {
+                    let s = t.size();
+                    crate::render::BlockModel {
+                        min: t.pos - glam::DVec3::new(s as f64 / 2.0, (s as f64 - 1.0) / 2.0, s as f64 / 2.0),
+                        size: s,
+                        // White flashes count down to the blast.
+                        block: if t.flash() { Block::WOOL } else { Block::TNT },
+                        sky_light: crate::entity::sky_light(&self.world, t.pos + glam::DVec3::Y * 0.5),
+                        yaw: 0.0,
+                        icon: None,
+                    }
+                }))
                 .chain(self.item_models())
                 .collect(),
-            rain: self.weather.strength,
+            rain,
             ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() {
                 self.build_ui(now)
             } else {

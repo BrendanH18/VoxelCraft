@@ -169,6 +169,7 @@ const PLANKS: Ingredient = &[
 ];
 const MELON: Ingredient = &[b(Block::MELON)];
 const SAND: Ingredient = &[b(Block::SAND)];
+const SAND_STONE: Ingredient = &[b(Block::SANDSTONE)];
 const WOOL: Ingredient = &[b(Block::WOOL)];
 const COBBLESTONE: Ingredient = &[b(Block::COBBLESTONE)];
 const STICK: Ingredient = &[Item::STICK];
@@ -200,6 +201,14 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', SAND)], b(Block::SANDSTONE), 1),
             shaped(&["##", "##"], &[('#', &[Item::STRING])], b(Block::WOOL), 1),
             shaped(&["WWW", "###"], &[('W', WOOL), ('#', PLANKS)], Item::BED, 1),
+            shapeless(&[&[Item::IRON_INGOT], &[Item::FLINT]], Item::FLINT_AND_STEEL, 1),
+            shaped(&["# #", " # "], &[('#', &[Item::IRON_INGOT])], Item::BUCKET, 1),
+            shaped(&["X#X", "#X#", "X#X"], &[('X', &[Item::GUNPOWDER]), ('#', SAND)], b(Block::TNT), 1),
+            shaped(&["##", "##"], &[('#', &[Item::NETHER_BRICK])], b(Block::NETHER_BRICKS), 1),
+            shaped(&["##", "##"], &[('#', &[Item::GLOWSTONE_DUST])], b(Block::GLOWSTONE), 1),
+            shaped(&["###", "###", "###"], &[('#', &[Item::GOLD_NUGGET])], Item::GOLD_INGOT, 1),
+            shapeless(&[&[Item::GOLD_INGOT]], Item::GOLD_NUGGET, 9),
+            shaped(&[" #s", "# s", " #s"], &[('#', STICK), ('s', &[Item::STRING])], Item::BOW, 1),
             shaped(&["f", "#", "e"], &[('f', &[Item::FLINT]), ('#', STICK), ('e', &[Item::FEATHER])], Item::ARROW, 4),
         ];
         const LOGS: [(Ingredient, Block); 5] = [
@@ -227,6 +236,11 @@ pub fn recipes() -> &'static [Recipe] {
             r.push(tool(ToolKind::Axe, &["XX", "X#", " #"]));
             r.push(tool(ToolKind::Hoe, &["XX", " #", " #"]));
             r.push(tool(ToolKind::Sword, &["X", "X", "#"]));
+        }
+        const SLABS: [Ingredient; 6] =
+            [&[b(Block::STONE)], COBBLESTONE, PLANKS, SAND_STONE, &[b(Block::BRICKS)], &[b(Block::NETHER_BRICKS)]];
+        for (i, base) in SLABS.into_iter().enumerate() {
+            r.push(shaped(&["###"], &[('#', base)], b(Block(Block::STONE_SLAB.0 + i as u8)), 6));
         }
         const ARMOR: [(ArmorMaterial, Ingredient); 4] = [
             (ArmorMaterial::Leather, &[Item::LEATHER]),

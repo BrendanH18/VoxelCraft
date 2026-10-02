@@ -334,6 +334,11 @@ impl Vitals {
         hurts
     }
 
+    /// Forgets the height a fall started from (after a teleport).
+    pub fn reset_fall(&mut self) {
+        self.fall_peak = None;
+    }
+
     /// Full health and air, alive, nothing pending.
     pub fn respawn(&mut self) {
         *self = Self::default();

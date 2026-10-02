@@ -118,7 +118,8 @@ impl Ui {
         // Half width `s`; the top diamond is `s` tall, each side face `s` tall.
         let (cx, s) = (x + size / 2.0, size / 2.0);
         let q = s / 2.0;
-        let (l, r, top, bot) = (cx - s, cx + s, y, y + size);
+        // Low blocks (slabs, beds) have their top lowered.
+        let (l, r, top, bot) = (cx - s, cx + s, y + s * block.top_drop() as f32 / 16.0, y + size);
         let uv = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
         let shade = |f: f32| [f, f, f, 1.0];
         self.quad([[l, top + q], [cx, top], [r, top + q], [cx, top + s]], uv, t[2] as f32, WHITE);

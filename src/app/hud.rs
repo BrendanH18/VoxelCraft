@@ -60,6 +60,17 @@ impl Game {
             ui.rect(0.0, 0.0, sw, sh, [0.05, 0.15, 0.4, 0.3]);
         }
 
+        if self.portal_time > 0.0 {
+            // The portal's purple swims in as it takes hold.
+            let k = (self.portal_time / self.portal_needed()).min(1.0);
+            ui.rect(0.0, 0.0, sw, sh, [0.45, 0.1, 0.75, 0.15 + 0.55 * k]);
+        }
+        if self.arrival.is_some() {
+            ui.rect(0.0, 0.0, sw, sh, [0.03, 0.0, 0.06, 1.0]);
+            let msg = "Building terrain";
+            ui.text(((sw - Ui::text_width(msg)) / 2.0).floor(), (sh / 2.0).floor(), msg, WHITE);
+        }
+
         let hurt = self.vitals.since_damage();
         if hurt < HURT_FLASH {
             ui.rect(0.0, 0.0, sw, sh, [0.8, 0.0, 0.0, 0.35 * (1.0 - hurt / HURT_FLASH)]);
@@ -75,6 +86,12 @@ impl Game {
                 ui.text(cx - Ui::text_width("Eating") / 2.0, cy + 14.0, "Eating", WHITE);
                 ui.rect(cx - 30.0, cy + 25.0, 60.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
                 ui.rect(cx - 29.0, cy + 26.0, 58.0 * progress, 3.0, [0.96, 0.72, 0.3, 1.0]);
+            }
+            if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && self.menu.is_none()) {
+                let full = power >= 1.0;
+                ui.rect(cx - 12.0, cy + 12.0, 24.0, 4.0, [0.0, 0.0, 0.0, 0.7]);
+                let colour = if full { [1.0, 0.95, 0.5, 1.0] } else { [0.85, 0.85, 0.85, 1.0] };
+                ui.rect(cx - 11.0, cy + 13.0, 22.0 * power, 2.0, colour);
             }
         }
 
@@ -608,7 +625,10 @@ impl Game {
             format!("Block: {} {} {}", b.x, b.y, b.z),
             format!("Chunk: {} {} {} in {} {} {}", l.x, l.y, l.z, c.x, c.y, c.z),
             format!("Facing: {facing} ({:.1} / {:.1})", self.player.yaw.to_degrees(), self.player.pitch.to_degrees()),
-            format!("Biome: {biome:?}"),
+            match self.dimension {
+                crate::world::terrain::Dimension::Overworld => format!("Biome: {biome:?}"),
+                d => format!("Dimension: {}", d.name()),
+            },
             format!(
                 "Weather: {} ({:.0} s left)",
                 if self.weather.raining { "rain" } else { "clear" },

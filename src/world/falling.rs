@@ -112,7 +112,9 @@ impl World {
                     let resists = b == Block::AIR || b == Block::BEDROCK || b == Block::OBSIDIAN || b.is_fluid();
                     if !resists && self.edit(p, Block::AIR, false) {
                         removed.push(p);
-                        if (super::noise::hash_f(p.x, p.y, p.z, seed ^ 0xD20F) as f64) < 1.0 / power {
+                        if b == Block::TNT {
+                            self.primed_tnt.push(p);
+                        } else if (super::noise::hash_f(p.x, p.y, p.z, seed ^ 0xD20F) as f64) < 1.0 / power {
                             self.spill_block(p, b);
                         }
                     }

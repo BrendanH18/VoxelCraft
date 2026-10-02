@@ -50,6 +50,14 @@ impl Game {
             item.stack.count = left;
             left > 0
         });
+        let arrows = self.mobs.entities.collect_arrows(player);
+        if arrows > 0 {
+            picked = true;
+            let left = self.inventory.add(crate::item::Item::ARROW, arrows);
+            if left > 0 {
+                self.mobs.entities.scatter(Stack::new(crate::item::Item::ARROW, left), player);
+            }
+        }
         if picked {
             self.audio.play(Sound::Pop, None, 0.35, (0.8, 1.8));
         }
