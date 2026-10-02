@@ -1523,6 +1523,18 @@ impl Game {
                     yaw: 0.0,
                     icon: None,
                 })
+                .chain(self.mobs.entities.tnt.iter().map(|t| {
+                    let s = t.size();
+                    crate::render::BlockModel {
+                        min: t.pos - glam::DVec3::new(s as f64 / 2.0, (s as f64 - 1.0) / 2.0, s as f64 / 2.0),
+                        size: s,
+                        // White flashes count down to the blast.
+                        block: if t.flash() { Block::WOOL } else { Block::TNT },
+                        sky_light: crate::entity::sky_light(&self.world, t.pos + glam::DVec3::Y * 0.5),
+                        yaw: 0.0,
+                        icon: None,
+                    }
+                }))
                 .chain(self.item_models())
                 .collect(),
             rain,

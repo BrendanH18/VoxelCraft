@@ -19,7 +19,7 @@
 | Shift + click | In the inventory: move a stack between the open chest or furnace and the inventory (or between hotbar and main grid); on a crafting result, craft as many as fit |
 | Shift + right click | Build against a crafting table, furnace or chest instead of opening it |
 | Hold / release right click with a bow | Draw / shoot an arrow (needs arrows in survival) |
-| Right click with flint and steel | Light an obsidian portal frame |
+| Right click with flint and steel | Light an obsidian portal frame or a TNT block |
 | Right click with a bucket | Scoop up a water or lava source / pour it out again |
 | Right click with a hoe | Till grass or dirt (with air above) into farmland |
 | Right click with seeds / bone meal | Sow wheat on farmland / make a crop, sapling or patch of grass grow |
@@ -141,6 +141,11 @@ session.
   per hit (other tools 2), and break when worn out. Melee damage comes from
   the held item: a fist 1, swords 4 (wood, gold) to 7 (diamond), axes,
   pickaxes and shovels less
+- TNT (5 gunpowder and 4 sand in a checkerboard): light it with flint and
+  steel and it hops out of its block, flashing white and swelling for 4
+  seconds before a blast stronger than a creeper's (power 4). TNT caught in
+  a blast goes off within a second and a half, so stacks chain. Explosions
+  hurt through armor, knock you back and drop some of what they destroy
 - Buckets (3 iron ingots in a V, stack to 16): right-click a water or lava
   source to fill one and right-click a block to pour it out next to it.
   Creative keeps its empty bucket. A lava bucket smelts for 1000 s and

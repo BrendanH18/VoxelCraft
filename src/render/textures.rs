@@ -529,6 +529,26 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let c = [(90.0 + 110.0 * k) as u8, (20.0 + 50.0 * k) as u8, (160.0 + 90.0 * k) as u8];
             [c[0], c[1], c[2], (150.0 + 90.0 * k) as u8]
         }
+        tex::TNT_SIDE => {
+            // Red paper with a white band across the middle and a fuse-dark
+            // "TNT" stencilled on it.
+            const LETTERS: [&str; 6] =
+                ["### #  # ###", " #  ## #  # ", " #  ## #  # ", " #  # ##  # ", " #  # ##  # ", " #  #  #  # "];
+            if (4..=11).contains(&y) {
+                let ink = LETTERS.get(y.wrapping_sub(5)).and_then(|row| row.as_bytes().get(x.wrapping_sub(2)));
+                if ink == Some(&b'#') { shade([40, 30, 30], 1.0) } else { shade([228, 226, 220], 0.92 + r * 0.08) }
+            } else {
+                let stripe = x.is_multiple_of(4);
+                shade([200, 50, 38], if stripe { 0.78 } else { 0.9 + r * 0.15 })
+            }
+        }
+        tex::TNT_TOP | tex::TNT_BOTTOM => {
+            // Ends of the sticks, with a fuse in the middle on top.
+            let (cx, cy) = (x % 4, y % 4);
+            let edge = cx == 0 || cy == 0;
+            let fuse = layer == tex::TNT_TOP && (7..=8).contains(&x) && (7..=8).contains(&y);
+            if fuse { shade([60, 60, 60], 1.0) } else { shade([200, 50, 38], if edge { 0.7 } else { 0.95 + r * 0.1 }) }
+        }
         tex::OBSIDIAN => {
             let speck = rnd(layer, x, y, 13) < 0.08;
             let c = if speck { [80, 60, 110] } else { [22, 16, 34] };

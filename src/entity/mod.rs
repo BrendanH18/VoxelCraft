@@ -16,6 +16,7 @@ pub mod item;
 mod mob;
 pub mod model;
 mod projectile;
+pub mod tnt;
 
 use std::f32::consts::TAU;
 
@@ -67,11 +68,13 @@ pub enum EntityEvent {
         knockback: Vec3,
         cause: &'static str,
     },
-    /// A creeper exploded: break blocks and hurt everything nearby (see
-    /// [`explosion_damage`]). [`Entities::explode`] handles the mobs.
+    /// A creeper or TNT exploded: break blocks and hurt everything nearby
+    /// (see [`explosion_damage`]). [`Entities::explode`] handles the mobs;
+    /// `cause` is the death message.
     Explosion {
         center: DVec3,
         power: f32,
+        cause: &'static str,
     },
     Sound {
         sound: MobSound,
@@ -173,6 +176,7 @@ pub struct Entities {
     pub mobs: Vec<Mob>,
     pub arrows: Vec<Arrow>,
     pub puffs: Vec<Puff>,
+    pub tnt: Vec<tnt::PrimedTnt>,
     /// Dropped items. They stay put (and don't age) while their chunk is
     /// unloaded, and are saved with the world.
     pub items: Vec<ItemEntity>,
@@ -190,6 +194,7 @@ impl Entities {
             mobs: Vec::new(),
             arrows: Vec::new(),
             puffs: Vec::new(),
+            tnt: Vec::new(),
             items: Vec::new(),
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawn_timer: 0.0,
@@ -253,6 +258,7 @@ impl Entities {
             }
         }
         self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
+        self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
         self.merge_timer -= dt as f32;
         if self.merge_timer <= 0.0 {
             self.merge_timer = MERGE_INTERVAL;
@@ -421,6 +427,15 @@ impl Entities {
             })
             .filter(|&(_, t)| t <= max_dist)
             .min_by(|a, b| a.1.total_cmp(&b.1))
+    }
+
+    /// Lights the TNT block at `cell` (now gone from the world): a short
+    /// random fuse if a blast `chained` it, the full four seconds otherwise.
+    pub fn prime_tnt(&mut self, cell: IVec3, chained: bool) {
+        let fuse = if chained { self.rng.range(0.5, 1.5) } else { tnt::FUSE };
+        let a = self.rng.range(0.0, TAU);
+        let vel = DVec3::new(a.cos() as f64 * 0.4, 2.0, a.sin() as f64 * 0.4);
+        self.tnt.push(tnt::PrimedTnt::new(cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), vel, fuse));
     }
 
     /// The player looses an arrow with bow `power` 0..1.
@@ -919,6 +934,23 @@ mod tests {
         }
         assert!(e.count(MobKind::ZombifiedPiglin) > 0);
         assert!(e.mobs.iter().all(|m| m.kind == MobKind::ZombifiedPiglin));
+    }
+
+    #[test]
+    fn tnt_blows_after_its_fuse() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(14);
+        e.prime_tnt(IVec3::new(0, 10, 0), false);
+        let c = ctx(DVec3::new(30.0, 10.0, 0.0));
+        let early = run(&mut e, &world, &c, 3.5);
+        assert!(!early.iter().any(|ev| matches!(ev, EntityEvent::Explosion { .. })));
+        assert!((e.tnt[0].pos.y - 10.0).abs() < 1e-3, "landed: {:?}", e.tnt[0].pos);
+        let late = run(&mut e, &world, &c, 1.0);
+        let boom = |ev: &EntityEvent| {
+            matches!(ev, EntityEvent::Explosion { power: tnt::POWER, cause: "was blown up by TNT", .. })
+        };
+        assert!(late.iter().any(boom), "{late:?}");
+        assert!(e.tnt.is_empty());
     }
 
     #[test]

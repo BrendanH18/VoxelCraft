@@ -582,7 +582,7 @@ impl Mob {
         self.fuse += dt;
         if self.fuse >= FUSE_TIME {
             let center = self.pos + DVec3::Y * (self.shape().height * 0.5);
-            events.push(EntityEvent::Explosion { center, power: CREEPER_POWER });
+            events.push(EntityEvent::Explosion { center, power: CREEPER_POWER, cause: "was blown up by a creeper" });
             // Gone in the blast: no death animation, no loot.
             self.health = 0.0;
             self.dying = Some(DEATH_TIME);

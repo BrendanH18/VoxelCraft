@@ -85,6 +85,8 @@ pub struct World {
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
+    /// TNT blocks a blast took out; the game lights them.
+    pub primed_tnt: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -120,6 +122,7 @@ impl World {
             random_ticks: 0.0,
             rng,
             drops: Vec::new(),
+            primed_tnt: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),

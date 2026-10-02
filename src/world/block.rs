@@ -110,6 +110,9 @@ pub mod tex {
     pub const QUARTZ_ORE: u8 = 79;
     pub const NETHER_BRICKS: u8 = 80;
     pub const PORTAL: u8 = 81;
+    pub const TNT_SIDE: u8 = 82;
+    pub const TNT_TOP: u8 = 83;
+    pub const TNT_BOTTOM: u8 = 84;
     /// Flat item icons (see `item::Item::icon_layer`), up to `ITEM_COUNT` of them.
     pub const ITEM_0: u8 = 96;
     pub const ITEM_COUNT: u8 = 64;
@@ -281,6 +284,9 @@ impl Block {
     /// Fills a lit obsidian frame (see `world::portal`); standing in it
     /// takes you between the overworld and the Nether.
     pub const NETHER_PORTAL: Block = Block(104);
+    /// Lit with flint and steel (or set off by a nearby blast), it blows up
+    /// four seconds later (see `entity::tnt`).
+    pub const TNT: Block = Block(105);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -483,6 +489,7 @@ impl Block {
     pub fn hardness(self) -> f32 {
         match self.base() {
             b if b.kind() == RenderKind::Cross => 0.0,
+            Block::TNT => 0.0,
             b if b.is_leaves() => 0.2,
             Block::SNOW => 0.2,
             Block::GLASS | Block::GLOWSTONE => 0.3,
@@ -572,7 +579,14 @@ impl Block {
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).chain(32..=37).chain(42..=45).chain([53, 57, 67, 68]).chain(69..=97).chain(100..=103).map(Block)
+        (1..=23u8)
+            .chain(32..=37)
+            .chain(42..=45)
+            .chain([53, 57, 67, 68])
+            .chain(69..=97)
+            .chain(100..=103)
+            .chain([105])
+            .map(Block)
     }
 
     /// Blocks that placing another block overwrites (air, fluids, grass).
@@ -909,6 +923,7 @@ const fn make(id: u8) -> BlockInfo {
         102 => ("nether quartz ore", Opaque, all(tex::QUARTZ_ORE)),
         103 => ("nether bricks", Opaque, all(tex::NETHER_BRICKS)),
         104 => ("nether portal", Translucent, all(tex::PORTAL)),
+        105 => ("tnt", Opaque, column(tex::TNT_SIDE, tex::TNT_TOP, tex::TNT_BOTTOM)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.

@@ -125,7 +125,7 @@ impl Game {
                         self.player.vel += knockback.as_dvec3();
                     }
                 }
-                EntityEvent::Explosion { center, power } => self.explode(center, power, "was blown up by a creeper"),
+                EntityEvent::Explosion { center, power, cause } => self.explode(center, power, cause),
                 EntityEvent::Sound { sound, pos } => {
                     let (sound, gain) = match sound {
                         MobSound::Fuse => (Sound::Fuse, 1.0),
@@ -165,6 +165,10 @@ impl Game {
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str) {
         self.world.explode(center, power as f64);
         self.mobs.entities.explode(center, power);
+        // TNT caught in the blast goes off soon after.
+        for cell in std::mem::take(&mut self.world.primed_tnt) {
+            self.mobs.entities.prime_tnt(cell, true);
+        }
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
         let mid = self.player.pos + DVec3::Y * 0.9;
         if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center))

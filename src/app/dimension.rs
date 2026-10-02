@@ -241,6 +241,15 @@ impl Game {
         if self.held_item() != Some(Item::FLINT_AND_STEEL) {
             return false;
         }
+        if self.world.get_block(pos) == Some(Block::TNT) {
+            self.world.set_block(pos, Block::AIR);
+            self.mobs.entities.prime_tnt(pos, false);
+            self.audio.play(Sound::Fuse, Some(pos.as_dvec3()), 1.0, (0.95, 1.05));
+            if self.mode == GameMode::Survival && self.inventory.wear(self.actions.selected, 1) {
+                self.show_popup("Flint and steel broke");
+            }
+            return true;
+        }
         let lit = self.world.light_portal(pos + normal);
         self.audio.play(Sound::Place(Material::Stone), Some(pos.as_dvec3()), 0.7, (1.6, 1.9));
         if self.mode == GameMode::Survival && self.inventory.wear(self.actions.selected, 1) {
