@@ -802,6 +802,51 @@ mod tests {
     }
 
     #[test]
+    fn unloaded_agents_preserve_survival_inventory_and_timed_commands() {
+        use crate::agent::{Agent, Command};
+        use crate::entity::Entities;
+        use crate::item::Item;
+        use crate::simulation::survival::{Env, Hunger};
+
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        let pos = DVec3::new(1.5, 160.0, 1.5);
+        let mut agent = Agent::new(pos);
+        let mut entities = Entities::new(7);
+        agent.inventory.add(Item::DIAMOND, 3);
+        agent.vitals.tick(0.5, &Env { in_fire: true, ..Default::default() }, false);
+        agent.vitals.health = 1.0;
+        agent.vitals.hunger = Hunger::restore(0.0, 0.0, 0.0);
+        agent.execute(Command::parse("wait 20").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        for feet_loaded in [false, true] {
+            if feet_loaded {
+                world.insert_chunk(IVec3::new(0, 5, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
+            }
+            assert_eq!(world.is_loaded(pos.floor().as_ivec3()), feet_loaded);
+            assert!(!world.is_loaded(pos.floor().as_ivec3() - IVec3::Y));
+            agent.previous_pos = pos - DVec3::X;
+            for _ in 0..25 {
+                agent.tick(&mut world, &mut entities);
+            }
+            assert_eq!(agent.previous_pos, pos);
+            assert_eq!(agent.player.pos, pos);
+            assert_eq!(agent.remaining, 20);
+            assert_eq!(agent.vitals.health, 1.0);
+            assert_eq!(agent.inventory.get(0).unwrap().count, 3);
+            assert!(agent.vitals.burning());
+            assert!(entities.items.is_empty());
+        }
+        world.insert_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::STONE)), false);
+        agent.tick(&mut world, &mut entities);
+        assert_eq!(agent.remaining, 19, "loaded agents resume timed input");
+        for _ in 0..25 {
+            agent.tick(&mut world, &mut entities);
+        }
+        assert!(agent.vitals.is_dead(), "loaded agents resume survival damage");
+        assert!(agent.inventory.get(0).is_none());
+        assert_eq!(entities.items.iter().map(|i| i.stack.count as u32).sum::<u32>(), 3);
+    }
+
+    #[test]
     fn edits_raycast_and_physics() {
         let spawn = Generator::new(7).find_spawn();
         let world_pos = spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);

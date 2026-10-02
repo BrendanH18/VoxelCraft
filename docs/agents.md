@@ -97,12 +97,16 @@ Requests are bounded to 4096 bytes, command text to 1024 bytes, concurrent
 connections to 16 and queued requests to 64. Each response contains `ok` and
 `version`; gameplay responses also include the host's tick, time, weather and
 player state. Unknown versions, malformed input and permission failures return
-structured errors. Timeouts and host shutdown end outstanding requests.
+structured errors. Invalid JSON closes the connection after its error response;
+valid JSON requests with command or permission errors can continue using it.
+Timeouts and host shutdown end outstanding requests.
 
 ## Current limits
 
 Agents share the host's active dimension and relocate alongside it when the
-host travels. Independent simultaneous dimensions and desktop client joining
+host travels. Agent simulation pauses during arrival and while its feet or
+supporting terrain are unloaded; timed commands resume after loading.
+Independent simultaneous dimensions and desktop client joining
 are future work. Mob AI/spawning and hostile projectile targeting still use
 the human host; agents can attack mobs but do not yet receive their melee/arrow
 attacks. Environmental survival damage, death drops and pickups work.

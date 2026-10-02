@@ -163,6 +163,10 @@ impl Game {
         }
     }
     pub(super) fn tick_agents(&mut self) {
+        // Agents still have source-dimension positions until arrival relocates them.
+        if self.arrival.is_some() {
+            return;
+        }
         let mut players = std::mem::take(&mut self.agents.players);
         for bot in players.values_mut().filter(|b| b.active) {
             bot.agent.tick(&mut self.world, &mut self.mobs.entities);

@@ -180,7 +180,7 @@ pub mod tex {
     pub fn item_index(layer: u8) -> Option<u8> {
         if (ITEM_0..ITEM_0 + ITEM_COUNT).contains(&layer) {
             Some(layer - ITEM_0)
-        } else if (ITEM_MORE_0 as u32..COUNT).contains(&(layer as u32)) {
+        } else if (ITEM_MORE_0..ITEM_MORE_0 + ITEM_MORE_COUNT).contains(&layer) {
             Some(layer - ITEM_MORE_0 + ITEM_COUNT)
         } else {
             None
@@ -1289,6 +1289,14 @@ static OPAQUE: [bool; 256] = {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn end_stone_is_not_an_item_icon() {
+        for index in 0..tex::ITEM_COUNT + tex::ITEM_MORE_COUNT {
+            assert_eq!(tex::item_index(tex::item_layer(index)), Some(index));
+        }
+        assert_eq!(tex::item_index(tex::END_STONE), None);
+    }
 
     #[test]
     fn fire_states_and_materials_follow_minecraft_rules() {

@@ -8,7 +8,7 @@ use glam::{DVec3, IVec3};
 
 use super::World;
 use super::block::Block;
-use super::chunk::{CHUNK_SIZE_I, chunk_of};
+use super::chunk::{CHUNK_SIZE_I, WORLD_HEIGHT_CHUNKS, chunk_of};
 use super::noise::splitmix64;
 use crate::inventory::Stack;
 use crate::item::Item;
@@ -84,14 +84,21 @@ impl World {
         let mut centers = self.agent_centers.clone();
         centers.push(chunk_of(player.floor().as_ivec3()));
         // Visit the union once: overlapping sessions never accelerate random ticks.
-        let chunks: Vec<_> = self
-            .chunks
-            .keys()
-            .copied()
-            .filter(|p| centers.iter().any(|c| (p.x - c.x).abs() <= TICK_RADIUS && (p.z - c.z).abs() <= TICK_RADIUS))
-            .collect();
-        let mut chunks = chunks;
+        let mut chunks = Vec::new();
+        for c in centers {
+            for dz in -TICK_RADIUS..=TICK_RADIUS {
+                for dx in -TICK_RADIUS..=TICK_RADIUS {
+                    for y in 0..WORLD_HEIGHT_CHUNKS {
+                        let p = IVec3::new(c.x + dx, y, c.z + dz);
+                        if self.chunks.contains_key(&p) {
+                            chunks.push(p);
+                        }
+                    }
+                }
+            }
+        }
         chunks.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+        chunks.dedup();
         for cpos in chunks {
             if self.chunks.get(&cpos).is_none_or(|s| s.data.uniform().is_some_and(|b| !b.is_lava() && !b.is_fire())) {
                 continue;
@@ -348,9 +355,31 @@ impl World {
 mod tests {
     use super::*;
     use crate::world::chunk::ChunkData;
-    use crate::world::chunk::WORLD_HEIGHT_CHUNKS;
     use crate::world::terrain::Generator;
     use std::sync::Arc;
+
+    #[test]
+    fn random_ticks_include_distant_agents_without_accelerating_overlaps() {
+        fn world(centers: &[IVec3]) -> World {
+            let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+            for x in [0, 10, 100] {
+                let mut data = ChunkData::Uniform(Block::STONE);
+                data.set(0, 0, 0, Block::AIR); // Non-uniform, with no random-tick side effects.
+                world.insert_chunk(IVec3::new(x, 4, 0), Arc::new(data), false);
+            }
+            world.agent_centers = centers.to_vec();
+            world
+        }
+        let far = IVec3::new(10, 4, 0);
+        let mut host_only = world(&[]);
+        let mut union = world(&[far]);
+        let mut overlapping = world(&[IVec3::ZERO, IVec3::X, far, far, far + IVec3::X]);
+        for w in [&mut host_only, &mut union, &mut overlapping] {
+            w.tick_random(crate::simulation::TICK_SECONDS, DVec3::new(1.0, 150.0, 1.0));
+        }
+        assert_ne!(host_only.rng, union.rng, "distant agents must get random ticks");
+        assert_eq!(union.rng, overlapping.rng, "overlapping regions must tick once");
+    }
 
     #[test]
     fn covered_crops_need_nine_block_light_and_saplings_sample_above() {

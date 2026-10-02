@@ -80,7 +80,12 @@ fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    let face_normal = normalize(cross(dpdx(in.rel), dpdy(in.rel)));
+    let area_normal = cross(dpdx(in.rel), dpdy(in.rel));
+    let length_sq = dot(area_normal, area_normal);
+    var face_normal = vec3<f32>(0.0, 1.0, 0.0);
+    if length_sq > 1e-20 {
+        face_normal = area_normal * inverseSqrt(length_sq);
+    }
     let normal = select(face_normal, -face_normal, dot(face_normal, -in.rel) < 0.0);
     // Per-texel brightness noise gives the flat colours a pixel-art texture.
     let n = hash2(floor(in.uv) + 0.5) - 0.5;

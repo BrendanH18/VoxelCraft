@@ -377,6 +377,12 @@ impl Agent {
     /// Advance physics/survival/mining once. All sessions tick before the shared world systems.
     pub fn tick(&mut self, world: &mut World, entities: &mut Entities) {
         self.previous_pos = self.player.pos;
+        // Movement alone returning early is not enough: survival, mining,
+        // pickups and timed commands must also wait for local terrain.
+        let feet = self.player.pos.floor().as_ivec3();
+        if !world.is_loaded(feet) || !world.is_loaded(feet - IVec3::Y) {
+            return;
+        }
         self.cooldown = (self.cooldown - TICK_SECONDS).max(0.0);
         if self.vitals.is_dead() {
             self.remaining = 0;
