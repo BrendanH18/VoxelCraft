@@ -130,6 +130,9 @@ impl Game {
                     };
                     self.audio.play(sound, Some(pos), gain, (0.9, 1.1));
                 }
+                EntityEvent::MobShot { pos, .. } => {
+                    self.audio.play(Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
+                }
                 EntityEvent::Shoot { .. } => {}
             }
         }

@@ -2,6 +2,7 @@
 
 mod actions;
 mod bed;
+mod bow;
 mod containers;
 mod farming;
 mod hud;
@@ -476,11 +477,12 @@ impl ApplicationHandler for App {
                     }
                     MouseButton::Right => {
                         game.right_held = pressed;
-                        if pressed && !game.equip_held() {
+                        if pressed && !game.equip_held() && !game.start_draw() {
                             game.place_block();
                             game.action_cooldown = ACTION_REPEAT;
-                        } else {
+                        } else if !pressed {
                             game.actions.eat_timer = 0.0;
+                            game.release_bow();
                         }
                     }
                     MouseButton::Middle if pressed => game.pick_block(),
@@ -972,10 +974,7 @@ impl Game {
     /// Right-click with armor in hand puts it on (swapping out the worn
     /// piece), unless aimed at a container. Returns whether it did.
     fn equip_held(&mut self) -> bool {
-        let at_container = self.target().and_then(|(pos, _)| self.world.get_block(pos)).is_some_and(|b| {
-            b == Block::CRAFTING_TABLE || crate::world::furnace::is_furnace(b) || crate::world::chest::is_chest(b)
-        });
-        if self.mode != GameMode::Survival || at_container || !self.inventory.equip(self.actions.selected) {
+        if self.mode != GameMode::Survival || self.aiming_at_usable() || !self.inventory.equip(self.actions.selected) {
             return false;
         }
         let sound = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Wood);
@@ -1254,7 +1253,11 @@ impl Game {
             if self.action_cooldown <= 0.0 {
                 self.continue_breaking(dt);
             }
-        } else if acting && self.action_cooldown <= 0.0 && (self.left_held || self.right_held) {
+        } else if acting
+            && self.action_cooldown <= 0.0
+            && (self.left_held || self.right_held)
+            && self.actions.bow_draw.is_none()
+        {
             if self.left_held {
                 self.break_block();
             } else {
@@ -1263,6 +1266,7 @@ impl Game {
             self.action_cooldown = ACTION_REPEAT;
         }
         self.eat(acting, dt);
+        self.update_bow(acting, dt);
 
         // --- World streaming ------------------------------------------------
         if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0
@@ -1317,7 +1321,9 @@ impl Game {
         let params = FrameParams {
             camera: self.player.eye(),
             forward: self.player.forward(),
-            fov_y: self.settings.fov.to_radians() * if input.sprint && input.forward > 0.0 { 1.08 } else { 1.0 },
+            fov_y: self.settings.fov.to_radians()
+                * if input.sprint && input.forward > 0.0 { 1.08 } else { 1.0 }
+                * (1.0 - 0.15 * self.bow_power().unwrap_or(0.0)),
             sky_color: fog_color.map(|c| c as f64),
             fog_color,
             fog_start,

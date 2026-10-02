@@ -76,6 +76,12 @@ impl Game {
                 ui.rect(cx - 30.0, cy + 25.0, 60.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
                 ui.rect(cx - 29.0, cy + 26.0, 58.0 * progress, 3.0, [0.96, 0.72, 0.3, 1.0]);
             }
+            if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && self.menu.is_none()) {
+                let full = power >= 1.0;
+                ui.rect(cx - 12.0, cy + 12.0, 24.0, 4.0, [0.0, 0.0, 0.0, 0.7]);
+                let colour = if full { [1.0, 0.95, 0.5, 1.0] } else { [0.85, 0.85, 0.85, 1.0] };
+                ui.rect(cx - 11.0, cy + 13.0, 22.0 * power, 2.0, colour);
+            }
         }
 
         self.hotbar_ui(&mut ui, now);

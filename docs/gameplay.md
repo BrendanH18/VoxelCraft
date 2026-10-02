@@ -18,6 +18,7 @@
 | E | Inventory (click to move stacks; creative shows the block palette) |
 | Shift + click | In the inventory: move a stack between the open chest or furnace and the inventory (or between hotbar and main grid); on a crafting result, craft as many as fit |
 | Shift + right click | Build against a crafting table, furnace or chest instead of opening it |
+| Hold / release right click with a bow | Draw / shoot an arrow (needs arrows in survival) |
 | Right click with a hoe | Till grass or dirt (with air above) into farmland |
 | Right click with seeds / bone meal | Sow wheat on farmland / make a crop, sapling or patch of grass grow |
 | G | Toggle survival / creative |
@@ -124,7 +125,8 @@ session.
   recipes), sticks, crafting table, chest (8 planks in a ring), torches
   (coal or charcoal over a stick), bread (3 wheat in a row), bone meal (from
   a bone), sandstone, wool (from string), clay and bricks (4 clay balls or
-  bricks), melon slices (from a melon), arrows, and pickaxes, shovels, axes,
+  bricks), melon slices (from a melon), bows (3 sticks and 3 string),
+  arrows (flint, stick and feather; gravel drops flint 1 time in 10), and pickaxes, shovels, axes,
   hoes and swords in wood, stone, iron, gold and diamond
 - Tools follow Minecraft's mining rules: a block takes its hardness x 1.5
   seconds to mine with something that can harvest it and x 5 otherwise,
@@ -137,6 +139,13 @@ session.
   per hit (other tools 2), and break when worn out. Melee damage comes from
   the held item: a fist 1, swords 4 (wood, gold) to 7 (diamond), axes,
   pickaxes and shovels less
+- Bows: hold right-click to draw (fully drawn after 1 s; the bar under the
+  crosshair turns gold and the view zooms in a little) and release to
+  shoot. A full draw deals 6 damage plus a random critical bonus of up to
+  4; weaker draws fly slower and hit softer. Arrows arc, knock mobs back,
+  stick in blocks and drop out when the block is broken. Walk over a stuck
+  arrow to pick it back up (arrows shot in creative can't be collected).
+  Bows have 384 uses
 - Furnaces (8 cobblestone in a ring): right-click to open; put something
   to smelt on top and fuel below. Each item takes 10 s; coal and charcoal
   burn 80 s, logs, planks, crafting tables and chests 15 s, wooden tools 10 s and

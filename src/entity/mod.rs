@@ -82,6 +82,12 @@ pub enum EntityEvent {
         from: DVec3,
         target: DVec3,
     },
+    /// One of the player's arrows hit a mob (loot is dropped internally).
+    MobShot {
+        kind: MobKind,
+        pos: DVec3,
+        killed: bool,
+    },
 }
 
 /// Damage and knockback strength (0..1) of an explosion of `power` at
@@ -232,7 +238,13 @@ impl Entities {
             }
         }
         events.retain(|e| !matches!(e, EntityEvent::Shoot { .. }));
-        self.arrows.retain_mut(|a| a.update(dt, world, ctx, &mut events));
+        let (mobs, rng) = (&mut self.mobs, &mut self.rng);
+        self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, rng, &mut events));
+        for e in &events {
+            if let EntityEvent::MobShot { kind, pos, killed: true } = *e {
+                self.drop_loot(kind, pos);
+            }
+        }
         self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
         self.merge_timer -= dt as f32;
         if self.merge_timer <= 0.0 {
@@ -391,6 +403,22 @@ impl Entities {
             })
             .filter(|&(_, t)| t <= max_dist)
             .min_by(|a, b| a.1.total_cmp(&b.1))
+    }
+
+    /// The player looses an arrow with bow `power` 0..1.
+    pub fn shoot_arrow(&mut self, eye: DVec3, dir: DVec3, power: f32, pickup: bool) {
+        self.arrows.push(Arrow::shot(eye, dir, power, pickup));
+    }
+
+    /// Stuck player arrows within reach of a player at `feet`, removed.
+    /// Returns how many were collected.
+    pub fn collect_arrows(&mut self, feet: DVec3) -> u8 {
+        let before = self.arrows.len();
+        self.arrows.retain(|a| {
+            let near = (a.pos - (feet + DVec3::Y * 0.9)).abs().cmple(DVec3::new(1.3, 1.5, 1.3)).all();
+            !(a.pickup && a.is_stuck() && near)
+        });
+        (before - self.arrows.len()) as u8
     }
 
     /// Player melee hit for `damage` on mob `index`, pushed along `dir`.
@@ -726,9 +754,33 @@ mod tests {
         let mut arrow = Arrow::aimed(DVec3::new(0.5, 12.0, 0.5), DVec3::new(6.0, 10.0, 0.5), &mut Rng::new(1));
         let c = ctx(DVec3::new(50.0, 10.0, 0.0));
         for _ in 0..120 {
-            arrow.update(1.0 / 60.0, &world, &c, &mut Vec::new());
+            arrow.update(1.0 / 60.0, &world, &c, &mut [], &mut Rng::new(1), &mut Vec::new());
         }
         assert!(arrow.is_stuck() && (9.5..10.5).contains(&arrow.pos.y), "{:?}", arrow.pos);
+    }
+
+    #[test]
+    fn player_arrows_hit_mobs_and_can_be_collected() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Zombie, DVec3::new(10.5, 10.0, 0.5));
+        let c = night(DVec3::new(0.5, 10.0, 0.5));
+        e.shoot_arrow(DVec3::new(0.5, 11.6, 0.5), DVec3::X, 1.0, true);
+        let events = run(&mut e, &world, &c, 0.5);
+        let hit = events.iter().any(|ev| matches!(ev, EntityEvent::MobShot { kind: MobKind::Zombie, .. }));
+        assert!(hit, "{events:?}");
+        assert!(e.mobs[0].health < MobKind::Zombie.max_health(), "zombie hurt");
+        assert!(!events.iter().any(is_hit), "the shooter isn't hit");
+
+        // A miss sticks in the ground and is picked up by walking over it.
+        let mut e = Entities::new(5);
+        e.shoot_arrow(DVec3::new(0.5, 11.6, 0.5), DVec3::new(1.0, -0.6, 0.0), 0.5, true);
+        run(&mut e, &world, &c, 2.0);
+        assert!(e.arrows[0].is_stuck());
+        let spot = e.arrows[0].pos.with_y(10.0);
+        assert_eq!(e.collect_arrows(spot + DVec3::X * 5.0), 0);
+        assert_eq!(e.collect_arrows(spot), 1);
+        assert!(e.arrows.is_empty());
     }
 
     #[test]

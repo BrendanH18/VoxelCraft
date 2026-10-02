@@ -332,6 +332,24 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             };
             shaded(&wedge, x, y, c, 0.04)
         }
+        Sprite::Bow => {
+            // A wooden limb bowed toward the top left, strung corner to
+            // corner along the other diagonal.
+            let bend = |s: i32| 7.5 * (1.0 - (s as f32 / 11.0).powi(2));
+            let limb = |x: i32, y: i32| {
+                let (s, k) = (x - y, 15 - (x + y));
+                s.abs() <= 11 && (k as f32 - bend(s)).abs() <= 1.0
+            };
+            let (s, k) = (x - y, 15 - (x + y));
+            let grip = s.abs() <= 1 && (k as f32 - bend(s)).abs() <= 1.0;
+            if grip {
+                Some(tint(HANDLE_DARK, 1.0))
+            } else if limb(x, y) {
+                shaded(&limb, x, y, HANDLE, 0.05)
+            } else {
+                (k == 0 && s.abs() <= 11).then_some(tint([225, 225, 225], 0.95))
+            }
+        }
         Sprite::Arrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);

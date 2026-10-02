@@ -200,6 +200,7 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', SAND)], b(Block::SANDSTONE), 1),
             shaped(&["##", "##"], &[('#', &[Item::STRING])], b(Block::WOOL), 1),
             shaped(&["WWW", "###"], &[('W', WOOL), ('#', PLANKS)], Item::BED, 1),
+            shaped(&[" #s", "# s", " #s"], &[('#', STICK), ('s', &[Item::STRING])], Item::BOW, 1),
             shaped(&["f", "#", "e"], &[('f', &[Item::FLINT]), ('#', STICK), ('e', &[Item::FEATHER])], Item::ARROW, 4),
         ];
         const LOGS: [(Ingredient, Block); 5] = [

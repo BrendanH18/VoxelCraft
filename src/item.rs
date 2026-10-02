@@ -129,6 +129,8 @@ pub enum ItemKind {
         hunger: u8,
         saturation: f32,
     },
+    /// Draw by holding right-click and release to shoot an arrow.
+    Bow,
     /// Crafting ingredient or mob drop with no use of its own.
     Material,
 }
@@ -155,6 +157,7 @@ pub enum Sprite {
     Wheat,
     MelonSlice,
     Bed,
+    Bow,
     Tool(ToolKind, Tier),
     Armor(ArmorPiece, ArmorMaterial),
 }
@@ -182,7 +185,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 29] = [
+static ITEMS: [ItemInfo; 30] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -212,7 +215,11 @@ static ITEMS: [ItemInfo; 29] = [
     item("brick", Sprite::Ingot([178, 92, 66])),
     food("melon slice", 2, 1.2, Sprite::MelonSlice),
     ItemInfo { name: "bed", kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Bed },
+    ItemInfo { name: "bow", kind: ItemKind::Bow, max_stack: 1, sprite: Sprite::Bow },
 ];
+
+/// Uses before a bow breaks.
+pub const BOW_DURABILITY: u16 = 384;
 
 /// Tools start at this id: `FIRST_TOOL + tier * 5 + kind`.
 const FIRST_TOOL: u16 = 320;
@@ -252,6 +259,7 @@ impl Item {
     pub const BRICK: Item = Item(282);
     pub const MELON_SLICE: Item = Item(283);
     pub const BED: Item = Item(284);
+    pub const BOW: Item = Item(285);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
@@ -345,6 +353,7 @@ impl Item {
         match self.info().kind {
             ItemKind::Tool(_, tier) => Some(tier.durability()),
             ItemKind::Armor(piece, material) => Some(material.durability(piece)),
+            ItemKind::Bow => Some(BOW_DURABILITY),
             _ => None,
         }
     }

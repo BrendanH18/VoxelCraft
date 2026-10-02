@@ -52,6 +52,8 @@ impl World {
             }
             Block::TALL_GRASS | Block::FERN if self.one_in(8) => out.push(Stack::new(Item::WHEAT_SEEDS, 1)),
             Block::CLAY => out.push(Stack::new(Item::CLAY_BALL, 3)),
+            // Gravel sometimes gives flint instead of itself.
+            Block::GRAVEL if self.one_in(10) => out = vec![Stack::new(Item::FLINT, 1)],
             Block::MELON => out.push(Stack::new(Item::MELON_SLICE, 2 + (self.roll() % 5) as u8)),
             b if b.is_leaves() => {
                 // Jungle leaves drop saplings less often, like Minecraft.
