@@ -11,6 +11,7 @@ covers the rendering and simulation choices behind the game.
 |---|---|
 | 32³ chunks; uniform chunks stored as a single block | Most sky and deep-rock chunks cost 1 byte instead of 32 KiB |
 | Greedy meshing | Merges coplanar faces with identical texture/AO/light into one quad |
+| Detail quads for shaped blocks | Stairs, fences and doors use the same 12-byte quad record, flagged to cover part of a cell in 1/16 steps, so they share the chunk passes and face culling |
 | Face-direction culling | Quads are grouped by facing per chunk; groups facing away from the camera are skipped (~45% fewer quads drawn) |
 | 12-byte quad records with vertex pulling | The vertex shader expands each quad from a storage buffer; ~9x smaller than Minecraft's 4 vertices x 28 bytes |
 | Pooled quad arena | All chunk meshes share a few large GPU buffers (best-fit free list), so drawing needs no per-chunk buffer binds |
@@ -32,7 +33,7 @@ the GPU after every frame; they include CPU and GPU work.
 ```text
 $ voxelcraft --bench --rd 8
 generate (1 thread): 0.16 ms/chunk
-light+mesh (1 thread): 1.18 ms per dense chunk
+light+mesh (1 thread): 0.83 ms per dense chunk
 stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.18 s
 
 $ voxelcraft --bench-render --rd 8     # 1600x900, GPU-synchronised each frame
@@ -62,6 +63,7 @@ src/
     items.rs         dropped items: spawning, pickup, throwing, death drops
     containers.rs    chest screens and shift-click quick moves
     farming.rs       hoe tilling, bone meal, trampling farmland
+    doors.rs         doors, ladders and gates: placing, opening, breaking
   inventory.rs       inventory slots, stacking, saved container overflow
   crafting.rs        crafting grids and recipes
   mining.rs          mining speed, harvest rules, tool wear, melee damage
@@ -92,6 +94,7 @@ src/
     growth.rs        random block ticks: crops, saplings, grass, farmland, leaf decay
     chunk.rs         chunk storage
     block.rs         block registry
+    shape.rs         box shapes of stairs, fences, gates, ladders and doors
     terrain.rs       world generation
     noise.rs         Perlin noise and hashing
     storage.rs       save files

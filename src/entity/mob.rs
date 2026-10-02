@@ -638,7 +638,11 @@ impl Mob {
         }
 
         let delta = self.vel * dt;
-        let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape);
+        let hit = if self.on_ground {
+            physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, shape, crate::player::STEP_HEIGHT)
+        } else {
+            physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape)
+        };
         self.on_ground = hit.on_ground;
         self.blocked = hit.horizontal;
     }

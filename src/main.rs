@@ -84,7 +84,7 @@ voxelcraft [options]
   --open-inventory  start with the inventory screen open (screenshots)
   --open-menu <m>   start with a menu open: pause, options or title (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
-                    terrain surface, e.g. 0,~,0,water)
+                    terrain surface, e.g. 0,~,0,water; b may be a raw block id)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
   --air <0..15>     starting air in seconds
   --food <0..20>    starting hunger in half drumsticks (no saturation)
@@ -175,7 +175,11 @@ fn parse_args() -> Result<Args, String> {
                     .iter()
                     .map(|s| if s.trim() == "~" { Ok(i32::MIN) } else { s.trim().parse().map_err(|_| bad()) })
                     .collect::<Result<_, _>>()?;
-                let block = world::block::Block::from_name(parts[3].trim()).ok_or_else(bad)?;
+                // A block name, or a raw id for oriented states (stairs facing east...).
+                let name = parts[3].trim();
+                let block = (name.parse::<u8>().ok().map(world::block::Block))
+                    .or_else(|| world::block::Block::from_name(name))
+                    .ok_or_else(bad)?;
                 args.place.push((glam::IVec3::new(n[0], n[1], n[2]), block));
             }
             "--spawn" => {

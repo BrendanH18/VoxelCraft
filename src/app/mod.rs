@@ -6,6 +6,7 @@ mod bow;
 mod bucket;
 mod containers;
 mod dimension;
+mod doors;
 mod farming;
 mod hud;
 mod items;
@@ -1038,6 +1039,9 @@ impl Game {
             if block.is_bed() {
                 self.break_bed_partner(pos, block);
             }
+            if block.is_door() {
+                self.break_door_partner(pos, block);
+            }
         }
     }
 
@@ -1073,6 +1077,9 @@ impl Game {
         }
         if block.is_bed() {
             self.break_bed_partner(pos, block);
+        }
+        if block.is_door() {
+            self.break_door_partner(pos, block);
         }
         self.vitals.hunger.exhaust(survival::EXHAUST_MINE);
         if block.hardness() > 0.0 {
@@ -1146,6 +1153,10 @@ impl Game {
             Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
             Some(b) if b.is_bed() => return self.use_bed(pos),
+            Some(b) if b.is_door() || b.is_gate() => {
+                self.toggle_door(pos);
+                return;
+            }
             _ => {}
         }
         if self.strike_flint(pos, normal) || self.use_item_on(pos, normal) {
@@ -1153,8 +1164,14 @@ impl Game {
         }
         // Clicking tall grass replaces it instead of building against it.
         let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
-        if self.held_item() == Some(Item::BED) {
-            if self.place_bed(at) && self.mode == GameMode::Survival {
+        let placed = match self.held_item() {
+            Some(Item::BED) => Some(self.place_bed(at)),
+            Some(Item::OAK_DOOR) => Some(self.place_door(at)),
+            Some(i) if i.block().is_some_and(|b| b.is_ladder()) => Some(self.place_ladder(pos, normal)),
+            _ => None,
+        };
+        if let Some(placed) = placed {
+            if placed && self.mode == GameMode::Survival {
                 self.inventory.take_one(self.actions.selected);
             }
             return;
@@ -1406,6 +1423,7 @@ impl Game {
             on_ground: self.player.on_ground,
             flying: self.player.flying,
             in_water: self.player.in_water,
+            climbing: self.player.climbing,
             head_in_water: self.player.head_in_water(&self.world),
             in_lava: self.player.in_lava(&self.world),
             moved: if self.player.flying { 0.0 } else { moved },
@@ -1528,10 +1546,10 @@ impl Game {
             zenith_color: if underwater { fog_color } else { sky.zenith },
             sun_dir: sky.sun_dir,
             time: (now - self.started).as_secs_f32(),
-            highlight: self
-                .target()
-                .filter(|_| self.mob_target().is_none())
-                .map(|(p, _)| (p, self.world.get_block(p).map_or(1.0, |b| b.height() as f32))),
+            highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| {
+                let (min, max) = self.world.outline(p);
+                (p, min, max)
+            }),
             crack: self
                 .actions
                 .breaking

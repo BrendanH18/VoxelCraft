@@ -7,7 +7,7 @@ use glam::DVec3;
 use crate::audio::sounds::Sound;
 use crate::inventory::Stack;
 use crate::render::BlockModel;
-use crate::world::block::{Block, RenderKind};
+use crate::world::block::Block;
 
 use super::{Container, Game};
 
@@ -119,7 +119,7 @@ impl Game {
             if item.pos.distance_squared(self.player.pos) > DRAW_DIST * DRAW_DIST {
                 continue;
             }
-            let block = item.stack.item.block().filter(|b| b.kind() != RenderKind::Cross);
+            let block = item.stack.item.block().filter(|b| !b.flat_icon());
             let icon = match block {
                 Some(_) => None,
                 None => item.stack.item.block().map(|b| b.info().tex[0]).or(item.stack.item.icon_layer()),

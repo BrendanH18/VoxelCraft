@@ -22,6 +22,7 @@ mod growth;
 pub mod nether;
 pub mod noise;
 mod portal;
+pub mod shape;
 pub mod storage;
 pub mod terrain;
 
@@ -32,7 +33,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::mesh::{self, D, MARGIN, MeshData, MeshInput, NO_HEIGHT, Neighborhood, Region};
 use crate::workers::{Job, JobResult, Workers};
-use block::Block;
+use block::{Block, RenderKind};
 use chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_HEIGHT, WORLD_HEIGHT_CHUNKS, chunk_of, local_of};
 use terrain::Generator;
 
@@ -585,6 +586,19 @@ impl World {
         self.raycast_by(origin, dir, max_dist, Block::is_targetable)
     }
 
+    /// The selection outline of the block at `p`: min and max corners
+    /// relative to the cell (low blocks and shaped blocks are smaller).
+    pub fn outline(&self, p: IVec3) -> ([f32; 3], [f32; 3]) {
+        let Some(b) = self.get_block(p) else { return ([0.0; 3], [1.0; 3]) };
+        if b.kind() == RenderKind::Shaped {
+            let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
+            if let Some(bx) = shape::shape(b, neighbour).bounds() {
+                return (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
+            }
+        }
+        ([0.0; 3], [1.0, b.height() as f32, 1.0])
+    }
+
     /// Like [`World::raycast`], but also stops at water and lava sources
     /// (for buckets).
     pub fn raycast_sources(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
@@ -616,7 +630,15 @@ impl World {
                 && hits(b)
                 && cell.y >= 0
             {
-                return Some((cell, normal));
+                if b.kind() != RenderKind::Shaped {
+                    return Some((cell, normal));
+                }
+                // Shaped blocks only count where the ray meets their boxes.
+                if let Some((hit, face)) = crate::physics::ray_shape(self, cell, origin, dir)
+                    && hit <= max_dist
+                {
+                    return Some((cell, if face == IVec3::ZERO { normal } else { face }));
+                }
             }
             if t_max.x < t_max.y && t_max.x < t_max.z {
                 cell.x += step.x;

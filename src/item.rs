@@ -164,6 +164,7 @@ pub enum Sprite {
     Nugget([u8; 3]),
     /// An iron bucket, empty or holding this colour of fluid.
     Bucket(Option<[u8; 3]>),
+    Door,
     Tool(ToolKind, Tier),
     Armor(ArmorPiece, ArmorMaterial),
 }
@@ -191,7 +192,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 38] = [
+static ITEMS: [ItemInfo; 39] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -240,6 +241,7 @@ static ITEMS: [ItemInfo; 38] = [
         max_stack: 1,
         sprite: Sprite::Bucket(Some([230, 110, 20])),
     },
+    item("oak door", Sprite::Door),
 ];
 
 /// Uses before a bow breaks.
@@ -294,6 +296,8 @@ impl Item {
     pub const BUCKET: Item = Item(291);
     pub const WATER_BUCKET: Item = Item(292);
     pub const LAVA_BUCKET: Item = Item(293);
+    /// Places both halves of a door (see `Block::door`).
+    pub const OAK_DOOR: Item = Item(294);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
@@ -409,7 +413,8 @@ impl Item {
     /// Looks an item or block up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<Item> {
         if let Some(b) = Block::from_name(name) {
-            return Some(Item::from_block(b));
+            // Doors are placed by an item, not as a block.
+            return Some(if b.is_door() { Item::OAK_DOOR } else { Item::from_block(b) });
         }
         let name = name.replace('_', " ");
         Item::all_items().find(|i| i.name() == name)

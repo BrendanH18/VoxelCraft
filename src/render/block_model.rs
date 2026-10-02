@@ -9,6 +9,7 @@ use glam::{DVec3, Vec3};
 
 use super::DEPTH_FORMAT;
 use crate::world::block::{Block, RenderKind};
+use crate::world::shape;
 
 /// A block drawn outside the chunk meshes.
 #[derive(Clone, Copy, Debug)]
@@ -83,24 +84,31 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
             quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0], 0.9, 0);
             continue;
         }
-        for (face, (&layer, &shade)) in tex.iter().zip(&FACE_SHADE).enumerate() {
-            let (d, positive) = (face / 2, face % 2 == 0);
-            let (u, v) = ((d + 1) % 3, (d + 2) % 3);
-            let corner = |a: f32, b: f32| {
-                let mut p = [0.0f32; 3];
-                p[d] = if positive { 1.0 } else { 0.0 };
-                p[u] = a;
-                p[v] = b;
-                Vec3::from_array(p)
-            };
-            // Counter-clockwise seen from outside (the pipeline doesn't cull,
-            // so this is only for consistency).
-            let c = if positive {
-                [corner(0., 0.), corner(1., 0.), corner(1., 1.), corner(0., 1.)]
-            } else {
-                [corner(0., 0.), corner(0., 1.), corner(1., 1.), corner(1., 0.)]
-            };
-            quad(c, layer, shade, d);
+        let mut boxes = shape::item_shape(m.block);
+        if boxes.is_empty() {
+            boxes = shape::Boxes::from_box(shape::Box16::FULL);
+        }
+        for bx in boxes.as_slice() {
+            let (lo, hi) = (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
+            for (face, (&layer, &shade)) in tex.iter().zip(&FACE_SHADE).enumerate() {
+                let (d, positive) = (face / 2, face % 2 == 0);
+                let (u, v) = ((d + 1) % 3, (d + 2) % 3);
+                let corner = |a: bool, b: bool| {
+                    let mut p = [0.0f32; 3];
+                    p[d] = if positive { hi[d] } else { lo[d] };
+                    p[u] = if a { hi[u] } else { lo[u] };
+                    p[v] = if b { hi[v] } else { lo[v] };
+                    Vec3::from_array(p)
+                };
+                // Counter-clockwise seen from outside (the pipeline doesn't
+                // cull, so this is only for consistency).
+                let c = if positive {
+                    [corner(false, false), corner(true, false), corner(true, true), corner(false, true)]
+                } else {
+                    [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
+                };
+                quad(c, layer, shade, d);
+            }
         }
     }
     out

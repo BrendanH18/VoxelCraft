@@ -28,6 +28,13 @@
 //! UVs are derived in the shader from the local position, so merged quads
 //! tile their texture. All quads share one global index buffer.
 //!
+//! Shaped blocks (stairs, fences, doors) are drawn with *detail* quads,
+//! flagged by bit 31 of word 1, that cover part of one cell in 1/16 steps.
+//! Word 0 then holds the cell (not a corner) and, in place of the size,
+//! the face's lower u and v bounds (bits 21-25 and 26-30); word 1 holds the
+//! upper u and v bounds (bits 16-20 and 21-25) and the plane's offset along
+//! the face axis (bits 26-30), all in 0..=16.
+//!
 //! Faces 6 and 7 are the two diagonal planes of a cross-shaped block
 //! (plants, torches) at the cell `(x, y, z)`: face 6 runs from (0, 0) to
 //! (1, 1) in (x, z), face 7 from (1, 0) to (0, 1). They are always unit
@@ -35,8 +42,9 @@
 
 use std::sync::Arc;
 
-use crate::world::block::{Block, RenderKind, tex};
+use crate::world::block::{Block, Facing, RenderKind, tex};
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_HEIGHT};
+use crate::world::shape::{self, Boxes};
 
 /// Margin around the chunk that lighting needs to be exact.
 pub const MARGIN: usize = 15;
@@ -263,6 +271,23 @@ impl Region {
             }
         }
         Self::propagate(&self.blocks, &mut self.block_light, &mut self.queue);
+
+        // Slabs and stairs stop light but don't fill their cell: they take the
+        // brightest light beside or above them, so their own faces and the
+        // faces next to them aren't drawn black.
+        for y in 1..D - 1 {
+            for z in 1..D - 1 {
+                for x in 1..D - 1 {
+                    let i = ridx(x, y, z);
+                    if !self.blocks[i].borrows_light() {
+                        continue;
+                    }
+                    let near = [i + D * D, i - 1, i + 1, i - D, i + D];
+                    self.sky[i] = near.iter().map(|&n| self.sky[n]).max().unwrap_or(0);
+                    self.block_light[i] = near.iter().map(|&n| self.block_light[n]).max().unwrap_or(0);
+                }
+            }
+        }
     }
 }
 
@@ -274,6 +299,73 @@ fn face_visible(b: Block, n: Block) -> bool {
         _ => !(b == n && b.info().self_cull),
     }
 }
+
+/// Smooth lighting and ambient occlusion for the four corners (-u-v, +u-v,
+/// +u+v, -u+v) of a face whose front cell is region index `front`: 2 bits
+/// of AO (3 = none, also used when `!occlude`) and 8 bits of light per
+/// corner.
+#[inline(always)]
+fn shade_corners(
+    blocks: &[Block],
+    sky: &[u8],
+    blk: &[u8],
+    front: isize,
+    su: isize,
+    sv: isize,
+    occlude: bool,
+) -> (u64, u64) {
+    let at = |off: isize| (front + off) as usize;
+    let o = |off: isize| blocks[at(off)].is_opaque();
+    let (um, up, vm, vp) = (o(-su), o(su), o(-sv), o(sv));
+    // Per corner: side offsets.
+    let corners = [(um, vm, -su, -sv), (up, vm, su, -sv), (up, vp, su, sv), (um, vp, -su, sv)];
+    let (mut ao, mut light) = (0u64, 0u64);
+    for (c, &(s1, s2, du, dv)) in corners.iter().enumerate() {
+        let corner = o(du + dv);
+        let a = if !occlude {
+            3
+        } else if s1 && s2 {
+            0
+        } else {
+            3 - (s1 as u64 + s2 as u64 + corner as u64)
+        };
+        // Smooth lighting: average the transparent cells touching this
+        // vertex in front of the face.
+        let (mut ls, mut lb, mut cnt) = (sky[at(0)] as u32, blk[at(0)] as u32, 1u32);
+        if !s1 {
+            ls += sky[at(du)] as u32;
+            lb += blk[at(du)] as u32;
+            cnt += 1;
+        }
+        if !s2 {
+            ls += sky[at(dv)] as u32;
+            lb += blk[at(dv)] as u32;
+            cnt += 1;
+        }
+        if !corner && !(s1 && s2) {
+            ls += sky[at(du + dv)] as u32;
+            lb += blk[at(du + dv)] as u32;
+            cnt += 1;
+        }
+        let ls = ((ls + cnt / 2) / cnt) as u64;
+        let lb = ((lb + cnt / 2) / cnt) as u64;
+        ao |= a << (c * 2);
+        light |= (ls | lb << 4) << (c * 8);
+    }
+    (ao, light)
+}
+
+/// Brightness proxy per corner for picking the triangulation diagonal:
+/// whether to split along the other diagonal so AO and light gradients
+/// stay symmetric (avoids the classic anisotropy artefact).
+#[inline(always)]
+fn flip_diagonal(ao: u32, light: u32) -> u32 {
+    let bright = |c: u32| (ao >> (c * 2) & 3) * 16 + (light >> (c * 8) & 15) + (light >> (c * 8 + 4) & 15);
+    (bright(0) + bright(2) < bright(1) + bright(3)) as u32
+}
+
+/// Word 1 flag of a detail quad (see the module docs).
+const DETAIL: u32 = 1 << 31;
 
 const KIND_SHIFT: u64 = 24;
 const AO_SHIFT: u64 = 16;
@@ -298,8 +390,10 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
     let mut face_start = [[0usize; 7]; PASSES];
     let strides = [1isize, (D * D) as isize, D as isize]; // x, y, z
     let mut mask = [0u64; CHUNK_SIZE * CHUNK_SIZE];
-    // Region indices of cross-shaped blocks, collected during the +X sweep.
+    // Region indices of cross-shaped blocks, and of shaped blocks with
+    // their boxes, collected during the +X sweep.
     let mut cross_cells = Vec::new();
+    let mut shaped_cells: Vec<(usize, Boxes)> = Vec::new();
 
     for face in 0..6 {
         for (starts, quads) in face_start.iter_mut().zip(&out) {
@@ -347,6 +441,15 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                                 cross_cells.push(i as usize);
                                 false
                             }
+                            RenderKind::Shaped if face == 0 => {
+                                let i = i as usize;
+                                let neighbour = |f: Facing| {
+                                    let o = f.offset();
+                                    blocks[(i as isize + o.x as isize + o.z as isize * D as isize) as usize]
+                                };
+                                shaped_cells.push((i, shape::shape(b, neighbour)));
+                                false
+                            }
                             _ => false,
                         }
                     };
@@ -356,44 +459,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                             RenderKind::Translucent => 2,
                             _ => 0,
                         };
-                        let at = |off: isize| (ni + off) as usize;
-                        let o = |off: isize| blocks[at(off)].is_opaque();
-                        let (um, up, vm, vp) = (o(-su), o(su), o(-sv), o(sv));
-                        // Per corner (-u-v, +u-v, +u+v, -u+v): side offsets.
-                        let corners = [(um, vm, -su, -sv), (up, vm, su, -sv), (up, vp, su, sv), (um, vp, -su, sv)];
-                        let (mut ao, mut light) = (0u64, 0u64);
-                        for (c, &(s1, s2, du, dv)) in corners.iter().enumerate() {
-                            let corner = o(du + dv);
-                            let a = if kind == 2 {
-                                3 // no occlusion on fluids
-                            } else if s1 && s2 {
-                                0
-                            } else {
-                                3 - (s1 as u64 + s2 as u64 + corner as u64)
-                            };
-                            // Smooth lighting: average the transparent cells
-                            // touching this vertex in front of the face.
-                            let (mut ls, mut lb, mut cnt) = (sky[at(0)] as u32, blk[at(0)] as u32, 1u32);
-                            if !s1 {
-                                ls += sky[at(du)] as u32;
-                                lb += blk[at(du)] as u32;
-                                cnt += 1;
-                            }
-                            if !s2 {
-                                ls += sky[at(dv)] as u32;
-                                lb += blk[at(dv)] as u32;
-                                cnt += 1;
-                            }
-                            if !corner && !(s1 && s2) {
-                                ls += sky[at(du + dv)] as u32;
-                                lb += blk[at(du + dv)] as u32;
-                                cnt += 1;
-                            }
-                            let ls = ((ls + cnt / 2) / cnt) as u64;
-                            let lb = ((lb + cnt / 2) / cnt) as u64;
-                            ao |= a << (c * 2);
-                            light |= (ls | lb << 4) << (c * 8);
-                        }
+                        let (mut ao, light) = shade_corners(blocks, sky, blk, ni, su, sv, kind != 2);
                         if kind == 2 {
                             ao = drop_at(i); // fluids have no AO; carry the surface drop instead
                         }
@@ -444,14 +510,8 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         mask[row..row + w].fill(0);
                     }
 
-                    let ao = |c: usize| ((key >> AO_SHIFT) >> (c * 2)) as u32 & 3;
-                    let light = |c: usize| ((key >> LIGHT_SHIFT) >> (c * 8)) as u32 & 0xFF;
-                    // Brightness proxy for picking the triangulation diagonal.
                     // (For water the AO bits hold the surface drop.)
-                    let bright = |c: usize| ao(c) * 16 + (light(c) & 15) + (light(c) >> 4);
-                    // Split along the diagonal that keeps AO/light gradients
-                    // symmetric (avoids the classic anisotropy artefact).
-                    let flip = (bright(0) + bright(2) < bright(1) + bright(3)) as u32;
+                    let flip = flip_diagonal(((key >> AO_SHIFT) & 0xFF) as u32, (key >> LIGHT_SHIFT) as u32);
                     let kind = ((key >> KIND_SHIFT) & 3) as usize;
                     let layer = (key & 0xFF) as u32;
                     // Water has no AO; its upper edge is lowered instead.
@@ -477,6 +537,36 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                     ]);
                     uu += w;
                 }
+            }
+        }
+
+        // Shaped blocks: each box face pointing this way, unless it's hidden
+        // by another box or lies against an opaque neighbour.
+        for (i, boxes) in &shaped_cells {
+            let (i, b) = (*i, blocks[*i]);
+            let pass = if b.is_ladder() || b.is_door() { CUTOUT } else { OPAQUE };
+            let (x, y, z) = (i % D - MARGIN, i / (D * D) - MARGIN, i / D % D - MARGIN);
+            let layer = tex::tinted(b.info().tex[face], foliage[x + z * CHUNK_SIZE]) as u32;
+            for (j, bx) in boxes.as_slice().iter().enumerate() {
+                let depth = if positive { bx.max[d] } else { bx.min[d] };
+                let r = [bx.min[u], bx.max[u], bx.min[v], bx.max[v]];
+                let on_edge = depth == if positive { 16 } else { 0 };
+                let front = if on_edge { i as isize + sd } else { i as isize };
+                if (on_edge && blocks[front as usize].is_opaque()) || boxes.face_hidden(j, d, positive, r) {
+                    continue;
+                }
+                let (ao, light) = shade_corners(blocks, sky, blk, front, su, sv, true);
+                let (ao, light) = (ao as u32, light as u32);
+                let r = r.map(u32::from);
+                out[pass].push([
+                    (x | y << 6 | z << 12) as u32
+                        | (face as u32) << 18
+                        | r[0] << 21
+                        | r[2] << 26
+                        | flip_diagonal(ao, light) << 31,
+                    layer | ao << 8 | r[1] << 16 | r[3] << 21 | (depth as u32) << 26 | DETAIL,
+                    light,
+                ]);
             }
         }
     }
@@ -550,30 +640,38 @@ mod tests {
     fn corners(q: [u32; 3]) -> [Corner; 4] {
         let face = (q[0] >> 18) & 7;
         let d = (face / 2) as usize;
+        let (u, v) = ((d + 1) % 3, (d + 2) % 3);
         let (w, h) = ((q[0] >> 21 & 31) + 1, (q[0] >> 26 & 31) + 1);
         let flip = q[0] >> 31;
+        let detail = q[1] >> 31 == 1;
         std::array::from_fn(|k| {
             let j = (k as u32 + flip) & 3;
             let c = if face.is_multiple_of(2) { j } else { (4 - j) & 3 };
-            let du = if c == 1 || c == 2 { w } else { 0 };
-            let dv = if c >= 2 { h } else { 0 };
-            let mut p = [q[0] & 63, q[0] >> 6 & 63, q[0] >> 12 & 63];
-            p[(d + 1) % 3] += du;
-            p[(d + 2) % 3] += dv;
-            let (y_off, y_ext) = match d {
-                0 => (du, w),
-                2 => (dv, h),
-                _ => (0, 0),
-            };
-            let drop = if face != 3 && y_off == y_ext { q[1] >> 16 & 31 } else { 0 };
             let light = q[2] >> (c * 8) & 0xFF;
-            Corner {
-                pos: [p[0] as f32, p[1] as f32 - drop as f32 / 16.0, p[2] as f32],
-                face,
-                ao: q[1] >> (8 + c * 2) & 3,
-                sky: light & 15,
-                block: light >> 4,
-            }
+            let base = [q[0] & 63, q[0] >> 6 & 63, q[0] >> 12 & 63].map(|x| x as f32);
+            let pos = if detail {
+                let sixteenths = |shift: u32, word: u32| (word >> shift & 31) as f32 / 16.0;
+                let mut p = base;
+                p[d] += sixteenths(26, q[1]);
+                p[u] += if c == 1 || c == 2 { sixteenths(16, q[1]) } else { sixteenths(21, q[0]) };
+                p[v] += if c >= 2 { sixteenths(21, q[1]) } else { sixteenths(26, q[0]) };
+                p
+            } else {
+                let du = if c == 1 || c == 2 { w } else { 0 };
+                let dv = if c >= 2 { h } else { 0 };
+                let mut p = base;
+                p[u] += du as f32;
+                p[v] += dv as f32;
+                let (y_off, y_ext) = match d {
+                    0 => (du, w),
+                    2 => (dv, h),
+                    _ => (0, 0),
+                };
+                let drop = if face != 3 && y_off == y_ext { q[1] >> 16 & 31 } else { 0 };
+                p[1] -= drop as f32 / 16.0;
+                p
+            };
+            Corner { pos, face, ao: q[1] >> (8 + c * 2) & 3, sky: light & 15, block: light >> 4 }
         })
     }
 
@@ -809,5 +907,63 @@ mod tests {
                 assert!(expected.contains(&c.pos[1]), "{c:?}");
             }
         }
+    }
+
+    #[test]
+    fn stairs_are_detail_quads_inside_their_cell() {
+        let stairs = Block::STONE_STAIRS.with_facing(Facing::East);
+        let m = mesh_blocks(&[([5, 5, 5], stairs), ([5, 4, 5], Block::STONE)]);
+        let opaque = m.quads_of(OPAQUE);
+        let detail: Vec<_> = opaque.quads.iter().filter(|q| q[1] >> 31 == 1).copied().collect();
+        // Slab: 6 faces but its bottom sits on stone. Tall half: 5 faces
+        // (its underside is inside the slab). The stone keeps all six.
+        assert_eq!(detail.len(), 5 + 5);
+        assert_eq!(opaque.quads.len() - detail.len(), 6);
+        for &q in &detail {
+            assert_eq!(q[1] & 0xFF, tex::STONE as u32);
+            for c in corners(q) {
+                assert!(c.pos.iter().all(|&x| (5.0..=6.0).contains(&x)), "{c:?}");
+                assert!(c.sky > 0, "lit: {c:?}");
+            }
+        }
+        // The step is at half height, and the tall half's top covers only
+        // the west (back) half.
+        let tops: Vec<_> = detail.iter().map(|&q| corners(q)).filter(|c| c[0].face == 2).collect();
+        assert!(tops.iter().any(|c| c[0].pos[1] == 5.5));
+        let top = tops.iter().find(|c| c[0].pos[1] == 6.0).unwrap();
+        assert!(top.iter().all(|c| c.pos[0] <= 5.5));
+    }
+
+    #[test]
+    fn fences_join_and_ladders_are_cutout() {
+        let m =
+            mesh_blocks(&[([5, 5, 5], Block::OAK_FENCE), ([6, 5, 5], Block::OAK_FENCE), ([9, 5, 5], Block::LADDER)]);
+        // A lone post has 6 faces; joined posts add rails between them.
+        let opaque = m.pass_quads(OPAQUE);
+        let lone = mesh_blocks(&[([5, 5, 5], Block::OAK_FENCE)]).pass_quads(OPAQUE);
+        assert_eq!(lone, 6);
+        assert!(opaque > 2 * lone, "{opaque}");
+        // A ladder is a thin cutout panel.
+        let ladder = m.quads_of(CUTOUT);
+        assert_eq!(ladder.quads.len(), 6);
+        assert!(ladder.quads.iter().all(|q| q[1] & 0xFF == tex::LADDER as u32));
+    }
+
+    #[test]
+    fn slabs_block_skylight_but_stay_lit() {
+        // A slab roof over a stone floor: the floor under it is darker than
+        // open sky, but the slab's own top is fully lit.
+        let mut blocks = Vec::new();
+        for x in 4..9 {
+            for z in 4..9 {
+                blocks.push(([x, 4, z], Block::STONE));
+                blocks.push(([x, 8, z], Block::slab_of(Block::STONE).unwrap()));
+            }
+        }
+        let m = mesh_blocks(&blocks);
+        let floor = all_corners(&m).filter(|c| c.face == 2 && c.pos == [6.0, 5.0, 6.0]).map(|c| c.sky).max().unwrap();
+        assert!(floor < 15, "floor sky {floor}");
+        let roof = all_corners(&m).filter(|c| c.face == 2 && c.pos[1] == 8.5).map(|c| c.sky).min().unwrap();
+        assert_eq!(roof, 15);
     }
 }

@@ -17,6 +17,11 @@ const FLY_SPEED: f64 = 11.0;
 const FLY_SPRINT_SPEED: f64 = 30.0;
 const SWIM_SPEED: f64 = 2.8;
 const MAX_STEP: f64 = 1.0 / 120.0;
+/// Ledges this tall are walked up without jumping (slabs, stairs).
+pub const STEP_HEIGHT: f64 = 0.6;
+/// Ladder speeds: climbing, and the fastest slide down.
+const CLIMB_SPEED: f64 = 2.35;
+const LADDER_SLIDE: f64 = 3.0;
 pub const SHAPE: Shape = Shape::new(HALF_WIDTH, HEIGHT);
 
 #[derive(Default, Clone, Copy)]
@@ -41,6 +46,10 @@ pub struct Player {
     pub in_water: bool,
     /// Jumped off the ground during the last `update` (hunger).
     pub jumped: bool,
+    /// Holding on to a ladder: falls are broken.
+    pub climbing: bool,
+    /// Walked into a wall on the last step (climbs ladders).
+    pushing_wall: bool,
 }
 
 impl Player {
@@ -55,6 +64,8 @@ impl Player {
             can_fly: false,
             in_water: false,
             jumped: false,
+            climbing: false,
+            pushing_wall: false,
         }
     }
 
@@ -169,8 +180,27 @@ impl Player {
             }
         }
 
+        // Ladders: walking into one (or jumping) climbs, sneaking holds on,
+        // and a fall slows to a slide.
+        self.climbing = !self.flying && world.get_block(self.pos.floor().as_ivec3()).is_some_and(|b| b.is_ladder());
+        if self.climbing {
+            self.vel.y = self.vel.y.max(-LADDER_SLIDE);
+            if input.descend {
+                self.vel.y = self.vel.y.max(0.0);
+            }
+            if input.jump || (self.pushing_wall && wish != DVec3::ZERO) {
+                self.vel.y = CLIMB_SPEED;
+            }
+        }
+
         let delta = self.vel * dt;
-        self.on_ground = physics::move_box(world, &mut self.pos, &mut self.vel, delta, SHAPE).on_ground;
+        let hit = if self.on_ground && !self.flying {
+            physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, SHAPE, STEP_HEIGHT)
+        } else {
+            physics::move_box(world, &mut self.pos, &mut self.vel, delta, SHAPE)
+        };
+        self.on_ground = hit.on_ground;
+        self.pushing_wall = hit.horizontal;
         if self.flying && self.on_ground {
             self.flying = false;
         }

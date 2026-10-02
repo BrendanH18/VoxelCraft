@@ -97,8 +97,9 @@ pub struct FrameParams {
     pub sun_dir: Vec3,
     /// Seconds since start (animations).
     pub time: f32,
-    /// Targeted block and the height of its outline (beds are low).
-    pub highlight: Option<(IVec3, f32)>,
+    /// Targeted block and its outline's corners within the cell (beds,
+    /// slabs and shaped blocks are smaller).
+    pub highlight: Option<(IVec3, [f32; 3], [f32; 3])>,
     /// Block being broken and the crack texture layer to overlay on it.
     pub crack: Option<(IVec3, u8)>,
     /// Free-standing blocks (falling sand and gravel).
@@ -898,10 +899,11 @@ impl Renderer {
         out
     }
 
-    fn outline_vertices(&self, block: IVec3, height: f32, camera: DVec3) -> [[f32; 3]; 24] {
+    fn outline_vertices(&self, block: IVec3, lo: [f32; 3], hi: [f32; 3], camera: DVec3) -> [[f32; 3]; 24] {
         let e = 0.004;
-        let min = (block.as_dvec3() - camera - DVec3::splat(e)).as_vec3();
-        let max = min + Vec3::new(1.0, height, 1.0) + Vec3::splat(2.0 * e as f32);
+        let origin = (block.as_dvec3() - camera).as_vec3();
+        let min = origin + Vec3::from_array(lo) - Vec3::splat(e);
+        let max = origin + Vec3::from_array(hi) + Vec3::splat(e);
         let c = |x: bool, y: bool, z: bool| {
             [if x { max.x } else { min.x }, if y { max.y } else { min.y }, if z { max.z } else { min.z }]
         };
@@ -1015,8 +1017,8 @@ impl Renderer {
         if let Some((b, layer)) = p.crack {
             self.queue.write_buffer(&self.decal_buf, 0, &Self::decal_vertices(b, p.camera, layer));
         }
-        if let Some((b, height)) = p.highlight {
-            let verts = self.outline_vertices(b, height, p.camera);
+        if let Some((b, lo, hi)) = p.highlight {
+            let verts = self.outline_vertices(b, lo, hi, p.camera);
             self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
         }
         self.block_models.set(&self.device, &self.queue, &p.block_models, p.camera);

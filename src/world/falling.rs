@@ -6,7 +6,7 @@
 use glam::{DVec3, IVec3};
 
 use super::World;
-use super::block::{Block, RenderKind};
+use super::block::{Block, Facing, RenderKind, Shaped};
 
 /// Blocks per second squared (Minecraft's 0.04 per tick², with drag).
 const GRAVITY: f64 = 32.0;
@@ -30,6 +30,7 @@ impl World {
     /// if it is an unsupported gravity block, and pops off or drops whatever
     /// rested on it, all the way up.
     pub(super) fn settle(&mut self, mut p: IVec3) {
+        self.drop_unhung_ladders(p);
         loop {
             self.wake_fluids(p);
             let Some(b) = self.get_block(p) else { return };
@@ -48,6 +49,22 @@ impl World {
                 }
                 Some(a) if a.has_gravity() && can_fall_into(b) => p = above,
                 _ => return,
+            }
+        }
+    }
+
+    /// Ladders hung on `p` fall off once it's no longer a solid wall.
+    fn drop_unhung_ladders(&mut self, p: IVec3) {
+        if self.get_block(p).is_none_or(|b| b.is_opaque()) {
+            return;
+        }
+        for f in Facing::ALL {
+            let at = p + f.offset();
+            if let Some(ladder) = self.get_block(at)
+                && ladder.shaped() == Some(Shaped::Ladder(f))
+            {
+                self.edit(at, Block::AIR, true);
+                self.spill_block(at, ladder);
             }
         }
     }

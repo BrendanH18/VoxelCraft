@@ -51,7 +51,7 @@ const STONE: [u8; 3] = [125, 125, 125];
 const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
-fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
+pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
     match layer {
         tex::STONE => {
@@ -135,6 +135,39 @@ fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let seam_x = (board * 7 + 3) % SIZE;
             let seam = y % 4 == 3 || x == seam_x;
             shade(colour, if seam { 0.68 } else { 0.92 + rnd(layer, x, board, 2) * 0.12 })
+        }
+        tex::LADDER => {
+            // Two rails with a rung every four pixels; see-through between.
+            let rail = matches!(x, 1 | 2 | 13 | 14);
+            let rung = y % 4 == 1 && (3..=12).contains(&x);
+            if rail || rung {
+                let edge = x == 2 || x == 14 || (rung && !rail);
+                shade([124, 94, 56], if edge { 0.8 } else { 0.95 + r * 0.1 })
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
+        tex::DOOR_TOP | tex::DOOR_BOTTOM => {
+            // A frame of vertical boards around raised panels; the upper
+            // half has two windows.
+            let frame =
+                x <= 1 || x >= 14 || (layer == tex::DOOR_TOP && y <= 1) || (layer == tex::DOOR_BOTTOM && y >= 14);
+            let window = layer == tex::DOOR_TOP && (3..=6).contains(&y) && matches!(x, 3..=6 | 9..=12);
+            let rail = y == 8 || y == 9;
+            let inset = matches!(x, 3 | 12) || (layer == tex::DOOR_BOTTOM && matches!(y, 2 | 12));
+            if window {
+                [0, 0, 0, 0]
+            } else {
+                let board = 0.92 + rnd(layer, x / 3, 0, 5) * 0.12 + r * 0.05;
+                let f = if frame || rail {
+                    0.8
+                } else if inset {
+                    0.7
+                } else {
+                    board
+                };
+                shade([150, 116, 68], f)
+            }
         }
         tex::RED_SAND => noisy(layer, x, y, [190, 102, 36], 0.07),
         l if (tex::TERRACOTTA..tex::TERRACOTTA + 7).contains(&l) => {

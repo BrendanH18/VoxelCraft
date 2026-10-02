@@ -5,6 +5,7 @@
 //! on the bottom right.
 
 use crate::item::{ArmorMaterial, ArmorPiece, Sprite, Tier, ToolKind};
+use crate::world::block::tex;
 use crate::world::noise::hash_f;
 
 type Rgba = [u8; 4];
@@ -369,6 +370,11 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 ((px - 8.0) / 4.2).powi(2) + ((py - 9.0) / 3.4).powi(2) <= 1.0
             };
             shaded(&nugget, x, y, c, 0.08)
+        }
+        Sprite::Door => {
+            // The door's own two textures, squeezed to half width.
+            let (layer, ty) = if y < 8 { (tex::DOOR_TOP, y * 2) } else { (tex::DOOR_BOTTOM, (y - 8) * 2) };
+            (4..12).contains(&x).then(|| super::textures::pixel(layer, ((x - 4) * 2) as usize, ty as usize))
         }
         Sprite::Bucket(fluid) => {
             // A tapered pail seen from slightly above: rim, inside, handle.

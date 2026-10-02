@@ -65,26 +65,38 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         let d = face >> 1u;
         let u = (d + 1u) % 3u;
         let v = (d + 2u) % 3u;
-        var corner = base;
-        if c == 1u || c == 2u {
-            corner[u] += size.x;
-        }
-        if c >= 2u {
-            corner[v] += size.y;
-        }
+        if (w1 >> 31u) == 1u {
+            // Detail quad (shaped blocks): part of the cell `base`, bounds
+            // and plane offset in 1/16 block.
+            let lo = vec2<u32>((w0 >> 21u) & 31u, (w0 >> 26u) & 31u);
+            let hi = vec2<u32>((w1 >> 16u) & 31u, (w1 >> 21u) & 31u);
+            var p = vec3<f32>(base);
+            p[d] += f32((w1 >> 26u) & 31u) / 16.0;
+            p[u] += f32(select(lo.x, hi.x, c == 1u || c == 2u)) / 16.0;
+            p[v] += f32(select(lo.y, hi.y, c >= 2u)) / 16.0;
+            local = p;
+        } else {
+            var corner = base;
+            if c == 1u || c == 2u {
+                corner[u] += size.x;
+            }
+            if c >= 2u {
+                corner[v] += size.y;
+            }
 
-        // Water surfaces: lower the quad's upper edge (never the bottom face).
-        var top = base.y;
-        if u == 1u {
-            top += size.x;
-        } else if v == 1u {
-            top += size.y;
+            // Water surfaces: lower the quad's upper edge (never the bottom face).
+            var top = base.y;
+            if u == 1u {
+                top += size.x;
+            } else if v == 1u {
+                top += size.y;
+            }
+            var drop = 0.0;
+            if face != 3u && corner.y == top {
+                drop = f32((w1 >> 16u) & 31u) / 16.0;
+            }
+            local = vec3<f32>(corner) - vec3<f32>(0.0, drop, 0.0);
         }
-        var drop = 0.0;
-        if face != 3u && corner.y == top {
-            drop = f32((w1 >> 16u) & 31u) / 16.0;
-        }
-        local = vec3<f32>(corner) - vec3<f32>(0.0, drop, 0.0);
 
         // Planar UVs from the chunk-local position: merged quads tile the texture.
         if face < 2u {
