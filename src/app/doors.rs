@@ -41,7 +41,11 @@ impl Game {
         let up = at + IVec3::Y;
         let free =
             |p: IVec3| self.world.get_block(p).is_some_and(|b| b.is_replaceable()) && !self.player.intersects_block(p);
-        if !free(at) || !free(up) || !self.world.get_block(at - IVec3::Y).is_some_and(|b| b.is_opaque()) {
+        if up.y >= crate::world::chunk::WORLD_HEIGHT
+            || !free(at)
+            || !free(up)
+            || !self.world.get_block(at - IVec3::Y).is_some_and(|b| b.is_opaque())
+        {
             return false;
         }
         let facing = Facing::toward(self.player.forward());

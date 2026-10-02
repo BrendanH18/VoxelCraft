@@ -178,6 +178,7 @@ fn parse_args() -> Result<Args, String> {
                 // A block name, or a raw id for oriented states (stairs facing east...).
                 let name = parts[3].trim();
                 let block = (name.parse::<u8>().ok().map(world::block::Block))
+                    .filter(|b| *b == world::block::Block::AIR || b.kind() != world::block::RenderKind::Invisible)
                     .or_else(|| world::block::Block::from_name(name))
                     .ok_or_else(bad)?;
                 args.place.push((glam::IVec3::new(n[0], n[1], n[2]), block));
