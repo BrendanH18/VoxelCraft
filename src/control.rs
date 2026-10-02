@@ -180,15 +180,37 @@ mod tests {
         let mut reader = BufReader::new(stream.try_clone().unwrap());
         let command = json!({"version":VERSION,"player":"bot","command":"give diamond 64"});
         write!(stream, "POST / HTTP/1.1\r\nHost: localhost\r\n\r\n{command}\n").unwrap();
-        let error: Value = serde_json::from_str(&read_line(&mut reader).unwrap().unwrap()).unwrap();
-        assert_eq!(error["error"], "invalid JSON");
-        // Closing with unread HTTP bytes can cause TCP to reset instead of returning EOF.
+        // Unread HTTP bytes can cause a TCP reset before even the error
+        // response is delivered. If delivered, it must be followed by closure.
         match read_line(&mut reader) {
+            Ok(Some(line)) => {
+                let error: Value = serde_json::from_str(&line).unwrap();
+                assert_eq!(error["error"], "invalid JSON");
+                match read_line(&mut reader) {
+                    Ok(None) => {}
+                    Err(e) if e.kind() == io::ErrorKind::ConnectionReset => {}
+                    other => panic!("expected connection close, got {other:?}"),
+                }
+            }
             Ok(None) => {}
             Err(e) if e.kind() == io::ErrorKind::ConnectionReset => {}
-            other => panic!("expected connection close, got {other:?}"),
+            other => panic!("expected error response or connection close, got {other:?}"),
         }
         assert!(host.requests.try_recv().is_err(), "HTTP body must not enter the game queue");
+    }
+
+    #[test]
+    fn invalid_json_without_trailing_input_receives_error_then_closes() {
+        let host = Host::bind("127.0.0.1:0".parse().unwrap(), None).unwrap();
+        let mut stream = TcpStream::connect(host.address).unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        stream.write_all(b"{invalid json}\n").unwrap();
+        let mut reader = BufReader::new(stream);
+        let error: Value = serde_json::from_str(&read_line(&mut reader).unwrap().unwrap()).unwrap();
+        assert_eq!(error["error"], "invalid JSON");
+        assert_eq!(error["ok"], false);
+        assert!(read_line(&mut reader).unwrap().is_none());
+        assert!(host.requests.try_recv().is_err());
     }
 
     #[test]
