@@ -22,6 +22,7 @@ pub struct Args {
     /// Overrides the saved option for this session.
     pub render_distance: Option<i32>,
     pub no_vsync: bool,
+    pub enhanced_graphics: Option<bool>,
     pub new_world: bool,
     pub bench: bool,
     pub screenshot: Option<String>,
@@ -36,7 +37,7 @@ pub struct Args {
     pub time: Option<f64>,
     /// `--weather`: start raining (true) or clear (false).
     pub weather: Option<bool>,
-    /// `--dimension`: start in the overworld or the Nether.
+    /// `--dimension`: start in the Overworld, Nether or End.
     pub dimension: Option<world::terrain::Dimension>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
     pub place: Vec<(glam::IVec3, world::block::Block)>,
@@ -78,6 +79,7 @@ voxelcraft [options]
   --new             ignore any existing save and start a fresh world (in
                     --world, default: world)
   --no-vsync        uncapped frame rate
+  --graphics <m>   enhanced (default) or classic lighting and water
   --bench           headless terrain generation + meshing benchmark
   --bench-render    load the world, render a 360° sweep offscreen, report frame times
   --creative, --survival  game mode (default: survival, or the saved mode)
@@ -121,6 +123,7 @@ fn parse_args() -> Result<Args, String> {
         data_dir: None,
         render_distance: None,
         no_vsync: false,
+        enhanced_graphics: None,
         new_world: false,
         bench: false,
         screenshot: None,
@@ -162,6 +165,13 @@ fn parse_args() -> Result<Args, String> {
             "--data-dir" => args.data_dir = Some(value("--data-dir")?.into()),
             "--rd" => args.render_distance = Some(value("--rd")?.parse::<i32>().map_err(|_| "bad --rd")?.clamp(2, 32)),
             "--no-vsync" => args.no_vsync = true,
+            "--graphics" => {
+                args.enhanced_graphics = Some(match value("--graphics")?.as_str() {
+                    "enhanced" => true,
+                    "classic" => false,
+                    _ => return Err("--graphics: expected enhanced or classic".into()),
+                });
+            }
             "--new" => args.new_world = true,
             "--bench" => args.bench = true,
             "--bench-render" => args.bench_render = true,

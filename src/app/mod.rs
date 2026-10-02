@@ -275,6 +275,9 @@ impl ApplicationHandler for App {
             settings.volume = v;
         }
         settings.vsync &= !self.args.no_vsync;
+        if let Some(enhanced) = self.args.enhanced_graphics {
+            settings.enhanced_graphics = enhanced;
+        }
 
         let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
         let audio = crate::audio::Audio::new(self.args.mute, settings.volume);
@@ -1684,6 +1687,7 @@ impl Game {
             zenith_color: if underwater { fog_color } else { sky.zenith },
             sun_dir: sky.sun_dir,
             dimension: self.dimension,
+            enhanced_graphics: self.settings.enhanced_graphics,
             time: (now - self.started).as_secs_f32(),
             highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);

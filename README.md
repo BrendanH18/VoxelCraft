@@ -106,6 +106,7 @@ cargo run --release -- --creative --world creative --seed 42
 | `--seed <n>` | Set the seed for a new world |
 | `--rd <chunks>` | Set view distance in 32-block chunks; default `8` = 256 blocks |
 | `--no-vsync` | Uncap the frame rate |
+| `--graphics classic/enhanced` | Original rendering or directional skylight and reflective animated water |
 | `--mute` / `--volume <0..1>` | Set audio at startup |
 | `--help` | Show all options, including benchmarks and screenshots |
 

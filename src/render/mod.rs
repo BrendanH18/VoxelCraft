@@ -50,7 +50,7 @@ struct Globals {
     /// xy: wrapped cloud pattern origin, z: cloud plane y relative to the
     /// camera, w: cloud radius.
     clouds: [f32; 4],
-    /// x: dimension (0 Overworld, 1 Nether, 2 End); remaining values reserved.
+    /// x: dimension (0 Overworld, 1 Nether, 2 End); y: enhanced graphics; zw: camera xz wrapped at 128 blocks.
     environment: [f32; 4],
 }
 
@@ -99,6 +99,7 @@ pub struct FrameParams {
     pub zenith_color: [f32; 3],
     pub sun_dir: Vec3,
     pub dimension: crate::world::terrain::Dimension,
+    pub enhanced_graphics: bool,
     /// Seconds since start (animations).
     pub time: f32,
     /// Targeted block and its outline's corners within the cell (beds,
@@ -1015,9 +1016,9 @@ impl Renderer {
                     crate::world::terrain::Dimension::Nether => 1.0,
                     crate::world::terrain::Dimension::End => 2.0,
                 },
-                0.0,
-                0.0,
-                0.0,
+                f32::from(p.enhanced_graphics),
+                p.camera.x.rem_euclid(128.0) as f32,
+                p.camera.z.rem_euclid(128.0) as f32,
             ],
             sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
             params: [p.fog_start, p.fog_end, p.daylight, p.rain],
