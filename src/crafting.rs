@@ -201,6 +201,7 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', &[Item::STRING])], b(Block::WOOL), 1),
             shaped(&["WWW", "###"], &[('W', WOOL), ('#', PLANKS)], Item::BED, 1),
             shapeless(&[&[Item::IRON_INGOT], &[Item::FLINT]], Item::FLINT_AND_STEEL, 1),
+            shaped(&["# #", " # "], &[('#', &[Item::IRON_INGOT])], Item::BUCKET, 1),
             shaped(&["##", "##"], &[('#', &[Item::NETHER_BRICK])], b(Block::NETHER_BRICKS), 1),
             shaped(&["##", "##"], &[('#', &[Item::GLOWSTONE_DUST])], b(Block::GLOWSTONE), 1),
             shaped(&["###", "###", "###"], &[('#', &[Item::GOLD_NUGGET])], Item::GOLD_INGOT, 1),

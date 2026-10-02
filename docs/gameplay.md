@@ -20,6 +20,7 @@
 | Shift + right click | Build against a crafting table, furnace or chest instead of opening it |
 | Hold / release right click with a bow | Draw / shoot an arrow (needs arrows in survival) |
 | Right click with flint and steel | Light an obsidian portal frame |
+| Right click with a bucket | Scoop up a water or lava source / pour it out again |
 | Right click with a hoe | Till grass or dirt (with air above) into farmland |
 | Right click with seeds / bone meal | Sow wheat on farmland / make a crop, sapling or patch of grass grow |
 | G | Toggle survival / creative |
@@ -140,6 +141,10 @@ session.
   per hit (other tools 2), and break when worn out. Melee damage comes from
   the held item: a fist 1, swords 4 (wood, gold) to 7 (diamond), axes,
   pickaxes and shovels less
+- Buckets (3 iron ingots in a V, stack to 16): right-click a water or lava
+  source to fill one and right-click a block to pour it out next to it.
+  Creative keeps its empty bucket. A lava bucket smelts for 1000 s and
+  leaves the empty bucket behind in the furnace
 - Bows: hold right-click to draw (fully drawn after 1 s; the bar under the
   crosshair turns gold and the view zooms in a little) and release to
   shoot. A full draw deals 6 damage plus a random critical bonus of up to
@@ -200,8 +205,8 @@ session.
 
 ## The Nether
 
-Build a frame of obsidian (pour water over lava source blocks, then mine
-the obsidian with a diamond pickaxe) at least 4 wide and 5 tall around an
+Build a frame of obsidian (pour a water bucket over lava source blocks,
+then mine the obsidian with a diamond pickaxe) at least 4 wide and 5 tall around an
 empty inside of 2x3 up to 21x21; the corners can be left out. Light it
 with flint and steel (iron ingot and flint, shapeless; 64 uses) to fill it
 with a swirling portal. Stand in it for 4 seconds (half a second in

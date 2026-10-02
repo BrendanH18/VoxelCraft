@@ -370,6 +370,27 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             };
             shaded(&nugget, x, y, c, 0.08)
         }
+        Sprite::Bucket(fluid) => {
+            // A tapered pail seen from slightly above: rim, inside, handle.
+            let pail = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let half = 5.8 - (py - 6.0) * 0.18;
+                (6.0..=14.0).contains(&py) && (px - 8.0).abs() <= half
+            };
+            let (px, py) = centre(x, y);
+            let inside = (5.0..7.5).contains(&py) && (px - 8.0).abs() <= 4.6;
+            let handle = py < 6.0 && ((px - 8.0).powi(2) / 36.0 + (py - 6.0).powi(2) / 20.0 - 1.0).abs() < 0.18;
+            if inside {
+                Some(match fluid {
+                    Some(c) => tint(c, 0.9 + noise(x, y, 9) * 0.2),
+                    None => tint([70, 70, 74], 1.0),
+                })
+            } else if handle {
+                Some(tint([150, 150, 155], 1.0))
+            } else {
+                shaded(&pail, x, y, [200, 200, 205], 0.03)
+            }
+        }
         Sprite::Arrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);

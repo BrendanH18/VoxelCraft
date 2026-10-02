@@ -54,6 +54,7 @@ pub fn smelt(item: Item) -> Option<Item> {
 pub fn burn_time(item: Item) -> Option<f32> {
     let b = Item::from_block;
     match item {
+        Item::LAVA_BUCKET => Some(1000.0),
         Item::COAL | Item::CHARCOAL => Some(80.0),
         i if i.block().is_some_and(|b| b.is_log() || b.is_planks()) => Some(15.0),
         i if [Block::CRAFTING_TABLE, Block::CHEST].map(b).contains(&i) => Some(15.0),
@@ -97,7 +98,9 @@ impl Furnace {
                 && self.product().is_some()
                 && let Some(t) = self.fuel.and_then(|f| burn_time(f.item))
             {
-                self.fuel = take_one(self.fuel);
+                // A lava bucket burns down to an empty bucket.
+                let bucket = self.fuel.is_some_and(|f| f.item == Item::LAVA_BUCKET);
+                self.fuel = if bucket { Some(Stack::new(Item::BUCKET, 1)) } else { take_one(self.fuel) };
                 self.burn_left = t;
                 self.burn_total = t;
             }
@@ -247,6 +250,18 @@ mod tests {
         for _ in 0..(secs * 20.0) as usize {
             f.tick(0.05);
         }
+    }
+
+    #[test]
+    fn lava_buckets_burn_long_and_leave_the_bucket() {
+        let mut f = furnace(Item::from_block(Block::COBBLESTONE), 64, Item::LAVA_BUCKET, 1);
+        f.tick(1.0);
+        assert!(f.is_lit());
+        assert_eq!(f.fuel, Some(Stack::new(Item::BUCKET, 1)));
+        for _ in 0..60 {
+            f.tick(10.0);
+        }
+        assert_eq!(f.output.map(|s| s.count), Some(60), "still burning after 600 s");
     }
 
     #[test]

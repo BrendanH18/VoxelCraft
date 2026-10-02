@@ -579,6 +579,22 @@ impl World {
     /// DDA voxel traversal. Returns the first targetable block hit and the
     /// face normal it was entered through.
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
+        self.raycast_by(origin, dir, max_dist, Block::is_targetable)
+    }
+
+    /// Like [`World::raycast`], but also stops at water and lava sources
+    /// (for buckets).
+    pub fn raycast_sources(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
+        self.raycast_by(origin, dir, max_dist, |b| b.is_targetable() || b == Block::WATER || b == Block::LAVA)
+    }
+
+    fn raycast_by(
+        &self,
+        origin: DVec3,
+        dir: DVec3,
+        max_dist: f64,
+        hits: impl Fn(Block) -> bool,
+    ) -> Option<(IVec3, IVec3)> {
         let mut cell = origin.floor().as_ivec3();
         let step = IVec3::new(dir.x.signum() as i32, dir.y.signum() as i32, dir.z.signum() as i32);
         let inv = DVec3::new(
@@ -594,7 +610,7 @@ impl World {
         let mut t = 0.0;
         while t <= max_dist {
             if let Some(b) = self.get_block(cell)
-                && b.is_targetable()
+                && hits(b)
                 && cell.y >= 0
             {
                 return Some((cell, normal));

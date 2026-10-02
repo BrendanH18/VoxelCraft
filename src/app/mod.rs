@@ -3,6 +3,7 @@
 mod actions;
 mod bed;
 mod bow;
+mod bucket;
 mod containers;
 mod dimension;
 mod farming;
@@ -1124,6 +1125,9 @@ impl Game {
     }
 
     fn place_block(&mut self) {
+        if !self.aiming_at_usable() && self.use_bucket() {
+            return;
+        }
         let Some((pos, normal)) = self.target() else { return };
         // Containers open on right-click; holding Shift builds against them.
         match self.world.get_block(pos) {
@@ -1412,6 +1416,8 @@ impl Game {
             && self.action_cooldown <= 0.0
             && (self.left_held || self.right_held)
             && self.actions.bow_draw.is_none()
+            // Buckets act once per click.
+            && !(self.right_held && !self.left_held && self.holding_bucket())
         {
             if self.left_held {
                 self.break_block();

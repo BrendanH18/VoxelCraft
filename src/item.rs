@@ -162,6 +162,8 @@ pub enum Sprite {
     Bow,
     FlintAndSteel,
     Nugget([u8; 3]),
+    /// An iron bucket, empty or holding this colour of fluid.
+    Bucket(Option<[u8; 3]>),
     Tool(ToolKind, Tier),
     Armor(ArmorPiece, ArmorMaterial),
 }
@@ -189,7 +191,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 35] = [
+static ITEMS: [ItemInfo; 38] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -225,6 +227,19 @@ static ITEMS: [ItemInfo; 35] = [
     item("nether brick", Sprite::Ingot([86, 40, 46])),
     item("glowstone dust", Sprite::Powder([250, 214, 110])),
     item("gold nugget", Sprite::Nugget([250, 212, 60])),
+    ItemInfo { name: "bucket", kind: ItemKind::Material, max_stack: 16, sprite: Sprite::Bucket(None) },
+    ItemInfo {
+        name: "water bucket",
+        kind: ItemKind::Material,
+        max_stack: 1,
+        sprite: Sprite::Bucket(Some([50, 90, 220])),
+    },
+    ItemInfo {
+        name: "lava bucket",
+        kind: ItemKind::Material,
+        max_stack: 1,
+        sprite: Sprite::Bucket(Some([230, 110, 20])),
+    },
 ];
 
 /// Uses before a bow breaks.
@@ -276,6 +291,9 @@ impl Item {
     pub const NETHER_BRICK: Item = Item(288);
     pub const GLOWSTONE_DUST: Item = Item(289);
     pub const GOLD_NUGGET: Item = Item(290);
+    pub const BUCKET: Item = Item(291);
+    pub const WATER_BUCKET: Item = Item(292);
+    pub const LAVA_BUCKET: Item = Item(293);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
