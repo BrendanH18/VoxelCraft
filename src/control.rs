@@ -172,6 +172,15 @@ mod tests {
         }
     }
 
+    /// How each OS reports a peer that closed with our bytes unread
+    /// (Windows also uses WSAECONNABORTED).
+    fn closed(e: &io::Error) -> bool {
+        matches!(
+            e.kind(),
+            io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset | io::ErrorKind::ConnectionAborted
+        )
+    }
+
     #[test]
     fn http_preamble_cannot_deliver_a_json_command() {
         let host = Host::bind("127.0.0.1:0".parse().unwrap(), None).unwrap();
@@ -179,7 +188,14 @@ mod tests {
         stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
         let command = json!({"version":VERSION,"player":"bot","command":"give diamond 64"});
-        write!(stream, "POST / HTTP/1.1\r\nHost: localhost\r\n\r\n{command}\n").unwrap();
+        // The host may answer the first line and close while the rest is still
+        // being sent, so the write itself can see a broken pipe or reset.
+        let request = format!("POST / HTTP/1.1\r\nHost: localhost\r\n\r\n{command}\n");
+        match stream.write_all(request.as_bytes()) {
+            Ok(()) => {}
+            Err(e) if closed(&e) => {}
+            Err(e) => panic!("unexpected write error: {e}"),
+        }
         // Unread HTTP bytes can cause a TCP reset before even the error
         // response is delivered. If delivered, it must be followed by closure.
         match read_line(&mut reader) {
@@ -188,12 +204,12 @@ mod tests {
                 assert_eq!(error["error"], "invalid JSON");
                 match read_line(&mut reader) {
                     Ok(None) => {}
-                    Err(e) if e.kind() == io::ErrorKind::ConnectionReset => {}
+                    Err(e) if closed(&e) => {}
                     other => panic!("expected connection close, got {other:?}"),
                 }
             }
             Ok(None) => {}
-            Err(e) if e.kind() == io::ErrorKind::ConnectionReset => {}
+            Err(e) if closed(&e) => {}
             other => panic!("expected error response or connection close, got {other:?}"),
         }
         assert!(host.requests.try_recv().is_err(), "HTTP body must not enter the game queue");

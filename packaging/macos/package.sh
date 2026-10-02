@@ -11,7 +11,8 @@ case "$target" in
 esac
 version="$(cargo metadata --no-deps --format-version 1 --locked | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "voxelcraft"))')"
 binary="target/$target/release/voxelcraft"
-if [ ! -f "$binary" ]; then
+agent="target/$target/release/voxelcraft-agent"
+if [ ! -f "$binary" ] || [ ! -f "$agent" ]; then
     echo "Build first: cargo build --release --locked --target $target" >&2
     exit 1
 fi
@@ -24,7 +25,9 @@ trap 'rm -rf "$stage"' EXIT
 app="$stage/VoxelCraft.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" dist
 cp "$binary" "$app/Contents/MacOS/voxelcraft"
-chmod 755 "$app/Contents/MacOS/voxelcraft"
+# The command-line client for hosted players ships beside the game.
+cp "$agent" "$app/Contents/MacOS/voxelcraft-agent"
+chmod 755 "$app/Contents/MacOS/voxelcraft" "$app/Contents/MacOS/voxelcraft-agent"
 cp packaging/icons/VoxelCraft.icns "$app/Contents/Resources/"
 cp packaging/INSTALL.txt packaging/LICENSE.txt packaging/THIRD-PARTY-LICENSES.html LICENSE-MIT LICENSE-APACHE "$app/Contents/Resources/"
 cat > "$app/Contents/Info.plist" <<EOF
@@ -47,6 +50,8 @@ EOF
 plutil -lint "$app/Contents/Info.plist"
 # No Developer ID or notarization. An ad-hoc signature supplies the local code
 # integrity required by Apple Silicon; it does not identify a trusted publisher.
+# Nested code is signed before the bundle that seals it.
+codesign --force --sign - "$app/Contents/MacOS/voxelcraft-agent"
 codesign --force --sign - "$app"
 codesign --verify --strict "$app"
 cp packaging/INSTALL.txt "$stage/READ ME FIRST.txt"

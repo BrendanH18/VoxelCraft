@@ -433,7 +433,8 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
         self.ai_timer -= dt;
-        let to_player = ctx.player_pos - self.pos;
+        let target = ctx.nearest_target(self.pos);
+        let to_player = target.map_or(DVec3::ZERO, |t| t.pos - self.pos);
         let flat = DVec3::new(to_player.x, 0.0, to_player.z);
         let hdist = flat.length();
 
@@ -443,7 +444,7 @@ impl Mob {
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
                 _ => true,
             };
-            let chasing = aggressive && ctx.player_targetable && hdist < CHASE_RANGE && to_player.y.abs() < 12.0;
+            let chasing = aggressive && target.is_some() && hdist < CHASE_RANGE && to_player.y.abs() < 12.0;
             if chasing {
                 self.ai = Ai::Chase;
             } else if self.ai == Ai::Chase {
@@ -457,13 +458,16 @@ impl Mob {
 
         match self.ai {
             Ai::Chase => {
+                let Some(&target) = target else { return (None, 0.0) };
                 // Look at the player's face.
                 let eye = to_player.y + 1.62 - self.shape().height * 0.9;
                 let face_yaw = (to_player.z as f32).atan2(to_player.x as f32);
                 self.head_target = (wrap(face_yaw - self.yaw).clamp(-1.2, 1.2), (eye as f32).atan2(hdist as f32));
                 let dir = if hdist > 1e-6 { flat / hdist } else { DVec3::X };
                 match self.kind {
-                    MobKind::Skeleton => return self.skeleton_tactics(dt, world, ctx, dir, hdist, rng, events),
+                    MobKind::Skeleton => {
+                        return self.skeleton_tactics(dt, world, target.pos, dir, hdist, rng, events);
+                    }
                     MobKind::Creeper => {
                         if let Some(stop) = self.creeper_fuse(dt, hdist, events) {
                             return stop;
@@ -475,7 +479,12 @@ impl Mob {
                             self.attack_anim = 0.35;
                             let knockback = dir * 6.0 + DVec3::Y * 5.0;
                             let (damage, cause) = self.kind.melee();
-                            events.push(EntityEvent::PlayerHit { damage, knockback: knockback.as_vec3(), cause });
+                            events.push(EntityEvent::PlayerHit {
+                                player: target.id,
+                                damage,
+                                knockback: knockback.as_vec3(),
+                                cause,
+                            });
                         }
                     }
                 }
@@ -546,20 +555,20 @@ impl Mob {
     }
 
     /// Skeletons keep their distance and shoot when they can see the
-    /// player.
+    /// player whose feet are at `player`.
     #[allow(clippy::too_many_arguments)]
     fn skeleton_tactics<W: MobWorld + ?Sized>(
         &mut self,
         dt: f32,
         world: &W,
-        ctx: &Ctx,
+        player: DVec3,
         dir: DVec3,
         hdist: f64,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
         let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
-        let target = ctx.player_pos + DVec3::Y * 1.2;
+        let target = player + DVec3::Y * 1.2;
         if self.attack_cooldown <= 0.0 && hdist < SHOOT_RANGE && line_of_sight(world, eye, target) {
             self.attack_cooldown = rng.range(1.6, 2.4);
             self.attack_anim = 0.35;

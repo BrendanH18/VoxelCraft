@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use glam::DVec3;
-use voxelcraft::entity::{Ctx, Entities};
+use voxelcraft::entity::{Ctx, Entities, PlayerId, Target};
 use voxelcraft::player::{MoveInput, Player};
 use voxelcraft::simulation::{self, TICK_SECONDS, survival::Vitals, weather::Weather};
 use voxelcraft::world::{
@@ -49,8 +49,7 @@ fn main() {
         simulation::tick_player(&mut player, &world, &mut vitals, MoveInput::default(), true);
         simulation::tick_world(&mut world, player.pos);
         let ctx = Ctx {
-            player_pos: player.pos,
-            player_targetable: false,
+            players: vec![Target::new(PlayerId::HOST, player.pos, false)],
             daylight: 1.0,
             raining: weather.raining,
             spawning: dimension != Dimension::End,

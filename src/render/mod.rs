@@ -182,6 +182,52 @@ fn face_runs(offsets: &[u32], mask: u8, mut f: impl FnMut(u32, u32)) {
     }
 }
 
+/// A window image being drawn this frame (or the offscreen target).
+pub struct Frame {
+    surface: Option<wgpu::SurfaceTexture>,
+    view: wgpu::TextureView,
+    /// A view has been drawn, so later ones must not clear the image.
+    drawn: bool,
+}
+
+/// A rectangle of the window in physical pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Viewport {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Viewport {
+    pub fn full((width, height): (u32, u32)) -> Self {
+        Self { x: 0, y: 0, width: width.max(1), height: height.max(1) }
+    }
+
+    pub fn aspect(&self) -> f32 {
+        self.width as f32 / self.height as f32
+    }
+
+    /// Splits a window into `count` (1..=4) player views like split-screen
+    /// Minecraft: two players get halves (top/bottom, or left/right when
+    /// `side_by_side`), three or four get quarters, with the third view of
+    /// three spanning the bottom.
+    pub fn split((width, height): (u32, u32), count: usize, side_by_side: bool) -> Vec<Self> {
+        let (w, h) = (width.max(2), height.max(2));
+        let (hw, hh) = (w / 2, h / 2);
+        let rect = |x, y, width, height| Self { x, y, width, height };
+        match count {
+            0 | 1 => vec![Self::full((w, h))],
+            2 if side_by_side => vec![rect(0, 0, hw, h), rect(hw, 0, w - hw, h)],
+            2 => vec![rect(0, 0, w, hh), rect(0, hh, w, h - hh)],
+            3 => vec![rect(0, 0, hw, hh), rect(hw, 0, w - hw, hh), rect(0, hh, w, h - hh)],
+            _ => {
+                vec![rect(0, 0, hw, hh), rect(hw, 0, w - hw, hh), rect(0, hh, hw, h - hh), rect(hw, hh, w - hw, h - hh)]
+            }
+        }
+    }
+}
+
 pub struct Renderer {
     pub window: Arc<Window>,
     surface: wgpu::Surface<'static>,
@@ -846,10 +892,6 @@ impl Renderer {
         (self.config.width, self.config.height)
     }
 
-    pub fn aspect(&self) -> f32 {
-        self.config.width as f32 / self.config.height as f32
-    }
-
     pub fn upload_mesh(&mut self, pos: IVec3, mesh: MeshData) {
         self.remove_mesh(pos);
         if mesh.is_empty() {
@@ -930,8 +972,19 @@ impl Renderer {
         out
     }
 
-    /// Draws a frame; returns `false` if it was skipped (window hidden).
+    /// Draws a frame covering the whole window; returns `false` if it was
+    /// skipped (window hidden).
     pub fn render(&mut self, p: &FrameParams) -> bool {
+        let Some(mut frame) = self.begin_frame() else { return false };
+        self.draw_view(&mut frame, p, Viewport::full(self.size()));
+        self.end_frame(frame);
+        true
+    }
+
+    /// Acquires the window image for a frame drawn as one or more views
+    /// ([`Renderer::draw_view`], then [`Renderer::end_frame`]). `None` if the
+    /// frame should be skipped (window hidden).
+    pub fn begin_frame(&mut self) -> Option<Frame> {
         let acquire_start = std::time::Instant::now();
         let frame = if self.force_offscreen {
             None
@@ -951,7 +1004,7 @@ impl Renderer {
         if frame.is_none() {
             if !self.force_offscreen && self.capture.is_none() {
                 std::thread::sleep(std::time::Duration::from_millis(8));
-                return false;
+                return None;
             }
             let size = (self.config.width, self.config.height);
             if self.offscreen.as_ref().is_none_or(|t| (t.width(), t.height()) != size) {
@@ -973,10 +1026,19 @@ impl Renderer {
             None => self.offscreen.as_ref().unwrap(),
         };
         let view = target.create_view(&Default::default());
+        self.stats = RenderStats { meshes: self.meshes.len(), acquire_ms, ..Default::default() };
+        Some(Frame { surface: frame, view, drawn: false })
+    }
 
+    /// Draws one camera's view into `vp` (physical pixels). Each view is
+    /// submitted on its own, so per-view buffers can be refilled between
+    /// calls ([`Renderer::set_entities`], [`Renderer::set_weather`]). The
+    /// first view of a frame clears the whole image.
+    pub fn draw_view(&mut self, frame: &mut Frame, p: &FrameParams, vp: Viewport) {
+        let view = &frame.view;
         // Camera-relative view-projection.
         // wgpu NDC is DirectX-style: Z in [0, 1], Y up.
-        let proj = glam::camera::rh::proj::directx::perspective_infinite_reverse(p.fov_y, self.aspect(), 0.05);
+        let proj = glam::camera::rh::proj::directx::perspective_infinite_reverse(p.fov_y, vp.aspect(), 0.05);
         let view_mat = glam::camera::rh::view::look_to_mat4(Vec3::ZERO, p.forward, Vec3::Y);
         let view_proj = proj * view_mat;
         let frustum = Frustum::new(view_proj);
@@ -1038,7 +1100,7 @@ impl Renderer {
             let verts = self.outline_vertices(b, lo, hi, p.camera);
             self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
         }
-        let hand = p.hand.as_ref().map(|h| (h, p.forward, p.fov_y));
+        let hand = p.hand.as_ref().map(|h| (h, p.forward, p.fov_y, vp.aspect()));
         self.block_models.set(&self.device, &self.queue, &p.block_models, hand, p.camera);
         let hud = &p.ui;
         if hud.len() > self.ui_capacity {
@@ -1049,23 +1111,29 @@ impl Renderer {
             self.queue.write_buffer(&self.ui_buf, 0, bytemuck::cast_slice(hud));
         }
 
-        let mut stats =
-            RenderStats { meshes: self.meshes.len(), visible: self.visible.len(), acquire_ms, ..Default::default() };
+        let mut stats = std::mem::take(&mut self.stats);
+        stats.visible += self.visible.len();
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: p.sky_color[0],
-                            g: p.sky_color[1],
-                            b: p.sky_color[2],
-                            a: 1.0,
-                        }),
+                        // Later views keep what earlier ones drew; the sky
+                        // fills their own background.
+                        load: if frame.drawn {
+                            wgpu::LoadOp::Load
+                        } else {
+                            wgpu::LoadOp::Clear(wgpu::Color {
+                                r: p.sky_color[0],
+                                g: p.sky_color[1],
+                                b: p.sky_color[2],
+                                a: 1.0,
+                            })
+                        },
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -1078,6 +1146,8 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            pass.set_viewport(vp.x as f32, vp.y as f32, vp.width as f32, vp.height as f32, 0.0, 1.0);
+            pass.set_scissor_rect(vp.x, vp.y, vp.width, vp.height);
             pass.set_bind_group(0, &self.globals_bg, &[]);
             pass.set_bind_group(1, &self.blocks_bg, &[]);
             pass.set_index_buffer(self.quad_indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -1149,27 +1219,31 @@ impl Renderer {
                 pass.draw(0..hud.len() as u32, 0..1);
             }
         }
-        match self.capture.take() {
-            Some(path) if target.usage().contains(wgpu::TextureUsages::COPY_SRC) => {
-                self.save_capture(target, encoder, &path)
-            }
-            Some(_) => {
-                log::error!("surface doesn't support COPY_SRC; can't take screenshots");
-                self.queue.submit([encoder.finish()]);
-            }
-            None => {
-                self.queue.submit([encoder.finish()]);
-            }
-        }
-        if let Some(frame) = frame {
-            self.window.pre_present_notify();
-            self.queue.present(frame);
-        }
-
+        self.queue.submit([encoder.finish()]);
+        frame.drawn = true;
         stats.gpu_bytes = self.arena.capacity_bytes();
         stats.gpu_used_bytes = self.arena.used_bytes();
         self.stats = stats;
-        true
+    }
+
+    /// Saves a requested screenshot and presents the frame.
+    pub fn end_frame(&mut self, frame: Frame) {
+        let target = match &frame.surface {
+            Some(f) => &f.texture,
+            None => self.offscreen.as_ref().unwrap(),
+        };
+        match self.capture.take() {
+            Some(path) if target.usage().contains(wgpu::TextureUsages::COPY_SRC) => {
+                let encoder = self.device.create_command_encoder(&Default::default());
+                self.save_capture(target, encoder, &path)
+            }
+            Some(_) => log::error!("surface doesn't support COPY_SRC; can't take screenshots"),
+            None => {}
+        }
+        if let Some(surface) = frame.surface {
+            self.window.pre_present_notify();
+            self.queue.present(surface);
+        }
     }
 }
 
@@ -1200,6 +1274,24 @@ mod tests {
         let mut out = Vec::new();
         face_runs(offsets, mask, |a, b| out.push((a, b)));
         out
+    }
+
+    #[test]
+    fn split_screen_viewports_tile_the_window() {
+        assert_eq!(Viewport::split((1601, 901), 1, false), vec![Viewport::full((1601, 901))]);
+        for count in 2..=4 {
+            for side in [false, true] {
+                let views = Viewport::split((1601, 901), count, side);
+                assert_eq!(views.len(), count);
+                let area: u32 = views.iter().map(|v| v.width * v.height).sum();
+                assert_eq!(area, 1601 * 901, "{count} {side}");
+                assert!(views.iter().all(|v| v.x + v.width <= 1601 && v.y + v.height <= 901));
+            }
+        }
+        let [top, bottom] = Viewport::split((1600, 900), 2, false)[..] else { panic!() };
+        assert_eq!((top.y, top.height, bottom.y, bottom.width), (0, 450, 450, 1600));
+        let [left, right] = Viewport::split((1600, 900), 2, true)[..] else { panic!() };
+        assert_eq!((left.width, right.x, right.height), (800, 800, 900));
     }
 
     #[test]

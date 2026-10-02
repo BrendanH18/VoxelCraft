@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use glam::{DVec3, IVec3};
-use voxelcraft::entity::{Ctx, Entities, EntityEvent};
+use voxelcraft::entity::{Ctx, Entities, EntityEvent, PlayerId, Target};
 use voxelcraft::inventory::Stack;
 use voxelcraft::item::Item;
 use voxelcraft::player::{MoveInput, Player};
@@ -57,8 +57,13 @@ fn headless_world_runs_gameplay_without_render_meshes() {
     let mut entities = Entities::new(7);
     entities.scatter(Stack::new(Item::DIAMOND, 1), DVec3::new(10.5, 153.0, 10.5));
     entities.prime_tnt(IVec3::new(28, 150, 28), false);
-    let ctx =
-        Ctx { player_pos: at, player_targetable: false, daylight: 1.0, raining: false, spawning: false, nether: false };
+    let ctx = Ctx {
+        players: vec![Target::new(PlayerId::HOST, at, false)],
+        daylight: 1.0,
+        raining: false,
+        spawning: false,
+        nether: false,
+    };
     let mut explosions = 0;
     for _ in 0..201 {
         simulation::tick_world(&mut world, at);
@@ -152,4 +157,27 @@ fn agent_streaming_keeps_distant_players_loaded_without_meshes() {
     world.update_players(host, &[]);
     assert!(!world.is_loaded(agent.floor().as_ivec3()));
     assert!(!world.modified_chunks().is_empty());
+}
+
+#[test]
+fn split_screen_viewers_get_meshed_like_the_host() {
+    let mut world = World::new(Arc::new(Generator::new(42)), Default::default(), 2);
+    let host = DVec3::new(0.5, 150.0, 0.5);
+    let viewer = DVec3::new(400.5, 150.0, -300.5);
+    let viewer_chunk = glam::IVec3::new(12, 4, -10);
+    world.set_viewers(&[viewer]);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let mut meshed = std::collections::HashSet::new();
+    while !meshed.contains(&viewer_chunk) || world.pending_jobs() > 0 {
+        world.update_players(host, &[viewer]);
+        meshed.extend(world.mesh_uploads.drain(..).map(|(p, _)| p));
+        assert!(std::time::Instant::now() < deadline, "viewer chunks were not meshed");
+        std::thread::yield_now();
+    }
+    // Agents that nobody watches still stream without meshes.
+    let far = |p: &glam::IVec3| (p.x - 12).pow(2) + (p.z + 10).pow(2) <= 4;
+    assert!(meshed.iter().filter(|p| far(p)).count() >= 13 * 8, "a full render-distance disc around the viewer");
+    world.set_viewers(&[]);
+    world.update_players(host, &[viewer]);
+    assert!(world.is_loaded(viewer.floor().as_ivec3()), "the agent keeps its simulation chunks");
 }

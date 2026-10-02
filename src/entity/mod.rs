@@ -61,9 +61,10 @@ pub enum MobSound {
 /// Something an entity did that the game needs to react to.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EntityEvent {
-    /// A mob or arrow hit the player: apply `damage` and add `knockback` to
-    /// the player's velocity; `cause` is the death message.
+    /// A mob or arrow hit `player`: apply `damage` and add `knockback` to
+    /// their velocity; `cause` is the death message.
     PlayerHit {
+        player: PlayerId,
         damage: f32,
         knockback: Vec3,
         cause: &'static str,
@@ -150,12 +151,44 @@ impl MobWorld for World {
     }
 }
 
-/// Per-frame inputs for the entity update.
+/// Stable identity of a player within a world. The local player is
+/// [`PlayerId::HOST`]; hosted agent profiles keep their own IDs in saves.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PlayerId(pub u32);
+
+impl PlayerId {
+    pub const HOST: Self = Self(0);
+}
+
+/// A player as the entity simulation sees them.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Target {
+    pub id: PlayerId,
+    /// Feet position.
+    pub pos: DVec3,
+    /// Hostile mobs chase and attack (false in creative or while dead).
+    pub targetable: bool,
+}
+
+impl Target {
+    pub fn new(id: PlayerId, pos: DVec3, targetable: bool) -> Self {
+        Self { id, pos, targetable }
+    }
+
+    /// Whether `p` is inside this player's 0.6 x 1.8 box.
+    pub fn contains(&self, p: DVec3) -> bool {
+        let d = p - self.pos;
+        d.x.abs() < crate::player::HALF_WIDTH
+            && d.z.abs() < crate::player::HALF_WIDTH
+            && (0.0..crate::player::HEIGHT).contains(&d.y)
+    }
+}
+
+/// Per-tick inputs for the entity update.
 pub struct Ctx {
-    /// Player feet position.
-    pub player_pos: DVec3,
-    /// Hostile mobs chase and attack (false in creative, like Minecraft).
-    pub player_targetable: bool,
+    /// Every player in this world. Mobs spawn around, despawn away from and
+    /// chase any of them.
+    pub players: Vec<Target>,
     /// Skylight multiplier, 1 at noon.
     pub daylight: f32,
     /// Natural spawning on/off.
@@ -164,6 +197,22 @@ pub struct Ctx {
     pub raining: bool,
     /// In the Nether: only Nether mobs spawn, in its caverns.
     pub nether: bool,
+}
+
+impl Ctx {
+    /// Squared distance from `pos` to the closest player, if there is any.
+    pub fn nearest_player_dist2(&self, pos: DVec3) -> Option<f64> {
+        self.players.iter().map(|t| t.pos.distance_squared(pos)).min_by(f64::total_cmp)
+    }
+
+    /// The closest player hostile mobs may attack, like Minecraft's
+    /// nearest-attackable-player targeting.
+    pub fn nearest_target(&self, pos: DVec3) -> Option<&Target> {
+        self.players
+            .iter()
+            .filter(|t| t.targetable)
+            .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)))
+    }
 }
 
 /// Small deterministic RNG (splitmix64).
@@ -245,7 +294,7 @@ impl Entities {
         while i < self.mobs.len() {
             let m = &self.mobs[i];
             let gone = m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
-                || m.pos.distance_squared(ctx.player_pos) > DESPAWN_DIST * DESPAWN_DIST
+                || ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
                 || !world.loaded(m.pos.floor().as_ivec3());
             if gone {
                 self.mobs.swap_remove(i);
@@ -382,46 +431,59 @@ impl Entities {
         }
     }
 
-    /// One spawn attempt per mob type that is under its cap.
+    /// One spawn attempt per mob type around each player whose local cap
+    /// isn't full. Like Java Edition's per-player mob caps, mobs only count
+    /// against the players they are near, so distant players don't starve
+    /// each other's spawns. Mobs never appear close to any player.
     fn natural_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx) {
-        for kind in MobKind::ALL {
-            let cap = kind.spawn_cap();
-            if self.count(kind) >= cap || kind.spawns_in_nether() != ctx.nether {
-                continue;
-            }
-            let angle = self.rng.range(0.0, TAU) as f64;
-            let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
-            let x = (ctx.player_pos.x + angle.cos() * dist).floor() as i32;
-            let z = (ctx.player_pos.z + angle.sin() * dist).floor() as i32;
-            let spot = if ctx.nether {
-                let top = self.rng.range(40.0, 118.0) as i32;
-                cavern_spot(world, kind, x, z, top)
-            } else {
-                spawn_spot(world, kind, x, z, ctx.daylight)
-            };
-            let Some(pos) = spot else { continue };
-            if !in_spawn_ring(ctx.player_pos, pos) {
-                continue;
-            }
-            self.spawn(kind, pos);
-            // Animals come in small herds, zombified piglins in packs.
-            if !kind.is_hostile() || kind.spawns_in_nether() {
-                let extra = (self.rng.next_f32() * 3.0) as i32;
-                for _ in 0..extra {
-                    let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
-                    let spot = if ctx.nether {
-                        cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 2)
-                    } else {
-                        spawn_spot(world, kind, x + dx, z + dz, ctx.daylight)
-                    };
-                    if self.count(kind) < cap
-                        && let Some(p) = spot
-                    {
-                        self.spawn(kind, p);
+        for center in ctx.players.iter().map(|t| t.pos) {
+            for kind in MobKind::ALL {
+                let cap = kind.spawn_cap();
+                if self.count_near(kind, center) >= cap || kind.spawns_in_nether() != ctx.nether {
+                    continue;
+                }
+                let angle = self.rng.range(0.0, TAU) as f64;
+                let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
+                let x = (center.x + angle.cos() * dist).floor() as i32;
+                let z = (center.z + angle.sin() * dist).floor() as i32;
+                let spot = if ctx.nether {
+                    let top = self.rng.range(40.0, 118.0) as i32;
+                    cavern_spot(world, kind, x, z, top)
+                } else {
+                    spawn_spot(world, kind, x, z, ctx.daylight)
+                };
+                let Some(pos) = spot else { continue };
+                if !in_spawn_ring(center, pos) || !clear_of_players(ctx, pos) {
+                    continue;
+                }
+                self.spawn(kind, pos);
+                // Animals come in small herds, zombified piglins in packs.
+                if !kind.is_hostile() || kind.spawns_in_nether() {
+                    let extra = (self.rng.next_f32() * 3.0) as i32;
+                    for _ in 0..extra {
+                        let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
+                        let spot = if ctx.nether {
+                            cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 2)
+                        } else {
+                            spawn_spot(world, kind, x + dx, z + dz, ctx.daylight)
+                        };
+                        if self.count_near(kind, center) < cap
+                            && let Some(p) = spot
+                            && clear_of_players(ctx, p)
+                        {
+                            self.spawn(kind, p);
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// Living mobs of `kind` that count against the cap of a player at
+    /// `center` (those within despawn range).
+    fn count_near(&self, kind: MobKind, center: DVec3) -> usize {
+        let r2 = DESPAWN_DIST * DESPAWN_DIST;
+        self.mobs.iter().filter(|m| m.kind == kind && m.alive() && m.pos.distance_squared(center) <= r2).count()
     }
 
     /// Capture positions before a game tick, or snap them while paused.
@@ -541,6 +603,11 @@ pub fn in_spawn_ring(player: DVec3, pos: DVec3) -> bool {
     (SPAWN_MIN_DIST * SPAWN_MIN_DIST..=SPAWN_MAX_DIST * SPAWN_MAX_DIST).contains(&d2)
 }
 
+/// No player is closer than [`SPAWN_MIN_DIST`] to `pos`.
+fn clear_of_players(ctx: &Ctx, pos: DVec3) -> bool {
+    ctx.nearest_player_dist2(pos).is_none_or(|d| d >= SPAWN_MIN_DIST * SPAWN_MIN_DIST)
+}
+
 /// Feet position for a mob on the sky-exposed surface of column (x, z),
 /// if the rules allow it there.
 fn spawn_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
@@ -586,8 +653,7 @@ mod tests {
 
     fn ctx(player: DVec3) -> Ctx {
         Ctx {
-            player_pos: player,
-            player_targetable: false,
+            players: vec![Target::new(PlayerId::HOST, player, false)],
             daylight: 1.0,
             spawning: false,
             raining: false,
@@ -727,8 +793,7 @@ mod tests {
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         let player = DVec3::new(1.5, 10.0, 0.5);
         let c = Ctx {
-            player_pos: player,
-            player_targetable: true,
+            players: vec![Target::new(PlayerId::HOST, player, true)],
             daylight: 0.1,
             spawning: false,
             raining: false,
@@ -740,12 +805,13 @@ mod tests {
         }
         // 1.5 s: an immediate hit plus one after the 1 s cooldown.
         assert_eq!(hits.len(), 2, "{hits:?}");
-        let EntityEvent::PlayerHit { damage, knockback, cause } = hits[0] else { panic!("{hits:?}") };
+        let EntityEvent::PlayerHit { player: id, damage, knockback, cause } = hits[0] else { panic!("{hits:?}") };
+        assert_eq!(id, PlayerId::HOST);
         assert!(damage > 0.0 && knockback.x > 0.0 && knockback.y > 0.0);
         assert_eq!(cause, "was slain by a zombie");
 
         // Creative players are ignored.
-        let c = Ctx { player_targetable: false, ..c };
+        let c = Ctx { players: vec![Target::new(PlayerId::HOST, player, false)], ..c };
         assert!((0..120).all(|_| !e.update(1.0 / 60.0, &world, &c).iter().any(is_hit)));
     }
 
@@ -758,8 +824,7 @@ mod tests {
         let mut e = Entities::new(8);
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         let c = Ctx {
-            player_pos: DVec3::new(8.5, 10.0, 0.5),
-            player_targetable: true,
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(8.5, 10.0, 0.5), true)],
             daylight: 0.1,
             spawning: false,
             raining: false,
@@ -856,8 +921,7 @@ mod tests {
         let mut e = Entities::new(11);
         let player = DVec3::new(0.0, 64.0, 0.0);
         let c = Ctx {
-            player_pos: player,
-            player_targetable: false,
+            players: vec![Target::new(PlayerId::HOST, player, false)],
             daylight: 0.12,
             spawning: true,
             raining: false,
@@ -873,10 +937,123 @@ mod tests {
         }
     }
 
+    #[test]
+    fn hostile_mobs_chase_the_nearest_targetable_player() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
+        let (host, agent) = (PlayerId::HOST, PlayerId(7));
+        // A creative host right next to the zombie is ignored in favour of
+        // the survival agent a few blocks away.
+        let c = Ctx {
+            players: vec![
+                Target::new(host, DVec3::new(1.5, 10.0, 0.5), false),
+                Target::new(agent, DVec3::new(-4.5, 10.0, 0.5), true),
+            ],
+            ..night(DVec3::ZERO)
+        };
+        let hits: Vec<_> = run(&mut e, &world, &c, 3.0).into_iter().filter(is_hit).collect();
+        assert!(!hits.is_empty(), "zombie at {:?}", e.mobs[0].pos);
+        assert!(hits.iter().all(|h| matches!(h, EntityEvent::PlayerHit { player, .. } if *player == agent)));
+        assert!(e.mobs[0].pos.x < 0.0, "walked toward the agent: {:?}", e.mobs[0].pos);
+    }
+
+    #[test]
+    fn skeleton_arrows_hit_whichever_player_they_reach() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Skeleton, DVec3::new(0.5, 10.0, 0.5));
+        let agent = PlayerId(3);
+        let c = Ctx {
+            players: vec![
+                Target::new(PlayerId::HOST, DVec3::new(60.5, 10.0, 0.5), true),
+                Target::new(agent, DVec3::new(9.5, 10.0, 0.5), true),
+            ],
+            ..night(DVec3::ZERO)
+        };
+        let events = run(&mut e, &world, &c, 5.0);
+        let shots: Vec<_> = events
+            .iter()
+            .filter_map(|ev| match ev {
+                EntityEvent::PlayerHit { player, cause: "was shot by a skeleton", .. } => Some(*player),
+                _ => None,
+            })
+            .collect();
+        assert!(!shots.is_empty() && shots.iter().all(|&p| p == agent), "{events:?}");
+    }
+
+    #[test]
+    fn mobs_stay_while_any_player_is_near() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Pig, DVec3::new(500.5, 10.0, 0.5));
+        let far_host = Target::new(PlayerId::HOST, DVec3::new(0.5, 10.0, 0.5), false);
+        let c = Ctx {
+            players: vec![far_host, Target::new(PlayerId(1), DVec3::new(510.5, 10.0, 0.5), false)],
+            ..ctx(DVec3::ZERO)
+        };
+        e.update(0.05, &world, &c);
+        assert_eq!(e.mobs.len(), 1, "kept by the nearby agent");
+        let c = Ctx { players: vec![far_host], ..c };
+        e.update(0.05, &world, &c);
+        assert!(e.mobs.is_empty(), "despawns once nobody is near");
+    }
+
+    #[test]
+    fn distant_players_get_their_own_mob_caps() {
+        let world = Grid::flat(64);
+        let mut e = Entities::new(11);
+        let (a, b) = (DVec3::new(0.0, 64.0, 0.0), DVec3::new(1000.0, 64.0, 0.0));
+        let c = Ctx {
+            players: vec![Target::new(PlayerId::HOST, a, false), Target::new(PlayerId(1), b, false)],
+            daylight: 0.12,
+            spawning: true,
+            raining: false,
+            nether: false,
+        };
+        for _ in 0..1200 {
+            e.update(0.05, &world, &c);
+        }
+        for kind in MobKind::ALL.into_iter().filter(|k| k.is_hostile() && !k.spawns_in_nether()) {
+            for center in [a, b] {
+                assert_eq!(e.count_near(kind, center), kind.spawn_cap(), "{kind:?} near {center}");
+            }
+        }
+        assert!(e.mobs.iter().all(|m| c.nearest_player_dist2(m.pos).unwrap() >= SPAWN_MIN_DIST * SPAWN_MIN_DIST));
+    }
+
+    #[test]
+    fn spawning_avoids_every_player() {
+        let world = Grid::flat(64);
+        // A second player stands in the first one's spawn ring.
+        let c = Ctx {
+            players: vec![
+                Target::new(PlayerId::HOST, DVec3::new(0.0, 64.0, 0.0), false),
+                Target::new(PlayerId(1), DVec3::new(40.0, 64.0, 0.0), false),
+            ],
+            daylight: 0.12,
+            spawning: true,
+            raining: false,
+            nether: false,
+        };
+        let mut e = Entities::new(21);
+        let mut spawned = 0;
+        for _ in 0..1200 {
+            let before = e.mobs.len();
+            e.update(0.05, &world, &c);
+            // Removals only shrink the list, so anything past `before` is new.
+            for m in e.mobs.iter().skip(before) {
+                let d = c.nearest_player_dist2(m.pos).unwrap().sqrt();
+                assert!(d >= SPAWN_MIN_DIST - 0.5, "{:?} spawned {d:.1} blocks from a player", m.kind);
+                spawned += 1;
+            }
+        }
+        assert!(spawned > 10, "{spawned}");
+    }
+
     fn night(player: DVec3) -> Ctx {
         Ctx {
-            player_pos: player,
-            player_targetable: true,
+            players: vec![Target::new(PlayerId::HOST, player, true)],
             daylight: 0.1,
             spawning: false,
             raining: false,

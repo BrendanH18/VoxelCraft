@@ -69,7 +69,7 @@ impl Game {
     }
     pub(super) fn search_click(&mut self) -> bool {
         let scale = Ui::scale_for(self.renderer.scale_factor());
-        let (w, h) = self.renderer.size();
+        let (w, h) = self.ui_size();
         let (x, y, width) = self.search_bounds((w as f32 / scale, h as f32 / scale));
         let (mx, my) = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
         let inside = mx >= x && mx < x + width && my >= y && my < y + 14.0;
@@ -83,18 +83,42 @@ impl Game {
         if self.search.selected {
             ui.rect(x + 2.0, y + 2.0, (Ui::text_width(&self.search.query)).min(w - 4.0), 10.0, [0.15, 0.3, 0.6, 1.0]);
         }
-        let placeholder = if self.mode == GameMode::Creative && self.container == Container::Inventory {
-            "Search items..."
-        } else {
-            "Find items (Ctrl+F)..."
-        };
+        let room = w - 6.0;
         let text = if self.search.query.is_empty() && !self.search.focused {
-            placeholder.into()
+            let hints: &[&str] = if self.mode == GameMode::Creative && self.container == Container::Inventory {
+                &["Search items..."]
+            } else {
+                &["Find items (Ctrl+F)...", "Find items..."]
+            };
+            // The longest hint that fits, never a clipped one.
+            hints.iter().find(|h| Ui::text_width(h) <= room).unwrap_or(&hints[hints.len() - 1]).to_string()
         } else {
-            format!("{}{}", self.search.query, if self.search.focused { "_" } else { "" })
+            fit_tail(&format!("{}{}", self.search.query, if self.search.focused { "_" } else { "" }), room)
         };
-        let max = ((w - 6.0) / 8.0).max(1.0) as usize;
-        let text: String = text.chars().rev().take(max).collect::<String>().chars().rev().collect();
         ui.text_flat(x + 3.0, y + 3.0, &text, WHITE);
+    }
+}
+
+/// The end of `text` that fits in `width` UI pixels, so the cursor stays
+/// visible while typing a long query.
+fn fit_tail(text: &str, width: f32) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    (0..chars.len())
+        .map(|start| chars[start..].iter().collect::<String>())
+        .find(|tail| Ui::text_width(tail) <= width)
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod fit_tests {
+    use super::*;
+
+    #[test]
+    fn long_queries_keep_their_end_and_short_ones_stay_whole() {
+        assert_eq!(fit_tail("stone_", 200.0), "stone_");
+        let tail = fit_tail("a very long search for diamond pickaxes_", 60.0);
+        assert!(tail.ends_with("pickaxes_") || tail.ends_with("es_"), "{tail}");
+        assert!(Ui::text_width(&tail) <= 60.0);
+        assert!(Ui::text_width(&fit_tail("x", 0.0)) <= 0.0);
     }
 }

@@ -6,7 +6,7 @@ use std::time::Instant;
 use glam::{DVec3, IVec3};
 
 use crate::audio::sounds::{Call, Sound, Voice};
-use crate::entity::{self, Entities, EntityEvent, MobKind, MobSound};
+use crate::entity::{self, Entities, EntityEvent, MobKind, MobSound, PlayerId, Target};
 use crate::physics;
 
 use super::{Game, GameMode, REACH};
@@ -111,9 +111,17 @@ impl Game {
             self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         self.mobs.attack_cooldown -= dt;
+        let mut players = vec![Target::new(
+            PlayerId::HOST,
+            self.player.pos,
+            self.mode == GameMode::Survival && !self.vitals.is_dead(),
+        )];
+        // Agents keep source-dimension positions until arrival relocates them.
+        if self.arrival.is_none() {
+            players.extend(self.agents.targets());
+        }
         let ctx = entity::Ctx {
-            player_pos: self.player.pos,
-            player_targetable: self.mode == GameMode::Survival,
+            players,
             // The Nether has no sun to burn the undead.
             daylight: if self.dimension.has_sky() {
                 self.weather.dim(super::sky_state(self.day_time).daylight)
@@ -126,11 +134,16 @@ impl Game {
         };
         for event in self.mobs.entities.update(dt, &self.world, &ctx) {
             match event {
-                EntityEvent::PlayerHit { damage, knockback, cause } => {
+                EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, cause } => {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
                     if self.damage_player_armored(damage, cause) > 0.0 {
                         self.player.vel += knockback.as_dvec3();
+                    }
+                }
+                EntityEvent::PlayerHit { player, damage, knockback, cause } => {
+                    if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.hurt(damage, cause, knockback.as_dvec3(), &mut self.mobs.entities);
                     }
                 }
                 EntityEvent::Explosion { center, power, cause } => self.explode(center, power, cause),
@@ -184,6 +197,17 @@ impl Game {
         {
             let away = (mid - center).normalize_or(DVec3::Y);
             self.player.vel += away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
+        }
+        if self.arrival.is_some() {
+            return;
+        }
+        for bot in self.agents.players.values_mut().filter(|b| b.active) {
+            let mid = bot.agent.player.pos + DVec3::Y * 0.9;
+            if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center)) {
+                let away = (mid - center).normalize_or(DVec3::Y);
+                let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
+                bot.agent.hurt(damage, cause, push, &mut self.mobs.entities);
+            }
         }
     }
 

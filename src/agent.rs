@@ -449,6 +449,39 @@ impl Agent {
         });
     }
 
+    /// Armored damage from a mob, arrow or explosion. Knockback only lands
+    /// with damage (hurt immunity also stops repeated shoves), and a survival
+    /// agent killed this way drops everything. Returns the damage taken.
+    pub fn hurt(&mut self, amount: f32, cause: &str, knockback: DVec3, entities: &mut Entities) -> f32 {
+        let reduced = simulation::survival::armor_reduce(amount, self.inventory.armor_points());
+        let taken = self.vitals.damage(reduced, cause, self.creative);
+        if taken <= 0.0 {
+            return 0.0;
+        }
+        self.player.vel += knockback;
+        self.inventory.wear_armor(amount);
+        if self.vitals.is_dead() {
+            for stack in self.inventory.take_all() {
+                entities.scatter(stack, self.player.pos);
+            }
+            self.remaining = 0;
+        }
+        taken
+    }
+
+    /// The block being mined and the fraction broken (for crack overlays).
+    pub fn breaking(&self, world: &World) -> Option<(IVec3, f32)> {
+        let (pos, seconds) = self.breaking?;
+        let block = world.get_block(pos)?;
+        let held = self.inventory.get(self.selected).map(|s| s.item);
+        Some((pos, (seconds as f32 / mining::break_time(block, held).max(1e-3)).min(1.0)))
+    }
+
+    /// Whether hostile mobs may attack this agent.
+    pub fn targetable(&self) -> bool {
+        !self.creative && !self.vitals.is_dead()
+    }
+
     /// Structured observation includes loaded status, target, inventory and optional nearby cells.
     pub fn observe(&self, world: &World, radius: i32) -> Value {
         let center = self.player.pos.floor().as_ivec3();
@@ -496,6 +529,36 @@ mod tests {
             std::thread::yield_now();
         }
         panic!("world failed to load");
+    }
+    #[test]
+    fn hurt_applies_armor_knockback_immunity_and_death_drops() {
+        let mut entities = Entities::new(1);
+        let mut bare = Agent::new(DVec3::new(0.5, 150.0, 0.5));
+        let mut armored = Agent::new(DVec3::new(0.5, 150.0, 0.5));
+        let chest = Item::armor(crate::item::ArmorPiece::Chestplate, crate::item::ArmorMaterial::Iron);
+        armored.inventory.armor[1] = Some(Stack::new(chest, 1));
+        let push = DVec3::new(6.0, 5.0, 0.0);
+        assert_eq!(bare.hurt(4.0, "was slain by a zombie", push, &mut entities), 4.0);
+        assert_eq!(bare.player.vel, push);
+        assert!(armored.hurt(4.0, "was slain by a zombie", push, &mut entities) < 4.0, "armor absorbs some");
+        assert!(armored.inventory.armor[1].unwrap().damage > 0, "armor wears");
+        // Hurt immunity: an equal hit right after doesn't land or shove.
+        assert_eq!(bare.hurt(4.0, "was slain by a zombie", push, &mut entities), 0.0);
+        assert_eq!(bare.player.vel, push);
+
+        let mut creative = Agent::new(DVec3::ZERO);
+        creative.creative = true;
+        assert!(!creative.targetable());
+        assert_eq!(creative.hurt(30.0, "was blown up by a creeper", push, &mut entities), 0.0);
+
+        bare.inventory.add(Item::DIAMOND, 2);
+        bare.vitals.health = 1.0;
+        bare.vitals.reset_fall();
+        bare.hurt(30.0, "was blown up by a creeper", DVec3::ZERO, &mut entities);
+        assert!(bare.vitals.is_dead() && !bare.targetable());
+        assert_eq!(bare.vitals.death.as_deref(), Some("was blown up by a creeper"));
+        assert!(bare.inventory.get(0).is_none());
+        assert_eq!(entities.items.iter().map(|i| i.stack.count).sum::<u8>(), 2);
     }
     #[test]
     fn parsing_bounds() {

@@ -6,10 +6,29 @@ A desktop host can now share its world with up to eight CLI-controlled players.
 Agents have independent positions, inventories, health, hunger and creative
 flight. Blocks, dropped items, chests, time and weather belong to the host.
 The world continues ticking at 20 Hz while the host uses menus or loses focus.
-This is the first agent multiplayer slice; desktop joining and split-screen
-remain on the roadmap.
+This is the first agent multiplayer slice; desktop joining and gamepad
+split-screen remain on the roadmap.
 
-## Launch and connect
+## Installed builds
+
+The downloads include the `voxelcraft-agent` client beside the game:
+
+- **Windows:** the Start Menu entry **VoxelCraft (host agent players)** opens
+  the game hosting on `127.0.0.1:4242`. The client is installed as
+  `%LOCALAPPDATA%\Programs\VoxelCraft\voxelcraft-agent.exe` (the default
+  install folder).
+- **Mac:** both programs are inside the app. Host from Terminal, then connect:
+
+```sh
+/Applications/VoxelCraft.app/Contents/MacOS/voxelcraft --agent-listen 127.0.0.1:4242
+/Applications/VoxelCraft.app/Contents/MacOS/voxelcraft-agent --player builder observe
+```
+
+On Windows, run `voxelcraft-agent.exe --player builder observe` from that
+folder in PowerShell or Command Prompt. Pick a world on the title screen first:
+hosting starts once a world is loaded.
+
+## Launch and connect from source
 
 ```sh
 cargo run --release -- --world agents --agent-listen 127.0.0.1:4242
@@ -80,6 +99,27 @@ open; hosted play continues. Try `/help`, `/give diamond_pickaxe`,
 `--open-console` starts with it visible for screenshots.
 The command style follows [Minecraft's slash command interface](https://www.minecraft.net/en-us/article/minecraft-commands).
 
+## Split-screen views
+
+Watch agents play in split-screen next to your own view. Start the host with
+`--split-screen builder` (up to three comma-separated names), or type
+`/splitscreen builder` in the console; run it again with the same name to
+stop following that player. `/splitscreen off` closes every extra view, and
+`/splitscreen side` or `/splitscreen stacked` (the default) arranges two
+views left/right or top/bottom. `--split-layout side` sets this at launch.
+
+Three or four views use quarters, with three players' third view spanning the
+bottom. The host keeps the top or left view, with its menus and inventory.
+Each followed player gets a first-person view showing their held item, block
+target and mining cracks. Their HUD shows their name, hotbar, health, armor,
+hunger and air, plus a death message. Everyone else, the host included,
+appears as a player model. Terrain around followed players loads and draws at
+the full render distance however far apart you are. Profiles that are offline
+drop out of the layout until they reconnect.
+
+Controller-driven local players are the next split-screen step. Sound still
+follows the host.
+
 ## LAN and raw protocol
 
 Bind `--agent-listen 0.0.0.0:4242 --agent-token <at-least-16-characters>` to
@@ -107,9 +147,12 @@ Agents share the host's active dimension and relocate alongside it when the
 host travels. Agent simulation pauses during arrival and while its feet or
 supporting terrain are unloaded; timed commands resume after loading.
 Independent simultaneous dimensions and desktop client joining
-are future work. Mob AI/spawning and hostile projectile targeting still use
-the human host; agents can attack mobs but do not yet receive their melee/arrow
-attacks. Environmental survival damage, death drops and pickups work.
+are future work. Every player has a stable ID (the host is 0; agent profiles
+keep theirs in the save and `players` reports them). Hostile mobs chase the
+nearest survival player, host or agent; melee, skeleton arrows and explosions
+hurt agents with armor, knockback and death drops. Mobs spawn around every
+player with per-player caps and stay loaded while any player is near.
+Environmental survival damage, death drops and pickups work.
 The first CLI supports block placement, crafting and chests; doors/beds/ladders,
 food use, bows, buckets, furnaces, armor controls, sleep and portal interactions
 still require the desktop player. Agents cannot mine multi-cell doors/beds.

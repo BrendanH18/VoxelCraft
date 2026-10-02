@@ -16,6 +16,10 @@ pub struct Args {
     pub agent_token: Option<String>,
     pub agent_cheats: bool,
     pub open_console: bool,
+    /// `--split-screen`: agent profiles to follow in extra views.
+    pub split_screen: Vec<String>,
+    /// `--split-layout side`: two views side by side.
+    pub split_side: bool,
     /// `--world`: load this save directly instead of showing the title screen.
     pub world: Option<String>,
     pub data_dir: Option<std::path::PathBuf>,
@@ -69,6 +73,9 @@ voxelcraft [options]
   --agent-token <token>    shared token (required for LAN, at least 16 characters)
   --agent-cheats           permit agents to use give, gamemode, tp and world commands
   --open-console          start with the slash command console open
+  --split-screen <names>  follow these agent players (comma-separated, up to 3)
+                          in split-screen views; /splitscreen changes it in game
+  --split-layout <stacked|side>  two views top/bottom (default) or side by side
   --seed <n>        world seed (new worlds only)
   --world <name>    load or create this save, skipping the title screen
                     (letters, digits, - or _)
@@ -119,6 +126,8 @@ fn parse_args() -> Result<Args, String> {
         agent_token: None,
         agent_cheats: false,
         open_console: false,
+        split_screen: Vec::new(),
+        split_side: false,
         world: None,
         data_dir: None,
         render_distance: None,
@@ -159,6 +168,21 @@ fn parse_args() -> Result<Args, String> {
             }
             "--agent-token" => args.agent_token = Some(value("--agent-token")?),
             "--agent-cheats" => args.agent_cheats = true,
+            "--split-screen" => {
+                let v = value("--split-screen")?;
+                args.split_screen = v.split(',').map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).collect();
+                if args.split_screen.len() > 3 || !args.split_screen.iter().all(|n| voxelcraft::control::valid_name(n))
+                {
+                    return Err(format!("--split-screen needs up to 3 player names (got {v})"));
+                }
+            }
+            "--split-layout" => {
+                args.split_side = match value("--split-layout")?.as_str() {
+                    "side" => true,
+                    "stacked" => false,
+                    _ => return Err("--split-layout needs stacked or side".into()),
+                }
+            }
             "--open-console" => args.open_console = true,
             "--seed" => args.seed = Some(value("--seed")?.parse().map_err(|_| "bad seed")?),
             "--world" => args.world = Some(value("--world")?),

@@ -74,6 +74,9 @@ pub struct World {
     load_cursor: usize,
     center: Option<IVec3>,
     agent_centers: Vec<IVec3>,
+    /// Chunks of other players shown in split-screen: loaded and meshed at
+    /// the full render distance, like the host's.
+    view_centers: Vec<IVec3>,
     render_distance: i32,
     region: Option<Box<Region>>,
     meshes_enabled: bool,
@@ -143,6 +146,7 @@ impl World {
             load_cursor: 0,
             center: None,
             agent_centers: Vec::new(),
+            view_centers: Vec::new(),
             render_distance,
             region: None,
             meshes_enabled,
@@ -196,10 +200,18 @@ impl World {
         self.workers.threads
     }
 
+    /// Horizontal chunk distance² to the nearest view (the host's or a
+    /// split-screen player's).
     fn horizontal_dist2(&self, pos: IVec3) -> i32 {
         let c = self.center.unwrap_or(IVec3::ZERO);
-        let (dx, dz) = (pos.x - c.x, pos.z - c.z);
-        dx * dx + dz * dz
+        std::iter::once(c)
+            .chain(self.view_centers.iter().copied())
+            .map(|c| {
+                let (dx, dz) = (pos.x - c.x, pos.z - c.z);
+                dx * dx + dz * dz
+            })
+            .min()
+            .unwrap_or(0)
     }
 
     fn priority(&self, pos: IVec3) -> i32 {
@@ -504,12 +516,14 @@ impl World {
 
         let r = self.render_distance + 2;
         self.load_list.clear();
-        for dz in -r..=r {
-            for dx in -r..=r {
-                for y in 0..WORLD_HEIGHT_CHUNKS {
-                    let p = IVec3::new(center.x + dx, y, center.z + dz);
-                    if self.in_load_range(p) {
-                        self.load_list.push(p);
+        for c in std::iter::once(center).chain(self.view_centers.clone()) {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    for y in 0..WORLD_HEIGHT_CHUNKS {
+                        let p = IVec3::new(c.x + dx, y, c.z + dz);
+                        if self.in_load_range(p) {
+                            self.load_list.push(p);
+                        }
                     }
                 }
             }
@@ -592,6 +606,18 @@ impl World {
 
     /// Stream the host view and the union of agents' smaller simulation ranges.
     /// Agent-only chunks remain unmeshed outside the host's view distance.
+    /// Other players seen in split-screen views: their surroundings load and
+    /// mesh at the render distance too (applied on the next update).
+    pub fn set_viewers(&mut self, viewers: &[DVec3]) {
+        let mut centers: Vec<_> = viewers.iter().map(|p| chunk_of(p.floor().as_ivec3())).collect();
+        centers.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+        centers.dedup();
+        if centers != self.view_centers {
+            self.view_centers = centers;
+            self.center = None;
+        }
+    }
+
     pub fn update_players(&mut self, player: DVec3, agents: &[DVec3]) {
         let mut centers: Vec<_> = agents.iter().map(|p| chunk_of(p.floor().as_ivec3())).collect();
         centers.sort_unstable_by_key(|p| (p.x, p.y, p.z));

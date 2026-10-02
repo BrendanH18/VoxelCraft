@@ -14,7 +14,7 @@ Visual C++ redistributable installation.
 
 - Push a `release/*` branch to build downloadable workflow artifacts.
 - A manual workflow run builds artifacts, without publishing.
-- Push a tag matching Cargo.toml, such as `v0.1.0`, to build all three packages
+- Push a tag matching Cargo.toml, such as `v0.2.0`, to build all three packages
   and create a **draft** GitHub Release with SHA-256 checksums and the notes from
   `packaging/RELEASE-NOTES.md`. The workflow never publishes automatically.
   Rerunning a tag build refreshes an existing draft's downloads; published
@@ -36,12 +36,13 @@ cargo install cargo-about --locked --features cli --version 0.9.2
 cargo about generate --locked --fail --target aarch64-apple-darwin \
   --output-file packaging/THIRD-PARTY-LICENSES.html packaging/licenses.hbs
 bash packaging/macos/package.sh aarch64-apple-darwin
-bash packaging/macos/smoke-test.sh dist/VoxelCraft-0.1.0-macos-apple-silicon.dmg
+bash packaging/macos/smoke-test.sh dist/VoxelCraft-0.2.0-macos-apple-silicon.dmg
 ```
 
 Replace the target with `x86_64-apple-darwin` for Intel. The smoke test must run
 on a machine capable of executing the packaged architecture. The script creates
-`VoxelCraft.app`, adds metadata/icons/notices and an Applications shortcut, then
+`VoxelCraft.app` (with the `voxelcraft-agent` client in `Contents/MacOS`), adds
+metadata/icons/notices and an Applications shortcut, then
 produces a compressed DMG in `dist/`. Its ad-hoc integrity signature supplies no
 developer identity and does not satisfy Gatekeeper's publisher/notarization checks.
 
@@ -59,8 +60,9 @@ cargo about generate --locked --fail --target x86_64-pc-windows-msvc `
 ./packaging/windows/package.ps1
 ```
 
-The installer in `dist/` installs for the current user, creates a Start Menu
-shortcut and optionally a desktop shortcut, and provides an uninstaller. Its
+The installer in `dist/` installs the game and `voxelcraft-agent.exe` for the
+current user. It creates Start Menu shortcuts for the game and for hosting
+agent players on loopback, optionally a desktop shortcut, and an uninstaller. Its
 stable AppId lets later versions upgrade the same installation. Keep that ID.
 The automated install/reinstall/uninstall test runs only on disposable CI runners.
 

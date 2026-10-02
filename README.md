@@ -16,6 +16,7 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
   <a href="#play"><strong>Play</strong></a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="docs/gameplay.md">Gameplay guide</a> ·
+  <a href="#multiplayer">Multiplayer</a> ·
   <a href="docs/architecture.md">Inside the engine</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
@@ -31,15 +32,19 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
 - **A world to explore.** Infinite terrain across fourteen biomes: forests,
   jungles, savannas, swamps, deserts, terraced badlands, snowy taiga,
   mountains, rivers and oceans, with caves, ores, and five kinds of tree.
-- **Two dimensions.** Light an obsidian portal with flint and steel to
+- **Three dimensions.** Light an obsidian portal with flint and steel to
   cross into the Nether: lava seas, netherrack caverns, soul sand and
-  glowstone under a bedrock roof, eight overworld blocks to every one.
+  glowstone under a bedrock roof, eight overworld blocks to every one. The
+  End's floating islands and obsidian pillars can be visited from the console.
 - **Two ways to play.** Build freely in creative, or play survival with timed
   mining, block drops, a stackable inventory, health, hunger, and respawning.
-- **Craft, fight, cook and store.** Make tools and swords in five tiers and
-  bows and arrows, craft torches and building blocks, smelt ores and cook
-  food in furnaces, and keep your haul in chests. Tools wear out; food
-  restores hunger and supports natural healing.
+- **Craft, fight, cook and store.** Make tools and swords in five tiers,
+  armor in four, and bows and arrows, craft torches and building blocks, smelt ores
+  and cook food in furnaces, and keep your haul in chests. Tools wear out;
+  food restores hunger and supports natural healing. Sleep in a bed to skip
+  the night and set your respawn point.
+- **Build in shape.** Stairs, slabs, fences, fence gates, ladders and doors
+  that open, plus sneaking to build safely at the edge of a drop.
 - **Many worlds.** A title screen lists your saved worlds; create new ones
   with a name, a seed and a game mode, or delete old ones.
 - **Farm and grow.** Till soil with a hoe, sow seeds found in tall grass and
@@ -47,9 +52,14 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
   trees, and grass creeps back over bare dirt.
 - **A world that moves.** Flowing water and lava, falling sand, a day/night
   cycle, rain and snow, drifting clouds, herds of animals, and zombies, skeletons, creepers
-  and spiders that come out at night.
+  and spiders that come out at night. Fire spreads and burns out, lava sets
+  things alight, and TNT blows holes in the landscape.
+- **Play together.** Host your world for up to eight command-line players,
+  such as AI agents or scripts, each with their own inventory and health.
+  Watch up to three of them in split-screen beside your own view.
 - **Light and sound from code.** Smooth sky and block lighting, ambient
-  occlusion, material-specific footsteps, positional audio, and underwater effects.
+  occlusion, directional sunlight, reflective animated water (or the Classic
+  look), material-specific footsteps, positional audio, and underwater effects.
 - **Built for speed.** Parallel chunk generation, greedy meshing, compact GPU
   quad records, and a shared mesh arena keep the world streaming around you.
 
@@ -108,6 +118,8 @@ cargo run --release -- --creative --world creative --seed 42
 | `--no-vsync` | Uncap the frame rate |
 | `--graphics classic/enhanced` | Original rendering or directional skylight and reflective animated water |
 | `--mute` / `--volume <0..1>` | Set audio at startup |
+| `--agent-listen <IP:PORT>` | Host command-line players in this world ([details](docs/agents.md)) |
+| `--split-screen <names>` | Show up to three hosted players in split-screen views |
 | `--help` | Show all options, including benchmarks and screenshots |
 
 Worlds autosave every two minutes and on exit. Only modified chunks are stored;
@@ -161,8 +173,10 @@ bar appears below the crosshair while you hold right-click with food.
 | Shift + click | Move a stack between a container and the inventory, or craft as many as fit |
 | F or double-tap Space | Toggle flight in creative |
 | Space / Left Shift | Fly up / down |
+| Left Shift | Sneak (you won't walk off edges) |
 | `[` / `]` | Decrease / increase view distance |
-| F3 / F11 | Debug overlay / fullscreen |
+| /, T or backtick | Command console: `/give`, `/tp`, `/time`, `/weather`, `/splitscreen`, `/help` and more |
+| F1 / F3 / F11 | Hide HUD / debug overlay / fullscreen |
 | Esc | Pause menu: back to game, options (render distance, FOV, sensitivity, volume, vsync), save and quit |
 
 See the [gameplay guide](docs/gameplay.md) for all controls, survival rules, and mob behavior.
@@ -190,7 +204,21 @@ See the [gameplay guide](docs/gameplay.md) for all controls, survival rules, and
     <td width="50%"><img src="docs/images/farming.jpg" alt="Rows of wheat at every growth stage on wet and dry farmland, with oak and spruce saplings behind"><br><strong>Sow and reap</strong><br>Wheat ripens from green shoots to golden ears on tilled soil.</td>
     <td width="50%"><img src="docs/images/chest.jpg" alt="Chest screen with diamonds, logs, iron ingots and steak above the player's inventory"><br><strong>Stash it</strong><br>Chests hold 27 stacks; shift-click to move whole stacks.</td>
   </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/split-screen.jpg" alt="Side-by-side split-screen: the host holding a diamond sword sees an agent player, and the agent's view shows the host"><br><strong>Side by side</strong><br>Each view has its own hotbar, health and hunger.</td>
+    <td width="50%"><img src="docs/images/split-screen-far.jpg" alt="Stacked split-screen: the host on a grassy platform above, and an agent flying over a distant coastline below"><br><strong>Miles apart</strong><br>Every followed player's surroundings stream in at full view distance.</td>
+  </tr>
 </table>
+
+## Multiplayer
+
+Start a world with `--agent-listen 127.0.0.1:4242`, then control extra players
+from a terminal with the `voxelcraft-agent` tool: move, look, mine, place,
+fight, craft and use chests. Mobs hunt and hurt them just as they do you. Type
+`/splitscreen <name>` to watch one next to your own view. LAN play needs a
+shared token. See [hosted agents and in-game commands](docs/agents.md) for
+setup, the protocol and current limits. Gamepad split-screen and joining
+from a second game window are in progress.
 
 ## Inside the engine
 
@@ -230,5 +258,3 @@ conditions.
 VoxelCraft is an independent project, not affiliated with or endorsed by
 Mojang Studios or Microsoft. Minecraft is a trademark of Mojang Studios.
 It contains no Minecraft code or assets.
-
-CLI-controlled players can share a desktop host’s world. See [hosted agents and in-game commands](docs/agents.md) for setup and the current multiplayer limits.
