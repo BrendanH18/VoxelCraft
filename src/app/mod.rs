@@ -18,6 +18,7 @@ mod mobs;
 mod recipe_book;
 mod search;
 mod settings;
+mod split;
 pub use crate::simulation::survival;
 mod title;
 mod weather;
@@ -114,6 +115,7 @@ impl GameMode {
 
 struct Game {
     agents: agents::Agents,
+    split: split::Split,
     console: console::Console,
     search: search::Search,
     renderer: Renderer,
@@ -479,7 +481,7 @@ impl ApplicationHandler for App {
     }
 }
 
-struct SkyState {
+pub(super) struct SkyState {
     daylight: f32,
     horizon: [f32; 3],
     zenith: [f32; 3],
@@ -648,6 +650,7 @@ impl Game {
         }
         let mut game = Game {
             agents,
+            split: split::Split { follow: args.split_screen.clone(), side_by_side: args.split_side },
             search: search::Search {
                 query: args.inventory_search.clone().unwrap_or_default(),
                 focused: args.open_inventory && args.screenshot.is_none(),
@@ -1594,6 +1597,8 @@ impl Game {
 
         // Streaming and GPU uploads continue during offline pause.
         self.update_arrival();
+        let viewers: Vec<DVec3> = self.followed().map(|(_, b)| b.agent.player.pos).collect();
+        self.world.set_viewers(&viewers);
         self.world.update_players(self.player.pos, &self.agents.positions());
         if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0
         {
@@ -1638,41 +1643,28 @@ impl Game {
             sky.horizon = if self.dimension == Dimension::End { [0.045, 0.025, 0.065] } else { dimension::NETHER_FOG };
             sky.zenith = if self.dimension == Dimension::End { [0.018, 0.009, 0.03] } else { dimension::NETHER_FOG };
         }
-        let rain = if nether { 0.0 } else { self.weather.strength };
-        let daylight = sky.daylight;
-        let in_lava = self.player.head_in_lava(&self.world);
-        let underwater = self.player.head_in_water(&self.world) || in_lava;
-        let view_dist = (self.world.render_distance() * 32) as f32;
-        let (fog_color, fog_start, fog_end) = if in_lava {
-            (LAVA_FOG, 0.0, 2.0)
-        } else if underwater {
-            (WATER_FOG.map(|c| c * daylight), 0.0, 28.0)
-        } else if self.dimension == Dimension::End {
-            (sky.horizon, view_dist * 0.45, view_dist * 0.95)
-        } else if nether {
-            (sky.horizon, 8.0, view_dist.min(160.0) * 0.8)
-        } else {
-            (sky.horizon, view_dist * 0.55, view_dist * 0.95)
+        let scene = split::Scene {
+            sky,
+            rain: if nether { 0.0 } else { self.weather.strength },
+            time: (now - self.started).as_secs_f32(),
+            alpha,
+            now,
         };
-        let verts =
-            self.mobs.entities.mesh(camera, self.player.forward(), fog_end, (now - self.started).as_secs_f32(), alpha);
-        for bot in self.agents.players.values().filter(|b| b.active && !b.agent.vitals.is_dead()) {
-            let a = &bot.agent;
-            if a.player.pos.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
-                crate::entity::model::build_player(
-                    &a.player,
-                    a.previous_pos.lerp(a.player.pos, alpha),
-                    camera,
-                    crate::entity::sky_light(&self.world, a.player.eye()),
-                    self.world.block_light(a.player.eye().floor().as_ivec3()) as f32 / 15.0,
-                    (now - self.started).as_secs_f32(),
-                    verts,
-                );
-            }
-        }
+        let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } =
+            self.fog(&scene, &self.player);
+        let others: Vec<(&Player, DVec3)> = self
+            .agents
+            .players
+            .values()
+            .filter(|b| b.active && !b.agent.vitals.is_dead())
+            .map(|b| (&b.agent.player, b.agent.previous_pos.lerp(b.agent.player.pos, alpha)))
+            .collect();
+        let verts = self.mobs.entities.mesh(camera, self.player.forward(), fog_end, scene.time, alpha);
+        push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         self.renderer.set_entities(verts);
-        weather::sheets(&self.world, camera, rain, &mut self.weather_verts);
+        weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
+        let viewports = self.viewports();
         let params = FrameParams {
             camera,
             forward: self.player.forward(),
@@ -1683,12 +1675,12 @@ impl Game {
             fog_color,
             fog_start,
             fog_end,
-            daylight,
-            zenith_color: if underwater { fog_color } else { sky.zenith },
-            sun_dir: sky.sun_dir,
+            daylight: scene.sky.daylight,
+            zenith_color: if underwater { fog_color } else { scene.sky.zenith },
+            sun_dir: scene.sky.sun_dir,
             dimension: self.dimension,
             enhanced_graphics: self.settings.enhanced_graphics,
-            time: (now - self.started).as_secs_f32(),
+            time: scene.time,
             highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
                 (p, min, max)
@@ -1697,50 +1689,25 @@ impl Game {
                 .actions
                 .breaking
                 .map(|(p, progress)| (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u8)),
-            block_models: self
-                .world
-                .falling_blocks()
-                .iter()
-                .map(|f| crate::render::BlockModel {
-                    min: f.previous_pos.lerp(f.pos, alpha),
-                    size: 1.0,
-                    block: f.block,
-                    sky_light: crate::entity::sky_light(&self.world, f.pos + glam::DVec3::splat(0.5)),
-                    block_light: self.torch_light(f.pos + glam::DVec3::splat(0.5)),
-                    yaw: 0.0,
-                    icon: None,
-                })
-                .chain(self.mobs.entities.tnt.iter().map(|t| {
-                    let s = t.size();
-                    crate::render::BlockModel {
-                        min: t.previous_pos.lerp(t.pos, alpha)
-                            - glam::DVec3::new(s as f64 / 2.0, (s as f64 - 1.0) / 2.0, s as f64 / 2.0),
-                        size: s,
-                        // White flashes count down to the blast.
-                        block: if t.flash() { Block::WOOL } else { Block::TNT },
-                        sky_light: crate::entity::sky_light(&self.world, t.pos + glam::DVec3::Y * 0.5),
-                        block_light: self.torch_light(t.pos + glam::DVec3::Y * 0.5),
-                        yaw: 0.0,
-                        icon: None,
-                    }
-                }))
-                .chain(self.item_models(alpha))
-                .collect(),
+            block_models: self.block_models(alpha),
             hand: (self.show_hud && !self.vitals.is_dead() && self.sleeping.is_none()).then(|| {
                 let eye = self.player.eye();
                 let eating = (self.actions.eat_timer / EAT_TIME) as f32;
                 self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye))
             }),
-            rain,
+            rain: scene.rain,
             ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() || self.console.open {
                 self.build_ui(now)
             } else {
                 Vec::new()
             },
         };
-        if !self.renderer.render(&params) {
+        let Some(mut frame) = self.renderer.begin_frame() else {
             return; // hidden window: don't count this frame in the stats
-        }
+        };
+        self.renderer.draw_view(&mut frame, &params, viewports[0]);
+        self.draw_followers(&mut frame, &scene, &viewports);
+        self.renderer.end_frame(frame);
 
         // --- Stats ----------------------------------------------------------
         self.frames += 1;
@@ -1752,6 +1719,65 @@ impl Game {
             self.frames = 0;
             self.frame_time_sum = 0.0;
             self.stats_since = now;
+        }
+    }
+}
+
+impl Game {
+    /// Falling blocks, primed TNT and dropped items, at interpolated positions.
+    fn block_models(&self, alpha: f64) -> Vec<crate::render::BlockModel> {
+        self.world
+            .falling_blocks()
+            .iter()
+            .map(|f| crate::render::BlockModel {
+                min: f.previous_pos.lerp(f.pos, alpha),
+                size: 1.0,
+                block: f.block,
+                sky_light: crate::entity::sky_light(&self.world, f.pos + glam::DVec3::splat(0.5)),
+                block_light: self.torch_light(f.pos + glam::DVec3::splat(0.5)),
+                yaw: 0.0,
+                icon: None,
+            })
+            .chain(self.mobs.entities.tnt.iter().map(|t| {
+                let s = t.size();
+                crate::render::BlockModel {
+                    min: t.previous_pos.lerp(t.pos, alpha)
+                        - glam::DVec3::new(s as f64 / 2.0, (s as f64 - 1.0) / 2.0, s as f64 / 2.0),
+                    size: s,
+                    // White flashes count down to the blast.
+                    block: if t.flash() { Block::WOOL } else { Block::TNT },
+                    sky_light: crate::entity::sky_light(&self.world, t.pos + glam::DVec3::Y * 0.5),
+                    block_light: self.torch_light(t.pos + glam::DVec3::Y * 0.5),
+                    yaw: 0.0,
+                    icon: None,
+                }
+            }))
+            .chain(self.item_models(alpha))
+            .collect()
+    }
+}
+
+/// Adds player models (feet at the given interpolated positions) within
+/// fog range of `camera`.
+fn push_avatars(
+    world: &World,
+    players: &[(&Player, DVec3)],
+    camera: DVec3,
+    fog_end: f32,
+    time: f32,
+    verts: &mut Vec<crate::entity::model::EntityVertex>,
+) {
+    for &(player, feet) in players {
+        if feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
+            crate::entity::model::build_player(
+                player,
+                feet,
+                camera,
+                crate::entity::sky_light(world, player.eye()),
+                world.block_light(player.eye().floor().as_ivec3()) as f32 / 15.0,
+                time,
+                verts,
+            );
         }
     }
 }

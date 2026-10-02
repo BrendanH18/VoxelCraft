@@ -38,6 +38,9 @@ pub struct Hand {
 
 /// Minecraft draws the hand with this field of view, whatever the setting.
 const HAND_FOV: f32 = 70.0 * PI / 180.0;
+/// Views narrower than this (side-by-side split-screen) pull the hand in
+/// so it stays on screen; wider ones use Minecraft's placement unchanged.
+const WIDE_ASPECT: f32 = 16.0 / 9.0;
 /// The skin box of the right arm, in 1/16 block, and its pivot.
 const ARM_MIN: Vec3 = Vec3::new(-3.0, -2.0, -2.0);
 const ARM_MAX: Vec3 = Vec3::new(1.0, 10.0, 2.0);
@@ -171,8 +174,14 @@ impl Builder<'_> {
 }
 
 /// The hand's triangles, camera-relative, for a camera looking along
-/// `forward` with vertical field of view `fov_y`.
-pub(super) fn vertices(hand: &Hand, forward: Vec3, fov_y: f32, masks: &mut SpriteMasks) -> Vec<BlockVertex> {
+/// `forward` with vertical field of view `fov_y` in a view `aspect` wide.
+pub(super) fn vertices(
+    hand: &Hand,
+    forward: Vec3,
+    fov_y: f32,
+    aspect: f32,
+    masks: &mut SpriteMasks,
+) -> Vec<BlockVertex> {
     let mut out = Vec::new();
     // View frame -> camera-relative world, squeezed to the hand's FOV.
     let f = forward.normalize();
@@ -187,7 +196,9 @@ pub(super) fn vertices(hand: &Hand, forward: Vec3, fov_y: f32, masks: &mut Sprit
     let root = s.sqrt();
     // Walking bob: a sway and a dip each stride.
     let phase = hand.bob_phase * PI;
-    let bob = translate(phase.sin() * hand.bob * 0.5 * 0.1, -(phase.cos() * hand.bob).abs() * 0.1, 0.0);
+    // Narrow views slide the hand toward the centre without squashing it.
+    let inward = 0.56 * (1.0 - (aspect / WIDE_ASPECT).clamp(0.0, 1.0));
+    let bob = translate(phase.sin() * hand.bob * 0.5 * 0.1 - inward, -(phase.cos() * hand.bob).abs() * 0.1, 0.0);
 
     let Some(item) = hand.item else {
         // The bare arm (Minecraft's `renderPlayerArm`).
@@ -280,7 +291,7 @@ mod tests {
             [None, Some(Item::from_block(Block::STONE)), Some(Item::STICK), Some(Item::from_block(Block::TORCH))]
         {
             let hand = Hand { item, sky_light: 1.0, ..Default::default() };
-            let v = vertices(&hand, forward, 70f32.to_radians(), &mut masks);
+            let v = vertices(&hand, forward, 70f32.to_radians(), WIDE_ASPECT, &mut masks);
             assert!(!v.is_empty() && v.len().is_multiple_of(6), "{item:?}");
             let (lo, hi) = bounds(&v);
             // In front of the eye (looking down -Z), right of and below centre.
@@ -289,7 +300,30 @@ mod tests {
         }
         // Lowered for an item switch, it drops out of view.
         let low = Hand { item: Some(Item::STICK), equip: 1.0, ..Default::default() };
-        let (_, hi) = bounds(&vertices(&low, forward, 70f32.to_radians(), &mut masks));
+        let (_, hi) = bounds(&vertices(&low, forward, 70f32.to_radians(), WIDE_ASPECT, &mut masks));
         assert!(hi.y < -0.3, "{hi}");
+    }
+
+    #[test]
+    fn narrow_split_screen_views_keep_the_hand_on_screen() {
+        let mut masks = SpriteMasks::default();
+        let fov = 70f32.to_radians();
+        // Leftmost screen-x of the hand as a fraction of the half-width.
+        let left_edge = |aspect: f32, masks: &mut SpriteMasks| {
+            let hand = Hand { item: Some(Item::STICK), sky_light: 1.0, ..Default::default() };
+            let v = vertices(&hand, Vec3::NEG_Z, fov, aspect, masks);
+            v.iter().map(|v| v.pos[0] / -v.pos[2] / ((fov / 2.0).tan() * aspect)).fold(f32::MAX, f32::min)
+        };
+        let wide = left_edge(WIDE_ASPECT, &mut masks);
+        let narrow = left_edge(0.89, &mut masks);
+        assert!(wide > 0.0 && wide < 1.0, "{wide}");
+        assert!(narrow > 0.0 && narrow < 0.9, "on the right half and on screen: {narrow}");
+        // Ultra-wide windows keep Minecraft's placement.
+        let mut a = SpriteMasks::default();
+        let hand = Hand { item: Some(Item::STICK), ..Default::default() };
+        assert_eq!(
+            bounds(&vertices(&hand, Vec3::NEG_Z, fov, 2.4, &mut a)),
+            bounds(&vertices(&hand, Vec3::NEG_Z, fov, WIDE_ASPECT, &mut a))
+        );
     }
 }

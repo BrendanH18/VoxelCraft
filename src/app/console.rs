@@ -52,7 +52,13 @@ impl Game {
                     }
                     self.console.history.push(input.clone());
                     self.console.lines.push_back(input.clone());
-                    let result = Command::parse(&input).and_then(|c| self.host_command(c));
+                    let words: Vec<&str> = input.trim_start_matches('/').split_whitespace().collect();
+                    let result = match words[..] {
+                        ["splitscreen"] => self.split_command(""),
+                        ["splitscreen", arg] => self.split_command(arg),
+                        ["splitscreen", ..] => Err("usage: /splitscreen [player|off|side|stacked]".into()),
+                        _ => Command::parse(&input).and_then(|c| self.host_command(c)),
+                    };
                     self.console.lines.push_back(result.unwrap_or_else(|e| format!("Error: {e}")));
                     while self.console.lines.len() > 64 {
                         self.console.lines.pop_front();
@@ -95,6 +101,7 @@ impl Game {
                     "dimension",
                     "players",
                     "observe",
+                    "splitscreen",
                 ];
                 let prefix = self.console.input.trim_start_matches('/');
                 let matches: Vec<_> = names.iter().filter(|n| n.starts_with(prefix)).collect();
@@ -124,7 +131,9 @@ impl Game {
                     .collect::<Vec<_>>()
                     .join(", "));
             }
-            Command::Help => return Ok(HELP.into()),
+            Command::Help => {
+                return Ok(format!("{HELP} Host only: splitscreen [player|off|side|stacked]."));
+            }
             Command::Give(item, count) => {
                 let left = self.inventory.add(item, count);
                 return Ok(format!("Gave {} {}", count - left, item.name()));

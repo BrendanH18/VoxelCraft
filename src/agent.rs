@@ -469,6 +469,14 @@ impl Agent {
         taken
     }
 
+    /// The block being mined and the fraction broken (for crack overlays).
+    pub fn breaking(&self, world: &World) -> Option<(IVec3, f32)> {
+        let (pos, seconds) = self.breaking?;
+        let block = world.get_block(pos)?;
+        let held = self.inventory.get(self.selected).map(|s| s.item);
+        Some((pos, (seconds as f32 / mining::break_time(block, held).max(1e-3)).min(1.0)))
+    }
+
     /// Whether hostile mobs may attack this agent.
     pub fn targetable(&self) -> bool {
         !self.creative && !self.vitals.is_dead()

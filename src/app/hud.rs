@@ -48,11 +48,20 @@ const CRAFT_H: f32 = 3.0 * SLOT + 14.0;
 const DEBUG_TEXT: Color = [0.88, 0.88, 0.88, 1.0];
 const HIGHLIGHT: Color = [1.0, 1.0, 0.6, 1.0];
 /// Duration of the red screen flash after taking damage.
-const HURT_FLASH: f32 = 0.3;
+pub(super) const HURT_FLASH: f32 = 0.3;
+
+/// Whose hotbar, health and hunger a HUD shows.
+pub(super) struct HudPlayer<'a> {
+    pub inventory: &'a crate::inventory::Inventory,
+    pub vitals: &'a survival::Vitals,
+    pub selected: usize,
+    pub survival: bool,
+    pub underwater: bool,
+}
 
 impl Game {
     pub(super) fn build_ui(&self, now: Instant) -> Vec<UiVertex> {
-        let (w, h) = self.renderer.size();
+        let (w, h) = self.ui_size();
         let mut ui = Ui::new(w as f32, h as f32, self.renderer.scale_factor());
         let (sw, sh) = ui.size();
 
@@ -150,31 +159,16 @@ impl Game {
     }
 
     fn hotbar_ui(&self, ui: &mut Ui, now: Instant) {
-        let (sw, sh) = ui.size();
-        let slot = 20.0;
-        let total = slot * 9.0 + 2.0;
-        let (x0, y0) = (((sw - total) / 2.0).floor(), sh - slot - 4.0);
-        ui.rect(x0, y0, total, slot + 2.0, [0.0, 0.0, 0.0, 0.5]);
-        for i in 0..HOTBAR_SLOTS {
-            let sx = x0 + 1.0 + i as f32 * slot;
-            ui.rect(sx + 1.0, y0 + 2.0, slot - 2.0, slot - 2.0, [0.35, 0.35, 0.35, 0.5]);
-            if i == self.actions.selected {
-                let (x, y, s) = (sx - 1.0, y0 - 1.0, slot + 2.0);
-                for (rx, ry, rw, rh) in
-                    [(x, y, s, 2.0), (x, y + s, s, 2.0), (x, y, 2.0, s + 2.0), (x + s - 2.0, y, 2.0, s + 2.0)]
-                {
-                    ui.rect(rx, ry, rw, rh, WHITE);
-                }
-            }
-            if let Some(stack) = self.inventory.get(i) {
-                self.stack_ui(ui, sx + 1.0, y0 + 2.0, stack);
-            }
-        }
-
-        let survival = self.mode == GameMode::Survival;
-        if survival {
-            self.vitals_ui(ui, x0, x0 + total, y0 - 10.0, now);
-        }
+        let hud = HudPlayer {
+            inventory: &self.inventory,
+            vitals: &self.vitals,
+            selected: self.actions.selected,
+            survival: self.mode == GameMode::Survival,
+            underwater: self.player.head_in_water(&self.world),
+        };
+        let y0 = self.bar_ui(ui, &hud, now);
+        let survival = hud.survival;
+        let sw = ui.size().0;
 
         // Popup message (item names, mode changes), fading out.
         let age = (now - self.popup.1).as_secs_f32();
@@ -186,13 +180,42 @@ impl Game {
         }
     }
 
+    /// Hotbar plus, in survival, health, armor, hunger and air. Returns the
+    /// hotbar's top edge.
+    pub(super) fn bar_ui(&self, ui: &mut Ui, hud: &HudPlayer, now: Instant) -> f32 {
+        let (sw, sh) = ui.size();
+        let slot = 20.0;
+        let total = slot * 9.0 + 2.0;
+        let (x0, y0) = (((sw - total) / 2.0).floor(), sh - slot - 4.0);
+        ui.rect(x0, y0, total, slot + 2.0, [0.0, 0.0, 0.0, 0.5]);
+        for i in 0..HOTBAR_SLOTS {
+            let sx = x0 + 1.0 + i as f32 * slot;
+            ui.rect(sx + 1.0, y0 + 2.0, slot - 2.0, slot - 2.0, [0.35, 0.35, 0.35, 0.5]);
+            if i == hud.selected {
+                let (x, y, s) = (sx - 1.0, y0 - 1.0, slot + 2.0);
+                for (rx, ry, rw, rh) in
+                    [(x, y, s, 2.0), (x, y + s, s, 2.0), (x, y, 2.0, s + 2.0), (x + s - 2.0, y, 2.0, s + 2.0)]
+                {
+                    ui.rect(rx, ry, rw, rh, WHITE);
+                }
+            }
+            if let Some(stack) = hud.inventory.get(i) {
+                draw_stack(ui, sx + 1.0, y0 + 2.0, stack, hud.survival);
+            }
+        }
+        if hud.survival {
+            self.vitals_ui(ui, hud, x0, x0 + total, y0 - 10.0, now);
+        }
+        y0
+    }
+
     /// Hearts above the left half of the hotbar and air bubbles above the
     /// right half, like Minecraft. Hearts shake after a hit and at low
     /// health.
-    fn vitals_ui(&self, ui: &mut Ui, left: f32, right: f32, y: f32, now: Instant) {
+    fn vitals_ui(&self, ui: &mut Ui, hud: &HudPlayer, left: f32, right: f32, y: f32, now: Instant) {
         const ICON: f32 = 9.0;
         const STEP: f32 = 8.0;
-        let v = &self.vitals;
+        let v = hud.vitals;
         let half_hearts = v.health.ceil() as u32;
         let shaking = v.since_damage() < survival::INVULNERABLE || v.health <= 4.0;
         // Re-roll the jitter 20 times a second.
@@ -209,7 +232,7 @@ impl Game {
 
         // Armor points sit above the hearts: a full chestplate per two
         // points, a dim one for an odd point.
-        let armor = self.inventory.armor_points();
+        let armor = hud.inventory.armor_points();
         if armor > 0 {
             let layer = Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Iron).icon_layer().unwrap_or(0);
             for i in 0..10 {
@@ -236,7 +259,7 @@ impl Game {
         }
 
         // Air bubbles sit above the hunger bar.
-        if self.player.head_in_water(&self.world) || v.air < MAX_AIR {
+        if hud.underwater || v.air < MAX_AIR {
             for i in 0..v.bubbles().min(AIR_BUBBLES) {
                 ui.icon(right - 1.0 - ICON - i as f32 * STEP, y - 10.0, ICON, tex::BUBBLE, WHITE);
             }
@@ -245,24 +268,32 @@ impl Game {
 
     /// Item icon, durability bar and stack count in an 18x18 slot at (x, y).
     fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
-        match (stack.item.block(), stack.item.icon_layer()) {
-            (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
-            (None, Some(layer)) => ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE),
-            (None, None) => {}
-        }
-        if let Some(wear) = stack.wear() {
-            // Minecraft's bar: green when new, through yellow to red.
-            let w = (13.0 * wear).round().max(1.0);
-            let color = [(2.0 - 2.0 * wear).min(1.0), (2.0 * wear).min(1.0), 0.0, 1.0];
-            ui.rect(x + 2.0, y + 14.0, 13.0, 2.0, [0.0, 0.0, 0.0, 1.0]);
-            ui.rect(x + 2.0, y + 14.0, w, 1.0, color);
-        }
-        if self.mode == GameMode::Survival && stack.count > 1 {
-            let n = stack.count.to_string();
-            ui.text(x + 17.0 - Ui::text_width(&n), y + 9.0, &n, WHITE);
-        }
+        draw_stack(ui, x, y, stack, self.mode == GameMode::Survival);
     }
+}
 
+/// Item icon, durability bar and (when `counts`) stack size in an 18x18
+/// slot at (x, y).
+fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
+    match (stack.item.block(), stack.item.icon_layer()) {
+        (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
+        (None, Some(layer)) => ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE),
+        (None, None) => {}
+    }
+    if let Some(wear) = stack.wear() {
+        // Minecraft's bar: green when new, through yellow to red.
+        let w = (13.0 * wear).round().max(1.0);
+        let color = [(2.0 - 2.0 * wear).min(1.0), (2.0 * wear).min(1.0), 0.0, 1.0];
+        ui.rect(x + 2.0, y + 14.0, 13.0, 2.0, [0.0, 0.0, 0.0, 1.0]);
+        ui.rect(x + 2.0, y + 14.0, w, 1.0, color);
+    }
+    if counts && stack.count > 1 {
+        let n = stack.count.to_string();
+        ui.text(x + 17.0 - Ui::text_width(&n), y + 9.0, &n, WHITE);
+    }
+}
+
+impl Game {
     /// Whether the screen has a top section (crafting grid or furnace)
     /// above the inventory; only the creative inventory doesn't.
     fn has_top_section(&self) -> bool {
@@ -324,7 +355,7 @@ impl Game {
             return None;
         }
         let scale = Ui::scale_for(self.renderer.scale_factor());
-        let (w, h) = self.renderer.size();
+        let (w, h) = self.ui_size();
         self.recipe_layout((w as f32 / scale, h as f32 / scale))
             .control((self.cursor_px.0 / scale, self.cursor_px.1 / scale), self.recipe_book.open)
     }
@@ -397,7 +428,7 @@ impl Game {
     /// clicking there throws the held stack out, like Minecraft.
     pub(super) fn cursor_off_panel(&self) -> bool {
         let scale = Ui::scale_for(self.renderer.scale_factor());
-        let (w, h) = self.renderer.size();
+        let (w, h) = self.ui_size();
         let screen = (w as f32 / scale, h as f32 / scale);
         let mouse = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
         let (x, y, h) = self.panel(screen);
@@ -408,7 +439,7 @@ impl Game {
 
     pub(super) fn slot_under_cursor(&self) -> Option<SlotRef> {
         let scale = Ui::scale_for(self.renderer.scale_factor());
-        let (w, h) = self.renderer.size();
+        let (w, h) = self.ui_size();
         let (mx, my) = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
         if self.shows_recipes()
             && self.recipe_book.open
