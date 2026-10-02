@@ -9,7 +9,7 @@
 | Mouse | Look (click the window to capture the mouse) |
 | W A S D | Move |
 | Space | Jump / swim up / fly up — double-tap to toggle flying (creative) |
-| Left Shift | Fly down |
+| Left Shift | Sneak: walk slowly and quietly, never off an edge, and hold on to ladders / fly down |
 | Left Ctrl or R | Sprint |
 | F | Toggle flying (creative) |
 | Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; respawn on the death screen |

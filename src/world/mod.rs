@@ -737,6 +737,25 @@ mod tests {
         }
         assert!(player.pos.x <= wall_x as f64 - 0.3 + 1e-3, "walked through wall: x={}", player.pos.x);
         assert!(player.pos.x > wall_x as f64 - 0.4);
+
+        // On a pillar, sneaking stops at the edge; walking falls off.
+        let pillar = IVec3::new(x, top as i32 + 3, z);
+        world.set_block(pillar, Block::STONE);
+        for (sneak, stays) in [(true, true), (false, false)] {
+            let mut player = Player::new(pillar.as_dvec3() + DVec3::new(0.5, 1.0, 0.5));
+            player.yaw = 0.7; // diagonal, toward +X +Z
+            let input = MoveInput { forward: 1.0, descend: sneak, ..Default::default() };
+            for _ in 0..120 {
+                player.update(1.0 / 60.0, input, &world);
+            }
+            let on_pillar = (player.pos.y - (pillar.y as f64 + 1.0)).abs() < 0.01;
+            assert_eq!(on_pillar, stays, "sneak {sneak}: {}", player.pos);
+            if sneak {
+                // Leaning out over the edge, but no further than the box allows.
+                assert!(player.pos.x > pillar.x as f64 + 1.0 && player.pos.x < pillar.x as f64 + 1.3 + 1e-6);
+                assert!(player.eye().y < player.pos.y + crate::player::EYE_HEIGHT - 0.2);
+            }
+        }
     }
 
     #[test]
