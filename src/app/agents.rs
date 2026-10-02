@@ -7,9 +7,12 @@ use std::collections::BTreeMap;
 use voxelcraft::{
     agent::{Agent, Command},
     control::{Host, VERSION},
+    entity::{PlayerId, Target},
 };
 
 pub(super) struct Bot {
+    /// Stable for the life of the profile and saved with it.
+    pub id: PlayerId,
     pub agent: Agent,
     pub active: bool,
     reply: Option<Sender<Value>>,
@@ -22,17 +25,34 @@ pub(super) struct Agents {
 }
 
 impl Agents {
+    /// The next unused player ID; the host is [`PlayerId::HOST`].
+    fn next_id(&self) -> PlayerId {
+        PlayerId(self.players.values().map(|b| b.id.0).max().unwrap_or(0) + 1)
+    }
+    /// Adds an inactive profile with a fresh ID.
+    pub fn insert(&mut self, name: String, agent: Agent) {
+        let id = self.next_id();
+        self.players.insert(name, Bot { id, agent, active: false, reply: None });
+    }
+    /// Active agents as mob targets.
+    pub fn targets(&self) -> impl Iterator<Item = Target> + '_ {
+        self.players.values().filter(|b| b.active).map(|b| Target::new(b.id, b.agent.player.pos, b.agent.targetable()))
+    }
+    pub fn by_id_mut(&mut self, id: PlayerId) -> Option<&mut Bot> {
+        self.players.values_mut().find(|b| b.id == id)
+    }
     pub fn positions(&self) -> Vec<DVec3> {
         self.players.values().filter(|b| b.active).map(|b| b.agent.player.pos).collect()
     }
     pub fn serialize(&self, dimension: &str) -> String {
-        let profiles: Vec<_>=self.players.iter().map(|(name,b)|json!({"name":name,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"inventory":b.agent.inventory.serialize(),"dimension":dimension})).collect();
+        let profiles: Vec<_>=self.players.iter().map(|(name,b)|json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"inventory":b.agent.inventory.serialize(),"dimension":dimension})).collect();
         json!(profiles).to_string()
     }
     pub fn restore(&mut self, text: &str, dimension: &str, spawn: DVec3) {
         let Ok(Value::Array(profiles)) = serde_json::from_str(text) else {
             return;
         };
+        let mut missing = Vec::new();
         for p in profiles.into_iter().take(32) {
             let Some(name) = p["name"].as_str().filter(|n| voxelcraft::control::valid_name(n)) else {
                 continue;
@@ -62,7 +82,23 @@ impl Agents {
                 p["saturation"].as_f64().unwrap_or(5.0) as f32,
                 p["exhaustion"].as_f64().unwrap_or(0.0) as f32,
             );
-            self.players.insert(name.into(), Bot { agent, active: false, reply: None });
+            // Replacing a profile frees its old ID.
+            self.players.remove(name);
+            let id = p["id"]
+                .as_u64()
+                .and_then(|id| u32::try_from(id).ok())
+                .map(PlayerId)
+                .filter(|&id| id != PlayerId::HOST && !self.players.values().any(|b| b.id == id));
+            match id {
+                Some(id) => {
+                    self.players.insert(name.into(), Bot { id, agent, active: false, reply: None });
+                }
+                None => missing.push((name.to_string(), agent)),
+            }
+        }
+        // Profiles saved before IDs existed (or with clashing ones) get new IDs.
+        for (name, agent) in missing {
+            self.insert(name, agent);
         }
     }
 }
@@ -90,14 +126,7 @@ impl Game {
                     if self.agents.players.len() >= 32 {
                         return Err("profile limit reached".into());
                     }
-                    self.agents.players.insert(
-                        req.player.clone(),
-                        Bot {
-                            agent: Agent::new(self.player.pos + DVec3::new(2.0, 0.0, 0.0)),
-                            active: false,
-                            reply: None,
-                        },
-                    );
+                    self.agents.insert(req.player.clone(), Agent::new(self.player.pos + DVec3::new(2.0, 0.0, 0.0)));
                 }
                 let active = self.agents.players.values().filter(|b| b.active).count();
                 let mut bot = self.agents.players.remove(&req.player).unwrap();
@@ -123,7 +152,7 @@ impl Game {
                         }
                         Command::Players => {
                             return Ok(Some(
-                                json!({"ok":true,"version":VERSION,"players":self.agents.players.iter().filter(|(_,b)|b.active).map(|(n,b)|json!({"name":n,"position":b.agent.player.pos.to_array()})).chain(std::iter::once(json!({"name":req.player,"position":bot.agent.player.pos.to_array()}))).collect::<Vec<_>>()}),
+                                json!({"ok":true,"version":VERSION,"players":self.agents.players.iter().filter(|(_,b)|b.active).map(|(n,b)|json!({"name":n,"id":b.id.0,"position":b.agent.player.pos.to_array()})).chain(std::iter::once(json!({"name":req.player,"id":bot.id.0,"position":bot.agent.player.pos.to_array()}))).collect::<Vec<_>>()}),
                             ));
                         }
                         Command::Leave => {
@@ -206,11 +235,13 @@ mod tests {
         agent.selected = 2;
         agent.player.flying = true;
         agent.vitals.hunger = crate::simulation::survival::Hunger::restore(8.0, 2.0, 1.0);
-        agents.players.insert("builder".into(), Bot { agent, active: true, reply: None });
+        agents.insert("builder".into(), agent);
+        agents.players.get_mut("builder").unwrap().active = true;
         let text = agents.serialize("overworld");
         let mut restored = Agents::default();
         restored.restore(&text, "overworld", spawn);
         let bot = &restored.players["builder"];
+        assert_eq!(bot.id, PlayerId(1), "stable ID survives saving");
         assert!(!bot.active);
         assert!(bot.agent.player.flying);
         assert_eq!(bot.agent.selected, 2);
@@ -219,5 +250,21 @@ mod tests {
         assert_eq!(bot.agent.vitals.hunger.food, 8.0);
         restored.restore(&text, "nether", spawn);
         assert_eq!(restored.players["builder"].agent.player.pos, spawn);
+        assert_eq!(restored.players["builder"].id, PlayerId(1));
+    }
+
+    #[test]
+    fn profiles_without_ids_get_unique_ones() {
+        let spawn = DVec3::new(0.0, 100.0, 0.0);
+        let text = r#"[{"name":"a","id":5},{"name":"b"},{"name":"c","id":5},{"name":"d","id":0}]"#;
+        let mut agents = Agents::default();
+        agents.restore(text, "overworld", spawn);
+        let ids: Vec<u32> = ["a", "b", "c", "d"].iter().map(|n| agents.players[*n].id.0).collect();
+        assert_eq!(ids[0], 5);
+        let mut unique = ids.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), 4, "{ids:?}");
+        assert!(ids.iter().all(|&id| id != 0), "{ids:?}");
     }
 }

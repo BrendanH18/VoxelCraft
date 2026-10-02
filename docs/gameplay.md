@@ -295,8 +295,11 @@ session there, as if you had just come through a portal.
 
 Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to
-4 zombies and 3 of the others). Mobs spawn 24–64 blocks from the player
-and despawn beyond 96 blocks or when their chunk unloads. Every mob burns
+4 zombies and 3 of the others). Like Java Edition's per-player mob caps,
+these limits count mobs within 96 blocks of each player, so players far apart
+each get their own. Mobs spawn 24–64 blocks from a player (never closer to
+any player), despawn once every player is more than 96 blocks away or when
+their chunk unloads, and hostile mobs chase the nearest survival player. Every mob burns
 in lava. Player hits deal damage based on the held item, with knockback, at most
 every 0.5 s: a fist deals 1, and swords deal 4–7 depending on their tier.
 Hostile mobs ignore creative players.

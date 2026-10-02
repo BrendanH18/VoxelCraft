@@ -107,9 +107,12 @@ Agents share the host's active dimension and relocate alongside it when the
 host travels. Agent simulation pauses during arrival and while its feet or
 supporting terrain are unloaded; timed commands resume after loading.
 Independent simultaneous dimensions and desktop client joining
-are future work. Mob AI/spawning and hostile projectile targeting still use
-the human host; agents can attack mobs but do not yet receive their melee/arrow
-attacks. Environmental survival damage, death drops and pickups work.
+are future work. Every player has a stable ID (the host is 0; agent profiles
+keep theirs in the save and `players` reports them). Hostile mobs chase the
+nearest survival player, host or agent; melee, skeleton arrows and explosions
+hurt agents with armor, knockback and death drops. Mobs spawn around every
+player with per-player caps and stay loaded while any player is near.
+Environmental survival damage, death drops and pickups work.
 The first CLI supports block placement, crafting and chests; doors/beds/ladders,
 food use, bows, buckets, furnaces, armor controls, sleep and portal interactions
 still require the desktop player. Agents cannot mine multi-cell doors/beds.

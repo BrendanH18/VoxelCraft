@@ -5,7 +5,6 @@ use glam::{DVec3, Vec3};
 
 use super::{Ctx, EntityEvent, Mob, Rng};
 use crate::physics::BlockSource;
-use crate::player::{HALF_WIDTH, HEIGHT};
 
 const SPEED: f64 = 22.0;
 /// Speed of an arrow from a fully drawn bow (Minecraft's 3 blocks a tick).
@@ -124,12 +123,11 @@ impl Arrow {
                 }
                 continue;
             }
-            let p = self.pos - ctx.player_pos;
-            let in_player = p.x.abs() < HALF_WIDTH && p.z.abs() < HALF_WIDTH && (0.0..HEIGHT).contains(&p.y);
-            if ctx.player_targetable && in_player {
+            if let Some(hit) = ctx.players.iter().find(|t| t.targetable && t.contains(self.pos)) {
                 let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0;
                 let damage = (self.vel.length() / SPEED * 3.0).ceil() as f32;
                 events.push(EntityEvent::PlayerHit {
+                    player: hit.id,
                     damage,
                     knockback: push.as_vec3(),
                     cause: "was shot by a skeleton",

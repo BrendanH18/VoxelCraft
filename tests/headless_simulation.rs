@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use glam::{DVec3, IVec3};
-use voxelcraft::entity::{Ctx, Entities, EntityEvent};
+use voxelcraft::entity::{Ctx, Entities, EntityEvent, PlayerId, Target};
 use voxelcraft::inventory::Stack;
 use voxelcraft::item::Item;
 use voxelcraft::player::{MoveInput, Player};
@@ -57,8 +57,13 @@ fn headless_world_runs_gameplay_without_render_meshes() {
     let mut entities = Entities::new(7);
     entities.scatter(Stack::new(Item::DIAMOND, 1), DVec3::new(10.5, 153.0, 10.5));
     entities.prime_tnt(IVec3::new(28, 150, 28), false);
-    let ctx =
-        Ctx { player_pos: at, player_targetable: false, daylight: 1.0, raining: false, spawning: false, nether: false };
+    let ctx = Ctx {
+        players: vec![Target::new(PlayerId::HOST, at, false)],
+        daylight: 1.0,
+        raining: false,
+        spawning: false,
+        nether: false,
+    };
     let mut explosions = 0;
     for _ in 0..201 {
         simulation::tick_world(&mut world, at);
