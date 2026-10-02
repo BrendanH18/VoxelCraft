@@ -141,6 +141,9 @@ session.
   per hit (other tools 2), and break when worn out. Melee damage comes from
   the held item: a fist 1, swords 4 (wood, gold) to 7 (diamond), axes,
   pickaxes and shovels less
+- Slabs: three stone, cobblestone, planks, sandstone, bricks or nether
+  bricks in a row make six half-height slabs that mine like their full
+  block. Placing a slab on top of the same slab makes the full block
 - TNT (5 gunpowder and 4 sand in a checkerboard): light it with flint and
   steel and it hops out of its block, flashing white and swelling for 4
   seconds before a blast stronger than a creeper's (power 4). TNT caught in

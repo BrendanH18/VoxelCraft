@@ -287,6 +287,9 @@ impl Block {
     /// Lit with flint and steel (or set off by a nearby blast), it blows up
     /// four seconds later (see `entity::tnt`).
     pub const TNT: Block = Block(105);
+    /// Half-height slabs of stone, cobblestone, oak planks, sandstone,
+    /// bricks and nether bricks, ids 106..=111 (see [`Block::slab_of`]).
+    pub const STONE_SLAB: Block = Block(106);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -439,6 +442,30 @@ impl Block {
         }
     }
 
+    /// The full blocks slabs are cut from, in slab id order.
+    pub const SLAB_BASES: [Block; 6] =
+        [Block::STONE, Block::COBBLESTONE, Block::PLANKS, Block::SANDSTONE, Block::BRICKS, Block::NETHER_BRICKS];
+
+    /// The slab cut from `base`, if there is one.
+    pub fn slab_of(base: Block) -> Option<Block> {
+        Self::SLAB_BASES.iter().position(|&b| b == base).map(|i| Block(106 + i as u8))
+    }
+
+    /// The full block a slab was cut from (two stacked slabs make it).
+    pub fn slab_base(self) -> Option<Block> {
+        (106..=111).contains(&self.0).then(|| Self::SLAB_BASES[self.0 as usize - 106])
+    }
+
+    pub fn is_slab(self) -> bool {
+        self.slab_base().is_some()
+    }
+
+    /// What mining rules treat this block as: a slab mines like its full
+    /// block, an oriented block like its plain form.
+    fn material(self) -> Block {
+        self.slab_base().unwrap_or(self.base())
+    }
+
     pub fn is_bed(self) -> bool {
         matches!(self, Block::BED_FOOT | Block::BED_HEAD)
     }
@@ -446,7 +473,11 @@ impl Block {
     /// How far (in 1/16 block) the top of this block sits below the top of
     /// its cell; 0 for full blocks.
     pub fn top_drop(self) -> u8 {
-        if self.is_bed() { 7 } else { 0 }
+        match self {
+            b if b.is_bed() => 7,
+            b if b.is_slab() => 8,
+            _ => 0,
+        }
     }
 
     /// Height of the block's collision box.
@@ -487,7 +518,7 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
-        match self.base() {
+        match self.material() {
             b if b.kind() == RenderKind::Cross => 0.0,
             Block::TNT => 0.0,
             b if b.is_leaves() => 0.2,
@@ -521,7 +552,7 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
-        match self.base() {
+        match self.material() {
             Block::STONE
             | Block::COBBLESTONE
             | Block::BRICKS
@@ -558,7 +589,7 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
-        match self.base() {
+        match self.material() {
             Block::STONE
             | Block::COBBLESTONE
             | Block::BRICKS
@@ -585,7 +616,7 @@ impl Block {
             .chain([53, 57, 67, 68])
             .chain(69..=97)
             .chain(100..=103)
-            .chain([105])
+            .chain(105..=111)
             .map(Block)
     }
 
@@ -924,6 +955,20 @@ const fn make(id: u8) -> BlockInfo {
         103 => ("nether bricks", Opaque, all(tex::NETHER_BRICKS)),
         104 => ("nether portal", Translucent, all(tex::PORTAL)),
         105 => ("tnt", Opaque, column(tex::TNT_SIDE, tex::TNT_TOP, tex::TNT_BOTTOM)),
+        106..=111 => {
+            const NAMES: [&str; 6] =
+                ["stone slab", "cobblestone slab", "oak slab", "sandstone slab", "brick slab", "nether brick slab"];
+            let base = make(match id {
+                106 => 1,
+                107 => 9,
+                108 => 8,
+                109 => 21,
+                110 => 20,
+                _ => 103,
+            });
+            // Cutout, not opaque: the faces above and beside a slab show.
+            (NAMES[id as usize - 106], Cutout, base.tex)
+        }
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.
@@ -948,8 +993,8 @@ static LIGHT_OPACITY: [u8; 256] = {
         arr[i] = match INFO[i].kind {
             RenderKind::Opaque => 15,
             RenderKind::Invisible | RenderKind::Cross => 0,
-            _ if i == 10 || i == 98 || i == 99 => 0, // glass, beds
-            _ => 1,                                  // leaves, water: dim light passing through
+            _ if matches!(i, 10 | 98 | 99 | 106..=111) => 0, // glass, beds, slabs
+            _ => 1,                                          // leaves, water: dim light passing through
         };
         i += 1;
     }
@@ -1078,6 +1123,27 @@ mod tests {
         assert_eq!(tex::tinted(tex::STONE, 3), tex::STONE);
         assert_eq!(tex::tinted(tex::SPRUCE_LEAVES, 4), tex::SPRUCE_LEAVES);
         assert_eq!(tex::untinted(tex::ITEM_0), None);
+    }
+
+    #[test]
+    fn slabs_are_half_blocks_that_mine_like_their_base() {
+        for (i, &base) in Block::SLAB_BASES.iter().enumerate() {
+            let slab = Block::slab_of(base).unwrap();
+            assert_eq!(slab, Block(Block::STONE_SLAB.0 + i as u8));
+            assert_eq!(slab.slab_base(), Some(base));
+            assert_eq!(slab.height(), 0.5);
+            assert!(slab.is_solid() && !slab.is_opaque() && slab.is_targetable());
+            assert_eq!(slab.light_opacity(), 0);
+            assert_eq!(
+                (slab.hardness(), slab.best_tool(), slab.harvest_level()),
+                (base.hardness(), base.best_tool(), base.harvest_level())
+            );
+            assert_eq!(slab.drop(), Some(slab.into()), "{}", slab.name());
+            assert_eq!(slab.info().tex, base.info().tex);
+            assert!(Block::creative_palette().any(|p| p == slab));
+        }
+        assert_eq!(Block::slab_of(Block::DIRT), None);
+        assert_eq!(Block::from_name("oak_slab"), Some(Block::slab_of(Block::PLANKS).unwrap()));
     }
 
     #[test]

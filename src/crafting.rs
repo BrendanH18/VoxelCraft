@@ -169,6 +169,7 @@ const PLANKS: Ingredient = &[
 ];
 const MELON: Ingredient = &[b(Block::MELON)];
 const SAND: Ingredient = &[b(Block::SAND)];
+const SAND_STONE: Ingredient = &[b(Block::SANDSTONE)];
 const WOOL: Ingredient = &[b(Block::WOOL)];
 const COBBLESTONE: Ingredient = &[b(Block::COBBLESTONE)];
 const STICK: Ingredient = &[Item::STICK];
@@ -235,6 +236,11 @@ pub fn recipes() -> &'static [Recipe] {
             r.push(tool(ToolKind::Axe, &["XX", "X#", " #"]));
             r.push(tool(ToolKind::Hoe, &["XX", " #", " #"]));
             r.push(tool(ToolKind::Sword, &["X", "X", "#"]));
+        }
+        const SLABS: [Ingredient; 6] =
+            [&[b(Block::STONE)], COBBLESTONE, PLANKS, SAND_STONE, &[b(Block::BRICKS)], &[b(Block::NETHER_BRICKS)]];
+        for (i, base) in SLABS.into_iter().enumerate() {
+            r.push(shaped(&["###"], &[('#', base)], b(Block(Block::STONE_SLAB.0 + i as u8)), 6));
         }
         const ARMOR: [(ArmorMaterial, Ingredient); 4] = [
             (ArmorMaterial::Leather, &[Item::LEATHER]),

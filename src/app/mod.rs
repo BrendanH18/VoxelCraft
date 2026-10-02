@@ -1150,6 +1150,21 @@ impl Game {
             return;
         }
         let Some(block) = self.inventory.get(self.actions.selected).and_then(|s| s.item.places()) else { return };
+        // A slab on top of the same slab makes the full block.
+        if block.is_slab()
+            && normal == IVec3::Y
+            && self.world.get_block(pos) == Some(block)
+            && let Some(full) = block.slab_base()
+        {
+            if !self.player.intersects_block(pos) {
+                self.world.set_block(pos, full);
+                self.audio.block_place(full, pos);
+                if self.mode == GameMode::Survival {
+                    self.inventory.take_one(self.actions.selected);
+                }
+            }
+            return;
+        }
         // Furnaces and chests face whoever places them.
         let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
         if block.is_water() && !self.dimension.has_sky() {
