@@ -16,7 +16,8 @@ covers the rendering and simulation choices behind the game.
 | 12-byte quad records with vertex pulling | The vertex shader expands each quad from a storage buffer; ~9x smaller than Minecraft's 4 vertices x 28 bytes |
 | Pooled quad arena | All chunk meshes share a few large GPU buffers (best-fit free list), so drawing needs no per-chunk buffer binds |
 | One shared quad index buffer | No per-chunk index data |
-| Lighting computed inside mesh jobs over a 15-block margin | Exact at chunk borders with zero shared mutable light state, so every job runs in parallel |
+| Render lighting computed inside mesh jobs over a 15-block margin | Exact at chunk borders with zero shared mutable light state, so every job runs in parallel |
+| Incremental gameplay block light, packed into nibbles only in lit chunks | Updates without render jobs; source removal and streaming relight from surviving sources |
 | Worker thread pool with nearest-first scheduling and chunk versioning | Generation and meshing never block the render thread; stale results are dropped |
 | Copy-on-write `Arc` chunk data | Mesh jobs snapshot neighbours without locks or copies |
 | Frustum culling, front-to-back opaque and back-to-front translucent sorting | Less overdraw; correct water blending |
@@ -32,9 +33,9 @@ the GPU after every frame; they include CPU and GPU work.
 
 ```text
 $ voxelcraft --bench --rd 8
-generate (1 thread): 0.16 ms/chunk
-light+mesh (1 thread): 0.83 ms per dense chunk
-stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.18 s
+generate (1 thread): 0.218 ms/chunk
+light+mesh (1 thread): 0.824 ms per dense chunk
+stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.21 s
 
 $ voxelcraft --bench-render --rd 8     # 1600x900, GPU-synchronised each frame
 avg 1.10 ms (~900 fps) — 661 draw calls, 0.42M quads drawn
@@ -60,8 +61,15 @@ independently, with position interpolation for the camera, mobs, arrows,
 smoke, dropped items, falling blocks and primed TNT. Collision substeps remain
 at most 1/120 second. Offline menus pause the game clock.
 
-Session ownership, authoritative action/damage handling, independent gameplay
-lighting, multiple players/dimensions and networking are still future work.
+Gameplay block light belongs to `World`, with incremental removal and
+increase queues. Edits, streaming and fixed world steps resolve it without
+waiting for meshes. Render jobs still compute their own light snapshots;
+their results cannot replace gameplay light. Crops and saplings use this
+light even in headless worlds.
+
+Session ownership, authoritative action/damage handling, authoritative
+skylight, shape-aware light occlusion, multiple players/dimensions and
+networking are still future work.
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
 
 ## Code layout
@@ -111,6 +119,7 @@ src/
     export.rs        --export-sounds WAV dump and stats
   world/
     mod.rs           chunk streaming, edits, heightmaps, raycasting
+    lighting.rs      incremental gameplay block light, independent of meshes
     fluid.rs         water and lava flow simulation
     falling.rs       falling sand/gravel, edit settling, explosion craters
     furnace.rs       furnace contents, smelting and fuel

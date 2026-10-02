@@ -128,10 +128,12 @@ impl World {
         }
     }
 
-    /// Plants need light to grow: open sky above (block light isn't
-    /// tracked outside mesh jobs, so torches don't count).
-    fn grows_here(&self, p: IVec3) -> bool {
-        self.sky_exposed(p)
+    /// Java crops need light >=9 in their cell; saplings sample above it.
+    /// Preserve the current open-sky approximation for skylight.
+    fn grows_here(&mut self, p: IVec3) -> bool {
+        self.update_block_light();
+        let light_at = if self.get_block(p).is_some_and(Block::is_sapling) { p + IVec3::Y } else { p };
+        self.sky_exposed(light_at) || self.block_light(light_at) >= 9
     }
 
     /// Grass dies under opaque blocks and spreads to lit dirt nearby (one
@@ -340,5 +342,53 @@ impl World {
         [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
             .iter()
             .any(|&d| self.get_block(soil + d).is_some_and(|b| b.is_water() || b == Block::ICE))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::chunk::ChunkData;
+    use crate::world::terrain::Generator;
+    use std::sync::Arc;
+
+    #[test]
+    fn covered_crops_need_nine_block_light_and_saplings_sample_above() {
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        for y in 0..WORLD_HEIGHT_CHUNKS {
+            world.insert_chunk(IVec3::new(0, y, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
+        }
+        let crop = IVec3::new(15, 150, 16);
+        world.set_block(crop - IVec3::Y, Block::WET_FARMLAND);
+        world.set_block(crop, Block::wheat(0));
+        world.set_block(crop + IVec3::Y * 2, Block::STONE);
+        assert!(!world.sky_exposed(crop));
+        assert!(!world.grows_here(crop));
+        let near = crop - IVec3::X * 5;
+        let far = crop - IVec3::X * 6;
+        for p in [near, far] {
+            world.set_block(p - IVec3::Y, Block::STONE);
+        }
+        world.set_block(far, Block::TORCH);
+        assert_eq!(world.block_light(crop), 8);
+        for _ in 0..100 {
+            world.random_tick(crop);
+        }
+        assert_eq!(world.get_block(crop), Some(Block::wheat(0)));
+        world.set_block(far, Block::AIR);
+        world.set_block(near, Block::TORCH);
+        assert_eq!(world.block_light(crop), 9);
+        assert!(world.grows_here(crop));
+        for _ in 0..200 {
+            world.random_tick(crop);
+        }
+        assert_eq!(world.get_block(crop), Some(Block::wheat(7)));
+        world.set_block(crop - IVec3::Y, Block::DIRT);
+        world.set_block(crop, Block::OAK_SAPLING);
+        assert_eq!(world.block_light(crop + IVec3::Y), 8);
+        assert!(!world.grows_here(crop), "saplings require nine in the cell above");
+        world.set_block(near + IVec3::Y, Block::GLOWSTONE);
+        assert!(world.grows_here(crop));
+        assert!(world.mesh_uploads.is_empty());
     }
 }

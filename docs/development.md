@@ -26,6 +26,7 @@ libraries or devices:
 cargo clippy --release --no-default-features --all-targets -- -D warnings
 cargo test --release --no-default-features
 cargo run --release --no-default-features --example headless
+cargo run --release --no-default-features --example headless -- --nether
 ```
 
 The example streams terrain and advances 200 fixed gameplay ticks without
@@ -47,9 +48,17 @@ The existing ten-minute VoxelCraft day is preserved.
 
 This is a foundation for LAN and split-screen. The client still owns the
 singleplayer session, action validation, damage/death handling, dimension
-travel and saves. Gameplay block light still comes from mesh workers and
-returns zero in headless worlds; separate authoritative lighting remains
-required. The example is not a dedicated or multiplayer server.
+travel and saves. The example is not a dedicated or multiplayer server.
+
+Gameplay block light is maintained by `World` in both feature configurations.
+`set_block`, `explode`, terrain streaming and `simulation::tick_world` resolve
+pending light changes before returning. When calling individual batched
+world systems directly, call `update_block_light` before querying their
+light. Dark chunks allocate no light arrays; lit chunks store two levels per
+byte. Worker meshes carry geometry only and cannot overwrite gameplay light.
+Covered crops require level 9 in their cell; saplings sample the cell above.
+Skylight for growth still uses the existing open-sky approximation, and
+slabs/stairs retain their current opaque-cell lighting approximation.
 
 ## Benchmarks
 

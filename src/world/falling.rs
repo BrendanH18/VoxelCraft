@@ -150,6 +150,7 @@ impl World {
         for &p in &removed {
             self.settle(p);
         }
+        self.update_block_light();
         removed.len()
     }
 

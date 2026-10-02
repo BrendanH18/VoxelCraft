@@ -71,6 +71,8 @@ fn headless_world_runs_gameplay_without_render_meshes() {
         assert!(world.mesh_uploads.is_empty());
         assert!(world.mesh_removals.is_empty());
     }
+    assert_eq!(world.block_light(furnace), 13, "lit furnaces illuminate without mesh jobs");
+    assert_eq!(world.block_light(IVec3::new(18, 150, 18)), 15);
     assert_eq!(world.furnace(furnace).unwrap().output, Some(Stack::new(Item::IRON_INGOT, 1)));
     assert_eq!(world.get_block(IVec3::new(14, 150, 14)), Some(Block::SAND));
     assert!(world.get_block(IVec3::new(18, 150, 18)).unwrap().is_fire());
@@ -89,6 +91,16 @@ fn headless_world_runs_gameplay_without_render_meshes() {
             .iter()
             .any(|(p, data)| { *p == IVec3::new(0, 4, 0) && data.get(14, 22, 14) == Block::SAND })
     );
+}
+
+#[test]
+fn headless_explosion_removes_light_before_returning() {
+    let mut world = platform();
+    let lamp = IVec3::new(4, 150, 4);
+    world.set_block(lamp, Block::GLOWSTONE);
+    assert_eq!(world.block_light(lamp + IVec3::X), 14);
+    assert!(world.explode(lamp.as_dvec3() + DVec3::splat(0.5), 2.0) > 0);
+    assert_eq!(world.block_light(lamp + IVec3::X), 0, "explosions clear light immediately");
 }
 
 #[test]

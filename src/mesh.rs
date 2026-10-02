@@ -99,21 +99,9 @@ pub struct MeshData {
     pub quads: Vec<[u32; 3]>,
     /// Quad count per pass and face group (in [`FACE_ORDER`]).
     pub face_quads: [[u32; 6]; PASSES],
-    /// The chunk's block light (torches, lava), if any reaches it: for
-    /// lighting entities. See [`BlockLight`].
-    pub block_light: Option<BlockLight>,
-}
-
-/// Block light of every cell of a chunk, two cells per byte.
-#[derive(Clone, Debug)]
-pub struct BlockLight(Box<[u8; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 2]>);
-
-impl BlockLight {
-    /// Light level (0..=15) at chunk-local `(x, y, z)`.
-    pub fn get(&self, x: usize, y: usize, z: usize) -> u8 {
-        let i = x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
-        self.0[i / 2] >> (i % 2 * 4) & 15
-    }
+    /// Packed reference light for checking simulation/mesh agreement.
+    #[cfg(test)]
+    pub(crate) block_light: Option<crate::world::lighting::BlockLight>,
 }
 
 impl MeshData {
@@ -193,7 +181,8 @@ impl Region {
     }
 
     /// The centre chunk's block light, if any of it is lit.
-    fn centre_block_light(&self) -> Option<BlockLight> {
+    #[cfg(test)]
+    fn centre_block_light(&self) -> Option<crate::world::lighting::BlockLight> {
         let mut out = Box::new([0u8; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 2]);
         let mut any = 0;
         for y in 0..CHUNK_SIZE {
@@ -207,7 +196,7 @@ impl Region {
                 }
             }
         }
-        (any != 0).then_some(BlockLight(out))
+        (any != 0).then(|| crate::world::lighting::BlockLight::from_nibbles(out))
     }
 
     /// Breadth-first light propagation from everything already in the queue.
@@ -227,7 +216,7 @@ impl Region {
                 if op >= MAX_LIGHT {
                     return;
                 }
-                let next = level.saturating_sub(1 + op);
+                let next = level.saturating_sub(op.max(1));
                 if next > light[i] {
                     light[i] = next;
                     queue.push(pack_q(nx, ny, nz));
@@ -411,8 +400,9 @@ const DROP_SHIFT: u64 = 8;
 pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
     region.fill(&input.neighbors, input.base_y);
     region.light(&input.heights, input.base_y);
-    let mut mesh = mesh_region(region, &input.foliage);
-    mesh.block_light = region.centre_block_light();
+    let mesh = mesh_region(region, &input.foliage);
+    #[cfg(test)]
+    let mesh = MeshData { block_light: region.centre_block_light(), ..mesh };
     mesh
 }
 
@@ -1014,7 +1004,7 @@ mod tests {
     }
 
     #[test]
-    fn meshes_hand_back_block_light_for_entities() {
+    fn packed_reference_block_light_matches_mesh_lighting() {
         assert!(mesh_blocks(&[([5, 5, 5], Block::STONE)]).block_light.is_none());
         let m = mesh_blocks(&[([5, 5, 5], Block::TORCH)]);
         let light = m.block_light.expect("a torch lights its chunk");

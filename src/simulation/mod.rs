@@ -58,8 +58,10 @@ pub fn tick_world(world: &mut World, player: DVec3) {
     world.tick_falling(TICK_SECONDS);
     world.tick_furnaces(TICK_SECONDS);
     world.tick_fire(TICK_SECONDS, player);
+    world.update_block_light();
     world.tick_random(TICK_SECONDS, player);
     world.tick_leaf_decay(TICK_SECONDS);
+    world.update_block_light();
 }
 
 pub struct PlayerStep {
