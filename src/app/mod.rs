@@ -1232,6 +1232,9 @@ impl Game {
 
     fn pick_block(&mut self) {
         let Some(b) = self.target().and_then(|(pos, _)| self.world.get_block(pos)) else { return };
+        if b.is_fire() {
+            return;
+        }
         let item = farming::picked_item(b);
         match self.inventory.find(item) {
             Some(i) if i < HOTBAR_SLOTS => self.select(i),
@@ -1441,6 +1444,8 @@ impl Game {
             climbing: self.player.climbing,
             head_in_water: self.player.head_in_water(&self.world),
             in_lava: self.player.in_lava(&self.world),
+            in_fire: self.player.in_fire(&self.world),
+            wet: self.world.rains_on(self.player.eye().floor().as_ivec3()),
             moved: if self.player.flying { 0.0 } else { moved },
             sprinting: input.sprint && moved > 0.0,
             jumped: self.player.jumped,
@@ -1459,6 +1464,12 @@ impl Game {
         }
         if hurts.lava > 0.0 {
             self.damage_player_armored(hurts.lava, survival::CAUSE_LAVA);
+        }
+        if hurts.fire > 0.0 {
+            self.damage_player_armored(hurts.fire, survival::CAUSE_FIRE);
+        }
+        if hurts.burn > 0.0 {
+            self.damage_player(hurts.burn, survival::CAUSE_FIRE);
         }
         if hurts.starve > 0.0 {
             self.damage_player(hurts.starve, survival::CAUSE_STARVE);
@@ -1501,6 +1512,7 @@ impl Game {
         self.world.tick_fluids(dt);
         self.world.tick_falling(dt);
         self.world.tick_furnaces(dt);
+        self.world.tick_fire(dt, self.player.pos);
         self.world.tick_random(dt, self.player.pos);
         self.world.tick_leaf_decay(dt);
         self.world.update(self.player.pos);

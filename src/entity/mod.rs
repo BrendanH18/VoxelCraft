@@ -121,6 +121,10 @@ pub trait MobWorld: BlockSource {
     fn surface(&self, x: i32, z: i32) -> Option<i32>;
     /// Nothing light-blocking above this cell.
     fn exposed(&self, p: IVec3) -> bool;
+    /// Rain reaching the entity; dry biomes and roofs keep it alight.
+    fn rains_on(&self, _p: IVec3) -> bool {
+        false
+    }
     /// Torch light in this cell, 0..=15.
     fn block_light(&self, _p: IVec3) -> u8 {
         0
@@ -128,6 +132,9 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn rains_on(&self, p: IVec3) -> bool {
+        World::rains_on(self, p)
+    }
     fn loaded(&self, p: IVec3) -> bool {
         self.is_loaded(p)
     }
@@ -741,6 +748,38 @@ mod tests {
             e.update(1.0 / 60.0, &world, &c);
         }
         assert!(e.mobs.is_empty(), "zombie should burn up");
+    }
+
+    #[test]
+    fn fire_ignites_mobs_persists_after_contact_and_spares_nether_piglins() {
+        let mut world = Grid::flat(10);
+        let at = DVec3::new(0.5, 10.0, 0.5);
+        world.set(at.floor().as_ivec3(), Block::FIRE);
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Pig, at);
+        let c = Ctx { daylight: 0.0, ..ctx(DVec3::new(30.0, 10.0, 0.0)) };
+        e.update(1.0 / 60.0, &world, &c);
+        assert!(e.mobs[0].burning);
+        assert_eq!(e.mobs[0].health, 9.0, "contact hit does not apply every frame");
+        e.update(1.0 / 60.0, &world, &c);
+        assert_eq!(e.mobs[0].health, 9.0);
+        e.mobs[0].pos = DVec3::new(10.5, 10.0, 10.5);
+        e.mobs[0].vel = DVec3::ZERO;
+        run(&mut e, &world, &c, 1.1);
+        assert!(e.mobs[0].burning && e.mobs[0].health < 9.0, "burns after walking away");
+        e.mobs[0].pos = DVec3::new(20.5, 10.0, 20.5);
+        world.set(e.mobs[0].pos.floor().as_ivec3(), Block::WATER);
+        e.update(1.0 / 60.0, &world, &c);
+        assert!(!e.mobs[0].burning, "water extinguishes");
+
+        for b in [Block::FIRE, Block::LAVA] {
+            world.set(at.floor().as_ivec3(), b);
+            e.spawn(MobKind::ZombifiedPiglin, at);
+            e.update(0.05, &world, &c);
+            let piglin = e.mobs.last().unwrap();
+            assert!(!piglin.burning);
+            assert_eq!(piglin.health, MobKind::ZombifiedPiglin.max_health());
+        }
     }
 
     #[test]

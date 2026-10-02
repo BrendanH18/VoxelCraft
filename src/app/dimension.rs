@@ -235,8 +235,8 @@ impl Game {
         if self.mode == GameMode::Creative { CREATIVE_PORTAL_TIME } else { PORTAL_TIME }
     }
 
-    /// Right-click with flint and steel: lights the portal frame around the
-    /// cell in front of the clicked face. Returns whether the item was used.
+    /// Right-click with flint and steel: primes TNT or lights a portal/fire
+    /// in front of the clicked face. Only successful uses spend durability.
     pub(super) fn strike_flint(&mut self, pos: IVec3, normal: IVec3) -> bool {
         if self.held_item() != Some(Item::FLINT_AND_STEEL) {
             return false;
@@ -250,13 +250,16 @@ impl Game {
             }
             return true;
         }
-        let lit = self.world.light_portal(pos + normal);
+        let at = pos + normal;
+        if !self.world.ignite(at) {
+            return true;
+        }
         self.audio.play(Sound::Place(Material::Stone), Some(pos.as_dvec3()), 0.7, (1.6, 1.9));
         if self.mode == GameMode::Survival && self.inventory.wear(self.actions.selected, 1) {
             self.show_popup("Flint and steel broke");
         }
-        if lit {
-            self.audio.play(Sound::Fuse, Some((pos + normal).as_dvec3()), 1.0, (0.5, 0.6));
+        if self.world.get_block(at) == Some(Block::NETHER_PORTAL) {
+            self.audio.play(Sound::Fuse, Some(at.as_dvec3()), 1.0, (0.5, 0.6));
         }
         true
     }

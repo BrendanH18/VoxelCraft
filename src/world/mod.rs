@@ -16,6 +16,7 @@ pub mod block;
 pub mod chest;
 pub mod chunk;
 pub mod falling;
+mod fire;
 mod fluid;
 pub mod furnace;
 mod growth;
@@ -73,6 +74,7 @@ pub struct World {
     render_distance: i32,
     region: Box<Region>,
     fluids: fluid::FluidState,
+    fire: fire::FireState,
     falling: Vec<falling::FallingBlock>,
     /// Furnace contents by position (see [`furnace`]).
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
@@ -88,8 +90,9 @@ pub struct World {
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
-    /// TNT blocks a blast took out; the game lights them.
-    pub primed_tnt: Vec<IVec3>,
+    /// TNT blocks a blast or fire took out, with whether to shorten the
+    /// fuse (blasts only); the game turns them into entities.
+    pub primed_tnt: Vec<(IVec3, bool)>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -118,6 +121,7 @@ impl World {
             render_distance,
             region: Box::default(),
             fluids: Default::default(),
+            fire: Default::default(),
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
@@ -222,8 +226,13 @@ impl World {
 
     /// Whether rain (not snow) is falling on cell `p` right now.
     pub fn rains_on(&self, p: IVec3) -> bool {
-        // Deserts, savannas and badlands stay dry; cold biomes get snow.
-        self.raining && self.sky_exposed(p) && matches!(self.foliage_at(p.x, p.z), Some(0 | 1 | 3))
+        // Match the weather renderer: dry biomes stay clear; cold biomes
+        // and columns whose surface is above the snow line get snow.
+        self.raining
+            && self.generator.dimension.has_sky()
+            && self.surface_height(p.x, p.z).is_none_or(|h| h <= 150)
+            && self.sky_exposed(p)
+            && matches!(self.foliage_at(p.x, p.z), Some(0 | 1 | 3))
     }
 
     /// Whether a cell sees the sky straight up (nothing light-blocking
@@ -269,11 +278,18 @@ impl World {
         let old = slot.data.get(l.x as usize, l.y as usize, l.z as usize);
         Arc::make_mut(&mut slot.data).set(l.x as usize, l.y as usize, l.z as usize, block);
         slot.modified = true;
+        // Fire ages are saved state, but all ages have identical geometry
+        // and lighting: don't invalidate meshes or copy light snapshots.
+        if old.is_fire() && block.is_fire() {
+            return true;
+        }
+        self.track_fire(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }
+        self.extinguish_unsupported_fire(p);
 
         // Keep the column heightmap current.
         let (old_h, new_h) = self.update_height(p, block);
@@ -455,6 +471,9 @@ impl World {
     }
 
     fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
+        if modified {
+            self.load_fires(pos, &data);
+        }
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -594,7 +613,7 @@ impl World {
         self.raycast_by(origin, dir, max_dist, Block::is_targetable)
     }
 
-    /// Block light (torches, lava, glowstone) at `p` as of its chunk's last
+    /// Block light (torches, fire, lava, glowstone) at `p` as of its chunk's last
     /// mesh: 0 where unknown.
     pub fn block_light(&self, p: IVec3) -> u8 {
         let l = local_of(p);

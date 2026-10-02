@@ -196,9 +196,13 @@ pub fn is_fluid_at<W: BlockSource + ?Sized>(world: &W, p: DVec3) -> bool {
     world.block(p.floor().as_ivec3()).is_some_and(|b| b.is_fluid())
 }
 
-/// Whether the cell containing `p` holds lava.
-pub fn is_lava_at<W: BlockSource + ?Sized>(world: &W, p: DVec3) -> bool {
-    world.block(p.floor().as_ivec3()).is_some_and(|b| b.is_lava())
+/// Whether any part of an entity's box touches a block matching `test`.
+/// The epsilon excludes cells whose face is merely flush with the box.
+pub fn touches_block<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape, test: fn(Block) -> bool) -> bool {
+    let (min, max) = shape.aabb(pos);
+    let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
+    (lo.y..=hi.y)
+        .any(|y| (lo.z..=hi.z).any(|z| (lo.x..=hi.x).any(|x| world.block(IVec3::new(x, y, z)).is_some_and(test))))
 }
 
 /// Slab test: distance along `dir` (not necessarily normalised; the result
@@ -290,6 +294,18 @@ mod tests {
     use super::test_util::Grid;
     use super::*;
 
+    #[test]
+    fn fire_contact_checks_the_whole_body_and_excludes_flush_faces() {
+        let mut world = Grid::flat(0);
+        let shape = Shape::new(0.3, 1.8);
+        let feet = DVec3::new(0.5, 0.0, 0.5);
+        world.set(IVec3::new(0, 1, 0), Block::FIRE);
+        assert!(touches_block(&world, feet, shape, Block::is_fire), "head touches fire");
+        assert!(!touches_block(&world, feet, Shape::new(0.3, 1.0), Block::is_fire), "flush below");
+        assert!(!touches_block(&world, feet + DVec3::X, shape, Block::is_fire));
+        assert!(touches_block(&world, feet + DVec3::X * 0.7, shape, Block::is_fire), "body edge touches");
+        assert!(!touches_block(&world, feet + DVec3::X * 0.8, shape, Block::is_fire), "flush beside");
+    }
     #[test]
     fn ray_hits_box_from_outside_and_inside() {
         let (min, max) = (DVec3::new(1.0, 0.0, -0.5), DVec3::new(2.0, 1.0, 0.5));

@@ -105,12 +105,11 @@ impl Player {
 
     /// Whether any part of the player's box is in lava.
     pub fn in_lava(&self, world: &World) -> bool {
-        let (min, max) = SHAPE.aabb(self.pos);
-        let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
-        (lo.y..=hi.y).any(|y| {
-            (lo.z..=hi.z)
-                .any(|z| (lo.x..=hi.x).any(|x| world.get_block(IVec3::new(x, y, z)).is_some_and(|b| b.is_lava())))
-        })
+        physics::touches_block(world, self.pos, SHAPE, Block::is_lava)
+    }
+
+    pub fn in_fire(&self, world: &World) -> bool {
+        physics::touches_block(world, self.pos, SHAPE, Block::is_fire)
     }
 
     pub fn head_in_lava(&self, world: &World) -> bool {

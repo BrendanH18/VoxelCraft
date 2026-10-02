@@ -41,7 +41,7 @@ impl World {
     /// The bottom corner, width and height of the interior of a frame along
     /// `axis` that contains `p`.
     fn find_frame(&self, p: IVec3, axis: IVec3) -> Option<(IVec3, i32, i32)> {
-        let open = |q: IVec3| self.is(q, Block::AIR);
+        let open = |q: IVec3| self.get_block(q).is_some_and(|b| b == Block::AIR || b.is_fire());
         let obsidian = |q: IVec3| self.is(q, Block::OBSIDIAN);
         if !open(p) {
             return None;

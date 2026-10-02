@@ -60,6 +60,18 @@ impl Game {
             ui.rect(0.0, 0.0, sw, sh, [0.05, 0.15, 0.4, 0.3]);
         }
 
+        if self.vitals.burning() {
+            let frame = ((now - self.started).as_secs_f32() * 10.0) as u32 % tex::FIRE_FRAMES as u32;
+            for (x, tilt) in [(-sw * 0.1, -sw * 0.12), (sw * 0.55, sw * 0.12)] {
+                ui.quad(
+                    [[x + tilt, sh * 0.35], [x + sw * 0.55 + tilt, sh * 0.35], [x + sw * 0.55, sh], [x, sh]],
+                    [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+                    (tex::FIRE_0 as u32 + frame) as f32,
+                    [1.0, 1.0, 1.0, 0.75],
+                );
+            }
+        }
+
         if self.portal_time > 0.0 {
             // The portal's purple swims in as it takes hold.
             let k = (self.portal_time / self.portal_needed()).min(1.0);

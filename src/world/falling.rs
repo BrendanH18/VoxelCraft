@@ -130,7 +130,7 @@ impl World {
                     if !resists && self.edit(p, Block::AIR, false) {
                         removed.push(p);
                         if b == Block::TNT {
-                            self.primed_tnt.push(p);
+                            self.primed_tnt.push((p, true));
                         } else if (super::noise::hash_f(p.x, p.y, p.z, seed ^ 0xD20F) as f64) < 1.0 / power {
                             self.spill_block(p, b);
                         }

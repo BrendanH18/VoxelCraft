@@ -137,6 +137,20 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             shade(colour, if seam { 0.68 } else { 0.92 + rnd(layer, x, board, 2) * 0.12 })
         }
         tex::SKIN => noisy(layer, x, y, [196, 141, 110], 0.05),
+        l if (tex::FIRE_0..tex::FIRE_0 + tex::FIRE_FRAMES).contains(&l) => {
+            // Pixel flames rise from a solid base into separate tongues.
+            // Each frame changes the tips and hot inner cores.
+            let frame = (l - tex::FIRE_0) as usize;
+            let sway = (rnd(tex::FIRE_0, y / 3, frame, 2) * 3.0) as usize;
+            let column = (x + sway) % SIZE;
+            let tip = (rnd(tex::FIRE_0, column / 2, frame, 3) * 9.0) as usize;
+            if y < tip || (y < 10 && rnd(l, x, y, 4) < 0.16) {
+                [0, 0, 0, 0]
+            } else {
+                let heat = ((y - tip) as f32 / (SIZE - tip) as f32 + r * 0.2).min(1.0);
+                [255, (75.0 + 180.0 * heat) as u8, (15.0 + 105.0 * heat * heat) as u8, 255]
+            }
+        }
         tex::LADDER => {
             // Two rails with a rung every four pixels; see-through between.
             let rail = matches!(x, 1 | 2 | 13 | 14);

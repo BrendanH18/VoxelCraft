@@ -93,6 +93,7 @@ src/
     furnace.rs       furnace contents, smelting and fuel
     chest.rs         chest contents
     growth.rs        random block ticks: crops, saplings, grass, farmland, leaf decay
+    fire.rs          scheduled fire ticks, spread, burnout and random-tick lava ignition
     chunk.rs         chunk storage
     block.rs         block registry
     shape.rs         box shapes of stairs, fences, gates, ladders and doors

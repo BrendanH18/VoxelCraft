@@ -1,5 +1,5 @@
 //! Dropped items: stacks lying in the world, like Minecraft's item
-//! entities. They fall, slide to a stop, float up in water, burn in lava,
+//! entities. They fall, slide to a stop, float up in water, burn in lava/fire,
 //! merge with matching stacks nearby, and despawn after five minutes in
 //! loaded chunks. The game picks them up when the player walks over them.
 
@@ -46,7 +46,7 @@ impl ItemEntity {
         let dtf = dt as f32;
         self.age += dtf;
         self.pickup_delay = (self.pickup_delay - dtf).max(0.0);
-        if self.age >= LIFETIME || physics::is_lava_at(world, self.pos + DVec3::Y * 0.1) {
+        if self.age >= LIFETIME || physics::touches_block(world, self.pos, SHAPE, |b| b.is_lava() || b.is_fire()) {
             return false;
         }
         if physics::is_fluid_at(world, self.pos + DVec3::Y * 0.1) {
@@ -181,6 +181,10 @@ mod tests {
         let mut item =
             ItemEntity::new(Stack::new(Item::STICK, 1), DVec3::new(0.5, 3.0, 10.5), DVec3::ZERO, 0.0, &mut rng);
         assert!(!settle(&mut item, &world, 2.0), "burns in lava");
+        world.set(IVec3::new(0, 10, 0), crate::world::block::Block::FIRE);
+        let mut item =
+            ItemEntity::new(Stack::new(Item::COAL, 1), DVec3::new(0.5, 10.1, 0.5), DVec3::ZERO, 0.0, &mut rng);
+        assert!(!item.update(0.05, &world), "burns in fire");
 
         let mut world = Grid::flat(10);
         world.set(IVec3::new(0, 10, 0), Block::STONE);

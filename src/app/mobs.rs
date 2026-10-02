@@ -106,6 +106,10 @@ impl Game {
     }
 
     pub(super) fn update_mobs(&mut self, dt: f64) {
+        for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
+            self.mobs.entities.prime_tnt(cell, short_fuse);
+            self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
+        }
         self.mobs.attack_cooldown -= dt;
         let ctx = entity::Ctx {
             player_pos: self.player.pos,
@@ -170,8 +174,8 @@ impl Game {
         self.world.explode(center, power as f64);
         self.mobs.entities.explode(center, power);
         // TNT caught in the blast goes off soon after.
-        for cell in std::mem::take(&mut self.world.primed_tnt) {
-            self.mobs.entities.prime_tnt(cell, true);
+        for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
+            self.mobs.entities.prime_tnt(cell, short_fuse);
         }
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
         let mid = self.player.pos + DVec3::Y * 0.9;
