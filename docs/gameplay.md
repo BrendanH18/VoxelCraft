@@ -30,7 +30,7 @@
 | F1 | Toggle HUD |
 | F3 | Debug screen |
 | F11 | Fullscreen |
-| Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit; Esc again goes back |
+| Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
 
 The world autosaves every two minutes and on exit. Switching away from
 the window also pauses the game.

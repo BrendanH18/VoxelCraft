@@ -12,6 +12,7 @@ mod mobs;
 mod recipe_book;
 mod settings;
 pub mod survival;
+mod title;
 mod weather;
 
 use std::sync::Arc;
@@ -175,6 +176,8 @@ struct Game {
     /// Where options are saved; `None` for scripted runs (screenshots,
     /// benchmarks), which neither read nor write them.
     settings_path: Option<std::path::PathBuf>,
+    /// Name shown in the world list (the save folder's name may differ).
+    world_name: String,
 }
 
 pub struct App {
@@ -182,18 +185,50 @@ pub struct App {
     saves_dir: std::path::PathBuf,
     save_on_exit: bool,
     game: Option<Game>,
+    /// The title screen, while no world is loaded.
+    title: Option<title::Title>,
 }
 
 impl App {
     pub fn new(args: Args, saves_dir: std::path::PathBuf) -> Self {
         let save_on_exit = args.screenshot.is_none() && !args.bench_render;
-        Self { args, saves_dir, save_on_exit, game: None }
+        Self { args, saves_dir, save_on_exit, game: None, title: None }
     }
+
+    /// Loads (or creates) a world and leaves the title screen. Debug
+    /// options like `--give` only apply to the first world of a session.
+    fn play(&mut self, shell: Shell, world_dir: &str, new: Option<title::NewWorld>) {
+        let mut game = Game::start(shell, &self.args, &self.saves_dir, world_dir, new);
+        game.apply_settings();
+        self.args.clear_one_shot();
+        self.title = None;
+        self.game = Some(game);
+    }
+
+    /// Saves the world and goes back to the title screen.
+    fn quit_to_title(&mut self) {
+        let Some(mut game) = self.game.take() else { return };
+        game.save();
+        game.save_settings();
+        let shell = game.into_shell();
+        self.title = Some(title::Title::new(shell, &self.saves_dir));
+    }
+}
+
+/// What outlives a world: the window's renderer, sound and options. A game
+/// takes it on start and hands it back to the title screen on quit.
+pub(crate) struct Shell {
+    renderer: Renderer,
+    audio: crate::audio::Audio,
+    settings: settings::Settings,
+    /// Where options are saved; `None` for scripted runs (screenshots,
+    /// benchmarks), which neither read nor write them.
+    settings_path: Option<std::path::PathBuf>,
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.game.is_some() {
+        if self.game.is_some() || self.title.is_some() {
             return;
         }
         let attrs = Window::default_attributes()
@@ -215,188 +250,36 @@ impl ApplicationHandler for App {
         settings.vsync &= !self.args.no_vsync;
 
         let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
-
-        let storage = Storage::new(self.saves_dir.join(&self.args.world));
-        let existing = if self.args.new_world || !storage.exists() {
-            None
-        } else {
-            match storage.load_level() {
-                Ok(level) => Some(level),
-                Err(e) => {
-                    log::error!("failed to load level, starting fresh: {e}");
-                    None
-                }
-            }
-        };
-        let seed = existing.as_ref().map(|l| l.seed).or(self.args.seed).unwrap_or_else(|| {
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1)
-        });
-        let saved = if existing.is_some() {
-            storage.load_chunks().unwrap_or_else(|e| {
-                log::error!("failed to load chunks: {e}");
-                Default::default()
-            })
-        } else {
-            Default::default()
-        };
-        log::info!("world '{}' seed {seed}, {} modified chunks", self.args.world, saved.len());
-
-        let mode = match (self.args.mode, existing.as_ref().and_then(|l| l.props.get("mode"))) {
-            (Some(m), _) => m,
-            (None, Some(m)) if m == "creative" => GameMode::Creative,
-            _ => GameMode::Survival,
-        };
-        let inventory = existing
-            .as_ref()
-            .and_then(|l| l.props.get("inventory"))
-            .and_then(|s| Inventory::deserialize(s))
-            .unwrap_or_else(|| match mode {
-                GameMode::Creative => Inventory::with_hotbar(&CREATIVE_HOTBAR),
-                GameMode::Survival => Inventory::default(),
-            });
-
-        let mut inventory = inventory;
-        for &(item, count) in &self.args.give {
-            inventory.add(item, count);
-        }
-        for &item in &self.args.wear {
-            if let Some((piece, _)) = item.as_armor() {
-                inventory.armor[piece as usize] = Some(Stack::new(item, 1));
+        let audio = crate::audio::Audio::new(self.args.mute, settings.volume);
+        let shell = Shell { renderer, audio, settings, settings_path };
+        // A named world, a fresh one or a scripted run skips the title screen.
+        let to_title = self.args.open_menu.as_deref() == Some("title");
+        match self.args.world.clone() {
+            Some(world) if !to_title => self.play(shell, &world, None),
+            None if !to_title && (self.args.new_world || scripted) => self.play(shell, "world", None),
+            _ => {
+                let mut title = title::Title::new(shell, &self.saves_dir);
+                title.screenshot = self.args.screenshot.take();
+                self.title = Some(title);
             }
         }
-
-        let prop = |k: &str| existing.as_ref().and_then(|l| l.props.get(k));
-        let mut vitals = Vitals::restore(
-            prop("health").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_HEALTH),
-            prop("air").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_AIR),
-            prop("death").cloned(),
-        );
-        if let Some(h) = self.args.health {
-            vitals = Vitals::restore(h, vitals.air, None);
-        }
-        if let Some(a) = self.args.air {
-            vitals.air = a.clamp(0.0, survival::MAX_AIR);
-        }
-        if let Some(text) = prop("hunger") {
-            let n: Vec<f32> = text.split(',').filter_map(|v| v.parse().ok()).collect();
-            if let [food, saturation, exhaustion] = n[..] {
-                vitals.hunger = survival::Hunger::restore(food, saturation, exhaustion);
-            }
-        }
-        if let Some(f) = self.args.food {
-            vitals.hunger = survival::Hunger::restore(f, 0.0, 0.0);
-        }
-
-        let generator = Arc::new(Generator::new(seed));
-        let mut player = Player::new(generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
-        if let Some((pos, yaw, pitch)) = existing.as_ref().and_then(|l| l.player) {
-            player.pos = pos;
-            player.yaw = yaw;
-            player.pitch = pitch;
-        }
-        if let Some([x, y, z, yaw, pitch]) = self.args.pose {
-            player.pos = DVec3::new(x, y, z);
-            player.yaw = (yaw as f32).to_radians();
-            player.pitch = (pitch as f32).to_radians();
-            player.flying = true;
-        }
-        player.can_fly = mode == GameMode::Creative;
-        let mut world = World::new(generator, saved, settings.render_distance);
-        if let Some(f) = existing.as_ref().and_then(|l| l.props.get("furnaces")) {
-            world.load_furnaces(f);
-        }
-        if let Some(c) = existing.as_ref().and_then(|l| l.props.get("chests")) {
-            world.load_chests(c);
-        }
-        log::info!("{} worker threads", world.worker_threads());
-
-        let now = Instant::now();
-        let mut game = Game {
-            renderer,
-            world,
-            player,
-            storage,
-            keys: FxHashSet::default(),
-            modifiers: Default::default(),
-            mouse_grabbed: false,
-            left_held: false,
-            right_held: false,
-            action_cooldown: 0.0,
-            mode,
-            inventory,
-            inventory_open: self.args.open_inventory,
-            craft: crate::crafting::Grid::new(2),
-            container: Container::Inventory,
-            recipe_book: recipe_book::RecipeBook::default(),
-            creative_scroll: 0,
-            cursor_px: (0.0, 0.0),
-            actions: actions::Actions::default(),
-            show_hud: true,
-            last_space: now - Duration::from_secs(1),
-            last_frame: now,
-            day_time: self
-                .args
-                .time
-                .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
-                .unwrap_or(0.08),
-            sleeping: None,
-            spawn_bed: existing.as_ref().and_then(|l| l.props.get("bed")).and_then(|t| {
-                let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
-                (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
-            }),
-            weather: {
-                let mut w = weather::Weather::new(seed);
-                if let Some(text) = existing.as_ref().and_then(|l| l.props.get("weather")) {
-                    w.deserialize(text);
-                }
-                if let Some(rain) = self.args.weather {
-                    w.set(rain, true);
-                }
-                w
-            },
-            weather_verts: Vec::new(),
-            started: now,
-            last_save: now,
-            stats_since: now,
-            frames: 0,
-            frame_time_sum: 0.0,
-            fps: 0.0,
-            cpu_ms: 0.0,
-            show_debug: self.args.debug_overlay,
-            popup: (String::new(), now - Duration::from_secs(10)),
-            vitals,
-            screenshot: self.args.screenshot.clone(),
-            screenshot_state: 0,
-            place: self.args.place.clone(),
-            drop: self.args.drop.clone(),
-            placed: false,
-            bench_render: self.args.bench_render.then(Vec::new),
-            frame_started: None,
-            audio: crate::audio::Audio::new(self.args.mute, settings.volume),
-            mobs: mobs::Mobs::new(seed, self.args.spawn.clone(), self.args.wait),
-            menu: match self.args.open_menu.as_deref() {
-                Some("pause") => Some(menu::Screen::Pause),
-                Some("options") => Some(menu::Screen::Options),
-                _ => None,
-            },
-            menu_drag: None,
-            had_focus: false,
-            settings,
-            settings_path,
-        };
-        game.renderer.force_offscreen = game.bench_render.is_some();
-        if let Some(items) = existing.as_ref().and_then(|l| l.props.get("items")) {
-            game.mobs.entities.load_items(items);
-        }
-        if game.vitals.is_dead() {
-            game.on_death();
-        } else if game.screenshot.is_none() && game.bench_render.is_none() {
-            game.set_grab(true);
-        }
-        self.game = Some(game);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if let Some(title) = self.title.as_mut() {
+            if matches!(event, WindowEvent::CloseRequested) {
+                event_loop.exit();
+            }
+            match title.event(event) {
+                Some(title::Action::Play(dir, new)) => {
+                    let shell = self.title.take().expect("title screen").into_shell();
+                    self.play(shell, &dir, new);
+                }
+                Some(title::Action::Quit) => event_loop.exit(),
+                None => {}
+            }
+            return;
+        }
         let Some(game) = self.game.as_mut() else { return };
         match event {
             WindowEvent::CloseRequested => {
@@ -441,8 +324,7 @@ impl ApplicationHandler for App {
                 let pressed = state == ElementState::Pressed;
                 if game.menu.is_some() {
                     if button == MouseButton::Left && game.menu_click(pressed) == Some(menu::MenuAction::Quit) {
-                        self.save_on_exit = true;
-                        event_loop.exit();
+                        self.quit_to_title();
                     }
                     return;
                 }
@@ -535,11 +417,17 @@ impl ApplicationHandler for App {
             game.save();
             game.save_settings();
         }
+        if let Some(title) = &self.title {
+            title.save_settings();
+        }
     }
 
     fn about_to_wait(&mut self, _el: &ActiveEventLoop) {
         if let Some(game) = &self.game {
             game.renderer.window.request_redraw();
+        }
+        if let Some(title) = &self.title {
+            title.request_redraw();
         }
     }
 }
@@ -569,6 +457,214 @@ fn sky_state(t: f64) -> SkyState {
 }
 
 impl Game {
+    /// Loads the world saved in `saves_dir/world_dir`, or creates it (also
+    /// when `new` describes a world made on the title screen).
+    fn start(
+        shell: Shell,
+        args: &Args,
+        saves_dir: &std::path::Path,
+        world_dir: &str,
+        new: Option<title::NewWorld>,
+    ) -> Game {
+        let Shell { renderer, audio, settings, settings_path } = shell;
+        let storage = Storage::new(saves_dir.join(world_dir));
+        let existing = if args.new_world || new.is_some() || !storage.exists() {
+            None
+        } else {
+            match storage.load_level() {
+                Ok(level) => Some(level),
+                Err(e) => {
+                    log::error!("failed to load level, starting fresh: {e}");
+                    None
+                }
+            }
+        };
+        let seed =
+            existing.as_ref().map(|l| l.seed).or(new.as_ref().and_then(|n| n.seed)).or(args.seed).unwrap_or_else(
+                || {
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_nanos() as u64)
+                        .unwrap_or(1)
+                },
+            );
+        let saved = if existing.is_some() {
+            storage.load_chunks().unwrap_or_else(|e| {
+                log::error!("failed to load chunks: {e}");
+                Default::default()
+            })
+        } else {
+            Default::default()
+        };
+        log::info!("world '{world_dir}' seed {seed}, {} modified chunks", saved.len());
+
+        let mode =
+            match (new.as_ref().map(|n| n.mode).or(args.mode), existing.as_ref().and_then(|l| l.props.get("mode"))) {
+                (Some(m), _) => m,
+                (None, Some(m)) if m == "creative" => GameMode::Creative,
+                _ => GameMode::Survival,
+            };
+        let inventory = existing
+            .as_ref()
+            .and_then(|l| l.props.get("inventory"))
+            .and_then(|s| Inventory::deserialize(s))
+            .unwrap_or_else(|| match mode {
+                GameMode::Creative => Inventory::with_hotbar(&CREATIVE_HOTBAR),
+                GameMode::Survival => Inventory::default(),
+            });
+
+        let mut inventory = inventory;
+        for &(item, count) in &args.give {
+            inventory.add(item, count);
+        }
+        for &item in &args.wear {
+            if let Some((piece, _)) = item.as_armor() {
+                inventory.armor[piece as usize] = Some(Stack::new(item, 1));
+            }
+        }
+
+        let prop = |k: &str| existing.as_ref().and_then(|l| l.props.get(k));
+        let mut vitals = Vitals::restore(
+            prop("health").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_HEALTH),
+            prop("air").and_then(|s| s.parse().ok()).unwrap_or(survival::MAX_AIR),
+            prop("death").cloned(),
+        );
+        if let Some(h) = args.health {
+            vitals = Vitals::restore(h, vitals.air, None);
+        }
+        if let Some(a) = args.air {
+            vitals.air = a.clamp(0.0, survival::MAX_AIR);
+        }
+        if let Some(text) = prop("hunger") {
+            let n: Vec<f32> = text.split(',').filter_map(|v| v.parse().ok()).collect();
+            if let [food, saturation, exhaustion] = n[..] {
+                vitals.hunger = survival::Hunger::restore(food, saturation, exhaustion);
+            }
+        }
+        if let Some(f) = args.food {
+            vitals.hunger = survival::Hunger::restore(f, 0.0, 0.0);
+        }
+
+        let generator = Arc::new(Generator::new(seed));
+        let mut player = Player::new(generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+        if let Some((pos, yaw, pitch)) = existing.as_ref().and_then(|l| l.player) {
+            player.pos = pos;
+            player.yaw = yaw;
+            player.pitch = pitch;
+        }
+        if let Some([x, y, z, yaw, pitch]) = args.pose {
+            player.pos = DVec3::new(x, y, z);
+            player.yaw = (yaw as f32).to_radians();
+            player.pitch = (pitch as f32).to_radians();
+            player.flying = true;
+        }
+        player.can_fly = mode == GameMode::Creative;
+        let mut world = World::new(generator, saved, settings.render_distance);
+        if let Some(f) = existing.as_ref().and_then(|l| l.props.get("furnaces")) {
+            world.load_furnaces(f);
+        }
+        if let Some(c) = existing.as_ref().and_then(|l| l.props.get("chests")) {
+            world.load_chests(c);
+        }
+        log::info!("{} worker threads", world.worker_threads());
+
+        let now = Instant::now();
+        let mut game = Game {
+            renderer,
+            world,
+            player,
+            storage,
+            keys: FxHashSet::default(),
+            modifiers: Default::default(),
+            mouse_grabbed: false,
+            left_held: false,
+            right_held: false,
+            action_cooldown: 0.0,
+            mode,
+            inventory,
+            inventory_open: args.open_inventory,
+            craft: crate::crafting::Grid::new(2),
+            container: Container::Inventory,
+            recipe_book: recipe_book::RecipeBook::default(),
+            creative_scroll: 0,
+            cursor_px: (0.0, 0.0),
+            actions: actions::Actions::default(),
+            show_hud: true,
+            last_space: now - Duration::from_secs(1),
+            last_frame: now,
+            day_time: args
+                .time
+                .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
+                .unwrap_or(0.08),
+            sleeping: None,
+            spawn_bed: existing.as_ref().and_then(|l| l.props.get("bed")).and_then(|t| {
+                let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
+                (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
+            }),
+            weather: {
+                let mut w = weather::Weather::new(seed);
+                if let Some(text) = existing.as_ref().and_then(|l| l.props.get("weather")) {
+                    w.deserialize(text);
+                }
+                if let Some(rain) = args.weather {
+                    w.set(rain, true);
+                }
+                w
+            },
+            weather_verts: Vec::new(),
+            started: now,
+            last_save: now,
+            stats_since: now,
+            frames: 0,
+            frame_time_sum: 0.0,
+            fps: 0.0,
+            cpu_ms: 0.0,
+            show_debug: args.debug_overlay,
+            popup: (String::new(), now - Duration::from_secs(10)),
+            vitals,
+            screenshot: args.screenshot.clone(),
+            screenshot_state: 0,
+            place: args.place.clone(),
+            drop: args.drop.clone(),
+            placed: false,
+            bench_render: args.bench_render.then(Vec::new),
+            frame_started: None,
+            audio,
+            mobs: mobs::Mobs::new(seed, args.spawn.clone(), args.wait),
+            menu: match args.open_menu.as_deref() {
+                Some("pause") => Some(menu::Screen::Pause),
+                Some("options") => Some(menu::Screen::Options),
+                _ => None,
+            },
+            menu_drag: None,
+            had_focus: false,
+            settings,
+            settings_path,
+            world_name: new
+                .map(|n| n.name)
+                .or_else(|| existing.as_ref().and_then(|l| l.props.get("name")).cloned())
+                .unwrap_or_else(|| world_dir.to_string()),
+        };
+        game.renderer.force_offscreen = game.bench_render.is_some();
+        if let Some(items) = existing.as_ref().and_then(|l| l.props.get("items")) {
+            game.mobs.entities.load_items(items);
+        }
+        if game.vitals.is_dead() {
+            game.on_death();
+        } else if game.screenshot.is_none() && game.bench_render.is_none() {
+            game.set_grab(true);
+        }
+        game
+    }
+
+    /// Ends the game, keeping what the title screen needs.
+    fn into_shell(self) -> Shell {
+        let Game { mut renderer, mut audio, settings, settings_path, .. } = self;
+        renderer.clear_world();
+        audio.leave_world();
+        Shell { renderer, audio, settings, settings_path }
+    }
+
     fn set_grab(&mut self, grab: bool) {
         let window = &self.renderer.window;
         if grab {
@@ -1159,6 +1255,7 @@ impl Game {
     fn save(&mut self) {
         let mut props = std::collections::BTreeMap::new();
         props.insert("mode".to_string(), self.mode.name().to_string());
+        props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
         inventory.return_stacks(self.craft.cells.iter().flatten().copied());

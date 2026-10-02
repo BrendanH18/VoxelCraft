@@ -855,6 +855,16 @@ impl Renderer {
         self.meshes.insert(pos, ChunkMesh { alloc, quads: mesh.quads.len() as u32, offsets });
     }
 
+    /// Forgets every chunk mesh, entity and weather sheet (leaving a world).
+    pub fn clear_world(&mut self) {
+        let all: Vec<IVec3> = self.meshes.keys().copied().collect();
+        for pos in all {
+            self.remove_mesh(pos);
+        }
+        self.set_entities(&[]);
+        self.set_weather(&[]);
+    }
+
     pub fn remove_mesh(&mut self, pos: IVec3) {
         if let Some(m) = self.meshes.remove(&pos) {
             self.arena.free(m.alloc, m.quads);

@@ -36,6 +36,8 @@ Use `--wait` to let the scene simulate before capture. Scripted runs
 use the [per-user data folder](releases.md#player-data-and-old-saves); add
 `--data-dir target/screenshots` to isolate a scripted run. In `--place` and
 `--spawn`, `~` for the y coordinate means the terrain surface.
+`--open-menu title --screenshot <file>` captures the title screen's world list
+instead.
 
 These examples use a separate `screenshots` save. `--new` ignores its existing
 save, which is replaced when the game saves; use a different `--world` name to

@@ -20,7 +20,8 @@ use winit::event_loop::{ControlFlow, EventLoop};
 
 pub struct Args {
     pub seed: Option<u64>,
-    pub world: String,
+    /// `--world`: load this save directly instead of showing the title screen.
+    pub world: Option<String>,
     pub data_dir: Option<std::path::PathBuf>,
     /// Overrides the saved option for this session.
     pub render_distance: Option<i32>,
@@ -65,19 +66,21 @@ pub struct Args {
 const USAGE: &str = "\
 voxelcraft [options]
   --seed <n>        world seed (new worlds only)
-  --world <name>    save name (letters, digits, - or _; default: world)
+  --world <name>    load or create this save, skipping the title screen
+                    (letters, digits, - or _)
   --data-dir <dir>  override the per-user data folder (saves and logs)
   --version         show the game version
   --rd <chunks>     render distance in 32-block chunks (default: 8, or the
                     saved option)
-  --new             ignore any existing save and start a fresh world
+  --new             ignore any existing save and start a fresh world (in
+                    --world, default: world)
   --no-vsync        uncapped frame rate
   --bench           headless terrain generation + meshing benchmark
   --bench-render    load the world, render a 360° sweep offscreen, report frame times
   --creative, --survival  game mode (default: survival, or the saved mode)
   --f3              start with the debug overlay open
   --open-inventory  start with the inventory screen open (screenshots)
-  --open-menu <m>   start with a menu open: pause or options (screenshots)
+  --open-menu <m>   start with a menu open: pause, options or title (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
@@ -103,7 +106,7 @@ voxelcraft [options]
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         seed: None,
-        world: "world".into(),
+        world: None,
         data_dir: None,
         render_distance: None,
         no_vsync: false,
@@ -136,7 +139,7 @@ fn parse_args() -> Result<Args, String> {
         let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
         match a.as_str() {
             "--seed" => args.seed = Some(value("--seed")?.parse().map_err(|_| "bad seed")?),
-            "--world" => args.world = value("--world")?,
+            "--world" => args.world = Some(value("--world")?),
             "--data-dir" => args.data_dir = Some(value("--data-dir")?.into()),
             "--rd" => args.render_distance = Some(value("--rd")?.parse::<i32>().map_err(|_| "bad --rd")?.clamp(2, 32)),
             "--no-vsync" => args.no_vsync = true,
@@ -147,8 +150,8 @@ fn parse_args() -> Result<Args, String> {
             "--open-inventory" => args.open_inventory = true,
             "--open-menu" => {
                 let m = value("--open-menu")?;
-                if !matches!(m.as_str(), "pause" | "options") {
-                    return Err(format!("--open-menu: expected pause or options, got {m}"));
+                if !matches!(m.as_str(), "pause" | "options" | "title") {
+                    return Err(format!("--open-menu: expected pause, options or title, got {m}"));
                 }
                 args.open_menu = Some(m);
             }
@@ -221,8 +224,33 @@ fn parse_args() -> Result<Args, String> {
             other => return Err(format!("unknown argument {other}\n\n{USAGE}")),
         }
     }
-    data::validate_world_name(&args.world)?;
+    if let Some(world) = &args.world {
+        data::validate_world_name(world)?;
+    }
     Ok(args)
+}
+
+impl Args {
+    /// Forgets the options that set up one world (`--give`, `--pose`, ...)
+    /// once it has loaded, so worlds picked later start as saved.
+    pub fn clear_one_shot(&mut self) {
+        self.new_world = false;
+        self.seed = None;
+        self.mode = None;
+        self.open_inventory = false;
+        self.open_menu = None;
+        self.time = None;
+        self.weather = None;
+        self.place.clear();
+        self.spawn.clear();
+        self.pose = None;
+        self.health = None;
+        self.air = None;
+        self.food = None;
+        self.give.clear();
+        self.wear.clear();
+        self.drop.clear();
+    }
 }
 
 fn main() {

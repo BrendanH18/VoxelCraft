@@ -153,6 +153,14 @@ impl Audio {
         }
     }
 
+    /// Fades out the world's ambience and lifts underwater muffling (back
+    /// to the title screen).
+    pub fn leave_world(&mut self) {
+        self.was_underwater = false;
+        self.send(Command::Muffle(false));
+        self.send(Command::Ambience { wind: 0.0, cave: 0.0, rain: 0.0 });
+    }
+
     pub fn ui_click(&mut self) {
         self.play(Sound::Click, None, 0.8, (0.97, 1.03));
     }
