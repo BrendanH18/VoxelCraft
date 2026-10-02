@@ -14,7 +14,7 @@ Visual C++ redistributable installation.
 
 - Push a `release/*` branch to build downloadable workflow artifacts.
 - A manual workflow run builds artifacts, without publishing.
-- Push a tag matching Cargo.toml, such as `v0.1.0`, to build all three packages
+- Push a tag matching Cargo.toml, such as `v0.2.0`, to build all three packages
   and create a **draft** GitHub Release with SHA-256 checksums and the notes from
   `packaging/RELEASE-NOTES.md`. The workflow never publishes automatically.
   Rerunning a tag build refreshes an existing draft's downloads; published
@@ -36,7 +36,7 @@ cargo install cargo-about --locked --features cli --version 0.9.2
 cargo about generate --locked --fail --target aarch64-apple-darwin \
   --output-file packaging/THIRD-PARTY-LICENSES.html packaging/licenses.hbs
 bash packaging/macos/package.sh aarch64-apple-darwin
-bash packaging/macos/smoke-test.sh dist/VoxelCraft-0.1.0-macos-apple-silicon.dmg
+bash packaging/macos/smoke-test.sh dist/VoxelCraft-0.2.0-macos-apple-silicon.dmg
 ```
 
 Replace the target with `x86_64-apple-darwin` for Intel. The smoke test must run
