@@ -140,7 +140,8 @@ session.
   to 0.19 s with gold. Tools lose 1 durability per block (swords 2) and 1
   per hit (other tools 2), and break when worn out. Melee damage comes from
   the held item: a fist 1, swords 4 (wood, gold) to 7 (diamond), axes,
-  pickaxes and shovels less
+  pickaxes and shovels less. Hitting while falling is a critical hit for
+  1.5x damage
 - Slabs: three stone, cobblestone, planks, sandstone, bricks or nether
   bricks in a row make six half-height slabs that mine like their full
   block. Placing a slab on top of the same slab makes the full block
