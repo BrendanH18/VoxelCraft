@@ -16,6 +16,7 @@ mod items;
 mod menu;
 mod mobs;
 mod recipe_book;
+mod search;
 mod settings;
 pub use crate::simulation::survival;
 mod title;
@@ -114,6 +115,7 @@ impl GameMode {
 struct Game {
     agents: agents::Agents,
     console: console::Console,
+    search: search::Search,
     renderer: Renderer,
     world: World,
     player: Player,
@@ -336,7 +338,7 @@ impl ApplicationHandler for App {
                 let PhysicalKey::Code(code) = event.physical_key else { return };
                 match event.state {
                     ElementState::Pressed => {
-                        if game.console_key(&event) {
+                        if game.console_key(&event) || game.search_key(&event) {
                             return;
                         }
                         if !event.repeat {
@@ -638,6 +640,11 @@ impl Game {
         }
         let mut game = Game {
             agents,
+            search: search::Search {
+                query: args.inventory_search.clone().unwrap_or_default(),
+                focused: args.open_inventory && args.screenshot.is_none(),
+                ..Default::default()
+            },
             console: console::Console { open: args.open_console, input: "/".into(), ..Default::default() },
             renderer,
             world,
@@ -941,6 +948,8 @@ impl Game {
     fn toggle_inventory(&mut self) {
         self.inventory_open = !self.inventory_open;
         if self.inventory_open {
+            self.search.focused = self.mode == GameMode::Creative && self.container == Container::Inventory;
+            self.search.selected = false;
             self.set_grab(false);
             self.keys.clear();
             self.left_held = false;
@@ -1020,6 +1029,9 @@ impl Game {
     }
 
     fn inventory_click(&mut self, right: bool) {
+        if self.search_click() {
+            return;
+        }
         if self.throw_cursor(right) {
             return;
         }
@@ -1075,7 +1087,7 @@ impl Game {
     /// Scrolls the creative palette by whole rows.
     fn scroll_palette(&mut self, rows: i32) {
         if self.mode == GameMode::Creative {
-            let max = hud::palette_rows().saturating_sub(hud::PALETTE_ROWS);
+            let max = hud::palette_rows(&self.search.query).saturating_sub(hud::PALETTE_ROWS);
             self.creative_scroll = self.creative_scroll.saturating_add_signed(rows as isize).min(max);
         }
     }

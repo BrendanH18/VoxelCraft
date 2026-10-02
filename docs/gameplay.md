@@ -290,3 +290,9 @@ and despawn beyond 96 blocks or when their chunk unloads. Every mob burns
 in lava. Player hits deal damage based on the held item, with knockback, at most
 every 0.5 s: a fist deals 1, and swords deal 4–7 depending on their tier.
 Hostile mobs ignore creative players.
+
+Inventory search filters creative items by name. Type in the search field
+(automatically focused in creative), or press Ctrl+F. In survival and containers,
+matching stacks are highlighted without moving any slots. Matching ignores case,
+accepts underscores and requires every search word. Enter leaves the field;
+Esc closes the inventory. Agents can use `catalog [query]` for the same search.

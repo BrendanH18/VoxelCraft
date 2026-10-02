@@ -117,6 +117,13 @@ impl Game {
 
     pub(super) fn host_command(&mut self, command: Command) -> Result<String, String> {
         match command {
+            Command::Catalog(query) => {
+                return Ok(crate::item::Item::creative_palette()
+                    .filter(|i| i.matches_query(&query))
+                    .map(|i| i.name())
+                    .collect::<Vec<_>>()
+                    .join(", "));
+            }
             Command::Help => return Ok(HELP.into()),
             Command::Give(item, count) => {
                 let left = self.inventory.add(item, count);

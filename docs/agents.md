@@ -36,6 +36,7 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | Command | Effect |
 |---|---|
 | `help`, `players` | Command reference or active agent list |
+| `catalog [query]` | Search available items; returns names, command names, IDs and stack limits |
 | `observe [0..2]` | Position, dimension, health, hunger, inventory, target and optional nearby cells |
 | `look yaw pitch` | Set camera direction |
 | `move forward right ticks [jump sprint sneak]` | Physics input; axes −1 through 1; sneak also descends in flight |

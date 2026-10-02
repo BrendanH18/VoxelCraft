@@ -29,6 +29,7 @@ pub struct Args {
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
     pub open_inventory: bool,
+    pub inventory_search: Option<String>,
     /// Start with the pause menu or options screen open (screenshots).
     pub open_menu: Option<String>,
     /// Starting time of day, 0..1 (0 sunrise, 0.25 noon, 0.75 midnight).
@@ -81,6 +82,7 @@ voxelcraft [options]
   --bench-render    load the world, render a 360° sweep offscreen, report frame times
   --creative, --survival  game mode (default: survival, or the saved mode)
   --f3              start with the debug overlay open
+  --inventory-search <text>  initial inventory search query
   --open-inventory  start with the inventory screen open (screenshots)
   --open-menu <m>   start with a menu open: pause, options or title (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
@@ -126,6 +128,7 @@ fn parse_args() -> Result<Args, String> {
         debug_overlay: false,
         mode: None,
         open_inventory: false,
+        inventory_search: None,
         open_menu: None,
         time: None,
         weather: None,
@@ -163,6 +166,7 @@ fn parse_args() -> Result<Args, String> {
             "--bench" => args.bench = true,
             "--bench-render" => args.bench_render = true,
             "--f3" => args.debug_overlay = true,
+            "--inventory-search" => args.inventory_search = Some(value("--inventory-search")?),
             "--open-inventory" => args.open_inventory = true,
             "--open-menu" => {
                 let m = value("--open-menu")?;
@@ -264,6 +268,7 @@ impl Args {
         self.seed = None;
         self.mode = None;
         self.open_inventory = false;
+        self.inventory_search = None;
         self.open_console = false;
         self.open_menu = None;
         self.time = None;

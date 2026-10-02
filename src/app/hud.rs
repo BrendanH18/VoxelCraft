@@ -35,8 +35,8 @@ pub(super) enum SlotRef {
 pub(super) const PALETTE_ROWS: usize = 3;
 
 /// Total rows in the creative palette.
-pub(super) fn palette_rows() -> usize {
-    Item::creative_palette().count().div_ceil(9)
+pub(super) fn palette_rows(query: &str) -> usize {
+    Item::creative_palette().filter(|item| item.matches_query(query)).count().div_ceil(9)
 }
 
 const SLOT: f32 = 18.0;
@@ -293,7 +293,7 @@ impl Game {
 
     /// Top-left corner and height of the inventory panel.
     fn panel(&self, screen: (f32, f32)) -> (f32, f32, f32) {
-        let h = PANEL_H + self.top_h();
+        let h = PANEL_H + self.top_h() + super::search::HEIGHT;
         let extra = if self.recipe_book.open && self.shows_recipes() && recipe_book::fits_beside(screen.0, PANEL_W) {
             recipe_book::WIDTH + recipe_book::GAP
         } else {
@@ -302,9 +302,14 @@ impl Game {
         (((screen.0 - PANEL_W - extra) / 2.0).floor(), ((screen.1 - h) / 2.0).floor(), h)
     }
 
+    pub(super) fn search_bounds(&self, screen: (f32, f32)) -> (f32, f32, f32) {
+        let (x, y, _) = self.panel(screen);
+        (x + 7.0, y + 4.0, PANEL_W - 14.0)
+    }
+
     fn recipe_layout(&self, screen: (f32, f32)) -> Layout {
         let (x, y, h) = self.panel(screen);
-        Layout::new(screen.0, Rect { x, y, w: PANEL_W, h })
+        Layout::new(screen.0, Rect { x, y: y + super::search::HEIGHT, w: PANEL_W, h: h - super::search::HEIGHT })
     }
 
     pub(super) fn recipe_control_under_cursor(&self) -> Option<Control> {
@@ -323,6 +328,7 @@ impl Game {
     /// in creative) and the hotbar.
     fn inventory_slots(&self, screen: (f32, f32)) -> Vec<(SlotRef, f32, f32)> {
         let (px, py, _) = self.panel(screen);
+        let py = py + super::search::HEIGHT;
         let mut out = Vec::with_capacity(46);
         let top = if let Container::Chest(_) = self.container {
             for i in 0..crate::world::chest::SLOTS {
@@ -359,7 +365,12 @@ impl Game {
         let grid = |i: usize| (px + 7.0 + (i % 9) as f32 * SLOT, py + 18.0 + (i / 9) as f32 * SLOT);
         if self.shows_palette() {
             let first = self.creative_scroll * 9;
-            for (i, item) in Item::creative_palette().skip(first).take(PALETTE_ROWS * 9).enumerate() {
+            for (i, item) in Item::creative_palette()
+                .filter(|item| item.matches_query(&self.search.query))
+                .skip(first)
+                .take(PALETTE_ROWS * 9)
+                .enumerate()
+            {
                 let (x, y) = grid(i);
                 out.push((SlotRef::Palette(item), x, y));
             }
@@ -413,6 +424,8 @@ impl Game {
         ui.rect(px, py, 1.0, panel_h, WHITE);
         ui.rect(px, py + panel_h - 1.0, PANEL_W, 1.0, [0.33, 0.33, 0.33, 1.0]);
         ui.rect(px + PANEL_W - 1.0, py, 1.0, panel_h, [0.33, 0.33, 0.33, 1.0]);
+        self.search_ui(ui);
+        let py = py + super::search::HEIGHT;
         let title = match (self.container, self.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
@@ -461,13 +474,16 @@ impl Game {
         if self.shows_palette() {
             // Scrollbar beside the palette grid.
             let (x, y, h) = (px + PANEL_W - 6.0, py + 18.0, PALETTE_ROWS as f32 * SLOT);
-            let rows = palette_rows().max(1) as f32;
+            let rows = palette_rows(&self.search.query).max(1) as f32;
             let thumb = h * (PALETTE_ROWS as f32 / rows).min(1.0);
             let top = y + (h - thumb) * self.creative_scroll as f32 / (rows - PALETTE_ROWS as f32).max(1.0);
             ui.rect(x, y, 4.0, h, [0.45, 0.45, 0.45, 1.0]);
             ui.rect(x, top, 4.0, thumb, WHITE);
         }
 
+        if self.shows_palette() && palette_rows(&self.search.query) == 0 {
+            ui.text_flat(px + 8.0, py + 30.0, "No matching items", [0.3, 0.3, 0.3, 1.0]);
+        }
         let hovered = self.slot_under_cursor();
         for (r, x, y) in self.inventory_slots((sw, sh)) {
             ui.rect(x, y, SLOT, SLOT, [0.55, 0.55, 0.55, 1.0]);
@@ -488,6 +504,16 @@ impl Game {
             if let Some(stack) = stack {
                 self.stack_ui(ui, x, y, stack);
             }
+            if !self.search.query.trim().is_empty()
+                && let Some(stack) = stack
+            {
+                if stack.item.matches_query(&self.search.query) {
+                    ui.rect(x, y, SLOT, 1.0, [1.0, 0.85, 0.2, 1.0]);
+                } else {
+                    ui.rect(x + 1.0, y + 1.0, SLOT - 2.0, SLOT - 2.0, [0.1, 0.1, 0.1, 0.7]);
+                }
+            }
+
             if hovered == Some(r) {
                 ui.rect(x + 1.0, y + 1.0, SLOT - 2.0, SLOT - 2.0, [1.0, 1.0, 1.0, 0.35]);
             }

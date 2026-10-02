@@ -411,6 +411,13 @@ impl Item {
     }
 
     /// Looks an item or block up by name (spaces or underscores).
+    /// Case-insensitive name search: underscores act as spaces and every query word must match.
+    pub fn matches_query(self, query: &str) -> bool {
+        let query = query.to_lowercase().replace('_', " ");
+        let name = self.name().to_lowercase();
+        query.split_whitespace().all(|word| name.contains(word))
+    }
+
     pub fn from_name(name: &str) -> Option<Item> {
         if let Some(b) = Block::from_name(name) {
             // Doors are placed by an item, not as a block.

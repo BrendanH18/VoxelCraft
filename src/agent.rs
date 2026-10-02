@@ -17,12 +17,13 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, dimension overworld/nether/end (host console only).";
 
 pub enum Command {
     Help,
     Observe(i32),
     Players,
+    Catalog(String),
     Look(f32, f32),
     Run(MoveInput, u32, bool),
     Place,
@@ -69,6 +70,7 @@ impl Command {
             ["observe"] => Self::Observe(0),
             ["observe", r] => Self::Observe(r.parse::<i32>().ok().filter(|r| (0..=2).contains(r)).ok_or_else(bad)?),
             ["players"] => Self::Players,
+            ["catalog", query @ ..] => Self::Catalog(query.join(" ")),
             ["look", yaw, pitch] => {
                 Self::Look(number(yaw)?.rem_euclid(360.0) as f32, number(pitch)?.clamp(-89.0, 89.0) as f32)
             }
