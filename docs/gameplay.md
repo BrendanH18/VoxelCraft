@@ -19,6 +19,7 @@
 | Shift + click | In the inventory: move a stack between the open chest or furnace and the inventory (or between hotbar and main grid); on a crafting result, craft as many as fit |
 | Shift + right click | Build against a crafting table, furnace or chest instead of opening it |
 | Hold / release right click with a bow | Draw / shoot an arrow (needs arrows in survival) |
+| Right click with flint and steel | Light an obsidian portal frame |
 | Right click with a hoe | Till grass or dirt (with air above) into farmland |
 | Right click with seeds / bone meal | Sow wheat on farmland / make a crop, sapling or patch of grass grow |
 | G | Toggle survival / creative |
@@ -196,6 +197,33 @@ session.
   creeper hisses and explosions, bow twangs,
   inventory clicks, wind and cave ambience with dripping water, positional
   panning and distance falloff, and a muffled mix while underwater
+
+## The Nether
+
+Build a frame of obsidian (pour water over lava source blocks, then mine
+the obsidian with a diamond pickaxe) at least 4 wide and 5 tall around an
+empty inside of 2x3 up to 21x21; the corners can be left out. Light it
+with flint and steel (iron ingot and flint, shapeless; 64 uses) to fill it
+with a swirling portal. Stand in it for 4 seconds (half a second in
+creative) to travel to the Nether, and the same way back. Each block in
+the Nether is eight in the overworld: the game looks for a portal within
+16 blocks of the matching spot on the other side, and builds one (on an
+obsidian ledge if there's nowhere to stand) if there isn't. Breaking any
+part of a frame puts its portal out.
+
+The Nether is a cavern world between a bedrock floor and roof: netherrack
+cliffs and islands over a lava sea at y = 31, soul sand shores that drag
+at your feet, gravel by the lava, quartz ore in the rock and glowstone
+hanging from the ceilings. There is no sky, weather or day and night,
+just a steady dim glow in a red haze; water boils away, and beds explode.
+Netherrack smelts into nether bricks (four make a nether bricks block),
+quartz ore drops nether quartz, and glowstone breaks into 2–4 glowstone
+dust (four make a block). Nine gold nuggets make a gold ingot and back.
+
+Each dimension keeps its own blocks, furnaces, chests and dropped items in
+the save (the Nether in a `nether` folder inside the world's). Dying in
+the Nether respawns you in the overworld. `--dimension nether` starts a
+session there, as if you had just come through a portal.
 
 ## Mobs
 

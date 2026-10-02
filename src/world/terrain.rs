@@ -69,8 +69,46 @@ pub struct Column {
     pub frozen: bool,
 }
 
+/// Which world a generator, world or save belongs to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Dimension {
+    #[default]
+    Overworld,
+    Nether,
+}
+
+impl Dimension {
+    pub fn name(self) -> &'static str {
+        match self {
+            Dimension::Overworld => "overworld",
+            Dimension::Nether => "nether",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Dimension> {
+        [Dimension::Overworld, Dimension::Nether].into_iter().find(|d| d.name() == name)
+    }
+
+    /// The other side of a Nether portal.
+    pub fn other(self) -> Dimension {
+        match self {
+            Dimension::Overworld => Dimension::Nether,
+            Dimension::Nether => Dimension::Overworld,
+        }
+    }
+
+    /// Whether the dimension has a sky (and with it skylight, weather and
+    /// a day/night cycle).
+    pub fn has_sky(self) -> bool {
+        self == Dimension::Overworld
+    }
+}
+
 pub struct Generator {
     pub seed: u64,
+    pub dimension: Dimension,
+    /// Set for the Nether, which generates from its own noise.
+    nether: Option<super::nether::NetherGen>,
     continent: Perlin,
     erosion: Perlin,
     ridge: Perlin,
@@ -102,9 +140,15 @@ const BANDS: [u8; 16] = [1, 1, 0, 2, 0, 0, 3, 1, 0, 4, 0, 5, 0, 1, 6, 0];
 
 impl Generator {
     pub fn new(seed: u64) -> Self {
+        Self::for_dimension(seed, Dimension::Overworld)
+    }
+
+    pub fn for_dimension(seed: u64, dimension: Dimension) -> Self {
         let p = |salt: u64| Perlin::new(seed ^ salt.wrapping_mul(0x2545_F491_4F6C_DD1D));
         Self {
             seed,
+            dimension,
+            nether: (dimension == Dimension::Nether).then(|| super::nether::NetherGen::new(seed)),
             continent: p(1),
             erosion: p(2),
             ridge: p(3),
@@ -214,6 +258,9 @@ impl Generator {
     /// samples the biome a few blocks off at random, so colours dither
     /// into each other across biome borders instead of changing in a line.
     pub fn foliage(&self, cx: i32, cz: i32) -> Box<[u8; CHUNK_SIZE * CHUNK_SIZE]> {
+        if self.nether.is_some() {
+            return Box::new([0; CHUNK_SIZE * CHUNK_SIZE]);
+        }
         let mut out = Box::new([0u8; CHUNK_SIZE * CHUNK_SIZE]);
         for (i, f) in out.iter_mut().enumerate() {
             let (x, z) = (cx * CHUNK_SIZE_I + (i % CHUNK_SIZE) as i32, cz * CHUNK_SIZE_I + (i / CHUNK_SIZE) as i32);
@@ -314,6 +361,9 @@ impl Generator {
     }
 
     pub fn generate(&self, cpos: IVec3) -> ChunkData {
+        if let Some(nether) = &self.nether {
+            return nether.generate(cpos);
+        }
         let base = cpos * CHUNK_SIZE_I;
         let mut cols = [[Column { height: 0, biome: Biome::Plains, frozen: false }; CHUNK_SIZE]; CHUNK_SIZE];
         let mut max_h = i32::MIN;

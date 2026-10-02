@@ -63,13 +63,6 @@ impl Storage {
 
     pub fn save(&self, level: &LevelInfo, chunks: &[(IVec3, Arc<ChunkData>)]) -> io::Result<()> {
         fs::create_dir_all(&self.dir)?;
-        let mut text = format!("seed={}\n", level.seed);
-        if let Some((p, yaw, pitch)) = level.player {
-            text += &format!("player={},{},{},{},{}\n", p.x, p.y, p.z, yaw, pitch);
-        }
-        for (k, v) in &level.props {
-            text += &format!("{k}={v}\n");
-        }
 
         let mut buf = Vec::with_capacity(chunks.len() * 256);
         buf.extend_from_slice(MAGIC);
@@ -87,6 +80,19 @@ impl Storage {
         let tmp = self.dir.join("chunks.bin.tmp");
         fs::File::create(&tmp)?.write_all(&buf)?;
         fs::rename(&tmp, self.dir.join("chunks.bin"))?;
+        self.save_level(level)
+    }
+
+    /// Writes only `level.txt`, leaving the stored chunks alone.
+    pub fn save_level(&self, level: &LevelInfo) -> io::Result<()> {
+        fs::create_dir_all(&self.dir)?;
+        let mut text = format!("seed={}\n", level.seed);
+        if let Some((p, yaw, pitch)) = level.player {
+            text += &format!("player={},{},{},{},{}\n", p.x, p.y, p.z, yaw, pitch);
+        }
+        for (k, v) in &level.props {
+            text += &format!("{k}={v}\n");
+        }
         let tmp = self.dir.join("level.txt.tmp");
         fs::write(&tmp, text)?;
         fs::rename(&tmp, self.dir.join("level.txt"))

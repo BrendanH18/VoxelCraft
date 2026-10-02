@@ -31,11 +31,17 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
 - **A world to explore.** Infinite terrain across fourteen biomes: forests,
   jungles, savannas, swamps, deserts, terraced badlands, snowy taiga,
   mountains, rivers and oceans, with caves, ores, and five kinds of tree.
+- **Two dimensions.** Light an obsidian portal with flint and steel to
+  cross into the Nether: lava seas, netherrack caverns, soul sand and
+  glowstone under a bedrock roof, eight overworld blocks to every one.
 - **Two ways to play.** Build freely in creative, or play survival with timed
   mining, block drops, a stackable inventory, health, hunger, and respawning.
-- **Craft, cook and store.** Make tools in five tiers, craft torches and
-  building blocks, smelt ores and cook food in furnaces, and keep your haul in
-  chests. Tools wear out; food restores hunger and supports natural healing.
+- **Craft, fight, cook and store.** Make tools and swords in five tiers and
+  bows and arrows, craft torches and building blocks, smelt ores and cook
+  food in furnaces, and keep your haul in chests. Tools wear out; food
+  restores hunger and supports natural healing.
+- **Many worlds.** A title screen lists your saved worlds; create new ones
+  with a name, a seed and a game mode, or delete old ones.
 - **Farm and grow.** Till soil with a hoe, sow seeds found in tall grass and
   harvest wheat for bread. Saplings grow into trees, leaves fall from felled
   trees, and grass creeps back over bare dirt.

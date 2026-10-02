@@ -39,6 +39,8 @@ pub struct Args {
     pub time: Option<f64>,
     /// `--weather`: start raining (true) or clear (false).
     pub weather: Option<bool>,
+    /// `--dimension`: start in the overworld or the Nether.
+    pub dimension: Option<world::terrain::Dimension>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
     pub place: Vec<(glam::IVec3, world::block::Block)>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
@@ -97,6 +99,8 @@ voxelcraft [options]
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies or rain (clear, rain)
+  --dimension <d>   start in the overworld or the nether (arriving through a
+                    portal unless --pose is given)
   --screenshot <f>  wait for the world to load, save a PNG and exit
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
   --mute            start with sound muted (M toggles in game)
@@ -120,6 +124,7 @@ fn parse_args() -> Result<Args, String> {
         open_menu: None,
         time: None,
         weather: None,
+        dimension: None,
         place: Vec::new(),
         spawn: Vec::new(),
         wait: 0.0,
@@ -195,6 +200,11 @@ fn parse_args() -> Result<Args, String> {
                     _ => return Err("--weather needs clear or rain".into()),
                 })
             }
+            "--dimension" => {
+                let v = value("--dimension")?;
+                let dim = world::terrain::Dimension::from_name(&v);
+                args.dimension = Some(dim.ok_or(format!("--dimension: expected overworld or nether, got {v}"))?);
+            }
             "--health" => args.health = Some(value("--health")?.parse().map_err(|_| "bad --health")?),
             "--air" => args.air = Some(value("--air")?.parse().map_err(|_| "bad --air")?),
             "--food" => args.food = Some(value("--food")?.parse().map_err(|_| "bad --food")?),
@@ -241,6 +251,7 @@ impl Args {
         self.open_menu = None;
         self.time = None;
         self.weather = None;
+        self.dimension = None;
         self.place.clear();
         self.spawn.clear();
         self.pose = None;

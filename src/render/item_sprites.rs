@@ -350,6 +350,26 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 (k == 0 && s.abs() <= 11).then_some(tint([225, 225, 225], 0.95))
             }
         }
+        Sprite::FlintAndSteel => {
+            // A curled steel striker (top right) and a flint chip (bottom left).
+            let ring = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let d = ((px - 10.0).powi(2) + (py - 6.0).powi(2)).sqrt();
+                (2.2..=4.2).contains(&d) && !(px < 9.0 && py > 7.0)
+            };
+            let flint = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                (px - 5.0).abs() / 3.8 + (py - 11.0).abs() / 3.0 <= 1.0
+            };
+            shaded(&ring, x, y, [200, 200, 205], 0.04).or_else(|| shaded(&flint, x, y, [70, 70, 74], 0.08))
+        }
+        Sprite::Nugget(c) => {
+            let nugget = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                ((px - 8.0) / 4.2).powi(2) + ((py - 9.0) / 3.4).powi(2) <= 1.0
+            };
+            shaded(&nugget, x, y, c, 0.08)
+        }
         Sprite::Arrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);

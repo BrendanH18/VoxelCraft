@@ -41,6 +41,8 @@ pub fn smelt(item: Item) -> Option<Item> {
         i if i.block().is_some_and(Block::is_log) => Item::CHARCOAL,
         Item::CLAY_BALL => Item::BRICK,
         i if i == b(Block::CLAY) => b(Block::TERRACOTTA),
+        i if i == b(Block::NETHERRACK) => Item::NETHER_BRICK,
+        i if i == b(Block::QUARTZ_ORE) => Item::NETHER_QUARTZ,
         Item::RAW_PORKCHOP => Item::COOKED_PORKCHOP,
         Item::RAW_BEEF => Item::STEAK,
         Item::RAW_CHICKEN => Item::COOKED_CHICKEN,

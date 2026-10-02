@@ -19,7 +19,9 @@ pub mod falling;
 mod fluid;
 pub mod furnace;
 mod growth;
+pub mod nether;
 pub mod noise;
+mod portal;
 pub mod storage;
 pub mod terrain;
 
@@ -184,6 +186,12 @@ impl World {
         self.horizontal_dist2(pos) <= r * r
     }
 
+    /// Whether every chunk of the column holding `(x, z)` is loaded.
+    pub fn column_loaded(&self, x: i32, z: i32) -> bool {
+        let key = column_of(chunk_of(IVec3::new(x, 0, z)));
+        self.columns.get(&key).is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
+    }
+
     pub fn is_loaded(&self, block: IVec3) -> bool {
         block.y < 0 || block.y >= WORLD_HEIGHT || self.chunks.contains_key(&chunk_of(block))
     }
@@ -238,6 +246,7 @@ impl World {
         let changed = self.edit(p, block, true);
         if changed {
             self.settle(p);
+            self.break_unsupported_portals(p);
         }
         changed
     }
@@ -305,6 +314,9 @@ impl World {
 
     /// Updates the heightmap for an edited block; returns (old, new) heights.
     fn update_height(&mut self, p: IVec3, block: Block) -> (i32, i32) {
+        if !self.generator.dimension.has_sky() {
+            return (p.y, p.y);
+        }
         let key = column_of(chunk_of(p));
         let l = local_of(p);
         let i = (l.x + l.z * CHUNK_SIZE_I) as usize;
@@ -443,8 +455,12 @@ impl World {
             Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None }
         });
         col.loaded += 1;
-        for (h, new) in col.heights.iter_mut().zip(heights) {
-            *h = (*h).max(new);
+        // Without a sky (the Nether) every cell counts as open: the
+        // dimension's dim, even light is daylight at a fixed low level.
+        if self.generator.dimension.has_sky() {
+            for (h, new) in col.heights.iter_mut().zip(heights) {
+                *h = (*h).max(new);
+            }
         }
         self.chunks.insert(pos, ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false });
         if self.in_mesh_range(pos) {

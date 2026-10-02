@@ -106,7 +106,12 @@ impl Game {
         let ctx = entity::Ctx {
             player_pos: self.player.pos,
             player_targetable: self.mode == GameMode::Survival,
-            daylight: self.weather.dim(super::sky_state(self.day_time).daylight),
+            // The Nether has no sun to burn the undead.
+            daylight: if self.dimension.has_sky() {
+                self.weather.dim(super::sky_state(self.day_time).daylight)
+            } else {
+                0.0
+            },
             raining: self.weather.raining,
             spawning: true,
         };
@@ -119,7 +124,7 @@ impl Game {
                         self.player.vel += knockback.as_dvec3();
                     }
                 }
-                EntityEvent::Explosion { center, power } => self.explode(center, power),
+                EntityEvent::Explosion { center, power } => self.explode(center, power, "was blown up by a creeper"),
                 EntityEvent::Sound { sound, pos } => {
                     let (sound, gain) = match sound {
                         MobSound::Fuse => (Sound::Fuse, 1.0),
@@ -154,13 +159,14 @@ fn voice(kind: MobKind) -> Voice {
 
 impl Game {
     /// Blows a hole in the world and hurts everything around `center`.
-    pub(super) fn explode(&mut self, center: DVec3, power: f32) {
+    /// `cause` completes the death message, as for [`Game::damage_player`].
+    pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str) {
         self.world.explode(center, power as f64);
         self.mobs.entities.explode(center, power);
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
         let mid = self.player.pos + DVec3::Y * 0.9;
         if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center))
-            && self.damage_player_armored(damage, "was blown up by a creeper") > 0.0
+            && self.damage_player_armored(damage, cause) > 0.0
         {
             let away = (mid - center).normalize_or(DVec3::Y);
             self.player.vel += away * (impact as f64 * 14.0) + DVec3::Y * 4.0;

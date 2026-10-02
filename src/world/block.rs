@@ -105,6 +105,11 @@ pub mod tex {
     pub const BED_TOP_HEAD: u8 = 74;
     pub const BED_SIDE_FOOT: u8 = 75;
     pub const BED_SIDE_HEAD: u8 = 76;
+    pub const NETHERRACK: u8 = 77;
+    pub const SOUL_SAND: u8 = 78;
+    pub const QUARTZ_ORE: u8 = 79;
+    pub const NETHER_BRICKS: u8 = 80;
+    pub const PORTAL: u8 = 81;
     /// Flat item icons (see `item::Item::icon_layer`), up to `ITEM_COUNT` of them.
     pub const ITEM_0: u8 = 96;
     pub const ITEM_COUNT: u8 = 64;
@@ -268,6 +273,14 @@ impl Block {
     /// The two halves of a bed (see `Item::BED`), 9/16 of a block tall.
     pub const BED_FOOT: Block = Block(98);
     pub const BED_HEAD: Block = Block(99);
+    pub const NETHERRACK: Block = Block(100);
+    /// Slows whatever walks on it, which sinks in by 2/16 of a block.
+    pub const SOUL_SAND: Block = Block(101);
+    pub const QUARTZ_ORE: Block = Block(102);
+    pub const NETHER_BRICKS: Block = Block(103);
+    /// Fills a lit obsidian frame (see `world::portal`); standing in it
+    /// takes you between the overworld and the Nether.
+    pub const NETHER_PORTAL: Block = Block(104);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -432,7 +445,9 @@ impl Block {
 
     /// Height of the block's collision box.
     pub fn height(self) -> f64 {
-        1.0 - self.top_drop() as f64 / 16.0
+        // Soul sand looks like a full block, but you sink into it a little.
+        let sink = if self == Block::SOUL_SAND { 2.0 } else { 0.0 };
+        1.0 - (self.top_drop() as f64 + sink) / 16.0
     }
 
     /// What breaking this block yields in survival.
@@ -452,6 +467,9 @@ impl Block {
             // The foot drops the bed; breaking either half breaks both.
             Block::BED_FOOT => Some(Item::BED),
             Block::BED_HEAD => None,
+            Block::QUARTZ_ORE => Some(Item::NETHER_QUARTZ),
+            // Glowstone breaks into dust (see `World::spill_block`).
+            Block::GLOWSTONE | Block::NETHER_PORTAL => None,
             b if b.is_leaves() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
             b if b.is_fluid() || b == Block::AIR => None,
@@ -468,7 +486,11 @@ impl Block {
             b if b.is_leaves() => 0.2,
             Block::SNOW => 0.2,
             Block::GLASS | Block::GLOWSTONE => 0.3,
-            Block::CACTUS => 0.4,
+            Block::CACTUS | Block::NETHERRACK => 0.4,
+            Block::SOUL_SAND => 0.5,
+            Block::NETHER_BRICKS => 2.0,
+            Block::QUARTZ_ORE => 3.0,
+            Block::NETHER_PORTAL => f32::INFINITY,
             Block::DIRT | Block::SAND | Block::RED_SAND | Block::ICE => 0.5,
             Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL | Block::FARMLAND | Block::WET_FARMLAND | Block::CLAY => {
                 0.6
@@ -504,6 +526,9 @@ impl Block {
             | Block::OBSIDIAN
             | Block::FURNACE
             | Block::LIT_FURNACE
+            | Block::NETHERRACK
+            | Block::QUARTZ_ORE
+            | Block::NETHER_BRICKS
             | Block::ICE => Some(ToolKind::Pickaxe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
             Block::DIRT
@@ -515,6 +540,7 @@ impl Block {
             | Block::FARMLAND
             | Block::WET_FARMLAND
             | Block::RED_SAND
+            | Block::SOUL_SAND
             | Block::CLAY => Some(ToolKind::Shovel),
             b if b.is_log() || b.is_planks() => Some(ToolKind::Axe),
             Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON => Some(ToolKind::Axe),
@@ -532,7 +558,10 @@ impl Block {
             | Block::SANDSTONE
             | Block::COAL_ORE
             | Block::FURNACE
-            | Block::LIT_FURNACE => Some(0),
+            | Block::LIT_FURNACE
+            | Block::NETHERRACK
+            | Block::QUARTZ_ORE
+            | Block::NETHER_BRICKS => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
             Block::IRON_ORE => Some(1),
             Block::GOLD_ORE | Block::DIAMOND_ORE => Some(2),
@@ -543,7 +572,7 @@ impl Block {
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8).chain(32..=37).chain(42..=45).chain([53, 57, 67, 68]).chain(69..=97).map(Block)
+        (1..=23u8).chain(32..=37).chain(42..=45).chain([53, 57, 67, 68]).chain(69..=97).chain(100..=103).map(Block)
     }
 
     /// Blocks that placing another block overwrites (air, fluids, grass).
@@ -563,7 +592,7 @@ impl Block {
     /// Whether the crosshair can select this block (anything visible but fluids).
     #[inline(always)]
     pub fn is_targetable(self) -> bool {
-        self.kind() != RenderKind::Invisible && !self.is_fluid()
+        self.kind() != RenderKind::Invisible && !self.is_fluid() && self != Block::NETHER_PORTAL
     }
 
     /// Sand and gravel fall when nothing holds them up.
@@ -628,6 +657,7 @@ impl Block {
             Block::GLOWSTONE => 15,
             Block::TORCH => 14,
             Block::LIT_FURNACE => 13,
+            Block::NETHER_PORTAL => 11,
             b if b.is_lava() => 15,
             _ => 0,
         }
@@ -874,11 +904,16 @@ const fn make(id: u8) -> BlockInfo {
         97 => ("ice", Translucent, all(tex::ICE)),
         98 => ("bed foot", Cutout, column(tex::BED_SIDE_FOOT, tex::BED_TOP_FOOT, tex::PLANKS)),
         99 => ("bed head", Cutout, column(tex::BED_SIDE_HEAD, tex::BED_TOP_HEAD, tex::PLANKS)),
+        100 => ("netherrack", Opaque, all(tex::NETHERRACK)),
+        101 => ("soul sand", Opaque, all(tex::SOUL_SAND)),
+        102 => ("nether quartz ore", Opaque, all(tex::QUARTZ_ORE)),
+        103 => ("nether bricks", Opaque, all(tex::NETHER_BRICKS)),
+        104 => ("nether portal", Translucent, all(tex::PORTAL)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.
     let solid = matches!(kind, Opaque | Cutout) || id == 97;
-    BlockInfo { name, kind, solid, self_cull: id == 5 || id == 10 || id == 97, tex }
+    BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104), tex }
 }
 
 pub static INFO: [BlockInfo; 256] = {

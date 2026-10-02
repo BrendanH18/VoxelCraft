@@ -4,6 +4,7 @@ mod actions;
 mod bed;
 mod bow;
 mod containers;
+mod dimension;
 mod farming;
 mod hud;
 mod items;
@@ -35,7 +36,7 @@ use crate::render::{FrameParams, Renderer};
 use crate::world::World;
 use crate::world::block::Block;
 use crate::world::storage::{LevelInfo, Storage};
-use crate::world::terrain::Generator;
+use crate::world::terrain::{Dimension, Generator};
 
 use survival::Vitals;
 
@@ -178,6 +179,16 @@ struct Game {
     settings_path: Option<std::path::PathBuf>,
     /// Name shown in the world list (the save folder's name may differ).
     world_name: String,
+    dimension: Dimension,
+    /// The overworld's furnaces, chests and items while the player is in
+    /// the Nether (saved in the root level file).
+    overworld_props: std::collections::BTreeMap<String, String>,
+    /// Travelling: where the player goes once the ground there has loaded.
+    arrival: Option<dimension::Arrival>,
+    /// Seconds spent standing in a portal.
+    portal_time: f32,
+    /// Just came out of a portal: stepping out of it rearms it.
+    portal_locked: bool,
 }
 
 pub struct App {
@@ -488,15 +499,16 @@ impl Game {
                         .unwrap_or(1)
                 },
             );
-        let saved = if existing.is_some() {
-            storage.load_chunks().unwrap_or_else(|e| {
-                log::error!("failed to load chunks: {e}");
-                Default::default()
-            })
+        let root_props = existing.as_ref().map(|l| l.props.clone()).unwrap_or_default();
+        let saved_dimension = root_props.get("dimension").and_then(|d| Dimension::from_name(d)).unwrap_or_default();
+        let dimension = args.dimension.unwrap_or(saved_dimension);
+        let overworld_props = dimension::dimension_props(&root_props);
+        let (saved, dimension_props) = if existing.is_some() {
+            dimension::load_dimension(&storage, dimension, &overworld_props)
         } else {
             Default::default()
         };
-        log::info!("world '{world_dir}' seed {seed}, {} modified chunks", saved.len());
+        log::info!("world '{world_dir}' seed {seed}, {} modified chunks in the {}", saved.len(), dimension.name());
 
         let mode =
             match (new.as_ref().map(|n| n.mode).or(args.mode), existing.as_ref().and_then(|l| l.props.get("mode"))) {
@@ -545,13 +557,20 @@ impl Game {
             vitals.hunger = survival::Hunger::restore(f, 0.0, 0.0);
         }
 
-        let generator = Arc::new(Generator::new(seed));
-        let mut player = Player::new(generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+        let generator = Arc::new(Generator::for_dimension(seed, dimension));
+        let mut player = Player::new(Generator::new(seed).find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
         if let Some((pos, yaw, pitch)) = existing.as_ref().and_then(|l| l.player) {
             player.pos = pos;
             player.yaw = yaw;
             player.pitch = pitch;
         }
+        // `--dimension` into the other world: arrive by portal, as if the
+        // player had walked through one where they stood.
+        let arrival = (dimension != saved_dimension && args.pose.is_none()).then(|| {
+            let scale = if dimension == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
+            let p = (player.pos * DVec3::new(scale, 0.0, scale)).floor().as_ivec3();
+            dimension::Arrival::Portal(p.with_y(if dimension == Dimension::Nether { 64 } else { 100 }))
+        });
         if let Some([x, y, z, yaw, pitch]) = args.pose {
             player.pos = DVec3::new(x, y, z);
             player.yaw = (yaw as f32).to_radians();
@@ -559,13 +578,7 @@ impl Game {
             player.flying = true;
         }
         player.can_fly = mode == GameMode::Creative;
-        let mut world = World::new(generator, saved, settings.render_distance);
-        if let Some(f) = existing.as_ref().and_then(|l| l.props.get("furnaces")) {
-            world.load_furnaces(f);
-        }
-        if let Some(c) = existing.as_ref().and_then(|l| l.props.get("chests")) {
-            world.load_chests(c);
-        }
+        let world = World::new(generator, saved, settings.render_distance);
         log::info!("{} worker threads", world.worker_threads());
 
         let now = Instant::now();
@@ -640,15 +653,18 @@ impl Game {
             had_focus: false,
             settings,
             settings_path,
+            dimension,
+            overworld_props: if dimension == Dimension::Nether { overworld_props } else { Default::default() },
+            arrival,
+            portal_time: 0.0,
+            portal_locked: false,
             world_name: new
                 .map(|n| n.name)
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("name")).cloned())
                 .unwrap_or_else(|| world_dir.to_string()),
         };
         game.renderer.force_offscreen = game.bench_render.is_some();
-        if let Some(items) = existing.as_ref().and_then(|l| l.props.get("items")) {
-            game.mobs.entities.load_items(items);
-        }
+        game.restore_dimension(&dimension_props);
         if game.vitals.is_dead() {
             game.on_death();
         } else if game.screenshot.is_none() && game.bench_render.is_none() {
@@ -830,6 +846,12 @@ impl Game {
 
     /// Back to the world spawn with full health.
     fn respawn(&mut self) {
+        if self.dimension != Dimension::Overworld {
+            self.vitals.respawn();
+            self.switch_dimension(Dimension::Overworld, dimension::Arrival::Respawn);
+            self.set_grab(true);
+            return;
+        }
         self.player.pos = self.respawn_point();
         self.player.vel = DVec3::ZERO;
         self.player.flying = false;
@@ -1029,7 +1051,9 @@ impl Game {
         self.actions.breaking = None;
         self.action_cooldown = BREAK_DELAY;
         // Broken ice melts into water, unless it was floating over nothing.
-        let melts = block == Block::ICE && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
+        let melts = block == Block::ICE
+            && self.dimension.has_sky()
+            && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
         self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
@@ -1110,7 +1134,7 @@ impl Game {
             Some(b) if b.is_bed() => return self.use_bed(pos),
             _ => {}
         }
-        if self.use_item_on(pos, normal) {
+        if self.strike_flint(pos, normal) || self.use_item_on(pos, normal) {
             return;
         }
         // Clicking tall grass replaces it instead of building against it.
@@ -1124,6 +1148,11 @@ impl Game {
         let Some(block) = self.inventory.get(self.actions.selected).and_then(|s| s.item.places()) else { return };
         // Furnaces and chests face whoever places them.
         let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
+        if block.is_water() && !self.dimension.has_sky() {
+            // Water boils away in the Nether.
+            self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
+            return;
+        }
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
         let below = self.world.get_block(at - glam::IVec3::Y);
         let supported = below.is_some_and(|below| block.can_stay_on(below))
@@ -1267,22 +1296,37 @@ impl Game {
         if let Some(cause) = &self.vitals.death {
             props.insert("death".to_string(), cause.clone());
         }
-        props.insert("furnaces".to_string(), self.world.furnaces_to_string());
-        props.insert("chests".to_string(), self.world.chests_to_string());
-        props.insert("items".to_string(), self.mobs.entities.items_to_string());
+        props.insert("dimension".to_string(), self.dimension.name().to_string());
         props.insert("time".to_string(), format!("{:.5}", self.day_time));
         props.insert("weather".to_string(), self.weather.serialize());
         if let Some(b) = self.spawn_bed {
             props.insert("bed".to_string(), format!("{},{},{}", b.x, b.y, b.z));
         }
-        let level = LevelInfo {
-            seed: self.world.generator.seed,
-            player: Some((self.player.pos, self.player.yaw, self.player.pitch)),
-            props,
-        };
+        let seed = self.world.generator.seed;
         let chunks = self.world.modified_chunks();
-        match self.storage.save(&level, &chunks) {
-            Ok(()) => log::info!("saved {} modified chunks to {}", chunks.len(), self.storage.dir().display()),
+        // The overworld saves with the player; the Nether in its own folder.
+        let result = match self.dimension {
+            Dimension::Overworld => {
+                props.extend(self.dimension_props());
+                let player = Some((self.player.pos, self.player.yaw, self.player.pitch));
+                self.storage.save(&LevelInfo { seed, player, props }, &chunks)
+            }
+            Dimension::Nether => {
+                let nether = LevelInfo { seed, player: None, props: self.dimension_props() };
+                dimension::storage_for(&self.storage, Dimension::Nether).save(&nether, &chunks).and_then(|()| {
+                    props.extend(self.overworld_props.clone());
+                    let player = Some((self.player.pos, self.player.yaw, self.player.pitch));
+                    self.storage.save_level(&LevelInfo { seed, player, props })
+                })
+            }
+        };
+        match result {
+            Ok(()) => log::info!(
+                "saved {} modified {} chunks to {}",
+                chunks.len(),
+                self.dimension.name(),
+                self.storage.dir().display()
+            ),
             Err(e) => log::error!("save failed: {e}"),
         }
         self.last_save = Instant::now();
@@ -1295,9 +1339,16 @@ impl Game {
         self.last_frame = now;
 
         // --- Simulation ---------------------------------------------------
+        // Travelling between dimensions: frozen until the far side loads.
+        let arriving = self.update_arrival();
         let held = |k: KeyCode| self.keys.contains(&k);
         let axis = |pos: KeyCode, neg: KeyCode| held(pos) as i32 as f64 - held(neg) as i32 as f64;
-        let input = if self.mouse_grabbed && !self.inventory_open && !self.vitals.is_dead() && self.sleeping.is_none() {
+        let input = if self.mouse_grabbed
+            && !self.inventory_open
+            && !self.vitals.is_dead()
+            && self.sleeping.is_none()
+            && !arriving
+        {
             MoveInput {
                 forward: axis(KeyCode::KeyW, KeyCode::KeyS),
                 right: axis(KeyCode::KeyD, KeyCode::KeyA),
@@ -1311,11 +1362,14 @@ impl Game {
             MoveInput::default()
         };
         let before = self.player.pos;
-        self.player.update(dt, input, &self.world);
+        if !arriving {
+            self.player.update(dt, input, &self.world);
+            self.update_portal(dt);
+        }
         let moved = (self.player.pos - before).with_y(0.0).length();
         self.weather.update(dt);
         self.update_sleep(dt);
-        self.world.raining = self.weather.raining;
+        self.world.raining = self.weather.raining && self.dimension.has_sky();
         let rain_here = weather::rain_at(&self.world, &self.weather, self.player.pos);
         self.audio.update(&self.player, &self.world, rain_here, dt);
         let env = survival::Env {
@@ -1329,7 +1383,11 @@ impl Game {
             sprinting: input.sprint && moved > 0.0,
             jumped: self.player.jumped,
         };
-        let hurts = self.vitals.tick(dt as f32, &env, self.mode == GameMode::Creative);
+        let hurts = if arriving || self.arrival.is_some() {
+            Default::default()
+        } else {
+            self.vitals.tick(dt as f32, &env, self.mode == GameMode::Creative)
+        };
         self.trample(hurts.landed);
         if hurts.fall > 0.0 {
             self.damage_player(hurts.fall, survival::CAUSE_FALL);
@@ -1395,6 +1453,14 @@ impl Game {
         sky.daylight = self.weather.dim(sky.daylight);
         sky.horizon = self.weather.overcast(sky.horizon);
         sky.zenith = self.weather.overcast(sky.zenith);
+        let nether = !self.dimension.has_sky();
+        if nether {
+            // No sun, no weather: a steady dim glow in a red haze.
+            sky.daylight = dimension::NETHER_LIGHT;
+            sky.horizon = dimension::NETHER_FOG;
+            sky.zenith = dimension::NETHER_FOG;
+        }
+        let rain = if nether { 0.0 } else { self.weather.strength };
         let daylight = sky.daylight;
         let in_lava = self.player.head_in_lava(&self.world);
         let underwater = env.head_in_water || in_lava;
@@ -1403,6 +1469,8 @@ impl Game {
             (LAVA_FOG, 0.0, 2.0)
         } else if underwater {
             (WATER_FOG.map(|c| c * daylight), 0.0, 28.0)
+        } else if nether {
+            (sky.horizon, 8.0, view_dist.min(160.0) * 0.8)
         } else {
             (sky.horizon, view_dist * 0.55, view_dist * 0.95)
         };
@@ -1413,7 +1481,7 @@ impl Game {
             (now - self.started).as_secs_f32(),
         );
         self.renderer.set_entities(verts);
-        weather::sheets(&self.world, self.player.eye(), self.weather.strength, &mut self.weather_verts);
+        weather::sheets(&self.world, self.player.eye(), rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
         let params = FrameParams {
             camera: self.player.eye(),
@@ -1451,7 +1519,7 @@ impl Game {
                 })
                 .chain(self.item_models())
                 .collect(),
-            rain: self.weather.strength,
+            rain,
             ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() {
                 self.build_ui(now)
             } else {

@@ -306,6 +306,10 @@ fn ground_block(player: &Player, world: &World) -> Option<Block> {
 /// Wind and cave ambience levels (0..1) at the listener, and whether
 /// something overhead shelters it.
 fn ambience(eye: DVec3, world: &World) -> (f32, f32, bool) {
+    // The Nether is one huge cave.
+    if !world.generator.dimension.has_sky() {
+        return (0.0, 1.0, true);
+    }
     let p = eye.floor().as_ivec3();
     let covered = (1..=32).any(|dy| world.get_block(p + IVec3::Y * dy).is_some_and(|b| b.is_opaque()));
     let surface = world.generator.column(p.x, p.z).height;
