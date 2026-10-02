@@ -16,6 +16,8 @@ const SHAPE: Shape = Shape::new(0.49, 0.98);
 pub struct PrimedTnt {
     /// Bottom centre.
     pub pos: DVec3,
+    /// Position at the start of the last simulation step, for rendering.
+    pub previous_pos: DVec3,
     vel: DVec3,
     /// Seconds left before it blows.
     pub fuse: f32,
@@ -23,7 +25,7 @@ pub struct PrimedTnt {
 
 impl PrimedTnt {
     pub fn new(pos: DVec3, vel: DVec3, fuse: f32) -> Self {
-        Self { pos, vel, fuse }
+        Self { pos, previous_pos: pos, vel, fuse }
     }
 
     /// Falls and slides; returns `false` (after queueing the blast) once

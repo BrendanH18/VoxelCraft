@@ -46,19 +46,42 @@ avg 2.05 ms (~490 fps) — 1708 draw calls, 0.89M quads drawn, 52 MB of quad dat
 Render distance is measured in 32-block chunks, so `--rd 8` is 256 blocks
 (Minecraft's 16) and `--rd 16` is 512 blocks (Minecraft's 32).
 
+## Simulation boundary
+
+`src/lib.rs` exposes the reusable engine without window, GPU or audio code.
+The desktop executable imports that library. With `--no-default-features`,
+the `client` dependencies and executable are excluded. A headless `World`
+streams terrain and runs gameplay without mesh jobs; meshing scratch memory
+is allocated only when an actual mesh is built.
+
+Singleplayer advances movement, survival, weather, actions, world systems,
+entities and time in fixed 50 ms steps. Rendering and worker polling run
+independently, with position interpolation for the camera, mobs, arrows,
+smoke, dropped items, falling blocks and primed TNT. Collision substeps remain
+at most 1/120 second. Offline menus pause the game clock.
+
+Session ownership, authoritative action/damage handling, independent gameplay
+lighting, multiple players/dimensions and networking are still future work.
+See [the headless smoke run and checks](development.md#headless-simulation-foundation).
+
 ## Code layout
 
 ```text
 src/
-  main.rs            argument parsing, event loop
+  lib.rs             reusable engine exports (no device dependencies)
+  main.rs            desktop argument parsing, event loop
+  simulation/
+    mod.rs           fixed 20 Hz clock, world/player steps, interpolation
+    survival.rs      health, hunger, exhaustion, regeneration (unit tested)
+    weather.rs       weather state and precipitation queries
   app/
-    mod.rs           window, input, game loop, day/night, damage entry point
+    mod.rs           window, input, fixed game ticks, rendering, damage entry point
     actions.rs       hotbar selection, mining and eating progress (unit tested)
     recipe_book.rs   recipe navigation, responsive layout and hit testing
     hud.rs           HUD: hotbar, hearts/food/bubbles, containers, death and F3
     menu.rs          pause menu and options screen
     settings.rs      options file (per-user data folder: saves/options.txt)
-    survival.rs      health, hunger, exhaustion, regeneration (unit tested)
+    weather.rs       rain/snow render geometry
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
     items.rs         dropped items: spawning, pickup, throwing, death drops
     containers.rs    chest screens and shift-click quick moves

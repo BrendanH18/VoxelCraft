@@ -113,7 +113,7 @@ impl Game {
     /// Spinning, bobbing models for nearby dropped items: a small cube for
     /// blocks, a flat icon for everything else, with extra copies for
     /// bigger stacks.
-    pub(super) fn item_models(&self) -> Vec<BlockModel> {
+    pub(super) fn item_models(&self, alpha: f64) -> Vec<BlockModel> {
         let mut out = Vec::new();
         for item in &self.mobs.entities.items {
             if item.pos.distance_squared(self.player.pos) > DRAW_DIST * DRAW_DIST {
@@ -139,7 +139,9 @@ impl Game {
                 // Copies sit a little apart, the same way every frame.
                 let k = i as f64;
                 let offset = DVec3::new((k * 2.3).sin(), 0.0, (k * 1.7).cos()) * 0.06 * k.min(1.0);
-                let min = item.pos + offset + DVec3::new(-size / 2.0, bob + k * 0.03, -size / 2.0);
+                let min = item.previous_pos.lerp(item.pos, alpha)
+                    + offset
+                    + DVec3::new(-size / 2.0, bob + k * 0.03, -size / 2.0);
                 out.push(BlockModel {
                     min,
                     size: size as f32,

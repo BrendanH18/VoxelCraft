@@ -72,7 +72,8 @@ pub struct World {
     load_cursor: usize,
     center: Option<IVec3>,
     render_distance: i32,
-    region: Box<Region>,
+    region: Option<Box<Region>>,
+    meshes_enabled: bool,
     fluids: fluid::FluidState,
     fire: fire::FireState,
     falling: Vec<falling::FallingBlock>,
@@ -105,6 +106,22 @@ fn column_of(chunk: IVec3) -> IVec2 {
 
 impl World {
     pub fn new(generator: Arc<Generator>, saved: FxHashMap<IVec3, Arc<ChunkData>>, render_distance: i32) -> Self {
+        Self::with_meshing(generator, saved, render_distance, true)
+    }
+
+    /// Stream and simulate terrain without submitting render-mesh jobs or
+    /// allocating meshing scratch space. Gameplay block light is not yet
+    /// maintained in this mode (it currently comes from mesh workers).
+    pub fn new_headless(generator: Arc<Generator>, saved: FxHashMap<IVec3, Arc<ChunkData>>, distance: i32) -> Self {
+        Self::with_meshing(generator, saved, distance, false)
+    }
+
+    fn with_meshing(
+        generator: Arc<Generator>,
+        saved: FxHashMap<IVec3, Arc<ChunkData>>,
+        render_distance: i32,
+        meshes_enabled: bool,
+    ) -> Self {
         let rng = generator.seed ^ 0x6772_6f77;
         Self {
             workers: Workers::new(generator.clone()),
@@ -119,7 +136,8 @@ impl World {
             load_cursor: 0,
             center: None,
             render_distance,
-            region: Box::default(),
+            region: None,
+            meshes_enabled,
             fluids: Default::default(),
             fire: Default::default(),
             falling: Vec::new(),
@@ -179,7 +197,7 @@ impl World {
 
     /// Chunks within this radius are meshed and drawn.
     fn in_mesh_range(&self, pos: IVec3) -> bool {
-        self.horizontal_dist2(pos) <= self.render_distance * self.render_distance
+        self.meshes_enabled && self.horizontal_dist2(pos) <= self.render_distance * self.render_distance
     }
 
     /// Loaded radius is one ring larger than the mesh radius so every meshed
@@ -293,6 +311,9 @@ impl World {
 
         // Keep the column heightmap current.
         let (old_h, new_h) = self.update_height(p, block);
+        if !self.meshes_enabled {
+            return true;
+        }
 
         // Light reaches 15 blocks, plus 1 for the face-adjacent sample cell;
         // a heightmap change also re-exposes everything between old and new.
@@ -401,12 +422,15 @@ impl World {
     }
 
     fn remesh_now(&mut self, pos: IVec3) {
+        if !self.meshes_enabled {
+            return;
+        }
         if !self.in_mesh_range(pos) || !self.ready_to_mesh(pos) {
             self.dirty.insert(pos);
             return;
         }
         let input = self.gather(pos);
-        let mut mesh = mesh::build(&input, &mut self.region);
+        let mut mesh = mesh::build(&input, self.region.get_or_insert_with(Box::default));
         let slot = self.chunks.get_mut(&pos).unwrap();
         slot.meshed_version = Some(slot.version);
         slot.block_light = mesh.block_light.take();
@@ -509,7 +533,9 @@ impl World {
             }
         }
         self.dirty.remove(&pos);
-        self.mesh_removals.push(pos);
+        if self.meshes_enabled {
+            self.mesh_removals.push(pos);
+        }
     }
 
     pub fn update(&mut self, player: DVec3) {

@@ -17,6 +17,7 @@ pub struct FallingBlock {
     pub block: Block,
     /// Minimum corner; x and z stay on the grid.
     pub pos: DVec3,
+    pub previous_pos: DVec3,
     speed: f64,
 }
 
@@ -36,7 +37,7 @@ impl World {
             let Some(b) = self.get_block(p) else { return };
             if b.has_gravity() && self.get_block(p - IVec3::Y).is_some_and(can_fall_into) {
                 self.edit(p, Block::AIR, true);
-                self.falling.push(FallingBlock { block: b, pos: p.as_dvec3(), speed: 0.0 });
+                self.falling.push(FallingBlock { block: b, pos: p.as_dvec3(), previous_pos: p.as_dvec3(), speed: 0.0 });
                 continue; // `p` is air now: look at what was on top of it
             }
             let above = p + IVec3::Y;
@@ -69,11 +70,19 @@ impl World {
         }
     }
 
+    /// Snap render interpolation when the offline game pauses.
+    pub fn snapshot_falling_positions(&mut self) {
+        for f in &mut self.falling {
+            f.previous_pos = f.pos;
+        }
+    }
+
     /// Moves falling blocks and lands those that hit something.
     pub fn tick_falling(&mut self, dt: f64) {
         let mut landed = Vec::new();
         let mut falling = std::mem::take(&mut self.falling);
         falling.retain_mut(|f| {
+            f.previous_pos = f.pos;
             f.speed = (f.speed + GRAVITY * dt).min(TERMINAL_SPEED);
             let target = f.pos.y - f.speed * dt;
             let cell = f.pos.floor().as_ivec3();

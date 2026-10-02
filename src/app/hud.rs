@@ -656,6 +656,7 @@ impl Game {
                 if self.vitals.is_dead() { " (dead)" } else { "" }
             ),
             format!("Time: {:02}:{:02}", hours as u32, (hours.fract() * 60.0) as u32),
+            format!("Tick: {} (20 Hz{})", self.clock.ticks(), if self.menu.is_some() { ", paused" } else { "" }),
             format!(
                 "Mode: {}{}{}",
                 if self.player.flying { "flying" } else { "walking" },

@@ -14,6 +14,43 @@ cargo clippy --release --all-targets -- -D warnings
 cargo test --release
 ```
 
+## Headless simulation foundation
+
+The `voxelcraft` library contains world simulation, collision, players,
+survival, weather, entities, inventories, crafting and CPU mesh generation.
+The default `client` feature adds the desktop executable and its window,
+GPU, audio and UI dependencies. Disable it to use the engine without those
+libraries or devices:
+
+```sh
+cargo clippy --release --no-default-features --all-targets -- -D warnings
+cargo test --release --no-default-features
+cargo run --release --no-default-features --example headless
+```
+
+The example streams terrain and advances 200 fixed gameplay ticks without
+creating a window, GPU, audio device or render meshes. It runs faster than
+real time and does not write saves. `World::new_headless` disables mesh jobs;
+`simulation::tick_world` advances fluids, falling blocks, furnaces, fire,
+random block ticks and leaf decay. `simulation::tick_player` uses the same
+movement and survival code as singleplayer.
+
+The desktop loop uses `FixedClock` at 20 Hz (50 ms), matching Java's normal
+[gameplay tick rate](https://www.minecraft.net/en-us/article/minecraft-java-edition-1-20-3).
+Player collision retains substeps of at most 1/120 second. Rendering polls
+streaming jobs independently and interpolates positions between ticks;
+mouse look and the hand animation update each frame. Jump and mining taps
+are retained until the next game tick. Offline pause clears
+fractional clock time. Catch-up is bounded to five ticks per frame; a longer
+stall discards excess elapsed time instead of taking one large physics step.
+The existing ten-minute VoxelCraft day is preserved.
+
+This is a foundation for LAN and split-screen. The client still owns the
+singleplayer session, action validation, damage/death handling, dimension
+travel and saves. Gameplay block light still comes from mesh workers and
+returns zero in headless worlds; separate authoritative lighting remains
+required. The example is not a dedicated or multiplayer server.
+
 ## Benchmarks
 
 ```sh

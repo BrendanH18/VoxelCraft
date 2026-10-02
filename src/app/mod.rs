@@ -15,7 +15,7 @@ mod menu;
 mod mobs;
 mod recipe_book;
 mod settings;
-pub mod survival;
+pub use crate::simulation::survival;
 mod title;
 mod weather;
 
@@ -60,7 +60,7 @@ const SUNSET: [f32; 3] = [0.95, 0.42, 0.18];
 const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
 const LAVA_FOG: [f32; 3] = [0.75, 0.25, 0.03];
 /// Real seconds per in-game day.
-const DAY_LENGTH: f64 = 600.0;
+const DAY_LENGTH: f64 = crate::simulation::DAY_LENGTH;
 
 fn window_icon() -> Icon {
     let decoder = png::Decoder::new(std::io::Cursor::new(include_bytes!("../../packaging/icons/VoxelCraft.png")));
@@ -120,6 +120,9 @@ struct Game {
     mouse_grabbed: bool,
     left_held: bool,
     right_held: bool,
+    /// Preserve taps that begin and end between fixed game ticks.
+    jump_pressed: bool,
+    mine_pressed: bool,
     action_cooldown: f64,
     mode: GameMode,
     inventory: Inventory,
@@ -138,6 +141,9 @@ struct Game {
     hand: hand::HandAnim,
     last_space: Instant,
     last_frame: Instant,
+    clock: crate::simulation::FixedClock,
+    previous_eye: DVec3,
+    rendered_eye: DVec3,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     day_time: f64,
     /// Seconds spent asleep so far (the screen fades out), if in bed.
@@ -317,6 +323,8 @@ impl ApplicationHandler for App {
                     game.keys.clear();
                     game.left_held = false;
                     game.right_held = false;
+                    game.jump_pressed = false;
+                    game.mine_pressed = false;
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
@@ -373,6 +381,8 @@ impl ApplicationHandler for App {
                         } else if game.mode == GameMode::Creative {
                             game.break_block();
                             game.action_cooldown = ACTION_REPEAT;
+                        } else {
+                            game.mine_pressed = true;
                         }
                     }
                     MouseButton::Right => {
@@ -602,6 +612,7 @@ impl Game {
         log::info!("{} worker threads", world.worker_threads());
 
         let now = Instant::now();
+        let previous_eye = player.eye();
         let mut game = Game {
             renderer,
             world,
@@ -612,6 +623,8 @@ impl Game {
             mouse_grabbed: false,
             left_held: false,
             right_held: false,
+            jump_pressed: false,
+            mine_pressed: false,
             action_cooldown: 0.0,
             mode,
             inventory,
@@ -626,6 +639,9 @@ impl Game {
             hand: Default::default(),
             last_space: now - Duration::from_secs(1),
             last_frame: now,
+            clock: Default::default(),
+            previous_eye,
+            rendered_eye: previous_eye,
             day_time: args
                 .time
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
@@ -747,6 +763,7 @@ impl Game {
                 self.player.vel = DVec3::ZERO;
             }
             KeyCode::Space => {
+                self.jump_pressed = true;
                 // Double-tap space toggles flight, like Minecraft creative.
                 let now = Instant::now();
                 if self.player.can_fly && now - self.last_space < Duration::from_millis(280) {
@@ -862,6 +879,8 @@ impl Game {
         self.keys.clear();
         self.left_held = false;
         self.right_held = false;
+        self.jump_pressed = false;
+        self.mine_pressed = false;
         self.actions.reset();
     }
 
@@ -897,6 +916,8 @@ impl Game {
             self.keys.clear();
             self.left_held = false;
             self.right_held = false;
+            self.jump_pressed = false;
+            self.mine_pressed = false;
             self.actions.reset();
         } else {
             if let Container::Chest(pos) = self.container {
@@ -1283,7 +1304,9 @@ impl Game {
                 self.apply_placements();
                 false
             }
-            0 if settled && self.world.is_idle() && self.mobs.waited() => {
+            // Paused captures cannot drain simulation work queued by
+            // --place (fluid wakeups, falling blocks). Wait only for jobs.
+            0 if settled && (self.menu.is_some() || self.world.is_idle()) && self.mobs.waited() => {
                 self.screenshot_state = 1;
                 false
             }
@@ -1396,27 +1419,15 @@ impl Game {
         self.last_save = Instant::now();
     }
 
-    fn frame(&mut self) {
-        let now = Instant::now();
-        // The world stands still while a menu is open.
-        let dt = if self.menu.is_some() { 0.0 } else { (now - self.last_frame).as_secs_f64().min(0.1) };
-        self.last_frame = now;
-
-        // --- Simulation ---------------------------------------------------
-        // Travelling between dimensions: frozen until the far side loads.
-        let arriving = self.update_arrival();
+    fn movement_input(&self, arriving: bool) -> MoveInput {
         let held = |k: KeyCode| self.keys.contains(&k);
         let axis = |pos: KeyCode, neg: KeyCode| held(pos) as i32 as f64 - held(neg) as i32 as f64;
-        let input = if self.mouse_grabbed
-            && !self.inventory_open
-            && !self.vitals.is_dead()
-            && self.sleeping.is_none()
-            && !arriving
+        if self.mouse_grabbed && !self.inventory_open && !self.vitals.is_dead() && self.sleeping.is_none() && !arriving
         {
             MoveInput {
                 forward: axis(KeyCode::KeyW, KeyCode::KeyS),
                 right: axis(KeyCode::KeyD, KeyCode::KeyA),
-                jump: held(KeyCode::Space),
+                jump: held(KeyCode::Space) || self.jump_pressed,
                 descend: held(KeyCode::ShiftLeft),
                 // Too hungry to sprint at 6 food or less (survival).
                 sprint: (held(KeyCode::ControlLeft) || held(KeyCode::KeyR))
@@ -1424,7 +1435,18 @@ impl Game {
             }
         } else {
             MoveInput::default()
-        };
+        }
+    }
+
+    /// One fixed gameplay step. Rendering and worker polling never
+    /// change the amount of simulation time advanced here.
+    fn tick(&mut self) {
+        let dt = crate::simulation::TICK_SECONDS;
+        let arriving = self.update_arrival();
+        let input = self.movement_input(arriving);
+        self.jump_pressed = false;
+        let mine_pressed = std::mem::take(&mut self.mine_pressed);
+        self.previous_eye = self.player.eye();
         let before = self.player.pos;
         if !arriving {
             self.player.update(dt, input, &self.world);
@@ -1434,22 +1456,7 @@ impl Game {
         self.weather.update(dt);
         self.update_sleep(dt);
         self.world.raining = self.weather.raining && self.dimension.has_sky();
-        let rain_here = weather::rain_at(&self.world, &self.weather, self.player.pos);
-        self.audio.update(&self.player, &self.world, rain_here, dt);
-        let env = survival::Env {
-            y: self.player.pos.y,
-            on_ground: self.player.on_ground,
-            flying: self.player.flying,
-            in_water: self.player.in_water,
-            climbing: self.player.climbing,
-            head_in_water: self.player.head_in_water(&self.world),
-            in_lava: self.player.in_lava(&self.world),
-            in_fire: self.player.in_fire(&self.world),
-            wet: self.world.rains_on(self.player.eye().floor().as_ivec3()),
-            moved: if self.player.flying { 0.0 } else { moved },
-            sprinting: input.sprint && moved > 0.0,
-            jumped: self.player.jumped,
-        };
+        let env = crate::simulation::player_environment(&self.player, &self.world, input, moved);
         let hurts = if arriving || self.arrival.is_some() {
             Default::default()
         } else {
@@ -1477,7 +1484,7 @@ impl Game {
 
         self.action_cooldown -= dt;
         let acting = self.mouse_grabbed && !self.inventory_open;
-        if acting && self.left_held && self.mode == GameMode::Survival {
+        if acting && (self.left_held || mine_pressed) && self.mode == GameMode::Survival {
             if self.action_cooldown <= 0.0 {
                 self.continue_breaking(dt);
             }
@@ -1499,38 +1506,60 @@ impl Game {
             self.hand.swing();
             self.action_cooldown = ACTION_REPEAT;
         }
+        if !self.left_held {
+            self.actions.breaking = None;
+        }
         self.eat(acting, dt);
         self.update_bow(acting, dt);
-        let walked = if self.player.flying { 0.0 } else { moved as f32 };
-        self.hand.update(dt as f32, self.held_item(), walked, self.player.on_ground);
+        crate::simulation::tick_world(&mut self.world, self.player.pos);
+        self.update_mobs(dt);
+        self.update_items();
+        self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
+    }
 
-        // --- World streaming ------------------------------------------------
+    fn frame(&mut self) {
+        let now = Instant::now();
+        let paused = self.menu.is_some();
+        let elapsed = now - self.last_frame;
+        self.last_frame = now;
+        let ticks = self.clock.advance(elapsed, paused);
+        let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
+
+        // Streaming and GPU uploads continue during offline pause.
+        self.update_arrival();
+        self.world.update(self.player.pos);
         if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0
         {
             self.apply_placements();
         }
-        self.world.tick_fluids(dt);
-        self.world.tick_falling(dt);
-        self.world.tick_furnaces(dt);
-        self.world.tick_fire(dt, self.player.pos);
-        self.world.tick_random(dt, self.player.pos);
-        self.world.tick_leaf_decay(dt);
-        self.world.update(self.player.pos);
+        for _ in 0..ticks {
+            self.tick();
+        }
+        if paused {
+            self.previous_eye = self.player.eye();
+            self.mobs.entities.snapshot_positions();
+            self.world.snapshot_falling_positions();
+        }
+        let input = self.movement_input(self.arrival.is_some());
+        let rain_here = weather::rain_at(&self.world, &self.weather, self.player.pos);
+        self.audio.update(&self.player, &self.world, rain_here, dt);
+        let alpha = if paused { 1.0 } else { self.clock.alpha() };
+        let camera = crate::simulation::interpolated_eye(self.previous_eye, self.player.eye(), alpha);
+        let distance = (camera - self.rendered_eye).with_y(0.0).length();
+        let walked = if paused || self.player.flying || distance > 4.0 { 0.0 } else { distance as f32 };
+        self.rendered_eye = camera;
+        self.hand.update(dt as f32, self.held_item(), walked, self.player.on_ground);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);
         }
         for pos in self.world.mesh_removals.drain(..) {
             self.renderer.remove_mesh(pos);
         }
-        self.update_mobs(dt);
-        self.update_items();
-
         if now - self.last_save > AUTOSAVE_EVERY {
             self.save();
         }
 
         // --- Render ---------------------------------------------------------
-        self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
         let mut sky = sky_state(self.day_time);
         sky.daylight = self.weather.dim(sky.daylight);
         sky.horizon = self.weather.overcast(sky.horizon);
@@ -1545,7 +1574,7 @@ impl Game {
         let rain = if nether { 0.0 } else { self.weather.strength };
         let daylight = sky.daylight;
         let in_lava = self.player.head_in_lava(&self.world);
-        let underwater = env.head_in_water || in_lava;
+        let underwater = self.player.head_in_water(&self.world) || in_lava;
         let view_dist = (self.world.render_distance() * 32) as f32;
         let (fog_color, fog_start, fog_end) = if in_lava {
             (LAVA_FOG, 0.0, 2.0)
@@ -1556,17 +1585,13 @@ impl Game {
         } else {
             (sky.horizon, view_dist * 0.55, view_dist * 0.95)
         };
-        let verts = self.mobs.entities.mesh(
-            self.player.eye(),
-            self.player.forward(),
-            fog_end,
-            (now - self.started).as_secs_f32(),
-        );
+        let verts =
+            self.mobs.entities.mesh(camera, self.player.forward(), fog_end, (now - self.started).as_secs_f32(), alpha);
         self.renderer.set_entities(verts);
-        weather::sheets(&self.world, self.player.eye(), rain, &mut self.weather_verts);
+        weather::sheets(&self.world, camera, rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
         let params = FrameParams {
-            camera: self.player.eye(),
+            camera,
             forward: self.player.forward(),
             fov_y: self.settings.fov.to_radians()
                 * if input.sprint && input.forward > 0.0 { 1.08 } else { 1.0 }
@@ -1592,7 +1617,7 @@ impl Game {
                 .falling_blocks()
                 .iter()
                 .map(|f| crate::render::BlockModel {
-                    min: f.pos,
+                    min: f.previous_pos.lerp(f.pos, alpha),
                     size: 1.0,
                     block: f.block,
                     sky_light: crate::entity::sky_light(&self.world, f.pos + glam::DVec3::splat(0.5)),
@@ -1603,7 +1628,8 @@ impl Game {
                 .chain(self.mobs.entities.tnt.iter().map(|t| {
                     let s = t.size();
                     crate::render::BlockModel {
-                        min: t.pos - glam::DVec3::new(s as f64 / 2.0, (s as f64 - 1.0) / 2.0, s as f64 / 2.0),
+                        min: t.previous_pos.lerp(t.pos, alpha)
+                            - glam::DVec3::new(s as f64 / 2.0, (s as f64 - 1.0) / 2.0, s as f64 / 2.0),
                         size: s,
                         // White flashes count down to the blast.
                         block: if t.flash() { Block::WOOL } else { Block::TNT },
@@ -1613,7 +1639,7 @@ impl Game {
                         icon: None,
                     }
                 }))
-                .chain(self.item_models())
+                .chain(self.item_models(alpha))
                 .collect(),
             hand: (self.show_hud && !self.vitals.is_dead() && self.sleeping.is_none()).then(|| {
                 let eye = self.player.eye();

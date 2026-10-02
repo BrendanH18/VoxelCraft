@@ -210,6 +210,8 @@ pub struct Mob {
     pub kind: MobKind,
     /// Feet position (bottom centre of the box).
     pub pos: DVec3,
+    /// Position at the start of the last simulation step, for rendering.
+    pub previous_pos: DVec3,
     pub vel: DVec3,
     /// Body facing, same convention as the player: forward = (cos, 0, sin).
     pub yaw: f32,
@@ -263,6 +265,7 @@ impl Mob {
         Self {
             kind,
             pos,
+            previous_pos: pos,
             vel: DVec3::ZERO,
             yaw,
             head_yaw: 0.0,
