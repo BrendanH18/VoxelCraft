@@ -179,7 +179,14 @@ mod tests {
         stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
         let command = json!({"version":VERSION,"player":"bot","command":"give diamond 64"});
-        write!(stream, "POST / HTTP/1.1\r\nHost: localhost\r\n\r\n{command}\n").unwrap();
+        // The host may answer the first line and close while the rest is still
+        // being sent, so the write itself can see a broken pipe or reset.
+        let request = format!("POST / HTTP/1.1\r\nHost: localhost\r\n\r\n{command}\n");
+        match stream.write_all(request.as_bytes()) {
+            Ok(()) => {}
+            Err(e) if matches!(e.kind(), io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset) => {}
+            Err(e) => panic!("unexpected write error: {e}"),
+        }
         // Unread HTTP bytes can cause a TCP reset before even the error
         // response is delivered. If delivered, it must be followed by closure.
         match read_line(&mut reader) {

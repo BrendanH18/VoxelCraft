@@ -32,7 +32,7 @@ Choose your download:
 - **Looks and feel:** Enhanced graphics with directional sunlight and
   reflective animated water, or the original Classic look. Combat sounds, an
   FPS counter (Options → FPS Counter) and a search field in every inventory.
-- **Command console:** press **/**, **T** or **`** for `/give`, `/tp`,
+- **Command console:** press **/**, **T** or **`` ` ``** (backtick) for `/give`, `/tp`,
   `/time`, `/weather`, `/gamemode`, `/setblock`, `/dimension` and `/help`.
 - **Steadier simulation:** gameplay now runs at a fixed 20 ticks per second,
   like Minecraft, with smooth movement at any frame rate.

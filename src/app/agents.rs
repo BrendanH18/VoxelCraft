@@ -25,9 +25,11 @@ pub(super) struct Agents {
 }
 
 impl Agents {
-    /// The next unused player ID; the host is [`PlayerId::HOST`].
+    /// The lowest unused player ID; the host is [`PlayerId::HOST`]. Never
+    /// overflows, whatever IDs a save file restored.
     fn next_id(&self) -> PlayerId {
-        PlayerId(self.players.values().map(|b| b.id.0).max().unwrap_or(0) + 1)
+        let used: std::collections::BTreeSet<u32> = self.players.values().map(|b| b.id.0).collect();
+        PlayerId((1..=u32::MAX).find(|id| !used.contains(id)).expect("fewer profiles than IDs"))
     }
     /// Adds an inactive profile with a fresh ID.
     pub fn insert(&mut self, name: String, agent: Agent) {
@@ -266,5 +268,16 @@ mod tests {
         unique.dedup();
         assert_eq!(unique.len(), 4, "{ids:?}");
         assert!(ids.iter().all(|&id| id != 0), "{ids:?}");
+    }
+
+    #[test]
+    fn the_largest_saved_id_does_not_overflow_new_ids() {
+        let text = format!(r#"[{{"name":"max","id":{}}},{{"name":"old"}}]"#, u32::MAX);
+        let mut agents = Agents::default();
+        agents.restore(&text, "overworld", DVec3::ZERO);
+        agents.insert("new".into(), Agent::new(DVec3::ZERO));
+        assert_eq!(agents.players["max"].id, PlayerId(u32::MAX));
+        assert_eq!(agents.players["old"].id, PlayerId(1));
+        assert_eq!(agents.players["new"].id, PlayerId(2));
     }
 }
