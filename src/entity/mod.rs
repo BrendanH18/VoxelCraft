@@ -121,11 +121,18 @@ pub trait MobWorld: BlockSource {
     fn surface(&self, x: i32, z: i32) -> Option<i32>;
     /// Nothing light-blocking above this cell.
     fn exposed(&self, p: IVec3) -> bool;
+    /// Torch light in this cell, 0..=15.
+    fn block_light(&self, _p: IVec3) -> u8 {
+        0
+    }
 }
 
 impl MobWorld for World {
     fn loaded(&self, p: IVec3) -> bool {
         self.is_loaded(p)
+    }
+    fn block_light(&self, p: IVec3) -> u8 {
+        World::block_light(self, p)
     }
     fn surface(&self, x: i32, z: i32) -> Option<i32> {
         self.surface_height(x, z)

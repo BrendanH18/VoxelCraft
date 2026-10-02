@@ -9,7 +9,7 @@
 | Mouse | Look (click the window to capture the mouse) |
 | W A S D | Move |
 | Space | Jump / swim up / fly up — double-tap to toggle flying (creative) |
-| Left Shift | Fly down |
+| Left Shift | Sneak: walk slowly and quietly, never off an edge, and hold on to ladders / fly down |
 | Left Ctrl or R | Sprint |
 | F | Toggle flying (creative) |
 | Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; respawn on the death screen |
@@ -17,7 +17,8 @@
 | Q / Ctrl+Q | Drop one of the selected item / the whole stack (with the inventory open: from the slot under the mouse) |
 | E | Inventory (click to move stacks; creative shows the block palette) |
 | Shift + click | In the inventory: move a stack between the open chest or furnace and the inventory (or between hotbar and main grid); on a crafting result, craft as many as fit |
-| Shift + right click | Build against a crafting table, furnace or chest instead of opening it |
+| Right click on a door or fence gate | Open / close it |
+| Shift + right click | Build against a crafting table, furnace, chest, door or gate instead of using it |
 | Hold / release right click with a bow | Draw / shoot an arrow (needs arrows in survival) |
 | Right click with flint and steel | Light an obsidian portal frame or a TNT block |
 | Right click with a bucket | Scoop up a water or lava source / pour it out again |
@@ -145,6 +146,21 @@ session.
 - Slabs: three stone, cobblestone, planks, sandstone, bricks or nether
   bricks in a row make six half-height slabs that mine like their full
   block. Placing a slab on top of the same slab makes the full block
+- Stairs: six of the same blocks in a staircase make four stairs (stone,
+  cobblestone, planks, sandstone, bricks or nether bricks). The low step
+  faces you as you place them. You walk up slabs and stairs without
+  jumping (step height 0.6, as in Minecraft), and mobs do too. Slabs and
+  stairs keep sky and torch light out, so a slab roof shades the room below
+- Fences (planks, stick, planks in two rows: 3) join up with each other,
+  gates and solid blocks, and are 1.5 blocks tall to anything trying to
+  jump them, so they pen animals in. Fence gates (stick, planks, stick in
+  two rows) open with a right-click, swinging away from you
+- Doors (6 planks in two columns: 3) stand two blocks tall on a solid
+  block; right-click to open or close them. Breaking either half breaks
+  both
+- Ladders (7 sticks in an H: 3) hang on the side of a solid block and fall
+  off when it's removed. Walk into one or hold Space to climb, hold Shift
+  to hold on; ladders break falls
 - TNT (5 gunpowder and 4 sand in a checkerboard): light it with flint and
   steel and it hops out of its block, flashing white and swelling for 4
   seconds before a blast stronger than a creeper's (power 4). TNT caught in

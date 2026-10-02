@@ -12,6 +12,7 @@
 pub mod arena;
 pub mod block_model;
 pub mod entity;
+pub mod hand;
 mod item_sprites;
 pub mod textures;
 pub mod ui;
@@ -97,12 +98,15 @@ pub struct FrameParams {
     pub sun_dir: Vec3,
     /// Seconds since start (animations).
     pub time: f32,
-    /// Targeted block and the height of its outline (beds are low).
-    pub highlight: Option<(IVec3, f32)>,
+    /// Targeted block and its outline's corners within the cell (beds,
+    /// slabs and shaped blocks are smaller).
+    pub highlight: Option<(IVec3, [f32; 3], [f32; 3])>,
     /// Block being broken and the crack texture layer to overlay on it.
     pub crack: Option<(IVec3, u8)>,
     /// Free-standing blocks (falling sand and gravel).
     pub block_models: Vec<BlockModel>,
+    /// The first-person hand (`None` in third person or with the HUD hidden).
+    pub hand: Option<hand::Hand>,
     /// HUD geometry, drawn last.
     pub ui: Vec<UiVertex>,
     /// Rain strength 0..1: hides the sun, moon and stars and thickens the
@@ -898,10 +902,11 @@ impl Renderer {
         out
     }
 
-    fn outline_vertices(&self, block: IVec3, height: f32, camera: DVec3) -> [[f32; 3]; 24] {
+    fn outline_vertices(&self, block: IVec3, lo: [f32; 3], hi: [f32; 3], camera: DVec3) -> [[f32; 3]; 24] {
         let e = 0.004;
-        let min = (block.as_dvec3() - camera - DVec3::splat(e)).as_vec3();
-        let max = min + Vec3::new(1.0, height, 1.0) + Vec3::splat(2.0 * e as f32);
+        let origin = (block.as_dvec3() - camera).as_vec3();
+        let min = origin + Vec3::from_array(lo) - Vec3::splat(e);
+        let max = origin + Vec3::from_array(hi) + Vec3::splat(e);
         let c = |x: bool, y: bool, z: bool| {
             [if x { max.x } else { min.x }, if y { max.y } else { min.y }, if z { max.z } else { min.z }]
         };
@@ -1015,11 +1020,12 @@ impl Renderer {
         if let Some((b, layer)) = p.crack {
             self.queue.write_buffer(&self.decal_buf, 0, &Self::decal_vertices(b, p.camera, layer));
         }
-        if let Some((b, height)) = p.highlight {
-            let verts = self.outline_vertices(b, height, p.camera);
+        if let Some((b, lo, hi)) = p.highlight {
+            let verts = self.outline_vertices(b, lo, hi, p.camera);
             self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
         }
-        self.block_models.set(&self.device, &self.queue, &p.block_models, p.camera);
+        let hand = p.hand.as_ref().map(|h| (h, p.forward, p.fov_y));
+        self.block_models.set(&self.device, &self.queue, &p.block_models, hand, p.camera);
         let hud = &p.ui;
         if hud.len() > self.ui_capacity {
             self.ui_capacity = hud.len().next_power_of_two();
@@ -1154,6 +1160,25 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shaders_parse_and_validate() {
+        let shaders = [
+            ("chunk", include_str!("shaders/chunk.wgsl")),
+            ("block_model", include_str!("shaders/block_model.wgsl")),
+            ("entity", include_str!("shaders/entity.wgsl")),
+            ("overlay", include_str!("shaders/overlay.wgsl")),
+            ("sky", include_str!("shaders/sky.wgsl")),
+            ("weather", include_str!("shaders/weather.wgsl")),
+        ];
+        for (name, source) in shaders {
+            let module =
+                naga::front::wgsl::parse_str(source).unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
+            naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
+                .validate(&module)
+                .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
+        }
+    }
 
     fn runs(offsets: &[u32], mask: u8) -> Vec<(u32, u32)> {
         let mut out = Vec::new();

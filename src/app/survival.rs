@@ -71,6 +71,8 @@ pub struct Env {
     pub flying: bool,
     /// Body in water: breaks falls.
     pub in_water: bool,
+    /// On a ladder: also breaks falls.
+    pub climbing: bool,
     /// Eyes under water: uses up air.
     pub head_in_water: bool,
     /// Body touching lava: burns.
@@ -284,6 +286,8 @@ impl Vitals {
         // the full drop).
         if env.flying || env.in_water {
             self.fall_peak = None;
+        } else if env.climbing {
+            self.fall_peak = Some(env.y);
         } else if env.on_ground {
             if let Some(peak) = self.fall_peak {
                 hurts.landed = peak - env.y;

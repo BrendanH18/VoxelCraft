@@ -22,6 +22,7 @@ mod growth;
 pub mod nether;
 pub mod noise;
 mod portal;
+pub mod shape;
 pub mod storage;
 pub mod terrain;
 
@@ -32,7 +33,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::mesh::{self, D, MARGIN, MeshData, MeshInput, NO_HEIGHT, Neighborhood, Region};
 use crate::workers::{Job, JobResult, Workers};
-use block::Block;
+use block::{Block, RenderKind};
 use chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_HEIGHT, WORLD_HEIGHT_CHUNKS, chunk_of, local_of};
 use terrain::Generator;
 
@@ -42,6 +43,8 @@ pub struct ChunkSlot {
     version: u32,
     meshed_version: Option<u32>,
     mesh_in_flight: bool,
+    /// Block light from the last mesh, for lighting entities.
+    block_light: Option<mesh::BlockLight>,
 }
 
 /// Per chunk-column state: skylight heightmap and how many of its chunks
@@ -387,9 +390,10 @@ impl World {
             return;
         }
         let input = self.gather(pos);
-        let mesh = mesh::build(&input, &mut self.region);
+        let mut mesh = mesh::build(&input, &mut self.region);
         let slot = self.chunks.get_mut(&pos).unwrap();
         slot.meshed_version = Some(slot.version);
+        slot.block_light = mesh.block_light.take();
         self.dirty.remove(&pos);
         self.mesh_uploads.push((pos, mesh));
     }
@@ -465,7 +469,10 @@ impl World {
                 *h = (*h).max(new);
             }
         }
-        self.chunks.insert(pos, ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false });
+        self.chunks.insert(
+            pos,
+            ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false, block_light: None },
+        );
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
@@ -508,13 +515,14 @@ impl World {
                         col.foliage = Some(foliage);
                     }
                 }
-                JobResult::Meshed { pos, version, mesh } => {
+                JobResult::Meshed { pos, version, mut mesh } => {
                     self.mesh_in_flight -= 1;
                     let in_range = self.in_mesh_range(pos);
                     let Some(slot) = self.chunks.get_mut(&pos) else { continue };
                     slot.mesh_in_flight = false;
                     if slot.version == version {
                         slot.meshed_version = Some(version);
+                        slot.block_light = mesh.block_light.take();
                         self.mesh_uploads.push((pos, mesh));
                     } else if slot.meshed_version != Some(slot.version) && in_range {
                         self.dirty.insert(pos);
@@ -557,6 +565,7 @@ impl World {
                 if self.trivially_empty(pos) {
                     let slot = self.chunks.get_mut(&pos).unwrap();
                     slot.meshed_version = Some(slot.version);
+                    slot.block_light = None;
                     self.mesh_uploads.push((pos, MeshData::default()));
                     continue;
                 }
@@ -583,6 +592,29 @@ impl World {
     /// face normal it was entered through.
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(IVec3, IVec3)> {
         self.raycast_by(origin, dir, max_dist, Block::is_targetable)
+    }
+
+    /// Block light (torches, lava, glowstone) at `p` as of its chunk's last
+    /// mesh: 0 where unknown.
+    pub fn block_light(&self, p: IVec3) -> u8 {
+        let l = local_of(p);
+        self.chunks
+            .get(&chunk_of(p))
+            .and_then(|slot| slot.block_light.as_ref())
+            .map_or(0, |light| light.get(l.x as usize, l.y as usize, l.z as usize))
+    }
+
+    /// The selection outline of the block at `p`: min and max corners
+    /// relative to the cell (low blocks and shaped blocks are smaller).
+    pub fn outline(&self, p: IVec3) -> ([f32; 3], [f32; 3]) {
+        let Some(b) = self.get_block(p) else { return ([0.0; 3], [1.0; 3]) };
+        if b.kind() == RenderKind::Shaped {
+            let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
+            if let Some(bx) = shape::shape(b, neighbour).bounds() {
+                return (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
+            }
+        }
+        ([0.0; 3], [1.0, b.height() as f32, 1.0])
     }
 
     /// Like [`World::raycast`], but also stops at water and lava sources
@@ -616,7 +648,15 @@ impl World {
                 && hits(b)
                 && cell.y >= 0
             {
-                return Some((cell, normal));
+                if b.kind() != RenderKind::Shaped {
+                    return Some((cell, normal));
+                }
+                // Shaped blocks only count where the ray meets their boxes.
+                if let Some((hit, face)) = crate::physics::ray_shape(self, cell, origin, dir)
+                    && hit <= max_dist
+                {
+                    return Some((cell, if face == IVec3::ZERO { normal } else { face }));
+                }
             }
             if t_max.x < t_max.y && t_max.x < t_max.z {
                 cell.x += step.x;
@@ -715,6 +755,25 @@ mod tests {
         }
         assert!(player.pos.x <= wall_x as f64 - 0.3 + 1e-3, "walked through wall: x={}", player.pos.x);
         assert!(player.pos.x > wall_x as f64 - 0.4);
+
+        // On a pillar, sneaking stops at the edge; walking falls off.
+        let pillar = IVec3::new(x, top as i32 + 3, z);
+        world.set_block(pillar, Block::STONE);
+        for (sneak, stays) in [(true, true), (false, false)] {
+            let mut player = Player::new(pillar.as_dvec3() + DVec3::new(0.5, 1.0, 0.5));
+            player.yaw = 0.7; // diagonal, toward +X +Z
+            let input = MoveInput { forward: 1.0, descend: sneak, ..Default::default() };
+            for _ in 0..120 {
+                player.update(1.0 / 60.0, input, &world);
+            }
+            let on_pillar = (player.pos.y - (pillar.y as f64 + 1.0)).abs() < 0.01;
+            assert_eq!(on_pillar, stays, "sneak {sneak}: {}", player.pos);
+            if sneak {
+                // Leaning out over the edge, but no further than the box allows.
+                assert!(player.pos.x > pillar.x as f64 + 1.0 && player.pos.x < pillar.x as f64 + 1.3 + 1e-6);
+                assert!(player.eye().y < player.pos.y + crate::player::EYE_HEIGHT - 0.2);
+            }
+        }
     }
 
     #[test]

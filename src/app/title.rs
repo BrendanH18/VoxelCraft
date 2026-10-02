@@ -503,6 +503,7 @@ impl Title {
             sun_dir: sky.sun_dir,
             time: t * 8.0,
             highlight: None,
+            hand: None,
             crack: None,
             block_models: Vec::new(),
             ui: self.build_ui(),

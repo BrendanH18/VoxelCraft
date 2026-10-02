@@ -7,7 +7,7 @@ use glam::DVec3;
 use crate::audio::sounds::Sound;
 use crate::inventory::Stack;
 use crate::render::BlockModel;
-use crate::world::block::{Block, RenderKind};
+use crate::world::block::Block;
 
 use super::{Container, Game};
 
@@ -119,7 +119,7 @@ impl Game {
             if item.pos.distance_squared(self.player.pos) > DRAW_DIST * DRAW_DIST {
                 continue;
             }
-            let block = item.stack.item.block().filter(|b| b.kind() != RenderKind::Cross);
+            let block = item.stack.item.block().filter(|b| !b.flat_icon());
             let icon = match block {
                 Some(_) => None,
                 None => item.stack.item.block().map(|b| b.info().tex[0]).or(item.stack.item.icon_layer()),
@@ -128,6 +128,7 @@ impl Game {
             let spin = item.age + item.phase;
             let bob = 0.1 + 0.07 * (item.age * 2.0 + item.phase).sin() as f64;
             let sky_light = crate::entity::sky_light(&self.world, item.pos + DVec3::Y * 0.25);
+            let block_light = self.torch_light(item.pos + DVec3::Y * 0.25);
             let copies = match item.stack.count {
                 1 => 1,
                 2..=16 => 2,
@@ -144,6 +145,7 @@ impl Game {
                     size: size as f32,
                     block: block.unwrap_or(Block::AIR),
                     sky_light,
+                    block_light,
                     yaw: spin,
                     icon,
                 });

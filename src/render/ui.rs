@@ -3,7 +3,8 @@
 
 use bytemuck::{Pod, Zeroable};
 
-use crate::world::block::{Block, RenderKind};
+use crate::world::block::Block;
+use crate::world::shape;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -107,24 +108,46 @@ impl Ui {
         self.quad([[x, y], [x + size, y], [x + size, y + size], [x, y + size]], uv, layer as f32, color);
     }
 
-    /// Isometric cube icon filling a `size` square.
+    /// Isometric block icon filling a `size` square: a cube, a lowered one
+    /// for low blocks, or the boxes of a shaped block.
     pub fn block_icon(&mut self, x: f32, y: f32, size: f32, block: Block) {
         let t = block.info().tex;
-        if block.kind() == RenderKind::Cross {
-            // Plants and torches show their flat sprite, like items.
+        if block.flat_icon() {
+            // Plants, torches and ladders show their flat sprite, like items.
             self.icon(x - 1.0, y - 1.0, size + 2.0, t[0], WHITE);
             return;
         }
-        // Half width `s`; the top diamond is `s` tall, each side face `s` tall.
-        let (cx, s) = (x + size / 2.0, size / 2.0);
+        let mut boxes = shape::item_shape(block);
+        if boxes.is_empty() {
+            boxes = shape::Boxes::from_box(shape::Box16 { min: [0; 3], max: [16, 16 - block.top_drop(), 16] });
+        }
+        // Half width `s`: the top diamond is `s` tall, each side face `s` tall.
+        let (l, s) = (x, size / 2.0);
         let q = s / 2.0;
-        // Low blocks (slabs, beds) have their top lowered.
-        let (l, r, top, bot) = (cx - s, cx + s, y + s * block.top_drop() as f32 / 16.0, y + size);
-        let uv = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        // A point of the unit cube in icon pixels: +X runs down-right, +Z
+        // up-right, +Y up. The top, -Z (left) and +X (right) faces show.
+        let at = |p: [f32; 3]| [l + s * (p[0] + p[2]), y + q * (1.0 + p[0] - p[2]) + s * (1.0 - p[1])];
         let shade = |f: f32| [f, f, f, 1.0];
-        self.quad([[l, top + q], [cx, top], [r, top + q], [cx, top + s]], uv, t[2] as f32, WHITE);
-        self.quad([[l, top + q], [cx, top + s], [cx, bot], [l, bot - q]], uv, t[5] as f32, shade(0.8));
-        self.quad([[cx, top + s], [r, top + q], [r, bot - q], [cx, bot]], uv, t[0] as f32, shade(0.62));
+        // Far boxes first, so nearer ones paint over them.
+        let mut order: Vec<_> = boxes.as_slice().to_vec();
+        order.sort_by_key(|b| {
+            b.min[0] as i32 + b.max[0] as i32 + b.min[1] as i32 + b.max[1] as i32 - b.min[2] as i32 - b.max[2] as i32
+        });
+        for b in order {
+            let (lo, hi) = (b.min.map(|c| c as f32 / 16.0), b.max.map(|c| c as f32 / 16.0));
+            let top = [[lo[0], hi[1], lo[2]], [lo[0], hi[1], hi[2]], [hi[0], hi[1], hi[2]], [hi[0], hi[1], lo[2]]];
+            let left = [[lo[0], hi[1], lo[2]], [hi[0], hi[1], lo[2]], [hi[0], lo[1], lo[2]], [lo[0], lo[1], lo[2]]];
+            let right = [[hi[0], hi[1], lo[2]], [hi[0], hi[1], hi[2]], [hi[0], lo[1], hi[2]], [hi[0], lo[1], lo[2]]];
+            // UVs as on the cube: (z, x) on top, (x or z, 1 - y) on the sides.
+            let face = |c: [[f32; 3]; 4], uv: fn([f32; 3]) -> [f32; 2]| (c.map(at), c.map(uv));
+            for ((p, uv), layer, colour) in [
+                (face(top, |p| [p[2], p[0]]), t[2], WHITE),
+                (face(left, |p| [p[0], 1.0 - p[1]]), t[5], shade(0.8)),
+                (face(right, |p| [p[2], 1.0 - p[1]]), t[0], shade(0.62)),
+            ] {
+                self.quad(p, uv, layer as f32, colour);
+            }
+        }
     }
 
     pub fn text_width(s: &str) -> f32 {

@@ -22,6 +22,9 @@ pub enum RenderKind {
     /// Two crossed diagonal planes (plants, torches): alpha-tested, drawn
     /// from both sides, never hides or occludes neighbours.
     Cross,
+    /// Built from a few boxes smaller than the cell (stairs, fences, doors;
+    /// see `world::shape`). Never hides or occludes neighbours.
+    Shaped,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -113,6 +116,11 @@ pub mod tex {
     pub const TNT_SIDE: u8 = 82;
     pub const TNT_TOP: u8 = 83;
     pub const TNT_BOTTOM: u8 = 84;
+    pub const LADDER: u8 = 85;
+    pub const DOOR_TOP: u8 = 86;
+    pub const DOOR_BOTTOM: u8 = 87;
+    /// The player's arm in first person.
+    pub const SKIN: u8 = 88;
     /// Flat item icons (see `item::Item::icon_layer`), up to `ITEM_COUNT` of them.
     pub const ITEM_0: u8 = 96;
     pub const ITEM_COUNT: u8 = 64;
@@ -290,6 +298,21 @@ impl Block {
     /// Half-height slabs of stone, cobblestone, oak planks, sandstone,
     /// bricks and nether bricks, ids 106..=111 (see [`Block::slab_of`]).
     pub const STONE_SLAB: Block = Block(106);
+    /// Stairs of each slab material, four facings each, ids 112..=135 (see
+    /// [`Block::stairs_of`]). Their low step faces the way they face.
+    pub const STONE_STAIRS: Block = Block(112);
+    /// Joins up with neighbouring fences, gates and full blocks; 1.5 blocks
+    /// tall to anything trying to jump it.
+    pub const OAK_FENCE: Block = Block(136);
+    /// Climbable; ids 137..=140 face south, north, east and west, away from
+    /// the wall they hang on.
+    pub const LADDER: Block = Block(137);
+    /// Ids 141..=148: closed facing south, north, east and west, then open.
+    pub const FENCE_GATE: Block = Block(141);
+    /// The lower half of a closed door facing south. Ids 149..=164: lower
+    /// then upper half, each closed then open, four facings apiece (see
+    /// [`Block::door`]). The panel sits on the side the door faces.
+    pub const OAK_DOOR: Block = Block(149);
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -307,6 +330,73 @@ impl Block {
     /// Growth stage of a wheat crop.
     pub fn crop_stage(self) -> Option<u8> {
         (59..=66).contains(&self.0).then(|| self.0 - 59)
+    }
+
+    /// A fence gate facing `facing`.
+    pub const fn gate(facing: Facing, open: bool) -> Block {
+        Block(141 + open as u8 * 4 + facing as u8)
+    }
+
+    /// One half of a door facing `facing`.
+    pub const fn door(facing: Facing, open: bool, upper: bool) -> Block {
+        Block(149 + upper as u8 * 8 + open as u8 * 4 + facing as u8)
+    }
+
+    /// The stairs cut from `base` (one of [`Block::SLAB_BASES`]), facing south.
+    pub fn stairs_of(base: Block) -> Option<Block> {
+        Self::SLAB_BASES.iter().position(|&b| b == base).map(|i| Block(112 + i as u8 * 4))
+    }
+
+    /// The full block stairs were cut from.
+    pub fn stairs_base(self) -> Option<Block> {
+        (112..=135).contains(&self.0).then(|| Self::SLAB_BASES[(self.0 as usize - 112) / 4])
+    }
+
+    /// What kind of shaped block this is, with its state.
+    pub fn shaped(self) -> Option<Shaped> {
+        let f = |i: u8| Facing::ALL[i as usize % 4];
+        Some(match self.0 {
+            112..=135 => Shaped::Stairs(f(self.0 - 112)),
+            136 => Shaped::Fence,
+            137..=140 => Shaped::Ladder(f(self.0 - 137)),
+            141..=148 => Shaped::Gate { facing: f(self.0 - 141), open: self.0 >= 145 },
+            149..=164 => {
+                let i = self.0 - 149;
+                Shaped::Door { facing: f(i), open: i % 8 >= 4, upper: i >= 8 }
+            }
+            _ => return None,
+        })
+    }
+
+    pub fn is_ladder(self) -> bool {
+        matches!(self.shaped(), Some(Shaped::Ladder(_)))
+    }
+
+    pub fn is_door(self) -> bool {
+        matches!(self.shaped(), Some(Shaped::Door { .. }))
+    }
+
+    pub fn is_door_upper(self) -> bool {
+        matches!(self.shaped(), Some(Shaped::Door { upper: true, .. }))
+    }
+
+    pub fn is_gate(self) -> bool {
+        matches!(self.shaped(), Some(Shaped::Gate { .. }))
+    }
+
+    /// The other state of a door half or gate (open <-> closed), facing
+    /// `facing`.
+    pub fn toggled(self, facing: Facing) -> Block {
+        match self.shaped() {
+            Some(Shaped::Gate { open, .. }) => Block::gate(facing, !open),
+            Some(Shaped::Door { open, upper, .. }) => Block::door(facing, !open, upper),
+            _ => self,
+        }
+    }
+
+    /// Drawn as a flat sprite in inventories and when dropped.
+    pub fn flat_icon(self) -> bool {
+        self.kind() == RenderKind::Cross || self.is_ladder()
     }
 
     /// Badlands terracotta: 0 plain, then orange, yellow, red, brown, white
@@ -350,6 +440,10 @@ impl Block {
             47..=49 => Some((Block::FURNACE, f(self.0 - 46))),
             50..=52 => Some((Block::LIT_FURNACE, f(self.0 - 49))),
             53..=56 => Some((Block::CHEST, f(self.0 - 53))),
+            112..=135 => Some((Block((self.0 - 112) / 4 * 4 + 112), f((self.0 - 112) % 4))),
+            137..=140 => Some((Block::LADDER, f(self.0 - 137))),
+            141..=148 => Some((Block::FENCE_GATE, f((self.0 - 141) % 4))),
+            149..=164 => Some((Block::OAK_DOOR, f((self.0 - 149) % 4))),
             _ => None,
         }
     }
@@ -367,6 +461,9 @@ impl Block {
             Block::FURNACE => Block(46 + i),
             Block::LIT_FURNACE => Block(49 + i),
             Block::CHEST => Block(53 + i),
+            Block::LADDER => Block(137 + i),
+            Block::FENCE_GATE => Block::gate(facing, false),
+            b if b.stairs_base().is_some() => Block(b.0 + i),
             _ => self,
         }
     }
@@ -463,7 +560,10 @@ impl Block {
     /// What mining rules treat this block as: a slab mines like its full
     /// block, an oriented block like its plain form.
     fn material(self) -> Block {
-        self.slab_base().unwrap_or(self.base())
+        match self.base() {
+            Block::OAK_FENCE | Block::FENCE_GATE => Block::PLANKS,
+            b => b.slab_base().or(b.stairs_base()).unwrap_or(b),
+        }
     }
 
     pub fn is_bed(self) -> bool {
@@ -504,6 +604,8 @@ impl Block {
             // The foot drops the bed; breaking either half breaks both.
             Block::BED_FOOT => Some(Item::BED),
             Block::BED_HEAD => None,
+            // Only the lower half of a door drops it.
+            Block::OAK_DOOR => (!self.is_door_upper()).then_some(Item::OAK_DOOR),
             Block::QUARTZ_ORE => Some(Item::NETHER_QUARTZ),
             // Glowstone breaks into dust (see `World::spill_block`).
             Block::GLOWSTONE | Block::NETHER_PORTAL => None,
@@ -535,6 +637,8 @@ impl Block {
             }
             Block::SANDSTONE | Block::WOOL => 0.8,
             Block::BED_FOOT | Block::BED_HEAD => 0.2,
+            Block::LADDER => 0.4,
+            Block::OAK_DOOR => 3.0,
             Block::PUMPKIN | Block::MELON => 1.0,
             b if b.terracotta_colour().is_some() => 1.25,
             Block::STONE => 1.5,
@@ -581,7 +685,9 @@ impl Block {
             | Block::SOUL_SAND
             | Block::CLAY => Some(ToolKind::Shovel),
             b if b.is_log() || b.is_planks() => Some(ToolKind::Axe),
-            Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON => Some(ToolKind::Axe),
+            Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON | Block::LADDER | Block::OAK_DOOR => {
+                Some(ToolKind::Axe)
+            }
             _ => None,
         }
     }
@@ -617,6 +723,8 @@ impl Block {
             .chain(69..=97)
             .chain(100..=103)
             .chain(105..=111)
+            .chain((112..=132).step_by(4))
+            .chain([136, 137, 141])
             .map(Block)
     }
 
@@ -662,6 +770,13 @@ impl Block {
                 matches!(below, Block::SUGAR_CANE | Block::GRASS | Block::DIRT | Block::SAND | Block::RED_SAND)
             }
             Block::TORCH => below.is_opaque(),
+            b if b.is_door() => {
+                if b.is_door_upper() {
+                    below.is_door() && !below.is_door_upper()
+                } else {
+                    below.is_opaque()
+                }
+            }
             b if b.is_sapling() => {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS) || below.is_farmland()
             }
@@ -693,6 +808,13 @@ impl Block {
     #[inline(always)]
     pub fn light_opacity(self) -> u8 {
         LIGHT_OPACITY[self.0 as usize]
+    }
+
+    /// Blocks light but doesn't fill its cell (slabs, stairs): lit like
+    /// the brightest cell beside or above it.
+    #[inline(always)]
+    pub fn borrows_light(self) -> bool {
+        BORROWS_LIGHT[self.0 as usize]
     }
 
     /// Light level emitted by this block.
@@ -779,6 +901,45 @@ pub enum Facing {
 impl Facing {
     pub const ALL: [Facing; 4] = [Facing::South, Facing::North, Facing::East, Facing::West];
 
+    /// Unit step out of the side this faces.
+    pub const fn offset(self) -> glam::IVec3 {
+        match self {
+            Facing::South => glam::IVec3::Z,
+            Facing::North => glam::IVec3::NEG_Z,
+            Facing::East => glam::IVec3::X,
+            Facing::West => glam::IVec3::NEG_X,
+        }
+    }
+
+    pub const fn opposite(self) -> Facing {
+        match self {
+            Facing::South => Facing::North,
+            Facing::North => Facing::South,
+            Facing::East => Facing::West,
+            Facing::West => Facing::East,
+        }
+    }
+
+    /// A quarter turn clockwise seen from above.
+    pub const fn clockwise(self) -> Facing {
+        match self {
+            Facing::South => Facing::West,
+            Facing::West => Facing::North,
+            Facing::North => Facing::East,
+            Facing::East => Facing::South,
+        }
+    }
+
+    /// Whether this faces along X (east or west).
+    pub const fn along_x(self) -> bool {
+        matches!(self, Facing::East | Facing::West)
+    }
+
+    /// The facing pointing along a horizontal unit offset.
+    pub fn from_offset(d: glam::IVec3) -> Option<Facing> {
+        Facing::ALL.into_iter().find(|f| f.offset() == d)
+    }
+
     /// Index into [`BlockInfo::tex`] (+X, -X, +Y, -Y, +Z, -Z).
     pub const fn face(self) -> usize {
         match self {
@@ -800,6 +961,27 @@ impl Facing {
             Facing::South
         }
     }
+}
+
+/// The state of a [`RenderKind::Shaped`] block (see `world::shape`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Shaped {
+    /// The low step faces this way; the tall half is behind it.
+    Stairs(Facing),
+    Fence,
+    /// Faces away from the wall it hangs on.
+    Ladder(Facing),
+    /// Faces whoever placed (or last opened) it; it runs across that way.
+    Gate {
+        facing: Facing,
+        open: bool,
+    },
+    /// Closed, the panel lies along the side it faces.
+    Door {
+        facing: Facing,
+        open: bool,
+        upper: bool,
+    },
 }
 
 /// A block type that flows: each has a source, a falling form and
@@ -969,10 +1151,34 @@ const fn make(id: u8) -> BlockInfo {
             // Cutout, not opaque: the faces above and beside a slab show.
             (NAMES[id as usize - 106], Cutout, base.tex)
         }
+        112..=135 => {
+            const NAMES: [&str; 6] = [
+                "stone stairs",
+                "cobblestone stairs",
+                "oak stairs",
+                "sandstone stairs",
+                "brick stairs",
+                "nether brick stairs",
+            ];
+            let base = make(match (id - 112) / 4 {
+                0 => 1,
+                1 => 9,
+                2 => 8,
+                3 => 21,
+                4 => 20,
+                _ => 103,
+            });
+            (NAMES[(id as usize - 112) / 4], Shaped, base.tex)
+        }
+        136 => ("oak fence", Shaped, all(tex::PLANKS)),
+        137..=140 => ("ladder", Shaped, all(tex::LADDER)),
+        141..=148 => ("oak fence gate", Shaped, all(tex::PLANKS)),
+        149..=156 => ("oak door", Shaped, all(tex::DOOR_BOTTOM)),
+        157..=164 => ("oak door", Shaped, all(tex::DOOR_TOP)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.
-    let solid = matches!(kind, Opaque | Cutout) || id == 97;
+    let solid = matches!(kind, Opaque | Cutout | Shaped) || id == 97;
     BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104), tex }
 }
 
@@ -992,10 +1198,23 @@ static LIGHT_OPACITY: [u8; 256] = {
     while i < 256 {
         arr[i] = match INFO[i].kind {
             RenderKind::Opaque => 15,
-            RenderKind::Invisible | RenderKind::Cross => 0,
-            _ if matches!(i, 10 | 98 | 99 | 106..=111) => 0, // glass, beds, slabs
-            _ => 1,                                          // leaves, water: dim light passing through
+            // Slabs and stairs keep the light out, like Minecraft's (they
+            // borrow light from their neighbours instead; see `borrows_light`).
+            _ if matches!(i, 106..=135) => 15,
+            RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
+            _ if matches!(i, 10 | 98 | 99) => 0, // glass, beds
+            _ => 1,                              // leaves, water: dim light passing through
         };
+        i += 1;
+    }
+    arr
+};
+
+static BORROWS_LIGHT: [bool; 256] = {
+    let mut arr = [false; 256];
+    let mut i = 0;
+    while i < 256 {
+        arr[i] = LIGHT_OPACITY[i] >= 15 && !matches!(INFO[i].kind, RenderKind::Opaque);
         i += 1;
     }
     arr
@@ -1133,7 +1352,7 @@ mod tests {
             assert_eq!(slab.slab_base(), Some(base));
             assert_eq!(slab.height(), 0.5);
             assert!(slab.is_solid() && !slab.is_opaque() && slab.is_targetable());
-            assert_eq!(slab.light_opacity(), 0);
+            assert!(slab.light_opacity() == 15 && slab.borrows_light());
             assert_eq!(
                 (slab.hardness(), slab.best_tool(), slab.harvest_level()),
                 (base.hardness(), base.best_tool(), base.harvest_level())
@@ -1162,5 +1381,49 @@ mod tests {
         assert_eq!(Block::flowing_lava(2).emission(), 15);
         assert!(Block::OBSIDIAN.is_opaque() && Block::OBSIDIAN.hardness() > Block::STONE.hardness());
         assert_eq!(Block::LAVA.drop(), None);
+    }
+
+    #[test]
+    fn shaped_blocks_turn_drop_and_mine_like_their_material() {
+        for (i, &base) in Block::SLAB_BASES.iter().enumerate() {
+            let stairs = Block::stairs_of(base).unwrap();
+            assert_eq!(stairs, Block(Block::STONE_STAIRS.0 + 4 * i as u8));
+            for f in Facing::ALL {
+                let turned = stairs.with_facing(f);
+                assert_eq!(turned.shaped(), Some(Shaped::Stairs(f)));
+                assert_eq!((turned.base(), turned.stairs_base()), (stairs, Some(base)));
+                assert_eq!(turned.drop(), Some(stairs.into()));
+                assert_eq!((turned.hardness(), turned.harvest_level()), (base.hardness(), base.harvest_level()));
+                assert!(turned.borrows_light() && turned.is_solid() && !turned.is_opaque());
+            }
+            assert!(Block::creative_palette().any(|p| p == stairs));
+        }
+        for f in Facing::ALL {
+            assert_eq!(Block::LADDER.with_facing(f).shaped(), Some(Shaped::Ladder(f)));
+            assert_eq!(Block::FENCE_GATE.with_facing(f), Block::gate(f, false));
+            for open in [false, true] {
+                let gate = Block::gate(f, open);
+                assert_eq!(gate.shaped(), Some(Shaped::Gate { facing: f, open }));
+                assert_eq!(gate.drop(), Some(Block::FENCE_GATE.into()));
+                assert_eq!(gate.toggled(f), Block::gate(f, !open));
+                for upper in [false, true] {
+                    let door = Block::door(f, open, upper);
+                    assert_eq!(door.shaped(), Some(Shaped::Door { facing: f, open, upper }));
+                    assert_eq!(door.name(), "oak door");
+                    assert_eq!(door.drop(), (!upper).then_some(Item::OAK_DOOR));
+                    assert_eq!(door.toggled(f), Block::door(f, !open, upper));
+                    assert_eq!(door.light_opacity(), 0);
+                }
+            }
+        }
+        // The upper half stands on the lower; the lower on a full block.
+        assert!(Block::door(Facing::East, false, true).can_stay_on(Block::door(Facing::East, false, false)));
+        assert!(!Block::door(Facing::East, false, true).can_stay_on(Block::AIR));
+        assert!(Block::OAK_DOOR.can_stay_on(Block::STONE) && !Block::OAK_DOOR.can_stay_on(Block::GLASS));
+        assert_eq!(Block::OAK_FENCE.hardness(), Block::PLANKS.hardness());
+        assert_eq!(Block::LADDER.best_tool(), Some(ToolKind::Axe));
+        assert!(Block::LADDER.flat_icon() && !Block::OAK_FENCE.flat_icon());
+        assert_eq!(Item::from_name("oak_door"), Some(Item::OAK_DOOR));
+        assert_eq!(Block::from_name("oak fence"), Some(Block::OAK_FENCE));
     }
 }

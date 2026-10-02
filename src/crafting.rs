@@ -241,7 +241,12 @@ pub fn recipes() -> &'static [Recipe] {
             [&[b(Block::STONE)], COBBLESTONE, PLANKS, SAND_STONE, &[b(Block::BRICKS)], &[b(Block::NETHER_BRICKS)]];
         for (i, base) in SLABS.into_iter().enumerate() {
             r.push(shaped(&["###"], &[('#', base)], b(Block(Block::STONE_SLAB.0 + i as u8)), 6));
+            r.push(shaped(&["#  ", "## ", "###"], &[('#', base)], b(Block(Block::STONE_STAIRS.0 + i as u8 * 4)), 4));
         }
+        r.push(shaped(&["#s#", "#s#"], &[('#', PLANKS), ('s', STICK)], b(Block::OAK_FENCE), 3));
+        r.push(shaped(&["s#s", "s#s"], &[('#', PLANKS), ('s', STICK)], b(Block::FENCE_GATE), 1));
+        r.push(shaped(&["s s", "sss", "s s"], &[('s', STICK)], b(Block::LADDER), 3));
+        r.push(shaped(&["##", "##", "##"], &[('#', PLANKS)], Item::OAK_DOOR, 3));
         const ARMOR: [(ArmorMaterial, Ingredient); 4] = [
             (ArmorMaterial::Leather, &[Item::LEATHER]),
             (ArmorMaterial::Iron, &[Item::IRON_INGOT]),

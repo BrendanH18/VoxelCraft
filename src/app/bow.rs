@@ -25,6 +25,8 @@ impl Game {
         self.target().and_then(|(pos, _)| self.world.get_block(pos)).is_some_and(|b| {
             b == Block::CRAFTING_TABLE
                 || b.is_bed()
+                || b.is_door()
+                || b.is_gate()
                 || crate::world::furnace::is_furnace(b)
                 || crate::world::chest::is_chest(b)
         })

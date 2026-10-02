@@ -111,13 +111,15 @@ pub enum Sound {
     Mob(Voice, Call),
     /// Rainfall (seamless loop).
     Rain,
+    /// A door or gate opening (creaky hinge) or closing (latch and thud).
+    Door(bool),
 }
 
 const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 14 + Voice::ALL.len() * CALLS;
+    pub const COUNT: usize = 3 * M + 16 + Voice::ALL.len() * CALLS;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -139,7 +141,8 @@ impl Sound {
             Sound::Hurt => 3 * M + 11,
             Sound::Hit => 3 * M + 12,
             Sound::Rain => 3 * M + 13,
-            Sound::Mob(v, c) => 3 * M + 14 + v as usize * CALLS + c as usize,
+            Sound::Door(open) => 3 * M + 14 + open as usize,
+            Sound::Mob(v, c) => 3 * M + 16 + v as usize * CALLS + c as usize,
         }
     }
 
@@ -161,6 +164,8 @@ impl Sound {
                 Sound::Hurt,
                 Sound::Hit,
                 Sound::Rain,
+                Sound::Door(false),
+                Sound::Door(true),
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
     }
@@ -184,6 +189,7 @@ impl Sound {
             Sound::Hurt => "hurt".into(),
             Sound::Hit => "hit".into(),
             Sound::Rain => "rain".into(),
+            Sound::Door(open) => if open { "door_open" } else { "door_close" }.into(),
             Sound::Mob(v, c) => format!("{}_{}", v.name(), c.name()),
         }
     }
@@ -196,7 +202,9 @@ impl Sound {
         match self {
             Sound::Step(_) => 4,
             Sound::Break(_) | Sound::Place(_) | Sound::Swim | Sound::Drip => 3,
-            Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow | Sound::Hurt | Sound::Hit => 2,
+            Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow | Sound::Hurt | Sound::Hit | Sound::Door(_) => {
+                2
+            }
             Sound::Mob(_, Call::Death) => 1,
             Sound::Mob(..) => 2,
             Sound::Click | Sound::Wind | Sound::Cave | Sound::Fuse | Sound::Pop | Sound::Rain => 1,
@@ -224,6 +232,7 @@ impl Sound {
             Sound::Hurt => super::voices::player_hurt(&mut rng),
             Sound::Hit => super::voices::hit(&mut rng),
             Sound::Rain => rain(&mut rng),
+            Sound::Door(open) => door(&mut rng, open),
             Sound::Mob(v, c) => super::voices::render(v, c, &mut rng),
         }
     }
@@ -629,6 +638,48 @@ fn bow(rng: &mut Rng) -> Vec<f32> {
     Biquad::bandpass(2200.0, 1.2).run(&mut whoosh);
     mix_into(&mut out, &whoosh, 0.3, 0);
     dsp::finish(out, 0.4)
+}
+
+fn door(rng: &mut Rng, open: bool) -> Vec<f32> {
+    let len = samples(if open { 0.5 } else { 0.3 });
+    let mut out = vec![0.0; len];
+    // The latch: a short, bright click.
+    let mut latch = noise(rng, samples(0.012), |t| dsp::ad(t, 0.0005, 0.002));
+    Biquad::bandpass(3200.0, 2.0).run(&mut latch);
+    mix_into(&mut out, &latch, 0.5, samples(0.003));
+    if open {
+        // The hinge creaks: stick-slip pulses that speed up as the door
+        // swings, each ringing a narrow wooden band.
+        let mut creak = vec![0.0; len];
+        let (end, f0) = (0.42, rng.range(70.0, 95.0));
+        let mut t = 0.03;
+        while t < end {
+            creak[samples(t)] = (1.0 - t / end) * rng.range(0.6, 1.0);
+            t += rng.range(0.9, 1.1) / (f0 * (1.0 + 1.5 * t / end));
+        }
+        Biquad::bandpass(rng.range(780.0, 980.0), 6.0).run(&mut creak);
+        Biquad::bandpass(rng.range(1500.0, 1800.0), 4.0).run(&mut creak);
+        mix_into(&mut out, &creak, 4.0, 0);
+    } else {
+        // The door meets its frame: a hollow wooden thud.
+        let at = samples(0.008);
+        add_mode(
+            &mut out,
+            at,
+            Mode { freq: rng.range(105.0, 125.0), amp: 1.0, tau: 0.07, glide: 0.9, glide_tau: 0.05 },
+        );
+        add_mode(
+            &mut out,
+            at,
+            Mode { freq: rng.range(290.0, 340.0), amp: 0.5, tau: 0.035, glide: 1.0, glide_tau: 1.0 },
+        );
+        add_mode(
+            &mut out,
+            at,
+            Mode { freq: rng.range(720.0, 820.0), amp: 0.2, tau: 0.015, glide: 1.0, glide_tau: 1.0 },
+        );
+    }
+    dsp::finish(out, 0.5)
 }
 
 fn pop() -> Vec<f32> {

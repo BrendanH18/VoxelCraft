@@ -16,6 +16,8 @@ pub struct EntityVertex {
     pub color: [u8; 4],
     /// x: sky light, y: face shade, z: hurt tint, w: emissive (flames).
     pub light: [u8; 4],
+    /// x: block light (torches); the rest is padding.
+    pub torch: [u8; 4],
 }
 
 pub(super) struct EntityPass {
@@ -42,7 +44,7 @@ impl EntityPass {
                     array_stride: std::mem::size_of::<EntityVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &wgpu::vertex_attr_array![
-                        0 => Float32x3, 1 => Float32x2, 2 => Unorm8x4, 3 => Unorm8x4
+                        0 => Float32x3, 1 => Float32x2, 2 => Unorm8x4, 3 => Unorm8x4, 4 => Unorm8x4
                     ],
                 })],
             },

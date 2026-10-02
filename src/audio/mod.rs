@@ -223,7 +223,8 @@ impl Audio {
                 self.stride += speed * dt;
                 if self.stride >= STRIDE {
                     self.stride -= STRIDE;
-                    self.step(self.ground, 0.55);
+                    // Sneaking is near silent.
+                    self.step(self.ground, if player.sneaking { 0.2 } else { 0.55 });
                 }
             } else {
                 // Standing still: the first step comes soon after moving.

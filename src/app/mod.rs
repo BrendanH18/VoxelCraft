@@ -6,7 +6,9 @@ mod bow;
 mod bucket;
 mod containers;
 mod dimension;
+mod doors;
 mod farming;
+mod hand;
 mod hud;
 mod items;
 mod menu;
@@ -133,6 +135,7 @@ struct Game {
     cursor_px: (f32, f32),
     actions: actions::Actions,
     show_hud: bool,
+    hand: hand::HandAnim,
     last_space: Instant,
     last_frame: Instant,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
@@ -359,6 +362,9 @@ impl ApplicationHandler for App {
                 match button {
                     MouseButton::Left => {
                         game.left_held = pressed;
+                        if pressed {
+                            game.hand.swing();
+                        }
                         if !pressed {
                             game.actions.breaking = None;
                             game.release_attack();
@@ -372,6 +378,9 @@ impl ApplicationHandler for App {
                     MouseButton::Right => {
                         game.right_held = pressed;
                         if pressed && !game.equip_held() && !game.start_draw() {
+                            if game.held_item().is_none_or(|i| i.food().is_none()) {
+                                game.hand.swing();
+                            }
                             game.place_block();
                             game.action_cooldown = ACTION_REPEAT;
                         } else if !pressed {
@@ -614,6 +623,7 @@ impl Game {
             cursor_px: (0.0, 0.0),
             actions: actions::Actions::default(),
             show_hud: true,
+            hand: Default::default(),
             last_space: now - Duration::from_secs(1),
             last_frame: now,
             day_time: args
@@ -1038,6 +1048,9 @@ impl Game {
             if block.is_bed() {
                 self.break_bed_partner(pos, block);
             }
+            if block.is_door() {
+                self.break_door_partner(pos, block);
+            }
         }
     }
 
@@ -1073,6 +1086,9 @@ impl Game {
         }
         if block.is_bed() {
             self.break_bed_partner(pos, block);
+        }
+        if block.is_door() {
+            self.break_door_partner(pos, block);
         }
         self.vitals.hunger.exhaust(survival::EXHAUST_MINE);
         if block.hardness() > 0.0 {
@@ -1113,6 +1129,12 @@ impl Game {
         true
     }
 
+    /// Torch light at a point, 0..1, for lighting things drawn outside the
+    /// chunk meshes.
+    pub(super) fn torch_light(&self, p: glam::DVec3) -> f32 {
+        self.world.block_light(p.floor().as_ivec3()) as f32 / 15.0
+    }
+
     /// The item in the selected hotbar slot.
     pub(super) fn held_item(&self) -> Option<Item> {
         self.inventory.get(self.actions.selected).map(|s| s.item)
@@ -1146,6 +1168,10 @@ impl Game {
             Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
             Some(b) if b.is_bed() => return self.use_bed(pos),
+            Some(b) if b.is_door() || b.is_gate() => {
+                self.toggle_door(pos);
+                return;
+            }
             _ => {}
         }
         if self.strike_flint(pos, normal) || self.use_item_on(pos, normal) {
@@ -1153,8 +1179,14 @@ impl Game {
         }
         // Clicking tall grass replaces it instead of building against it.
         let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
-        if self.held_item() == Some(Item::BED) {
-            if self.place_bed(at) && self.mode == GameMode::Survival {
+        let placed = match self.held_item() {
+            Some(Item::BED) => Some(self.place_bed(at)),
+            Some(Item::OAK_DOOR) => Some(self.place_door(at)),
+            Some(i) if i.block().is_some_and(|b| b.is_ladder()) => Some(self.place_ladder(pos, normal)),
+            _ => None,
+        };
+        if let Some(placed) = placed {
+            if placed && self.mode == GameMode::Survival {
                 self.inventory.take_one(self.actions.selected);
             }
             return;
@@ -1406,6 +1438,7 @@ impl Game {
             on_ground: self.player.on_ground,
             flying: self.player.flying,
             in_water: self.player.in_water,
+            climbing: self.player.climbing,
             head_in_water: self.player.head_in_water(&self.world),
             in_lava: self.player.in_lava(&self.world),
             moved: if self.player.flying { 0.0 } else { moved },
@@ -1437,6 +1470,9 @@ impl Game {
             if self.action_cooldown <= 0.0 {
                 self.continue_breaking(dt);
             }
+            if self.actions.breaking.is_some() {
+                self.hand.swing();
+            }
         } else if acting
             && self.action_cooldown <= 0.0
             && (self.left_held || self.right_held)
@@ -1449,10 +1485,13 @@ impl Game {
             } else {
                 self.place_block();
             }
+            self.hand.swing();
             self.action_cooldown = ACTION_REPEAT;
         }
         self.eat(acting, dt);
         self.update_bow(acting, dt);
+        let walked = if self.player.flying { 0.0 } else { moved as f32 };
+        self.hand.update(dt as f32, self.held_item(), walked, self.player.on_ground);
 
         // --- World streaming ------------------------------------------------
         if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0
@@ -1528,10 +1567,10 @@ impl Game {
             zenith_color: if underwater { fog_color } else { sky.zenith },
             sun_dir: sky.sun_dir,
             time: (now - self.started).as_secs_f32(),
-            highlight: self
-                .target()
-                .filter(|_| self.mob_target().is_none())
-                .map(|(p, _)| (p, self.world.get_block(p).map_or(1.0, |b| b.height() as f32))),
+            highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| {
+                let (min, max) = self.world.outline(p);
+                (p, min, max)
+            }),
             crack: self
                 .actions
                 .breaking
@@ -1545,6 +1584,7 @@ impl Game {
                     size: 1.0,
                     block: f.block,
                     sky_light: crate::entity::sky_light(&self.world, f.pos + glam::DVec3::splat(0.5)),
+                    block_light: self.torch_light(f.pos + glam::DVec3::splat(0.5)),
                     yaw: 0.0,
                     icon: None,
                 })
@@ -1556,12 +1596,18 @@ impl Game {
                         // White flashes count down to the blast.
                         block: if t.flash() { Block::WOOL } else { Block::TNT },
                         sky_light: crate::entity::sky_light(&self.world, t.pos + glam::DVec3::Y * 0.5),
+                        block_light: self.torch_light(t.pos + glam::DVec3::Y * 0.5),
                         yaw: 0.0,
                         icon: None,
                     }
                 }))
                 .chain(self.item_models())
                 .collect(),
+            hand: (self.show_hud && !self.vitals.is_dead() && self.sleeping.is_none()).then(|| {
+                let eye = self.player.eye();
+                let eating = (self.actions.eat_timer / EAT_TIME) as f32;
+                self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye))
+            }),
             rain,
             ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() {
                 self.build_ui(now)
