@@ -526,11 +526,13 @@ impl Game {
         // `--new` replaces the save, so the old world's Nether must not carry
         // over into the new one. Scripted runs never write saves.
         if args.new_world && settings_path.is_some() {
-            let nether = dimension::storage_for(&storage, Dimension::Nether);
-            if nether.exists()
-                && let Err(e) = std::fs::remove_dir_all(nether.dir())
-            {
-                log::error!("failed to remove the old Nether save {}: {e}", nether.dir().display());
+            for dimension in [Dimension::Nether, Dimension::End] {
+                let nether = dimension::storage_for(&storage, dimension);
+                if nether.exists()
+                    && let Err(e) = std::fs::remove_dir_all(nether.dir())
+                {
+                    log::error!("failed to remove the old dimension save {}: {e}", nether.dir().display());
+                }
             }
         }
         let seed =
@@ -610,6 +612,9 @@ impl Game {
         // `--dimension` into the other world: arrive by portal, as if the
         // player had walked through one where they stood.
         let arrival = (dimension != saved_dimension && args.pose.is_none()).then(|| {
+            if dimension == Dimension::End {
+                return dimension::Arrival::EndSpawn;
+            }
             let scale = if dimension == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
             let p = (player.pos * DVec3::new(scale, 0.0, scale)).floor().as_ivec3();
             dimension::Arrival::Portal(p.with_y(if dimension == Dimension::Nether { 64 } else { 100 }))
@@ -723,7 +728,7 @@ impl Game {
             settings,
             settings_path,
             dimension,
-            overworld_props: if dimension == Dimension::Nether { overworld_props } else { Default::default() },
+            overworld_props: if dimension != Dimension::Overworld { overworld_props } else { Default::default() },
             arrival,
             portal_time: 0.0,
             portal_locked: false,
@@ -1274,7 +1279,7 @@ impl Game {
         }
         // Furnaces and chests face whoever places them.
         let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
-        if block.is_water() && !self.dimension.has_sky() {
+        if block.is_water() && self.dimension == Dimension::Nether {
             // Water boils away in the Nether.
             self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
             return;
@@ -1446,9 +1451,9 @@ impl Game {
                 let player = Some((self.player.pos, self.player.yaw, self.player.pitch));
                 self.storage.save(&LevelInfo { seed, player, props }, &chunks)
             }
-            Dimension::Nether => {
+            Dimension::Nether | Dimension::End => {
                 let nether = LevelInfo { seed, player: None, props: self.dimension_props() };
-                dimension::storage_for(&self.storage, Dimension::Nether).save(&nether, &chunks).and_then(|()| {
+                dimension::storage_for(&self.storage, self.dimension).save(&nether, &chunks).and_then(|()| {
                     props.extend(self.overworld_props.clone());
                     let player = Some((self.player.pos, self.player.yaw, self.player.pitch));
                     self.storage.save_level(&LevelInfo { seed, player, props })
@@ -1626,9 +1631,9 @@ impl Game {
         let nether = !self.dimension.has_sky();
         if nether {
             // No sun, no weather: a steady dim glow in a red haze.
-            sky.daylight = dimension::NETHER_LIGHT;
-            sky.horizon = dimension::NETHER_FOG;
-            sky.zenith = dimension::NETHER_FOG;
+            sky.daylight = if self.dimension == Dimension::End { 0.65 } else { dimension::NETHER_LIGHT };
+            sky.horizon = if self.dimension == Dimension::End { [0.045, 0.025, 0.065] } else { dimension::NETHER_FOG };
+            sky.zenith = if self.dimension == Dimension::End { [0.018, 0.009, 0.03] } else { dimension::NETHER_FOG };
         }
         let rain = if nether { 0.0 } else { self.weather.strength };
         let daylight = sky.daylight;
@@ -1639,6 +1644,8 @@ impl Game {
             (LAVA_FOG, 0.0, 2.0)
         } else if underwater {
             (WATER_FOG.map(|c| c * daylight), 0.0, 28.0)
+        } else if self.dimension == Dimension::End {
+            (sky.horizon, view_dist * 0.45, view_dist * 0.95)
         } else if nether {
             (sky.horizon, 8.0, view_dist.min(160.0) * 0.8)
         } else {
@@ -1676,6 +1683,7 @@ impl Game {
             daylight,
             zenith_color: if underwater { fog_color } else { sky.zenith },
             sun_dir: sky.sun_dir,
+            dimension: self.dimension,
             time: (now - self.started).as_secs_f32(),
             highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);

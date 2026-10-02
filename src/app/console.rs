@@ -145,7 +145,14 @@ impl Game {
             }
             Command::Dimension(to) => {
                 if to != self.dimension {
-                    self.switch_dimension(to, super::dimension::Arrival::Respawn);
+                    let arrival = match to {
+                        crate::world::terrain::Dimension::End => super::dimension::Arrival::EndSpawn,
+                        crate::world::terrain::Dimension::Nether => {
+                            super::dimension::Arrival::Portal(glam::IVec3::new(0, 64, 0))
+                        }
+                        crate::world::terrain::Dimension::Overworld => super::dimension::Arrival::Respawn,
+                    };
+                    self.switch_dimension(to, arrival);
                 }
             }
             Command::Players => {

@@ -17,7 +17,8 @@ fn main() {
     let dimension = match std::env::args().nth(1).as_deref() {
         None => Dimension::Overworld,
         Some("--nether") => Dimension::Nether,
-        _ => panic!("usage: headless [--nether]"),
+        Some("--end") => Dimension::End,
+        _ => panic!("usage: headless [--nether|--end]"),
     };
     let loading = Instant::now();
     let generator = Arc::new(Generator::for_dimension(12345, dimension));
@@ -52,7 +53,7 @@ fn main() {
             player_targetable: false,
             daylight: 1.0,
             raining: weather.raining,
-            spawning: true,
+            spawning: dimension != Dimension::End,
             nether: dimension == Dimension::Nether,
         };
         entities.update(TICK_SECONDS, &world, &ctx);

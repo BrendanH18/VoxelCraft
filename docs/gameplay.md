@@ -296,3 +296,15 @@ Inventory search filters creative items by name. Type in the search field
 matching stacks are highlighted without moving any slots. Matching ignores case,
 accepts underscores and requires every search word. Enter leaves the field;
 Esc closes the inventory. Agents can use `catalog [query]` for the same search.
+
+The End terrain is available through `/dimension end` or `--dimension end`.
+Return with `/dimension overworld`. It includes a seeded central end-stone
+island, ten obsidian pillars, an arrival platform, a void gap and outer islands,
+a static violet sky, no weather or natural Overworld/Nether mob spawning, and
+its own `end/` save folder. Water works; beds explode. End stone is mineable
+with a pickaxe and appears in the creative catalog.
+
+This is the terrain/visiting foundation. The dragon, crystals, Endermen,
+strongholds/portal progression, gateways, chorus trees, cities, shulkers and
+elytra are still roadmap work. Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
+describes the larger progression being built toward.

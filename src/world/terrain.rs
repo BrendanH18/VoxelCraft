@@ -75,6 +75,7 @@ pub enum Dimension {
     #[default]
     Overworld,
     Nether,
+    End,
 }
 
 impl Dimension {
@@ -82,18 +83,19 @@ impl Dimension {
         match self {
             Dimension::Overworld => "overworld",
             Dimension::Nether => "nether",
+            Dimension::End => "end",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Dimension> {
-        [Dimension::Overworld, Dimension::Nether].into_iter().find(|d| d.name() == name)
+        [Dimension::Overworld, Dimension::Nether, Dimension::End].into_iter().find(|d| d.name() == name)
     }
 
     /// The other side of a Nether portal.
     pub fn other(self) -> Dimension {
         match self {
             Dimension::Overworld => Dimension::Nether,
-            Dimension::Nether => Dimension::Overworld,
+            Dimension::Nether | Dimension::End => Dimension::Overworld,
         }
     }
 
@@ -109,6 +111,7 @@ pub struct Generator {
     pub dimension: Dimension,
     /// Set for the Nether, which generates from its own noise.
     nether: Option<super::nether::NetherGen>,
+    end: Option<super::end::EndGen>,
     continent: Perlin,
     erosion: Perlin,
     ridge: Perlin,
@@ -149,6 +152,7 @@ impl Generator {
             seed,
             dimension,
             nether: (dimension == Dimension::Nether).then(|| super::nether::NetherGen::new(seed)),
+            end: (dimension == Dimension::End).then(|| super::end::EndGen::new(seed)),
             continent: p(1),
             erosion: p(2),
             ridge: p(3),
@@ -165,6 +169,9 @@ impl Generator {
 
     /// Surface height and biome of a world column.
     pub fn column(&self, x: i32, z: i32) -> Column {
+        if let Some(end) = &self.end {
+            return Column { height: end.column(x, z).map_or(-1, |(top, _)| top), biome: Biome::Plains, frozen: false };
+        }
         let (fx, fz) = (x as f32, z as f32);
         let cont = self.continent.fbm2(fx / 900.0, fz / 900.0, 5) * 1.8;
         let erosion = self.erosion.fbm2(fx / 500.0, fz / 500.0, 3) * 1.6;
@@ -258,7 +265,7 @@ impl Generator {
     /// samples the biome a few blocks off at random, so colours dither
     /// into each other across biome borders instead of changing in a line.
     pub fn foliage(&self, cx: i32, cz: i32) -> Box<[u8; CHUNK_SIZE * CHUNK_SIZE]> {
-        if self.nether.is_some() {
+        if !self.dimension.has_sky() {
             return Box::new([0; CHUNK_SIZE * CHUNK_SIZE]);
         }
         let mut out = Box::new([0u8; CHUNK_SIZE * CHUNK_SIZE]);
@@ -361,6 +368,9 @@ impl Generator {
     }
 
     pub fn generate(&self, cpos: IVec3) -> ChunkData {
+        if let Some(end) = &self.end {
+            return end.generate(cpos);
+        }
         if let Some(nether) = &self.nether {
             return nether.generate(cpos);
         }
@@ -644,6 +654,9 @@ impl Generator {
 
     /// Finds a dry-land spawn point near the origin.
     pub fn find_spawn(&self) -> IVec3 {
+        if self.end.is_some() {
+            return super::end::SPAWN;
+        }
         for r in 0..64 {
             for i in 0..(r * 8).max(1) {
                 let a = i as f32 / (r * 8).max(1) as f32 * std::f32::consts::TAU;

@@ -13,6 +13,7 @@ struct Globals {
     // xy: camera xz wrapped to the cloud pattern period, z: cloud plane y
     // relative to the camera, w: cloud draw radius.
     clouds: vec4<f32>,
+    environment: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -50,6 +51,17 @@ fn vs_sky(@builtin(vertex_index) i: u32) -> SkyOut {
 fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     let far = g.inv_view_proj * vec4<f32>(in.ndc, 0.0001, 1.0);
     let dir = normalize(far.xyz / far.w);
+    if g.environment.x > 0.5 {
+        if g.environment.x > 1.5 {
+            // A static, mottled violet sky; no sun, moon, stars or clouds.
+            let cell = floor(dir * 180.0);
+            let grain = hash3(cell);
+            let haze = pow(1.0 - abs(dir.y), 3.0);
+            let color = mix(g.zenith_color.rgb, g.fog_color.rgb, haze) * (0.8 + grain * 0.4);
+            return vec4<f32>(color, 1.0);
+        }
+        return vec4<f32>(g.fog_color.rgb, 1.0);
+    }
     let sun = normalize(g.sun.xyz);
     let daylight = g.params.z;
 

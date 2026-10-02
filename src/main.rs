@@ -102,7 +102,7 @@ voxelcraft [options]
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies or rain (clear, rain)
-  --dimension <d>   start in the overworld or the nether (arriving through a
+  --dimension <d>   start in overworld, nether or end (arriving through a
                     portal unless --pose is given)
   --screenshot <f>  wait for the world to load, save a PNG and exit
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
@@ -223,7 +223,7 @@ fn parse_args() -> Result<Args, String> {
             "--dimension" => {
                 let v = value("--dimension")?;
                 let dim = world::terrain::Dimension::from_name(&v);
-                args.dimension = Some(dim.ok_or(format!("--dimension: expected overworld or nether, got {v}"))?);
+                args.dimension = Some(dim.ok_or(format!("--dimension: expected overworld, nether or end, got {v}"))?);
             }
             "--health" => args.health = Some(value("--health")?.parse().map_err(|_| "bad --health")?),
             "--air" => args.air = Some(value("--air")?.parse().map_err(|_| "bad --air")?),

@@ -50,6 +50,8 @@ struct Globals {
     /// xy: wrapped cloud pattern origin, z: cloud plane y relative to the
     /// camera, w: cloud radius.
     clouds: [f32; 4],
+    /// x: dimension (0 Overworld, 1 Nether, 2 End); remaining values reserved.
+    environment: [f32; 4],
 }
 
 const CLOUD_HEIGHT: f64 = 192.0;
@@ -96,6 +98,7 @@ pub struct FrameParams {
     pub daylight: f32,
     pub zenith_color: [f32; 3],
     pub sun_dir: Vec3,
+    pub dimension: crate::world::terrain::Dimension,
     /// Seconds since start (animations).
     pub time: f32,
     /// Targeted block and its outline's corners within the cell (beds,
@@ -1006,6 +1009,16 @@ impl Renderer {
             inv_view_proj: view_proj.inverse().to_cols_array_2d(),
             fog_color: [p.fog_color[0], p.fog_color[1], p.fog_color[2], 1.0],
             zenith_color: [p.zenith_color[0], p.zenith_color[1], p.zenith_color[2], 1.0],
+            environment: [
+                match p.dimension {
+                    crate::world::terrain::Dimension::Overworld => 0.0,
+                    crate::world::terrain::Dimension::Nether => 1.0,
+                    crate::world::terrain::Dimension::End => 2.0,
+                },
+                0.0,
+                0.0,
+                0.0,
+            ],
             sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
             params: [p.fog_start, p.fog_end, p.daylight, p.rain],
             clouds: [
@@ -1108,8 +1121,10 @@ impl Renderer {
             // Sky after terrain so early-z skips covered pixels.
             pass.set_pipeline(&self.sky_pipeline);
             pass.draw(0..3, 0..1);
-            pass.set_pipeline(&self.cloud_pipeline);
-            pass.draw(0..6, 0..1);
+            if p.dimension.has_sky() {
+                pass.set_pipeline(&self.cloud_pipeline);
+                pass.draw(0..6, 0..1);
+            }
 
             if p.crack.is_some() {
                 pass.set_pipeline(&self.decal_pipeline);

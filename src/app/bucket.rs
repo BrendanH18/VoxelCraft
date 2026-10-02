@@ -59,7 +59,7 @@ impl Game {
         if !self.world.get_block(at).is_some_and(|b| b.is_replaceable()) {
             return false;
         }
-        if fluid == Block::WATER && !self.dimension.has_sky() {
+        if fluid == Block::WATER && self.dimension == crate::world::terrain::Dimension::Nether {
             // Water boils away in the Nether.
             self.audio.play(Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
         } else {

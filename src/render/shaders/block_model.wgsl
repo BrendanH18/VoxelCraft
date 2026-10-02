@@ -10,6 +10,7 @@ struct Globals {
     // x: fog start, y: fog end, z: daylight (skylight multiplier), w: unused
     params: vec4<f32>,
     clouds: vec4<f32>,
+    environment: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;

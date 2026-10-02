@@ -15,6 +15,7 @@
 pub mod block;
 pub mod chest;
 pub mod chunk;
+pub mod end;
 pub mod falling;
 mod fire;
 mod fluid;

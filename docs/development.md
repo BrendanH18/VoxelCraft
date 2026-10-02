@@ -27,6 +27,7 @@ cargo clippy --release --no-default-features --all-targets -- -D warnings
 cargo test --release --no-default-features
 cargo run --release --no-default-features --example headless
 cargo run --release --no-default-features --example headless -- --nether
+cargo run --release --no-default-features --example headless -- --end
 ```
 
 The example streams terrain and advances 200 fixed gameplay ticks without
