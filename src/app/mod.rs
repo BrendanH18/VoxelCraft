@@ -491,6 +491,16 @@ impl Game {
                 }
             }
         };
+        // `--new` replaces the save, so the old world's Nether must not carry
+        // over into the new one. Scripted runs never write saves.
+        if args.new_world && settings_path.is_some() {
+            let nether = dimension::storage_for(&storage, Dimension::Nether);
+            if nether.exists()
+                && let Err(e) = std::fs::remove_dir_all(nether.dir())
+            {
+                log::error!("failed to remove the old Nether save {}: {e}", nether.dir().display());
+            }
+        }
         let seed =
             existing.as_ref().map(|l| l.seed).or(new.as_ref().and_then(|n| n.seed)).or(args.seed).unwrap_or_else(
                 || {

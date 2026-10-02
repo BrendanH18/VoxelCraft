@@ -444,14 +444,17 @@ impl Entities {
     }
 
     /// Stuck player arrows within reach of a player at `feet`, removed.
-    /// Returns how many were collected.
+    /// Returns how many were collected (at most 255 at a time; the rest
+    /// stay for the next call).
     pub fn collect_arrows(&mut self, feet: DVec3) -> u8 {
-        let before = self.arrows.len();
+        let mut taken: u8 = 0;
         self.arrows.retain(|a| {
             let near = (a.pos - (feet + DVec3::Y * 0.9)).abs().cmple(DVec3::new(1.3, 1.5, 1.3)).all();
-            !(a.pickup && a.is_stuck() && near)
+            let take = a.pickup && a.is_stuck() && near && taken < u8::MAX;
+            taken += take as u8;
+            !take
         });
-        (before - self.arrows.len()) as u8
+        taken
     }
 
     /// Player melee hit for `damage` on mob `index`, pushed along `dir`.
@@ -869,6 +872,14 @@ mod tests {
         assert_eq!(e.collect_arrows(spot + DVec3::X * 5.0), 0);
         assert_eq!(e.collect_arrows(spot), 1);
         assert!(e.arrows.is_empty());
+
+        // More than 255 at once: the rest wait for the next pickup.
+        for _ in 0..300 {
+            e.shoot_arrow(DVec3::new(0.5, 11.6, 0.5), DVec3::new(1.0, -0.6, 0.0), 0.5, true);
+        }
+        run(&mut e, &world, &c, 2.0);
+        assert_eq!(e.collect_arrows(spot), 255);
+        assert_eq!(e.collect_arrows(spot), 45);
     }
 
     #[test]
