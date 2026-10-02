@@ -500,6 +500,8 @@ impl Title {
             fog_end: 400.0,
             daylight: sky.daylight,
             zenith_color: sky.zenith,
+            dimension: crate::world::terrain::Dimension::Overworld,
+            enhanced_graphics: self.shell.settings.enhanced_graphics,
             sun_dir: sky.sun_dir,
             time: t * 8.0,
             highlight: None,

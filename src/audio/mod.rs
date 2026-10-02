@@ -308,7 +308,10 @@ fn ground_block(player: &Player, world: &World) -> Option<Block> {
 /// something overhead shelters it.
 fn ambience(eye: DVec3, world: &World) -> (f32, f32, bool) {
     // The Nether is one huge cave.
-    if !world.generator.dimension.has_sky() {
+    if world.generator.dimension == crate::world::terrain::Dimension::End {
+        return (0.0, 0.0, false);
+    }
+    if world.generator.dimension == crate::world::terrain::Dimension::Nether {
         return (0.0, 1.0, true);
     }
     let p = eye.floor().as_ivec3();

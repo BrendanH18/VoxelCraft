@@ -1,6 +1,8 @@
 //! Shared engine and simulation code. Build with `--no-default-features`
 //! to exclude desktop window, GPU and audio dependencies.
 
+pub mod agent;
+pub mod control;
 pub mod crafting;
 pub mod entity;
 pub mod inventory;

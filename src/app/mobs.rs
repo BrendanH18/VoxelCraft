@@ -121,8 +121,8 @@ impl Game {
                 0.0
             },
             raining: self.weather.raining,
-            spawning: true,
-            nether: !self.dimension.has_sky(),
+            spawning: self.dimension != crate::world::terrain::Dimension::End,
+            nether: self.dimension == crate::world::terrain::Dimension::Nether,
         };
         for event in self.mobs.entities.update(dt, &self.world, &ctx) {
             match event {

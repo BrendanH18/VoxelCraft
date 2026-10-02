@@ -15,6 +15,7 @@
 pub mod block;
 pub mod chest;
 pub mod chunk;
+pub mod end;
 pub mod falling;
 mod fire;
 mod fluid;
@@ -72,6 +73,7 @@ pub struct World {
     load_list: Vec<IVec3>,
     load_cursor: usize,
     center: Option<IVec3>,
+    agent_centers: Vec<IVec3>,
     render_distance: i32,
     region: Option<Box<Region>>,
     meshes_enabled: bool,
@@ -140,6 +142,7 @@ impl World {
             load_list: Vec::new(),
             load_cursor: 0,
             center: None,
+            agent_centers: Vec::new(),
             render_distance,
             region: None,
             meshes_enabled,
@@ -215,6 +218,10 @@ impl World {
     fn in_load_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance as f32 + 1.5;
         (self.horizontal_dist2(pos) as f32) <= r * r
+            || self.agent_centers.iter().any(|c| {
+                let d = (pos - *c).with_y(0);
+                d.length_squared() <= 16
+            })
     }
 
     /// Extra hysteresis before unloading so walking back and forth across a
@@ -222,6 +229,10 @@ impl World {
     fn in_keep_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance + 3;
         self.horizontal_dist2(pos) <= r * r
+            || self.agent_centers.iter().any(|c| {
+                let d = (pos - *c).with_y(0);
+                d.length_squared() <= 25
+            })
     }
 
     /// Whether every chunk of the column holding `(x, z)` is loaded.
@@ -503,6 +514,20 @@ impl World {
                 }
             }
         }
+        for c in &self.agent_centers {
+            for dz in -4..=4 {
+                for dx in -4..=4 {
+                    if dx * dx + dz * dz > 16 {
+                        continue;
+                    }
+                    for y in 0..WORLD_HEIGHT_CHUNKS {
+                        self.load_list.push(IVec3::new(c.x + dx, y, c.z + dz));
+                    }
+                }
+            }
+        }
+        self.load_list.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+        self.load_list.dedup();
         let mut keyed: Vec<(i32, IVec3)> = self.load_list.iter().map(|&p| (self.priority(p), p)).collect();
         keyed.sort_unstable_by_key(|&(k, _)| k);
         self.load_list = keyed.into_iter().map(|(_, p)| p).collect();
@@ -562,6 +587,19 @@ impl World {
     /// Poll terrain/mesh workers and stream chunks around the player without advancing game time.
     /// Resolve gameplay light before scheduling meshes; drain render messages separately.
     pub fn update(&mut self, player: DVec3) {
+        self.update_players(player, &[]);
+    }
+
+    /// Stream the host view and the union of agents' smaller simulation ranges.
+    /// Agent-only chunks remain unmeshed outside the host's view distance.
+    pub fn update_players(&mut self, player: DVec3, agents: &[DVec3]) {
+        let mut centers: Vec<_> = agents.iter().map(|p| chunk_of(p.floor().as_ivec3())).collect();
+        centers.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+        centers.dedup();
+        if centers != self.agent_centers {
+            self.agent_centers = centers;
+            self.center = None;
+        }
         let center = chunk_of(player.floor().as_ivec3());
         if self.center != Some(center) {
             self.recenter(center);
@@ -761,6 +799,51 @@ mod tests {
 
     fn surface_y(world: &World, x: i32, z: i32) -> i32 {
         (0..WORLD_HEIGHT).rev().find(|&y| world.get_block(IVec3::new(x, y, z)).unwrap().is_solid()).unwrap()
+    }
+
+    #[test]
+    fn unloaded_agents_preserve_survival_inventory_and_timed_commands() {
+        use crate::agent::{Agent, Command};
+        use crate::entity::Entities;
+        use crate::item::Item;
+        use crate::simulation::survival::{Env, Hunger};
+
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        let pos = DVec3::new(1.5, 160.0, 1.5);
+        let mut agent = Agent::new(pos);
+        let mut entities = Entities::new(7);
+        agent.inventory.add(Item::DIAMOND, 3);
+        agent.vitals.tick(0.5, &Env { in_fire: true, ..Default::default() }, false);
+        agent.vitals.health = 1.0;
+        agent.vitals.hunger = Hunger::restore(0.0, 0.0, 0.0);
+        agent.execute(Command::parse("wait 20").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        for feet_loaded in [false, true] {
+            if feet_loaded {
+                world.insert_chunk(IVec3::new(0, 5, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
+            }
+            assert_eq!(world.is_loaded(pos.floor().as_ivec3()), feet_loaded);
+            assert!(!world.is_loaded(pos.floor().as_ivec3() - IVec3::Y));
+            agent.previous_pos = pos - DVec3::X;
+            for _ in 0..25 {
+                agent.tick(&mut world, &mut entities);
+            }
+            assert_eq!(agent.previous_pos, pos);
+            assert_eq!(agent.player.pos, pos);
+            assert_eq!(agent.remaining, 20);
+            assert_eq!(agent.vitals.health, 1.0);
+            assert_eq!(agent.inventory.get(0).unwrap().count, 3);
+            assert!(agent.vitals.burning());
+            assert!(entities.items.is_empty());
+        }
+        world.insert_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::STONE)), false);
+        agent.tick(&mut world, &mut entities);
+        assert_eq!(agent.remaining, 19, "loaded agents resume timed input");
+        for _ in 0..25 {
+            agent.tick(&mut world, &mut entities);
+        }
+        assert!(agent.vitals.is_dead(), "loaded agents resume survival damage");
+        assert!(agent.inventory.get(0).is_none());
+        assert_eq!(entities.items.iter().map(|i| i.stack.count as u32).sum::<u32>(), 3);
     }
 
     #[test]

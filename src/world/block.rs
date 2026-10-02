@@ -166,7 +166,8 @@ pub mod tex {
     /// More item icons, once the first `ITEM_COUNT` are used up.
     pub const ITEM_MORE_0: u8 = FOLIAGE_0 + (FOLIAGE_GROUPS - 1) * FOLIAGE.len() as u8;
     pub const ITEM_MORE_COUNT: u8 = 32;
-    pub const COUNT: u32 = ITEM_MORE_0 as u32 + ITEM_MORE_COUNT as u32;
+    pub const END_STONE: u8 = ITEM_MORE_0 + ITEM_MORE_COUNT;
+    pub const COUNT: u32 = END_STONE as u32 + 1;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
@@ -179,7 +180,7 @@ pub mod tex {
     pub fn item_index(layer: u8) -> Option<u8> {
         if (ITEM_0..ITEM_0 + ITEM_COUNT).contains(&layer) {
             Some(layer - ITEM_0)
-        } else if (ITEM_MORE_0 as u32..COUNT).contains(&(layer as u32)) {
+        } else if (ITEM_MORE_0..ITEM_MORE_0 + ITEM_MORE_COUNT).contains(&layer) {
             Some(layer - ITEM_MORE_0 + ITEM_COUNT)
         } else {
             None
@@ -318,6 +319,7 @@ impl Block {
     pub const OAK_DOOR: Block = Block(149);
     /// Fire ages 0..=15, saved as ids 165..=180. All ages share geometry.
     pub const FIRE: Block = Block(165);
+    pub const END_STONE: Block = Block(181);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -677,7 +679,7 @@ impl Block {
             Block::CACTUS | Block::NETHERRACK => 0.4,
             Block::SOUL_SAND => 0.5,
             Block::NETHER_BRICKS => 2.0,
-            Block::QUARTZ_ORE => 3.0,
+            Block::QUARTZ_ORE | Block::END_STONE => 3.0,
             Block::NETHER_PORTAL => f32::INFINITY,
             Block::DIRT | Block::SAND | Block::RED_SAND | Block::ICE => 0.5,
             Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL | Block::FARMLAND | Block::WET_FARMLAND | Block::CLAY => {
@@ -718,6 +720,7 @@ impl Block {
             | Block::LIT_FURNACE
             | Block::NETHERRACK
             | Block::QUARTZ_ORE
+            | Block::END_STONE
             | Block::NETHER_BRICKS
             | Block::ICE => Some(ToolKind::Pickaxe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
@@ -753,6 +756,7 @@ impl Block {
             | Block::LIT_FURNACE
             | Block::NETHERRACK
             | Block::QUARTZ_ORE
+            | Block::END_STONE
             | Block::NETHER_BRICKS => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
             Block::IRON_ORE => Some(1),
@@ -1226,6 +1230,7 @@ const fn make(id: u8) -> BlockInfo {
         149..=156 => ("oak door", Shaped, all(tex::DOOR_BOTTOM)),
         157..=164 => ("oak door", Shaped, all(tex::DOOR_TOP)),
         165..=180 => ("fire", Cross, all(tex::FIRE_0)),
+        181 => ("end stone", Opaque, all(tex::END_STONE)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.
@@ -1284,6 +1289,14 @@ static OPAQUE: [bool; 256] = {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn end_stone_is_not_an_item_icon() {
+        for index in 0..tex::ITEM_COUNT + tex::ITEM_MORE_COUNT {
+            assert_eq!(tex::item_index(tex::item_layer(index)), Some(index));
+        }
+        assert_eq!(tex::item_index(tex::END_STONE), None);
+    }
 
     #[test]
     fn fire_states_and_materials_follow_minecraft_rules() {

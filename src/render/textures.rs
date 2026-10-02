@@ -539,6 +539,10 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 [0, 0, 0, 0]
             }
         }
+        tex::END_STONE => {
+            let pit = rnd(layer, x / 2, y / 2, 31);
+            shade([220, 224, 164], if pit < 0.22 { 0.74 + r * 0.08 } else { 0.91 + r * 0.14 })
+        }
         tex::NETHERRACK => {
             // Lumpy dark red rock with darker cracks between the lumps.
             let pts = points(layer, 9);

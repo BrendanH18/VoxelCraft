@@ -13,6 +13,7 @@ struct Globals {
     // x: fog start, y: fog end, z: daylight (skylight multiplier), w: unused
     params: vec4<f32>,
     clouds: vec4<f32>,
+    environment: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -28,6 +29,8 @@ struct VsOut {
     @location(3) dist: f32,
     // x: sky light, y: block light (0..1), interpolated for smooth lighting.
     @location(4) light: vec2<f32>,
+    @location(5) rel: vec3<f32>,
+    @location(6) @interpolate(flat) normal: vec3<f32>,
 };
 
 @vertex
@@ -118,6 +121,13 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
     out.layer = w1 & 255u;
     out.shade = face_shade[face] * ao_curve[ao];
     out.dist = length(rel);
+    out.rel = rel;
+    var normals = array<vec3<f32>, 8>(
+        vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(-1.0, 0.0, 0.0),
+        vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, -1.0, 0.0),
+        vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0),
+        vec3<f32>(-0.707, 0.0, 0.707), vec3<f32>(0.707, 0.0, 0.707));
+    out.normal = normals[face];
     out.light = vec2<f32>(f32(light & 15u), f32(light >> 4u)) / 15.0;
     return out;
 }
@@ -129,7 +139,7 @@ fn curve(l: vec2<f32>) -> vec2<f32> {
 
 fn lighting(in: VsOut) -> vec3<f32> {
     let l = curve(in.light);
-    let sky = vec3<f32>(l.x * g.params.z);
+    let sky = l.x * g.params.z * daylight_tint(in.normal);
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
     return (max(sky, torch) * 0.96 + 0.04) * in.shade;
 }
@@ -137,6 +147,22 @@ fn lighting(in: VsOut) -> vec3<f32> {
 fn apply_fog(color: vec3<f32>, dist: f32) -> vec3<f32> {
     let f = clamp((dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
     return mix(color, g.fog_color.rgb, f * f * (3.0 - 2.0 * f));
+}
+
+// Directional skylight; caves retain their block lighting and dimensions
+// without a sun keep their steady ambient illumination.
+fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
+    if g.environment.y < 0.5 || g.environment.x > 0.5 {
+        return vec3<f32>(1.0);
+    }
+    let moon = g.sun.y < 0.0;
+    let dir = select(g.sun.xyz, -g.sun.xyz, moon);
+    let elevation = abs(dir.y);
+    let dusk = 1.0 - smoothstep(0.05, 0.45, elevation);
+    let warm = mix(vec3<f32>(1.0), vec3<f32>(1.12, 0.80, 0.58), dusk);
+    let tint = select(warm, vec3<f32>(0.72, 0.82, 1.05), moon);
+    let diffuse = max(dot(normal, dir), 0.0);
+    return mix(tint * (0.62 + 0.38 * diffuse), vec3<f32>(0.85), g.params.w);
 }
 
 @fragment
@@ -160,5 +186,36 @@ fn fs_cutout(in: VsOut) -> @location(0) vec4<f32> {
 @fragment
 fn fs_translucent(in: VsOut) -> @location(0) vec4<f32> {
     let tex = textureSample(blocks, blocks_sampler, in.uv, in.layer);
-    return vec4<f32>(apply_fog(tex.rgb * lighting(in), in.dist), tex.a);
+    var color = tex.rgb * lighting(in);
+    var alpha = tex.a;
+    if g.environment.y > 0.5 && in.layer == 5u && in.normal.y > 0.5 && in.rel.y < 0.0 {
+        // Analytic normals keep greedy quad edges joined. Spatial periods
+        // divide the camera wrap; temporal periods divide the time wrap.
+        let p = in.rel.xz + g.environment.zw;
+        let t = g.sun.w;
+        let a = dot(p, vec2<f32>(0.785398, 0.392699)) + t * 1.047198;
+        let b = dot(p, vec2<f32>(-0.392699, 0.785398)) + t * 0.628319;
+        let c = dot(p, vec2<f32>(0.196350, 0.196350)) - t * 0.418879;
+        let slope = 0.12 * cos(a) * vec2<f32>(0.785398, 0.392699)
+            + 0.07 * cos(b) * vec2<f32>(-0.392699, 0.785398)
+            + 0.10 * cos(c) * vec2<f32>(0.196350, 0.196350);
+        let normal = normalize(vec3<f32>(-slope.x, 1.0, -slope.y));
+        let view = normalize(-in.rel);
+        let reflected = reflect(-view, normal);
+        let fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(normal, view), 0.0), 5.0);
+        let access = curve(in.light).x;
+        // Reflect the analytic sky, not scene geometry. Underground water
+        // gets no sky reflection; underwater and side faces keep base shading.
+        let reflection = mix(g.fog_color.rgb, g.zenith_color.rgb, smoothstep(0.0, 0.7, reflected.y));
+        color = mix(color, reflection, fresnel * access);
+        if g.environment.x < 0.5 {
+            let moon = g.sun.y < 0.0;
+            let dir = select(g.sun.xyz, -g.sun.xyz, moon);
+            let glint = pow(max(dot(reflected, dir), 0.0), 180.0);
+            let glow = select(vec3<f32>(1.0, 0.82, 0.55), vec3<f32>(0.5, 0.65, 1.0), moon);
+            color += glow * glint * access * (1.0 - g.params.w) * 0.7;
+        }
+        alpha = mix(alpha, 0.92, fresnel * access);
+    }
+    return vec4<f32>(apply_fog(color, in.dist), alpha);
 }

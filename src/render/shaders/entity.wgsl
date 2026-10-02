@@ -11,6 +11,7 @@ struct Globals {
     // x: fog start, y: fog end, z: daylight (skylight multiplier), w: unused
     params: vec4<f32>,
     clouds: vec4<f32>,
+    environment: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -22,6 +23,7 @@ struct VsOut {
     // x: sky light, y: face shade, z: hurt, w: emissive
     @location(2) light: vec4<f32>,
     @location(3) dist: f32,
+    @location(5) rel: vec3<f32>,
     @location(4) torch: f32,
 };
 
@@ -40,6 +42,7 @@ fn vs_main(
     out.color = color;
     out.light = light;
     out.dist = length(pos);
+    out.rel = pos;
     return out;
 }
 
@@ -59,15 +62,38 @@ fn apply_fog(color: vec3<f32>, dist: f32) -> vec3<f32> {
     return mix(color, g.fog_color.rgb, f * f * (3.0 - 2.0 * f));
 }
 
+// Directional skylight; caves retain their block lighting and dimensions
+// without a sun keep their steady ambient illumination.
+fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
+    if g.environment.y < 0.5 || g.environment.x > 0.5 {
+        return vec3<f32>(1.0);
+    }
+    let moon = g.sun.y < 0.0;
+    let dir = select(g.sun.xyz, -g.sun.xyz, moon);
+    let elevation = abs(dir.y);
+    let dusk = 1.0 - smoothstep(0.05, 0.45, elevation);
+    let warm = mix(vec3<f32>(1.0), vec3<f32>(1.12, 0.80, 0.58), dusk);
+    let tint = select(warm, vec3<f32>(0.72, 0.82, 1.05), moon);
+    let diffuse = max(dot(normal, dir), 0.0);
+    return mix(tint * (0.62 + 0.38 * diffuse), vec3<f32>(0.85), g.params.w);
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let area_normal = cross(dpdx(in.rel), dpdy(in.rel));
+    let length_sq = dot(area_normal, area_normal);
+    var face_normal = vec3<f32>(0.0, 1.0, 0.0);
+    if length_sq > 1e-20 {
+        face_normal = area_normal * inverseSqrt(length_sq);
+    }
+    let normal = select(face_normal, -face_normal, dot(face_normal, -in.rel) < 0.0);
     // Per-texel brightness noise gives the flat colours a pixel-art texture.
     let n = hash2(floor(in.uv) + 0.5) - 0.5;
     // Colours are authored in sRGB, like the block textures.
     var base = pow(in.color.rgb, vec3<f32>(2.2)) * (1.0 + n * in.color.a);
 
     // Sky light scaled by daylight, or warm torch light, whichever is brighter.
-    let sky = vec3<f32>(curve(in.light.x) * g.params.z);
+    let sky = curve(in.light.x) * g.params.z * daylight_tint(normal);
     let torch = curve(in.torch) * vec3<f32>(1.0, 0.86, 0.66);
     let lit = mix((max(sky, torch) * 0.96 + 0.04) * in.light.y, vec3<f32>(1.0), in.light.w);
     var c = base * lit;

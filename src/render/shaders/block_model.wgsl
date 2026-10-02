@@ -10,6 +10,7 @@ struct Globals {
     // x: fog start, y: fog end, z: daylight (skylight multiplier), w: unused
     params: vec4<f32>,
     clouds: vec4<f32>,
+    environment: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -23,6 +24,7 @@ struct VsOut {
     // x: sky light, y: face shade, z: torch light
     @location(2) light: vec3<f32>,
     @location(3) dist: f32,
+    @location(4) rel: vec3<f32>,
 };
 
 fn transform(pos: vec3<f32>, uv: vec2<f32>, layer: u32, light: vec3<f32>) -> VsOut {
@@ -32,6 +34,7 @@ fn transform(pos: vec3<f32>, uv: vec2<f32>, layer: u32, light: vec3<f32>) -> VsO
     out.layer = layer;
     out.light = light;
     out.dist = length(pos);
+    out.rel = pos;
     return out;
 }
 
@@ -62,15 +65,38 @@ fn vs_hand(
     return out;
 }
 
+// Directional skylight; caves retain their block lighting and dimensions
+// without a sun keep their steady ambient illumination.
+fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
+    if g.environment.y < 0.5 || g.environment.x > 0.5 {
+        return vec3<f32>(1.0);
+    }
+    let moon = g.sun.y < 0.0;
+    let dir = select(g.sun.xyz, -g.sun.xyz, moon);
+    let elevation = abs(dir.y);
+    let dusk = 1.0 - smoothstep(0.05, 0.45, elevation);
+    let warm = mix(vec3<f32>(1.0), vec3<f32>(1.12, 0.80, 0.58), dusk);
+    let tint = select(warm, vec3<f32>(0.72, 0.82, 1.05), moon);
+    let diffuse = max(dot(normal, dir), 0.0);
+    return mix(tint * (0.62 + 0.38 * diffuse), vec3<f32>(0.85), g.params.w);
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let area_normal = cross(dpdx(in.rel), dpdy(in.rel));
+    let length_sq = dot(area_normal, area_normal);
+    var face_normal = vec3<f32>(0.0, 1.0, 0.0);
+    if length_sq > 1e-20 {
+        face_normal = area_normal * inverseSqrt(length_sq);
+    }
+    let normal = select(face_normal, -face_normal, dot(face_normal, -in.rel) < 0.0);
     let tex = textureSample(blocks, blocks_sampler, in.uv, in.layer);
     if tex.a < 0.5 {
         discard;
     }
     let l = in.light.xz / (4.0 - 3.0 * in.light.xz);
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
-    let lit = (max(vec3<f32>(l.x * g.params.z), torch) * 0.96 + 0.04) * in.light.y;
+    let lit = (max(l.x * g.params.z * daylight_tint(normal), torch) * 0.96 + 0.04) * in.light.y;
     let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
     let c = mix(tex.rgb * lit, g.fog_color.rgb, f * f * (3.0 - 2.0 * f));
     return vec4<f32>(c, 1.0);

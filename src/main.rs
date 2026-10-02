@@ -12,12 +12,17 @@ use winit::event_loop::{ControlFlow, EventLoop};
 
 pub struct Args {
     pub seed: Option<u64>,
+    pub agent_listen: Option<std::net::SocketAddr>,
+    pub agent_token: Option<String>,
+    pub agent_cheats: bool,
+    pub open_console: bool,
     /// `--world`: load this save directly instead of showing the title screen.
     pub world: Option<String>,
     pub data_dir: Option<std::path::PathBuf>,
     /// Overrides the saved option for this session.
     pub render_distance: Option<i32>,
     pub no_vsync: bool,
+    pub enhanced_graphics: Option<bool>,
     pub new_world: bool,
     pub bench: bool,
     pub screenshot: Option<String>,
@@ -25,13 +30,14 @@ pub struct Args {
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
     pub open_inventory: bool,
+    pub inventory_search: Option<String>,
     /// Start with the pause menu or options screen open (screenshots).
     pub open_menu: Option<String>,
     /// Starting time of day, 0..1 (0 sunrise, 0.25 noon, 0.75 midnight).
     pub time: Option<f64>,
     /// `--weather`: start raining (true) or clear (false).
     pub weather: Option<bool>,
-    /// `--dimension`: start in the overworld or the Nether.
+    /// `--dimension`: start in the Overworld, Nether or End.
     pub dimension: Option<world::terrain::Dimension>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
     pub place: Vec<(glam::IVec3, world::block::Block)>,
@@ -59,6 +65,10 @@ pub struct Args {
 
 const USAGE: &str = "\
 voxelcraft [options]
+  --agent-listen <IP:PORT>  host CLI players (default recommended: 127.0.0.1:4242)
+  --agent-token <token>    shared token (required for LAN, at least 16 characters)
+  --agent-cheats           permit agents to use give, gamemode, tp and world commands
+  --open-console          start with the slash command console open
   --seed <n>        world seed (new worlds only)
   --world <name>    load or create this save, skipping the title screen
                     (letters, digits, - or _)
@@ -69,10 +79,12 @@ voxelcraft [options]
   --new             ignore any existing save and start a fresh world (in
                     --world, default: world)
   --no-vsync        uncapped frame rate
+  --graphics <m>   enhanced (default) or classic lighting and water
   --bench           headless terrain generation + meshing benchmark
   --bench-render    load the world, render a 360° sweep offscreen, report frame times
   --creative, --survival  game mode (default: survival, or the saved mode)
   --f3              start with the debug overlay open
+  --inventory-search <text>  initial inventory search query
   --open-inventory  start with the inventory screen open (screenshots)
   --open-menu <m>   start with a menu open: pause, options or title (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
@@ -92,7 +104,7 @@ voxelcraft [options]
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies or rain (clear, rain)
-  --dimension <d>   start in the overworld or the nether (arriving through a
+  --dimension <d>   start in overworld, nether or end (arriving through a
                     portal unless --pose is given)
   --screenshot <f>  wait for the world to load, save a PNG and exit
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
@@ -103,10 +115,15 @@ voxelcraft [options]
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         seed: None,
+        agent_listen: None,
+        agent_token: None,
+        agent_cheats: false,
+        open_console: false,
         world: None,
         data_dir: None,
         render_distance: None,
         no_vsync: false,
+        enhanced_graphics: None,
         new_world: false,
         bench: false,
         screenshot: None,
@@ -114,6 +131,7 @@ fn parse_args() -> Result<Args, String> {
         debug_overlay: false,
         mode: None,
         open_inventory: false,
+        inventory_search: None,
         open_menu: None,
         time: None,
         weather: None,
@@ -136,15 +154,29 @@ fn parse_args() -> Result<Args, String> {
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
         match a.as_str() {
+            "--agent-listen" => {
+                args.agent_listen = Some(value("--agent-listen")?.parse().map_err(|_| "bad --agent-listen IP:PORT")?)
+            }
+            "--agent-token" => args.agent_token = Some(value("--agent-token")?),
+            "--agent-cheats" => args.agent_cheats = true,
+            "--open-console" => args.open_console = true,
             "--seed" => args.seed = Some(value("--seed")?.parse().map_err(|_| "bad seed")?),
             "--world" => args.world = Some(value("--world")?),
             "--data-dir" => args.data_dir = Some(value("--data-dir")?.into()),
             "--rd" => args.render_distance = Some(value("--rd")?.parse::<i32>().map_err(|_| "bad --rd")?.clamp(2, 32)),
             "--no-vsync" => args.no_vsync = true,
+            "--graphics" => {
+                args.enhanced_graphics = Some(match value("--graphics")?.as_str() {
+                    "enhanced" => true,
+                    "classic" => false,
+                    _ => return Err("--graphics: expected enhanced or classic".into()),
+                });
+            }
             "--new" => args.new_world = true,
             "--bench" => args.bench = true,
             "--bench-render" => args.bench_render = true,
             "--f3" => args.debug_overlay = true,
+            "--inventory-search" => args.inventory_search = Some(value("--inventory-search")?),
             "--open-inventory" => args.open_inventory = true,
             "--open-menu" => {
                 let m = value("--open-menu")?;
@@ -201,7 +233,7 @@ fn parse_args() -> Result<Args, String> {
             "--dimension" => {
                 let v = value("--dimension")?;
                 let dim = world::terrain::Dimension::from_name(&v);
-                args.dimension = Some(dim.ok_or(format!("--dimension: expected overworld or nether, got {v}"))?);
+                args.dimension = Some(dim.ok_or(format!("--dimension: expected overworld, nether or end, got {v}"))?);
             }
             "--health" => args.health = Some(value("--health")?.parse().map_err(|_| "bad --health")?),
             "--air" => args.air = Some(value("--air")?.parse().map_err(|_| "bad --air")?),
@@ -246,6 +278,8 @@ impl Args {
         self.seed = None;
         self.mode = None;
         self.open_inventory = false;
+        self.inventory_search = None;
+        self.open_console = false;
         self.open_menu = None;
         self.time = None;
         self.weather = None;

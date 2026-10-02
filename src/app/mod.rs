@@ -1,9 +1,11 @@
 //! Window, input and the per-frame game loop.
 
 mod actions;
+mod agents;
 mod bed;
 mod bow;
 mod bucket;
+mod console;
 mod containers;
 mod dimension;
 mod doors;
@@ -14,6 +16,7 @@ mod items;
 mod menu;
 mod mobs;
 mod recipe_book;
+mod search;
 mod settings;
 pub use crate::simulation::survival;
 mod title;
@@ -110,6 +113,9 @@ impl GameMode {
 }
 
 struct Game {
+    agents: agents::Agents,
+    console: console::Console,
+    search: search::Search,
     renderer: Renderer,
     world: World,
     player: Player,
@@ -154,7 +160,7 @@ struct Game {
     weather_verts: Vec<crate::render::weather::WeatherVertex>,
     started: Instant,
     last_save: Instant,
-    // Title-bar stats, refreshed twice a second.
+    // HUD/F3 stats, refreshed twice a second using presented frames.
     stats_since: Instant,
     frames: u32,
     frame_time_sum: f64,
@@ -269,6 +275,9 @@ impl ApplicationHandler for App {
             settings.volume = v;
         }
         settings.vsync &= !self.args.no_vsync;
+        if let Some(enhanced) = self.args.enhanced_graphics {
+            settings.enhanced_graphics = enhanced;
+        }
 
         let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
         let audio = crate::audio::Audio::new(self.args.mute, settings.volume);
@@ -332,6 +341,9 @@ impl ApplicationHandler for App {
                 let PhysicalKey::Code(code) = event.physical_key else { return };
                 match event.state {
                     ElementState::Pressed => {
+                        if game.console_key(&event) || game.search_key(&event) {
+                            return;
+                        }
                         if !event.repeat {
                             game.on_key(code);
                         }
@@ -346,6 +358,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let pressed = state == ElementState::Pressed;
+                if game.console.open {
+                    return;
+                }
                 if game.menu.is_some() {
                     if button == MouseButton::Left && game.menu_click(pressed) == Some(menu::MenuAction::Quit) {
                         self.quit_to_title();
@@ -403,7 +418,7 @@ impl ApplicationHandler for App {
                     _ => {}
                 }
             }
-            WindowEvent::MouseWheel { .. } if game.menu.is_some() => {}
+            WindowEvent::MouseWheel { .. } if game.menu.is_some() || game.console.open => {}
             WindowEvent::MouseWheel { delta, .. } => {
                 let dy = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
@@ -514,11 +529,13 @@ impl Game {
         // `--new` replaces the save, so the old world's Nether must not carry
         // over into the new one. Scripted runs never write saves.
         if args.new_world && settings_path.is_some() {
-            let nether = dimension::storage_for(&storage, Dimension::Nether);
-            if nether.exists()
-                && let Err(e) = std::fs::remove_dir_all(nether.dir())
-            {
-                log::error!("failed to remove the old Nether save {}: {e}", nether.dir().display());
+            for dimension in [Dimension::Nether, Dimension::End] {
+                let nether = dimension::storage_for(&storage, dimension);
+                if nether.exists()
+                    && let Err(e) = std::fs::remove_dir_all(nether.dir())
+                {
+                    log::error!("failed to remove the old dimension save {}: {e}", nether.dir().display());
+                }
             }
         }
         let seed =
@@ -598,6 +615,9 @@ impl Game {
         // `--dimension` into the other world: arrive by portal, as if the
         // player had walked through one where they stood.
         let arrival = (dimension != saved_dimension && args.pose.is_none()).then(|| {
+            if dimension == Dimension::End {
+                return dimension::Arrival::EndSpawn;
+            }
             let scale = if dimension == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
             let p = (player.pos * DVec3::new(scale, 0.0, scale)).floor().as_ivec3();
             dimension::Arrival::Portal(p.with_y(if dimension == Dimension::Nether { 64 } else { 100 }))
@@ -614,7 +634,26 @@ impl Game {
 
         let now = Instant::now();
         let previous_eye = player.eye();
+        let mut agents = agents::Agents { cheats: args.agent_cheats, ..Default::default() };
+        if let Some(address) = args.agent_listen {
+            agents.host =
+                Some(voxelcraft::control::Host::bind(address, args.agent_token.clone()).unwrap_or_else(|e| {
+                    eprintln!("agent host: {e}");
+                    std::process::exit(1);
+                }));
+            eprintln!("Agent host listening on {}", agents.host.as_ref().unwrap().address);
+        }
+        if let Some(text) = root_props.get("agents") {
+            agents.restore(text, dimension.name(), player.pos);
+        }
         let mut game = Game {
+            agents,
+            search: search::Search {
+                query: args.inventory_search.clone().unwrap_or_default(),
+                focused: args.open_inventory && args.screenshot.is_none(),
+                ..Default::default()
+            },
+            console: console::Console { open: args.open_console, input: "/".into(), ..Default::default() },
             renderer,
             world,
             player,
@@ -692,7 +731,7 @@ impl Game {
             settings,
             settings_path,
             dimension,
-            overworld_props: if dimension == Dimension::Nether { overworld_props } else { Default::default() },
+            overworld_props: if dimension != Dimension::Overworld { overworld_props } else { Default::default() },
             arrival,
             portal_time: 0.0,
             portal_locked: false,
@@ -701,11 +740,14 @@ impl Game {
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("name")).cloned())
                 .unwrap_or_else(|| world_dir.to_string()),
         };
+        if game.console.open {
+            game.set_grab(false);
+        }
         game.renderer.force_offscreen = game.bench_render.is_some();
         game.restore_dimension(&dimension_props);
         if game.vitals.is_dead() {
             game.on_death();
-        } else if game.screenshot.is_none() && game.bench_render.is_none() {
+        } else if game.screenshot.is_none() && game.bench_render.is_none() && !game.console.open {
             game.set_grab(true);
         }
         game
@@ -785,7 +827,6 @@ impl Game {
             }
             KeyCode::F1 => self.show_hud = !self.show_hud,
             KeyCode::F3 => self.show_debug = !self.show_debug,
-            KeyCode::KeyT => self.day_time = (self.day_time + 1.0 / 12.0).fract(),
             KeyCode::F11 => {
                 let w = &self.renderer.window;
                 w.set_fullscreen(match w.fullscreen() {
@@ -915,6 +956,8 @@ impl Game {
     fn toggle_inventory(&mut self) {
         self.inventory_open = !self.inventory_open;
         if self.inventory_open {
+            self.search.focused = self.mode == GameMode::Creative && self.container == Container::Inventory;
+            self.search.selected = false;
             self.set_grab(false);
             self.keys.clear();
             self.left_held = false;
@@ -994,6 +1037,9 @@ impl Game {
     }
 
     fn inventory_click(&mut self, right: bool) {
+        if self.search_click() {
+            return;
+        }
         if self.throw_cursor(right) {
             return;
         }
@@ -1049,7 +1095,7 @@ impl Game {
     /// Scrolls the creative palette by whole rows.
     fn scroll_palette(&mut self, rows: i32) {
         if self.mode == GameMode::Creative {
-            let max = hud::palette_rows().saturating_sub(hud::PALETTE_ROWS);
+            let max = hud::palette_rows(&self.search.query).saturating_sub(hud::PALETTE_ROWS);
             self.creative_scroll = self.creative_scroll.saturating_add_signed(rows as isize).min(max);
         }
     }
@@ -1203,6 +1249,9 @@ impl Game {
         }
         // Clicking tall grass replaces it instead of building against it.
         let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
+        if self.agents.positions().iter().any(|&p| Player::new(p).intersects_block(at)) {
+            return;
+        }
         let placed = match self.held_item() {
             Some(Item::BED) => Some(self.place_bed(at)),
             Some(Item::OAK_DOOR) => Some(self.place_door(at)),
@@ -1233,7 +1282,7 @@ impl Game {
         }
         // Furnaces and chests face whoever places them.
         let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
-        if block.is_water() && !self.dimension.has_sky() {
+        if block.is_water() && self.dimension == Dimension::Nether {
             // Water boils away in the Nether.
             self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
             return;
@@ -1309,7 +1358,10 @@ impl Game {
             }
             // Paused captures cannot drain simulation work queued by
             // --place (fluid wakeups, falling blocks). Wait only for jobs.
-            0 if settled && (self.menu.is_some() || self.world.is_idle()) && self.mobs.waited() => {
+            0 if settled
+                && (self.menu.is_some() || self.console.open || self.world.is_idle())
+                && self.mobs.waited() =>
+            {
                 self.screenshot_state = 1;
                 false
             }
@@ -1373,6 +1425,7 @@ impl Game {
 
     fn save(&mut self) {
         let mut props = std::collections::BTreeMap::new();
+        props.insert("agents".into(), self.agents.serialize(self.dimension.name()));
         props.insert("mode".to_string(), self.mode.name().to_string());
         props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.
@@ -1401,9 +1454,9 @@ impl Game {
                 let player = Some((self.player.pos, self.player.yaw, self.player.pitch));
                 self.storage.save(&LevelInfo { seed, player, props }, &chunks)
             }
-            Dimension::Nether => {
+            Dimension::Nether | Dimension::End => {
                 let nether = LevelInfo { seed, player: None, props: self.dimension_props() };
-                dimension::storage_for(&self.storage, Dimension::Nether).save(&nether, &chunks).and_then(|()| {
+                dimension::storage_for(&self.storage, self.dimension).save(&nether, &chunks).and_then(|()| {
                     props.extend(self.overworld_props.clone());
                     let player = Some((self.player.pos, self.player.yaw, self.player.pitch));
                     self.storage.save_level(&LevelInfo { seed, player, props })
@@ -1426,7 +1479,13 @@ impl Game {
     fn movement_input(&self, arriving: bool) -> MoveInput {
         let held = |k: KeyCode| self.keys.contains(&k);
         let axis = |pos: KeyCode, neg: KeyCode| held(pos) as i32 as f64 - held(neg) as i32 as f64;
-        if self.mouse_grabbed && !self.inventory_open && !self.vitals.is_dead() && self.sleeping.is_none() && !arriving
+        if self.menu.is_none()
+            && !self.console.open
+            && self.mouse_grabbed
+            && !self.inventory_open
+            && !self.vitals.is_dead()
+            && self.sleeping.is_none()
+            && !arriving
         {
             MoveInput {
                 forward: axis(KeyCode::KeyW, KeyCode::KeyS),
@@ -1487,7 +1546,7 @@ impl Game {
         }
 
         self.action_cooldown -= dt;
-        let acting = self.mouse_grabbed && !self.inventory_open;
+        let acting = self.menu.is_none() && !self.console.open && self.mouse_grabbed && !self.inventory_open;
         if acting && (self.left_held || mine_pressed) && self.mode == GameMode::Survival {
             if self.action_cooldown <= 0.0 {
                 self.continue_breaking(dt);
@@ -1515,6 +1574,7 @@ impl Game {
         }
         self.eat(acting, dt);
         self.update_bow(acting, dt);
+        self.tick_agents();
         crate::simulation::tick_world(&mut self.world, self.player.pos);
         self.update_mobs(dt);
         self.update_items();
@@ -1525,7 +1585,8 @@ impl Game {
     /// Offline pause keeps streaming active and snaps interpolation to the current state.
     fn frame(&mut self) {
         let now = Instant::now();
-        let paused = self.menu.is_some();
+        self.poll_agents();
+        let paused = (self.menu.is_some() || self.console.open) && self.agents.host.is_none();
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
@@ -1533,7 +1594,7 @@ impl Game {
 
         // Streaming and GPU uploads continue during offline pause.
         self.update_arrival();
-        self.world.update(self.player.pos);
+        self.world.update_players(self.player.pos, &self.agents.positions());
         if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0
         {
             self.apply_placements();
@@ -1573,9 +1634,9 @@ impl Game {
         let nether = !self.dimension.has_sky();
         if nether {
             // No sun, no weather: a steady dim glow in a red haze.
-            sky.daylight = dimension::NETHER_LIGHT;
-            sky.horizon = dimension::NETHER_FOG;
-            sky.zenith = dimension::NETHER_FOG;
+            sky.daylight = if self.dimension == Dimension::End { 0.65 } else { dimension::NETHER_LIGHT };
+            sky.horizon = if self.dimension == Dimension::End { [0.045, 0.025, 0.065] } else { dimension::NETHER_FOG };
+            sky.zenith = if self.dimension == Dimension::End { [0.018, 0.009, 0.03] } else { dimension::NETHER_FOG };
         }
         let rain = if nether { 0.0 } else { self.weather.strength };
         let daylight = sky.daylight;
@@ -1586,6 +1647,8 @@ impl Game {
             (LAVA_FOG, 0.0, 2.0)
         } else if underwater {
             (WATER_FOG.map(|c| c * daylight), 0.0, 28.0)
+        } else if self.dimension == Dimension::End {
+            (sky.horizon, view_dist * 0.45, view_dist * 0.95)
         } else if nether {
             (sky.horizon, 8.0, view_dist.min(160.0) * 0.8)
         } else {
@@ -1593,6 +1656,20 @@ impl Game {
         };
         let verts =
             self.mobs.entities.mesh(camera, self.player.forward(), fog_end, (now - self.started).as_secs_f32(), alpha);
+        for bot in self.agents.players.values().filter(|b| b.active && !b.agent.vitals.is_dead()) {
+            let a = &bot.agent;
+            if a.player.pos.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
+                crate::entity::model::build_player(
+                    &a.player,
+                    a.previous_pos.lerp(a.player.pos, alpha),
+                    camera,
+                    crate::entity::sky_light(&self.world, a.player.eye()),
+                    self.world.block_light(a.player.eye().floor().as_ivec3()) as f32 / 15.0,
+                    (now - self.started).as_secs_f32(),
+                    verts,
+                );
+            }
+        }
         self.renderer.set_entities(verts);
         weather::sheets(&self.world, camera, rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
@@ -1609,6 +1686,8 @@ impl Game {
             daylight,
             zenith_color: if underwater { fog_color } else { sky.zenith },
             sun_dir: sky.sun_dir,
+            dimension: self.dimension,
+            enhanced_graphics: self.settings.enhanced_graphics,
             time: (now - self.started).as_secs_f32(),
             highlight: self.target().filter(|_| self.mob_target().is_none()).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
@@ -1653,7 +1732,7 @@ impl Game {
                 self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye))
             }),
             rain,
-            ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() {
+            ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() || self.console.open {
                 self.build_ui(now)
             } else {
                 Vec::new()

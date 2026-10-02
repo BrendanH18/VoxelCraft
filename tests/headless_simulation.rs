@@ -131,3 +131,25 @@ fn fixed_steps_preserve_movement_and_survival_across_frame_rates() {
         }
     }
 }
+
+#[test]
+fn agent_streaming_keeps_distant_players_loaded_without_meshes() {
+    let mut world = World::new_headless(Arc::new(Generator::new(42)), Default::default(), 2);
+    let host = DVec3::new(0.5, 150.0, 0.5);
+    let agent = DVec3::new(400.5, 150.0, -300.5);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !world.is_loaded(host.floor().as_ivec3())
+        || !world.is_loaded(agent.floor().as_ivec3())
+        || world.pending_jobs() > 0
+    {
+        world.update_players(host, &[agent, agent]);
+        assert!(std::time::Instant::now() < deadline, "agent streaming did not settle");
+        std::thread::yield_now();
+    }
+    assert!(world.mesh_uploads.is_empty());
+    assert!(world.set_block(agent.floor().as_ivec3(), Block::GLOWSTONE));
+    assert_eq!(world.block_light(agent.floor().as_ivec3() + glam::IVec3::X), 14);
+    world.update_players(host, &[]);
+    assert!(!world.is_loaded(agent.floor().as_ivec3()));
+    assert!(!world.modified_chunks().is_empty());
+}

@@ -26,6 +26,8 @@ pub(super) enum Widget {
     Sensitivity,
     Volume,
     Vsync,
+    Graphics,
+    Fps,
     Done,
 }
 
@@ -59,6 +61,8 @@ impl Widget {
                 v => format!("Volume: {v}%"),
             },
             Widget::Vsync => format!("VSync: {}", if s.vsync { "On" } else { "Off" }),
+            Widget::Graphics => format!("Graphics: {}", if s.enhanced_graphics { "Enhanced" } else { "Classic" }),
+            Widget::Fps => format!("FPS Counter: {}", if s.show_fps { "On" } else { "Off" }),
             Widget::Done => "Done".into(),
         }
     }
@@ -98,9 +102,16 @@ impl Widget {
 fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
     let widgets: &[Widget] = match screen {
         Screen::Pause => &[Widget::Resume, Widget::Options, Widget::SaveAndQuit],
-        Screen::Options => {
-            &[Widget::RenderDistance, Widget::Fov, Widget::Sensitivity, Widget::Volume, Widget::Vsync, Widget::Done]
-        }
+        Screen::Options => &[
+            Widget::RenderDistance,
+            Widget::Fov,
+            Widget::Sensitivity,
+            Widget::Volume,
+            Widget::Vsync,
+            Widget::Graphics,
+            Widget::Fps,
+            Widget::Done,
+        ],
     };
     let total = widgets.len() as f32 * (BUTTON_H + GAP) + GAP * 2.0;
     let x = ((sw - BUTTON_W) / 2.0).floor();
@@ -196,6 +207,14 @@ impl Game {
             Widget::Done => self.menu_back(),
             Widget::Vsync => {
                 self.settings.vsync = !self.settings.vsync;
+                self.apply_settings();
+            }
+            Widget::Graphics => {
+                self.settings.enhanced_graphics = !self.settings.enhanced_graphics;
+                self.apply_settings();
+            }
+            Widget::Fps => {
+                self.settings.show_fps = !self.settings.show_fps;
                 self.apply_settings();
             }
             Widget::SaveAndQuit => return Some(MenuAction::Quit),
@@ -312,8 +331,24 @@ mod tests {
         assert_eq!(s.render_distance, 8);
         assert_eq!(Widget::RenderDistance.label(&s), "Render Distance: 8 chunks");
         // Every label fits inside its button.
-        for w in [Widget::RenderDistance, Widget::Fov, Widget::Sensitivity, Widget::Volume, Widget::Vsync] {
-            let longest = Settings { render_distance: 32, fov: 110.0, sensitivity: 3.0, volume: 1.0, vsync: false };
+        for w in [
+            Widget::RenderDistance,
+            Widget::Fov,
+            Widget::Sensitivity,
+            Widget::Volume,
+            Widget::Vsync,
+            Widget::Graphics,
+            Widget::Fps,
+        ] {
+            let longest = Settings {
+                render_distance: 32,
+                fov: 110.0,
+                sensitivity: 3.0,
+                volume: 1.0,
+                vsync: false,
+                enhanced_graphics: true,
+                show_fps: true,
+            };
             assert!(Ui::text_width(&w.label(&longest)) < BUTTON_W - 8.0, "{w:?} label too wide");
         }
     }

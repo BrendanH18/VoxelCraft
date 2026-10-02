@@ -43,13 +43,14 @@ pub(super) enum Arrival {
     Portal(IVec3),
     /// Back from the dead: the bed or world spawn.
     Respawn,
+    EndSpawn,
 }
 
 /// Heights a portal may stand at in a dimension.
 fn portal_range(dim: Dimension) -> (i32, i32) {
     match dim {
         Dimension::Nether => (crate::world::nether::LAVA_SEA + 3, 116),
-        Dimension::Overworld => (2, 240),
+        Dimension::Overworld | Dimension::End => (2, 240),
     }
 }
 
@@ -58,6 +59,7 @@ pub(super) fn storage_for(root: &Storage, dim: Dimension) -> Storage {
     match dim {
         Dimension::Overworld => Storage::new(root.dir()),
         Dimension::Nether => Storage::new(root.dir().join("nether")),
+        Dimension::End => Storage::new(root.dir().join("end")),
     }
 }
 
@@ -78,7 +80,7 @@ pub(super) fn load_dimension(
     });
     let props = match dim {
         Dimension::Overworld => overworld_props.clone(),
-        Dimension::Nether => storage.load_level().map(|l| l.props).unwrap_or_default(),
+        Dimension::Nether | Dimension::End => storage.load_level().map(|l| l.props).unwrap_or_default(),
     };
     (chunks, props)
 }
@@ -144,6 +146,7 @@ impl Game {
         let (x, z) = ((self.player.pos.x * scale).floor() as i32, (self.player.pos.z * scale).floor() as i32);
         let y = match to {
             Dimension::Nether => (self.player.pos.y as i32).clamp(40, 100),
+            Dimension::End => unreachable!("Nether portals cannot enter the End"),
             Dimension::Overworld => {
                 let ground = Generator::new(self.world.generator.seed).column(x, z).height;
                 ground.max(SEA_LEVEL) + 1
@@ -159,6 +162,7 @@ impl Game {
         let Some(arrival) = self.arrival else { return false };
         let target = match arrival {
             Arrival::Portal(p) => p,
+            Arrival::EndSpawn => crate::world::end::SPAWN,
             Arrival::Respawn => {
                 self.spawn_bed.unwrap_or_else(|| self.world.generator.find_spawn() + IVec3::Y * (SEARCH_RADIUS + 8))
             }
@@ -166,6 +170,7 @@ impl Game {
         let r = match arrival {
             Arrival::Portal(_) => SEARCH_RADIUS,
             Arrival::Respawn => 0,
+            Arrival::EndSpawn => 2,
         };
         let ready = [(-r, -r), (r, -r), (-r, r), (r, r), (0, 0)]
             .iter()
@@ -190,8 +195,23 @@ impl Game {
                 self.player.pitch = 0.0;
                 at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
+            Arrival::EndSpawn => {
+                let spawn = crate::world::end::SPAWN;
+                for z in -2..=2 {
+                    for x in -2..=2 {
+                        self.world.set_block(spawn + IVec3::new(x, -1, z), Block::OBSIDIAN);
+                        for y in 0..3 {
+                            self.world.set_block(spawn + IVec3::new(x, y, z), Block::AIR);
+                        }
+                    }
+                }
+                self.player.yaw = std::f32::consts::PI;
+                self.player.pitch = 0.0;
+                spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
+            }
             Arrival::Respawn => self.respawn_point(),
         };
+        self.relocate_agents();
         self.player.vel = DVec3::ZERO;
         self.player.flying = self.player.flying && self.mode == GameMode::Creative;
         self.vitals.reset_fall();
@@ -213,7 +233,7 @@ impl Game {
 
     /// Standing in a portal long enough takes you to the other dimension.
     pub(super) fn update_portal(&mut self, dt: f64) {
-        if !self.in_portal() || self.vitals.is_dead() {
+        if self.dimension == Dimension::End || !self.in_portal() || self.vitals.is_dead() {
             self.portal_locked = false;
             self.portal_time = (self.portal_time - dt as f32 * 2.0).max(0.0);
             return;
@@ -264,7 +284,7 @@ impl Game {
         true
     }
 
-    /// Beds don't work in the Nether: they blow up instead.
+    /// Beds explode in both the Nether and the End.
     pub(super) fn bed_explodes(&mut self, pos: IVec3) -> bool {
         if self.dimension.has_sky() {
             return false;
@@ -308,6 +328,15 @@ mod tests {
         let (chunks, p) = load_dimension(&root, Dimension::Nether, &overworld_props);
         assert_eq!(p.get("chests").map(String::as_str), Some("nether chests"));
         assert!(matches!(*chunks[&IVec3::new(1, 2, 3)], ChunkData::Uniform(Block::NETHERRACK)));
+
+        let end = storage_for(&root, Dimension::End);
+        let level = LevelInfo { seed: 9, player: None, props: props(&[("chests", "end chests")]) };
+        end.save(&level, &[chunk(Block::END_STONE)]).unwrap();
+        let (chunks, p) = load_dimension(&root, Dimension::End, &overworld_props);
+        assert_eq!(p.get("chests").map(String::as_str), Some("end chests"));
+        assert!(matches!(*chunks[&IVec3::new(1, 2, 3)], ChunkData::Uniform(Block::END_STONE)));
+        let (_, p) = load_dimension(&root, Dimension::Nether, &overworld_props);
+        assert_eq!(p.get("chests").map(String::as_str), Some("nether chests"));
 
         // Rewriting just the root level leaves the overworld's chunks alone.
         root.save_level(&LevelInfo { seed: 9, player: None, props: root_props }).unwrap();

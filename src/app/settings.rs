@@ -14,6 +14,8 @@ pub struct Settings {
     /// Master volume, 0..1.
     pub volume: f32,
     pub vsync: bool,
+    pub enhanced_graphics: bool,
+    pub show_fps: bool,
 }
 
 pub const RENDER_DISTANCE: (i32, i32) = (2, 32);
@@ -22,7 +24,15 @@ pub const SENSITIVITY: (f32, f32) = (0.25, 3.0);
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { render_distance: 8, fov: 70.0, sensitivity: 1.0, volume: 1.0, vsync: true }
+        Self {
+            render_distance: 8,
+            fov: 70.0,
+            sensitivity: 1.0,
+            volume: 1.0,
+            vsync: true,
+            enhanced_graphics: true,
+            show_fps: true,
+        }
     }
 }
 
@@ -55,6 +65,10 @@ impl Settings {
                 "sensitivity" => s.sensitivity = num().unwrap_or(s.sensitivity),
                 "volume" => s.volume = num().unwrap_or(s.volume),
                 "vsync" => s.vsync = value != "false",
+                "show_fps" if value == "true" => s.show_fps = true,
+                "show_fps" if value == "false" => s.show_fps = false,
+                "graphics" if value == "classic" => s.enhanced_graphics = false,
+                "graphics" if value == "enhanced" => s.enhanced_graphics = true,
                 _ => {}
             }
         }
@@ -63,8 +77,14 @@ impl Settings {
 
     pub fn serialize(&self) -> String {
         format!(
-            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nvsync={}\n",
-            self.render_distance, self.fov, self.sensitivity, self.volume, self.vsync
+            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\n",
+            self.render_distance,
+            self.fov,
+            self.sensitivity,
+            self.volume,
+            self.vsync,
+            if self.enhanced_graphics { "enhanced" } else { "classic" },
+            self.show_fps
         )
     }
 
@@ -84,7 +104,15 @@ mod tests {
 
     #[test]
     fn round_trips_and_clamps() {
-        let s = Settings { render_distance: 12, fov: 90.0, sensitivity: 1.5, volume: 0.4, vsync: false };
+        let s = Settings {
+            render_distance: 12,
+            fov: 90.0,
+            sensitivity: 1.5,
+            volume: 0.4,
+            vsync: false,
+            enhanced_graphics: false,
+            show_fps: false,
+        };
         assert_eq!(Settings::parse(&s.serialize()), s);
         let wild = Settings::parse("render_distance=99\nfov=5\nvolume=nan\nsensitivity=abc\njunk\nunknown=1\n");
         assert_eq!(wild, Settings { render_distance: 32, fov: 30.0, ..Settings::default() });

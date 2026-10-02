@@ -27,7 +27,7 @@
 | G | Toggle survival / creative |
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
-| T | Skip ahead 2 in-game hours |
+| /, T, backtick | Open slash command console (Enter runs, Esc closes, Up/Down history, Tab completion) |
 | M | Mute / unmute sound (`--mute` starts muted, `--volume 0..1` sets the master volume) |
 | V | Toggle vsync |
 | F1 | Toggle HUD |
@@ -36,15 +36,26 @@
 | Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
 
 The world autosaves every two minutes and on exit. Switching away from
-the window also pauses the game.
+the window also pauses offline play. A host started with `--agent-listen` keeps
+simulating while menus are open. See [hosted agent CLI and console commands](agents.md).
 
 **Options** (Esc → Options...): render distance (2–32 chunks), field of
-view (30–110°), mouse sensitivity (25–300%), master volume and vsync.
+view (30–110°), mouse sensitivity (25–300%), master volume, vsync, Classic/Enhanced graphics and the FPS counter.
 Changes apply immediately and are saved to `saves/options.txt` inside the
 [per-user data folder](releases.md#player-data-and-old-saves) when you
 leave the screen; `[`/`]` and V adjust render distance and vsync in game.
-`--rd`, `--volume` and `--no-vsync` override the saved options for one
-session.
+`--rd`, `--volume`, `--no-vsync` and `--graphics classic|enhanced` override the saved options for one
+session. Enhanced is the default: sun/moon directional skylight, warm
+sunsets, cool moonlight, and animated water normals with sky reflections
+and sun/moon glints. Block lighting and ambient occlusion still illuminate
+caves. Water reflects the sky rather than nearby objects; geometry shadows,
+PBR materials and screen-space reflections remain future work. Classic
+keeps the original lighting and water appearance.
+
+A compact FPS counter is on by default at the top left. It averages
+presented frames over half a second and stays readable in inventories and
+menus. Options → FPS Counter hides it; F1 hides the HUD, and F3 shows the
+full performance display instead of duplicating the compact counter.
 
 ![F3 debug screen](images/debug.jpg)
 
@@ -289,3 +300,21 @@ and despawn beyond 96 blocks or when their chunk unloads. Every mob burns
 in lava. Player hits deal damage based on the held item, with knockback, at most
 every 0.5 s: a fist deals 1, and swords deal 4–7 depending on their tier.
 Hostile mobs ignore creative players.
+
+Inventory search filters creative items by name. Type in the search field
+(automatically focused in creative), or press Ctrl+F. In survival and containers,
+matching stacks are highlighted without moving any slots. Matching ignores case,
+accepts underscores and requires every search word. Enter leaves the field;
+Esc closes the inventory. Agents can use `catalog [query]` for the same search.
+
+The End terrain is available through `/dimension end` or `--dimension end`.
+Return with `/dimension overworld`. It includes a seeded central end-stone
+island, ten obsidian pillars, an arrival platform, a void gap and outer islands,
+a static violet sky, no weather or natural Overworld/Nether mob spawning, and
+its own `end/` save folder. Water works; beds explode. End stone is mineable
+with a pickaxe and appears in the creative catalog.
+
+This is the terrain/visiting foundation. The dragon, crystals, Endermen,
+strongholds/portal progression, gateways, chorus trees, cities, shulkers and
+elytra are still roadmap work. Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
+describes the larger progression being built toward.
