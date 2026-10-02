@@ -136,6 +136,7 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let seam = y % 4 == 3 || x == seam_x;
             shade(colour, if seam { 0.68 } else { 0.92 + rnd(layer, x, board, 2) * 0.12 })
         }
+        tex::SKIN => noisy(layer, x, y, [196, 141, 110], 0.05),
         tex::LADDER => {
             // Two rails with a rung every four pixels; see-through between.
             let rail = matches!(x, 1 | 2 | 13 | 14);

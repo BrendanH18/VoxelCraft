@@ -8,6 +8,7 @@ mod containers;
 mod dimension;
 mod doors;
 mod farming;
+mod hand;
 mod hud;
 mod items;
 mod menu;
@@ -134,6 +135,7 @@ struct Game {
     cursor_px: (f32, f32),
     actions: actions::Actions,
     show_hud: bool,
+    hand: hand::HandAnim,
     last_space: Instant,
     last_frame: Instant,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
@@ -360,6 +362,9 @@ impl ApplicationHandler for App {
                 match button {
                     MouseButton::Left => {
                         game.left_held = pressed;
+                        if pressed {
+                            game.hand.swing();
+                        }
                         if !pressed {
                             game.actions.breaking = None;
                             game.release_attack();
@@ -373,6 +378,9 @@ impl ApplicationHandler for App {
                     MouseButton::Right => {
                         game.right_held = pressed;
                         if pressed && !game.equip_held() && !game.start_draw() {
+                            if game.held_item().is_none_or(|i| i.food().is_none()) {
+                                game.hand.swing();
+                            }
                             game.place_block();
                             game.action_cooldown = ACTION_REPEAT;
                         } else if !pressed {
@@ -615,6 +623,7 @@ impl Game {
             cursor_px: (0.0, 0.0),
             actions: actions::Actions::default(),
             show_hud: true,
+            hand: Default::default(),
             last_space: now - Duration::from_secs(1),
             last_frame: now,
             day_time: args
@@ -1461,6 +1470,9 @@ impl Game {
             if self.action_cooldown <= 0.0 {
                 self.continue_breaking(dt);
             }
+            if self.actions.breaking.is_some() {
+                self.hand.swing();
+            }
         } else if acting
             && self.action_cooldown <= 0.0
             && (self.left_held || self.right_held)
@@ -1473,10 +1485,13 @@ impl Game {
             } else {
                 self.place_block();
             }
+            self.hand.swing();
             self.action_cooldown = ACTION_REPEAT;
         }
         self.eat(acting, dt);
         self.update_bow(acting, dt);
+        let walked = if self.player.flying { 0.0 } else { moved as f32 };
+        self.hand.update(dt as f32, self.held_item(), walked, self.player.on_ground);
 
         // --- World streaming ------------------------------------------------
         if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0
@@ -1588,6 +1603,11 @@ impl Game {
                 }))
                 .chain(self.item_models())
                 .collect(),
+            hand: (self.show_hud && !self.vitals.is_dead() && self.sleeping.is_none()).then(|| {
+                let eye = self.player.eye();
+                let eating = (self.actions.eat_timer / EAT_TIME) as f32;
+                self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye))
+            }),
             rain,
             ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() {
                 self.build_ui(now)

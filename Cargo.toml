@@ -24,6 +24,10 @@ rustc-hash = "2.1.3"
 wgpu = "30.0.1"
 winit = "0.30.13"
 
+[dev-dependencies]
+# Validates the WGSL shaders in tests (the same version wgpu uses).
+naga = { version = "30.0.1", features = ["wgsl-in"] }
+
 [build-dependencies]
 winresource = "0.1.31"
 

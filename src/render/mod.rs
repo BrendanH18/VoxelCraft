@@ -12,6 +12,7 @@
 pub mod arena;
 pub mod block_model;
 pub mod entity;
+pub mod hand;
 mod item_sprites;
 pub mod textures;
 pub mod ui;
@@ -104,6 +105,8 @@ pub struct FrameParams {
     pub crack: Option<(IVec3, u8)>,
     /// Free-standing blocks (falling sand and gravel).
     pub block_models: Vec<BlockModel>,
+    /// The first-person hand (`None` in third person or with the HUD hidden).
+    pub hand: Option<hand::Hand>,
     /// HUD geometry, drawn last.
     pub ui: Vec<UiVertex>,
     /// Rain strength 0..1: hides the sun, moon and stars and thickens the
@@ -1021,7 +1024,8 @@ impl Renderer {
             let verts = self.outline_vertices(b, lo, hi, p.camera);
             self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
         }
-        self.block_models.set(&self.device, &self.queue, &p.block_models, p.camera);
+        let hand = p.hand.as_ref().map(|h| (h, p.forward, p.fov_y));
+        self.block_models.set(&self.device, &self.queue, &p.block_models, hand, p.camera);
         let hud = &p.ui;
         if hud.len() > self.ui_capacity {
             self.ui_capacity = hud.len().next_power_of_two();
@@ -1156,6 +1160,25 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shaders_parse_and_validate() {
+        let shaders = [
+            ("chunk", include_str!("shaders/chunk.wgsl")),
+            ("block_model", include_str!("shaders/block_model.wgsl")),
+            ("entity", include_str!("shaders/entity.wgsl")),
+            ("overlay", include_str!("shaders/overlay.wgsl")),
+            ("sky", include_str!("shaders/sky.wgsl")),
+            ("weather", include_str!("shaders/weather.wgsl")),
+        ];
+        for (name, source) in shaders {
+            let module =
+                naga::front::wgsl::parse_str(source).unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
+            naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
+                .validate(&module)
+                .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
+        }
+    }
 
     fn runs(offsets: &[u32], mask: u8) -> Vec<(u32, u32)> {
         let mut out = Vec::new();

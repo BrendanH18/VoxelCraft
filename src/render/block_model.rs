@@ -34,11 +34,11 @@ pub struct BlockModel {
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 pub struct BlockVertex {
     /// Camera-relative position.
-    pos: [f32; 3],
-    uv: [f32; 2],
-    layer: u32,
+    pub(super) pos: [f32; 3],
+    pub(super) uv: [f32; 2],
+    pub(super) layer: u32,
     /// x: sky light, y: face shade, z: torch light.
-    light: [f32; 3],
+    pub(super) light: [f32; 3],
 }
 
 /// Face shading, ordered +X, -X, +Y, -Y, +Z, -Z (as in `chunk.wgsl`).
@@ -118,9 +118,14 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
 
 pub(super) struct BlockModelPass {
     pipeline: wgpu::RenderPipeline,
+    /// The first-person hand: depth pulled in front of everything.
+    hand_pipeline: wgpu::RenderPipeline,
     buffer: wgpu::Buffer,
     capacity: usize,
+    /// Vertices of world models, then of the hand.
     count: u32,
+    hand_count: u32,
+    sprite_masks: super::hand::SpriteMasks,
 }
 
 impl BlockModelPass {
@@ -129,41 +134,55 @@ impl BlockModelPass {
             label: Some("block model shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/block_model.wgsl").into()),
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("block models"),
-            layout: Some(layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<BlockVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![
-                        0 => Float32x3, 1 => Float32x2, 2 => Uint32, 3 => Float32x3
-                    ],
-                })],
-            },
-            primitive: Default::default(),
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::Greater),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: Default::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let pipeline = |label, entry_point| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some(entry_point),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<BlockVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &wgpu::vertex_attr_array![
+                            0 => Float32x3, 1 => Float32x2, 2 => Uint32, 3 => Float32x3
+                        ],
+                    })],
+                },
+                primitive: Default::default(),
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::Greater),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
         let capacity = 36 * 16;
-        Self { pipeline, buffer: Self::create_buffer(device, capacity), capacity, count: 0 }
+        Self {
+            pipeline: pipeline("block models", "vs_main"),
+            hand_pipeline: pipeline("hand", "vs_hand"),
+            buffer: Self::create_buffer(device, capacity),
+            capacity,
+            count: 0,
+            hand_count: 0,
+            sprite_masks: Default::default(),
+        }
     }
 
     fn create_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
@@ -175,9 +194,21 @@ impl BlockModelPass {
         })
     }
 
-    /// Uploads this frame's models.
-    pub(super) fn set(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, models: &[BlockModel], camera: DVec3) {
-        let verts = vertices(models, camera);
+    /// Uploads this frame's models and hand.
+    pub(super) fn set(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        models: &[BlockModel],
+        hand: Option<(&super::hand::Hand, Vec3, f32)>,
+        camera: DVec3,
+    ) {
+        let mut verts = vertices(models, camera);
+        self.count = verts.len() as u32;
+        if let Some((hand, forward, fov_y)) = hand {
+            verts.extend(super::hand::vertices(hand, forward, fov_y, &mut self.sprite_masks));
+        }
+        self.hand_count = verts.len() as u32 - self.count;
         if verts.len() > self.capacity {
             self.capacity = verts.len().next_power_of_two();
             self.buffer = Self::create_buffer(device, self.capacity);
@@ -185,16 +216,21 @@ impl BlockModelPass {
         if !verts.is_empty() {
             queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&verts));
         }
-        self.count = verts.len() as u32;
     }
 
     pub(super) fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
-        if self.count == 0 {
+        if self.count + self.hand_count == 0 {
             return;
         }
-        pass.set_pipeline(&self.pipeline);
         pass.set_vertex_buffer(0, self.buffer.slice(..));
-        pass.draw(0..self.count, 0..1);
+        if self.count > 0 {
+            pass.set_pipeline(&self.pipeline);
+            pass.draw(0..self.count, 0..1);
+        }
+        if self.hand_count > 0 {
+            pass.set_pipeline(&self.hand_pipeline);
+            pass.draw(self.count..self.count + self.hand_count, 0..1);
+        }
     }
 }
 

@@ -2312,6 +2312,7 @@ dependencies = [
  "font8x8",
  "glam",
  "log",
+ "naga",
  "png",
  "pollster",
  "rustc-hash 2.1.3",

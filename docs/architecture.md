@@ -64,6 +64,7 @@ src/
     containers.rs    chest screens and shift-click quick moves
     farming.rs       hoe tilling, bone meal, trampling farmland
     doors.rs         doors, ladders and gates: placing, opening, breaking
+    hand.rs          first-person hand animation: swings, item switches, bob
   inventory.rs       inventory slots, stacking, saved container overflow
   crafting.rs        crafting grids and recipes
   mining.rs          mining speed, harvest rules, tool wear, melee damage
@@ -102,7 +103,8 @@ src/
     mod.rs           wgpu pipelines, culling, draw submission, screenshots
     arena.rs         pooled GPU storage for chunk quads
     entity.rs        entity pass (one dynamic vertex buffer per frame)
-    block_model.rs   free-standing textured blocks (falling sand)
+    block_model.rs   free-standing textured blocks (falling sand, dropped items)
+    hand.rs          first-person hand and held item (Minecraft's transforms)
     item_sprites.rs  procedural item icons
     ui.rs            HUD geometry: rects, bitmap text, block icons
     textures.rs      procedural block textures

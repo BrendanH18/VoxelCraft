@@ -119,6 +119,8 @@ pub mod tex {
     pub const LADDER: u8 = 85;
     pub const DOOR_TOP: u8 = 86;
     pub const DOOR_BOTTOM: u8 = 87;
+    /// The player's arm in first person.
+    pub const SKIN: u8 = 88;
     /// Flat item icons (see `item::Item::icon_layer`), up to `ITEM_COUNT` of them.
     pub const ITEM_0: u8 = 96;
     pub const ITEM_COUNT: u8 = 64;

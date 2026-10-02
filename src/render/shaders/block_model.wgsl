@@ -25,6 +25,16 @@ struct VsOut {
     @location(3) dist: f32,
 };
 
+fn transform(pos: vec3<f32>, uv: vec2<f32>, layer: u32, light: vec3<f32>) -> VsOut {
+    var out: VsOut;
+    out.clip = g.view_proj * vec4<f32>(pos, 1.0);
+    out.uv = uv;
+    out.layer = layer;
+    out.light = light;
+    out.dist = length(pos);
+    return out;
+}
+
 @vertex
 fn vs_main(
     @location(0) pos: vec3<f32>,
@@ -32,12 +42,23 @@ fn vs_main(
     @location(2) layer: u32,
     @location(3) light: vec3<f32>,
 ) -> VsOut {
-    var out: VsOut;
-    out.clip = g.view_proj * vec4<f32>(pos, 1.0);
-    out.uv = uv;
-    out.layer = layer;
-    out.light = light;
-    out.dist = length(pos);
+    return transform(pos, uv, layer, light);
+}
+
+// The first-person hand: like `vs_main`, but with depth pulled into the
+// nearest quarter of the (reversed) range, so it's always in front of the
+// world, which never comes within 0.18 of the eye.
+@vertex
+fn vs_hand(
+    @location(0) pos: vec3<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) layer: u32,
+    @location(3) light: vec3<f32>,
+) -> VsOut {
+    var out = transform(pos, uv, layer, light);
+    let depth = out.clip.z / out.clip.w;
+    out.clip.z = out.clip.w * (0.75 + 0.25 * clamp(depth * 4.0, 0.0, 1.0));
+    out.dist = 0.0;
     return out;
 }
 
