@@ -39,8 +39,9 @@ Choose your download:
 - **First multiplayer features (command line):** a world can host up to eight
   extra players controlled from a terminal, such as scripts or AI agents. Mobs
   hunt them just as they hunt you, and `/splitscreen <name>` shows any of them
-  in split-screen beside your own view. The `voxelcraft-agent` tool isn't in
-  these downloads yet, so this needs a source build; see
+  in split-screen beside your own view. The downloads include the
+  `voxelcraft-agent` client, and Windows adds a **VoxelCraft (host agent
+  players)** Start Menu entry; see
   [hosted players](https://github.com/BrendanH18/VoxelCraft/blob/main/docs/agents.md).
   Gamepad split-screen and LAN joining are in progress.
 

@@ -6,10 +6,29 @@ A desktop host can now share its world with up to eight CLI-controlled players.
 Agents have independent positions, inventories, health, hunger and creative
 flight. Blocks, dropped items, chests, time and weather belong to the host.
 The world continues ticking at 20 Hz while the host uses menus or loses focus.
-This is the first agent multiplayer slice; desktop joining and split-screen
-remain on the roadmap.
+This is the first agent multiplayer slice; desktop joining and gamepad
+split-screen remain on the roadmap.
 
-## Launch and connect
+## Installed builds
+
+The downloads include the `voxelcraft-agent` client beside the game:
+
+- **Windows:** the Start Menu entry **VoxelCraft (host agent players)** opens
+  the game hosting on `127.0.0.1:4242`. The client is installed as
+  `%LOCALAPPDATA%\Programs\VoxelCraft\voxelcraft-agent.exe` (the default
+  install folder).
+- **Mac:** both programs are inside the app. Host from Terminal, then connect:
+
+```sh
+/Applications/VoxelCraft.app/Contents/MacOS/voxelcraft --agent-listen 127.0.0.1:4242
+/Applications/VoxelCraft.app/Contents/MacOS/voxelcraft-agent --player builder observe
+```
+
+On Windows, run `voxelcraft-agent.exe --player builder observe` from that
+folder in PowerShell or Command Prompt. Pick a world on the title screen first:
+hosting starts once a world is loaded.
+
+## Launch and connect from source
 
 ```sh
 cargo run --release -- --world agents --agent-listen 127.0.0.1:4242

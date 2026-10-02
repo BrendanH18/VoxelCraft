@@ -44,6 +44,8 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 
 [Files]
 Source: "{#BinaryDir}\voxelcraft.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Command-line client for hosted players (see docs/agents.md).
+Source: "{#BinaryDir}\voxelcraft-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoDir}\packaging\INSTALL.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoDir}\packaging\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoDir}\LICENSE-MIT"; DestDir: "{app}"; Flags: ignoreversion
@@ -52,6 +54,8 @@ Source: "{#RepoDir}\packaging\THIRD-PARTY-LICENSES.html"; DestDir: "{app}"; Flag
 
 [Icons]
 Name: "{group}\VoxelCraft"; Filename: "{app}\voxelcraft.exe"; WorkingDir: "{app}"
+; Hosts command-line players on this computer only (loopback, no cheats).
+Name: "{group}\VoxelCraft (host agent players)"; Filename: "{app}\voxelcraft.exe"; Parameters: "--agent-listen 127.0.0.1:4242"; WorkingDir: "{app}"
 Name: "{autodesktop}\VoxelCraft"; Filename: "{app}\voxelcraft.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]

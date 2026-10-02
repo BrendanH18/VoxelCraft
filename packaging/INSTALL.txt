@@ -52,4 +52,18 @@ Left Shift sneaks; /, T or ` opens the command console (/help lists commands).
 Survival is the default; G switches between survival and creative.
 Worlds save every two minutes and on normal exit.
 Gameplay guide: https://github.com/BrendanH18/VoxelCraft/blob/main/docs/gameplay.md
+
+HOSTED PLAYERS (ADVANCED)
+Scripts or AI agents can join your world as extra players through the
+voxelcraft-agent command-line client, which is installed with the game.
+Hosting listens on this computer only and gives agents no cheats.
+Windows: start "VoxelCraft (host agent players)" from the Start Menu, open
+a world, then in PowerShell run
+  & "$env:LOCALAPPDATA\Programs\VoxelCraft\voxelcraft-agent.exe" --player builder observe
+Mac: in Terminal run
+  /Applications/VoxelCraft.app/Contents/MacOS/voxelcraft --agent-listen 127.0.0.1:4242
+open a world, then in a second Terminal window run
+  /Applications/VoxelCraft.app/Contents/MacOS/voxelcraft-agent --player builder observe
+In game, /splitscreen builder shows that player beside your own view.
+Guide: https://github.com/BrendanH18/VoxelCraft/blob/main/docs/agents.md
 Bug reports: https://github.com/BrendanH18/VoxelCraft/issues
