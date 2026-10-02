@@ -201,7 +201,7 @@ impl Region {
                 let row = ridx(MARGIN, y + MARGIN, z + MARGIN);
                 let src = &self.block_light[row..row + CHUNK_SIZE];
                 let dst = (z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE) / 2;
-                for (o, pair) in out[dst..dst + CHUNK_SIZE / 2].iter_mut().zip(src.chunks_exact(2)) {
+                for (o, pair) in out[dst..dst + CHUNK_SIZE / 2].iter_mut().zip(src.as_chunks::<2>().0) {
                     *o = pair[0] | pair[1] << 4;
                     any |= *o;
                 }

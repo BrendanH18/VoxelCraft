@@ -408,7 +408,7 @@ pub fn build(
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
             for (ci, c) in p.boxes.iter().enumerate() {
-                push_cuboid(out, c, &xf, rot, light, torch, tint, (pi * 8 + ci) as f32);
+                push_cuboid(out, c, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
             }
         }
         if m.burning {
@@ -441,7 +441,7 @@ fn flames(out: &mut Vec<EntityVertex>, m: &Mob, rel: Vec3, time: f32) {
             color,
             noise: 0,
         };
-        push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, [255, 255, 0, 255], 0, (FIRE, 0.0), 0.0);
+        push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([255, 255, 0, 255], 0), (FIRE, 0.0), 0.0);
     }
 }
 
@@ -453,7 +453,7 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, out: &mut Vec<EntityVertex>
         // Stuck arrows sit with the tip buried.
         let origin = if a.is_stuck() { rel - a.dir * 0.2 } else { rel };
         for (i, c) in ARROW.iter().enumerate() {
-            push_cuboid(out, c, &|v: Vec3| origin + rot * v / 16.0, rot, [230, 0, 0, 0], 0, (FIRE, 0.0), i as f32);
+            push_cuboid(out, c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
         }
     }
 }
@@ -468,7 +468,15 @@ pub fn build_puffs(puffs: &[Puff], camera: DVec3, out: &mut Vec<EntityVertex>) {
         let rel = (p.pos - camera).as_vec3();
         // Emissive while hot, so the flash reads at night too.
         let glow = ((1.0 - t * 3.0).max(0.0) * 255.0) as u8;
-        push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, [255, 255, 0, glow], 0, (FIRE, 0.0), i as f32);
+        push_cuboid(
+            out,
+            &c,
+            &|v: Vec3| rel + v / 16.0,
+            Quat::IDENTITY,
+            ([255, 255, 0, glow], 0),
+            (FIRE, 0.0),
+            i as f32,
+        );
     }
 }
 
@@ -480,8 +488,7 @@ fn push_cuboid(
     c: &Cuboid,
     xf: &impl Fn(Vec3) -> Vec3,
     rot: Quat,
-    light: [u8; 4],
-    torch: u8,
+    (light, torch): ([u8; 4], u8),
     tint: ([f32; 3], f32),
     seed: f32,
 ) {
