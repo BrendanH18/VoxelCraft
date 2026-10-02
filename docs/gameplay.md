@@ -20,7 +20,7 @@
 | Right click on a door or fence gate | Open / close it |
 | Shift + right click | Build against a crafting table, furnace, chest, door or gate instead of using it |
 | Hold / release right click with a bow | Draw / shoot an arrow (needs arrows in survival) |
-| Right click with flint and steel | Light an obsidian portal frame or a TNT block |
+| Right click with flint and steel | Start a fire, light an obsidian portal frame or prime TNT |
 | Right click with a bucket | Scoop up a water or lava source / pour it out again |
 | Right click with a hoe | Till grass or dirt (with air above) into farmland |
 | Right click with seeds / bone meal | Sow wheat on farmland / make a crop, sapling or patch of grass grow |
@@ -103,6 +103,17 @@ session.
   0.5 s) and mobs, and can be swum through with an orange haze. Where lava
   meets water a source hardens into obsidian, flowing lava into
   cobblestone, and lava pouring onto water turns it to stone
+- Fire: flint and steel lights empty space on a solid top or beside
+  flammable blocks; successful uses spend one durability. Animated flames
+  give off light level 15, spread through wood, leaves, wool and plants,
+  and prime TNT with its normal four-second fuse. Fire burns out as it
+  ages or loses its fuel; netherrack stays lit indefinitely, even in rain.
+  Exposed rain and flowing water extinguish ordinary fire. Lava can start
+  fires near combustible blocks. Players and mobs keep burning after
+  leaving fire (8 seconds) or lava (15 seconds), until water or rain puts
+  them out; zombified piglins resist both. Fire destroys dropped items,
+  and burning blocks leave no loot. Punch fire to put it out, or replace
+  it with a block. Fire ages survive saving and chunk reloads
 - Sand and gravel fall when unsupported, as free-moving blocks that land
   on the first solid block (replacing plants and fluids in the way);
   knocking out a column's base drops the whole column

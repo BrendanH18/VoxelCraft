@@ -45,6 +45,7 @@ const SAFE_FALL: f64 = 3.0;
 pub const CAUSE_FALL: &str = "fell from a high place";
 pub const CAUSE_DROWN: &str = "drowned";
 pub const CAUSE_LAVA: &str = "tried to swim in lava";
+pub const CAUSE_FIRE: &str = "burned to death";
 pub const CAUSE_STARVE: &str = "starved to death";
 
 /// Damage left after armor worth `points` (Minecraft's formula without
@@ -77,6 +78,9 @@ pub struct Env {
     pub head_in_water: bool,
     /// Body touching lava: burns.
     pub in_lava: bool,
+    pub in_fire: bool,
+    /// Exposed to rain: extinguishes the player like body water does.
+    pub wet: bool,
     /// Horizontal distance moved this frame, and whether sprinting /
     /// jumping (hunger).
     pub moved: f64,
@@ -93,6 +97,9 @@ pub struct Hurts {
     pub fall: f32,
     pub drown: f32,
     pub lava: f32,
+    pub fire: f32,
+    /// Lingering burning damage bypasses armor; contact fire does not.
+    pub burn: f32,
     pub starve: f32,
 }
 
@@ -197,6 +204,8 @@ pub struct Vitals {
     /// Seconds since the last damage (drives the hurt flash).
     since_damage: f32,
     drown_timer: f32,
+    fire_left: f32,
+    fire_timer: f32,
     /// Damage of the hit that started the current immunity window.
     last_damage: f32,
     /// Highest feet Y since last standing on the ground (None while
@@ -214,6 +223,8 @@ impl Default for Vitals {
             hunger: Hunger::default(),
             since_damage: 1e3,
             drown_timer: 0.0,
+            fire_left: 0.0,
+            fire_timer: 0.0,
             last_damage: 0.0,
             fall_peak: None,
             death: None,
@@ -233,6 +244,10 @@ impl Vitals {
 
     pub fn is_dead(&self) -> bool {
         self.death.is_some()
+    }
+
+    pub fn burning(&self) -> bool {
+        self.fire_left > 0.0 && !self.is_dead()
     }
 
     pub fn since_damage(&self) -> f32 {
@@ -317,6 +332,30 @@ impl Vitals {
             hurts.lava = LAVA_DAMAGE;
         }
 
+        // Lava ignites for 15 s; fire for 8 s. Contact hurts immediately,
+        // and after leaving it the player burns for 1 damage each second.
+        if creative {
+            self.fire_left = 0.0;
+        } else if env.in_lava {
+            self.fire_left = 15.0;
+        } else if env.in_water || env.wet {
+            self.fire_left = 0.0;
+        } else if env.in_fire {
+            self.fire_left = 8.0;
+            hurts.fire = 1.0;
+        } else {
+            self.fire_left = (self.fire_left - dt).max(0.0);
+        }
+        if self.fire_left > 0.0 {
+            self.fire_timer += dt;
+            if self.fire_timer >= 1.0 {
+                self.fire_timer -= 1.0;
+                hurts.burn = 1.0;
+            }
+        } else {
+            self.fire_timer = 0.0;
+        }
+
         // Hunger: activity wears it down; it drives regeneration and starvation.
         if !creative {
             let h = &mut self.hunger;
@@ -354,6 +393,36 @@ mod tests {
     use super::*;
 
     const DT: f32 = 1.0 / 60.0;
+
+    #[test]
+    fn fire_keeps_burning_then_water_rain_and_creative_extinguish_it() {
+        let mut v = Vitals::default();
+        let fire = Env { in_fire: true, ..Env::default() };
+        assert_eq!(v.tick(DT, &fire, false).fire, 1.0, "contact hurts immediately");
+        assert!(v.burning());
+        assert_eq!(v.tick(1.0, &Env::default(), false).burn, 1.0, "burns after leaving fire");
+        for _ in 0..8 {
+            v.tick(1.0, &Env::default(), false);
+        }
+        assert!(!v.burning(), "fire expires");
+        for extinguished in [Env { in_water: true, ..Env::default() }, Env { wet: true, ..Env::default() }] {
+            v.tick(DT, &fire, false);
+            assert!(v.burning());
+            let h = v.tick(DT, &extinguished, false);
+            assert_eq!((h.fire, h.burn), (0.0, 0.0));
+            assert!(!v.burning());
+        }
+        v.tick(DT, &fire, false);
+        let h = v.tick(DT, &fire, true);
+        assert_eq!((h.fire, h.burn), (0.0, 0.0));
+        assert!(!v.burning());
+        let lava = Env { in_lava: true, ..Env::default() };
+        v.tick(DT, &lava, false);
+        v.tick(10.0, &Env::default(), false);
+        assert!(v.burning(), "lava ignites for longer than fire");
+        v.respawn();
+        assert!(!v.burning());
+    }
 
     fn ground(y: f64) -> Env {
         Env { y, on_ground: true, ..Env::default() }

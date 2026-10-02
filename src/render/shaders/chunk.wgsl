@@ -147,11 +147,14 @@ fn fs_opaque(in: VsOut) -> @location(0) vec4<f32> {
 
 @fragment
 fn fs_cutout(in: VsOut) -> @location(0) vec4<f32> {
-    let tex = textureSample(blocks, blocks_sampler, in.uv, in.layer);
+    // Fire occupies layers 89..95 and animates entirely on the GPU.
+    let fire = in.layer == 89u;
+    let layer = select(in.layer, 89u + u32(g.sun.w * 10.0) % 7u, fire);
+    let tex = textureSample(blocks, blocks_sampler, in.uv, layer);
     if tex.a < 0.5 {
         discard;
     }
-    return vec4<f32>(apply_fog(tex.rgb * lighting(in), in.dist), 1.0);
+    return vec4<f32>(apply_fog(tex.rgb * select(lighting(in), vec3<f32>(1.0), fire), in.dist), 1.0);
 }
 
 @fragment

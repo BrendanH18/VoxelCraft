@@ -18,7 +18,7 @@ use crate::item::Item;
 const TICKS_PER_CHUNK: f64 = 480.0;
 /// Chunks within this many chunks (horizontally) of the player get random
 /// ticks: Minecraft's default simulation distance of 128 blocks.
-const TICK_RADIUS: i32 = 4;
+pub(super) const TICK_RADIUS: i32 = 4;
 /// Leaves farther than this (in steps through leaves) from a log decay.
 const LEAF_REACH: i32 = 6;
 
@@ -29,12 +29,12 @@ const CROP_GROWTH: u64 = 7;
 const SAPLING_GROWTH: u64 = 7;
 
 impl World {
-    fn roll(&mut self) -> u64 {
+    pub(super) fn roll(&mut self) -> u64 {
         splitmix64(&mut self.rng)
     }
 
     /// True with probability `1 / n`.
-    fn one_in(&mut self, n: u64) -> bool {
+    pub(super) fn one_in(&mut self, n: u64) -> bool {
         self.roll().is_multiple_of(n)
     }
 
@@ -86,8 +86,13 @@ impl World {
             for cx in center.x - TICK_RADIUS..=center.x + TICK_RADIUS {
                 for cy in 0..WORLD_HEIGHT_CHUNKS {
                     let cpos = IVec3::new(cx, cy, cz);
-                    // Uniform chunks (all air, all stone) have nothing to tick.
-                    if self.chunks.get(&cpos).is_none_or(|s| s.data.uniform().is_some()) {
+                    // Uniform air/stone have nothing to tick; a lava sea
+                    // still gets ignition ticks.
+                    if self
+                        .chunks
+                        .get(&cpos)
+                        .is_none_or(|s| s.data.uniform().is_some_and(|b| !b.is_lava() && !b.is_fire()))
+                    {
                         continue;
                     }
                     for _ in 0..n {
@@ -103,6 +108,8 @@ impl World {
     pub(super) fn random_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
         match b {
+            b if b.is_fire() => self.tick_fire_block(p, b.fire_age().unwrap()),
+            b if b.is_lava() => self.tick_lava_fire(p),
             Block::GRASS => self.tick_grass(p),
             Block::FARMLAND | Block::WET_FARMLAND => self.tick_farmland(p, b),
             b if b.is_sapling() => {

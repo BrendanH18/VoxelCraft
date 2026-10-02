@@ -887,6 +887,17 @@ mod tests {
     }
 
     #[test]
+    fn fire_lights_its_cell_and_neighbours_with_identical_meshes_at_every_age() {
+        let mesh = |age| mesh_blocks(&[([8, 8, 8], Block::STONE), ([8, 9, 8], Block::fire(age))]);
+        let young = mesh(0);
+        assert_eq!(young.pass_quads(CROSS), 2);
+        assert_eq!(young.quads, mesh(15).quads);
+        let fire = young.quads.last().unwrap();
+        assert_eq!((fire[2] >> 4) & 15, 15);
+        assert!(young.quads.iter().any(|q| q[1] & 255 != tex::FIRE_0 as u32 && (q[2] >> 4) & 15 >= 14));
+    }
+
+    #[test]
     fn torch_lights_a_sealed_room() {
         let mut blocks = Vec::new();
         for x in 8..15 {

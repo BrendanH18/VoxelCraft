@@ -121,6 +121,9 @@ pub mod tex {
     pub const DOOR_BOTTOM: u8 = 87;
     /// The player's arm in first person.
     pub const SKIN: u8 = 88;
+    /// Seven flame animation frames, in the gap before item icons.
+    pub const FIRE_0: u8 = 89;
+    pub const FIRE_FRAMES: u8 = 7;
     /// Flat item icons (see `item::Item::icon_layer`), up to `ITEM_COUNT` of them.
     pub const ITEM_0: u8 = 96;
     pub const ITEM_COUNT: u8 = 64;
@@ -313,6 +316,51 @@ impl Block {
     /// then upper half, each closed then open, four facings apiece (see
     /// [`Block::door`]). The panel sits on the side the door faces.
     pub const OAK_DOOR: Block = Block(149);
+    /// Fire ages 0..=15, saved as ids 165..=180. All ages share geometry.
+    pub const FIRE: Block = Block(165);
+
+    pub const fn fire(age: u8) -> Block {
+        Block(165 + if age > 15 { 15 } else { age })
+    }
+
+    pub fn fire_age(self) -> Option<u8> {
+        (165..=180).contains(&self.0).then(|| self.0 - 165)
+    }
+
+    #[inline]
+    pub fn is_fire(self) -> bool {
+        (165..=180).contains(&self.0)
+    }
+
+    /// Minecraft's (encouragement, consumption) fire odds. Wooden doors,
+    /// ladders and containers can kindle lava fires but aren't consumed.
+    pub fn fire_odds(self) -> (u8, u8) {
+        match self.material() {
+            b if b.is_log() => (5, 5),
+            b if b.is_planks() => (5, 20),
+            b if b.is_leaves() || b == Block::WOOL => (30, 60),
+            Block::TNT => (15, 100),
+            Block::TALL_GRASS
+            | Block::FERN
+            | Block::DEAD_BUSH
+            | Block::DANDELION
+            | Block::POPPY
+            | Block::BLUE_ORCHID => (60, 100),
+            b if b.is_sapling() => (60, 100),
+            _ => (0, 0),
+        }
+    }
+
+    pub fn ignited_by_lava(self) -> bool {
+        self.fire_odds().0 > 0
+            || self.is_bed()
+            || matches!(self.base(), Block::OAK_DOOR | Block::LADDER | Block::CRAFTING_TABLE | Block::CHEST)
+    }
+
+    /// A complete top face can support fire, even on glass.
+    pub fn supports_fire(self) -> bool {
+        self.is_solid() && self.top_drop() == 0 && self.kind() != RenderKind::Shaped
+    }
 
     pub const fn flowing_water(level: u8) -> Block {
         Block(23 + level)
@@ -611,7 +659,7 @@ impl Block {
             Block::GLOWSTONE | Block::NETHER_PORTAL => None,
             b if b.is_leaves() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
-            b if b.is_fluid() || b == Block::AIR => None,
+            b if b.is_fluid() || b.is_fire() || b == Block::AIR => None,
             b => Some(b.into()),
         }
     }
@@ -732,6 +780,7 @@ impl Block {
     pub fn is_replaceable(self) -> bool {
         self == Block::AIR
             || self.is_fluid()
+            || self.is_fire()
             || self == Block::TALL_GRASS
             || self == Block::DEAD_BUSH
             || self == Block::FERN
@@ -826,6 +875,7 @@ impl Block {
             Block::LIT_FURNACE => 13,
             Block::NETHER_PORTAL => 11,
             b if b.is_lava() => 15,
+            b if b.is_fire() => 15,
             _ => 0,
         }
     }
@@ -1175,6 +1225,7 @@ const fn make(id: u8) -> BlockInfo {
         141..=148 => ("oak fence gate", Shaped, all(tex::PLANKS)),
         149..=156 => ("oak door", Shaped, all(tex::DOOR_BOTTOM)),
         157..=164 => ("oak door", Shaped, all(tex::DOOR_TOP)),
+        165..=180 => ("fire", Cross, all(tex::FIRE_0)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.
@@ -1234,6 +1285,38 @@ static OPAQUE: [bool; 256] = {
 mod tests {
     use super::*;
 
+    #[test]
+    fn fire_states_and_materials_follow_minecraft_rules() {
+        for age in 0..=15 {
+            let fire = Block::fire(age);
+            assert_eq!(fire.fire_age(), Some(age));
+            assert_eq!(fire.emission(), 15);
+            assert_eq!(fire.light_opacity(), 0);
+            assert!(fire.is_replaceable() && !fire.is_solid());
+            assert_eq!(fire.drop(), None);
+        }
+        assert_eq!(Block::from_name("fire"), Some(Block::FIRE));
+        assert_eq!(Block::fire(255), Block::fire(15));
+        assert_eq!(Block::LOG.fire_odds(), (5, 5));
+        assert_eq!(Block::WOOL.fire_odds(), (30, 60));
+        assert_eq!(Block::TNT.fire_odds(), (15, 100));
+        for b in [
+            Block::PLANKS,
+            Block::SPRUCE_PLANKS,
+            Block::slab_of(Block::PLANKS).unwrap(),
+            Block::stairs_of(Block::PLANKS).unwrap().with_facing(Facing::West),
+            Block::OAK_FENCE,
+            Block::gate(Facing::North, true),
+        ] {
+            assert_eq!(b.fire_odds(), (5, 20), "{}", b.name());
+        }
+        for b in [Block::OAK_DOOR, Block::LADDER, Block::CHEST, Block::CRAFTING_TABLE, Block::BED_FOOT] {
+            assert_eq!(b.fire_odds(), (0, 0), "{} isn't consumed by fire", b.name());
+            assert!(b.ignited_by_lava());
+        }
+        assert!(!Block::STONE.ignited_by_lava());
+        assert_eq!(Block::NETHERRACK.fire_odds(), (0, 0));
+    }
     #[test]
     fn cross_blocks_are_targetable_but_not_solid() {
         for b in [Block::TALL_GRASS, Block::DANDELION, Block::POPPY, Block::DEAD_BUSH, Block::TORCH] {

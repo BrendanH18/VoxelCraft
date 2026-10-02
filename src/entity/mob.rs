@@ -244,6 +244,7 @@ pub struct Mob {
     head_timer: f32,
     attack_cooldown: f32,
     burn_timer: f32,
+    fire_left: f32,
     light_timer: f32,
     /// Blocked horizontally on the last physics step.
     blocked: bool,
@@ -284,6 +285,7 @@ impl Mob {
             head_timer: 0.0,
             attack_cooldown: 0.0,
             burn_timer: 0.0,
+            fire_left: 0.0,
             light_timer: 0.0,
             fuse: 0.0,
             provoked: 0.0,
@@ -659,21 +661,43 @@ impl Mob {
             && !physics::overlaps_solid(world, raised + dir * 0.4, self.shape())
     }
 
-    /// The undead burn in direct sunlight; every mob burns in lava, faster.
+    /// Fire keeps burning after contact; water/rain extinguishes it. Nether
+    /// piglins resist fire and lava. Undead also ignite in direct sunlight.
     fn burn<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx, rng: &mut Rng) {
         let head = (self.pos + DVec3::new(0.0, self.shape().height - 0.1, 0.0)).floor().as_ivec3();
-        let in_lava = physics::is_lava_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
+        let in_lava = physics::touches_block(world, self.pos, self.shape(), Block::is_lava);
+        let in_fire = physics::touches_block(world, self.pos, self.shape(), Block::is_fire);
         let sunburn = self.kind.burns_in_sun()
             && ctx.daylight > BURN_DAYLIGHT
             && !ctx.raining
             && !self.in_water
             && world.exposed(head);
-        self.burning = self.alive() && (sunburn || in_lava);
+        if self.kind == MobKind::ZombifiedPiglin {
+            self.fire_left = 0.0;
+        } else if in_lava {
+            self.fire_left = 15.0;
+        } else if self.in_water || world.rains_on(head) {
+            self.fire_left = 0.0;
+        } else if sunburn || in_fire {
+            self.fire_left = 8.0;
+            if in_fire && !self.burning {
+                self.damage(1.0, None, rng);
+            }
+        } else {
+            self.fire_left = (self.fire_left - dt).max(0.0);
+        }
+        self.burning = self.alive() && self.fire_left > 0.0;
         if !self.burning {
             self.burn_timer = 0.0;
             return;
         }
-        let (interval, amount) = if in_lava { (0.5, 4.0) } else { (1.0, 2.0) };
+        let (interval, amount) = if in_lava {
+            (0.5, 4.0)
+        } else if in_fire {
+            (0.5, 1.0)
+        } else {
+            (1.0, if sunburn { 2.0 } else { 1.0 })
+        };
         self.burn_timer += dt;
         if self.burn_timer >= interval {
             self.burn_timer -= interval;
