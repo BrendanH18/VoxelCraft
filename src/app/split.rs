@@ -134,7 +134,7 @@ impl Game {
         }
     }
 
-    /// Swing, bob and item changes for every online player's hand.
+    /// Swing, bob and item changes for every online player's hand, and their footsteps.
     pub(super) fn animate_hands(&mut self, dt: f32, alpha: f64, paused: bool) {
         for bot in self.agents.players.values_mut().filter(|b| b.active) {
             let a = &bot.agent;
@@ -142,6 +142,7 @@ impl Game {
             let distance = (feet - bot.drawn_feet).with_y(0.0).length();
             bot.drawn_feet = feet;
             let walked = if paused || a.player.flying || distance > 4.0 { 0.0 } else { distance as f32 };
+            self.audio.other_steps(&a.player, &self.world, walked as f64, &mut bot.stride);
             if a.swings != bot.seen_swings {
                 bot.seen_swings = a.swings;
                 bot.hand.swing();

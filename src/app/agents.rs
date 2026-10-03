@@ -21,12 +21,14 @@ pub(super) struct Bot {
     pub hand: super::hand::HandAnim,
     pub seen_swings: u32,
     pub drawn_feet: DVec3,
+    /// Distance walked toward the next footstep.
+    pub stride: f64,
 }
 
 impl Bot {
     fn new(id: PlayerId, agent: Agent) -> Self {
         let (seen_swings, drawn_feet) = (agent.swings, agent.player.pos);
-        Self { id, agent, active: false, reply: None, hand: Default::default(), seen_swings, drawn_feet }
+        Self { id, agent, active: false, reply: None, hand: Default::default(), seen_swings, drawn_feet, stride: 0.0 }
     }
 }
 #[derive(Default)]
