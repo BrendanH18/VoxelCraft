@@ -2,7 +2,7 @@ use std::sync::{Arc, OnceLock};
 
 use super::dsp::{self, RATE};
 use super::export::{stats, wav_bytes};
-use super::mixer::{Command, FAR, MAX_VOICES, Mixer, NEAR, attenuation, pan_gains};
+use super::mixer::{Command, FAR, MAX_OTHERS, MAX_VOICES, Mixer, NEAR, attenuation, pan_gains};
 use super::*;
 
 fn bank() -> Arc<Bank> {
@@ -192,6 +192,29 @@ fn mixer_master_and_distance() {
         mixer.render(&mut out, 2);
     }
     assert!(out.iter().all(|s| s.abs() < 1e-3));
+}
+
+#[test]
+fn split_screen_players_hear_nearby_sounds() {
+    let buf = vec![0.5; 48_000];
+    let (mut mixer, tx) = test_mixer(buf);
+    tx.send(Command::Listener { pos: [0.0; 3], yaw: 0.0 }).unwrap();
+    let mut ears = [[0.0; 4]; MAX_OTHERS];
+    ears[0] = [500.0, 0.0, 0.0, 0.0];
+    tx.send(Command::Others { count: 1, ears }).unwrap();
+    // Far from the host but beside the other player: heard at their ear.
+    tx.send(play(1.0, Some([500.0, 0.0, 2.0]))).unwrap();
+    let mut out = vec![0.0; 2 * 512];
+    mixer.render(&mut out, 2);
+    assert_eq!(mixer.active_voices(), 1);
+    let (pl, pr) = pan_gains([0.0, 0.0, 2.0], 0.0);
+    let a = attenuation(2.0) * 0.5;
+    assert!((out[1000] - pl * a).abs() < 1e-4 && (out[1001] - pr * a).abs() < 1e-4);
+    // Once that player is gone, a new sound there is out of earshot.
+    tx.send(Command::Others { count: 0, ears }).unwrap();
+    tx.send(play(1.0, Some([500.0, 0.0, 2.0]))).unwrap();
+    mixer.render(&mut out, 2);
+    assert!(mixer.active_voices() <= 1);
 }
 
 #[test]

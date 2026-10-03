@@ -151,7 +151,12 @@ stack back.
 
 An unplugged controller freezes its player until it reconnects.
 `/splitscreen off` keeps controller views. Controller players can't yet use
-furnaces, buckets, beds or bows. Sound still follows the host.
+furnaces, buckets, beds or bows.
+
+Sound is shared: each sound plays as heard by whichever player in a view is
+nearest, so everyone hears what happens around them, including blocks that
+agents and controller players break, place or eat. Ambience, underwater
+muffling and footsteps still follow the keyboard player.
 
 ## LAN and raw protocol
 

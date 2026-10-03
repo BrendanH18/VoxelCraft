@@ -19,6 +19,17 @@ use crate::world::{
 
 pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, dimension overworld/nether/end (host console only).";
 
+/// Something an agent did that players nearby should hear.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Event {
+    Broke(IVec3, Block),
+    Placed(IVec3, Block),
+    Chew,
+}
+
+/// Unheard events kept per agent (a host without audio never drains them).
+const MAX_EVENTS: usize = 64;
+
 /// Ticks to eat one food item (1.6 s).
 pub const EAT_TICKS: u32 = 32;
 
@@ -157,6 +168,8 @@ pub struct Agent {
     pub remaining: u32,
     /// Arm swings so far (placing, attacking, mining), for animation.
     pub swings: u32,
+    /// Sounds to play, drained by the host.
+    pub events: Vec<Event>,
     input: MoveInput,
     mining: bool,
     /// Holding "use" eats held food; `bite` counts the ticks chewed.
@@ -177,6 +190,7 @@ impl Agent {
             selected: 0,
             remaining: 0,
             swings: 0,
+            events: Vec::new(),
             input: MoveInput::default(),
             mining: false,
             eating: false,
@@ -297,6 +311,7 @@ impl Agent {
                 if !world.set_block(at, block) {
                     return Err("placement failed".into());
                 }
+                self.emit(Event::Placed(at, block));
                 self.cooldown = 0.22;
                 self.swings += 1;
                 if !self.creative {
@@ -469,6 +484,7 @@ impl Agent {
                 && (self.creative || progress >= mining::break_time(block, held) as f64)
             {
                 world.set_block(pos, Block::AIR);
+                self.emit(Event::Broke(pos, block));
                 if !self.creative {
                     if mining::can_harvest(block, held) {
                         world.spill_block(pos, block);
@@ -506,6 +522,10 @@ impl Agent {
             return;
         };
         self.bite += 1;
+        // Chewing sounds four times a second.
+        if self.bite % 5 == 1 {
+            self.emit(Event::Chew);
+        }
         if self.bite >= EAT_TICKS {
             self.bite = 0;
             self.inventory.take_one(self.selected);
@@ -514,6 +534,12 @@ impl Agent {
             if self.remaining <= 1 {
                 self.eating = false;
             }
+        }
+    }
+
+    fn emit(&mut self, event: Event) {
+        if self.events.len() < MAX_EVENTS {
+            self.events.push(event);
         }
     }
 
@@ -761,6 +787,7 @@ mod tests {
         a.execute(Command::Place, &mut world, &mut entities, &[]).unwrap();
         assert_eq!(a.inventory.get(0).unwrap().count, 1);
         assert_eq!(a.swings, 1);
+        assert_eq!(a.events, [Event::Placed(IVec3::new(3, 151, 1), Block::STONE)]);
         assert_eq!(world.get_block(IVec3::new(3, 151, 1)), Some(Block::STONE));
         assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err());
         assert_eq!(a.inventory.get(0).unwrap().count, 1);

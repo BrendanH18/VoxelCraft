@@ -185,6 +185,18 @@ impl Audio {
         self.play(Sound::Step(m), None, gain, (0.9, 1.1));
     }
 
+    /// Split-screen players' eyes and yaws: sounds near any of them are
+    /// heard as if by the nearest (beyond the first few are ignored).
+    pub fn set_others(&mut self, ears: &[(DVec3, f32)]) {
+        let mut out = [[0.0; 4]; mixer::MAX_OTHERS];
+        for (o, (eye, yaw)) in out.iter_mut().zip(ears) {
+            let p = eye.as_vec3();
+            *o = [p.x, p.y, p.z, *yaw];
+        }
+        let count = ears.len().min(mixer::MAX_OTHERS) as u8;
+        self.send(Command::Others { count, ears: out });
+    }
+
     /// Per-frame update from the player's state: listener position,
     /// footsteps, jumps, landings, water entry, underwater muffling and
     /// ambience.

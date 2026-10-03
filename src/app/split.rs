@@ -117,6 +117,23 @@ impl Game {
         Fog { color, start, end, underwater }
     }
 
+    /// Plays what agents did since last frame: breaking, placing, chewing.
+    pub(super) fn agent_sounds(&mut self) {
+        use voxelcraft::agent::Event;
+        for bot in self.agents.players.values_mut() {
+            for event in bot.agent.events.drain(..) {
+                match event {
+                    Event::Broke(pos, block) => self.audio.block_break(block, pos),
+                    Event::Placed(pos, block) => self.audio.block_place(block, pos),
+                    Event::Chew => {
+                        let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
+                        self.audio.play(sound, Some(bot.agent.player.eye()), 0.7, (1.4, 1.7));
+                    }
+                }
+            }
+        }
+    }
+
     /// Swing, bob and item changes for every online player's hand.
     pub(super) fn animate_hands(&mut self, dt: f32, alpha: f64, paused: bool) {
         for bot in self.agents.players.values_mut().filter(|b| b.active) {
