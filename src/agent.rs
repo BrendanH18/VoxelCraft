@@ -469,6 +469,14 @@ impl Agent {
         taken
     }
 
+    /// Held device input for the next tick (a local controller). Unlike a
+    /// timed `move` or `mine`, this keeps mining progress on the same block.
+    pub fn hold(&mut self, input: MoveInput, mining: bool) {
+        self.input = input;
+        self.mining = mining;
+        self.remaining = 1;
+    }
+
     /// The block being mined and the fraction broken (for crack overlays).
     pub fn breaking(&self, world: &World) -> Option<(IVec3, f32)> {
         let (pos, seconds) = self.breaking?;

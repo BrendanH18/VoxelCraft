@@ -10,6 +10,7 @@ mod containers;
 mod dimension;
 mod doors;
 mod farming;
+mod gamepad;
 mod hand;
 mod hud;
 mod items;
@@ -116,6 +117,7 @@ impl GameMode {
 struct Game {
     agents: agents::Agents,
     split: split::Split,
+    pads: gamepad::Pads,
     console: console::Console,
     search: search::Search,
     renderer: Renderer,
@@ -651,6 +653,8 @@ impl Game {
         let mut game = Game {
             agents,
             split: split::Split { follow: args.split_screen.clone(), side_by_side: args.split_side },
+            // Screenshot runs never read controllers.
+            pads: if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() },
             search: search::Search {
                 query: args.inventory_search.clone().unwrap_or_default(),
                 focused: args.open_inventory && args.screenshot.is_none(),
@@ -1577,6 +1581,7 @@ impl Game {
         }
         self.eat(acting, dt);
         self.update_bow(acting, dt);
+        self.drive_pads();
         self.tick_agents();
         crate::simulation::tick_world(&mut self.world, self.player.pos);
         self.update_mobs(dt);
@@ -1594,6 +1599,7 @@ impl Game {
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
         let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
+        self.poll_pads(dt as f32, paused);
 
         // Streaming and GPU uploads continue during offline pause.
         self.update_arrival();

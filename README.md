@@ -56,7 +56,8 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
   things alight, and TNT blows holes in the landscape.
 - **Play together.** Host your world for up to eight command-line players,
   such as AI agents or scripts, each with their own inventory and health.
-  Watch up to three of them in split-screen beside your own view.
+  Plug in up to three gamepads and press Start to play split-screen on one
+  computer, or watch command-line players in split-screen beside your view.
 - **Light and sound from code.** Smooth sky and block lighting, ambient
   occlusion, directional sunlight, reflective animated water (or the Classic
   look), material-specific footsteps, positional audio, and underwater effects.
@@ -217,8 +218,11 @@ from a terminal with the `voxelcraft-agent` tool: move, look, mine, place,
 fight, craft and use chests. Mobs hunt and hurt them just as they do you. Type
 `/splitscreen <name>` to watch one next to your own view. LAN play needs a
 shared token. See [hosted agents and in-game commands](docs/agents.md) for
-setup, the protocol and current limits. Gamepad split-screen and joining
-from a second game window are in progress.
+setup, the protocol and current limits.
+
+For couch play, plug in a gamepad and press Start: a new player joins next to
+you with their own split-screen view. Up to three controllers can join beside
+the keyboard player. Joining from a second game window is in progress.
 
 ## Inside the engine
 

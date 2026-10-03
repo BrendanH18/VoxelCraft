@@ -117,7 +117,30 @@ appears as a player model. Terrain around followed players loads and draws at
 the full render distance however far apart you are. Profiles that are offline
 drop out of the layout until they reconnect.
 
-Controller-driven local players are the next split-screen step. Sound still
+### Gamepad players
+
+Press Start on a connected gamepad to join as a local player. Each controller
+plays as the first free profile from Player2 to Player8, gets its own view,
+and keeps that profile's inventory and position for next time. New profiles
+start next to the host in the world's game mode. Up to three controllers can
+play beside the keyboard player. A command-line agent can't take over a
+profile that a controller is using.
+
+| Control | Action |
+| --- | --- |
+| Left stick / right stick | Move / look |
+| A | Jump (double-tap to fly in creative); respawn after death |
+| RT | Mine (hold) and attack |
+| LT | Place the held block (hold to repeat) |
+| LB / RB | Previous / next hotbar slot |
+| B | Drop the held stack |
+| Left stick click | Sprint until you stop walking forward |
+| Right stick click | Toggle sneaking (flying down while flying) |
+| Hold View/Back | Leave the game |
+
+An unplugged controller freezes its player until it reconnects.
+`/splitscreen off` keeps controller views. Controller players can't yet open
+the inventory, eat, use buckets or doors, or pause the game. Sound still
 follows the host.
 
 ## LAN and raw protocol

@@ -71,7 +71,9 @@ impl Game {
                 if self.split.side_by_side { "side by side" } else { "stacked" }
             )),
             "off" => {
-                self.split.follow.clear();
+                // Controller players keep their views until they leave.
+                let pads = &self.pads;
+                self.split.follow.retain(|n| pads.seated(n));
                 Ok("Split-screen off".into())
             }
             "side" | "stacked" => {
@@ -204,7 +206,7 @@ impl Game {
             ui.rect(0.0, 0.0, sw, sh, [0.5, 0.0, 0.0, 0.45]);
             let msg = format!("{name} {}", a.vitals.death.as_deref().unwrap_or("died"));
             ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), (sh / 2.0 - 10.0).floor(), &msg, WHITE);
-            let hint = "Waiting to respawn";
+            let hint = if self.pads.seated(name) { "Press A to respawn" } else { "Waiting to respawn" };
             ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), (sh / 2.0 + 4.0).floor(), hint, WHITE);
         } else {
             let (cx, cy) = ((sw / 2.0).floor(), (sh / 2.0).floor());
@@ -219,7 +221,7 @@ impl Game {
             underwater,
         };
         self.bar_ui(&mut ui, &hud, now);
-        let label = format!("{name} (agent)");
+        let label = if self.pads.seated(name) { name.to_string() } else { format!("{name} (agent)") };
         ui.rect(2.0, 2.0, Ui::text_width(&label) + 6.0, 12.0, [0.0, 0.0, 0.0, 0.5]);
         ui.text(5.0, 4.0, &label, WHITE);
         // A thin border separates the views.
