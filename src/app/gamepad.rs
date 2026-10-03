@@ -416,6 +416,7 @@ impl Game {
                     seat.held = Held::default();
                     seat.presses.clear();
                     seat.triggers = (false, false);
+                    seat.drop_since = None;
                     seat.body.let_go();
                     if seat.menu.take().is_some() {
                         closing.push(seat.name.clone());
@@ -754,6 +755,11 @@ impl Game {
     /// Lies controller player `i` down in the bed at `pos`, if the host's
     /// bed rules allow (night or rain, no monsters, not in the Nether).
     fn pad_sleep(&mut self, i: usize, pos: IVec3) {
+        // Explode outside the puppet: the blast hurts everyone by their real
+        // bodies, and the host's would be in this player's agent mid-swap.
+        if self.bed_explodes(pos) {
+            return;
+        }
         let Some(at) = self.puppet(i, |g| g.bed_rest(pos)).flatten() else { return };
         let seat = &mut self.pads.seats[i];
         let Some(bot) = self.agents.players.get_mut(&seat.name) else { return };
@@ -779,8 +785,11 @@ impl Game {
         self.pad_sleep_count()
     }
 
+    /// Unplugged controllers can't reach a bed (or leave), so only connected,
+    /// living controller players must sleep.
     pub(super) fn pad_sleep_count(&self) -> (usize, usize) {
-        let living = |s: &&Seat| self.agents.players.get(&s.name).is_some_and(|b| !b.agent.vitals.is_dead());
+        let living =
+            |s: &&Seat| s.id.is_some() && self.agents.players.get(&s.name).is_some_and(|b| !b.agent.vitals.is_dead());
         let seats: Vec<&Seat> = self.pads.seats.iter().filter(living).collect();
         let asleep = seats.iter().filter(|s| s.body.sleeping.is_some_and(|t| t >= super::bed::SLEEP_TIME)).count();
         (asleep, seats.len())
@@ -793,11 +802,19 @@ impl Game {
     }
 
     /// A: back to life at their bed (if it's still there) or the world spawn.
+    /// Controller players share the host's dimension, so outside the
+    /// Overworld they come back beside the host, and their Overworld bed is
+    /// left alone rather than looked up in the wrong world.
     fn respawn_pad(&mut self, i: usize) {
         let name = self.pads.seats[i].name.clone();
         let Some(bot) = self.agents.players.get_mut(&name) else { return };
         let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
-        let Some(at) = self.puppet(i, |g| g.respawn_point()) else { return };
+        let at = if self.dimension == crate::world::terrain::Dimension::Overworld {
+            self.puppet(i, |g| g.respawn_point())
+        } else {
+            Some(self.beside_host())
+        };
+        let Some(at) = at else { return };
         let seat = &mut self.pads.seats[i];
         seat.sneaking = false;
         seat.body = Body { spawn_bed: seat.body.spawn_bed, ..Body::default() };

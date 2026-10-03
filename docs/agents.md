@@ -6,8 +6,8 @@ A desktop host can now share its world with up to eight CLI-controlled players.
 Agents have independent positions, inventories, health, hunger and creative
 flight. Blocks, dropped items, chests, time and weather belong to the host.
 The world continues ticking at 20 Hz while the host uses menus or loses focus.
-This is the first agent multiplayer slice; desktop joining and gamepad
-split-screen remain on the roadmap.
+Local gamepad players can join split-screen (see "Gamepad players" below);
+joining from another desktop remains on the roadmap.
 
 ## Installed builds
 
@@ -157,7 +157,9 @@ with LT) and, in creative, every item. B closes, putting any held stack back.
 Sleeping needs everyone: the night (or the rain) passes once the keyboard
 player and every controller player are in bed, as in Java. Players waiting
 see how many are asleep and can jump to get up. Each player respawns at the
-bed they last used.
+bed they last used. Controller players share the host's dimension, so one who
+dies in the Nether or the End comes back beside the host. Unplugged
+controllers don't hold up the night.
 
 An unplugged controller freezes its player until it reconnects.
 `/splitscreen off` keeps controller views.
@@ -200,6 +202,7 @@ nearest survival player, host or agent; melee, skeleton arrows and explosions
 hurt agents with armor, knockback and death drops. Mobs spawn around every
 player with per-player caps and stay loaded while any player is near.
 Environmental survival damage, death drops and pickups work.
-The first CLI supports block placement, crafting and chests; doors/beds/ladders,
-food use, bows, buckets, furnaces, armor controls, sleep and portal interactions
-still require the desktop player. Agents cannot mine multi-cell doors/beds.
+The first CLI supports block placement, crafting, chests and eating; doors/beds/ladders,
+bows, buckets, furnaces, armor controls, sleep and portal interactions still
+require the desktop player or a controller player. Agents cannot mine
+multi-cell doors/beds.
