@@ -117,6 +117,22 @@ impl Game {
         Fog { color, start, end, underwater }
     }
 
+    /// Swing, bob and item changes for every online player's hand.
+    pub(super) fn animate_hands(&mut self, dt: f32, alpha: f64, paused: bool) {
+        for bot in self.agents.players.values_mut().filter(|b| b.active) {
+            let a = &bot.agent;
+            let feet = a.previous_pos.lerp(a.player.pos, alpha);
+            let distance = (feet - bot.drawn_feet).with_y(0.0).length();
+            bot.drawn_feet = feet;
+            let walked = if paused || a.player.flying || distance > 4.0 { 0.0 } else { distance as f32 };
+            if a.swings != bot.seen_swings {
+                bot.seen_swings = a.swings;
+                bot.hand.swing();
+            }
+            bot.hand.update(dt, a.inventory.get(a.selected).map(|s| s.item), walked, a.player.on_ground);
+        }
+    }
+
     /// Draws every followed player's view after the host's.
     pub(super) fn draw_followers(&mut self, frame: &mut Frame, scene: &Scene, viewports: &[Viewport]) {
         let names: Vec<String> = self.followed().map(|(n, _)| n.clone()).collect();
@@ -174,12 +190,8 @@ impl Game {
                 highlight,
                 crack,
                 block_models: models,
-                // A steady hand: agents don't report swing or walk timing.
-                hand: (self.show_hud && !a.vitals.is_dead()).then(|| crate::render::hand::Hand {
-                    item: a.inventory.get(a.selected).map(|s| s.item),
-                    sky_light: crate::entity::sky_light(&self.world, camera),
-                    block_light: self.torch_light(camera),
-                    ..Default::default()
+                hand: (self.show_hud && !a.vitals.is_dead()).then(|| {
+                    bot.hand.view(a.eating(), crate::entity::sky_light(&self.world, camera), self.torch_light(camera))
                 }),
                 rain: scene.rain,
                 ui,

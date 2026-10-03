@@ -16,6 +16,18 @@ pub(super) struct Bot {
     pub agent: Agent,
     pub active: bool,
     reply: Option<Sender<Value>>,
+    /// First-person hand for split-screen views, with the swings it has shown
+    /// and where the feet were drawn last frame (for the walking bob).
+    pub hand: super::hand::HandAnim,
+    pub seen_swings: u32,
+    pub drawn_feet: DVec3,
+}
+
+impl Bot {
+    fn new(id: PlayerId, agent: Agent) -> Self {
+        let (seen_swings, drawn_feet) = (agent.swings, agent.player.pos);
+        Self { id, agent, active: false, reply: None, hand: Default::default(), seen_swings, drawn_feet }
+    }
 }
 #[derive(Default)]
 pub(super) struct Agents {
@@ -34,7 +46,7 @@ impl Agents {
     /// Adds an inactive profile with a fresh ID.
     pub fn insert(&mut self, name: String, agent: Agent) {
         let id = self.next_id();
-        self.players.insert(name, Bot { id, agent, active: false, reply: None });
+        self.players.insert(name, Bot::new(id, agent));
     }
     /// Active agents as mob targets.
     pub fn targets(&self) -> impl Iterator<Item = Target> + '_ {
@@ -93,7 +105,7 @@ impl Agents {
                 .filter(|&id| id != PlayerId::HOST && !self.players.values().any(|b| b.id == id));
             match id {
                 Some(id) => {
-                    self.players.insert(name.into(), Bot { id, agent, active: false, reply: None });
+                    self.players.insert(name.into(), Bot::new(id, agent));
                 }
                 None => missing.push((name.to_string(), agent)),
             }

@@ -155,6 +155,8 @@ pub struct Agent {
     pub creative: bool,
     pub selected: usize,
     pub remaining: u32,
+    /// Arm swings so far (placing, attacking, mining), for animation.
+    pub swings: u32,
     input: MoveInput,
     mining: bool,
     /// Holding "use" eats held food; `bite` counts the ticks chewed.
@@ -174,6 +176,7 @@ impl Agent {
             creative: false,
             selected: 0,
             remaining: 0,
+            swings: 0,
             input: MoveInput::default(),
             mining: false,
             eating: false,
@@ -295,6 +298,7 @@ impl Agent {
                     return Err("placement failed".into());
                 }
                 self.cooldown = 0.22;
+                self.swings += 1;
                 if !self.creative {
                     self.inventory.take_one(self.selected);
                 }
@@ -319,6 +323,7 @@ impl Agent {
                     self.inventory.wear(self.selected, mining::wear(held, true));
                 }
                 self.cooldown = crate::entity::ATTACK_COOLDOWN;
+                self.swings += 1;
             }
             Command::Craft(item) => self.craft(item, world)?,
             Command::Chest(take, slot) => {
@@ -457,6 +462,7 @@ impl Agent {
             let held = self.inventory.get(self.selected).map(|s| s.item);
             let progress = self.breaking.filter(|(p, _)| *p == pos).map_or(0.0, |(_, n)| n) + TICK_SECONDS;
             self.breaking = Some((pos, progress));
+            self.swings += 1;
             if block != Block::BEDROCK
                 && !block.is_door()
                 && !block.is_bed()
@@ -751,8 +757,10 @@ mod tests {
         let blocker = DVec3::new(3.5, 150.0, 1.5);
         assert!(a.execute(Command::Place, &mut world, &mut entities, &[blocker]).is_err());
         assert_eq!(a.inventory.get(0).unwrap().count, 2);
+        assert_eq!(a.swings, 0, "failed placements don't swing");
         a.execute(Command::Place, &mut world, &mut entities, &[]).unwrap();
         assert_eq!(a.inventory.get(0).unwrap().count, 1);
+        assert_eq!(a.swings, 1);
         assert_eq!(world.get_block(IVec3::new(3, 151, 1)), Some(Block::STONE));
         assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err());
         assert_eq!(a.inventory.get(0).unwrap().count, 1);

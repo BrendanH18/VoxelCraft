@@ -1635,6 +1635,7 @@ impl Game {
         let walked = if paused || self.player.flying || distance > 4.0 { 0.0 } else { distance as f32 };
         self.rendered_eye = camera;
         self.hand.update(dt as f32, self.held_item(), walked, self.player.on_ground);
+        self.animate_hands(dt as f32, alpha, paused);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);
         }
