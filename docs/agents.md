@@ -130,28 +130,36 @@ profile that a controller is using.
 | Control | Action |
 | --- | --- |
 | Left stick / right stick | Move / look |
-| A | Jump (double-tap to fly in creative); respawn after death |
-| RT | Mine (hold) and attack |
-| LT | Open a door, gate, chest or crafting table; otherwise place the held block (hold to repeat) or eat held food |
+| A | Jump (double-tap to fly in creative); respawn after death; leave a bed |
+| RT | Mine (hold) and attack, exactly like the left mouse button |
+| LT | Use, exactly like the right mouse button: place (hold to repeat), eat, draw a bow, fill or empty buckets, light fires, till and plant, put on armor, open doors, gates, chests, furnaces and crafting tables, or sleep |
 | LB / RB | Previous / next hotbar slot |
-| B | Drop the held stack |
+| B | Drop one item (hold to drop the stack) |
 | Left stick click | Sprint until you stop walking forward |
-| Right stick click | Toggle sneaking (flying down while flying) |
-| Y | Inventory and crafting |
+| Right stick click | Toggle sneaking (flying down while flying; sneak to build against containers) |
+| Y | Inventory, crafting and (in creative) every item |
 | Start | Pause menu: resume or leave the game |
+
+Controller players' hands run the same code as the mouse, so tools wear,
+critical hits, two-block doors and beds, slabs, buckets and bows behave the
+same for everyone.
 
 Menus open inside the player's own view while the world keeps running. Move
 with the D-pad or left stick. A takes, places, swaps or merges a stack (like a
-left click), X takes half or places one (like a right click), and Y moves a
-stack across: between the hotbar and the rest of the inventory, onto or off
-armor, or into or out of an open chest. LB/RB switch between the inventory and
-crafting, which lists everything you can make right now (A crafts one; 3x3
-recipes need a crafting table opened with LT). B closes, putting any held
-stack back.
+left click), X takes half or places one (like a right click), and Y is a
+shift-click: between the hotbar and the rest of the inventory, onto or off
+armor, into or out of an open chest, or into a furnace's input or fuel slot.
+LB/RB switch between the inventory, crafting (everything you can make right
+now; A crafts one, Y as many as fit; 3x3 recipes need a crafting table opened
+with LT) and, in creative, every item. B closes, putting any held stack back.
+
+Sleeping needs everyone: the night (or the rain) passes once the keyboard
+player and every controller player are in bed, as in Java. Players waiting
+see how many are asleep and can jump to get up. Each player respawns at the
+bed they last used.
 
 An unplugged controller freezes its player until it reconnects.
-`/splitscreen off` keeps controller views. Controller players can't yet use
-furnaces, buckets, beds or bows.
+`/splitscreen off` keeps controller views.
 
 Sound is shared: each sound plays as heard by whichever player in a view is
 nearest, so everyone hears what happens around them, including blocks that

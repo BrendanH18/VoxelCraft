@@ -4,20 +4,27 @@
 //! Player2..Player8, so inventory and position are kept between sessions.
 //!
 //! Bedrock-style layout: left stick moves, right stick looks, A jumps (double
-//! tap to fly in creative), RT mines and attacks, LT places or eats, LB/RB cycle the
-//! hotbar (holding food eats it), B drops, left stick click sprints, right stick click toggles
-//! sneaking. LT on a door, gate, chest or crafting table uses it instead.
-//! Start opens a pause menu (resume or leave) and Y the inventory; see
-//! `pad_menu`. The world keeps running while a player is in a menu.
+//! tap to fly in creative), RT mines and attacks, LT uses (place, eat, draw a
+//! bow, buckets, doors, beds and containers), LB/RB cycle the hotbar, B drops
+//! one item (hold for the stack), left stick click sprints, right stick click
+//! toggles sneaking. Start opens a pause menu and Y the inventory (see
+//! `pad_menu`); the world keeps running while a player is in a menu.
+//!
+//! Hands use the host's own interaction code: [`Game::puppet`] swaps the
+//! controller player's body, inventory and hand state into the host's fields
+//! for the call, so mining, attacking and every right-click action behave
+//! exactly as they do with a mouse.
 
 use std::time::{Duration, Instant};
 
 use gilrs::{Axis, Button, EventType, GamepadId, Gilrs};
-use glam::Vec2;
+use glam::{DVec3, IVec3, Vec2};
 
+use super::actions::Actions;
 use super::pad_menu::{Action, Menu, Nav, Tab};
-use super::{Game, GameMode};
+use super::{Container, Game, GameMode};
 use crate::player::MoveInput;
+use crate::world::block::Block;
 use voxelcraft::agent::{Agent, Command};
 
 /// Stick travel ignored around the centre, as a fraction of full tilt.
@@ -31,16 +38,23 @@ const DOUBLE_TAP_TICKS: u32 = 7;
 /// Menu cursor repeat while the left stick is held over.
 const NAV_DELAY: Duration = Duration::from_millis(350);
 const NAV_REPEAT: Duration = Duration::from_millis(120);
+/// Holding B this long drops the rest of the stack.
+const DROP_STACK_HOLD: Duration = Duration::from_millis(500);
+/// How long a controller player's own messages stay up.
+const MESSAGE_TIME: Duration = Duration::from_secs(2);
 
 /// One-shot actions pressed since the last gameplay tick.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Press {
     Jump,
-    Attack,
-    Use,
+    MineDown,
+    MineUp,
+    UseDown,
+    UseUp,
     Next,
     Previous,
-    Drop,
+    DropOne,
+    DropStack,
     Sprint,
     Sneak,
 }
@@ -51,8 +65,50 @@ struct Held {
     walk: Vec2,
     look: Vec2,
     jump: bool,
-    mine: bool,
-    place: bool,
+}
+
+/// The host-shaped hand state of a controller player, swapped into the
+/// host's fields while their actions run.
+pub(super) struct Body {
+    actions: Actions,
+    action_cooldown: f64,
+    left_held: bool,
+    right_held: bool,
+    mine_pressed: bool,
+    attack_held: bool,
+    attack_cooldown: f64,
+    spawn_bed: Option<IVec3>,
+    container: Container,
+    /// Seconds asleep (fading out), while in bed.
+    sleeping: Option<f32>,
+}
+
+impl Default for Body {
+    fn default() -> Self {
+        Self {
+            actions: Actions::default(),
+            action_cooldown: 0.0,
+            left_held: false,
+            right_held: false,
+            mine_pressed: false,
+            attack_held: false,
+            attack_cooldown: 0.0,
+            spawn_bed: None,
+            container: Container::Inventory,
+            sleeping: None,
+        }
+    }
+}
+
+impl Body {
+    /// Lets go of both triggers (opening a screen, sleeping, dying).
+    fn let_go(&mut self) {
+        self.left_held = false;
+        self.right_held = false;
+        self.mine_pressed = false;
+        self.attack_held = false;
+        self.actions.reset();
+    }
 }
 
 /// One joined controller.
@@ -65,6 +121,10 @@ struct Seat {
     id: Option<GamepadId>,
     held: Held,
     presses: Vec<Press>,
+    /// Last trigger states (RT, LT), for press and release edges.
+    triggers: (bool, bool),
+    /// When B went down, until the stack drops or it's released.
+    drop_since: Option<Instant>,
     sneaking: bool,
     sprinting: bool,
     /// Ticks since the last jump press.
@@ -73,17 +133,16 @@ struct Seat {
     menu: Option<Menu>,
     /// Left-stick menu direction and when it next repeats.
     nav: Option<(Nav, Instant)>,
-    /// LT opened or toggled something; it won't place until released.
-    used: bool,
+    body: Body,
+    /// A message for this player's view ("Respawn point set").
+    message: Option<(String, Instant)>,
 }
 
 /// What a seat asks of its agent for one tick.
 struct TickInput {
     input: MoveInput,
-    mine: bool,
-    place: bool,
     actions: Vec<Press>,
-    /// A was pressed (respawns when dead).
+    /// A was pressed (respawns when dead, leaves a bed).
     jumped: bool,
     toggle_flight: bool,
 }
@@ -96,12 +155,15 @@ impl Seat {
             id,
             held: Held::default(),
             presses: Vec::new(),
+            triggers: (false, false),
+            drop_since: None,
             sneaking: false,
             sprinting: false,
             since_jump: u32::MAX,
             menu: None,
             nav: None,
-            used: false,
+            body: Body::default(),
+            message: None,
         }
     }
 
@@ -111,6 +173,8 @@ impl Seat {
         self.held = Held::default();
         self.presses.clear();
         self.nav = None;
+        self.drop_since = None;
+        self.body.let_go();
     }
 
     /// Menu moves from the left stick: one on a flick, then repeating.
@@ -138,6 +202,22 @@ impl Seat {
                 self.nav = Some((d, now + NAV_DELAY));
                 Some(d)
             }
+        }
+    }
+
+    /// Trigger presses and releases since the last frame. Edges come from
+    /// the triggers' own last state, so closing a screen with a trigger
+    /// still down doesn't act again.
+    fn trigger_edges(&mut self, rt: bool, lt: bool, playing: bool) {
+        let (was_rt, was_lt) = std::mem::replace(&mut self.triggers, (rt, lt));
+        if !playing {
+            return;
+        }
+        if rt != was_rt {
+            self.presses.push(if rt { Press::MineDown } else { Press::MineUp });
+        }
+        if lt != was_lt {
+            self.presses.push(if lt { Press::UseDown } else { Press::UseUp });
         }
     }
 
@@ -170,8 +250,6 @@ impl Seat {
                 descend: self.sneaking,
                 sprint: self.sprinting,
             },
-            mine: self.held.mine,
-            place: self.held.place,
             actions,
             jumped,
             toggle_flight,
@@ -213,14 +291,23 @@ impl Pads {
     }
 }
 
+/// What a controller player's view shows of their hands and bed.
+#[derive(Default)]
+pub(super) struct PadView<'a> {
+    pub breaking: Option<(IVec3, f32)>,
+    /// Bite progress, 0..1.
+    pub eating: f32,
+    pub bow: Option<f32>,
+    pub sleeping: Option<f32>,
+    pub message: Option<&'a str>,
+}
+
 fn press_for(button: Button) -> Option<Press> {
     Some(match button {
         Button::South => Press::Jump,
-        Button::RightTrigger2 => Press::Attack,
-        Button::LeftTrigger2 => Press::Use,
         Button::RightTrigger => Press::Next,
         Button::LeftTrigger => Press::Previous,
-        Button::East => Press::Drop,
+        Button::East => Press::DropOne,
         Button::LeftThumb => Press::Sprint,
         Button::RightThumb => Press::Sneak,
         _ => return None,
@@ -263,8 +350,13 @@ impl Game {
                     _ if seat.menu.is_some() => navs.extend(nav_for(button).map(|n| (seat.name.clone(), n))),
                     Button::Start => seat.open(Menu::Pause { choice: 0 }),
                     Button::North => seat.open(Menu::items(Tab::Inventory)),
+                    Button::East => {
+                        seat.drop_since = Some(Instant::now());
+                        seat.presses.push(Press::DropOne);
+                    }
                     _ => seat.presses.extend(press_for(button)),
                 },
+                (EventType::ButtonReleased(Button::East, _), Some(seat)) => seat.drop_since = None,
                 (EventType::Connected, None) => {
                     let uuid = gilrs.gamepad(event.id).uuid();
                     if let Some(seat) = self.pads.seats.iter_mut().find(|s| s.id.is_none() && s.uuid == uuid) {
@@ -278,6 +370,8 @@ impl Game {
                     seat.id = None;
                     seat.held = Held::default();
                     seat.presses.clear();
+                    seat.triggers = (false, false);
+                    seat.body.let_go();
                     if seat.menu.take().is_some() {
                         closing.push(seat.name.clone());
                     }
@@ -290,18 +384,21 @@ impl Game {
         for seat in &mut self.pads.seats {
             let Some(id) = seat.id else { continue };
             let pad = gilrs.gamepad(id);
+            let trigger = |b: Button| pad.button_data(b).is_some_and(|d| d.value() > TRIGGER);
+            seat.trigger_edges(trigger(Button::RightTrigger2), trigger(Button::LeftTrigger2), seat.menu.is_none());
             if seat.menu.is_some() {
                 let stick = Vec2::new(pad.value(Axis::LeftStickX), pad.value(Axis::LeftStickY));
                 navs.extend(seat.stick_nav(stick, now).map(|n| (seat.name.clone(), n)));
                 continue;
             }
-            let trigger = |b: Button| pad.button_data(b).is_some_and(|d| d.value() > TRIGGER);
+            if seat.drop_since.is_some_and(|t| now - t >= DROP_STACK_HOLD) {
+                seat.drop_since = None;
+                seat.presses.push(Press::DropStack);
+            }
             seat.held = Held {
                 walk: deadzone(Vec2::new(pad.value(Axis::LeftStickX), pad.value(Axis::LeftStickY))),
                 look: Vec2::new(pad.value(Axis::RightStickX), pad.value(Axis::RightStickY)),
                 jump: pad.is_pressed(Button::South),
-                mine: trigger(Button::RightTrigger2),
-                place: trigger(Button::LeftTrigger2),
             };
         }
         if !paused {
@@ -361,15 +458,15 @@ impl Game {
 
     /// A free standing spot next to the host, or the host's own (players
     /// don't collide, but a shared spot puts the camera inside the host).
-    fn beside_host(&self) -> glam::DVec3 {
+    fn beside_host(&self) -> DVec3 {
         let host = self.player.pos;
-        let open = |p: glam::IVec3| self.world.get_block(p).is_some_and(|b| !b.is_solid());
+        let open = |p: IVec3| self.world.get_block(p).is_some_and(|b| !b.is_solid());
         [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)]
             .into_iter()
-            .map(|(x, z)| host + glam::DVec3::new(x as f64, 0.0, z as f64))
+            .map(|(x, z)| host + DVec3::new(x as f64, 0.0, z as f64))
             .find(|p| {
                 let feet = p.floor().as_ivec3();
-                open(feet) && open(feet + glam::IVec3::Y) && !open(feet - glam::IVec3::Y)
+                open(feet) && open(feet + IVec3::Y) && !open(feet - IVec3::Y)
             })
             .unwrap_or(host)
     }
@@ -398,6 +495,7 @@ impl Game {
             "pause" => seat.open(Menu::Pause { choice: 0 }),
             "inventory" => seat.open(Menu::items(Tab::Inventory)),
             "crafting" => seat.open(Menu::items(Tab::Crafting)),
+            "palette" => seat.open(Menu::items(Tab::Palette)),
             _ => {}
         }
     }
@@ -406,14 +504,16 @@ impl Game {
     fn pad_nav(&mut self, name: &str, nav: Nav) -> bool {
         let Some(i) = self.pads.seats.iter().position(|s| s.name == name) else { return false };
         let Some(mut menu) = self.pads.seats[i].menu else { return false };
-        let crafts =
-            if matches!(menu, Menu::Items { tab: Tab::Crafting, .. }) { self.pad_crafts(name).len() } else { 0 };
-        let action = menu.press(nav, crafts);
+        let tab = match menu {
+            Menu::Items { tab, .. } => tab,
+            Menu::Pause { .. } => Tab::Inventory,
+        };
+        let action = menu.press(nav, self.pad_lists(name, tab));
         if action == Action::Leave {
             self.leave_pad(name);
             return true;
         }
-        if self.apply_menu(name, menu, action) {
+        if self.apply_menu(i, name, menu, action) {
             self.pads.seats[i].menu = Some(menu);
         } else {
             self.pads.seats[i].menu = None;
@@ -427,101 +527,224 @@ impl Game {
         self.pads.seats.iter().find(|s| s.name == name).and_then(|s| s.menu)
     }
 
-    /// Feed one gameplay tick of controller input to each seated agent.
-    /// Runs before the agents tick.
-    pub(super) fn drive_pads(&mut self) {
-        let mut others = self.agents.positions();
-        others.push(self.player.pos);
-        let mut closing = Vec::new();
-        let mut doors = Vec::new();
-        let mut chests = Vec::new();
-        for seat in &mut self.pads.seats {
-            let tick = seat.tick_input();
-            let Some(bot) = self.agents.players.get_mut(&seat.name) else {
-                continue;
-            };
+    /// Hands, bed and messages of a controller player, for their view.
+    pub(super) fn pad_view(&self, name: &str) -> Option<PadView<'_>> {
+        let seat = self.pads.seats.iter().find(|s| s.name == name)?;
+        let a = &seat.body.actions;
+        Some(PadView {
+            breaking: a.breaking,
+            eating: (a.eat_timer / super::EAT_TIME) as f32,
+            bow: a.bow_draw.map(super::bow::power),
+            sleeping: seat.body.sleeping,
+            message: seat.message.as_ref().filter(|(_, t)| t.elapsed() < MESSAGE_TIME).map(|(m, _)| m.as_str()),
+        })
+    }
+
+    /// Swaps controller player `i`'s state with the host's: body, inventory,
+    /// vitals, hand animation and hand state. Calling it twice restores both.
+    fn swap_puppet(&mut self, i: usize) -> bool {
+        use std::mem::swap;
+        let seat = &mut self.pads.seats[i];
+        let Some(bot) = self.agents.players.get_mut(&seat.name) else { return false };
+        let body = &mut seat.body;
+        swap(&mut self.player, &mut bot.agent.player);
+        swap(&mut self.inventory, &mut bot.agent.inventory);
+        swap(&mut self.vitals, &mut bot.agent.vitals);
+        swap(&mut self.hand, &mut bot.hand);
+        swap(&mut self.actions, &mut body.actions);
+        swap(&mut self.action_cooldown, &mut body.action_cooldown);
+        swap(&mut self.left_held, &mut body.left_held);
+        swap(&mut self.right_held, &mut body.right_held);
+        swap(&mut self.mine_pressed, &mut body.mine_pressed);
+        swap(&mut self.mobs.attack_held, &mut body.attack_held);
+        swap(&mut self.mobs.attack_cooldown, &mut body.attack_cooldown);
+        swap(&mut self.spawn_bed, &mut body.spawn_bed);
+        swap(&mut self.container, &mut body.container);
+        true
+    }
+
+    /// Runs host interaction code as controller player `i`. While `f` runs,
+    /// the host's fields hold that player's state (and `puppet` is set), so
+    /// `place_block`, `continue_breaking`, `attack`, the bow, eating and the
+    /// container screens act for them. Popups become their own messages,
+    /// and containers and beds they use land in `puppet_used`.
+    pub(super) fn puppet<R>(&mut self, i: usize, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
+        let seat = &mut self.pads.seats[i];
+        let bot = self.agents.players.get(&seat.name)?;
+        let (selected, creative) = (bot.agent.selected, bot.agent.creative);
+        // Switching slots interrupts mining, eating and drawing, as it does for the host.
+        seat.body.actions.select(selected);
+        if !self.swap_puppet(i) {
+            return None;
+        }
+        let mode = std::mem::replace(&mut self.mode, if creative { GameMode::Creative } else { GameMode::Survival });
+        self.puppet = true;
+        let result = f(self);
+        self.puppet = false;
+        self.mode = mode;
+        self.swap_puppet(i);
+        let seat = &mut self.pads.seats[i];
+        if let Some(text) = self.puppet_popup.take() {
+            seat.message = Some((text, Instant::now()));
+        }
+        if let Some(bot) = self.agents.players.get_mut(&seat.name) {
+            bot.agent.selected = seat.body.actions.selected;
+        }
+        Some(result)
+    }
+
+    /// Feed one gameplay tick of controller input to each seated player:
+    /// movement to their agent, and button presses and held triggers to the
+    /// host's interaction code (see [`Game::puppet`]). Runs before the
+    /// agents tick.
+    pub(super) fn drive_pads(&mut self, dt: f64) {
+        for i in 0..self.pads.seats.len() {
+            let tick = self.pads.seats[i].tick_input();
+            let name = self.pads.seats[i].name.clone();
+            let Some(bot) = self.agents.players.get_mut(&name) else { continue };
             let agent = &mut bot.agent;
-            let world = &mut self.world;
-            let entities = &mut self.mobs.entities;
-            if let Some(menu) = seat.menu {
-                // Screens close on death, and chests when they're gone or out of reach.
+            agent.hold(MoveInput::default(), false, false);
+            if let Some(menu) = self.pads.seats[i].menu {
+                // Screens close on death, and containers when they're gone or out of reach.
+                let eye = agent.player.eye();
                 let gone = match menu {
-                    Menu::Items { tab: Tab::Chest(pos), .. } => {
-                        !world.get_block(pos).is_some_and(crate::world::chest::is_chest)
-                            || agent.player.eye().distance(pos.as_dvec3() + 0.5) > 6.0
+                    Menu::Items { tab: Tab::Chest(pos) | Tab::Furnace(pos), .. } => {
+                        let still = |b: Block| crate::world::chest::is_chest(b) || crate::world::furnace::is_furnace(b);
+                        !self.world.get_block(pos).is_some_and(still)
+                            || eye.distance(pos.as_dvec3() + 0.5) > super::REACH + 1.0
+                            || agent.vitals.is_dead()
                     }
                     Menu::Items { .. } => agent.vitals.is_dead(),
                     Menu::Pause { .. } => false,
                 };
                 if gone {
-                    seat.menu = None;
-                    closing.push(seat.name.clone());
+                    self.pads.seats[i].menu = None;
+                    self.close_pad_menu(&name);
                 }
-                agent.hold(MoveInput::default(), false, false);
                 continue;
             }
             if agent.vitals.is_dead() {
+                self.pads.seats[i].body.let_go();
                 if tick.jumped {
-                    let _ = agent.execute(Command::Respawn, world, entities, &others);
-                    seat.sneaking = false;
+                    self.respawn_pad(i);
+                }
+                continue;
+            }
+            let seat = &mut self.pads.seats[i];
+            if seat.body.sleeping.is_some() {
+                // Jumping gets up; being hurt wakes you.
+                if tick.jumped || agent.vitals.since_damage() < 0.1 {
+                    seat.body.sleeping = None;
                 }
                 continue;
             }
             if tick.toggle_flight && agent.player.can_fly {
-                let _ = agent.execute(Command::Fly(!agent.player.flying), world, entities, &others);
+                let _ =
+                    agent.execute(Command::Fly(!agent.player.flying), &mut self.world, &mut self.mobs.entities, &[]);
             }
+            let mut presses = Vec::new();
             for action in tick.actions {
-                // Failed actions (nothing in reach, empty hand) are silent, like a missed click.
-                let _ = match action {
-                    Press::Attack => agent.execute(Command::Attack, world, entities, &others),
-                    Press::Next => agent.execute(Command::Select((agent.selected + 1) % 9), world, entities, &others),
-                    Press::Previous => {
-                        agent.execute(Command::Select((agent.selected + 8) % 9), world, entities, &others)
-                    }
-                    Press::Drop => agent.execute(Command::Drop, world, entities, &others),
-                    Press::Use if !seat.sneaking => {
-                        let target = agent.target(world).map(|(p, _)| p);
-                        match target.and_then(|p| Some((p, world.get_block(p)?))) {
-                            Some((pos, b)) if b.is_door() || b.is_gate() => {
-                                doors.push((pos, agent.player.forward()));
-                                seat.used = true;
-                            }
-                            Some((pos, b)) if crate::world::chest::is_chest(b) => {
-                                seat.open(Menu::items(Tab::Chest(pos)));
-                                chests.push(pos);
-                                seat.used = true;
-                            }
-                            Some((_, b)) if b.base() == crate::world::block::Block::CRAFTING_TABLE => {
-                                seat.open(Menu::items(Tab::Crafting));
-                                seat.used = true;
-                            }
+                match action {
+                    Press::Next => agent.selected = (agent.selected + 1) % 9,
+                    Press::Previous => agent.selected = (agent.selected + 8) % 9,
+                    other => presses.push(other),
+                }
+            }
+            agent.hold(tick.input, false, false);
+            let used = self
+                .puppet(i, |g| {
+                    for press in presses {
+                        match press {
+                            Press::MineDown => g.attack_button(true),
+                            Press::MineUp => g.attack_button(false),
+                            Press::UseDown => g.use_button(true),
+                            Press::UseUp => g.use_button(false),
+                            Press::DropOne => g.drop_selected(false),
+                            Press::DropStack => g.drop_selected(true),
                             _ => {}
                         }
-                        Ok(())
                     }
-                    _ => Ok(()),
-                };
+                    g.act(true, dt);
+                    g.mobs.attack_cooldown -= dt;
+                    g.puppet_used.take()
+                })
+                .flatten();
+            if let Some(pos) = used {
+                self.pad_use_block(i, pos);
             }
-            if seat.menu.is_some() {
-                agent.hold(MoveInput::default(), false, false);
-                continue;
-            }
-            seat.used &= tick.place;
-            let food = agent.inventory.get(agent.selected).is_some_and(|s| s.item.food().is_some());
-            let using = tick.place && !seat.used;
-            if using && !food {
-                let _ = agent.execute(Command::Place, world, entities, &others);
-            }
-            agent.hold(tick.input, tick.mine, using && food);
         }
-        for name in closing {
-            self.close_pad_menu(&name);
-        }
-        for (pos, forward) in doors {
-            self.toggle_door(pos, forward);
-        }
-        for pos in chests {
+    }
+
+    /// LT on a container or bed: the controller player's own screen opens,
+    /// or they lie down.
+    fn pad_use_block(&mut self, i: usize, pos: IVec3) {
+        let Some(block) = self.world.get_block(pos) else { return };
+        let seat = &mut self.pads.seats[i];
+        if block == Block::CRAFTING_TABLE {
+            seat.open(Menu::items(Tab::Crafting));
+        } else if crate::world::chest::is_chest(block) {
+            seat.open(Menu::items(Tab::Chest(pos)));
             self.chest_sound(pos, 0.9);
+        } else if crate::world::furnace::is_furnace(block) {
+            seat.open(Menu::items(Tab::Furnace(pos)));
+        } else if block.is_bed() {
+            self.pad_sleep(i, pos);
+        }
+    }
+
+    /// Lies controller player `i` down in the bed at `pos`, if the host's
+    /// bed rules allow (night or rain, no monsters, not in the Nether).
+    fn pad_sleep(&mut self, i: usize, pos: IVec3) {
+        let Some(at) = self.puppet(i, |g| g.bed_rest(pos)).flatten() else { return };
+        let seat = &mut self.pads.seats[i];
+        let Some(bot) = self.agents.players.get_mut(&seat.name) else { return };
+        let p = &mut bot.agent.player;
+        p.pos = at;
+        p.vel = DVec3::ZERO;
+        p.flying = false;
+        bot.agent.previous_pos = at;
+        seat.body.let_go();
+        seat.body.sleeping = Some(0.0);
+        let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
+        self.audio.play(sound, Some(at), 0.6, (0.8, 0.9));
+    }
+
+    /// Advances each sleeping controller player's fade. Returns how many have
+    /// faded out and how many living players must sleep for morning.
+    pub(super) fn advance_pad_sleep(&mut self, dt: f32) -> (usize, usize) {
+        for seat in &mut self.pads.seats {
+            if let Some(t) = &mut seat.body.sleeping {
+                *t = (*t + dt).min(super::bed::SLEEP_TIME);
+            }
+        }
+        self.pad_sleep_count()
+    }
+
+    pub(super) fn pad_sleep_count(&self) -> (usize, usize) {
+        let living = |s: &&Seat| self.agents.players.get(&s.name).is_some_and(|b| !b.agent.vitals.is_dead());
+        let seats: Vec<&Seat> = self.pads.seats.iter().filter(living).collect();
+        let asleep = seats.iter().filter(|s| s.body.sleeping.is_some_and(|t| t >= super::bed::SLEEP_TIME)).count();
+        (asleep, seats.len())
+    }
+
+    pub(super) fn wake_pads(&mut self) {
+        for seat in &mut self.pads.seats {
+            seat.body.sleeping = None;
+        }
+    }
+
+    /// A: back to life at their bed (if it's still there) or the world spawn.
+    fn respawn_pad(&mut self, i: usize) {
+        let name = self.pads.seats[i].name.clone();
+        let Some(bot) = self.agents.players.get_mut(&name) else { return };
+        let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
+        let Some(at) = self.puppet(i, |g| g.respawn_point()) else { return };
+        let seat = &mut self.pads.seats[i];
+        seat.sneaking = false;
+        seat.body = Body { spawn_bed: seat.body.spawn_bed, ..Body::default() };
+        if let Some(bot) = self.agents.players.get_mut(&name) {
+            bot.agent.player.pos = at;
+            bot.agent.previous_pos = at;
         }
     }
 }
@@ -589,10 +812,16 @@ mod tests {
     }
 
     #[test]
-    fn other_presses_become_actions_in_order() {
+    fn triggers_press_and_release_once_and_not_after_a_screen() {
         let mut s = seat();
-        s.presses.extend([Press::Next, Press::Attack, Press::Drop]);
-        assert_eq!(s.tick_input().actions, vec![Press::Next, Press::Attack, Press::Drop]);
+        s.trigger_edges(true, false, true);
+        s.trigger_edges(true, true, true);
+        s.trigger_edges(false, true, true);
+        assert_eq!(s.tick_input().actions, vec![Press::MineDown, Press::UseDown, Press::MineUp]);
+        // LT released and pressed again behind a screen: nothing on return.
+        s.trigger_edges(false, false, false);
+        s.trigger_edges(false, true, false);
+        s.trigger_edges(false, true, true);
         assert!(s.tick_input().actions.is_empty());
     }
 

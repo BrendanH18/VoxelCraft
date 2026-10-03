@@ -96,7 +96,8 @@ voxelcraft [options]
   --inventory-search <text>  initial inventory search query
   --open-inventory  start with the inventory screen open (screenshots)
   --pad-player <s>  seat a controller player holding a copy of your
-                    inventory, with play, pause, inventory or crafting open
+                    inventory, with play, pause, inventory, crafting or
+                    palette (creative) open
                     (screenshots)
   --open-menu <m>   start with a menu open: pause, options or title (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
@@ -210,8 +211,8 @@ fn parse_args() -> Result<Args, String> {
             "--open-inventory" => args.open_inventory = true,
             "--pad-player" => {
                 let m = value("--pad-player")?;
-                if !matches!(m.as_str(), "play" | "pause" | "inventory" | "crafting") {
-                    return Err(format!("--pad-player: expected play, pause, inventory or crafting, got {m}"));
+                if !matches!(m.as_str(), "play" | "pause" | "inventory" | "crafting" | "palette") {
+                    return Err(format!("--pad-player: expected play, pause, inventory, crafting or palette, got {m}"));
                 }
                 args.pad_player = Some(m);
             }

@@ -106,10 +106,7 @@ impl Game {
                 eating_bar(&mut ui, cx, cy, (self.actions.eat_timer / super::EAT_TIME) as f32);
             }
             if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && self.menu.is_none()) {
-                let full = power >= 1.0;
-                ui.rect(cx - 12.0, cy + 12.0, 24.0, 4.0, [0.0, 0.0, 0.0, 0.7]);
-                let colour = if full { [1.0, 0.95, 0.5, 1.0] } else { [0.85, 0.85, 0.85, 1.0] };
-                ui.rect(cx - 11.0, cy + 13.0, 22.0 * power, 2.0, colour);
+                bow_bar(&mut ui, cx, cy, power);
             }
         }
 
@@ -121,6 +118,13 @@ impl Game {
             // Falling asleep: the screen fades to black.
             let k = (t / super::bed::SLEEP_TIME).min(1.0);
             ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.02, 0.97 * k]);
+            let (asleep, players) = self.sleep_count();
+            if k >= 1.0 && asleep < players {
+                let msg = format!("{asleep}/{players} players sleeping");
+                ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), (sh / 2.0 - 10.0).floor(), &msg, WHITE);
+                let hint = "Jump to leave the bed";
+                ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), (sh / 2.0 + 4.0).floor(), hint, WHITE);
+            }
         }
         if let Some(cause) = &self.vitals.death {
             // Blending is in linear space: it takes a high alpha to look dark.
@@ -786,4 +790,12 @@ pub(super) fn eating_bar(ui: &mut Ui, cx: f32, cy: f32, progress: f32) {
     ui.text(cx - Ui::text_width("Eating") / 2.0, cy + 14.0, "Eating", WHITE);
     ui.rect(cx - 30.0, cy + 25.0, 60.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
     ui.rect(cx - 29.0, cy + 26.0, 58.0 * progress.clamp(0.0, 1.0), 3.0, [0.96, 0.72, 0.3, 1.0]);
+}
+
+/// Bow draw strength under the crosshair at (cx, cy); gold when full.
+pub(super) fn bow_bar(ui: &mut Ui, cx: f32, cy: f32, power: f32) {
+    let full = power >= 1.0;
+    ui.rect(cx - 12.0, cy + 12.0, 24.0, 4.0, [0.0, 0.0, 0.0, 0.7]);
+    let colour = if full { [1.0, 0.95, 0.5, 1.0] } else { [0.85, 0.85, 0.85, 1.0] };
+    ui.rect(cx - 11.0, cy + 13.0, 22.0 * power, 2.0, colour);
 }

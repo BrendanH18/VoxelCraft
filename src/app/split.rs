@@ -166,8 +166,9 @@ impl Game {
                 let (min, max) = self.world.outline(p);
                 (p, min, max)
             });
-            let crack = a
-                .breaking(&self.world)
+            let pad = self.pad_view(name).map(|p| (p.breaking, p.eating));
+            let crack = pad
+                .map_or_else(|| a.breaking(&self.world), |p| p.0)
                 .filter(|&(_, f)| f > 0.0)
                 .map(|(p, f)| (p, crate::world::block::tex::CRACK_0 + (f * 10.0).min(9.0) as u8));
             let ui = if self.show_hud || a.vitals.is_dead() {
@@ -208,7 +209,8 @@ impl Game {
                 crack,
                 block_models: models,
                 hand: (self.show_hud && !a.vitals.is_dead()).then(|| {
-                    bot.hand.view(a.eating(), crate::entity::sky_light(&self.world, camera), self.torch_light(camera))
+                    let eating = pad.map_or(a.eating(), |p| p.1);
+                    bot.hand.view(eating, crate::entity::sky_light(&self.world, camera), self.torch_light(camera))
                 }),
                 rain: scene.rain,
                 ui,
@@ -241,8 +243,13 @@ impl Game {
             let (cx, cy) = ((sw / 2.0).floor(), (sh / 2.0).floor());
             ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
             ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
-            if a.eating() > 0.0 {
-                super::hud::eating_bar(&mut ui, cx, cy, a.eating());
+            let pad = self.pad_view(name).unwrap_or_default();
+            let eating = if self.pads.seated(name) { pad.eating } else { a.eating() };
+            if eating > 0.0 {
+                super::hud::eating_bar(&mut ui, cx, cy, eating);
+            }
+            if let Some(power) = pad.bow {
+                super::hud::bow_bar(&mut ui, cx, cy, power);
             }
         }
         let hud = super::hud::HudPlayer {
@@ -253,10 +260,27 @@ impl Game {
             underwater,
         };
         // Screens cover the hotbar, as Minecraft's do.
+        let pad = self.pad_view(name).unwrap_or_default();
         match self.pad_menu(name) {
             Some(menu) => self.pad_menu_ui(&mut ui, name, menu),
             None => {
-                self.bar_ui(&mut ui, &hud, now);
+                let top = self.bar_ui(&mut ui, &hud, now);
+                if let Some(msg) = pad.message {
+                    let x = ((sw - Ui::text_width(msg)) / 2.0).floor();
+                    ui.text(x, (top - 12.0).floor(), msg, WHITE);
+                }
+            }
+        }
+        if let Some(t) = pad.sleeping {
+            // Falling asleep fades the view out, then waits for everyone.
+            let k = (t / super::bed::SLEEP_TIME).min(1.0);
+            ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.02, 0.97 * k]);
+            let (asleep, players) = self.sleep_count();
+            if k >= 1.0 && asleep < players {
+                let msg = format!("{asleep}/{players} players sleeping");
+                ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), (sh / 2.0 - 10.0).floor(), &msg, WHITE);
+                let hint = "Press A to leave the bed";
+                ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), (sh / 2.0 + 4.0).floor(), hint, WHITE);
             }
         }
         let label = if self.pads.seated(name) { name.to_string() } else { format!("{name} (agent)") };

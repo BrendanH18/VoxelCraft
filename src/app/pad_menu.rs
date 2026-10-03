@@ -1,18 +1,21 @@
 //! Controller screens for local players, drawn inside their own view: a
-//! pause menu (Start), the inventory with armor (Y), crafting and chests.
-//! The world keeps running, like Bedrock split-screen.
+//! pause menu (Start), the inventory with armor (Y), crafting, the creative
+//! palette, chests and furnaces. The world keeps running, like Bedrock
+//! split-screen.
 //!
 //! The D-pad or left stick moves the cursor. A clicks a slot like a left
 //! click (take, place, swap or merge, using the inventory cursor), X like a
-//! right click (half a stack, or one item), and Y moves the stack to the
-//! other side. LB/RB switch between inventory and crafting; B closes.
+//! right click (half a stack, or one item), and Y like a shift-click. LB/RB
+//! switch between inventory, crafting and (in creative) the palette; B closes.
+//! Slot clicks run the host's own container code as the controller player
+//! (see `Game::puppet`), so every rule matches the mouse.
 
 use glam::IVec3;
 
-use super::Game;
-use super::hud::draw_stack;
-use crate::inventory::{Stack, click_slot, move_into};
-use crate::item::ArmorPiece;
+use super::hud::{SlotRef, draw_stack};
+use super::{Container, Game};
+use crate::inventory::Stack;
+use crate::item::{ArmorPiece, Item};
 use crate::render::ui::{Ui, WHITE};
 use voxelcraft::agent::Command;
 
@@ -36,7 +39,21 @@ pub(super) enum Nav {
 pub(super) enum Tab {
     Inventory,
     Crafting,
+    /// Creative players' item palette.
+    Palette,
     Chest(IVec3),
+    Furnace(IVec3),
+}
+
+impl Tab {
+    /// The host container screen whose rules this tab follows.
+    pub fn container(self) -> Container {
+        match self {
+            Tab::Chest(p) => Container::Chest(p),
+            Tab::Furnace(p) => Container::Furnace(p),
+            _ => Container::Inventory,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -46,16 +63,18 @@ pub(super) enum Menu {
 }
 
 /// A slot under the menu cursor.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum Slot {
-    Armor(usize),
-    Inv(usize),
-    Chest(usize),
-    Craft(usize),
+    /// A slot of the host's container screens.
+    Ref(SlotRef),
+    /// The nth craftable result.
+    Recipe(usize),
+    /// The nth creative palette item.
+    Palette(usize),
 }
 
 /// What a button press asks the game to do.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum Action {
     None,
     Close,
@@ -64,18 +83,30 @@ pub(super) enum Action {
     QuickMove(Slot),
 }
 
+/// Lengths of the list tabs: craftable results, and palette items (zero
+/// outside creative, which hides that tab).
+#[derive(Clone, Copy, Default, Debug)]
+pub(super) struct Lists {
+    pub crafts: usize,
+    pub palette: usize,
+}
+
 const PAUSE_CHOICES: [&str; 2] = ["Resume", "Leave game"];
 const COLS: usize = 9;
+const FURNACE: [SlotRef; 3] = [SlotRef::FurnaceInput, SlotRef::FurnaceFuel, SlotRef::FurnaceOutput];
 
 impl Menu {
     pub fn items(tab: Tab) -> Self {
-        // Start on the hotbar, or the first recipe.
-        let row = if tab == Tab::Crafting { 0 } else { rows(tab, 0) - 1 };
+        // Start on the hotbar, or the first entry of a list.
+        let row = match tab {
+            Tab::Crafting | Tab::Palette => 0,
+            _ => rows(tab, Lists::default()) - 1,
+        };
         Menu::Items { tab, col: 0, row }
     }
 
-    /// Apply one press. `crafts` is how many recipes are craftable now.
-    pub fn press(&mut self, nav: Nav, crafts: usize) -> Action {
+    /// Apply one press.
+    pub fn press(&mut self, nav: Nav, lists: Lists) -> Action {
         match self {
             Menu::Pause { choice } => match nav {
                 Nav::Up | Nav::Down => {
@@ -87,32 +118,35 @@ impl Menu {
                 _ => Action::None,
             },
             Menu::Items { tab, col, row } => {
-                let rows = rows(*tab, crafts);
+                let rows = rows(*tab, lists);
                 // Crafting can shrink the list under the cursor.
                 *row = (*row).min(rows.saturating_sub(1));
+                let len = |r: usize| row_len(*tab, r, lists);
                 match nav {
-                    Nav::Up | Nav::Down | Nav::Left | Nav::Right if rows == 0 => {}
+                    Nav::Up | Nav::Down | Nav::Left | Nav::Right | Nav::A | Nav::X | Nav::Y if rows == 0 => {}
                     Nav::Up => *row = (*row + rows - 1) % rows,
                     Nav::Down => *row = (*row + 1) % rows,
-                    Nav::Left => *col = (*col + row_len(*tab, *row, crafts) - 1) % row_len(*tab, *row, crafts),
-                    Nav::Right => *col = (*col + 1) % row_len(*tab, *row, crafts),
-                    Nav::A | Nav::X | Nav::Y if rows == 0 => {}
+                    Nav::Left => *col = (*col + len(*row) - 1) % len(*row),
+                    Nav::Right => *col = (*col + 1) % len(*row),
                     Nav::A => return Action::Click(slot(*tab, *col, *row), false),
                     Nav::X => return Action::Click(slot(*tab, *col, *row), true),
                     Nav::Y => return Action::QuickMove(slot(*tab, *col, *row)),
                     Nav::Lb | Nav::Rb => {
-                        let next = match *tab {
-                            Tab::Inventory => Tab::Crafting,
-                            Tab::Crafting => Tab::Inventory,
-                            chest => chest,
-                        };
-                        *self = Menu::items(next);
+                        let mut cycle = vec![Tab::Inventory, Tab::Crafting];
+                        if lists.palette > 0 {
+                            cycle.push(Tab::Palette);
+                        }
+                        // Containers keep their own screen.
+                        if let Some(i) = cycle.iter().position(|t| t == tab) {
+                            let step = if nav == Nav::Rb { 1 } else { cycle.len() - 1 };
+                            *self = Menu::items(cycle[(i + step) % cycle.len()]);
+                        }
                         return Action::None;
                     }
                     Nav::B | Nav::Start => return Action::Close,
                 }
                 if rows > 0 {
-                    *col = (*col).min(row_len(*tab, *row, crafts) - 1);
+                    *col = (*col).min(len(*row) - 1);
                 }
                 Action::None
             }
@@ -121,42 +155,55 @@ impl Menu {
 
     /// The slot under the cursor, if any.
     #[cfg(test)]
-    pub fn slot(&self, crafts: usize) -> Option<Slot> {
+    pub fn slot(&self, lists: Lists) -> Option<Slot> {
         match *self {
-            Menu::Items { tab, col, row } if rows(tab, crafts) > 0 => Some(slot(tab, col, row)),
+            Menu::Items { tab, col, row } if rows(tab, lists) > 0 => Some(slot(tab, col, row)),
             _ => None,
         }
     }
 }
 
-/// Inventory: armor, three main rows, hotbar. Chest: three chest rows, then
-/// the player's. Crafting: nine results to a row.
-fn rows(tab: Tab, crafts: usize) -> usize {
+/// Inventory and furnace: a top row (armor, or the furnace's input, fuel
+/// and output), three main rows, hotbar. Chest: three chest rows, then the
+/// player's. Lists: nine to a row.
+fn rows(tab: Tab, lists: Lists) -> usize {
     match tab {
-        Tab::Inventory => 5,
+        Tab::Inventory | Tab::Furnace(_) => 5,
         Tab::Chest(_) => 7,
-        Tab::Crafting => crafts.div_ceil(COLS),
+        Tab::Crafting => lists.crafts.div_ceil(COLS),
+        Tab::Palette => lists.palette.div_ceil(COLS),
     }
 }
 
-fn row_len(tab: Tab, row: usize, crafts: usize) -> usize {
-    match tab {
-        Tab::Inventory if row == 0 => 4,
-        Tab::Crafting if row + 1 == rows(tab, crafts) && !crafts.is_multiple_of(COLS) => crafts % COLS,
-        _ => COLS,
-    }
+fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
+    let list = match tab {
+        Tab::Inventory if row == 0 => return ArmorPiece::ALL.len(),
+        Tab::Furnace(_) if row == 0 => return FURNACE.len(),
+        Tab::Crafting => lists.crafts,
+        Tab::Palette => lists.palette,
+        _ => return COLS,
+    };
+    if row + 1 == list.div_ceil(COLS) && !list.is_multiple_of(COLS) { list % COLS } else { COLS }
 }
 
 fn slot(tab: Tab, col: usize, row: usize) -> Slot {
+    let inv = |i: usize| Slot::Ref(SlotRef::Inventory(i));
     match tab {
-        Tab::Inventory if row == 0 => Slot::Armor(col),
-        Tab::Inventory if row == 4 => Slot::Inv(col),
-        Tab::Inventory => Slot::Inv(COLS * row + col),
-        Tab::Chest(_) if row < 3 => Slot::Chest(COLS * row + col),
-        Tab::Chest(_) if row == 6 => Slot::Inv(col),
-        Tab::Chest(_) => Slot::Inv(COLS * (row - 2) + col),
-        Tab::Crafting => Slot::Craft(COLS * row + col),
+        Tab::Inventory if row == 0 => Slot::Ref(SlotRef::Armor(ArmorPiece::ALL[col])),
+        Tab::Furnace(_) if row == 0 => Slot::Ref(FURNACE[col]),
+        Tab::Inventory | Tab::Furnace(_) if row == 4 => inv(col),
+        Tab::Inventory | Tab::Furnace(_) => inv(COLS * row + col),
+        Tab::Chest(_) if row < 3 => Slot::Ref(SlotRef::Chest(COLS * row + col)),
+        Tab::Chest(_) if row == 6 => inv(col),
+        Tab::Chest(_) => inv(COLS * (row - 2) + col),
+        Tab::Crafting => Slot::Recipe(COLS * row + col),
+        Tab::Palette => Slot::Palette(COLS * row + col),
     }
+}
+
+/// Every item the creative palette offers, in order.
+fn palette() -> Vec<Item> {
+    Item::creative_palette().collect()
 }
 
 impl Game {
@@ -165,62 +212,56 @@ impl Game {
         self.agents.players.get(name).map_or_else(Vec::new, |b| b.agent.craftable(&self.world))
     }
 
-    /// Do what a menu press asked for `name`. Returns false to close the menu.
-    pub(super) fn apply_menu(&mut self, name: &str, menu: Menu, action: Action) -> bool {
-        let crafts =
-            if matches!(action, Action::Click(Slot::Craft(_), _)) { self.pad_crafts(name) } else { Vec::new() };
-        let Some(bot) = self.agents.players.get_mut(name) else { return false };
-        let agent = &mut bot.agent;
-        let inv = &mut agent.inventory;
-        let chest_pos = match menu {
-            Menu::Items { tab: Tab::Chest(pos), .. } => Some(pos),
-            _ => None,
-        };
-        match action {
-            Action::None => {}
-            Action::Close | Action::Leave => return false,
-            Action::Click(Slot::Armor(i), right) => inv.click_armor(ArmorPiece::ALL[i], right),
-            Action::Click(Slot::Inv(i), right) => inv.click(i, right),
-            Action::Click(Slot::Chest(i), right) => {
-                if let Some(chest) = chest_pos.and_then(|p| self.world.chest_mut(p)) {
-                    click_slot(&mut chest.slots[i], &mut inv.cursor, right);
-                }
-            }
-            Action::Click(Slot::Craft(i), _) => {
-                if let Some(stack) = crafts.get(i) {
-                    let _ = agent.execute(Command::Craft(stack.item), &mut self.world, &mut self.mobs.entities, &[]);
-                }
-            }
-            Action::QuickMove(Slot::Armor(i)) => {
-                if let Some(stack) = inv.armor[i].take() {
-                    let left = inv.add_stack(stack);
-                    inv.armor[i] = (left > 0).then_some(Stack { count: left, ..stack });
-                }
-            }
-            Action::QuickMove(Slot::Inv(i)) => {
-                let Some(stack) = inv.slots[i].take() else { return true };
-                if let Some(chest) = chest_pos.and_then(|p| self.world.chest_mut(p)) {
-                    let order: Vec<usize> = (0..chest.slots.len()).collect();
-                    inv.slots[i] = move_into(stack, &mut chest.slots, &order);
-                } else if stack.item.as_armor().is_some() {
-                    inv.slots[i] = Some(stack);
-                    inv.equip(i);
-                } else {
-                    // Between the hotbar and the main grid, like shift-click.
-                    let order: Vec<usize> = if i < COLS { (COLS..36).collect() } else { (0..COLS).collect() };
-                    inv.slots[i] = move_into(stack, &mut inv.slots, &order);
-                }
-            }
-            Action::QuickMove(Slot::Chest(i)) => {
-                if let Some(chest) = chest_pos.and_then(|p| self.world.chest_mut(p))
-                    && let Some(stack) = chest.slots[i]
-                {
-                    let left = inv.add_stack(stack);
-                    chest.slots[i] = (left > 0).then_some(Stack { count: left, ..stack });
-                }
-            }
-            Action::QuickMove(Slot::Craft(_)) => {}
+    /// List lengths for `name`'s screens.
+    pub(super) fn pad_lists(&self, name: &str, tab: Tab) -> Lists {
+        let creative = self.agents.players.get(name).is_some_and(|b| b.agent.creative);
+        Lists {
+            crafts: if tab == Tab::Crafting { self.pad_crafts(name).len() } else { 0 },
+            palette: if creative { Item::creative_palette().count() } else { 0 },
         }
+    }
+
+    /// Do what a menu press asked for seat `seat`, playing `name`. Returns
+    /// false to close the menu.
+    pub(super) fn apply_menu(&mut self, seat: usize, name: &str, menu: Menu, action: Action) -> bool {
+        let Menu::Items { tab, .. } = menu else {
+            return !matches!(action, Action::Close | Action::Leave);
+        };
+        let (slot, quick, right) = match action {
+            Action::None => return true,
+            Action::Close | Action::Leave => return false,
+            Action::Click(slot, right) => (slot, false, right),
+            Action::QuickMove(slot) => (slot, true, false),
+        };
+        let slot = match slot {
+            Slot::Ref(s) => s,
+            Slot::Palette(i) => match palette().get(i) {
+                Some(&item) => SlotRef::Palette(item),
+                None => return true,
+            },
+            Slot::Recipe(i) => {
+                // Shift-crafting makes as many as the ingredients allow.
+                let Some(item) = self.pad_crafts(name).get(i).map(|s| s.item) else { return true };
+                let Some(bot) = self.agents.players.get_mut(name) else { return false };
+                for _ in 0..if quick { 64 } else { 1 } {
+                    let craft = Command::Craft(item);
+                    if bot.agent.execute(craft, &mut self.world, &mut self.mobs.entities, &[]).is_err() {
+                        break;
+                    }
+                }
+                self.audio.ui_click();
+                return true;
+            }
+        };
+        self.puppet(seat, |g| {
+            g.container = tab.container();
+            if quick {
+                g.quick_move(slot);
+            } else {
+                g.click_slot(slot, right);
+            }
+        });
+        self.audio.ui_click();
         true
     }
 
@@ -259,37 +300,56 @@ impl Game {
             Menu::Items { tab, col, row } => (tab, col, row),
         };
         let crafts = if tab == Tab::Crafting { self.pad_crafts(name) } else { Vec::new() };
-        let n = rows(tab, crafts.len());
-        // Hotbar rows sit a little apart, like Minecraft's.
+        let items = if tab == Tab::Palette { palette() } else { Vec::new() };
+        let lists = Lists { crafts: crafts.len(), palette: items.len() };
+        let n = rows(tab, lists);
+        // Long lists scroll to keep the cursor in view.
+        let visible = (((sh - 40.0) / 18.0).floor() as usize).max(1);
+        let first = if n > visible { (row + 1).saturating_sub(visible / 2 + 1).min(n - visible) } else { 0 };
+        let shown = n.min(visible);
+        // The hotbar and the row above the main grid sit a little apart.
         let gap = |r: usize| match tab {
-            Tab::Inventory => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
+            Tab::Inventory | Tab::Furnace(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
             Tab::Chest(_) => 4.0 * ((r >= 3) as u8 + (r >= 6) as u8) as f32,
-            Tab::Crafting => 0.0,
+            Tab::Crafting | Tab::Palette => 0.0,
         };
         let pw = COLS as f32 * 18.0 + 12.0;
-        let ph = 18.0 * n.max(1) as f32 + gap(n.saturating_sub(1)) + 26.0;
+        let ph = 18.0 * shown.max(1) as f32 + gap(n.saturating_sub(1)) + 26.0;
         let (px, py) = (((sw - pw) / 2.0).floor(), ((sh - ph) / 2.0).floor().max(0.0));
         ui.rect(px, py, pw, ph, [0.12, 0.12, 0.14, 0.92]);
+        let creative = bot.agent.creative;
         let title = match tab {
             Tab::Inventory => "Inventory  (RB: crafting)",
+            Tab::Crafting if creative => "Crafting  (RB: items)",
             Tab::Crafting => "Crafting  (LB: inventory)",
+            Tab::Palette => "Items  (RB: inventory)",
             Tab::Chest(_) => "Chest",
+            Tab::Furnace(_) => "Furnace",
         };
         ui.text(px + 6.0, py + 5.0, title, WHITE);
         let chest = match tab {
             Tab::Chest(pos) => self.world.chest(pos),
             _ => None,
         };
+        let furnace = match tab {
+            Tab::Furnace(pos) => self.world.furnace(pos),
+            _ => None,
+        };
         let mut hovered = None;
-        for r in 0..n {
-            for c in 0..row_len(tab, r, crafts.len()) {
-                let (x, y) = (px + 6.0 + 18.0 * c as f32, py + 18.0 + 18.0 * r as f32 + gap(r));
+        for r in first..first + shown {
+            for c in 0..row_len(tab, r, lists) {
+                let (x, y) = (px + 6.0 + 18.0 * c as f32, py + 18.0 + 18.0 * (r - first) as f32 + gap(r));
                 ui.rect(x, y, 17.0, 17.0, [0.3, 0.3, 0.32, 0.95]);
                 let stack = match slot(tab, c, r) {
-                    Slot::Armor(i) => inv.armor[i],
-                    Slot::Inv(i) => inv.slots[i],
-                    Slot::Chest(i) => chest.and_then(|ch| ch.slots[i]),
-                    Slot::Craft(i) => crafts.get(i).copied(),
+                    Slot::Ref(SlotRef::Armor(p)) => inv.armor[p as usize],
+                    Slot::Ref(SlotRef::Inventory(i)) => inv.slots[i],
+                    Slot::Ref(SlotRef::Chest(i)) => chest.and_then(|ch| ch.slots[i]),
+                    Slot::Ref(SlotRef::FurnaceInput) => furnace.and_then(|f| f.input),
+                    Slot::Ref(SlotRef::FurnaceFuel) => furnace.and_then(|f| f.fuel),
+                    Slot::Ref(SlotRef::FurnaceOutput) => furnace.and_then(|f| f.output),
+                    Slot::Ref(_) => None,
+                    Slot::Recipe(i) => crafts.get(i).copied(),
+                    Slot::Palette(i) => items.get(i).map(|&item| Stack::new(item, 1)),
                 };
                 if let Some(stack) = stack {
                     draw_stack(ui, x - 0.5, y - 0.5, stack, true);
@@ -299,6 +359,16 @@ impl Game {
                     hovered = Some((stack, x, y));
                 }
             }
+        }
+        if let Some(f) = furnace {
+            // Flame (fuel left) and arrow (cooking) beside the furnace slots.
+            let (x, y) = (px + 6.0 + 18.0 * 3.0 + 6.0, py + 18.0);
+            let burn = if f.burn_total > 0.0 { f.burn_left / f.burn_total } else { 0.0 };
+            ui.rect(x, y + 2.0, 40.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
+            ui.rect(x + 1.0, y + 3.0, 38.0 * burn.clamp(0.0, 1.0), 3.0, [1.0, 0.55, 0.1, 1.0]);
+            let cook = f.cook / crate::world::furnace::COOK_TIME;
+            ui.rect(x, y + 10.0, 40.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
+            ui.rect(x + 1.0, y + 11.0, 38.0 * cook.clamp(0.0, 1.0), 3.0, WHITE);
         }
         if n == 0 {
             ui.text(px + 6.0, py + 20.0, "Nothing to craft", [0.7, 0.7, 0.7, 1.0]);
@@ -321,59 +391,78 @@ impl Game {
 mod tests {
     use super::*;
 
+    const NONE: Lists = Lists { crafts: 0, palette: 0 };
+    fn inv(i: usize) -> Option<Slot> {
+        Some(Slot::Ref(SlotRef::Inventory(i)))
+    }
+
     #[test]
     fn inventory_cursor_wraps_and_clamps_to_the_armor_row() {
         let mut m = Menu::items(Tab::Inventory);
-        assert_eq!(m.slot(0), Some(Slot::Inv(0)), "starts on the hotbar");
-        m.press(Nav::Left, 0);
-        assert_eq!(m.slot(0), Some(Slot::Inv(8)));
-        m.press(Nav::Down, 0);
-        assert_eq!(m.slot(0), Some(Slot::Armor(3)), "wraps to armor, clamped to four columns");
-        m.press(Nav::Down, 0);
-        assert_eq!(m.slot(0), Some(Slot::Inv(9 + 3)));
-        assert_eq!(m.press(Nav::A, 0), Action::Click(Slot::Inv(12), false));
-        assert_eq!(m.press(Nav::X, 0), Action::Click(Slot::Inv(12), true));
-        assert_eq!(m.press(Nav::B, 0), Action::Close);
+        assert_eq!(m.slot(NONE), inv(0), "starts on the hotbar");
+        m.press(Nav::Left, NONE);
+        assert_eq!(m.slot(NONE), inv(8));
+        m.press(Nav::Down, NONE);
+        assert_eq!(m.slot(NONE), Some(Slot::Ref(SlotRef::Armor(ArmorPiece::Boots))), "wraps to armor, clamped");
+        m.press(Nav::Down, NONE);
+        assert_eq!(m.slot(NONE), inv(9 + 3));
+        assert_eq!(m.press(Nav::A, NONE), Action::Click(Slot::Ref(SlotRef::Inventory(12)), false));
+        assert_eq!(m.press(Nav::X, NONE), Action::Click(Slot::Ref(SlotRef::Inventory(12)), true));
+        assert_eq!(m.press(Nav::B, NONE), Action::Close);
     }
 
     #[test]
-    fn chest_rows_map_to_chest_then_player_slots() {
+    fn container_rows_map_to_their_slots_then_the_player() {
         let pos = IVec3::new(1, 2, 3);
         let mut m = Menu::items(Tab::Chest(pos));
-        assert_eq!(m.slot(0), Some(Slot::Inv(0)));
-        m.press(Nav::Down, 0);
-        assert_eq!(m.slot(0), Some(Slot::Chest(0)));
-        m.press(Nav::Up, 0);
-        m.press(Nav::Up, 0);
-        assert_eq!(m.slot(0), Some(Slot::Inv(27)), "bottom main row");
-        assert_eq!(m.press(Nav::Y, 0), Action::QuickMove(Slot::Inv(27)));
-        m.press(Nav::Rb, 0);
-        assert!(matches!(m, Menu::Items { tab: Tab::Chest(_), .. }), "chests don't switch tabs");
+        assert_eq!(m.slot(NONE), inv(0));
+        m.press(Nav::Down, NONE);
+        assert_eq!(m.slot(NONE), Some(Slot::Ref(SlotRef::Chest(0))));
+        m.press(Nav::Up, NONE);
+        m.press(Nav::Up, NONE);
+        assert_eq!(m.slot(NONE), inv(27), "bottom main row");
+        assert_eq!(m.press(Nav::Y, NONE), Action::QuickMove(Slot::Ref(SlotRef::Inventory(27))));
+        m.press(Nav::Rb, NONE);
+        assert!(matches!(m, Menu::Items { tab: Tab::Chest(_), .. }), "containers don't switch tabs");
+
+        let mut f = Menu::items(Tab::Furnace(pos));
+        f.press(Nav::Left, NONE);
+        f.press(Nav::Down, NONE);
+        assert_eq!(f.slot(NONE), Some(Slot::Ref(SlotRef::FurnaceOutput)), "clamped to three slots");
+        f.press(Nav::Down, NONE);
+        assert_eq!(f.slot(NONE), inv(9 + 2));
     }
 
     #[test]
-    fn crafting_grid_follows_the_recipe_count() {
+    fn list_tabs_follow_their_lengths_and_cycle() {
+        let lists = Lists { crafts: 11, palette: 0 };
         let mut m = Menu::items(Tab::Inventory);
-        m.press(Nav::Rb, 11);
-        assert_eq!(m.slot(11), Some(Slot::Craft(0)));
-        m.press(Nav::Down, 11);
-        m.press(Nav::Right, 11);
-        m.press(Nav::Right, 11);
-        assert_eq!(m.slot(11), Some(Slot::Craft(9)), "second row has two results and wraps");
-        assert_eq!(m.press(Nav::A, 11), Action::Click(Slot::Craft(9), false));
+        m.press(Nav::Rb, lists);
+        assert_eq!(m.slot(lists), Some(Slot::Recipe(0)));
+        m.press(Nav::Down, lists);
+        m.press(Nav::Right, lists);
+        m.press(Nav::Right, lists);
+        assert_eq!(m.slot(lists), Some(Slot::Recipe(9)), "second row has two results and wraps");
         // Nothing craftable: no slot, and presses do nothing.
-        assert_eq!(m.slot(0), None);
-        assert_eq!(m.press(Nav::A, 0), Action::None);
-        m.press(Nav::Lb, 0);
-        assert!(matches!(m, Menu::Items { tab: Tab::Inventory, .. }));
+        assert_eq!(m.slot(NONE), None);
+        assert_eq!(m.press(Nav::A, NONE), Action::None);
+        m.press(Nav::Rb, NONE);
+        assert!(matches!(m, Menu::Items { tab: Tab::Inventory, .. }), "no palette in survival");
+
+        let creative = Lists { crafts: 0, palette: 30 };
+        m.press(Nav::Lb, creative);
+        assert!(matches!(m, Menu::Items { tab: Tab::Palette, .. }), "LB wraps back to the palette");
+        m.press(Nav::Up, creative);
+        m.press(Nav::Right, creative);
+        assert_eq!(m.slot(creative), Some(Slot::Palette(28)), "last row");
     }
 
     #[test]
     fn pause_offers_resume_and_leave() {
         let mut m = Menu::Pause { choice: 0 };
-        assert_eq!(m.press(Nav::A, 0), Action::Close);
-        m.press(Nav::Down, 0);
-        assert_eq!(m.press(Nav::A, 0), Action::Leave);
-        assert_eq!(m.press(Nav::Start, 0), Action::Close);
+        assert_eq!(m.press(Nav::A, NONE), Action::Close);
+        m.press(Nav::Down, NONE);
+        assert_eq!(m.press(Nav::A, NONE), Action::Leave);
+        assert_eq!(m.press(Nav::Start, NONE), Action::Close);
     }
 }
