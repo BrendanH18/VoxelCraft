@@ -367,35 +367,50 @@ impl Agent {
     }
 
     fn craft(&mut self, item: Item, world: &World) -> Result<(), String> {
-        for recipe in crafting::recipes().iter().filter(|r| r.result.item == item) {
-            let grid = recipe.preview();
-            if grid.size == 3
-                && !self
-                    .target(world)
-                    .is_some_and(|(p, _)| world.get_block(p).is_some_and(|b| b.base() == Block::CRAFTING_TABLE))
-            {
+        let at_table = self.at_crafting_table(world);
+        let inventory = crafting::recipes()
+            .iter()
+            .filter(|r| r.result.item == item)
+            .find_map(|r| self.crafted(r, at_table))
+            .ok_or("missing ingredients, inventory space or targeted crafting table")?;
+        self.inventory = inventory;
+        Ok(())
+    }
+
+    fn at_crafting_table(&self, world: &World) -> bool {
+        self.target(world).is_some_and(|(p, _)| world.get_block(p).is_some_and(|b| b.base() == Block::CRAFTING_TABLE))
+    }
+
+    /// The inventory after crafting `recipe` once, if the ingredients and
+    /// room are there (3x3 recipes need a targeted crafting table).
+    fn crafted(&self, recipe: &crafting::Recipe, at_table: bool) -> Option<Inventory> {
+        let grid = recipe.preview();
+        if grid.size == 3 && !at_table {
+            return None;
+        }
+        let mut inventory = self.inventory.clone();
+        for i in 0..grid.cells.len() {
+            if grid.cells[i].is_none() {
                 continue;
             }
-            let mut inventory = self.inventory.clone();
-            let mut valid = true;
-            for i in 0..grid.cells.len() {
-                if grid.cells[i].is_none() {
-                    continue;
-                }
-                let options = recipe.alternatives(i).unwrap();
-                if let Some(slot) = inventory.slots.iter().position(|s| s.is_some_and(|s| options.contains(&s.item))) {
-                    inventory.take_one(slot);
-                } else {
-                    valid = false;
-                    break;
-                }
-            }
-            if valid && inventory.add_stack(recipe.result) == 0 {
-                self.inventory = inventory;
-                return Ok(());
+            let options = recipe.alternatives(i).unwrap();
+            let slot = inventory.slots.iter().position(|s| s.is_some_and(|s| options.contains(&s.item)))?;
+            inventory.take_one(slot);
+        }
+        (inventory.add_stack(recipe.result) == 0).then_some(inventory)
+    }
+
+    /// Every result that `craft` would make right now, once each, in recipe
+    /// book order.
+    pub fn craftable(&self, world: &World) -> Vec<Stack> {
+        let at_table = self.at_crafting_table(world);
+        let mut out: Vec<Stack> = Vec::new();
+        for recipe in crafting::recipes() {
+            if !out.iter().any(|s| s.item == recipe.result.item) && self.crafted(recipe, at_table).is_some() {
+                out.push(recipe.result);
             }
         }
-        Err("missing ingredients, inventory space or targeted crafting table".into())
+        out
     }
 
     /// Advance physics/survival/mining once. All sessions tick before the shared world systems.

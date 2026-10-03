@@ -271,7 +271,7 @@ impl Game {
 
 /// Item icon, durability bar and (when `counts`) stack size in an 18x18
 /// slot at (x, y).
-fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
+pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
     match (stack.item.block(), stack.item.icon_layer()) {
         (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
         (None, Some(layer)) => ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE),

@@ -132,17 +132,26 @@ profile that a controller is using.
 | Left stick / right stick | Move / look |
 | A | Jump (double-tap to fly in creative); respawn after death |
 | RT | Mine (hold) and attack |
-| LT | Place the held block (hold to repeat), or eat held food |
+| LT | Open a door, gate, chest or crafting table; otherwise place the held block (hold to repeat) or eat held food |
 | LB / RB | Previous / next hotbar slot |
 | B | Drop the held stack |
 | Left stick click | Sprint until you stop walking forward |
 | Right stick click | Toggle sneaking (flying down while flying) |
-| Hold View/Back | Leave the game |
+| Y | Inventory and crafting |
+| Start | Pause menu: resume or leave the game |
+
+Menus open inside the player's own view while the world keeps running. Move
+with the D-pad or left stick. A takes, places, swaps or merges a stack (like a
+left click), X takes half or places one (like a right click), and Y moves a
+stack across: between the hotbar and the rest of the inventory, onto or off
+armor, or into or out of an open chest. LB/RB switch between the inventory and
+crafting, which lists everything you can make right now (A crafts one; 3x3
+recipes need a crafting table opened with LT). B closes, putting any held
+stack back.
 
 An unplugged controller freezes its player until it reconnects.
-`/splitscreen off` keeps controller views. Controller players can't yet open
-the inventory, use buckets or doors, or pause the game. Sound still
-follows the host.
+`/splitscreen off` keeps controller views. Controller players can't yet use
+furnaces, buckets, beds or bows. Sound still follows the host.
 
 ## LAN and raw protocol
 

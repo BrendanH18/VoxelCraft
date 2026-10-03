@@ -16,6 +16,7 @@ mod hud;
 mod items;
 mod menu;
 mod mobs;
+mod pad_menu;
 mod recipe_book;
 mod search;
 mod settings;
@@ -118,6 +119,8 @@ struct Game {
     agents: agents::Agents,
     split: split::Split,
     pads: gamepad::Pads,
+    /// `--pad-player` screen, seated once the world loads.
+    virtual_pad: Option<String>,
     console: console::Console,
     search: search::Search,
     renderer: Renderer,
@@ -654,6 +657,7 @@ impl Game {
             agents,
             split: split::Split { follow: args.split_screen.clone(), side_by_side: args.split_side },
             // Screenshot runs never read controllers.
+            virtual_pad: args.pad_player.clone(),
             pads: if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() },
             search: search::Search {
                 query: args.inventory_search.clone().unwrap_or_default(),
@@ -1246,7 +1250,7 @@ impl Game {
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
             Some(b) if b.is_bed() => return self.use_bed(pos),
             Some(b) if b.is_door() || b.is_gate() => {
-                self.toggle_door(pos);
+                self.toggle_door(pos, self.player.forward());
                 return;
             }
             _ => {}
@@ -1351,6 +1355,10 @@ impl Game {
         }
         self.placed = true;
         self.spawn_pending_mobs();
+        // Seated once the ground it stands on is in place.
+        if let Some(screen) = self.virtual_pad.take() {
+            self.virtual_pad(&screen);
+        }
     }
 
     /// Drives `--screenshot`: once streaming settles, capture a frame and
@@ -1774,7 +1782,9 @@ fn push_avatars(
     verts: &mut Vec<crate::entity::model::EntityVertex>,
 ) {
     for &(player, feet) in players {
-        if feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
+        // A body around the camera (players can share a spot) would fill the view.
+        let inside = (camera - feet).with_y(0.0).length() < 0.4 && (feet.y..feet.y + 1.9).contains(&camera.y);
+        if !inside && feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
             crate::entity::model::build_player(
                 player,
                 feet,

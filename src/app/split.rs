@@ -223,7 +223,13 @@ impl Game {
             survival: !a.creative,
             underwater,
         };
-        self.bar_ui(&mut ui, &hud, now);
+        // Screens cover the hotbar, as Minecraft's do.
+        match self.pad_menu(name) {
+            Some(menu) => self.pad_menu_ui(&mut ui, name, menu),
+            None => {
+                self.bar_ui(&mut ui, &hud, now);
+            }
+        }
         let label = if self.pads.seated(name) { name.to_string() } else { format!("{name} (agent)") };
         ui.rect(2.0, 2.0, Ui::text_width(&label) + 6.0, 12.0, [0.0, 0.0, 0.0, 0.5]);
         ui.text(5.0, 4.0, &label, WHITE);
