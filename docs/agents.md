@@ -121,8 +121,9 @@ drop out of the layout until they reconnect.
 ### Gamepad players
 
 Press Start on a connected gamepad to join as a local player. Each controller
-plays as the first free profile from Player2 to Player8, gets its own view,
-and keeps that profile's inventory and position for next time. New profiles
+gets its own view and plays the profile it used last in this world (or the
+first free one from Player2 to Player8), keeping that profile's inventory,
+position and respawn bed for next time. New profiles
 start next to the host in the world's game mode. Up to three controllers can
 play beside the keyboard player. A command-line agent can't take over a
 profile that a controller is using.

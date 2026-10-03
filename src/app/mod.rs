@@ -638,7 +638,12 @@ impl Game {
             puppet: false,
             puppet_used: None,
             puppet_popup: None,
-            pads: if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() },
+            pads: {
+                let mut pads = if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() };
+                let prop = |k: &str| root_props.get(k).map_or("", String::as_str);
+                pads.restore(prop("pads"), prop("pad_beds"));
+                pads
+            },
             search: search::Search {
                 query: args.inventory_search.clone().unwrap_or_default(),
                 focused: args.open_inventory && args.screenshot.is_none(),
@@ -1451,6 +1456,9 @@ impl Game {
     fn save(&mut self) {
         let mut props = std::collections::BTreeMap::new();
         props.insert("agents".into(), self.agents.serialize(self.dimension.name()));
+        let (pads, pad_beds) = self.pads.serialize();
+        props.insert("pads".into(), pads);
+        props.insert("pad_beds".into(), pad_beds);
         props.insert("mode".to_string(), self.mode.name().to_string());
         props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.

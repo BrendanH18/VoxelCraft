@@ -15,6 +15,7 @@
 //! for the call, so mining, attacking and every right-click action behave
 //! exactly as they do with a mouse.
 
+use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use gilrs::{Axis, Button, EventType, GamepadId, Gilrs};
@@ -277,12 +278,56 @@ fn look_delta(stick: Vec2, dt: f32, sensitivity: f32) -> Vec2 {
 pub(super) struct Pads {
     gilrs: Option<Gilrs>,
     seats: Vec<Seat>,
+    /// Which profile each controller played last, so it gets it back.
+    assigned: BTreeMap<[u8; 16], String>,
+    /// Profiles' respawn beds, kept while they're away.
+    beds: BTreeMap<String, IVec3>,
 }
 
 impl Pads {
     pub fn new() -> Self {
         let gilrs = Gilrs::new().map_err(|e| log::warn!("gamepads unavailable: {e}")).ok();
-        Self { gilrs, seats: Vec::new() }
+        Self { gilrs, ..Default::default() }
+    }
+
+    /// Saved with the world: `uuid=profile` pairs and `profile=x,y,z` beds,
+    /// each separated by `;`.
+    pub fn serialize(&self) -> (String, String) {
+        let mut beds = self.beds.clone();
+        for seat in &self.seats {
+            match seat.body.spawn_bed {
+                Some(bed) => beds.insert(seat.name.clone(), bed),
+                None => beds.remove(&seat.name),
+            };
+        }
+        let hex = |u: &[u8; 16]| u.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let assigned: Vec<String> = self.assigned.iter().map(|(u, n)| format!("{}={n}", hex(u))).collect();
+        let beds: Vec<String> = beds.iter().map(|(n, p)| format!("{n}={},{},{}", p.x, p.y, p.z)).collect();
+        (assigned.join(";"), beds.join(";"))
+    }
+
+    /// Reads what [`Pads::serialize`] wrote, skipping anything malformed.
+    pub fn restore(&mut self, assigned: &str, beds: &str) {
+        let pairs = |text: &str| -> Vec<(String, String)> {
+            text.split(';').filter_map(|p| p.split_once('=')).map(|(k, v)| (k.into(), v.into())).collect()
+        };
+        for (uuid, name) in pairs(assigned) {
+            let bytes: Option<Vec<u8>> = (0..uuid.len())
+                .step_by(2)
+                .map(|i| uuid.get(i..i + 2).and_then(|h| u8::from_str_radix(h, 16).ok()))
+                .collect();
+            if let Some(Ok(uuid)) = bytes.map(<[u8; 16]>::try_from)
+                && voxelcraft::control::valid_name(&name)
+            {
+                self.assigned.insert(uuid, name);
+            }
+        }
+        for (name, pos) in pairs(beds) {
+            let v: Vec<i32> = pos.split(',').filter_map(|n| n.parse().ok()).collect();
+            if let [x, y, z] = v[..] {
+                self.beds.insert(name, IVec3::new(x, y, z));
+            }
+        }
     }
 
     /// Whether a local controller plays as this profile.
@@ -436,9 +481,16 @@ impl Game {
         if self.split.follow.len() >= super::split::MAX_VIEWS - 1 {
             return Err("Split-screen is full".into());
         }
-        let name = (2..=8)
-            .map(|n| format!("Player{n}"))
-            .find(|n| !self.pads.seated(n) && !self.agents.players.get(n).is_some_and(|b| b.active))
+        let uuid = self.pads.gilrs.as_ref().zip(id).map_or([0; 16], |(g, id)| g.gamepad(id).uuid());
+        let free = |n: &String| !self.pads.seated(n) && !self.agents.players.get(n).is_some_and(|b| b.active);
+        // A controller gets the profile it played last, if that's free.
+        let name = self
+            .pads
+            .assigned
+            .get(&uuid)
+            .filter(|n| uuid != [0; 16] && free(n))
+            .cloned()
+            .or_else(|| (2..=8).map(|n| format!("Player{n}")).find(free))
             .ok_or("No free player profile")?;
         if !self.agents.players.contains_key(&name) {
             let mut agent = Agent::new(self.beside_host());
@@ -451,8 +503,12 @@ impl Game {
         if !self.split.follow.contains(&name) {
             self.split.follow.push(name.clone());
         }
-        let uuid = self.pads.gilrs.as_ref().zip(id).map_or([0; 16], |(g, id)| g.gamepad(id).uuid());
-        self.pads.seats.push(Seat::new(name.clone(), uuid, id));
+        let mut seat = Seat::new(name.clone(), uuid, id);
+        seat.body.spawn_bed = self.pads.beds.remove(&name);
+        self.pads.seats.push(seat);
+        if uuid != [0; 16] {
+            self.pads.assigned.insert(uuid, name.clone());
+        }
         Ok(name)
     }
 
@@ -474,6 +530,9 @@ impl Game {
     /// Free the seat and its view. The profile stays saved for next time.
     fn leave_pad(&mut self, name: &str) {
         self.close_pad_menu(name);
+        if let Some(bed) = self.pads.seats.iter().find(|s| s.name == name).and_then(|s| s.body.spawn_bed) {
+            self.pads.beds.insert(name.to_string(), bed);
+        }
         self.pads.seats.retain(|s| s.name != name);
         self.split.follow.retain(|n| n != name);
         if let Some(bot) = self.agents.players.get_mut(name) {
@@ -823,6 +882,27 @@ mod tests {
         s.trigger_edges(false, true, false);
         s.trigger_edges(false, true, true);
         assert!(s.tick_input().actions.is_empty());
+    }
+
+    #[test]
+    fn controller_profiles_and_beds_survive_saving() {
+        let mut pads = Pads::default();
+        let uuid = [0xab; 16];
+        pads.assigned.insert(uuid, "Player3".into());
+        pads.beds.insert("Player4".into(), IVec3::new(1, -2, 3));
+        let mut seated = seat();
+        seated.body.spawn_bed = Some(IVec3::new(7, 64, -9));
+        pads.seats.push(seated);
+        let (assigned, beds) = pads.serialize();
+        let mut restored = Pads::default();
+        restored.restore(&assigned, &beds);
+        assert_eq!(restored.assigned.get(&uuid).map(String::as_str), Some("Player3"));
+        assert_eq!(restored.beds.get("Player2"), Some(&IVec3::new(7, 64, -9)), "seated players' beds too");
+        assert_eq!(restored.beds.get("Player4"), Some(&IVec3::new(1, -2, 3)));
+        // Garbage is skipped rather than failing the load.
+        restored.restore("zz=Player2;abcd=Player5;=;", "Player6=1,2;Player7=a,b,c");
+        assert_eq!(restored.assigned.len(), 1);
+        assert_eq!(restored.beds.len(), 2);
     }
 
     #[test]
