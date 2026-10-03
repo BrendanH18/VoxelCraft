@@ -10,11 +10,13 @@ mod containers;
 mod dimension;
 mod doors;
 mod farming;
+mod gamepad;
 mod hand;
 mod hud;
 mod items;
 mod menu;
 mod mobs;
+mod pad_menu;
 mod recipe_book;
 mod search;
 mod settings;
@@ -116,6 +118,14 @@ impl GameMode {
 struct Game {
     agents: agents::Agents,
     split: split::Split,
+    pads: gamepad::Pads,
+    /// `--pad-player` screen, seated once the world loads.
+    virtual_pad: Option<String>,
+    /// A controller player's state is swapped into the host's fields (see
+    /// `Game::puppet`), and the container or bed they used, if any.
+    puppet: bool,
+    puppet_used: Option<glam::IVec3>,
+    puppet_popup: Option<String>,
     console: console::Console,
     search: search::Search,
     renderer: Renderer,
@@ -386,36 +396,8 @@ impl ApplicationHandler for App {
                     return;
                 }
                 match button {
-                    MouseButton::Left => {
-                        game.left_held = pressed;
-                        if pressed {
-                            game.hand.swing();
-                        }
-                        if !pressed {
-                            game.actions.breaking = None;
-                            game.release_attack();
-                        } else if game.attack() {
-                            game.actions.breaking = None;
-                        } else if game.mode == GameMode::Creative {
-                            game.break_block();
-                            game.action_cooldown = ACTION_REPEAT;
-                        } else {
-                            game.mine_pressed = true;
-                        }
-                    }
-                    MouseButton::Right => {
-                        game.right_held = pressed;
-                        if pressed && !game.equip_held() && !game.start_draw() {
-                            if game.held_item().is_none_or(|i| i.food().is_none()) {
-                                game.hand.swing();
-                            }
-                            game.place_block();
-                            game.action_cooldown = ACTION_REPEAT;
-                        } else if !pressed {
-                            game.actions.eat_timer = 0.0;
-                            game.release_bow();
-                        }
-                    }
+                    MouseButton::Left => game.attack_button(pressed),
+                    MouseButton::Right => game.use_button(pressed),
                     MouseButton::Middle if pressed => game.pick_block(),
                     _ => {}
                 }
@@ -651,6 +633,17 @@ impl Game {
         let mut game = Game {
             agents,
             split: split::Split { follow: args.split_screen.clone(), side_by_side: args.split_side },
+            // Screenshot runs never read controllers.
+            virtual_pad: args.pad_player.clone(),
+            puppet: false,
+            puppet_used: None,
+            puppet_popup: None,
+            pads: {
+                let mut pads = if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() };
+                let prop = |k: &str| root_props.get(k).map_or("", String::as_str);
+                pads.restore(prop("pads"), prop("pad_beds"));
+                pads
+            },
             search: search::Search {
                 query: args.inventory_search.clone().unwrap_or_default(),
                 focused: args.open_inventory && args.screenshot.is_none(),
@@ -809,6 +802,8 @@ impl Game {
                 self.player.flying = !self.player.flying;
                 self.player.vel = DVec3::ZERO;
             }
+            // Waiting in bed for other players: jumping gets up.
+            KeyCode::Space if self.sleeping.is_some() => self.sleeping = None,
             KeyCode::Space => {
                 self.jump_pressed = true;
                 // Double-tap space toggles flight, like Minecraft creative.
@@ -875,7 +870,17 @@ impl Game {
     }
 
     fn show_popup(&mut self, text: &str) {
-        self.popup = (text.to_string(), Instant::now());
+        // Messages about a controller player's hands go to their own view.
+        if self.puppet {
+            self.puppet_popup = Some(text.to_string());
+        } else {
+            self.popup = (text.to_string(), Instant::now());
+        }
+    }
+
+    /// Sneaking builds against containers and beds instead of using them.
+    fn sneak_building(&self) -> bool {
+        if self.puppet { self.player.sneaking } else { self.modifiers.shift_key() }
     }
 
     /// The single entry point for hurting the player (falls, drowning,
@@ -1065,7 +1070,14 @@ impl Game {
             }
             return;
         }
-        match slot {
+        if let Some(slot) = slot {
+            self.click_slot(slot, right);
+        }
+    }
+
+    /// A left (or right) click on a slot of the open container screen.
+    fn click_slot(&mut self, slot: hud::SlotRef, right: bool) {
+        match Some(slot) {
             Some(hud::SlotRef::Inventory(i)) => self.inventory.click(i, right),
             Some(hud::SlotRef::Craft(i)) => {
                 crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
@@ -1183,7 +1195,7 @@ impl Game {
         // Chewing sounds four times a second.
         if (before / 0.25).floor() != ((before + dt) / 0.25).floor() {
             let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
-            self.audio.play(sound, None, 0.7, (1.4, 1.7));
+            self.audio.play(sound, Some(self.player.eye()), 0.7, (1.4, 1.7));
         }
         if finished {
             self.inventory.take_one(self.actions.selected);
@@ -1198,7 +1210,7 @@ impl Game {
             return false;
         }
         let sound = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Wood);
-        self.audio.play(sound, None, 0.6, (1.4, 1.6));
+        self.audio.play(sound, Some(self.player.eye()), 0.6, (1.4, 1.6));
         true
     }
 
@@ -1222,7 +1234,7 @@ impl Game {
             self.show_popup(&format!("{} broke", capitalize(held.name())));
             self.audio.play(
                 crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood),
-                None,
+                Some(self.player.eye()),
                 0.8,
                 (1.3, 1.5),
             );
@@ -1236,13 +1248,24 @@ impl Game {
         let Some((pos, normal)) = self.target() else { return };
         // Containers open on right-click; holding Shift builds against them.
         match self.world.get_block(pos) {
-            _ if self.modifiers.shift_key() => {}
+            _ if self.sneak_building() => {}
+            // A controller player's own screens and bed open instead.
+            Some(b)
+                if self.puppet
+                    && (b == Block::CRAFTING_TABLE
+                        || b.is_bed()
+                        || crate::world::furnace::is_furnace(b)
+                        || crate::world::chest::is_chest(b)) =>
+            {
+                self.puppet_used = Some(pos);
+                return;
+            }
             Some(Block::CRAFTING_TABLE) => return self.open_crafting_table(),
             Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
             Some(b) if b.is_bed() => return self.use_bed(pos),
             Some(b) if b.is_door() || b.is_gate() => {
-                self.toggle_door(pos);
+                self.toggle_door(pos, self.player.forward());
                 return;
             }
             _ => {}
@@ -1347,6 +1370,10 @@ impl Game {
         }
         self.placed = true;
         self.spawn_pending_mobs();
+        // Seated once the ground it stands on is in place.
+        if let Some(screen) = self.virtual_pad.take() {
+            self.virtual_pad(&screen);
+        }
     }
 
     /// Drives `--screenshot`: once streaming settles, capture a frame and
@@ -1429,6 +1456,9 @@ impl Game {
     fn save(&mut self) {
         let mut props = std::collections::BTreeMap::new();
         props.insert("agents".into(), self.agents.serialize(self.dimension.name()));
+        let (pads, pad_beds) = self.pads.serialize();
+        props.insert("pads".into(), pads);
+        props.insert("pad_beds".into(), pad_beds);
         props.insert("mode".to_string(), self.mode.name().to_string());
         props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.
@@ -1504,6 +1534,74 @@ impl Game {
         }
     }
 
+    /// Attack/mine button (left click, or a controller's RT) pressed or released.
+    fn attack_button(&mut self, pressed: bool) {
+        self.left_held = pressed;
+        if pressed {
+            self.hand.swing();
+        }
+        if !pressed {
+            self.actions.breaking = None;
+            self.release_attack();
+        } else if self.attack() {
+            self.actions.breaking = None;
+        } else if self.mode == GameMode::Creative {
+            self.break_block();
+            self.action_cooldown = ACTION_REPEAT;
+        } else {
+            self.mine_pressed = true;
+        }
+    }
+
+    /// Use button (right click, or a controller's LT) pressed or released.
+    fn use_button(&mut self, pressed: bool) {
+        self.right_held = pressed;
+        if pressed && !self.equip_held() && !self.start_draw() {
+            if self.held_item().is_none_or(|i| i.food().is_none()) {
+                self.hand.swing();
+            }
+            self.place_block();
+            self.action_cooldown = ACTION_REPEAT;
+        } else if !pressed {
+            self.actions.eat_timer = 0.0;
+            self.release_bow();
+        }
+    }
+
+    /// Held attack/use buttons for one tick: mining, repeated breaking or
+    /// placing, eating and drawing a bow.
+    fn act(&mut self, acting: bool, dt: f64) {
+        let mine_pressed = std::mem::take(&mut self.mine_pressed);
+        self.action_cooldown -= dt;
+        if acting && (self.left_held || mine_pressed) && self.mode == GameMode::Survival {
+            if self.action_cooldown <= 0.0 {
+                self.continue_breaking(dt);
+            }
+            if self.actions.breaking.is_some() {
+                self.hand.swing();
+            }
+        } else if acting
+            && self.action_cooldown <= 0.0
+            && (self.left_held || self.right_held)
+            && self.actions.bow_draw.is_none()
+            // Buckets act once per click.
+            && !(self.right_held && !self.left_held && self.holding_bucket())
+        {
+            if self.left_held {
+                self.break_block();
+            } else {
+                self.place_block();
+            }
+            self.hand.swing();
+            self.action_cooldown = ACTION_REPEAT;
+        }
+        if !self.left_held {
+            self.actions.breaking = None;
+        }
+        self.eat(acting, dt);
+        self.update_bow(acting, dt);
+    }
+
     /// One fixed gameplay step. Rendering and worker polling never
     /// change the amount of simulation time advanced here.
     fn tick(&mut self) {
@@ -1511,7 +1609,6 @@ impl Game {
         let arriving = self.update_arrival();
         let input = self.movement_input(arriving);
         self.jump_pressed = false;
-        let mine_pressed = std::mem::take(&mut self.mine_pressed);
         self.previous_eye = self.player.eye();
         let before = self.player.pos;
         if !arriving {
@@ -1548,35 +1645,9 @@ impl Game {
             self.damage_player(hurts.starve, survival::CAUSE_STARVE);
         }
 
-        self.action_cooldown -= dt;
         let acting = self.menu.is_none() && !self.console.open && self.mouse_grabbed && !self.inventory_open;
-        if acting && (self.left_held || mine_pressed) && self.mode == GameMode::Survival {
-            if self.action_cooldown <= 0.0 {
-                self.continue_breaking(dt);
-            }
-            if self.actions.breaking.is_some() {
-                self.hand.swing();
-            }
-        } else if acting
-            && self.action_cooldown <= 0.0
-            && (self.left_held || self.right_held)
-            && self.actions.bow_draw.is_none()
-            // Buckets act once per click.
-            && !(self.right_held && !self.left_held && self.holding_bucket())
-        {
-            if self.left_held {
-                self.break_block();
-            } else {
-                self.place_block();
-            }
-            self.hand.swing();
-            self.action_cooldown = ACTION_REPEAT;
-        }
-        if !self.left_held {
-            self.actions.breaking = None;
-        }
-        self.eat(acting, dt);
-        self.update_bow(acting, dt);
+        self.act(acting, dt);
+        self.drive_pads(dt);
         self.tick_agents();
         crate::simulation::tick_world(&mut self.world, self.player.pos);
         self.update_mobs(dt);
@@ -1594,6 +1665,7 @@ impl Game {
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
         let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
+        self.poll_pads(dt as f32, paused);
 
         // Streaming and GPU uploads continue during offline pause.
         self.update_arrival();
@@ -1615,12 +1687,16 @@ impl Game {
         let input = self.movement_input(self.arrival.is_some());
         let rain_here = weather::rain_at(&self.world, &self.weather, self.player.pos);
         self.audio.update(&self.player, &self.world, rain_here, dt);
+        let ears: Vec<_> = self.followed().map(|(_, b)| (b.agent.player.eye(), b.agent.player.yaw)).collect();
+        self.audio.set_others(&ears);
+        self.agent_sounds();
         let alpha = if paused { 1.0 } else { self.clock.alpha() };
         let camera = crate::simulation::interpolated_eye(self.previous_eye, self.player.eye(), alpha);
         let distance = (camera - self.rendered_eye).with_y(0.0).length();
         let walked = if paused || self.player.flying || distance > 4.0 { 0.0 } else { distance as f32 };
         self.rendered_eye = camera;
         self.hand.update(dt as f32, self.held_item(), walked, self.player.on_ground);
+        self.animate_hands(dt as f32, alpha, paused);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);
         }
@@ -1768,7 +1844,9 @@ fn push_avatars(
     verts: &mut Vec<crate::entity::model::EntityVertex>,
 ) {
     for &(player, feet) in players {
-        if feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
+        // A body around the camera (players can share a spot) would fill the view.
+        let inside = (camera - feet).with_y(0.0).length() < 0.4 && (feet.y..feet.y + 1.9).contains(&camera.y);
+        if !inside && feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
             crate::entity::model::build_player(
                 player,
                 feet,

@@ -71,7 +71,7 @@ impl Game {
         }
         let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
         self.mobs.entities.shoot_arrow(eye, dir, power, survival);
-        self.audio.play(Sound::Bow, None, 0.8, (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power)));
+        self.audio.play(Sound::Bow, Some(eye), 0.8, (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power)));
         if survival {
             self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
         }

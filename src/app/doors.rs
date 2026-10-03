@@ -10,8 +10,8 @@ use super::{Game, GameMode};
 
 impl Game {
     /// Right-click on a door or fence gate opens or closes it (both halves
-    /// of a door). Returns whether it did.
-    pub(super) fn toggle_door(&mut self, pos: IVec3) -> bool {
+    /// of a door) for a player looking along `forward`. Returns whether it did.
+    pub(super) fn toggle_door(&mut self, pos: IVec3, forward: glam::Vec3) -> bool {
         let Some(b) = self.world.get_block(pos) else { return false };
         let open = match b.shaped() {
             Some(Shaped::Door { facing, open, upper }) => {
@@ -24,7 +24,7 @@ impl Game {
             }
             Some(Shaped::Gate { facing, open }) => {
                 // A gate swings away from whoever opens it.
-                let toward = Facing::toward(self.player.forward());
+                let toward = Facing::toward(forward);
                 let facing = if !open && toward.along_x() == facing.along_x() { toward } else { facing };
                 self.world.set_block(pos, Block::gate(facing, !open));
                 !open

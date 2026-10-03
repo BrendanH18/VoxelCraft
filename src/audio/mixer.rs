@@ -20,6 +20,8 @@ const BLOCK: usize = 256;
 pub const NEAR: f32 = 2.0;
 /// Distance at which positional sounds become inaudible.
 pub const FAR: f32 = 24.0;
+/// Extra split-screen listeners besides the host.
+pub const MAX_OTHERS: usize = 3;
 /// Largest left/right pan, so nothing is ever fully in one ear.
 const MAX_PAN: f32 = 0.75;
 const LIMIT: f32 = 0.9;
@@ -39,6 +41,12 @@ pub enum Command {
     Listener {
         pos: [f32; 3],
         yaw: f32,
+    },
+    /// Split-screen players' ears (x, y, z, yaw); the first `count` are used.
+    /// Each positional sound is heard by whichever ear hears it loudest.
+    Others {
+        count: u8,
+        ears: [[f32; 4]; MAX_OTHERS],
     },
     Master(f32),
     /// Low-pass the whole mix (head underwater).
@@ -102,6 +110,19 @@ fn voice_gains(v: &Voice, listener: [f32; 3], yaw: f32) -> (f32, f32) {
     (l * a, r * a)
 }
 
+/// A voice as heard by whichever ear (the host's or another player's) hears
+/// it loudest.
+fn heard(v: &Voice, listener: [f32; 3], yaw: f32, others: &[[f32; 4]]) -> (f32, f32) {
+    let mut best = voice_gains(v, listener, yaw);
+    for ear in others {
+        let g = voice_gains(v, [ear[0], ear[1], ear[2]], ear[3]);
+        if g.0.max(g.1) > best.0.max(best.1) {
+            best = g;
+        }
+    }
+    best
+}
+
 pub struct Mixer {
     bank: Arc<Bank>,
     rx: Receiver<Command>,
@@ -110,6 +131,8 @@ pub struct Mixer {
     last_variant: [u16; Sound::COUNT],
     listener: [f32; 3],
     yaw: f32,
+    others: [[f32; 4]; MAX_OTHERS],
+    other_count: usize,
     master: f32,
     master_target: f32,
     muffle: f32,
@@ -137,6 +160,8 @@ impl Mixer {
             last_variant: [u16::MAX; Sound::COUNT],
             listener: [0.0; 3],
             yaw: 0.0,
+            others: [[0.0; 4]; MAX_OTHERS],
+            other_count: 0,
             master,
             master_target: master,
             muffle: 0.0,
@@ -183,6 +208,10 @@ impl Mixer {
                 self.listener = pos;
                 self.yaw = yaw;
             }
+            Command::Others { count, ears } => {
+                self.others = ears;
+                self.other_count = (count as usize).min(MAX_OTHERS);
+            }
             Command::Master(g) => self.master_target = g.clamp(0.0, 2.0),
             Command::Muffle(on) => self.muffle_target = if on { 1.0 } else { 0.0 },
             Command::Ambience { wind, cave, rain } => {
@@ -213,7 +242,7 @@ impl Mixer {
             spatial: pos,
             cur: (0.0, 0.0),
         };
-        let g = voice_gains(&voice, self.listener, self.yaw);
+        let g = heard(&voice, self.listener, self.yaw, &self.others[..self.other_count]);
         if g.0.max(g.1) < 1e-4 {
             return; // out of earshot
         }
@@ -251,7 +280,7 @@ impl Mixer {
         // --- One-shot voices ------------------------------------------------
         for slot in 0..MAX_VOICES {
             let Some(mut v) = self.voices[slot] else { continue };
-            let target = voice_gains(&v, self.listener, self.yaw);
+            let target = heard(&v, self.listener, self.yaw, &self.others[..self.other_count]);
             let buf = &self.bank.buffers[v.buf as usize];
             let len = buf.len();
             let (dl, dr) = ((target.0 - v.cur.0) * inv_n, (target.1 - v.cur.1) * inv_n);

@@ -76,6 +76,22 @@ impl Ui {
         Self { verts: Vec::with_capacity(4096), width, height, scale: Self::scale_for(dpi) }
     }
 
+    /// A UI with an explicit scale (see [`Ui::fitted_scale`]).
+    pub fn with_scale(width: f32, height: f32, scale: f32) -> Self {
+        Self { verts: Vec::with_capacity(4096), width, height, scale }
+    }
+
+    /// Like Minecraft's automatic GUI scale: the display's scale, lowered
+    /// (not below 1) until the view is at least 320x180 UI pixels, so small
+    /// split-screen views keep their whole HUD on screen.
+    pub fn fitted_scale(width: f32, height: f32, dpi: f32) -> f32 {
+        let mut scale = Self::scale_for(dpi);
+        while scale > 1.0 && (width / scale < 320.0 || height / scale < 180.0) {
+            scale -= 1.0;
+        }
+        scale
+    }
+
     /// Physical pixels per UI pixel for a display scale factor.
     pub fn scale_for(dpi: f32) -> f32 {
         (dpi * 1.5).round().max(1.0)
@@ -203,5 +219,21 @@ impl Ui {
         let w = Self::text_width(s);
         self.rect(x - 1.0, y - 1.0, w + 2.0, 10.0, [0.0, 0.0, 0.0, 0.4]);
         self.text_raw(x, y, s, color);
+    }
+}
+
+#[cfg(test)]
+mod scale_tests {
+    use super::Ui;
+
+    #[test]
+    fn small_views_lower_the_gui_scale() {
+        // A full 1600x900 window at 2x keeps the display's scale.
+        assert_eq!(Ui::fitted_scale(1600.0, 900.0, 2.0), 3.0);
+        // Stacked halves and quarters drop a step to stay 320x180.
+        assert_eq!(Ui::fitted_scale(1600.0, 450.0, 2.0), 2.0);
+        assert_eq!(Ui::fitted_scale(800.0, 450.0, 2.0), 2.0);
+        // Never below one physical pixel per UI pixel.
+        assert_eq!(Ui::fitted_scale(200.0, 100.0, 2.0), 1.0);
     }
 }

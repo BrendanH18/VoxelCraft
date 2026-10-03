@@ -61,6 +61,13 @@ impl Game {
         (v.width, v.height)
     }
 
+    /// Physical pixels per UI pixel for the host's HUD and screens, smaller
+    /// when split-screen shrinks its view.
+    pub(super) fn ui_scale(&self) -> f32 {
+        let (w, h) = self.ui_size();
+        Ui::fitted_scale(w as f32, h as f32, self.renderer.scale_factor())
+    }
+
     /// `/splitscreen <player>|off|side|stacked`: follow an agent in another
     /// view (again to stop), close the extra views, or pick the layout.
     pub(super) fn split_command(&mut self, arg: &str) -> Result<String, String> {
@@ -71,7 +78,9 @@ impl Game {
                 if self.split.side_by_side { "side by side" } else { "stacked" }
             )),
             "off" => {
-                self.split.follow.clear();
+                // Controller players keep their views until they leave.
+                let pads = &self.pads;
+                self.split.follow.retain(|n| pads.seated(n));
                 Ok("Split-screen off".into())
             }
             "side" | "stacked" => {
@@ -115,6 +124,40 @@ impl Game {
         Fog { color, start, end, underwater }
     }
 
+    /// Plays what agents did since last frame: breaking, placing, chewing.
+    pub(super) fn agent_sounds(&mut self) {
+        use voxelcraft::agent::Event;
+        for bot in self.agents.players.values_mut() {
+            for event in bot.agent.events.drain(..) {
+                match event {
+                    Event::Broke(pos, block) => self.audio.block_break(block, pos),
+                    Event::Placed(pos, block) => self.audio.block_place(block, pos),
+                    Event::Chew => {
+                        let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
+                        self.audio.play(sound, Some(bot.agent.player.eye()), 0.7, (1.4, 1.7));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Swing, bob and item changes for every online player's hand, and their footsteps.
+    pub(super) fn animate_hands(&mut self, dt: f32, alpha: f64, paused: bool) {
+        for bot in self.agents.players.values_mut().filter(|b| b.active) {
+            let a = &bot.agent;
+            let feet = a.previous_pos.lerp(a.player.pos, alpha);
+            let distance = (feet - bot.drawn_feet).with_y(0.0).length();
+            bot.drawn_feet = feet;
+            let walked = if paused || a.player.flying || distance > 4.0 { 0.0 } else { distance as f32 };
+            self.audio.other_steps(&a.player, &self.world, walked as f64, &mut bot.stride);
+            if a.swings != bot.seen_swings {
+                bot.seen_swings = a.swings;
+                bot.hand.swing();
+            }
+            bot.hand.update(dt, a.inventory.get(a.selected).map(|s| s.item), walked, a.player.on_ground);
+        }
+    }
+
     /// Draws every followed player's view after the host's.
     pub(super) fn draw_followers(&mut self, frame: &mut Frame, scene: &Scene, viewports: &[Viewport]) {
         let names: Vec<String> = self.followed().map(|(n, _)| n.clone()).collect();
@@ -131,8 +174,9 @@ impl Game {
                 let (min, max) = self.world.outline(p);
                 (p, min, max)
             });
-            let crack = a
-                .breaking(&self.world)
+            let pad = self.pad_view(name).map(|p| (p.breaking, p.eating));
+            let crack = pad
+                .map_or_else(|| a.breaking(&self.world), |p| p.0)
                 .filter(|&(_, f)| f > 0.0)
                 .map(|(p, f)| (p, crate::world::block::tex::CRACK_0 + (f * 10.0).min(9.0) as u8));
             let ui = if self.show_hud || a.vitals.is_dead() {
@@ -172,12 +216,9 @@ impl Game {
                 highlight,
                 crack,
                 block_models: models,
-                // A steady hand: agents don't report swing or walk timing.
-                hand: (self.show_hud && !a.vitals.is_dead()).then(|| crate::render::hand::Hand {
-                    item: a.inventory.get(a.selected).map(|s| s.item),
-                    sky_light: crate::entity::sky_light(&self.world, camera),
-                    block_light: self.torch_light(camera),
-                    ..Default::default()
+                hand: (self.show_hud && !a.vitals.is_dead()).then(|| {
+                    let eating = pad.map_or(a.eating(), |p| p.1);
+                    bot.hand.view(eating, crate::entity::sky_light(&self.world, camera), self.torch_light(camera))
                 }),
                 rain: scene.rain,
                 ui,
@@ -190,7 +231,8 @@ impl Game {
     /// and their death message.
     fn follower_ui(&self, name: &str, bot: &Bot, (w, h): (u32, u32), now: Instant) -> Vec<UiVertex> {
         let a = &bot.agent;
-        let mut ui = Ui::new(w as f32, h as f32, self.renderer.scale_factor());
+        let mut ui =
+            Ui::with_scale(w as f32, h as f32, Ui::fitted_scale(w as f32, h as f32, self.renderer.scale_factor()));
         let (sw, sh) = ui.size();
         let underwater = a.player.head_in_water(&self.world);
         if underwater {
@@ -204,12 +246,20 @@ impl Game {
             ui.rect(0.0, 0.0, sw, sh, [0.5, 0.0, 0.0, 0.45]);
             let msg = format!("{name} {}", a.vitals.death.as_deref().unwrap_or("died"));
             ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), (sh / 2.0 - 10.0).floor(), &msg, WHITE);
-            let hint = "Waiting to respawn";
+            let hint = if self.pads.seated(name) { "Press A to respawn" } else { "Waiting to respawn" };
             ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), (sh / 2.0 + 4.0).floor(), hint, WHITE);
         } else {
             let (cx, cy) = ((sw / 2.0).floor(), (sh / 2.0).floor());
             ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
             ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
+            let pad = self.pad_view(name).unwrap_or_default();
+            let eating = if self.pads.seated(name) { pad.eating } else { a.eating() };
+            if eating > 0.0 {
+                super::hud::eating_bar(&mut ui, cx, cy, eating);
+            }
+            if let Some(power) = pad.bow {
+                super::hud::bow_bar(&mut ui, cx, cy, power);
+            }
         }
         let hud = super::hud::HudPlayer {
             inventory: &a.inventory,
@@ -218,8 +268,31 @@ impl Game {
             survival: !a.creative,
             underwater,
         };
-        self.bar_ui(&mut ui, &hud, now);
-        let label = format!("{name} (agent)");
+        // Screens cover the hotbar, as Minecraft's do.
+        let pad = self.pad_view(name).unwrap_or_default();
+        match self.pad_menu(name) {
+            Some(menu) => self.pad_menu_ui(&mut ui, name, menu),
+            None => {
+                let top = self.bar_ui(&mut ui, &hud, now);
+                if let Some(msg) = pad.message {
+                    let x = ((sw - Ui::text_width(msg)) / 2.0).floor();
+                    ui.text(x, (top - 12.0).floor(), msg, WHITE);
+                }
+            }
+        }
+        if let Some(t) = pad.sleeping {
+            // Falling asleep fades the view out, then waits for everyone.
+            let k = (t / super::bed::SLEEP_TIME).min(1.0);
+            ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.02, 0.97 * k]);
+            let (asleep, players) = self.sleep_count();
+            if k >= 1.0 && asleep < players {
+                let msg = format!("{asleep}/{players} players sleeping");
+                ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), (sh / 2.0 - 10.0).floor(), &msg, WHITE);
+                let hint = "Press A to leave the bed";
+                ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), (sh / 2.0 + 4.0).floor(), hint, WHITE);
+            }
+        }
+        let label = if self.pads.seated(name) { name.to_string() } else { format!("{name} (agent)") };
         ui.rect(2.0, 2.0, Ui::text_width(&label) + 6.0, 12.0, [0.0, 0.0, 0.0, 0.5]);
         ui.text(5.0, 4.0, &label, WHITE);
         // A thin border separates the views.

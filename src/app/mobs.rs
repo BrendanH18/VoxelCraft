@@ -14,10 +14,10 @@ use super::{Game, GameMode, REACH};
 pub(super) struct Mobs {
     pub entities: Entities,
     /// Seconds until the player can hit again.
-    attack_cooldown: f64,
+    pub(super) attack_cooldown: f64,
     /// The current left-button hold started on a mob: don't break blocks
     /// until it's released.
-    attack_held: bool,
+    pub(super) attack_held: bool,
     /// `--spawn` requests, applied once the world has loaded.
     pending: Vec<(MobKind, IVec3)>,
     /// `--wait`: seconds to keep simulating before a `--screenshot`.

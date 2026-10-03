@@ -34,6 +34,8 @@ pub struct Args {
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
     pub open_inventory: bool,
+    /// Seat a virtual controller player with this screen open (screenshots).
+    pub pad_player: Option<String>,
     pub inventory_search: Option<String>,
     /// Start with the pause menu or options screen open (screenshots).
     pub open_menu: Option<String>,
@@ -93,6 +95,10 @@ voxelcraft [options]
   --f3              start with the debug overlay open
   --inventory-search <text>  initial inventory search query
   --open-inventory  start with the inventory screen open (screenshots)
+  --pad-player <s>  seat a controller player holding a copy of your
+                    inventory, with play, pause, inventory, crafting or
+                    palette (creative) open
+                    (screenshots)
   --open-menu <m>   start with a menu open: pause, options or title (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water; b may be a raw block id)
@@ -140,6 +146,7 @@ fn parse_args() -> Result<Args, String> {
         debug_overlay: false,
         mode: None,
         open_inventory: false,
+        pad_player: None,
         inventory_search: None,
         open_menu: None,
         time: None,
@@ -202,6 +209,13 @@ fn parse_args() -> Result<Args, String> {
             "--f3" => args.debug_overlay = true,
             "--inventory-search" => args.inventory_search = Some(value("--inventory-search")?),
             "--open-inventory" => args.open_inventory = true,
+            "--pad-player" => {
+                let m = value("--pad-player")?;
+                if !matches!(m.as_str(), "play" | "pause" | "inventory" | "crafting" | "palette") {
+                    return Err(format!("--pad-player: expected play, pause, inventory, crafting or palette, got {m}"));
+                }
+                args.pad_player = Some(m);
+            }
             "--open-menu" => {
                 let m = value("--open-menu")?;
                 if !matches!(m.as_str(), "pause" | "options" | "title") {
@@ -302,6 +316,7 @@ impl Args {
         self.seed = None;
         self.mode = None;
         self.open_inventory = false;
+        self.pad_player = None;
         self.inventory_search = None;
         self.open_console = false;
         self.open_menu = None;

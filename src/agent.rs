@@ -17,7 +17,21 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, dimension overworld/nether/end (host console only).";
+
+/// Something an agent did that players nearby should hear.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Event {
+    Broke(IVec3, Block),
+    Placed(IVec3, Block),
+    Chew,
+}
+
+/// Unheard events kept per agent (a host without audio never drains them).
+const MAX_EVENTS: usize = 64;
+
+/// Ticks to eat one food item (1.6 s).
+pub const EAT_TICKS: u32 = 32;
 
 pub enum Command {
     Help,
@@ -26,6 +40,7 @@ pub enum Command {
     Catalog(String),
     Look(f32, f32),
     Run(MoveInput, u32, bool),
+    Eat,
     Place,
     Attack,
     Select(usize),
@@ -97,6 +112,7 @@ impl Command {
                     false,
                 )
             }
+            ["eat"] => Self::Eat,
             ["place"] => Self::Place,
             ["attack"] => Self::Attack,
             ["select", n] => Self::Select(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
@@ -150,8 +166,15 @@ pub struct Agent {
     pub creative: bool,
     pub selected: usize,
     pub remaining: u32,
+    /// Arm swings so far (placing, attacking, mining), for animation.
+    pub swings: u32,
+    /// Sounds to play, drained by the host.
+    pub events: Vec<Event>,
     input: MoveInput,
     mining: bool,
+    /// Holding "use" eats held food; `bite` counts the ticks chewed.
+    eating: bool,
+    bite: u32,
     breaking: Option<(IVec3, f64)>,
     cooldown: f64,
 }
@@ -166,8 +189,12 @@ impl Agent {
             creative: false,
             selected: 0,
             remaining: 0,
+            swings: 0,
+            events: Vec::new(),
             input: MoveInput::default(),
             mining: false,
+            eating: false,
+            bite: 0,
             breaking: None,
             cooldown: 0.0,
         }
@@ -201,7 +228,20 @@ impl Agent {
                 self.input = input;
                 self.remaining = n;
                 self.mining = mine;
+                self.eating = false;
                 self.breaking = None;
+            }
+            Command::Eat => {
+                let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+                held.item.food().ok_or("selected item is not food")?;
+                if self.creative || !self.vitals.hunger.can_eat() {
+                    return Err("not hungry".into());
+                }
+                self.input = MoveInput::default();
+                self.remaining = EAT_TICKS;
+                self.mining = false;
+                self.eating = true;
+                self.bite = 0;
             }
             Command::Look(yaw, pitch) => {
                 self.player.yaw = yaw.to_radians();
@@ -211,6 +251,7 @@ impl Agent {
             Command::Select(slot) => {
                 self.selected = slot;
                 self.breaking = None;
+                self.bite = 0;
             }
             Command::Fly(on) => {
                 if on && !self.creative {
@@ -270,7 +311,9 @@ impl Agent {
                 if !world.set_block(at, block) {
                     return Err("placement failed".into());
                 }
+                self.emit(Event::Placed(at, block));
                 self.cooldown = 0.22;
+                self.swings += 1;
                 if !self.creative {
                     self.inventory.take_one(self.selected);
                 }
@@ -295,6 +338,7 @@ impl Agent {
                     self.inventory.wear(self.selected, mining::wear(held, true));
                 }
                 self.cooldown = crate::entity::ATTACK_COOLDOWN;
+                self.swings += 1;
             }
             Command::Craft(item) => self.craft(item, world)?,
             Command::Chest(take, slot) => {
@@ -343,35 +387,50 @@ impl Agent {
     }
 
     fn craft(&mut self, item: Item, world: &World) -> Result<(), String> {
-        for recipe in crafting::recipes().iter().filter(|r| r.result.item == item) {
-            let grid = recipe.preview();
-            if grid.size == 3
-                && !self
-                    .target(world)
-                    .is_some_and(|(p, _)| world.get_block(p).is_some_and(|b| b.base() == Block::CRAFTING_TABLE))
-            {
+        let at_table = self.at_crafting_table(world);
+        let inventory = crafting::recipes()
+            .iter()
+            .filter(|r| r.result.item == item)
+            .find_map(|r| self.crafted(r, at_table))
+            .ok_or("missing ingredients, inventory space or targeted crafting table")?;
+        self.inventory = inventory;
+        Ok(())
+    }
+
+    fn at_crafting_table(&self, world: &World) -> bool {
+        self.target(world).is_some_and(|(p, _)| world.get_block(p).is_some_and(|b| b.base() == Block::CRAFTING_TABLE))
+    }
+
+    /// The inventory after crafting `recipe` once, if the ingredients and
+    /// room are there (3x3 recipes need a targeted crafting table).
+    fn crafted(&self, recipe: &crafting::Recipe, at_table: bool) -> Option<Inventory> {
+        let grid = recipe.preview();
+        if grid.size == 3 && !at_table {
+            return None;
+        }
+        let mut inventory = self.inventory.clone();
+        for i in 0..grid.cells.len() {
+            if grid.cells[i].is_none() {
                 continue;
             }
-            let mut inventory = self.inventory.clone();
-            let mut valid = true;
-            for i in 0..grid.cells.len() {
-                if grid.cells[i].is_none() {
-                    continue;
-                }
-                let options = recipe.alternatives(i).unwrap();
-                if let Some(slot) = inventory.slots.iter().position(|s| s.is_some_and(|s| options.contains(&s.item))) {
-                    inventory.take_one(slot);
-                } else {
-                    valid = false;
-                    break;
-                }
-            }
-            if valid && inventory.add_stack(recipe.result) == 0 {
-                self.inventory = inventory;
-                return Ok(());
+            let options = recipe.alternatives(i).unwrap();
+            let slot = inventory.slots.iter().position(|s| s.is_some_and(|s| options.contains(&s.item)))?;
+            inventory.take_one(slot);
+        }
+        (inventory.add_stack(recipe.result) == 0).then_some(inventory)
+    }
+
+    /// Every result that `craft` would make right now, once each, in recipe
+    /// book order.
+    pub fn craftable(&self, world: &World) -> Vec<Stack> {
+        let at_table = self.at_crafting_table(world);
+        let mut out: Vec<Stack> = Vec::new();
+        for recipe in crafting::recipes() {
+            if !out.iter().any(|s| s.item == recipe.result.item) && self.crafted(recipe, at_table).is_some() {
+                out.push(recipe.result);
             }
         }
-        Err("missing ingredients, inventory space or targeted crafting table".into())
+        out
     }
 
     /// Advance physics/survival/mining once. All sessions tick before the shared world systems.
@@ -418,12 +477,14 @@ impl Agent {
             let held = self.inventory.get(self.selected).map(|s| s.item);
             let progress = self.breaking.filter(|(p, _)| *p == pos).map_or(0.0, |(_, n)| n) + TICK_SECONDS;
             self.breaking = Some((pos, progress));
+            self.swings += 1;
             if block != Block::BEDROCK
                 && !block.is_door()
                 && !block.is_bed()
                 && (self.creative || progress >= mining::break_time(block, held) as f64)
             {
                 world.set_block(pos, Block::AIR);
+                self.emit(Event::Broke(pos, block));
                 if !self.creative {
                     if mining::can_harvest(block, held) {
                         world.spill_block(pos, block);
@@ -439,6 +500,7 @@ impl Agent {
         } else {
             self.breaking = None;
         }
+        self.chew();
         self.remaining = self.remaining.saturating_sub(1);
         entities.items.retain_mut(|item| {
             if item.pickup_delay > 0.0 || !item.touches_player(self.player.pos) {
@@ -447,6 +509,43 @@ impl Agent {
             item.stack.count = self.inventory.add_stack(item.stack);
             item.stack.count > 0
         });
+    }
+
+    /// One tick of eating: a bite finishes after [`EAT_TICKS`] of holding
+    /// the same food, like Java. Switching slots restarts it via `select`.
+    fn chew(&mut self) {
+        let food = self.inventory.get(self.selected).and_then(|s| s.item.food());
+        let Some((hunger, saturation)) =
+            food.filter(|_| self.remaining > 0 && self.eating && !self.creative && self.vitals.hunger.can_eat())
+        else {
+            self.bite = 0;
+            return;
+        };
+        self.bite += 1;
+        // Chewing sounds four times a second.
+        if self.bite % 5 == 1 {
+            self.emit(Event::Chew);
+        }
+        if self.bite >= EAT_TICKS {
+            self.bite = 0;
+            self.inventory.take_one(self.selected);
+            self.vitals.hunger.eat(hunger, saturation);
+            // A timed `eat` command stops after one bite.
+            if self.remaining <= 1 {
+                self.eating = false;
+            }
+        }
+    }
+
+    fn emit(&mut self, event: Event) {
+        if self.events.len() < MAX_EVENTS {
+            self.events.push(event);
+        }
+    }
+
+    /// Fraction of the current bite chewed, for the HUD.
+    pub fn eating(&self) -> f32 {
+        self.bite as f32 / EAT_TICKS as f32
     }
 
     /// Armored damage from a mob, arrow or explosion. Knockback only lands
@@ -467,6 +566,15 @@ impl Agent {
             self.remaining = 0;
         }
         taken
+    }
+
+    /// Held device input for the next tick (a local controller). Unlike a
+    /// timed `move` or `mine`, this keeps mining progress on the same block.
+    pub fn hold(&mut self, input: MoveInput, mining: bool, using: bool) {
+        self.input = input;
+        self.mining = mining;
+        self.eating = using;
+        self.remaining = 1;
     }
 
     /// The block being mined and the fraction broken (for crack overlays).
@@ -561,6 +669,40 @@ mod tests {
         assert_eq!(entities.items.iter().map(|i| i.stack.count).sum::<u8>(), 2);
     }
     #[test]
+    fn eating_takes_a_full_bite_and_held_use_keeps_chewing() {
+        let mut world = world();
+        world.set_block(IVec3::new(1, 149, 1), Block::STONE);
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        assert!(a.execute(Command::Eat, &mut world, &mut entities, &[]).is_err(), "nothing held");
+        a.inventory.add(Item::BREAD, 2);
+        assert!(a.execute(Command::Eat, &mut world, &mut entities, &[]).is_err(), "not hungry");
+        a.vitals.hunger = crate::simulation::survival::Hunger::restore(10.0, 0.0, 0.0);
+        a.execute(Command::Eat, &mut world, &mut entities, &[]).unwrap();
+        for _ in 0..EAT_TICKS - 1 {
+            a.tick(&mut world, &mut entities);
+        }
+        assert_eq!(a.inventory.get(0).unwrap().count, 2, "bite unfinished");
+        a.tick(&mut world, &mut entities);
+        assert_eq!(a.inventory.get(0).unwrap().count, 1);
+        assert_eq!(a.vitals.hunger.food, 15.0);
+        assert_eq!(a.remaining, 0);
+        // A controller holding use chews until released; letting go restarts the bite.
+        for _ in 0..EAT_TICKS / 2 {
+            a.hold(MoveInput::default(), false, true);
+            a.tick(&mut world, &mut entities);
+        }
+        a.hold(MoveInput::default(), false, false);
+        a.tick(&mut world, &mut entities);
+        assert_eq!(a.eating(), 0.0);
+        for _ in 0..EAT_TICKS {
+            a.hold(MoveInput::default(), false, true);
+            a.tick(&mut world, &mut entities);
+        }
+        assert!(a.inventory.get(0).is_none());
+        assert_eq!(a.vitals.hunger.food, 20.0);
+    }
+    #[test]
     fn parsing_bounds() {
         for s in [
             "tp NaN 0 0",
@@ -641,8 +783,11 @@ mod tests {
         let blocker = DVec3::new(3.5, 150.0, 1.5);
         assert!(a.execute(Command::Place, &mut world, &mut entities, &[blocker]).is_err());
         assert_eq!(a.inventory.get(0).unwrap().count, 2);
+        assert_eq!(a.swings, 0, "failed placements don't swing");
         a.execute(Command::Place, &mut world, &mut entities, &[]).unwrap();
         assert_eq!(a.inventory.get(0).unwrap().count, 1);
+        assert_eq!(a.swings, 1);
+        assert_eq!(a.events, [Event::Placed(IVec3::new(3, 151, 1), Block::STONE)]);
         assert_eq!(world.get_block(IVec3::new(3, 151, 1)), Some(Block::STONE));
         assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err());
         assert_eq!(a.inventory.get(0).unwrap().count, 1);

@@ -137,7 +137,7 @@ pub(super) fn inside([x, y, w, h]: [f32; 4], (mx, my): (f32, f32)) -> bool {
 impl Game {
     /// Mouse position in UI pixels, and the screen size in UI pixels.
     fn menu_cursor(&self) -> ((f32, f32), (f32, f32)) {
-        let scale = Ui::scale_for(self.renderer.scale_factor());
+        let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         ((self.cursor_px.0 / scale, self.cursor_px.1 / scale), (w as f32 / scale, h as f32 / scale))
     }

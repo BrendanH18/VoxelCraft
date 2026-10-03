@@ -62,7 +62,7 @@ pub(super) struct HudPlayer<'a> {
 impl Game {
     pub(super) fn build_ui(&self, now: Instant) -> Vec<UiVertex> {
         let (w, h) = self.ui_size();
-        let mut ui = Ui::new(w as f32, h as f32, self.renderer.scale_factor());
+        let mut ui = Ui::with_scale(w as f32, h as f32, self.ui_scale());
         let (sw, sh) = ui.size();
 
         if self.player.head_in_water(&self.world) {
@@ -103,16 +103,10 @@ impl Game {
             ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
             ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
             if self.actions.eat_timer > 0.0 && !self.inventory_open && self.menu.is_none() {
-                let progress = (self.actions.eat_timer / super::EAT_TIME).clamp(0.0, 1.0) as f32;
-                ui.text(cx - Ui::text_width("Eating") / 2.0, cy + 14.0, "Eating", WHITE);
-                ui.rect(cx - 30.0, cy + 25.0, 60.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
-                ui.rect(cx - 29.0, cy + 26.0, 58.0 * progress, 3.0, [0.96, 0.72, 0.3, 1.0]);
+                eating_bar(&mut ui, cx, cy, (self.actions.eat_timer / super::EAT_TIME) as f32);
             }
             if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && self.menu.is_none()) {
-                let full = power >= 1.0;
-                ui.rect(cx - 12.0, cy + 12.0, 24.0, 4.0, [0.0, 0.0, 0.0, 0.7]);
-                let colour = if full { [1.0, 0.95, 0.5, 1.0] } else { [0.85, 0.85, 0.85, 1.0] };
-                ui.rect(cx - 11.0, cy + 13.0, 22.0 * power, 2.0, colour);
+                bow_bar(&mut ui, cx, cy, power);
             }
         }
 
@@ -124,6 +118,13 @@ impl Game {
             // Falling asleep: the screen fades to black.
             let k = (t / super::bed::SLEEP_TIME).min(1.0);
             ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.02, 0.97 * k]);
+            let (asleep, players) = self.sleep_count();
+            if k >= 1.0 && asleep < players {
+                let msg = format!("{asleep}/{players} players sleeping");
+                ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), (sh / 2.0 - 10.0).floor(), &msg, WHITE);
+                let hint = "Jump to leave the bed";
+                ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), (sh / 2.0 + 4.0).floor(), hint, WHITE);
+            }
         }
         if let Some(cause) = &self.vitals.death {
             // Blending is in linear space: it takes a high alpha to look dark.
@@ -274,7 +275,7 @@ impl Game {
 
 /// Item icon, durability bar and (when `counts`) stack size in an 18x18
 /// slot at (x, y).
-fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
+pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
     match (stack.item.block(), stack.item.icon_layer()) {
         (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
         (None, Some(layer)) => ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE),
@@ -354,7 +355,7 @@ impl Game {
         if !self.shows_recipes() {
             return None;
         }
-        let scale = Ui::scale_for(self.renderer.scale_factor());
+        let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         self.recipe_layout((w as f32 / scale, h as f32 / scale))
             .control((self.cursor_px.0 / scale, self.cursor_px.1 / scale), self.recipe_book.open)
@@ -427,7 +428,7 @@ impl Game {
     /// Whether the mouse is off the inventory panel and the recipe book:
     /// clicking there throws the held stack out, like Minecraft.
     pub(super) fn cursor_off_panel(&self) -> bool {
-        let scale = Ui::scale_for(self.renderer.scale_factor());
+        let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         let screen = (w as f32 / scale, h as f32 / scale);
         let mouse = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
@@ -438,7 +439,7 @@ impl Game {
     }
 
     pub(super) fn slot_under_cursor(&self) -> Option<SlotRef> {
-        let scale = Ui::scale_for(self.renderer.scale_factor());
+        let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         let (mx, my) = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
         if self.shows_recipes()
@@ -782,4 +783,19 @@ fn hash(a: u32, b: u32) -> u32 {
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
+/// "Eating" and the bite's progress, below the crosshair at (cx, cy).
+pub(super) fn eating_bar(ui: &mut Ui, cx: f32, cy: f32, progress: f32) {
+    ui.text(cx - Ui::text_width("Eating") / 2.0, cy + 14.0, "Eating", WHITE);
+    ui.rect(cx - 30.0, cy + 25.0, 60.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
+    ui.rect(cx - 29.0, cy + 26.0, 58.0 * progress.clamp(0.0, 1.0), 3.0, [0.96, 0.72, 0.3, 1.0]);
+}
+
+/// Bow draw strength under the crosshair at (cx, cy); gold when full.
+pub(super) fn bow_bar(ui: &mut Ui, cx: f32, cy: f32, power: f32) {
+    let full = power >= 1.0;
+    ui.rect(cx - 12.0, cy + 12.0, 24.0, 4.0, [0.0, 0.0, 0.0, 0.7]);
+    let colour = if full { [1.0, 0.95, 0.5, 1.0] } else { [0.85, 0.85, 0.85, 1.0] };
+    ui.rect(cx - 11.0, cy + 13.0, 22.0 * power, 2.0, colour);
 }

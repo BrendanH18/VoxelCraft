@@ -68,7 +68,7 @@ impl Game {
         true
     }
     pub(super) fn search_click(&mut self) -> bool {
-        let scale = Ui::scale_for(self.renderer.scale_factor());
+        let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         let (x, y, width) = self.search_bounds((w as f32 / scale, h as f32 / scale));
         let (mx, my) = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
