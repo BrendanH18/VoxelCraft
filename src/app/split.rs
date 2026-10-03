@@ -61,6 +61,13 @@ impl Game {
         (v.width, v.height)
     }
 
+    /// Physical pixels per UI pixel for the host's HUD and screens, smaller
+    /// when split-screen shrinks its view.
+    pub(super) fn ui_scale(&self) -> f32 {
+        let (w, h) = self.ui_size();
+        Ui::fitted_scale(w as f32, h as f32, self.renderer.scale_factor())
+    }
+
     /// `/splitscreen <player>|off|side|stacked`: follow an agent in another
     /// view (again to stop), close the extra views, or pick the layout.
     pub(super) fn split_command(&mut self, arg: &str) -> Result<String, String> {
@@ -224,7 +231,8 @@ impl Game {
     /// and their death message.
     fn follower_ui(&self, name: &str, bot: &Bot, (w, h): (u32, u32), now: Instant) -> Vec<UiVertex> {
         let a = &bot.agent;
-        let mut ui = Ui::new(w as f32, h as f32, self.renderer.scale_factor());
+        let mut ui =
+            Ui::with_scale(w as f32, h as f32, Ui::fitted_scale(w as f32, h as f32, self.renderer.scale_factor()));
         let (sw, sh) = ui.size();
         let underwater = a.player.head_in_water(&self.world);
         if underwater {

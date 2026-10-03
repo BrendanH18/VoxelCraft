@@ -62,7 +62,7 @@ pub(super) struct HudPlayer<'a> {
 impl Game {
     pub(super) fn build_ui(&self, now: Instant) -> Vec<UiVertex> {
         let (w, h) = self.ui_size();
-        let mut ui = Ui::new(w as f32, h as f32, self.renderer.scale_factor());
+        let mut ui = Ui::with_scale(w as f32, h as f32, self.ui_scale());
         let (sw, sh) = ui.size();
 
         if self.player.head_in_water(&self.world) {
@@ -355,7 +355,7 @@ impl Game {
         if !self.shows_recipes() {
             return None;
         }
-        let scale = Ui::scale_for(self.renderer.scale_factor());
+        let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         self.recipe_layout((w as f32 / scale, h as f32 / scale))
             .control((self.cursor_px.0 / scale, self.cursor_px.1 / scale), self.recipe_book.open)
@@ -428,7 +428,7 @@ impl Game {
     /// Whether the mouse is off the inventory panel and the recipe book:
     /// clicking there throws the held stack out, like Minecraft.
     pub(super) fn cursor_off_panel(&self) -> bool {
-        let scale = Ui::scale_for(self.renderer.scale_factor());
+        let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         let screen = (w as f32 / scale, h as f32 / scale);
         let mouse = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
@@ -439,7 +439,7 @@ impl Game {
     }
 
     pub(super) fn slot_under_cursor(&self) -> Option<SlotRef> {
-        let scale = Ui::scale_for(self.renderer.scale_factor());
+        let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         let (mx, my) = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
         if self.shows_recipes()
