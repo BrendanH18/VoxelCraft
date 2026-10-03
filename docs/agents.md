@@ -60,6 +60,7 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `look yaw pitch` | Set camera direction |
 | `move forward right ticks [jump sprint sneak]` | Physics input; axes −1 through 1; sneak also descends in flight |
 | `wait ticks`, `mine ticks` | Wait or hold mining with normal tool speed, harvest rules and wear |
+| `eat` | Eat one of the selected food over 1.6 seconds (32 ticks), when hungry and in survival |
 | `select 1..9`, `fly on/off` | Choose hotbar slot or toggle creative flight |
 | `place`, `attack`, `drop` | Place selected block, hit a targeted mob, or drop selected stack |
 | `craft item` | Craft once with available recipe alternatives; larger recipes require targeting a crafting table |
@@ -131,7 +132,7 @@ profile that a controller is using.
 | Left stick / right stick | Move / look |
 | A | Jump (double-tap to fly in creative); respawn after death |
 | RT | Mine (hold) and attack |
-| LT | Place the held block (hold to repeat) |
+| LT | Place the held block (hold to repeat), or eat held food |
 | LB / RB | Previous / next hotbar slot |
 | B | Drop the held stack |
 | Left stick click | Sprint until you stop walking forward |
@@ -140,7 +141,7 @@ profile that a controller is using.
 
 An unplugged controller freezes its player until it reconnects.
 `/splitscreen off` keeps controller views. Controller players can't yet open
-the inventory, eat, use buckets or doors, or pause the game. Sound still
+the inventory, use buckets or doors, or pause the game. Sound still
 follows the host.
 
 ## LAN and raw protocol

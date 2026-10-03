@@ -17,7 +17,10 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, dimension overworld/nether/end (host console only).";
+
+/// Ticks to eat one food item (1.6 s).
+pub const EAT_TICKS: u32 = 32;
 
 pub enum Command {
     Help,
@@ -26,6 +29,7 @@ pub enum Command {
     Catalog(String),
     Look(f32, f32),
     Run(MoveInput, u32, bool),
+    Eat,
     Place,
     Attack,
     Select(usize),
@@ -97,6 +101,7 @@ impl Command {
                     false,
                 )
             }
+            ["eat"] => Self::Eat,
             ["place"] => Self::Place,
             ["attack"] => Self::Attack,
             ["select", n] => Self::Select(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
@@ -152,6 +157,9 @@ pub struct Agent {
     pub remaining: u32,
     input: MoveInput,
     mining: bool,
+    /// Holding "use" eats held food; `bite` counts the ticks chewed.
+    eating: bool,
+    bite: u32,
     breaking: Option<(IVec3, f64)>,
     cooldown: f64,
 }
@@ -168,6 +176,8 @@ impl Agent {
             remaining: 0,
             input: MoveInput::default(),
             mining: false,
+            eating: false,
+            bite: 0,
             breaking: None,
             cooldown: 0.0,
         }
@@ -201,7 +211,20 @@ impl Agent {
                 self.input = input;
                 self.remaining = n;
                 self.mining = mine;
+                self.eating = false;
                 self.breaking = None;
+            }
+            Command::Eat => {
+                let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+                held.item.food().ok_or("selected item is not food")?;
+                if self.creative || !self.vitals.hunger.can_eat() {
+                    return Err("not hungry".into());
+                }
+                self.input = MoveInput::default();
+                self.remaining = EAT_TICKS;
+                self.mining = false;
+                self.eating = true;
+                self.bite = 0;
             }
             Command::Look(yaw, pitch) => {
                 self.player.yaw = yaw.to_radians();
@@ -211,6 +234,7 @@ impl Agent {
             Command::Select(slot) => {
                 self.selected = slot;
                 self.breaking = None;
+                self.bite = 0;
             }
             Command::Fly(on) => {
                 if on && !self.creative {
@@ -439,6 +463,7 @@ impl Agent {
         } else {
             self.breaking = None;
         }
+        self.chew();
         self.remaining = self.remaining.saturating_sub(1);
         entities.items.retain_mut(|item| {
             if item.pickup_delay > 0.0 || !item.touches_player(self.player.pos) {
@@ -447,6 +472,33 @@ impl Agent {
             item.stack.count = self.inventory.add_stack(item.stack);
             item.stack.count > 0
         });
+    }
+
+    /// One tick of eating: a bite finishes after [`EAT_TICKS`] of holding
+    /// the same food, like Java. Switching slots restarts it via `select`.
+    fn chew(&mut self) {
+        let food = self.inventory.get(self.selected).and_then(|s| s.item.food());
+        let Some((hunger, saturation)) =
+            food.filter(|_| self.remaining > 0 && self.eating && !self.creative && self.vitals.hunger.can_eat())
+        else {
+            self.bite = 0;
+            return;
+        };
+        self.bite += 1;
+        if self.bite >= EAT_TICKS {
+            self.bite = 0;
+            self.inventory.take_one(self.selected);
+            self.vitals.hunger.eat(hunger, saturation);
+            // A timed `eat` command stops after one bite.
+            if self.remaining <= 1 {
+                self.eating = false;
+            }
+        }
+    }
+
+    /// Fraction of the current bite chewed, for the HUD.
+    pub fn eating(&self) -> f32 {
+        self.bite as f32 / EAT_TICKS as f32
     }
 
     /// Armored damage from a mob, arrow or explosion. Knockback only lands
@@ -471,9 +523,10 @@ impl Agent {
 
     /// Held device input for the next tick (a local controller). Unlike a
     /// timed `move` or `mine`, this keeps mining progress on the same block.
-    pub fn hold(&mut self, input: MoveInput, mining: bool) {
+    pub fn hold(&mut self, input: MoveInput, mining: bool, using: bool) {
         self.input = input;
         self.mining = mining;
+        self.eating = using;
         self.remaining = 1;
     }
 
@@ -567,6 +620,40 @@ mod tests {
         assert_eq!(bare.vitals.death.as_deref(), Some("was blown up by a creeper"));
         assert!(bare.inventory.get(0).is_none());
         assert_eq!(entities.items.iter().map(|i| i.stack.count).sum::<u8>(), 2);
+    }
+    #[test]
+    fn eating_takes_a_full_bite_and_held_use_keeps_chewing() {
+        let mut world = world();
+        world.set_block(IVec3::new(1, 149, 1), Block::STONE);
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        assert!(a.execute(Command::Eat, &mut world, &mut entities, &[]).is_err(), "nothing held");
+        a.inventory.add(Item::BREAD, 2);
+        assert!(a.execute(Command::Eat, &mut world, &mut entities, &[]).is_err(), "not hungry");
+        a.vitals.hunger = crate::simulation::survival::Hunger::restore(10.0, 0.0, 0.0);
+        a.execute(Command::Eat, &mut world, &mut entities, &[]).unwrap();
+        for _ in 0..EAT_TICKS - 1 {
+            a.tick(&mut world, &mut entities);
+        }
+        assert_eq!(a.inventory.get(0).unwrap().count, 2, "bite unfinished");
+        a.tick(&mut world, &mut entities);
+        assert_eq!(a.inventory.get(0).unwrap().count, 1);
+        assert_eq!(a.vitals.hunger.food, 15.0);
+        assert_eq!(a.remaining, 0);
+        // A controller holding use chews until released; letting go restarts the bite.
+        for _ in 0..EAT_TICKS / 2 {
+            a.hold(MoveInput::default(), false, true);
+            a.tick(&mut world, &mut entities);
+        }
+        a.hold(MoveInput::default(), false, false);
+        a.tick(&mut world, &mut entities);
+        assert_eq!(a.eating(), 0.0);
+        for _ in 0..EAT_TICKS {
+            a.hold(MoveInput::default(), false, true);
+            a.tick(&mut world, &mut entities);
+        }
+        assert!(a.inventory.get(0).is_none());
+        assert_eq!(a.vitals.hunger.food, 20.0);
     }
     #[test]
     fn parsing_bounds() {

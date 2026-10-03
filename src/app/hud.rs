@@ -103,10 +103,7 @@ impl Game {
             ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
             ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
             if self.actions.eat_timer > 0.0 && !self.inventory_open && self.menu.is_none() {
-                let progress = (self.actions.eat_timer / super::EAT_TIME).clamp(0.0, 1.0) as f32;
-                ui.text(cx - Ui::text_width("Eating") / 2.0, cy + 14.0, "Eating", WHITE);
-                ui.rect(cx - 30.0, cy + 25.0, 60.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
-                ui.rect(cx - 29.0, cy + 26.0, 58.0 * progress, 3.0, [0.96, 0.72, 0.3, 1.0]);
+                eating_bar(&mut ui, cx, cy, (self.actions.eat_timer / super::EAT_TIME) as f32);
             }
             if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && self.menu.is_none()) {
                 let full = power >= 1.0;
@@ -782,4 +779,11 @@ fn hash(a: u32, b: u32) -> u32 {
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
+/// "Eating" and the bite's progress, below the crosshair at (cx, cy).
+pub(super) fn eating_bar(ui: &mut Ui, cx: f32, cy: f32, progress: f32) {
+    ui.text(cx - Ui::text_width("Eating") / 2.0, cy + 14.0, "Eating", WHITE);
+    ui.rect(cx - 30.0, cy + 25.0, 60.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
+    ui.rect(cx - 29.0, cy + 26.0, 58.0 * progress.clamp(0.0, 1.0), 3.0, [0.96, 0.72, 0.3, 1.0]);
 }

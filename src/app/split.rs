@@ -212,6 +212,9 @@ impl Game {
             let (cx, cy) = ((sw / 2.0).floor(), (sh / 2.0).floor());
             ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
             ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
+            if a.eating() > 0.0 {
+                super::hud::eating_bar(&mut ui, cx, cy, a.eating());
+            }
         }
         let hud = super::hud::HudPlayer {
             inventory: &a.inventory,

@@ -4,8 +4,8 @@
 //! Player2..Player8, so inventory and position are kept between sessions.
 //!
 //! Bedrock-style layout: left stick moves, right stick looks, A jumps (double
-//! tap to fly in creative), RT mines and attacks, LT places, LB/RB cycle the
-//! hotbar, B drops, left stick click sprints, right stick click toggles
+//! tap to fly in creative), RT mines and attacks, LT places or eats, LB/RB cycle the
+//! hotbar (holding food eats it), B drops, left stick click sprints, right stick click toggles
 //! sneaking. Hold View/Back to leave.
 
 use std::time::{Duration, Instant};
@@ -289,7 +289,7 @@ impl Game {
         self.split.follow.retain(|n| n != name);
         if let Some(bot) = self.agents.players.get_mut(name) {
             bot.active = false;
-            bot.agent.hold(MoveInput::default(), false);
+            bot.agent.hold(MoveInput::default(), false, false);
         }
     }
 
@@ -328,10 +328,11 @@ impl Game {
                     _ => Ok(()),
                 };
             }
-            if tick.place {
+            let food = agent.inventory.get(agent.selected).is_some_and(|s| s.item.food().is_some());
+            if tick.place && !food {
                 let _ = agent.execute(Command::Place, world, entities, &others);
             }
-            agent.hold(tick.input, tick.mine);
+            agent.hold(tick.input, tick.mine, tick.place && food);
         }
     }
 }
