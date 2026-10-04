@@ -1,6 +1,7 @@
 //! Fixed game time and device-independent gameplay steps shared by clients
 //! and headless callers. Input and presentation stay with the caller.
 
+pub mod effects;
 pub mod experience;
 pub mod survival;
 pub mod weather;
@@ -81,6 +82,7 @@ pub fn tick_player(
     creative: bool,
 ) -> PlayerStep {
     let before = player.pos;
+    player.apply_effects(&vitals.effects);
     player.update(TICK_SECONDS, input, world);
     let moved = (player.pos - before).with_y(0.0).length();
     let env = player_environment(player, world, input, moved);

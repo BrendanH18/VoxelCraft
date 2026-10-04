@@ -1644,6 +1644,7 @@ impl Game {
         self.previous_eye = self.player.eye();
         let before = self.player.pos;
         if !arriving {
+            self.player.apply_effects(&self.vitals.effects);
             self.player.update(dt, input, &self.world);
             self.update_portal(dt);
         }

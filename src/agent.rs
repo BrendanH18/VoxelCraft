@@ -418,7 +418,11 @@ impl Agent {
                     .raycast(self.player.eye(), self.player.forward().as_dvec3(), distance)
                     .ok_or("no mob within reach")?;
                 let held = self.inventory.get(self.selected).map(|s| s.item);
-                if let Some(kind) = entities.attack(i, self.player.forward().as_dvec3(), mining::attack_damage(held)) {
+                if let Some(kind) = entities.attack(
+                    i,
+                    self.player.forward().as_dvec3(),
+                    (mining::attack_damage(held) + self.vitals.effects.attack_bonus()).max(0.0),
+                ) {
                     entities.drop_loot(kind, entities.mobs[i].pos);
                 }
                 if !self.creative

@@ -57,6 +57,22 @@ pub struct Player {
     pub sneaking: bool,
     /// How far the eyes have lowered for sneaking, 0..1 (eased).
     crouch: f64,
+    /// Status effects on movement (see [`Player::apply_effects`]).
+    modifiers: Modifiers,
+}
+
+/// What status effects do to movement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Modifiers {
+    speed: f64,
+    jump_levels: u32,
+    slow_falling: bool,
+}
+
+impl Default for Modifiers {
+    fn default() -> Self {
+        Self { speed: 1.0, jump_levels: 0, slow_falling: false }
+    }
 }
 
 impl Player {
@@ -75,6 +91,7 @@ impl Player {
             pushing_wall: false,
             sneaking: false,
             crouch: 0.0,
+            modifiers: Modifiers::default(),
         }
     }
 
@@ -143,6 +160,17 @@ impl Player {
         min.cmplt(bmax).all() && max.cmpgt(bmin).all()
     }
 
+    /// Takes on the movement effects of Speed, Slowness, Jump Boost and
+    /// Slow Falling; call before each update.
+    pub fn apply_effects(&mut self, effects: &crate::simulation::effects::Effects) {
+        use crate::simulation::effects::Effect;
+        self.modifiers = Modifiers {
+            speed: effects.speed_factor(),
+            jump_levels: effects.jump_boost(),
+            slow_falling: effects.has(Effect::SlowFalling),
+        };
+    }
+
     pub fn update(&mut self, dt: f64, input: MoveInput, world: &World) {
         // Don't simulate until the ground under us has streamed in.
         if !world.is_loaded(self.pos.floor().as_ivec3()) {
@@ -178,7 +206,7 @@ impl Player {
             let target = wish * speed + DVec3::Y * vertical * speed;
             self.vel = self.vel.lerp(target, (dt * 12.0).min(1.0));
         } else if self.in_water {
-            let target = wish * SWIM_SPEED;
+            let target = wish * SWIM_SPEED * self.modifiers.speed;
             let k = (dt * 6.0).min(1.0);
             self.vel.x += (target.x - self.vel.x) * k;
             self.vel.z += (target.z - self.vel.z) * k;
@@ -198,7 +226,7 @@ impl Player {
             let below = (self.pos - DVec3::Y * 0.05).floor().as_ivec3();
             let ground = world.get_block(below).filter(|_| self.on_ground);
             let on_ice = ground == Some(Block::ICE);
-            let target = wish * speed * if ground == Some(Block::SOUL_SAND) { 0.4 } else { 1.0 };
+            let target = wish * speed * self.modifiers.speed * if ground == Some(Block::SOUL_SAND) { 0.4 } else { 1.0 };
             let grip = match (self.on_ground, on_ice) {
                 (true, true) => 1.6,
                 (true, false) => 18.0,
@@ -207,9 +235,12 @@ impl Player {
             let k = (dt * grip).min(1.0);
             self.vel.x += (target.x - self.vel.x) * k;
             self.vel.z += (target.z - self.vel.z) * k;
-            self.vel.y = (self.vel.y - GRAVITY * dt).max(-78.0);
+            // Java's slow falling: an eighth of the gravity while falling.
+            let gravity = if self.modifiers.slow_falling && self.vel.y <= 0.0 { GRAVITY / 8.0 } else { GRAVITY };
+            self.vel.y = (self.vel.y - gravity * dt).max(-78.0);
             if input.jump && self.on_ground {
-                self.vel.y = JUMP_VELOCITY;
+                // Jump Boost: +0.1 blocks per tick of take-off speed per level.
+                self.vel.y = JUMP_VELOCITY + 2.0 * self.modifiers.jump_levels as f64;
                 self.jumped = true;
             }
         }
