@@ -87,6 +87,14 @@ it for screenshots, development experiments and manual release testing.
 World names are limited to 1–64 ASCII letters, digits, hyphens or underscores;
 Windows reserved device names are rejected on all platforms.
 
+Save downgrades are unsupported. This version reads older furnace saves,
+but versions from before experience was added cannot read the new furnace
+records and discard their saved contents and cooking state. Before upgrading,
+quit the game and copy each complete `saves/<name>` world folder, including
+its dimension subfolders, to a backup outside the active saves directory.
+To return to an older build, restore its pre-upgrade backup while the game
+is closed; keep the upgraded world separately rather than opening it in that build.
+
 ## Unsigned first launch
 
 Windows SmartScreen may offer **More info → Run anyway**. Windows 11 Smart App

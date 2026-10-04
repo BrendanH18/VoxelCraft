@@ -36,7 +36,9 @@
 | Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
 
 The world autosaves every two minutes and on exit. Switching away from
-the window also pauses offline play. A host started with `--agent-listen` keeps
+the window also pauses offline play. See [save backups and version compatibility](releases.md#player-data-and-old-saves)
+before upgrading or returning to an older build.
+A host started with `--agent-listen` keeps
 simulating while menus are open. See [hosted agent CLI and console commands](agents.md).
 
 **Options** (Esc → Options...): render distance (2–32 chunks), field of
