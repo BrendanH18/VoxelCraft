@@ -837,6 +837,23 @@ mod tests {
     }
 
     #[test]
+    fn spawners_require_loaded_cage_blocks() {
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        let cage = IVec3::new(1, 160, 1);
+        let stale = IVec3::new(2, 160, 1);
+        world.load_spawners("1,160,1=blaze|2,160,1=zombie|40,160,1=blaze");
+        assert!(world.spawners().is_empty(), "saved cages in unloaded chunks stay inactive");
+        world.insert_chunk(chunk_of(cage), Arc::new(ChunkData::Uniform(Block::AIR)), false);
+        world.set_block(cage, Block::SPAWNER);
+        assert_eq!(world.spawner(cage), Some(crate::entity::MobKind::Blaze), "saved kind survives loading");
+        assert_eq!(world.spawners(), vec![(cage, crate::entity::MobKind::Blaze)]);
+        world.set_block(stale, Block::STONE);
+        assert_eq!(world.spawners(), vec![(cage, crate::entity::MobKind::Blaze)], "stale entries stay inactive");
+        world.set_block(cage, Block::AIR);
+        assert!(world.spawners().is_empty(), "breaking a cage stops spawning");
+    }
+
+    #[test]
     fn unloaded_agents_preserve_survival_inventory_and_timed_commands() {
         use crate::agent::{Agent, Command};
         use crate::entity::Entities;

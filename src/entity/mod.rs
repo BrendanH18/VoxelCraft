@@ -593,7 +593,7 @@ impl Entities {
         self.spawner_delays.retain(|p, _| spawners.iter().any(|(q, _)| q == p));
         for (cell, kind) in spawners {
             let centre = cell.as_dvec3() + DVec3::splat(0.5);
-            if !ctx.players.iter().any(|t| t.pos.distance_squared(centre) < SPAWNER_RANGE * SPAWNER_RANGE) {
+            if !ctx.players.iter().any(|t| t.alive && t.pos.distance_squared(centre) < SPAWNER_RANGE * SPAWNER_RANGE) {
                 continue;
             }
             if self.rng.chance(dt * 6.0) {
@@ -1449,6 +1449,30 @@ mod tests {
         fn spawners(&self) -> Vec<(IVec3, MobKind)> {
             self.1.clone()
         }
+    }
+
+    #[test]
+    fn spawners_ignore_dead_players_and_pause_the_delay() {
+        let cell = IVec3::new(0, 11, 0);
+        let world = Caged(Grid::flat(10), vec![(cell, MobKind::Blaze)]);
+        let mut e = Entities::new(17);
+        let mut c = ctx(DVec3::new(10.5, 10.0, 0.5));
+        c.players[0].alive = false;
+        e.run_spawners(2.0, &world, &c);
+        assert!(e.mobs.is_empty() && e.puffs.is_empty() && e.spawner_delays.is_empty());
+
+        c.players[0].alive = true;
+        e.run_spawners(0.5, &world, &c);
+        assert_eq!(e.spawner_delays[&cell], 0.5);
+        e.puffs.clear();
+        c.players[0].alive = false;
+        e.run_spawners(20.0, &world, &c);
+        assert_eq!(e.spawner_delays[&cell], 0.5, "death pauses an active cage");
+        assert!(e.mobs.is_empty() && e.puffs.is_empty());
+
+        c.players[0].alive = true;
+        e.run_spawners(0.6, &world, &c);
+        assert!((1..=4).contains(&e.count(MobKind::Blaze)), "living creative players activate cages too");
     }
 
     #[test]

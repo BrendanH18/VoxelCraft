@@ -16,9 +16,13 @@ impl World {
         self.spawners.get(&p).copied()
     }
 
-    /// Every spawner in a loaded chunk.
+    /// Every saved spawner whose loaded cell still holds a cage.
     pub fn spawners(&self) -> Vec<(IVec3, MobKind)> {
-        self.spawners.iter().filter(|(p, _)| self.is_loaded(**p)).map(|(&p, &k)| (p, k)).collect()
+        self.spawners
+            .iter()
+            .filter(|(p, _)| self.get_block(**p) == Some(Block::SPAWNER))
+            .map(|(&p, &k)| (p, k))
+            .collect()
     }
 
     /// Sets which mob an existing spawner makes. Returns whether there was

@@ -337,7 +337,7 @@ a static violet sky, no weather or natural Overworld/Nether mob spawning, and
 its own `end/` save folder. Water works; beds explode. End stone is mineable
 with a pickaxe and appears in the creative catalog.
 
-This is the terrain/visiting foundation. The dragon, crystals, Endermen,
+This is the terrain/visiting foundation. The dragon, crystals,
 strongholds/portal progression, gateways, chorus trees, cities, shulkers and
 elytra are still roadmap work. Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
 describes the larger progression being built toward.
