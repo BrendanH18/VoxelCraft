@@ -62,6 +62,7 @@ pub(super) fn picked_item(block: Block) -> Item {
         Block::LIT_FURNACE => Block::FURNACE.into(),
         Block::FARMLAND | Block::WET_FARMLAND => Block::DIRT.into(),
         b if b.crop_stage().is_some() => Item::WHEAT_SEEDS,
+        b if b.wart_age().is_some() => Item::NETHER_WART,
         Block::OAK_DOOR => Item::OAK_DOOR,
         b => b.into(),
     }

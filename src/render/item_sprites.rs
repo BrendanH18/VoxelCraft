@@ -386,6 +386,22 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             shaded(&ball, x, y, body, 0.05)
                 .map(|p| if shine { tint(glint, 1.0) } else { tint([p[0], p[1], p[2]], 0.8 + rim * 0.6) })
         }
+        Sprite::Wart => {
+            // Three knobbly red bulbs clumped on a short stalk.
+            let bulbs = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                [(5.5, 7.0, 3.4), (10.5, 6.0, 3.2), (8.0, 10.5, 3.6)]
+                    .iter()
+                    .any(|&(cx, cy, r)| (px - cx).powi(2) + (py - cy).powi(2) <= r * r)
+            };
+            let stalk = (7..=8).contains(&x) && (13..=15).contains(&y);
+            if stalk {
+                Some(tint([96, 18, 26], 1.0))
+            } else {
+                let spot = noise(x, y, 13) < 0.18;
+                shaded(&bulbs, x, y, [168, 34, 42], 0.1).map(|p| if spot { tint([p[0], p[1], p[2]], 0.7) } else { p })
+            }
+        }
         Sprite::Door => {
             // The door's own two textures, squeezed to half width.
             let (layer, ty) = if y < 8 { (tex::DOOR_TOP, y * 2) } else { (tex::DOOR_BOTTOM, (y - 8) * 2) };

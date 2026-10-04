@@ -84,6 +84,8 @@ full performance display instead of duplicating the compact counter.
   jumping or falling onto farmland can trample it. Leaves drop their tree's
   sapling (1 in 20, jungle 1 in 40; oak leaves also apples, 1 in 200);
   planted on grass or dirt, saplings grow into trees.
+  Nether wart planted on soul sand ages through 4 stages (1 in 10 random
+  ticks, in any light, ignoring bone meal); ripe wart drops 2-4, unripe 1.
   Sugar cane grows next to water up to 3 blocks tall, and must be planted
   on grass, dirt or sand beside water. Leaves that can't reach a log
   within 6 blocks decay a few seconds after a tree is felled. Grass spreads

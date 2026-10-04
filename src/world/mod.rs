@@ -1231,6 +1231,39 @@ mod tests {
     }
 
     #[test]
+    fn nether_wart_grows_in_the_dark_on_soul_sand() {
+        use crate::item::Item;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let sand = IVec3::new(0, 200, 0);
+        world.set_block(sand, Block::SOUL_SAND);
+        // Roofed over: wart ignores light, unlike wheat.
+        world.set_block(sand + IVec3::Y * 3, Block::STONE);
+        assert!(world.set_block(sand + IVec3::Y, Block::nether_wart(0)));
+        assert!(Block::nether_wart(0).can_stay_on(Block::SOUL_SAND));
+        assert!(!Block::nether_wart(0).can_stay_on(Block::FARMLAND));
+        assert!(!world.apply_bone_meal(sand + IVec3::Y), "bone meal does nothing to wart");
+        for _ in 0..300 {
+            world.random_tick(sand + IVec3::Y);
+        }
+        assert_eq!(world.get_block(sand + IVec3::Y), Some(Block::nether_wart(3)));
+
+        // Ripe wart drops 2-4, unripe wart one.
+        world.drops.clear();
+        world.spill_block(sand + IVec3::Y, Block::nether_wart(3));
+        let ripe: u8 = world.drops.iter().map(|&(_, s)| s.count).sum();
+        assert!(world.drops.iter().all(|(_, s)| s.item == Item::NETHER_WART) && (2..=4).contains(&ripe));
+        world.drops.clear();
+        world.spill_block(sand + IVec3::Y, Block::nether_wart(1));
+        assert_eq!(world.drops.iter().map(|&(_, s)| (s.item, s.count)).collect::<Vec<_>>(), [(Item::NETHER_WART, 1)]);
+
+        // It pops off when the soul sand goes.
+        world.set_block(sand, Block::NETHERRACK);
+        assert_eq!(world.get_block(sand + IVec3::Y), Some(Block::AIR));
+        assert_eq!(Item::from_name("nether_wart"), Some(Item::NETHER_WART));
+        assert_eq!(Item::NETHER_WART.places(), Some(Block::nether_wart(0)));
+    }
+
+    #[test]
     fn chests_keep_their_contents_save_and_spill() {
         use crate::inventory::Stack;
         use crate::item::Item;

@@ -506,6 +506,7 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             shade([134, 96, 64], furrow * wet)
         }
         l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat(l - tex::WHEAT_0, x, y),
+        l if (tex::NETHER_WART_0..tex::NETHER_WART_0 + 3).contains(&l) => nether_wart(l - tex::NETHER_WART_0, x, y),
         tex::OAK_SAPLING | tex::SPRUCE_SAPLING | tex::BIRCH_SAPLING | tex::JUNGLE_SAPLING | tex::ACACIA_SAPLING => {
             let (px, py) = (x as f32 - 7.5, y as f32);
             let stem = (x == 7 || x == 8) && y >= 10;
@@ -684,6 +685,31 @@ fn wheat(stage: u8, x: usize, y: usize) -> Rgba {
         return shade([224, 190, 84], if notch { 0.82 } else { 1.05 });
     }
     shade(c, 0.85 + rnd(tex::WHEAT_0 + stage, x, y, 9) * 0.25)
+}
+
+/// Nether wart at look `stage` 0..3: dark red shoots that thicken and,
+/// once ripe, carry knobbly bulbs.
+fn nether_wart(stage: u8, x: usize, y: usize) -> Rgba {
+    const STALKS: [usize; 4] = [2, 6, 10, 13];
+    let r = rnd(tex::NETHER_WART_0 + stage, x, y, 11);
+    let width = if stage == 0 { 1 } else { 2 };
+    // Ripe bulbs swell a pixel past the stalk on either side.
+    let reach = if stage == 2 { 1 } else { 0 };
+    let Some(i) = STALKS.iter().position(|&sx| x + reach >= sx && x < sx + width + reach) else {
+        return [0, 0, 0, 0];
+    };
+    let height = [5, 8, 11][stage as usize] - (i % 2) * 2;
+    let top = SIZE - height;
+    let on_stalk = x >= STALKS[i] && x < STALKS[i] + width;
+    if stage == 2 && y + 1 >= top && y < top + 4 {
+        let knob = rnd(tex::NETHER_WART_0, x, y, 12) > 0.2;
+        return if knob { shade([182, 38, 46], 0.75 + r * 0.45) } else { [0, 0, 0, 0] };
+    }
+    if !on_stalk || y < top {
+        return [0, 0, 0, 0];
+    }
+    let tip = y < top + 2 + stage as usize;
+    if tip { shade([164, 30, 38], 0.85 + r * 0.35) } else { shade([108, 18, 28], 0.8 + r * 0.3) }
 }
 
 fn flower(layer: u8, x: usize, y: usize, r: f32) -> Rgba {

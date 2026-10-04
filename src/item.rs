@@ -169,6 +169,8 @@ pub enum Sprite {
     Rod([u8; 3]),
     /// A glossy sphere (ender pearl): body colour and highlight.
     Pearl([u8; 3], [u8; 3]),
+    /// A knobbly red nether wart.
+    Wart,
     Tool(ToolKind, Tier),
     Armor(ArmorPiece, ArmorMaterial),
 }
@@ -196,7 +198,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 42] = [
+static ITEMS: [ItemInfo; 43] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -254,6 +256,7 @@ static ITEMS: [ItemInfo; 42] = [
     },
     item("blaze rod", Sprite::Rod([250, 190, 40])),
     item("blaze powder", Sprite::Powder([250, 150, 30])),
+    item("nether wart", Sprite::Wart),
 ];
 
 /// Uses before a bow breaks.
@@ -314,6 +317,8 @@ impl Item {
     pub const ENDER_PEARL: Item = Item(295);
     pub const BLAZE_ROD: Item = Item(296);
     pub const BLAZE_POWDER: Item = Item(297);
+    /// Planted on soul sand (see `Block::nether_wart`).
+    pub const NETHER_WART: Item = Item(298);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
@@ -332,6 +337,7 @@ impl Item {
     pub fn places(self) -> Option<Block> {
         match self {
             Item::WHEAT_SEEDS => Some(Block::wheat(0)),
+            Item::NETHER_WART => Some(Block::nether_wart(0)),
             i => i.block(),
         }
     }
@@ -436,8 +442,12 @@ impl Item {
 
     pub fn from_name(name: &str) -> Option<Item> {
         if let Some(b) = Block::from_name(name) {
-            // Doors are placed by an item, not as a block.
-            return Some(if b.is_door() { Item::OAK_DOOR } else { Item::from_block(b) });
+            // Doors and nether wart are placed by an item, not as a block.
+            return Some(match b {
+                b if b.is_door() => Item::OAK_DOOR,
+                b if b.wart_age().is_some() => Item::NETHER_WART,
+                b => Item::from_block(b),
+            });
         }
         let name = name.replace('_', " ");
         Item::all_items().find(|i| i.name() == name)

@@ -1,8 +1,8 @@
 //! Things that grow and decay on their own, driven by Minecraft-style random
-//! block ticks: wheat ripens, saplings become trees, grass spreads over lit
-//! dirt (and dies under cover), farmland gets wet near water or dries back
-//! to dirt. Leaves cut off from their tree's logs decay a few seconds after
-//! the last log near them goes.
+//! block ticks: wheat and nether wart ripen, saplings become trees, grass
+//! spreads over lit dirt (and dies under cover), farmland gets wet near
+//! water or dries back to dirt. Leaves cut off from their tree's logs decay
+//! a few seconds after the last log near them goes.
 
 use glam::{DVec3, IVec3};
 
@@ -25,6 +25,8 @@ const LEAF_REACH: i32 = 6;
 /// One in this many random ticks grows a crop on wet farmland (twice as
 /// many on dry), roughly Minecraft's rate for a lone crop.
 const CROP_GROWTH: u64 = 7;
+/// One in this many random ticks ages nether wart (Java's rate).
+const WART_GROWTH: u64 = 10;
 /// One in this many random ticks grows a sapling into a tree.
 const SAPLING_GROWTH: u64 = 7;
 
@@ -50,6 +52,8 @@ impl World {
                 let seeds = 1 + (0..3).filter(|_| self.roll() % 7 < 4).count() as u8;
                 out.push(Stack::new(Item::WHEAT_SEEDS, seeds));
             }
+            // Ripe wart drops 2-4.
+            b if b.wart_age() == Some(3) => out.push(Stack::new(Item::NETHER_WART, 1 + (self.roll() % 3) as u8)),
             Block::TALL_GRASS | Block::FERN if self.one_in(8) => out.push(Stack::new(Item::WHEAT_SEEDS, 1)),
             Block::CLAY => out.push(Stack::new(Item::CLAY_BALL, 3)),
             Block::GLOWSTONE => out.push(Stack::new(Item::GLOWSTONE_DUST, 2 + (self.roll() % 3) as u8)),
@@ -129,6 +133,10 @@ impl World {
                 if self.grows_here(p) && self.one_in(if wet { CROP_GROWTH } else { 2 * CROP_GROWTH }) {
                     self.edit(p, Block::wheat(b.crop_stage().unwrap() + 1), false);
                 }
+            }
+            // Java: one in ten random ticks, whatever the light.
+            b if b.wart_age().is_some_and(|a| a < 3) && self.one_in(WART_GROWTH) => {
+                self.edit(p, Block::nether_wart(b.wart_age().unwrap() + 1), false);
             }
             _ => {}
         }

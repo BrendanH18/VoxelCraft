@@ -168,7 +168,9 @@ pub mod tex {
     pub const ITEM_MORE_COUNT: u8 = 32;
     pub const END_STONE: u8 = ITEM_MORE_0 + ITEM_MORE_COUNT;
     pub const SPAWNER: u8 = END_STONE + 1;
-    pub const COUNT: u32 = SPAWNER as u32 + 1;
+    /// Nether wart's three looks: ages 0-1, age 2 and ripe (age 3).
+    pub const NETHER_WART_0: u8 = SPAWNER + 1;
+    pub const COUNT: u32 = NETHER_WART_0 as u32 + 3;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
@@ -325,6 +327,9 @@ impl Block {
     pub const NETHER_BRICK_FENCE: Block = Block(182);
     /// A monster spawner cage (see `World::spawner`).
     pub const SPAWNER: Block = Block(183);
+    /// Nether wart at ages 0..=3, ids 184..=187 (see [`Block::nether_wart`]).
+    /// Grows on soul sand, in any light.
+    pub const NETHER_WART: Block = Block(184);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -385,6 +390,16 @@ impl Block {
     /// Growth stage of a wheat crop.
     pub fn crop_stage(self) -> Option<u8> {
         (59..=66).contains(&self.0).then(|| self.0 - 59)
+    }
+
+    /// Nether wart at `age` 0..=3 (3 is ripe).
+    pub const fn nether_wart(age: u8) -> Block {
+        Block(184 + if age > 3 { 3 } else { age })
+    }
+
+    /// Age of a nether wart crop.
+    pub fn wart_age(self) -> Option<u8> {
+        (184..=187).contains(&self.0).then(|| self.0 - 184)
     }
 
     /// A fence gate facing `facing`.
@@ -655,6 +670,7 @@ impl Block {
             Block::FARMLAND | Block::WET_FARMLAND => Some(Block::DIRT.into()),
             b if b.crop_stage() == Some(7) => Some(Item::WHEAT),
             b if b.crop_stage().is_some() => Some(Item::WHEAT_SEEDS),
+            b if b.wart_age().is_some() => Some(Item::NETHER_WART),
             Block::CLAY => Some(Item::CLAY_BALL),
             Block::MELON => Some(Item::MELON_SLICE),
             // The foot drops the bed; breaking either half breaks both.
@@ -843,6 +859,7 @@ impl Block {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS) || below.is_farmland()
             }
             b if b.crop_stage().is_some() => below.is_farmland(),
+            b if b.wart_age().is_some() => below == Block::SOUL_SAND,
             _ => true,
         }
     }
@@ -1242,6 +1259,7 @@ const fn make(id: u8) -> BlockInfo {
         181 => ("end stone", Opaque, all(tex::END_STONE)),
         182 => ("nether brick fence", Shaped, all(tex::NETHER_BRICKS)),
         183 => ("spawner", Cutout, all(tex::SPAWNER)),
+        184..=187 => ("nether wart", Cross, all(tex::NETHER_WART_0 + (id - 184).saturating_sub(1))),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.
