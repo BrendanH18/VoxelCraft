@@ -175,6 +175,8 @@ pub struct Agent {
     /// Seconds in bed (the host fades the view and skips the night once
     /// everyone has slept long enough). Acting or being hurt gets up.
     pub sleeping: Option<f32>,
+    /// Foot of the Overworld bed last used, where a dead agent respawns.
+    pub spawn_bed: Option<IVec3>,
     input: MoveInput,
     mining: bool,
     /// Holding "use" eats held food; `bite` counts the ticks chewed.
@@ -197,6 +199,7 @@ impl Agent {
             swings: 0,
             events: Vec::new(),
             sleeping: None,
+            spawn_bed: None,
             input: MoveInput::default(),
             mining: false,
             eating: false,
@@ -390,7 +393,16 @@ impl Agent {
                 if !self.vitals.is_dead() {
                     return Err("player is alive".into());
                 }
-                self.player = Player::new(world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+                let overworld = world.generator.dimension == Dimension::Overworld;
+                let bed = self.spawn_bed.filter(|&b| overworld && world.get_block(b) == Some(Block::BED_FOOT));
+                if overworld && bed.is_none() {
+                    self.spawn_bed = None; // broken: forget it
+                }
+                let at = match bed {
+                    Some(b) => DVec3::new(b.x as f64 + 0.5, b.y as f64 + Block::BED_FOOT.height(), b.z as f64 + 0.5),
+                    None => world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5),
+                };
+                self.player = Player::new(at);
                 self.player.can_fly = self.creative;
                 self.vitals = Vitals::default();
             }
@@ -632,7 +644,7 @@ impl Agent {
         let target = self.target(world).map(
             |(p, n)| json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name())}),
         );
-        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"dead":self.vitals.is_dead(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
+        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"dead":self.vitals.is_dead(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"spawn_bed":self.spawn_bed.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
 }
 
@@ -740,6 +752,27 @@ mod tests {
         agent.sleeping = Some(1.0);
         agent.hurt(1.0, "test", DVec3::ZERO, &mut entities);
         assert!(agent.sleeping.is_none(), "being hurt wakes");
+    }
+
+    #[test]
+    fn respawns_at_its_bed_while_the_bed_stands() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let bed = IVec3::new(1, 150, 1);
+        world.set_block(bed - IVec3::Y, Block::STONE);
+        world.set_block(bed, Block::BED_FOOT);
+        let mut agent = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        agent.spawn_bed = Some(bed);
+        let mut die_and_respawn = |agent: &mut Agent, world: &mut World| {
+            agent.vitals.damage(100.0, "test", false);
+            agent.execute(Command::Respawn, world, &mut entities, &[]).unwrap();
+        };
+        die_and_respawn(&mut agent, &mut world);
+        assert_eq!(agent.player.pos, DVec3::new(1.5, 150.0 + Block::BED_FOOT.height(), 1.5));
+        world.set_block(bed, Block::AIR);
+        die_and_respawn(&mut agent, &mut world);
+        assert_eq!(agent.spawn_bed, None, "a broken bed is forgotten");
+        assert_ne!(agent.player.pos.floor().as_ivec3(), bed);
     }
 
     #[test]

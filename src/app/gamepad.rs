@@ -78,7 +78,6 @@ pub(super) struct Body {
     mine_pressed: bool,
     attack_held: bool,
     attack_cooldown: f64,
-    spawn_bed: Option<IVec3>,
     container: Container,
 }
 
@@ -92,7 +91,6 @@ impl Default for Body {
             mine_pressed: false,
             attack_held: false,
             attack_cooldown: 0.0,
-            spawn_bed: None,
             container: Container::Inventory,
         }
     }
@@ -277,8 +275,6 @@ pub(super) struct Pads {
     seats: Vec<Seat>,
     /// Which profile each controller played last, so it gets it back.
     assigned: BTreeMap<[u8; 16], String>,
-    /// Profiles' respawn beds, kept while they're away.
-    beds: BTreeMap<String, IVec3>,
 }
 
 impl Pads {
@@ -287,42 +283,24 @@ impl Pads {
         Self { gilrs, ..Default::default() }
     }
 
-    /// Saved with the world: `uuid=profile` pairs and `profile=x,y,z` beds,
-    /// each separated by `;`.
-    pub fn serialize(&self) -> (String, String) {
-        let mut beds = self.beds.clone();
-        for seat in &self.seats {
-            match seat.body.spawn_bed {
-                Some(bed) => beds.insert(seat.name.clone(), bed),
-                None => beds.remove(&seat.name),
-            };
-        }
+    /// Saved with the world: `uuid=profile` pairs separated by `;`.
+    pub fn serialize(&self) -> String {
         let hex = |u: &[u8; 16]| u.iter().map(|b| format!("{b:02x}")).collect::<String>();
         let assigned: Vec<String> = self.assigned.iter().map(|(u, n)| format!("{}={n}", hex(u))).collect();
-        let beds: Vec<String> = beds.iter().map(|(n, p)| format!("{n}={},{},{}", p.x, p.y, p.z)).collect();
-        (assigned.join(";"), beds.join(";"))
+        assigned.join(";")
     }
 
     /// Reads what [`Pads::serialize`] wrote, skipping anything malformed.
-    pub fn restore(&mut self, assigned: &str, beds: &str) {
-        let pairs = |text: &str| -> Vec<(String, String)> {
-            text.split(';').filter_map(|p| p.split_once('=')).map(|(k, v)| (k.into(), v.into())).collect()
-        };
-        for (uuid, name) in pairs(assigned) {
+    pub fn restore(&mut self, assigned: &str) {
+        for (uuid, name) in assigned.split(';').filter_map(|p| p.split_once('=')) {
             let bytes: Option<Vec<u8>> = (0..uuid.len())
                 .step_by(2)
                 .map(|i| uuid.get(i..i + 2).and_then(|h| u8::from_str_radix(h, 16).ok()))
                 .collect();
             if let Some(Ok(uuid)) = bytes.map(<[u8; 16]>::try_from)
-                && voxelcraft::control::valid_name(&name)
+                && voxelcraft::control::valid_name(name)
             {
-                self.assigned.insert(uuid, name);
-            }
-        }
-        for (name, pos) in pairs(beds) {
-            let v: Vec<i32> = pos.split(',').filter_map(|n| n.parse().ok()).collect();
-            if let [x, y, z] = v[..] {
-                self.beds.insert(name, IVec3::new(x, y, z));
+                self.assigned.insert(uuid, name.into());
             }
         }
     }
@@ -500,9 +478,7 @@ impl Game {
         if !self.split.follow.contains(&name) {
             self.split.follow.push(name.clone());
         }
-        let mut seat = Seat::new(name.clone(), uuid, id);
-        seat.body.spawn_bed = self.pads.beds.remove(&name);
-        self.pads.seats.push(seat);
+        self.pads.seats.push(Seat::new(name.clone(), uuid, id));
         if uuid != [0; 16] {
             self.pads.assigned.insert(uuid, name.clone());
         }
@@ -527,9 +503,6 @@ impl Game {
     /// Free the seat and its view. The profile stays saved for next time.
     fn leave_pad(&mut self, name: &str) {
         self.close_pad_menu(name);
-        if let Some(bed) = self.pads.seats.iter().find(|s| s.name == name).and_then(|s| s.body.spawn_bed) {
-            self.pads.beds.insert(name.to_string(), bed);
-        }
         self.pads.seats.retain(|s| s.name != name);
         self.split.follow.retain(|n| n != name);
         if let Some(bot) = self.agents.players.get_mut(name) {
@@ -614,7 +587,7 @@ impl Game {
         swap(&mut self.mine_pressed, &mut body.mine_pressed);
         swap(&mut self.mobs.attack_held, &mut body.attack_held);
         swap(&mut self.mobs.attack_cooldown, &mut body.attack_cooldown);
-        swap(&mut self.spawn_bed, &mut body.spawn_bed);
+        swap(&mut self.spawn_bed, &mut bot.agent.spawn_bed);
         swap(&mut self.container, &mut body.container);
         true
     }
@@ -791,7 +764,7 @@ impl Game {
         let Some(at) = at else { return };
         let seat = &mut self.pads.seats[i];
         seat.sneaking = false;
-        seat.body = Body { spawn_bed: seat.body.spawn_bed, ..Body::default() };
+        seat.body = Body::default();
         if let Some(bot) = self.agents.players.get_mut(&name) {
             bot.agent.player.pos = at;
             bot.agent.previous_pos = at;
@@ -876,24 +849,16 @@ mod tests {
     }
 
     #[test]
-    fn controller_profiles_and_beds_survive_saving() {
+    fn controller_profiles_survive_saving() {
         let mut pads = Pads::default();
         let uuid = [0xab; 16];
         pads.assigned.insert(uuid, "Player3".into());
-        pads.beds.insert("Player4".into(), IVec3::new(1, -2, 3));
-        let mut seated = seat();
-        seated.body.spawn_bed = Some(IVec3::new(7, 64, -9));
-        pads.seats.push(seated);
-        let (assigned, beds) = pads.serialize();
         let mut restored = Pads::default();
-        restored.restore(&assigned, &beds);
+        restored.restore(&pads.serialize());
         assert_eq!(restored.assigned.get(&uuid).map(String::as_str), Some("Player3"));
-        assert_eq!(restored.beds.get("Player2"), Some(&IVec3::new(7, 64, -9)), "seated players' beds too");
-        assert_eq!(restored.beds.get("Player4"), Some(&IVec3::new(1, -2, 3)));
         // Garbage is skipped rather than failing the load.
-        restored.restore("zz=Player2;abcd=Player5;=;", "Player6=1,2;Player7=a,b,c");
+        restored.restore("zz=Player2;abcd=Player5;=;");
         assert_eq!(restored.assigned.len(), 1);
-        assert_eq!(restored.beds.len(), 2);
     }
 
     #[test]

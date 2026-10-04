@@ -117,9 +117,8 @@ impl Game {
         Some((foot, rest))
     }
 
-    /// An agent's `sleep`: lies down in the bed it's looking at, by the same
-    /// rules as the host. Agents respawn at the world spawn, so the bed
-    /// doesn't become theirs.
+    /// An agent's `sleep`: makes the bed it's looking at its respawn point
+    /// and lies down in it, by the same rules as the host.
     pub(super) fn agent_sleep(&mut self, name: &str) -> Result<(), String> {
         let agent = &self.agents.players[name].agent;
         let pos = (agent.target(&self.world).map(|(p, _)| p))
@@ -128,8 +127,10 @@ impl Game {
         if self.bed_explodes(pos) {
             return Err("beds explode outside the Overworld".into());
         }
-        let at = self.bed_rules(pos).ok_or("not looking at a bed")?.1?;
+        let (foot, rest) = self.bed_rules(pos).ok_or("not looking at a bed")?;
         let agent = &mut self.agents.players.get_mut(name).unwrap().agent;
+        agent.spawn_bed = Some(foot);
+        let at = rest?;
         agent.player.pos = at;
         agent.player.vel = DVec3::ZERO;
         agent.player.flying = false;

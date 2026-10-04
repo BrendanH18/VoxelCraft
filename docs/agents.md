@@ -61,7 +61,7 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `move forward right ticks [jump sprint sneak]` | Physics input; axes −1 through 1; sneak also descends in flight |
 | `wait ticks`, `mine ticks` | Wait or hold mining with normal tool speed, harvest rules and wear |
 | `eat` | Eat one of the selected food over 1.6 seconds (32 ticks), when hungry and in survival |
-| `sleep` | Lie down in the targeted bed at night or in rain, with no monsters within 8 blocks; any action other than `observe`, `wait` or a still `move` gets up, as does damage |
+| `sleep` | Make the targeted bed the respawn point and lie down in it at night or in rain, with no monsters within 8 blocks; any action other than `observe`, `wait` or a still `move` gets up, as does damage |
 | `select 1..9`, `fly on/off` | Choose hotbar slot or toggle creative flight |
 | `place`, `attack`, `drop` | Place selected block, hit a targeted mob, or drop selected stack |
 | `craft item` | Craft once with available recipe alternatives; larger recipes require targeting a crafting table |
@@ -158,8 +158,8 @@ with LT) and, in creative, every item. B closes, putting any held stack back.
 Sleeping needs everyone: the night (or the rain) passes once the keyboard
 player and every active agent and controller player are in bed, as in Java.
 A bed holds one sleeper. Players waiting
-see how many are asleep and can jump to get up. Each player respawns at the
-bed they last used. Controller players share the host's dimension, so one who
+see how many are asleep and can jump to get up. Each player, agents included,
+respawns at the bed they last used (`observe` reports it as `spawn_bed`). Controller players share the host's dimension, so one who
 dies in the Nether or the End comes back beside the host. Unplugged
 controllers don't hold up the night.
 
@@ -207,6 +207,6 @@ hurt agents with armor, knockback and death drops. Mobs spawn around every
 player with per-player caps and stay loaded while any player is near.
 Environmental survival damage, death drops and pickups work.
 The first CLI supports block placement, crafting, chests, eating and sleeping; doors/ladders,
-bows, buckets, furnaces, armor controls, bed respawn points and portal interactions still
+bows, buckets, furnaces, armor controls and portal interactions still
 require the desktop player or a controller player. Agents cannot mine
 multi-cell doors/beds.

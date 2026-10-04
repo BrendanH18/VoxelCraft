@@ -630,6 +630,9 @@ impl Game {
         if let Some(text) = root_props.get("agents") {
             agents.restore(text, dimension.name(), player.pos);
         }
+        if let Some(text) = root_props.get("pad_beds") {
+            agents.restore_pad_beds(text);
+        }
         let mut game = Game {
             agents,
             split: split::Split { follow: args.split_screen.clone(), side_by_side: args.split_side },
@@ -641,7 +644,7 @@ impl Game {
             pads: {
                 let mut pads = if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() };
                 let prop = |k: &str| root_props.get(k).map_or("", String::as_str);
-                pads.restore(prop("pads"), prop("pad_beds"));
+                pads.restore(prop("pads"));
                 pads
             },
             search: search::Search {
@@ -1456,9 +1459,7 @@ impl Game {
     fn save(&mut self) {
         let mut props = std::collections::BTreeMap::new();
         props.insert("agents".into(), self.agents.serialize(self.dimension.name()));
-        let (pads, pad_beds) = self.pads.serialize();
-        props.insert("pads".into(), pads);
-        props.insert("pad_beds".into(), pad_beds);
+        props.insert("pads".into(), self.pads.serialize());
         props.insert("mode".to_string(), self.mode.name().to_string());
         props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.
