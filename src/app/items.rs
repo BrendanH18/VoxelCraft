@@ -10,7 +10,8 @@ use crate::inventory::Stack;
 use crate::render::BlockModel;
 use crate::world::block::Block;
 
-use super::{Container, Game};
+use super::{Container, Game, GameMode, survival};
+use crate::entity::PlayerId;
 
 /// Dropped items farther away than this aren't drawn.
 const DRAW_DIST: f64 = 64.0;
@@ -68,6 +69,49 @@ impl Game {
         if let Some(chime) = crate::entity::orb::absorb(&mut self.mobs.entities.orbs, player, &mut self.vitals.xp) {
             xp_sounds(&mut self.audio, None, chime);
         }
+    }
+
+    /// Right-click with an ender pearl throws it (Java's one-second
+    /// cooldown applies). Returns whether one was thrown.
+    pub(super) fn throw_pearl(&mut self) -> bool {
+        if self.held_item() != Some(crate::item::Item::ENDER_PEARL) || self.vitals.pearl_cooldown > 0.0 {
+            return false;
+        }
+        self.vitals.pearl_cooldown = crate::entity::pearl::COOLDOWN;
+        let p = &self.player;
+        // Java adds the thrower's motion, vertical only while airborne.
+        let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
+        self.mobs.entities.throw_pearl(self.actor, p.eye(), p.forward().as_dvec3(), carry);
+        // Java's throw is the bow sound, pitched well down.
+        self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
+        if self.mode == GameMode::Survival {
+            self.inventory.take_one(self.actions.selected);
+        }
+        true
+    }
+
+    /// A pearl landed at `pos`: its thrower (if alive, in this world)
+    /// teleports there and takes 5 damage, like a fall.
+    pub(super) fn pearl_landed(&mut self, owner: PlayerId, pos: DVec3) {
+        if owner == PlayerId::HOST {
+            if self.vitals.is_dead() || self.sleeping.is_some() {
+                return;
+            }
+            self.audio.play(Sound::Teleport, Some(self.player.pos + DVec3::Y), 0.8, (0.9, 1.1));
+            self.player.pos = pos;
+            self.player.vel = DVec3::ZERO;
+            self.vitals.reset_fall();
+            self.previous_eye = self.player.eye();
+            self.damage_player(crate::entity::pearl::DAMAGE, survival::CAUSE_FALL);
+        } else if let Some(bot) = self.agents.by_id_mut(owner)
+            && bot.active
+        {
+            let from = bot.agent.player.pos;
+            if bot.agent.pearl_teleport(pos, &mut self.mobs.entities) {
+                self.audio.play(Sound::Teleport, Some(from + DVec3::Y), 0.8, (0.9, 1.1));
+            }
+        }
+        self.audio.play(Sound::Teleport, Some(pos + DVec3::Y), 0.8, (0.9, 1.1));
     }
 
     /// Q: drops one of the selected item, or the whole stack with Ctrl.

@@ -371,6 +371,16 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             };
             shaded(&nugget, x, y, c, 0.08)
         }
+        Sprite::Pearl(body, glint) => {
+            // A dark sphere with a bright glint up and to the left, lighter
+            // toward the rim like Java's pearl.
+            let ball = disc(8.0, 8.5, 5.6);
+            let (px, py) = centre(x, y);
+            let shine = (px - 6.3).powi(2) + (py - 6.3).powi(2) <= 2.2;
+            let rim = ((px - 8.0).powi(2) + (py - 8.5).powi(2)).sqrt() / 5.6;
+            shaded(&ball, x, y, body, 0.05)
+                .map(|p| if shine { tint(glint, 1.0) } else { tint([p[0], p[1], p[2]], 0.8 + rim * 0.6) })
+        }
         Sprite::Door => {
             // The door's own two textures, squeezed to half width.
             let (layer, ty) = if y < 8 { (tex::DOOR_TOP, y * 2) } else { (tex::DOOR_BOTTOM, (y - 8) * 2) };

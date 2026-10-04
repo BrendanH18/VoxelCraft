@@ -17,7 +17,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | sleep | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | sleep | place (throws a selected ender pearl) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -209,6 +209,8 @@ pub struct Agent {
     pub previous_pos: DVec3,
     pub inventory: Inventory,
     pub vitals: Vitals,
+    /// The host's stable ID for this player (owner of its thrown pearls).
+    pub id: crate::entity::PlayerId,
     pub creative: bool,
     pub selected: usize,
     pub remaining: u32,
@@ -237,6 +239,7 @@ impl Agent {
             previous_pos: pos,
             inventory: Inventory::default(),
             vitals: Vitals::default(),
+            id: crate::entity::PlayerId::default(),
             creative: false,
             selected: 0,
             remaining: 0,
@@ -354,6 +357,19 @@ impl Agent {
             Command::SetBlock(pos, block) => {
                 if !world.set_block(pos, block) {
                     return Err("block is unchanged or unloaded".into());
+                }
+            }
+            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::ENDER_PEARL) => {
+                if self.vitals.pearl_cooldown > 0.0 {
+                    return Err("ender pearl cooling down".into());
+                }
+                self.vitals.pearl_cooldown = crate::entity::pearl::COOLDOWN;
+                let p = &self.player;
+                let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
+                entities.throw_pearl(self.id, p.eye(), p.forward().as_dvec3(), carry);
+                self.swings += 1;
+                if !self.creative {
+                    self.inventory.take_one(self.selected);
                 }
             }
             Command::Place => {
@@ -592,6 +608,24 @@ impl Agent {
         if let Some(chime) = crate::entity::orb::absorb(&mut entities.orbs, self.player.pos, &mut self.vitals.xp) {
             self.emit(Event::Xp(chime));
         }
+    }
+
+    /// Arrives where this agent's ender pearl landed, taking the landing's
+    /// 5 damage. Returns whether it teleported (dead or asleep agents don't).
+    pub fn pearl_teleport(&mut self, pos: DVec3, entities: &mut Entities) -> bool {
+        if self.vitals.is_dead() || self.sleeping.is_some() {
+            return false;
+        }
+        self.player.pos = pos;
+        self.previous_pos = pos;
+        self.player.vel = DVec3::ZERO;
+        self.vitals.reset_fall();
+        self.vitals.damage(crate::entity::pearl::DAMAGE, "fell from a high place", self.creative);
+        if self.vitals.is_dead() {
+            self.drop_everything(entities);
+            self.remaining = 0;
+        }
+        true
     }
 
     /// A dead survival agent's inventory and some of its experience spill

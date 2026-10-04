@@ -124,6 +124,9 @@ struct Game {
     /// A controller player's state is swapped into the host's fields (see
     /// `Game::puppet`), and the container or bed they used, if any.
     puppet: bool,
+    /// Who host interaction code is acting for: the host, or a controller
+    /// player while `puppet` is set (thrown pearls remember their owner).
+    actor: crate::entity::PlayerId,
     puppet_used: Option<glam::IVec3>,
     puppet_popup: Option<String>,
     console: console::Console,
@@ -648,6 +651,7 @@ impl Game {
             // Screenshot runs never read controllers.
             virtual_pad: args.pad_player.clone(),
             puppet: false,
+            actor: crate::entity::PlayerId::HOST,
             puppet_used: None,
             puppet_popup: None,
             pads: {
@@ -1268,7 +1272,7 @@ impl Game {
     }
 
     fn place_block(&mut self) {
-        if !self.aiming_at_usable() && self.use_bucket() {
+        if !self.aiming_at_usable() && (self.use_bucket() || self.throw_pearl()) {
             return;
         }
         let Some((pos, normal)) = self.target() else { return };

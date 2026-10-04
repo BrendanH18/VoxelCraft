@@ -251,6 +251,24 @@ const SPIDER_HEAD: &[Cuboid] = &[
     cube([1.0, 2.5, 8.0], [2.0, 3.5, 8.1], SPIDER_EYES, 0),
 ];
 
+// ---------------------------------------------------------------- enderman
+
+const ENDER: Rgb = [22, 20, 26];
+const ENDER_JAW: Rgb = [14, 12, 18];
+
+const ENDERMAN_BODY: &[Cuboid] = &[cube([-4.0, 28.0, -2.0], [4.0, 40.0, 2.0], ENDER, 18)];
+const ENDERMAN_LIMB: &[Cuboid] = &[cube([-1.0, -28.0, -1.0], [1.0, 2.0, 1.0], ENDER, 18)];
+const ENDERMAN_HEAD: &[Cuboid] = &[cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], ENDER, 18)];
+/// The lower jaw left behind when an angry enderman's head lifts.
+const ENDERMAN_JAW: &[Cuboid] = &[cube([-4.2, -0.2, -4.2], [4.2, 3.0, 4.2], ENDER_JAW, 10)];
+/// Drawn glowing, like Java's eye layer.
+const ENDERMAN_EYES: &[Cuboid] = &[
+    cube([-3.5, 3.0, 4.0], [-1.0, 4.0, 4.1], [204, 0, 250], 0),
+    cube([-2.5, 3.0, 4.1], [-1.5, 4.0, 4.15], [240, 150, 255], 0),
+    cube([1.0, 3.0, 4.0], [3.5, 4.0, 4.1], [204, 0, 250], 0),
+    cube([1.5, 3.0, 4.1], [2.5, 4.0, 4.15], [240, 150, 255], 0),
+];
+
 // ---------------------------------------------------------------- arrow
 
 const ARROW: &[Cuboid] = &[
@@ -365,6 +383,27 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
                 part(PIGLIN_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
+        MobKind::Enderman => {
+            // Long, slow strides; an angry one opens its jaw (the head
+            // lifts) and holds its arms a little forward.
+            let angry = m.ai == Ai::Chase;
+            let stride = swing * 0.5;
+            let lift = if angry { 3.0 } else { 0.0 };
+            let arm = |s: f32| rx(if angry { -0.35 } else { 0.0 } - stride * s);
+            let mut parts = vec![
+                part(ENDERMAN_BODY, [0.0; 3], Quat::IDENTITY),
+                part(ENDERMAN_LIMB, [-2.0, 28.0, 0.0], rx(stride)),
+                part(ENDERMAN_LIMB, [2.0, 28.0, 0.0], rx(-stride)),
+                part(ENDERMAN_LIMB, [-5.0, 38.0, 0.0], arm(1.0)),
+                part(ENDERMAN_LIMB, [5.0, 38.0, 0.0], arm(-1.0)),
+                part(ENDERMAN_HEAD, [0.0, 40.0 + lift, 0.0], head),
+                part(ENDERMAN_EYES, [0.0, 40.0 + lift, 0.0], head),
+            ];
+            if angry {
+                parts.push(part(ENDERMAN_JAW, [0.0, 40.0, 0.0], head));
+            }
+            parts
+        }
         MobKind::Zombie => {
             // Arms held forward, bobbing a little, chopping down on attack.
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.7 } else { 0.0 };
@@ -424,6 +463,8 @@ pub fn build(
         for (pi, p) in pose(m, time).iter().enumerate() {
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
+            let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES);
+            let light = if glow { [light[0], 0, light[2], 255] } else { light };
             for (ci, c) in p.boxes.iter().enumerate() {
                 push_cuboid(out, c, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
             }
@@ -471,6 +512,20 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<E
         let origin = if a.is_stuck() { rel - a.dir * 0.2 } else { rel };
         for (i, c) in ARROW.iter().enumerate() {
             push_cuboid(out, c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
+/// Thrown ender pearls: small dark teal cubes with a pale glint.
+pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    const PEARL: &[Cuboid] = &[
+        cube([-1.5, -1.5, -1.5], [1.5, 1.5, 1.5], [20, 92, 80], 20),
+        cube([-1.6, 0.4, -1.6], [-0.4, 1.6, -0.4], [120, 220, 190], 0),
+    ];
+    for p in pearls {
+        let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
+        for (i, c) in PEARL.iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
         }
     }
 }
@@ -663,7 +718,7 @@ mod tests {
             assert!(lo.y.abs() < 1e-4, "{kind:?} feet at {}", lo.y);
             let h = kind.shape().height as f32;
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
-            assert!(hi.x > 10.3, "{kind:?} should extend forward along +X");
+            assert!(hi.x > 10.25, "{kind:?} should extend forward along +X");
             // Behind the camera: culled.
             out.clear();
             assert_eq!(

@@ -208,6 +208,12 @@ impl Game {
             }
             if let Some(stack) = hud.inventory.get(i) {
                 draw_stack(ui, sx + 1.0, y0 + 2.0, stack, hud.survival);
+                // Java's item cooldown: a pale veil that drains downward.
+                let cooling = hud.vitals.pearl_cooldown / crate::entity::pearl::COOLDOWN;
+                if stack.item == Item::ENDER_PEARL && cooling > 0.0 {
+                    let h = (16.0 * cooling).ceil();
+                    ui.rect(sx + 2.0, y0 + 3.0 + 16.0 - h, 16.0, h, [1.0, 1.0, 1.0, 0.5]);
+                }
             }
         }
         if hud.survival {

@@ -111,6 +111,11 @@ impl Arrow {
                     let (min, max) = m.aabb();
                     m.alive() && self.pos.cmpge(min).all() && self.pos.cmple(max).all()
                 }) {
+                    // Endermen dodge arrows by teleporting; the arrow flies on.
+                    if mob.kind == super::MobKind::Enderman {
+                        mob.teleport_pending = true;
+                        continue;
+                    }
                     let speed = self.vel.length();
                     let mut damage = (speed / BOW_SPEED * BOW_DAMAGE).ceil() as f32;
                     if self.critical {

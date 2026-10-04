@@ -211,6 +211,8 @@ pub struct Vitals {
     pub hunger: Hunger,
     /// Levels and points; a death drops some as orbs and loses the rest.
     pub xp: super::experience::Experience,
+    /// Seconds before this player can throw another ender pearl.
+    pub pearl_cooldown: f32,
     /// Seconds since the last damage (drives the hurt flash).
     since_damage: f32,
     drown_timer: f32,
@@ -232,6 +234,7 @@ impl Default for Vitals {
             air: MAX_AIR,
             hunger: Hunger::default(),
             xp: Default::default(),
+            pearl_cooldown: 0.0,
             since_damage: 1e3,
             drown_timer: 0.0,
             fire_left: 0.0,
@@ -307,6 +310,7 @@ impl Vitals {
         let mut hurts = Hurts::default();
         self.since_damage = (self.since_damage + dt).min(1e3);
         self.xp.tick(dt);
+        self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
         if self.is_dead() {
             return hurts;
         }

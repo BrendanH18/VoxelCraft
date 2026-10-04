@@ -306,6 +306,7 @@ session there, as if you had just come through a portal.
 | Creeper | 20 | walks up and lights a 1.5 s fuse within 3 blocks (kept lit within 7); explodes for up to 43 damage over 6 blocks, destroying blocks (not bedrock, obsidian or fluids) | 0–2 gunpowder |
 | Spider | 16 | fast; climbs walls; hunts only in the dark or after being hit, bites for 2 | 0–2 string |
 | Zombified piglin | 20 | Nether only, in packs; ignores you until you hit one, then the whole pack within 32 blocks chases you for 30 s and strikes with gold swords for 5 | 0–1 rotten flesh, 0–1 gold nuggets |
+| Enderman | 40 | 2.9 blocks tall; rare at night in the Overworld and Nether, common in the End. Neutral until hit or until you look it in the eyes (within 64 blocks), then screams, opens its jaw and hits for 7. Freezes while you watch it (up close it teleports away), teleports toward you from more than 16 blocks, dodges arrows by teleporting, is hurt by water and rain, and wanders off by teleporting in daylight | 0–1 ender pearls |
 
 Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to
@@ -317,6 +318,11 @@ their chunk unloads, and hostile mobs chase the nearest survival player. Every m
 in lava. Player hits deal damage based on the held item, with knockback, at most
 every 0.5 s: a fist deals 1, and swords deal 4–7 depending on their tier.
 Hostile mobs ignore creative players.
+
+Ender pearls (stack of 16) are thrown with **right click**, at most once a
+second (a pale veil drains from the hotbar slot): they fly like Java's
+(about 50 blocks at 45°), and where they hit a block or a mob you teleport,
+taking 5 damage.
 
 Inventory search filters creative items by name. Type in the search field
 (automatically focused in creative), or press Ctrl+F. In survival and containers,

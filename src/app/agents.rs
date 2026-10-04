@@ -26,7 +26,8 @@ pub(super) struct Bot {
 }
 
 impl Bot {
-    fn new(id: PlayerId, agent: Agent) -> Self {
+    fn new(id: PlayerId, mut agent: Agent) -> Self {
+        agent.id = id;
         let (seen_swings, drawn_feet) = (agent.swings, agent.player.pos);
         Self { id, agent, active: false, reply: None, hand: Default::default(), seen_swings, drawn_feet, stride: 0.0 }
     }
@@ -54,6 +55,7 @@ impl Agents {
     pub fn targets(&self) -> impl Iterator<Item = Target> + '_ {
         self.players.values().filter(|b| b.active).map(|b| Target {
             alive: !b.agent.vitals.is_dead(),
+            look: b.agent.player.forward().as_dvec3(),
             ..Target::new(b.id, b.agent.player.pos, b.agent.targetable())
         })
     }

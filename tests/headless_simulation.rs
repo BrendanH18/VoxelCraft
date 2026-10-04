@@ -62,7 +62,7 @@ fn headless_world_runs_gameplay_without_render_meshes() {
         daylight: 1.0,
         raining: false,
         spawning: false,
-        nether: false,
+        dimension: voxelcraft::world::terrain::Dimension::Overworld,
     };
     let mut explosions = 0;
     for _ in 0..201 {

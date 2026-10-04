@@ -165,7 +165,13 @@ mod tests {
     use glam::IVec3;
 
     fn ctx(players: Vec<Target>) -> Ctx {
-        Ctx { players, daylight: 1.0, spawning: false, raining: false, nether: false }
+        Ctx {
+            players,
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: crate::world::terrain::Dimension::Overworld,
+        }
     }
 
     fn run(orb: &mut XpOrb, world: &Grid, ctx: &Ctx, secs: f64) -> bool {
