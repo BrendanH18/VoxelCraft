@@ -286,8 +286,15 @@ part of a frame puts its portal out.
 The Nether is a cavern world between a bedrock floor and roof: netherrack
 cliffs and islands over a lava sea at y = 31, soul sand shores that drag
 at your feet, gravel by the lava, quartz ore in the rock and glowstone
-hanging from the ceilings. There is no sky, weather or day and night,
-just a steady dim glow in a red haze; water boils away, and beds explode.
+hanging from the ceilings. Nether fortresses (one per 432-block region,
+laid out from Java's fortress pieces) rise from between y = 48 and 70:
+nether brick bridges on pillars that reach down through the lava sea, small
+fenced crossings, stair rooms and blaze spawner thrones, and through a
+castle entrance hall, enclosed corridors with loot chests (one corner in
+three: diamonds, iron, gold, golden gear, flint and steel, nether wart,
+obsidian) and halls of nether wart on soul sand. There is no sky, weather
+or day and night, just a steady dim glow in a red haze; water boils away,
+and beds explode.
 Netherrack smelts into nether bricks (four make a nether bricks block),
 quartz ore drops nether quartz, and glowstone breaks into 2–4 glowstone
 dust (four make a block). Nine gold nuggets make a gold ingot and back.

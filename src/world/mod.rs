@@ -19,6 +19,7 @@ pub mod end;
 pub mod falling;
 mod fire;
 mod fluid;
+pub mod fortress;
 pub mod furnace;
 mod growth;
 pub(crate) mod lighting;
@@ -562,6 +563,8 @@ impl World {
     fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         if modified {
             self.load_fires(pos, &data);
+        } else {
+            self.register_structure_features(pos, &data);
         }
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
@@ -834,6 +837,47 @@ mod tests {
 
     fn surface_y(world: &World, x: i32, z: i32) -> i32 {
         (0..WORLD_HEIGHT).rev().find(|&y| world.get_block(IVec3::new(x, y, z)).unwrap().is_solid()).unwrap()
+    }
+
+    #[test]
+    fn fortress_chunks_register_loot_chests_and_blaze_spawners() {
+        use super::fortress::{Fortresses, Kind};
+        let fortress = Fortresses::new(1).get(IVec2::ZERO).unwrap();
+        let generator = Arc::new(Generator::for_dimension(1, super::terrain::Dimension::Nether));
+        let mut found = (None, None);
+        for piece in &fortress.pieces {
+            let chunk = chunk_of(piece.bounds.min);
+            for (p, f) in generator.structure_features(chunk) {
+                match f {
+                    super::fortress::Feature::Chest(_) if found.0.is_none() => found.0 = Some(p),
+                    super::fortress::Feature::Spawner(_) if piece.kind == Kind::Throne => found.1 = Some(p),
+                    _ => {}
+                }
+            }
+        }
+        let (chest, cage) = (found.0.expect("a loot chest"), found.1.expect("a throne"));
+        for (at, check) in [(chest, 0), (cage, 1)] {
+            let mut world = World::new_headless(generator.clone(), Default::default(), 1);
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while world.get_block(at).is_none() || world.pending_jobs() > 0 {
+                world.update(at.as_dvec3());
+                assert!(Instant::now() < deadline, "fortress never loaded");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            if check == 0 {
+                assert!(super::chest::is_chest(world.get_block(at).unwrap()));
+                let filled = world.chest(at).unwrap().slots.iter().flatten().count();
+                assert!((2..=4).contains(&filled), "{filled} stacks");
+                // A looted chest stays empty when its chunk generates again.
+                world.chest_mut(at).unwrap().slots = [None; super::chest::SLOTS];
+                let data = world.chunks[&chunk_of(at)].data.clone();
+                world.register_structure_features(chunk_of(at), &data);
+                assert!(world.chest(at).unwrap().slots.iter().all(Option::is_none));
+            } else {
+                assert_eq!(world.get_block(at), Some(Block::SPAWNER));
+                assert_eq!(world.spawner(at), Some(crate::entity::MobKind::Blaze));
+            }
+        }
     }
 
     #[test]

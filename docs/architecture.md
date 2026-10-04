@@ -137,6 +137,9 @@ src/
     block.rs         block registry
     shape.rs         box shapes of stairs, fences, gates, ladders and doors
     terrain.rs       world generation
+    nether.rs        Nether caverns
+    fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
+    spawner.rs       spawner table, structure spawners and chests on chunk load
     noise.rs         Perlin noise and hashing
     storage.rs       save files
   render/

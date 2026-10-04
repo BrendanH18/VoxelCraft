@@ -34,7 +34,8 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
   mountains, rivers and oceans, with caves, ores, and five kinds of tree.
 - **Three dimensions.** Light an obsidian portal with flint and steel to
   cross into the Nether: lava seas, netherrack caverns, soul sand and
-  glowstone under a bedrock roof, eight overworld blocks to every one. The
+  glowstone under a bedrock roof, eight overworld blocks to every one, and
+  fortresses of bridges, blaze spawners, loot chests and nether wart. The
   End's floating islands and obsidian pillars can be visited from the console.
 - **Two ways to play.** Build freely in creative, or play survival with timed
   mining, block drops, a stackable inventory, health, hunger, experience

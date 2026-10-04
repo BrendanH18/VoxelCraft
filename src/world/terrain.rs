@@ -367,6 +367,18 @@ impl Generator {
         }
     }
 
+    /// Block entities generated structures put in the chunk at `cpos`
+    /// (fortress spawners and loot chests).
+    pub fn structure_features(&self, cpos: IVec3) -> Vec<(IVec3, super::fortress::Feature)> {
+        self.nether.as_ref().map_or_else(Vec::new, |n| n.fortresses.features(cpos))
+    }
+
+    /// Whether `p` lies inside a generated structure where its own mobs
+    /// spawn (Nether fortresses).
+    pub fn in_fortress(&self, p: IVec3) -> bool {
+        self.nether.as_ref().is_some_and(|n| n.fortresses.inside(p))
+    }
+
     pub fn generate(&self, cpos: IVec3) -> ChunkData {
         if let Some(end) = &self.end {
             return end.generate(cpos);
