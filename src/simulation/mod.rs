@@ -60,6 +60,7 @@ pub fn tick_world(world: &mut World, player: DVec3) {
     world.tick_fluids(TICK_SECONDS);
     world.tick_falling(TICK_SECONDS);
     world.tick_furnaces(TICK_SECONDS);
+    world.tick_brewing(TICK_SECONDS);
     world.tick_fire(TICK_SECONDS, player);
     world.update_block_light();
     world.tick_random(TICK_SECONDS, player);

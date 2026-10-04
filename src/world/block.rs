@@ -163,7 +163,12 @@ pub mod tex {
     pub const SPAWNER: u8 = END_STONE + 1;
     /// Nether wart's three looks: ages 0-1, age 2 and ripe (age 3).
     pub const NETHER_WART_0: u8 = SPAWNER + 1;
-    pub const COUNT: u32 = NETHER_WART_0 as u32 + 3;
+    /// The brewing stand's sides and top: its rod down the middle columns
+    /// and its stone plates along the bottom (shaped boxes sample a texture
+    /// by their position in the cell).
+    pub const BREWING_SIDE: u8 = NETHER_WART_0 + 3;
+    pub const BREWING_TOP: u8 = BREWING_SIDE + 1;
+    pub const COUNT: u32 = BREWING_TOP as u32 + 1;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
@@ -321,6 +326,8 @@ impl Block {
     /// Nether wart at ages 0..=3, ids 184..=187 (see [`Block::nether_wart`]).
     /// Grows on soul sand, in any light.
     pub const NETHER_WART: Block = Block(184);
+    /// Brews potions (see `world::brewing`).
+    pub const BREWING_STAND: Block = Block(188);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -419,6 +426,7 @@ impl Block {
         Some(match self.0 {
             112..=135 => Shaped::Stairs(f(self.0 - 112)),
             136 | 182 => Shaped::Fence,
+            188 => Shaped::BrewingStand,
             137..=140 => Shaped::Ladder(f(self.0 - 137)),
             141..=148 => Shaped::Gate { facing: f(self.0 - 141), open: self.0 >= 145 },
             149..=164 => {
@@ -692,6 +700,7 @@ impl Block {
             Block::CACTUS | Block::NETHERRACK => 0.4,
             Block::SOUL_SAND => 0.5,
             Block::NETHER_BRICKS => 2.0,
+            Block::BREWING_STAND => 0.5,
             Block::QUARTZ_ORE | Block::END_STONE => 3.0,
             Block::NETHER_PORTAL => f32::INFINITY,
             Block::DIRT | Block::SAND | Block::RED_SAND | Block::ICE => 0.5,
@@ -737,6 +746,7 @@ impl Block {
             | Block::END_STONE
             | Block::NETHER_BRICKS
             | Block::SPAWNER
+            | Block::BREWING_STAND
             | Block::ICE => Some(ToolKind::Pickaxe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
             Block::DIRT
@@ -773,6 +783,7 @@ impl Block {
             | Block::QUARTZ_ORE
             | Block::END_STONE
             | Block::SPAWNER
+            | Block::BREWING_STAND
             | Block::NETHER_BRICKS => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
             Block::IRON_ORE => Some(1),
@@ -792,7 +803,7 @@ impl Block {
             .chain(100..=103)
             .chain(105..=111)
             .chain((112..=132).step_by(4))
-            .chain([136, 137, 141, 182])
+            .chain([136, 137, 141, 182, 188])
             .map(Block)
     }
 
@@ -1039,6 +1050,8 @@ impl Facing {
 pub enum Shaped {
     /// The low step faces this way; the tall half is behind it.
     Stairs(Facing),
+    /// Three stone plates and a rod.
+    BrewingStand,
     Fence,
     /// Faces away from the wall it hangs on.
     Ladder(Facing),
@@ -1251,6 +1264,7 @@ const fn make(id: u8) -> BlockInfo {
         182 => ("nether brick fence", Shaped, all(tex::NETHER_BRICKS)),
         183 => ("spawner", Cutout, all(tex::SPAWNER)),
         184..=187 => ("nether wart", Cross, all(tex::NETHER_WART_0 + (id - 184).saturating_sub(1))),
+        188 => ("brewing stand", Shaped, column(tex::BREWING_SIDE, tex::BREWING_TOP, tex::BREWING_TOP)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.

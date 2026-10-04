@@ -641,8 +641,12 @@ impl Game {
                 // Screens close on death, and containers when they're gone or out of reach.
                 let eye = agent.player.eye();
                 let gone = match menu {
-                    Menu::Items { tab: Tab::Chest(pos) | Tab::Furnace(pos), .. } => {
-                        let still = |b: Block| crate::world::chest::is_chest(b) || crate::world::furnace::is_furnace(b);
+                    Menu::Items { tab: Tab::Chest(pos) | Tab::Furnace(pos) | Tab::Brewing(pos), .. } => {
+                        let still = |b: Block| {
+                            crate::world::chest::is_chest(b)
+                                || crate::world::furnace::is_furnace(b)
+                                || b == Block::BREWING_STAND
+                        };
                         !self.world.get_block(pos).is_some_and(still)
                             || eye.distance(pos.as_dvec3() + 0.5) > super::REACH + 1.0
                             || agent.vitals.is_dead()
@@ -719,6 +723,8 @@ impl Game {
             self.chest_sound(pos, 0.9);
         } else if crate::world::furnace::is_furnace(block) {
             seat.open(Menu::items(Tab::Furnace(pos)));
+        } else if block == Block::BREWING_STAND {
+            seat.open(Menu::items(Tab::Brewing(pos)));
         } else if block.is_bed() {
             self.pad_sleep(i, pos);
         }

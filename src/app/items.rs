@@ -24,6 +24,11 @@ impl Game {
         for (cell, stack) in std::mem::take(&mut self.world.drops) {
             self.mobs.entities.drop_from_block(stack, cell);
         }
+        for cell in std::mem::take(&mut self.world.brews_done) {
+            // Java's brewing stand bubbling as a brew finishes.
+            let at = cell.as_dvec3() + DVec3::splat(0.5);
+            self.audio.play(crate::audio::sounds::Sound::Swim, Some(at), 0.5, (1.6, 1.9));
+        }
         for (cell, xp) in std::mem::take(&mut self.world.xp_drops) {
             self.mobs.entities.spawn_xp(cell.as_dvec3() + DVec3::splat(0.5), xp);
         }
@@ -36,6 +41,7 @@ impl Game {
         let gone = match self.container {
             Container::Furnace(pos) => self.world.furnace(pos).is_none(),
             Container::Chest(pos) => self.world.chest(pos).is_none(),
+            Container::Brewing(pos) => self.world.brewing_stand(pos).is_none(),
             _ => false,
         };
         if gone && self.inventory_open {

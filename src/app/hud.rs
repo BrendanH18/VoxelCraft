@@ -29,6 +29,10 @@ pub(super) enum SlotRef {
     FurnaceOutput,
     /// Chest slot (row-major).
     Chest(usize),
+    /// Brewing stand bottle (left, middle, right), ingredient and fuel.
+    BrewBottle(usize),
+    BrewIngredient,
+    BrewFuel,
     /// Worn armor (survival inventory).
     Armor(ArmorPiece),
 }
@@ -290,6 +294,36 @@ impl Game {
 
 /// Minecraft's experience bar: a thin green fill across the hotbar's
 /// width at `y`, with the level in outlined green text over its middle.
+/// The brewing stand's gauges: blaze fuel left under the fuel slot, the
+/// brew's progress as an arrow down beside the ingredient and rising
+/// bubbles on its other side while it brews.
+fn brewing_ui(ui: &mut Ui, b: &crate::world::brewing::BrewingStand, px: f32, py: f32, frame: u32) {
+    use crate::world::brewing::{BREW_TIME, FUEL_USES};
+    let dark = [0.45, 0.45, 0.45, 1.0];
+    // Blaze fuel left, under the fuel slot.
+    let (fx, fy) = (px + 16.0, py + 39.0);
+    ui.rect(fx, fy, 18.0, 4.0, dark);
+    let fuel = (18.0 * b.fuel_left as f32 / FUEL_USES as f32).ceil();
+    ui.rect(fx, fy, fuel, 4.0, [0.95, 0.6, 0.15, 1.0]);
+    // Pipes from the ingredient down to the three bottles.
+    ui.rect(px + 86.0, py + 36.0, 2.0, 23.0, dark);
+    ui.rect(px + 63.0, py + 41.0, 48.0, 2.0, dark);
+    ui.rect(px + 63.0, py + 41.0, 2.0, 11.0, dark);
+    ui.rect(px + 109.0, py + 41.0, 2.0, 11.0, dark);
+    // Progress: an arrow filling downward right of the ingredient.
+    let (ax, ay) = (px + 99.0, py + 18.0);
+    ui.rect(ax, ay, 6.0, 18.0, dark);
+    if b.is_brewing() {
+        let h = (18.0 * (1.0 - b.brew_left / BREW_TIME)).floor();
+        ui.rect(ax, ay, 6.0, h, WHITE);
+        // Bubbles rising on the left of the ingredient.
+        for i in 0..3u32 {
+            let y = py + 34.0 - ((frame + i * 6) % 17) as f32;
+            ui.rect(px + 64.0 + i as f32 * 4.0, y, 2.0, 2.0, [0.85, 0.9, 1.0, 1.0]);
+        }
+    }
+}
+
 /// Java's status effect icons in the top right corner: beneficial ones in
 /// the first row, harmful ones below, blinking in their last 10 seconds.
 fn effects_ui(ui: &mut Ui, effects: &Effects) {
@@ -452,6 +486,15 @@ impl Game {
             out.push((SlotRef::FurnaceFuel, x, py + 18.0 + 2.0 * SLOT));
             out.push((SlotRef::FurnaceOutput, px + 7.0 + 6.0 * SLOT, py + 18.0 + SLOT));
             CRAFT_H
+        } else if let Container::Brewing(_) = self.container {
+            // Java's layout: fuel top left, the ingredient over three
+            // bottles in a fan.
+            out.push((SlotRef::BrewFuel, px + 16.0, py + 18.0));
+            out.push((SlotRef::BrewIngredient, px + 78.0, py + 18.0));
+            for (i, (x, y)) in [(55.0, 52.0), (78.0, 59.0), (101.0, 52.0)].into_iter().enumerate() {
+                out.push((SlotRef::BrewBottle(i), px + x, py + y));
+            }
+            CRAFT_H
         } else if self.has_top_section() {
             let n = self.craft.size;
             // The grid sits left of centre, the result to its right past an
@@ -541,6 +584,7 @@ impl Game {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
             (Container::Chest(_), _) => "Chest",
+            (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
         };
@@ -549,7 +593,11 @@ impl Game {
             let layout = self.recipe_layout((sw, sh));
             self.recipe_button(ui, layout.toggle, if self.recipe_book.open { "Hide" } else { "Recipes" });
         }
-        if self.has_top_section() && !matches!(self.container, Container::Chest(_)) {
+        if let Container::Brewing(p) = self.container
+            && let Some(b) = self.world.brewing_stand(p)
+        {
+            brewing_ui(ui, b, px, py, (self.started.elapsed().as_secs_f32() * 8.0) as u32);
+        } else if self.has_top_section() && !matches!(self.container, Container::Chest(_)) {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
             let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0);
@@ -725,6 +773,15 @@ impl Game {
     fn container_slot(&self, slot: SlotRef) -> Option<Stack> {
         if let (Container::Chest(p), SlotRef::Chest(i)) = (self.container, slot) {
             return self.world.chest(p)?.slots[i];
+        }
+        if let Container::Brewing(p) = self.container {
+            let b = self.world.brewing_stand(p)?;
+            return match slot {
+                SlotRef::BrewBottle(i) => b.bottles[i],
+                SlotRef::BrewIngredient => b.ingredient,
+                SlotRef::BrewFuel => b.fuel,
+                _ => None,
+            };
         }
         let Container::Furnace(p) = self.container else { return None };
         let f = self.world.furnace(p)?;

@@ -551,6 +551,21 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 [0, 0, 0, 0]
             }
         }
+        tex::BREWING_SIDE | tex::BREWING_TOP => {
+            // The rod down the middle, stone plates below (sides) or all
+            // around it (top).
+            let rod = (7..=8).contains(&x)
+                && (layer == tex::BREWING_TOP && (7..=8).contains(&y) || layer == tex::BREWING_SIDE && y >= 2);
+            let plate = layer == tex::BREWING_TOP || y >= 14;
+            if rod {
+                shade([128, 98, 60], if x == 7 { 1.1 } else { 0.85 } * (0.9 + r * 0.15))
+            } else if plate {
+                let edge = layer == tex::BREWING_SIDE && y == 14;
+                shade([104, 104, 108], if edge { 1.15 } else { 0.8 + r * 0.3 })
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
         tex::END_STONE => {
             let pit = rnd(layer, x / 2, y / 2, 31);
             shade([220, 224, 164], if pit < 0.22 { 0.74 + r * 0.08 } else { 0.91 + r * 0.14 })

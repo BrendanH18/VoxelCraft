@@ -13,6 +13,7 @@
 //! light-blocking block, which seeds skylight in mesh jobs.
 
 pub mod block;
+pub mod brewing;
 pub mod chest;
 pub mod chunk;
 pub mod end;
@@ -90,6 +91,8 @@ pub struct World {
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
     /// Chest contents by position (see [`chest`]).
     chests: FxHashMap<IVec3, chest::Chest>,
+    /// Brewing stand contents by position (see [`brewing`]).
+    brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Spawner cages and the mob each makes (see `spawner`).
     spawners: FxHashMap<IVec3, crate::entity::MobKind>,
     /// Leaves waiting to decay (seconds left) after a log near them went.
@@ -105,6 +108,8 @@ pub struct World {
     /// Experience released at a block (a broken furnace's store); the game
     /// turns it into orbs.
     pub xp_drops: Vec<(IVec3, u32)>,
+    /// Brewing stands that finished a brew; the game plays its sound.
+    pub brews_done: Vec<IVec3>,
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
@@ -163,12 +168,14 @@ impl World {
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
+            brewing_stands: FxHashMap::default(),
             spawners: FxHashMap::default(),
             leaf_decay: FxHashMap::default(),
             random_ticks: 0.0,
             rng,
             drops: Vec::new(),
             xp_drops: Vec::new(),
+            brews_done: Vec::new(),
             primed_tnt: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
@@ -350,6 +357,7 @@ impl World {
         self.track_fire(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
+        self.track_brewing_stand(p, old, block);
         self.track_spawner(p, old, block);
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
@@ -1326,6 +1334,34 @@ mod tests {
         assert!(world.chest(p).is_none());
         let spilled: Vec<_> = world.drops.iter().map(|&(_, s)| s).collect();
         assert_eq!(spilled, [Stack::new(Item::COAL, 7), Stack::new(Block::DIRT, 64)]);
+    }
+
+    #[test]
+    fn brewing_stands_brew_save_and_spill() {
+        use crate::inventory::Stack;
+        use crate::item::Item;
+        use crate::potion::Potion;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let p = IVec3::new(0, 200, 0);
+        world.set_block(p, Block::BREWING_STAND);
+        let water = Some(Stack::new(Item::potion(Potion::WATER), 1));
+        let b = world.brewing_stand_mut(p).expect("placing a stand creates its contents");
+        b.bottles = [water; 3];
+        b.ingredient = Some(Stack::new(Item::NETHER_WART, 1));
+        b.fuel = Some(Stack::new(Item::BLAZE_POWDER, 1));
+        for _ in 0..401 {
+            world.tick_brewing(0.05);
+        }
+        assert_eq!(world.brews_done, [p]);
+        let awkward = Some(Stack::new(Item::potion(Potion::AWKWARD), 1));
+        assert_eq!(world.brewing_stand(p).unwrap().bottles, [awkward; 3]);
+        let mut other = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        other.load_brewing_stands(&world.brewing_stands_to_string());
+        assert_eq!(other.brewing_stand(p), world.brewing_stand(p));
+        world.drops.clear();
+        world.set_block(p, Block::AIR);
+        assert!(world.brewing_stand(p).is_none());
+        assert_eq!(world.drops.len(), 3, "three awkward potions spill (wart and powder used up)");
     }
 
     #[test]

@@ -280,7 +280,19 @@ full performance display instead of duplicating the compact counter.
   whose effects exist are items, from the water bottle and the mundane,
   thick and awkward bases to long (extended) and strong (level II)
   variants with Java's durations; tooltips show the effect, level and
-  time. Brewing them comes next.
+  time.
+- Brewing: a blaze rod over three cobblestone makes a brewing stand.
+  Right click it for Java's screen: blaze powder fuel (one powder brews 20
+  times, shown by the bar), an ingredient slot and three bottle slots. A
+  brew takes 20 seconds and changes every bottle the ingredient works on.
+  Nether wart turns water bottles awkward; sugar, glistering melon slices
+  (a melon slice in eight gold nuggets), spider eyes (one in three spiders
+  drops one; eating it poisons you for 5 s) and blaze powder turn awkward
+  potions into swiftness, healing, poison and strength (water bottles into
+  mundane potions); glowstone dust makes level II potions (or thick
+  potions from water). Sugar comes from sugar cane. Other Java ingredients
+  (redstone, magma cream, ghast tears, golden carrots, rabbit's feet,
+  pufferfish, phantom membranes, fermented spider eyes) don't exist yet.
 - Procedurally generated, mipmapped block textures — the game ships no assets
 - Procedural sound, synthesized in code at startup (~25 ms): material-specific
   break/place/footstep sounds (stone, wood, dirt, grass, gravel, sand, snow,

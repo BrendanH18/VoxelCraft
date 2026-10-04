@@ -47,6 +47,8 @@ pub struct Args {
     pub dimension: Option<world::terrain::Dimension>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
     pub place: Vec<(glam::IVec3, world::block::Block)>,
+    /// Opens the container at this block once loaded (screenshots).
+    pub open_block: Option<glam::IVec3>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
     pub spawn: Vec<(entity::MobKind, glam::IVec3)>,
     /// Seconds to keep running after loading before `--screenshot`.
@@ -106,6 +108,8 @@ voxelcraft [options]
                     palette (creative) open
                     (screenshots)
   --open-menu <m>   start with a menu open: pause, options or title (screenshots)
+  --open-block x,y,z  open the furnace, chest or brewing stand there once
+                    loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water; b may be a raw block id)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
@@ -164,6 +168,7 @@ fn parse_args() -> Result<Args, String> {
         weather: None,
         dimension: None,
         place: Vec::new(),
+        open_block: None,
         spawn: Vec::new(),
         wait: 0.0,
         pose: None,
@@ -239,6 +244,12 @@ fn parse_args() -> Result<Args, String> {
             }
             "--creative" => args.mode = Some(app::GameMode::Creative),
             "--survival" => args.mode = Some(app::GameMode::Survival),
+            "--open-block" => {
+                let v = value("--open-block")?;
+                let n: Vec<i32> = v.split(',').filter_map(|s| s.trim().parse().ok()).collect();
+                let &[x, y, z] = &n[..] else { return Err(format!("--open-block needs x,y,z (got {v})")) };
+                args.open_block = Some(glam::IVec3::new(x, y, z));
+            }
             "--place" => {
                 let v = value("--place")?;
                 let parts: Vec<&str> = v.split(',').collect();

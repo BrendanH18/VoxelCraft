@@ -723,6 +723,9 @@ impl Agent {
             } else if let Some((hunger, saturation)) = food {
                 self.inventory.take_one(self.selected);
                 self.vitals.hunger.eat(hunger, saturation);
+                if let Some((effect, amp, ticks)) = held.and_then(Item::food_effect) {
+                    self.vitals.apply_effect(effect, amp, ticks);
+                }
             }
             // A timed `eat` command stops after one bite.
             if self.remaining <= 1 {

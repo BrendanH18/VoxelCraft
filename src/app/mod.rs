@@ -98,6 +98,7 @@ pub(crate) enum Container {
     CraftingTable,
     Furnace(IVec3),
     Chest(IVec3),
+    Brewing(IVec3),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -189,6 +190,8 @@ struct Game {
     screenshot: Option<String>,
     screenshot_state: u32,
     place: Vec<(glam::IVec3, Block)>,
+    /// `--open-block`: a container to open once placements are done.
+    open_block: Option<IVec3>,
     /// `--drop`: thrown once the world has loaded.
     drop: Vec<(Item, u8)>,
     /// `--orbs` awards, spawned with the `--drop` items.
@@ -733,6 +736,7 @@ impl Game {
             screenshot: args.screenshot.clone(),
             screenshot_state: 0,
             place: args.place.clone(),
+            open_block: args.open_block,
             drop: args.drop.clone(),
             orbs: args.orbs.clone(),
             placed: false,
@@ -1026,6 +1030,49 @@ impl Game {
         self.toggle_inventory();
     }
 
+    /// Right-click on a brewing stand: its bottles, ingredient and fuel.
+    fn open_brewing(&mut self, pos: IVec3) {
+        if self.inventory_open || self.world.brewing_stand(pos).is_none() {
+            return;
+        }
+        self.container = Container::Brewing(pos);
+        self.toggle_inventory();
+    }
+
+    /// A click on a brewing stand slot: bottles take one potion or glass
+    /// bottle each, the ingredient slot only brewing ingredients and the
+    /// fuel slot only blaze powder (Java's slot rules).
+    fn brewing_click(&mut self, pos: IVec3, slot: hud::SlotRef, right: bool) {
+        use crate::world::brewing;
+        let cursor = &mut self.inventory.cursor;
+        let Some(b) = self.world.brewing_stand_mut(pos) else { return };
+        match slot {
+            hud::SlotRef::BrewBottle(i) => {
+                let cell = &mut b.bottles[i];
+                match cursor {
+                    None => *cursor = cell.take(),
+                    Some(c) if !brewing::fits_bottle_slot(c.item) => {}
+                    Some(c) if cell.is_none() => {
+                        *cell = Some(Stack::new(c.item, 1));
+                        c.count -= 1;
+                        if c.count == 0 {
+                            *cursor = None;
+                        }
+                    }
+                    Some(c) if c.count == 1 => std::mem::swap(cell, cursor),
+                    Some(_) => {}
+                }
+            }
+            hud::SlotRef::BrewIngredient if cursor.is_none_or(|c| brewing::is_ingredient(c.item)) => {
+                crate::inventory::click_slot(&mut b.ingredient, cursor, right)
+            }
+            hud::SlotRef::BrewFuel if cursor.is_none_or(|c| c.item == Item::BLAZE_POWDER) => {
+                crate::inventory::click_slot(&mut b.fuel, cursor, right)
+            }
+            _ => {}
+        }
+    }
+
     /// A click on a furnace slot. Fuel only takes things that burn; the
     /// output can only be taken from.
     fn furnace_click(&mut self, pos: IVec3, slot: hud::SlotRef, right: bool) {
@@ -1128,6 +1175,11 @@ impl Game {
             Some(s @ (hud::SlotRef::FurnaceInput | hud::SlotRef::FurnaceFuel | hud::SlotRef::FurnaceOutput)) => {
                 if let Container::Furnace(pos) = self.container {
                     self.furnace_click(pos, s, right);
+                }
+            }
+            Some(s @ (hud::SlotRef::BrewBottle(_) | hud::SlotRef::BrewIngredient | hud::SlotRef::BrewFuel)) => {
+                if let Container::Brewing(pos) = self.container {
+                    self.brewing_click(pos, s, right);
                 }
             }
             Some(hud::SlotRef::Palette(item)) => {
@@ -1246,8 +1298,12 @@ impl Game {
                 self.inventory.slots[self.actions.selected] = Some(crate::inventory::Stack::new(Item::GLASS_BOTTLE, 1));
             }
         } else if let Some((hunger, saturation)) = food {
+            let effect = self.held_item().and_then(Item::food_effect);
             self.inventory.take_one(self.actions.selected);
             self.vitals.hunger.eat(hunger, saturation);
+            if let Some((effect, amp, ticks)) = effect {
+                self.vitals.apply_effect(effect, amp, ticks);
+            }
         }
     }
 
@@ -1311,6 +1367,7 @@ impl Game {
             Some(Block::CRAFTING_TABLE) => return self.open_crafting_table(),
             Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
+            Some(Block::BREWING_STAND) => return self.open_brewing(pos),
             Some(b) if b.is_bed() => return self.use_bed(pos),
             Some(b) if b.is_door() || b.is_gate() => {
                 self.toggle_door(pos, self.player.forward());
@@ -1421,6 +1478,14 @@ impl Game {
             self.mobs.entities.spawn_xp(ahead + DVec3::Y, points);
         }
         self.placed = true;
+        if let Some(p) = self.open_block.take() {
+            match self.world.get_block(p) {
+                Some(b) if crate::world::furnace::is_furnace(b) => self.open_furnace(p),
+                Some(b) if crate::world::chest::is_chest(b) => self.open_chest(p),
+                Some(Block::BREWING_STAND) => self.open_brewing(p),
+                _ => log::warn!("--open-block {p}: no container there"),
+            }
+        }
         self.spawn_pending_mobs();
         // Seated once the ground it stands on is in place.
         if let Some(screen) = self.virtual_pad.take() {
