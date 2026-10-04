@@ -1054,8 +1054,7 @@ impl Game {
     /// Java's result slot.
     pub(super) fn award_furnace_xp(&mut self, pos: IVec3, before: u8) {
         let roll = self.mobs.entities.roll();
-        let Some(f) = self.world.furnace_mut(pos).filter(|f| f.output.map_or(0, |s| s.count) < before) else { return };
-        let xp = f.take_xp(roll);
+        let Some(xp) = self.world.furnace_mut(pos).and_then(|f| f.take_output_xp(before, roll)) else { return };
         self.mobs.entities.spawn_xp(self.player.pos, xp);
     }
 

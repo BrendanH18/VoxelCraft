@@ -26,6 +26,7 @@ pub(super) struct Bot {
 }
 
 impl Bot {
+    /// Assigns the session's player ID and starts with simulation inactive.
     fn new(id: PlayerId, mut agent: Agent) -> Self {
         agent.id = id;
         let (seen_swings, drawn_feet) = (agent.swings, agent.player.pos);
@@ -65,10 +66,12 @@ impl Agents {
     pub fn positions(&self) -> Vec<DVec3> {
         self.players.values().filter(|b| b.active).map(|b| b.agent.player.pos).collect()
     }
+    /// Saves named player profiles, progression and inventory in this dimension.
     pub fn serialize(&self, dimension: &str) -> String {
         let profiles: Vec<_>=self.players.iter().map(|(name,b)|json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"inventory":b.agent.inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})).collect();
         json!(profiles).to_string()
     }
+    /// Restores valid profiles, moving players from other dimensions to `spawn`.
     pub fn restore(&mut self, text: &str, dimension: &str, spawn: DVec3) {
         let Ok(Value::Array(profiles)) = serde_json::from_str(text) else {
             return;

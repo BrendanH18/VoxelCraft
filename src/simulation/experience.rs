@@ -112,6 +112,7 @@ impl Experience {
         self.chime(self.level > before && self.level.is_multiple_of(5))
     }
 
+    /// Returns milestone chime volume when its cooldown permits, then resets the timer.
     fn chime(&mut self, milestone: bool) -> Option<f32> {
         if !milestone || self.since_chime < CHIME_INTERVAL {
             return None;

@@ -161,6 +161,7 @@ impl Sound {
         }
     }
 
+    /// Every material, gameplay and mob sound synthesized into the audio bank.
     pub fn all() -> impl Iterator<Item = Sound> {
         let per_material = Material::ALL.into_iter().flat_map(|m| [Sound::Break(m), Sound::Place(m), Sound::Step(m)]);
         per_material
@@ -190,6 +191,7 @@ impl Sound {
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
     }
 
+    /// Stable sound name used when exporting or identifying samples.
     pub fn name(self) -> String {
         match self {
             Sound::Break(m) => format!("break_{}", m.name()),
@@ -223,6 +225,7 @@ impl Sound {
         matches!(self, Sound::Wind | Sound::Cave | Sound::Rain)
     }
 
+    /// Number of synthesized variations playback can choose from.
     pub fn variants(self) -> u32 {
         match self {
             Sound::Step(_) => 4,
@@ -738,6 +741,7 @@ fn ding(out: &mut [f32], start: usize, freq: f32, amp: f32, tau: f32) {
     }
 }
 
+/// Synthesizes the bright chime played when an experience orb is collected.
 fn orb() -> Vec<f32> {
     // Java's pickup is a short bright ding; playback varies the pitch.
     let mut out = vec![0.0; samples(0.7)];
@@ -745,6 +749,7 @@ fn orb() -> Vec<f32> {
     dsp::finish(out, 0.3)
 }
 
+/// Synthesizes the rising arpeggio for experience level milestones.
 fn level_up() -> Vec<f32> {
     // A quick rising major arpeggio that rings out on the top note.
     let mut out = vec![0.0; samples(1.8)];
@@ -754,6 +759,7 @@ fn level_up() -> Vec<f32> {
     dsp::finish(out, 0.35)
 }
 
+/// Synthesizes a blaze's launch whoosh with a decaying flame crackle.
 fn fireball(rng: &mut Rng) -> Vec<f32> {
     // A roaring whoosh: noise swept down through a band-pass, with a
     // crackle of flame on top.
@@ -774,6 +780,7 @@ fn fireball(rng: &mut Rng) -> Vec<f32> {
     dsp::finish(out, 0.45)
 }
 
+/// Synthesizes the sweeping tones and breathy noise of a teleport.
 fn teleport(rng: &mut Rng) -> Vec<f32> {
     // Java's "vwoop": a few detuned tones swooping up then down, with a
     // breathy band of noise riding the same sweep.

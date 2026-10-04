@@ -105,6 +105,7 @@ impl XpOrb {
         format!("{:.3},{:.3},{:.3},{:.1},{},{}", p.x, p.y, p.z, self.age, self.value, self.count)
     }
 
+    /// Restores a stationary orb, rejecting nonfinite positions and empty values or counts.
     pub fn deserialize(text: &str, rng: &mut Rng) -> Option<Self> {
         let f: Vec<&str> = text.split(',').collect();
         let [x, y, z, age, value, count] = f[..] else { return None };

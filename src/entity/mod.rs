@@ -312,6 +312,7 @@ pub struct Entities {
 }
 
 impl Entities {
+    /// Creates an empty entity simulation with deterministic randomness from `seed`.
     pub fn new(seed: u64) -> Self {
         Self {
             mobs: Vec::new(),
@@ -497,6 +498,7 @@ impl Entities {
         self.orbs.iter().map(XpOrb::serialize).collect::<Vec<_>>().join(";")
     }
 
+    /// Appends saved experience orbs, skipping empty or malformed entries.
     pub fn load_orbs(&mut self, text: &str) {
         let rng = &mut self.rng;
         self.orbs.extend(text.split(';').filter(|s| !s.is_empty()).filter_map(|s| XpOrb::deserialize(s, rng)));

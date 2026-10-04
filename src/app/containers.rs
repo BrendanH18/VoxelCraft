@@ -84,6 +84,8 @@ impl Game {
                     }
                 }
                 if slot == SlotRef::FurnaceOutput {
+                    // The helper compares the restored output with its original
+                    // count and drains stored XP once, even for a partial move.
                     self.award_furnace_xp(p, stack.count);
                 }
             }

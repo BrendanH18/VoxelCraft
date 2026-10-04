@@ -123,6 +123,7 @@ impl Game {
         true
     }
 
+    /// Applies a parsed console command to the host and returns its feedback.
     pub(super) fn host_command(&mut self, command: Command) -> Result<String, String> {
         match command {
             Command::Catalog(query) => {
@@ -199,6 +200,7 @@ impl Game {
         Ok("Done".into())
     }
 
+    /// Formats the host's level and progress toward the next level.
     fn xp_summary(&self) -> String {
         let xp = &self.vitals.xp;
         let next = crate::simulation::experience::points_to_next(xp.level);

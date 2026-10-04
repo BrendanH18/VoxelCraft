@@ -189,6 +189,7 @@ impl Command {
         })
     }
 
+    /// Whether executing this command requires cheats to be enabled.
     pub fn cheat(&self) -> bool {
         matches!(
             self,
@@ -233,6 +234,7 @@ pub struct Agent {
 }
 
 impl Agent {
+    /// Creates an idle survival player with empty inventory at `pos`.
     pub fn new(pos: DVec3) -> Self {
         Self {
             player: Player::new(pos),

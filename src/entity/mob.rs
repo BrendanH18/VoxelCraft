@@ -99,6 +99,7 @@ impl MobKind {
         MobKind::Blaze,
     ];
 
+    /// Lowercase mob name used by commands and saved spawner entries.
     pub fn name(self) -> &'static str {
         match self {
             MobKind::Pig => "pig",
@@ -121,6 +122,7 @@ impl MobKind {
         Self::ALL.into_iter().find(|k| k.name() == name)
     }
 
+    /// Collision box dimensions for movement and spawn-space checks.
     pub fn shape(self) -> Shape {
         match self {
             MobKind::Pig => Shape::new(0.45, 0.9),
@@ -136,6 +138,7 @@ impl MobKind {
         }
     }
 
+    /// Starting health in damage points, with two points per heart.
     pub fn max_health(self) -> f32 {
         match self {
             MobKind::Pig | MobKind::Cow => 10.0,
@@ -147,6 +150,7 @@ impl MobKind {
         }
     }
 
+    /// Whether this kind belongs to the hostile spawning group, including neutral monsters.
     pub fn is_hostile(self) -> bool {
         matches!(
             self,

@@ -383,6 +383,7 @@ fn spider(call: Call, rng: &mut Rng) -> Vec<f32> {
     dsp::finish(out, 0.45)
 }
 
+/// Synthesizes an Enderman's ambient, hurt or death call as a warbling murmur.
 fn enderman(call: Call, rng: &mut Rng) -> Vec<f32> {
     let (secs, base, fall, wob) = match call {
         Call::Ambient => (rng.range(0.7, 1.0), rng.range(70.0, 90.0), 0.7, rng.range(6.0, 9.0)),
@@ -409,6 +410,7 @@ fn enderman(call: Call, rng: &mut Rng) -> Vec<f32> {
     dsp::finish(out, 0.55)
 }
 
+/// Synthesizes a blaze's call using breath noise and resonant metallic tones.
 fn blaze(call: Call, rng: &mut Rng) -> Vec<f32> {
     // Java's blaze breathes: hollow, metallic rasps through its rods.
     let (secs, breaths, bright) = match call {

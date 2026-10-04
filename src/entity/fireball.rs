@@ -30,6 +30,7 @@ pub struct Fireball {
 }
 
 impl Fireball {
+    /// Launches from `from` with a normalized heading, falling back to +X for zero.
     pub fn new(from: DVec3, dir: DVec3) -> Self {
         let dir = dir.normalize_or(DVec3::X);
         Self { pos: from, previous_pos: from, vel: dir * LAUNCH_SPEED, dir, age: 0.0 }

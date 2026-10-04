@@ -161,11 +161,19 @@ impl Furnace {
         crate::simulation::experience::round_award(std::mem::take(&mut self.xp), roll)
     }
 
+    /// Releases all stored XP if the output shrank from `before`, including
+    /// on a partial transfer. No transfer leaves the tally intact; later
+    /// takes earn nothing until more items have been smelted.
+    pub fn take_output_xp(&mut self, before: u8, roll: f32) -> Option<u32> {
+        (self.output.map_or(0, |s| s.count) < before).then(|| self.take_xp(roll))
+    }
+
     /// Everything inside, for when the furnace is broken.
     pub fn take_all(&mut self) -> Vec<Stack> {
         [self.input.take(), self.fuel.take(), self.output.take()].into_iter().flatten().collect()
     }
 
+    /// Saves the slots, cooking and fuel timers, and unclaimed XP tally.
     pub fn serialize(&self) -> String {
         format!(
             "{};{};{};{:.2};{:.2};{:.2};{:.2}",
@@ -179,6 +187,7 @@ impl Furnace {
         )
     }
 
+    /// Restores saved furnace state, accepting older saves without an XP field.
     pub fn deserialize(text: &str) -> Option<Self> {
         let f: Vec<&str> = text.split(';').collect();
         // Saves from before experience have six fields.
@@ -339,6 +348,38 @@ mod tests {
         assert!(!f.is_lit());
         assert_eq!(smelt(Item::RAW_BEEF), Some(Item::STEAK));
         assert!(burn_time(Item::IRON_INGOT).is_none());
+    }
+
+    #[test]
+    fn output_transfers_release_stored_xp_once() {
+        use crate::inventory::move_into;
+
+        let mut f = furnace(Item::from_block(Block::GOLD_ORE), 8, Item::COAL, 2);
+        run(&mut f, COOK_TIME * 8.0 + 1.0);
+        assert_eq!(f.xp, 8.0);
+        let mut inventory = [Some(Stack::new(Item::GOLD_INGOT, 64))];
+        let stack = f.output.take().unwrap();
+        f.output = move_into(stack, &mut inventory, &[0]);
+        assert_eq!(f.take_output_xp(stack.count, 0.5), None, "a full inventory does not release XP");
+        assert_eq!(f.xp, 8.0);
+
+        inventory[0].as_mut().unwrap().count = 63;
+        let stack = f.output.take().unwrap();
+        f.output = move_into(stack, &mut inventory, &[0]);
+        assert_eq!(f.output.unwrap().count, 7, "only one item fits");
+        assert_eq!(f.take_output_xp(stack.count, 0.5), Some(8), "a partial take releases the entire tally");
+        assert_eq!(f.xp, 0.0);
+
+        inventory[0] = None;
+        let stack = f.output.take().unwrap();
+        f.output = move_into(stack, &mut inventory, &[0]);
+        assert_eq!(f.output, None);
+        assert_eq!(f.take_output_xp(stack.count, 0.5), Some(0), "taking the leftovers cannot award XP twice");
+        f.input = Some(Stack::new(Block::GOLD_ORE, 1));
+        f.fuel = Some(Stack::new(Item::COAL, 1));
+        run(&mut f, COOK_TIME + 1.0);
+        f.output.take();
+        assert_eq!(f.take_output_xp(1, 0.5), Some(1), "new smelts earn fresh XP");
     }
 
     #[test]
