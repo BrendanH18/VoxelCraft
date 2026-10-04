@@ -244,6 +244,20 @@ full performance display instead of duplicating the compact counter.
   the stack; clicking off the inventory window throws the held stack (right
   click: one item). Items that don't fit when a crafting screen closes are
   thrown out. Dropped items are saved with the world
+- Experience, like Java Edition: coal, diamond and nether quartz ore (when
+  harvested with the right pickaxe), killed mobs (5 for monsters, 1-3 for
+  animals) and smelting drop glowing orbs that shimmer between yellow and
+  green. Furnaces store what they smelt (0.7 per iron ingot, 1 per gold
+  ingot or diamond, 0.35 per cooked meat, 0.1 for most blocks) and release
+  it when you take from the output slot or break the furnace. Orbs drift
+  toward the nearest player within 8 blocks, merge with same-sized orbs,
+  burn in lava and fire, and vanish after five minutes. You absorb one orb
+  every two ticks, with a ding, and a fanfare plays every five levels. The
+  level curve is Java's (7 points for level 1, then 2L+7, 5L-38 and 9L-158).
+  The green bar above the hotbar shows progress and the level. Dying drops
+  7 points per level (at most 100) and loses the rest; the death screen
+  shows your score. `/xp add|set <n> [points|levels]` and `/xp query`
+  change it from the console. Experience and orbs are saved with the world
 - Procedurally generated, mipmapped block textures — the game ships no assets
 - Procedural sound, synthesized in code at startup (~25 ms): material-specific
   break/place/footstep sounds (stone, wood, dirt, grass, gravel, sand, snow,

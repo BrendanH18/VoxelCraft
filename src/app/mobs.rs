@@ -111,11 +111,10 @@ impl Game {
             self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         self.mobs.attack_cooldown -= dt;
-        let mut players = vec![Target::new(
-            PlayerId::HOST,
-            self.player.pos,
-            self.mode == GameMode::Survival && !self.vitals.is_dead(),
-        )];
+        let mut players = vec![Target {
+            alive: !self.vitals.is_dead(),
+            ..Target::new(PlayerId::HOST, self.player.pos, self.mode == GameMode::Survival && !self.vitals.is_dead())
+        }];
         // Agents keep source-dimension positions until arrival relocates them.
         if self.arrival.is_none() {
             players.extend(self.agents.targets());

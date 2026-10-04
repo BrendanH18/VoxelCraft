@@ -83,6 +83,9 @@ impl Game {
                         _ => f.output = left,
                     }
                 }
+                if slot == SlotRef::FurnaceOutput {
+                    self.award_furnace_xp(p, stack.count);
+                }
             }
             SlotRef::Armor(piece) => {
                 let Some(stack) = self.inventory.armor[piece as usize].take() else { return };

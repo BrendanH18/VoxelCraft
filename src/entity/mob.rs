@@ -192,6 +192,11 @@ impl MobKind {
             .filter(|&(_, n)| n > 0)
             .collect()
     }
+
+    /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
+    pub fn xp(self, rng: &mut Rng) -> u32 {
+        if self.is_hostile() { 5 } else { 1 + (rng.next_f32() * 3.0) as u32 }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]

@@ -37,7 +37,8 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
   glowstone under a bedrock roof, eight overworld blocks to every one. The
   End's floating islands and obsidian pillars can be visited from the console.
 - **Two ways to play.** Build freely in creative, or play survival with timed
-  mining, block drops, a stackable inventory, health, hunger, and respawning.
+  mining, block drops, a stackable inventory, health, hunger, experience
+  orbs and levels, and respawning.
 - **Craft, fight, cook and store.** Make tools and swords in five tiers,
   armor in four, and bows and arrows, craft torches and building blocks, smelt ores
   and cook food in furnaces, and keep your haul in chests. Tools wear out;

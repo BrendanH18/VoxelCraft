@@ -113,13 +113,17 @@ pub enum Sound {
     Rain,
     /// A door or gate opening (creaky hinge) or closing (latch and thud).
     Door(bool),
+    /// Absorbing an experience orb: a small glassy ding.
+    Orb,
+    /// Reaching a multiple of five levels: a rising bell arpeggio.
+    LevelUp,
 }
 
 const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 16 + Voice::ALL.len() * CALLS;
+    pub const COUNT: usize = 3 * M + 18 + Voice::ALL.len() * CALLS;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -142,7 +146,9 @@ impl Sound {
             Sound::Hit => 3 * M + 12,
             Sound::Rain => 3 * M + 13,
             Sound::Door(open) => 3 * M + 14 + open as usize,
-            Sound::Mob(v, c) => 3 * M + 16 + v as usize * CALLS + c as usize,
+            Sound::Orb => 3 * M + 16,
+            Sound::LevelUp => 3 * M + 17,
+            Sound::Mob(v, c) => 3 * M + 18 + v as usize * CALLS + c as usize,
         }
     }
 
@@ -166,6 +172,8 @@ impl Sound {
                 Sound::Rain,
                 Sound::Door(false),
                 Sound::Door(true),
+                Sound::Orb,
+                Sound::LevelUp,
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
     }
@@ -190,6 +198,8 @@ impl Sound {
             Sound::Hit => "hit".into(),
             Sound::Rain => "rain".into(),
             Sound::Door(open) => if open { "door_open" } else { "door_close" }.into(),
+            Sound::Orb => "xp_orb".into(),
+            Sound::LevelUp => "level_up".into(),
             Sound::Mob(v, c) => format!("{}_{}", v.name(), c.name()),
         }
     }
@@ -207,7 +217,14 @@ impl Sound {
             }
             Sound::Mob(_, Call::Death) => 1,
             Sound::Mob(..) => 2,
-            Sound::Click | Sound::Wind | Sound::Cave | Sound::Fuse | Sound::Pop | Sound::Rain => 1,
+            Sound::Click
+            | Sound::Wind
+            | Sound::Cave
+            | Sound::Fuse
+            | Sound::Pop
+            | Sound::Rain
+            | Sound::Orb
+            | Sound::LevelUp => 1,
         }
     }
 
@@ -233,6 +250,8 @@ impl Sound {
             Sound::Hit => super::voices::hit(&mut rng),
             Sound::Rain => rain(&mut rng),
             Sound::Door(open) => door(&mut rng, open),
+            Sound::Orb => orb(),
+            Sound::LevelUp => level_up(),
             Sound::Mob(v, c) => super::voices::render(v, c, &mut rng),
         }
     }
@@ -689,6 +708,30 @@ fn pop() -> Vec<f32> {
     add_mode(&mut out, 0, Mode { freq: 620.0, amp: 1.0, tau: 0.025, glide: 1.8, glide_tau: 0.02 });
     add_mode(&mut out, 0, Mode { freq: 1240.0, amp: 0.15, tau: 0.012, glide: 1.8, glide_tau: 0.02 });
     dsp::finish(out, 0.3)
+}
+
+/// A struck-glass partial set: a strong fundamental, a quieter octave and
+/// two fast inharmonic overtones that give the "ting".
+fn ding(out: &mut [f32], start: usize, freq: f32, amp: f32, tau: f32) {
+    for (ratio, a, t) in [(1.0, 1.0, 1.0), (2.0, 0.35, 0.5), (3.01, 0.12, 0.25), (4.16, 0.06, 0.15)] {
+        add_mode(out, start, Mode { freq: freq * ratio, amp: amp * a, tau: tau * t, glide: 1.0, glide_tau: 1.0 });
+    }
+}
+
+fn orb() -> Vec<f32> {
+    // Java's pickup is a short bright ding; playback varies the pitch.
+    let mut out = vec![0.0; samples(0.7)];
+    ding(&mut out, 0, 1320.0, 1.0, 0.16);
+    dsp::finish(out, 0.3)
+}
+
+fn level_up() -> Vec<f32> {
+    // A quick rising major arpeggio that rings out on the top note.
+    let mut out = vec![0.0; samples(1.8)];
+    for (i, (freq, tau)) in [(1046.5, 0.18), (1318.5, 0.18), (1568.0, 0.2), (2093.0, 0.45)].into_iter().enumerate() {
+        ding(&mut out, samples(0.07 * i as f32), freq, 0.8, tau);
+    }
+    dsp::finish(out, 0.35)
 }
 
 fn click() -> Vec<f32> {

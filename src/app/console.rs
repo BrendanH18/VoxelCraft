@@ -99,6 +99,7 @@ impl Game {
                     "weather",
                     "setblock",
                     "dimension",
+                    "xp",
                     "players",
                     "observe",
                     "splitscreen",
@@ -177,6 +178,13 @@ impl Game {
                         .join(", ")
                 ));
             }
+            Command::Xp(change) => {
+                if let Some(chime) = change.apply(&mut self.vitals.xp) {
+                    self.audio.play(crate::audio::sounds::Sound::LevelUp, None, chime, (1.0, 1.0));
+                }
+                return Ok(self.xp_summary());
+            }
+            Command::XpQuery => return Ok(self.xp_summary()),
             Command::Observe(_) => {
                 return Ok(format!(
                     "{} at {:.1}, {:.1}, {:.1}",
@@ -189,6 +197,12 @@ impl Game {
             _ => return Err("use the agent CLI for movement and interaction commands".into()),
         }
         Ok("Done".into())
+    }
+
+    fn xp_summary(&self) -> String {
+        let xp = &self.vitals.xp;
+        let next = crate::simulation::experience::points_to_next(xp.level);
+        format!("Level {} ({}/{} points to the next)", xp.level, xp.points, next)
     }
 
     pub(super) fn console_ui(&self, ui: &mut Ui) {

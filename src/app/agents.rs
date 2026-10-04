@@ -52,7 +52,10 @@ impl Agents {
     }
     /// Active agents as mob targets.
     pub fn targets(&self) -> impl Iterator<Item = Target> + '_ {
-        self.players.values().filter(|b| b.active).map(|b| Target::new(b.id, b.agent.player.pos, b.agent.targetable()))
+        self.players.values().filter(|b| b.active).map(|b| Target {
+            alive: !b.agent.vitals.is_dead(),
+            ..Target::new(b.id, b.agent.player.pos, b.agent.targetable())
+        })
     }
     pub fn by_id_mut(&mut self, id: PlayerId) -> Option<&mut Bot> {
         self.players.values_mut().find(|b| b.id == id)
@@ -61,7 +64,7 @@ impl Agents {
         self.players.values().filter(|b| b.active).map(|b| b.agent.player.pos).collect()
     }
     pub fn serialize(&self, dimension: &str) -> String {
-        let profiles: Vec<_>=self.players.iter().map(|(name,b)|json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"inventory":b.agent.inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})).collect();
+        let profiles: Vec<_>=self.players.iter().map(|(name,b)|json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"inventory":b.agent.inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})).collect();
         json!(profiles).to_string()
     }
     pub fn restore(&mut self, text: &str, dimension: &str, spawn: DVec3) {
@@ -102,6 +105,9 @@ impl Agents {
                 p["saturation"].as_f64().unwrap_or(5.0) as f32,
                 p["exhaustion"].as_f64().unwrap_or(0.0) as f32,
             );
+            if let Some(xp) = p["xp"].as_str().and_then(crate::simulation::experience::Experience::parse) {
+                agent.vitals.xp = xp;
+            }
             // Replacing a profile frees its old ID.
             self.players.remove(name);
             let id = p["id"]
@@ -283,6 +289,7 @@ mod tests {
         agent.spawn_bed = Some(IVec3::new(4, 70, -2));
         agent.player.flying = true;
         agent.vitals.hunger = crate::simulation::survival::Hunger::restore(8.0, 2.0, 1.0);
+        agent.vitals.xp = crate::simulation::experience::Experience::restore(7, 4, 90);
         agents.insert("builder".into(), agent);
         agents.players.get_mut("builder").unwrap().active = true;
         let text = agents.serialize("overworld");
@@ -296,6 +303,7 @@ mod tests {
         assert_eq!(bot.agent.player.pos, DVec3::new(300.0, 100.0, -250.0));
         assert_eq!(bot.agent.inventory.get(0).unwrap().count, 3);
         assert_eq!(bot.agent.vitals.hunger.food, 8.0);
+        assert_eq!(bot.agent.vitals.xp, crate::simulation::experience::Experience::restore(7, 4, 90));
         assert_eq!(bot.agent.spawn_bed, Some(IVec3::new(4, 70, -2)));
         restored.restore(&text, "nether", spawn);
         assert_eq!(restored.players["builder"].agent.player.pos, spawn);

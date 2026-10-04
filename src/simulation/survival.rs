@@ -209,6 +209,8 @@ pub struct Vitals {
     /// Seconds of air left, 0..=MAX_AIR.
     pub air: f32,
     pub hunger: Hunger,
+    /// Levels and points; a death drops some as orbs and loses the rest.
+    pub xp: super::experience::Experience,
     /// Seconds since the last damage (drives the hurt flash).
     since_damage: f32,
     drown_timer: f32,
@@ -229,6 +231,7 @@ impl Default for Vitals {
             health: MAX_HEALTH,
             air: MAX_AIR,
             hunger: Hunger::default(),
+            xp: Default::default(),
             since_damage: 1e3,
             drown_timer: 0.0,
             fire_left: 0.0,
@@ -303,6 +306,7 @@ impl Vitals {
     pub fn tick(&mut self, dt: f32, env: &Env, creative: bool) -> Hurts {
         let mut hurts = Hurts::default();
         self.since_damage = (self.since_damage + dt).min(1e3);
+        self.xp.tick(dt);
         if self.is_dead() {
             return hurts;
         }
@@ -393,7 +397,7 @@ impl Vitals {
         self.fall_peak = None;
     }
 
-    /// Full health and air, alive, nothing pending.
+    /// Full health and air, alive, no experience, nothing pending.
     pub fn respawn(&mut self) {
         *self = Self::default();
     }

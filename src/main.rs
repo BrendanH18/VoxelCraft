@@ -57,6 +57,10 @@ pub struct Args {
     pub health: Option<f32>,
     pub air: Option<f32>,
     pub food: Option<f32>,
+    /// Starting experience level (`--xp`).
+    pub xp: Option<u32>,
+    /// Experience orbs (points each) spawned in front of the player once loaded.
+    pub orbs: Vec<u32>,
     /// Items added to the inventory at startup (debugging/screenshots).
     pub give: Vec<(item::Item, u8)>,
     /// Armor worn at startup (`--wear`).
@@ -105,6 +109,9 @@ voxelcraft [options]
   --health <0..20>  starting health in half hearts (0 opens the death screen)
   --air <0..15>     starting air in seconds
   --food <0..20>    starting hunger in half drumsticks (no saturation)
+  --xp <level>      starting experience level
+  --orbs <points>   spawn experience orbs worth that many points in front of
+                    the player once loaded (repeatable)
   --give item[,n]   add n (default 1) of an item to the inventory at startup
                     (repeatable; e.g. --give iron_pickaxe --give coal,16)
   --drop item[,n]   throw n of an item in front of the player once loaded
@@ -159,6 +166,8 @@ fn parse_args() -> Result<Args, String> {
         health: None,
         air: None,
         food: None,
+        xp: None,
+        orbs: Vec::new(),
         give: Vec::new(),
         wear: Vec::new(),
         drop: Vec::new(),
@@ -276,6 +285,8 @@ fn parse_args() -> Result<Args, String> {
             "--health" => args.health = Some(value("--health")?.parse().map_err(|_| "bad --health")?),
             "--air" => args.air = Some(value("--air")?.parse().map_err(|_| "bad --air")?),
             "--food" => args.food = Some(value("--food")?.parse().map_err(|_| "bad --food")?),
+            "--xp" => args.xp = Some(value("--xp")?.parse().map_err(|_| "bad --xp")?),
+            "--orbs" => args.orbs.push(value("--orbs")?.parse().map_err(|_| "bad --orbs")?),
             flag @ ("--give" | "--drop") => {
                 let v = value(flag)?;
                 let (name, count) = v.split_once(',').unwrap_or((&v, "1"));
@@ -329,6 +340,8 @@ impl Args {
         self.health = None;
         self.air = None;
         self.food = None;
+        self.xp = None;
+        self.orbs.clear();
         self.give.clear();
         self.wear.clear();
         self.drop.clear();

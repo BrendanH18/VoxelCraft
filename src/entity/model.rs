@@ -10,7 +10,8 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use glam::{DVec3, Quat, Vec3};
 
 use super::mob::{Ai, FUSE_TIME, HURT_TIME, Mob, MobKind};
-use super::{Arrow, Puff};
+use super::{Arrow, Puff, XpOrb};
+use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
 
 #[repr(C)]
@@ -491,6 +492,37 @@ pub fn build_puffs(puffs: &[Puff], camera: DVec3, alpha: f64, out: &mut Vec<Enti
             Quat::IDENTITY,
             ([255, 255, 0, glow], 0),
             (FIRE, 0.0),
+            i as f32,
+        );
+    }
+}
+
+/// Experience orbs: small glowing cubes, bigger for bigger values, that
+/// shimmer between yellow and green like Java's tinted sprites.
+pub fn build_orbs(orbs: &[XpOrb], camera: DVec3, max_dist: f32, time: f32, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for (i, o) in orbs.iter().enumerate() {
+        let pos = o.previous_pos.lerp(o.pos, alpha);
+        if pos.distance_squared(camera) > (max_dist as f64).powi(2) {
+            continue;
+        }
+        // Java's sprites span about 4 to 12 texels at 0.3 scale; in model
+        // units (1/16 block) that's roughly 1.2 to 3.6.
+        let size = 1.2 + 0.24 * experience::orb_icon(o.value) as f32;
+        // Java's colour: red follows a sine, green stays full.
+        let h = time * 10.0 + o.phase;
+        let red = ((h.sin() + 1.0) * 0.5 * 200.0 + 55.0) as u8;
+        let c = Cuboid { min: [-size / 2.0; 3], max: [size / 2.0; 3], color: [red, 255, 40], noise: 40 };
+        // Bob a little above the ground, and spin.
+        let lift = 0.15 + 0.03 * (time * 3.0 + o.phase).sin();
+        let rel = (pos - camera).as_vec3() + Vec3::Y * lift;
+        let rot = Quat::from_rotation_y(time * 2.0 + o.phase);
+        push_cuboid(
+            out,
+            &c,
+            &|v: Vec3| rel + rot * (v / 16.0),
+            rot,
+            ([255, 255, 0, 220], 0),
+            ([0.0; 3], 0.0),
             i as f32,
         );
     }

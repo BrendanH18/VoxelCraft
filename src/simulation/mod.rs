@@ -1,6 +1,7 @@
 //! Fixed game time and device-independent gameplay steps shared by clients
 //! and headless callers. Input and presentation stay with the caller.
 
+pub mod experience;
 pub mod survival;
 pub mod weather;
 

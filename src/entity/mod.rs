@@ -15,6 +15,7 @@
 pub mod item;
 mod mob;
 pub mod model;
+pub mod orb;
 mod projectile;
 pub mod tnt;
 
@@ -30,6 +31,7 @@ use model::EntityVertex;
 
 pub use item::ItemEntity;
 pub use mob::{Mob, MobKind, sky_light};
+pub use orb::XpOrb;
 pub use projectile::Arrow;
 
 /// Spawns happen this far from the player (blocks).
@@ -168,11 +170,14 @@ pub struct Target {
     pub pos: DVec3,
     /// Hostile mobs chase and attack (false in creative or while dead).
     pub targetable: bool,
+    /// Experience orbs fly to living players only.
+    pub alive: bool,
 }
 
 impl Target {
+    /// A living player; set [`Target::alive`] for one waiting to respawn.
     pub fn new(id: PlayerId, pos: DVec3, targetable: bool) -> Self {
-        Self { id, pos, targetable }
+        Self { id, pos, targetable, alive: true }
     }
 
     /// Whether `p` is inside this player's 0.6 x 1.8 box.
@@ -244,6 +249,8 @@ pub struct Entities {
     /// Dropped items. They stay put (and don't age) while their chunk is
     /// unloaded, and are saved with the world.
     pub items: Vec<ItemEntity>,
+    /// Experience orbs, kept and saved like dropped items.
+    pub orbs: Vec<XpOrb>,
     rng: Rng,
     spawn_timer: f32,
     merge_timer: f32,
@@ -260,6 +267,7 @@ impl Entities {
             puffs: Vec::new(),
             tnt: Vec::new(),
             items: Vec::new(),
+            orbs: Vec::new(),
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawn_timer: 0.0,
             merge_timer: 0.0,
@@ -325,11 +333,13 @@ impl Entities {
             }
         }
         self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
+        self.orbs.retain_mut(|orb| !world.loaded(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
         self.merge_timer -= dt as f32;
         if self.merge_timer <= 0.0 {
             self.merge_timer = MERGE_INTERVAL;
             item::merge(&mut self.items);
+            orb::merge(&mut self.orbs);
         }
 
         let dtf = dt as f32;
@@ -368,8 +378,11 @@ impl Entities {
         }
     }
 
-    /// Drops the loot of a mob of `kind` the player killed at `pos`.
+    /// Drops the loot and experience of a mob of `kind` the player killed
+    /// at `pos`.
     pub fn drop_loot(&mut self, kind: MobKind, pos: DVec3) {
+        let xp = kind.xp(&mut self.rng);
+        self.spawn_xp(pos, xp);
         for (item, count) in kind.drops(&mut self.rng) {
             let vel = DVec3::new(self.rng.range(-1.5, 1.5) as f64, 4.0, self.rng.range(-1.5, 1.5) as f64);
             let stack = crate::inventory::Stack::new(item, count);
@@ -398,6 +411,35 @@ impl Entities {
         let speed = self.rng.range(0.5, 3.0) as f64;
         let vel = DVec3::new(a.cos() as f64 * speed, 4.0, a.sin() as f64 * speed);
         self.items.push(ItemEntity::new(stack, pos + DVec3::Y, vel, item::THROWN_PICKUP_DELAY, &mut self.rng));
+    }
+
+    /// Experience orbs worth `points` in all, split into Java's orb sizes,
+    /// popping out at `pos`.
+    pub fn spawn_xp(&mut self, pos: DVec3, points: u32) {
+        for value in crate::simulation::experience::orb_values(points) {
+            self.orbs.push(XpOrb::new(value, pos, &mut self.rng));
+        }
+    }
+
+    /// Experience for a block a player harvested at `cell` (ores).
+    pub fn drop_block_xp(&mut self, block: Block, cell: IVec3) {
+        let xp = crate::mining::ore_xp(block, &mut self.rng);
+        self.spawn_xp(cell.as_dvec3() + DVec3::new(0.5, 0.25, 0.5), xp);
+    }
+
+    /// A uniform number in 0..1 for rounding fractional awards.
+    pub fn roll(&mut self) -> f32 {
+        self.rng.next_f32()
+    }
+
+    /// `;`-separated experience orbs for the level file.
+    pub fn orbs_to_string(&self) -> String {
+        self.orbs.iter().map(XpOrb::serialize).collect::<Vec<_>>().join(";")
+    }
+
+    pub fn load_orbs(&mut self, text: &str) {
+        let rng = &mut self.rng;
+        self.orbs.extend(text.split(';').filter(|s| !s.is_empty()).filter_map(|s| XpOrb::deserialize(s, rng)));
     }
 
     /// `;`-separated dropped items for the level file.
@@ -497,6 +539,9 @@ impl Entities {
         for item in &mut self.items {
             item.previous_pos = item.pos;
         }
+        for orb in &mut self.orbs {
+            orb.previous_pos = orb.pos;
+        }
         for t in &mut self.tnt {
             t.previous_pos = t.pos;
         }
@@ -518,6 +563,7 @@ impl Entities {
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
+        model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
         &mut self.verts
     }
 

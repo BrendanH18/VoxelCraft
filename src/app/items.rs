@@ -4,6 +4,7 @@
 
 use glam::DVec3;
 
+use crate::audio::Audio;
 use crate::audio::sounds::Sound;
 use crate::inventory::Stack;
 use crate::render::BlockModel;
@@ -21,6 +22,9 @@ impl Game {
     pub(super) fn update_items(&mut self) {
         for (cell, stack) in std::mem::take(&mut self.world.drops) {
             self.mobs.entities.drop_from_block(stack, cell);
+        }
+        for (cell, xp) in std::mem::take(&mut self.world.xp_drops) {
+            self.mobs.entities.spawn_xp(cell.as_dvec3() + DVec3::splat(0.5), xp);
         }
         for stack in self.inventory.take_spill() {
             self.mobs.entities.throw(stack, self.player.eye(), self.player.forward().as_dvec3());
@@ -60,6 +64,9 @@ impl Game {
         }
         if picked {
             self.audio.play(Sound::Pop, None, 0.35, (0.8, 1.8));
+        }
+        if let Some(chime) = crate::entity::orb::absorb(&mut self.mobs.entities.orbs, player, &mut self.vitals.xp) {
+            xp_sounds(&mut self.audio, None, chime);
         }
     }
 
@@ -101,13 +108,16 @@ impl Game {
     }
 
     /// A dying survival player drops their whole inventory, including what
-    /// was on the crafting grid and the cursor.
+    /// was on the crafting grid and the cursor, and seven points of
+    /// experience per level (at most 100); the rest is lost.
     pub(super) fn drop_everything(&mut self) {
         let mut stacks = self.inventory.take_all();
         stacks.extend(self.craft.take_all());
         for stack in stacks {
             self.mobs.entities.scatter(stack, self.player.pos);
         }
+        let xp = self.vitals.xp.die();
+        self.mobs.entities.spawn_xp(self.player.pos, xp);
     }
 
     /// Spinning, bobbing models for nearby dropped items: a small cube for
@@ -154,5 +164,14 @@ impl Game {
             }
         }
         out
+    }
+}
+
+/// The orb pickup ding (Java's random pitch around 0.9) and, every five
+/// levels, the level-up fanfare. `at` is `None` for the local player.
+pub(super) fn xp_sounds(audio: &mut Audio, at: Option<DVec3>, chime: Option<f32>) {
+    audio.play(Sound::Orb, at, 0.3, (0.55, 1.25));
+    if let Some(volume) = chime {
+        audio.play(Sound::LevelUp, at, volume, (1.0, 1.0));
     }
 }

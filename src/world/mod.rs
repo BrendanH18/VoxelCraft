@@ -98,6 +98,9 @@ pub struct World {
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
+    /// Experience released at a block (a broken furnace's store); the game
+    /// turns it into orbs.
+    pub xp_drops: Vec<(IVec3, u32)>,
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
@@ -160,6 +163,7 @@ impl World {
             random_ticks: 0.0,
             rng,
             drops: Vec::new(),
+            xp_drops: Vec::new(),
             primed_tnt: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
@@ -1249,8 +1253,12 @@ mod tests {
         other.load_furnaces(&saved);
         assert_eq!(other.furnace(p).unwrap().output, world.furnace(p).unwrap().output);
 
-        // Breaking it spills everything, and the state is gone.
+        assert!((world.furnace(p).unwrap().xp - 0.2).abs() < 1e-4, "glass stores 0.1 each");
+
+        // Breaking it spills everything and its experience, and the state is gone.
+        world.furnace_mut(p).unwrap().xp = 3.0;
         world.set_block(p, Block::AIR);
+        assert_eq!(world.xp_drops, [(p, 3)]);
         assert!(world.furnace(p).is_none());
         let spilled: Vec<_> = world.drops.iter().map(|&(_, s)| s.item).collect();
         assert_eq!(spilled, [Item::from_block(Block::SAND), Item::from_block(Block::GLASS)]);

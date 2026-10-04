@@ -188,6 +188,8 @@ struct Game {
     place: Vec<(glam::IVec3, Block)>,
     /// `--drop`: thrown once the world has loaded.
     drop: Vec<(Item, u8)>,
+    /// `--orbs` awards, spawned with the `--drop` items.
+    orbs: Vec<u32>,
     placed: bool,
     /// `--bench-render`: per-frame wall times (CPU + GPU, serialised).
     bench_render: Option<Vec<f64>>,
@@ -588,6 +590,13 @@ impl Game {
         if let Some(f) = args.food {
             vitals.hunger = survival::Hunger::restore(f, 0.0, 0.0);
         }
+        if let Some(xp) = prop("xp").and_then(|t| crate::simulation::experience::Experience::parse(t)) {
+            vitals.xp = xp;
+        }
+        if let Some(level) = args.xp {
+            let total = (0..level.min(1000)).map(crate::simulation::experience::points_to_next).sum();
+            vitals.xp = crate::simulation::experience::Experience::restore(level, 0, total);
+        }
 
         let generator = Arc::new(Generator::for_dimension(seed, dimension));
         let mut player = Player::new(Generator::new(seed).find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
@@ -715,6 +724,7 @@ impl Game {
             screenshot_state: 0,
             place: args.place.clone(),
             drop: args.drop.clone(),
+            orbs: args.orbs.clone(),
             placed: false,
             bench_render: args.bench_render.then(Vec::new),
             frame_started: None,
@@ -1011,6 +1021,7 @@ impl Game {
     fn furnace_click(&mut self, pos: IVec3, slot: hud::SlotRef, right: bool) {
         let cursor = &mut self.inventory.cursor;
         let Some(f) = self.world.furnace_mut(pos) else { return };
+        let before = f.output.map_or(0, |s| s.count);
         match slot {
             hud::SlotRef::FurnaceInput => f.click_input(cursor, right),
             hud::SlotRef::FurnaceFuel => {
@@ -1031,6 +1042,17 @@ impl Game {
             },
             _ => {}
         }
+        self.award_furnace_xp(pos, before);
+    }
+
+    /// Taking any smelted items (the output held `before` items) releases
+    /// all the experience the furnace stored, as orbs at the player, like
+    /// Java's result slot.
+    pub(super) fn award_furnace_xp(&mut self, pos: IVec3, before: u8) {
+        let roll = self.mobs.entities.roll();
+        let Some(f) = self.world.furnace_mut(pos).filter(|f| f.output.map_or(0, |s| s.count) < before) else { return };
+        let xp = f.take_xp(roll);
+        self.mobs.entities.spawn_xp(self.player.pos, xp);
     }
 
     /// Clicking the crafting result: takes one craft onto the cursor (or
@@ -1171,6 +1193,7 @@ impl Game {
         // Stone, ores and the like only drop with a good enough pickaxe.
         if crate::mining::can_harvest(block, held) {
             self.world.spill_block(pos, block);
+            self.mobs.entities.drop_block_xp(block, pos);
         }
         if block.is_bed() {
             self.break_bed_partner(pos, block);
@@ -1371,6 +1394,10 @@ impl Game {
             let dir = glam::DQuat::from_rotation_y(turn) * self.player.forward().as_dvec3();
             self.mobs.entities.throw(Stack::new(item, count), self.player.eye(), dir);
         }
+        let ahead = self.player.pos + self.player.forward().as_dvec3().with_y(0.0).normalize_or_zero() * 4.0;
+        for points in std::mem::take(&mut self.orbs) {
+            self.mobs.entities.spawn_xp(ahead + DVec3::Y, points);
+        }
         self.placed = true;
         self.spawn_pending_mobs();
         // Seated once the ground it stands on is in place.
@@ -1468,6 +1495,7 @@ impl Game {
         props.insert("inventory".to_string(), inventory.serialize());
         props.insert("health".to_string(), self.vitals.health.to_string());
         props.insert("air".to_string(), format!("{:.2}", self.vitals.air));
+        props.insert("xp".to_string(), self.vitals.xp.serialize());
         let h = self.vitals.hunger;
         props.insert("hunger".to_string(), format!("{:.2},{:.2},{:.3}", h.food, h.saturation, h.exhaustion));
         if let Some(cause) = &self.vitals.death {
