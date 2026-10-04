@@ -588,6 +588,8 @@ impl Game {
         swap(&mut self.mobs.attack_held, &mut body.attack_held);
         swap(&mut self.mobs.attack_cooldown, &mut body.attack_cooldown);
         swap(&mut self.spawn_bed, &mut bot.agent.spawn_bed);
+        // With the bodies: bed occupancy pairs `sleeping` with `player`.
+        swap(&mut self.sleeping, &mut bot.agent.sleeping);
         swap(&mut self.container, &mut body.container);
         true
     }
