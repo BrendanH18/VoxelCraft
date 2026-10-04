@@ -19,6 +19,8 @@ pub enum Voice {
     Skeleton,
     Creeper,
     Spider,
+    Enderman,
+    Blaze,
 }
 
 /// What kind of sound a voice makes.
@@ -31,7 +33,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 8] = [
+    pub const ALL: [Voice; 10] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -40,6 +42,8 @@ impl Voice {
         Voice::Skeleton,
         Voice::Creeper,
         Voice::Spider,
+        Voice::Enderman,
+        Voice::Blaze,
     ];
 
     pub fn name(self) -> &'static str {
@@ -52,6 +56,8 @@ impl Voice {
             Voice::Skeleton => "skeleton",
             Voice::Creeper => "creeper",
             Voice::Spider => "spider",
+            Voice::Enderman => "enderman",
+            Voice::Blaze => "blaze",
         }
     }
 }
@@ -140,6 +146,8 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Skeleton => skeleton(call, rng),
         Voice::Creeper => creeper(call, rng),
         Voice::Spider => spider(call, rng),
+        Voice::Enderman => enderman(call, rng),
+        Voice::Blaze => blaze(call, rng),
     }
 }
 
@@ -373,6 +381,89 @@ fn spider(call: Call, rng: &mut Rng) -> Vec<f32> {
         Biquad::lowpass(5000.0, 0.7).run(&mut out);
     }
     dsp::finish(out, 0.45)
+}
+
+/// Synthesizes an Enderman's ambient, hurt or death call as a warbling murmur.
+fn enderman(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, base, fall, wob) = match call {
+        Call::Ambient => (rng.range(0.7, 1.0), rng.range(70.0, 90.0), 0.7, rng.range(6.0, 9.0)),
+        Call::Hurt => (0.45, rng.range(180.0, 220.0), 0.6, 14.0),
+        Call::Death => (1.6, rng.range(220.0, 250.0), 0.25, 9.0),
+    };
+    // A garbled, warbling murmur: fast vibrato and a vowel that sweeps
+    // back and forth, swelling in like reversed speech.
+    let mut out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * lerp(1.0, fall, t / secs) * (1.0 + 0.12 * (wob * std::f32::consts::TAU * t).sin()),
+            env: &|t| swell(t, secs * 0.6, secs * 0.15, secs),
+            formants: [(420.0, 3.0, 1.0), (1100.0, 4.0, 0.7), (2600.0, 5.0, 0.3)],
+            shift: &|t| 1.0 + 0.35 * (wob * 0.45 * std::f32::consts::TAU * t).sin(),
+            jitter: 0.25,
+            breath: 0.6,
+        },
+    );
+    for s in &mut out {
+        *s = (*s * 2.5).tanh();
+    }
+    dsp::finish(out, 0.55)
+}
+
+/// Synthesizes a blaze's call using breath noise and resonant metallic tones.
+fn blaze(call: Call, rng: &mut Rng) -> Vec<f32> {
+    // Java's blaze breathes: hollow, metallic rasps through its rods.
+    let (secs, breaths, bright) = match call {
+        Call::Ambient => (1.2, 2, 900.0),
+        Call::Hurt => (0.35, 1, 1600.0),
+        Call::Death => (1.6, 1, 700.0),
+    };
+    let len = samples(secs);
+    let each = secs / breaths as f32;
+    let mut out = noise(rng, len, |t| {
+        let p = (t % each) / each;
+        let swell = (p * std::f32::consts::PI).sin().powi(2);
+        if call == Call::Death { swell * (1.0 - t / secs) } else { swell }
+    });
+    Biquad::bandpass(bright, 2.5).run(&mut out);
+    // A ring of resonant "pipe" tones gives the metallic edge.
+    let mut pipes = vec![0.0; len];
+    for k in 1..=3 {
+        let f = bright * 0.5 * k as f32 * rng.range(0.97, 1.03);
+        add_mode(&mut pipes, 0, Mode { freq: f, amp: 0.15 / k as f32, tau: secs * 0.6, glide: 0.9, glide_tau: secs });
+    }
+    for (i, p) in pipes.iter_mut().enumerate() {
+        *p *= out[i].abs() * 6.0;
+    }
+    mix_into(&mut out, &pipes, 1.0, 0);
+    if call != Call::Ambient {
+        let mut crack = crackle(rng, len, (0.3, 1.2), |t| 900.0 * (-t / 0.2).exp());
+        Biquad::highpass(1500.0, 0.7).run(&mut crack);
+        mix_into(&mut out, &crack, 0.4, 0);
+    }
+    dsp::finish(out, 0.45)
+}
+
+/// An enderman stared at: a loud, rasping shriek.
+pub fn scream(rng: &mut Rng) -> Vec<f32> {
+    let secs = 1.3;
+    let base = rng.range(330.0, 380.0);
+    let mut out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * (1.0 + 0.25 * (t / secs)) * (1.0 + 0.06 * (37.0 * t).sin()),
+            env: &|t| swell(t, 0.08, 0.5, secs),
+            formants: [(1300.0, 3.0, 1.0), (2700.0, 4.0, 0.8), (4100.0, 5.0, 0.4)],
+            shift: &|t| 1.0 + 0.2 * (t * 9.0).sin(),
+            jitter: 0.5,
+            breath: 1.4,
+        },
+    );
+    for s in &mut out {
+        *s = (*s * 4.0).tanh();
+    }
+    dsp::finish(out, 0.6)
 }
 
 /// The player taking damage: a short, punchy "oof".

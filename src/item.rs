@@ -165,6 +165,10 @@ pub enum Sprite {
     /// An iron bucket, empty or holding this colour of fluid.
     Bucket(Option<[u8; 3]>),
     Door,
+    /// A blaze rod: a glowing yellow stick.
+    Rod([u8; 3]),
+    /// A glossy sphere (ender pearl): body colour and highlight.
+    Pearl([u8; 3], [u8; 3]),
     Tool(ToolKind, Tier),
     Armor(ArmorPiece, ArmorMaterial),
 }
@@ -192,7 +196,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 39] = [
+static ITEMS: [ItemInfo; 42] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -242,6 +246,14 @@ static ITEMS: [ItemInfo; 39] = [
         sprite: Sprite::Bucket(Some([230, 110, 20])),
     },
     item("oak door", Sprite::Door),
+    ItemInfo {
+        name: "ender pearl",
+        kind: ItemKind::Material,
+        max_stack: 16,
+        sprite: Sprite::Pearl([20, 92, 80], [120, 220, 190]),
+    },
+    item("blaze rod", Sprite::Rod([250, 190, 40])),
+    item("blaze powder", Sprite::Powder([250, 150, 30])),
 ];
 
 /// Uses before a bow breaks.
@@ -298,6 +310,10 @@ impl Item {
     pub const LAVA_BUCKET: Item = Item(293);
     /// Places both halves of a door (see `Block::door`).
     pub const OAK_DOOR: Item = Item(294);
+    /// Thrown to teleport where it lands (see `entity::pearl`).
+    pub const ENDER_PEARL: Item = Item(295);
+    pub const BLAZE_ROD: Item = Item(296);
+    pub const BLAZE_POWDER: Item = Item(297);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)

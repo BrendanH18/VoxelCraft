@@ -53,7 +53,7 @@ fn main() {
             daylight: 1.0,
             raining: weather.raining,
             spawning: dimension != Dimension::End,
-            nether: dimension == Dimension::Nether,
+            dimension,
         };
         entities.update(TICK_SECONDS, &world, &ctx);
         world.update(player.pos);

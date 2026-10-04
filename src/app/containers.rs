@@ -83,6 +83,11 @@ impl Game {
                         _ => f.output = left,
                     }
                 }
+                if slot == SlotRef::FurnaceOutput {
+                    // The helper compares the restored output with its original
+                    // count and drains stored XP once, even for a partial move.
+                    self.award_furnace_xp(p, stack.count);
+                }
             }
             SlotRef::Armor(piece) => {
                 let Some(stack) = self.inventory.armor[piece as usize].take() else { return };

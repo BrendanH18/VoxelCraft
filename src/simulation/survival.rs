@@ -209,6 +209,10 @@ pub struct Vitals {
     /// Seconds of air left, 0..=MAX_AIR.
     pub air: f32,
     pub hunger: Hunger,
+    /// Levels and points; a death drops some as orbs and loses the rest.
+    pub xp: super::experience::Experience,
+    /// Seconds before this player can throw another ender pearl.
+    pub pearl_cooldown: f32,
     /// Seconds since the last damage (drives the hurt flash).
     since_damage: f32,
     drown_timer: f32,
@@ -229,6 +233,8 @@ impl Default for Vitals {
             health: MAX_HEALTH,
             air: MAX_AIR,
             hunger: Hunger::default(),
+            xp: Default::default(),
+            pearl_cooldown: 0.0,
             since_damage: 1e3,
             drown_timer: 0.0,
             fire_left: 0.0,
@@ -253,6 +259,13 @@ impl Vitals {
     /// Whether a death cause has been recorded; damage and survival ticks respect this state.
     pub fn is_dead(&self) -> bool {
         self.death.is_some()
+    }
+
+    /// Sets the player on fire for at least `secs` (blaze fireballs).
+    pub fn ignite(&mut self, secs: f32) {
+        if !self.is_dead() {
+            self.fire_left = self.fire_left.max(secs);
+        }
     }
 
     /// Whether a living player has time remaining on their fire effect.
@@ -303,6 +316,8 @@ impl Vitals {
     pub fn tick(&mut self, dt: f32, env: &Env, creative: bool) -> Hurts {
         let mut hurts = Hurts::default();
         self.since_damage = (self.since_damage + dt).min(1e3);
+        self.xp.tick(dt);
+        self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
         if self.is_dead() {
             return hurts;
         }
@@ -393,7 +408,7 @@ impl Vitals {
         self.fall_peak = None;
     }
 
-    /// Full health and air, alive, nothing pending.
+    /// Full health and air, alive, no experience, nothing pending.
     pub fn respawn(&mut self) {
         *self = Self::default();
     }

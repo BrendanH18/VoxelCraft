@@ -142,10 +142,11 @@ const FENCE_RAILS: [Box16; 2] = [b([7, 6, 10], [9, 9, 16]), b([7, 12, 10], [9, 1
 const FENCE_POST_COLLISION: Box16 = b([6, 0, 6], [10, 24, 10]);
 const FENCE_ARM_COLLISION: Box16 = b([6, 0, 10], [10, 24, 16]);
 
-/// Whether a fence on the `side` of `n` joins up with it.
-pub fn fence_connects(n: Block, side: Facing) -> bool {
+/// Whether fence `fence` joins up with `n` on its `side`. Wooden and nether
+/// brick fences don't join each other, like Java's.
+pub fn fence_connects(fence: Block, n: Block, side: Facing) -> bool {
     match n.shaped() {
-        Some(Shaped::Fence) => true,
+        Some(Shaped::Fence) => (n == Block::NETHER_BRICK_FENCE) == (fence == Block::NETHER_BRICK_FENCE),
         // A gate joins fences at either end of its run.
         Some(Shaped::Gate { facing, .. }) => facing.along_x() != side.along_x(),
         _ => n.is_opaque(),
@@ -174,7 +175,7 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
         Some(Shaped::Fence) => {
             out.push(FENCE_POST);
             for f in Facing::ALL {
-                if fence_connects(neighbour(f), f) {
+                if fence_connects(block, neighbour(f), f) {
                     out.push_turned(&FENCE_RAILS, f);
                 }
             }
@@ -196,7 +197,7 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
         Some(Shaped::Fence) => {
             out.push(FENCE_POST_COLLISION);
             for f in Facing::ALL {
-                if fence_connects(neighbour(f), f) {
+                if fence_connects(block, neighbour(f), f) {
                     out.push(FENCE_ARM_COLLISION.turned(f));
                 }
             }
@@ -211,7 +212,7 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
 /// icon, and fences reach out east and west.
 pub fn item_shape(block: Block) -> Boxes {
     let block = if block.stairs_base().is_some() { block.with_facing(Facing::East) } else { block };
-    shape(block, |f| if f.along_x() { Block::OAK_FENCE } else { Block::AIR })
+    shape(block, |f| if f.along_x() { block } else { Block::AIR })
 }
 
 #[cfg(test)]
@@ -255,6 +256,12 @@ mod tests {
         });
         assert_eq!(joined.as_slice().len(), 1 + 3 * 2);
         let tall = collision(Block::OAK_FENCE, none).bounds().unwrap();
+        let mixed = |f: Facing| if f == Facing::East { Block::NETHER_BRICK_FENCE } else { Block::AIR };
+        assert_eq!(shape(Block::OAK_FENCE, mixed).as_slice().len(), 1, "wood and nether brick don't join");
+        let oak = |f: Facing| if f == Facing::East { Block::OAK_FENCE } else { Block::AIR };
+        assert_eq!(shape(Block::NETHER_BRICK_FENCE, oak).as_slice().len(), 1, "either way round");
+        let nether = |f: Facing| if f == Facing::East { Block::NETHER_BRICK_FENCE } else { Block::AIR };
+        assert_eq!(shape(Block::NETHER_BRICK_FENCE, nether).as_slice().len(), 3);
         assert_eq!(tall.max[1], 24);
     }
 

@@ -539,6 +539,17 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 [0, 0, 0, 0]
             }
         }
+        tex::SPAWNER => {
+            // An iron cage: dark bars on a 4-pixel grid with a rim, open
+            // in between so the inside shows.
+            let bar = x.is_multiple_of(5) || y.is_multiple_of(5) || x == SIZE - 1 || y == SIZE - 1;
+            if bar {
+                let rivet = x.is_multiple_of(5) && y.is_multiple_of(5);
+                shade([46, 56, 66], if rivet { 1.3 } else { 0.8 + r * 0.3 })
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
         tex::END_STONE => {
             let pit = rnd(layer, x / 2, y / 2, 31);
             shade([220, 224, 164], if pit < 0.22 { 0.74 + r * 0.08 } else { 0.91 + r * 0.14 })

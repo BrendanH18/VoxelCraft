@@ -167,7 +167,8 @@ pub mod tex {
     pub const ITEM_MORE_0: u8 = FOLIAGE_0 + (FOLIAGE_GROUPS - 1) * FOLIAGE.len() as u8;
     pub const ITEM_MORE_COUNT: u8 = 32;
     pub const END_STONE: u8 = ITEM_MORE_0 + ITEM_MORE_COUNT;
-    pub const COUNT: u32 = END_STONE as u32 + 1;
+    pub const SPAWNER: u8 = END_STONE + 1;
+    pub const COUNT: u32 = SPAWNER as u32 + 1;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
@@ -320,6 +321,10 @@ impl Block {
     /// Fire ages 0..=15, saved as ids 165..=180. All ages share geometry.
     pub const FIRE: Block = Block(165);
     pub const END_STONE: Block = Block(181);
+    /// Fences of nether brick, which don't join wooden ones.
+    pub const NETHER_BRICK_FENCE: Block = Block(182);
+    /// A monster spawner cage (see `World::spawner`).
+    pub const SPAWNER: Block = Block(183);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -407,7 +412,7 @@ impl Block {
         let f = |i: u8| Facing::ALL[i as usize % 4];
         Some(match self.0 {
             112..=135 => Shaped::Stairs(f(self.0 - 112)),
-            136 => Shaped::Fence,
+            136 | 182 => Shaped::Fence,
             137..=140 => Shaped::Ladder(f(self.0 - 137)),
             141..=148 => Shaped::Gate { facing: f(self.0 - 141), open: self.0 >= 145 },
             149..=164 => {
@@ -612,6 +617,7 @@ impl Block {
     fn material(self) -> Block {
         match self.base() {
             Block::OAK_FENCE | Block::FENCE_GATE => Block::PLANKS,
+            Block::NETHER_BRICK_FENCE => Block::NETHER_BRICKS,
             b => b.slab_base().or(b.stairs_base()).unwrap_or(b),
         }
     }
@@ -658,7 +664,7 @@ impl Block {
             Block::OAK_DOOR => (!self.is_door_upper()).then_some(Item::OAK_DOOR),
             Block::QUARTZ_ORE => Some(Item::NETHER_QUARTZ),
             // Glowstone breaks into dust (see `World::spill_block`).
-            Block::GLOWSTONE | Block::NETHER_PORTAL => None,
+            Block::GLOWSTONE | Block::NETHER_PORTAL | Block::SPAWNER => None,
             b if b.is_leaves() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
             b if b.is_fluid() || b.is_fire() || b == Block::AIR => None,
@@ -697,6 +703,7 @@ impl Block {
             Block::CRAFTING_TABLE | Block::CHEST => 2.5,
             Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
             Block::FURNACE | Block::LIT_FURNACE => 3.5,
+            Block::SPAWNER => 5.0,
             Block::OBSIDIAN => 50.0,
             Block::BEDROCK | Block::AIR => f32::INFINITY,
             b if b.is_fluid() => f32::INFINITY,
@@ -722,6 +729,7 @@ impl Block {
             | Block::QUARTZ_ORE
             | Block::END_STONE
             | Block::NETHER_BRICKS
+            | Block::SPAWNER
             | Block::ICE => Some(ToolKind::Pickaxe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
             Block::DIRT
@@ -757,6 +765,7 @@ impl Block {
             | Block::NETHERRACK
             | Block::QUARTZ_ORE
             | Block::END_STONE
+            | Block::SPAWNER
             | Block::NETHER_BRICKS => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
             Block::IRON_ORE => Some(1),
@@ -776,7 +785,7 @@ impl Block {
             .chain(100..=103)
             .chain(105..=111)
             .chain((112..=132).step_by(4))
-            .chain([136, 137, 141])
+            .chain([136, 137, 141, 182])
             .map(Block)
     }
 
@@ -1231,6 +1240,8 @@ const fn make(id: u8) -> BlockInfo {
         157..=164 => ("oak door", Shaped, all(tex::DOOR_TOP)),
         165..=180 => ("fire", Cross, all(tex::FIRE_0)),
         181 => ("end stone", Opaque, all(tex::END_STONE)),
+        182 => ("nether brick fence", Shaped, all(tex::NETHER_BRICKS)),
+        183 => ("spawner", Cutout, all(tex::SPAWNER)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot.

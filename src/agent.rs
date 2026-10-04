@@ -17,7 +17,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | sleep | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | sleep | place (throws a selected ender pearl) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -25,6 +25,9 @@ pub enum Event {
     Broke(IVec3, Block),
     Placed(IVec3, Block),
     Chew,
+    /// Absorbed an experience orb; with the level-up chime volume when it
+    /// reached a multiple of five levels.
+    Xp(Option<f32>),
 }
 
 /// Unheard events kept per agent (a host without audio never drains them).
@@ -58,6 +61,33 @@ pub enum Command {
     Time(f64),
     Weather(bool),
     Dimension(Dimension),
+    /// Java's `/xp`: add or set an amount, counted in levels or points.
+    Xp(XpChange),
+    XpQuery,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct XpChange {
+    pub set: bool,
+    pub amount: i64,
+    pub levels: bool,
+}
+
+impl XpChange {
+    /// Applies the change, returning the level-up chime volume if any.
+    pub fn apply(self, xp: &mut crate::simulation::experience::Experience) -> Option<f32> {
+        match (self.set, self.levels) {
+            (false, false) => xp.add_points(self.amount),
+            (false, true) => xp.add_levels(self.amount),
+            (true, true) => xp.add_levels(self.amount - xp.level as i64),
+            (true, false) => {
+                // Java only sets points within the current level.
+                let cap = crate::simulation::experience::points_to_next(xp.level) as i64;
+                xp.points = self.amount.clamp(0, cap - 1) as u32;
+                None
+            }
+        }
+    }
 }
 
 fn number(text: &str) -> Result<f64, String> {
@@ -142,10 +172,24 @@ impl Command {
             ["weather", "clear"] => Self::Weather(false),
             ["weather", "rain"] => Self::Weather(true),
             ["dimension", name] => Self::Dimension(Dimension::from_name(name).ok_or_else(bad)?),
+            ["xp", "query"] => Self::XpQuery,
+            ["xp", op @ ("add" | "set"), n, unit @ ..] => {
+                let amount = n.parse::<i64>().ok().filter(|n| n.abs() <= 1_000_000).ok_or_else(bad)?;
+                let levels = match unit {
+                    [] | ["points"] => false,
+                    ["levels"] => true,
+                    _ => return Err(bad()),
+                };
+                if *op == "set" && amount < 0 {
+                    return Err(bad());
+                }
+                Self::Xp(XpChange { set: *op == "set", amount, levels })
+            }
             _ => return Err(bad()),
         })
     }
 
+    /// Whether executing this command requires cheats to be enabled.
     pub fn cheat(&self) -> bool {
         matches!(
             self,
@@ -156,6 +200,7 @@ impl Command {
                 | Self::Time(..)
                 | Self::Weather(..)
                 | Self::Dimension(..)
+                | Self::Xp(..)
         )
     }
 }
@@ -165,6 +210,8 @@ pub struct Agent {
     pub previous_pos: DVec3,
     pub inventory: Inventory,
     pub vitals: Vitals,
+    /// The host's stable ID for this player (owner of its thrown pearls).
+    pub id: crate::entity::PlayerId,
     pub creative: bool,
     pub selected: usize,
     pub remaining: u32,
@@ -187,12 +234,14 @@ pub struct Agent {
 }
 
 impl Agent {
+    /// Creates an idle survival player with empty inventory at `pos`.
     pub fn new(pos: DVec3) -> Self {
         Self {
             player: Player::new(pos),
             previous_pos: pos,
             inventory: Inventory::default(),
             vitals: Vitals::default(),
+            id: crate::entity::PlayerId::default(),
             creative: false,
             selected: 0,
             remaining: 0,
@@ -226,7 +275,12 @@ impl Agent {
             return Err("player is dead; respawn first".into());
         }
         let resting = match &command {
-            Command::Observe(_) | Command::Help | Command::Players | Command::Catalog(_) | Command::Sleep => true,
+            Command::Observe(_)
+            | Command::Help
+            | Command::Players
+            | Command::Catalog(_)
+            | Command::Sleep
+            | Command::XpQuery => true,
             Command::Run(input, _, mine) => !mine && input.forward == 0.0 && input.right == 0.0 && !input.jump,
             _ => false,
         };
@@ -284,6 +338,11 @@ impl Agent {
                 }
                 self.inventory = inv;
             }
+            Command::Xp(change) => {
+                if let Some(chime) = change.apply(&mut self.vitals.xp) {
+                    self.emit(Event::Xp(Some(chime)));
+                }
+            }
             Command::Mode(creative) => {
                 self.creative = creative;
                 self.player.can_fly = creative;
@@ -300,6 +359,19 @@ impl Agent {
             Command::SetBlock(pos, block) => {
                 if !world.set_block(pos, block) {
                     return Err("block is unchanged or unloaded".into());
+                }
+            }
+            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::ENDER_PEARL) => {
+                if self.vitals.pearl_cooldown > 0.0 {
+                    return Err("ender pearl cooling down".into());
+                }
+                self.vitals.pearl_cooldown = crate::entity::pearl::COOLDOWN;
+                let p = &self.player;
+                let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
+                entities.throw_pearl(self.id, p.eye(), p.forward().as_dvec3(), carry);
+                self.swings += 1;
+                if !self.creative {
+                    self.inventory.take_one(self.selected);
                 }
             }
             Command::Place => {
@@ -406,7 +478,7 @@ impl Agent {
                 self.player.can_fly = self.creative;
                 self.vitals = Vitals::default();
             }
-            Command::Observe(_) | Command::Help => {}
+            Command::Observe(_) | Command::Help | Command::XpQuery => {}
             _ => return Err("command requires host console".into()),
         }
         Ok(())
@@ -489,9 +561,7 @@ impl Agent {
             }
         }
         if self.vitals.is_dead() {
-            for stack in self.inventory.take_all() {
-                entities.scatter(stack, self.player.pos);
-            }
+            self.drop_everything(entities);
             self.remaining = 0;
             return;
         }
@@ -515,6 +585,7 @@ impl Agent {
                 if !self.creative {
                     if mining::can_harvest(block, held) {
                         world.spill_block(pos, block);
+                        entities.drop_block_xp(block, pos);
                     }
                     if let Some(held) = held {
                         self.inventory.wear(self.selected, mining::wear(held, false));
@@ -536,6 +607,37 @@ impl Agent {
             item.stack.count = self.inventory.add_stack(item.stack);
             item.stack.count > 0
         });
+        if let Some(chime) = crate::entity::orb::absorb(&mut entities.orbs, self.player.pos, &mut self.vitals.xp) {
+            self.emit(Event::Xp(chime));
+        }
+    }
+
+    /// Arrives where this agent's ender pearl landed, taking the landing's
+    /// 5 damage. Returns whether it teleported (dead or asleep agents don't).
+    pub fn pearl_teleport(&mut self, pos: DVec3, entities: &mut Entities) -> bool {
+        if self.vitals.is_dead() || self.sleeping.is_some() {
+            return false;
+        }
+        self.player.pos = pos;
+        self.previous_pos = pos;
+        self.player.vel = DVec3::ZERO;
+        self.vitals.reset_fall();
+        self.vitals.damage(crate::entity::pearl::DAMAGE, "fell from a high place", self.creative);
+        if self.vitals.is_dead() {
+            self.drop_everything(entities);
+            self.remaining = 0;
+        }
+        true
+    }
+
+    /// A dead survival agent's inventory and some of its experience spill
+    /// where it died.
+    fn drop_everything(&mut self, entities: &mut Entities) {
+        for stack in self.inventory.take_all() {
+            entities.scatter(stack, self.player.pos);
+        }
+        let xp = self.vitals.xp.die();
+        entities.spawn_xp(self.player.pos, xp);
     }
 
     /// One tick of eating: a bite finishes after [`EAT_TICKS`] of holding
@@ -588,9 +690,7 @@ impl Agent {
         self.inventory.wear_armor(amount);
         self.sleeping = None;
         if self.vitals.is_dead() {
-            for stack in self.inventory.take_all() {
-                entities.scatter(stack, self.player.pos);
-            }
+            self.drop_everything(entities);
             self.remaining = 0;
         }
         taken
@@ -644,7 +744,7 @@ impl Agent {
         let target = self.target(world).map(
             |(p, n)| json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name())}),
         );
-        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"dead":self.vitals.is_dead(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"spawn_bed":self.spawn_bed.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
+        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"level":self.vitals.xp.level,"xp_progress":self.vitals.xp.progress(),"dead":self.vitals.is_dead(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"spawn_bed":self.spawn_bed.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
 }
 
@@ -792,6 +892,16 @@ mod tests {
             assert!(Command::parse(s).is_err(), "{s}");
         }
         assert!(matches!(Command::parse("/give dirt 64").unwrap(), Command::Give(_, 64)));
+        let xp = |text: &str| match Command::parse(text) {
+            Ok(Command::Xp(c)) => Some((c.set, c.amount, c.levels)),
+            _ => None,
+        };
+        assert_eq!(xp("/xp add 30 levels"), Some((false, 30, true)));
+        assert_eq!(xp("xp add -5"), Some((false, -5, false)));
+        assert_eq!(xp("xp set 3 points"), Some((true, 3, false)));
+        assert!(xp("xp set -1 levels").is_none() && xp("xp add 5 hearts").is_none() && xp("xp add").is_none());
+        assert!(matches!(Command::parse("xp query"), Ok(Command::XpQuery)));
+        assert!(Command::parse("xp add 1").unwrap().cheat());
     }
     #[test]
     fn independent_players_and_atomic_crafting() {

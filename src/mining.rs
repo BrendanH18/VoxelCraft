@@ -53,6 +53,19 @@ pub fn attack_damage(held: Option<Item>) -> f32 {
     base + bonus
 }
 
+/// Experience a harvested block drops (Java's ore ranges; silk touch will
+/// skip this once enchantments exist).
+pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {
+    let (lo, hi) = match block {
+        Block::COAL_ORE => (0, 2),
+        Block::DIAMOND_ORE => (3, 7),
+        Block::QUARTZ_ORE => (2, 5),
+        Block::SPAWNER => (15, 43),
+        _ => return 0,
+    };
+    lo + ((rng.next_f32() * (hi - lo + 1) as f32) as u32).min(hi - lo)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +118,14 @@ mod tests {
         assert_eq!((wear(sword, true), wear(sword, false)), (1, 2));
         assert_eq!((wear(pick, false), wear(pick, true)), (1, 2));
         assert_eq!(wear(Item::STICK, false), 0);
+    }
+
+    #[test]
+    fn only_some_ores_give_experience() {
+        let mut rng = crate::entity::Rng::new(1);
+        let rolls: Vec<u32> = (0..500).map(|_| ore_xp(Block::DIAMOND_ORE, &mut rng)).collect();
+        assert_eq!((rolls.iter().min(), rolls.iter().max()), (Some(&3), Some(&7)));
+        assert!((0..100).all(|_| ore_xp(Block::COAL_ORE, &mut rng) <= 2));
+        assert_eq!(ore_xp(Block::IRON_ORE, &mut rng) + ore_xp(Block::STONE, &mut rng), 0);
     }
 }

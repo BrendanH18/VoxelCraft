@@ -113,13 +113,23 @@ pub enum Sound {
     Rain,
     /// A door or gate opening (creaky hinge) or closing (latch and thud).
     Door(bool),
+    /// Absorbing an experience orb: a small glassy ding.
+    Orb,
+    /// Reaching a multiple of five levels: a rising bell arpeggio.
+    LevelUp,
+    /// An enderman (or pearl thrower) teleporting: a swooping "vwoop".
+    Teleport,
+    /// An enderman someone looked at.
+    Scream,
+    /// A blaze's fireball launching: a roaring whoosh.
+    Fireball,
 }
 
 const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 16 + Voice::ALL.len() * CALLS;
+    pub const COUNT: usize = 3 * M + 21 + Voice::ALL.len() * CALLS;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -142,10 +152,16 @@ impl Sound {
             Sound::Hit => 3 * M + 12,
             Sound::Rain => 3 * M + 13,
             Sound::Door(open) => 3 * M + 14 + open as usize,
-            Sound::Mob(v, c) => 3 * M + 16 + v as usize * CALLS + c as usize,
+            Sound::Orb => 3 * M + 16,
+            Sound::LevelUp => 3 * M + 17,
+            Sound::Teleport => 3 * M + 18,
+            Sound::Scream => 3 * M + 19,
+            Sound::Fireball => 3 * M + 20,
+            Sound::Mob(v, c) => 3 * M + 21 + v as usize * CALLS + c as usize,
         }
     }
 
+    /// Every material, gameplay and mob sound synthesized into the audio bank.
     pub fn all() -> impl Iterator<Item = Sound> {
         let per_material = Material::ALL.into_iter().flat_map(|m| [Sound::Break(m), Sound::Place(m), Sound::Step(m)]);
         per_material
@@ -166,10 +182,16 @@ impl Sound {
                 Sound::Rain,
                 Sound::Door(false),
                 Sound::Door(true),
+                Sound::Orb,
+                Sound::LevelUp,
+                Sound::Teleport,
+                Sound::Scream,
+                Sound::Fireball,
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
     }
 
+    /// Stable sound name used when exporting or identifying samples.
     pub fn name(self) -> String {
         match self {
             Sound::Break(m) => format!("break_{}", m.name()),
@@ -190,6 +212,11 @@ impl Sound {
             Sound::Hit => "hit".into(),
             Sound::Rain => "rain".into(),
             Sound::Door(open) => if open { "door_open" } else { "door_close" }.into(),
+            Sound::Orb => "xp_orb".into(),
+            Sound::LevelUp => "level_up".into(),
+            Sound::Teleport => "teleport".into(),
+            Sound::Scream => "enderman_scream".into(),
+            Sound::Fireball => "fireball".into(),
             Sound::Mob(v, c) => format!("{}_{}", v.name(), c.name()),
         }
     }
@@ -198,6 +225,7 @@ impl Sound {
         matches!(self, Sound::Wind | Sound::Cave | Sound::Rain)
     }
 
+    /// Number of synthesized variations playback can choose from.
     pub fn variants(self) -> u32 {
         match self {
             Sound::Step(_) => 4,
@@ -207,7 +235,16 @@ impl Sound {
             }
             Sound::Mob(_, Call::Death) => 1,
             Sound::Mob(..) => 2,
-            Sound::Click | Sound::Wind | Sound::Cave | Sound::Fuse | Sound::Pop | Sound::Rain => 1,
+            Sound::Click
+            | Sound::Wind
+            | Sound::Cave
+            | Sound::Fuse
+            | Sound::Pop
+            | Sound::Rain
+            | Sound::Orb
+            | Sound::LevelUp
+            | Sound::Scream => 1,
+            Sound::Teleport | Sound::Fireball => 2,
         }
     }
 
@@ -233,6 +270,11 @@ impl Sound {
             Sound::Hit => super::voices::hit(&mut rng),
             Sound::Rain => rain(&mut rng),
             Sound::Door(open) => door(&mut rng, open),
+            Sound::Orb => orb(),
+            Sound::LevelUp => level_up(),
+            Sound::Teleport => teleport(&mut rng),
+            Sound::Scream => super::voices::scream(&mut rng),
+            Sound::Fireball => fireball(&mut rng),
             Sound::Mob(v, c) => super::voices::render(v, c, &mut rng),
         }
     }
@@ -689,6 +731,85 @@ fn pop() -> Vec<f32> {
     add_mode(&mut out, 0, Mode { freq: 620.0, amp: 1.0, tau: 0.025, glide: 1.8, glide_tau: 0.02 });
     add_mode(&mut out, 0, Mode { freq: 1240.0, amp: 0.15, tau: 0.012, glide: 1.8, glide_tau: 0.02 });
     dsp::finish(out, 0.3)
+}
+
+/// A struck-glass partial set: a strong fundamental, a quieter octave and
+/// two fast inharmonic overtones that give the "ting".
+fn ding(out: &mut [f32], start: usize, freq: f32, amp: f32, tau: f32) {
+    for (ratio, a, t) in [(1.0, 1.0, 1.0), (2.0, 0.35, 0.5), (3.01, 0.12, 0.25), (4.16, 0.06, 0.15)] {
+        add_mode(out, start, Mode { freq: freq * ratio, amp: amp * a, tau: tau * t, glide: 1.0, glide_tau: 1.0 });
+    }
+}
+
+/// Synthesizes the bright chime played when an experience orb is collected.
+fn orb() -> Vec<f32> {
+    // Java's pickup is a short bright ding; playback varies the pitch.
+    let mut out = vec![0.0; samples(0.7)];
+    ding(&mut out, 0, 1320.0, 1.0, 0.16);
+    dsp::finish(out, 0.3)
+}
+
+/// Synthesizes the rising arpeggio for experience level milestones.
+fn level_up() -> Vec<f32> {
+    // A quick rising major arpeggio that rings out on the top note.
+    let mut out = vec![0.0; samples(1.8)];
+    for (i, (freq, tau)) in [(1046.5, 0.18), (1318.5, 0.18), (1568.0, 0.2), (2093.0, 0.45)].into_iter().enumerate() {
+        ding(&mut out, samples(0.07 * i as f32), freq, 0.8, tau);
+    }
+    dsp::finish(out, 0.35)
+}
+
+/// Synthesizes a blaze's launch whoosh with a decaying flame crackle.
+fn fireball(rng: &mut Rng) -> Vec<f32> {
+    // A roaring whoosh: noise swept down through a band-pass, with a
+    // crackle of flame on top.
+    let secs = 0.7;
+    let len = samples(secs);
+    let mut out = noise(rng, len, |t| (t / 0.03).min(1.0) * (-(t / 0.25)).exp());
+    let mut band = Biquad::bandpass(1800.0, 1.2);
+    for (i, s) in out.iter_mut().enumerate() {
+        if i % 64 == 0 {
+            let t = i as f32 / dsp::RATE;
+            band.retune(Biquad::bandpass(300.0 + 1500.0 * (-t / 0.15).exp(), 1.2));
+        }
+        *s = band.process(*s);
+    }
+    let mut crack = crackle(rng, len, (0.3, 1.5), |t| 400.0 * (-t / 0.3).exp());
+    Biquad::highpass(2000.0, 0.7).run(&mut crack);
+    mix_into(&mut out, &crack, 0.35, 0);
+    dsp::finish(out, 0.45)
+}
+
+/// Synthesizes the sweeping tones and breathy noise of a teleport.
+fn teleport(rng: &mut Rng) -> Vec<f32> {
+    // Java's "vwoop": a few detuned tones swooping up then down, with a
+    // breathy band of noise riding the same sweep.
+    let secs = 0.55;
+    let len = samples(secs);
+    let peak = rng.range(0.14, 0.2);
+    let sweep = |t: f32| {
+        if t < peak { 260.0 + 900.0 * (t / peak).powi(2) } else { 1160.0 * (-(t - peak) / 0.12).exp() + 180.0 }
+    };
+    let env = |t: f32| (t / 0.03).min(1.0) * ((secs - t) / 0.25).clamp(0.0, 1.0);
+    let mut out = vec![0.0; len];
+    for detune in [1.0, 1.013, 0.987] {
+        let mut phase = 0.0f32;
+        for (i, s) in out.iter_mut().enumerate() {
+            let t = i as f32 / dsp::RATE;
+            phase = (phase + std::f32::consts::TAU * sweep(t) * detune / dsp::RATE) % std::f32::consts::TAU;
+            *s += phase.sin() * env(t) * 0.33;
+        }
+    }
+    let mut air = noise(rng, len, env);
+    let mut band = Biquad::bandpass(1000.0, 3.0);
+    for (i, s) in air.iter_mut().enumerate() {
+        if i % 64 == 0 {
+            band.retune(Biquad::bandpass(sweep(i as f32 / dsp::RATE) * 1.5, 3.0));
+        }
+        *s = band.process(*s);
+    }
+    mix_into(&mut out, &air, 0.6, 0);
+    dsp::finish(out, 0.4)
 }
 
 fn click() -> Vec<f32> {

@@ -6,6 +6,7 @@ use std::time::Instant;
 use crate::inventory::{HOTBAR_SLOTS, Stack};
 use crate::item::{ArmorMaterial, ArmorPiece, Item};
 use crate::render::ui::{Color, Ui, UiVertex, WHITE};
+use crate::simulation::experience::Experience;
 use crate::world::block::tex;
 use crate::world::chunk::{chunk_of, local_of};
 
@@ -135,6 +136,11 @@ impl Game {
             ui.text_scaled(((sw - Ui::text_width(title) * k) / 2.0).floor(), y, title, WHITE, k);
             let msg = format!("Player {cause}");
             ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), y + 36.0, &msg, WHITE);
+            let score = format!("Score: {}", self.vitals.xp.total);
+            let x = ((sw - Ui::text_width(&score)) / 2.0).floor();
+            let n = x + Ui::text_width("Score: ") + 1.0;
+            ui.text(x, y + 48.0, "Score: ", WHITE);
+            ui.text(n, y + 48.0, &self.vitals.xp.total.to_string(), [1.0, 1.0, 0.33, 1.0]);
             let hint = "Click to respawn";
             ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), y + 64.0, hint, [1.0, 1.0, 0.6, 1.0]);
         } else if self.menu.is_some() {
@@ -176,7 +182,7 @@ impl Game {
         let alpha = ((2.5 - age) / 0.5).clamp(0.0, 1.0);
         if alpha > 0.0 {
             let text = capitalize(&self.popup.0);
-            let y = y0 - if survival { 24.0 } else { 14.0 };
+            let y = y0 - if survival { 31.0 } else { 14.0 };
             ui.text((sw - Ui::text_width(&text)) / 2.0, y, &text, [1.0, 1.0, 1.0, alpha]);
         }
     }
@@ -202,10 +208,17 @@ impl Game {
             }
             if let Some(stack) = hud.inventory.get(i) {
                 draw_stack(ui, sx + 1.0, y0 + 2.0, stack, hud.survival);
+                // Java's item cooldown: a pale veil that drains downward.
+                let cooling = hud.vitals.pearl_cooldown / crate::entity::pearl::COOLDOWN;
+                if stack.item == Item::ENDER_PEARL && cooling > 0.0 {
+                    let h = (16.0 * cooling).ceil();
+                    ui.rect(sx + 2.0, y0 + 3.0 + 16.0 - h, 16.0, h, [1.0, 1.0, 1.0, 0.5]);
+                }
             }
         }
         if hud.survival {
-            self.vitals_ui(ui, hud, x0, x0 + total, y0 - 10.0, now);
+            xp_bar_ui(ui, hud.vitals.xp, x0, y0 - 7.0, total);
+            self.vitals_ui(ui, hud, x0, x0 + total, y0 - 17.0, now);
         }
         y0
     }
@@ -270,6 +283,27 @@ impl Game {
     /// Item icon, durability bar and stack count in an 18x18 slot at (x, y).
     fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
         draw_stack(ui, x, y, stack, self.mode == GameMode::Survival);
+    }
+}
+
+/// Minecraft's experience bar: a thin green fill across the hotbar's
+/// width at `y`, with the level in outlined green text over its middle.
+fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
+    const GREEN: [f32; 4] = [0.5, 1.0, 0.125, 1.0];
+    ui.rect(x, y, w, 5.0, [0.0, 0.0, 0.0, 0.8]);
+    ui.rect(x + 1.0, y + 1.0, w - 2.0, 3.0, [0.12, 0.16, 0.1, 0.9]);
+    let fill = ((w - 2.0) * xp.progress()).round();
+    if fill > 0.0 {
+        ui.rect(x + 1.0, y + 1.0, fill, 3.0, GREEN);
+        ui.rect(x + 1.0, y + 1.0, fill, 1.0, [0.75, 1.0, 0.5, 1.0]);
+    }
+    if xp.level > 0 {
+        let text = xp.level.to_string();
+        let (tx, ty) = ((x + (w - Ui::text_width(&text)) / 2.0).floor(), y - 6.0);
+        for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+            ui.text_flat(tx + dx, ty + dy, &text, [0.0, 0.0, 0.0, 1.0]);
+        }
+        ui.text_flat(tx, ty, &text, GREEN);
     }
 }
 

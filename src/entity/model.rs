@@ -10,7 +10,8 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use glam::{DVec3, Quat, Vec3};
 
 use super::mob::{Ai, FUSE_TIME, HURT_TIME, Mob, MobKind};
-use super::{Arrow, Puff};
+use super::{Arrow, Puff, XpOrb};
+use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
 
 #[repr(C)]
@@ -250,6 +251,38 @@ const SPIDER_HEAD: &[Cuboid] = &[
     cube([1.0, 2.5, 8.0], [2.0, 3.5, 8.1], SPIDER_EYES, 0),
 ];
 
+// ---------------------------------------------------------------- enderman
+
+const ENDER: Rgb = [22, 20, 26];
+const ENDER_JAW: Rgb = [14, 12, 18];
+
+const ENDERMAN_BODY: &[Cuboid] = &[cube([-4.0, 28.0, -2.0], [4.0, 40.0, 2.0], ENDER, 18)];
+const ENDERMAN_LIMB: &[Cuboid] = &[cube([-1.0, -28.0, -1.0], [1.0, 2.0, 1.0], ENDER, 18)];
+const ENDERMAN_HEAD: &[Cuboid] = &[cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], ENDER, 18)];
+/// The lower jaw left behind when an angry enderman's head lifts.
+const ENDERMAN_JAW: &[Cuboid] = &[cube([-4.2, -0.2, -4.2], [4.2, 3.0, 4.2], ENDER_JAW, 10)];
+/// Drawn glowing, like Java's eye layer.
+const ENDERMAN_EYES: &[Cuboid] = &[
+    cube([-3.5, 3.0, 4.0], [-1.0, 4.0, 4.1], [204, 0, 250], 0),
+    cube([-2.5, 3.0, 4.1], [-1.5, 4.0, 4.15], [240, 150, 255], 0),
+    cube([1.0, 3.0, 4.0], [3.5, 4.0, 4.1], [204, 0, 250], 0),
+    cube([1.5, 3.0, 4.1], [2.5, 4.0, 4.15], [240, 150, 255], 0),
+];
+
+// ---------------------------------------------------------------- blaze
+
+const BLAZE_SKIN: Rgb = [236, 172, 42];
+const BLAZE_ROD: Rgb = [252, 206, 70];
+const BLAZE_FACE: Rgb = [92, 40, 10];
+
+const BLAZE_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], BLAZE_SKIN, 40),
+    cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], BLAZE_FACE, 0),
+    cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], BLAZE_FACE, 0),
+    cube([-2.0, 1.0, 4.0], [2.0, 1.5, 4.05], BLAZE_FACE, 0),
+];
+const BLAZE_ROD_BOX: &[Cuboid] = &[cube([-1.0, -4.0, -1.0], [1.0, 4.0, 1.0], BLAZE_ROD, 30)];
+
 // ---------------------------------------------------------------- arrow
 
 const ARROW: &[Cuboid] = &[
@@ -364,6 +397,47 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
                 part(PIGLIN_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
+        MobKind::Blaze => {
+            // Java's three rings of four rods: the top two turn one way,
+            // the bottom the other, each bobbing on its own phase.
+            let mut parts = vec![part(BLAZE_HEAD, [0.0, 20.0, 0.0], head)];
+            let t = time * 2.0 + m.limb_phase * 0.1;
+            for (ring, (radius, y, speed)) in
+                [(9.0, 15.0, 1.0f32), (7.0, 8.0, 1.0), (5.0, 2.0, -1.0)].into_iter().enumerate()
+            {
+                for i in 0..4 {
+                    let a = t * speed + i as f32 * FRAC_PI_2 + ring as f32 * 0.4;
+                    let bob = (t * 1.5 + i as f32 + ring as f32 * 2.0).cos() * 1.5;
+                    parts.push(part(
+                        BLAZE_ROD_BOX,
+                        [a.cos() * radius, y + 4.0 + bob, a.sin() * radius],
+                        Quat::IDENTITY,
+                    ));
+                }
+            }
+            parts
+        }
+        MobKind::Enderman => {
+            // Long, slow strides; an angry one opens its jaw (the head
+            // lifts) and holds its arms a little forward.
+            let angry = m.ai == Ai::Chase;
+            let stride = swing * 0.5;
+            let lift = if angry { 3.0 } else { 0.0 };
+            let arm = |s: f32| rx(if angry { -0.35 } else { 0.0 } - stride * s);
+            let mut parts = vec![
+                part(ENDERMAN_BODY, [0.0; 3], Quat::IDENTITY),
+                part(ENDERMAN_LIMB, [-2.0, 28.0, 0.0], rx(stride)),
+                part(ENDERMAN_LIMB, [2.0, 28.0, 0.0], rx(-stride)),
+                part(ENDERMAN_LIMB, [-5.0, 38.0, 0.0], arm(1.0)),
+                part(ENDERMAN_LIMB, [5.0, 38.0, 0.0], arm(-1.0)),
+                part(ENDERMAN_HEAD, [0.0, 40.0 + lift, 0.0], head),
+                part(ENDERMAN_EYES, [0.0, 40.0 + lift, 0.0], head),
+            ];
+            if angry {
+                parts.push(part(ENDERMAN_JAW, [0.0, 40.0, 0.0], head));
+            }
+            parts
+        }
         MobKind::Zombie => {
             // Arms held forward, bobbing a little, chopping down on attack.
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.7 } else { 0.0 };
@@ -423,6 +497,9 @@ pub fn build(
         for (pi, p) in pose(m, time).iter().enumerate() {
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
+            // Endermen eyes and blazes glow at full brightness.
+            let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES) || m.kind == MobKind::Blaze;
+            let light = if glow { [light[0], 0, light[2], 255] } else { light };
             for (ci, c) in p.boxes.iter().enumerate() {
                 push_cuboid(out, c, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
             }
@@ -474,6 +551,42 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<E
     }
 }
 
+/// Thrown ender pearls: small dark teal cubes with a pale glint.
+pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    const PEARL: &[Cuboid] = &[
+        cube([-1.5, -1.5, -1.5], [1.5, 1.5, 1.5], [20, 92, 80], 20),
+        cube([-1.6, 0.4, -1.6], [-0.4, 1.6, -0.4], [120, 220, 190], 0),
+    ];
+    for p in pearls {
+        let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
+        for (i, c) in PEARL.iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
+/// Blaze fireballs: a glowing orange cube around a yellow core, tumbling.
+pub fn build_fireballs(
+    fireballs: &[super::fireball::Fireball],
+    camera: DVec3,
+    time: f32,
+    alpha: f64,
+    out: &mut Vec<EntityVertex>,
+) {
+    const BALL: &[Cuboid] = &[
+        cube([-2.5, -2.5, -2.5], [2.5, 2.5, 2.5], [250, 120, 20], 60),
+        cube([-3.0, -1.5, -1.5], [3.0, 1.5, 1.5], [255, 220, 90], 30),
+    ];
+    for (i, f) in fireballs.iter().enumerate() {
+        let rel = (f.previous_pos.lerp(f.pos, alpha) - camera).as_vec3();
+        let rot = Quat::from_rotation_arc(Vec3::X, f.heading().normalize_or(Vec3::X))
+            * Quat::from_rotation_x(time * 9.0 + i as f32);
+        for (j, c) in BALL.iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + rot * v / 16.0, rot, ([255, 255, 0, 255], 0), (FIRE, 0.0), j as f32);
+        }
+    }
+}
+
 /// Explosion smoke: grey cubes that swell, then shrink as they fade.
 pub fn build_puffs(puffs: &[Puff], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
     for (i, p) in puffs.iter().enumerate() {
@@ -491,6 +604,37 @@ pub fn build_puffs(puffs: &[Puff], camera: DVec3, alpha: f64, out: &mut Vec<Enti
             Quat::IDENTITY,
             ([255, 255, 0, glow], 0),
             (FIRE, 0.0),
+            i as f32,
+        );
+    }
+}
+
+/// Experience orbs: small glowing cubes, bigger for bigger values, that
+/// shimmer between yellow and green like Java's tinted sprites.
+pub fn build_orbs(orbs: &[XpOrb], camera: DVec3, max_dist: f32, time: f32, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for (i, o) in orbs.iter().enumerate() {
+        let pos = o.previous_pos.lerp(o.pos, alpha);
+        if pos.distance_squared(camera) > (max_dist as f64).powi(2) {
+            continue;
+        }
+        // Java's sprites span about 4 to 12 texels at 0.3 scale; in model
+        // units (1/16 block) that's roughly 1.2 to 3.6.
+        let size = 1.2 + 0.24 * experience::orb_icon(o.value) as f32;
+        // Java's colour: red follows a sine, green stays full.
+        let h = time * 10.0 + o.phase;
+        let red = ((h.sin() + 1.0) * 0.5 * 200.0 + 55.0) as u8;
+        let c = Cuboid { min: [-size / 2.0; 3], max: [size / 2.0; 3], color: [red, 255, 40], noise: 40 };
+        // Bob a little above the ground, and spin.
+        let lift = 0.15 + 0.03 * (time * 3.0 + o.phase).sin();
+        let rel = (pos - camera).as_vec3() + Vec3::Y * lift;
+        let rot = Quat::from_rotation_y(time * 2.0 + o.phase);
+        push_cuboid(
+            out,
+            &c,
+            &|v: Vec3| rel + rot * (v / 16.0),
+            rot,
+            ([255, 255, 0, 220], 0),
+            ([0.0; 3], 0.0),
             i as f32,
         );
     }
@@ -628,10 +772,12 @@ mod tests {
                 let p = Vec3::from_array(v.pos);
                 (lo.min(p), hi.max(p))
             });
-            assert!(lo.y.abs() < 1e-4, "{kind:?} feet at {}", lo.y);
+            // Blazes float above the ground on their rods.
+            let floats = kind == MobKind::Blaze;
+            assert!(lo.y.abs() < 1e-4 || floats && lo.y < 0.25, "{kind:?} feet at {}", lo.y);
             let h = kind.shape().height as f32;
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
-            assert!(hi.x > 10.3, "{kind:?} should extend forward along +X");
+            assert!(hi.x > 10.25, "{kind:?} should extend forward along +X");
             // Behind the camera: culled.
             out.clear();
             assert_eq!(

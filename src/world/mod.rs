@@ -26,6 +26,7 @@ pub mod nether;
 pub mod noise;
 mod portal;
 pub mod shape;
+mod spawner;
 pub mod storage;
 pub mod terrain;
 
@@ -88,6 +89,8 @@ pub struct World {
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
     /// Chest contents by position (see [`chest`]).
     chests: FxHashMap<IVec3, chest::Chest>,
+    /// Spawner cages and the mob each makes (see `spawner`).
+    spawners: FxHashMap<IVec3, crate::entity::MobKind>,
     /// Leaves waiting to decay (seconds left) after a log near them went.
     leaf_decay: FxHashMap<IVec3, f32>,
     /// Fractional random block ticks carried over between frames.
@@ -98,6 +101,9 @@ pub struct World {
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
+    /// Experience released at a block (a broken furnace's store); the game
+    /// turns it into orbs.
+    pub xp_drops: Vec<(IVec3, u32)>,
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
@@ -156,10 +162,12 @@ impl World {
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
+            spawners: FxHashMap::default(),
             leaf_decay: FxHashMap::default(),
             random_ticks: 0.0,
             rng,
             drops: Vec::new(),
+            xp_drops: Vec::new(),
             primed_tnt: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
@@ -341,6 +349,7 @@ impl World {
         self.track_fire(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
+        self.track_spawner(p, old, block);
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }
@@ -828,6 +837,23 @@ mod tests {
     }
 
     #[test]
+    fn spawners_require_loaded_cage_blocks() {
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        let cage = IVec3::new(1, 160, 1);
+        let stale = IVec3::new(2, 160, 1);
+        world.load_spawners("1,160,1=blaze|2,160,1=zombie|40,160,1=blaze");
+        assert!(world.spawners().is_empty(), "saved cages in unloaded chunks stay inactive");
+        world.insert_chunk(chunk_of(cage), Arc::new(ChunkData::Uniform(Block::AIR)), false);
+        world.set_block(cage, Block::SPAWNER);
+        assert_eq!(world.spawner(cage), Some(crate::entity::MobKind::Blaze), "saved kind survives loading");
+        assert_eq!(world.spawners(), vec![(cage, crate::entity::MobKind::Blaze)]);
+        world.set_block(stale, Block::STONE);
+        assert_eq!(world.spawners(), vec![(cage, crate::entity::MobKind::Blaze)], "stale entries stay inactive");
+        world.set_block(cage, Block::AIR);
+        assert!(world.spawners().is_empty(), "breaking a cage stops spawning");
+    }
+
+    #[test]
     fn unloaded_agents_preserve_survival_inventory_and_timed_commands() {
         use crate::agent::{Agent, Command};
         use crate::entity::Entities;
@@ -1249,8 +1275,12 @@ mod tests {
         other.load_furnaces(&saved);
         assert_eq!(other.furnace(p).unwrap().output, world.furnace(p).unwrap().output);
 
-        // Breaking it spills everything, and the state is gone.
+        assert!((world.furnace(p).unwrap().xp - 0.2).abs() < 1e-4, "glass stores 0.1 each");
+
+        // Breaking it spills everything and its experience, and the state is gone.
+        world.furnace_mut(p).unwrap().xp = 3.0;
         world.set_block(p, Block::AIR);
+        assert_eq!(world.xp_drops, [(p, 3)]);
         assert!(world.furnace(p).is_none());
         let spilled: Vec<_> = world.drops.iter().map(|&(_, s)| s.item).collect();
         assert_eq!(spilled, [Item::from_block(Block::SAND), Item::from_block(Block::GLASS)]);

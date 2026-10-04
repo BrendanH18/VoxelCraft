@@ -602,7 +602,7 @@ impl Game {
     pub(super) fn puppet<R>(&mut self, i: usize, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
         let seat = &mut self.pads.seats[i];
         let bot = self.agents.players.get(&seat.name)?;
-        let (selected, creative) = (bot.agent.selected, bot.agent.creative);
+        let (selected, creative, id) = (bot.agent.selected, bot.agent.creative, bot.id);
         // Switching slots interrupts mining, eating and drawing, as it does for the host.
         seat.body.actions.select(selected);
         if !self.swap_puppet(i) {
@@ -610,8 +610,10 @@ impl Game {
         }
         let mode = std::mem::replace(&mut self.mode, if creative { GameMode::Creative } else { GameMode::Survival });
         self.puppet = true;
+        self.actor = id;
         let result = f(self);
         self.puppet = false;
+        self.actor = crate::entity::PlayerId::HOST;
         self.mode = mode;
         self.swap_puppet(i);
         let seat = &mut self.pads.seats[i];

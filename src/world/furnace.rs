@@ -15,6 +15,8 @@ use crate::item::{Item, Tier};
 
 /// Seconds to smelt one item.
 pub const COOK_TIME: f32 = 10.0;
+/// Most experience a furnace stores.
+const MAX_XP: f32 = 1e6;
 
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub struct Furnace {
@@ -26,6 +28,9 @@ pub struct Furnace {
     pub burn_total: f32,
     /// Seconds spent on the current item.
     pub cook: f32,
+    /// Experience stored by finished items, released when the output is
+    /// taken or the furnace is broken (Java's recipes-used tally).
+    pub xp: f32,
 }
 
 /// What smelting `item` produces.
@@ -48,6 +53,21 @@ pub fn smelt(item: Item) -> Option<Item> {
         Item::RAW_CHICKEN => Item::COOKED_CHICKEN,
         _ => return None,
     })
+}
+
+/// Experience Java awards per item smelted into `out`.
+pub fn smelt_xp(out: Item) -> f32 {
+    let b = Item::from_block;
+    match out {
+        Item::GOLD_INGOT | Item::DIAMOND => 1.0,
+        Item::IRON_INGOT => 0.7,
+        Item::COOKED_PORKCHOP | Item::STEAK | Item::COOKED_CHICKEN => 0.35,
+        i if i == b(Block::TERRACOTTA) => 0.35,
+        Item::BRICK => 0.3,
+        Item::NETHER_QUARTZ => 0.2,
+        Item::CHARCOAL => 0.15,
+        _ => 0.1,
+    }
 }
 
 /// Seconds one of `item` burns as fuel (Minecraft's values / 20).
@@ -123,6 +143,7 @@ impl Furnace {
                     if self.cook >= COOK_TIME {
                         self.cook -= COOK_TIME;
                         self.input = take_one(self.input);
+                        self.xp = (self.xp + smelt_xp(out)).min(MAX_XP);
                         match &mut self.output {
                             Some(o) => o.count += 1,
                             None => self.output = Some(Stack::new(out, 1)),
@@ -134,26 +155,47 @@ impl Furnace {
         }
     }
 
+    /// Releases the stored experience as whole points, rounding the
+    /// fraction up with that chance (`roll` is uniform in 0..1).
+    pub fn take_xp(&mut self, roll: f32) -> u32 {
+        crate::simulation::experience::round_award(std::mem::take(&mut self.xp), roll)
+    }
+
+    /// Releases all stored XP if the output shrank from `before`, including
+    /// on a partial transfer. No transfer leaves the tally intact; later
+    /// takes earn nothing until more items have been smelted.
+    pub fn take_output_xp(&mut self, before: u8, roll: f32) -> Option<u32> {
+        (self.output.map_or(0, |s| s.count) < before).then(|| self.take_xp(roll))
+    }
+
     /// Everything inside, for when the furnace is broken.
     pub fn take_all(&mut self) -> Vec<Stack> {
         [self.input.take(), self.fuel.take(), self.output.take()].into_iter().flatten().collect()
     }
 
+    /// Saves the slots, cooking and fuel timers, and unclaimed XP tally.
     pub fn serialize(&self) -> String {
         format!(
-            "{};{};{};{:.2};{:.2};{:.2}",
+            "{};{};{};{:.2};{:.2};{:.2};{:.2}",
             stack_to_string(self.input),
             stack_to_string(self.fuel),
             stack_to_string(self.output),
             self.burn_left,
             self.burn_total,
-            self.cook
+            self.cook,
+            self.xp
         )
     }
 
+    /// Restores saved furnace state, accepting older saves without an XP field.
     pub fn deserialize(text: &str) -> Option<Self> {
         let f: Vec<&str> = text.split(';').collect();
-        let [input, fuel, output, left, total, cook] = f[..] else { return None };
+        // Saves from before experience have six fields.
+        let (input, fuel, output, left, total, cook, xp) = match f[..] {
+            [input, fuel, output, left, total, cook] => (input, fuel, output, left, total, cook, "0"),
+            [input, fuel, output, left, total, cook, xp] => (input, fuel, output, left, total, cook, xp),
+            _ => return None,
+        };
         let num = |s: &str| s.parse::<f32>().ok().filter(|v| v.is_finite() && *v >= 0.0);
         Some(Self {
             input: stack_from_str(input)?,
@@ -162,6 +204,7 @@ impl Furnace {
             burn_left: num(left)?,
             burn_total: num(total)?,
             cook: num(cook)?.min(COOK_TIME),
+            xp: num(xp)?.min(MAX_XP),
         })
     }
 }
@@ -188,6 +231,11 @@ impl World {
         if is_furnace(old) && !is_furnace(new) {
             if let Some(mut f) = self.furnaces.remove(&p) {
                 self.drops.extend(f.take_all().into_iter().map(|s| (p, s)));
+                let roll = (self.roll() >> 40) as f32 / (1u64 << 24) as f32;
+                let xp = f.take_xp(roll);
+                if xp > 0 {
+                    self.xp_drops.push((p, xp));
+                }
             }
         } else if is_furnace(new) {
             self.furnaces.entry(p).or_default();
@@ -300,6 +348,55 @@ mod tests {
         assert!(!f.is_lit());
         assert_eq!(smelt(Item::RAW_BEEF), Some(Item::STEAK));
         assert!(burn_time(Item::IRON_INGOT).is_none());
+    }
+
+    #[test]
+    fn output_transfers_release_stored_xp_once() {
+        use crate::inventory::move_into;
+
+        let mut f = furnace(Item::from_block(Block::GOLD_ORE), 8, Item::COAL, 2);
+        run(&mut f, COOK_TIME * 8.0 + 1.0);
+        assert_eq!(f.xp, 8.0);
+        let mut inventory = [Some(Stack::new(Item::GOLD_INGOT, 64))];
+        let stack = f.output.take().unwrap();
+        f.output = move_into(stack, &mut inventory, &[0]);
+        assert_eq!(f.take_output_xp(stack.count, 0.5), None, "a full inventory does not release XP");
+        assert_eq!(f.xp, 8.0);
+
+        inventory[0].as_mut().unwrap().count = 63;
+        let stack = f.output.take().unwrap();
+        f.output = move_into(stack, &mut inventory, &[0]);
+        assert_eq!(f.output.unwrap().count, 7, "only one item fits");
+        assert_eq!(f.take_output_xp(stack.count, 0.5), Some(8), "a partial take releases the entire tally");
+        assert_eq!(f.xp, 0.0);
+
+        inventory[0] = None;
+        let stack = f.output.take().unwrap();
+        f.output = move_into(stack, &mut inventory, &[0]);
+        assert_eq!(f.output, None);
+        assert_eq!(f.take_output_xp(stack.count, 0.5), Some(0), "taking the leftovers cannot award XP twice");
+        f.input = Some(Stack::new(Block::GOLD_ORE, 1));
+        f.fuel = Some(Stack::new(Item::COAL, 1));
+        run(&mut f, COOK_TIME + 1.0);
+        f.output.take();
+        assert_eq!(f.take_output_xp(1, 0.5), Some(1), "new smelts earn fresh XP");
+    }
+
+    #[test]
+    fn smelting_stores_experience_until_taken() {
+        let mut f = furnace(Item::from_block(Block::IRON_ORE), 3, Item::COAL, 1);
+        run(&mut f, COOK_TIME * 3.0 + 1.0);
+        assert!((f.xp - 2.1).abs() < 1e-4, "{}", f.xp);
+        assert_eq!(f.take_xp(0.05), 3, "0.1 rounds up with 10% chance");
+        assert_eq!(f.xp, 0.0);
+        f.xp = 2.1;
+        assert_eq!(f.take_xp(0.5), 2);
+        assert_eq!(smelt_xp(Item::from_block(Block::GLASS)), 0.1);
+        f.xp = 1.25;
+        let g = Furnace::deserialize(&f.serialize()).unwrap();
+        assert_eq!(g.xp, 1.25);
+        let old = "-;-;-;0.00;0.00;0.00";
+        assert_eq!(Furnace::deserialize(old).map(|f| f.xp), Some(0.0), "older saves load");
     }
 
     #[test]

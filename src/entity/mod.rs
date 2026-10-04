@@ -12,9 +12,12 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod fireball;
 pub mod item;
 mod mob;
 pub mod model;
+pub mod orb;
+pub mod pearl;
 mod projectile;
 pub mod tnt;
 
@@ -26,10 +29,12 @@ use crate::physics::{self, BlockSource};
 use crate::world::World;
 use crate::world::block::Block;
 use crate::world::noise::splitmix64;
+use crate::world::terrain::Dimension;
 use model::EntityVertex;
 
 pub use item::ItemEntity;
 pub use mob::{Mob, MobKind, sky_light};
+pub use orb::XpOrb;
 pub use projectile::Arrow;
 
 /// Spawns happen this far from the player (blocks).
@@ -40,6 +45,15 @@ pub const DESPAWN_DIST: f64 = 96.0;
 /// Hostile mobs only spawn when it's darker than this.
 pub const HOSTILE_SPAWN_DAYLIGHT: f32 = 0.35;
 const SPAWN_INTERVAL: f32 = 0.25;
+/// Spawners run while a player is this close (Java's required range), try
+/// this many mobs at a time within `SPAWNER_REACH` blocks, and hold off
+/// while `SPAWNER_CROWD` of their mob are nearby.
+const SPAWNER_RANGE: f64 = 16.0;
+const SPAWNER_TRIES: usize = 4;
+const SPAWNER_REACH: f64 = 4.0;
+const SPAWNER_CROWD: usize = 6;
+/// Seconds between a spawner's spawns (Java's 200-799 ticks).
+const SPAWNER_DELAY: (f32, f32) = (10.0, 40.0);
 /// Seconds between passes that merge dropped items lying together.
 const MERGE_INTERVAL: f32 = 0.5;
 /// Player melee: cooldown between hits.
@@ -56,6 +70,12 @@ pub enum MobSound {
     Ambient(MobKind),
     Hurt(MobKind),
     Death(MobKind),
+    /// An enderman someone looked in the eye.
+    Scream,
+    /// An enderman (or a pearl's thrower) vanishing or appearing.
+    Teleport,
+    /// A blaze shooting a fireball.
+    Fireball,
 }
 
 /// Something an entity did that the game needs to react to.
@@ -85,6 +105,25 @@ pub enum EntityEvent {
     Shoot {
         from: DVec3,
         target: DVec3,
+    },
+    /// A blaze shot a fireball (turned into a projectile internally).
+    Fireball {
+        from: DVec3,
+        dir: DVec3,
+    },
+    /// A fireball set `player` alight for `secs`.
+    Ignite {
+        player: PlayerId,
+        secs: f32,
+    },
+    /// A fireball hit a block next to the empty `cell`: light a fire there.
+    IgniteBlock {
+        cell: IVec3,
+    },
+    /// A thrown ender pearl landed at `pos`: teleport its thrower there.
+    PearlLanded {
+        owner: PlayerId,
+        pos: DVec3,
     },
     /// One of the player's arrows hit a mob (loot is dropped internally).
     MobShot {
@@ -131,6 +170,10 @@ pub trait MobWorld: BlockSource {
     fn block_light(&self, _p: IVec3) -> u8 {
         0
     }
+    /// Loaded spawner cages and the mob each makes.
+    fn spawners(&self) -> Vec<(IVec3, MobKind)> {
+        Vec::new()
+    }
 }
 
 impl MobWorld for World {
@@ -148,6 +191,9 @@ impl MobWorld for World {
     }
     fn exposed(&self, p: IVec3) -> bool {
         self.sky_exposed(p)
+    }
+    fn spawners(&self) -> Vec<(IVec3, MobKind)> {
+        World::spawners(self)
     }
 }
 
@@ -168,11 +214,16 @@ pub struct Target {
     pub pos: DVec3,
     /// Hostile mobs chase and attack (false in creative or while dead).
     pub targetable: bool,
+    /// Experience orbs fly to living players only.
+    pub alive: bool,
+    /// Unit view direction (zero if unknown): endermen notice stares.
+    pub look: DVec3,
 }
 
 impl Target {
+    /// A living player; set [`Target::alive`] for one waiting to respawn.
     pub fn new(id: PlayerId, pos: DVec3, targetable: bool) -> Self {
-        Self { id, pos, targetable }
+        Self { id, pos, targetable, alive: true, look: DVec3::ZERO }
     }
 
     /// Whether `p` is inside this player's 0.6 x 1.8 box.
@@ -195,8 +246,9 @@ pub struct Ctx {
     pub spawning: bool,
     /// Rain keeps undead mobs from burning in the sun.
     pub raining: bool,
-    /// In the Nether: only Nether mobs spawn, in its caverns.
-    pub nether: bool,
+    /// Which mobs spawn, and where: on the surface under the Overworld sky,
+    /// on cavern and island floors elsewhere.
+    pub dimension: Dimension,
 }
 
 impl Ctx {
@@ -239,12 +291,19 @@ impl Rng {
 pub struct Entities {
     pub mobs: Vec<Mob>,
     pub arrows: Vec<Arrow>,
+    pub pearls: Vec<pearl::Pearl>,
+    pub fireballs: Vec<fireball::Fireball>,
     pub puffs: Vec<Puff>,
     pub tnt: Vec<tnt::PrimedTnt>,
     /// Dropped items. They stay put (and don't age) while their chunk is
     /// unloaded, and are saved with the world.
     pub items: Vec<ItemEntity>,
+    /// Experience orbs, kept and saved like dropped items.
+    pub orbs: Vec<XpOrb>,
     rng: Rng,
+    /// Seconds until each active spawner tries again (not saved, like a
+    /// fresh Java spawner's short first delay).
+    spawner_delays: rustc_hash::FxHashMap<IVec3, f32>,
     spawn_timer: f32,
     merge_timer: f32,
     /// Mobs drawn last frame (F3).
@@ -253,14 +312,19 @@ pub struct Entities {
 }
 
 impl Entities {
+    /// Creates an empty entity simulation with deterministic randomness from `seed`.
     pub fn new(seed: u64) -> Self {
         Self {
             mobs: Vec::new(),
             arrows: Vec::new(),
+            pearls: Vec::new(),
+            fireballs: Vec::new(),
             puffs: Vec::new(),
             tnt: Vec::new(),
             items: Vec::new(),
+            orbs: Vec::new(),
             rng: Rng::new(seed ^ 0x6d6f_6273),
+            spawner_delays: Default::default(),
             spawn_timer: 0.0,
             merge_timer: 0.0,
             rendered: 0,
@@ -289,6 +353,7 @@ impl Entities {
                 self.natural_spawn(world, ctx);
             }
         }
+        self.run_spawners(dt as f32, world, ctx);
 
         let mut i = 0;
         while i < self.mobs.len() {
@@ -305,15 +370,19 @@ impl Entities {
         }
         self.separate(dt);
 
-        // Skeleton shots become arrows.
+        // Skeleton shots become arrows, blaze shots fireballs.
         for e in &events {
-            if let EntityEvent::Shoot { from, target } = *e {
-                self.arrows.push(Arrow::aimed(from, target, &mut self.rng));
+            match *e {
+                EntityEvent::Shoot { from, target } => self.arrows.push(Arrow::aimed(from, target, &mut self.rng)),
+                EntityEvent::Fireball { from, dir } => self.fireballs.push(fireball::Fireball::new(from, dir)),
+                _ => {}
             }
         }
-        events.retain(|e| !matches!(e, EntityEvent::Shoot { .. }));
+        events.retain(|e| !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. }));
+        self.fireballs.retain_mut(|f| f.update(dt, world, ctx, &mut events));
         let (mobs, rng) = (&mut self.mobs, &mut self.rng);
         self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, rng, &mut events));
+        self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
         for e in &events {
             if let EntityEvent::MobShot { kind, pos, killed } = *e {
                 if killed {
@@ -325,11 +394,13 @@ impl Entities {
             }
         }
         self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
+        self.orbs.retain_mut(|orb| !world.loaded(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
         self.merge_timer -= dt as f32;
         if self.merge_timer <= 0.0 {
             self.merge_timer = MERGE_INTERVAL;
             item::merge(&mut self.items);
+            orb::merge(&mut self.orbs);
         }
 
         let dtf = dt as f32;
@@ -368,8 +439,11 @@ impl Entities {
         }
     }
 
-    /// Drops the loot of a mob of `kind` the player killed at `pos`.
+    /// Drops the loot and experience of a mob of `kind` the player killed
+    /// at `pos`.
     pub fn drop_loot(&mut self, kind: MobKind, pos: DVec3) {
+        let xp = kind.xp(&mut self.rng);
+        self.spawn_xp(pos, xp);
         for (item, count) in kind.drops(&mut self.rng) {
             let vel = DVec3::new(self.rng.range(-1.5, 1.5) as f64, 4.0, self.rng.range(-1.5, 1.5) as f64);
             let stack = crate::inventory::Stack::new(item, count);
@@ -398,6 +472,36 @@ impl Entities {
         let speed = self.rng.range(0.5, 3.0) as f64;
         let vel = DVec3::new(a.cos() as f64 * speed, 4.0, a.sin() as f64 * speed);
         self.items.push(ItemEntity::new(stack, pos + DVec3::Y, vel, item::THROWN_PICKUP_DELAY, &mut self.rng));
+    }
+
+    /// Experience orbs worth `points` in all, split into Java's orb sizes,
+    /// popping out at `pos`.
+    pub fn spawn_xp(&mut self, pos: DVec3, points: u32) {
+        for value in crate::simulation::experience::orb_values(points) {
+            self.orbs.push(XpOrb::new(value, pos, &mut self.rng));
+        }
+    }
+
+    /// Experience for a block a player harvested at `cell` (ores).
+    pub fn drop_block_xp(&mut self, block: Block, cell: IVec3) {
+        let xp = crate::mining::ore_xp(block, &mut self.rng);
+        self.spawn_xp(cell.as_dvec3() + DVec3::new(0.5, 0.25, 0.5), xp);
+    }
+
+    /// A uniform number in 0..1 for rounding fractional awards.
+    pub fn roll(&mut self) -> f32 {
+        self.rng.next_f32()
+    }
+
+    /// `;`-separated experience orbs for the level file.
+    pub fn orbs_to_string(&self) -> String {
+        self.orbs.iter().map(XpOrb::serialize).collect::<Vec<_>>().join(";")
+    }
+
+    /// Appends saved experience orbs, skipping empty or malformed entries.
+    pub fn load_orbs(&mut self, text: &str) {
+        let rng = &mut self.rng;
+        self.orbs.extend(text.split(';').filter(|s| !s.is_empty()).filter_map(|s| XpOrb::deserialize(s, rng)));
     }
 
     /// `;`-separated dropped items for the level file.
@@ -438,34 +542,37 @@ impl Entities {
     fn natural_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx) {
         for center in ctx.players.iter().map(|t| t.pos) {
             for kind in MobKind::ALL {
-                let cap = kind.spawn_cap();
-                if self.count_near(kind, center) >= cap || kind.spawns_in_nether() != ctx.nether {
+                let cap = kind.spawn_cap(ctx.dimension);
+                if self.count_near(kind, center) >= cap
+                    || !kind.spawns_in(ctx.dimension)
+                    || !self.rng.chance(kind.spawn_chance(ctx.dimension))
+                {
                     continue;
                 }
                 let angle = self.rng.range(0.0, TAU) as f64;
                 let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
                 let x = (center.x + angle.cos() * dist).floor() as i32;
                 let z = (center.z + angle.sin() * dist).floor() as i32;
-                let spot = if ctx.nether {
-                    let top = self.rng.range(40.0, 118.0) as i32;
-                    cavern_spot(world, kind, x, z, top)
-                } else {
-                    spawn_spot(world, kind, x, z, ctx.daylight)
+                let spot = match ctx.dimension {
+                    Dimension::Overworld => spawn_spot(world, kind, x, z, ctx.daylight),
+                    Dimension::Nether => cavern_spot(world, kind, x, z, self.rng.range(40.0, 118.0) as i32),
+                    Dimension::End => cavern_spot(world, kind, x, z, self.rng.range(30.0, 90.0) as i32),
                 };
                 let Some(pos) = spot else { continue };
                 if !in_spawn_ring(center, pos) || !clear_of_players(ctx, pos) {
                     continue;
                 }
                 self.spawn(kind, pos);
-                // Animals come in small herds, zombified piglins in packs.
-                if !kind.is_hostile() || kind.spawns_in_nether() {
+                // Animals come in small herds, zombified piglins and End
+                // endermen in packs.
+                if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
                     let extra = (self.rng.next_f32() * 3.0) as i32;
                     for _ in 0..extra {
                         let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
-                        let spot = if ctx.nether {
-                            cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 2)
-                        } else {
+                        let spot = if ctx.dimension.has_sky() {
                             spawn_spot(world, kind, x + dx, z + dz, ctx.daylight)
+                        } else {
+                            cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 2)
                         };
                         if self.count_near(kind, center) < cap
                             && let Some(p) = spot
@@ -475,6 +582,57 @@ impl Entities {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// Java's spawner logic: a spawner with a player within 16 blocks waits
+    /// out its delay, then tries four spots up to 4 blocks away (and a block
+    /// up or down) with room for its mob, unless six are already around.
+    /// Light and ground don't matter. Active cages give off flames.
+    fn run_spawners<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx) {
+        let spawners = world.spawners();
+        self.spawner_delays.retain(|p, _| spawners.iter().any(|(q, _)| q == p));
+        for (cell, kind) in spawners {
+            let centre = cell.as_dvec3() + DVec3::splat(0.5);
+            if !ctx.players.iter().any(|t| t.alive && t.pos.distance_squared(centre) < SPAWNER_RANGE * SPAWNER_RANGE) {
+                continue;
+            }
+            if self.rng.chance(dt * 6.0) {
+                let p = centre + DVec3::new(self.rng.range(-0.4, 0.4) as f64, self.rng.range(-0.4, 0.4) as f64, 0.0);
+                self.puffs.push(Puff { pos: p, previous_pos: p, vel: DVec3::Y * 0.5, age: 0.0, life: 0.6, size: 0.15 });
+            }
+            let delay = self.spawner_delays.entry(cell).or_insert(1.0);
+            *delay -= dt;
+            if *delay > 0.0 {
+                continue;
+            }
+            *delay = 0.0;
+            let reach = SPAWNER_REACH + 0.5;
+            let crowd = self
+                .mobs
+                .iter()
+                .filter(|m| m.kind == kind && m.alive() && (m.pos - centre).abs().cmple(DVec3::splat(reach)).all())
+                .count();
+            let mut spawned = crowd >= SPAWNER_CROWD;
+            for _ in 0..SPAWNER_TRIES.min(SPAWNER_CROWD.saturating_sub(crowd)) {
+                let mut r = || (self.rng.next_f32() - self.rng.next_f32()) as f64 * SPAWNER_REACH;
+                let (dx, dz) = (r(), r());
+                let dy = (self.rng.next_f32() * 3.0).floor() as f64 - 1.0;
+                let pos = DVec3::new(centre.x + dx, cell.y as f64 + dy, centre.z + dz);
+                let shape = kind.shape();
+                if !world.loaded(pos.floor().as_ivec3())
+                    || physics::overlaps_solid(world, pos, shape)
+                    || physics::is_fluid_at(world, pos)
+                {
+                    continue;
+                }
+                self.spawn(kind, pos);
+                spawned = true;
+            }
+            if spawned {
+                let next = self.rng.range(SPAWNER_DELAY.0, SPAWNER_DELAY.1);
+                self.spawner_delays.insert(cell, next);
             }
         }
     }
@@ -494,8 +652,17 @@ impl Entities {
         for a in &mut self.arrows {
             a.previous_pos = a.pos;
         }
+        for p in &mut self.pearls {
+            p.previous_pos = p.pos;
+        }
+        for f in &mut self.fireballs {
+            f.previous_pos = f.pos;
+        }
         for item in &mut self.items {
             item.previous_pos = item.pos;
+        }
+        for orb in &mut self.orbs {
+            orb.previous_pos = orb.pos;
         }
         for t in &mut self.tnt {
             t.previous_pos = t.pos;
@@ -517,7 +684,10 @@ impl Entities {
         self.verts.clear();
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
+        model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
+        model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
+        model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
         &mut self.verts
     }
 
@@ -543,6 +713,12 @@ impl Entities {
         let a = self.rng.range(0.0, TAU);
         let vel = DVec3::new(a.cos() as f64 * 0.4, 2.0, a.sin() as f64 * 0.4);
         self.tnt.push(tnt::PrimedTnt::new(cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), vel, fuse));
+    }
+
+    /// Player `owner` throws an ender pearl from `eye` along `dir`, carrying
+    /// their velocity `carry`.
+    pub fn throw_pearl(&mut self, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3) {
+        self.pearls.push(pearl::Pearl::thrown(owner, eye, dir, carry, &mut self.rng));
     }
 
     /// The player looses an arrow with bow `power` 0..1.
@@ -657,7 +833,7 @@ mod tests {
             daylight: 1.0,
             spawning: false,
             raining: false,
-            nether: false,
+            dimension: Dimension::Overworld,
         }
     }
 
@@ -797,7 +973,7 @@ mod tests {
             daylight: 0.1,
             spawning: false,
             raining: false,
-            nether: false,
+            dimension: Dimension::Overworld,
         };
         let mut hits = Vec::new();
         for _ in 0..90 {
@@ -828,7 +1004,7 @@ mod tests {
             daylight: 0.1,
             spawning: false,
             raining: false,
-            nether: false,
+            dimension: Dimension::Overworld,
         };
         let hit = (0..60 * 10).any(|_| e.update(1.0 / 60.0, &world, &c).iter().any(is_hit));
         assert!(hit, "zombie stuck at {:?}", e.mobs[0].pos);
@@ -925,14 +1101,15 @@ mod tests {
             daylight: 0.12,
             spawning: true,
             raining: false,
-            nether: false,
+            dimension: Dimension::Overworld,
         };
         for _ in 0..600 {
             e.update(0.05, &world, &c);
         }
         // The grid is stone, so only hostile mobs spawn, each up to its cap.
         for kind in MobKind::ALL {
-            let expected = if kind.is_hostile() && !kind.spawns_in_nether() { kind.spawn_cap() } else { 0 };
+            let o = Dimension::Overworld;
+            let expected = if kind.is_hostile() && kind.spawns_in(o) { kind.spawn_cap(o) } else { 0 };
             assert_eq!(e.count(kind), expected, "{kind:?}");
         }
     }
@@ -1009,17 +1186,24 @@ mod tests {
             daylight: 0.12,
             spawning: true,
             raining: false,
-            nether: false,
+            dimension: Dimension::Overworld,
         };
         for _ in 0..1200 {
+            let before = e.mobs.len();
             e.update(0.05, &world, &c);
-        }
-        for kind in MobKind::ALL.into_iter().filter(|k| k.is_hostile() && !k.spawns_in_nether()) {
-            for center in [a, b] {
-                assert_eq!(e.count_near(kind, center), kind.spawn_cap(), "{kind:?} near {center}");
+            // Nothing despawns here, so new mobs are the ones at the end;
+            // they appear outside the spawn radius (and may wander in later).
+            for m in &e.mobs[before..] {
+                let d = c.nearest_player_dist2(m.pos).unwrap().sqrt();
+                assert!(d >= SPAWN_MIN_DIST, "{:?} spawned {d} from a player", m.kind);
             }
         }
-        assert!(e.mobs.iter().all(|m| c.nearest_player_dist2(m.pos).unwrap() >= SPAWN_MIN_DIST * SPAWN_MIN_DIST));
+        let o = Dimension::Overworld;
+        for kind in MobKind::ALL.into_iter().filter(|k| k.is_hostile() && k.spawns_in(o)) {
+            for center in [a, b] {
+                assert_eq!(e.count_near(kind, center), kind.spawn_cap(o), "{kind:?} near {center}");
+            }
+        }
     }
 
     #[test]
@@ -1034,7 +1218,7 @@ mod tests {
             daylight: 0.12,
             spawning: true,
             raining: false,
-            nether: false,
+            dimension: Dimension::Overworld,
         };
         let mut e = Entities::new(21);
         let mut spawned = 0;
@@ -1057,7 +1241,7 @@ mod tests {
             daylight: 0.1,
             spawning: false,
             raining: false,
-            nether: false,
+            dimension: Dimension::Overworld,
         }
     }
 
@@ -1172,7 +1356,7 @@ mod tests {
         let mut e = Entities::new(12);
         e.spawn(MobKind::ZombifiedPiglin, DVec3::new(0.5, 10.0, 0.5));
         e.spawn(MobKind::ZombifiedPiglin, DVec3::new(8.5, 10.0, 8.5));
-        let c = Ctx { nether: true, ..night(DVec3::new(2.5, 10.0, 0.5)) };
+        let c = Ctx { dimension: Dimension::Nether, ..night(DVec3::new(2.5, 10.0, 0.5)) };
         assert!(!run(&mut e, &world, &c, 3.0).iter().any(is_hit), "neutral");
         e.attack(0, DVec3::X, 1.0);
         let events = run(&mut e, &world, &c, 3.0);
@@ -1181,6 +1365,177 @@ mod tests {
         assert!(events.iter().any(slain), "{events:?}");
         assert_eq!(e.mobs[1].ai, Ai::Chase, "the whole pack is angry");
         assert_eq!(MobKind::from_name("zombified_piglin"), Some(MobKind::ZombifiedPiglin));
+    }
+
+    #[test]
+    fn endermen_turn_on_a_stare_freeze_while_watched_and_dodge_arrows() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(14);
+        e.spawn(MobKind::Enderman, DVec3::new(10.5, 10.0, 0.5));
+        let player = DVec3::new(0.5, 10.0, 0.5);
+        let away = Target { look: DVec3::NEG_X, ..Target::new(PlayerId::HOST, player, true) };
+        let calm = Ctx { players: vec![away], ..night(player) };
+        let events = run(&mut e, &world, &calm, 2.0);
+        assert!(e.mobs[0].ai != Ai::Chase && !events.iter().any(is_hit), "neutral until looked at");
+
+        // Look it in the eyes: it screams and turns hostile.
+        let eye = player + DVec3::Y * crate::player::EYE_HEIGHT;
+        let gaze = |m: &Mob| (m.pos + DVec3::Y * 2.55 - eye).normalize();
+        let staring = Ctx { players: vec![Target { look: gaze(&e.mobs[0]), ..away }], ..night(player) };
+        let events = run(&mut e, &world, &staring, 0.5);
+        let scream = |ev: &EntityEvent| matches!(ev, EntityEvent::Sound { sound: MobSound::Scream, .. });
+        assert!(events.iter().any(scream), "{events:?}");
+        assert_eq!(e.mobs[0].ai, Ai::Chase);
+        // Frozen while watched from within 16 blocks.
+        let at = e.mobs[0].pos;
+        let staring = Ctx { players: vec![Target { look: gaze(&e.mobs[0]), ..away }], ..night(player) };
+        run(&mut e, &world, &staring, 1.0);
+        assert!(e.mobs[0].pos.distance(at) < 0.05, "froze: {at} -> {}", e.mobs[0].pos);
+        // Look away and it closes in to hit hard.
+        let events = run(&mut e, &world, &calm, 4.0);
+        let slain = |ev: &EntityEvent| matches!(ev, EntityEvent::PlayerHit { damage: 7.0, .. });
+        assert!(events.iter().any(slain), "{events:?}");
+
+        // Arrows make it teleport away unhurt.
+        let mut e = Entities::new(15);
+        e.spawn(MobKind::Enderman, DVec3::new(6.5, 10.0, 0.5));
+        e.shoot_arrow(DVec3::new(0.5, 11.5, 0.5), DVec3::X, 1.0, false);
+        let events = run(&mut e, &world, &calm, 0.5);
+        let m = &e.mobs[0];
+        assert_eq!(m.health, MobKind::Enderman.max_health());
+        assert!(m.pos.distance(DVec3::new(6.5, 10.0, 0.5)) > 1.0, "teleported: {}", m.pos);
+        assert!((m.pos.y - 10.0).abs() < 1e-3, "onto the ground: {}", m.pos);
+        let vwoop = |ev: &EntityEvent| matches!(ev, EntityEvent::Sound { sound: MobSound::Teleport, .. });
+        assert!(events.iter().any(vwoop));
+        assert_eq!(MobKind::Enderman.loot(), [(crate::item::Item::ENDER_PEARL, 0, 1)]);
+    }
+
+    #[test]
+    fn water_hurts_endermen_and_makes_them_teleport_without_anger() {
+        let mut world = Grid::flat(10);
+        for x in -2..=2 {
+            for z in -2..=2 {
+                world.set(IVec3::new(x, 10, z), Block::WATER);
+                world.set(IVec3::new(x, 11, z), Block::WATER);
+            }
+        }
+        let mut e = Entities::new(16);
+        e.spawn(MobKind::Enderman, DVec3::new(0.5, 10.0, 0.5));
+        let c = night(DVec3::new(40.5, 10.0, 0.5));
+        run(&mut e, &world, &c, 3.0);
+        let m = &e.mobs[0];
+        assert!(m.health < MobKind::Enderman.max_health(), "water hurts");
+        assert!(!m.in_water && m.pos.distance(DVec3::new(0.5, 10.0, 0.5)) > 2.0, "escaped: {}", m.pos);
+        assert_ne!(m.ai, Ai::Chase, "water doesn't anger it");
+    }
+
+    /// A test world with spawner cages.
+    struct Caged(Grid, Vec<(IVec3, MobKind)>);
+
+    impl BlockSource for Caged {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            self.0.block(p)
+        }
+    }
+
+    impl MobWorld for Caged {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, x: i32, z: i32) -> Option<i32> {
+            self.0.surface(x, z)
+        }
+        fn exposed(&self, p: IVec3) -> bool {
+            self.0.exposed(p)
+        }
+        fn spawners(&self) -> Vec<(IVec3, MobKind)> {
+            self.1.clone()
+        }
+    }
+
+    #[test]
+    fn spawners_ignore_dead_players_and_pause_the_delay() {
+        let cell = IVec3::new(0, 11, 0);
+        let world = Caged(Grid::flat(10), vec![(cell, MobKind::Blaze)]);
+        let mut e = Entities::new(17);
+        let mut c = ctx(DVec3::new(10.5, 10.0, 0.5));
+        c.players[0].alive = false;
+        e.run_spawners(2.0, &world, &c);
+        assert!(e.mobs.is_empty() && e.puffs.is_empty() && e.spawner_delays.is_empty());
+
+        c.players[0].alive = true;
+        e.run_spawners(0.5, &world, &c);
+        assert_eq!(e.spawner_delays[&cell], 0.5);
+        e.puffs.clear();
+        c.players[0].alive = false;
+        e.run_spawners(20.0, &world, &c);
+        assert_eq!(e.spawner_delays[&cell], 0.5, "death pauses an active cage");
+        assert!(e.mobs.is_empty() && e.puffs.is_empty());
+
+        c.players[0].alive = true;
+        e.run_spawners(0.6, &world, &c);
+        assert!((1..=4).contains(&e.count(MobKind::Blaze)), "living creative players activate cages too");
+    }
+
+    #[test]
+    fn spawners_work_near_players_up_to_six_mobs() {
+        // A closed room around the cage, so nothing wanders off.
+        let mut room = Grid::flat(10);
+        for a in -5..=5 {
+            for y in 10..=17 {
+                for (x, z) in [(a, -5), (a, 5), (-5, a), (5, a)] {
+                    room.set(IVec3::new(x, y, z), Block::STONE);
+                }
+            }
+            for b in -5..=5 {
+                room.set(IVec3::new(a, 17, b), Block::STONE);
+            }
+        }
+        let world = Caged(room, vec![(IVec3::new(0, 11, 0), MobKind::Blaze)]);
+        let mut e = Entities::new(17);
+        let far = Ctx {
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(30.5, 10.0, 0.5), false)],
+            ..night(DVec3::ZERO)
+        };
+        for _ in 0..1200 {
+            e.update(0.05, &world, &far);
+        }
+        assert_eq!(e.count(MobKind::Blaze), 0, "idle with nobody within 16 blocks");
+        let near = Ctx { players: vec![Target::new(PlayerId::HOST, DVec3::new(10.5, 10.0, 0.5), false)], ..far };
+        for _ in 0..30 {
+            e.update(0.05, &world, &near);
+        }
+        let first = e.count(MobKind::Blaze);
+        assert!((1..=4).contains(&first), "a first batch after a second: {first}");
+        assert!(e.mobs.iter().all(|m| (m.pos - DVec3::new(0.5, 11.0, 0.5)).abs().max_element() <= 4.6));
+        for _ in 0..20 * 300 {
+            e.update(0.05, &world, &near);
+        }
+        assert_eq!(e.count(MobKind::Blaze), 6, "stops at six nearby");
+    }
+
+    #[test]
+    fn blazes_hover_shoot_fireball_bursts_and_shrug_off_fire() {
+        let mut world = Grid::flat(10);
+        for x in -1..=1 {
+            for z in -1..=1 {
+                world.set(IVec3::new(x, 9, z), Block::LAVA);
+            }
+        }
+        let mut e = Entities::new(18);
+        e.spawn(MobKind::Blaze, DVec3::new(0.5, 14.0, 0.5));
+        let c = night(DVec3::new(12.5, 10.0, 0.5));
+        let events = run(&mut e, &world, &c, 0.5);
+        assert!(e.mobs[0].pos.y > 12.5, "sinks slowly: {}", e.mobs[0].pos);
+        let events: Vec<_> = events.into_iter().chain(run(&mut e, &world, &c, 6.0)).collect();
+        let shots =
+            events.iter().filter(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fireball, .. })).count();
+        assert_eq!(shots, 3, "one burst of three after charging");
+        let burnt = |ev: &&EntityEvent| matches!(ev, EntityEvent::Ignite { player: PlayerId::HOST, .. });
+        assert!(events.iter().filter(burnt).count() >= 1, "{events:?}");
+        assert_eq!(e.mobs[0].health, MobKind::Blaze.max_health(), "lava below never hurt it");
+        assert_eq!(MobKind::Blaze.loot(), [(crate::item::Item::BLAZE_ROD, 0, 1)]);
+        assert_eq!(MobKind::Blaze.xp(&mut Rng::new(1)), 10);
     }
 
     #[test]
@@ -1193,12 +1548,12 @@ mod tests {
             }
         }
         let mut e = Entities::new(13);
-        let c = Ctx { spawning: true, nether: true, ..night(DVec3::new(0.0, 41.0, 0.0)) };
+        let c = Ctx { spawning: true, dimension: Dimension::Nether, ..night(DVec3::new(0.0, 41.0, 0.0)) };
         for _ in 0..600 {
             e.update(0.05, &world, &c);
         }
         assert!(e.count(MobKind::ZombifiedPiglin) > 0);
-        assert!(e.mobs.iter().all(|m| m.kind == MobKind::ZombifiedPiglin));
+        assert!(e.mobs.iter().all(|m| matches!(m.kind, MobKind::ZombifiedPiglin | MobKind::Enderman)));
     }
 
     #[test]

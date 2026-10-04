@@ -36,7 +36,9 @@
 | Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
 
 The world autosaves every two minutes and on exit. Switching away from
-the window also pauses offline play. A host started with `--agent-listen` keeps
+the window also pauses offline play. See [save backups and version compatibility](releases.md#player-data-and-old-saves)
+before upgrading or returning to an older build.
+A host started with `--agent-listen` keeps
 simulating while menus are open. See [hosted agent CLI and console commands](agents.md).
 
 **Options** (Esc → Options...): render distance (2–32 chunks), field of
@@ -244,6 +246,20 @@ full performance display instead of duplicating the compact counter.
   the stack; clicking off the inventory window throws the held stack (right
   click: one item). Items that don't fit when a crafting screen closes are
   thrown out. Dropped items are saved with the world
+- Experience, like Java Edition: coal, diamond and nether quartz ore (when
+  harvested with the right pickaxe), killed mobs (5 for monsters, 1-3 for
+  animals) and smelting drop glowing orbs that shimmer between yellow and
+  green. Furnaces store what they smelt (0.7 per iron ingot, 1 per gold
+  ingot or diamond, 0.35 per cooked meat, 0.1 for most blocks) and release
+  it when you take from the output slot or break the furnace. Orbs drift
+  toward the nearest player within 8 blocks, merge with same-sized orbs,
+  burn in lava and fire, and vanish after five minutes. You absorb one orb
+  every two ticks, with a ding, and a fanfare plays every five levels. The
+  level curve is Java's (7 points for level 1, then 2L+7, 5L-38 and 9L-158).
+  The green bar above the hotbar shows progress and the level. Dying drops
+  7 points per level (at most 100) and loses the rest; the death screen
+  shows your score. `/xp add|set <n> [points|levels]` and `/xp query`
+  change it from the console. Experience and orbs are saved with the world
 - Procedurally generated, mipmapped block textures — the game ships no assets
 - Procedural sound, synthesized in code at startup (~25 ms): material-specific
   break/place/footstep sounds (stone, wood, dirt, grass, gravel, sand, snow,
@@ -292,6 +308,7 @@ session there, as if you had just come through a portal.
 | Creeper | 20 | walks up and lights a 1.5 s fuse within 3 blocks (kept lit within 7); explodes for up to 43 damage over 6 blocks, destroying blocks (not bedrock, obsidian or fluids) | 0–2 gunpowder |
 | Spider | 16 | fast; climbs walls; hunts only in the dark or after being hit, bites for 2 | 0–2 string |
 | Zombified piglin | 20 | Nether only, in packs; ignores you until you hit one, then the whole pack within 32 blocks chases you for 30 s and strikes with gold swords for 5 | 0–1 rotten flesh, 0–1 gold nuggets |
+| Enderman | 40 | 2.9 blocks tall; rare at night in the Overworld and Nether, common in the End. Neutral until hit or until you look it in the eyes (within 64 blocks), then screams, opens its jaw and hits for 7. Freezes while you watch it (up close it teleports away), teleports toward you from more than 16 blocks, dodges arrows by teleporting, is hurt by water and rain, and wanders off by teleporting in daylight | 0–1 ender pearls |
 
 Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to
@@ -303,6 +320,11 @@ their chunk unloads, and hostile mobs chase the nearest survival player. Every m
 in lava. Player hits deal damage based on the held item, with knockback, at most
 every 0.5 s: a fist deals 1, and swords deal 4–7 depending on their tier.
 Hostile mobs ignore creative players.
+
+Ender pearls (stack of 16) are thrown with **right click**, at most once a
+second (a pale veil drains from the hotbar slot): they fly like Java's
+(about 50 blocks at 45°), and where they hit a block or a mob you teleport,
+taking 5 damage.
 
 Inventory search filters creative items by name. Type in the search field
 (automatically focused in creative), or press Ctrl+F. In survival and containers,
@@ -317,7 +339,7 @@ a static violet sky, no weather or natural Overworld/Nether mob spawning, and
 its own `end/` save folder. Water works; beds explode. End stone is mineable
 with a pickaxe and appears in the creative catalog.
 
-This is the terrain/visiting foundation. The dragon, crystals, Endermen,
+This is the terrain/visiting foundation. The dragon, crystals,
 strongholds/portal progression, gateways, chorus trees, cities, shulkers and
 elytra are still roadmap work. Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
 describes the larger progression being built toward.

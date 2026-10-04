@@ -4,12 +4,14 @@
 
 use glam::DVec3;
 
+use crate::audio::Audio;
 use crate::audio::sounds::Sound;
 use crate::inventory::Stack;
 use crate::render::BlockModel;
 use crate::world::block::Block;
 
-use super::{Container, Game};
+use super::{Container, Game, GameMode, survival};
+use crate::entity::PlayerId;
 
 /// Dropped items farther away than this aren't drawn.
 const DRAW_DIST: f64 = 64.0;
@@ -21,6 +23,9 @@ impl Game {
     pub(super) fn update_items(&mut self) {
         for (cell, stack) in std::mem::take(&mut self.world.drops) {
             self.mobs.entities.drop_from_block(stack, cell);
+        }
+        for (cell, xp) in std::mem::take(&mut self.world.xp_drops) {
+            self.mobs.entities.spawn_xp(cell.as_dvec3() + DVec3::splat(0.5), xp);
         }
         for stack in self.inventory.take_spill() {
             self.mobs.entities.throw(stack, self.player.eye(), self.player.forward().as_dvec3());
@@ -61,6 +66,52 @@ impl Game {
         if picked {
             self.audio.play(Sound::Pop, None, 0.35, (0.8, 1.8));
         }
+        if let Some(chime) = crate::entity::orb::absorb(&mut self.mobs.entities.orbs, player, &mut self.vitals.xp) {
+            xp_sounds(&mut self.audio, None, chime);
+        }
+    }
+
+    /// Right-click with an ender pearl throws it (Java's one-second
+    /// cooldown applies). Returns whether one was thrown.
+    pub(super) fn throw_pearl(&mut self) -> bool {
+        if self.held_item() != Some(crate::item::Item::ENDER_PEARL) || self.vitals.pearl_cooldown > 0.0 {
+            return false;
+        }
+        self.vitals.pearl_cooldown = crate::entity::pearl::COOLDOWN;
+        let p = &self.player;
+        // Java adds the thrower's motion, vertical only while airborne.
+        let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
+        self.mobs.entities.throw_pearl(self.actor, p.eye(), p.forward().as_dvec3(), carry);
+        // Java's throw is the bow sound, pitched well down.
+        self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
+        if self.mode == GameMode::Survival {
+            self.inventory.take_one(self.actions.selected);
+        }
+        true
+    }
+
+    /// A pearl landed at `pos`: its thrower (if alive, in this world)
+    /// teleports there and takes 5 damage, like a fall.
+    pub(super) fn pearl_landed(&mut self, owner: PlayerId, pos: DVec3) {
+        if owner == PlayerId::HOST {
+            if self.vitals.is_dead() || self.sleeping.is_some() {
+                return;
+            }
+            self.audio.play(Sound::Teleport, Some(self.player.pos + DVec3::Y), 0.8, (0.9, 1.1));
+            self.player.pos = pos;
+            self.player.vel = DVec3::ZERO;
+            self.vitals.reset_fall();
+            self.previous_eye = self.player.eye();
+            self.damage_player(crate::entity::pearl::DAMAGE, survival::CAUSE_FALL);
+        } else if let Some(bot) = self.agents.by_id_mut(owner)
+            && bot.active
+        {
+            let from = bot.agent.player.pos;
+            if bot.agent.pearl_teleport(pos, &mut self.mobs.entities) {
+                self.audio.play(Sound::Teleport, Some(from + DVec3::Y), 0.8, (0.9, 1.1));
+            }
+        }
+        self.audio.play(Sound::Teleport, Some(pos + DVec3::Y), 0.8, (0.9, 1.1));
     }
 
     /// Q: drops one of the selected item, or the whole stack with Ctrl.
@@ -101,13 +152,16 @@ impl Game {
     }
 
     /// A dying survival player drops their whole inventory, including what
-    /// was on the crafting grid and the cursor.
+    /// was on the crafting grid and the cursor, and seven points of
+    /// experience per level (at most 100); the rest is lost.
     pub(super) fn drop_everything(&mut self) {
         let mut stacks = self.inventory.take_all();
         stacks.extend(self.craft.take_all());
         for stack in stacks {
             self.mobs.entities.scatter(stack, self.player.pos);
         }
+        let xp = self.vitals.xp.die();
+        self.mobs.entities.spawn_xp(self.player.pos, xp);
     }
 
     /// Spinning, bobbing models for nearby dropped items: a small cube for
@@ -154,5 +208,14 @@ impl Game {
             }
         }
         out
+    }
+}
+
+/// The orb pickup ding (Java's random pitch around 0.9) and, every five
+/// levels, the level-up fanfare. `at` is `None` for the local player.
+pub(super) fn xp_sounds(audio: &mut Audio, at: Option<DVec3>, chime: Option<f32>) {
+    audio.play(Sound::Orb, at, 0.3, (0.55, 1.25));
+    if let Some(volume) = chime {
+        audio.play(Sound::LevelUp, at, volume, (1.0, 1.0));
     }
 }
