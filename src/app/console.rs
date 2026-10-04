@@ -3,6 +3,7 @@ use super::{Game, GameMode};
 use crate::render::ui::{Ui, WHITE};
 use std::collections::VecDeque;
 use voxelcraft::agent::{Command, HELP};
+use voxelcraft::simulation::survival;
 use winit::event::KeyEvent;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
@@ -100,6 +101,7 @@ impl Game {
                     "setblock",
                     "dimension",
                     "xp",
+                    "effect",
                     "players",
                     "observe",
                     "splitscreen",
@@ -186,6 +188,11 @@ impl Game {
                 return Ok(self.xp_summary());
             }
             Command::XpQuery => return Ok(self.xp_summary()),
+            Command::Effect(change) => {
+                let (damage, text) = change.apply(&mut self.vitals);
+                self.damage_player(damage, survival::CAUSE_MAGIC);
+                return Ok(text);
+            }
             Command::Observe(_) => {
                 return Ok(format!(
                     "{} at {:.1}, {:.1}, {:.1}",

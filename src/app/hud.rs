@@ -6,6 +6,7 @@ use std::time::Instant;
 use crate::inventory::{HOTBAR_SLOTS, Stack};
 use crate::item::{ArmorMaterial, ArmorPiece, Item};
 use crate::render::ui::{Color, Ui, UiVertex, WHITE};
+use crate::simulation::effects::{self, Effects};
 use crate::simulation::experience::Experience;
 use crate::world::block::tex;
 use crate::world::chunk::{chunk_of, local_of};
@@ -220,6 +221,7 @@ impl Game {
             xp_bar_ui(ui, hud.vitals.xp, x0, y0 - 7.0, total);
             self.vitals_ui(ui, hud, x0, x0 + total, y0 - 17.0, now);
         }
+        effects_ui(ui, &hud.vitals.effects);
         y0
     }
 
@@ -288,6 +290,41 @@ impl Game {
 
 /// Minecraft's experience bar: a thin green fill across the hotbar's
 /// width at `y`, with the level in outlined green text over its middle.
+/// Java's status effect icons in the top right corner: beneficial ones in
+/// the first row, harmful ones below, blinking in their last 10 seconds.
+fn effects_ui(ui: &mut Ui, effects: &Effects) {
+    let sw = ui.size().0;
+    let (mut good, mut bad) = (0.0, 0.0);
+    for a in effects.iter() {
+        let column = if a.effect.is_harmful() { &mut bad } else { &mut good };
+        *column += 1.0;
+        let (x, y) = (sw - 25.0 * *column, if a.effect.is_harmful() { 27.0 } else { 1.0 });
+        ui.rect(x, y, 24.0, 24.0, [0.1, 0.1, 0.12, 0.7]);
+        let alpha = if a.ticks > 200 { 1.0 } else { 0.6 + 0.4 * (a.ticks as f32 * std::f32::consts::PI / 5.0).cos() };
+        ui.icon(x + 3.0, y + 3.0, 18.0, crate::item::effect_icon_layer(a.effect), [1.0, 1.0, 1.0, alpha]);
+    }
+}
+
+/// Java's effect panels beside the inventory: icon, name and level, and
+/// time left; just icons when the screen is too narrow.
+fn effect_list_ui(ui: &mut Ui, effects: &Effects, right: f32, top: f32) {
+    let label = |a: &effects::Active| format!("{} {}", a.effect.name(), effects::level_name(a.amplifier));
+    let text_w = effects.iter().map(|a| Ui::text_width(&label(a))).fold(0.0, f32::max);
+    let full = (text_w + 34.0).max(120.0);
+    let wide = right >= full + 4.0;
+    let w = if wide { full } else { 32.0 };
+    let x = (right - w - 4.0).max(0.0);
+    for (i, a) in effects.iter().enumerate() {
+        let y = top + i as f32 * 33.0;
+        ui.rect(x, y, w, 32.0, [0.12, 0.12, 0.14, 0.85]);
+        ui.icon(x + 7.0, y + 7.0, 18.0, crate::item::effect_icon_layer(a.effect), WHITE);
+        if wide {
+            ui.text(x + 28.0, y + 7.0, &label(a), WHITE);
+            ui.text(x + 28.0, y + 18.0, &effects::duration_text(a.ticks), [0.5, 0.5, 0.5, 1.0]);
+        }
+    }
+}
+
 fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
     const GREEN: [f32; 4] = [0.5, 1.0, 0.125, 1.0];
     ui.rect(x, y, w, 5.0, [0.0, 0.0, 0.0, 0.8]);
@@ -492,6 +529,7 @@ impl Game {
         let (sw, sh) = ui.size();
         ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.45]);
         let (px, py, panel_h) = self.panel((sw, sh));
+        effect_list_ui(ui, &self.vitals.effects, px, py);
         ui.rect(px, py, PANEL_W, panel_h, [0.78, 0.78, 0.78, 1.0]);
         ui.rect(px, py, PANEL_W, 1.0, WHITE);
         ui.rect(px, py, 1.0, panel_h, WHITE);

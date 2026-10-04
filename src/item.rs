@@ -484,8 +484,14 @@ fn sprite_index(item: Item) -> Option<u16> {
 }
 
 /// How many item icons there are (layers of the item texture array).
-pub fn icon_count() -> u32 {
-    Item::all_items().count() as u32
+pub const fn icon_count() -> u32 {
+    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT) as u32
+}
+
+/// Layer of a status effect's icon: in the item icon array, after every
+/// item's.
+pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
+    tex::item_layer(icon_count() as u16 + effect as u16)
 }
 
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).
@@ -567,6 +573,7 @@ mod tests {
         for i in Item::all_items() {
             let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
             assert!((index as u32) < icon_count());
+            assert_eq!(Item::all_items().count() as u32, icon_count());
             assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
         }
         // Icons stay addressable by the UI's and models' 16-bit layers.

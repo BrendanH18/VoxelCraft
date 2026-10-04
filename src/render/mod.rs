@@ -52,6 +52,8 @@ struct Globals {
     clouds: [f32; 4],
     /// x: dimension (0 Overworld, 1 Nether, 2 End); y: enhanced graphics; zw: camera xz wrapped at 128 blocks.
     environment: [f32; 4],
+    /// x: night vision strength 0..1.
+    effects: [f32; 4],
 }
 
 const CLOUD_HEIGHT: f64 = 192.0;
@@ -116,6 +118,8 @@ pub struct FrameParams {
     /// Rain strength 0..1: hides the sun, moon and stars and thickens the
     /// clouds.
     pub rain: f32,
+    /// Night vision strength 0..1 (see `Effects::night_vision`).
+    pub night_vision: f32,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -354,7 +358,7 @@ impl Renderer {
             &device,
             &queue,
             "item icons",
-            crate::item::icon_count(),
+            textures::item_layers(),
             textures::generate_item_mips(),
         );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -1110,6 +1114,7 @@ impl Renderer {
             ],
             sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
             params: [p.fog_start, p.fog_end, p.daylight, p.rain],
+            effects: [p.night_vision, 0.0, 0.0, 0.0],
             clouds: [
                 cloud_origin.x as f32,
                 cloud_origin.z as f32,

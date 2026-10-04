@@ -596,6 +596,12 @@ impl Game {
         if let Some(xp) = prop("xp").and_then(|t| crate::simulation::experience::Experience::parse(t)) {
             vitals.xp = xp;
         }
+        if let Some(text) = prop("effects") {
+            vitals.effects = crate::simulation::effects::Effects::deserialize(text);
+        }
+        for &(effect, secs, amp) in &args.effects {
+            vitals.apply_effect(effect, amp, secs.saturating_mul(20).max(1));
+        }
         if let Some(level) = args.xp {
             let total = (0..level.min(1000)).map(crate::simulation::experience::points_to_next).sum();
             vitals.xp = crate::simulation::experience::Experience::restore(level, 0, total);
@@ -1499,6 +1505,7 @@ impl Game {
         props.insert("health".to_string(), self.vitals.health.to_string());
         props.insert("air".to_string(), format!("{:.2}", self.vitals.air));
         props.insert("xp".to_string(), self.vitals.xp.serialize());
+        props.insert("effects".to_string(), self.vitals.effects.serialize());
         let h = self.vitals.hunger;
         props.insert("hunger".to_string(), format!("{:.2},{:.2},{:.3}", h.food, h.saturation, h.exhaustion));
         if let Some(cause) = &self.vitals.death {
@@ -1810,6 +1817,7 @@ impl Game {
                 self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye))
             }),
             rain: scene.rain,
+            night_vision: self.vitals.effects.night_vision(scene.time),
             ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() || self.console.open {
                 self.build_ui(now)
             } else {

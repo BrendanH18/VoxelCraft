@@ -262,6 +262,17 @@ full performance display instead of duplicating the compact counter.
   7 points per level (at most 100) and loses the rest; the death screen
   shows your score. `/xp add|set <n> [points|levels]` and `/xp query`
   change it from the console. Experience and orbs are saved with the world
+- Status effects, as Java has them: speed and slowness (+20% / -15% speed
+  per level), strength and weakness (+3 / -4 melee damage per level),
+  instant health and damage (4 / 6, doubling per level), regeneration and
+  poison (a point every 50 / 25 ticks, halving per level; poison never
+  kills), fire resistance, water breathing, night vision (fades in its last
+  10 seconds), jump boost (higher jumps, a block less fall damage per
+  level) and slow falling (an eighth of the gravity, no fall damage).
+  Icons show in the top right (harmful ones in a second row, blinking in
+  their last 10 seconds) and with name and time beside the inventory.
+  `/effect give <effect> [seconds] [amplifier]` and `/effect clear
+  [effect]` use Java's ids; effects are saved, and death clears them.
 - Procedurally generated, mipmapped block textures — the game ships no assets
 - Procedural sound, synthesized in code at startup (~25 ms): material-specific
   break/place/footstep sounds (stone, wood, dirt, grass, gravel, sand, snow,

@@ -14,9 +14,18 @@ struct Globals {
     params: vec4<f32>,
     clouds: vec4<f32>,
     environment: vec4<f32>,
+    // x: night vision strength 0..1.
+    effects: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
+
+// Night vision (Java's lightmap): brightens every light level toward full,
+// keeping its hue; g.effects.x is its strength.
+fn night_vision(lit: vec3<f32>) -> vec3<f32> {
+    let peak = max(max(lit.r, lit.g), max(lit.b, 1e-3));
+    return mix(lit, lit / peak, g.effects.x);
+}
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;
 @group(2) @binding(0) var<storage, read> quads: array<u32>;
@@ -141,7 +150,7 @@ fn lighting(in: VsOut) -> vec3<f32> {
     let l = curve(in.light);
     let sky = l.x * g.params.z * daylight_tint(in.normal);
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
-    return (max(sky, torch) * 0.96 + 0.04) * in.shade;
+    return night_vision(max(sky, torch) * 0.96 + 0.04) * in.shade;
 }
 
 fn apply_fog(color: vec3<f32>, dist: f32) -> vec3<f32> {

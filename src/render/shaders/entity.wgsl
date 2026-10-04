@@ -12,9 +12,18 @@ struct Globals {
     params: vec4<f32>,
     clouds: vec4<f32>,
     environment: vec4<f32>,
+    // x: night vision strength 0..1.
+    effects: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
+
+// Night vision (Java's lightmap): brightens every light level toward full,
+// keeping its hue; g.effects.x is its strength.
+fn night_vision(lit: vec3<f32>) -> vec3<f32> {
+    let peak = max(max(lit.r, lit.g), max(lit.b, 1e-3));
+    return mix(lit, lit / peak, g.effects.x);
+}
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
@@ -95,7 +104,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // Sky light scaled by daylight, or warm torch light, whichever is brighter.
     let sky = curve(in.light.x) * g.params.z * daylight_tint(normal);
     let torch = curve(in.torch) * vec3<f32>(1.0, 0.86, 0.66);
-    let lit = mix((max(sky, torch) * 0.96 + 0.04) * in.light.y, vec3<f32>(1.0), in.light.w);
+    let lit = mix(night_vision(max(sky, torch) * 0.96 + 0.04) * in.light.y, vec3<f32>(1.0), in.light.w);
     var c = base * lit;
     // Hurt: Minecraft-style red overlay.
     c = mix(c, vec3<f32>(0.8, 0.0, 0.0) * max(lit, vec3<f32>(0.25)), in.light.z * 0.6);

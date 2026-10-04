@@ -47,6 +47,7 @@ pub const CAUSE_DROWN: &str = "drowned";
 pub const CAUSE_LAVA: &str = "tried to swim in lava";
 pub const CAUSE_FIRE: &str = "burned to death";
 pub const CAUSE_STARVE: &str = "starved to death";
+pub const CAUSE_MAGIC: &str = "was killed by magic";
 
 /// Damage left after armor worth `points` (Minecraft's formula without
 /// toughness): each point blocks 4%, up to 80%, though big hits punch

@@ -222,6 +222,7 @@ impl Game {
                     bot.hand.view(eating, crate::entity::sky_light(&self.world, camera), self.torch_light(camera))
                 }),
                 rain: scene.rain,
+                night_vision: a.vitals.effects.night_vision(scene.time),
                 ui,
             };
             self.renderer.draw_view(frame, &params, vp);

@@ -68,7 +68,7 @@ impl Agents {
     }
     /// Saves named player profiles, progression and inventory in this dimension.
     pub fn serialize(&self, dimension: &str) -> String {
-        let profiles: Vec<_>=self.players.iter().map(|(name,b)|json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"inventory":b.agent.inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})).collect();
+        let profiles: Vec<_>=self.players.iter().map(|(name,b)|json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"effects":b.agent.vitals.effects.serialize(),"inventory":b.agent.inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})).collect();
         json!(profiles).to_string()
     }
     /// Restores valid profiles, moving players from other dimensions to `spawn`.
@@ -112,6 +112,9 @@ impl Agents {
             );
             if let Some(xp) = p["xp"].as_str().and_then(crate::simulation::experience::Experience::parse) {
                 agent.vitals.xp = xp;
+            }
+            if let Some(text) = p["effects"].as_str() {
+                agent.vitals.effects = crate::simulation::effects::Effects::deserialize(text);
             }
             // Replacing a profile frees its old ID.
             self.players.remove(name);

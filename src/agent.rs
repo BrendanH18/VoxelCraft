@@ -10,14 +10,16 @@ use crate::inventory::{Inventory, Stack};
 use crate::item::Item;
 use crate::mining;
 use crate::player::{MoveInput, Player};
-use crate::simulation::{self, TICK_SECONDS, survival::Vitals};
+use crate::simulation::effects::Effect;
+use crate::simulation::survival::{self, Vitals};
+use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{
     World,
     block::{Block, RenderKind},
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | sleep | place (throws a selected ender pearl) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | sleep | place (throws a selected ender pearl) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,6 +66,37 @@ pub enum Command {
     /// Java's `/xp`: add or set an amount, counted in levels or points.
     Xp(XpChange),
     XpQuery,
+    /// Java's `/effect`.
+    Effect(EffectChange),
+}
+
+/// `/effect give` (with seconds and amplifier) or `/effect clear`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum EffectChange {
+    Give(Effect, u32, u8),
+    /// Removes one effect, or all of them.
+    Clear(Option<Effect>),
+}
+
+impl EffectChange {
+    /// Applies the change; returns instant damage for the caller to deal
+    /// and the feedback line.
+    pub fn apply(self, vitals: &mut Vitals) -> (f32, String) {
+        match self {
+            EffectChange::Give(effect, secs, amp) => {
+                let damage = vitals.apply_effect(effect, amp, secs.saturating_mul(20).max(1));
+                (damage, format!("applied {} {}", effect.name(), crate::simulation::effects::level_name(amp)))
+            }
+            EffectChange::Clear(Some(effect)) => {
+                let had = vitals.effects.remove(effect);
+                (0.0, if had { format!("removed {}", effect.name()) } else { format!("no {}", effect.name()) })
+            }
+            EffectChange::Clear(None) => {
+                vitals.effects.clear();
+                (0.0, "removed every effect".into())
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -185,6 +218,19 @@ impl Command {
                 }
                 Self::Xp(XpChange { set: *op == "set", amount, levels })
             }
+            ["effect", "clear"] => Self::Effect(EffectChange::Clear(None)),
+            ["effect", "clear", name] => {
+                Self::Effect(EffectChange::Clear(Some(Effect::from_id(name).ok_or_else(bad)?)))
+            }
+            ["effect", "give", name, rest @ ..] if rest.len() <= 2 => {
+                let effect = Effect::from_id(name).ok_or_else(bad)?;
+                // Java's defaults: 30 seconds, level I.
+                let secs = rest.first().map_or(Ok(30), |n| {
+                    n.parse::<u32>().ok().filter(|n| (1..=1_000_000).contains(n)).ok_or_else(bad)
+                })?;
+                let amp = rest.get(1).map_or(Ok(0), |n| n.parse::<u8>().map_err(|_| bad()))?;
+                Self::Effect(EffectChange::Give(effect, secs, amp))
+            }
             _ => return Err(bad()),
         })
     }
@@ -201,6 +247,7 @@ impl Command {
                 | Self::Weather(..)
                 | Self::Dimension(..)
                 | Self::Xp(..)
+                | Self::Effect(..)
         )
     }
 }
@@ -342,6 +389,10 @@ impl Agent {
                 if let Some(chime) = change.apply(&mut self.vitals.xp) {
                     self.emit(Event::Xp(Some(chime)));
                 }
+            }
+            Command::Effect(change) => {
+                let (damage, _) = change.apply(&mut self.vitals);
+                self.vitals.damage(damage, survival::CAUSE_MAGIC, self.creative);
             }
             Command::Mode(creative) => {
                 self.creative = creative;
@@ -892,9 +943,27 @@ mod tests {
             "give dirt 0",
             "observe 3",
             "place extra",
+            "effect give nope",
+            "effect give speed 0",
+            "effect give speed 10 300",
+            "effect clear speed extra",
         ] {
             assert!(Command::parse(s).is_err(), "{s}");
         }
+        assert!(matches!(
+            Command::parse("effect give minecraft:strength 90 1").unwrap(),
+            Command::Effect(EffectChange::Give(Effect::Strength, 90, 1))
+        ));
+        assert!(matches!(
+            Command::parse("effect give regeneration").unwrap(),
+            Command::Effect(EffectChange::Give(Effect::Regeneration, 30, 0))
+        ));
+        assert!(matches!(Command::parse("effect clear").unwrap(), Command::Effect(EffectChange::Clear(None))));
+        let mut vitals = Vitals::default();
+        vitals.health = 10.0;
+        assert_eq!(EffectChange::Give(Effect::InstantDamage, 1, 0).apply(&mut vitals).0, 6.0);
+        EffectChange::Give(Effect::InstantHealth, 1, 1).apply(&mut vitals);
+        assert_eq!(vitals.health, 18.0);
         assert!(matches!(Command::parse("/give dirt 64").unwrap(), Command::Give(_, 64)));
         let xp = |text: &str| match Command::parse(text) {
             Ok(Command::Xp(c)) => Some((c.set, c.amount, c.levels)),

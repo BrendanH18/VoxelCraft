@@ -5,6 +5,7 @@
 //! on the bottom right.
 
 use crate::item::{ArmorMaterial, ArmorPiece, Sprite, Tier, ToolKind};
+use crate::simulation::effects::Effect;
 use crate::world::block::tex;
 use crate::world::noise::hash_f;
 
@@ -443,6 +444,68 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     out.unwrap_or(CLEAR)
+}
+
+/// 8x8 glyphs of the status effect icons, drawn at double size.
+fn effect_glyph(effect: Effect) -> [&'static str; 8] {
+    match effect {
+        Effect::Speed => {
+            ["........", "##..##..", ".##..##.", "..##..##", "..##..##", ".##..##.", "##..##..", "........"]
+        }
+        Effect::Slowness => {
+            ["........", "..##..##", ".##..##.", "##..##..", "##..##..", ".##..##.", "..##..##", "........"]
+        }
+        Effect::Strength => {
+            ["......##", ".....###", "....###.", "#..###..", ".####...", "..##....", ".#.##...", "#...#..."]
+        }
+        Effect::Weakness => {
+            ["......##", ".....###", "....#.#.", "#.......", ".##.#...", "..##....", ".#.##...", "#...#..."]
+        }
+        Effect::InstantHealth => {
+            [".##..##.", "########", "########", "########", ".######.", "..####..", "...##...", "........"]
+        }
+        Effect::InstantDamage => {
+            ["#......#", ".#....#.", "..#..#..", "...##...", "...##...", "..#..#..", ".#....#.", "#......#"]
+        }
+        Effect::Regeneration => {
+            [".##..##.", "#..##..#", "#......#", "#......#", ".#....#.", "..#..#..", "...##...", "........"]
+        }
+        Effect::Poison => {
+            ["...##...", "...##...", "..####..", ".######.", ".######.", "########", ".######.", "..####.."]
+        }
+        Effect::FireResistance => {
+            ["...#....", "..##..#.", "..###.#.", ".#####..", ".######.", "########", "########", ".######."]
+        }
+        Effect::NightVision => {
+            ["........", "..####..", ".#....#.", "#..##..#", "#..##..#", ".#....#.", "..####..", "........"]
+        }
+        Effect::WaterBreathing => {
+            [".....##.", "....#..#", "....#..#", ".##..##.", "#..#....", "#..#.##.", ".##.#..#", ".....##."]
+        }
+        Effect::JumpBoost => {
+            ["...##...", "..####..", ".##..##.", "##....##", "...##...", "..####..", ".##..##.", "##....##"]
+        }
+        Effect::SlowFalling => {
+            ["......##", ".....###", "....###.", "...###..", "..###...", ".###....", "##......", "#......."]
+        }
+    }
+}
+
+/// A pixel of a status effect's HUD icon: its glyph in the effect's
+/// colour, lit from the top, with a dark outline.
+pub fn effect_pixel(effect: Effect, x: usize, y: usize) -> Rgba {
+    let glyph = effect_glyph(effect);
+    let on = |x: i32, y: i32| {
+        (0..16).contains(&x) && (0..16).contains(&y) && glyph[y as usize / 2].as_bytes()[x as usize / 2] == b'#'
+    };
+    let (x, y) = (x as i32, y as i32);
+    if on(x, y) {
+        tint(effect.colour(), 1.25 - y as f32 / 30.0)
+    } else if on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1) {
+        [24, 24, 28, 255]
+    } else {
+        CLEAR
+    }
 }
 
 #[cfg(test)]
