@@ -403,6 +403,31 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&bulbs, x, y, [168, 34, 42], 0.1).map(|p| if spot { tint([p[0], p[1], p[2]], 0.7) } else { p })
             }
         }
+        Sprite::Bottle(liquid) => {
+            // Java's bottle: a round flask with a neck and cork, glass
+            // showing the liquid's colour, a highlight at the top left.
+            let (px, py) = centre(x, y);
+            let d = (px - 8.0).powi(2) + (py - 10.0).powi(2);
+            let body = d <= 30.0;
+            let neck = (6..=9).contains(&x) && (2..=4).contains(&y);
+            let cork = (6..=9).contains(&x) && y <= 1;
+            let rim = body && d > 21.0;
+            let glint = (5..=6).contains(&x) && (8..=10).contains(&y);
+            if cork {
+                Some(tint([150, 104, 60], if x == 6 { 1.15 } else { 0.95 }))
+            } else if neck || rim {
+                Some(tint([210, 225, 240], if x + y < 14 { 1.1 } else { 0.8 }))
+            } else if body && glint {
+                Some([245, 250, 255, 255])
+            } else if body {
+                match liquid {
+                    Some(c) => Some(tint(c, 1.15 - (py - 7.0) / 14.0)),
+                    None => Some([200, 220, 240, 90]),
+                }
+            } else {
+                None
+            }
+        }
         Sprite::Door => {
             // The door's own two textures, squeezed to half width.
             let (layer, ty) = if y < 8 { (tex::DOOR_TOP, y * 2) } else { (tex::DOOR_BOTTOM, (y - 8) * 2) };

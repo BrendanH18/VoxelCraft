@@ -1217,14 +1217,17 @@ impl Game {
     }
 
     /// Eating: holding right-click with food in survival, when not full,
-    /// finishes a bite after [`EAT_TIME`] seconds.
+    /// finishes a bite after [`EAT_TIME`] seconds. Potions drink the same
+    /// way, in any mode.
     fn eat(&mut self, acting: bool, dt: f64) {
+        let potion = self.held_item().and_then(|i| i.as_potion());
         let food = self.held_item().and_then(|i| i.food());
-        let eating = acting && self.right_held && self.mode == GameMode::Survival && self.vitals.hunger.can_eat();
-        let Some((hunger, saturation)) = food.filter(|_| eating) else {
+        let hungry = self.mode == GameMode::Survival && self.vitals.hunger.can_eat();
+        let using = acting && self.right_held && (potion.is_some() || (food.is_some() && hungry));
+        if !using {
             self.actions.eat_timer = 0.0;
             return;
-        };
+        }
         let before = self.actions.eat_timer;
         let finished = self.actions.eat(dt);
         // Chewing sounds four times a second.
@@ -1232,7 +1235,17 @@ impl Game {
             let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
             self.audio.play(sound, Some(self.player.eye()), 0.7, (1.4, 1.7));
         }
-        if finished {
+        if !finished {
+            return;
+        }
+        if let Some(potion) = potion {
+            let damage = potion.drink(&mut self.vitals);
+            self.damage_player(damage, survival::CAUSE_MAGIC);
+            // Creative keeps the potion; survival is left with the bottle.
+            if self.mode == GameMode::Survival {
+                self.inventory.slots[self.actions.selected] = Some(crate::inventory::Stack::new(Item::GLASS_BOTTLE, 1));
+            }
+        } else if let Some((hunger, saturation)) = food {
             self.inventory.take_one(self.actions.selected);
             self.vitals.hunger.eat(hunger, saturation);
         }

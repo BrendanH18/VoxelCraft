@@ -133,6 +133,8 @@ pub enum ItemKind {
     Bow,
     /// Lights a Nether portal frame.
     FlintAndSteel,
+    /// Drunk like food is eaten (see `crate::potion`).
+    Potion(crate::potion::Potion),
     /// Crafting ingredient or mob drop with no use of its own.
     Material,
 }
@@ -171,6 +173,8 @@ pub enum Sprite {
     Pearl([u8; 3], [u8; 3]),
     /// A knobbly red nether wart.
     Wart,
+    /// A glass bottle, empty or holding liquid of this colour.
+    Bottle(Option<[u8; 3]>),
     Tool(ToolKind, Tier),
     Armor(ArmorPiece, ArmorMaterial),
 }
@@ -198,7 +202,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 43] = [
+static ITEMS: [ItemInfo; 44] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -257,6 +261,7 @@ static ITEMS: [ItemInfo; 43] = [
     item("blaze rod", Sprite::Rod([250, 190, 40])),
     item("blaze powder", Sprite::Powder([250, 150, 30])),
     item("nether wart", Sprite::Wart),
+    item("glass bottle", Sprite::Bottle(None)),
 ];
 
 /// Uses before a bow breaks.
@@ -271,6 +276,9 @@ const TOOL_COUNT: u16 = (Tier::ALL.len() * TOOL_KINDS.len()) as u16;
 /// Armor starts at this id: `FIRST_ARMOR + material * 4 + piece`.
 const FIRST_ARMOR: u16 = FIRST_TOOL + TOOL_COUNT;
 const ARMOR_COUNT: u16 = 16;
+/// Potions start at this id: `FIRST_POTION + potion index`.
+const FIRST_POTION: u16 = 400;
+const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
 
 impl Item {
     pub const STICK: Item = Item(256);
@@ -319,6 +327,8 @@ impl Item {
     pub const BLAZE_POWDER: Item = Item(297);
     /// Planted on soul sand (see `Block::nether_wart`).
     pub const NETHER_WART: Item = Item(298);
+    /// Filled with water from a source (see `Item::potion`).
+    pub const GLASS_BOTTLE: Item = Item(299);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
@@ -326,6 +336,16 @@ impl Item {
 
     pub const fn armor(piece: ArmorPiece, material: ArmorMaterial) -> Item {
         Item(FIRST_ARMOR + material as u16 * 4 + piece as u16)
+    }
+
+    pub const fn potion(potion: crate::potion::Potion) -> Item {
+        Item(FIRST_POTION + potion.0 as u16)
+    }
+
+    /// The potion this item is (a water bottle is one too).
+    pub fn as_potion(self) -> Option<crate::potion::Potion> {
+        let i = self.0.checked_sub(FIRST_POTION).filter(|&i| i < POTION_COUNT)?;
+        Some(crate::potion::Potion(i as u8))
     }
 
     pub const fn from_block(block: Block) -> Item {
@@ -358,6 +378,14 @@ impl Item {
         }
         if let Some(info) = self.0.checked_sub(FIRST_ITEM).and_then(|i| ITEMS.get(i as usize)) {
             return *info;
+        }
+        if let Some(potion) = self.as_potion() {
+            return ItemInfo {
+                name: potion.info().name,
+                kind: ItemKind::Potion(potion),
+                max_stack: 1,
+                sprite: Sprite::Bottle(Some(potion.colour())),
+            };
         }
         if let Some(i) = self.0.checked_sub(FIRST_TOOL)
             && let (Some(&tier), Some(&kind)) = (Tier::ALL.get(i as usize / 5), TOOL_KINDS.get(i as usize % 5))
@@ -458,7 +486,8 @@ impl Item {
     pub fn all_items() -> impl Iterator<Item = Item> {
         let materials = (0..ITEMS.len() as u16).map(|i| Item(FIRST_ITEM + i));
         let tools = (0..TOOL_COUNT + ARMOR_COUNT).map(|i| Item(FIRST_TOOL + i));
-        materials.chain(tools)
+        let potions = (0..POTION_COUNT).map(|i| Item(FIRST_POTION + i));
+        materials.chain(tools).chain(potions)
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -479,13 +508,14 @@ fn sprite_index(item: Item) -> Option<u16> {
     match item.0 {
         i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some(i - FIRST_ITEM),
         i if item.as_tool().is_some() || item.as_armor().is_some() => Some(materials + i - FIRST_TOOL),
+        i if item.as_potion().is_some() => Some(materials + TOOL_COUNT + ARMOR_COUNT + i - FIRST_POTION),
         _ => None,
     }
 }
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT) as u32
+    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32
 }
 
 /// Layer of a status effect's icon: in the item icon array, after every

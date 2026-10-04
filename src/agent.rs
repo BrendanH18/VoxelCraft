@@ -19,7 +19,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | sleep | place (throws a selected ender pearl) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -351,9 +351,11 @@ impl Agent {
             }
             Command::Eat => {
                 let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
-                held.item.food().ok_or("selected item is not food")?;
-                if self.creative || !self.vitals.hunger.can_eat() {
-                    return Err("not hungry".into());
+                if held.item.as_potion().is_none() {
+                    held.item.food().ok_or("selected item is not food or a potion")?;
+                    if self.creative || !self.vitals.hunger.can_eat() {
+                        return Err("not hungry".into());
+                    }
                 }
                 self.input = MoveInput::default();
                 self.remaining = EAT_TICKS;
@@ -698,13 +700,13 @@ impl Agent {
     /// One tick of eating: a bite finishes after [`EAT_TICKS`] of holding
     /// the same food, like Java. Switching slots restarts it via `select`.
     fn chew(&mut self) {
-        let food = self.inventory.get(self.selected).and_then(|s| s.item.food());
-        let Some((hunger, saturation)) =
-            food.filter(|_| self.remaining > 0 && self.eating && !self.creative && self.vitals.hunger.can_eat())
-        else {
+        let held = self.inventory.get(self.selected).map(|s| s.item);
+        let potion = held.and_then(Item::as_potion);
+        let food = held.and_then(|i| i.food()).filter(|_| !self.creative && self.vitals.hunger.can_eat());
+        if self.remaining == 0 || !self.eating || (potion.is_none() && food.is_none()) {
             self.bite = 0;
             return;
-        };
+        }
         self.bite += 1;
         // Chewing sounds four times a second.
         if self.bite % 5 == 1 {
@@ -712,8 +714,16 @@ impl Agent {
         }
         if self.bite >= EAT_TICKS {
             self.bite = 0;
-            self.inventory.take_one(self.selected);
-            self.vitals.hunger.eat(hunger, saturation);
+            if let Some(potion) = potion {
+                let damage = potion.drink(&mut self.vitals);
+                self.vitals.damage(damage, survival::CAUSE_MAGIC, self.creative);
+                if !self.creative {
+                    self.inventory.slots[self.selected] = Some(Stack::new(Item::GLASS_BOTTLE, 1));
+                }
+            } else if let Some((hunger, saturation)) = food {
+                self.inventory.take_one(self.selected);
+                self.vitals.hunger.eat(hunger, saturation);
+            }
             // A timed `eat` command stops after one bite.
             if self.remaining <= 1 {
                 self.eating = false;
@@ -851,6 +861,23 @@ mod tests {
         assert!(bare.inventory.get(0).is_none());
         assert_eq!(entities.items.iter().map(|i| i.stack.count).sum::<u8>(), 2);
     }
+    #[test]
+    fn drinking_a_potion_applies_it_and_leaves_a_bottle() {
+        use crate::potion::Potion;
+        let mut world = world();
+        world.set_block(IVec3::new(1, 149, 1), Block::STONE);
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        // Not hungry, but potions drink anyway.
+        a.inventory.add(Item::potion(Potion::from_id("swiftness").unwrap()), 1);
+        a.execute(Command::Eat, &mut world, &mut entities, &[]).unwrap();
+        for _ in 0..EAT_TICKS {
+            a.tick(&mut world, &mut entities);
+        }
+        assert_eq!(a.vitals.effects.get(Effect::Speed).map(|e| e.amplifier), Some(0));
+        assert_eq!(a.inventory.get(0).map(|s| s.item), Some(Item::GLASS_BOTTLE));
+    }
+
     #[test]
     fn eating_takes_a_full_bite_and_held_use_keeps_chewing() {
         let mut world = world();

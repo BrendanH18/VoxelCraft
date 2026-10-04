@@ -642,7 +642,10 @@ impl Game {
         if let Some(hint) = recipe_hint {
             self.tooltip(ui, &hint);
         } else if let Some(item) = hovered_item {
-            self.tooltip(ui, item.name());
+            match item.as_potion() {
+                Some(potion) => self.potion_tooltip(ui, item.name(), potion),
+                None => self.tooltip(ui, item.name()),
+            }
         }
         // The held stack follows the mouse.
         if let Some(stack) = self.inventory.cursor {
@@ -740,6 +743,25 @@ impl Game {
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - 11.0).max(3.0));
         ui.rect(x - 3.0, y - 3.0, Ui::text_width(&text) + 6.0, 14.0, [0.08, 0.02, 0.12, 0.92]);
         ui.text(x, y, &text, WHITE);
+    }
+
+    /// A potion's name with Java's effect line under it: blue for good
+    /// effects, red for harmful, grey for none.
+    fn potion_tooltip(&self, ui: &mut Ui, name: &str, potion: voxelcraft::potion::Potion) {
+        let title = capitalize(name);
+        let detail = potion.describe();
+        let colour = match potion.info().effect {
+            None => [0.6, 0.6, 0.6, 1.0],
+            Some((e, _, _)) if e.is_harmful() => [1.0, 0.33, 0.33, 1.0],
+            Some(_) => [0.33, 0.33, 1.0, 1.0],
+        };
+        let w = Ui::text_width(&title).max(Ui::text_width(&detail));
+        let (sw, sh) = ui.size();
+        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - 22.0).max(3.0));
+        ui.rect(x - 3.0, y - 3.0, w + 6.0, 25.0, [0.08, 0.02, 0.12, 0.92]);
+        ui.text(x, y, &title, WHITE);
+        ui.text(x, y + 11.0, &detail, colour);
     }
 
     /// Draw F3 world/player statistics, including completed gameplay ticks and offline pause state.

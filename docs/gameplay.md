@@ -273,6 +273,14 @@ full performance display instead of duplicating the compact counter.
   their last 10 seconds) and with name and time beside the inventory.
   `/effect give <effect> [seconds] [amplifier]` and `/effect clear
   [effect]` use Java's ids; effects are saved, and death clears them.
+- Potions: three glass in a V make three glass bottles, which fill from a
+  water source (right click; the water stays). Hold right click to drink
+  a potion (1.6 s, like eating, even when full); it applies its effect and
+  leaves the bottle (creative keeps the potion). Java's 36 drinkable types
+  whose effects exist are items, from the water bottle and the mundane,
+  thick and awkward bases to long (extended) and strong (level II)
+  variants with Java's durations; tooltips show the effect, level and
+  time. Brewing them comes next.
 - Procedurally generated, mipmapped block textures — the game ships no assets
 - Procedural sound, synthesized in code at startup (~25 ms): material-specific
   break/place/footstep sounds (stone, wood, dirt, grass, gravel, sand, snow,
