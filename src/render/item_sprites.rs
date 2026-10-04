@@ -403,6 +403,40 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&bulbs, x, y, [168, 34, 42], 0.1).map(|p| if spot { tint([p[0], p[1], p[2]], 0.7) } else { p })
             }
         }
+        Sprite::GlisteringMelon => {
+            // The melon slice, its rind turned to gold, with sparkles.
+            let sparkle = [(3, 3), (12, 2), (13, 9), (2, 9)]
+                .iter()
+                .any(|&(sx, sy)| (x == sx && (y - sy).abs() <= 1) || (y == sy && (x - sx).abs() <= 1));
+            let p = pixel(Sprite::MelonSlice, x as usize, y as usize);
+            if sparkle {
+                Some([255, 250, 190, 255])
+            } else if p[3] == 0 {
+                None
+            } else if p[1] > p[0] + 30 {
+                Some(tint([246, 206, 60], p[1] as f32 / 140.0))
+            } else {
+                Some(p)
+            }
+        }
+        Sprite::SpiderEye => {
+            // A round red eye with darker spots and a glint.
+            let eye = disc(8.0, 8.5, 5.5);
+            let (px, py) = centre(x, y);
+            let glint = (px - 6.0).powi(2) + (py - 6.0).powi(2) <= 1.5;
+            let spot = [(9.5, 10.0), (6.5, 11.0), (10.5, 6.5)]
+                .iter()
+                .any(|&(sx, sy)| (px - sx).powi(2) + (py - sy).powi(2) <= 1.2);
+            shaded(&eye, x, y, [170, 30, 40], 0.08).map(|p| {
+                if glint {
+                    [255, 220, 220, 255]
+                } else if spot {
+                    tint([p[0], p[1], p[2]], 0.55)
+                } else {
+                    p
+                }
+            })
+        }
         Sprite::Bottle(liquid) => {
             // Java's bottle: a round flask with a neck and cork, glass
             // showing the liquid's colour, a highlight at the top left.

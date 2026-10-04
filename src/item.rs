@@ -173,6 +173,10 @@ pub enum Sprite {
     Pearl([u8; 3], [u8; 3]),
     /// A knobbly red nether wart.
     Wart,
+    /// A glossy red spider eye.
+    SpiderEye,
+    /// A melon slice with a gold rind and sparkles.
+    GlisteringMelon,
     /// A glass bottle, empty or holding liquid of this colour.
     Bottle(Option<[u8; 3]>),
     Tool(ToolKind, Tier),
@@ -202,7 +206,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 44] = [
+static ITEMS: [ItemInfo; 47] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -262,6 +266,9 @@ static ITEMS: [ItemInfo; 44] = [
     item("blaze powder", Sprite::Powder([250, 150, 30])),
     item("nether wart", Sprite::Wart),
     item("glass bottle", Sprite::Bottle(None)),
+    item("sugar", Sprite::Powder([246, 246, 250])),
+    item("glistering melon slice", Sprite::GlisteringMelon),
+    food("spider eye", 2, 3.2, Sprite::SpiderEye),
 ];
 
 /// Uses before a bow breaks.
@@ -329,6 +336,10 @@ impl Item {
     pub const NETHER_WART: Item = Item(298);
     /// Filled with water from a source (see `Item::potion`).
     pub const GLASS_BOTTLE: Item = Item(299);
+    /// Brewing ingredients: swiftness, healing and poison.
+    pub const SUGAR: Item = Item(300);
+    pub const GLISTERING_MELON_SLICE: Item = Item(301);
+    pub const SPIDER_EYE: Item = Item(302);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
@@ -445,6 +456,12 @@ impl Item {
             ItemKind::FlintAndSteel => Some(FLINT_AND_STEEL_DURABILITY),
             _ => None,
         }
+    }
+
+    /// The status effect eating this gives (Java's spider eye: Poison I for
+    /// 5 s).
+    pub fn food_effect(self) -> Option<(crate::simulation::effects::Effect, u8, u32)> {
+        (self == Item::SPIDER_EYE).then_some((crate::simulation::effects::Effect::Poison, 0, 100))
     }
 
     /// Hunger and saturation restored, for food.

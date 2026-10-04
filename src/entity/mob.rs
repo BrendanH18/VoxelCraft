@@ -243,8 +243,9 @@ impl MobKind {
         }
     }
 
-    /// Loot for a player kill: (item, min, max) rolls.
-    pub(super) fn loot(self) -> &'static [(Item, u8, u8)] {
+    /// Loot for a player kill: (item, min, max) rolls. A negative minimum
+    /// makes the drop a chance (Java's spider eye: -1..1 is one in three).
+    pub(super) fn loot(self) -> &'static [(Item, i8, u8)] {
         const WOOL: Item = Item::from_block(Block::WOOL);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
@@ -254,7 +255,7 @@ impl MobKind {
             MobKind::Zombie => &[(Item::ROTTEN_FLESH, 0, 2)],
             MobKind::Skeleton => &[(Item::BONE, 0, 2), (Item::ARROW, 0, 2)],
             MobKind::Creeper => &[(Item::GUNPOWDER, 0, 2)],
-            MobKind::Spider => &[(Item::STRING, 0, 2)],
+            MobKind::Spider => &[(Item::STRING, 0, 2), (Item::SPIDER_EYE, -1, 1)],
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
@@ -265,7 +266,10 @@ impl MobKind {
     pub fn drops(self, rng: &mut Rng) -> Vec<(Item, u8)> {
         self.loot()
             .iter()
-            .map(|&(item, lo, hi)| (item, lo + (rng.next_f32() * (hi - lo + 1) as f32) as u8))
+            .map(|&(item, lo, hi)| {
+                let span = hi as i32 - lo as i32 + 1;
+                (item, (lo as i32 + (rng.next_f32() * span as f32) as i32).max(0) as u8)
+            })
             .filter(|&(_, n)| n > 0)
             .collect()
     }

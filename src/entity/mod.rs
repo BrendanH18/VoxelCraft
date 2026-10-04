@@ -1699,7 +1699,7 @@ mod tests {
             for _ in 0..200 {
                 for (item, n) in kind.drops(&mut rng) {
                     let &(_, lo, hi) = kind.loot().iter().find(|l| l.0 == item).unwrap();
-                    assert!((lo.max(1)..=hi).contains(&n), "{kind:?} dropped {n} of {}", item.name());
+                    assert!((lo.max(1) as u8..=hi).contains(&n), "{kind:?} dropped {n} of {}", item.name());
                     seen_any = true;
                 }
             }
