@@ -403,6 +403,29 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&bulbs, x, y, [168, 34, 42], 0.1).map(|p| if spot { tint([p[0], p[1], p[2]], 0.7) } else { p })
             }
         }
+        Sprite::Paper => {
+            // A pale sheet, slightly skewed, with faint ruled lines.
+            let sheet =
+                |x: i32, y: i32| (2..=13).contains(&y) && (3 + (y > 7) as i32..=12 + (y > 7) as i32).contains(&x);
+            shaded(&sheet, x, y, [236, 234, 222], 0.03)
+                .map(|p| if y % 3 == 0 && (5..=11).contains(&x) { tint([p[0], p[1], p[2]], 0.85) } else { p })
+        }
+        Sprite::Book => {
+            // A brown leather cover with pale page edges on the right.
+            let cover = |x: i32, y: i32| (3..=12).contains(&x) && (2..=13).contains(&y);
+            if (11..=12).contains(&x) && (3..=12).contains(&y) {
+                Some(tint([232, 226, 206], if y % 2 == 0 { 1.0 } else { 0.9 }))
+            } else {
+                shaded(&cover, x, y, [120, 66, 40], 0.06)
+                    .map(|p| if x == 4 { tint([p[0], p[1], p[2]], 0.75) } else { p })
+            }
+        }
+        Sprite::EnderEye => {
+            // A green pearl with a dark slit pupil.
+            let ball = disc(8.0, 8.5, 5.6);
+            let pupil = (7..=8).contains(&x) && (5..=11).contains(&y);
+            shaded(&ball, x, y, [70, 160, 110], 0.06).map(|p| if pupil { [16, 36, 26, 255] } else { p })
+        }
         Sprite::GlisteringMelon => {
             // The melon slice, its rind turned to gold, with sparkles.
             let sparkle = [(3, 3), (12, 2), (13, 9), (2, 9)]

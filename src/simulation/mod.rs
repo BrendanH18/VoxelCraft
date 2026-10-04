@@ -97,7 +97,7 @@ pub fn player_environment(player: &Player, world: &World, input: MoveInput, move
         on_ground: player.on_ground,
         flying: player.flying,
         in_water: player.in_water,
-        climbing: player.climbing,
+        climbing: player.climbing || player.in_web,
         head_in_water: player.head_in_water(world),
         in_lava: player.in_lava(world),
         in_fire: player.in_fire(world),

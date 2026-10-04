@@ -141,6 +141,14 @@ const BREWING_STAND: [Box16; 4] =
     [b([8, 0, 1], [14, 2, 7]), b([2, 0, 5], [8, 2, 11]), b([8, 0, 9], [14, 2, 15]), b([7, 0, 7], [9, 14, 9])];
 /// It collides as a 2-pixel slab with the rod on top.
 const BREWING_STAND_COLLISION: [Box16; 2] = [b([0, 0, 0], [16, 2, 16]), b([7, 0, 7], [9, 14, 9])];
+/// Iron bars: a post, with an arm to the south when they join that way.
+const PANE_POST: Box16 = b([7, 0, 7], [9, 16, 9]);
+const PANE_ARM: Box16 = b([7, 0, 9], [9, 16, 16]);
+/// End portal frames are 13/16 tall; an eye sits on top in the middle.
+const FRAME: Box16 = b([0, 0, 0], [16, 13, 16]);
+const FRAME_EYE: Box16 = b([4, 13, 4], [12, 16, 12]);
+/// The portal's surface: drawn 12/16 up, nothing to collide with.
+const END_PORTAL: Box16 = b([0, 11, 0], [16, 12, 16]);
 const FENCE_POST: Box16 = b([6, 0, 6], [10, 16, 10]);
 /// The two rails reaching out to a neighbour on the south side.
 const FENCE_RAILS: [Box16; 2] = [b([7, 6, 10], [9, 9, 16]), b([7, 12, 10], [9, 15, 16])];
@@ -158,6 +166,11 @@ pub fn fence_connects(fence: Block, n: Block, side: Facing) -> bool {
     }
 }
 
+/// Whether iron bars join `n` on a side: other bars and full blocks.
+pub fn pane_connects(n: Block) -> bool {
+    n == Block::IRON_BARS || n.is_opaque()
+}
+
 /// Where an open door's panel lies: it swings to the left of someone
 /// walking in through the side it faces.
 fn open_door_side(facing: Facing) -> Facing {
@@ -172,6 +185,21 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
         Some(Shaped::Stairs(f)) => out.push_turned(&STAIRS, f),
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND, Facing::South),
+        Some(Shaped::Pane) => {
+            out.push(PANE_POST);
+            for f in Facing::ALL {
+                if pane_connects(neighbour(f)) {
+                    out.push(PANE_ARM.turned(f));
+                }
+            }
+        }
+        Some(Shaped::Frame { eye, .. }) => {
+            out.push(FRAME);
+            if eye {
+                out.push(FRAME_EYE);
+            }
+        }
+        Some(Shaped::EndPortal) => out.push(END_PORTAL),
         Some(Shaped::Door { facing, open, .. }) => {
             out.push_turned(&DOOR, if open { open_door_side(facing) } else { facing })
         }
@@ -199,6 +227,7 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
     match block.shaped() {
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER_COLLISION, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND_COLLISION, Facing::South),
+        Some(Shaped::EndPortal) => {}
         Some(Shaped::Gate { open: true, .. }) => {}
         Some(Shaped::Gate { facing, .. }) => out.push_turned(&GATE_COLLISION, facing),
         Some(Shaped::Fence) => {

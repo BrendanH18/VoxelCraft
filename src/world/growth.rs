@@ -56,6 +56,7 @@ impl World {
             b if b.wart_age() == Some(3) => out.push(Stack::new(Item::NETHER_WART, 1 + (self.roll() % 3) as u8)),
             Block::TALL_GRASS | Block::FERN if self.one_in(8) => out.push(Stack::new(Item::WHEAT_SEEDS, 1)),
             Block::CLAY => out.push(Stack::new(Item::CLAY_BALL, 3)),
+            Block::BOOKSHELF => out.push(Stack::new(Item::BOOK, 3)),
             Block::GLOWSTONE => out.push(Stack::new(Item::GLOWSTONE_DUST, 2 + (self.roll() % 3) as u8)),
             // Gravel sometimes gives flint instead of itself.
             Block::GRAVEL if self.one_in(10) => out = vec![Stack::new(Item::FLINT, 1)],

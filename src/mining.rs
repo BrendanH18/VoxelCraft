@@ -16,6 +16,8 @@ pub fn can_harvest(block: Block, held: Option<Item>) -> bool {
 /// Seconds to mine `block` holding `held` (infinite if unbreakable).
 pub fn break_time(block: Block, held: Option<Item>) -> f32 {
     let speed = match held.and_then(Item::as_tool) {
+        // Swords cut cobwebs fifteen times as fast (Java).
+        Some((ToolKind::Sword, _)) if block == Block::COBWEB => 15.0,
         Some((kind, tier)) if Some(kind) == block.best_tool() => tier.speed(),
         _ => 1.0,
     };

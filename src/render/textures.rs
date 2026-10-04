@@ -566,6 +566,78 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 [0, 0, 0, 0]
             }
         }
+        tex::STONE_BRICKS | tex::MOSSY_STONE_BRICKS | tex::CRACKED_STONE_BRICKS => stone_bricks(layer, x, y, r),
+        tex::IRON_BARS => {
+            // Vertical bars with a cross rail top and bottom, see-through
+            // in between.
+            let bar = x % 4 == 1 || x % 4 == 2;
+            let rail = (1..=2).contains(&y) || (13..=14).contains(&y);
+            if bar || rail {
+                let lit = if x % 4 == 1 || y == 1 || y == 13 { 1.15 } else { 0.8 };
+                shade([126, 126, 132], lit * (0.92 + r * 0.12))
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
+        tex::BOOKSHELF => {
+            // Planks top, middle and bottom; two shelves of coloured books.
+            let shelf = y <= 1 || y >= 14 || y == 7 || y == 8;
+            if shelf || x == 0 || x == 15 {
+                pixel(tex::PLANKS, x, y)
+            } else {
+                const SPINES: [[u8; 3]; 6] =
+                    [[140, 40, 36], [44, 70, 140], [60, 110, 50], [150, 120, 60], [100, 60, 120], [90, 60, 40]];
+                let book = (x - 1) / 2 + if y > 8 { 3 } else { 0 };
+                let c = SPINES[(book * 7 + y / 9) % SPINES.len()];
+                let top = y == 2 || y == 9;
+                let short = (x * 5 + y / 9 * 3).is_multiple_of(7) && top;
+                if short {
+                    shade([44, 32, 22], 1.0)
+                } else {
+                    shade(c, if x % 2 == 1 { 1.05 } else { 0.85 } * (0.9 + r * 0.15))
+                }
+            }
+        }
+        tex::COBWEB => {
+            // Threads from the centre and rings around it, see-through.
+            let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
+            let ring = (((dx * dx + dy * dy).sqrt() + 0.5) as usize).is_multiple_of(4);
+            let spoke = dx.abs() < 0.6 || dy.abs() < 0.6 || (dx.abs() - dy.abs()).abs() < 0.8;
+            if (ring || spoke) && rnd(layer, x, y, 3) > 0.15 { [235, 235, 240, 220] } else { [0, 0, 0, 0] }
+        }
+        tex::FRAME_TOP | tex::FRAME_EYE_TOP => {
+            let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
+            let eye = layer == tex::FRAME_EYE_TOP && (4..12).contains(&x) && (4..12).contains(&y);
+            if eye {
+                end_eye(x, y, r)
+            } else {
+                // Teal stone with a pale ring inset round the socket.
+                let d = dx.abs().max(dy.abs());
+                let c = if (4.5..5.5).contains(&d) { [196, 214, 168] } else { [56, 104, 92] };
+                shade(c, 0.85 + r * 0.25)
+            }
+        }
+        tex::FRAME_SIDE | tex::FRAME_EYE_SIDE => {
+            if y < 3 {
+                // Above the 13/16 frame: only the eye shows here.
+                if layer == tex::FRAME_EYE_SIDE && (4..12).contains(&x) { end_eye(x, y + 6, r) } else { [0, 0, 0, 0] }
+            } else if y < 6 {
+                shade([56, 104, 92], 0.85 + r * 0.25)
+            } else {
+                pixel(tex::END_STONE, x, y)
+            }
+        }
+        tex::END_PORTAL => {
+            // A starfield: specks of teal and green on near black.
+            let star = rnd(layer, x, y, 7);
+            if star > 0.94 {
+                shade([90, 200, 170], 0.8 + r * 0.4)
+            } else if star > 0.88 {
+                shade([40, 90, 110], 0.9 + r * 0.3)
+            } else {
+                shade([8, 12, 18], 0.8 + r * 0.4)
+            }
+        }
         tex::END_STONE => {
             let pit = rnd(layer, x / 2, y / 2, 31);
             shade([220, 224, 164], if pit < 0.22 { 0.74 + r * 0.08 } else { 0.91 + r * 0.14 })
@@ -696,6 +768,45 @@ fn wheat(stage: u8, x: usize, y: usize) -> Rgba {
         return shade([224, 190, 84], if notch { 0.82 } else { 1.05 });
     }
     shade(c, 0.85 + rnd(tex::WHEAT_0 + stage, x, y, 9) * 0.25)
+}
+
+/// Stone bricks, two courses with staggered joints and bevelled edges;
+/// mossy ones are overgrown in patches and cracked ones split.
+fn stone_bricks(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
+    let course = y / 8;
+    let joint = if course == 0 { 0 } else { 8 };
+    let (lx, ly) = ((x + 16 - joint) % 16, y % 8);
+    let mortar = ly == 7 || lx == 15;
+    let mut f = if mortar {
+        0.62
+    } else if ly == 0 || lx == 0 {
+        1.12
+    } else if ly == 6 || lx == 14 {
+        0.82
+    } else {
+        0.92 + r * 0.12
+    };
+    if layer == tex::CRACKED_STONE_BRICKS {
+        // A jagged crack wandering down each course.
+        let crack_x = (4 + course * 5 + ly / 2 + (ly % 3 == 1) as usize) % 14;
+        if lx == crack_x && ly < 7 {
+            f = 0.5;
+        }
+    }
+    if layer == tex::MOSSY_STONE_BRICKS {
+        let moss = rnd(layer, x / 2, y / 2, 5) + if mortar { 0.25 } else { 0.0 };
+        if moss > 0.68 {
+            return shade([84, 108, 52], 0.85 + r * 0.3);
+        }
+    }
+    shade([122, 121, 122], f)
+}
+
+/// The eye of ender set in a frame: green with a dark slit pupil, `y`
+/// from 4 at its top.
+fn end_eye(x: usize, y: usize, r: f32) -> Rgba {
+    let pupil = (7..=8).contains(&x) && (5..=10).contains(&y);
+    if pupil { shade([18, 40, 30], 1.0) } else { shade([60, 150, 110], 0.85 + r * 0.3) }
 }
 
 /// Nether wart at look `stage` 0..3: dark red shoots that thicken and,

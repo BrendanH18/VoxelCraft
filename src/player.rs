@@ -51,6 +51,8 @@ pub struct Player {
     pub jumped: bool,
     /// Holding on to a ladder: falls are broken.
     pub climbing: bool,
+    /// Caught in a cobweb: crawling, and falls are broken.
+    pub in_web: bool,
     /// Walked into a wall on the last step (climbs ladders).
     pushing_wall: bool,
     /// Holding Shift on the ground: slow, quiet, and never walks off edges.
@@ -88,6 +90,7 @@ impl Player {
             in_water: false,
             jumped: false,
             climbing: false,
+            in_web: false,
             pushing_wall: false,
             sneaking: false,
             crouch: 0.0,
@@ -153,6 +156,14 @@ impl Player {
     }
 
     /// Whether the player's box overlaps a block cell.
+    /// Whether any cell the body overlaps holds `block`.
+    pub fn touches(&self, world: &World, block: Block) -> bool {
+        let (min, max) = SHAPE.aabb(self.pos);
+        let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
+        (lo.y..=hi.y)
+            .any(|y| (lo.z..=hi.z).any(|z| (lo.x..=hi.x).any(|x| world.get_block(IVec3::new(x, y, z)) == Some(block))))
+    }
+
     pub fn intersects_block(&self, b: IVec3) -> bool {
         let (min, max) = SHAPE.aabb(self.pos);
         let bmin = b.as_dvec3();
@@ -259,6 +270,13 @@ impl Player {
         }
 
         let mut delta = self.vel * dt;
+        // Java's cobweb: movement scaled by 0.25 across and 0.05 up and
+        // down, and speed doesn't build up while stuck.
+        self.in_web = !self.flying && self.touches(world, Block::COBWEB);
+        if self.in_web {
+            delta *= DVec3::new(0.25, 0.05, 0.25);
+            self.vel.y = self.vel.y.clamp(-GRAVITY * 0.05, JUMP_VELOCITY);
+        }
         if self.sneaking && self.on_ground {
             self.hold_edges(world, &mut delta);
         }
