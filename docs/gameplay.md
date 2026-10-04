@@ -318,10 +318,13 @@ session there, as if you had just come through a portal.
 | Spider | 16 | fast; climbs walls; hunts only in the dark or after being hit, bites for 2 | 0–2 string |
 | Zombified piglin | 20 | Nether only, in packs; ignores you until you hit one, then the whole pack within 32 blocks chases you for 30 s and strikes with gold swords for 5 | 0–1 rotten flesh, 0–1 gold nuggets |
 | Enderman | 40 | 2.9 blocks tall; rare at night in the Overworld and Nether, common in the End. Neutral until hit or until you look it in the eyes (within 64 blocks), then screams, opens its jaw and hits for 7. Freezes while you watch it (up close it teleports away), teleports toward you from more than 16 blocks, dodges arrows by teleporting, is hurt by water and rain, and wanders off by teleporting in daylight | 0–1 ender pearls |
+| Blaze | 20 | Nether fortresses: from spawner cages and inside fortress pieces in groups of 2-3. Hovers, glows while charging, then fires bursts of three fireballs (5 damage, setting you alight) and hits for 6 up close; hurt by water and rain, immune to fire and lava | 0–1 blaze rods |
 
 Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to
-4 zombies and 3 of the others). Like Java Edition's per-player mob caps,
+4 zombies and 3 of the others). Inside Nether fortress pieces, Java's
+fortress list also spawns blazes, packs of zombified piglins and groups
+of skeletons, in any light. Like Java Edition's per-player mob caps,
 these limits count mobs within 96 blocks of each player, so players far apart
 each get their own. Mobs spawn 24–64 blocks from a player (never closer to
 any player), despawn once every player is more than 96 blocks away or when

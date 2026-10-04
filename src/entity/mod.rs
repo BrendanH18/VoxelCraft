@@ -40,6 +40,9 @@ pub use projectile::Arrow;
 /// Spawns happen this far from the player (blocks).
 pub const SPAWN_MIN_DIST: f64 = 24.0;
 pub const SPAWN_MAX_DIST: f64 = 64.0;
+/// Java's Nether fortress spawns: (mob, weight, smallest and largest group).
+const FORTRESS_SPAWNS: [(MobKind, u32, u32, u32); 3] =
+    [(MobKind::Blaze, 10, 2, 3), (MobKind::ZombifiedPiglin, 5, 4, 4), (MobKind::Skeleton, 2, 5, 5)];
 /// Mobs farther than this are removed.
 pub const DESPAWN_DIST: f64 = 96.0;
 /// Hostile mobs only spawn when it's darker than this.
@@ -174,6 +177,10 @@ pub trait MobWorld: BlockSource {
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         Vec::new()
     }
+    /// Inside a Nether fortress piece, where fortress mobs spawn.
+    fn in_fortress(&self, _p: IVec3) -> bool {
+        false
+    }
 }
 
 impl MobWorld for World {
@@ -194,6 +201,9 @@ impl MobWorld for World {
     }
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         World::spawners(self)
+    }
+    fn in_fortress(&self, p: IVec3) -> bool {
+        self.generator.in_fortress(p)
     }
 }
 
@@ -582,6 +592,50 @@ impl Entities {
                         }
                     }
                 }
+            }
+            if ctx.dimension == Dimension::Nether {
+                self.fortress_spawn(world, ctx, center);
+            }
+        }
+    }
+
+    /// Java's fortress spawn list, used for spots inside fortress pieces:
+    /// blazes, zombified piglins and skeletons in groups. Light doesn't
+    /// matter. (Wither skeletons and magma cubes don't exist yet.)
+    fn fortress_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, center: DVec3) {
+        let total: u32 = FORTRESS_SPAWNS.iter().map(|s| s.1).sum();
+        let mut r = (self.rng.next_f32() * total as f32) as u32;
+        let &(kind, _, lo, hi) = FORTRESS_SPAWNS
+            .iter()
+            .find(|s| {
+                let hit = r < s.1;
+                r = r.saturating_sub(s.1);
+                hit
+            })
+            .unwrap_or(&FORTRESS_SPAWNS[0]);
+        let cap = kind.spawn_cap(Dimension::Nether);
+        if self.count_near(kind, center) >= cap {
+            return;
+        }
+        let angle = self.rng.range(0.0, TAU) as f64;
+        let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
+        let x = (center.x + angle.cos() * dist).floor() as i32;
+        let z = (center.z + angle.sin() * dist).floor() as i32;
+        let top = self.rng.range(48.0, 100.0) as i32;
+        let Some(pos) = cavern_spot(world, kind, x, z, top) else { return };
+        if !in_spawn_ring(center, pos) || !clear_of_players(ctx, pos) || !world.in_fortress(pos.floor().as_ivec3()) {
+            return;
+        }
+        self.spawn(kind, pos);
+        let group = self.rng.range(lo as f32, hi as f32 + 1.0) as u32;
+        for _ in 1..group {
+            let (dx, dz) = (self.rng.range(-3.0, 3.0) as i32, self.rng.range(-3.0, 3.0) as i32);
+            if self.count_near(kind, center) < cap
+                && let Some(p) = cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 1)
+                && world.in_fortress(p.floor().as_ivec3())
+                && clear_of_players(ctx, p)
+            {
+                self.spawn(kind, p);
             }
         }
     }
@@ -1554,6 +1608,44 @@ mod tests {
         }
         assert!(e.count(MobKind::ZombifiedPiglin) > 0);
         assert!(e.mobs.iter().all(|m| matches!(m.kind, MobKind::ZombifiedPiglin | MobKind::Enderman)));
+    }
+
+    /// A Nether cavern where everything with x > 20 is fortress.
+    struct Fortressed(Grid);
+
+    impl BlockSource for Fortressed {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            self.0.block(p)
+        }
+    }
+
+    impl MobWorld for Fortressed {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, x: i32, z: i32) -> Option<i32> {
+            self.0.surface(x, z)
+        }
+        fn exposed(&self, _: IVec3) -> bool {
+            false
+        }
+        fn in_fortress(&self, p: IVec3) -> bool {
+            p.x > 20
+        }
+    }
+
+    #[test]
+    fn fortresses_spawn_blazes_and_skeletons_only_inside() {
+        let mut e = Entities::new(21);
+        let world = Fortressed(Grid::flat(61));
+        let c = Ctx { spawning: true, dimension: Dimension::Nether, ..night(DVec3::new(0.0, 61.0, 0.0)) };
+        for _ in 0..2000 {
+            e.update(0.05, &world, &c);
+        }
+        assert!(e.count(MobKind::Blaze) > 0, "no fortress blazes");
+        for m in e.mobs.iter().filter(|m| matches!(m.kind, MobKind::Blaze | MobKind::Skeleton)) {
+            assert!(m.pos.x > 20.0, "{:?} spawned outside the fortress at {:?}", m.kind, m.pos);
+        }
     }
 
     #[test]

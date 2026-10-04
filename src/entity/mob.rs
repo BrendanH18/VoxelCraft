@@ -178,7 +178,7 @@ impl MobKind {
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
-            // Only from spawners for now (Java also spawns them inside fortresses).
+            // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze => false,
             MobKind::ZombifiedPiglin => dimension == Dimension::Nether,
             _ => dimension == Dimension::Overworld,
