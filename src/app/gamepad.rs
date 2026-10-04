@@ -80,8 +80,6 @@ pub(super) struct Body {
     attack_cooldown: f64,
     spawn_bed: Option<IVec3>,
     container: Container,
-    /// Seconds asleep (fading out), while in bed.
-    sleeping: Option<f32>,
 }
 
 impl Default for Body {
@@ -96,7 +94,6 @@ impl Default for Body {
             attack_cooldown: 0.0,
             spawn_bed: None,
             container: Container::Inventory,
-            sleeping: None,
         }
     }
 }
@@ -343,7 +340,6 @@ pub(super) struct PadView<'a> {
     /// Bite progress, 0..1.
     pub eating: f32,
     pub bow: Option<f32>,
-    pub sleeping: Option<f32>,
     pub message: Option<&'a str>,
 }
 
@@ -538,6 +534,7 @@ impl Game {
         self.split.follow.retain(|n| n != name);
         if let Some(bot) = self.agents.players.get_mut(name) {
             bot.active = false;
+            bot.agent.sleeping = None;
             bot.agent.hold(MoveInput::default(), false, false);
         }
     }
@@ -595,7 +592,6 @@ impl Game {
             breaking: a.breaking,
             eating: (a.eat_timer / super::EAT_TIME) as f32,
             bow: a.bow_draw.map(super::bow::power),
-            sleeping: seat.body.sleeping,
             message: seat.message.as_ref().filter(|(_, t)| t.elapsed() < MESSAGE_TIME).map(|(m, _)| m.as_str()),
         })
     }
@@ -690,11 +686,10 @@ impl Game {
                 }
                 continue;
             }
-            let seat = &mut self.pads.seats[i];
-            if seat.body.sleeping.is_some() {
-                // Jumping gets up; being hurt wakes you.
-                if tick.jumped || agent.vitals.since_damage() < 0.1 {
-                    seat.body.sleeping = None;
+            if agent.sleeping.is_some() {
+                // Jumping gets up; being hurt wakes you (Agent::hurt).
+                if tick.jumped {
+                    agent.sleeping = None;
                 }
                 continue;
             }
@@ -768,37 +763,16 @@ impl Game {
         p.vel = DVec3::ZERO;
         p.flying = false;
         bot.agent.previous_pos = at;
+        bot.agent.sleeping = Some(0.0);
         seat.body.let_go();
-        seat.body.sleeping = Some(0.0);
         let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
         self.audio.play(sound, Some(at), 0.6, (0.8, 0.9));
     }
 
-    /// Advances each sleeping controller player's fade. Returns how many have
-    /// faded out and how many living players must sleep for morning.
-    pub(super) fn advance_pad_sleep(&mut self, dt: f32) -> (usize, usize) {
-        for seat in &mut self.pads.seats {
-            if let Some(t) = &mut seat.body.sleeping {
-                *t = (*t + dt).min(super::bed::SLEEP_TIME);
-            }
-        }
-        self.pad_sleep_count()
-    }
-
-    /// Unplugged controllers can't reach a bed (or leave), so only connected,
-    /// living controller players must sleep.
-    pub(super) fn pad_sleep_count(&self) -> (usize, usize) {
-        let living =
-            |s: &&Seat| s.id.is_some() && self.agents.players.get(&s.name).is_some_and(|b| !b.agent.vitals.is_dead());
-        let seats: Vec<&Seat> = self.pads.seats.iter().filter(living).collect();
-        let asleep = seats.iter().filter(|s| s.body.sleeping.is_some_and(|t| t >= super::bed::SLEEP_TIME)).count();
-        (asleep, seats.len())
-    }
-
-    pub(super) fn wake_pads(&mut self) {
-        for seat in &mut self.pads.seats {
-            seat.body.sleeping = None;
-        }
+    /// Whether this profile's controller is unplugged: it can't reach a
+    /// bed (or leave), so it doesn't hold up the night.
+    pub(super) fn unplugged(&self, name: &str) -> bool {
+        self.pads.seats.iter().any(|s| s.name == name && s.id.is_none())
     }
 
     /// A: back to life at their bed (if it's still there) or the world spawn.

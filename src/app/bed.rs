@@ -80,48 +80,87 @@ impl Game {
     }
 
     /// The checks every sleeper goes through: beds explode outside the
-    /// Overworld; using one sets the respawn point; sleep needs night or rain
-    /// and no monsters nearby. Returns where to lie down.
+    /// Overworld; using one sets the respawn point; sleep needs night or rain,
+    /// no monsters nearby and a free bed. Returns where to lie down.
     pub(super) fn bed_rest(&mut self, pos: IVec3) -> Option<DVec3> {
         if self.bed_explodes(pos) {
             return None;
         }
-        let half = self.world.get_block(pos)?;
-        let foot = if half == Block::BED_FOOT { Some(pos) } else { partner(&self.world, pos, half) }?;
+        let (foot, rest) = self.bed_rules(pos)?;
         if self.spawn_bed != Some(foot) {
             self.spawn_bed = Some(foot);
             self.show_popup("Respawn point set");
         }
-        if !can_sleep(self.day_time, self.weather.raining) {
-            self.show_popup("You can only sleep at night");
-            return None;
-        }
-        let centre = foot.as_dvec3() + DVec3::splat(0.5);
-        let monsters =
-            self.mobs.entities.mobs.iter().any(|m| m.kind.is_hostile() && m.pos.distance(centre) < MONSTER_RANGE);
-        if monsters {
-            self.show_popup("You may not rest now; there are monsters nearby");
-            return None;
-        }
-        Some(DVec3::new(centre.x, foot.y as f64 + Block::BED_FOOT.height(), centre.z))
+        rest.map_err(|e| self.show_popup(e)).ok()
     }
 
-    /// Advances sleep. Once every player (the host and each living
-    /// controller player) has faded out in bed, it's morning and the rain
-    /// has stopped, as in Java with everyone needing to sleep.
+    /// The foot of the bed at `pos`, and where to lie down in it or why not.
+    fn bed_rules(&self, pos: IVec3) -> Option<(IVec3, Result<DVec3, &'static str>)> {
+        let half = self.world.get_block(pos)?;
+        let foot = if half == Block::BED_FOOT { Some(pos) } else { partner(&self.world, pos, half) }?;
+        let centre = foot.as_dvec3() + DVec3::splat(0.5);
+        let at = DVec3::new(centre.x, foot.y as f64 + Block::BED_FOOT.height(), centre.z);
+        let monsters =
+            || self.mobs.entities.mobs.iter().any(|m| m.kind.is_hostile() && m.pos.distance(centre) < MONSTER_RANGE);
+        let host = self.sleeping.is_some().then_some(self.player.pos);
+        let agents = self.agents.players.values().filter(|b| b.agent.sleeping.is_some()).map(|b| b.agent.player.pos);
+        let occupied = || host.into_iter().chain(agents).any(|p| p.distance(at) < 0.5);
+        let rest = if !can_sleep(self.day_time, self.weather.raining) {
+            Err("You can only sleep at night")
+        } else if monsters() {
+            Err("You may not rest now; there are monsters nearby")
+        } else if occupied() {
+            Err("This bed is occupied")
+        } else {
+            Ok(at)
+        };
+        Some((foot, rest))
+    }
+
+    /// An agent's `sleep`: lies down in the bed it's looking at, by the same
+    /// rules as the host. Agents respawn at the world spawn, so the bed
+    /// doesn't become theirs.
+    pub(super) fn agent_sleep(&mut self, name: &str) -> Result<(), String> {
+        let agent = &self.agents.players[name].agent;
+        let pos = (agent.target(&self.world).map(|(p, _)| p))
+            .filter(|&p| self.world.get_block(p).is_some_and(|b| b.is_bed()))
+            .ok_or("not looking at a bed")?;
+        if self.bed_explodes(pos) {
+            return Err("beds explode outside the Overworld".into());
+        }
+        let at = self.bed_rules(pos).ok_or("not looking at a bed")?.1?;
+        let agent = &mut self.agents.players.get_mut(name).unwrap().agent;
+        agent.player.pos = at;
+        agent.player.vel = DVec3::ZERO;
+        agent.player.flying = false;
+        agent.previous_pos = at;
+        agent.remaining = 0;
+        agent.sleeping = Some(0.0);
+        self.audio.play(Sound::Step(Material::Snow), Some(at), 0.6, (0.8, 0.9));
+        Ok(())
+    }
+
+    /// Advances sleep. Once every player (the host and each active, living
+    /// agent or controller player) has faded out in bed, it's morning and
+    /// the rain has stopped, as in Java with everyone needing to sleep.
     pub(super) fn update_sleep(&mut self, dt: f64) {
         if let Some(t) = &mut self.sleeping {
             *t = (*t + dt as f32).min(SLEEP_TIME);
         }
-        let (asleep, players) = self.advance_pad_sleep(dt as f32);
-        let host = self.sleeping.is_some_and(|t| t >= SLEEP_TIME);
-        let anyone = self.sleeping.is_some() || asleep > 0;
-        let host_counts = !self.vitals.is_dead();
-        if !anyone || asleep < players || (host_counts && !host) {
+        for bot in self.agents.players.values_mut() {
+            if let Some(t) = &mut bot.agent.sleeping {
+                *t = (*t + dt as f32).min(SLEEP_TIME);
+            }
+        }
+        let anyone = self.sleeping.is_some() || self.agents.players.values().any(|b| b.agent.sleeping.is_some());
+        let (asleep, players) = self.sleep_count();
+        if !anyone || asleep < players {
             return;
         }
         self.sleeping = None;
-        self.wake_pads();
+        for bot in self.agents.players.values_mut() {
+            bot.agent.sleeping = None;
+        }
         self.day_time = WAKE_TIME;
         if self.weather.raining {
             self.weather.set(false, true);
@@ -132,10 +171,15 @@ impl Game {
     /// Players asleep (faded out) and players who must sleep, the host
     /// included, for the "waiting for others" message.
     pub(super) fn sleep_count(&self) -> (usize, usize) {
-        let (asleep, players) = self.pad_sleep_count();
-        let host = !self.vitals.is_dead();
-        let host_asleep = self.sleeping.is_some_and(|t| t >= SLEEP_TIME);
-        (asleep + host_asleep as usize, players + host as usize)
+        let faded = |t: Option<f32>| t.is_some_and(|t| t >= SLEEP_TIME);
+        let mut counts = (faded(self.sleeping) as usize, !self.vitals.is_dead() as usize);
+        for (name, bot) in &self.agents.players {
+            if bot.active && !bot.agent.vitals.is_dead() && !self.unplugged(name) {
+                counts.0 += faded(bot.agent.sleeping) as usize;
+                counts.1 += 1;
+            }
+        }
+        counts
     }
 
     /// Where to respawn: on the bed last slept in if it's still there,

@@ -61,6 +61,7 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `move forward right ticks [jump sprint sneak]` | Physics input; axes −1 through 1; sneak also descends in flight |
 | `wait ticks`, `mine ticks` | Wait or hold mining with normal tool speed, harvest rules and wear |
 | `eat` | Eat one of the selected food over 1.6 seconds (32 ticks), when hungry and in survival |
+| `sleep` | Lie down in the targeted bed at night or in rain, with no monsters within 8 blocks; any action other than `observe`, `wait` or a still `move` gets up, as does damage |
 | `select 1..9`, `fly on/off` | Choose hotbar slot or toggle creative flight |
 | `place`, `attack`, `drop` | Place selected block, hit a targeted mob, or drop selected stack |
 | `craft item` | Craft once with available recipe alternatives; larger recipes require targeting a crafting table |
@@ -155,7 +156,8 @@ now; A crafts one, Y as many as fit; 3x3 recipes need a crafting table opened
 with LT) and, in creative, every item. B closes, putting any held stack back.
 
 Sleeping needs everyone: the night (or the rain) passes once the keyboard
-player and every controller player are in bed, as in Java. Players waiting
+player and every active agent and controller player are in bed, as in Java.
+A bed holds one sleeper. Players waiting
 see how many are asleep and can jump to get up. Each player respawns at the
 bed they last used. Controller players share the host's dimension, so one who
 dies in the Nether or the End comes back beside the host. Unplugged
@@ -167,7 +169,9 @@ An unplugged controller freezes its player until it reconnects.
 Sound is shared: each sound plays as heard by whichever player in a view is
 nearest, so everyone hears what happens around them, including blocks that
 agents and controller players break, place or eat, and their footsteps.
-Ambience and underwater muffling still follow the keyboard player.
+Wind, cave and rain ambience play at the loudest level any viewed player would
+hear, and the mix is muffled in proportion to how many of them have their head
+underwater.
 
 ## LAN and raw protocol
 
@@ -202,7 +206,7 @@ nearest survival player, host or agent; melee, skeleton arrows and explosions
 hurt agents with armor, knockback and death drops. Mobs spawn around every
 player with per-player caps and stay loaded while any player is near.
 Environmental survival damage, death drops and pickups work.
-The first CLI supports block placement, crafting, chests and eating; doors/beds/ladders,
-bows, buckets, furnaces, armor controls, sleep and portal interactions still
+The first CLI supports block placement, crafting, chests, eating and sleeping; doors/ladders,
+bows, buckets, furnaces, armor controls, bed respawn points and portal interactions still
 require the desktop player or a controller player. Agents cannot mine
 multi-cell doors/beds.

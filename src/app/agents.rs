@@ -147,6 +147,7 @@ impl Game {
                     }
                     self.agents.insert(req.player.clone(), Agent::new(self.player.pos + DVec3::new(2.0, 0.0, 0.0)));
                 }
+                let sleep = matches!(command, Command::Sleep);
                 let active = self.agents.players.values().filter(|b| b.active).count();
                 let mut bot = self.agents.players.remove(&req.player).unwrap();
                 let result = (|| {
@@ -180,7 +181,14 @@ impl Game {
                                 let _ = reply.send(json!({"ok":false,"error":"player left"}));
                             }
                             bot.agent.remaining = 0;
+                            bot.agent.sleeping = None;
                         }
+                        // Needs the bot back in the world, as a bed in the
+                        // Nether explodes on everyone nearby.
+                        Command::Sleep if bot.agent.vitals.is_dead() => {
+                            return Err("player is dead; respawn first".into());
+                        }
+                        Command::Sleep => {}
                         Command::Time(t) => self.day_time = t,
                         Command::Weather(r) => self.weather.set(r, true),
                         _ => {
@@ -197,6 +205,10 @@ impl Game {
                     }
                 })();
                 self.agents.players.insert(req.player.clone(), bot);
+                if sleep && result.is_ok() {
+                    self.agent_sleep(&req.player)?;
+                    return Ok(Some(self.agent_response(&self.agents.players[&req.player].agent, 0)));
+                }
                 result
             })();
             match result {
@@ -234,6 +246,7 @@ impl Game {
             bot.agent.player.vel = DVec3::ZERO;
             bot.agent.vitals.reset_fall();
             bot.agent.remaining = 0;
+            bot.agent.sleeping = None;
             if let Some(reply) = bot.reply.take() {
                 let _ = reply.send(json!({"ok":false,"error":"host changed dimension; observe before continuing"}));
             }

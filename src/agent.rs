@@ -17,7 +17,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat | sleep | place | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -41,6 +41,7 @@ pub enum Command {
     Look(f32, f32),
     Run(MoveInput, u32, bool),
     Eat,
+    Sleep,
     Place,
     Attack,
     Select(usize),
@@ -113,6 +114,7 @@ impl Command {
                 )
             }
             ["eat"] => Self::Eat,
+            ["sleep"] => Self::Sleep,
             ["place"] => Self::Place,
             ["attack"] => Self::Attack,
             ["select", n] => Self::Select(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
@@ -170,6 +172,9 @@ pub struct Agent {
     pub swings: u32,
     /// Sounds to play, drained by the host.
     pub events: Vec<Event>,
+    /// Seconds in bed (the host fades the view and skips the night once
+    /// everyone has slept long enough). Acting or being hurt gets up.
+    pub sleeping: Option<f32>,
     input: MoveInput,
     mining: bool,
     /// Holding "use" eats held food; `bite` counts the ticks chewed.
@@ -191,6 +196,7 @@ impl Agent {
             remaining: 0,
             swings: 0,
             events: Vec::new(),
+            sleeping: None,
             input: MoveInput::default(),
             mining: false,
             eating: false,
@@ -215,6 +221,14 @@ impl Agent {
     ) -> Result<(), String> {
         if self.vitals.is_dead() && !matches!(command, Command::Respawn | Command::Observe(_) | Command::Help) {
             return Err("player is dead; respawn first".into());
+        }
+        let resting = match &command {
+            Command::Observe(_) | Command::Help | Command::Players | Command::Catalog(_) | Command::Sleep => true,
+            Command::Run(input, _, mine) => !mine && input.forward == 0.0 && input.right == 0.0 && !input.jump,
+            _ => false,
+        };
+        if !resting {
+            self.sleeping = None;
         }
         match command {
             Command::Run(input, n, mine) => {
@@ -445,6 +459,7 @@ impl Agent {
         self.cooldown = (self.cooldown - TICK_SECONDS).max(0.0);
         if self.vitals.is_dead() {
             self.remaining = 0;
+            self.sleeping = None;
             return;
         }
         let mut input = if self.remaining > 0 { self.input } else { MoveInput::default() };
@@ -457,8 +472,8 @@ impl Agent {
             (hurts.fire + hurts.burn, "burned to death"),
             (hurts.starve, "starved to death"),
         ] {
-            if damage > 0.0 {
-                self.vitals.damage(damage, cause, self.creative);
+            if damage > 0.0 && self.vitals.damage(damage, cause, self.creative) > 0.0 {
+                self.sleeping = None;
             }
         }
         if self.vitals.is_dead() {
@@ -559,6 +574,7 @@ impl Agent {
         }
         self.player.vel += knockback;
         self.inventory.wear_armor(amount);
+        self.sleeping = None;
         if self.vitals.is_dead() {
             for stack in self.inventory.take_all() {
                 entities.scatter(stack, self.player.pos);
@@ -616,7 +632,7 @@ impl Agent {
         let target = self.target(world).map(
             |(p, n)| json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name())}),
         );
-        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"dead":self.vitals.is_dead(),"creative":self.creative,"flying":self.player.flying,"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
+        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"dead":self.vitals.is_dead(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
 }
 
@@ -702,6 +718,30 @@ mod tests {
         assert!(a.inventory.get(0).is_none());
         assert_eq!(a.vitals.hunger.food, 20.0);
     }
+    #[test]
+    fn resting_keeps_an_agent_in_bed_and_acting_or_hurt_wakes_it() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut agent = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let mut run = |agent: &mut Agent, text: &str| {
+            agent.execute(Command::parse(text).unwrap(), &mut world, &mut entities, &[]).unwrap();
+        };
+        assert!(matches!(Command::parse("sleep"), Ok(Command::Sleep)));
+        agent.sleeping = Some(1.0);
+        for rest in ["wait 5", "observe", "help", "move 0 0 3 sneak"] {
+            run(&mut agent, rest);
+            assert!(agent.sleeping.is_some(), "{rest} keeps sleeping");
+        }
+        run(&mut agent, "select 2");
+        assert!(agent.sleeping.is_none(), "acting gets up");
+        agent.sleeping = Some(1.0);
+        run(&mut agent, "move 1 0 3");
+        assert!(agent.sleeping.is_none(), "walking gets up");
+        agent.sleeping = Some(1.0);
+        agent.hurt(1.0, "test", DVec3::ZERO, &mut entities);
+        assert!(agent.sleeping.is_none(), "being hurt wakes");
+    }
+
     #[test]
     fn parsing_bounds() {
         for s in [
