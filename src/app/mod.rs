@@ -1686,9 +1686,14 @@ impl Game {
         }
         let input = self.movement_input(self.arrival.is_some());
         let rain_here = weather::rain_at(&self.world, &self.weather, self.player.pos);
-        self.audio.update(&self.player, &self.world, rain_here, dt);
-        let ears: Vec<_> = self.followed().map(|(_, b)| (b.agent.player.eye(), b.agent.player.yaw)).collect();
-        self.audio.set_others(&ears);
+        // `followed()`, spelled out so `audio` can be borrowed mutably.
+        let others: Vec<_> = (self.split.follow.iter())
+            .filter_map(|name| self.agents.players.get(name))
+            .filter(|b| b.active)
+            .take(split::MAX_VIEWS - 1)
+            .map(|b| (&b.agent.player, weather::rain_at(&self.world, &self.weather, b.agent.player.pos)))
+            .collect();
+        self.audio.update(&self.player, &self.world, rain_here, &others, dt);
         self.agent_sounds();
         let alpha = if paused { 1.0 } else { self.clock.alpha() };
         let camera = crate::simulation::interpolated_eye(self.previous_eye, self.player.eye(), alpha);

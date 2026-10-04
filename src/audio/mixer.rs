@@ -49,8 +49,9 @@ pub enum Command {
         ears: [[f32; 4]; MAX_OTHERS],
     },
     Master(f32),
-    /// Low-pass the whole mix (head underwater).
-    Muffle(bool),
+    /// Low-pass the whole mix, 0..1: the share of split-screen players
+    /// whose head is underwater.
+    Muffle(f32),
     /// Target levels of the wind, cave and rain loops, 0..1.
     Ambience {
         wind: f32,
@@ -213,7 +214,7 @@ impl Mixer {
                 self.other_count = (count as usize).min(MAX_OTHERS);
             }
             Command::Master(g) => self.master_target = g.clamp(0.0, 2.0),
-            Command::Muffle(on) => self.muffle_target = if on { 1.0 } else { 0.0 },
+            Command::Muffle(amount) => self.muffle_target = amount.clamp(0.0, 1.0),
             Command::Ambience { wind, cave, rain } => {
                 self.ambient[0].target = wind.clamp(0.0, 1.0);
                 self.ambient[1].target = cave.clamp(0.0, 1.0);
