@@ -30,6 +30,7 @@ mod portal;
 pub mod shape;
 mod spawner;
 pub mod storage;
+pub mod structure;
 pub mod terrain;
 
 use std::sync::Arc;

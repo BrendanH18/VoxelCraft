@@ -82,10 +82,12 @@ pub enum MobKind {
     Enderman,
     /// Fortress spawner mob: hovers and shoots bursts of fireballs.
     Blaze,
+    /// Stronghold spawner mob: small, fast, nibbles for 1.
+    Silverfish,
 }
 
 impl MobKind {
-    pub const ALL: [MobKind; 11] = [
+    pub const ALL: [MobKind; 12] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -97,6 +99,7 @@ impl MobKind {
         MobKind::ZombifiedPiglin,
         MobKind::Enderman,
         MobKind::Blaze,
+        MobKind::Silverfish,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -113,6 +116,7 @@ impl MobKind {
             MobKind::ZombifiedPiglin => "zombified piglin",
             MobKind::Enderman => "enderman",
             MobKind::Blaze => "blaze",
+            MobKind::Silverfish => "silverfish",
         }
     }
 
@@ -135,6 +139,7 @@ impl MobKind {
             MobKind::Spider => Shape::new(0.7, 0.9),
             MobKind::Enderman => Shape::new(0.3, 2.9),
             MobKind::Blaze => Shape::new(0.3, 1.8),
+            MobKind::Silverfish => Shape::new(0.2, 0.3),
         }
     }
 
@@ -142,7 +147,7 @@ impl MobKind {
     pub fn max_health(self) -> f32 {
         match self {
             MobKind::Pig | MobKind::Cow => 10.0,
-            MobKind::Sheep => 8.0,
+            MobKind::Sheep | MobKind::Silverfish => 8.0,
             MobKind::Chicken => 4.0,
             MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::ZombifiedPiglin | MobKind::Blaze => 20.0,
             MobKind::Spider => 16.0,
@@ -161,6 +166,7 @@ impl MobKind {
                 | MobKind::ZombifiedPiglin
                 | MobKind::Enderman
                 | MobKind::Blaze
+                | MobKind::Silverfish
         )
     }
 
@@ -180,6 +186,8 @@ impl MobKind {
             MobKind::Enderman => true,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze => false,
+            // Only from stronghold spawners (and infested blocks, later).
+            MobKind::Silverfish => false,
             MobKind::ZombifiedPiglin => dimension == Dimension::Nether,
             _ => dimension == Dimension::Overworld,
         }
@@ -217,7 +225,7 @@ impl MobKind {
             MobKind::Cow | MobKind::Zombie | MobKind::Creeper | MobKind::ZombifiedPiglin => 1.1,
             MobKind::Sheep | MobKind::Skeleton | MobKind::Blaze => 1.2,
             MobKind::Chicken => 1.0,
-            MobKind::Spider | MobKind::Enderman => 1.4,
+            MobKind::Spider | MobKind::Enderman | MobKind::Silverfish => 1.4,
         }
     }
 
@@ -225,7 +233,7 @@ impl MobKind {
         match self {
             MobKind::Enderman => 4.5,
             MobKind::Spider => 3.0,
-            MobKind::ZombifiedPiglin => 2.8,
+            MobKind::ZombifiedPiglin | MobKind::Silverfish => 2.8,
             MobKind::Skeleton => 2.2,
             MobKind::Creeper => 2.0,
             _ => 2.4,
@@ -239,6 +247,7 @@ impl MobKind {
             MobKind::ZombifiedPiglin => (5.0, "was slain by a zombified piglin"),
             MobKind::Enderman => (7.0, "was slain by an enderman"),
             MobKind::Blaze => (6.0, "was slain by a blaze"),
+            MobKind::Silverfish => (1.0, "was slain by a silverfish"),
             _ => (3.0, "was slain by a zombie"),
         }
     }
@@ -259,6 +268,7 @@ impl MobKind {
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
+            MobKind::Silverfish => &[],
         }
     }
 

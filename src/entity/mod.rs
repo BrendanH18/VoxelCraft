@@ -1694,7 +1694,7 @@ mod tests {
     #[test]
     fn loot_rolls_stay_in_range() {
         let mut rng = Rng::new(9);
-        for kind in MobKind::ALL {
+        for kind in MobKind::ALL.into_iter().filter(|k| !k.loot().is_empty()) {
             let mut seen_any = false;
             for _ in 0..200 {
                 for (item, n) in kind.drops(&mut rng) {

@@ -269,6 +269,24 @@ const ENDERMAN_EYES: &[Cuboid] = &[
     cube([1.5, 3.0, 4.1], [2.5, 4.0, 4.15], [240, 150, 255], 0),
 ];
 
+// ---------------------------------------------------------------- silverfish
+
+const SILVERFISH: Rgb = [138, 138, 146];
+/// Java's seven segments (width, height, depth in pixels), head first.
+const fn segment(w: f32, h: f32, d: f32) -> Cuboid {
+    cube([-w / 2.0, 0.0, -d / 2.0], [w / 2.0, h, d / 2.0], SILVERFISH, 34)
+}
+const SILVERFISH_SEGMENTS: [&[Cuboid]; 7] = [
+    &[segment(3.0, 2.0, 2.0)],
+    &[segment(4.0, 3.0, 2.0)],
+    &[segment(6.0, 4.0, 3.0)],
+    &[segment(3.0, 3.0, 3.0)],
+    &[segment(2.0, 2.0, 3.0)],
+    &[segment(2.0, 1.0, 2.0)],
+    &[segment(1.0, 1.0, 2.0)],
+];
+const SILVERFISH_DEPTHS: [f32; 7] = [2.0, 2.0, 3.0, 3.0, 3.0, 2.0, 2.0];
+
 // ---------------------------------------------------------------- blaze
 
 const BLAZE_SKIN: Rgb = [236, 172, 42];
@@ -396,6 +414,24 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
                 part(PIGLIN_SWORD_ARM, [6.0, 22.0, 0.0], sword),
                 part(PIGLIN_HEAD, [0.0, 24.0, 0.0], head),
             ]
+        }
+        MobKind::Silverfish => {
+            // Segments head to tail, wiggling side to side like Java's.
+            let mut z = SILVERFISH_DEPTHS.iter().sum::<f32>() / 2.0;
+            let t = time * 14.0 + m.limb_phase;
+            SILVERFISH_SEGMENTS
+                .iter()
+                .zip(SILVERFISH_DEPTHS)
+                .enumerate()
+                .map(|(i, (&boxes, d))| {
+                    z -= d / 2.0;
+                    let k = (i as f32 - 2.0).abs();
+                    let sway = (t + i as f32 * 0.47).sin();
+                    let at = [sway * 0.6 * k * 0.5, 0.0, z];
+                    z -= d / 2.0;
+                    part(boxes, at, Quat::from_rotation_y(sway * 0.16 * (1.0 + k)))
+                })
+                .collect()
         }
         MobKind::Blaze => {
             // Java's three rings of four rods: the top two turn one way,

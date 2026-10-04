@@ -127,7 +127,7 @@ voxelcraft [options]
   --wear item       put on a piece of armor at startup (repeatable)
   --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig, cow, sheep,
                     chicken, zombie, skeleton, creeper, spider,
-                    zombified_piglin, enderman or blaze; y may be ~
+                    zombified_piglin, enderman, blaze or silverfish; y may be ~
                     for the terrain surface, e.g. zombie,4,~,10)
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)

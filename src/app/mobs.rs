@@ -200,6 +200,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::ZombifiedPiglin => Voice::Zombie,
         MobKind::Enderman => Voice::Enderman,
         MobKind::Blaze => Voice::Blaze,
+        MobKind::Silverfish => Voice::Spider,
     }
 }
 

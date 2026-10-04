@@ -19,11 +19,11 @@ use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
 use super::block::{Block, Facing};
-use super::chest::{Chest, SLOTS};
-use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME, index};
-use super::noise::{hash3, splitmix64};
+use super::chest::Chest;
+use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
+use super::noise::hash3;
+use super::structure::{Bounds, LootEntry, Oriented, Paint, Rng, fill_chest};
 use crate::entity::MobKind;
-use crate::inventory::Stack;
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
 
 /// Region size in blocks: Java's 27 chunks of 16.
@@ -79,45 +79,6 @@ impl Kind {
     }
 }
 
-/// An inclusive box of blocks.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Bounds {
-    pub min: IVec3,
-    pub max: IVec3,
-}
-
-impl Bounds {
-    fn intersects(&self, o: &Bounds) -> bool {
-        self.min.cmple(o.max).all() && o.min.cmple(self.max).all()
-    }
-
-    pub fn contains(&self, p: IVec3) -> bool {
-        self.min.cmple(p).all() && p.cmple(self.max).all()
-    }
-
-    fn union(&self, o: &Bounds) -> Bounds {
-        Bounds { min: self.min.min(o.min), max: self.max.max(o.max) }
-    }
-
-    fn shifted(&self, d: IVec3) -> Bounds {
-        Bounds { min: self.min + d, max: self.max + d }
-    }
-
-    /// Java's `BoundingBox.orientBox`: a box of `size` grown from the
-    /// doorway at `p` in direction `facing`.
-    fn oriented(p: IVec3, off: IVec3, size: IVec3, facing: Facing) -> Bounds {
-        let (w, h, d) = (size.x, size.y, size.z);
-        let y = (p.y + off.y, p.y + off.y + h - 1);
-        let (min, max) = match facing {
-            Facing::North => ((p.x + off.x, p.z - d + 1 + off.z), (p.x + w - 1 + off.x, p.z + off.z)),
-            Facing::South => ((p.x + off.x, p.z + off.z), (p.x + w - 1 + off.x, p.z + d - 1 + off.z)),
-            Facing::West => ((p.x - d + 1 + off.z, p.z + off.x), (p.x + off.z, p.z + w - 1 + off.x)),
-            Facing::East => ((p.x + off.z, p.z + off.x), (p.x + d - 1 + off.z, p.z + w - 1 + off.x)),
-        };
-        Bounds { min: IVec3::new(min.0, y.0, min.1), max: IVec3::new(max.0, y.1, max.1) }
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct Piece {
     pub kind: Kind,
@@ -131,82 +92,13 @@ pub struct Piece {
     chest: bool,
 }
 
-impl Piece {
-    /// World position of local `(x, y, z)`: x across, y up, z forward.
-    fn world(&self, x: i32, y: i32, z: i32) -> IVec3 {
-        let b = &self.bounds;
-        let y = b.min.y + y;
-        match self.facing {
-            Facing::South => IVec3::new(b.min.x + x, y, b.min.z + z),
-            Facing::North => IVec3::new(b.min.x + x, y, b.max.z - z),
-            Facing::West => IVec3::new(b.max.x - z, y, b.min.z + x),
-            Facing::East => IVec3::new(b.min.x + z, y, b.min.z + x),
-        }
+impl Oriented for Piece {
+    fn facing(&self) -> Facing {
+        self.facing
     }
 
-    /// The world direction of a local one (local south is forward, +z;
-    /// local east is +x).
-    fn turn(&self, local: Facing) -> Facing {
-        let forward = self.facing;
-        let across = if matches!(forward, Facing::South | Facing::North) { Facing::East } else { Facing::South };
-        match local {
-            Facing::South => forward,
-            Facing::North => forward.opposite(),
-            Facing::East => across,
-            Facing::West => across.opposite(),
-        }
-    }
-
-    /// How long the piece is along its facing.
-    fn length(&self) -> i32 {
-        let s = self.bounds.max - self.bounds.min;
-        1 + if matches!(self.facing, Facing::South | Facing::North) { s.z } else { s.x }
-    }
-
-    /// Doorway of a child grown straight ahead, `off_x` across and `off_y` up.
-    fn ahead(&self, off_x: i32, off_y: i32) -> (IVec3, Facing) {
-        let (b, y) = (&self.bounds, self.bounds.min.y + off_y);
-        let p = match self.facing {
-            Facing::South => IVec3::new(b.min.x + off_x, y, b.max.z + 1),
-            Facing::North => IVec3::new(b.min.x + off_x, y, b.min.z - 1),
-            Facing::West => IVec3::new(b.min.x - 1, y, b.min.z + off_x),
-            Facing::East => IVec3::new(b.max.x + 1, y, b.min.z + off_x),
-        };
-        (p, self.facing)
-    }
-
-    /// Doorway of a child grown out of the local west (`left`) or east
-    /// side, `off_z` along the piece. Java gives these offsets in world
-    /// terms; mirroring them for north and west facings keeps doorways
-    /// where the piece's walls leave a gap whichever way it runs.
-    fn side(&self, left: bool, off_y: i32, off_z: i32) -> (IVec3, Facing) {
-        let (b, y) = (&self.bounds, self.bounds.min.y + off_y);
-        let off = if matches!(self.facing, Facing::North | Facing::West) { self.length() - 3 - off_z } else { off_z };
-        let p = match (self.facing, left) {
-            (Facing::South | Facing::North, true) => IVec3::new(b.min.x - 1, y, b.min.z + off),
-            (Facing::South | Facing::North, false) => IVec3::new(b.max.x + 1, y, b.min.z + off),
-            (_, true) => IVec3::new(b.min.x + off, y, b.min.z - 1),
-            (_, false) => IVec3::new(b.min.x + off, y, b.max.z + 1),
-        };
-        (p, self.turn(if left { Facing::West } else { Facing::East }))
-    }
-}
-
-/// A small seeded generator for layouts and loot.
-struct Rng(u64);
-
-impl Rng {
-    fn next(&mut self) -> u64 {
-        splitmix64(&mut self.0)
-    }
-
-    /// Uniform in `0..n`.
-    fn below(&mut self, n: u32) -> u32 {
-        (((self.next() >> 32) * n as u64) >> 32) as u32
-    }
-
-    fn range(&mut self, lo: u32, hi: u32) -> u32 {
-        lo + self.below(hi - lo + 1)
+    fn bounds(&self) -> &Bounds {
+        &self.bounds
     }
 }
 
@@ -275,7 +167,7 @@ impl Builder {
         if bounds.min.y <= 10 || self.collides(&bounds) {
             return None;
         }
-        let variant = self.rng.next();
+        let variant = self.rng.next_u64();
         let chest = matches!(kind, Kind::RightTurn | Kind::LeftTurn) && self.rng.below(3) == 0;
         Some(Piece { kind, facing, bounds, depth, variant, chest })
     }
@@ -501,7 +393,7 @@ impl Fortresses {
                 if b.min.y > top.y && !has_pillars(piece.kind) {
                     continue;
                 }
-                Paint { blocks: &mut *blocks, base, top, piece, open }.piece();
+                Paint { blocks: &mut *blocks, base, top, piece, open, pillar: BRICKS }.piece();
             }
         }
     }
@@ -541,7 +433,7 @@ fn has_pillars(kind: Kind) -> bool {
 /// horse armor, which don't exist yet.
 pub fn loot(seed: u64) -> Chest {
     let gold = |kind| Item::tool(kind, Tier::Gold);
-    let table: [(Item, u32, u32, u32); 8] = [
+    let table: [LootEntry; 8] = [
         (Item::DIAMOND, 5, 1, 3),
         (Item::IRON_INGOT, 5, 1, 5),
         (Item::GOLD_INGOT, 15, 1, 3),
@@ -551,103 +443,14 @@ pub fn loot(seed: u64) -> Chest {
         (Item::NETHER_WART, 5, 3, 7),
         (Item::from_block(Block::OBSIDIAN), 2, 2, 4),
     ];
-    let total: u32 = table.iter().map(|e| e.1).sum();
-    let mut rng = Rng(seed ^ 0x6C6F_6F74);
-    let mut chest = Chest::default();
-    for _ in 0..rng.range(2, 4) {
-        let mut r = rng.below(total);
-        let &(item, _, lo, hi) = table
-            .iter()
-            .find(|e| {
-                let hit = r < e.1;
-                r = r.saturating_sub(e.1);
-                hit
-            })
-            .unwrap();
-        let count = rng.range(lo, hi) as u8;
-        // Java scatters loot into random empty slots.
-        let empty: Vec<usize> = (0..SLOTS).filter(|&i| chest.slots[i].is_none()).collect();
-        if let Some(&slot) = empty.get(rng.below(empty.len() as u32) as usize) {
-            chest.slots[slot] = Some(Stack::new(item, count));
-        }
-    }
-    chest
-}
-
-/// Writes one piece's blocks into a chunk, clipped to it.
-struct Paint<'a> {
-    blocks: &'a mut [Block; CHUNK_VOLUME],
-    base: IVec3,
-    top: IVec3,
-    piece: &'a Piece,
-    open: &'a dyn Fn(i32, i32, i32, i32) -> bool,
+    fill_chest(seed, (2, 4), &table)
 }
 
 const BRICKS: Block = Block::NETHER_BRICKS;
 const FENCE: Block = Block::NETHER_BRICK_FENCE;
 const AIR: Block = Block::AIR;
 
-impl Paint<'_> {
-    /// Fills the local box from `(x0, y0, z0)` to `(x1, y1, z1)`, with the
-    /// argument order of Java's `generateBox` so pieces read like it.
-    #[allow(clippy::too_many_arguments)]
-    fn fill(&mut self, x0: i32, y0: i32, z0: i32, x1: i32, y1: i32, z1: i32, block: Block) {
-        let (a, b) = (self.piece.world(x0, y0, z0), self.piece.world(x1, y1, z1));
-        let lo = a.min(b).max(self.base);
-        let hi = a.max(b).min(self.top);
-        for y in lo.y..=hi.y {
-            for z in lo.z..=hi.z {
-                for x in lo.x..=hi.x {
-                    let l = IVec3::new(x, y, z) - self.base;
-                    self.blocks[index(l.x as usize, l.y as usize, l.z as usize)] = block;
-                }
-            }
-        }
-    }
-
-    fn set(&mut self, x: i32, y: i32, z: i32, block: Block) {
-        self.fill(x, y, z, x, y, z, block);
-    }
-
-    /// Java's `fillColumnDown`: bricks from local `(x, y, z)` down through
-    /// air and lava until they meet the ground (stopping above y = 1).
-    fn column_down(&mut self, x: i32, y: i32, z: i32) {
-        let p = self.piece.world(x, y, z);
-        if p.x < self.base.x || p.x > self.top.x || p.z < self.base.z || p.z > self.top.z || p.y < self.base.y {
-            return;
-        }
-        let mut wy = p.y;
-        if wy > self.top.y {
-            if !(self.open)(p.x, p.z, wy, self.top.y + 1) {
-                return;
-            }
-            wy = self.top.y;
-        }
-        let l = p - self.base;
-        while wy > 1 && wy >= self.base.y {
-            let i = index(l.x as usize, (wy - self.base.y) as usize, l.z as usize);
-            let b = self.blocks[i];
-            if b != AIR && !b.is_lava() {
-                return;
-            }
-            self.blocks[i] = BRICKS;
-            wy -= 1;
-        }
-    }
-
-    fn columns_down(&mut self, x0: i32, z0: i32, x1: i32, z1: i32) {
-        for x in x0..=x1 {
-            for z in z0..=z1 {
-                self.column_down(x, -1, z);
-            }
-        }
-    }
-
-    /// Nether brick stairs climbing toward local `up`.
-    fn stairs(&self, up: Facing) -> Block {
-        Block::stairs_of(BRICKS).unwrap().with_facing(self.piece.turn(up).opposite())
-    }
-
+impl Paint<'_, Piece> {
     fn piece(&mut self) {
         match self.piece.kind {
             Kind::BridgeStraight => self.bridge_straight(),
@@ -852,9 +655,9 @@ impl Paint<'_> {
             self.fill(x0, 5, 3, x0 + 2, 5, 9, Block::nether_wart(0));
         }
         // Stairs up onto the walkway between the beds.
-        self.fill(5, 5, 2, 7, 5, 2, self.stairs(Facing::South));
+        self.fill(5, 5, 2, 7, 5, 2, self.stairs(BRICKS, Facing::South));
         self.fill(5, 5, 3, 7, 5, 9, BRICKS);
-        self.fill(5, 5, 10, 7, 5, 10, self.stairs(Facing::North));
+        self.fill(5, 5, 10, 7, 5, 10, self.stairs(BRICKS, Facing::North));
     }
 
     /// The common shell of a castle corridor: floor, ceiling, open inside.
@@ -896,13 +699,13 @@ impl Paint<'_> {
         self.fill(3, 3, 4, 3, 4, 4, FENCE);
         if self.piece.chest {
             let (x, front) = if left { (3, Facing::West) } else { (1, Facing::East) };
-            self.set(x, 2, 3, Block::CHEST.with_facing(self.piece.turn(front)));
+            self.set(x, 2, 3, self.facing(Block::CHEST, front));
         }
     }
 
     /// Seven steps down over ten blocks.
     fn corridor_stairs(&mut self) {
-        let steps = self.stairs(Facing::North);
+        let steps = self.stairs(BRICKS, Facing::North);
         for z in 0..=9 {
             let floor = (7 - z).max(1);
             let ceiling = (floor + 5).max(14 - z).min(13);
