@@ -172,6 +172,7 @@ const SAND: Ingredient = &[b(Block::SAND)];
 const SAND_STONE: Ingredient = &[b(Block::SANDSTONE)];
 const WOOL: Ingredient = &[b(Block::WOOL)];
 const COBBLESTONE: Ingredient = &[b(Block::COBBLESTONE)];
+const NETHER_BRICKS: Ingredient = &[b(Block::NETHER_BRICKS)];
 const STICK: Ingredient = &[Item::STICK];
 const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
 
@@ -208,6 +209,13 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', &[Item::GLOWSTONE_DUST])], b(Block::GLOWSTONE), 1),
             shaped(&["###", "###", "###"], &[('#', &[Item::GOLD_NUGGET])], Item::GOLD_INGOT, 1),
             shapeless(&[&[Item::GOLD_INGOT]], Item::GOLD_NUGGET, 9),
+            shapeless(&[&[Item::BLAZE_ROD]], Item::BLAZE_POWDER, 2),
+            shaped(
+                &["#I#", "#I#"],
+                &[('#', NETHER_BRICKS), ('I', &[Item::NETHER_BRICK])],
+                b(Block::NETHER_BRICK_FENCE),
+                6,
+            ),
             shaped(&[" #s", "# s", " #s"], &[('#', STICK), ('s', &[Item::STRING])], Item::BOW, 1),
             shaped(&["f", "#", "e"], &[('f', &[Item::FLINT]), ('#', STICK), ('e', &[Item::FEATHER])], Item::ARROW, 4),
         ];

@@ -12,6 +12,7 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod fireball;
 pub mod item;
 mod mob;
 pub mod model;
@@ -44,6 +45,15 @@ pub const DESPAWN_DIST: f64 = 96.0;
 /// Hostile mobs only spawn when it's darker than this.
 pub const HOSTILE_SPAWN_DAYLIGHT: f32 = 0.35;
 const SPAWN_INTERVAL: f32 = 0.25;
+/// Spawners run while a player is this close (Java's required range), try
+/// this many mobs at a time within `SPAWNER_REACH` blocks, and hold off
+/// while `SPAWNER_CROWD` of their mob are nearby.
+const SPAWNER_RANGE: f64 = 16.0;
+const SPAWNER_TRIES: usize = 4;
+const SPAWNER_REACH: f64 = 4.0;
+const SPAWNER_CROWD: usize = 6;
+/// Seconds between a spawner's spawns (Java's 200-799 ticks).
+const SPAWNER_DELAY: (f32, f32) = (10.0, 40.0);
 /// Seconds between passes that merge dropped items lying together.
 const MERGE_INTERVAL: f32 = 0.5;
 /// Player melee: cooldown between hits.
@@ -64,6 +74,8 @@ pub enum MobSound {
     Scream,
     /// An enderman (or a pearl's thrower) vanishing or appearing.
     Teleport,
+    /// A blaze shooting a fireball.
+    Fireball,
 }
 
 /// Something an entity did that the game needs to react to.
@@ -93,6 +105,20 @@ pub enum EntityEvent {
     Shoot {
         from: DVec3,
         target: DVec3,
+    },
+    /// A blaze shot a fireball (turned into a projectile internally).
+    Fireball {
+        from: DVec3,
+        dir: DVec3,
+    },
+    /// A fireball set `player` alight for `secs`.
+    Ignite {
+        player: PlayerId,
+        secs: f32,
+    },
+    /// A fireball hit a block next to the empty `cell`: light a fire there.
+    IgniteBlock {
+        cell: IVec3,
     },
     /// A thrown ender pearl landed at `pos`: teleport its thrower there.
     PearlLanded {
@@ -144,6 +170,10 @@ pub trait MobWorld: BlockSource {
     fn block_light(&self, _p: IVec3) -> u8 {
         0
     }
+    /// Loaded spawner cages and the mob each makes.
+    fn spawners(&self) -> Vec<(IVec3, MobKind)> {
+        Vec::new()
+    }
 }
 
 impl MobWorld for World {
@@ -161,6 +191,9 @@ impl MobWorld for World {
     }
     fn exposed(&self, p: IVec3) -> bool {
         self.sky_exposed(p)
+    }
+    fn spawners(&self) -> Vec<(IVec3, MobKind)> {
+        World::spawners(self)
     }
 }
 
@@ -259,6 +292,7 @@ pub struct Entities {
     pub mobs: Vec<Mob>,
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
+    pub fireballs: Vec<fireball::Fireball>,
     pub puffs: Vec<Puff>,
     pub tnt: Vec<tnt::PrimedTnt>,
     /// Dropped items. They stay put (and don't age) while their chunk is
@@ -267,6 +301,9 @@ pub struct Entities {
     /// Experience orbs, kept and saved like dropped items.
     pub orbs: Vec<XpOrb>,
     rng: Rng,
+    /// Seconds until each active spawner tries again (not saved, like a
+    /// fresh Java spawner's short first delay).
+    spawner_delays: rustc_hash::FxHashMap<IVec3, f32>,
     spawn_timer: f32,
     merge_timer: f32,
     /// Mobs drawn last frame (F3).
@@ -280,11 +317,13 @@ impl Entities {
             mobs: Vec::new(),
             arrows: Vec::new(),
             pearls: Vec::new(),
+            fireballs: Vec::new(),
             puffs: Vec::new(),
             tnt: Vec::new(),
             items: Vec::new(),
             orbs: Vec::new(),
             rng: Rng::new(seed ^ 0x6d6f_6273),
+            spawner_delays: Default::default(),
             spawn_timer: 0.0,
             merge_timer: 0.0,
             rendered: 0,
@@ -313,6 +352,7 @@ impl Entities {
                 self.natural_spawn(world, ctx);
             }
         }
+        self.run_spawners(dt as f32, world, ctx);
 
         let mut i = 0;
         while i < self.mobs.len() {
@@ -329,13 +369,16 @@ impl Entities {
         }
         self.separate(dt);
 
-        // Skeleton shots become arrows.
+        // Skeleton shots become arrows, blaze shots fireballs.
         for e in &events {
-            if let EntityEvent::Shoot { from, target } = *e {
-                self.arrows.push(Arrow::aimed(from, target, &mut self.rng));
+            match *e {
+                EntityEvent::Shoot { from, target } => self.arrows.push(Arrow::aimed(from, target, &mut self.rng)),
+                EntityEvent::Fireball { from, dir } => self.fireballs.push(fireball::Fireball::new(from, dir)),
+                _ => {}
             }
         }
-        events.retain(|e| !matches!(e, EntityEvent::Shoot { .. }));
+        events.retain(|e| !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. }));
+        self.fireballs.retain_mut(|f| f.update(dt, world, ctx, &mut events));
         let (mobs, rng) = (&mut self.mobs, &mut self.rng);
         self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, rng, &mut events));
         self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
@@ -541,6 +584,57 @@ impl Entities {
         }
     }
 
+    /// Java's spawner logic: a spawner with a player within 16 blocks waits
+    /// out its delay, then tries four spots up to 4 blocks away (and a block
+    /// up or down) with room for its mob, unless six are already around.
+    /// Light and ground don't matter. Active cages give off flames.
+    fn run_spawners<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx) {
+        let spawners = world.spawners();
+        self.spawner_delays.retain(|p, _| spawners.iter().any(|(q, _)| q == p));
+        for (cell, kind) in spawners {
+            let centre = cell.as_dvec3() + DVec3::splat(0.5);
+            if !ctx.players.iter().any(|t| t.pos.distance_squared(centre) < SPAWNER_RANGE * SPAWNER_RANGE) {
+                continue;
+            }
+            if self.rng.chance(dt * 6.0) {
+                let p = centre + DVec3::new(self.rng.range(-0.4, 0.4) as f64, self.rng.range(-0.4, 0.4) as f64, 0.0);
+                self.puffs.push(Puff { pos: p, previous_pos: p, vel: DVec3::Y * 0.5, age: 0.0, life: 0.6, size: 0.15 });
+            }
+            let delay = self.spawner_delays.entry(cell).or_insert(1.0);
+            *delay -= dt;
+            if *delay > 0.0 {
+                continue;
+            }
+            *delay = 0.0;
+            let reach = SPAWNER_REACH + 0.5;
+            let crowd = self
+                .mobs
+                .iter()
+                .filter(|m| m.kind == kind && m.alive() && (m.pos - centre).abs().cmple(DVec3::splat(reach)).all())
+                .count();
+            let mut spawned = crowd >= SPAWNER_CROWD;
+            for _ in 0..SPAWNER_TRIES.min(SPAWNER_CROWD.saturating_sub(crowd)) {
+                let mut r = || (self.rng.next_f32() - self.rng.next_f32()) as f64 * SPAWNER_REACH;
+                let (dx, dz) = (r(), r());
+                let dy = (self.rng.next_f32() * 3.0).floor() as f64 - 1.0;
+                let pos = DVec3::new(centre.x + dx, cell.y as f64 + dy, centre.z + dz);
+                let shape = kind.shape();
+                if !world.loaded(pos.floor().as_ivec3())
+                    || physics::overlaps_solid(world, pos, shape)
+                    || physics::is_fluid_at(world, pos)
+                {
+                    continue;
+                }
+                self.spawn(kind, pos);
+                spawned = true;
+            }
+            if spawned {
+                let next = self.rng.range(SPAWNER_DELAY.0, SPAWNER_DELAY.1);
+                self.spawner_delays.insert(cell, next);
+            }
+        }
+    }
+
     /// Living mobs of `kind` that count against the cap of a player at
     /// `center` (those within despawn range).
     fn count_near(&self, kind: MobKind, center: DVec3) -> usize {
@@ -558,6 +652,9 @@ impl Entities {
         }
         for p in &mut self.pearls {
             p.previous_pos = p.pos;
+        }
+        for f in &mut self.fireballs {
+            f.previous_pos = f.pos;
         }
         for item in &mut self.items {
             item.previous_pos = item.pos;
@@ -586,6 +683,7 @@ impl Entities {
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
+        model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
         &mut self.verts
@@ -1327,6 +1425,91 @@ mod tests {
         assert!(m.health < MobKind::Enderman.max_health(), "water hurts");
         assert!(!m.in_water && m.pos.distance(DVec3::new(0.5, 10.0, 0.5)) > 2.0, "escaped: {}", m.pos);
         assert_ne!(m.ai, Ai::Chase, "water doesn't anger it");
+    }
+
+    /// A test world with spawner cages.
+    struct Caged(Grid, Vec<(IVec3, MobKind)>);
+
+    impl BlockSource for Caged {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            self.0.block(p)
+        }
+    }
+
+    impl MobWorld for Caged {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, x: i32, z: i32) -> Option<i32> {
+            self.0.surface(x, z)
+        }
+        fn exposed(&self, p: IVec3) -> bool {
+            self.0.exposed(p)
+        }
+        fn spawners(&self) -> Vec<(IVec3, MobKind)> {
+            self.1.clone()
+        }
+    }
+
+    #[test]
+    fn spawners_work_near_players_up_to_six_mobs() {
+        // A closed room around the cage, so nothing wanders off.
+        let mut room = Grid::flat(10);
+        for a in -5..=5 {
+            for y in 10..=17 {
+                for (x, z) in [(a, -5), (a, 5), (-5, a), (5, a)] {
+                    room.set(IVec3::new(x, y, z), Block::STONE);
+                }
+            }
+            for b in -5..=5 {
+                room.set(IVec3::new(a, 17, b), Block::STONE);
+            }
+        }
+        let world = Caged(room, vec![(IVec3::new(0, 11, 0), MobKind::Blaze)]);
+        let mut e = Entities::new(17);
+        let far = Ctx {
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(30.5, 10.0, 0.5), false)],
+            ..night(DVec3::ZERO)
+        };
+        for _ in 0..1200 {
+            e.update(0.05, &world, &far);
+        }
+        assert_eq!(e.count(MobKind::Blaze), 0, "idle with nobody within 16 blocks");
+        let near = Ctx { players: vec![Target::new(PlayerId::HOST, DVec3::new(10.5, 10.0, 0.5), false)], ..far };
+        for _ in 0..30 {
+            e.update(0.05, &world, &near);
+        }
+        let first = e.count(MobKind::Blaze);
+        assert!((1..=4).contains(&first), "a first batch after a second: {first}");
+        assert!(e.mobs.iter().all(|m| (m.pos - DVec3::new(0.5, 11.0, 0.5)).abs().max_element() <= 4.6));
+        for _ in 0..20 * 300 {
+            e.update(0.05, &world, &near);
+        }
+        assert_eq!(e.count(MobKind::Blaze), 6, "stops at six nearby");
+    }
+
+    #[test]
+    fn blazes_hover_shoot_fireball_bursts_and_shrug_off_fire() {
+        let mut world = Grid::flat(10);
+        for x in -1..=1 {
+            for z in -1..=1 {
+                world.set(IVec3::new(x, 9, z), Block::LAVA);
+            }
+        }
+        let mut e = Entities::new(18);
+        e.spawn(MobKind::Blaze, DVec3::new(0.5, 14.0, 0.5));
+        let c = night(DVec3::new(12.5, 10.0, 0.5));
+        let events = run(&mut e, &world, &c, 0.5);
+        assert!(e.mobs[0].pos.y > 12.5, "sinks slowly: {}", e.mobs[0].pos);
+        let events: Vec<_> = events.into_iter().chain(run(&mut e, &world, &c, 6.0)).collect();
+        let shots =
+            events.iter().filter(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Fireball, .. })).count();
+        assert_eq!(shots, 3, "one burst of three after charging");
+        let burnt = |ev: &&EntityEvent| matches!(ev, EntityEvent::Ignite { player: PlayerId::HOST, .. });
+        assert!(events.iter().filter(burnt).count() >= 1, "{events:?}");
+        assert_eq!(e.mobs[0].health, MobKind::Blaze.max_health(), "lava below never hurt it");
+        assert_eq!(MobKind::Blaze.loot(), [(crate::item::Item::BLAZE_ROD, 0, 1)]);
+        assert_eq!(MobKind::Blaze.xp(&mut Rng::new(1)), 10);
     }
 
     #[test]

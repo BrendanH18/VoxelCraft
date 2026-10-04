@@ -148,6 +148,22 @@ impl Game {
                 }
                 EntityEvent::Explosion { center, power, cause } => self.explode(center, power, cause),
                 EntityEvent::PearlLanded { owner, pos } => self.pearl_landed(owner, pos),
+                EntityEvent::Ignite { player: PlayerId::HOST, secs } => {
+                    if self.mode == GameMode::Survival {
+                        self.vitals.ignite(secs);
+                    }
+                }
+                EntityEvent::Ignite { player, secs } => {
+                    if let Some(bot) = self.agents.by_id_mut(player)
+                        && !bot.agent.creative
+                    {
+                        bot.agent.vitals.ignite(secs);
+                    }
+                }
+                EntityEvent::IgniteBlock { cell } => {
+                    self.world.ignite(cell);
+                }
+                EntityEvent::Fireball { .. } => {}
                 EntityEvent::Sound { sound, pos } => {
                     let (sound, gain) = match sound {
                         MobSound::Fuse => (Sound::Fuse, 1.0),
@@ -157,6 +173,7 @@ impl Game {
                         MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9),
                         MobSound::Scream => (Sound::Scream, 1.0),
                         MobSound::Teleport => (Sound::Teleport, 0.8),
+                        MobSound::Fireball => (Sound::Fireball, 0.9),
                     };
                     self.audio.play(sound, Some(pos), gain, (0.9, 1.1));
                 }
@@ -181,6 +198,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Spider => Voice::Spider,
         MobKind::ZombifiedPiglin => Voice::Zombie,
         MobKind::Enderman => Voice::Enderman,
+        MobKind::Blaze => Voice::Blaze,
     }
 }
 

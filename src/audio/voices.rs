@@ -20,6 +20,7 @@ pub enum Voice {
     Creeper,
     Spider,
     Enderman,
+    Blaze,
 }
 
 /// What kind of sound a voice makes.
@@ -32,7 +33,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 9] = [
+    pub const ALL: [Voice; 10] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -42,6 +43,7 @@ impl Voice {
         Voice::Creeper,
         Voice::Spider,
         Voice::Enderman,
+        Voice::Blaze,
     ];
 
     pub fn name(self) -> &'static str {
@@ -55,6 +57,7 @@ impl Voice {
             Voice::Creeper => "creeper",
             Voice::Spider => "spider",
             Voice::Enderman => "enderman",
+            Voice::Blaze => "blaze",
         }
     }
 }
@@ -144,6 +147,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Creeper => creeper(call, rng),
         Voice::Spider => spider(call, rng),
         Voice::Enderman => enderman(call, rng),
+        Voice::Blaze => blaze(call, rng),
     }
 }
 
@@ -403,6 +407,39 @@ fn enderman(call: Call, rng: &mut Rng) -> Vec<f32> {
         *s = (*s * 2.5).tanh();
     }
     dsp::finish(out, 0.55)
+}
+
+fn blaze(call: Call, rng: &mut Rng) -> Vec<f32> {
+    // Java's blaze breathes: hollow, metallic rasps through its rods.
+    let (secs, breaths, bright) = match call {
+        Call::Ambient => (1.2, 2, 900.0),
+        Call::Hurt => (0.35, 1, 1600.0),
+        Call::Death => (1.6, 1, 700.0),
+    };
+    let len = samples(secs);
+    let each = secs / breaths as f32;
+    let mut out = noise(rng, len, |t| {
+        let p = (t % each) / each;
+        let swell = (p * std::f32::consts::PI).sin().powi(2);
+        if call == Call::Death { swell * (1.0 - t / secs) } else { swell }
+    });
+    Biquad::bandpass(bright, 2.5).run(&mut out);
+    // A ring of resonant "pipe" tones gives the metallic edge.
+    let mut pipes = vec![0.0; len];
+    for k in 1..=3 {
+        let f = bright * 0.5 * k as f32 * rng.range(0.97, 1.03);
+        add_mode(&mut pipes, 0, Mode { freq: f, amp: 0.15 / k as f32, tau: secs * 0.6, glide: 0.9, glide_tau: secs });
+    }
+    for (i, p) in pipes.iter_mut().enumerate() {
+        *p *= out[i].abs() * 6.0;
+    }
+    mix_into(&mut out, &pipes, 1.0, 0);
+    if call != Call::Ambient {
+        let mut crack = crackle(rng, len, (0.3, 1.2), |t| 900.0 * (-t / 0.2).exp());
+        Biquad::highpass(1500.0, 0.7).run(&mut crack);
+        mix_into(&mut out, &crack, 0.4, 0);
+    }
+    dsp::finish(out, 0.45)
 }
 
 /// An enderman stared at: a loud, rasping shriek.

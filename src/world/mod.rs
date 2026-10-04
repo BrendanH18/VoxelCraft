@@ -26,6 +26,7 @@ pub mod nether;
 pub mod noise;
 mod portal;
 pub mod shape;
+mod spawner;
 pub mod storage;
 pub mod terrain;
 
@@ -88,6 +89,8 @@ pub struct World {
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
     /// Chest contents by position (see [`chest`]).
     chests: FxHashMap<IVec3, chest::Chest>,
+    /// Spawner cages and the mob each makes (see `spawner`).
+    spawners: FxHashMap<IVec3, crate::entity::MobKind>,
     /// Leaves waiting to decay (seconds left) after a log near them went.
     leaf_decay: FxHashMap<IVec3, f32>,
     /// Fractional random block ticks carried over between frames.
@@ -159,6 +162,7 @@ impl World {
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
+            spawners: FxHashMap::default(),
             leaf_decay: FxHashMap::default(),
             random_ticks: 0.0,
             rng,
@@ -345,6 +349,7 @@ impl World {
         self.track_fire(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
+        self.track_spawner(p, old, block);
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }

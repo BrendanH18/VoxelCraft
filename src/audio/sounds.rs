@@ -121,13 +121,15 @@ pub enum Sound {
     Teleport,
     /// An enderman someone looked at.
     Scream,
+    /// A blaze's fireball launching: a roaring whoosh.
+    Fireball,
 }
 
 const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 20 + Voice::ALL.len() * CALLS;
+    pub const COUNT: usize = 3 * M + 21 + Voice::ALL.len() * CALLS;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -154,7 +156,8 @@ impl Sound {
             Sound::LevelUp => 3 * M + 17,
             Sound::Teleport => 3 * M + 18,
             Sound::Scream => 3 * M + 19,
-            Sound::Mob(v, c) => 3 * M + 20 + v as usize * CALLS + c as usize,
+            Sound::Fireball => 3 * M + 20,
+            Sound::Mob(v, c) => 3 * M + 21 + v as usize * CALLS + c as usize,
         }
     }
 
@@ -182,6 +185,7 @@ impl Sound {
                 Sound::LevelUp,
                 Sound::Teleport,
                 Sound::Scream,
+                Sound::Fireball,
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
     }
@@ -210,6 +214,7 @@ impl Sound {
             Sound::LevelUp => "level_up".into(),
             Sound::Teleport => "teleport".into(),
             Sound::Scream => "enderman_scream".into(),
+            Sound::Fireball => "fireball".into(),
             Sound::Mob(v, c) => format!("{}_{}", v.name(), c.name()),
         }
     }
@@ -236,7 +241,7 @@ impl Sound {
             | Sound::Orb
             | Sound::LevelUp
             | Sound::Scream => 1,
-            Sound::Teleport => 2,
+            Sound::Teleport | Sound::Fireball => 2,
         }
     }
 
@@ -266,6 +271,7 @@ impl Sound {
             Sound::LevelUp => level_up(),
             Sound::Teleport => teleport(&mut rng),
             Sound::Scream => super::voices::scream(&mut rng),
+            Sound::Fireball => fireball(&mut rng),
             Sound::Mob(v, c) => super::voices::render(v, c, &mut rng),
         }
     }
@@ -746,6 +752,26 @@ fn level_up() -> Vec<f32> {
         ding(&mut out, samples(0.07 * i as f32), freq, 0.8, tau);
     }
     dsp::finish(out, 0.35)
+}
+
+fn fireball(rng: &mut Rng) -> Vec<f32> {
+    // A roaring whoosh: noise swept down through a band-pass, with a
+    // crackle of flame on top.
+    let secs = 0.7;
+    let len = samples(secs);
+    let mut out = noise(rng, len, |t| (t / 0.03).min(1.0) * (-(t / 0.25)).exp());
+    let mut band = Biquad::bandpass(1800.0, 1.2);
+    for (i, s) in out.iter_mut().enumerate() {
+        if i % 64 == 0 {
+            let t = i as f32 / dsp::RATE;
+            band.retune(Biquad::bandpass(300.0 + 1500.0 * (-t / 0.15).exp(), 1.2));
+        }
+        *s = band.process(*s);
+    }
+    let mut crack = crackle(rng, len, (0.3, 1.5), |t| 400.0 * (-t / 0.3).exp());
+    Biquad::highpass(2000.0, 0.7).run(&mut crack);
+    mix_into(&mut out, &crack, 0.35, 0);
+    dsp::finish(out, 0.45)
 }
 
 fn teleport(rng: &mut Rng) -> Vec<f32> {

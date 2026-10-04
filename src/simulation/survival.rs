@@ -261,6 +261,13 @@ impl Vitals {
         self.death.is_some()
     }
 
+    /// Sets the player on fire for at least `secs` (blaze fireballs).
+    pub fn ignite(&mut self, secs: f32) {
+        if !self.is_dead() {
+            self.fire_left = self.fire_left.max(secs);
+        }
+    }
+
     /// Whether a living player has time remaining on their fire effect.
     pub fn burning(&self) -> bool {
         self.fire_left > 0.0 && !self.is_dead()

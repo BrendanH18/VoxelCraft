@@ -60,6 +60,7 @@ pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {
         Block::COAL_ORE => (0, 2),
         Block::DIAMOND_ORE => (3, 7),
         Block::QUARTZ_ORE => (2, 5),
+        Block::SPAWNER => (15, 43),
         _ => return 0,
     };
     lo + ((rng.next_f32() * (hi - lo + 1) as f32) as u32).min(hi - lo)

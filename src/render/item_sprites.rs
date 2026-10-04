@@ -371,6 +371,11 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             };
             shaded(&nugget, x, y, c, 0.08)
         }
+        Sprite::Rod(c) => {
+            // A diagonal rod, bright down the middle and hot orange at the edges.
+            let on = (x + y - 15).abs() <= 1 && (2..=13).contains(&x);
+            on.then(|| if x + y == 15 { tint(c, 1.15) } else { tint([240, 120, 20], 0.95 + noise(x, y, 6) * 0.1) })
+        }
         Sprite::Pearl(body, glint) => {
             // A dark sphere with a bright glint up and to the left, lighter
             // toward the rim like Java's pearl.

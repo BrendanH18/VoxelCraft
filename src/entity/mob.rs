@@ -52,6 +52,15 @@ const STARE_TIME: f32 = 0.25;
 const STARE_RANGE: f64 = 64.0;
 const FREEZE_DIST: f64 = 16.0;
 const FLEE_DIST: f64 = 4.0;
+/// Blazes notice players this far away (Java's follow range) and melee
+/// within `BLAZE_MELEE`.
+const BLAZE_RANGE: f64 = 48.0;
+const BLAZE_MELEE: f64 = 2.0;
+/// Seconds a blaze charges (glowing) before a burst, between the burst's
+/// three fireballs, and resting after it (Java's 60, 6 and 100 ticks).
+const BLAZE_CHARGE: f32 = 3.0;
+const BLAZE_VOLLEY: f32 = 0.3;
+const BLAZE_REST: f32 = 5.0;
 /// Enderman eye height (Java's 2.55).
 const ENDERMAN_EYE: f64 = 2.55;
 /// Falls deeper than this are avoided (blocks).
@@ -71,10 +80,12 @@ pub enum MobKind {
     ZombifiedPiglin,
     /// Neutral until looked in the eye or hit; teleports.
     Enderman,
+    /// Fortress spawner mob: hovers and shoots bursts of fireballs.
+    Blaze,
 }
 
 impl MobKind {
-    pub const ALL: [MobKind; 10] = [
+    pub const ALL: [MobKind; 11] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -85,6 +96,7 @@ impl MobKind {
         MobKind::Spider,
         MobKind::ZombifiedPiglin,
         MobKind::Enderman,
+        MobKind::Blaze,
     ];
 
     pub fn name(self) -> &'static str {
@@ -99,6 +111,7 @@ impl MobKind {
             MobKind::Spider => "spider",
             MobKind::ZombifiedPiglin => "zombified piglin",
             MobKind::Enderman => "enderman",
+            MobKind::Blaze => "blaze",
         }
     }
 
@@ -119,6 +132,7 @@ impl MobKind {
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
             MobKind::Enderman => Shape::new(0.3, 2.9),
+            MobKind::Blaze => Shape::new(0.3, 1.8),
         }
     }
 
@@ -127,7 +141,7 @@ impl MobKind {
             MobKind::Pig | MobKind::Cow => 10.0,
             MobKind::Sheep => 8.0,
             MobKind::Chicken => 4.0,
-            MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::ZombifiedPiglin => 20.0,
+            MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::ZombifiedPiglin | MobKind::Blaze => 20.0,
             MobKind::Spider => 16.0,
             MobKind::Enderman => 40.0,
         }
@@ -142,13 +156,26 @@ impl MobKind {
                 | MobKind::Spider
                 | MobKind::ZombifiedPiglin
                 | MobKind::Enderman
+                | MobKind::Blaze
         )
+    }
+
+    /// Unharmed by fire and lava.
+    pub fn fire_immune(self) -> bool {
+        matches!(self, MobKind::ZombifiedPiglin | MobKind::Blaze)
+    }
+
+    /// Hurt by water and rain, like Java's endermen and blazes.
+    pub fn hurt_by_water(self) -> bool {
+        matches!(self, MobKind::Enderman | MobKind::Blaze)
     }
 
     /// Whether this kind spawns naturally in `dimension`.
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
+            // Only from spawners for now (Java also spawns them inside fortresses).
+            MobKind::Blaze => false,
             MobKind::ZombifiedPiglin => dimension == Dimension::Nether,
             _ => dimension == Dimension::Overworld,
         }
@@ -184,7 +211,7 @@ impl MobKind {
         match self {
             MobKind::Pig => 1.3,
             MobKind::Cow | MobKind::Zombie | MobKind::Creeper | MobKind::ZombifiedPiglin => 1.1,
-            MobKind::Sheep | MobKind::Skeleton => 1.2,
+            MobKind::Sheep | MobKind::Skeleton | MobKind::Blaze => 1.2,
             MobKind::Chicken => 1.0,
             MobKind::Spider | MobKind::Enderman => 1.4,
         }
@@ -207,6 +234,7 @@ impl MobKind {
             MobKind::Spider => (2.0, "was slain by a spider"),
             MobKind::ZombifiedPiglin => (5.0, "was slain by a zombified piglin"),
             MobKind::Enderman => (7.0, "was slain by an enderman"),
+            MobKind::Blaze => (6.0, "was slain by a blaze"),
             _ => (3.0, "was slain by a zombie"),
         }
     }
@@ -225,6 +253,7 @@ impl MobKind {
             MobKind::Spider => &[(Item::STRING, 0, 2)],
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
+            MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
         }
     }
 
@@ -239,7 +268,11 @@ impl MobKind {
 
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
     pub fn xp(self, rng: &mut Rng) -> u32 {
-        if self.is_hostile() { 5 } else { 1 + (rng.next_f32() * 3.0) as u32 }
+        match self {
+            MobKind::Blaze => 10,
+            k if k.is_hostile() => 5,
+            _ => 1 + (rng.next_f32() * 3.0) as u32,
+        }
     }
 }
 
@@ -315,6 +348,13 @@ pub struct Mob {
     /// time it turned on someone.
     teleport_timer: f32,
     since_anger: f32,
+    /// Blazes: glowing while charging a burst; which shot of the burst is
+    /// next; rising to stay `height_offset` above the target's eyes.
+    pub charged: bool,
+    attack_step: u8,
+    lift: bool,
+    height_offset: f32,
+    offset_timer: f32,
 }
 
 impl Mob {
@@ -359,6 +399,11 @@ impl Mob {
             stare: 0.0,
             teleport_timer: 0.0,
             since_anger: 1e3,
+            charged: false,
+            attack_step: 0,
+            lift: false,
+            height_offset: 0.5,
+            offset_timer: 0.0,
         }
     }
 
@@ -521,7 +566,8 @@ impl Mob {
                 MobKind::Enderman => self.enderman_anger(dt, world, ctx, rng, events),
                 _ => true,
             };
-            let chasing = aggressive && target.is_some() && hdist < CHASE_RANGE && to_player.y.abs() < 12.0;
+            let (range, height) = if self.kind == MobKind::Blaze { (BLAZE_RANGE, 24.0) } else { (CHASE_RANGE, 12.0) };
+            let chasing = aggressive && target.is_some() && hdist < range && to_player.y.abs() < height;
             if chasing {
                 self.ai = Ai::Chase;
             } else if self.ai == Ai::Chase {
@@ -531,6 +577,9 @@ impl Mob {
         }
         if self.ai != Ai::Chase {
             self.fuse = (self.fuse - dt).max(0.0);
+            self.lift = false;
+            self.charged = false;
+            self.attack_step = 0;
         }
 
         match self.ai {
@@ -547,6 +596,11 @@ impl Mob {
                 match self.kind {
                     MobKind::Skeleton => {
                         return self.skeleton_tactics(dt, world, target.pos, dir, hdist, rng, events);
+                    }
+                    MobKind::Blaze => {
+                        if let Some(stop) = self.blaze_tactics(dt, world, &target, rng, events) {
+                            return stop;
+                        }
                     }
                     MobKind::Creeper => {
                         if let Some(stop) = self.creeper_fuse(dt, hdist, events) {
@@ -632,6 +686,61 @@ impl Mob {
                 (None, 0.0)
             }
         }
+    }
+
+    /// Java's blaze attack: rise to hover a little above the target, melee
+    /// when within 2 blocks, otherwise (when it can see the target) charge
+    /// for 3 s and fire three fireballs 0.3 s apart, then rest 5 s. Returns
+    /// the movement to use instead of closing in, if any.
+    fn blaze_tactics<W: MobWorld + ?Sized>(
+        &mut self,
+        dt: f32,
+        world: &W,
+        target: &super::Target,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) -> Option<(Option<DVec3>, f64)> {
+        self.offset_timer -= dt;
+        if self.offset_timer <= 0.0 {
+            self.offset_timer = 5.0;
+            self.height_offset = 0.5 + rng.range(-1.0, 1.0) * 3.0;
+        }
+        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let target_eye = target.pos + DVec3::Y * crate::player::EYE_HEIGHT;
+        self.lift = target_eye.y > eye.y + self.height_offset as f64;
+        let to = target_eye - eye;
+        let dist = to.length();
+        if dist < BLAZE_MELEE {
+            // Close enough to hit: the usual melee code handles it.
+            return None;
+        }
+        if !line_of_sight(world, eye, target_eye) {
+            return None;
+        }
+        if self.attack_cooldown <= 0.0 {
+            self.attack_step += 1;
+            match self.attack_step {
+                1 => {
+                    self.attack_cooldown = BLAZE_CHARGE;
+                    self.charged = true;
+                }
+                2..=4 => {
+                    self.attack_cooldown = BLAZE_VOLLEY;
+                    // Java's spread grows with the square root of distance.
+                    let spread = dist.sqrt() * 0.5 * 0.1;
+                    let mut r = || rng.range(-1.0, 1.0) as f64 * spread;
+                    let dir = (to / dist + DVec3::new(r(), 0.0, r())).normalize();
+                    events.push(EntityEvent::Fireball { from: eye + dir * 0.5, dir });
+                    events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: eye });
+                }
+                _ => {
+                    self.attack_cooldown = BLAZE_REST;
+                    self.attack_step = 0;
+                    self.charged = false;
+                }
+            }
+        }
+        Some((None, 0.0))
     }
 
     /// Where an enderman's eyes are.
@@ -844,6 +953,13 @@ impl Mob {
             if self.kind == MobKind::Chicken {
                 self.vel.y = self.vel.y.max(-2.5); // flaps its way down
             }
+            if self.kind == MobKind::Blaze && self.alive() {
+                // Java blazes sink slowly and rise toward a target above.
+                self.vel.y = self.vel.y.max(-2.3);
+                if self.lift {
+                    self.vel.y += (6.0 - self.vel.y) * (1.0 - 0.7f64.powf(dt * 20.0));
+                }
+            }
             if self.kind == MobKind::Spider && self.blocked && wish.is_some() && self.alive() {
                 self.vel.y = self.vel.y.max(3.0); // climbs walls
             } else if let Some(dir) = wish
@@ -888,7 +1004,7 @@ impl Mob {
             && !ctx.raining
             && !self.in_water
             && world.exposed(head);
-        if self.kind == MobKind::ZombifiedPiglin {
+        if self.kind.fire_immune() {
             self.fire_left = 0.0;
         } else if in_lava {
             self.fire_left = 15.0;
@@ -902,11 +1018,17 @@ impl Mob {
         } else {
             self.fire_left = (self.fire_left - dt).max(0.0);
         }
-        if self.kind == MobKind::Enderman && (self.in_water || world.rains_on(head)) && self.hurt <= 0.0 {
-            // Water hurts endermen (Java's 1 damage, spaced by hurt time).
+        let wet = physics::touches_block(world, self.pos, self.shape(), Block::is_water) || world.rains_on(head);
+        if self.kind.hurt_by_water() && wet && self.hurt <= 0.0 {
+            // Water hurts endermen and blazes (Java's 1 damage, spaced by hurt time).
             self.damage(1.0, None, rng);
         }
         self.burning = self.alive() && self.fire_left > 0.0;
+        if self.kind == MobKind::Blaze {
+            // A charging blaze is wreathed in flames.
+            self.burning = self.alive() && self.charged;
+            return;
+        }
         if !self.burning {
             self.burn_timer = 0.0;
             return;

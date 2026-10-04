@@ -269,6 +269,20 @@ const ENDERMAN_EYES: &[Cuboid] = &[
     cube([1.5, 3.0, 4.1], [2.5, 4.0, 4.15], [240, 150, 255], 0),
 ];
 
+// ---------------------------------------------------------------- blaze
+
+const BLAZE_SKIN: Rgb = [236, 172, 42];
+const BLAZE_ROD: Rgb = [252, 206, 70];
+const BLAZE_FACE: Rgb = [92, 40, 10];
+
+const BLAZE_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], BLAZE_SKIN, 40),
+    cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], BLAZE_FACE, 0),
+    cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], BLAZE_FACE, 0),
+    cube([-2.0, 1.0, 4.0], [2.0, 1.5, 4.05], BLAZE_FACE, 0),
+];
+const BLAZE_ROD_BOX: &[Cuboid] = &[cube([-1.0, -4.0, -1.0], [1.0, 4.0, 1.0], BLAZE_ROD, 30)];
+
 // ---------------------------------------------------------------- arrow
 
 const ARROW: &[Cuboid] = &[
@@ -383,6 +397,26 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
                 part(PIGLIN_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
+        MobKind::Blaze => {
+            // Java's three rings of four rods: the top two turn one way,
+            // the bottom the other, each bobbing on its own phase.
+            let mut parts = vec![part(BLAZE_HEAD, [0.0, 20.0, 0.0], head)];
+            let t = time * 2.0 + m.limb_phase * 0.1;
+            for (ring, (radius, y, speed)) in
+                [(9.0, 15.0, 1.0f32), (7.0, 8.0, 1.0), (5.0, 2.0, -1.0)].into_iter().enumerate()
+            {
+                for i in 0..4 {
+                    let a = t * speed + i as f32 * FRAC_PI_2 + ring as f32 * 0.4;
+                    let bob = (t * 1.5 + i as f32 + ring as f32 * 2.0).cos() * 1.5;
+                    parts.push(part(
+                        BLAZE_ROD_BOX,
+                        [a.cos() * radius, y + 4.0 + bob, a.sin() * radius],
+                        Quat::IDENTITY,
+                    ));
+                }
+            }
+            parts
+        }
         MobKind::Enderman => {
             // Long, slow strides; an angry one opens its jaw (the head
             // lifts) and holds its arms a little forward.
@@ -463,7 +497,8 @@ pub fn build(
         for (pi, p) in pose(m, time).iter().enumerate() {
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
-            let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES);
+            // Endermen eyes and blazes glow at full brightness.
+            let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES) || m.kind == MobKind::Blaze;
             let light = if glow { [light[0], 0, light[2], 255] } else { light };
             for (ci, c) in p.boxes.iter().enumerate() {
                 push_cuboid(out, c, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
@@ -526,6 +561,28 @@ pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, o
         let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
         for (i, c) in PEARL.iter().enumerate() {
             push_cuboid(out, c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
+/// Blaze fireballs: a glowing orange cube around a yellow core, tumbling.
+pub fn build_fireballs(
+    fireballs: &[super::fireball::Fireball],
+    camera: DVec3,
+    time: f32,
+    alpha: f64,
+    out: &mut Vec<EntityVertex>,
+) {
+    const BALL: &[Cuboid] = &[
+        cube([-2.5, -2.5, -2.5], [2.5, 2.5, 2.5], [250, 120, 20], 60),
+        cube([-3.0, -1.5, -1.5], [3.0, 1.5, 1.5], [255, 220, 90], 30),
+    ];
+    for (i, f) in fireballs.iter().enumerate() {
+        let rel = (f.previous_pos.lerp(f.pos, alpha) - camera).as_vec3();
+        let rot = Quat::from_rotation_arc(Vec3::X, f.heading().normalize_or(Vec3::X))
+            * Quat::from_rotation_x(time * 9.0 + i as f32);
+        for (j, c) in BALL.iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + rot * v / 16.0, rot, ([255, 255, 0, 255], 0), (FIRE, 0.0), j as f32);
         }
     }
 }
@@ -715,7 +772,9 @@ mod tests {
                 let p = Vec3::from_array(v.pos);
                 (lo.min(p), hi.max(p))
             });
-            assert!(lo.y.abs() < 1e-4, "{kind:?} feet at {}", lo.y);
+            // Blazes float above the ground on their rods.
+            let floats = kind == MobKind::Blaze;
+            assert!(lo.y.abs() < 1e-4 || floats && lo.y < 0.25, "{kind:?} feet at {}", lo.y);
             let h = kind.shape().height as f32;
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
             assert!(hi.x > 10.25, "{kind:?} should extend forward along +X");
