@@ -66,6 +66,11 @@ impl Rng {
     pub fn range(&mut self, lo: u32, hi: u32) -> u32 {
         lo + self.below(hi - lo + 1)
     }
+
+    /// Uniform in `[0, 1)`.
+    pub fn unit(&mut self) -> f64 {
+        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
+    }
 }
 
 /// A piece with a facing and a box: Java's local frame, where x runs
@@ -146,6 +151,16 @@ pub struct Paint<'a, P> {
 }
 
 impl<P: Oriented> Paint<'_, P> {
+    /// Index into the chunk of local `(x, y, z)`, if it lies in the chunk.
+    pub fn cell(&self, x: i32, y: i32, z: i32) -> Option<usize> {
+        let p = self.piece.world(x, y, z);
+        let inside = p.cmpge(self.base).all() && p.cmple(self.top).all();
+        inside.then(|| {
+            let l = p - self.base;
+            index(l.x as usize, l.y as usize, l.z as usize)
+        })
+    }
+
     /// Fills the local box from `(x0, y0, z0)` to `(x1, y1, z1)`, with the
     /// argument order of Java's `generateBox` so pieces read like it.
     #[allow(clippy::too_many_arguments)]

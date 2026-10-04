@@ -139,6 +139,9 @@ src/
     terrain.rs       world generation
     nether.rs        Nether caverns
     fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
+    stronghold.rs    stronghold rings and layouts (Java's pieces), painted per chunk
+    structure.rs     shared structure-piece frames, chunk painting and chest loot
+    brewing.rs       brewing stand contents and Java's brewing mixes
     spawner.rs       spawner table, structure spawners and chests on chunk load
     noise.rs         Perlin noise and hashing
     storage.rs       save files

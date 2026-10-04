@@ -72,6 +72,9 @@ impl World {
                 Feature::Chest(seed) if is_chest(block) => {
                     self.chests.entry(p).or_insert_with(|| fortress::loot(seed));
                 }
+                Feature::StrongholdChest(seed) if is_chest(block) => {
+                    self.chests.entry(p).or_insert_with(|| super::stronghold::loot(seed));
+                }
                 _ => {}
             }
         }

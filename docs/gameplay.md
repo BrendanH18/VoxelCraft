@@ -281,6 +281,14 @@ full performance display instead of duplicating the compact counter.
   thick and awkward bases to long (extended) and strong (level II)
   variants with Java's durations; tooltips show the effect, level and
   time.
+- Strongholds: 128 per world on Java's concentric rings (the first three
+  1280-2816 blocks from the origin), sunk below sea level and built from
+  Java's stronghold pieces: a spiral staircase, corridors, turns,
+  stairways, crossing rooms (pillar, fountain or balcony with a chest),
+  prison cells, five-way crossings, libraries with cobwebs and chests,
+  chest corridors and one portal room, whose twelve End portal frames each
+  hold an eye one time in ten, with a silverfish spawner on its stairs.
+  Walls are randomly cracked or mossy stone bricks.
 - Brewing: a blaze rod over three cobblestone makes a brewing stand.
   Right click it for Java's screen: blaze powder fuel (one powder brews 20
   times, shown by the bar), an ingredient slot and three bottle slots. A

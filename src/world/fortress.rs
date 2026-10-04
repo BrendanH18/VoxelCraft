@@ -311,6 +311,8 @@ pub enum Feature {
     Spawner(MobKind),
     /// A chest filled from the fortress loot table with this seed.
     Chest(u64),
+    /// A chest filled from a stronghold table (see `stronghold::loot`).
+    StrongholdChest(u64),
 }
 
 /// Fortress layouts for one Nether, cached by region.

@@ -112,6 +112,8 @@ pub struct Generator {
     /// Set for the Nether, which generates from its own noise.
     nether: Option<super::nether::NetherGen>,
     end: Option<super::end::EndGen>,
+    /// The overworld's strongholds.
+    pub strongholds: super::stronghold::Strongholds,
     continent: Perlin,
     erosion: Perlin,
     ridge: Perlin,
@@ -153,6 +155,7 @@ impl Generator {
             dimension,
             nether: (dimension == Dimension::Nether).then(|| super::nether::NetherGen::new(seed)),
             end: (dimension == Dimension::End).then(|| super::end::EndGen::new(seed)),
+            strongholds: super::stronghold::Strongholds::new(seed),
             continent: p(1),
             erosion: p(2),
             ridge: p(3),
@@ -370,7 +373,11 @@ impl Generator {
     /// Block entities generated structures put in the chunk at `cpos`
     /// (fortress spawners and loot chests).
     pub fn structure_features(&self, cpos: IVec3) -> Vec<(IVec3, super::fortress::Feature)> {
-        self.nether.as_ref().map_or_else(Vec::new, |n| n.fortresses.features(cpos))
+        match (&self.nether, self.dimension) {
+            (Some(n), _) => n.fortresses.features(cpos),
+            (None, Dimension::Overworld) => self.strongholds.features(cpos),
+            _ => Vec::new(),
+        }
     }
 
     /// Whether `p` lies inside a generated structure where its own mobs
@@ -449,6 +456,9 @@ impl Generator {
         if base.y <= max_h + TREE_TOP && top >= min_h {
             self.place_trees(&mut blocks, base);
             self.place_plants(&mut blocks, base, &cols);
+        }
+        if base.y < SEA_LEVEL {
+            self.strongholds.paint(&mut blocks, base);
         }
         ChunkData::from_dense(blocks)
     }
