@@ -121,52 +121,45 @@ pub mod tex {
     pub const DOOR_BOTTOM: u8 = 87;
     /// The player's arm in first person.
     pub const SKIN: u8 = 88;
-    /// Seven flame animation frames, in the gap before item icons.
+    /// Seven flame animation frames.
     pub const FIRE_0: u8 = 89;
     pub const FIRE_FRAMES: u8 = 7;
-    /// Flat item icons (see `item::Item::icon_layer`), up to `ITEM_COUNT` of them.
-    pub const ITEM_0: u8 = 96;
-    pub const ITEM_COUNT: u8 = 64;
-    // More block textures, after the item icons.
-    pub const SPRUCE_LOG_SIDE: u8 = 160;
-    pub const SPRUCE_LOG_TOP: u8 = 161;
-    pub const BIRCH_LOG_SIDE: u8 = 162;
-    pub const BIRCH_LOG_TOP: u8 = 163;
-    pub const JUNGLE_LOG_SIDE: u8 = 164;
-    pub const JUNGLE_LOG_TOP: u8 = 165;
-    pub const ACACIA_LOG_SIDE: u8 = 166;
-    pub const ACACIA_LOG_TOP: u8 = 167;
-    pub const BIRCH_LEAVES: u8 = 168;
-    pub const JUNGLE_LEAVES: u8 = 169;
-    pub const ACACIA_LEAVES: u8 = 170;
-    pub const SPRUCE_PLANKS: u8 = 171;
-    pub const BIRCH_PLANKS: u8 = 172;
-    pub const JUNGLE_PLANKS: u8 = 173;
-    pub const ACACIA_PLANKS: u8 = 174;
-    pub const BIRCH_SAPLING: u8 = 175;
-    pub const JUNGLE_SAPLING: u8 = 176;
-    pub const ACACIA_SAPLING: u8 = 177;
-    pub const RED_SAND: u8 = 178;
+    pub const SPRUCE_LOG_SIDE: u8 = 96;
+    pub const SPRUCE_LOG_TOP: u8 = 97;
+    pub const BIRCH_LOG_SIDE: u8 = 98;
+    pub const BIRCH_LOG_TOP: u8 = 99;
+    pub const JUNGLE_LOG_SIDE: u8 = 100;
+    pub const JUNGLE_LOG_TOP: u8 = 101;
+    pub const ACACIA_LOG_SIDE: u8 = 102;
+    pub const ACACIA_LOG_TOP: u8 = 103;
+    pub const BIRCH_LEAVES: u8 = 104;
+    pub const JUNGLE_LEAVES: u8 = 105;
+    pub const ACACIA_LEAVES: u8 = 106;
+    pub const SPRUCE_PLANKS: u8 = 107;
+    pub const BIRCH_PLANKS: u8 = 108;
+    pub const JUNGLE_PLANKS: u8 = 109;
+    pub const ACACIA_PLANKS: u8 = 110;
+    pub const BIRCH_SAPLING: u8 = 111;
+    pub const JUNGLE_SAPLING: u8 = 112;
+    pub const ACACIA_SAPLING: u8 = 113;
+    pub const RED_SAND: u8 = 114;
     /// Plain terracotta, then the six dyed colours (see `Block::TERRACOTTA`).
-    pub const TERRACOTTA: u8 = 179;
-    pub const CLAY: u8 = 186;
-    pub const SUGAR_CANE: u8 = 187;
-    pub const PUMPKIN_SIDE: u8 = 188;
-    pub const PUMPKIN_TOP: u8 = 189;
-    pub const MELON_SIDE: u8 = 190;
-    pub const MELON_TOP: u8 = 191;
-    pub const FERN: u8 = 192;
-    pub const BLUE_ORCHID: u8 = 193;
-    pub const ICE: u8 = 194;
+    pub const TERRACOTTA: u8 = 115;
+    pub const CLAY: u8 = 122;
+    pub const SUGAR_CANE: u8 = 123;
+    pub const PUMPKIN_SIDE: u8 = 124;
+    pub const PUMPKIN_TOP: u8 = 125;
+    pub const MELON_SIDE: u8 = 126;
+    pub const MELON_TOP: u8 = 127;
+    pub const FERN: u8 = 128;
+    pub const BLUE_ORCHID: u8 = 129;
+    pub const ICE: u8 = 130;
     /// Biome-coloured copies of [`FOLIAGE`] textures: for each foliage
     /// group from 1 (see `terrain::Biome::foliage`), one layer per entry.
-    pub const FOLIAGE_0: u8 = 195;
+    pub const FOLIAGE_0: u8 = 131;
     pub const FOLIAGE: [u8; 5] = [GRASS_TOP, GRASS_SIDE, LEAVES, TALL_GRASS, FERN];
     pub const FOLIAGE_GROUPS: u8 = 5;
-    /// More item icons, once the first `ITEM_COUNT` are used up.
-    pub const ITEM_MORE_0: u8 = FOLIAGE_0 + (FOLIAGE_GROUPS - 1) * FOLIAGE.len() as u8;
-    pub const ITEM_MORE_COUNT: u8 = 32;
-    pub const END_STONE: u8 = ITEM_MORE_0 + ITEM_MORE_COUNT;
+    pub const END_STONE: u8 = FOLIAGE_0 + (FOLIAGE_GROUPS - 1) * FOLIAGE.len() as u8;
     pub const SPAWNER: u8 = END_STONE + 1;
     /// Nether wart's three looks: ages 0-1, age 2 and ripe (age 3).
     pub const NETHER_WART_0: u8 = SPAWNER + 1;
@@ -174,20 +167,18 @@ pub mod tex {
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
-    /// Texture layer of item icon `index` (see `item::sprite_for_layer`).
-    pub const fn item_layer(index: u8) -> u8 {
-        if index < ITEM_COUNT { ITEM_0 + index } else { ITEM_MORE_0 + index - ITEM_COUNT }
+    /// Item icons live in a texture array of their own (see
+    /// `item::sprite_for_layer`); renderers address icon `index` as layer
+    /// `ITEM_BASE + index`, after every block layer.
+    pub const ITEM_BASE: u16 = 256;
+
+    pub const fn item_layer(index: u16) -> u16 {
+        ITEM_BASE + index
     }
 
     /// The item icon index drawn on `layer`, if it holds one.
-    pub fn item_index(layer: u8) -> Option<u8> {
-        if (ITEM_0..ITEM_0 + ITEM_COUNT).contains(&layer) {
-            Some(layer - ITEM_0)
-        } else if (ITEM_MORE_0..ITEM_MORE_0 + ITEM_MORE_COUNT).contains(&layer) {
-            Some(layer - ITEM_MORE_0 + ITEM_COUNT)
-        } else {
-            None
-        }
+    pub fn item_index(layer: u16) -> Option<u16> {
+        layer.checked_sub(ITEM_BASE)
     }
 
     /// The layer to draw `layer` with in a column of foliage `group`:
@@ -1320,11 +1311,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn end_stone_is_not_an_item_icon() {
-        for index in 0..tex::ITEM_COUNT + tex::ITEM_MORE_COUNT {
+    fn block_layers_are_not_item_icons() {
+        for index in 0..300 {
             assert_eq!(tex::item_index(tex::item_layer(index)), Some(index));
         }
-        assert_eq!(tex::item_index(tex::END_STONE), None);
+        for layer in 0..tex::COUNT as u16 {
+            assert_eq!(tex::item_index(layer), None);
+        }
     }
 
     #[test]
@@ -1466,7 +1459,7 @@ mod tests {
         // Only grass and oak leaves change colour.
         assert_eq!(tex::tinted(tex::STONE, 3), tex::STONE);
         assert_eq!(tex::tinted(tex::SPRUCE_LEAVES, 4), tex::SPRUCE_LEAVES);
-        assert_eq!(tex::untinted(tex::ITEM_0), None);
+        assert_eq!(tex::untinted(tex::END_STONE), None);
     }
 
     #[test]

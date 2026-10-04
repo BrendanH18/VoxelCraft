@@ -49,13 +49,13 @@ const ARM_PIVOT: Vec3 = Vec3::new(-5.0, 2.0, 0.0);
 /// Which pixels of each flat icon are solid, by texture layer (one bit per
 /// pixel, a row per entry), cached as icons come into the hand.
 #[derive(Default)]
-pub(super) struct SpriteMasks(FxHashMap<u8, [u16; 16]>);
+pub(super) struct SpriteMasks(FxHashMap<u16, [u16; 16]>);
 
 impl SpriteMasks {
-    fn get(&mut self, layer: u8) -> [u16; 16] {
+    fn get(&mut self, layer: u16) -> [u16; 16] {
         *self.0.entry(layer).or_insert_with(|| {
             std::array::from_fn(|y| {
-                (0..16).fold(0u16, |row, x| row | ((super::textures::pixel(layer, x, y)[3] >= 128) as u16) << x)
+                (0..16).fold(0u16, |row, x| row | ((super::textures::texel(layer, x, y)[3] >= 128) as u16) << x)
             })
         })
     }
@@ -97,7 +97,7 @@ struct Builder<'a> {
 
 impl Builder<'_> {
     /// One quad; `corners` in the view frame, counter-clockwise from outside.
-    fn quad(&mut self, corners: [Vec3; 4], uv: [[f32; 2]; 4], layer: u8) {
+    fn quad(&mut self, corners: [Vec3; 4], uv: [[f32; 2]; 4], layer: u16) {
         let n = (corners[1] - corners[0]).cross(corners[2] - corners[0]);
         let s = shade(n);
         for i in [0, 1, 2, 2, 3, 0] {
@@ -134,13 +134,13 @@ impl Builder<'_> {
                 1 => [p.x, p.z],
                 _ => [p.x, 1.0 - p.y],
             });
-            self.quad(c.map(|p| m.transform_point3(p)), uv, layer);
+            self.quad(c.map(|p| m.transform_point3(p)), uv, layer.into());
         }
     }
 
     /// A flat icon extruded 1/16 deep: front and back faces, plus a strip
     /// along every pixel edge between solid and clear.
-    fn sprite(&mut self, m: Mat4, layer: u8, mask: [u16; 16]) {
+    fn sprite(&mut self, m: Mat4, layer: u16, mask: [u16; 16]) {
         let solid = |x: i32, y: i32| (0..16).contains(&x) && (0..16).contains(&y) && mask[y as usize] >> x & 1 == 1;
         let p = |x: f32, y: f32, z: f32| m.transform_point3(Vec3::new(x / 16.0, 1.0 - y / 16.0, z / 16.0));
         let full = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
@@ -255,8 +255,8 @@ pub(super) fn vertices(
         None => {
             // Flat items: Minecraft's first-person "handheld" transform.
             let layer = match item.block() {
-                Some(block) => block.info().tex[0],
-                None => item.icon_layer().unwrap_or(tex::ITEM_0),
+                Some(block) => block.info().tex[0].into(),
+                None => item.icon_layer().unwrap_or(tex::ITEM_BASE),
             };
             // Mirrored front to back, so the icon's right (a sword's tip)
             // points away from the eye and the handle sits in the hand.

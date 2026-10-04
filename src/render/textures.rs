@@ -634,10 +634,6 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
         }
         l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES).contains(&l) => crack(l - tex::CRACK_0, x, y),
         l if let Some((base, group)) = tex::untinted(l) => tint_foliage(pixel(base, x, y), group),
-        l if let Some(index) = tex::item_index(l) => match crate::item::sprite_for_layer(index) {
-            Some(sprite) => super::item_sprites::pixel(sprite, x, y),
-            None => [0, 0, 0, 0],
-        },
         _ => {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
@@ -823,15 +819,34 @@ fn crack(stage: u8, x: usize, y: usize) -> Rgba {
     if (order[y * SIZE + x] as u32) < visible_steps { [40, 40, 40, 255] } else { [NEUTRAL, NEUTRAL, NEUTRAL, 255] }
 }
 
-/// Returns RGBA8 data for every mip level; each level contains all layers
-/// back to back, ready for `write_texture`.
+/// A pixel of any layer a renderer can name: block layers below
+/// `tex::ITEM_BASE`, item icons from it on.
+pub fn texel(layer: u16, x: usize, y: usize) -> Rgba {
+    match tex::item_index(layer) {
+        Some(index) => {
+            crate::item::sprite_for_layer(index).map_or([0, 0, 0, 0], |s| super::item_sprites::pixel(s, x, y))
+        }
+        None => pixel(layer as u8, x, y),
+    }
+}
+
+/// RGBA8 data for every mip level of the block texture array; each level
+/// contains all layers back to back, ready for `write_texture`.
 pub fn generate_mips() -> Vec<Vec<u8>> {
-    let layers = tex::COUNT as usize;
+    mips_of(tex::COUNT as usize, |l, x, y| pixel(l as u8, x, y))
+}
+
+/// Mip levels of the item icon array (see [`generate_mips`]).
+pub fn generate_item_mips() -> Vec<Vec<u8>> {
+    mips_of(crate::item::icon_count() as usize, |l, x, y| texel(tex::item_layer(l as u16), x, y))
+}
+
+fn mips_of(layers: usize, pixel: impl Fn(usize, usize, usize) -> Rgba) -> Vec<Vec<u8>> {
     let mut level: Vec<Rgba> = Vec::with_capacity(SIZE * SIZE * layers);
     for l in 0..layers {
         for y in 0..SIZE {
             for x in 0..SIZE {
-                level.push(pixel(l as u8, x, y));
+                level.push(pixel(l, x, y));
             }
         }
     }

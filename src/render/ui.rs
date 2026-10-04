@@ -118,10 +118,10 @@ impl Ui {
         self.quad([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], [[0.0; 2]; 4], SOLID, color);
     }
 
-    /// Square HUD icon (heart, bubble, ...) from a block texture layer.
-    pub fn icon(&mut self, x: f32, y: f32, size: f32, layer: u8, color: Color) {
+    /// Square HUD icon (heart, bubble, ...) from a block texture or item icon layer.
+    pub fn icon(&mut self, x: f32, y: f32, size: f32, layer: impl Into<u16>, color: Color) {
         let uv = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
-        self.quad([[x, y], [x + size, y], [x + size, y + size], [x, y + size]], uv, layer as f32, color);
+        self.quad([[x, y], [x + size, y], [x + size, y + size], [x, y + size]], uv, layer.into() as f32, color);
     }
 
     /// Isometric block icon filling a `size` square: a cube, a lowered one

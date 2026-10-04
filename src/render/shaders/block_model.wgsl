@@ -16,6 +16,8 @@ struct Globals {
 @group(0) @binding(0) var<uniform> g: Globals;
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;
+// Item icons, addressed as layers from 256 on (see `tex::ITEM_BASE`).
+@group(1) @binding(2) var items: texture_2d_array<f32>;
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
@@ -90,7 +92,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         face_normal = area_normal * inverseSqrt(length_sq);
     }
     let normal = select(face_normal, -face_normal, dot(face_normal, -in.rel) < 0.0);
-    let tex = textureSample(blocks, blocks_sampler, in.uv, in.layer);
+    // Both arrays are sampled so derivatives stay in uniform control flow.
+    let block = textureSample(blocks, blocks_sampler, in.uv, min(in.layer, 255u));
+    let icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 256u) - 256u);
+    let tex = select(block, icon, in.layer >= 256u);
     if tex.a < 0.5 {
         discard;
     }

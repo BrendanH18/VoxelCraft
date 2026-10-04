@@ -27,7 +27,7 @@ pub struct BlockModel {
     pub yaw: f32,
     /// Draw this texture layer as a flat, upright square (an item icon)
     /// instead of the block.
-    pub icon: Option<u8>,
+    pub icon: Option<u16>,
 }
 
 #[repr(C)]
@@ -58,7 +58,7 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
             min + Vec3::new(x * cos - z * sin + 0.5, c.y, x * sin + z * cos + 0.5) * s
         };
         // UVs as in `chunk.wgsl`: sides map (horizontal, down), tops map (x, z).
-        let mut quad = |corners: [Vec3; 4], layer: u8, shade: f32, axis: usize| {
+        let mut quad = |corners: [Vec3; 4], layer: u16, shade: f32, axis: usize| {
             for i in [0, 1, 2, 2, 3, 0] {
                 let c = corners[i];
                 let uv = match axis {
@@ -82,8 +82,8 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
         if m.block.kind() == RenderKind::Cross {
             // Both diagonal planes run 0 -> 1 in z, so z works as u.
             let v = |x: f32, y: f32, z: f32| Vec3::new(x, y, z);
-            quad([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], tex[0], 0.9, 0);
-            quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0], 0.9, 0);
+            quad([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], tex[0].into(), 0.9, 0);
+            quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0].into(), 0.9, 0);
             continue;
         }
         let mut boxes = shape::item_shape(m.block);
@@ -109,7 +109,7 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
                 } else {
                     [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
                 };
-                quad(c, layer, shade, d);
+                quad(c, layer.into(), shade, d);
             }
         }
     }
@@ -249,12 +249,12 @@ mod tests {
             yaw: 0.0,
             icon: None,
         };
-        let icon = BlockModel { icon: Some(crate::world::block::tex::ITEM_0), yaw: 1.0, ..at(Block::AIR) };
+        let icon = BlockModel { icon: Some(crate::world::block::tex::ITEM_BASE), yaw: 1.0, ..at(Block::AIR) };
         let v = vertices(&[at(Block::SAND), at(Block::POPPY), icon], DVec3::new(10.0, 64.0, 5.0));
         assert_eq!(v.len(), 36 + 12 + 6);
         // Camera-relative and within the unit cube (a turned icon too).
         assert!(v.iter().all(|v| v.pos.iter().all(|&c| (-1e-6..=1.0 + 1e-6).contains(&c))));
         assert_eq!(v[36].layer, crate::world::block::tex::POPPY as u32);
-        assert_eq!(v[48].layer, crate::world::block::tex::ITEM_0 as u32);
+        assert_eq!(v[48].layer, crate::world::block::tex::ITEM_BASE as u32);
     }
 }

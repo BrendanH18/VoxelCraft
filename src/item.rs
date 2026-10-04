@@ -427,8 +427,9 @@ impl Item {
         }
     }
 
-    /// Texture layer of the flat inventory icon (non-block items only).
-    pub fn icon_layer(self) -> Option<u8> {
+    /// Texture layer of the flat inventory icon (non-block items only), in
+    /// the item icon range from `tex::ITEM_BASE`.
+    pub fn icon_layer(self) -> Option<u16> {
         sprite_index(self).map(tex::item_layer)
     }
 
@@ -473,17 +474,22 @@ impl From<Block> for Item {
 }
 
 /// Index of an item's icon among the item texture layers.
-fn sprite_index(item: Item) -> Option<u8> {
+fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some((i - FIRST_ITEM) as u8),
-        i if item.as_tool().is_some() || item.as_armor().is_some() => Some((materials + i - FIRST_TOOL) as u8),
+        i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some(i - FIRST_ITEM),
+        i if item.as_tool().is_some() || item.as_armor().is_some() => Some(materials + i - FIRST_TOOL),
         _ => None,
     }
 }
 
+/// How many item icons there are (layers of the item texture array).
+pub fn icon_count() -> u32 {
+    Item::all_items().count() as u32
+}
+
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).
-pub fn sprite_for_layer(index: u8) -> Option<Sprite> {
+pub fn sprite_for_layer(index: u16) -> Option<Sprite> {
     Item::all_items().nth(index as usize).map(|i| i.info().sprite)
 }
 
@@ -559,10 +565,12 @@ mod tests {
     #[test]
     fn icon_layers_fit_the_texture_array() {
         for i in Item::all_items() {
-            let layer = i.icon_layer().unwrap();
-            assert!((layer as u32) < tex::COUNT);
-            assert_eq!(sprite_for_layer(tex::item_index(layer).unwrap()), Some(i.info().sprite));
+            let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
+            assert!((index as u32) < icon_count());
+            assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
         }
+        // Icons stay addressable by the UI's and models' 16-bit layers.
+        assert!(tex::ITEM_BASE as u32 + icon_count() <= u16::MAX as u32);
         assert_eq!(Item::from(Block::STONE).icon_layer(), None);
     }
 

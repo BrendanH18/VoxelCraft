@@ -148,7 +148,7 @@ src/
     entity.rs        entity pass (one dynamic vertex buffer per frame)
     block_model.rs   free-standing textured blocks (falling sand, dropped items)
     hand.rs          first-person hand and held item (Minecraft's transforms)
-    item_sprites.rs  procedural item icons
+    item_sprites.rs  procedural item icons (their own texture array, layers 256+)
     ui.rs            HUD geometry: rects, bitmap text, block icons
     textures.rs      procedural block textures
     shaders/         WGSL

@@ -15,6 +15,8 @@ struct Globals {
 @group(0) @binding(0) var<uniform> g: Globals;
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;
+// Item icons, addressed as layers from 256 on (see `tex::ITEM_BASE`).
+@group(1) @binding(2) var items: texture_2d_array<f32>;
 @group(2) @binding(0) var font: texture_2d<f32>;
 
 @vertex
@@ -71,7 +73,8 @@ fn vs_ui(
 
 @fragment
 fn fs_ui(in: UiOut) -> @location(0) vec4<f32> {
-    // layer -2: font glyph, -1: flat colour, >= 0: tinted block texture.
+    // layer -2: font glyph, -1: flat colour, >= 0: tinted block texture,
+    // >= 256: tinted item icon.
     if in.layer < -1.5 {
         let coverage = textureSampleLevel(font, blocks_sampler, in.uv, 0.0).r;
         return vec4<f32>(in.color.rgb, in.color.a * coverage);
@@ -79,6 +82,9 @@ fn fs_ui(in: UiOut) -> @location(0) vec4<f32> {
     if in.layer < 0.0 {
         return in.color;
     }
-    let tex = textureSampleLevel(blocks, blocks_sampler, in.uv, i32(in.layer + 0.5), 0.0);
-    return tex * in.color;
+    let layer = i32(in.layer + 0.5);
+    if layer >= 256 {
+        return textureSampleLevel(items, blocks_sampler, in.uv, layer - 256, 0.0) * in.color;
+    }
+    return textureSampleLevel(blocks, blocks_sampler, in.uv, layer, 0.0) * in.color;
 }
