@@ -280,7 +280,7 @@ impl Game {
                 }
             }
         }
-        if let Some(t) = pad.sleeping {
+        if let Some(t) = a.sleeping {
             // Falling asleep fades the view out, then waits for everyone.
             let k = (t / super::bed::SLEEP_TIME).min(1.0);
             ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.02, 0.97 * k]);
@@ -288,7 +288,7 @@ impl Game {
             if k >= 1.0 && asleep < players {
                 let msg = format!("{asleep}/{players} players sleeping");
                 ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), (sh / 2.0 - 10.0).floor(), &msg, WHITE);
-                let hint = "Press A to leave the bed";
+                let hint = if self.pads.seated(name) { "Press A to leave the bed" } else { "Waiting for others" };
                 ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), (sh / 2.0 + 4.0).floor(), hint, WHITE);
             }
         }

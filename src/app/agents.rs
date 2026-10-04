@@ -1,7 +1,7 @@
 //! Embedded agent hosting in the desktop world. Gameplay mutations stay on the game thread.
 use super::Game;
 use crossbeam_channel::Sender;
-use glam::DVec3;
+use glam::{DVec3, IVec3};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use voxelcraft::{
@@ -61,7 +61,7 @@ impl Agents {
         self.players.values().filter(|b| b.active).map(|b| b.agent.player.pos).collect()
     }
     pub fn serialize(&self, dimension: &str) -> String {
-        let profiles: Vec<_>=self.players.iter().map(|(name,b)|json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"inventory":b.agent.inventory.serialize(),"dimension":dimension})).collect();
+        let profiles: Vec<_>=self.players.iter().map(|(name,b)|json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"inventory":b.agent.inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})).collect();
         json!(profiles).to_string()
     }
     pub fn restore(&mut self, text: &str, dimension: &str, spawn: DVec3) {
@@ -85,6 +85,10 @@ impl Agents {
             agent.creative = p["creative"] == true;
             agent.player.can_fly = agent.creative;
             agent.player.flying = agent.creative && p["flying"] == true;
+            agent.spawn_bed = p["bed"]
+                .as_array()
+                .filter(|v| v.len() == 3)
+                .and_then(|v| Some(IVec3::new(v[0].as_i64()? as i32, v[1].as_i64()? as i32, v[2].as_i64()? as i32)));
             agent.selected = p["selected"].as_u64().filter(|n| *n < 9).unwrap_or(0) as usize;
             agent.player.yaw = p["yaw"].as_f64().unwrap_or(0.0) as f32;
             agent.player.pitch = p["pitch"].as_f64().unwrap_or(0.0) as f32;
@@ -117,6 +121,17 @@ impl Agents {
             self.insert(name, agent);
         }
     }
+
+    /// Controller players' beds from saves before beds moved onto profiles:
+    /// `profile=x,y,z` pairs separated by `;`.
+    pub fn restore_pad_beds(&mut self, text: &str) {
+        for (name, pos) in text.split(';').filter_map(|p| p.split_once('=')) {
+            let v: Vec<i32> = pos.split(',').filter_map(|n| n.parse().ok()).collect();
+            if let (&[x, y, z], Some(bot)) = (&v[..], self.players.get_mut(name)) {
+                bot.agent.spawn_bed.get_or_insert(IVec3::new(x, y, z));
+            }
+        }
+    }
 }
 
 impl Game {
@@ -147,6 +162,7 @@ impl Game {
                     }
                     self.agents.insert(req.player.clone(), Agent::new(self.player.pos + DVec3::new(2.0, 0.0, 0.0)));
                 }
+                let sleep = matches!(command, Command::Sleep);
                 let active = self.agents.players.values().filter(|b| b.active).count();
                 let mut bot = self.agents.players.remove(&req.player).unwrap();
                 let result = (|| {
@@ -180,7 +196,14 @@ impl Game {
                                 let _ = reply.send(json!({"ok":false,"error":"player left"}));
                             }
                             bot.agent.remaining = 0;
+                            bot.agent.sleeping = None;
                         }
+                        // Needs the bot back in the world, as a bed in the
+                        // Nether explodes on everyone nearby.
+                        Command::Sleep if bot.agent.vitals.is_dead() => {
+                            return Err("player is dead; respawn first".into());
+                        }
+                        Command::Sleep => {}
                         Command::Time(t) => self.day_time = t,
                         Command::Weather(r) => self.weather.set(r, true),
                         _ => {
@@ -197,6 +220,10 @@ impl Game {
                     }
                 })();
                 self.agents.players.insert(req.player.clone(), bot);
+                if sleep && result.is_ok() {
+                    self.agent_sleep(&req.player)?;
+                    return Ok(Some(self.agent_response(&self.agents.players[&req.player].agent, 0)));
+                }
                 result
             })();
             match result {
@@ -234,6 +261,7 @@ impl Game {
             bot.agent.player.vel = DVec3::ZERO;
             bot.agent.vitals.reset_fall();
             bot.agent.remaining = 0;
+            bot.agent.sleeping = None;
             if let Some(reply) = bot.reply.take() {
                 let _ = reply.send(json!({"ok":false,"error":"host changed dimension; observe before continuing"}));
             }
@@ -252,6 +280,7 @@ mod tests {
         agent.inventory.add(crate::item::Item::DIAMOND, 3);
         agent.creative = true;
         agent.selected = 2;
+        agent.spawn_bed = Some(IVec3::new(4, 70, -2));
         agent.player.flying = true;
         agent.vitals.hunger = crate::simulation::survival::Hunger::restore(8.0, 2.0, 1.0);
         agents.insert("builder".into(), agent);
@@ -267,9 +296,20 @@ mod tests {
         assert_eq!(bot.agent.player.pos, DVec3::new(300.0, 100.0, -250.0));
         assert_eq!(bot.agent.inventory.get(0).unwrap().count, 3);
         assert_eq!(bot.agent.vitals.hunger.food, 8.0);
+        assert_eq!(bot.agent.spawn_bed, Some(IVec3::new(4, 70, -2)));
         restored.restore(&text, "nether", spawn);
         assert_eq!(restored.players["builder"].agent.player.pos, spawn);
         assert_eq!(restored.players["builder"].id, PlayerId(1));
+    }
+
+    #[test]
+    fn old_controller_beds_move_onto_profiles() {
+        let mut agents = Agents::default();
+        agents.restore(r#"[{"name":"Player2"},{"name":"Player3","bed":[9,9,9]}]"#, "overworld", DVec3::ZERO);
+        agents.restore_pad_beds("Player2=1,-2,3;Player3=4,5,6;Ghost=7,8,9;Player4=a,b,c");
+        assert_eq!(agents.players["Player2"].agent.spawn_bed, Some(IVec3::new(1, -2, 3)));
+        assert_eq!(agents.players["Player3"].agent.spawn_bed, Some(IVec3::new(9, 9, 9)), "newer bed wins");
+        assert_eq!(agents.players.len(), 2);
     }
 
     #[test]

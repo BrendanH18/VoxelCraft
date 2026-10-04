@@ -223,11 +223,29 @@ fn muffle_removes_highs() {
     let buf: Vec<f32> = (0..96_000).map(|i| if i % 2 == 0 { 0.3 } else { -0.3 }).collect();
     let (mut mixer, tx) = test_mixer(buf);
     tx.send(play(1.0, None)).unwrap();
-    tx.send(Command::Muffle(true)).unwrap();
+    tx.send(Command::Muffle(1.0)).unwrap();
     let mut out = vec![0.0; 2 * 48_000];
     mixer.render(&mut out, 2);
     let tail = &out[out.len() - 2000..];
     assert!(tail.iter().all(|s| s.abs() < 0.01), "high tone muffled");
+}
+
+#[test]
+fn partial_muffle_keeps_more_highs() {
+    // One of two split-screen players underwater muffles the mix halfway.
+    let tone = |muffle: f32| {
+        let buf: Vec<f32> =
+            (0..96_000).map(|i| 0.3 * (i as f32 * 2000.0 * std::f32::consts::TAU / 48_000.0).sin()).collect();
+        let (mut mixer, tx) = test_mixer(buf);
+        tx.send(play(1.0, None)).unwrap();
+        tx.send(Command::Muffle(muffle)).unwrap();
+        let mut out = vec![0.0; 2 * 48_000];
+        mixer.render(&mut out, 2);
+        let tail = &out[out.len() - 4000..];
+        (tail.iter().map(|s| s * s).sum::<f32>() / tail.len() as f32).sqrt()
+    };
+    let (half, full) = (tone(0.5), tone(1.0));
+    assert!(half > 2.0 * full, "half {half} vs full {full}");
 }
 
 #[test]
@@ -280,7 +298,7 @@ fn mixer_is_cheap() {
     let (tx, rx) = crossbeam_channel::bounded(1024);
     let mut mixer = Mixer::new(bank(), rx, RATE, 1.0);
     tx.send(Command::Ambience { wind: 1.0, cave: 1.0, rain: 1.0 }).unwrap();
-    tx.send(Command::Muffle(true)).unwrap();
+    tx.send(Command::Muffle(1.0)).unwrap();
     let mut out = vec![0.0; 2 * 512];
     let start = std::time::Instant::now();
     for block in 0..94 {

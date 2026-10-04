@@ -44,13 +44,15 @@ pub struct Audio {
     // Player-state tracking for footsteps, landings, jumps and water.
     was_on_ground: bool,
     was_in_water: bool,
-    was_underwater: bool,
+    /// Last muffle sent: the share of listeners with their head underwater.
+    muffle: f32,
     prev_vel_y: f64,
     stride: f64,
     swim: f64,
     ground: Material,
     ambience_timer: f64,
-    cave: f32,
+    /// Eyes of the listeners deep in caves, where drips play.
+    caves: Vec<DVec3>,
     drip_timer: f64,
     hit_timer: f64,
 }
@@ -98,13 +100,13 @@ impl Audio {
             rng: Rng::new(seed),
             was_on_ground: true,
             was_in_water: false,
-            was_underwater: false,
+            muffle: 0.0,
             prev_vel_y: 0.0,
             stride: 0.0,
             swim: 0.0,
             ground: Material::Grass,
             ambience_timer: 0.0,
-            cave: 0.0,
+            caves: Vec::new(),
             drip_timer: 5.0,
             hit_timer: 0.0,
         }
@@ -156,8 +158,8 @@ impl Audio {
     /// Fades out the world's ambience and lifts underwater muffling (back
     /// to the title screen).
     pub fn leave_world(&mut self) {
-        self.was_underwater = false;
-        self.send(Command::Muffle(false));
+        self.muffle = 0.0;
+        self.send(Command::Muffle(0.0));
         self.send(Command::Ambience { wind: 0.0, cave: 0.0, rain: 0.0 });
     }
 
@@ -203,34 +205,36 @@ impl Audio {
         }
     }
 
-    /// Split-screen players' eyes and yaws: sounds near any of them are
-    /// heard as if by the nearest (beyond the first few are ignored).
-    pub fn set_others(&mut self, ears: &[(DVec3, f32)]) {
-        let mut out = [[0.0; 4]; mixer::MAX_OTHERS];
-        for (o, (eye, yaw)) in out.iter_mut().zip(ears) {
-            let p = eye.as_vec3();
-            *o = [p.x, p.y, p.z, *yaw];
-        }
-        let count = ears.len().min(mixer::MAX_OTHERS) as u8;
-        self.send(Command::Others { count, ears: out });
-    }
-
     /// Per-frame update from the player's state: listener position,
     /// footsteps, jumps, landings, water entry, underwater muffling and
-    /// ambience.
-    /// `rain` is how hard it's raining where the player stands (0..1).
-    pub fn update(&mut self, player: &Player, world: &World, rain: f32, dt: f64) {
+    /// ambience. `rain` is how hard it's raining where the player stands
+    /// (0..1). `others` are the split-screen players and the rain at each:
+    /// sounds near any of them are heard as if by the nearest ear (beyond the
+    /// first few are ignored), and they share the speakers' ambience and
+    /// muffling.
+    pub fn update(&mut self, player: &Player, world: &World, rain: f32, others: &[(&Player, f32)], dt: f64) {
         if self.tx.is_none() {
             return;
         }
         let eye = player.eye();
         let pos = eye.as_vec3().to_array();
         self.send(Command::Listener { pos, yaw: player.yaw });
+        let mut ears = [[0.0; 4]; mixer::MAX_OTHERS];
+        for (o, (p, _)) in ears.iter_mut().zip(others) {
+            let e = p.eye().as_vec3();
+            *o = [e.x, e.y, e.z, p.yaw];
+        }
+        let count = others.len().min(mixer::MAX_OTHERS) as u8;
+        self.send(Command::Others { count, ears });
 
-        let underwater = player.head_in_water(world);
-        if underwater != self.was_underwater {
-            self.was_underwater = underwater;
-            self.send(Command::Muffle(underwater));
+        let listeners = || std::iter::once((player, rain)).chain(others.iter().copied());
+        // Fully muffled only when everyone is underwater, so one diver
+        // doesn't deafen the others.
+        let wet = listeners().filter(|(p, _)| p.head_in_water(world)).count();
+        let muffle = wet as f32 / (1 + others.len()) as f32;
+        if muffle != self.muffle {
+            self.muffle = muffle;
+            self.send(Command::Muffle(muffle));
         }
 
         let speed = player.vel.x.hypot(player.vel.z);
@@ -289,29 +293,41 @@ impl Audio {
         self.was_in_water = player.in_water;
         self.prev_vel_y = player.vel.y;
 
-        // Ambience: re-evaluated twice a second, faded by the mixer.
+        // Ambience: re-evaluated twice a second, faded by the mixer. Each
+        // loop plays at the loudest level any listener would hear.
         self.ambience_timer -= dt;
         if self.ambience_timer <= 0.0 {
             self.ambience_timer = 0.5;
-            let (wind, cave, covered) = ambience(eye, world);
-            self.cave = cave;
-            let wind = if underwater { wind * 0.3 } else { wind };
-            // Rain drums on the roof when sheltered and fades out deep underground.
-            let rain = rain
-                * (1.0 - cave)
-                * if underwater {
-                    0.2
-                } else if covered {
-                    0.4
-                } else {
-                    1.0
-                };
+            self.caves.clear();
+            let (mut wind, mut cave, mut rain) = (0.0f32, 0.0f32, 0.0f32);
+            for (p, rain_here) in listeners() {
+                let eye = p.eye();
+                let underwater = p.head_in_water(world);
+                let (w, c, covered) = ambience(eye, world);
+                if c > 0.5 {
+                    self.caves.push(eye);
+                }
+                wind = wind.max(if underwater { w * 0.3 } else { w });
+                cave = cave.max(c);
+                // Rain drums on the roof when sheltered and fades out deep underground.
+                let r = rain_here
+                    * (1.0 - c)
+                    * if underwater {
+                        0.2
+                    } else if covered {
+                        0.4
+                    } else {
+                        1.0
+                    };
+                rain = rain.max(r);
+            }
             self.send(Command::Ambience { wind, cave, rain });
         }
-        if self.cave > 0.5 {
+        if !self.caves.is_empty() {
             self.drip_timer -= dt;
             if self.drip_timer <= 0.0 {
                 self.drip_timer = self.rng.range(4.0, 14.0) as f64;
+                let eye = self.caves[self.rng.next_u32() as usize % self.caves.len()];
                 let off = DVec3::new(
                     self.rng.range(-8.0, 8.0) as f64,
                     self.rng.range(1.0, 5.0) as f64,
