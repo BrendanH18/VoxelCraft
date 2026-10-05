@@ -746,6 +746,7 @@ impl Block {
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
         match self.material() {
+            Block::COBWEB => 4.0,
             b if b.kind() == RenderKind::Cross => 0.0,
             Block::TNT => 0.0,
             b if b.is_leaves() => 0.2,
@@ -758,7 +759,6 @@ impl Block {
             Block::STONE_BRICKS | Block::MOSSY_STONE_BRICKS | Block::CRACKED_STONE_BRICKS => 1.5,
             Block::IRON_BARS => 5.0,
             Block::BOOKSHELF => 1.5,
-            Block::COBWEB => 4.0,
             Block::END_PORTAL_FRAME | Block::END_PORTAL => f32::INFINITY,
             Block::QUARTZ_ORE | Block::END_STONE => 3.0,
             Block::NETHER_PORTAL => f32::INFINITY,
@@ -977,8 +977,8 @@ impl Block {
             Block::LIT_FURNACE => 13,
             Block::NETHER_PORTAL => 11,
             Block::END_PORTAL => 15,
-            // Java: frames with an eye glow faintly.
-            b if b.0 >= 204 && b.0 <= 207 => 1,
+            // Java: all frame states glow faintly, with or without an eye.
+            Block::END_PORTAL_FRAME => 1,
             b if b.is_lava() => 15,
             b if b.is_fire() => 15,
             _ => 0,
@@ -1443,11 +1443,16 @@ mod tests {
         let sword = Some(Item::tool(ToolKind::Sword, Tier::Wood));
         assert!(crate::mining::can_harvest(Block::COBWEB, sword) && !crate::mining::can_harvest(Block::COBWEB, None));
         assert_eq!(Block::COBWEB.drop(), Some(Item::STRING));
-        assert!(crate::mining::break_time(Block::COBWEB, sword) < 0.5);
+        assert_eq!(Block::COBWEB.hardness(), 4.0);
+        assert_eq!(crate::mining::break_time(Block::COBWEB, sword), 0.4);
+        assert_eq!(crate::mining::break_time(Block::COBWEB, None), 20.0);
         assert!(!Block::COBWEB.is_solid());
         let eyed = Block(204);
         assert_eq!(eyed.with_facing(Facing::East), Block(206), "turning keeps the eye");
         assert_eq!(Block(201).base(), Block::END_PORTAL_FRAME);
+        for id in 200..=207 {
+            assert_eq!(Block(id).emission(), 1);
+        }
         assert_eq!(Block::END_PORTAL_FRAME.hardness(), f32::INFINITY);
         assert!(!Block::END_PORTAL.is_solid() && Block::END_PORTAL.emission() == 15);
         assert_eq!(Block::slab_of(Block::STONE_BRICKS), Some(Block::STONE_BRICK_SLAB));

@@ -603,7 +603,8 @@ impl Game {
             vitals.effects = crate::simulation::effects::Effects::deserialize(text);
         }
         for &(effect, secs, amp) in &args.effects {
-            vitals.apply_effect(effect, amp, secs.saturating_mul(20).max(1));
+            let damage = vitals.apply_effect(effect, amp, secs.saturating_mul(20).max(1));
+            vitals.damage(damage, survival::CAUSE_MAGIC, mode == GameMode::Creative);
         }
         if let Some(level) = args.xp {
             let total = (0..level.min(1000)).map(crate::simulation::experience::points_to_next).sum();
@@ -1291,12 +1292,12 @@ impl Game {
             return;
         }
         if let Some(potion) = potion {
-            let damage = potion.drink(&mut self.vitals);
-            self.damage_player(damage, survival::CAUSE_MAGIC);
             // Creative keeps the potion; survival is left with the bottle.
             if self.mode == GameMode::Survival {
                 self.inventory.slots[self.actions.selected] = Some(crate::inventory::Stack::new(Item::GLASS_BOTTLE, 1));
             }
+            let damage = potion.drink(&mut self.vitals);
+            self.damage_player(damage, survival::CAUSE_MAGIC);
         } else if let Some((hunger, saturation)) = food {
             let effect = self.held_item().and_then(Item::food_effect);
             self.inventory.take_one(self.actions.selected);
@@ -1357,6 +1358,7 @@ impl Game {
             Some(b)
                 if self.puppet
                     && (b == Block::CRAFTING_TABLE
+                        || b == Block::BREWING_STAND
                         || b.is_bed()
                         || crate::world::furnace::is_furnace(b)
                         || crate::world::chest::is_chest(b)) =>

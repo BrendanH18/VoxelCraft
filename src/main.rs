@@ -362,12 +362,14 @@ impl Args {
         self.weather = None;
         self.dimension = None;
         self.place.clear();
+        self.open_block = None;
         self.spawn.clear();
         self.pose = None;
         self.health = None;
         self.air = None;
         self.food = None;
         self.xp = None;
+        self.effects.clear();
         self.orbs.clear();
         self.give.clear();
         self.wear.clear();

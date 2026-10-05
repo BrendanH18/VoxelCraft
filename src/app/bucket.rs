@@ -34,7 +34,7 @@ impl Game {
         self.audio.play(Sound::Swim, Some(pos.as_dvec3()), 0.6, (1.3, 1.5));
         let water = Item::potion(voxelcraft::potion::Potion::WATER);
         let slot = self.actions.selected;
-        if self.inventory.slots[slot].is_some_and(|s| s.count == 1) {
+        if self.mode == GameMode::Survival && self.inventory.slots[slot].is_some_and(|s| s.count == 1) {
             self.inventory.slots[slot] = Some(Stack::new(water, 1));
         } else {
             if self.mode == GameMode::Survival {
