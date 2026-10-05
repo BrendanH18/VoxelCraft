@@ -233,13 +233,14 @@ impl Game {
         false
     }
 
-    /// Whether any part of the player is inside a `portal` block, below
-    /// `top` of the way up its cell.
-    fn in_portal(&self, portal: Block, top: f64) -> bool {
+    /// Whether the player overlaps a `portal` block's slice from `bottom`
+    /// to `top` of the way up its cell.
+    fn in_portal(&self, portal: Block, (bottom, top): (f64, f64)) -> bool {
         let (min, max) = crate::player::SHAPE.aabb(self.player.pos);
         let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
         (lo.y..=hi.y).any(|y| {
             min.y < y as f64 + top
+                && max.y > y as f64 + bottom
                 && (lo.z..=hi.z)
                     .any(|z| (lo.x..=hi.x).any(|x| self.world.get_block(IVec3::new(x, y, z)) == Some(portal)))
         })
@@ -249,8 +250,9 @@ impl Game {
     /// dimension. Falling into an End portal takes you at once: to the End's
     /// obsidian platform, or out of the End to your spawn point.
     pub(super) fn update_portal(&mut self, dt: f64) {
-        // Java's End portal block is 6..12 sixteenths tall.
-        if !self.vitals.is_dead() && self.in_portal(Block::END_PORTAL, 0.75) {
+        // Java's End portal block spans 6..12 sixteenths: coming up from
+        // below takes you only once you reach it.
+        if !self.vitals.is_dead() && self.in_portal(Block::END_PORTAL, (6.0 / 16.0, 0.75)) {
             let (to, arrival) = match self.dimension {
                 Dimension::End => (Dimension::Overworld, Arrival::Respawn),
                 _ => (Dimension::End, Arrival::EndSpawn),
@@ -258,7 +260,10 @@ impl Game {
             self.switch_dimension(to, arrival);
             return;
         }
-        if self.dimension == Dimension::End || !self.in_portal(Block::NETHER_PORTAL, 1.0) || self.vitals.is_dead() {
+        if self.dimension == Dimension::End
+            || !self.in_portal(Block::NETHER_PORTAL, (0.0, 1.0))
+            || self.vitals.is_dead()
+        {
             self.portal_locked = false;
             self.portal_time = (self.portal_time - dt as f32 * 2.0).max(0.0);
             return;

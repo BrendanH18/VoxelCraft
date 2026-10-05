@@ -440,7 +440,8 @@ impl Agent {
                     .map(|(pos, _)| pos)
                     .filter(|&pos| world.get_block(pos).is_some_and(|b| b.base() == Block::END_PORTAL_FRAME));
                 if let Some(pos) = frame {
-                    let opened = world.insert_eye(pos).ok_or("that frame already holds an eye")?;
+                    let opened =
+                        world.insert_eye(pos).ok_or("that frame already holds an eye, or its ring isn't loaded")?;
                     self.emit(Event::FrameFilled(pos, opened));
                 } else {
                     if world.generator.dimension != crate::world::terrain::Dimension::Overworld {
