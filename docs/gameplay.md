@@ -84,6 +84,8 @@ full performance display instead of duplicating the compact counter.
   jumping or falling onto farmland can trample it. Leaves drop their tree's
   sapling (1 in 20, jungle 1 in 40; oak leaves also apples, 1 in 200);
   planted on grass or dirt, saplings grow into trees.
+  Nether wart planted on soul sand ages through 4 stages (1 in 10 random
+  ticks, in any light, ignoring bone meal); ripe wart drops 2-4, unripe 1.
   Sugar cane grows next to water up to 3 blocks tall, and must be planted
   on grass, dirt or sand beside water. Leaves that can't reach a log
   within 6 blocks decay a few seconds after a tree is felled. Grass spreads
@@ -260,6 +262,45 @@ full performance display instead of duplicating the compact counter.
   7 points per level (at most 100) and loses the rest; the death screen
   shows your score. `/xp add|set <n> [points|levels]` and `/xp query`
   change it from the console. Experience and orbs are saved with the world
+- Status effects, as Java has them: speed and slowness (+20% / -15% speed
+  per level), strength and weakness (+3 / -4 melee damage per level),
+  instant health and damage (4 / 6, doubling per level), regeneration and
+  poison (a point every 50 / 25 ticks, halving per level; poison never
+  kills), fire resistance, water breathing, night vision (fades in its last
+  10 seconds), jump boost (higher jumps, a block less fall damage per
+  level) and slow falling (an eighth of the gravity, no fall damage).
+  Icons show in the top right (harmful ones in a second row, blinking in
+  their last 10 seconds) and with name and time beside the inventory.
+  `/effect give <effect> [seconds] [amplifier]` and `/effect clear
+  [effect]` use Java's ids; effects are saved, and death clears them.
+- Potions: three glass in a V make three glass bottles, which fill from a
+  water source (right click; the water stays). Hold right click to drink
+  a potion (1.6 s, like eating, even when full); it applies its effect and
+  leaves the bottle (creative keeps the potion). Java's 36 drinkable types
+  whose effects exist are items, from the water bottle and the mundane,
+  thick and awkward bases to long (extended) and strong (level II)
+  variants with Java's durations; tooltips show the effect, level and
+  time.
+- Strongholds: 128 per world on Java's concentric rings (the first three
+  1280-2816 blocks from the origin), sunk below sea level and built from
+  Java's stronghold pieces: a spiral staircase, corridors, turns,
+  stairways, crossing rooms (pillar, fountain or balcony with a chest),
+  prison cells, five-way crossings, libraries with cobwebs and chests,
+  chest corridors and one portal room, whose twelve End portal frames each
+  hold an eye one time in ten, with a silverfish spawner on its stairs.
+  Walls are randomly cracked or mossy stone bricks.
+- Brewing: a blaze rod over three cobblestone makes a brewing stand.
+  Right click it for Java's screen: blaze powder fuel (one powder brews 20
+  times, shown by the bar), an ingredient slot and three bottle slots. A
+  brew takes 20 seconds and changes every bottle the ingredient works on.
+  Nether wart turns water bottles awkward; sugar, glistering melon slices
+  (a melon slice in eight gold nuggets), spider eyes (one in three spiders
+  drops one; eating it poisons you for 5 s) and blaze powder turn awkward
+  potions into swiftness, healing, poison and strength (water bottles into
+  mundane potions); glowstone dust makes level II potions (or thick
+  potions from water). Sugar comes from sugar cane. Other Java ingredients
+  (redstone, magma cream, ghast tears, golden carrots, rabbit's feet,
+  pufferfish, phantom membranes, fermented spider eyes) don't exist yet.
 - Procedurally generated, mipmapped block textures — the game ships no assets
 - Procedural sound, synthesized in code at startup (~25 ms): material-specific
   break/place/footstep sounds (stone, wood, dirt, grass, gravel, sand, snow,
@@ -284,8 +325,15 @@ part of a frame puts its portal out.
 The Nether is a cavern world between a bedrock floor and roof: netherrack
 cliffs and islands over a lava sea at y = 31, soul sand shores that drag
 at your feet, gravel by the lava, quartz ore in the rock and glowstone
-hanging from the ceilings. There is no sky, weather or day and night,
-just a steady dim glow in a red haze; water boils away, and beds explode.
+hanging from the ceilings. Nether fortresses (one per 432-block region,
+laid out from Java's fortress pieces) rise from between y = 48 and 70:
+nether brick bridges on pillars that reach down through the lava sea, small
+fenced crossings, stair rooms and blaze spawner thrones, and through a
+castle entrance hall, enclosed corridors with loot chests (one corner in
+three: diamonds, iron, gold, golden gear, flint and steel, nether wart,
+obsidian) and halls of nether wart on soul sand. There is no sky, weather
+or day and night, just a steady dim glow in a red haze; water boils away,
+and beds explode.
 Netherrack smelts into nether bricks (four make a nether bricks block),
 quartz ore drops nether quartz, and glowstone breaks into 2–4 glowstone
 dust (four make a block). Nine gold nuggets make a gold ingot and back.
@@ -309,10 +357,14 @@ session there, as if you had just come through a portal.
 | Spider | 16 | fast; climbs walls; hunts only in the dark or after being hit, bites for 2 | 0–2 string |
 | Zombified piglin | 20 | Nether only, in packs; ignores you until you hit one, then the whole pack within 32 blocks chases you for 30 s and strikes with gold swords for 5 | 0–1 rotten flesh, 0–1 gold nuggets |
 | Enderman | 40 | 2.9 blocks tall; rare at night in the Overworld and Nether, common in the End. Neutral until hit or until you look it in the eyes (within 64 blocks), then screams, opens its jaw and hits for 7. Freezes while you watch it (up close it teleports away), teleports toward you from more than 16 blocks, dodges arrows by teleporting, is hurt by water and rain, and wanders off by teleporting in daylight | 0–1 ender pearls |
+| Blaze | 20 | Nether fortresses: from spawner cages and inside fortress pieces in groups of 2-3. Hovers, glows while charging, then fires bursts of three fireballs (5 damage, setting you alight) and hits for 6 up close; hurt by water and rain, immune to fire and lava | 0–1 blaze rods |
+| Silverfish | 8 | strongholds: from the portal room's spawner; small and quick, chases and nibbles for 1 | nothing |
 
 Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to
-4 zombies and 3 of the others). Like Java Edition's per-player mob caps,
+4 zombies and 3 of the others). Inside Nether fortress pieces, Java's
+fortress list also spawns blazes, packs of zombified piglins and groups
+of skeletons, in any light. Like Java Edition's per-player mob caps,
 these limits count mobs within 96 blocks of each player, so players far apart
 each get their own. Mobs spawn 24–64 blocks from a player (never closer to
 any player), despawn once every player is more than 96 blocks away or when

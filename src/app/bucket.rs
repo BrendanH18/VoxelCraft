@@ -1,4 +1,5 @@
 //! Buckets: scoop up a water or lava source and pour it out elsewhere.
+//! Glass bottles fill from water sources the same way.
 
 use crate::audio::sounds::{Material, Sound};
 use crate::inventory::Stack;
@@ -15,11 +16,37 @@ impl Game {
     /// Right-click with a bucket. Returns whether the bucket was used.
     pub(super) fn use_bucket(&mut self) -> bool {
         match self.held_item() {
+            Some(Item::GLASS_BOTTLE) => self.fill_bottle(),
             Some(Item::BUCKET) => self.fill_bucket(),
             Some(Item::WATER_BUCKET) => self.empty_bucket(Block::WATER),
             Some(Item::LAVA_BUCKET) => self.empty_bucket(Block::LAVA),
             _ => false,
         }
+    }
+
+    /// Fills one held glass bottle from the water source under the
+    /// crosshair, which stays (Java's bottle).
+    fn fill_bottle(&mut self) -> bool {
+        let hit = self.world.raycast_sources(self.player.eye(), self.player.forward().as_dvec3(), REACH);
+        let Some((pos, _)) = hit.filter(|(p, _)| self.world.get_block(*p) == Some(Block::WATER)) else {
+            return false;
+        };
+        self.audio.play(Sound::Swim, Some(pos.as_dvec3()), 0.6, (1.3, 1.5));
+        let water = Item::potion(voxelcraft::potion::Potion::WATER);
+        let slot = self.actions.selected;
+        if self.mode == GameMode::Survival && self.inventory.slots[slot].is_some_and(|s| s.count == 1) {
+            self.inventory.slots[slot] = Some(Stack::new(water, 1));
+        } else {
+            if self.mode == GameMode::Survival {
+                self.inventory.take_one(slot);
+            }
+            let left = self.inventory.add(water, 1);
+            if left > 0 {
+                let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
+                self.mobs.entities.throw(Stack::new(water, left), eye, dir);
+            }
+        }
+        true
     }
 
     /// Takes the source block under the crosshair into the held bucket.

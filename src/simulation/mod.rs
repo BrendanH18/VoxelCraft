@@ -1,6 +1,7 @@
 //! Fixed game time and device-independent gameplay steps shared by clients
 //! and headless callers. Input and presentation stay with the caller.
 
+pub mod effects;
 pub mod experience;
 pub mod survival;
 pub mod weather;
@@ -59,6 +60,7 @@ pub fn tick_world(world: &mut World, player: DVec3) {
     world.tick_fluids(TICK_SECONDS);
     world.tick_falling(TICK_SECONDS);
     world.tick_furnaces(TICK_SECONDS);
+    world.tick_brewing(TICK_SECONDS);
     world.tick_fire(TICK_SECONDS, player);
     world.update_block_light();
     world.tick_random(TICK_SECONDS, player);
@@ -81,6 +83,7 @@ pub fn tick_player(
     creative: bool,
 ) -> PlayerStep {
     let before = player.pos;
+    player.apply_effects(&vitals.effects);
     player.update(TICK_SECONDS, input, world);
     let moved = (player.pos - before).with_y(0.0).length();
     let env = player_environment(player, world, input, moved);
@@ -94,7 +97,7 @@ pub fn player_environment(player: &Player, world: &World, input: MoveInput, move
         on_ground: player.on_ground,
         flying: player.flying,
         in_water: player.in_water,
-        climbing: player.climbing,
+        climbing: player.climbing || player.in_web,
         head_in_water: player.head_in_water(world),
         in_lava: player.in_lava(world),
         in_fire: player.in_fire(world),

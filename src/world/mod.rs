@@ -13,12 +13,14 @@
 //! light-blocking block, which seeds skylight in mesh jobs.
 
 pub mod block;
+pub mod brewing;
 pub mod chest;
 pub mod chunk;
 pub mod end;
 pub mod falling;
 mod fire;
 mod fluid;
+pub mod fortress;
 pub mod furnace;
 mod growth;
 pub(crate) mod lighting;
@@ -28,6 +30,8 @@ mod portal;
 pub mod shape;
 mod spawner;
 pub mod storage;
+pub mod stronghold;
+pub mod structure;
 pub mod terrain;
 
 use std::sync::Arc;
@@ -89,6 +93,8 @@ pub struct World {
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
     /// Chest contents by position (see [`chest`]).
     chests: FxHashMap<IVec3, chest::Chest>,
+    /// Brewing stand contents by position (see [`brewing`]).
+    brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Spawner cages and the mob each makes (see `spawner`).
     spawners: FxHashMap<IVec3, crate::entity::MobKind>,
     /// Leaves waiting to decay (seconds left) after a log near them went.
@@ -104,6 +110,8 @@ pub struct World {
     /// Experience released at a block (a broken furnace's store); the game
     /// turns it into orbs.
     pub xp_drops: Vec<(IVec3, u32)>,
+    /// Brewing stands that finished a brew; the game plays its sound.
+    pub brews_done: Vec<IVec3>,
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
@@ -162,12 +170,14 @@ impl World {
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
+            brewing_stands: FxHashMap::default(),
             spawners: FxHashMap::default(),
             leaf_decay: FxHashMap::default(),
             random_ticks: 0.0,
             rng,
             drops: Vec::new(),
             xp_drops: Vec::new(),
+            brews_done: Vec::new(),
             primed_tnt: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
@@ -349,6 +359,7 @@ impl World {
         self.track_fire(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
+        self.track_brewing_stand(p, old, block);
         self.track_spawner(p, old, block);
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
@@ -562,6 +573,8 @@ impl World {
     fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         if modified {
             self.load_fires(pos, &data);
+        } else {
+            self.register_structure_features(pos, &data);
         }
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
@@ -834,6 +847,47 @@ mod tests {
 
     fn surface_y(world: &World, x: i32, z: i32) -> i32 {
         (0..WORLD_HEIGHT).rev().find(|&y| world.get_block(IVec3::new(x, y, z)).unwrap().is_solid()).unwrap()
+    }
+
+    #[test]
+    fn fortress_chunks_register_loot_chests_and_blaze_spawners() {
+        use super::fortress::{Fortresses, Kind};
+        let fortress = Fortresses::new(1).get(IVec2::ZERO).unwrap();
+        let generator = Arc::new(Generator::for_dimension(1, super::terrain::Dimension::Nether));
+        let mut found = (None, None);
+        for piece in &fortress.pieces {
+            let chunk = chunk_of(piece.bounds.min);
+            for (p, f) in generator.structure_features(chunk) {
+                match f {
+                    super::fortress::Feature::Chest(_) if found.0.is_none() => found.0 = Some(p),
+                    super::fortress::Feature::Spawner(_) if piece.kind == Kind::Throne => found.1 = Some(p),
+                    _ => {}
+                }
+            }
+        }
+        let (chest, cage) = (found.0.expect("a loot chest"), found.1.expect("a throne"));
+        for (at, check) in [(chest, 0), (cage, 1)] {
+            let mut world = World::new_headless(generator.clone(), Default::default(), 1);
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while world.get_block(at).is_none() || world.pending_jobs() > 0 {
+                world.update(at.as_dvec3());
+                assert!(Instant::now() < deadline, "fortress never loaded");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            if check == 0 {
+                assert!(super::chest::is_chest(world.get_block(at).unwrap()));
+                let filled = world.chest(at).unwrap().slots.iter().flatten().count();
+                assert!((2..=4).contains(&filled), "{filled} stacks");
+                // A looted chest stays empty when its chunk generates again.
+                world.chest_mut(at).unwrap().slots = [None; super::chest::SLOTS];
+                let data = world.chunks[&chunk_of(at)].data.clone();
+                world.register_structure_features(chunk_of(at), &data);
+                assert!(world.chest(at).unwrap().slots.iter().all(Option::is_none));
+            } else {
+                assert_eq!(world.get_block(at), Some(Block::SPAWNER));
+                assert_eq!(world.spawner(at), Some(crate::entity::MobKind::Blaze));
+            }
+        }
     }
 
     #[test]
@@ -1231,6 +1285,39 @@ mod tests {
     }
 
     #[test]
+    fn nether_wart_grows_in_the_dark_on_soul_sand() {
+        use crate::item::Item;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let sand = IVec3::new(0, 200, 0);
+        world.set_block(sand, Block::SOUL_SAND);
+        // Roofed over: wart ignores light, unlike wheat.
+        world.set_block(sand + IVec3::Y * 3, Block::STONE);
+        assert!(world.set_block(sand + IVec3::Y, Block::nether_wart(0)));
+        assert!(Block::nether_wart(0).can_stay_on(Block::SOUL_SAND));
+        assert!(!Block::nether_wart(0).can_stay_on(Block::FARMLAND));
+        assert!(!world.apply_bone_meal(sand + IVec3::Y), "bone meal does nothing to wart");
+        for _ in 0..300 {
+            world.random_tick(sand + IVec3::Y);
+        }
+        assert_eq!(world.get_block(sand + IVec3::Y), Some(Block::nether_wart(3)));
+
+        // Ripe wart drops 2-4, unripe wart one.
+        world.drops.clear();
+        world.spill_block(sand + IVec3::Y, Block::nether_wart(3));
+        let ripe: u8 = world.drops.iter().map(|&(_, s)| s.count).sum();
+        assert!(world.drops.iter().all(|(_, s)| s.item == Item::NETHER_WART) && (2..=4).contains(&ripe));
+        world.drops.clear();
+        world.spill_block(sand + IVec3::Y, Block::nether_wart(1));
+        assert_eq!(world.drops.iter().map(|&(_, s)| (s.item, s.count)).collect::<Vec<_>>(), [(Item::NETHER_WART, 1)]);
+
+        // It pops off when the soul sand goes.
+        world.set_block(sand, Block::NETHERRACK);
+        assert_eq!(world.get_block(sand + IVec3::Y), Some(Block::AIR));
+        assert_eq!(Item::from_name("nether_wart"), Some(Item::NETHER_WART));
+        assert_eq!(Item::NETHER_WART.places(), Some(Block::nether_wart(0)));
+    }
+
+    #[test]
     fn chests_keep_their_contents_save_and_spill() {
         use crate::inventory::Stack;
         use crate::item::Item;
@@ -1249,6 +1336,34 @@ mod tests {
         assert!(world.chest(p).is_none());
         let spilled: Vec<_> = world.drops.iter().map(|&(_, s)| s).collect();
         assert_eq!(spilled, [Stack::new(Item::COAL, 7), Stack::new(Block::DIRT, 64)]);
+    }
+
+    #[test]
+    fn brewing_stands_brew_save_and_spill() {
+        use crate::inventory::Stack;
+        use crate::item::Item;
+        use crate::potion::Potion;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let p = IVec3::new(0, 200, 0);
+        world.set_block(p, Block::BREWING_STAND);
+        let water = Some(Stack::new(Item::potion(Potion::WATER), 1));
+        let b = world.brewing_stand_mut(p).expect("placing a stand creates its contents");
+        b.bottles = [water; 3];
+        b.ingredient = Some(Stack::new(Item::NETHER_WART, 1));
+        b.fuel = Some(Stack::new(Item::BLAZE_POWDER, 1));
+        for _ in 0..401 {
+            world.tick_brewing(0.05);
+        }
+        assert_eq!(world.brews_done, [p]);
+        let awkward = Some(Stack::new(Item::potion(Potion::AWKWARD), 1));
+        assert_eq!(world.brewing_stand(p).unwrap().bottles, [awkward; 3]);
+        let mut other = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        other.load_brewing_stands(&world.brewing_stands_to_string());
+        assert_eq!(other.brewing_stand(p), world.brewing_stand(p));
+        world.drops.clear();
+        world.set_block(p, Block::AIR);
+        assert!(world.brewing_stand(p).is_none());
+        assert_eq!(world.drops.len(), 3, "three awkward potions spill (wart and powder used up)");
     }
 
     #[test]

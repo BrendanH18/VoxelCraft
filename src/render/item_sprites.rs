@@ -5,6 +5,7 @@
 //! on the bottom right.
 
 use crate::item::{ArmorMaterial, ArmorPiece, Sprite, Tier, ToolKind};
+use crate::simulation::effects::Effect;
 use crate::world::block::tex;
 use crate::world::noise::hash_f;
 
@@ -386,6 +387,104 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             shaded(&ball, x, y, body, 0.05)
                 .map(|p| if shine { tint(glint, 1.0) } else { tint([p[0], p[1], p[2]], 0.8 + rim * 0.6) })
         }
+        Sprite::Wart => {
+            // Three knobbly red bulbs clumped on a short stalk.
+            let bulbs = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                [(5.5, 7.0, 3.4), (10.5, 6.0, 3.2), (8.0, 10.5, 3.6)]
+                    .iter()
+                    .any(|&(cx, cy, r)| (px - cx).powi(2) + (py - cy).powi(2) <= r * r)
+            };
+            let stalk = (7..=8).contains(&x) && (13..=15).contains(&y);
+            if stalk {
+                Some(tint([96, 18, 26], 1.0))
+            } else {
+                let spot = noise(x, y, 13) < 0.18;
+                shaded(&bulbs, x, y, [168, 34, 42], 0.1).map(|p| if spot { tint([p[0], p[1], p[2]], 0.7) } else { p })
+            }
+        }
+        Sprite::Paper => {
+            // A pale sheet, slightly skewed, with faint ruled lines.
+            let sheet =
+                |x: i32, y: i32| (2..=13).contains(&y) && (3 + (y > 7) as i32..=12 + (y > 7) as i32).contains(&x);
+            shaded(&sheet, x, y, [236, 234, 222], 0.03)
+                .map(|p| if y % 3 == 0 && (5..=11).contains(&x) { tint([p[0], p[1], p[2]], 0.85) } else { p })
+        }
+        Sprite::Book => {
+            // A brown leather cover with pale page edges on the right.
+            let cover = |x: i32, y: i32| (3..=12).contains(&x) && (2..=13).contains(&y);
+            if (11..=12).contains(&x) && (3..=12).contains(&y) {
+                Some(tint([232, 226, 206], if y % 2 == 0 { 1.0 } else { 0.9 }))
+            } else {
+                shaded(&cover, x, y, [120, 66, 40], 0.06)
+                    .map(|p| if x == 4 { tint([p[0], p[1], p[2]], 0.75) } else { p })
+            }
+        }
+        Sprite::EnderEye => {
+            // A green pearl with a dark slit pupil.
+            let ball = disc(8.0, 8.5, 5.6);
+            let pupil = (7..=8).contains(&x) && (5..=11).contains(&y);
+            shaded(&ball, x, y, [70, 160, 110], 0.06).map(|p| if pupil { [16, 36, 26, 255] } else { p })
+        }
+        Sprite::GlisteringMelon => {
+            // The melon slice, its rind turned to gold, with sparkles.
+            let sparkle = [(3, 3), (12, 2), (13, 9), (2, 9)]
+                .iter()
+                .any(|&(sx, sy)| (x == sx && (y - sy).abs() <= 1) || (y == sy && (x - sx).abs() <= 1));
+            let p = pixel(Sprite::MelonSlice, x as usize, y as usize);
+            if sparkle {
+                Some([255, 250, 190, 255])
+            } else if p[3] == 0 {
+                None
+            } else if p[1] > p[0] + 30 {
+                Some(tint([246, 206, 60], p[1] as f32 / 140.0))
+            } else {
+                Some(p)
+            }
+        }
+        Sprite::SpiderEye => {
+            // A round red eye with darker spots and a glint.
+            let eye = disc(8.0, 8.5, 5.5);
+            let (px, py) = centre(x, y);
+            let glint = (px - 6.0).powi(2) + (py - 6.0).powi(2) <= 1.5;
+            let spot = [(9.5, 10.0), (6.5, 11.0), (10.5, 6.5)]
+                .iter()
+                .any(|&(sx, sy)| (px - sx).powi(2) + (py - sy).powi(2) <= 1.2);
+            shaded(&eye, x, y, [170, 30, 40], 0.08).map(|p| {
+                if glint {
+                    [255, 220, 220, 255]
+                } else if spot {
+                    tint([p[0], p[1], p[2]], 0.55)
+                } else {
+                    p
+                }
+            })
+        }
+        Sprite::Bottle(liquid) => {
+            // Java's bottle: a round flask with a neck and cork, glass
+            // showing the liquid's colour, a highlight at the top left.
+            let (px, py) = centre(x, y);
+            let d = (px - 8.0).powi(2) + (py - 10.0).powi(2);
+            let body = d <= 30.0;
+            let neck = (6..=9).contains(&x) && (2..=4).contains(&y);
+            let cork = (6..=9).contains(&x) && y <= 1;
+            let rim = body && d > 21.0;
+            let glint = (5..=6).contains(&x) && (8..=10).contains(&y);
+            if cork {
+                Some(tint([150, 104, 60], if x == 6 { 1.15 } else { 0.95 }))
+            } else if neck || rim {
+                Some(tint([210, 225, 240], if x + y < 14 { 1.1 } else { 0.8 }))
+            } else if body && glint {
+                Some([245, 250, 255, 255])
+            } else if body {
+                match liquid {
+                    Some(c) => Some(tint(c, 1.15 - (py - 7.0) / 14.0)),
+                    None => Some([200, 220, 240, 90]),
+                }
+            } else {
+                None
+            }
+        }
         Sprite::Door => {
             // The door's own two textures, squeezed to half width.
             let (layer, ty) = if y < 8 { (tex::DOOR_TOP, y * 2) } else { (tex::DOOR_BOTTOM, (y - 8) * 2) };
@@ -427,6 +526,68 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     out.unwrap_or(CLEAR)
+}
+
+/// 8x8 glyphs of the status effect icons, drawn at double size.
+fn effect_glyph(effect: Effect) -> [&'static str; 8] {
+    match effect {
+        Effect::Speed => {
+            ["........", "##..##..", ".##..##.", "..##..##", "..##..##", ".##..##.", "##..##..", "........"]
+        }
+        Effect::Slowness => {
+            ["........", "..##..##", ".##..##.", "##..##..", "##..##..", ".##..##.", "..##..##", "........"]
+        }
+        Effect::Strength => {
+            ["......##", ".....###", "....###.", "#..###..", ".####...", "..##....", ".#.##...", "#...#..."]
+        }
+        Effect::Weakness => {
+            ["......##", ".....###", "....#.#.", "#.......", ".##.#...", "..##....", ".#.##...", "#...#..."]
+        }
+        Effect::InstantHealth => {
+            [".##..##.", "########", "########", "########", ".######.", "..####..", "...##...", "........"]
+        }
+        Effect::InstantDamage => {
+            ["#......#", ".#....#.", "..#..#..", "...##...", "...##...", "..#..#..", ".#....#.", "#......#"]
+        }
+        Effect::Regeneration => {
+            [".##..##.", "#..##..#", "#......#", "#......#", ".#....#.", "..#..#..", "...##...", "........"]
+        }
+        Effect::Poison => {
+            ["...##...", "...##...", "..####..", ".######.", ".######.", "########", ".######.", "..####.."]
+        }
+        Effect::FireResistance => {
+            ["...#....", "..##..#.", "..###.#.", ".#####..", ".######.", "########", "########", ".######."]
+        }
+        Effect::NightVision => {
+            ["........", "..####..", ".#....#.", "#..##..#", "#..##..#", ".#....#.", "..####..", "........"]
+        }
+        Effect::WaterBreathing => {
+            [".....##.", "....#..#", "....#..#", ".##..##.", "#..#....", "#..#.##.", ".##.#..#", ".....##."]
+        }
+        Effect::JumpBoost => {
+            ["...##...", "..####..", ".##..##.", "##....##", "...##...", "..####..", ".##..##.", "##....##"]
+        }
+        Effect::SlowFalling => {
+            ["......##", ".....###", "....###.", "...###..", "..###...", ".###....", "##......", "#......."]
+        }
+    }
+}
+
+/// A pixel of a status effect's HUD icon: its glyph in the effect's
+/// colour, lit from the top, with a dark outline.
+pub fn effect_pixel(effect: Effect, x: usize, y: usize) -> Rgba {
+    let glyph = effect_glyph(effect);
+    let on = |x: i32, y: i32| {
+        (0..16).contains(&x) && (0..16).contains(&y) && glyph[y as usize / 2].as_bytes()[x as usize / 2] == b'#'
+    };
+    let (x, y) = (x as i32, y as i32);
+    if on(x, y) {
+        tint(effect.colour(), 1.25 - y as f32 / 30.0)
+    } else if on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1) {
+        [24, 24, 28, 255]
+    } else {
+        CLEAR
+    }
 }
 
 #[cfg(test)]

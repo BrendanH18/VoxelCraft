@@ -52,6 +52,8 @@ struct Globals {
     clouds: [f32; 4],
     /// x: dimension (0 Overworld, 1 Nether, 2 End); y: enhanced graphics; zw: camera xz wrapped at 128 blocks.
     environment: [f32; 4],
+    /// x: night vision strength 0..1.
+    effects: [f32; 4],
 }
 
 const CLOUD_HEIGHT: f64 = 192.0;
@@ -116,6 +118,8 @@ pub struct FrameParams {
     /// Rain strength 0..1: hides the sun, moon and stars and thickens the
     /// clouds.
     pub rain: f32,
+    /// Night vision strength 0..1 (see `Effects::night_vision`).
+    pub night_vision: f32,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -348,7 +352,15 @@ impl Renderer {
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals_buf.as_entire_binding() }],
         });
 
-        let blocks_view = Self::create_block_textures(&device, &queue);
+        let blocks_view =
+            Self::create_texture_array(&device, &queue, "block textures", tex::COUNT, textures::generate_mips());
+        let items_view = Self::create_texture_array(
+            &device,
+            &queue,
+            "item icons",
+            textures::item_layers(),
+            textures::generate_item_mips(),
+        );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("blocks sampler"),
             address_mode_u: wgpu::AddressMode::Repeat,
@@ -377,6 +389,16 @@ impl Renderer {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let blocks_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -385,6 +407,7 @@ impl Renderer {
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&blocks_view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&items_view) },
             ],
         });
 
@@ -811,11 +834,18 @@ impl Renderer {
         })
     }
 
-    fn create_block_textures(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::TextureView {
+    /// A 16x16 texture array of `layers` layers with the given mip levels.
+    fn create_texture_array(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        label: &str,
+        layers: u32,
+        mips: Vec<Vec<u8>>,
+    ) -> wgpu::TextureView {
         let size = textures::SIZE as u32;
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("block textures"),
-            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: tex::COUNT },
+            label: Some(label),
+            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: layers },
             mip_level_count: textures::MIP_LEVELS,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -823,7 +853,7 @@ impl Renderer {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-        for (level, data) in textures::generate_mips().iter().enumerate() {
+        for (level, data) in mips.iter().enumerate() {
             let s = size >> level;
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
@@ -834,7 +864,7 @@ impl Renderer {
                 },
                 data,
                 wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(s * 4), rows_per_image: Some(s) },
-                wgpu::Extent3d { width: s, height: s, depth_or_array_layers: tex::COUNT },
+                wgpu::Extent3d { width: s, height: s, depth_or_array_layers: layers },
             );
         }
         texture.create_view(&wgpu::TextureViewDescriptor {
@@ -1084,6 +1114,7 @@ impl Renderer {
             ],
             sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
             params: [p.fog_start, p.fog_end, p.daylight, p.rain],
+            effects: [p.night_vision, 0.0, 0.0, 0.0],
             clouds: [
                 cloud_origin.x as f32,
                 cloud_origin.z as f32,

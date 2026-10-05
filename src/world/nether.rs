@@ -5,11 +5,16 @@
 //! Like the overworld, every chunk is a pure function of the seed. Solidity
 //! comes from two octaves of 3D noise, biased solid towards the floor and the
 //! roof, sampled on a coarse grid and interpolated (like overworld caves).
+//! Fortresses (see `world::fortress`) are painted over the terrain.
+
+use std::cell::RefCell;
 
 use glam::IVec3;
+use rustc_hash::FxHashMap;
 
 use super::block::Block;
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, index};
+use super::fortress::Fortresses;
 use super::noise::{Perlin, hash_f};
 
 /// The bedrock roof; nothing generates above it.
@@ -27,6 +32,7 @@ pub struct NetherGen {
     detail: Perlin,
     patches: Perlin,
     glow: Perlin,
+    pub fortresses: Fortresses,
 }
 
 #[inline]
@@ -35,10 +41,71 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// Trilinear interpolation of corner densities `c[dx][dy][dz]` at the
+/// fractions `t` (x, y, z) of a grid cell. Chunks and single columns share
+/// it so both agree to the bit.
+#[inline]
+fn interpolate(c: [[[f32; 2]; 2]; 2], t: [f32; 3]) -> f32 {
+    let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+    let x00 = lerp(c[0][0][0], c[1][0][0], t[0]);
+    let x10 = lerp(c[0][1][0], c[1][1][0], t[0]);
+    let x01 = lerp(c[0][0][1], c[1][0][1], t[0]);
+    let x11 = lerp(c[0][1][1], c[1][1][1], t[0]);
+    lerp(lerp(x00, x10, t[1]), lerp(x01, x11, t[1]), t[2])
+}
+
 impl NetherGen {
     pub fn new(seed: u64) -> Self {
         let p = |salt: u64| Perlin::new(seed ^ salt.wrapping_mul(0x9E37_79B9_7F4A_7C15));
-        Self { seed: seed ^ 0x4E45_5448, shape: p(21), detail: p(22), patches: p(23), glow: p(24) }
+        Self {
+            seed: seed ^ 0x4E45_5448,
+            shape: p(21),
+            detail: p(22),
+            patches: p(23),
+            glow: p(24),
+            fortresses: Fortresses::new(seed),
+        }
+    }
+
+    /// Bedrock floor and roof, thinning out over the four layers next to them.
+    fn bedrock(&self, x: i32, y: i32, z: i32) -> bool {
+        let h = |salt: u64| hash_f(x, y, z, self.seed ^ salt);
+        y == 0
+            || y == ROOF
+            || (y <= 4 && h(1) < (5 - y) as f32 / 5.0)
+            || (y >= ROOF - 4 && h(2) < (y - (ROOF - 5)) as f32 / 5.0)
+    }
+
+    /// Whether the terrain leaves the column at `x, z` open (air or lava)
+    /// from `top` down to `bottom`, exactly as chunks generate it. Grid
+    /// densities are memoized in `cache`, which neighbouring columns share.
+    pub fn column_open(&self, x: i32, z: i32, top: i32, bottom: i32, cache: &mut FxHashMap<IVec3, f32>) -> bool {
+        let s = STEP as i32;
+        let (gx, gz) = (x.div_euclid(s) * s, z.div_euclid(s) * s);
+        let (tx, tz) = ((x - gx) as f32 / STEP as f32, (z - gz) as f32 / STEP as f32);
+        let mut level = i32::MIN;
+        let mut c = [[[0f32; 2]; 2]; 2];
+        for y in (bottom..=top).rev() {
+            if y <= 0 || y >= ROOF || self.bedrock(x, y, z) {
+                return false;
+            }
+            let gy = y.div_euclid(s) * s;
+            if gy != level {
+                level = gy;
+                for (dx, plane) in c.iter_mut().enumerate() {
+                    for (dy, row) in plane.iter_mut().enumerate() {
+                        for (dz, d) in row.iter_mut().enumerate() {
+                            let p = IVec3::new(gx + dx as i32 * s, gy + dy as i32 * s, gz + dz as i32 * s);
+                            *d = *cache.entry(p).or_insert_with(|| self.density(p.x, p.y, p.z));
+                        }
+                    }
+                }
+            }
+            if interpolate(c, [tx, (y - gy) as f32 / STEP as f32, tz]) > 0.0 {
+                return false;
+            }
+        }
+        true
     }
 
     /// Above zero is netherrack, below is open space.
@@ -73,15 +140,13 @@ impl NetherGen {
                 return true;
             }
             let (gx, gy, gz) = (x / STEP, y / STEP, z / STEP);
-            let (tx, ty, tz) =
-                ((x % STEP) as f32 / STEP as f32, (y % STEP) as f32 / STEP as f32, (z % STEP) as f32 / STEP as f32);
-            let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+            let t = [(x % STEP) as f32 / STEP as f32, (y % STEP) as f32 / STEP as f32, (z % STEP) as f32 / STEP as f32];
             let at = |dx: usize, dy: usize, dz: usize| grid[gx + dx][(gy + dy).min(GRID_Y - 1)][gz + dz];
-            let x00 = lerp(at(0, 0, 0), at(1, 0, 0), tx);
-            let x10 = lerp(at(0, 1, 0), at(1, 1, 0), tx);
-            let x01 = lerp(at(0, 0, 1), at(1, 0, 1), tx);
-            let x11 = lerp(at(0, 1, 1), at(1, 1, 1), tx);
-            lerp(lerp(x00, x10, ty), lerp(x01, x11, ty), tz) > 0.0
+            let c = [
+                [[at(0, 0, 0), at(0, 0, 1)], [at(0, 1, 0), at(0, 1, 1)]],
+                [[at(1, 0, 0), at(1, 0, 1)], [at(1, 1, 0), at(1, 1, 1)]],
+            ];
+            interpolate(c, t) > 0.0
         };
 
         let mut blocks = ChunkData::new_dense(Block::AIR);
@@ -96,13 +161,7 @@ impl NetherGen {
                         break;
                     }
                     let h = |salt: u64| hash_f(wx, wy, wz, self.seed ^ salt);
-                    // Solid bedrock at the very bottom and top, thinning out
-                    // over the four layers next to them.
-                    let bedrock = wy == 0
-                        || wy == ROOF
-                        || (wy <= 4 && h(1) < (5 - wy) as f32 / 5.0)
-                        || (wy >= ROOF - 4 && h(2) < (wy - (ROOF - 5)) as f32 / 5.0);
-                    let block = if bedrock {
+                    let block = if self.bedrock(wx, wy, wz) {
                         Block::BEDROCK
                     } else if solid(x, y, z) {
                         // Depth below the nearest open space above (up to 4).
@@ -130,6 +189,9 @@ impl NetherGen {
                 }
             }
         }
+        let cache = RefCell::new(FxHashMap::default());
+        let open = |x, z, top, bottom| self.column_open(x, z, top, bottom, &mut cache.borrow_mut());
+        self.fortresses.paint(&mut blocks, base, &open);
         ChunkData::from_dense(blocks)
     }
 }

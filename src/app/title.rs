@@ -510,6 +510,7 @@ impl Title {
             block_models: Vec::new(),
             ui: self.build_ui(),
             rain: 0.0,
+            night_vision: 0.0,
         };
         self.shell.renderer.render(&params);
     }

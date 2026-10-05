@@ -43,6 +43,7 @@ pub(super) enum Tab {
     Palette,
     Chest(IVec3),
     Furnace(IVec3),
+    Brewing(IVec3),
 }
 
 impl Tab {
@@ -51,6 +52,7 @@ impl Tab {
         match self {
             Tab::Chest(p) => Container::Chest(p),
             Tab::Furnace(p) => Container::Furnace(p),
+            Tab::Brewing(p) => Container::Brewing(p),
             _ => Container::Inventory,
         }
     }
@@ -94,6 +96,13 @@ pub(super) struct Lists {
 const PAUSE_CHOICES: [&str; 2] = ["Resume", "Leave game"];
 const COLS: usize = 9;
 const FURNACE: [SlotRef; 3] = [SlotRef::FurnaceInput, SlotRef::FurnaceFuel, SlotRef::FurnaceOutput];
+const BREWING: [SlotRef; 5] = [
+    SlotRef::BrewFuel,
+    SlotRef::BrewIngredient,
+    SlotRef::BrewBottle(0),
+    SlotRef::BrewBottle(1),
+    SlotRef::BrewBottle(2),
+];
 
 impl Menu {
     pub fn items(tab: Tab) -> Self {
@@ -168,7 +177,7 @@ impl Menu {
 /// player's. Lists: nine to a row.
 fn rows(tab: Tab, lists: Lists) -> usize {
     match tab {
-        Tab::Inventory | Tab::Furnace(_) => 5,
+        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) => 5,
         Tab::Chest(_) => 7,
         Tab::Crafting => lists.crafts.div_ceil(COLS),
         Tab::Palette => lists.palette.div_ceil(COLS),
@@ -179,6 +188,7 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
     let list = match tab {
         Tab::Inventory if row == 0 => return ArmorPiece::ALL.len(),
         Tab::Furnace(_) if row == 0 => return FURNACE.len(),
+        Tab::Brewing(_) if row == 0 => return BREWING.len(),
         Tab::Crafting => lists.crafts,
         Tab::Palette => lists.palette,
         _ => return COLS,
@@ -191,8 +201,9 @@ fn slot(tab: Tab, col: usize, row: usize) -> Slot {
     match tab {
         Tab::Inventory if row == 0 => Slot::Ref(SlotRef::Armor(ArmorPiece::ALL[col])),
         Tab::Furnace(_) if row == 0 => Slot::Ref(FURNACE[col]),
-        Tab::Inventory | Tab::Furnace(_) if row == 4 => inv(col),
-        Tab::Inventory | Tab::Furnace(_) => inv(COLS * row + col),
+        Tab::Brewing(_) if row == 0 => Slot::Ref(BREWING[col]),
+        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) if row == 4 => inv(col),
+        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) => inv(COLS * row + col),
         Tab::Chest(_) if row < 3 => Slot::Ref(SlotRef::Chest(COLS * row + col)),
         Tab::Chest(_) if row == 6 => inv(col),
         Tab::Chest(_) => inv(COLS * (row - 2) + col),
@@ -309,7 +320,7 @@ impl Game {
         let shown = n.min(visible);
         // The hotbar and the row above the main grid sit a little apart.
         let gap = |r: usize| match tab {
-            Tab::Inventory | Tab::Furnace(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
+            Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
             Tab::Chest(_) => 4.0 * ((r >= 3) as u8 + (r >= 6) as u8) as f32,
             Tab::Crafting | Tab::Palette => 0.0,
         };
@@ -325,6 +336,7 @@ impl Game {
             Tab::Palette => "Items  (RB: inventory)",
             Tab::Chest(_) => "Chest",
             Tab::Furnace(_) => "Furnace",
+            Tab::Brewing(_) => "Brewing Stand  (fuel, ingredient, bottles)",
         };
         ui.text(px + 6.0, py + 5.0, title, WHITE);
         let chest = match tab {
@@ -333,6 +345,10 @@ impl Game {
         };
         let furnace = match tab {
             Tab::Furnace(pos) => self.world.furnace(pos),
+            _ => None,
+        };
+        let brewing = match tab {
+            Tab::Brewing(pos) => self.world.brewing_stand(pos),
             _ => None,
         };
         let mut hovered = None;
@@ -347,6 +363,9 @@ impl Game {
                     Slot::Ref(SlotRef::FurnaceInput) => furnace.and_then(|f| f.input),
                     Slot::Ref(SlotRef::FurnaceFuel) => furnace.and_then(|f| f.fuel),
                     Slot::Ref(SlotRef::FurnaceOutput) => furnace.and_then(|f| f.output),
+                    Slot::Ref(SlotRef::BrewBottle(i)) => brewing.and_then(|b| b.bottles[i]),
+                    Slot::Ref(SlotRef::BrewIngredient) => brewing.and_then(|b| b.ingredient),
+                    Slot::Ref(SlotRef::BrewFuel) => brewing.and_then(|b| b.fuel),
                     Slot::Ref(_) => None,
                     Slot::Recipe(i) => crafts.get(i).copied(),
                     Slot::Palette(i) => items.get(i).map(|&item| Stack::new(item, 1)),

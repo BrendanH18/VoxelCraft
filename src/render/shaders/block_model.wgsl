@@ -11,11 +11,22 @@ struct Globals {
     params: vec4<f32>,
     clouds: vec4<f32>,
     environment: vec4<f32>,
+    // x: night vision strength 0..1.
+    effects: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
+
+// Night vision (Java's lightmap): brightens every light level toward full,
+// keeping its hue; g.effects.x is its strength.
+fn night_vision(lit: vec3<f32>) -> vec3<f32> {
+    let peak = max(max(lit.r, lit.g), max(lit.b, 1e-3));
+    return mix(lit, lit / peak, g.effects.x);
+}
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;
+// Item icons, addressed as layers from 256 on (see `tex::ITEM_BASE`).
+@group(1) @binding(2) var items: texture_2d_array<f32>;
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
@@ -90,13 +101,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         face_normal = area_normal * inverseSqrt(length_sq);
     }
     let normal = select(face_normal, -face_normal, dot(face_normal, -in.rel) < 0.0);
-    let tex = textureSample(blocks, blocks_sampler, in.uv, in.layer);
+    // Both arrays are sampled so derivatives stay in uniform control flow.
+    let block = textureSample(blocks, blocks_sampler, in.uv, min(in.layer, 255u));
+    let icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 256u) - 256u);
+    let tex = select(block, icon, in.layer >= 256u);
     if tex.a < 0.5 {
         discard;
     }
     let l = in.light.xz / (4.0 - 3.0 * in.light.xz);
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
-    let lit = (max(l.x * g.params.z * daylight_tint(normal), torch) * 0.96 + 0.04) * in.light.y;
+    let lit = night_vision(max(l.x * g.params.z * daylight_tint(normal), torch) * 0.96 + 0.04) * in.light.y;
     let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
     let c = mix(tex.rgb * lit, g.fog_color.rgb, f * f * (3.0 - 2.0 * f));
     return vec4<f32>(c, 1.0);

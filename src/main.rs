@@ -47,6 +47,8 @@ pub struct Args {
     pub dimension: Option<world::terrain::Dimension>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
     pub place: Vec<(glam::IVec3, world::block::Block)>,
+    /// Opens the container at this block once loaded (screenshots).
+    pub open_block: Option<glam::IVec3>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
     pub spawn: Vec<(entity::MobKind, glam::IVec3)>,
     /// Seconds to keep running after loading before `--screenshot`.
@@ -59,6 +61,8 @@ pub struct Args {
     pub food: Option<f32>,
     /// Starting experience level (`--xp`).
     pub xp: Option<u32>,
+    /// Status effects to start with: (effect, seconds, amplifier).
+    pub effects: Vec<(voxelcraft::simulation::effects::Effect, u32, u8)>,
     /// Experience orbs (points each) spawned in front of the player once loaded.
     pub orbs: Vec<u32>,
     /// Items added to the inventory at startup (debugging/screenshots).
@@ -104,12 +108,16 @@ voxelcraft [options]
                     palette (creative) open
                     (screenshots)
   --open-menu <m>   start with a menu open: pause, options or title (screenshots)
+  --open-block x,y,z  open the furnace, chest or brewing stand there once
+                    loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water; b may be a raw block id)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
   --air <0..15>     starting air in seconds
   --food <0..20>    starting hunger in half drumsticks (no saturation)
   --xp <level>      starting experience level
+  --effect e[,s[,a]]  start with a status effect for s seconds (default
+                    30) at amplifier a (default 0; repeatable)
   --orbs <points>   spawn experience orbs worth that many points in front of
                     the player once loaded (repeatable)
   --give item[,n]   add n (default 1) of an item to the inventory at startup
@@ -119,7 +127,7 @@ voxelcraft [options]
   --wear item       put on a piece of armor at startup (repeatable)
   --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig, cow, sheep,
                     chicken, zombie, skeleton, creeper, spider,
-                    zombified_piglin, enderman or blaze; y may be ~
+                    zombified_piglin, enderman, blaze or silverfish; y may be ~
                     for the terrain surface, e.g. zombie,4,~,10)
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
@@ -160,6 +168,7 @@ fn parse_args() -> Result<Args, String> {
         weather: None,
         dimension: None,
         place: Vec::new(),
+        open_block: None,
         spawn: Vec::new(),
         wait: 0.0,
         pose: None,
@@ -167,6 +176,7 @@ fn parse_args() -> Result<Args, String> {
         air: None,
         food: None,
         xp: None,
+        effects: Vec::new(),
         orbs: Vec::new(),
         give: Vec::new(),
         wear: Vec::new(),
@@ -234,6 +244,15 @@ fn parse_args() -> Result<Args, String> {
             }
             "--creative" => args.mode = Some(app::GameMode::Creative),
             "--survival" => args.mode = Some(app::GameMode::Survival),
+            "--open-block" => {
+                let v = value("--open-block")?;
+                let n: Vec<i32> = v
+                    .split(',')
+                    .map(|s| s.trim().parse().map_err(|_| format!("--open-block needs x,y,z (got {v})")))
+                    .collect::<Result<_, _>>()?;
+                let &[x, y, z] = &n[..] else { return Err(format!("--open-block needs x,y,z (got {v})")) };
+                args.open_block = Some(glam::IVec3::new(x, y, z));
+            }
             "--place" => {
                 let v = value("--place")?;
                 let parts: Vec<&str> = v.split(',').collect();
@@ -286,6 +305,17 @@ fn parse_args() -> Result<Args, String> {
             "--air" => args.air = Some(value("--air")?.parse().map_err(|_| "bad --air")?),
             "--food" => args.food = Some(value("--food")?.parse().map_err(|_| "bad --food")?),
             "--xp" => args.xp = Some(value("--xp")?.parse().map_err(|_| "bad --xp")?),
+            "--effect" => {
+                let v = value("--effect")?;
+                let mut parts = v.split(',');
+                let effect = parts
+                    .next()
+                    .and_then(voxelcraft::simulation::effects::Effect::from_id)
+                    .ok_or("bad --effect name")?;
+                let secs = parts.next().map_or(Ok(30), str::parse).map_err(|_| "bad --effect seconds")?;
+                let amp = parts.next().map_or(Ok(0), str::parse).map_err(|_| "bad --effect amplifier")?;
+                args.effects.push((effect, secs, amp));
+            }
             "--orbs" => args.orbs.push(value("--orbs")?.parse().map_err(|_| "bad --orbs")?),
             flag @ ("--give" | "--drop") => {
                 let v = value(flag)?;
@@ -335,12 +365,14 @@ impl Args {
         self.weather = None;
         self.dimension = None;
         self.place.clear();
+        self.open_block = None;
         self.spawn.clear();
         self.pose = None;
         self.health = None;
         self.air = None;
         self.food = None;
         self.xp = None;
+        self.effects.clear();
         self.orbs.clear();
         self.give.clear();
         self.wear.clear();

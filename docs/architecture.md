@@ -137,6 +137,12 @@ src/
     block.rs         block registry
     shape.rs         box shapes of stairs, fences, gates, ladders and doors
     terrain.rs       world generation
+    nether.rs        Nether caverns
+    fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
+    stronghold.rs    stronghold rings and layouts (Java's pieces), painted per chunk
+    structure.rs     shared structure-piece frames, chunk painting and chest loot
+    brewing.rs       brewing stand contents and Java's brewing mixes
+    spawner.rs       spawner table, structure spawners and chests on chunk load
     noise.rs         Perlin noise and hashing
     storage.rs       save files
   render/
@@ -145,7 +151,7 @@ src/
     entity.rs        entity pass (one dynamic vertex buffer per frame)
     block_model.rs   free-standing textured blocks (falling sand, dropped items)
     hand.rs          first-person hand and held item (Minecraft's transforms)
-    item_sprites.rs  procedural item icons
+    item_sprites.rs  procedural item icons (their own texture array, layers 256+)
     ui.rs            HUD geometry: rects, bitmap text, block icons
     textures.rs      procedural block textures
     shaders/         WGSL

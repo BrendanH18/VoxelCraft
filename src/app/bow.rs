@@ -29,6 +29,7 @@ impl Game {
                 || b.is_gate()
                 || crate::world::furnace::is_furnace(b)
                 || crate::world::chest::is_chest(b)
+                || b == Block::BREWING_STAND
         })
     }
 

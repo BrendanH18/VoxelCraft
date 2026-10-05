@@ -1,12 +1,16 @@
 //! Monster spawners: which mob each spawner cage makes. The cages are
 //! blocks; this table (like furnaces and chests) remembers their mob, and
 //! the entity simulation does the spawning near players (see
-//! `entity::Entities`).
+//! `entity::Entities`). Fresh chunks also register the spawners and loot
+//! chests their structures generated here.
 
 use glam::IVec3;
 
 use super::World;
 use super::block::Block;
+use super::chest::is_chest;
+use super::chunk::{ChunkData, local_of};
+use super::fortress::{self, Feature};
 use super::terrain::Dimension;
 use crate::entity::MobKind;
 
@@ -51,6 +55,28 @@ impl World {
         } else if new == Block::SPAWNER && old != Block::SPAWNER {
             let kind = self.default_spawner();
             self.spawners.entry(p).or_insert(kind);
+        }
+    }
+
+    /// Records the spawners and loot chests structures generated in a
+    /// fresh chunk. Saved entries win, so a looted chest stays empty when
+    /// its unedited chunk generates again.
+    pub(super) fn register_structure_features(&mut self, pos: IVec3, data: &ChunkData) {
+        for (p, feature) in self.generator.structure_features(pos) {
+            let l = local_of(p);
+            let block = data.get(l.x as usize, l.y as usize, l.z as usize);
+            match feature {
+                Feature::Spawner(kind) if block == Block::SPAWNER => {
+                    self.spawners.entry(p).or_insert(kind);
+                }
+                Feature::Chest(seed) if is_chest(block) => {
+                    self.chests.entry(p).or_insert_with(|| fortress::loot(seed));
+                }
+                Feature::StrongholdChest(seed) if is_chest(block) => {
+                    self.chests.entry(p).or_insert_with(|| super::stronghold::loot(seed));
+                }
+                _ => {}
+            }
         }
     }
 

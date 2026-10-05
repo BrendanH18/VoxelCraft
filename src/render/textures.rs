@@ -506,6 +506,7 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             shade([134, 96, 64], furrow * wet)
         }
         l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat(l - tex::WHEAT_0, x, y),
+        l if (tex::NETHER_WART_0..tex::NETHER_WART_0 + 3).contains(&l) => nether_wart(l - tex::NETHER_WART_0, x, y),
         tex::OAK_SAPLING | tex::SPRUCE_SAPLING | tex::BIRCH_SAPLING | tex::JUNGLE_SAPLING | tex::ACACIA_SAPLING => {
             let (px, py) = (x as f32 - 7.5, y as f32);
             let stem = (x == 7 || x == 8) && y >= 10;
@@ -548,6 +549,93 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 shade([46, 56, 66], if rivet { 1.3 } else { 0.8 + r * 0.3 })
             } else {
                 [0, 0, 0, 0]
+            }
+        }
+        tex::BREWING_SIDE | tex::BREWING_TOP => {
+            // The rod down the middle, stone plates below (sides) or all
+            // around it (top).
+            let rod = (7..=8).contains(&x)
+                && (layer == tex::BREWING_TOP && (7..=8).contains(&y) || layer == tex::BREWING_SIDE && y >= 2);
+            let plate = layer == tex::BREWING_TOP || y >= 14;
+            if rod {
+                shade([128, 98, 60], if x == 7 { 1.1 } else { 0.85 } * (0.9 + r * 0.15))
+            } else if plate {
+                let edge = layer == tex::BREWING_SIDE && y == 14;
+                shade([104, 104, 108], if edge { 1.15 } else { 0.8 + r * 0.3 })
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
+        tex::STONE_BRICKS | tex::MOSSY_STONE_BRICKS | tex::CRACKED_STONE_BRICKS => stone_bricks(layer, x, y, r),
+        tex::IRON_BARS => {
+            // Vertical bars with a cross rail top and bottom, see-through
+            // in between.
+            let bar = x % 4 == 1 || x % 4 == 2;
+            let rail = (1..=2).contains(&y) || (13..=14).contains(&y);
+            if bar || rail {
+                let lit = if x % 4 == 1 || y == 1 || y == 13 { 1.15 } else { 0.8 };
+                shade([126, 126, 132], lit * (0.92 + r * 0.12))
+            } else {
+                [0, 0, 0, 0]
+            }
+        }
+        tex::BOOKSHELF => {
+            // Planks top, middle and bottom; two shelves of coloured books.
+            let shelf = y <= 1 || y >= 14 || y == 7 || y == 8;
+            if shelf || x == 0 || x == 15 {
+                pixel(tex::PLANKS, x, y)
+            } else {
+                const SPINES: [[u8; 3]; 6] =
+                    [[140, 40, 36], [44, 70, 140], [60, 110, 50], [150, 120, 60], [100, 60, 120], [90, 60, 40]];
+                let book = (x - 1) / 2 + if y > 8 { 3 } else { 0 };
+                let c = SPINES[(book * 7 + y / 9) % SPINES.len()];
+                let top = y == 2 || y == 9;
+                let short = (x * 5 + y / 9 * 3).is_multiple_of(7) && top;
+                if short {
+                    shade([44, 32, 22], 1.0)
+                } else {
+                    shade(c, if x % 2 == 1 { 1.05 } else { 0.85 } * (0.9 + r * 0.15))
+                }
+            }
+        }
+        tex::COBWEB => {
+            // Threads from the centre and rings around it, see-through.
+            let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
+            let ring = (((dx * dx + dy * dy).sqrt() + 0.5) as usize).is_multiple_of(4);
+            let spoke = dx.abs() < 0.6 || dy.abs() < 0.6 || (dx.abs() - dy.abs()).abs() < 0.8;
+            if (ring || spoke) && rnd(layer, x, y, 3) > 0.15 { [235, 235, 240, 220] } else { [0, 0, 0, 0] }
+        }
+        tex::FRAME_TOP | tex::FRAME_EYE_TOP => {
+            let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
+            let eye = layer == tex::FRAME_EYE_TOP && (4..12).contains(&x) && (4..12).contains(&y);
+            if eye {
+                end_eye(x, y, r)
+            } else {
+                // Teal stone with a pale ring inset round the socket.
+                let d = dx.abs().max(dy.abs());
+                let c = if (4.5..5.5).contains(&d) { [196, 214, 168] } else { [56, 104, 92] };
+                shade(c, 0.85 + r * 0.25)
+            }
+        }
+        tex::FRAME_SIDE | tex::FRAME_EYE_SIDE => {
+            if y < 3 {
+                // Above the 13/16 frame: only the eye shows here.
+                if layer == tex::FRAME_EYE_SIDE && (4..12).contains(&x) { end_eye(x, y + 6, r) } else { [0, 0, 0, 0] }
+            } else if y < 6 {
+                shade([56, 104, 92], 0.85 + r * 0.25)
+            } else {
+                pixel(tex::END_STONE, x, y)
+            }
+        }
+        tex::END_PORTAL => {
+            // A starfield: specks of teal and green on near black.
+            let star = rnd(layer, x, y, 7);
+            if star > 0.94 {
+                shade([90, 200, 170], 0.8 + r * 0.4)
+            } else if star > 0.88 {
+                shade([40, 90, 110], 0.9 + r * 0.3)
+            } else {
+                shade([8, 12, 18], 0.8 + r * 0.4)
             }
         }
         tex::END_STONE => {
@@ -633,10 +721,6 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
         }
         l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES).contains(&l) => crack(l - tex::CRACK_0, x, y),
         l if let Some((base, group)) = tex::untinted(l) => tint_foliage(pixel(base, x, y), group),
-        l if let Some(index) = tex::item_index(l) => match crate::item::sprite_for_layer(index) {
-            Some(sprite) => super::item_sprites::pixel(sprite, x, y),
-            None => [0, 0, 0, 0],
-        },
         _ => {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
@@ -684,6 +768,70 @@ fn wheat(stage: u8, x: usize, y: usize) -> Rgba {
         return shade([224, 190, 84], if notch { 0.82 } else { 1.05 });
     }
     shade(c, 0.85 + rnd(tex::WHEAT_0 + stage, x, y, 9) * 0.25)
+}
+
+/// Stone bricks, two courses with staggered joints and bevelled edges;
+/// mossy ones are overgrown in patches and cracked ones split.
+fn stone_bricks(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
+    let course = y / 8;
+    let joint = if course == 0 { 0 } else { 8 };
+    let (lx, ly) = ((x + 16 - joint) % 16, y % 8);
+    let mortar = ly == 7 || lx == 15;
+    let mut f = if mortar {
+        0.62
+    } else if ly == 0 || lx == 0 {
+        1.12
+    } else if ly == 6 || lx == 14 {
+        0.82
+    } else {
+        0.92 + r * 0.12
+    };
+    if layer == tex::CRACKED_STONE_BRICKS {
+        // A jagged crack wandering down each course.
+        let crack_x = (4 + course * 5 + ly / 2 + (ly % 3 == 1) as usize) % 14;
+        if lx == crack_x && ly < 7 {
+            f = 0.5;
+        }
+    }
+    if layer == tex::MOSSY_STONE_BRICKS {
+        let moss = rnd(layer, x / 2, y / 2, 5) + if mortar { 0.25 } else { 0.0 };
+        if moss > 0.68 {
+            return shade([84, 108, 52], 0.85 + r * 0.3);
+        }
+    }
+    shade([122, 121, 122], f)
+}
+
+/// The eye of ender set in a frame: green with a dark slit pupil, `y`
+/// from 4 at its top.
+fn end_eye(x: usize, y: usize, r: f32) -> Rgba {
+    let pupil = (7..=8).contains(&x) && (5..=10).contains(&y);
+    if pupil { shade([18, 40, 30], 1.0) } else { shade([60, 150, 110], 0.85 + r * 0.3) }
+}
+
+/// Nether wart at look `stage` 0..3: dark red shoots that thicken and,
+/// once ripe, carry knobbly bulbs.
+fn nether_wart(stage: u8, x: usize, y: usize) -> Rgba {
+    const STALKS: [usize; 4] = [2, 6, 10, 13];
+    let r = rnd(tex::NETHER_WART_0 + stage, x, y, 11);
+    let width = if stage == 0 { 1 } else { 2 };
+    // Ripe bulbs swell a pixel past the stalk on either side.
+    let reach = if stage == 2 { 1 } else { 0 };
+    let Some(i) = STALKS.iter().position(|&sx| x + reach >= sx && x < sx + width + reach) else {
+        return [0, 0, 0, 0];
+    };
+    let height = [5, 8, 11][stage as usize] - (i % 2) * 2;
+    let top = SIZE - height;
+    let on_stalk = x >= STALKS[i] && x < STALKS[i] + width;
+    if stage == 2 && y + 1 >= top && y < top + 4 {
+        let knob = rnd(tex::NETHER_WART_0, x, y, 12) > 0.2;
+        return if knob { shade([182, 38, 46], 0.75 + r * 0.45) } else { [0, 0, 0, 0] };
+    }
+    if !on_stalk || y < top {
+        return [0, 0, 0, 0];
+    }
+    let tip = y < top + 2 + stage as usize;
+    if tip { shade([164, 30, 38], 0.85 + r * 0.35) } else { shade([108, 18, 28], 0.8 + r * 0.3) }
 }
 
 fn flower(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
@@ -797,15 +945,45 @@ fn crack(stage: u8, x: usize, y: usize) -> Rgba {
     if (order[y * SIZE + x] as u32) < visible_steps { [40, 40, 40, 255] } else { [NEUTRAL, NEUTRAL, NEUTRAL, 255] }
 }
 
-/// Returns RGBA8 data for every mip level; each level contains all layers
-/// back to back, ready for `write_texture`.
+/// A pixel of any layer a renderer can name: block layers below
+/// `tex::ITEM_BASE`, item icons from it on.
+pub fn texel(layer: u16, x: usize, y: usize) -> Rgba {
+    use crate::simulation::effects::Effect;
+    let icons = crate::item::icon_count() as u16;
+    match tex::item_index(layer) {
+        Some(index) if index >= icons => Effect::ALL
+            .get((index - icons) as usize)
+            .map_or([0, 0, 0, 0], |&e| super::item_sprites::effect_pixel(e, x, y)),
+        Some(index) => {
+            crate::item::sprite_for_layer(index).map_or([0, 0, 0, 0], |s| super::item_sprites::pixel(s, x, y))
+        }
+        None => pixel(layer as u8, x, y),
+    }
+}
+
+/// RGBA8 data for every mip level of the block texture array; each level
+/// contains all layers back to back, ready for `write_texture`.
 pub fn generate_mips() -> Vec<Vec<u8>> {
-    let layers = tex::COUNT as usize;
+    mips_of(tex::COUNT as usize, |l, x, y| pixel(l as u8, x, y))
+}
+
+/// Layers of the item icon array: every item's icon, then the status
+/// effect icons.
+pub fn item_layers() -> u32 {
+    crate::item::icon_count() + crate::simulation::effects::Effect::ALL.len() as u32
+}
+
+/// Mip levels of the item icon array (see [`generate_mips`]).
+pub fn generate_item_mips() -> Vec<Vec<u8>> {
+    mips_of(item_layers() as usize, |l, x, y| texel(tex::item_layer(l as u16), x, y))
+}
+
+fn mips_of(layers: usize, pixel: impl Fn(usize, usize, usize) -> Rgba) -> Vec<Vec<u8>> {
     let mut level: Vec<Rgba> = Vec::with_capacity(SIZE * SIZE * layers);
     for l in 0..layers {
         for y in 0..SIZE {
             for x in 0..SIZE {
-                level.push(pixel(l as u8, x, y));
+                level.push(pixel(l, x, y));
             }
         }
     }

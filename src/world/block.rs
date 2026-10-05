@@ -121,71 +121,82 @@ pub mod tex {
     pub const DOOR_BOTTOM: u8 = 87;
     /// The player's arm in first person.
     pub const SKIN: u8 = 88;
-    /// Seven flame animation frames, in the gap before item icons.
+    /// Seven flame animation frames.
     pub const FIRE_0: u8 = 89;
     pub const FIRE_FRAMES: u8 = 7;
-    /// Flat item icons (see `item::Item::icon_layer`), up to `ITEM_COUNT` of them.
-    pub const ITEM_0: u8 = 96;
-    pub const ITEM_COUNT: u8 = 64;
-    // More block textures, after the item icons.
-    pub const SPRUCE_LOG_SIDE: u8 = 160;
-    pub const SPRUCE_LOG_TOP: u8 = 161;
-    pub const BIRCH_LOG_SIDE: u8 = 162;
-    pub const BIRCH_LOG_TOP: u8 = 163;
-    pub const JUNGLE_LOG_SIDE: u8 = 164;
-    pub const JUNGLE_LOG_TOP: u8 = 165;
-    pub const ACACIA_LOG_SIDE: u8 = 166;
-    pub const ACACIA_LOG_TOP: u8 = 167;
-    pub const BIRCH_LEAVES: u8 = 168;
-    pub const JUNGLE_LEAVES: u8 = 169;
-    pub const ACACIA_LEAVES: u8 = 170;
-    pub const SPRUCE_PLANKS: u8 = 171;
-    pub const BIRCH_PLANKS: u8 = 172;
-    pub const JUNGLE_PLANKS: u8 = 173;
-    pub const ACACIA_PLANKS: u8 = 174;
-    pub const BIRCH_SAPLING: u8 = 175;
-    pub const JUNGLE_SAPLING: u8 = 176;
-    pub const ACACIA_SAPLING: u8 = 177;
-    pub const RED_SAND: u8 = 178;
+    pub const SPRUCE_LOG_SIDE: u8 = 96;
+    pub const SPRUCE_LOG_TOP: u8 = 97;
+    pub const BIRCH_LOG_SIDE: u8 = 98;
+    pub const BIRCH_LOG_TOP: u8 = 99;
+    pub const JUNGLE_LOG_SIDE: u8 = 100;
+    pub const JUNGLE_LOG_TOP: u8 = 101;
+    pub const ACACIA_LOG_SIDE: u8 = 102;
+    pub const ACACIA_LOG_TOP: u8 = 103;
+    pub const BIRCH_LEAVES: u8 = 104;
+    pub const JUNGLE_LEAVES: u8 = 105;
+    pub const ACACIA_LEAVES: u8 = 106;
+    pub const SPRUCE_PLANKS: u8 = 107;
+    pub const BIRCH_PLANKS: u8 = 108;
+    pub const JUNGLE_PLANKS: u8 = 109;
+    pub const ACACIA_PLANKS: u8 = 110;
+    pub const BIRCH_SAPLING: u8 = 111;
+    pub const JUNGLE_SAPLING: u8 = 112;
+    pub const ACACIA_SAPLING: u8 = 113;
+    pub const RED_SAND: u8 = 114;
     /// Plain terracotta, then the six dyed colours (see `Block::TERRACOTTA`).
-    pub const TERRACOTTA: u8 = 179;
-    pub const CLAY: u8 = 186;
-    pub const SUGAR_CANE: u8 = 187;
-    pub const PUMPKIN_SIDE: u8 = 188;
-    pub const PUMPKIN_TOP: u8 = 189;
-    pub const MELON_SIDE: u8 = 190;
-    pub const MELON_TOP: u8 = 191;
-    pub const FERN: u8 = 192;
-    pub const BLUE_ORCHID: u8 = 193;
-    pub const ICE: u8 = 194;
+    pub const TERRACOTTA: u8 = 115;
+    pub const CLAY: u8 = 122;
+    pub const SUGAR_CANE: u8 = 123;
+    pub const PUMPKIN_SIDE: u8 = 124;
+    pub const PUMPKIN_TOP: u8 = 125;
+    pub const MELON_SIDE: u8 = 126;
+    pub const MELON_TOP: u8 = 127;
+    pub const FERN: u8 = 128;
+    pub const BLUE_ORCHID: u8 = 129;
+    pub const ICE: u8 = 130;
     /// Biome-coloured copies of [`FOLIAGE`] textures: for each foliage
     /// group from 1 (see `terrain::Biome::foliage`), one layer per entry.
-    pub const FOLIAGE_0: u8 = 195;
+    pub const FOLIAGE_0: u8 = 131;
     pub const FOLIAGE: [u8; 5] = [GRASS_TOP, GRASS_SIDE, LEAVES, TALL_GRASS, FERN];
     pub const FOLIAGE_GROUPS: u8 = 5;
-    /// More item icons, once the first `ITEM_COUNT` are used up.
-    pub const ITEM_MORE_0: u8 = FOLIAGE_0 + (FOLIAGE_GROUPS - 1) * FOLIAGE.len() as u8;
-    pub const ITEM_MORE_COUNT: u8 = 32;
-    pub const END_STONE: u8 = ITEM_MORE_0 + ITEM_MORE_COUNT;
+    pub const END_STONE: u8 = FOLIAGE_0 + (FOLIAGE_GROUPS - 1) * FOLIAGE.len() as u8;
     pub const SPAWNER: u8 = END_STONE + 1;
-    pub const COUNT: u32 = SPAWNER as u32 + 1;
+    /// Nether wart's three looks: ages 0-1, age 2 and ripe (age 3).
+    pub const NETHER_WART_0: u8 = SPAWNER + 1;
+    /// The brewing stand's sides and top: its rod down the middle columns
+    /// and its stone plates along the bottom (shaped boxes sample a texture
+    /// by their position in the cell).
+    pub const BREWING_SIDE: u8 = NETHER_WART_0 + 3;
+    pub const BREWING_TOP: u8 = BREWING_SIDE + 1;
+    /// Stone bricks: plain, mossy and cracked.
+    pub const STONE_BRICKS: u8 = BREWING_TOP + 1;
+    pub const MOSSY_STONE_BRICKS: u8 = STONE_BRICKS + 1;
+    pub const CRACKED_STONE_BRICKS: u8 = STONE_BRICKS + 2;
+    pub const IRON_BARS: u8 = STONE_BRICKS + 3;
+    pub const BOOKSHELF: u8 = IRON_BARS + 1;
+    pub const COBWEB: u8 = BOOKSHELF + 1;
+    /// End portal frames: top and side, then the same with an eye of ender.
+    pub const FRAME_TOP: u8 = COBWEB + 1;
+    pub const FRAME_SIDE: u8 = FRAME_TOP + 1;
+    pub const FRAME_EYE_TOP: u8 = FRAME_TOP + 2;
+    pub const FRAME_EYE_SIDE: u8 = FRAME_TOP + 3;
+    pub const END_PORTAL: u8 = FRAME_TOP + 4;
+    pub const COUNT: u32 = END_PORTAL as u32 + 1;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
-    /// Texture layer of item icon `index` (see `item::sprite_for_layer`).
-    pub const fn item_layer(index: u8) -> u8 {
-        if index < ITEM_COUNT { ITEM_0 + index } else { ITEM_MORE_0 + index - ITEM_COUNT }
+    /// Item icons live in a texture array of their own (see
+    /// `item::sprite_for_layer`); renderers address icon `index` as layer
+    /// `ITEM_BASE + index`, after every block layer.
+    pub const ITEM_BASE: u16 = 256;
+
+    pub const fn item_layer(index: u16) -> u16 {
+        ITEM_BASE + index
     }
 
     /// The item icon index drawn on `layer`, if it holds one.
-    pub fn item_index(layer: u8) -> Option<u8> {
-        if (ITEM_0..ITEM_0 + ITEM_COUNT).contains(&layer) {
-            Some(layer - ITEM_0)
-        } else if (ITEM_MORE_0..ITEM_MORE_0 + ITEM_MORE_COUNT).contains(&layer) {
-            Some(layer - ITEM_MORE_0 + ITEM_COUNT)
-        } else {
-            None
-        }
+    pub fn item_index(layer: u16) -> Option<u16> {
+        layer.checked_sub(ITEM_BASE)
     }
 
     /// The layer to draw `layer` with in a column of foliage `group`:
@@ -325,6 +336,29 @@ impl Block {
     pub const NETHER_BRICK_FENCE: Block = Block(182);
     /// A monster spawner cage (see `World::spawner`).
     pub const SPAWNER: Block = Block(183);
+    /// Nether wart at ages 0..=3, ids 184..=187 (see [`Block::nether_wart`]).
+    /// Grows on soul sand, in any light.
+    pub const NETHER_WART: Block = Block(184);
+    /// Brews potions (see `world::brewing`).
+    pub const BREWING_STAND: Block = Block(188);
+    /// Stone brick stairs, ids 189..=192, and slab, 193: the seventh slab
+    /// material (see [`Block::SLAB_BASES`]).
+    pub const STONE_BRICK_STAIRS: Block = Block(189);
+    pub const STONE_BRICK_SLAB: Block = Block(193);
+    pub const STONE_BRICKS: Block = Block(194);
+    pub const MOSSY_STONE_BRICKS: Block = Block(195);
+    pub const CRACKED_STONE_BRICKS: Block = Block(196);
+    /// Joins neighbouring bars, panes and full blocks like Java's panes.
+    pub const IRON_BARS: Block = Block(197);
+    pub const BOOKSHELF: Block = Block(198);
+    /// Slows anything inside it to a crawl.
+    pub const COBWEB: Block = Block(199);
+    /// End portal frames facing south, north, east and west (ids 200..=203),
+    /// then holding an eye of ender (204..=207). Twelve facing inward, all
+    /// with eyes, open an End portal (see `world::end_portal`).
+    pub const END_PORTAL_FRAME: Block = Block(200);
+    /// Takes whatever falls in to the End.
+    pub const END_PORTAL: Block = Block(208);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -387,6 +421,16 @@ impl Block {
         (59..=66).contains(&self.0).then(|| self.0 - 59)
     }
 
+    /// Nether wart at `age` 0..=3 (3 is ripe).
+    pub const fn nether_wart(age: u8) -> Block {
+        Block(184 + if age > 3 { 3 } else { age })
+    }
+
+    /// Age of a nether wart crop.
+    pub fn wart_age(self) -> Option<u8> {
+        (184..=187).contains(&self.0).then(|| self.0 - 184)
+    }
+
     /// A fence gate facing `facing`.
     pub const fn gate(facing: Facing, open: bool) -> Block {
         Block(141 + open as u8 * 4 + facing as u8)
@@ -399,20 +443,24 @@ impl Block {
 
     /// The stairs cut from `base` (one of [`Block::SLAB_BASES`]), facing south.
     pub fn stairs_of(base: Block) -> Option<Block> {
-        Self::SLAB_BASES.iter().position(|&b| b == base).map(|i| Block(112 + i as u8 * 4))
+        Self::SLAB_BASES.iter().position(|&b| b == base).map(stairs_id)
     }
 
     /// The full block stairs were cut from.
     pub fn stairs_base(self) -> Option<Block> {
-        (112..=135).contains(&self.0).then(|| Self::SLAB_BASES[(self.0 as usize - 112) / 4])
+        stairs_index(self.0).map(|(i, _)| Self::SLAB_BASES[i])
     }
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
         let f = |i: u8| Facing::ALL[i as usize % 4];
         Some(match self.0 {
-            112..=135 => Shaped::Stairs(f(self.0 - 112)),
+            112..=135 | 189..=192 => Shaped::Stairs(f(stairs_index(self.0).unwrap().1)),
             136 | 182 => Shaped::Fence,
+            188 => Shaped::BrewingStand,
+            197 => Shaped::Pane,
+            200..=207 => Shaped::Frame { facing: f(self.0 - 200), eye: self.0 >= 204 },
+            208 => Shaped::EndPortal,
             137..=140 => Shaped::Ladder(f(self.0 - 137)),
             141..=148 => Shaped::Gate { facing: f(self.0 - 141), open: self.0 >= 145 },
             149..=164 => {
@@ -495,7 +543,11 @@ impl Block {
             47..=49 => Some((Block::FURNACE, f(self.0 - 46))),
             50..=52 => Some((Block::LIT_FURNACE, f(self.0 - 49))),
             53..=56 => Some((Block::CHEST, f(self.0 - 53))),
-            112..=135 => Some((Block((self.0 - 112) / 4 * 4 + 112), f((self.0 - 112) % 4))),
+            112..=135 | 189..=192 => {
+                let (i, facing) = stairs_index(self.0).unwrap();
+                Some((stairs_id(i), f(facing)))
+            }
+            200..=207 => Some((Block::END_PORTAL_FRAME, f((self.0 - 200) % 4))),
             137..=140 => Some((Block::LADDER, f(self.0 - 137))),
             141..=148 => Some((Block::FENCE_GATE, f((self.0 - 141) % 4))),
             149..=164 => Some((Block::OAK_DOOR, f((self.0 - 149) % 4))),
@@ -512,6 +564,8 @@ impl Block {
     pub fn with_facing(self, facing: Facing) -> Block {
         let i = facing as u8;
         match self.base() {
+            // Frames keep their eye.
+            Block::END_PORTAL_FRAME => Block(200 + i + if self.0 >= 204 { 4 } else { 0 }),
             b if i == 0 => b,
             Block::FURNACE => Block(46 + i),
             Block::LIT_FURNACE => Block(49 + i),
@@ -595,17 +649,28 @@ impl Block {
     }
 
     /// The full blocks slabs are cut from, in slab id order.
-    pub const SLAB_BASES: [Block; 6] =
-        [Block::STONE, Block::COBBLESTONE, Block::PLANKS, Block::SANDSTONE, Block::BRICKS, Block::NETHER_BRICKS];
+    pub const SLAB_BASES: [Block; 7] = [
+        Block::STONE,
+        Block::COBBLESTONE,
+        Block::PLANKS,
+        Block::SANDSTONE,
+        Block::BRICKS,
+        Block::NETHER_BRICKS,
+        Block::STONE_BRICKS,
+    ];
 
     /// The slab cut from `base`, if there is one.
     pub fn slab_of(base: Block) -> Option<Block> {
-        Self::SLAB_BASES.iter().position(|&b| b == base).map(|i| Block(106 + i as u8))
+        Self::SLAB_BASES.iter().position(|&b| b == base).map(slab_id)
     }
 
     /// The full block a slab was cut from (two stacked slabs make it).
     pub fn slab_base(self) -> Option<Block> {
-        (106..=111).contains(&self.0).then(|| Self::SLAB_BASES[self.0 as usize - 106])
+        match self.0 {
+            106..=111 => Some(Self::SLAB_BASES[self.0 as usize - 106]),
+            193 => Some(Block::STONE_BRICKS),
+            _ => None,
+        }
     }
 
     pub fn is_slab(self) -> bool {
@@ -655,6 +720,7 @@ impl Block {
             Block::FARMLAND | Block::WET_FARMLAND => Some(Block::DIRT.into()),
             b if b.crop_stage() == Some(7) => Some(Item::WHEAT),
             b if b.crop_stage().is_some() => Some(Item::WHEAT_SEEDS),
+            b if b.wart_age().is_some() => Some(Item::NETHER_WART),
             Block::CLAY => Some(Item::CLAY_BALL),
             Block::MELON => Some(Item::MELON_SLICE),
             // The foot drops the bed; breaking either half breaks both.
@@ -665,6 +731,9 @@ impl Block {
             Block::QUARTZ_ORE => Some(Item::NETHER_QUARTZ),
             // Glowstone breaks into dust (see `World::spill_block`).
             Block::GLOWSTONE | Block::NETHER_PORTAL | Block::SPAWNER => None,
+            Block::COBWEB => Some(Item::STRING),
+            // Bookshelves drop three books (see `World::spill_block`).
+            Block::BOOKSHELF | Block::END_PORTAL_FRAME | Block::END_PORTAL => None,
             b if b.is_leaves() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
             b if b.is_fluid() || b.is_fire() || b == Block::AIR => None,
@@ -677,6 +746,7 @@ impl Block {
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
         match self.material() {
+            Block::COBWEB => 4.0,
             b if b.kind() == RenderKind::Cross => 0.0,
             Block::TNT => 0.0,
             b if b.is_leaves() => 0.2,
@@ -685,6 +755,11 @@ impl Block {
             Block::CACTUS | Block::NETHERRACK => 0.4,
             Block::SOUL_SAND => 0.5,
             Block::NETHER_BRICKS => 2.0,
+            Block::BREWING_STAND => 0.5,
+            Block::STONE_BRICKS | Block::MOSSY_STONE_BRICKS | Block::CRACKED_STONE_BRICKS => 1.5,
+            Block::IRON_BARS => 5.0,
+            Block::BOOKSHELF => 1.5,
+            Block::END_PORTAL_FRAME | Block::END_PORTAL => f32::INFINITY,
             Block::QUARTZ_ORE | Block::END_STONE => 3.0,
             Block::NETHER_PORTAL => f32::INFINITY,
             Block::DIRT | Block::SAND | Block::RED_SAND | Block::ICE => 0.5,
@@ -730,7 +805,14 @@ impl Block {
             | Block::END_STONE
             | Block::NETHER_BRICKS
             | Block::SPAWNER
+            | Block::BREWING_STAND
+            | Block::STONE_BRICKS
+            | Block::MOSSY_STONE_BRICKS
+            | Block::CRACKED_STONE_BRICKS
+            | Block::IRON_BARS
             | Block::ICE => Some(ToolKind::Pickaxe),
+            Block::COBWEB => Some(ToolKind::Sword),
+            Block::BOOKSHELF => Some(ToolKind::Axe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
             Block::DIRT
             | Block::GRASS
@@ -766,6 +848,12 @@ impl Block {
             | Block::QUARTZ_ORE
             | Block::END_STONE
             | Block::SPAWNER
+            | Block::BREWING_STAND
+            | Block::STONE_BRICKS
+            | Block::MOSSY_STONE_BRICKS
+            | Block::CRACKED_STONE_BRICKS
+            | Block::IRON_BARS
+            | Block::COBWEB
             | Block::NETHER_BRICKS => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
             Block::IRON_ORE => Some(1),
@@ -785,7 +873,7 @@ impl Block {
             .chain(100..=103)
             .chain(105..=111)
             .chain((112..=132).step_by(4))
-            .chain([136, 137, 141, 182])
+            .chain([136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200])
             .map(Block)
     }
 
@@ -843,6 +931,7 @@ impl Block {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS) || below.is_farmland()
             }
             b if b.crop_stage().is_some() => below.is_farmland(),
+            b if b.wart_age().is_some() => below == Block::SOUL_SAND,
             _ => true,
         }
     }
@@ -887,10 +976,32 @@ impl Block {
             Block::TORCH => 14,
             Block::LIT_FURNACE => 13,
             Block::NETHER_PORTAL => 11,
+            Block::END_PORTAL => 15,
+            // Java: all frame states glow faintly, with or without an eye.
+            Block::END_PORTAL_FRAME => 1,
             b if b.is_lava() => 15,
             b if b.is_fire() => 15,
             _ => 0,
         }
+    }
+}
+
+/// Id of the slab of [`Block::SLAB_BASES`] entry `i`.
+const fn slab_id(i: usize) -> Block {
+    if i < 6 { Block(106 + i as u8) } else { Block::STONE_BRICK_SLAB }
+}
+
+/// Id of the south-facing stairs of [`Block::SLAB_BASES`] entry `i`.
+const fn stairs_id(i: usize) -> Block {
+    if i < 6 { Block(112 + i as u8 * 4) } else { Block::STONE_BRICK_STAIRS }
+}
+
+/// The slab material index and facing index of a stairs id.
+const fn stairs_index(id: u8) -> Option<(usize, u8)> {
+    match id {
+        112..=135 => Some(((id as usize - 112) / 4, (id - 112) % 4)),
+        189..=192 => Some((6, id - 189)),
+        _ => None,
     }
 }
 
@@ -1031,6 +1142,17 @@ impl Facing {
 pub enum Shaped {
     /// The low step faces this way; the tall half is behind it.
     Stairs(Facing),
+    /// Three stone plates and a rod.
+    BrewingStand,
+    /// Iron bars: a post with arms out to what they join.
+    Pane,
+    /// An End portal frame, 13/16 tall, with the eye on top once filled.
+    Frame {
+        facing: Facing,
+        eye: bool,
+    },
+    /// The End portal's surface, 3/4 up its cell.
+    EndPortal,
     Fence,
     /// Faces away from the wall it hangs on.
     Ladder(Facing),
@@ -1242,10 +1364,24 @@ const fn make(id: u8) -> BlockInfo {
         181 => ("end stone", Opaque, all(tex::END_STONE)),
         182 => ("nether brick fence", Shaped, all(tex::NETHER_BRICKS)),
         183 => ("spawner", Cutout, all(tex::SPAWNER)),
+        184..=187 => ("nether wart", Cross, all(tex::NETHER_WART_0 + (id - 184).saturating_sub(1))),
+        188 => ("brewing stand", Shaped, column(tex::BREWING_SIDE, tex::BREWING_TOP, tex::BREWING_TOP)),
+        189..=192 => ("stone brick stairs", Shaped, all(tex::STONE_BRICKS)),
+        193 => ("stone brick slab", Cutout, all(tex::STONE_BRICKS)),
+        194 => ("stone bricks", Opaque, all(tex::STONE_BRICKS)),
+        195 => ("mossy stone bricks", Opaque, all(tex::MOSSY_STONE_BRICKS)),
+        196 => ("cracked stone bricks", Opaque, all(tex::CRACKED_STONE_BRICKS)),
+        197 => ("iron bars", Shaped, all(tex::IRON_BARS)),
+        198 => ("bookshelf", Opaque, column(tex::BOOKSHELF, tex::PLANKS, tex::PLANKS)),
+        199 => ("cobweb", Cross, all(tex::COBWEB)),
+        200..=203 => ("end portal frame", Shaped, column(tex::FRAME_SIDE, tex::FRAME_TOP, tex::END_STONE)),
+        204..=207 => ("end portal frame", Shaped, column(tex::FRAME_EYE_SIDE, tex::FRAME_EYE_TOP, tex::END_STONE)),
+        208 => ("end portal", Shaped, all(tex::END_PORTAL)),
         _ => ("unknown", Invisible, all(0)),
     };
-    // Ice is see-through like water but solid underfoot.
-    let solid = matches!(kind, Opaque | Cutout | Shaped) || id == 97;
+    // Ice is see-through like water but solid underfoot; End portals are
+    // a surface to fall through.
+    let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97) && id != 208;
     BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104), tex }
 }
 
@@ -1267,7 +1403,7 @@ static LIGHT_OPACITY: [u8; 256] = {
             RenderKind::Opaque => 15,
             // Slabs and stairs keep the light out, like Minecraft's (they
             // borrow light from their neighbours instead; see `borrows_light`).
-            _ if matches!(i, 106..=135) => 15,
+            _ if matches!(i, 106..=135 | 189..=193) => 15,
             RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
             _ if matches!(i, 10 | 98 | 99) => 0, // glass, beds
             _ => 1,                              // leaves, water: attenuate skylight too
@@ -1302,11 +1438,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn end_stone_is_not_an_item_icon() {
-        for index in 0..tex::ITEM_COUNT + tex::ITEM_MORE_COUNT {
+    fn stronghold_blocks_follow_java_rules() {
+        use crate::item::{Tier, ToolKind};
+        let sword = Some(Item::tool(ToolKind::Sword, Tier::Wood));
+        assert!(crate::mining::can_harvest(Block::COBWEB, sword) && !crate::mining::can_harvest(Block::COBWEB, None));
+        assert_eq!(Block::COBWEB.drop(), Some(Item::STRING));
+        assert_eq!(Block::COBWEB.hardness(), 4.0);
+        assert_eq!(crate::mining::break_time(Block::COBWEB, sword), 0.4);
+        assert_eq!(crate::mining::break_time(Block::COBWEB, None), 20.0);
+        assert!(!Block::COBWEB.is_solid());
+        let eyed = Block(204);
+        assert_eq!(eyed.with_facing(Facing::East), Block(206), "turning keeps the eye");
+        assert_eq!(Block(201).base(), Block::END_PORTAL_FRAME);
+        for id in 200..=207 {
+            assert_eq!(Block(id).emission(), 1);
+        }
+        assert_eq!(Block::END_PORTAL_FRAME.hardness(), f32::INFINITY);
+        assert!(!Block::END_PORTAL.is_solid() && Block::END_PORTAL.emission() == 15);
+        assert_eq!(Block::slab_of(Block::STONE_BRICKS), Some(Block::STONE_BRICK_SLAB));
+        assert_eq!(Block::STONE_BRICK_STAIRS.with_facing(Facing::West).stairs_base(), Some(Block::STONE_BRICKS));
+        assert!(crate::world::shape::pane_connects(Block::STONE) && !crate::world::shape::pane_connects(Block::AIR));
+    }
+
+    #[test]
+    fn block_layers_are_not_item_icons() {
+        for index in 0..300 {
             assert_eq!(tex::item_index(tex::item_layer(index)), Some(index));
         }
-        assert_eq!(tex::item_index(tex::END_STONE), None);
+        for layer in 0..tex::COUNT as u16 {
+            assert_eq!(tex::item_index(layer), None);
+        }
     }
 
     #[test]
@@ -1448,14 +1609,14 @@ mod tests {
         // Only grass and oak leaves change colour.
         assert_eq!(tex::tinted(tex::STONE, 3), tex::STONE);
         assert_eq!(tex::tinted(tex::SPRUCE_LEAVES, 4), tex::SPRUCE_LEAVES);
-        assert_eq!(tex::untinted(tex::ITEM_0), None);
+        assert_eq!(tex::untinted(tex::END_STONE), None);
     }
 
     #[test]
     fn slabs_are_half_blocks_that_mine_like_their_base() {
         for (i, &base) in Block::SLAB_BASES.iter().enumerate() {
             let slab = Block::slab_of(base).unwrap();
-            assert_eq!(slab, Block(Block::STONE_SLAB.0 + i as u8));
+            assert_eq!(slab, slab_id(i));
             assert_eq!(slab.slab_base(), Some(base));
             assert_eq!(slab.height(), 0.5);
             assert!(slab.is_solid() && !slab.is_opaque() && slab.is_targetable());
@@ -1494,7 +1655,7 @@ mod tests {
     fn shaped_blocks_turn_drop_and_mine_like_their_material() {
         for (i, &base) in Block::SLAB_BASES.iter().enumerate() {
             let stairs = Block::stairs_of(base).unwrap();
-            assert_eq!(stairs, Block(Block::STONE_STAIRS.0 + 4 * i as u8));
+            assert_eq!(stairs, stairs_id(i));
             for f in Facing::ALL {
                 let turned = stairs.with_facing(f);
                 assert_eq!(turned.shaped(), Some(Shaped::Stairs(f)));

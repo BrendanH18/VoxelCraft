@@ -5,7 +5,8 @@ use glam::{DVec3, IVec3};
 
 use crate::audio::sounds::{Material, Sound};
 use crate::inventory::{HOTBAR_SLOTS, SLOTS, Stack, move_into};
-use crate::world::{chest, furnace};
+use crate::item::Item;
+use crate::world::{brewing, chest, furnace};
 
 use super::hud::SlotRef;
 use super::{Container, Game, GameMode};
@@ -89,6 +90,24 @@ impl Game {
                     self.award_furnace_xp(p, stack.count);
                 }
             }
+            SlotRef::BrewBottle(_) | SlotRef::BrewIngredient | SlotRef::BrewFuel => {
+                let Container::Brewing(p) = self.container else { return };
+                let Some(b) = self.world.brewing_stand_mut(p) else { return };
+                let cell = match slot {
+                    SlotRef::BrewBottle(i) => &mut b.bottles[i],
+                    SlotRef::BrewIngredient => &mut b.ingredient,
+                    _ => &mut b.fuel,
+                };
+                let Some(stack) = cell.take() else { return };
+                let left = self.move_to_player(stack);
+                if let Some(b) = self.world.brewing_stand_mut(p) {
+                    match slot {
+                        SlotRef::BrewBottle(i) => b.bottles[i] = left,
+                        SlotRef::BrewIngredient => b.ingredient = left,
+                        _ => b.fuel = left,
+                    }
+                }
+            }
             SlotRef::Armor(piece) => {
                 let Some(stack) = self.inventory.armor[piece as usize].take() else { return };
                 self.inventory.armor[piece as usize] = self.move_to_player(stack);
@@ -125,6 +144,37 @@ impl Game {
                 {
                     let cell = if smeltable { &mut f.input } else { &mut f.fuel };
                     return move_into(stack, std::slice::from_mut(cell), &[0]);
+                }
+            }
+            Container::Brewing(p) => {
+                // Java: bottles into empty bottle slots one each, blaze
+                // powder into the fuel then the ingredient slot, other
+                // ingredients into theirs.
+                if let Some(b) = self.world.brewing_stand_mut(p) {
+                    let mut stack = stack;
+                    if brewing::fits_bottle_slot(stack.item) {
+                        let before = stack.count;
+                        for cell in b.bottles.iter_mut().filter(|c| c.is_none()) {
+                            *cell = Some(Stack::new(stack.item, 1));
+                            stack.count -= 1;
+                            if stack.count == 0 {
+                                return None;
+                            }
+                        }
+                        if stack.count != before {
+                            return Some(stack);
+                        }
+                    }
+                    let mut left = Some(stack);
+                    if stack.item == Item::BLAZE_POWDER {
+                        left = move_into(stack, std::slice::from_mut(&mut b.fuel), &[0]);
+                    }
+                    if let Some(rest) = left.filter(|s| brewing::is_ingredient(s.item)) {
+                        left = move_into(rest, std::slice::from_mut(&mut b.ingredient), &[0]);
+                    }
+                    if left != Some(stack) {
+                        return left;
+                    }
                 }
             }
             Container::Inventory if self.mode == GameMode::Survival => {

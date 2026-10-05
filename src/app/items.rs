@@ -24,6 +24,11 @@ impl Game {
         for (cell, stack) in std::mem::take(&mut self.world.drops) {
             self.mobs.entities.drop_from_block(stack, cell);
         }
+        for cell in std::mem::take(&mut self.world.brews_done) {
+            // Java's brewing stand bubbling as a brew finishes.
+            let at = cell.as_dvec3() + DVec3::splat(0.5);
+            self.audio.play(crate::audio::sounds::Sound::Swim, Some(at), 0.5, (1.6, 1.9));
+        }
         for (cell, xp) in std::mem::take(&mut self.world.xp_drops) {
             self.mobs.entities.spawn_xp(cell.as_dvec3() + DVec3::splat(0.5), xp);
         }
@@ -36,6 +41,7 @@ impl Game {
         let gone = match self.container {
             Container::Furnace(pos) => self.world.furnace(pos).is_none(),
             Container::Chest(pos) => self.world.chest(pos).is_none(),
+            Container::Brewing(pos) => self.world.brewing_stand(pos).is_none(),
             _ => false,
         };
         if gone && self.inventory_open {
@@ -176,7 +182,7 @@ impl Game {
             let block = item.stack.item.block().filter(|b| !b.flat_icon());
             let icon = match block {
                 Some(_) => None,
-                None => item.stack.item.block().map(|b| b.info().tex[0]).or(item.stack.item.icon_layer()),
+                None => item.stack.item.block().map(|b| b.info().tex[0].into()).or(item.stack.item.icon_layer()),
             };
             let size = if block.is_some() { 0.25 } else { 0.5 };
             let spin = item.age + item.phase;

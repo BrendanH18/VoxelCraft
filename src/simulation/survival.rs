@@ -47,6 +47,7 @@ pub const CAUSE_DROWN: &str = "drowned";
 pub const CAUSE_LAVA: &str = "tried to swim in lava";
 pub const CAUSE_FIRE: &str = "burned to death";
 pub const CAUSE_STARVE: &str = "starved to death";
+pub const CAUSE_MAGIC: &str = "was killed by magic";
 
 /// Damage left after armor worth `points` (Minecraft's formula without
 /// toughness): each point blocks 4%, up to 80%, though big hits punch
@@ -213,6 +214,8 @@ pub struct Vitals {
     pub xp: super::experience::Experience,
     /// Seconds before this player can throw another ender pearl.
     pub pearl_cooldown: f32,
+    /// Potion and other status effects.
+    pub effects: super::effects::Effects,
     /// Seconds since the last damage (drives the hurt flash).
     since_damage: f32,
     drown_timer: f32,
@@ -235,6 +238,7 @@ impl Default for Vitals {
             hunger: Hunger::default(),
             xp: Default::default(),
             pearl_cooldown: 0.0,
+            effects: Default::default(),
             since_damage: 1e3,
             drown_timer: 0.0,
             fire_left: 0.0,
@@ -321,6 +325,20 @@ impl Vitals {
         if self.is_dead() {
             return hurts;
         }
+        use super::effects::Effect;
+        let effect = self.effects.tick(dt);
+        self.health = (self.health + effect.heal).min(MAX_HEALTH);
+        // Poison never takes the last half heart, and armor doesn't help.
+        if effect.poison > 0.0 && self.health > 1.0 && !creative {
+            self.health = (self.health - effect.poison).max(1.0);
+            self.since_damage = 0.0;
+        }
+        let fire_proof = self.effects.has(Effect::FireResistance);
+        // Slow falling cancels falls; jump boost forgives a block per level.
+        if self.effects.has(Effect::SlowFalling) && !env.on_ground {
+            self.fall_peak = self.fall_peak.map(|_| env.y);
+        }
+        let jump_levels = self.effects.jump_boost() as f64;
 
         // Falling: remember the highest point since standing on the ground
         // (including the ground itself, so stepping off a ledge counts
@@ -332,7 +350,7 @@ impl Vitals {
         } else if env.on_ground {
             if let Some(peak) = self.fall_peak {
                 hurts.landed = peak - env.y;
-                hurts.fall = fall_damage(peak - env.y);
+                hurts.fall = fall_damage(peak - env.y - jump_levels);
             }
             self.fall_peak = Some(env.y);
         } else {
@@ -340,7 +358,7 @@ impl Vitals {
         }
 
         // Air and drowning.
-        if env.head_in_water && !creative {
+        if env.head_in_water && !creative && !self.effects.has(Effect::WaterBreathing) {
             self.air = (self.air - dt).max(0.0);
             if self.air <= 0.0 {
                 self.drown_timer += dt;
@@ -381,6 +399,9 @@ impl Vitals {
         } else {
             self.fire_timer = 0.0;
         }
+        if fire_proof {
+            (hurts.lava, hurts.fire, hurts.burn) = (0.0, 0.0, 0.0);
+        }
 
         // Hunger: activity wears it down; it drives regeneration and starvation.
         if !creative {
@@ -401,6 +422,17 @@ impl Vitals {
             hurts.starve = starve;
         }
         hurts
+    }
+
+    /// Gives a status effect. Instant health heals here; instant damage is
+    /// returned for the caller's damage entry point (cause "magic").
+    pub fn apply_effect(&mut self, effect: super::effects::Effect, amplifier: u8, ticks: u32) -> f32 {
+        if self.is_dead() {
+            return 0.0;
+        }
+        let out = self.effects.add(effect, amplifier, ticks);
+        self.health = (self.health + out.heal).min(MAX_HEALTH);
+        out.damage
     }
 
     /// Forgets the height a fall started from (after a teleport).

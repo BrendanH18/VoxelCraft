@@ -51,12 +51,30 @@ pub struct Player {
     pub jumped: bool,
     /// Holding on to a ladder: falls are broken.
     pub climbing: bool,
+    /// Caught in a cobweb: crawling, and falls are broken.
+    pub in_web: bool,
     /// Walked into a wall on the last step (climbs ladders).
     pushing_wall: bool,
     /// Holding Shift on the ground: slow, quiet, and never walks off edges.
     pub sneaking: bool,
     /// How far the eyes have lowered for sneaking, 0..1 (eased).
     crouch: f64,
+    /// Status effects on movement (see [`Player::apply_effects`]).
+    modifiers: Modifiers,
+}
+
+/// What status effects do to movement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Modifiers {
+    speed: f64,
+    jump_levels: u32,
+    slow_falling: bool,
+}
+
+impl Default for Modifiers {
+    fn default() -> Self {
+        Self { speed: 1.0, jump_levels: 0, slow_falling: false }
+    }
 }
 
 impl Player {
@@ -72,9 +90,11 @@ impl Player {
             in_water: false,
             jumped: false,
             climbing: false,
+            in_web: false,
             pushing_wall: false,
             sneaking: false,
             crouch: 0.0,
+            modifiers: Modifiers::default(),
         }
     }
 
@@ -136,11 +156,30 @@ impl Player {
     }
 
     /// Whether the player's box overlaps a block cell.
+    /// Whether any cell the body overlaps holds `block`.
+    pub fn touches(&self, world: &World, block: Block) -> bool {
+        let (min, max) = SHAPE.aabb(self.pos);
+        let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
+        (lo.y..=hi.y)
+            .any(|y| (lo.z..=hi.z).any(|z| (lo.x..=hi.x).any(|x| world.get_block(IVec3::new(x, y, z)) == Some(block))))
+    }
+
     pub fn intersects_block(&self, b: IVec3) -> bool {
         let (min, max) = SHAPE.aabb(self.pos);
         let bmin = b.as_dvec3();
         let bmax = bmin + DVec3::ONE;
         min.cmplt(bmax).all() && max.cmpgt(bmin).all()
+    }
+
+    /// Takes on the movement effects of Speed, Slowness, Jump Boost and
+    /// Slow Falling; call before each update.
+    pub fn apply_effects(&mut self, effects: &crate::simulation::effects::Effects) {
+        use crate::simulation::effects::Effect;
+        self.modifiers = Modifiers {
+            speed: effects.speed_factor(),
+            jump_levels: effects.jump_boost(),
+            slow_falling: effects.has(Effect::SlowFalling),
+        };
     }
 
     pub fn update(&mut self, dt: f64, input: MoveInput, world: &World) {
@@ -178,7 +217,7 @@ impl Player {
             let target = wish * speed + DVec3::Y * vertical * speed;
             self.vel = self.vel.lerp(target, (dt * 12.0).min(1.0));
         } else if self.in_water {
-            let target = wish * SWIM_SPEED;
+            let target = wish * SWIM_SPEED * self.modifiers.speed;
             let k = (dt * 6.0).min(1.0);
             self.vel.x += (target.x - self.vel.x) * k;
             self.vel.z += (target.z - self.vel.z) * k;
@@ -198,7 +237,7 @@ impl Player {
             let below = (self.pos - DVec3::Y * 0.05).floor().as_ivec3();
             let ground = world.get_block(below).filter(|_| self.on_ground);
             let on_ice = ground == Some(Block::ICE);
-            let target = wish * speed * if ground == Some(Block::SOUL_SAND) { 0.4 } else { 1.0 };
+            let target = wish * speed * self.modifiers.speed * if ground == Some(Block::SOUL_SAND) { 0.4 } else { 1.0 };
             let grip = match (self.on_ground, on_ice) {
                 (true, true) => 1.6,
                 (true, false) => 18.0,
@@ -207,9 +246,12 @@ impl Player {
             let k = (dt * grip).min(1.0);
             self.vel.x += (target.x - self.vel.x) * k;
             self.vel.z += (target.z - self.vel.z) * k;
-            self.vel.y = (self.vel.y - GRAVITY * dt).max(-78.0);
+            // Java's slow falling: an eighth of the gravity while falling.
+            let gravity = if self.modifiers.slow_falling && self.vel.y <= 0.0 { GRAVITY / 8.0 } else { GRAVITY };
+            self.vel.y = (self.vel.y - gravity * dt).max(-78.0);
             if input.jump && self.on_ground {
-                self.vel.y = JUMP_VELOCITY;
+                // Jump Boost: +0.1 blocks per tick of take-off speed per level.
+                self.vel.y = JUMP_VELOCITY + 2.0 * self.modifiers.jump_levels as f64;
                 self.jumped = true;
             }
         }
@@ -228,6 +270,13 @@ impl Player {
         }
 
         let mut delta = self.vel * dt;
+        // Java's cobweb: movement scaled by 0.25 across and 0.05 up and
+        // down, and speed doesn't build up while stuck.
+        self.in_web = !self.flying && self.touches(world, Block::COBWEB);
+        if self.in_web {
+            delta *= DVec3::new(0.25, 0.05, 0.25);
+            self.vel.y = self.vel.y.clamp(-GRAVITY * 0.05, JUMP_VELOCITY);
+        }
         if self.sneaking && self.on_ground {
             self.hold_edges(world, &mut delta);
         }

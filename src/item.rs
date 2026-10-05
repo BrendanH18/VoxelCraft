@@ -133,6 +133,8 @@ pub enum ItemKind {
     Bow,
     /// Lights a Nether portal frame.
     FlintAndSteel,
+    /// Drunk like food is eaten (see `crate::potion`).
+    Potion(crate::potion::Potion),
     /// Crafting ingredient or mob drop with no use of its own.
     Material,
 }
@@ -169,6 +171,18 @@ pub enum Sprite {
     Rod([u8; 3]),
     /// A glossy sphere (ender pearl): body colour and highlight.
     Pearl([u8; 3], [u8; 3]),
+    /// A knobbly red nether wart.
+    Wart,
+    /// A glossy red spider eye.
+    SpiderEye,
+    /// A melon slice with a gold rind and sparkles.
+    GlisteringMelon,
+    Paper,
+    Book,
+    /// An ender pearl turned green with a slit pupil.
+    EnderEye,
+    /// A glass bottle, empty or holding liquid of this colour.
+    Bottle(Option<[u8; 3]>),
     Tool(ToolKind, Tier),
     Armor(ArmorPiece, ArmorMaterial),
 }
@@ -196,7 +210,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 42] = [
+static ITEMS: [ItemInfo; 50] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -254,6 +268,14 @@ static ITEMS: [ItemInfo; 42] = [
     },
     item("blaze rod", Sprite::Rod([250, 190, 40])),
     item("blaze powder", Sprite::Powder([250, 150, 30])),
+    item("nether wart", Sprite::Wart),
+    item("glass bottle", Sprite::Bottle(None)),
+    item("sugar", Sprite::Powder([246, 246, 250])),
+    item("glistering melon slice", Sprite::GlisteringMelon),
+    food("spider eye", 2, 3.2, Sprite::SpiderEye),
+    item("paper", Sprite::Paper),
+    item("book", Sprite::Book),
+    ItemInfo { name: "eye of ender", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::EnderEye },
 ];
 
 /// Uses before a bow breaks.
@@ -268,6 +290,9 @@ const TOOL_COUNT: u16 = (Tier::ALL.len() * TOOL_KINDS.len()) as u16;
 /// Armor starts at this id: `FIRST_ARMOR + material * 4 + piece`.
 const FIRST_ARMOR: u16 = FIRST_TOOL + TOOL_COUNT;
 const ARMOR_COUNT: u16 = 16;
+/// Potions start at this id: `FIRST_POTION + potion index`.
+const FIRST_POTION: u16 = 400;
+const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
 
 impl Item {
     pub const STICK: Item = Item(256);
@@ -314,6 +339,19 @@ impl Item {
     pub const ENDER_PEARL: Item = Item(295);
     pub const BLAZE_ROD: Item = Item(296);
     pub const BLAZE_POWDER: Item = Item(297);
+    /// Planted on soul sand (see `Block::nether_wart`).
+    pub const NETHER_WART: Item = Item(298);
+    /// Filled with water from a source (see `Item::potion`).
+    pub const GLASS_BOTTLE: Item = Item(299);
+    /// Brewing ingredients: swiftness, healing and poison.
+    pub const SUGAR: Item = Item(300);
+    pub const GLISTERING_MELON_SLICE: Item = Item(301);
+    pub const SPIDER_EYE: Item = Item(302);
+    pub const PAPER: Item = Item(303);
+    pub const BOOK: Item = Item(304);
+    /// Thrown, it flies toward the nearest stronghold; set in an End
+    /// portal frame, it helps open the portal.
+    pub const EYE_OF_ENDER: Item = Item(305);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
@@ -321,6 +359,16 @@ impl Item {
 
     pub const fn armor(piece: ArmorPiece, material: ArmorMaterial) -> Item {
         Item(FIRST_ARMOR + material as u16 * 4 + piece as u16)
+    }
+
+    pub const fn potion(potion: crate::potion::Potion) -> Item {
+        Item(FIRST_POTION + potion.0 as u16)
+    }
+
+    /// The potion this item is (a water bottle is one too).
+    pub fn as_potion(self) -> Option<crate::potion::Potion> {
+        let i = self.0.checked_sub(FIRST_POTION).filter(|&i| i < POTION_COUNT)?;
+        Some(crate::potion::Potion(i as u8))
     }
 
     pub const fn from_block(block: Block) -> Item {
@@ -332,6 +380,7 @@ impl Item {
     pub fn places(self) -> Option<Block> {
         match self {
             Item::WHEAT_SEEDS => Some(Block::wheat(0)),
+            Item::NETHER_WART => Some(Block::nether_wart(0)),
             i => i.block(),
         }
     }
@@ -352,6 +401,14 @@ impl Item {
         }
         if let Some(info) = self.0.checked_sub(FIRST_ITEM).and_then(|i| ITEMS.get(i as usize)) {
             return *info;
+        }
+        if let Some(potion) = self.as_potion() {
+            return ItemInfo {
+                name: potion.info().name,
+                kind: ItemKind::Potion(potion),
+                max_stack: 1,
+                sprite: Sprite::Bottle(Some(potion.colour())),
+            };
         }
         if let Some(i) = self.0.checked_sub(FIRST_TOOL)
             && let (Some(&tier), Some(&kind)) = (Tier::ALL.get(i as usize / 5), TOOL_KINDS.get(i as usize % 5))
@@ -413,6 +470,12 @@ impl Item {
         }
     }
 
+    /// The status effect eating this gives (Java's spider eye: Poison I for
+    /// 5 s).
+    pub fn food_effect(self) -> Option<(crate::simulation::effects::Effect, u8, u32)> {
+        (self == Item::SPIDER_EYE).then_some((crate::simulation::effects::Effect::Poison, 0, 100))
+    }
+
     /// Hunger and saturation restored, for food.
     pub fn food(self) -> Option<(u8, f32)> {
         match self.info().kind {
@@ -421,8 +484,9 @@ impl Item {
         }
     }
 
-    /// Texture layer of the flat inventory icon (non-block items only).
-    pub fn icon_layer(self) -> Option<u8> {
+    /// Texture layer of the flat inventory icon (non-block items only), in
+    /// the item icon range from `tex::ITEM_BASE`.
+    pub fn icon_layer(self) -> Option<u16> {
         sprite_index(self).map(tex::item_layer)
     }
 
@@ -436,8 +500,12 @@ impl Item {
 
     pub fn from_name(name: &str) -> Option<Item> {
         if let Some(b) = Block::from_name(name) {
-            // Doors are placed by an item, not as a block.
-            return Some(if b.is_door() { Item::OAK_DOOR } else { Item::from_block(b) });
+            // Doors and nether wart are placed by an item, not as a block.
+            return Some(match b {
+                b if b.is_door() => Item::OAK_DOOR,
+                b if b.wart_age().is_some() => Item::NETHER_WART,
+                b => Item::from_block(b),
+            });
         }
         let name = name.replace('_', " ");
         Item::all_items().find(|i| i.name() == name)
@@ -447,7 +515,8 @@ impl Item {
     pub fn all_items() -> impl Iterator<Item = Item> {
         let materials = (0..ITEMS.len() as u16).map(|i| Item(FIRST_ITEM + i));
         let tools = (0..TOOL_COUNT + ARMOR_COUNT).map(|i| Item(FIRST_TOOL + i));
-        materials.chain(tools)
+        let potions = (0..POTION_COUNT).map(|i| Item(FIRST_POTION + i));
+        materials.chain(tools).chain(potions)
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -463,17 +532,29 @@ impl From<Block> for Item {
 }
 
 /// Index of an item's icon among the item texture layers.
-fn sprite_index(item: Item) -> Option<u8> {
+fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some((i - FIRST_ITEM) as u8),
-        i if item.as_tool().is_some() || item.as_armor().is_some() => Some((materials + i - FIRST_TOOL) as u8),
+        i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some(i - FIRST_ITEM),
+        i if item.as_tool().is_some() || item.as_armor().is_some() => Some(materials + i - FIRST_TOOL),
+        i if item.as_potion().is_some() => Some(materials + TOOL_COUNT + ARMOR_COUNT + i - FIRST_POTION),
         _ => None,
     }
 }
 
+/// How many item icons there are (layers of the item texture array).
+pub const fn icon_count() -> u32 {
+    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32
+}
+
+/// Layer of a status effect's icon: in the item icon array, after every
+/// item's.
+pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
+    tex::item_layer(icon_count() as u16 + effect as u16)
+}
+
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).
-pub fn sprite_for_layer(index: u8) -> Option<Sprite> {
+pub fn sprite_for_layer(index: u16) -> Option<Sprite> {
     Item::all_items().nth(index as usize).map(|i| i.info().sprite)
 }
 
@@ -549,10 +630,13 @@ mod tests {
     #[test]
     fn icon_layers_fit_the_texture_array() {
         for i in Item::all_items() {
-            let layer = i.icon_layer().unwrap();
-            assert!((layer as u32) < tex::COUNT);
-            assert_eq!(sprite_for_layer(tex::item_index(layer).unwrap()), Some(i.info().sprite));
+            let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
+            assert!((index as u32) < icon_count());
+            assert_eq!(Item::all_items().count() as u32, icon_count());
+            assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
         }
+        // Icons stay addressable by the UI's and models' 16-bit layers.
+        assert!(tex::ITEM_BASE as u32 + icon_count() <= u16::MAX as u32);
         assert_eq!(Item::from(Block::STONE).icon_layer(), None);
     }
 
