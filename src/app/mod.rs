@@ -1348,10 +1348,13 @@ impl Game {
     }
 
     fn place_block(&mut self) {
-        if !self.aiming_at_usable() && (self.use_bucket() || self.throw_pearl()) {
+        if !self.aiming_at_usable() && (self.use_bucket() || self.throw_pearl() || self.throw_eye()) {
             return;
         }
         let Some((pos, normal)) = self.target() else { return };
+        if self.insert_eye(pos) {
+            return;
+        }
         // Containers open on right-click; holding Shift builds against them.
         match self.world.get_block(pos) {
             _ if self.sneak_building() => {}

@@ -378,20 +378,29 @@ second (a pale veil drains from the hotbar slot): they fly like Java's
 (about 50 blocks at 45°), and where they hit a block or a mob you teleport,
 taking 5 damage.
 
+Eyes of ender (an ender pearl and blaze powder) find strongholds. Right
+click in the overworld to release one: it drifts up to 12 blocks toward the
+nearest stronghold, rising 8 (or sinking toward it once you're close),
+hovers for four seconds, then drops back as an item four times in five and
+shatters otherwise. Right click an empty End portal frame to put an eye in
+it; when twelve frames with eyes ring a 3x3 hole, all facing in, the portal
+opens with a deep rumble. Falling into an End portal takes you to the End's
+obsidian platform at once; one in the End takes you back to your bed or
+the world spawn. Agents use eyes with `place`.
+
 Inventory search filters creative items by name. Type in the search field
 (automatically focused in creative), or press Ctrl+F. In survival and containers,
 matching stacks are highlighted without moving any slots. Matching ignores case,
 accepts underscores and requires every search word. Enter leaves the field;
 Esc closes the inventory. Agents can use `catalog [query]` for the same search.
 
-The End terrain is available through `/dimension end` or `--dimension end`.
-Return with `/dimension overworld`. It includes a seeded central end-stone
-island, ten obsidian pillars, an arrival platform, a void gap and outer islands,
+The End is reached through a stronghold's End portal, or with
+`/dimension end` or `--dimension end`. Return with `/dimension overworld`.
+It includes a seeded central end-stone island, ten obsidian pillars, an arrival platform, a void gap and outer islands,
 a static violet sky, no weather or natural Overworld/Nether mob spawning, and
 its own `end/` save folder. Water works; beds explode. End stone is mineable
 with a pickaxe and appears in the creative catalog.
 
-This is the terrain/visiting foundation. The dragon, crystals,
-strongholds/portal progression, gateways, chorus trees, cities, shulkers and
+The dragon, crystals, the exit portal, gateways, chorus trees, cities, shulkers and
 elytra are still roadmap work. Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
 describes the larger progression being built toward.

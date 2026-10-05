@@ -175,6 +175,7 @@ impl Game {
                         MobSound::Scream => (Sound::Scream, 1.0),
                         MobSound::Teleport => (Sound::Teleport, 0.8),
                         MobSound::Fireball => (Sound::Fireball, 0.9),
+                        MobSound::EyeDeath => (Sound::EyeDeath, 0.8),
                     };
                     self.audio.play(sound, Some(pos), gain, (0.9, 1.1));
                 }

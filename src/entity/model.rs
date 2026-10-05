@@ -601,6 +601,22 @@ pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, o
     }
 }
 
+/// Thrown eyes of ender: a green pearl with a dark pupil, spinning slowly
+/// and glowing faintly so it can be followed at night.
+pub fn build_eyes(eyes: &[super::eye::EnderEye], camera: DVec3, time: f32, alpha: f64, out: &mut Vec<EntityVertex>) {
+    const EYE: &[Cuboid] = &[
+        cube([-1.5, -1.5, -1.5], [1.5, 1.5, 1.5], [70, 160, 110], 20),
+        cube([-0.5, -1.0, -1.6], [0.5, 1.0, 1.6], [16, 36, 26], 0),
+    ];
+    let rot = Quat::from_rotation_y(time * 3.0);
+    for e in eyes {
+        let rel = (e.previous_pos.lerp(e.pos, alpha) - camera).as_vec3();
+        for (i, c) in EYE.iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + rot * v / 16.0, rot, ([230, 0, 0, 60], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
 /// Blaze fireballs: a glowing orange cube around a yellow core, tumbling.
 pub fn build_fireballs(
     fireballs: &[super::fireball::Fireball],

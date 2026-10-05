@@ -123,13 +123,19 @@ pub enum Sound {
     Scream,
     /// A blaze's fireball launching: a roaring whoosh.
     Fireball,
+    /// A thrown eye of ender dropping or shattering: a glassy shimmer.
+    EyeDeath,
+    /// An eye clicking into an End portal frame.
+    FrameFill,
+    /// An End portal opening: a deep rumble under a swelling chord.
+    PortalSpawn,
 }
 
 const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 21 + Voice::ALL.len() * CALLS;
+    pub const COUNT: usize = 3 * M + 24 + Voice::ALL.len() * CALLS;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -157,7 +163,10 @@ impl Sound {
             Sound::Teleport => 3 * M + 18,
             Sound::Scream => 3 * M + 19,
             Sound::Fireball => 3 * M + 20,
-            Sound::Mob(v, c) => 3 * M + 21 + v as usize * CALLS + c as usize,
+            Sound::EyeDeath => 3 * M + 21,
+            Sound::FrameFill => 3 * M + 22,
+            Sound::PortalSpawn => 3 * M + 23,
+            Sound::Mob(v, c) => 3 * M + 24 + v as usize * CALLS + c as usize,
         }
     }
 
@@ -187,6 +196,9 @@ impl Sound {
                 Sound::Teleport,
                 Sound::Scream,
                 Sound::Fireball,
+                Sound::EyeDeath,
+                Sound::FrameFill,
+                Sound::PortalSpawn,
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
     }
@@ -217,6 +229,9 @@ impl Sound {
             Sound::Teleport => "teleport".into(),
             Sound::Scream => "enderman_scream".into(),
             Sound::Fireball => "fireball".into(),
+            Sound::EyeDeath => "ender_eye_death".into(),
+            Sound::FrameFill => "end_portal_frame_fill".into(),
+            Sound::PortalSpawn => "end_portal_spawn".into(),
             Sound::Mob(v, c) => format!("{}_{}", v.name(), c.name()),
         }
     }
@@ -243,8 +258,10 @@ impl Sound {
             | Sound::Rain
             | Sound::Orb
             | Sound::LevelUp
-            | Sound::Scream => 1,
-            Sound::Teleport | Sound::Fireball => 2,
+            | Sound::Scream
+            | Sound::EyeDeath
+            | Sound::PortalSpawn => 1,
+            Sound::Teleport | Sound::Fireball | Sound::FrameFill => 2,
         }
     }
 
@@ -275,6 +292,9 @@ impl Sound {
             Sound::Teleport => teleport(&mut rng),
             Sound::Scream => super::voices::scream(&mut rng),
             Sound::Fireball => fireball(&mut rng),
+            Sound::EyeDeath => eye_death(&mut rng),
+            Sound::FrameFill => frame_fill(&mut rng),
+            Sound::PortalSpawn => portal_spawn(&mut rng),
             Sound::Mob(v, c) => super::voices::render(v, c, &mut rng),
         }
     }
@@ -757,6 +777,53 @@ fn level_up() -> Vec<f32> {
         ding(&mut out, samples(0.07 * i as f32), freq, 0.8, tau);
     }
     dsp::finish(out, 0.35)
+}
+
+/// Synthesizes a thrown eye's end: a soft glassy break that rings down.
+fn eye_death(rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.0; samples(0.8)];
+    for (i, freq) in [1760.0, 1480.0, 1175.0].into_iter().enumerate() {
+        ding(&mut out, samples(0.035 * i as f32), freq * rng.range(0.98, 1.02), 0.6, 0.18);
+    }
+    let mut shards = crackle(rng, samples(0.25), (0.2, 0.9), |t| 900.0 * (-t / 0.06).exp());
+    Biquad::highpass(3000.0, 0.7).run(&mut shards);
+    mix_into(&mut out, &shards, 0.3, 0);
+    dsp::finish(out, 0.3)
+}
+
+/// Synthesizes an eye settling into a frame: a stony clunk and a low ring.
+fn frame_fill(rng: &mut Rng) -> Vec<f32> {
+    let mut out = vec![0.0; samples(1.0)];
+    add_mode(&mut out, 0, Mode { freq: rng.range(150.0, 170.0), amp: 1.0, tau: 0.05, glide: 0.85, glide_tau: 0.03 });
+    let mut knock = noise(rng, samples(0.05), |t| (-t / 0.008).exp());
+    Biquad::bandpass(900.0, 1.5).run(&mut knock);
+    mix_into(&mut out, &knock, 0.6, 0);
+    ding(&mut out, samples(0.01), rng.range(520.0, 560.0), 0.5, 0.35);
+    dsp::finish(out, 0.4)
+}
+
+/// Synthesizes an End portal opening: a sub-bass rumble that swells under
+/// a slow, detuned minor chord, fading over a few seconds.
+fn portal_spawn(rng: &mut Rng) -> Vec<f32> {
+    let secs = 4.0;
+    let len = samples(secs);
+    let env = |t: f32| (t / 0.6).min(1.0) * ((secs - t) / 2.5).clamp(0.0, 1.0);
+    let mut out = vec![0.0; len];
+    for (freq, amp) in [(55.0, 0.5), (110.0, 0.3), (130.8, 0.22), (164.8, 0.18), (220.0, 0.12)] {
+        for detune in [0.996, 1.004] {
+            let mut phase = 0.0f32;
+            for (i, s) in out.iter_mut().enumerate() {
+                let t = i as f32 / dsp::RATE;
+                phase = (phase + std::f32::consts::TAU * freq * detune / dsp::RATE) % std::f32::consts::TAU;
+                *s += phase.sin() * env(t) * amp * 0.5;
+            }
+        }
+    }
+    let rumble = noise(rng, len, env);
+    let mut lp = OnePole::new(120.0);
+    let rumble: Vec<f32> = rumble.iter().map(|&x| lp.process(x) * 3.0).collect();
+    mix_into(&mut out, &rumble, 0.8, 0);
+    dsp::finish(out, 0.8)
 }
 
 /// Synthesizes a blaze's launch whoosh with a decaying flame crackle.

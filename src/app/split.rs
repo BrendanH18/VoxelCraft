@@ -137,6 +137,8 @@ impl Game {
                         self.audio.play(sound, Some(bot.agent.player.eye()), 0.7, (1.4, 1.7));
                     }
                     Event::Xp(chime) => super::items::xp_sounds(&mut self.audio, Some(bot.agent.player.eye()), chime),
+                    Event::EyeThrown(from) => super::items::eye_thrown_sound(&mut self.audio, from),
+                    Event::FrameFilled(pos, opened) => super::items::frame_filled_sounds(&mut self.audio, pos, opened),
                 }
             }
         }

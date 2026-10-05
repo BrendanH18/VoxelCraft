@@ -96,6 +96,42 @@ impl Game {
         true
     }
 
+    /// Right-click with an eye of ender in the overworld releases it toward
+    /// the nearest stronghold (not while aiming at a portal frame).
+    pub(super) fn throw_eye(&mut self) -> bool {
+        if self.held_item() != Some(crate::item::Item::EYE_OF_ENDER)
+            || self.world.generator.dimension != crate::world::terrain::Dimension::Overworld
+            || self
+                .target()
+                .and_then(|(pos, _)| self.world.get_block(pos))
+                .is_some_and(|b| b.base() == Block::END_PORTAL_FRAME)
+        {
+            return false;
+        }
+        let from = self.player.pos + DVec3::Y * (crate::player::SHAPE.height * 0.5);
+        let Some(target) = self.world.generator.strongholds.nearest(from.floor().as_ivec3()) else { return false };
+        self.mobs.entities.release_eye(from, target.as_dvec3());
+        eye_thrown_sound(&mut self.audio, from);
+        if self.mode == GameMode::Survival {
+            self.inventory.take_one(self.actions.selected);
+        }
+        true
+    }
+
+    /// Right-click on an empty End portal frame with an eye of ender puts it
+    /// in, opening the portal if that completes the ring.
+    pub(super) fn insert_eye(&mut self, pos: glam::IVec3) -> bool {
+        if self.held_item() != Some(crate::item::Item::EYE_OF_ENDER) {
+            return false;
+        }
+        let Some(opened) = self.world.insert_eye(pos) else { return false };
+        frame_filled_sounds(&mut self.audio, pos, opened);
+        if self.mode == GameMode::Survival {
+            self.inventory.take_one(self.actions.selected);
+        }
+        true
+    }
+
     /// A pearl landed at `pos`: its thrower (if alive, in this world)
     /// teleports there and takes 5 damage, like a fall.
     pub(super) fn pearl_landed(&mut self, owner: PlayerId, pos: DVec3) {
@@ -223,5 +259,19 @@ pub(super) fn xp_sounds(audio: &mut Audio, at: Option<DVec3>, chime: Option<f32>
     audio.play(Sound::Orb, at, 0.3, (0.55, 1.25));
     if let Some(volume) = chime {
         audio.play(Sound::LevelUp, at, volume, (1.0, 1.0));
+    }
+}
+
+/// Java's eye launch whoosh, pitched down like a thrown pearl.
+pub(super) fn eye_thrown_sound(audio: &mut Audio, from: DVec3) {
+    audio.play(Sound::Bow, Some(from), 0.5, (0.42, 0.62));
+}
+
+/// An eye settling into the frame at `pos`, and the portal opening.
+pub(super) fn frame_filled_sounds(audio: &mut Audio, pos: glam::IVec3, opened: bool) {
+    audio.play(Sound::FrameFill, Some(pos.as_dvec3() + DVec3::splat(0.5)), 1.0, (0.9, 1.1));
+    if opened {
+        // Java plays this to everyone in the world, wherever they are.
+        audio.play(Sound::PortalSpawn, None, 1.0, (1.0, 1.0));
     }
 }
