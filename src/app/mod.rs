@@ -947,6 +947,7 @@ impl Game {
     /// Releases the mouse and stops all actions for the death screen. A
     /// survival player drops everything they carried.
     fn on_death(&mut self) {
+        self.vitals.effects.clear();
         log::info!("player {}", self.vitals.death.as_deref().unwrap_or("died"));
         if self.inventory_open {
             self.toggle_inventory();

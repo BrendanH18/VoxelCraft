@@ -246,7 +246,10 @@ fn parse_args() -> Result<Args, String> {
             "--survival" => args.mode = Some(app::GameMode::Survival),
             "--open-block" => {
                 let v = value("--open-block")?;
-                let n: Vec<i32> = v.split(',').filter_map(|s| s.trim().parse().ok()).collect();
+                let n: Vec<i32> = v
+                    .split(',')
+                    .map(|s| s.trim().parse().map_err(|_| format!("--open-block needs x,y,z (got {v})")))
+                    .collect::<Result<_, _>>()?;
                 let &[x, y, z] = &n[..] else { return Err(format!("--open-block needs x,y,z (got {v})")) };
                 args.open_block = Some(glam::IVec3::new(x, y, z));
             }
