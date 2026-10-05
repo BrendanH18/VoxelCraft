@@ -28,11 +28,12 @@ pub fn has_eye(b: Block) -> bool {
 /// The centre of a complete ring of eyed frames that includes the frame at
 /// `frame`, if there is one.
 pub fn find_portal(frame: IVec3, get: impl Fn(IVec3) -> Option<Block>) -> Option<IVec3> {
-    centers(frame).find(|&c| {
-        ring(c)
-            .iter()
-            .all(|&(p, facing)| get(p).is_some_and(|b| has_eye(b) && b.oriented().is_some_and(|(_, f)| f == facing)))
-    })
+    centers(frame).find(|&c| ring(c).iter().all(|&(p, facing)| get(p).is_some_and(|b| fits(b, facing, false))))
+}
+
+/// Whether `b` is a frame facing `facing`, with an eye unless `eyeless_ok`.
+fn fits(b: Block, facing: Facing, eyeless_ok: bool) -> bool {
+    b.base() == Block::END_PORTAL_FRAME && (eyeless_ok || has_eye(b)) && b.oriented().is_some_and(|(_, f)| f == facing)
 }
 
 /// Centres of the rings the frame at `frame` could be part of.
@@ -43,10 +44,16 @@ fn centers(frame: IVec3) -> impl Iterator<Item = IVec3> {
         .filter(move |c| ring(*c).iter().any(|&(p, _)| p == frame))
 }
 
-/// Whether every cell a ring through `frame` could use is loaded, so
-/// [`find_portal`] sees the whole ring.
+/// Whether every ring an eye in `frame` could complete is fully loaded, so
+/// [`find_portal`] sees it. Rings that a loaded cell already rules out (a
+/// missing eye, wrong block or facing) don't count.
 pub fn rings_loaded(frame: IVec3, get: impl Fn(IVec3) -> Option<Block>) -> bool {
-    centers(frame).all(|c| ring(c).iter().all(|&(p, _)| get(p).is_some()))
+    centers(frame).all(|c| {
+        let cells = ring(c).map(|(p, facing)| (get(p), facing, p == frame));
+        // The frame getting the eye only needs to face the right way.
+        let possible = cells.iter().all(|&(b, facing, is_frame)| b.is_none_or(|b| fits(b, facing, is_frame)));
+        !possible || cells.iter().all(|(b, ..)| b.is_some())
+    })
 }
 
 impl World {
@@ -100,11 +107,23 @@ mod tests {
     #[test]
     fn unloaded_ring_cells_hold_off_the_last_eye() {
         let center = IVec3::new(0, 64, 0);
-        let frame = ring(center)[0].0;
-        let loaded = |q: IVec3| Some(if q == ring(center)[7].0 { Block::END_PORTAL_FRAME } else { Block::AIR });
-        assert!(rings_loaded(frame, loaded));
+        let (frame, facing) = ring(center)[0];
+        // Eleven eyed frames and an empty one, all facing in.
+        let mut blocks: FxHashMap<IVec3, Block> = ring(center).iter().map(|&(p, f)| (p, eyed(f))).collect();
+        blocks.insert(frame, Block::END_PORTAL_FRAME.with_facing(facing));
+        let get = |q: IVec3| Some(blocks.get(&q).copied().unwrap_or(Block::AIR));
+        assert!(rings_loaded(frame, get));
+
+        // Part of the ring unloaded: wait for it.
         let far = ring(center)[7].0;
-        assert!(!rings_loaded(frame, |q| if q == far { None } else { Some(Block::AIR) }));
+        assert!(!rings_loaded(frame, |q| if q == far { None } else { get(q) }));
+
+        // Another candidate ring crossing unloaded cells doesn't matter
+        // once a loaded cell rules it out (here, plain air).
+        let other = center + IVec3::new(-1, 0, 0);
+        assert!(ring(other).iter().any(|&(p, _)| p == frame));
+        let unloaded = ring(other).iter().map(|&(p, _)| p).find(|p| p.x == -3).unwrap();
+        assert!(rings_loaded(frame, |q| if q == unloaded { None } else { get(q) }));
     }
 
     #[test]
