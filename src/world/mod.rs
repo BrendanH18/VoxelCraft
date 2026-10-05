@@ -17,6 +17,7 @@ pub mod brewing;
 pub mod chest;
 pub mod chunk;
 pub mod end;
+pub mod end_portal;
 pub mod falling;
 mod fire;
 mod fluid;

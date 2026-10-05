@@ -12,6 +12,7 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod eye;
 pub mod fireball;
 pub mod item;
 mod mob;
@@ -79,6 +80,8 @@ pub enum MobSound {
     Teleport,
     /// A blaze shooting a fireball.
     Fireball,
+    /// A thrown eye of ender dropping or shattering.
+    EyeDeath,
 }
 
 /// Something an entity did that the game needs to react to.
@@ -302,6 +305,7 @@ pub struct Entities {
     pub mobs: Vec<Mob>,
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
+    pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
     pub puffs: Vec<Puff>,
     pub tnt: Vec<tnt::PrimedTnt>,
@@ -328,6 +332,7 @@ impl Entities {
             mobs: Vec::new(),
             arrows: Vec::new(),
             pearls: Vec::new(),
+            eyes: Vec::new(),
             fireballs: Vec::new(),
             puffs: Vec::new(),
             tnt: Vec::new(),
@@ -393,6 +398,7 @@ impl Entities {
         let (mobs, rng) = (&mut self.mobs, &mut self.rng);
         self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, rng, &mut events));
         self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
+        self.update_eyes(dt, &mut events);
         for e in &events {
             if let EntityEvent::MobShot { kind, pos, killed } = *e {
                 if killed {
@@ -709,6 +715,9 @@ impl Entities {
         for p in &mut self.pearls {
             p.previous_pos = p.pos;
         }
+        for e in &mut self.eyes {
+            e.previous_pos = e.pos;
+        }
         for f in &mut self.fireballs {
             f.previous_pos = f.pos;
         }
@@ -739,6 +748,7 @@ impl Entities {
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
+        model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
@@ -773,6 +783,41 @@ impl Entities {
     /// their velocity `carry`.
     pub fn throw_pearl(&mut self, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3) {
         self.pearls.push(pearl::Pearl::thrown(owner, eye, dir, carry, &mut self.rng));
+    }
+
+    /// An eye of ender released at `pos` to fly toward the stronghold at
+    /// `stronghold`; it survives four times in five (Java).
+    pub fn release_eye(&mut self, pos: DVec3, stronghold: DVec3) {
+        let survives = self.rng.next_f32() >= 0.2;
+        self.eyes.push(eye::EnderEye::signalled(pos, stronghold, survives));
+    }
+
+    /// Flies thrown eyes; those done drop back as an item or shatter.
+    fn update_eyes(&mut self, dt: f64, events: &mut Vec<EntityEvent>) {
+        let mut i = 0;
+        while i < self.eyes.len() {
+            if self.eyes[i].update(dt) {
+                i += 1;
+                continue;
+            }
+            let e = self.eyes.swap_remove(i);
+            events.push(EntityEvent::Sound { sound: MobSound::EyeDeath, pos: e.pos });
+            if e.survives {
+                let stack = crate::inventory::Stack::new(crate::item::Item::EYE_OF_ENDER, 1);
+                self.items.push(ItemEntity::new(stack, e.pos, DVec3::ZERO, item::PICKUP_DELAY, &mut self.rng));
+            } else {
+                for _ in 0..8 {
+                    let dir = DVec3::new(
+                        self.rng.range(-1.0, 1.0) as f64,
+                        self.rng.range(0.0, 1.0) as f64,
+                        self.rng.range(-1.0, 1.0) as f64,
+                    );
+                    let pos = e.pos + dir * 0.1;
+                    let vel = dir * 1.5;
+                    self.puffs.push(Puff { pos, previous_pos: pos, vel, age: 0.0, life: 0.5, size: 0.12 });
+                }
+            }
+        }
     }
 
     /// The player looses an arrow with bow `power` 0..1.

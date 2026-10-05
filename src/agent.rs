@@ -19,7 +19,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -30,6 +30,10 @@ pub enum Event {
     /// Absorbed an experience orb; with the level-up chime volume when it
     /// reached a multiple of five levels.
     Xp(Option<f32>),
+    /// Released an eye of ender from here.
+    EyeThrown(DVec3),
+    /// Put an eye in the End portal frame here; whether that opened the portal.
+    FrameFilled(IVec3, bool),
 }
 
 /// Unheard events kept per agent (a host without audio never drains them).
@@ -422,6 +426,33 @@ impl Agent {
                 let p = &self.player;
                 let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
                 entities.throw_pearl(self.id, p.eye(), p.forward().as_dvec3(), carry);
+                self.swings += 1;
+                if !self.creative {
+                    self.inventory.take_one(self.selected);
+                }
+            }
+            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::EYE_OF_ENDER) => {
+                if self.cooldown > 0.0 {
+                    return Err("action cooling down".into());
+                }
+                let frame = self
+                    .target(world)
+                    .map(|(pos, _)| pos)
+                    .filter(|&pos| world.get_block(pos).is_some_and(|b| b.base() == Block::END_PORTAL_FRAME));
+                if let Some(pos) = frame {
+                    let opened =
+                        world.insert_eye(pos).ok_or("that frame already holds an eye, or its ring isn't loaded")?;
+                    self.emit(Event::FrameFilled(pos, opened));
+                } else {
+                    if world.generator.dimension != crate::world::terrain::Dimension::Overworld {
+                        return Err("eyes of ender only find strongholds in the overworld".into());
+                    }
+                    let from = self.player.pos + DVec3::Y * (crate::player::SHAPE.height * 0.5);
+                    let target = world.generator.strongholds.nearest(from.floor().as_ivec3()).ok_or("no stronghold")?;
+                    entities.release_eye(from, target.as_dvec3());
+                    self.emit(Event::EyeThrown(from));
+                }
+                self.cooldown = 0.22;
                 self.swings += 1;
                 if !self.creative {
                     self.inventory.take_one(self.selected);
