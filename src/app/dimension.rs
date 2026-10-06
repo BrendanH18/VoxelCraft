@@ -44,6 +44,15 @@ pub(super) enum Arrival {
     /// Back from the dead: the bed or world spawn.
     Respawn,
     EndSpawn,
+    /// Through an End gateway at `from` to the one at `exit`, which is
+    /// built (with an island under it if `island`) and linked back if it's
+    /// new.
+    Gateway {
+        exit: IVec3,
+        from: IVec3,
+        island: bool,
+        link: bool,
+    },
 }
 
 /// Heights a portal may stand at in a dimension.
@@ -183,6 +192,7 @@ impl Game {
         let target = match arrival {
             Arrival::Portal(p) => p,
             Arrival::EndSpawn => crate::world::end::SPAWN,
+            Arrival::Gateway { exit, .. } => exit,
             Arrival::Respawn => {
                 self.spawn_bed.unwrap_or_else(|| self.world.generator.find_spawn() + IVec3::Y * (SEARCH_RADIUS + 8))
             }
@@ -191,6 +201,7 @@ impl Game {
             Arrival::Portal(_) => SEARCH_RADIUS,
             Arrival::Respawn => 0,
             Arrival::EndSpawn => 2,
+            Arrival::Gateway { .. } => 6,
         };
         let ready = [(-r, -r), (r, -r), (-r, r), (r, r), (0, 0)]
             .iter()
@@ -230,6 +241,20 @@ impl Game {
                 spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
             Arrival::Respawn => self.respawn_point(),
+            Arrival::Gateway { exit, from, island, link } => {
+                if island && self.world.get_block(exit - IVec3::Y * 10) == Some(Block::AIR) {
+                    self.world.build_end_island(exit - IVec3::Y * 10);
+                }
+                if self.world.get_block(exit) != Some(Block::END_GATEWAY) {
+                    self.world.build_gateway(exit);
+                }
+                if link && let Some(fight) = &mut self.mobs.entities.fight {
+                    fight.link_gateways(from, exit);
+                    fight.link_gateways(exit, from);
+                }
+                self.audio.play(Sound::Teleport, None, 0.8, (0.9, 1.0));
+                self.world.gateway_arrival(exit)
+            }
         };
         self.relocate_agents();
         self.player.vel = DVec3::ZERO;
@@ -239,6 +264,33 @@ impl Game {
         let sound = Sound::Place(Material::Glass);
         self.audio.play(sound, None, 0.8, (0.5, 0.6));
         false
+    }
+
+    /// A cell of `block` the player overlaps.
+    fn touched(&self, block: Block) -> Option<IVec3> {
+        let (min, max) = crate::player::SHAPE.aabb(self.player.pos);
+        let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
+        (lo.y..=hi.y)
+            .flat_map(|y| (lo.z..=hi.z).flat_map(move |z| (lo.x..=hi.x).map(move |x| IVec3::new(x, y, z))))
+            .find(|&p| self.world.get_block(p) == Some(block))
+    }
+
+    /// Takes the player through the End gateway at `cell`: to its known
+    /// exit, or out to the outer islands the first time.
+    pub(super) fn enter_gateway(&mut self, cell: IVec3) {
+        let Some(fight) = &self.mobs.entities.fight else { return };
+        let arrival = match fight.gateway_exit(cell) {
+            Some(exit) => Arrival::Gateway { exit, from: cell, island: false, link: false },
+            None => {
+                let Some(end) = self.world.generator.end() else { return };
+                let (exit, island) = end.gateway_exit(cell);
+                Arrival::Gateway { exit, from: cell, island, link: true }
+            }
+        };
+        self.audio.play(Sound::Teleport, None, 0.8, (0.7, 0.8));
+        self.arrival = Some(arrival);
+        self.player.vel = DVec3::ZERO;
+        self.vitals.reset_fall();
     }
 
     /// Whether the player overlaps a `portal` block's slice from `bottom`
@@ -258,6 +310,13 @@ impl Game {
     /// dimension. Falling into an End portal takes you at once: to the End's
     /// obsidian platform, or out of the End to your spawn point.
     pub(super) fn update_portal(&mut self, dt: f64) {
+        if self.dimension == Dimension::End
+            && !self.vitals.is_dead()
+            && let Some(cell) = self.touched(Block::END_GATEWAY)
+        {
+            self.enter_gateway(cell);
+            return;
+        }
         // Java's End portal block spans 6..12 sixteenths: coming up from
         // below takes you only once you reach it.
         if !self.vitals.is_dead() && self.in_portal(Block::END_PORTAL, (6.0 / 16.0, 0.75)) {

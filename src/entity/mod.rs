@@ -155,6 +155,15 @@ pub enum EntityEvent {
     DragonKilled {
         first: bool,
     },
+    /// A kill opened an End gateway here: build it.
+    BuildGateway {
+        pos: IVec3,
+    },
+    /// `owner`'s ender pearl flew into the End gateway at `cell`.
+    PearlGateway {
+        owner: PlayerId,
+        cell: IVec3,
+    },
     /// The dying dragon spills experience (turned into orbs internally).
     DragonXp {
         pos: DVec3,

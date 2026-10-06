@@ -363,6 +363,9 @@ impl Block {
     /// Left on the exit portal by the first dragon killed; it teleports away
     /// when hit or used.
     pub const DRAGON_EGG: Block = Block(209);
+    /// Spawned around the central island for each dragon killed; it leads
+    /// out to the outer islands and back.
+    pub const END_GATEWAY: Block = Block(210);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -738,7 +741,7 @@ impl Block {
             Block::GLOWSTONE | Block::NETHER_PORTAL | Block::SPAWNER => None,
             Block::COBWEB => Some(Item::STRING),
             // Bookshelves drop three books (see `World::spill_block`).
-            Block::BOOKSHELF | Block::END_PORTAL_FRAME | Block::END_PORTAL => None,
+            Block::BOOKSHELF | Block::END_PORTAL_FRAME | Block::END_PORTAL | Block::END_GATEWAY => None,
             b if b.is_leaves() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
             b if b.is_fluid() || b.is_fire() || b == Block::AIR => None,
@@ -764,7 +767,7 @@ impl Block {
             Block::STONE_BRICKS | Block::MOSSY_STONE_BRICKS | Block::CRACKED_STONE_BRICKS => 1.5,
             Block::IRON_BARS => 5.0,
             Block::BOOKSHELF => 1.5,
-            Block::END_PORTAL_FRAME | Block::END_PORTAL => f32::INFINITY,
+            Block::END_PORTAL_FRAME | Block::END_PORTAL | Block::END_GATEWAY => f32::INFINITY,
             Block::DRAGON_EGG => 3.0,
             Block::QUARTZ_ORE | Block::END_STONE => 3.0,
             Block::NETHER_PORTAL => f32::INFINITY,
@@ -982,7 +985,7 @@ impl Block {
             Block::TORCH => 14,
             Block::LIT_FURNACE => 13,
             Block::NETHER_PORTAL => 11,
-            Block::END_PORTAL => 15,
+            Block::END_PORTAL | Block::END_GATEWAY => 15,
             // Java: all frame states glow faintly, with or without an eye.
             Block::END_PORTAL_FRAME | Block::DRAGON_EGG => 1,
             b if b.is_lava() => 15,
@@ -1386,11 +1389,12 @@ const fn make(id: u8) -> BlockInfo {
         204..=207 => ("end portal frame", Shaped, column(tex::FRAME_EYE_SIDE, tex::FRAME_EYE_TOP, tex::END_STONE)),
         208 => ("end portal", Shaped, all(tex::END_PORTAL)),
         209 => ("dragon egg", Shaped, all(tex::DRAGON_EGG)),
+        210 => ("end gateway", Cutout, all(tex::END_PORTAL)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are
     // a surface to fall through.
-    let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97) && id != 208;
+    let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97) && id != 208 && id != 210;
     BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104), tex }
 }
 

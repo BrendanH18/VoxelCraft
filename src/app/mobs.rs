@@ -238,6 +238,12 @@ impl Game {
                 EntityEvent::BreakBlock { cell } => {
                     self.world.set_block(cell, crate::world::block::Block::AIR);
                 }
+                EntityEvent::BuildGateway { pos } => self.world.build_gateway(pos),
+                EntityEvent::PearlGateway { owner, cell } => {
+                    if owner == PlayerId::HOST && !self.vitals.is_dead() {
+                        self.enter_gateway(cell);
+                    }
+                }
                 EntityEvent::DragonKilled { first } => {
                     self.world.open_exit_portal(first);
                     self.audio.play(Sound::PortalSpawn, None, 1.0, (1.0, 1.0));

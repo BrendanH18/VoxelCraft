@@ -419,6 +419,15 @@ portal opens, with the dragon egg on its pillar after the first kill. The egg
 teleports up to 15 blocks when hit or used, and falls like sand. The fight
 (dragon health, crystals, kills) is saved with the End.
 
-End gateways, respawning the dragon, chorus trees, cities, shulkers and
+Each dragon kill also opens an End gateway at one of 20 spots in a ring 96
+blocks out from the island's centre (in a seeded order): a gateway block in a
+one-high gap between bedrock caps. Throw an ender pearl into it (or touch it)
+to go through. The first trip finds the outer islands like Java does: 1024
+blocks straight out, then the nearest chunk with land, ten blocks above the
+highest ground there (building a small island if the void goes on). An exit
+gateway is built there, linked back, and you land on the highest ground
+beside it. The links are saved with the End.
+
+Respawning the dragon, the gateway beam, chorus trees, cities, shulkers and
 elytra are still roadmap work. Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
 describes the larger progression being built toward.

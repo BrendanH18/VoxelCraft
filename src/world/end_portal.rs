@@ -57,6 +57,67 @@ pub fn rings_loaded(frame: IVec3, get: impl Fn(IVec3) -> Option<Block>) -> bool 
 }
 
 impl World {
+    /// Builds an End gateway centred on `origin`.
+    pub fn build_gateway(&mut self, origin: IVec3) {
+        for dy in -2..=2 {
+            for dz in -1..=1 {
+                for dx in -1..=1 {
+                    let p = origin + IVec3::new(dx, dy, dz);
+                    if let Some(b) = super::end::gateway_block(origin, p)
+                        && self.get_block(p) != Some(b)
+                    {
+                        self.set_block(p, b);
+                    }
+                }
+            }
+        }
+    }
+
+    /// A small end stone island hanging from `top` (Java's `EndIslandFeature`),
+    /// for gateways that lead out over the void.
+    pub fn build_end_island(&mut self, top: IVec3) {
+        let mut radius = (self.roll() % 3) as f32 + 4.0;
+        let mut y = 0;
+        while radius > 0.5 {
+            let r = radius.ceil() as i32;
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    if ((dx * dx + dz * dz) as f32) <= (radius + 1.0) * (radius + 1.0) {
+                        self.set_block(top + IVec3::new(dx, y, dz), Block::END_STONE);
+                    }
+                }
+            }
+            radius -= (self.roll() % 2) as f32 + 0.5;
+            y -= 1;
+        }
+    }
+
+    /// Where someone coming out of the gateway at `gateway` stands: on the
+    /// highest full block (not bedrock) within five of it, like Java's
+    /// `findExitPosition`, or on the gateway's cap if there's none.
+    pub fn gateway_arrival(&self, gateway: IVec3) -> glam::DVec3 {
+        let from = gateway + IVec3::Y * 2;
+        let mut best: Option<IVec3> = None;
+        for dz in -5..=5 {
+            for dx in -5..=5 {
+                if (dx, dz) == (0, 0) {
+                    continue;
+                }
+                let floor = best.map_or(0, |b| b.y);
+                for y in (floor + 1..super::chunk::WORLD_HEIGHT).rev() {
+                    let p = IVec3::new(from.x + dx, y, from.z + dz);
+                    let b = self.get_block(p).unwrap_or(Block::AIR);
+                    if b.is_opaque() && b != Block::BEDROCK {
+                        best = Some(p);
+                        break;
+                    }
+                }
+            }
+        }
+        let stand = best.unwrap_or(from) + IVec3::Y;
+        stand.as_dvec3() + glam::DVec3::new(0.5, 0.0, 0.5)
+    }
+
     /// Hitting or using the dragon egg makes it jump to a random empty cell
     /// up to 15 blocks away (Java's `DragonEggBlock.teleport`). Returns
     /// where it went.

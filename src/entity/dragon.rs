@@ -190,6 +190,14 @@ pub struct Fight {
     /// The dragon died but the exit portal hasn't opened yet (saved
     /// mid-death).
     unopened: bool,
+    /// Gateway spots in the order kills open them.
+    gateway_order: [IVec3; 20],
+    /// How many gateways kills have opened.
+    gateways: usize,
+    /// Indices into `gateway_order` waiting for their chunk to load.
+    unbuilt: Vec<usize>,
+    /// Gateway pairs that lead to each other.
+    links: Vec<(IVec3, IVec3)>,
 }
 
 impl Fight {
@@ -226,6 +234,10 @@ impl Fight {
             detonating: Vec::new(),
             pending: 0.0,
             unopened: false,
+            gateway_order: end.gateways(),
+            gateways: 0,
+            unbuilt: Vec::new(),
+            links: Vec::new(),
         }
     }
 
@@ -233,9 +245,23 @@ impl Fight {
     /// unreadable one starts fresh.
     pub fn load(end: &EndGen, text: Option<&str>) -> Self {
         let Some(text) = text else { return Self::new(end) };
-        let fields: Vec<&str> = text.split(',').collect();
-        let [alive, previously, health, mask] = fields[..] else { return Self::new(end) };
+        let mut sections = text.split(';');
+        let fields: Vec<&str> = sections.next().unwrap_or_default().split(',').collect();
+        let (alive, previously, health, mask) = match fields[..] {
+            [a, p, h, m, ..] => (a, p, h, m),
+            _ => return Self::new(end),
+        };
         let mut fight = Self::empty(end);
+        fight.gateways = fields.get(4).and_then(|g| g.parse().ok()).unwrap_or(0usize).min(20);
+        let unbuilt: u32 = fields.get(5).and_then(|g| g.parse().ok()).unwrap_or(0);
+        fight.unbuilt = (0..20).filter(|i| unbuilt & (1 << i) != 0).collect();
+        fight.links = sections
+            .filter_map(|link| {
+                let n: Vec<i32> = link.split(' ').filter_map(|v| v.parse().ok()).collect();
+                let [a, b, c, d, e, f] = n[..] else { return None };
+                Some((IVec3::new(a, b, c), IVec3::new(d, e, f)))
+            })
+            .collect();
         fight.previously_killed = previously == "1";
         // Saved mid-death: open the portal once its chunk is back.
         fight.unopened = alive == "2";
@@ -255,8 +281,9 @@ impl Fight {
         fight
     }
 
-    /// `state,previously_killed,health,crystal mask`, where the state is 0
-    /// for dead, 1 alive and 2 dying (or dead with the portal still shut).
+    /// `state,previously_killed,health,crystal mask,gateways,unbuilt mask`
+    /// then `;a b c d e f` per gateway link. The state is 0 for dead, 1
+    /// alive and 2 dying (or dead with the portal still shut).
     pub fn serialize(&self) -> String {
         let state = match &self.dragon {
             Some(d) if d.phase == Phase::Dying => 2,
@@ -266,7 +293,42 @@ impl Fight {
         };
         let health = self.dragon.as_ref().filter(|d| d.phase != Phase::Dying).map_or(0.0, |d| d.health);
         let mask: u32 = self.crystals.iter().map(|c| 1 << c.pillar).sum();
-        format!("{state},{},{health},{mask}", self.previously_killed as u8)
+        let unbuilt: u32 = self.unbuilt.iter().map(|i| 1 << i).sum();
+        let mut out = format!("{state},{},{health},{mask},{},{unbuilt}", self.previously_killed as u8, self.gateways);
+        for (a, b) in &self.links {
+            out += &format!(";{} {} {} {} {} {}", a.x, a.y, a.z, b.x, b.y, b.z);
+        }
+        out
+    }
+
+    /// The dragon's death is over: open the exit portal and a new gateway.
+    fn killed(&mut self, events: &mut Vec<EntityEvent>) {
+        events.push(EntityEvent::DragonKilled { first: !self.previously_killed });
+        self.previously_killed = true;
+        if self.gateways < self.gateway_order.len() {
+            self.unbuilt.push(self.gateways);
+            self.gateways += 1;
+        }
+    }
+
+    /// Where the gateway at `cell` leads, once someone has used it.
+    pub fn gateway_exit(&self, cell: IVec3) -> Option<IVec3> {
+        self.links.iter().find_map(|&(a, b)| {
+            if a == cell {
+                Some(b)
+            } else if b == cell {
+                Some(a)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Joins two gateways (an entrance and the exit built for it).
+    pub fn link_gateways(&mut self, a: IVec3, b: IVec3) {
+        if self.gateway_exit(a).is_none() {
+            self.links.push((a, b));
+        }
     }
 
     /// The boss bar: the dragon's health fraction, if a living dragon is
@@ -298,9 +360,16 @@ impl Fight {
         }
         if self.unopened && world.block(self.podium).is_some() {
             self.unopened = false;
-            events.push(EntityEvent::DragonKilled { first: !self.previously_killed });
-            self.previously_killed = true;
+            self.killed(events);
         }
+        let order = self.gateway_order;
+        self.unbuilt.retain(|&i| {
+            let ready = world.block(order[i]).is_some();
+            if ready {
+                events.push(EntityEvent::BuildGateway { pos: order[i] });
+            }
+            !ready
+        });
         for c in &mut self.crystals {
             c.age += 1;
             // Java keeps a fire burning under every crystal in the End.
@@ -314,8 +383,7 @@ impl Fight {
             if keep {
                 self.dragon = Some(dragon);
             } else {
-                events.push(EntityEvent::DragonKilled { first: !self.previously_killed });
-                self.previously_killed = true;
+                self.killed(events);
             }
         }
         let mut fireballs = std::mem::take(&mut self.fireballs);
@@ -1172,7 +1240,7 @@ mod tests {
         let end = EndGen::new(3);
         let fight = Fight::new(&end);
         assert_eq!(fight.crystals.len(), 10);
-        assert_eq!(fight.serialize(), "1,0,200,1023");
+        assert_eq!(fight.serialize(), "1,0,200,1023,0,0");
         let loaded = Fight::load(&end, Some("1,1,57.5,5"));
         assert_eq!(loaded.crystals.len(), 2);
         assert!(loaded.previously_killed);
@@ -1183,12 +1251,12 @@ mod tests {
         // Saved while dying: the portal opens (with the egg) on reload.
         let mut dying = Fight::new(&end);
         dying.dragon.as_mut().unwrap().hurt_by(Part::Head, 500.0, true);
-        assert_eq!(dying.serialize(), "2,0,0,1023");
+        assert_eq!(dying.serialize(), "2,0,0,1023,0,0");
         let mut reloaded = Fight::load(&end, Some(&dying.serialize()));
         let mut events = Vec::new();
         reloaded.update(TICK, &Air, &ctx(Vec::new()), &mut Rng::new(1), &mut events);
         assert!(events.contains(&EntityEvent::DragonKilled { first: true }));
-        assert_eq!(reloaded.serialize(), "0,1,0,1023");
+        assert_eq!(reloaded.serialize(), "0,1,0,1023,1,0");
     }
 
     #[test]
@@ -1255,7 +1323,19 @@ mod tests {
             .sum();
         assert_eq!(xp, 10 * 960 + 2400);
         assert!(events.contains(&EntityEvent::DragonKilled { first: true }));
-        assert_eq!(fight.serialize(), "0,1,0,0");
+        // The kill's gateway goes up at the first of the 20 spots.
+        let gateway = end.gateways()[0];
+        assert!(events.contains(&EntityEvent::BuildGateway { pos: gateway }));
+        assert_eq!(fight.serialize(), "0,1,0,0,1,0");
+
+        // Gateway links survive a save.
+        let exit = IVec3::new(900, 80, -400);
+        fight.link_gateways(gateway, exit);
+        fight.link_gateways(exit, gateway);
+        let loaded = Fight::load(&end, Some(&fight.serialize()));
+        assert_eq!(loaded.gateway_exit(gateway), Some(exit));
+        assert_eq!(loaded.gateway_exit(exit), Some(gateway));
+        assert_eq!(loaded.serialize(), fight.serialize());
     }
 
     #[test]
