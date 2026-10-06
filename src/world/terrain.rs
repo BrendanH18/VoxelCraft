@@ -170,6 +170,11 @@ impl Generator {
         }
     }
 
+    /// The End's layout (pillars, exit portal), in the End only.
+    pub fn end(&self) -> Option<&super::end::EndGen> {
+        self.end.as_ref()
+    }
+
     /// Surface height and biome of a world column.
     pub fn column(&self, x: i32, z: i32) -> Column {
         if let Some(end) = &self.end {

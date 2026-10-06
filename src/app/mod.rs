@@ -1227,6 +1227,13 @@ impl Game {
         }
     }
 
+    /// Sends the dragon egg at `pos` somewhere nearby, with a teleport sound.
+    fn teleport_egg(&mut self, pos: glam::IVec3) {
+        if let Some(to) = self.world.teleport_egg(pos) {
+            self.audio.play(crate::audio::sounds::Sound::Teleport, Some(to.as_dvec3()), 0.6, (0.9, 1.1));
+        }
+    }
+
     /// Timed break with drops (survival). Called every frame while the
     /// button is held.
     fn continue_breaking(&mut self, dt: f64) {
@@ -1239,6 +1246,13 @@ impl Game {
             return;
         };
         let Some(block) = self.world.get_block(pos) else { return };
+        // The dragon egg won't be mined: it jumps away from the hit.
+        if block == Block::DRAGON_EGG {
+            self.actions.breaking = None;
+            self.action_cooldown = BREAK_DELAY;
+            self.teleport_egg(pos);
+            return;
+        }
         let held = self.held_item();
         let progress = self.actions.mine(pos, block, held, dt);
         if progress < 1.0 {
@@ -1374,6 +1388,7 @@ impl Game {
             Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
             Some(Block::BREWING_STAND) => return self.open_brewing(pos),
+            Some(Block::DRAGON_EGG) => return self.teleport_egg(pos),
             Some(b) if b.is_bed() => return self.use_bed(pos),
             Some(b) if b.is_door() || b.is_gate() => {
                 self.toggle_door(pos, self.player.forward());

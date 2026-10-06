@@ -149,6 +149,18 @@ const FRAME: Box16 = b([0, 0, 0], [16, 13, 16]);
 const FRAME_EYE: Box16 = b([4, 13, 4], [12, 16, 12]);
 /// The portal's surface: drawn 12/16 up, nothing to collide with.
 const END_PORTAL: Box16 = b([0, 11, 0], [16, 12, 16]);
+/// Java's dragon egg model, bottom to top.
+const DRAGON_EGG: [Box16; 8] = [
+    b([3, 0, 3], [13, 1, 13]),
+    b([2, 1, 2], [14, 3, 14]),
+    b([1, 3, 1], [15, 8, 15]),
+    b([2, 8, 2], [14, 11, 14]),
+    b([3, 11, 3], [13, 13, 13]),
+    b([4, 13, 4], [12, 14, 12]),
+    b([5, 14, 5], [11, 15, 11]),
+    b([6, 15, 6], [10, 16, 10]),
+];
+const DRAGON_EGG_COLLISION: Box16 = b([1, 0, 1], [15, 16, 15]);
 const FENCE_POST: Box16 = b([6, 0, 6], [10, 16, 10]);
 /// The two rails reaching out to a neighbour on the south side.
 const FENCE_RAILS: [Box16; 2] = [b([7, 6, 10], [9, 9, 16]), b([7, 12, 10], [9, 15, 16])];
@@ -200,6 +212,7 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
             }
         }
         Some(Shaped::EndPortal) => out.push(END_PORTAL),
+        Some(Shaped::DragonEgg) => DRAGON_EGG.iter().for_each(|&e| out.push(e)),
         Some(Shaped::Door { facing, open, .. }) => {
             out.push_turned(&DOOR, if open { open_door_side(facing) } else { facing })
         }
@@ -228,6 +241,7 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER_COLLISION, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND_COLLISION, Facing::South),
         Some(Shaped::EndPortal) => {}
+        Some(Shaped::DragonEgg) => out.push(DRAGON_EGG_COLLISION),
         Some(Shaped::Gate { open: true, .. }) => {}
         Some(Shaped::Gate { facing, .. }) => out.push_turned(&GATE_COLLISION, facing),
         Some(Shaped::Fence) => {

@@ -117,6 +117,9 @@ impl Game {
         }
 
         self.hotbar_ui(&mut ui, now);
+        if let Some(health) = self.mobs.entities.fight.as_ref().and_then(|f| f.boss_bar(self.player.pos)) {
+            boss_bar_ui(&mut ui, "Ender Dragon", health, sw);
+        }
         if self.show_debug {
             self.debug_ui(&mut ui);
         }
@@ -356,6 +359,20 @@ fn effect_list_ui(ui: &mut Ui, effects: &Effects, right: f32, top: f32) {
             ui.text(x + 28.0, y + 7.0, &label(a), WHITE);
             ui.text(x + 28.0, y + 18.0, &effects::duration_text(a.ticks), [0.5, 0.5, 0.5, 1.0]);
         }
+    }
+}
+
+/// Java's boss bar: the name over a 182-pixel pink bar, top centre.
+fn boss_bar_ui(ui: &mut Ui, name: &str, health: f32, sw: f32) {
+    const PINK: [f32; 4] = [0.93, 0.22, 0.73, 1.0];
+    let (w, x, y) = (182.0, ((sw - 182.0) / 2.0).floor(), 12.0);
+    ui.text(((sw - Ui::text_width(name)) / 2.0).floor(), y - 9.0, name, WHITE);
+    ui.rect(x, y, w, 5.0, [0.0, 0.0, 0.0, 0.8]);
+    ui.rect(x + 1.0, y + 1.0, w - 2.0, 3.0, [0.3, 0.08, 0.24, 0.9]);
+    let fill = ((w - 2.0) * health.clamp(0.0, 1.0)).round();
+    if fill > 0.0 {
+        ui.rect(x + 1.0, y + 1.0, fill, 3.0, PINK);
+        ui.rect(x + 1.0, y + 1.0, fill, 1.0, [1.0, 0.6, 0.9, 1.0]);
     }
 }
 

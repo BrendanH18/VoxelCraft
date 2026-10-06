@@ -1126,7 +1126,7 @@ pub fn sky_light<W: MobWorld + ?Sized>(world: &W, p: DVec3) -> f32 {
 }
 
 /// Whether nothing solid lies on the straight line between two points.
-fn line_of_sight<W: BlockSource + ?Sized>(world: &W, from: DVec3, to: DVec3) -> bool {
+pub(super) fn line_of_sight<W: BlockSource + ?Sized>(world: &W, from: DVec3, to: DVec3) -> bool {
     let d = to - from;
     let steps = (d.length() * 4.0).ceil().max(1.0) as i32;
     (1..steps).all(|i| {

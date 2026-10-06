@@ -29,9 +29,9 @@ pub struct EntityVertex {
     pub torch: [u8; 4],
 }
 
-type Rgb = [u8; 3];
+pub(super) type Rgb = [u8; 3];
 
-struct Cuboid {
+pub(super) struct Cuboid {
     min: [f32; 3],
     max: [f32; 3],
     color: Rgb,
@@ -39,7 +39,7 @@ struct Cuboid {
     noise: u8,
 }
 
-const fn cube(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
+pub(super) const fn cube(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
     Cuboid { min, max, color, noise }
 }
 
@@ -695,7 +695,7 @@ pub fn build_orbs(orbs: &[XpOrb], camera: DVec3, max_dist: f32, time: f32, alpha
 const FIRE: [f32; 3] = [255.0, 120.0, 30.0];
 
 /// Appends one cuboid; `tint` blends its colour toward a colour by an amount.
-fn push_cuboid(
+pub(super) fn push_cuboid(
     out: &mut Vec<EntityVertex>,
     c: &Cuboid,
     xf: &impl Fn(Vec3) -> Vec3,

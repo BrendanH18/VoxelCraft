@@ -401,6 +401,24 @@ a static violet sky, no weather or natural Overworld/Nether mob spawning, and
 its own `end/` save folder. Water works; beds explode. End stone is mineable
 with a pickaxe and appears in the creative catalog.
 
-The dragon, crystals, the exit portal, gateways, chorus trees, cities, shulkers and
+The Ender Dragon (200 health) guards the central island. An End crystal burns
+on every pillar, two of them inside iron bar cages, and the nearest one heals
+the dragon a point every half second along a visible beam. Crystals blow up
+(power 6) when hit, shot or caught in a blast; breaking the one healing the
+dragon hurts it for 10. Like Java's dragon it circles the pillars, sometimes
+swoops at a player to spit a fireball that leaves a spreading cloud of
+harmful breath, and sometimes perches on the exit portal's pillar to breathe
+fire, roar at anyone close, then take off or charge at them. Its wings shove
+and hurt players, its head bites for 10, and it smashes through any block but
+end stone, obsidian, bedrock, iron bars and portals. Head hits do full damage,
+anywhere else a quarter (plus up to one); arrows glance off a perched dragon,
+and bed or TNT blasts hurt it. The boss bar shows within 192 blocks of the
+island's centre. On death it rises for ten seconds in beams of light,
+spilling 12,000 experience (500 for later kills), then the bedrock exit
+portal opens, with the dragon egg on its pillar after the first kill. The egg
+teleports up to 15 blocks when hit or used, and falls like sand. The fight
+(dragon health, crystals, kills) is saved with the End.
+
+End gateways, respawning the dragon, chorus trees, cities, shulkers and
 elytra are still roadmap work. Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
 describes the larger progression being built toward.

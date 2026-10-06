@@ -77,12 +77,14 @@ impl Arrow {
     }
 
     /// Moves the arrow; returns `false` once it should be removed.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn update<W: BlockSource + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
         ctx: &Ctx,
         mobs: &mut [Mob],
+        mut fight: Option<&mut super::dragon::Fight>,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
@@ -107,6 +109,17 @@ impl Arrow {
                 return true;
             }
             if self.from_player {
+                if let Some(fight) = fight.as_deref_mut()
+                    && let Some(hit) = fight.hit_at(self.pos)
+                {
+                    let damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE).ceil() as f32;
+                    if fight.strike(hit, damage, None, true) {
+                        return false;
+                    }
+                    // Bounced off a perched dragon's scales.
+                    self.vel = -self.vel * 0.1;
+                    return true;
+                }
                 if let Some(mob) = mobs.iter_mut().find(|m| {
                     let (min, max) = m.aabb();
                     m.alive() && self.pos.cmpge(min).all() && self.pos.cmple(max).all()

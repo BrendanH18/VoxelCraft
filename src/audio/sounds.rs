@@ -129,13 +129,19 @@ pub enum Sound {
     FrameFill,
     /// An End portal opening: a deep rumble under a swelling chord.
     PortalSpawn,
+    /// A beat of the Ender Dragon's wings: a heavy whump of air.
+    DragonFlap,
+    /// The Ender Dragon's growl.
+    DragonGrowl,
+    /// The Ender Dragon's long dying roar.
+    DragonDeath,
 }
 
 const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 24 + Voice::ALL.len() * CALLS;
+    pub const COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -166,7 +172,10 @@ impl Sound {
             Sound::EyeDeath => 3 * M + 21,
             Sound::FrameFill => 3 * M + 22,
             Sound::PortalSpawn => 3 * M + 23,
-            Sound::Mob(v, c) => 3 * M + 24 + v as usize * CALLS + c as usize,
+            Sound::DragonFlap => 3 * M + 24,
+            Sound::DragonGrowl => 3 * M + 25,
+            Sound::DragonDeath => 3 * M + 26,
+            Sound::Mob(v, c) => 3 * M + 27 + v as usize * CALLS + c as usize,
         }
     }
 
@@ -199,6 +208,9 @@ impl Sound {
                 Sound::EyeDeath,
                 Sound::FrameFill,
                 Sound::PortalSpawn,
+                Sound::DragonFlap,
+                Sound::DragonGrowl,
+                Sound::DragonDeath,
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
     }
@@ -232,6 +244,9 @@ impl Sound {
             Sound::EyeDeath => "ender_eye_death".into(),
             Sound::FrameFill => "end_portal_frame_fill".into(),
             Sound::PortalSpawn => "end_portal_spawn".into(),
+            Sound::DragonFlap => "ender_dragon_flap".into(),
+            Sound::DragonGrowl => "ender_dragon_growl".into(),
+            Sound::DragonDeath => "ender_dragon_death".into(),
             Sound::Mob(v, c) => format!("{}_{}", v.name(), c.name()),
         }
     }
@@ -260,8 +275,9 @@ impl Sound {
             | Sound::LevelUp
             | Sound::Scream
             | Sound::EyeDeath
-            | Sound::PortalSpawn => 1,
-            Sound::Teleport | Sound::Fireball | Sound::FrameFill => 2,
+            | Sound::PortalSpawn
+            | Sound::DragonDeath => 1,
+            Sound::Teleport | Sound::Fireball | Sound::FrameFill | Sound::DragonFlap | Sound::DragonGrowl => 2,
         }
     }
 
@@ -295,6 +311,9 @@ impl Sound {
             Sound::EyeDeath => eye_death(&mut rng),
             Sound::FrameFill => frame_fill(&mut rng),
             Sound::PortalSpawn => portal_spawn(&mut rng),
+            Sound::DragonFlap => dragon_flap(&mut rng),
+            Sound::DragonGrowl => dragon_roar(&mut rng, 1.8, (95.0, 70.0)),
+            Sound::DragonDeath => dragon_death(&mut rng),
             Sound::Mob(v, c) => super::voices::render(v, c, &mut rng),
         }
     }
@@ -823,6 +842,64 @@ fn portal_spawn(rng: &mut Rng) -> Vec<f32> {
     let mut lp = OnePole::new(120.0);
     let rumble: Vec<f32> = rumble.iter().map(|&x| lp.process(x) * 3.0).collect();
     mix_into(&mut out, &rumble, 0.8, 0);
+    dsp::finish(out, 0.8)
+}
+
+/// Synthesizes a wing beat: low noise swelling and falling through a
+/// low-pass, like a sail snapping full.
+fn dragon_flap(rng: &mut Rng) -> Vec<f32> {
+    let secs = 0.7;
+    let len = samples(secs);
+    let mut out = noise(rng, len, |t| (t / 0.12).min(1.0).powi(2) * (-(t - 0.12).max(0.0) / 0.12).exp());
+    let mut lp = Biquad::lowpass(220.0, 0.9);
+    for (i, s) in out.iter_mut().enumerate() {
+        if i % 64 == 0 {
+            let t = i as f32 / dsp::RATE;
+            lp.retune(Biquad::lowpass(160.0 + 260.0 * (-(t - 0.1).abs() / 0.08).exp(), 0.9));
+        }
+        *s = lp.process(*s) * 4.0;
+    }
+    dsp::finish(out, 0.6)
+}
+
+/// Synthesizes a roar: a buzzing, wavering low voice gliding from
+/// `glide.0` to `glide.1` Hz, with throaty noise on top.
+fn dragon_roar(rng: &mut Rng, secs: f32, glide: (f32, f32)) -> Vec<f32> {
+    let len = samples(secs);
+    let env = |t: f32| (t / 0.15).min(1.0) * ((secs - t) / (secs * 0.5)).clamp(0.0, 1.0);
+    let mut out = vec![0.0; len];
+    let wobble = rng.range(5.0, 8.0);
+    for (harmonic, amp) in [(1.0, 0.5), (2.0, 0.35), (3.0, 0.25), (4.0, 0.15), (5.0, 0.12), (7.0, 0.06)] {
+        let mut phase = rng.f32() * std::f32::consts::TAU;
+        for (i, s) in out.iter_mut().enumerate() {
+            let t = i as f32 / dsp::RATE;
+            let f = glide.0 + (glide.1 - glide.0) * (t / secs) + (t * wobble * std::f32::consts::TAU).sin() * 4.0;
+            phase = (phase + std::f32::consts::TAU * f * harmonic / dsp::RATE) % std::f32::consts::TAU;
+            *s += phase.sin() * amp * env(t);
+        }
+    }
+    let mut throat = noise(rng, len, env);
+    Biquad::bandpass(520.0, 1.0).run(&mut throat);
+    mix_into(&mut out, &throat, 0.9, 0);
+    dsp::finish(out, 0.75)
+}
+
+/// Synthesizes the death: a long falling roar under a rising shimmer.
+fn dragon_death(rng: &mut Rng) -> Vec<f32> {
+    let secs = 6.0;
+    let mut out = dragon_roar(rng, secs, (110.0, 38.0));
+    for (i, freq) in [523.3, 659.3, 784.0, 1046.5].into_iter().enumerate() {
+        let start = samples(1.5 + i as f32 * 0.6);
+        for detune in [0.997, 1.003] {
+            let mut phase = 0.0f32;
+            for (j, s) in out[start..].iter_mut().enumerate() {
+                let t = j as f32 / dsp::RATE;
+                let env = (t / 1.0).min(1.0) * ((secs - 1.5 - i as f32 * 0.6 - t) / 1.5).clamp(0.0, 1.0);
+                phase = (phase + std::f32::consts::TAU * freq * detune / dsp::RATE) % std::f32::consts::TAU;
+                *s += phase.sin() * env * 0.06;
+            }
+        }
+    }
     dsp::finish(out, 0.8)
 }
 

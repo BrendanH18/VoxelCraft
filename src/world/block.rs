@@ -181,7 +181,8 @@ pub mod tex {
     pub const FRAME_EYE_TOP: u8 = FRAME_TOP + 2;
     pub const FRAME_EYE_SIDE: u8 = FRAME_TOP + 3;
     pub const END_PORTAL: u8 = FRAME_TOP + 4;
-    pub const COUNT: u32 = END_PORTAL as u32 + 1;
+    pub const DRAGON_EGG: u8 = END_PORTAL + 1;
+    pub const COUNT: u32 = DRAGON_EGG as u32 + 1;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
@@ -359,6 +360,9 @@ impl Block {
     pub const END_PORTAL_FRAME: Block = Block(200);
     /// Takes whatever falls in to the End.
     pub const END_PORTAL: Block = Block(208);
+    /// Left on the exit portal by the first dragon killed; it teleports away
+    /// when hit or used.
+    pub const DRAGON_EGG: Block = Block(209);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -461,6 +465,7 @@ impl Block {
             197 => Shaped::Pane,
             200..=207 => Shaped::Frame { facing: f(self.0 - 200), eye: self.0 >= 204 },
             208 => Shaped::EndPortal,
+            209 => Shaped::DragonEgg,
             137..=140 => Shaped::Ladder(f(self.0 - 137)),
             141..=148 => Shaped::Gate { facing: f(self.0 - 141), open: self.0 >= 145 },
             149..=164 => {
@@ -760,6 +765,7 @@ impl Block {
             Block::IRON_BARS => 5.0,
             Block::BOOKSHELF => 1.5,
             Block::END_PORTAL_FRAME | Block::END_PORTAL => f32::INFINITY,
+            Block::DRAGON_EGG => 3.0,
             Block::QUARTZ_ORE | Block::END_STONE => 3.0,
             Block::NETHER_PORTAL => f32::INFINITY,
             Block::DIRT | Block::SAND | Block::RED_SAND | Block::ICE => 0.5,
@@ -873,7 +879,7 @@ impl Block {
             .chain(100..=103)
             .chain(105..=111)
             .chain((112..=132).step_by(4))
-            .chain([136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200])
+            .chain([136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209])
             .map(Block)
     }
 
@@ -898,9 +904,9 @@ impl Block {
         self.kind() != RenderKind::Invisible && !self.is_fluid() && self != Block::NETHER_PORTAL
     }
 
-    /// Sand and gravel fall when nothing holds them up.
+    /// Sand, gravel and the dragon egg fall when nothing holds them up.
     pub fn has_gravity(self) -> bool {
-        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL)
+        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG)
     }
 
     /// Whether this block can rest on `below`. Plants need soil and torches
@@ -978,7 +984,7 @@ impl Block {
             Block::NETHER_PORTAL => 11,
             Block::END_PORTAL => 15,
             // Java: all frame states glow faintly, with or without an eye.
-            Block::END_PORTAL_FRAME => 1,
+            Block::END_PORTAL_FRAME | Block::DRAGON_EGG => 1,
             b if b.is_lava() => 15,
             b if b.is_fire() => 15,
             _ => 0,
@@ -1153,6 +1159,8 @@ pub enum Shaped {
     },
     /// The End portal's surface, 3/4 up its cell.
     EndPortal,
+    /// Stacked boxes rounding to a point.
+    DragonEgg,
     Fence,
     /// Faces away from the wall it hangs on.
     Ladder(Facing),
@@ -1377,6 +1385,7 @@ const fn make(id: u8) -> BlockInfo {
         200..=203 => ("end portal frame", Shaped, column(tex::FRAME_SIDE, tex::FRAME_TOP, tex::END_STONE)),
         204..=207 => ("end portal frame", Shaped, column(tex::FRAME_EYE_SIDE, tex::FRAME_EYE_TOP, tex::END_STONE)),
         208 => ("end portal", Shaped, all(tex::END_PORTAL)),
+        209 => ("dragon egg", Shaped, all(tex::DRAGON_EGG)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are

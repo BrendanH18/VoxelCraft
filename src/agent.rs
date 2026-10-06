@@ -498,16 +498,16 @@ impl Agent {
                 let distance = self
                     .target(world)
                     .map_or(6.0, |(p, _)| self.player.eye().distance(p.as_dvec3() + DVec3::splat(0.5)).min(6.0));
-                let (i, _) = entities
-                    .raycast(self.player.eye(), self.player.forward().as_dvec3(), distance)
-                    .ok_or("no mob within reach")?;
+                let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
                 let held = self.inventory.get(self.selected).map(|s| s.item);
-                if let Some(kind) = entities.attack(
-                    i,
-                    self.player.forward().as_dvec3(),
-                    (mining::attack_damage(held) + self.vitals.effects.attack_bonus()).max(0.0),
-                ) {
-                    entities.drop_loot(kind, entities.mobs[i].pos);
+                let damage = (mining::attack_damage(held) + self.vitals.effects.attack_bonus()).max(0.0);
+                if let Some((hit, _)) = entities.fight_raycast(eye, dir, distance) {
+                    entities.strike(hit, damage, self.id);
+                } else {
+                    let (i, _) = entities.raycast(eye, dir, distance).ok_or("no mob within reach")?;
+                    if let Some(kind) = entities.attack(i, dir, damage) {
+                        entities.drop_loot(kind, entities.mobs[i].pos);
+                    }
                 }
                 if !self.creative
                     && let Some(held) = held

@@ -57,6 +57,48 @@ pub fn rings_loaded(frame: IVec3, get: impl Fn(IVec3) -> Option<Block>) -> bool 
 }
 
 impl World {
+    /// Hitting or using the dragon egg makes it jump to a random empty cell
+    /// up to 15 blocks away (Java's `DragonEggBlock.teleport`). Returns
+    /// where it went.
+    pub fn teleport_egg(&mut self, pos: IVec3) -> Option<IVec3> {
+        if self.get_block(pos) != Some(Block::DRAGON_EGG) {
+            return None;
+        }
+        for _ in 0..1000 {
+            let mut d = || (self.roll() % 16) as i32 - (self.roll() % 16) as i32;
+            let (x, z) = (d(), d());
+            let y = (self.roll() % 8) as i32 - (self.roll() % 8) as i32;
+            let to = pos + IVec3::new(x, y, z);
+            if to != pos && self.get_block(to) == Some(Block::AIR) {
+                self.set_block(pos, Block::AIR);
+                self.set_block(to, Block::DRAGON_EGG);
+                return Some(to);
+            }
+        }
+        None
+    }
+
+    /// Opens the exit portal in the End's podium once the dragon is dead,
+    /// with the dragon egg on its pillar after the first kill.
+    pub fn open_exit_portal(&mut self, egg: bool) {
+        let Some(origin) = self.generator.end().map(|e| e.podium()) else { return };
+        for dy in -1..=3 {
+            for dz in -4..=4 {
+                for dx in -4..=4 {
+                    let p = origin + IVec3::new(dx, dy, dz);
+                    if let Some(b) = super::end::podium_block(origin, p, true)
+                        && self.get_block(p) != Some(b)
+                    {
+                        self.set_block(p, b);
+                    }
+                }
+            }
+        }
+        if egg {
+            self.set_block(origin + IVec3::Y * 4, Block::DRAGON_EGG);
+        }
+    }
+
     /// Puts an eye of ender in the empty frame at `pos`. Returns `None` if
     /// there's no empty frame there (or part of its ring hasn't loaded, so
     /// the last eye can't be spent without opening the portal), else

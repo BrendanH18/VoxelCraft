@@ -61,6 +61,9 @@ impl Game {
     /// Left-button press: hits the mob under the crosshair. Returns `true`
     /// if a mob was targeted, in which case no block should be broken.
     pub(super) fn attack(&mut self) -> bool {
+        if self.strike_fight() {
+            return true;
+        }
         let Some(i) = self.mob_target() else { return false };
         self.mobs.attack_held = true;
         if self.mobs.attack_cooldown <= 0.0 {
@@ -86,6 +89,45 @@ impl Game {
         true
     }
 
+    /// The End crystal or dragon part under the crosshair, if it's within
+    /// reach and in front of the targeted block and any mob.
+    fn fight_target(&self) -> Option<crate::entity::dragon::Hit> {
+        let eye = self.player.eye();
+        let dir = self.player.forward().as_dvec3();
+        let block_dist = self
+            .target()
+            .and_then(|(b, _)| physics::ray_aabb(eye, dir, b.as_dvec3(), b.as_dvec3() + DVec3::ONE))
+            .unwrap_or(REACH);
+        self.mobs.entities.fight_raycast(eye, dir, block_dist.min(REACH)).map(|(hit, _)| hit)
+    }
+
+    /// Melee on an End crystal (it blows up) or the dragon.
+    fn strike_fight(&mut self) -> bool {
+        let Some(hit) = self.fight_target() else { return false };
+        self.mobs.attack_held = true;
+        if self.mobs.attack_cooldown <= 0.0 {
+            self.mobs.attack_cooldown = entity::ATTACK_COOLDOWN;
+            let p = &self.player;
+            let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
+            let base = crate::mining::attack_damage(self.held_item()) + self.vitals.effects.attack_bonus();
+            let damage = base.max(0.0) * if critical { 1.5 } else { 1.0 };
+            let by = self.actor;
+            if self.mobs.entities.strike(hit, damage, by) {
+                self.audio.play(
+                    Sound::Hit,
+                    Some(self.player.eye() + self.player.forward().as_dvec3() * 2.0),
+                    0.8,
+                    (0.9, 1.1),
+                );
+                self.wear_held(true);
+            }
+            if self.mode == GameMode::Survival {
+                self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
+            }
+        }
+        true
+    }
+
     pub(super) fn release_attack(&mut self) {
         self.mobs.attack_held = false;
     }
@@ -93,7 +135,7 @@ impl Game {
     /// Block breaking is suppressed while aiming at a mob, and for the rest
     /// of a click that started as an attack.
     pub(super) fn attacking(&self) -> bool {
-        self.mobs.attack_held || self.mob_target().is_some()
+        self.mobs.attack_held || self.mob_target().is_some() || self.fight_target().is_some()
     }
 
     /// Applies `--spawn` requests (with the other `--place` edits).
@@ -176,13 +218,30 @@ impl Game {
                         MobSound::Teleport => (Sound::Teleport, 0.8),
                         MobSound::Fireball => (Sound::Fireball, 0.9),
                         MobSound::EyeDeath => (Sound::EyeDeath, 0.8),
+                        MobSound::DragonFlap => (Sound::DragonFlap, 1.0),
+                        MobSound::DragonGrowl => (Sound::DragonGrowl, 1.0),
+                        MobSound::DragonShoot => (Sound::Fireball, 1.0),
+                        MobSound::DragonSmash => (Sound::Explosion, 0.25),
+                        // Java plays the death to the whole dimension.
+                        MobSound::DragonDeath => {
+                            self.audio.play(Sound::DragonDeath, None, 1.0, (1.0, 1.0));
+                            continue;
+                        }
                     };
-                    self.audio.play(sound, Some(pos), gain, (0.9, 1.1));
+                    let pitch = if sound == Sound::Fireball && gain == 1.0 { (0.6, 0.7) } else { (0.9, 1.1) };
+                    self.audio.play(sound, Some(pos), gain, pitch);
                 }
                 EntityEvent::MobShot { pos, .. } => {
                     self.audio.play(Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
-                EntityEvent::Shoot { .. } => {}
+                EntityEvent::Shoot { .. } | EntityEvent::DragonXp { .. } => {}
+                EntityEvent::BreakBlock { cell } => {
+                    self.world.set_block(cell, crate::world::block::Block::AIR);
+                }
+                EntityEvent::DragonKilled { first } => {
+                    self.world.open_exit_portal(first);
+                    self.audio.play(Sound::PortalSpawn, None, 1.0, (1.0, 1.0));
+                }
             }
         }
     }

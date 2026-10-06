@@ -8,11 +8,34 @@ use glam::IVec3;
 pub const SPAWN: IVec3 = IVec3::new(100, 49, 0);
 const OUTER_START: f64 = 1024.0;
 
-struct Pillar {
-    x: i32,
-    z: i32,
-    radius: i32,
-    top: i32,
+/// One of the ten obsidian spikes (Java's `SpikeFeature.EndSpike`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pillar {
+    pub x: i32,
+    pub z: i32,
+    pub radius: i32,
+    /// The bedrock cap's height; an End crystal sits on it.
+    pub top: i32,
+    /// Ringed by an iron bar cage (the second and third shortest).
+    pub guarded: bool,
+}
+
+impl Pillar {
+    /// Where the pillar's End crystal stands (feet), above the bedrock cap.
+    pub fn crystal(&self) -> glam::DVec3 {
+        glam::DVec3::new(self.x as f64 + 0.5, (self.top + 1) as f64, self.z as f64 + 0.5)
+    }
+
+    /// The cage's iron bars: the sides of a 5x5 box four blocks high
+    /// standing on the pillar, with a lid.
+    fn caged(&self, x: i32, y: i32, z: i32) -> bool {
+        let (dx, dy, dz) = (x - self.x, y - self.top, z - self.z);
+        self.guarded
+            && dx.abs() <= 2
+            && dz.abs() <= 2
+            && (0..=3).contains(&dy)
+            && (dx.abs() == 2 || dz.abs() == 2 || dy == 3)
+    }
 }
 pub struct EndGen {
     shape: Perlin,
@@ -32,9 +55,21 @@ impl EndGen {
                 z: (angle.sin() * 42.0).round() as i32,
                 radius: 2 + rank / 3,
                 top: 76 + rank * 3,
+                guarded: rank == 1 || rank == 2,
             }
         });
         Self { shape: Perlin::new(seed ^ 0x454E4401), detail: Perlin::new(seed ^ 0x454E4402), seed, pillars }
+    }
+
+    pub fn pillars(&self) -> &[Pillar; 10] {
+        &self.pillars
+    }
+
+    /// The exit portal's centre: the cell above the central island's
+    /// surface at 0, 0 (Java's `EndPodiumFeature` origin).
+    pub fn podium(&self) -> IVec3 {
+        let top = self.column(0, 0).map_or(SPAWN.y, |(top, _)| top);
+        IVec3::new(0, top + 1, 0)
     }
     /// Surface and bottom of the floating island, or no land. No bedrock floor under the void.
     pub fn column(&self, x: i32, z: i32) -> Option<(i32, i32)> {
@@ -81,6 +116,7 @@ impl EndGen {
             return ChunkData::Uniform(Block::AIR);
         }
         let mut blocks = ChunkData::new_dense(Block::AIR);
+        let podium = self.podium();
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
                 let (wx, wz) = (base.x + x as i32, base.z + z as i32);
@@ -100,6 +136,10 @@ impl EndGen {
                         Block::BEDROCK
                     } else if pillar.is_some_and(|p| (0..p.top).contains(&wy)) {
                         Block::OBSIDIAN
+                    } else if pillar.is_some_and(|p| p.caged(wx, wy, wz)) {
+                        Block::IRON_BARS
+                    } else if let Some(b) = podium_block(podium, IVec3::new(wx, wy, wz), false) {
+                        b
                     } else if column.is_some_and(|(top, bottom)| wy >= bottom && wy <= top) {
                         Block::END_STONE
                     } else {
@@ -112,6 +152,34 @@ impl EndGen {
         ChunkData::from_dense(blocks)
     }
 }
+/// The exit portal around `origin` at `p`, if it has a block there (Java's
+/// `EndPodiumFeature`): a bedrock bowl with an end stone rim beneath, a
+/// four-high bedrock pillar in the middle, and the portal itself once the
+/// dragon is dead (`active`).
+pub fn podium_block(origin: IVec3, p: IVec3, active: bool) -> Option<Block> {
+    let d = p - origin;
+    if d.x.abs() > 4 || d.z.abs() > 4 || !(-1..=32).contains(&d.y) {
+        return None;
+    }
+    if d.x == 0 && d.z == 0 && (0..4).contains(&d.y) {
+        return Some(Block::BEDROCK);
+    }
+    // Java compares squared distances between block corners.
+    let d2 = d.length_squared() as f64;
+    let inner = d2 < 2.5 * 2.5;
+    if !inner && d2 >= 3.5 * 3.5 {
+        return None;
+    }
+    Some(match d.y {
+        y if y < 0 && inner => Block::BEDROCK,
+        y if y < 0 => Block::END_STONE,
+        y if y > 0 => Block::AIR,
+        _ if !inner => Block::BEDROCK,
+        _ if active => Block::END_PORTAL,
+        _ => Block::AIR,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
