@@ -59,7 +59,13 @@ impl Pearl {
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
-            if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
+            let cell = next.floor().as_ivec3();
+            // Gateways take the thrower through, like Java's.
+            if world.block(cell) == Some(crate::world::block::Block::END_GATEWAY) {
+                events.push(EntityEvent::PearlGateway { owner: self.owner, cell, pos: self.pos });
+                return false;
+            }
+            if world.block(cell).is_some_and(|b| b.is_solid()) {
                 // Land just outside the block it hit.
                 events.push(EntityEvent::PearlLanded { owner: self.owner, pos: self.pos });
                 return false;

@@ -846,6 +846,35 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_dead_dragon_opens_the_exit_portal_and_leaves_an_egg_that_jumps() {
+        let generator = Arc::new(Generator::for_dimension(3, super::terrain::Dimension::End));
+        let origin = generator.end().unwrap().podium();
+        let mut world = World::new_headless(generator, Default::default(), 2);
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !(-1..=1).all(|c| (-1..=1).all(|d| world.column_loaded(c * 16, d * 16))) {
+            world.update(origin.as_dvec3());
+            assert!(Instant::now() < deadline, "End never loaded");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        // Generated shut: bedrock rim and pillar, nothing in the bowl.
+        assert_eq!(world.get_block(origin + IVec3::new(3, 0, 0)), Some(Block::BEDROCK));
+        assert_eq!(world.get_block(origin + IVec3::new(1, 0, 1)), Some(Block::AIR));
+        assert_eq!(world.get_block(origin + IVec3::Y * 3), Some(Block::BEDROCK));
+        world.open_exit_portal(true);
+        let portal = (-2..=2)
+            .flat_map(|z| (-2..=2).map(move |x| IVec3::new(x, 0, z)))
+            .filter(|&d| world.get_block(origin + d) == Some(Block::END_PORTAL))
+            .count();
+        // Java's 5x5 disc less its corners and the pillar.
+        assert_eq!(portal, 20);
+        let egg = origin + IVec3::Y * 4;
+        assert_eq!(world.get_block(egg), Some(Block::DRAGON_EGG));
+        let to = world.teleport_egg(egg).expect("the egg should find room");
+        assert_eq!(world.get_block(egg), Some(Block::AIR));
+        assert!((to - egg).abs().max_element() <= 15);
+    }
+
     fn surface_y(world: &World, x: i32, z: i32) -> i32 {
         (0..WORLD_HEIGHT).rev().find(|&y| world.get_block(IVec3::new(x, y, z)).unwrap().is_solid()).unwrap()
     }

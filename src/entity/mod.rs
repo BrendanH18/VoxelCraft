@@ -12,6 +12,8 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod dragon;
+mod dragon_model;
 pub mod eye;
 pub mod fireball;
 pub mod item;
@@ -82,6 +84,13 @@ pub enum MobSound {
     Fireball,
     /// A thrown eye of ender dropping or shattering.
     EyeDeath,
+    DragonFlap,
+    DragonGrowl,
+    /// The dragon spitting a fireball or breathing fire.
+    DragonShoot,
+    /// The dragon crashing through blocks.
+    DragonSmash,
+    DragonDeath,
 }
 
 /// Something an entity did that the game needs to react to.
@@ -136,6 +145,37 @@ pub enum EntityEvent {
         kind: MobKind,
         pos: DVec3,
         killed: bool,
+    },
+    /// The Ender Dragon flew through this block: remove it, without drops.
+    BreakBlock {
+        cell: IVec3,
+    },
+    /// The dragon's death is over: open the exit portal, and on the `first`
+    /// kill put the egg on top.
+    DragonKilled {
+        first: bool,
+    },
+    /// Push `player` away at no less than `velocity` (the perched dragon's
+    /// wings), without hurting them.
+    Shove {
+        player: PlayerId,
+        velocity: Vec3,
+    },
+    /// A kill opened an End gateway here: build it.
+    BuildGateway {
+        pos: IVec3,
+    },
+    /// `owner`'s ender pearl flew into the End gateway at `cell`, from
+    /// `pos` just outside it.
+    PearlGateway {
+        owner: PlayerId,
+        cell: IVec3,
+        pos: DVec3,
+    },
+    /// The dying dragon spills experience (turned into orbs internally).
+    DragonXp {
+        pos: DVec3,
+        points: u32,
     },
 }
 
@@ -314,6 +354,8 @@ pub struct Entities {
     pub items: Vec<ItemEntity>,
     /// Experience orbs, kept and saved like dropped items.
     pub orbs: Vec<XpOrb>,
+    /// The dragon fight, in the End.
+    pub fight: Option<dragon::Fight>,
     rng: Rng,
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
@@ -338,6 +380,7 @@ impl Entities {
             tnt: Vec::new(),
             items: Vec::new(),
             orbs: Vec::new(),
+            fight: None,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
@@ -384,6 +427,9 @@ impl Entities {
             i += 1;
         }
         self.separate(dt);
+        if let Some(fight) = &mut self.fight {
+            fight.update(dt, world, ctx, &mut self.rng, &mut events);
+        }
 
         // Skeleton shots become arrows, blaze shots fireballs.
         for e in &events {
@@ -395,20 +441,25 @@ impl Entities {
         }
         events.retain(|e| !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. }));
         self.fireballs.retain_mut(|f| f.update(dt, world, ctx, &mut events));
-        let (mobs, rng) = (&mut self.mobs, &mut self.rng);
-        self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, rng, &mut events));
+        let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
+        self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
         self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
         self.update_eyes(dt, &mut events);
         for e in &events {
-            if let EntityEvent::MobShot { kind, pos, killed } = *e {
-                if killed {
-                    self.drop_loot(kind, pos);
+            match *e {
+                EntityEvent::MobShot { kind, pos, killed } => {
+                    if killed {
+                        self.drop_loot(kind, pos);
+                    }
+                    if kind == MobKind::ZombifiedPiglin {
+                        self.anger_piglins(pos);
+                    }
                 }
-                if kind == MobKind::ZombifiedPiglin {
-                    self.anger_piglins(pos);
-                }
+                EntityEvent::DragonXp { pos, points } => self.spawn_xp(pos, points),
+                _ => {}
             }
         }
+        events.retain(|e| !matches!(e, EntityEvent::DragonXp { .. }));
         self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
         self.orbs.retain_mut(|orb| !world.loaded(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
@@ -432,6 +483,9 @@ impl Entities {
 
     /// Hurts and flings mobs caught in an explosion, and puffs smoke.
     pub fn explode(&mut self, center: DVec3, power: f32) {
+        if let Some(fight) = &mut self.fight {
+            fight.explode(center, power);
+        }
         for m in &mut self.mobs {
             let mid = m.pos + DVec3::Y * (m.shape().height * 0.5);
             let Some((damage, impact)) = explosion_damage(power, mid.distance(center)) else { continue };
@@ -752,6 +806,9 @@ impl Entities {
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
+        if let Some(fight) = &self.fight {
+            dragon_model::build_fight(fight, camera, time, alpha, &mut self.verts);
+        }
         &mut self.verts
     }
 
@@ -768,6 +825,19 @@ impl Entities {
             })
             .filter(|&(_, t)| t <= max_dist)
             .min_by(|a, b| a.1.total_cmp(&b.1))
+    }
+
+    /// The End crystal or dragon part a ray hits within `max_dist`, if it's
+    /// nearer than any mob.
+    pub fn fight_raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(dragon::Hit, f64)> {
+        let hit = self.fight.as_ref()?.raycast(origin, dir, max_dist)?;
+        let mob = self.raycast(origin, dir, max_dist).map_or(f64::INFINITY, |(_, t)| t);
+        (hit.1 < mob).then_some(hit)
+    }
+
+    /// A player's melee `hit` in the fight for `damage`.
+    pub fn strike(&mut self, hit: dragon::Hit, damage: f32, by: PlayerId) -> bool {
+        self.fight.as_mut().is_some_and(|f| f.strike(hit, damage, Some(by), false))
     }
 
     /// Lights the TNT block at `cell` (now gone from the world): a short
@@ -1368,6 +1438,43 @@ mod tests {
         assert_eq!(e.mobs[0].fuse, 0.0);
     }
 
+    const BOW_SPEED_FOR_TEST: f64 = projectile::BOW_SPEED;
+
+    #[test]
+    fn player_arrows_hit_whatever_they_reach_first() {
+        let world = Grid::flat(10);
+        let end = crate::world::end::EndGen::new(5);
+        let mut fight = dragon::Fight::new(&end);
+        fight.dragon = None;
+        let c = fight.crystals[0].pos;
+        // A cow standing just in front of the crystal: one arrow step ends
+        // inside both, but it enters the cow first.
+        let mut mobs = [Mob::new(MobKind::Cow, DVec3::new(c.x - 0.6, c.y, c.z), 0.0)];
+        let per_step = BOW_SPEED_FOR_TEST / 60.0 / 5.0;
+        let eye = DVec3::new(c.x - 0.95 - 10.0 * per_step - 0.3, c.y + 1.0, c.z);
+        let mut arrow = Arrow::shot(eye, DVec3::X, 1.0, false);
+        let mut events = Vec::new();
+        for _ in 0..4 {
+            let keep = arrow.update(
+                1.0 / 60.0,
+                &world,
+                &ctx(DVec3::new(0.0, 10.0, 0.0)),
+                &mut mobs,
+                Some(&mut fight),
+                &mut Rng::new(1),
+                &mut events,
+            );
+            if !keep {
+                break;
+            }
+        }
+        assert!(events.iter().any(|e| matches!(e, EntityEvent::MobShot { kind: MobKind::Cow, .. })), "{events:?}");
+        assert!(mobs[0].health < MobKind::Cow.max_health());
+        let mut events = Vec::new();
+        fight.update(0.05, &world, &ctx(DVec3::new(0.0, 10.0, 0.0)), &mut Rng::new(1), &mut events);
+        assert_eq!(fight.crystals.len(), 10, "the crystal behind the cow survives");
+    }
+
     #[test]
     fn skeleton_arrows_hit_the_player() {
         let world = Grid::flat(10);
@@ -1382,7 +1489,7 @@ mod tests {
         let mut arrow = Arrow::aimed(DVec3::new(0.5, 12.0, 0.5), DVec3::new(6.0, 10.0, 0.5), &mut Rng::new(1));
         let c = ctx(DVec3::new(50.0, 10.0, 0.0));
         for _ in 0..120 {
-            arrow.update(1.0 / 60.0, &world, &c, &mut [], &mut Rng::new(1), &mut Vec::new());
+            arrow.update(1.0 / 60.0, &world, &c, &mut [], None, &mut Rng::new(1), &mut Vec::new());
         }
         assert!(arrow.is_stuck() && (9.5..10.5).contains(&arrow.pos.y), "{:?}", arrow.pos);
     }

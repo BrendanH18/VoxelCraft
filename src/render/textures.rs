@@ -638,6 +638,17 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 shade([8, 12, 18], 0.8 + r * 0.4)
             }
         }
+        tex::DRAGON_EGG => {
+            // Near-black scales with violet flecks.
+            let fleck = rnd(layer, x, y, 13);
+            if fleck > 0.9 {
+                shade([96, 40, 120], 0.85 + r * 0.3)
+            } else if fleck > 0.75 {
+                shade([40, 20, 52], 0.9 + r * 0.2)
+            } else {
+                shade([16, 10, 20], 0.8 + r * 0.4)
+            }
+        }
         tex::END_STONE => {
             let pit = rnd(layer, x / 2, y / 2, 31);
             shade([220, 224, 164], if pit < 0.22 { 0.74 + r * 0.08 } else { 0.91 + r * 0.14 })

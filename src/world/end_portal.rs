@@ -57,6 +57,109 @@ pub fn rings_loaded(frame: IVec3, get: impl Fn(IVec3) -> Option<Block>) -> bool 
 }
 
 impl World {
+    /// Builds an End gateway centred on `origin`.
+    pub fn build_gateway(&mut self, origin: IVec3) {
+        for dy in -2..=2 {
+            for dz in -1..=1 {
+                for dx in -1..=1 {
+                    let p = origin + IVec3::new(dx, dy, dz);
+                    if let Some(b) = super::end::gateway_block(origin, p)
+                        && self.get_block(p) != Some(b)
+                    {
+                        self.set_block(p, b);
+                    }
+                }
+            }
+        }
+    }
+
+    /// A small end stone island hanging from `top` (Java's `EndIslandFeature`),
+    /// for gateways that lead out over the void.
+    pub fn build_end_island(&mut self, top: IVec3) {
+        let mut radius = (self.roll() % 3) as f32 + 4.0;
+        let mut y = 0;
+        while radius > 0.5 {
+            let r = radius.ceil() as i32;
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    if ((dx * dx + dz * dz) as f32) <= (radius + 1.0) * (radius + 1.0) {
+                        self.set_block(top + IVec3::new(dx, y, dz), Block::END_STONE);
+                    }
+                }
+            }
+            radius -= (self.roll() % 2) as f32 + 0.5;
+            y -= 1;
+        }
+    }
+
+    /// Where someone coming out of the gateway at `gateway` stands: on the
+    /// highest full block (not bedrock) within five of it, like Java's
+    /// `findExitPosition`, or on the gateway's cap if there's none.
+    pub fn gateway_arrival(&self, gateway: IVec3) -> glam::DVec3 {
+        let from = gateway + IVec3::Y * 2;
+        let mut best: Option<IVec3> = None;
+        for dz in -5..=5 {
+            for dx in -5..=5 {
+                if (dx, dz) == (0, 0) {
+                    continue;
+                }
+                let floor = best.map_or(0, |b| b.y);
+                for y in (floor + 1..super::chunk::WORLD_HEIGHT).rev() {
+                    let p = IVec3::new(from.x + dx, y, from.z + dz);
+                    let b = self.get_block(p).unwrap_or(Block::AIR);
+                    if b.is_opaque() && b != Block::BEDROCK {
+                        best = Some(p);
+                        break;
+                    }
+                }
+            }
+        }
+        let stand = best.unwrap_or(from) + IVec3::Y;
+        stand.as_dvec3() + glam::DVec3::new(0.5, 0.0, 0.5)
+    }
+
+    /// Hitting or using the dragon egg makes it jump to a random empty cell
+    /// up to 15 blocks away (Java's `DragonEggBlock.teleport`). Returns
+    /// where it went.
+    pub fn teleport_egg(&mut self, pos: IVec3) -> Option<IVec3> {
+        if self.get_block(pos) != Some(Block::DRAGON_EGG) {
+            return None;
+        }
+        for _ in 0..1000 {
+            let mut d = || (self.roll() % 16) as i32 - (self.roll() % 16) as i32;
+            let (x, z) = (d(), d());
+            let y = (self.roll() % 8) as i32 - (self.roll() % 8) as i32;
+            let to = pos + IVec3::new(x, y, z);
+            if to != pos && self.get_block(to) == Some(Block::AIR) {
+                self.set_block(pos, Block::AIR);
+                self.set_block(to, Block::DRAGON_EGG);
+                return Some(to);
+            }
+        }
+        None
+    }
+
+    /// Opens the exit portal in the End's podium once the dragon is dead,
+    /// with the dragon egg on its pillar after the first kill.
+    pub fn open_exit_portal(&mut self, egg: bool) {
+        let Some(origin) = self.generator.end().map(|e| e.podium()) else { return };
+        for dy in -1..=3 {
+            for dz in -4..=4 {
+                for dx in -4..=4 {
+                    let p = origin + IVec3::new(dx, dy, dz);
+                    if let Some(b) = super::end::podium_block(origin, p, true)
+                        && self.get_block(p) != Some(b)
+                    {
+                        self.set_block(p, b);
+                    }
+                }
+            }
+        }
+        if egg {
+            self.set_block(origin + IVec3::Y * 4, Block::DRAGON_EGG);
+        }
+    }
+
     /// Puts an eye of ender in the empty frame at `pos`. Returns `None` if
     /// there's no empty frame there (or part of its ring hasn't loaded, so
     /// the last eye can't be spent without opening the portal), else

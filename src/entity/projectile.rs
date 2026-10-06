@@ -77,12 +77,14 @@ impl Arrow {
     }
 
     /// Moves the arrow; returns `false` once it should be removed.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn update<W: BlockSource + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
         ctx: &Ctx,
         mobs: &mut [Mob],
+        mut fight: Option<&mut super::dragon::Fight>,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
@@ -100,32 +102,63 @@ impl Arrow {
         let delta = self.vel * dt;
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
         for _ in 0..steps {
-            self.pos += delta / steps as f64;
-            if world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
+            let from = self.pos;
+            let step = delta / steps as f64;
+            self.pos += step;
+            // A block the step crosses (even at a corner) stops the arrow,
+            // and hides anything behind it.
+            let block = first_solid(world, from, step);
+            let reach = block.unwrap_or(1.0);
+            if self.from_player {
+                // Whatever the step enters first: a mob, or a crystal or
+                // dragon part (fractions of the step).
+                let mob = mobs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| m.alive())
+                    .filter_map(|(i, m)| {
+                        let (min, max) = m.aabb();
+                        crate::physics::ray_aabb(from, step, min, max).filter(|&t| t <= reach).map(|t| (i, t))
+                    })
+                    .min_by(|a, b| a.1.total_cmp(&b.1));
+                let boss = fight.as_deref().and_then(|f| f.raycast(from, step, reach));
+                if let Some((hit, _)) = boss.filter(|&(_, t)| mob.is_none_or(|(_, m)| t < m))
+                    && let Some(fight) = fight.as_deref_mut()
+                {
+                    let damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE).ceil() as f32;
+                    if fight.strike(hit, damage, None, true) {
+                        return false;
+                    }
+                    // Bounced off a perched dragon's scales.
+                    self.vel = -self.vel * 0.1;
+                    return true;
+                }
+                if let Some((i, _)) = mob {
+                    let mob = &mut mobs[i];
+                    // Endermen dodge arrows by teleporting; the arrow flies on.
+                    if mob.kind == super::MobKind::Enderman {
+                        mob.teleport_pending = true;
+                    } else {
+                        let speed = self.vel.length();
+                        let mut damage = (speed / BOW_SPEED * BOW_DAMAGE).ceil() as f32;
+                        if self.critical {
+                            damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
+                        }
+                        let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 4.0 + DVec3::Y * 4.0;
+                        let killed = mob.damage(damage, Some(push), rng);
+                        events.push(EntityEvent::MobShot { kind: mob.kind, pos: mob.pos, killed });
+                        return false;
+                    }
+                }
+            }
+            if let Some(t) = block {
+                // Stuck just inside the block it hit.
+                self.pos = from + step * t + step.normalize_or_zero() * 0.01;
                 self.stuck = true;
                 self.age = 0.0;
                 return true;
             }
             if self.from_player {
-                if let Some(mob) = mobs.iter_mut().find(|m| {
-                    let (min, max) = m.aabb();
-                    m.alive() && self.pos.cmpge(min).all() && self.pos.cmple(max).all()
-                }) {
-                    // Endermen dodge arrows by teleporting; the arrow flies on.
-                    if mob.kind == super::MobKind::Enderman {
-                        mob.teleport_pending = true;
-                        continue;
-                    }
-                    let speed = self.vel.length();
-                    let mut damage = (speed / BOW_SPEED * BOW_DAMAGE).ceil() as f32;
-                    if self.critical {
-                        damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
-                    }
-                    let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 4.0 + DVec3::Y * 4.0;
-                    let killed = mob.damage(damage, Some(push), rng);
-                    events.push(EntityEvent::MobShot { kind: mob.kind, pos: mob.pos, killed });
-                    return false;
-                }
                 continue;
             }
             if let Some(hit) = ctx.players.iter().find(|t| t.targetable && t.contains(self.pos)) {
@@ -148,5 +181,68 @@ impl Arrow {
 
     pub fn is_stuck(&self) -> bool {
         self.stuck
+    }
+}
+
+/// How far along `step` (0..=1) from `from` it first enters a solid cell.
+fn first_solid<W: BlockSource + ?Sized>(world: &W, from: DVec3, step: DVec3) -> Option<f64> {
+    let to = from + step;
+    let (lo, hi) = (from.min(to).floor().as_ivec3(), from.max(to).floor().as_ivec3());
+    let mut first: Option<f64> = None;
+    for y in lo.y..=hi.y {
+        for z in lo.z..=hi.z {
+            for x in lo.x..=hi.x {
+                let cell = glam::IVec3::new(x, y, z);
+                if !world.block(cell).is_some_and(|b| b.is_solid()) {
+                    continue;
+                }
+                let min = cell.as_dvec3();
+                if let Some(t) = crate::physics::ray_aabb(from, step, min, min + DVec3::ONE).filter(|&t| t <= 1.0) {
+                    first = Some(first.map_or(t, |f: f64| f.min(t)));
+                }
+            }
+        }
+    }
+    first
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::{MobKind, PlayerId, Target};
+    use crate::physics::test_util::Grid;
+    use crate::world::block::Block;
+    use crate::world::terrain::Dimension;
+    use glam::IVec3;
+
+    #[test]
+    fn a_clipped_block_corner_stops_the_arrow_before_a_mob_behind_it() {
+        let mut world = Grid::flat(10);
+        world.set(IVec3::new(0, 20, 0), Block::STONE);
+        // One step from the air beside the block, across its corner, into
+        // the air past it, with a cow standing just beyond.
+        let (from, to) = (DVec3::new(-0.04, 20.5, 0.92), DVec3::new(0.06, 20.5, 1.02));
+        assert!(world.block((to).floor().as_ivec3()).is_some_and(|b| !b.is_solid()));
+        let t = first_solid(&world, from, to - from).expect("the corner is crossed");
+        assert!((0.3..0.5).contains(&t), "{t}");
+
+        let mut mobs = [Mob::new(MobKind::Cow, DVec3::new(0.06, 20.0, 1.46), 0.0)];
+        let dt = 1.0 / 60.0;
+        let mut arrow = Arrow::shot(from, (to - from).normalize(), 1.0, true);
+        arrow.pos = from;
+        arrow.vel = (to - from) / dt + DVec3::Y * GRAVITY * dt;
+        let ctx = Ctx {
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(50.0, 10.0, 0.0), true)],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        };
+        let mut events = Vec::new();
+        assert!(arrow.update(dt, &world, &ctx, &mut mobs, None, &mut Rng::new(1), &mut events));
+        assert!(arrow.is_stuck());
+        assert_eq!(arrow.pos.floor().as_ivec3(), IVec3::new(0, 20, 0));
+        assert!(events.is_empty(), "{events:?}");
+        assert_eq!(mobs[0].health, MobKind::Cow.max_health());
     }
 }

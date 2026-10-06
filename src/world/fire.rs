@@ -146,7 +146,9 @@ impl World {
             return;
         }
         let below = self.get_block(p - IVec3::Y).unwrap_or(Block::AIR);
-        let eternal = below == Block::NETHERRACK;
+        // Bedrock burns forever in the End, like the crystals' flames.
+        let eternal = below == Block::NETHERRACK
+            || (below == Block::BEDROCK && self.generator.dimension == super::terrain::Dimension::End);
         if !eternal && self.rain_near_fire(p) && self.roll() % 100 < 20 + age as u64 * 3 {
             self.edit(p, Block::AIR, false);
             return;
