@@ -102,15 +102,29 @@ impl Arrow {
         let delta = self.vel * dt;
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
         for _ in 0..steps {
-            self.pos += delta / steps as f64;
+            let from = self.pos;
+            let step = delta / steps as f64;
+            self.pos += step;
             if world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
                 self.stuck = true;
                 self.age = 0.0;
                 return true;
             }
             if self.from_player {
-                if let Some(fight) = fight.as_deref_mut()
-                    && let Some(hit) = fight.hit_at(self.pos)
+                // Whatever the step enters first: a mob, or a crystal or
+                // dragon part (fractions of the step).
+                let mob = mobs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| m.alive())
+                    .filter_map(|(i, m)| {
+                        let (min, max) = m.aabb();
+                        crate::physics::ray_aabb(from, step, min, max).filter(|&t| t <= 1.0).map(|t| (i, t))
+                    })
+                    .min_by(|a, b| a.1.total_cmp(&b.1));
+                let boss = fight.as_deref().and_then(|f| f.raycast(from, step, 1.0));
+                if let Some((hit, _)) = boss.filter(|&(_, t)| mob.is_none_or(|(_, m)| t < m))
+                    && let Some(fight) = fight.as_deref_mut()
                 {
                     let damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE).ceil() as f32;
                     if fight.strike(hit, damage, None, true) {
@@ -120,10 +134,8 @@ impl Arrow {
                     self.vel = -self.vel * 0.1;
                     return true;
                 }
-                if let Some(mob) = mobs.iter_mut().find(|m| {
-                    let (min, max) = m.aabb();
-                    m.alive() && self.pos.cmpge(min).all() && self.pos.cmple(max).all()
-                }) {
+                if let Some((i, _)) = mob {
+                    let mob = &mut mobs[i];
                     // Endermen dodge arrows by teleporting; the arrow flies on.
                     if mob.kind == super::MobKind::Enderman {
                         mob.teleport_pending = true;

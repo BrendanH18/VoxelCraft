@@ -1438,6 +1438,43 @@ mod tests {
         assert_eq!(e.mobs[0].fuse, 0.0);
     }
 
+    const BOW_SPEED_FOR_TEST: f64 = projectile::BOW_SPEED;
+
+    #[test]
+    fn player_arrows_hit_whatever_they_reach_first() {
+        let world = Grid::flat(10);
+        let end = crate::world::end::EndGen::new(5);
+        let mut fight = dragon::Fight::new(&end);
+        fight.dragon = None;
+        let c = fight.crystals[0].pos;
+        // A cow standing just in front of the crystal: one arrow step ends
+        // inside both, but it enters the cow first.
+        let mut mobs = [Mob::new(MobKind::Cow, DVec3::new(c.x - 0.6, c.y, c.z), 0.0)];
+        let per_step = BOW_SPEED_FOR_TEST / 60.0 / 5.0;
+        let eye = DVec3::new(c.x - 0.95 - 10.0 * per_step - 0.3, c.y + 1.0, c.z);
+        let mut arrow = Arrow::shot(eye, DVec3::X, 1.0, false);
+        let mut events = Vec::new();
+        for _ in 0..4 {
+            let keep = arrow.update(
+                1.0 / 60.0,
+                &world,
+                &ctx(DVec3::new(0.0, 10.0, 0.0)),
+                &mut mobs,
+                Some(&mut fight),
+                &mut Rng::new(1),
+                &mut events,
+            );
+            if !keep {
+                break;
+            }
+        }
+        assert!(events.iter().any(|e| matches!(e, EntityEvent::MobShot { kind: MobKind::Cow, .. })), "{events:?}");
+        assert!(mobs[0].health < MobKind::Cow.max_health());
+        let mut events = Vec::new();
+        fight.update(0.05, &world, &ctx(DVec3::new(0.0, 10.0, 0.0)), &mut Rng::new(1), &mut events);
+        assert_eq!(fight.crystals.len(), 10, "the crystal behind the cow survives");
+    }
+
     #[test]
     fn skeleton_arrows_hit_the_player() {
         let world = Grid::flat(10);
