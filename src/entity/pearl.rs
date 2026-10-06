@@ -62,7 +62,7 @@ impl Pearl {
             let cell = next.floor().as_ivec3();
             // Gateways take the thrower through, like Java's.
             if world.block(cell) == Some(crate::world::block::Block::END_GATEWAY) {
-                events.push(EntityEvent::PearlGateway { owner: self.owner, cell });
+                events.push(EntityEvent::PearlGateway { owner: self.owner, cell, pos: self.pos });
                 return false;
             }
             if world.block(cell).is_some_and(|b| b.is_solid()) {

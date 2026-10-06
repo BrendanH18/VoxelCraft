@@ -155,14 +155,22 @@ pub enum EntityEvent {
     DragonKilled {
         first: bool,
     },
+    /// Push `player` away at no less than `velocity` (the perched dragon's
+    /// wings), without hurting them.
+    Shove {
+        player: PlayerId,
+        velocity: Vec3,
+    },
     /// A kill opened an End gateway here: build it.
     BuildGateway {
         pos: IVec3,
     },
-    /// `owner`'s ender pearl flew into the End gateway at `cell`.
+    /// `owner`'s ender pearl flew into the End gateway at `cell`, from
+    /// `pos` just outside it.
     PearlGateway {
         owner: PlayerId,
         cell: IVec3,
+        pos: DVec3,
     },
     /// The dying dragon spills experience (turned into orbs internally).
     DragonXp {

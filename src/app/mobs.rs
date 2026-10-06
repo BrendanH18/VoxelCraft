@@ -175,6 +175,7 @@ impl Game {
             spawning: true,
             dimension: self.dimension,
         };
+        let mut smashed = Vec::new();
         for event in self.mobs.entities.update(dt, &self.world, &ctx) {
             match event {
                 EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, cause } => {
@@ -235,13 +236,29 @@ impl Game {
                     self.audio.play(Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
                 EntityEvent::Shoot { .. } | EntityEvent::DragonXp { .. } => {}
-                EntityEvent::BreakBlock { cell } => {
-                    self.world.set_block(cell, crate::world::block::Block::AIR);
+                EntityEvent::BreakBlock { cell } => smashed.push(cell),
+                EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
+                    if self.mode == GameMode::Survival && !self.vitals.is_dead() {
+                        shove(&mut self.player.vel, velocity.as_dvec3());
+                    }
+                }
+                EntityEvent::Shove { player, velocity } => {
+                    if let Some(bot) = self.agents.by_id_mut(player)
+                        && !bot.agent.creative
+                    {
+                        shove(&mut bot.agent.player.vel, velocity.as_dvec3());
+                    }
                 }
                 EntityEvent::BuildGateway { pos } => self.world.build_gateway(pos),
-                EntityEvent::PearlGateway { owner, cell } => {
-                    if owner == PlayerId::HOST && !self.vitals.is_dead() {
-                        self.enter_gateway(cell);
+                EntityEvent::PearlGateway { owner, cell, pos } => {
+                    if owner == PlayerId::HOST {
+                        if !self.vitals.is_dead() {
+                            self.enter_gateway(cell);
+                        }
+                    } else {
+                        // Agents can't travel by gateway yet: the pearl
+                        // lands at its mouth instead.
+                        self.pearl_landed(owner, pos);
                     }
                 }
                 EntityEvent::DragonKilled { first } => {
@@ -249,6 +266,24 @@ impl Game {
                     self.audio.play(Sound::PortalSpawn, None, 1.0, (1.0, 1.0));
                 }
             }
+        }
+        // All the blocks the dragon flew through this tick, in one edit.
+        if !smashed.is_empty() {
+            smashed.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+            smashed.dedup();
+            self.world.break_blocks(&smashed);
+        }
+    }
+}
+
+/// Raises `vel` to at least `push` along its direction, so a shove that
+/// repeats every tick doesn't build up.
+fn shove(vel: &mut DVec3, push: DVec3) {
+    let len = push.length();
+    if len > 0.0 {
+        let along = vel.dot(push / len);
+        if along < len {
+            *vel += push / len * (len - along);
         }
     }
 }

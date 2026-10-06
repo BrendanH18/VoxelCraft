@@ -186,6 +186,8 @@ impl EndGen {
                     let (dx, dz) = (wx - p.x, wz - p.z);
                     dx.abs() <= p.radius && dz.abs() <= p.radius && dx * dx + dz * dz <= p.radius * p.radius
                 });
+                // Cages reach past the round pillar, to its 5x5 square.
+                let cage = self.pillars.iter().find(|p| p.guarded && (wx - p.x).abs() <= 2 && (wz - p.z).abs() <= 2);
                 for y in 0..CHUNK_SIZE {
                     let wy = base.y + y as i32;
                     let platform = (wx - SPAWN.x).abs() <= 2 && (wz - SPAWN.z).abs() <= 2;
@@ -197,7 +199,7 @@ impl EndGen {
                         Block::BEDROCK
                     } else if pillar.is_some_and(|p| (0..p.top).contains(&wy)) {
                         Block::OBSIDIAN
-                    } else if pillar.is_some_and(|p| p.caged(wx, wy, wz)) {
+                    } else if cage.is_some_and(|p| p.caged(wx, wy, wz)) {
                         Block::IRON_BARS
                     } else if let Some(b) = podium_block(podium, IVec3::new(wx, wy, wz), false) {
                         b
@@ -291,6 +293,32 @@ mod tests {
         }
         assert!((1100..1600).step_by(16).any(|x| generator.column(x, 0).is_some()));
     }
+    #[test]
+    fn guarded_pillars_are_fully_caged() {
+        let generator = EndGen::new(42);
+        let guarded: Vec<_> = generator.pillars.iter().filter(|p| p.guarded).collect();
+        assert_eq!(guarded.len(), 2);
+        for p in guarded {
+            for dy in 0..=3 {
+                for dz in -2..=2 {
+                    for dx in -2..=2 {
+                        let pos = IVec3::new(p.x + dx, p.top + dy, p.z + dz);
+                        let local = super::super::chunk::local_of(pos);
+                        let block = generator.generate(super::super::chunk::chunk_of(pos)).get(
+                            local.x as usize,
+                            local.y as usize,
+                            local.z as usize,
+                        );
+                        let bars = dx.abs() == 2 || dz.abs() == 2 || dy == 3;
+                        if bars {
+                            assert_eq!(block, Block::IRON_BARS, "{pos}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn gateways_ring_the_island_and_lead_far_out() {
         let generator = EndGen::new(42);

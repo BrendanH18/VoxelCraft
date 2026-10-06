@@ -154,6 +154,16 @@ impl World {
         removed.len()
     }
 
+    /// Removes many blocks at once without drops (the dragon smashing
+    /// through), remeshing on the workers and relighting once.
+    pub fn break_blocks(&mut self, cells: &[IVec3]) {
+        let removed: Vec<IVec3> = cells.iter().copied().filter(|&p| self.edit(p, Block::AIR, false)).collect();
+        for &p in &removed {
+            self.settle(p);
+        }
+        self.update_block_light();
+    }
+
     pub fn falling_blocks(&self) -> &[FallingBlock] {
         &self.falling
     }

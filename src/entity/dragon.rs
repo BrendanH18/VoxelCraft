@@ -187,8 +187,8 @@ pub struct Fight {
     detonating: Vec<(usize, Option<PlayerId>)>,
     /// Game time not yet run as whole ticks.
     pending: f64,
-    /// The dragon died but the exit portal hasn't opened yet (saved
-    /// mid-death).
+    /// The dragon died but the exit portal hasn't opened yet: part of it
+    /// isn't loaded.
     unopened: bool,
     /// Gateway spots in the order kills open them.
     gateway_order: [IVec3; 20],
@@ -263,12 +263,23 @@ impl Fight {
             })
             .collect();
         fight.previously_killed = previously == "1";
-        // Saved mid-death: open the portal once its chunk is back.
-        fight.unopened = alive == "2";
-        if alive == "1" {
-            let mut dragon = Dragon::new(SPAWN);
-            dragon.health = health.parse::<f32>().unwrap_or(MAX_HEALTH).clamp(1.0, MAX_HEALTH);
-            fight.dragon = Some(dragon);
+        fight.unopened = alive == "3";
+        match alive {
+            "1" => {
+                let mut dragon = Dragon::new(SPAWN);
+                dragon.health = health.parse::<f32>().unwrap_or(MAX_HEALTH).clamp(1.0, MAX_HEALTH);
+                fight.dragon = Some(dragon);
+            }
+            // Saved mid-death: finish dying (and paying out) over the portal.
+            "2" => {
+                let ticks = health.parse::<u32>().unwrap_or(0).min(DEATH_TICKS - 1);
+                let mut dragon = Dragon::new(fight.podium.as_dvec3() + DVec3::new(0.5, 20.0 + ticks as f64 * 0.1, 0.5));
+                dragon.health = 0.0;
+                dragon.phase = Phase::Dying;
+                dragon.death_ticks = ticks;
+                fight.dragon = Some(dragon);
+            }
+            _ => {}
         }
         let mask: u32 = mask.parse().unwrap_or(0);
         fight.crystals = end
@@ -283,15 +294,15 @@ impl Fight {
 
     /// `state,previously_killed,health,crystal mask,gateways,unbuilt mask`
     /// then `;a b c d e f` per gateway link. The state is 0 for dead, 1
-    /// alive and 2 dying (or dead with the portal still shut).
+    /// alive, 2 dying (health holds the death's ticks so far) and 3 dead
+    /// with the exit portal still to open.
     pub fn serialize(&self) -> String {
-        let state = match &self.dragon {
-            Some(d) if d.phase == Phase::Dying => 2,
-            Some(_) => 1,
-            None if self.unopened => 2,
-            None => 0,
+        let (state, health) = match &self.dragon {
+            Some(d) if d.phase == Phase::Dying => (2, d.death_ticks as f32),
+            Some(d) => (1, d.health),
+            None if self.unopened => (3, 0.0),
+            None => (0, 0.0),
         };
-        let health = self.dragon.as_ref().filter(|d| d.phase != Phase::Dying).map_or(0.0, |d| d.health);
         let mask: u32 = self.crystals.iter().map(|c| 1 << c.pillar).sum();
         let unbuilt: u32 = self.unbuilt.iter().map(|i| 1 << i).sum();
         let mut out = format!("{state},{},{health},{mask},{},{unbuilt}", self.previously_killed as u8, self.gateways);
@@ -355,16 +366,13 @@ impl Fight {
     }
 
     fn tick<W: BlockSource + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng, events: &mut Vec<EntityEvent>) {
-        for (index, by) in std::mem::take(&mut self.detonating) {
+        // One at a time, so `blow_up` can remap the ones still queued.
+        while let Some((index, by)) = self.detonating.pop() {
             self.blow_up(index, by, events);
-        }
-        if self.unopened && world.block(self.podium).is_some() {
-            self.unopened = false;
-            self.killed(events);
         }
         let order = self.gateway_order;
         self.unbuilt.retain(|&i| {
-            let ready = world.block(order[i]).is_some();
+            let ready = loaded(world, order[i], IVec3::new(1, 2, 1), -2..=2);
             if ready {
                 events.push(EntityEvent::BuildGateway { pos: order[i] });
             }
@@ -383,8 +391,13 @@ impl Fight {
             if keep {
                 self.dragon = Some(dragon);
             } else {
-                self.killed(events);
+                self.unopened = true;
             }
+        }
+        // The exit portal (and egg) opens once all of it is loaded.
+        if self.unopened && loaded(world, self.podium, IVec3::new(4, 0, 4), -1..=4) {
+            self.unopened = false;
+            self.killed(events);
         }
         let mut fireballs = std::mem::take(&mut self.fireballs);
         fireballs.retain_mut(|f| f.tick(world, ctx, &mut self.clouds));
@@ -511,6 +524,18 @@ impl Fight {
         }
         top.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
     }
+}
+
+/// Whether every chunk of the box `center ± reach` (with `dy` above and
+/// below the centre) is loaded: checking its corners covers them all.
+fn loaded<W: BlockSource + ?Sized>(world: &W, center: IVec3, reach: IVec3, dy: std::ops::RangeInclusive<i32>) -> bool {
+    [-1, 1].iter().all(|&sx| {
+        [-1, 1].iter().all(|&sz| {
+            [*dy.start(), *dy.end()]
+                .iter()
+                .all(|&y| world.block(center + IVec3::new(sx * reach.x, y, sz * reach.z)).is_some())
+        })
+    })
 }
 
 /// What a player's attack hit in the fight.
@@ -1085,13 +1110,17 @@ impl Dragon {
                 let d2 = away.length_squared().max(0.1);
                 // Java pushes 4/d blocks a tick; in blocks a second, capped.
                 let push = (away / d2 * 4.0 * 20.0).clamp_length_max(30.0) + DVec3::Y * 4.0;
-                let damage = if self.phase.sitting() { 0.0 } else { 5.0 };
-                events.push(EntityEvent::PlayerHit {
-                    player: t.id,
-                    damage,
-                    knockback: push.as_vec3(),
-                    cause: "was slain by the Ender Dragon",
-                });
+                // Perched, the wings only shove.
+                if self.phase.sitting() {
+                    events.push(EntityEvent::Shove { player: t.id, velocity: push.as_vec3() });
+                } else {
+                    events.push(EntityEvent::PlayerHit {
+                        player: t.id,
+                        damage: 5.0,
+                        knockback: push.as_vec3(),
+                        cause: "was slain by the Ender Dragon",
+                    });
+                }
             }
         }
     }
@@ -1248,13 +1277,24 @@ mod tests {
         let dead = Fight::load(&end, Some("0,1,0,0"));
         assert!(dead.dragon.is_none() && dead.crystals.is_empty());
 
-        // Saved while dying: the portal opens (with the egg) on reload.
+        // Saved while dying: the death resumes and still pays out in full.
         let mut dying = Fight::new(&end);
         dying.dragon.as_mut().unwrap().hurt_by(Part::Head, 500.0, true);
-        assert_eq!(dying.serialize(), "2,0,0,1023,0,0");
-        let mut reloaded = Fight::load(&end, Some(&dying.serialize()));
         let mut events = Vec::new();
-        reloaded.update(TICK, &Air, &ctx(Vec::new()), &mut Rng::new(1), &mut events);
+        let mut rng = Rng::new(1);
+        for _ in 0..100 {
+            dying.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut events);
+        }
+        assert_eq!(dying.serialize(), "2,0,100,1023,0,0");
+        let mut reloaded = Fight::load(&end, Some(&dying.serialize()));
+        for _ in 0..DEATH_TICKS {
+            reloaded.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut events);
+        }
+        let xp: u32 = events
+            .iter()
+            .filter_map(|e| if let EntityEvent::DragonXp { points, .. } = e { Some(*points) } else { None })
+            .sum();
+        assert_eq!(xp, FIRST_XP);
         assert!(events.contains(&EntityEvent::DragonKilled { first: true }));
         assert_eq!(reloaded.serialize(), "0,1,0,1023,1,0");
     }
@@ -1336,6 +1376,50 @@ mod tests {
         assert_eq!(loaded.gateway_exit(gateway), Some(exit));
         assert_eq!(loaded.gateway_exit(exit), Some(gateway));
         assert_eq!(loaded.serialize(), fight.serialize());
+    }
+
+    /// Loaded only within `radius` blocks of the origin (horizontally).
+    struct Near(i32);
+    impl BlockSource for Near {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            (p.x.abs() <= self.0 && p.z.abs() <= self.0).then_some(Block::AIR)
+        }
+    }
+
+    #[test]
+    fn the_exit_portal_waits_for_its_whole_footprint() {
+        let end = EndGen::new(5);
+        let mut fight = Fight::new(&end);
+        fight.crystals.clear();
+        fight.dragon.as_mut().unwrap().hurt_by(Part::Head, 500.0, true);
+        let mut events = Vec::new();
+        let mut rng = Rng::new(1);
+        for _ in 0..DEATH_TICKS + 5 {
+            fight.update(TICK, &Near(2), &ctx(Vec::new()), &mut rng, &mut events);
+        }
+        assert!(!events.iter().any(|e| matches!(e, EntityEvent::DragonKilled { .. })));
+        assert!(fight.serialize().starts_with("3,0,"));
+        fight.update(TICK, &Near(16), &ctx(Vec::new()), &mut rng, &mut events);
+        assert!(events.contains(&EntityEvent::DragonKilled { first: true }));
+    }
+
+    #[test]
+    fn crystals_hit_together_all_blow_up() {
+        let end = EndGen::new(5);
+        let mut fight = Fight::new(&end);
+        // Each blast swap-removes, moving the last crystal into the gap,
+        // so the queued indices must follow it.
+        for i in [5, 9, 0] {
+            fight.hit_crystal(i, None);
+        }
+        let mut events = Vec::new();
+        fight.update(TICK, &Air, &ctx(Vec::new()), &mut Rng::new(1), &mut events);
+        assert_eq!(fight.crystals.len(), 7);
+        let blasts = events.iter().filter(|e| matches!(e, EntityEvent::Explosion { .. })).count();
+        assert_eq!(blasts, 3);
+        let mut gone: Vec<usize> = (0..10).filter(|&i| !fight.crystals.iter().any(|c| c.pillar == i)).collect();
+        gone.sort();
+        assert_eq!(gone, vec![0, 5, 9]);
     }
 
     #[test]
