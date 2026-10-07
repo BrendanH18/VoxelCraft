@@ -329,6 +329,7 @@ pub(super) enum Ai {
 
 pub struct Mob {
     pub kind: MobKind,
+    pub sheared: bool,
     /// Feet position (bottom centre of the box).
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
@@ -407,6 +408,7 @@ impl Mob {
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,
+            sheared: false,
             pos,
             previous_pos: pos,
             vel: DVec3::ZERO,

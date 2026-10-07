@@ -1381,7 +1381,7 @@ impl Game {
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
         if self.gamerules.bool("doTileDrops") && crate::mining::can_harvest(block, held) {
-            self.world.spill_mined(pos, block, tool);
+            self.world.spill_with_item(pos, block, digger.held);
             self.mobs.entities.drop_mined_xp(block, pos, tool);
         }
         if block.is_bed() {
@@ -1474,6 +1474,16 @@ impl Game {
 
     fn place_block(&mut self) {
         if !self.mode.can_interact() {
+            return;
+        }
+        if voxelcraft::survival_items::use_mob(
+            &self.player,
+            &mut self.inventory,
+            self.actions.selected,
+            self.mode.is_creative(),
+            &self.world,
+            &mut self.mobs.entities,
+        ) {
             return;
         }
         if !self.aiming_at_usable() && (self.use_bucket() || self.throw_pearl() || self.throw_eye()) {

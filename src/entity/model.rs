@@ -155,6 +155,9 @@ const COW_HEAD: &[Cuboid] = &[
 const WOOL: Rgb = [232, 232, 226];
 const SHEEP_SKIN: Rgb = [214, 190, 170];
 
+const SHEARED_BODY: &[Cuboid] = &[cube([-4.0, 11.0, -7.0], [4.0, 18.0, 7.0], SHEEP_SKIN, 14)];
+const SHEARED_HEAD: &[Cuboid] = &[cube([-3.0, -3.0, 0.0], [3.0, 3.0, 7.0], SHEEP_SKIN, 14)];
+const SHEARED_LEG: &[Cuboid] = &[cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], SHEEP_SKIN, 14)];
 const SHEEP_BODY: &[Cuboid] = &[cube([-5.0, 10.0, -8.0], [5.0, 19.0, 8.0], WOOL, 34)];
 const SHEEP_LEG: &[Cuboid] =
     &[cube([-2.5, -5.0, -2.5], [2.5, 0.0, 2.5], WOOL, 34), cube([-2.0, -12.0, -2.0], [2.0, -5.0, 2.0], SHEEP_SKIN, 14)];
@@ -344,12 +347,12 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             part(COW_HEAD, [0.0, 18.0, 9.0], head),
         ],
         MobKind::Sheep => vec![
-            part(SHEEP_BODY, [0.0; 3], Quat::IDENTITY),
-            part(SHEEP_LEG, [-3.0, 12.0, 5.0], rx(swing)),
-            part(SHEEP_LEG, [3.0, 12.0, 5.0], rx(-swing)),
-            part(SHEEP_LEG, [-3.0, 12.0, -5.0], rx(-swing)),
-            part(SHEEP_LEG, [3.0, 12.0, -5.0], rx(swing)),
-            part(SHEEP_HEAD, [0.0, 16.0, 7.0], head),
+            part(if m.sheared { SHEARED_BODY } else { SHEEP_BODY }, [0.0; 3], Quat::IDENTITY),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, 5.0], rx(swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, 5.0], rx(-swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, -5.0], rx(-swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, -5.0], rx(swing)),
+            part(if m.sheared { SHEARED_HEAD } else { SHEEP_HEAD }, [0.0, 16.0, 7.0], head),
         ],
         MobKind::Chicken => {
             // Wings flap while airborne.

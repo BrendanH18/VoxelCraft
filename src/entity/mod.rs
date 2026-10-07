@@ -428,6 +428,18 @@ impl Entities {
         }
     }
 
+    /// Java shearing: one to three white wool, only once until the fleece regrows.
+    pub fn shear(&mut self, index: usize) -> bool {
+        let Some(mob) = self.mobs.get_mut(index).filter(|m| m.alive() && m.kind == MobKind::Sheep && !m.sheared) else {
+            return false;
+        };
+        mob.sheared = true;
+        let pos = mob.pos.floor().as_ivec3();
+        let count = 1 + (self.rng.next_f32() * 3.0) as u8;
+        self.drop_from_block(crate::inventory::Stack::new(Block::WOOL, count), pos);
+        true
+    }
+
     pub fn count(&self, kind: MobKind) -> usize {
         self.mobs.iter().filter(|m| m.kind == kind && m.alive()).count()
     }
@@ -597,7 +609,11 @@ impl Entities {
             let xp = kind.xp(&mut self.rng);
             self.spawn_xp(pos, xp);
         }
+        let sheared = self.mobs.iter().any(|m| m.kind == kind && m.pos == pos && m.sheared);
         for (item, count) in kind.drops(&mut self.rng, looting) {
+            if sheared && item == crate::item::Item::from_block(Block::WOOL) {
+                continue;
+            }
             if !player_kill && matches!(item, crate::item::Item::SPIDER_EYE | crate::item::Item::BLAZE_ROD) {
                 continue;
             }

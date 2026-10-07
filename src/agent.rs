@@ -836,6 +836,18 @@ impl Agent {
                     self.inventory.take_one(self.selected);
                 }
             }
+            Command::Place
+                if crate::survival_items::use_mob(
+                    &self.player,
+                    &mut self.inventory,
+                    self.selected,
+                    self.creative,
+                    world,
+                    entities,
+                ) =>
+            {
+                self.swings += 1;
+            }
             Command::Place => {
                 if !self.mode.can_build() {
                     return Err("this game mode cannot place blocks".into());
@@ -1155,7 +1167,7 @@ impl Agent {
                     if mining::can_harvest(block, held) {
                         let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
                         if rules.bool("doTileDrops") {
-                            world.spill_mined(pos, block, tool);
+                            world.spill_with_item(pos, block, digger.held);
                             entities.drop_mined_xp(block, pos, tool);
                         }
                     }

@@ -8,6 +8,9 @@ use crate::world::block::Block;
 
 /// Whether mining `block` with `held` yields its drop.
 pub fn can_harvest(block: Block, held: Option<Item>) -> bool {
+    if held == Some(Item::SHEARS) && block == Block::COBWEB {
+        return true;
+    }
     let Some(level) = block.harvest_level() else { return true };
     match held.and_then(Item::as_tool) {
         Some((kind, tier)) => Some(kind) == block.best_tool() && tier.level() >= level,
@@ -22,6 +25,14 @@ pub fn break_time(block: Block, held: Option<Item>) -> f32 {
 
 /// How fast the held item digs `block` (1 for a hand or the wrong tool).
 fn tool_speed(block: Block, held: Option<Item>) -> f32 {
+    if held == Some(Item::SHEARS) {
+        if block.is_leaves() || block == Block::COBWEB {
+            return 15.0;
+        }
+        if block == Block::WOOL {
+            return 5.0;
+        }
+    }
     match held.and_then(Item::as_tool) {
         // Swords cut cobwebs fifteen times as fast (Java).
         Some((ToolKind::Sword, _)) if block == Block::COBWEB => 15.0,
@@ -65,6 +76,9 @@ pub fn dig_time(block: Block, digger: Digger) -> f32 {
 /// Durability a tool loses for breaking a block (swords wear faster, as
 /// they're not meant for it) or for hitting a mob (the reverse).
 pub fn wear(held: Item, hitting_mob: bool) -> u16 {
+    if held == Item::SHEARS && !hitting_mob {
+        return 1;
+    }
     match (held.as_tool(), hitting_mob) {
         (Some((ToolKind::Sword, _)), false)
         | (Some((ToolKind::Pickaxe | ToolKind::Shovel | ToolKind::Axe, _)), true) => 2,

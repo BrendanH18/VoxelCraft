@@ -167,6 +167,15 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     let out = match sprite {
+        Sprite::Shears => {
+            let blade = |x: i32, y: i32| (3..=10).contains(&y) && ((x - y).abs() <= 1 || (x + y - 15).abs() <= 1);
+            let ring = |x: i32, y: i32| {
+                let a = (x - 4).pow(2) + (y - 12).pow(2);
+                let b = (x - 11).pow(2) + (y - 12).pow(2);
+                (2..=9).contains(&a) || (2..=9).contains(&b)
+            };
+            shaded(&blade, x, y, [210, 215, 217], 0.02).or_else(|| shaded(&ring, x, y, [106, 110, 116], 0.03))
+        }
         Sprite::Stick => handle(x, y, 2, 13),
         Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
         Sprite::Armor(piece, material) => armor(piece, material, x, y),

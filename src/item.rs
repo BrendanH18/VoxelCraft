@@ -163,6 +163,7 @@ pub enum ItemKind {
     },
     /// Draw by holding right-click and release to shoot an arrow.
     Bow,
+    Shears,
     /// Lights a Nether portal frame.
     FlintAndSteel,
     /// Drunk like food is eaten (see `crate::potion`).
@@ -175,6 +176,7 @@ pub enum ItemKind {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Sprite {
     Stick,
+    Shears,
     Lump([u8; 3]),
     Ingot([u8; 3]),
     Gem([u8; 3]),
@@ -362,6 +364,11 @@ pub const FLINT_AND_STEEL_DURABILITY: u16 = 64;
 /// Tools of the first five tiers start at this id: `FIRST_TOOL + tier * 5
 /// + kind`. Netherite tools are `NETHERITE_TOOLS + kind`.
 const FIRST_TOOL: u16 = 320;
+// Everyday survival items occupy a separate append-only range; 400..512 is reserved for potions.
+const SURVIVAL_ITEM: u16 = 512;
+const SURVIVAL_ITEMS: &[ItemInfo] =
+    &[ItemInfo { name: "shears", kind: ItemKind::Shears, max_stack: 1, sprite: Sprite::Shears }];
+
 const TOOL_KINDS: [ToolKind; 5] = [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword];
 /// Tiers in the `FIRST_TOOL` block (all but Netherite).
 const ID_TIERS: usize = 5;
@@ -380,6 +387,8 @@ const EXTRA_ITEM: u16 = 361;
 const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
 
 impl Item {
+    pub const SHEARS: Item = Item(512);
+
     pub const STICK: Item = Item(256);
     pub const COAL: Item = Item(257);
     pub const CHARCOAL: Item = Item(258);
@@ -543,6 +552,9 @@ impl Item {
         if let Some(info) = self.0.checked_sub(EXTRA_ITEM).and_then(|i| EXTRA_ITEMS.get(i as usize)) {
             return *info;
         }
+        if let Some(info) = self.0.checked_sub(SURVIVAL_ITEM).and_then(|i| SURVIVAL_ITEMS.get(i as usize)) {
+            return *info;
+        }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
     }
 
@@ -588,6 +600,7 @@ impl Item {
             ItemKind::Tool(_, tier) => Some(tier.durability()),
             ItemKind::Armor(piece, material) => Some(material.durability(piece)),
             ItemKind::Bow => Some(BOW_DURABILITY),
+            ItemKind::Shears => Some(238),
             ItemKind::FlintAndSteel => Some(FLINT_AND_STEEL_DURABILITY),
             _ => None,
         }
@@ -640,7 +653,11 @@ impl Item {
         let tools = (0..TOOL_COUNT + ARMOR_COUNT).map(|i| Item(FIRST_TOOL + i));
         let potions = (0..POTION_COUNT).map(|i| Item(FIRST_POTION + i));
         let extra = (0..EXTRA_ITEMS.len() as u16).map(|i| Item(EXTRA_ITEM + i));
-        materials.chain(tools).chain(potions).chain(extra)
+        materials
+            .chain(tools)
+            .chain(potions)
+            .chain(extra)
+            .chain((0..SURVIVAL_ITEMS.len() as u16).map(|i| Item(SURVIVAL_ITEM + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -665,13 +682,19 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if (EXTRA_ITEM..EXTRA_ITEM + EXTRA_ITEMS.len() as u16).contains(&i) => {
             Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + i - EXTRA_ITEM)
         }
+        i if (SURVIVAL_ITEM..SURVIVAL_ITEM + SURVIVAL_ITEMS.len() as u16).contains(&i) => {
+            Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + EXTRA_ITEMS.len() as u16 + i - SURVIVAL_ITEM)
+        }
         _ => None,
     }
 }
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32 + EXTRA_ITEMS.len() as u32
+    ITEMS.len() as u32
+        + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32
+        + EXTRA_ITEMS.len() as u32
+        + SURVIVAL_ITEMS.len() as u32
 }
 
 /// Layer of a status effect's icon: in the item icon array, after every

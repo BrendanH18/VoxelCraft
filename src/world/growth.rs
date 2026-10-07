@@ -55,6 +55,17 @@ impl World {
     /// [`World::spill_block`] for a block mined with a tool enchanted with
     /// `tool`: silk touch drops the block itself, fortune adds to ore and
     /// crop drops (Java's loot tables).
+    pub fn spill_with_item(&mut self, p: IVec3, block: Block, held: Option<Stack>) {
+        if self.tile_drops
+            && held.is_some_and(|s| s.item == Item::SHEARS)
+            && (block.is_leaves() || block == Block::COBWEB)
+        {
+            self.drops.push((p, Stack::new(block.base(), 1)));
+        } else {
+            self.spill_mined(p, block, held.map_or(Default::default(), |s| s.active_enchants()));
+        }
+    }
+
     pub fn spill_mined(&mut self, p: IVec3, block: Block, tool: crate::enchant::Enchants) {
         if !self.tile_drops {
             return;
