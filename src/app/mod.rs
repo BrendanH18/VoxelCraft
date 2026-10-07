@@ -307,7 +307,8 @@ impl ApplicationHandler for App {
         }
 
         let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
-        let audio = crate::audio::Audio::new(self.args.mute, settings.volume);
+        let mut audio = crate::audio::Audio::new(self.args.mute, settings.volume);
+        audio.set_music_volume(settings.music_volume);
         let shell = Shell { renderer, audio, settings, settings_path };
         // A named world, a fresh one or a scripted run skips the title screen.
         let to_title = self.args.open_menu.as_deref() == Some("title");
@@ -1877,6 +1878,8 @@ impl Game {
             .take(split::MAX_VIEWS - 1)
             .map(|b| (&b.agent.player, weather::rain_at(&self.world, &self.weather, b.agent.player.pos)))
             .collect();
+        let dragon_music = self.mobs.entities.fight.as_ref().is_some_and(|f| f.boss_bar(self.player.pos).is_some());
+        self.audio.update_music(&self.player, &self.world, self.mode == GameMode::Creative, dragon_music);
         self.audio.update(&self.player, &self.world, rain_here, &others, dt);
         self.agent_sounds();
         let alpha = if paused { 1.0 } else { self.clock.alpha() };

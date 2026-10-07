@@ -10,6 +10,8 @@ pub mod inventory;
 pub mod item;
 pub mod mesh;
 pub mod mining;
+#[path = "audio/music.rs"]
+pub mod music;
 pub mod physics;
 pub mod player;
 pub mod potion;

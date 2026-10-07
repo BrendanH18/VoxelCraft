@@ -13,6 +13,8 @@ pub struct Settings {
     pub sensitivity: f32,
     /// Master volume, 0..1.
     pub volume: f32,
+    /// Music category, multiplied by master volume.
+    pub music_volume: f32,
     pub vsync: bool,
     pub enhanced_graphics: bool,
     pub show_fps: bool,
@@ -29,6 +31,7 @@ impl Default for Settings {
             fov: 70.0,
             sensitivity: 1.0,
             volume: 1.0,
+            music_volume: 1.0,
             vsync: true,
             enhanced_graphics: true,
             show_fps: true,
@@ -63,6 +66,7 @@ impl Settings {
                 }
                 "fov" => s.fov = num().unwrap_or(s.fov),
                 "sensitivity" => s.sensitivity = num().unwrap_or(s.sensitivity),
+                "music_volume" => s.music_volume = num().unwrap_or(s.music_volume),
                 "volume" => s.volume = num().unwrap_or(s.volume),
                 "vsync" => s.vsync = value != "false",
                 "show_fps" if value == "true" => s.show_fps = true,
@@ -77,11 +81,12 @@ impl Settings {
 
     pub fn serialize(&self) -> String {
         format!(
-            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\n",
+            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nmusic_volume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\n",
             self.render_distance,
             self.fov,
             self.sensitivity,
             self.volume,
+            self.music_volume,
             self.vsync,
             if self.enhanced_graphics { "enhanced" } else { "classic" },
             self.show_fps
@@ -93,6 +98,7 @@ impl Settings {
         self.render_distance = self.render_distance.clamp(RENDER_DISTANCE.0, RENDER_DISTANCE.1);
         self.fov = self.fov.round().clamp(FOV.0, FOV.1);
         self.sensitivity = self.sensitivity.clamp(SENSITIVITY.0, SENSITIVITY.1);
+        self.music_volume = self.music_volume.clamp(0.0, 1.0);
         self.volume = self.volume.clamp(0.0, 1.0);
         self
     }
@@ -109,6 +115,7 @@ mod tests {
             fov: 90.0,
             sensitivity: 1.5,
             volume: 0.4,
+            music_volume: 0.25,
             vsync: false,
             enhanced_graphics: false,
             show_fps: false,
@@ -116,6 +123,9 @@ mod tests {
         assert_eq!(Settings::parse(&s.serialize()), s);
         let wild = Settings::parse("render_distance=99\nfov=5\nvolume=nan\nsensitivity=abc\njunk\nunknown=1\n");
         assert_eq!(wild, Settings { render_distance: 32, fov: 30.0, ..Settings::default() });
+        assert_eq!(Settings::parse("music_volume=3").music_volume, 1.0);
+        assert_eq!(Settings::parse("music_volume=-1").music_volume, 0.0);
+        assert_eq!(Settings::parse("music_volume=nan").music_volume, 1.0);
         assert_eq!(Settings::parse(""), Settings::default());
     }
 }
