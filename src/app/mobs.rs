@@ -197,6 +197,7 @@ impl Game {
                 .inventory
                 .get(self.actions.selected)
                 .map_or(Default::default(), |s| s.active_enchants()),
+            shape: self.player.collision_shape(),
             ..Target::new(PlayerId::HOST, self.player.pos, self.mode.targetable() && !self.vitals.is_dead())
         }];
         // Agents keep source-dimension positions until arrival relocates them.

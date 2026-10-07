@@ -269,7 +269,7 @@ impl Game {
 
     /// A cell of `block` the player overlaps.
     fn touched(&self, block: Block) -> Option<IVec3> {
-        let (min, max) = crate::player::SHAPE.aabb(self.player.pos);
+        let (min, max) = self.player.collision_shape().aabb(self.player.pos);
         let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
         (lo.y..=hi.y)
             .flat_map(|y| (lo.z..=hi.z).flat_map(move |z| (lo.x..=hi.x).map(move |x| IVec3::new(x, y, z))))
@@ -297,7 +297,7 @@ impl Game {
     /// Whether the player overlaps a `portal` block's slice from `bottom`
     /// to `top` of the way up its cell.
     fn in_portal(&self, portal: Block, (bottom, top): (f64, f64)) -> bool {
-        let (min, max) = crate::player::SHAPE.aabb(self.player.pos);
+        let (min, max) = self.player.collision_shape().aabb(self.player.pos);
         let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
         (lo.y..=hi.y).any(|y| {
             min.y < y as f64 + top

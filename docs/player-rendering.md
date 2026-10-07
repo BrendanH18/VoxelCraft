@@ -29,8 +29,10 @@ bow/crossbow, offhand and left-handed poses are not yet represented.
 Held shaped blocks use a cube and flat items a thin textured box rather
 than the resource-pack display transforms and full silhouette extrusion.
 Death time currently derives from Vitals.since_damage; fatal hits during
-an existing immunity window can start partway into the fall. Swimming,
-crawling, riding and elytra poses remain separate roadmap work.
+an existing immunity window can start partway into the fall. Sprint-swim, forced crawl (swim hitbox on land), and Java 1.14+ crouch
+hitbox/eye height are shared via `entity/player_pose.rs` and drive physics,
+camera bob suppression and HumanoidModel-style swimAmount animation. Riding
+and elytra poses remain separate roadmap work.
 
 Reference client source (decompiled Java; these model/camera constants are
 stable across the modern Java humanoid renderer):
