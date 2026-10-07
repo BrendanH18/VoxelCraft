@@ -9,6 +9,9 @@ use glam::{DVec3, IVec3};
 use crate::physics::{self, BlockSource, Shape};
 use crate::world::block::Block;
 
+mod types;
+pub use types::{Burst, Kind, System};
+
 pub const CAPACITY: usize = 16_384;
 const REQUEST_CAPACITY: usize = 1024;
 
@@ -76,6 +79,7 @@ pub struct Particle {
     pub collision_size: f64,
     pub emissive: bool,
     pub motion: Motion,
+    pub style: Kind,
     stopped: bool,
 }
 
@@ -98,6 +102,7 @@ impl Particle {
             collision_size: 0.2,
             emissive: false,
             motion: Motion::Normal,
+            style: Kind::Smoke,
             stopped: false,
         }
     }
@@ -120,7 +125,7 @@ impl Particle {
                 return true;
             }
             Motion::Bubble => self.velocity.y += 0.002,
-            Motion::Splash => self.velocity.y -= 0.06,
+            Motion::Splash => self.velocity.y -= self.gravity,
             Motion::Normal => self.velocity.y -= 0.04 * self.gravity,
         }
         if !self.stopped {
@@ -154,6 +159,14 @@ impl Particle {
                 self.pos += delta;
             }
         }
+        if matches!(self.texture, Texture::Sprite(_)) && matches!(self.style, Kind::Crit | Kind::MagicCrit) {
+            self.color[1] *= 0.96;
+            self.color[2] *= 0.9;
+        }
+        if matches!(self.texture, Texture::Sprite(_)) && self.style == Kind::Smoke && self.pos.y == self.previous.y {
+            self.velocity.x *= 1.1;
+            self.velocity.z *= 1.1;
+        }
         self.velocity *= self.friction;
         if self.motion == Motion::Bubble && !world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_water) {
             return false;
@@ -173,13 +186,21 @@ impl Particle {
 #[derive(Clone, Copy, Debug)]
 pub enum Request {
     Particle(Particle),
+    Burst(Burst),
+    Tracking(Burst),
+    Explosion { pos: DVec3, large: bool },
     Break { cell: IVec3, block: Block },
     Hit { cell: IVec3, block: Block, face: IVec3 },
 }
 
 /// A bounded request mailbox; oldest requests are evicted if the client isn't polling.
-#[derive(Default)]
 pub struct Requests(VecDeque<Request>);
+
+impl Default for Requests {
+    fn default() -> Self {
+        Self(VecDeque::with_capacity(REQUEST_CAPACITY))
+    }
+}
 
 impl Requests {
     pub fn push(&mut self, request: Request) {
@@ -187,6 +208,10 @@ impl Requests {
             self.0.pop_front();
         }
         self.0.push_back(request);
+    }
+
+    pub fn pop(&mut self) -> Option<Request> {
+        self.0.pop_front()
     }
 
     pub fn drain(&mut self) -> impl Iterator<Item = Request> + '_ {

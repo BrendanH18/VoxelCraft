@@ -361,6 +361,8 @@ impl Rng {
 
 pub struct Entities {
     pub mobs: Vec<Mob>,
+    /// Visual requests shared by local, controller and agent combat.
+    pub particles: crate::particles::Requests,
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
     pub eyes: Vec<eye::EnderEye>,
@@ -390,6 +392,7 @@ impl Entities {
     pub fn new(seed: u64) -> Self {
         Self {
             mobs: Vec::new(),
+            particles: Default::default(),
             arrows: Vec::new(),
             pearls: Vec::new(),
             eyes: Vec::new(),
@@ -438,6 +441,16 @@ impl Entities {
                 || ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
                 || !world.loaded(m.pos.floor().as_ivec3());
             if gone {
+                if m.dying.is_some_and(|t| t >= mob::DEATH_TIME) {
+                    let mut burst = crate::particles::Burst::new(
+                        crate::particles::Kind::Poof,
+                        m.pos + DVec3::Y * m.shape().height * 0.5,
+                        20,
+                    );
+                    burst.spread = DVec3::new(m.shape().half_width, m.shape().height * 0.5, m.shape().half_width);
+                    burst.forced = true;
+                    self.particles.push(crate::particles::Request::Burst(burst));
+                }
                 self.mobs.swap_remove(i);
                 continue;
             }
@@ -513,21 +526,7 @@ impl Entities {
             let away = (mid - center).normalize_or(DVec3::Y);
             m.damage(damage, Some(away * (impact as f64 * 14.0) + DVec3::Y * 6.0), &mut self.rng);
         }
-        for _ in 0..28 {
-            let dir = DVec3::new(
-                self.rng.range(-1.0, 1.0) as f64,
-                self.rng.range(-0.4, 1.0) as f64,
-                self.rng.range(-1.0, 1.0) as f64,
-            );
-            self.puffs.push(Puff {
-                pos: center + dir * 0.6,
-                previous_pos: center + dir * 0.6,
-                vel: dir * self.rng.range(3.0, 8.0) as f64,
-                age: 0.0,
-                life: self.rng.range(0.6, 1.3),
-                size: self.rng.range(0.4, 1.0),
-            });
-        }
+        self.particles.push(crate::particles::Request::Explosion { pos: center, large: power >= 2.0 });
     }
 
     /// Drops the loot and experience of a mob of `kind` the player killed
@@ -1024,7 +1023,23 @@ impl Entities {
         if fire > 0.0 {
             self.mobs[index].ignite(fire);
         }
+        let old_health = self.mobs[index].health;
         let killed = self.knock(index, dir, damage, knockback);
+        if self.mobs[index].health < old_health {
+            for effect in [
+                critical.then_some(crate::particles::Kind::Crit),
+                (crate::enchant::damage_bonus(enchants, kind.creature()) > 0.0)
+                    .then_some(crate::particles::Kind::MagicCrit),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let mut burst = crate::particles::Burst::new(effect, pos + DVec3::Y * shape.height * 0.5, 32);
+                burst.spread = DVec3::new(shape.half_width * 0.5, shape.height * 0.25, shape.half_width * 0.5);
+                burst.velocity = self.mobs[index].vel / 20.0;
+                self.particles.push(crate::particles::Request::Tracking(burst));
+            }
+        }
         if let Some(kind) = killed {
             self.drop_loot_with_fire(
                 kind,
@@ -2214,7 +2229,7 @@ mod tests {
         e.explode(DVec3::new(0.0, 10.5, 0.0), 3.0);
         assert!(!e.mobs[0].alive() && e.mobs[0].vel.x > 0.0);
         assert!(e.mobs[1].alive());
-        assert!(!e.puffs.is_empty());
+        assert!(e.particles.drain().any(|p| matches!(p, crate::particles::Request::Explosion { large: true, .. })));
     }
 
     #[test]

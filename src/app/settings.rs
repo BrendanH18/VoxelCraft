@@ -16,6 +16,7 @@ pub struct Settings {
     pub vsync: bool,
     pub enhanced_graphics: bool,
     pub show_fps: bool,
+    pub particles: crate::particles::Setting,
 }
 
 pub const RENDER_DISTANCE: (i32, i32) = (2, 32);
@@ -32,6 +33,7 @@ impl Default for Settings {
             vsync: true,
             enhanced_graphics: true,
             show_fps: true,
+            particles: Default::default(),
         }
     }
 }
@@ -69,6 +71,9 @@ impl Settings {
                 "show_fps" if value == "false" => s.show_fps = false,
                 "graphics" if value == "classic" => s.enhanced_graphics = false,
                 "graphics" if value == "enhanced" => s.enhanced_graphics = true,
+                "particles" if value == "all" => s.particles = crate::particles::Setting::All,
+                "particles" if value == "decreased" => s.particles = crate::particles::Setting::Decreased,
+                "particles" if value == "minimal" => s.particles = crate::particles::Setting::Minimal,
                 _ => {}
             }
         }
@@ -77,14 +82,15 @@ impl Settings {
 
     pub fn serialize(&self) -> String {
         format!(
-            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\n",
+            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\nparticles={}\n",
             self.render_distance,
             self.fov,
             self.sensitivity,
             self.volume,
             self.vsync,
             if self.enhanced_graphics { "enhanced" } else { "classic" },
-            self.show_fps
+            self.show_fps,
+            self.particles.name().to_ascii_lowercase()
         )
     }
 
@@ -112,6 +118,7 @@ mod tests {
             vsync: false,
             enhanced_graphics: false,
             show_fps: false,
+            particles: crate::particles::Setting::Decreased,
         };
         assert_eq!(Settings::parse(&s.serialize()), s);
         let wild = Settings::parse("render_distance=99\nfov=5\nvolume=nan\nsensitivity=abc\njunk\nunknown=1\n");

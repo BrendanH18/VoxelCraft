@@ -108,6 +108,8 @@ pub struct World {
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
+    /// Bounded client visual requests, also emitted by headless player actions.
+    pub particles: crate::particles::Requests,
     /// Experience released at a block (a broken furnace's store); the game
     /// turns it into orbs.
     pub xp_drops: Vec<(IVec3, u32)>,
@@ -177,6 +179,7 @@ impl World {
             random_ticks: 0.0,
             rng,
             drops: Vec::new(),
+            particles: Default::default(),
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
@@ -328,7 +331,14 @@ impl World {
     /// remeshed on the workers. Nearby fluid is woken up to flow, and
     /// unsupported sand, gravel and plants fall or pop off.
     pub fn set_block(&mut self, p: IVec3, block: Block) -> bool {
+        let old = self.get_block(p);
         let changed = self.edit(p, block, true);
+        if changed
+            && block == Block::AIR
+            && let Some(old) = old.filter(|b| *b != Block::AIR && !b.is_fluid())
+        {
+            self.particles.push(crate::particles::Request::Break { cell: p, block: old });
+        }
         if changed {
             self.settle(p);
             self.break_unsupported_portals(p);

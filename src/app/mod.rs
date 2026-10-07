@@ -209,7 +209,7 @@ struct Game {
     frame_started: Option<Instant>,
     audio: crate::audio::Audio,
     mobs: mobs::Mobs,
-    particles: crate::particles::Pool,
+    particles: crate::particles::System,
     /// Open menu screen, if any (the game is paused while one is up).
     menu: Option<menu::Screen>,
     /// Slider being dragged.
@@ -760,7 +760,7 @@ impl Game {
             frame_started: None,
             audio,
             mobs: mobs::Mobs::new(seed, args.spawn.clone(), args.wait),
-            particles: Default::default(),
+            particles: crate::particles::System::new(seed),
             menu: match args.open_menu.as_deref() {
                 Some("pause") => Some(menu::Screen::Pause),
                 Some("options") => Some(menu::Screen::Options),
@@ -1268,7 +1268,7 @@ impl Game {
             self.actions.breaking = None;
             return;
         }
-        let Some((pos, _)) = self.target() else {
+        let Some((pos, face)) = self.target() else {
             self.actions.breaking = None;
             return;
         };
@@ -1290,6 +1290,7 @@ impl Game {
         let progress = self.actions.mine(pos, block, crate::mining::dig_time(block, digger), dt);
         if progress < 1.0 {
             self.audio.block_hit(block, pos, dt);
+            self.world.particles.push(crate::particles::Request::Hit { cell: pos, block, face });
             return;
         }
         self.actions.breaking = None;
@@ -1302,6 +1303,9 @@ impl Game {
             && self.dimension.has_sky()
             && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
         self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
+        if melts {
+            self.world.particles.push(crate::particles::Request::Break { cell: pos, block });
+        }
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
         if crate::mining::can_harvest(block, held) {
@@ -1838,7 +1842,13 @@ impl Game {
         crate::simulation::tick_world(&mut self.world, self.player.pos);
         self.update_mobs(dt);
         self.update_items();
-        self.particles.tick(&self.world);
+        self.particles.tick(&self.world, self.settings.particles);
+        while let Some(request) = self.world.particles.pop() {
+            self.particles.request(request, self.settings.particles, &self.world);
+        }
+        while let Some(request) = self.mobs.entities.particles.pop() {
+            self.particles.request(request, self.settings.particles, &self.world);
+        }
         self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
     }
 
@@ -1930,7 +1940,7 @@ impl Game {
         let verts = self.mobs.entities.mesh(camera, self.player.forward(), fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         self.renderer.set_entities(verts);
-        self.renderer.set_particles(&self.particles, &self.world, camera, self.player.forward(), alpha);
+        self.renderer.set_particles(&self.particles.pool, &self.world, camera, self.player.forward(), alpha);
         weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
         let viewports = self.viewports();

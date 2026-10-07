@@ -722,7 +722,7 @@ impl Agent {
         if self.remaining > 0
             && self.mining
             && self.cooldown <= 0.0
-            && let Some((pos, _)) = self.target(world)
+            && let Some((pos, face)) = self.target(world)
             && let Some(block) = world.get_block(pos)
         {
             let held = self.inventory.get(self.selected).map(|s| s.item);
@@ -730,6 +730,9 @@ impl Agent {
             let progress = self.breaking.filter(|(p, b, _)| *p == pos && *b == block).map_or(0.0, |(_, _, n)| n)
                 + TICK_SECONDS / mining::dig_time(block, digger).max(1e-3) as f64;
             self.breaking = Some((pos, block, progress));
+            if !self.creative && progress < 1.0 {
+                world.particles.push(crate::particles::Request::Hit { cell: pos, block, face });
+            }
             self.swings += 1;
             if block != Block::BEDROCK && !block.is_door() && !block.is_bed() && (self.creative || progress >= 1.0) {
                 world.set_block(pos, Block::AIR);

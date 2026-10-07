@@ -6,7 +6,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::{DVec3, Vec3};
 
 use super::{DEPTH_FORMAT, Renderer};
-use crate::particles::{CAPACITY, Motion, Pool, Texture};
+use crate::particles::{CAPACITY, Kind, Motion, Pool, Texture};
 use crate::world::{
     World,
     block::{Block, tex},
@@ -176,9 +176,18 @@ impl Renderer {
                 }
                 Texture::Sprite(s) => ((s as usize * FRAMES + (t * (FRAMES - 1) as f32) as usize) as f32, 0.0),
             };
-            let scale = match p.motion {
-                Motion::Portal => 1.0 - (1.0 - t).powi(2),
-                _ => 1.0,
+            let scale = if matches!(p.texture, Texture::Block(_)) {
+                1.0
+            } else {
+                match p.style {
+                    Kind::Portal => 1.0 - (1.0 - t).powi(2),
+                    Kind::Flame => 1.0 - t * t * 0.5,
+                    Kind::Lava => 1.0 - t * t,
+                    Kind::Smoke | Kind::Crit | Kind::MagicCrit | Kind::Heart | Kind::Angry | Kind::DragonBreath => {
+                        (t * 32.0).clamp(0.0, 1.0)
+                    }
+                    _ => 1.0,
+                }
             };
             let sky = crate::entity::sky_light(world, pos)
                 .max(if p.motion == Motion::Portal || p.motion == Motion::Glyph { t.powi(4) } else { 0.0 });
@@ -189,9 +198,17 @@ impl Renderer {
                 color: p.color,
                 light: [
                     if p.emissive { 1.0 } else { sky },
-                    if p.emissive { 1.0 } else { world.block_light(pos.floor().as_ivec3()) as f32 / 15.0 },
+                    if p.emissive {
+                        1.0
+                    } else {
+                        (world.block_light(pos.floor().as_ivec3()) as f32 / 15.0).max(if p.style == Kind::Flame {
+                            t
+                        } else {
+                            0.0
+                        })
+                    },
                     layer,
-                    terrain,
+                    terrain + if p.emissive { 2.0 } else { 0.0 },
                 ],
             });
         }

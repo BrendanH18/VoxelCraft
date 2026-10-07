@@ -28,6 +28,7 @@ pub(super) enum Widget {
     Vsync,
     Graphics,
     Fps,
+    Particles,
     Done,
 }
 
@@ -63,6 +64,7 @@ impl Widget {
             Widget::Vsync => format!("VSync: {}", if s.vsync { "On" } else { "Off" }),
             Widget::Graphics => format!("Graphics: {}", if s.enhanced_graphics { "Enhanced" } else { "Classic" }),
             Widget::Fps => format!("FPS Counter: {}", if s.show_fps { "On" } else { "Off" }),
+            Widget::Particles => format!("Particles: {}", s.particles.name()),
             Widget::Done => "Done".into(),
         }
     }
@@ -110,6 +112,7 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
             Widget::Vsync,
             Widget::Graphics,
             Widget::Fps,
+            Widget::Particles,
             Widget::Done,
         ],
     };
@@ -217,6 +220,7 @@ impl Game {
                 self.settings.show_fps = !self.settings.show_fps;
                 self.apply_settings();
             }
+            Widget::Particles => self.settings.particles = self.settings.particles.next(),
             Widget::SaveAndQuit => return Some(MenuAction::Quit),
             _ => {}
         }
@@ -339,6 +343,7 @@ mod tests {
             Widget::Vsync,
             Widget::Graphics,
             Widget::Fps,
+            Widget::Particles,
         ] {
             let longest = Settings {
                 render_distance: 32,
@@ -348,6 +353,7 @@ mod tests {
                 vsync: false,
                 enhanced_graphics: true,
                 show_fps: true,
+                particles: crate::particles::Setting::Decreased,
             };
             assert!(Ui::text_width(&w.label(&longest)) < BUTTON_W - 8.0, "{w:?} label too wide");
         }

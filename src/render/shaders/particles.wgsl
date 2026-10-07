@@ -32,7 +32,7 @@ struct Output {
 fn curve(l: f32) -> f32 { return l / (4. - 3. * l); }
 @fragment fn fs_main(in: Output) -> @location(0) vec4<f32> {
     var texel: vec4<f32>;
-    if in.light.w > 0.5 {
+    if (in.light.w % 2.) > 0.5 {
         texel = textureSample(blocks, block_sampler, in.uv, i32(in.light.z));
     } else {
         texel = textureSampleLevel(sprites, sprite_sampler, in.uv, i32(in.light.z), 0.);
@@ -45,6 +45,7 @@ fn curve(l: f32) -> f32 { return l / (4. - 3. * l); }
     let sky = curve(in.light.x) * g.params.z;
     let torch = curve(in.light.y) * vec3<f32>(1., 0.86, 0.66);
     var lit = max(vec3<f32>(sky), torch) * 0.96 + 0.04;
+    if in.light.w > 1.5 { lit = vec3<f32>(1.); }
     let peak = max(max(lit.r, lit.g), max(lit.b, 0.001));
     lit = mix(lit, lit / peak, g.effects.x);
     let base = texel.rgb * pow(in.color.rgb, vec3<f32>(2.2)) * lit;
