@@ -301,7 +301,7 @@ pub struct Agent {
     eating: bool,
     bite: u32,
     /// Accumulated fraction broken, using the speed at each tick.
-    breaking: Option<(IVec3, f64)>,
+    breaking: Option<(IVec3, Block, f64)>,
     cooldown: f64,
 }
 
@@ -535,7 +535,8 @@ impl Agent {
                     entities.strike(hit, damage, self.id);
                 } else {
                     let (i, _) = entities.raycast(eye, dir, distance).ok_or("no mob within reach")?;
-                    let sweep = self.player.on_ground.then_some(self.player.pos);
+                    let sprint = self.movement_input().sprint && (self.creative || self.vitals.hunger.can_sprint());
+                    let sweep = (self.player.on_ground && !sprint).then_some(self.player.pos);
                     entities.melee(i, dir, stack, bonus, false, sweep);
                 }
                 if !self.creative
@@ -691,7 +692,7 @@ impl Agent {
             self.sleeping = None;
             return;
         }
-        let mut input = if self.remaining > 0 { self.input } else { MoveInput::default() };
+        let mut input = self.movement_input();
         input.sprint &= self.creative || self.vitals.hunger.can_sprint();
         let hurts = simulation::tick_player(
             &mut self.player,
@@ -726,9 +727,9 @@ impl Agent {
         {
             let held = self.inventory.get(self.selected).map(|s| s.item);
             let digger = self.digger(world);
-            let progress = self.breaking.filter(|(p, _)| *p == pos).map_or(0.0, |(_, n)| n)
+            let progress = self.breaking.filter(|(p, b, _)| *p == pos && *b == block).map_or(0.0, |(_, _, n)| n)
                 + TICK_SECONDS / mining::dig_time(block, digger).max(1e-3) as f64;
-            self.breaking = Some((pos, progress));
+            self.breaking = Some((pos, block, progress));
             self.swings += 1;
             if block != Block::BEDROCK && !block.is_door() && !block.is_bed() && (self.creative || progress >= 1.0) {
                 world.set_block(pos, Block::AIR);
@@ -942,9 +943,16 @@ impl Agent {
 
     /// The block being mined and the fraction broken (for crack overlays).
     pub fn breaking(&self, world: &World) -> Option<(IVec3, f32)> {
-        let (pos, progress) = self.breaking?;
-        world.get_block(pos)?;
+        let (pos, block, progress) = self.breaking?;
+        if world.get_block(pos)? != block {
+            return None;
+        }
         Some((pos, (progress as f32).min(1.0)))
+    }
+
+    /// Held movement for the current command or controller tick.
+    pub fn movement_input(&self) -> MoveInput {
+        if self.remaining > 0 { self.input } else { MoveInput::default() }
     }
 
     /// What this agent mines with, and where it stands (Java's penalties).
@@ -1016,6 +1024,40 @@ mod tests {
         }
         panic!("world failed to load");
     }
+    #[test]
+    fn replacing_a_targeted_block_resets_mining_progress() {
+        let mut world = world();
+        let at = IVec3::new(3, 151, 1);
+        world.set_block(IVec3::new(1, 149, 1), Block::STONE);
+        world.set_block(at, Block::STONE);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.breaking = Some((at, Block::DIRT, 0.99));
+        assert!(a.breaking(&world).is_none(), "old cracks disappear as soon as the block changes");
+        a.hold(MoveInput::default(), true, false);
+        a.tick(&mut world, &mut Entities::new(1));
+        assert_eq!(world.get_block(at), Some(Block::STONE));
+        let expected = (TICK_SECONDS / mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
+        assert_eq!(a.breaking(&world), Some((at, expected)));
+    }
+
+    #[test]
+    fn sprint_attacks_do_not_sweep_nearby_mobs() {
+        let mut world = world();
+        for sprint in [false, true] {
+            let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+            a.player.on_ground = true;
+            a.inventory.slots[0] =
+                Some(Stack::new(Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Wood), 1));
+            a.hold(MoveInput { forward: 1.0, sprint, ..Default::default() }, false, false);
+            let mut e = Entities::new(1);
+            e.spawn(crate::entity::MobKind::Zombie, DVec3::new(3.0, 150.0, 1.5));
+            e.spawn(crate::entity::MobKind::Zombie, DVec3::new(3.0, 150.0, 2.3));
+            a.execute(Command::Attack, &mut world, &mut e, &[]).unwrap();
+            assert!(e.mobs[0].health < crate::entity::MobKind::Zombie.max_health());
+            assert_eq!(e.mobs[1].health, crate::entity::MobKind::Zombie.max_health() - if sprint { 0.0 } else { 1.0 });
+        }
+    }
+
     #[test]
     fn mining_speed_changes_only_affect_future_progress() {
         use crate::enchant::Enchantment;

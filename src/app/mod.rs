@@ -1285,7 +1285,7 @@ impl Game {
             eyes_in_water: self.player.head_in_water(&self.world),
             on_ground: self.player.on_ground || self.player.flying,
         };
-        let progress = self.actions.mine(pos, crate::mining::dig_time(block, digger), dt);
+        let progress = self.actions.mine(pos, block, crate::mining::dig_time(block, digger), dt);
         if progress < 1.0 {
             self.audio.block_hit(block, pos, dt);
             return;

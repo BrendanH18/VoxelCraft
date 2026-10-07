@@ -17,6 +17,7 @@ use super::{Container, Game};
 use crate::inventory::Stack;
 use crate::item::{ArmorPiece, Item};
 use crate::render::ui::{Ui, WHITE};
+use crate::world::block::Block;
 use voxelcraft::agent::Command;
 
 /// Controller buttons as menu navigation.
@@ -49,6 +50,18 @@ pub(super) enum Tab {
 }
 
 impl Tab {
+    /// Whether the workstation this tab was opened for still exists.
+    pub fn matches_block(self, block: Block) -> bool {
+        match self {
+            Tab::Chest(_) => crate::world::chest::is_chest(block),
+            Tab::Furnace(_) => crate::world::furnace::is_furnace(block),
+            Tab::Brewing(_) => block == Block::BREWING_STAND,
+            Tab::Enchanting(_) => block == Block::ENCHANTING_TABLE,
+            Tab::Anvil(_) => block.is_anvil(),
+            _ => false,
+        }
+    }
+
     /// The host container screen whose rules this tab follows.
     pub fn container(self) -> Container {
         match self {
@@ -483,6 +496,26 @@ mod tests {
     const NONE: Lists = Lists { crafts: 0, palette: 0 };
     fn inv(i: usize) -> Option<Slot> {
         Some(Slot::Ref(SlotRef::Inventory(i)))
+    }
+
+    #[test]
+    fn workstation_tabs_reject_replacements_of_another_type() {
+        let cases = [
+            (Tab::Chest(IVec3::ZERO), Block::CHEST),
+            (Tab::Furnace(IVec3::ZERO), Block::FURNACE),
+            (Tab::Brewing(IVec3::ZERO), Block::BREWING_STAND),
+            (Tab::Enchanting(IVec3::ZERO), Block::ENCHANTING_TABLE),
+            (Tab::Anvil(IVec3::ZERO), Block::ANVIL),
+        ];
+        for (tab, expected) in cases {
+            for (_, block) in cases {
+                assert_eq!(tab.matches_block(block), block == expected, "{tab:?}: {block:?}");
+            }
+            assert!(!tab.matches_block(Block::AIR));
+        }
+        assert!(Tab::Anvil(IVec3::ZERO).matches_block(Block::CHIPPED_ANVIL));
+        assert!(Tab::Anvil(IVec3::ZERO).matches_block(Block::DAMAGED_ANVIL));
+        assert!(Tab::Furnace(IVec3::ZERO).matches_block(Block::LIT_FURNACE));
     }
 
     #[test]

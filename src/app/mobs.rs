@@ -71,7 +71,18 @@ impl Game {
             // A hit while falling is a critical one, like Minecraft.
             let p = &self.player;
             let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
-            let sweep = (p.on_ground && !critical).then_some(p.pos);
+            // Controller input belongs to the puppet's agent, not the host's keys.
+            let sprint = if self.puppet {
+                self.agents
+                    .players
+                    .values()
+                    .find(|b| b.id == self.actor)
+                    .is_some_and(|b| b.agent.movement_input().sprint)
+                    && (self.mode == GameMode::Creative || self.vitals.hunger.can_sprint())
+            } else {
+                self.movement_input(self.arrival.is_some()).sprint
+            };
+            let sweep = (p.on_ground && !critical && !sprint).then_some(p.pos);
             let held = self.inventory.get(self.actions.selected);
             let bonus = self.vitals.effects.attack_bonus();
             let dir = self.player.forward().as_dvec3();

@@ -655,17 +655,14 @@ impl Game {
                 let gone = match menu {
                     Menu::Items {
                         tab:
-                            Tab::Chest(pos) | Tab::Furnace(pos) | Tab::Brewing(pos) | Tab::Enchanting(pos) | Tab::Anvil(pos),
+                            tab @ (Tab::Chest(pos)
+                            | Tab::Furnace(pos)
+                            | Tab::Brewing(pos)
+                            | Tab::Enchanting(pos)
+                            | Tab::Anvil(pos)),
                         ..
                     } => {
-                        let still = |b: Block| {
-                            crate::world::chest::is_chest(b)
-                                || crate::world::furnace::is_furnace(b)
-                                || b == Block::BREWING_STAND
-                                || b == Block::ENCHANTING_TABLE
-                                || b.is_anvil()
-                        };
-                        !self.world.get_block(pos).is_some_and(still)
+                        !self.world.get_block(pos).is_some_and(|b| tab.matches_block(b))
                             || eye.distance(pos.as_dvec3() + 0.5) > super::REACH + 1.0
                             || agent.vitals.is_dead()
                     }
