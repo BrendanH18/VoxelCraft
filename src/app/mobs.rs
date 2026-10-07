@@ -240,6 +240,24 @@ impl Game {
                         );
                     }
                 }
+                EntityEvent::PlayerEffect { player: PlayerId::HOST, effect, amplifier, ticks } => {
+                    if self.mode.is_survival() {
+                        let damage = self.vitals.apply_effect(effect, amplifier, ticks);
+                        if damage > 0.0 {
+                            self.damage_player(damage, "was killed by magic");
+                        }
+                    }
+                }
+                EntityEvent::PlayerEffect { player, effect, amplifier, ticks } => {
+                    if let Some(bot) = self.agents.by_id_mut(player)
+                        && !bot.agent.creative
+                    {
+                        let damage = bot.agent.vitals.apply_effect(effect, amplifier, ticks);
+                        if damage > 0.0 {
+                            bot.agent.hurt(damage, "was killed by magic", DVec3::ZERO, &mut self.mobs.entities);
+                        }
+                    }
+                }
                 EntityEvent::Explosion { center, power, cause } => self.explode(center, power, cause),
                 EntityEvent::PearlLanded { owner, pos } => {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::Portal, pos + DVec3::Y, 32);
@@ -366,7 +384,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Zombie => Voice::Zombie,
         MobKind::Skeleton => Voice::Skeleton,
         MobKind::Creeper => Voice::Creeper,
-        MobKind::Spider => Voice::Spider,
+        MobKind::Spider | MobKind::CaveSpider => Voice::Spider,
         MobKind::ZombifiedPiglin => Voice::Zombie,
         MobKind::Enderman => Voice::Enderman,
         MobKind::Blaze => Voice::Blaze,

@@ -84,10 +84,11 @@ pub enum MobKind {
     Blaze,
     /// Stronghold spawner mob: small, fast, nibbles for 1.
     Silverfish,
+    CaveSpider,
 }
 
 impl MobKind {
-    pub const ALL: [MobKind; 12] = [
+    pub const ALL: [MobKind; 13] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -100,6 +101,7 @@ impl MobKind {
         MobKind::Enderman,
         MobKind::Blaze,
         MobKind::Silverfish,
+        MobKind::CaveSpider,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -117,6 +119,7 @@ impl MobKind {
             MobKind::Enderman => "enderman",
             MobKind::Blaze => "blaze",
             MobKind::Silverfish => "silverfish",
+            MobKind::CaveSpider => "cave spider",
         }
     }
 
@@ -137,6 +140,7 @@ impl MobKind {
             MobKind::Skeleton => Shape::new(0.3, 1.99),
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
+            MobKind::CaveSpider => Shape::new(0.35, 0.5),
             MobKind::Enderman => Shape::new(0.3, 2.9),
             MobKind::Blaze => Shape::new(0.3, 1.8),
             MobKind::Silverfish => Shape::new(0.2, 0.3),
@@ -151,6 +155,7 @@ impl MobKind {
             MobKind::Chicken => 4.0,
             MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::ZombifiedPiglin | MobKind::Blaze => 20.0,
             MobKind::Spider => 16.0,
+            MobKind::CaveSpider => 12.0,
             MobKind::Enderman => 40.0,
         }
     }
@@ -167,6 +172,7 @@ impl MobKind {
                 | MobKind::Enderman
                 | MobKind::Blaze
                 | MobKind::Silverfish
+                | MobKind::CaveSpider
         )
     }
 
@@ -187,7 +193,7 @@ impl MobKind {
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze => false,
             // Only from stronghold spawners (and infested blocks, later).
-            MobKind::Silverfish => false,
+            MobKind::Silverfish | MobKind::CaveSpider => false,
             MobKind::ZombifiedPiglin => dimension == Dimension::Nether,
             _ => dimension == Dimension::Overworld,
         }
@@ -220,7 +226,7 @@ impl MobKind {
         use crate::enchant::Creature;
         match self {
             MobKind::Zombie | MobKind::Skeleton | MobKind::ZombifiedPiglin => Creature::Undead,
-            MobKind::Spider | MobKind::Silverfish => Creature::Arthropod,
+            MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish => Creature::Arthropod,
             _ => Creature::Other,
         }
     }
@@ -235,14 +241,14 @@ impl MobKind {
             MobKind::Cow | MobKind::Zombie | MobKind::Creeper | MobKind::ZombifiedPiglin => 1.1,
             MobKind::Sheep | MobKind::Skeleton | MobKind::Blaze => 1.2,
             MobKind::Chicken => 1.0,
-            MobKind::Spider | MobKind::Enderman | MobKind::Silverfish => 1.4,
+            MobKind::Spider | MobKind::CaveSpider | MobKind::Enderman | MobKind::Silverfish => 1.4,
         }
     }
 
     fn chase_speed(self) -> f64 {
         match self {
             MobKind::Enderman => 4.5,
-            MobKind::Spider => 3.0,
+            MobKind::Spider | MobKind::CaveSpider => 3.0,
             MobKind::ZombifiedPiglin | MobKind::Silverfish => 2.8,
             MobKind::Skeleton => 2.2,
             MobKind::Creeper => 2.0,
@@ -253,6 +259,7 @@ impl MobKind {
     /// Melee damage and the death message it gives.
     fn melee(self) -> (f32, &'static str) {
         match self {
+            MobKind::CaveSpider => (2.0, "was slain by a cave spider"),
             MobKind::Spider => (2.0, "was slain by a spider"),
             MobKind::ZombifiedPiglin => (5.0, "was slain by a zombified piglin"),
             MobKind::Enderman => (7.0, "was slain by an enderman"),
@@ -274,7 +281,7 @@ impl MobKind {
             MobKind::Zombie => &[(Item::ROTTEN_FLESH, 0, 2)],
             MobKind::Skeleton => &[(Item::BONE, 0, 2), (Item::ARROW, 0, 2)],
             MobKind::Creeper => &[(Item::GUNPOWDER, 0, 2)],
-            MobKind::Spider => &[(Item::STRING, 0, 2), (Item::SPIDER_EYE, -1, 1)],
+            MobKind::Spider | MobKind::CaveSpider => &[(Item::STRING, 0, 2), (Item::SPIDER_EYE, -1, 1)],
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
@@ -329,6 +336,7 @@ pub(super) enum Ai {
 
 pub struct Mob {
     pub kind: MobKind,
+    pub(super) difficulty: crate::simulation::difficulty::Difficulty,
     /// Feet position (bottom centre of the box).
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
@@ -407,6 +415,7 @@ impl Mob {
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,
+            difficulty: Default::default(),
             pos,
             previous_pos: pos,
             vel: DVec3::ZERO,
@@ -633,7 +642,7 @@ impl Mob {
 
         if self.kind.is_hostile() {
             let aggressive = match self.kind {
-                MobKind::Spider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
+                MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
                 MobKind::Enderman => self.enderman_anger(dt, world, ctx, rng, events),
                 _ => true,
@@ -691,6 +700,21 @@ impl Mob {
                                 knockback: knockback.as_vec3(),
                                 cause,
                             });
+                            if self.kind == MobKind::CaveSpider {
+                                let ticks = match self.difficulty {
+                                    crate::simulation::difficulty::Difficulty::Normal => 140,
+                                    crate::simulation::difficulty::Difficulty::Hard => 300,
+                                    _ => 0,
+                                };
+                                if ticks > 0 {
+                                    events.push(EntityEvent::PlayerEffect {
+                                        player: target.id,
+                                        effect: crate::simulation::effects::Effect::Poison,
+                                        amplifier: 0,
+                                        ticks,
+                                    });
+                                }
+                            }
                             // Thorns: each piece has a 15% chance per level
                             // to hit back for a uniform 1.0-5.0 damage.
                             for level in target.thorns.into_iter().filter(|&l| l > 0) {
@@ -1050,7 +1074,11 @@ impl Mob {
                     self.vel.y += (6.0 - self.vel.y) * (1.0 - 0.7f64.powf(dt * 20.0));
                 }
             }
-            if self.kind == MobKind::Spider && self.blocked && wish.is_some() && self.alive() {
+            if matches!(self.kind, MobKind::Spider | MobKind::CaveSpider)
+                && self.blocked
+                && wish.is_some()
+                && self.alive()
+            {
                 self.vel.y = self.vel.y.max(3.0); // climbs walls
             } else if let Some(dir) = wish
                 && self.on_ground

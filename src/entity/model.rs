@@ -385,7 +385,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             part(CREEPER_LEG, [2.0, 6.0, -4.0], rx(swing)),
             part(CREEPER_HEAD, [0.0, 18.0, 0.0], head),
         ],
-        MobKind::Spider => {
+        MobKind::Spider | MobKind::CaveSpider => {
             // Four legs a side, fanned out and drooping onto the ground; the
             // pivot height puts each tip exactly at the feet.
             let pivot_y = SPIDER_LEG_LEN * SPIDER_LEG_DROOP.sin() + SPIDER_LEG_DROOP.cos();
@@ -522,9 +522,11 @@ pub fn build(
         let torch = (m.block_light.clamp(0.0, 1.0) * 255.0) as u8;
         // A lit creeper swells and flashes white; burning mobs glow orange.
         let fuse = m.fuse / FUSE_TIME;
-        let scale = 1.0 + fuse * 0.18;
+        let scale = (1.0 + fuse * 0.18) * if m.kind == MobKind::CaveSpider { 0.55 } else { 1.0 };
         let tint = if m.fuse > 0.0 {
             ([255.0; 3], ((m.fuse * (8.0 + 16.0 * fuse)).sin() * 0.5 + 0.5) * 0.7)
+        } else if m.kind == MobKind::CaveSpider {
+            ([40.0, 80.0, 95.0], 0.65)
         } else if m.burning {
             (FIRE, 0.3)
         } else {

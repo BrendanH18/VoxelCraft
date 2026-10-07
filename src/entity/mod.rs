@@ -107,6 +107,13 @@ pub enum EntityEvent {
         knockback: Vec3,
         cause: &'static str,
     },
+    /// A mob or splash potion applied a status effect to this player.
+    PlayerEffect {
+        player: PlayerId,
+        effect: crate::simulation::effects::Effect,
+        amplifier: u8,
+        ticks: u32,
+    },
     /// A creeper or TNT exploded: break blocks and hurt everything nearby
     /// (see [`explosion_damage`]). [`Entities::explode`] handles the mobs;
     /// `cause` is the death message.
@@ -498,6 +505,7 @@ impl Entities {
                 self.mobs.swap_remove(i);
                 continue;
             }
+            self.mobs[i].difficulty = difficulty;
             self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);
             i += 1;
         }
@@ -1228,6 +1236,31 @@ mod tests {
             raining: false,
             dimension: Dimension::Overworld,
         }
+    }
+
+    #[test]
+    fn cave_spider_poison_matches_difficulty_and_target_id() {
+        use crate::simulation::{difficulty::Difficulty, effects::Effect};
+        for (difficulty, ticks) in [(Difficulty::Easy, 0), (Difficulty::Normal, 140), (Difficulty::Hard, 300)] {
+            let mut e = Entities::new(1);
+            e.spawn(MobKind::CaveSpider, DVec3::new(0.5, 10.0, 0.5));
+            let mut c = ctx(DVec3::new(100.0, 10.0, 0.5));
+            c.daylight = 0.0;
+            c.players.push(Target::new(PlayerId(2), DVec3::new(1.0, 10.0, 0.5), true));
+            let events = e.update_difficulty(0.05, &Grid::flat(10), &c, difficulty);
+            let poison = events.iter().find(|e| matches!(e, EntityEvent::PlayerEffect { .. }));
+            assert_eq!(
+                poison.copied(),
+                (ticks > 0).then_some(EntityEvent::PlayerEffect {
+                    player: PlayerId(2),
+                    effect: Effect::Poison,
+                    amplifier: 0,
+                    ticks
+                })
+            );
+            assert_eq!(e.mobs[0].health, 12.0);
+        }
+        assert!(!MobKind::CaveSpider.spawns_in(Dimension::Overworld));
     }
 
     /// Runs one mob for `secs` at 60 Hz, forcing it to walk along +X.
