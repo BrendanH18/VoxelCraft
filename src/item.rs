@@ -507,7 +507,14 @@ impl Item {
         }
     }
 
+    pub fn dye_color(self) -> Option<crate::color::DyeColor> {
+        self.0.checked_sub(576).filter(|&i| i < 16).map(|i| crate::color::DyeColor::ALL[i as usize])
+    }
+
     pub fn info(self) -> ItemInfo {
+        if let Some(c) = self.dye_color() {
+            return item(c.dye_name(), Sprite::Powder(c.rgb()));
+        }
         if let Some(b) = self.block() {
             return ItemInfo { name: b.name(), kind: ItemKind::Block(b), max_stack: 64, sprite: Sprite::Stick };
         }
@@ -640,7 +647,7 @@ impl Item {
         let tools = (0..TOOL_COUNT + ARMOR_COUNT).map(|i| Item(FIRST_TOOL + i));
         let potions = (0..POTION_COUNT).map(|i| Item(FIRST_POTION + i));
         let extra = (0..EXTRA_ITEMS.len() as u16).map(|i| Item(EXTRA_ITEM + i));
-        materials.chain(tools).chain(potions).chain(extra)
+        materials.chain(tools).chain(potions).chain(extra).chain((576..592).map(Item))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -665,13 +672,16 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if (EXTRA_ITEM..EXTRA_ITEM + EXTRA_ITEMS.len() as u16).contains(&i) => {
             Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + i - EXTRA_ITEM)
         }
+        576..=591 => {
+            Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + EXTRA_ITEMS.len() as u16 + item.0 - 576)
+        }
         _ => None,
     }
 }
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32 + EXTRA_ITEMS.len() as u32
+    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32 + EXTRA_ITEMS.len() as u32 + 16
 }
 
 /// Layer of a status effect's icon: in the item icon array, after every

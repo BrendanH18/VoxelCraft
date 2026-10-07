@@ -423,6 +423,7 @@ pub fn recipes() -> &'static [Recipe] {
             r.push(armor(ArmorPiece::Leggings, &["XXX", "X X", "X X"]));
             r.push(armor(ArmorPiece::Boots, &["X X", "X X"]));
         }
+        add_dye_recipes(&mut r);
         r
     })
 }
@@ -686,5 +687,47 @@ mod tests {
             Some(Item::from_block(Block::DEEPSLATE))
         );
         assert_eq!(crate::world::furnace::smelt(Item::from_block(Block::DEEPSLATE_IRON_ORE)), Some(Item::IRON_INGOT));
+    }
+}
+
+/// Vanilla 1.21 recipe JSON: source conversions and every dye mixing recipe.
+fn add_dye_recipes(r: &mut Vec<Recipe>) {
+    r.push(shapeless(&[&[Item::LAPIS_LAZULI]], Item(587), 1));
+    r.push(shapeless(&[&[Item(587)], &[Item(589)]], Item(585), 2));
+    r.push(shapeless(&[&[Item(591)], &[Item(576)]], Item(583), 2));
+    r.push(shapeless(&[const { &[b(Block::BLUE_ORCHID)] }], Item(579), 1));
+    r.push(shapeless(&[&[Item(587)], &[Item(576)]], Item(579), 2));
+    r.push(shapeless(&[&[Item(591)], &[Item(576)], &[Item(576)]], Item(584), 3));
+    r.push(shapeless(&[&[Item(583)], &[Item(576)]], Item(584), 2));
+    r.push(shapeless(&[&[Item(589)], &[Item(576)]], Item(581), 2));
+    r.push(shapeless(&[&[Item(587)], &[Item(590)], &[Item(582)]], Item(578), 3));
+    r.push(shapeless(&[&[Item(587)], &[Item(590)], &[Item(590)], &[Item(576)]], Item(578), 4));
+    r.push(shapeless(&[&[Item(586)], &[Item(582)]], Item(578), 2));
+    r.push(shapeless(&[&[Item(590)], &[Item(580)]], Item(577), 2));
+    r.push(shapeless(&[&[Item(590)], &[Item(576)]], Item(582), 2));
+    r.push(shapeless(&[&[Item(587)], &[Item(590)]], Item(586), 2));
+    r.push(shapeless(&[const { &[b(Block::POPPY)] }], Item(590), 1));
+    r.push(shapeless(&[&[Item::BONE_MEAL]], Item(576), 1));
+    r.push(shapeless(&[const { &[b(Block::DANDELION)] }], Item(580), 1));
+}
+
+#[cfg(test)]
+mod dye_tests {
+    use super::*;
+    #[test]
+    fn vanilla_dye_mixes_use_exact_ingredients_and_counts() {
+        for recipe in recipes().iter().filter(|r| r.result.item.dye_color().is_some()) {
+            assert_eq!(recipe.preview().result(), Some(recipe.result));
+        }
+        let mut g = Grid::new(2);
+        for (i, id) in [587, 590, 590, 576].into_iter().enumerate() {
+            g.cells[i] = Some(Stack::new(Item(id), 1));
+        }
+        assert_eq!(g.result(), Some(Stack::new(Item(578), 4)));
+        g.cells[3] = None;
+        assert_eq!(g.result(), None);
+        g.cells = [None; 9];
+        g.cells[0] = Some(Stack::new(Item::BONE_MEAL, 1));
+        assert_eq!(g.result(), Some(Stack::new(Item(576), 1)));
     }
 }
