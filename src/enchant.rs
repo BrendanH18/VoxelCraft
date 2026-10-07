@@ -367,12 +367,14 @@ pub fn enchantability(item: Item) -> u32 {
             Tier::Iron => 14,
             Tier::Gold => 22,
             Tier::Diamond => 10,
+            Tier::Netherite => 15,
         },
         ItemKind::Armor(_, material) => match material {
             ArmorMaterial::Leather => 15,
             ArmorMaterial::Iron => 9,
             ArmorMaterial::Gold => 25,
             ArmorMaterial::Diamond => 10,
+            ArmorMaterial::Netherite => 15,
         },
         ItemKind::Bow => 1,
         _ if item == Item::BOOK => 1,
@@ -650,12 +652,14 @@ pub fn repairs(item: Item, material: Item) -> bool {
             Tier::Iron => material == Item::IRON_INGOT,
             Tier::Gold => material == Item::GOLD_INGOT,
             Tier::Diamond => material == Item::DIAMOND,
+            Tier::Netherite => material == Item::NETHERITE_INGOT,
         },
         ItemKind::Armor(_, m) => match m {
             ArmorMaterial::Leather => material == Item::LEATHER,
             ArmorMaterial::Iron => material == Item::IRON_INGOT,
             ArmorMaterial::Gold => material == Item::GOLD_INGOT,
             ArmorMaterial::Diamond => material == Item::DIAMOND,
+            ArmorMaterial::Netherite => material == Item::NETHERITE_INGOT,
         },
         _ => false,
     }
@@ -929,6 +933,15 @@ mod tests {
         // Unrelated items don't combine.
         let boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Iron), 1);
         assert_eq!(anvil(boots, Some(Stack::new(sword(), 1)), false), None);
+
+        // Netherite gear repairs with Netherite ingots, not diamonds, and
+        // has Java's enchantability 15.
+        let chest = Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Netherite);
+        let worn = Stack { damage: 300, ..Stack::new(chest, 1) };
+        let r = anvil(worn, Some(Stack::new(Item::NETHERITE_INGOT, 4)), false).unwrap();
+        assert_eq!((r.output.damage, r.uses), (0, Some(3)), "148 per ingot");
+        assert_eq!(anvil(worn, Some(Stack::new(Item::DIAMOND, 4)), false), None);
+        assert_eq!((enchantability(chest), enchantability(Item::tool(ToolKind::Axe, Tier::Netherite))), (15, 15));
     }
 
     #[test]

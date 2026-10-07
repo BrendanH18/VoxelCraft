@@ -22,6 +22,7 @@ mod pad_menu;
 mod recipe_book;
 mod search;
 mod settings;
+mod smithing;
 mod split;
 pub use crate::simulation::survival;
 mod title;
@@ -103,6 +104,7 @@ pub(crate) enum Container {
     Brewing(IVec3),
     Enchanting(IVec3),
     Anvil(IVec3),
+    Smithing(IVec3),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -156,8 +158,8 @@ struct Game {
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
     /// crafting table. Emptied back into the inventory when it closes.
     craft: crate::crafting::Grid,
-    /// The open enchanting table's item and lapis slots, or the anvil's two
-    /// inputs; emptied back into the inventory when the screen closes.
+    /// Inputs for the open enchanting table, anvil or smithing table;
+    /// emptied back into the inventory when the screen closes.
     work: enchanting::WorkSlots,
     container: Container,
     recipe_book: recipe_book::RecipeBook,
@@ -706,7 +708,7 @@ impl Game {
             inventory,
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
-            work: [None; 2],
+            work: [None; 3],
             container: Container::Inventory,
             recipe_book: recipe_book::RecipeBook::default(),
             creative_scroll: 0,
@@ -908,7 +910,7 @@ impl Game {
 
     fn show_selected_name(&mut self) {
         if let Some(s) = self.inventory.get(self.actions.selected) {
-            self.show_popup(s.item.name());
+            self.show_popup(s.display_name());
         }
     }
 
@@ -949,7 +951,7 @@ impl Game {
     /// Hurts the player through their armor (mobs, arrows, blasts, lava),
     /// wearing it down when the hit lands.
     pub(crate) fn damage_player_armored(&mut self, amount: f32, cause: &str) -> f32 {
-        let reduced = survival::armor_reduce(amount, self.inventory.armor_points());
+        let reduced = survival::armor_reduce(amount, self.inventory.armor_points(), self.inventory.armor_toughness());
         let taken = self.damage_player(reduced, cause);
         if taken > 0.0 && self.mode == GameMode::Survival {
             for item in self.inventory.wear_armor(amount) {
@@ -1210,6 +1212,12 @@ impl Game {
             Some(s @ (hud::SlotRef::AnvilLeft | hud::SlotRef::AnvilRight | hud::SlotRef::AnvilResult)) => {
                 self.anvil_click(s, right)
             }
+            Some(
+                s @ (hud::SlotRef::SmithTemplate
+                | hud::SlotRef::SmithBase
+                | hud::SlotRef::SmithAddition
+                | hud::SlotRef::SmithResult),
+            ) => self.smithing_click(s, right),
             Some(hud::SlotRef::Palette(item)) => {
                 // Creative palette: take a full stack, or trash the held one.
                 self.inventory.cursor = match self.inventory.cursor {
@@ -1414,6 +1422,7 @@ impl Game {
                         || b == Block::BREWING_STAND
                         || b == Block::ENCHANTING_TABLE
                         || b.is_anvil()
+                        || b == Block::SMITHING_TABLE
                         || b.is_bed()
                         || crate::world::furnace::is_furnace(b)
                         || crate::world::chest::is_chest(b)) =>
@@ -1427,6 +1436,7 @@ impl Game {
             Some(Block::BREWING_STAND) => return self.open_brewing(pos),
             Some(Block::ENCHANTING_TABLE) => return self.open_enchanting(pos),
             Some(b) if b.is_anvil() => return self.open_anvil(pos),
+            Some(Block::SMITHING_TABLE) => return self.open_smithing(pos),
             Some(Block::DRAGON_EGG) => return self.teleport_egg(pos),
             Some(b) if b.is_bed() => return self.use_bed(pos),
             Some(b) if b.is_door() || b.is_gate() => {
@@ -1545,6 +1555,7 @@ impl Game {
                 Some(Block::BREWING_STAND) => self.open_brewing(p),
                 Some(Block::ENCHANTING_TABLE) => self.open_enchanting(p),
                 Some(b) if b.is_anvil() => self.open_anvil(p),
+                Some(Block::SMITHING_TABLE) => self.open_smithing(p),
                 _ => log::warn!("--open-block {p}: no container there"),
             }
         }

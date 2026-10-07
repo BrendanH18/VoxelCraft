@@ -682,6 +682,20 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 },
             )
         }
+        tex::SMITHING_TOP => {
+            // Java's dark slate-blue iron plate: a lighter rim, a darker
+            // ring inside it and a mottled, scuffed middle.
+            let edge = x.min(y).min(SIZE - 1 - x).min(SIZE - 1 - y);
+            match edge {
+                0 => noisy(layer, x, y, [72, 74, 93], 0.1),
+                1 if rnd(layer, x, y, 31) < 0.6 => shade([57, 59, 72], 0.95 + r * 0.1),
+                _ if rnd(layer, x, y, 32) < 0.12 => shade([38, 39, 45], 1.0),
+                _ => {
+                    shade(if rnd(layer, x / 2, y / 2, 33) < 0.5 { [54, 55, 63] } else { [47, 48, 55] }, 0.94 + r * 0.12)
+                }
+            }
+        }
+        tex::SMITHING_FRONT | tex::SMITHING_SIDE | tex::SMITHING_BOTTOM => smithing_wood(layer, x, y, r),
         tex::IRON_BLOCK => {
             // Pale steel plate with a bevelled rim and a rivet line.
             let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
@@ -835,6 +849,49 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
         }
+    }
+}
+
+/// The smithing table's dark wood: Java's deep red planks (a lit row and a
+/// dark seam every four pixels). The front and sides sit under a three-row
+/// iron band and between near-black legs, the front showing tongs and the
+/// sides a hammer; the bottom is planks with black corners.
+fn smithing_wood(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
+    const IRON: [u8; 3] = [47, 48, 55];
+    const HANDLE: [u8; 3] = [140, 86, 60];
+    let plank = |y: usize| match y % 4 {
+        2 => shade([95, 39, 33], 0.92 + r * 0.14),
+        3 => shade([47, 20, 17], 0.9 + r * 0.15),
+        _ => shade(if rnd(layer, x / 3, y, 34) < 0.5 { [74, 31, 26] } else { [66, 28, 23] }, 0.95 + r * 0.1),
+    };
+    if layer == tex::SMITHING_BOTTOM {
+        let corner = !(2..=SIZE - 3).contains(&x) && !(2..=SIZE - 3).contains(&y);
+        let edge = x.min(y).min(SIZE - 1 - x).min(SIZE - 1 - y);
+        return if corner {
+            shade([26, 27, 30], 1.0)
+        } else if edge == 1 {
+            shade([47, 20, 17], 0.95 + r * 0.1)
+        } else if edge == 2 {
+            shade([82, 34, 29], 0.92 + r * 0.14)
+        } else {
+            shade([66, 28, 23], 0.95 + r * 0.08)
+        };
+    }
+    match (x, y) {
+        (_, 0..=2) => {
+            let c = if rnd(layer, x, y, 35) < 0.3 { [38, 39, 45] } else { IRON };
+            shade(c, 0.95 + r * 0.2)
+        }
+        (_, 3) => shade([17, 18, 19], 1.0),
+        (0 | 15, _) => shade([40, 41, 50], 0.85 + r * 0.25),
+        (1 | 14, _) => shade([24, 25, 28], 0.9 + r * 0.15),
+        // Tongs: two light handles meeting at an iron jaw.
+        (3 | 5, 8..=11) if layer == tex::SMITHING_FRONT => shade(HANDLE, 0.9 + r * 0.2),
+        (3..=5, 7) if layer == tex::SMITHING_FRONT => shade([73, 75, 95], 1.0),
+        // Hammer: an iron head over a wooden handle.
+        (3..=7, 8) if layer == tex::SMITHING_SIDE => shade([35, 37, 51], 0.95 + r * 0.15),
+        (5, 9..=13) if layer == tex::SMITHING_SIDE => shade(HANDLE, 0.9 + r * 0.2),
+        _ => plank(y),
     }
 }
 

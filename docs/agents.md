@@ -68,6 +68,7 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `chest take/put slot` | Transfer a stack using chest slot 0–26; put uses selected hotbar slot |
 | `anvil 1..9` | On the targeted anvil, combine the selected stack with that hotbar slot (repair with material, merge two of an item, or apply an enchanted book), paying levels; the result replaces the selected stack |
 | `enchanting 1..3` | Take that offer of the targeted enchanting table for one of the selected item, paying 1–3 levels and lapis from the inventory; `observe` lists the offers (cost and clue) under `target.enchanting_offers` |
+| `smithing` | At the targeted smithing table, upgrade the selected diamond tool or armor using one Netherite upgrade template and one Netherite ingot from the inventory |
 | `respawn`, `leave` | Respawn a dead agent or deactivate the named profile |
 
 Agents stay active between CLI invocations until `leave` or host shutdown.

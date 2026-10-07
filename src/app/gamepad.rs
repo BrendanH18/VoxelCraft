@@ -595,12 +595,12 @@ impl Game {
         true
     }
 
-    /// Controller player `name`'s enchanting table or anvil input slots.
+    /// Controller player `name`'s enchanting, anvil or smithing input slots.
     pub(super) fn pad_work(&self, name: &str) -> super::enchanting::WorkSlots {
-        self.agents.players.get(name).map_or([None; 2], |b| b.agent.work)
+        self.agents.players.get(name).map_or([None; 3], |b| b.agent.work)
     }
 
-    /// Empties controller player `name`'s enchanting table or anvil slots.
+    /// Empties controller player `name`'s workstation input slots.
     pub(super) fn take_pad_work(&mut self, name: &str) -> Vec<crate::inventory::Stack> {
         let Some(bot) = self.agents.players.get_mut(name) else { return Vec::new() };
         bot.agent.work.iter_mut().filter_map(Option::take).collect()
@@ -659,7 +659,8 @@ impl Game {
                             | Tab::Furnace(pos)
                             | Tab::Brewing(pos)
                             | Tab::Enchanting(pos)
-                            | Tab::Anvil(pos)),
+                            | Tab::Anvil(pos)
+                            | Tab::Smithing(pos)),
                         ..
                     } => {
                         !self.world.get_block(pos).is_some_and(|b| tab.matches_block(b))
@@ -744,6 +745,8 @@ impl Game {
             seat.open(Menu::items(Tab::Enchanting(pos)));
         } else if block.is_anvil() {
             seat.open(Menu::items(Tab::Anvil(pos)));
+        } else if block == Block::SMITHING_TABLE {
+            seat.open(Menu::items(Tab::Smithing(pos)));
         } else if block.is_bed() {
             self.pad_sleep(i, pos);
         }

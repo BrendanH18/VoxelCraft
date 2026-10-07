@@ -32,6 +32,7 @@ impl Game {
                 || b == Block::BREWING_STAND
                 || b == Block::ENCHANTING_TABLE
                 || b.is_anvil()
+                || b == Block::SMITHING_TABLE
         })
     }
 

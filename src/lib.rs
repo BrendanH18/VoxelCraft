@@ -16,5 +16,6 @@ pub mod physics;
 pub mod player;
 pub mod potion;
 pub mod simulation;
+pub mod smithing;
 mod workers;
 pub mod world;
