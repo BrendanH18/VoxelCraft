@@ -183,13 +183,10 @@ impl Renderer {
                     Kind::Portal => 1.0 - (1.0 - t).powi(2),
                     Kind::Flame => 1.0 - t * t * 0.5,
                     Kind::Lava => 1.0 - t * t,
-                    Kind::Smoke
-                    | Kind::LargeSmoke
-                    | Kind::Crit
-                    | Kind::MagicCrit
-                    | Kind::Heart
-                    | Kind::Angry
-                    | Kind::DragonBreath => (t * 32.0).clamp(0.0, 1.0),
+                    Kind::Smoke | Kind::LargeSmoke => 1.0 - t,
+                    Kind::Crit | Kind::MagicCrit | Kind::Heart | Kind::Angry | Kind::DragonBreath => {
+                        (t * 32.0).clamp(0.0, 1.0)
+                    }
                     _ => 1.0,
                 }
             };
@@ -235,7 +232,10 @@ fn sprites() -> Vec<u8> {
                     let r = (dx * dx + dy * dy).sqrt();
                     let noise = ((x * 37 + y * 17 + frame * 13) % 11) as f32;
                     let on = match kind {
-                        0 | 10 | 11 => r < 7.0 - frame as f32 * 0.45 + noise * 0.13 && noise > frame as f32 * 0.65,
+                        // Smoke/poof: a small grey puff that thins as it ages,
+                        // not a filled disc (those read as black blobs).
+                        0 => r < 4.2 - frame as f32 * 0.35 && noise > 1.5 + frame as f32 * 0.7,
+                        10 | 11 => r < 7.0 - frame as f32 * 0.45 + noise * 0.13 && noise > frame as f32 * 0.65,
                         1 => dy > -6.0 && dy < 6.0 && dx.abs() < (dy + 8.0) * 0.38 && noise > 1.0,
                         2 => (dx.abs() < 1.5 || dy.abs() < 1.5 || (dx.abs() - dy.abs()).abs() < 1.0) && r < 6.0,
                         3 => (4.0..6.0).contains(&r) || (dx < -1.0 && dy < -1.0 && r < 4.5),

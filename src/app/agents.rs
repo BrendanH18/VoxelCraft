@@ -70,6 +70,7 @@ impl Agents {
             look: b.agent.player.forward().as_dvec3(),
             thorns: Target::thorns_of(&b.agent.inventory.armor),
             held_enchants: b.agent.inventory.get(b.agent.selected).map_or(Default::default(), |s| s.active_enchants()),
+            shape: b.agent.player.collision_shape(),
             ..Target::new(b.id, b.agent.player.pos, b.agent.targetable())
         })
     }

@@ -244,6 +244,7 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["###", "bbb", "###"], &[('#', PLANKS), ('b', &[Item::BOOK])], b(Block::BOOKSHELF), 1),
             shapeless(&[&[Item::ENDER_PEARL], &[Item::BLAZE_POWDER]], Item::EYE_OF_ENDER, 1),
             shaped(&["###", "###"], &[('#', &[Item::IRON_INGOT])], b(Block::IRON_BARS), 16),
+            shaped(&["X X", "X#X", "X X"], &[('X', IRON), ('#', STICK)], b(Block::RAIL), 16),
             shaped(&["###", "###", "###"], &[('#', &[Item::LAPIS_LAZULI])], b(Block::LAPIS_BLOCK), 1),
             shapeless(&[LAPIS_BLOCK], Item::LAPIS_LAZULI, 9),
             shaped(&["###", "###", "###"], &[('#', IRON)], b(Block::IRON_BLOCK), 1),
@@ -460,6 +461,21 @@ mod tests {
         g.cells[4] = Some(Stack::new(Block::COBBLESTONE, 1));
         assert_eq!(g.result(), None, "only netherrack");
         assert_eq!(grid(3, &cells[1..]).result(), None, "all seven diamonds");
+    }
+
+    #[test]
+    fn rails_use_six_iron_and_a_stick() {
+        let cells = [
+            (0, 0, Item::IRON_INGOT),
+            (2, 0, Item::IRON_INGOT),
+            (0, 1, Item::IRON_INGOT),
+            (1, 1, Item::STICK),
+            (2, 1, Item::IRON_INGOT),
+            (0, 2, Item::IRON_INGOT),
+            (2, 2, Item::IRON_INGOT),
+        ];
+        assert_eq!(grid(3, &cells).result(), Some(Stack::new(Block::RAIL, 16)));
+        assert_eq!(grid(3, &cells[1..]).result(), None);
     }
 
     #[test]

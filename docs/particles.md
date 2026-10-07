@@ -39,7 +39,9 @@ bounded mailbox.
 Ambient work is client-only. Each camera tries 667 blocks at 16 and at 32
 blocks, matching `ClientLevel.animateTick`, and skips that scan on Minimal.
 Decreased still keeps two thirds of ordinary particles. Torches emit smoke
-and flame. Fire emits three large smokes when the block below can burn or
+and flame. Smoke and large smoke follow Java `SmokeParticle`: quad size
+about `0.1 * scale` after the 0.75 factor, grey (`rCol` 0.3–0.7) and
+shrinking over their lifetime. Fire emits three large smokes when the block below can burn or
 hold a solid top, otherwise two on each flammable face. Lava pops (1/100)
 and ceiling drips (1/10, hanging then falling) follow `LavaFluid` and
 `DripParticle`. Nether portals, End portals (smoke) and End gateways

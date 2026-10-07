@@ -28,6 +28,7 @@ pub mod fortress;
 pub mod furnace;
 mod growth;
 pub(crate) mod lighting;
+pub mod mineshaft;
 pub mod nether;
 pub mod noise;
 pub mod ore;
@@ -1070,7 +1071,7 @@ mod tests {
             if sneak {
                 // Leaning out over the edge, but no further than the box allows.
                 assert!(player.pos.x > pillar.x as f64 + 1.0 && player.pos.x < pillar.x as f64 + 1.3 + 1e-6);
-                assert!(player.eye().y < player.pos.y + crate::player::EYE_HEIGHT - 0.2);
+                assert!(player.eye().y < player.pos.y + crate::entity::model::PlayerPose::STANDING_EYE - 0.2);
             }
         }
     }

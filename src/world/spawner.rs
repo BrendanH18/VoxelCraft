@@ -78,6 +78,9 @@ impl World {
                 Feature::DungeonChest(seed) if is_chest(block) => {
                     self.chests.entry(p).or_insert_with(|| super::dungeon::loot(seed));
                 }
+                Feature::MineshaftChest(seed) if is_chest(block) => {
+                    self.chests.entry(p).or_insert_with(|| super::mineshaft::loot(seed));
+                }
                 _ => {}
             }
         }

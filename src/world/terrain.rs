@@ -162,6 +162,8 @@ pub struct Generator {
     pub strongholds: super::stronghold::Strongholds,
     /// Monster rooms are terrain features and can cross chunk boundaries.
     pub dungeons: super::dungeon::Dungeons,
+    /// Abandoned mineshafts, placed per Java 16×16 chunk.
+    pub mineshafts: super::mineshaft::Mineshafts,
     continent: Perlin,
     erosion: Perlin,
     ridge: Perlin,
@@ -205,6 +207,7 @@ impl Generator {
             end: (dimension == Dimension::End).then(|| super::end::EndGen::new(seed)),
             strongholds: super::stronghold::Strongholds::new(seed),
             dungeons: super::dungeon::Dungeons::new(seed),
+            mineshafts: super::mineshaft::Mineshafts::new(seed),
             continent: p(1),
             erosion: p(2),
             ridge: p(3),
@@ -465,6 +468,7 @@ impl Generator {
             (None, Dimension::Overworld) => {
                 let mut features = self.strongholds.features(cpos);
                 features.extend(self.dungeons.features(self, cpos));
+                features.extend(self.mineshafts.features(cpos));
                 features
             }
             _ => Vec::new(),
@@ -563,6 +567,7 @@ impl Generator {
             self.strongholds.paint(&mut blocks, base);
         }
         self.dungeons.paint(self, &mut blocks, base);
+        self.mineshafts.paint(&mut blocks, base);
         ChunkData::from_dense(blocks)
     }
 

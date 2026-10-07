@@ -5,6 +5,7 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DVec3, Quat, Vec3};
 
 use super::model::{EntityVertex, cube, push_cuboid};
+use crate::entity::model::PlayerPose;
 use crate::item::Item;
 use crate::player::Player;
 
@@ -104,18 +105,40 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
     let ease = 1.0 - (1.0 - attack).powi(4);
     right_arm -= (ease * PI).sin() * 1.2 + (attack * PI).sin() * (player.pitch + 0.7) * 0.75;
     left_arm += turn;
-    let crouch = player.sneaking;
+    let swim = player.swim_amount;
+    let crouch = player.pose == PlayerPose::Crouching;
     if crouch {
         right_arm += 0.4;
         left_arm += 0.4;
+    }
+    if swim > 0.0 {
+        let cycle = (time * 20.0) % 26.0;
+        let stroke = if cycle < 14.0 {
+            (cycle / 14.0).powi(2)
+        } else if cycle < 22.0 {
+            (cycle - 14.0) / 8.0
+        } else {
+            1.0 - (cycle - 22.0) / 4.0
+        };
+        let blend = |from: f32, to: f32| from + (to - from) * swim;
+        right_arm = blend(right_arm, FRAC_PI_2 * stroke);
+        left_arm = blend(left_arm, FRAC_PI_2 * stroke);
+        right_arm = blend(right_arm, 0.3 * (phase + PI).cos());
+        left_arm = blend(left_arm, 0.3 * phase.cos());
     }
     let ticks = time * 20.0;
     let idle_x = (ticks * 0.067).sin() * 0.05;
     let idle_z = (ticks * 0.09).cos() * 0.05 + 0.05;
     let arm_y = if crouch { 18.8 } else { 22.0 };
     let head_y = if crouch { 19.8 } else { 24.0 };
-    let leg_y = if crouch { 11.8 } else { 12.0 };
-    let leg_z = if crouch { -4.0 } else { 0.0 };
+    let (leg_y, leg_z) = if swim > 0.5 {
+        (12.0, 0.0)
+    } else if crouch {
+        (11.8, -4.0)
+    } else {
+        (12.0, 0.0)
+    };
+    let body_tilt = if swim > 0.5 { -FRAC_PI_2 + player.pitch } else { 0.0 };
     let rx = Quat::from_rotation_x;
     let ry = Quat::from_rotation_y;
     let rz = Quat::from_rotation_z;
@@ -132,7 +155,7 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
             [-4.0, -12.0, -2.0],
             [4.0, 0.0, 2.0],
             [16.0, 16.0],
-            ry(turn) * rx(if crouch { 0.5 } else { 0.0 }),
+            ry(turn) * rx(if crouch { 0.5 } else { 0.0 } + body_tilt),
         ),
         limb(
             [-turn.cos() * 5.0, arm_y, -turn.sin() * 5.0],
@@ -448,7 +471,7 @@ mod tests {
         assert!((parts[4].rot * Vec3::NEG_Y).z < -0.9);
         assert!((parts[5].rot * Vec3::NEG_Y).z > 0.9);
         assert_eq!(parts[0].pivot.y, 24.);
-        p.sneaking = true;
+        p.pose = PlayerPose::Crouching;
         let parts = pose(&p, &a, 0.);
         assert_eq!(parts[0].pivot.y, 19.8);
         assert_eq!(parts[4].pivot.z, -4.);

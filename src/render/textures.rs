@@ -653,6 +653,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             }
         }
         tex::STONE_BRICKS | tex::MOSSY_STONE_BRICKS | tex::CRACKED_STONE_BRICKS => stone_bricks(layer, x, y, r),
+        tex::RAIL | tex::RAIL_EW | tex::RAIL_SE | tex::RAIL_SW | tex::RAIL_NW | tex::RAIL_NE => {
+            rail_pixel(layer, x, y, r)
+        }
         tex::IRON_BARS => {
             // Vertical bars with a cross rail top and bottom, see-through
             // in between.
@@ -964,7 +967,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
 }
 
-/// A framed wooden door. `top` and `bottom` pick which half `layer` is.
 fn wooden_door(layer: u16, x: usize, y: usize, r: f32, colour: [u8; 3], top: u16, bottom: u16) -> Rgba {
     let frame = x <= 1 || x >= 14 || (layer == top && y <= 1) || (layer == bottom && y >= 14);
     let window = layer == top && (3..=6).contains(&y) && matches!(x, 3..=6 | 9..=12);
@@ -1043,6 +1045,52 @@ fn rock(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
             let edge = x.is_multiple_of(8) || y.is_multiple_of(4);
             shade([64, 64, 70], if edge { 0.7 } else { 0.95 + r * 0.08 })
         }
+    }
+}
+
+fn rail_pixel(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
+    let iron = |lit: bool| shade([148, 148, 156], if lit { 1.18 } else { 0.78 } * (0.92 + r * 0.12));
+    let wood = shade([110, 78, 46], 0.88 + r * 0.18);
+    let ns = |x: usize, y: usize| {
+        let bar = x == 4 || x == 5 || x == 10 || x == 11;
+        let sleeper = y % 4 <= 1 && (3..=12).contains(&x);
+        (bar, sleeper, x == 4 || x == 10)
+    };
+    let ew = |x: usize, y: usize| {
+        let bar = y == 4 || y == 5 || y == 10 || y == 11;
+        let sleeper = x % 4 <= 1 && (3..=12).contains(&y);
+        (bar, sleeper, y == 4 || y == 10)
+    };
+    let (bar, sleeper, lit) = match layer {
+        tex::RAIL => ns(x, y),
+        tex::RAIL_EW => ew(x, y),
+        tex::RAIL_SE => {
+            let n = ns(x, y);
+            let e = ew(x, y);
+            ((n.0 && y >= 7) || (e.0 && x >= 7), (n.1 && y >= 7) || (e.1 && x >= 7), n.2 || e.2)
+        }
+        tex::RAIL_SW => {
+            let n = ns(x, y);
+            let e = ew(x, y);
+            ((n.0 && y >= 7) || (e.0 && x <= 8), (n.1 && y >= 7) || (e.1 && x <= 8), n.2 || e.2)
+        }
+        tex::RAIL_NW => {
+            let n = ns(x, y);
+            let e = ew(x, y);
+            ((n.0 && y <= 8) || (e.0 && x <= 8), (n.1 && y <= 8) || (e.1 && x <= 8), n.2 || e.2)
+        }
+        _ => {
+            let n = ns(x, y);
+            let e = ew(x, y);
+            ((n.0 && y <= 8) || (e.0 && x >= 7), (n.1 && y <= 8) || (e.1 && x >= 7), n.2 || e.2)
+        }
+    };
+    if bar {
+        iron(lit)
+    } else if sleeper {
+        wood
+    } else {
+        [0, 0, 0, 0]
     }
 }
 

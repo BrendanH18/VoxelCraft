@@ -771,6 +771,7 @@ pub(super) fn push_cuboid(
 }
 
 pub use super::player_model::{PlayerAppearance, build_player};
+pub use super::player_pose::{PlayerPose, fits_at, resolve_pose};
 
 #[cfg(test)]
 mod tests {
