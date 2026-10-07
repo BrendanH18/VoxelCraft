@@ -312,6 +312,18 @@ full performance display instead of duplicating the compact counter.
   offer n costs n levels and n lapis (creative is free); a book becomes an
   enchanted book. The table glows (light 7). Controller players have an
   enchanting tab, and agents `enchanting 1..3`.
+- Anvils: three blocks of iron over an ingot over three ingots (a block
+  of iron is nine ingots). They fall like sand and are placed broadside
+  to you. Right click for Java's screen (without renaming): repair a tool
+  or armor piece with its material (a quarter of its durability per
+  item), merge two of the same item (both remainders plus 12%, and their
+  enchantments: equal levels go up one, conflicting ones cost a level
+  each and are dropped), or apply an enchanted book (half the price).
+  Costs are Java's: each enchantment's anvil cost per level, plus the
+  prior-work penalty both items carry, which doubles plus one with each
+  use; at 40 levels survival says "Too Expensive!". Each survival use
+  has a 12% chance to chip the anvil (chipped, damaged, then it breaks).
+  Controller players have an anvil tab, and agents `anvil 1..9`.
 - Lapis lazuli ore below y 32 (stone pickaxe or better) drops 4-9 lapis
   (with fortune's ore bonus) and 2-5 experience; nine make a block of
   lapis lazuli and back.

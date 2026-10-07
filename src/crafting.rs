@@ -179,6 +179,8 @@ const NETHER_BRICKS: Ingredient = &[b(Block::NETHER_BRICKS)];
 const STICK: Ingredient = &[Item::STICK];
 const LAPIS_BLOCK: Ingredient = &[b(Block::LAPIS_BLOCK)];
 const OBSIDIAN: Ingredient = &[b(Block::OBSIDIAN)];
+const IRON_BLOCK: Ingredient = &[b(Block::IRON_BLOCK)];
+const IRON: Ingredient = &[Item::IRON_INGOT];
 const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
 
 fn shaped(rows: &'static [&'static str], key: &[(char, Ingredient)], result: Item, count: u8) -> Recipe {
@@ -205,6 +207,9 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["###", "###"], &[('#', &[Item::IRON_INGOT])], b(Block::IRON_BARS), 16),
             shaped(&["###", "###", "###"], &[('#', &[Item::LAPIS_LAZULI])], b(Block::LAPIS_BLOCK), 1),
             shapeless(&[LAPIS_BLOCK], Item::LAPIS_LAZULI, 9),
+            shaped(&["###", "###", "###"], &[('#', IRON)], b(Block::IRON_BLOCK), 1),
+            shapeless(&[IRON_BLOCK], Item::IRON_INGOT, 9),
+            shaped(&["III", " i ", "iii"], &[('I', IRON_BLOCK), ('i', IRON)], b(Block::ANVIL), 1),
             shaped(
                 &[" b ", "d#d", "###"],
                 &[('b', &[Item::BOOK]), ('d', &[Item::DIAMOND]), ('#', OBSIDIAN)],

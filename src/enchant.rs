@@ -541,6 +541,11 @@ pub struct AnvilResult {
 pub const TOO_EXPENSIVE: u32 = 40;
 
 pub fn anvil(left: Stack, right: Option<Stack>, creative: bool) -> Option<AnvilResult> {
+    anvil_any_cost(left, right, creative).filter(|r| creative || r.cost < TOO_EXPENSIVE)
+}
+
+/// [`anvil`] without the survival cost limit, for showing "Too Expensive!".
+pub fn anvil_any_cost(left: Stack, right: Option<Stack>, creative: bool) -> Option<AnvilResult> {
     let right = right?;
     let mut out = left;
     let base = left.repair_cost as u32 + right.repair_cost as u32;
@@ -611,12 +616,21 @@ pub fn anvil(left: Stack, right: Option<Stack>, creative: bool) -> Option<AnvilR
         return None;
     }
     let total = base + cost;
-    if total >= TOO_EXPENSIVE && !creative {
-        return None;
-    }
     let prior = left.repair_cost.max(right.repair_cost) as u32;
     out.repair_cost = (prior * 2 + 1).min(u16::MAX as u32) as u16;
     Some(AnvilResult { output: out, cost: total, uses })
+}
+
+/// Java's anvil wear after a use: a 12% chance it turns chipped, then
+/// damaged, then breaks. Returns `Some(broke)` if it changed.
+pub fn wear_anvil(world: &mut crate::world::World, pos: glam::IVec3) -> Option<bool> {
+    let anvil = world.get_block(pos).filter(|b| b.is_anvil())?;
+    if roll() >= 0.12 {
+        return None;
+    }
+    let next = anvil.anvil_damaged();
+    world.set_block(pos, next.unwrap_or(Block::AIR));
+    Some(next.is_none())
 }
 
 /// Whether `material` repairs `item` on an anvil (Java's repair tags).

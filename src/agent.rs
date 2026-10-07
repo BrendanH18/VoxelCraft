@@ -19,7 +19,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -77,6 +77,8 @@ pub enum Command {
     /// Takes offer 0..3 of the targeted enchanting table for the held item,
     /// paying levels and lapis from the inventory.
     Enchanting(usize),
+    /// Combines the held stack with hotbar slot 0..9 on the targeted anvil.
+    Anvil(usize),
 }
 
 /// `/effect give` (with seconds and amplifier) or `/effect clear`.
@@ -240,6 +242,7 @@ impl Command {
                 let amp = rest.get(1).map_or(Ok(0), |n| n.parse::<u8>().map_err(|_| bad()))?;
                 Self::Effect(EffectChange::Give(effect, secs, amp))
             }
+            ["anvil", n] => Self::Anvil(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
             ["enchanting", n] => {
                 Self::Enchanting(n.parse::<usize>().ok().filter(|n| (1..=3).contains(n)).ok_or_else(bad)? - 1)
             }
@@ -567,6 +570,33 @@ impl Agent {
                 }
             }
             Command::Enchanting(i) => self.enchant_at_table(i, world)?,
+            Command::Anvil(slot) => {
+                let (pos, _) = self.target(world).ok_or("no anvil within reach")?;
+                if !world.get_block(pos).is_some_and(Block::is_anvil) {
+                    return Err("target is not an anvil".into());
+                }
+                if slot == self.selected {
+                    return Err("pick a different slot for the second item".into());
+                }
+                let left = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+                let right = self.inventory.get(slot);
+                let r = crate::enchant::anvil_any_cost(left, right, self.creative).ok_or("those don't combine")?;
+                if !self.creative && r.cost >= crate::enchant::TOO_EXPENSIVE {
+                    return Err("too expensive".into());
+                }
+                if !self.creative && self.vitals.xp.level < r.cost {
+                    return Err(format!("needs level {}", r.cost));
+                }
+                self.inventory.slots[self.selected] = Some(r.output);
+                self.inventory.slots[slot] = match (r.uses, right) {
+                    (Some(n), Some(s)) if s.count > n => Some(Stack { count: s.count - n, ..s }),
+                    _ => None,
+                };
+                if !self.creative {
+                    self.vitals.xp.add_levels(-(r.cost as i64));
+                    crate::enchant::wear_anvil(world, pos);
+                }
+            }
             Command::Drop => {
                 let stack = self.inventory.slots[self.selected].take().ok_or("selected slot empty")?;
                 entities.throw(stack, self.player.eye(), self.player.forward().as_dvec3());
@@ -1214,6 +1244,27 @@ mod tests {
         assert_eq!(a.inventory.get(1), None, "and two lapis");
         assert_ne!(a.vitals.xp.seed, seed, "a new seed rolls new offers");
         assert!(a.execute(Command::Enchanting(0), &mut world, &mut entities, &[]).is_err(), "already enchanted");
+    }
+
+    #[test]
+    fn agents_combine_on_an_anvil() {
+        use crate::enchant::{Enchantment, Enchants};
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        world.set_block(IVec3::new(4, 150, 1), Block::STONE);
+        world.set_block(IVec3::new(4, 151, 1), Block::ANVIL);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let sword = Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Iron);
+        let book = Enchants::NONE.with(Enchantment::Sharpness, 2);
+        a.inventory.slots[0] = Some(Stack::new(sword, 1));
+        a.inventory.slots[1] = Some(Stack { enchants: book, ..Stack::new(Item::ENCHANTED_BOOK, 1) });
+        let short = a.execute(Command::Anvil(1), &mut world, &mut entities, &[]);
+        assert_eq!(short, Err("needs level 2".to_string()));
+        a.vitals.xp.add_levels(3);
+        a.execute(Command::Anvil(1), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.inventory.get(0).unwrap().enchants.level(Enchantment::Sharpness), 2);
+        assert_eq!(a.inventory.get(1), None, "the book is used up");
+        assert_eq!(a.vitals.xp.level, 1);
     }
 
     #[test]

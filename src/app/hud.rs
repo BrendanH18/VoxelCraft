@@ -37,6 +37,10 @@ pub(super) enum SlotRef {
     EnchantItem,
     EnchantLapis,
     EnchantOffer(usize),
+    /// The anvil's two inputs and its result.
+    AnvilLeft,
+    AnvilRight,
+    AnvilResult,
     /// Worn armor (survival inventory).
     Armor(ArmorPiece),
 }
@@ -492,7 +496,10 @@ impl Game {
 
     pub(super) fn shows_recipes(&self) -> bool {
         self.has_top_section()
-            && !matches!(self.container, Container::Furnace(_) | Container::Chest(_) | Container::Enchanting(_))
+            && !matches!(
+                self.container,
+                Container::Furnace(_) | Container::Chest(_) | Container::Enchanting(_) | Container::Anvil(_)
+            )
     }
 
     /// Top-left corner and height of the inventory panel.
@@ -551,6 +558,12 @@ impl Game {
             // (drawn as buttons; see `enchant_offer_rect`).
             out.push((SlotRef::EnchantItem, px + 14.0, py + 44.0));
             out.push((SlotRef::EnchantLapis, px + 34.0, py + 44.0));
+            CRAFT_H
+        } else if let Container::Anvil(_) = self.container {
+            // Java's layout: input + input -> result.
+            out.push((SlotRef::AnvilLeft, px + 26.0, py + 36.0));
+            out.push((SlotRef::AnvilRight, px + 75.0, py + 36.0));
+            out.push((SlotRef::AnvilResult, px + 133.0, py + 36.0));
             CRAFT_H
         } else if let Container::Brewing(_) = self.container {
             // Java's layout: fuel top left, the ingredient over three
@@ -661,6 +674,7 @@ impl Game {
             (Container::Chest(_), _) => "Chest",
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
+            (Container::Anvil(_), _) => "Repair & Disenchant",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
         };
@@ -675,6 +689,8 @@ impl Game {
             brewing_ui(ui, b, px, py, (self.started.elapsed().as_secs_f32() * 8.0) as u32);
         } else if let Container::Enchanting(_) = self.container {
             self.enchanting_ui(ui, px, py);
+        } else if let Container::Anvil(_) = self.container {
+            self.anvil_ui(ui, px, py);
         } else if self.has_top_section() && !matches!(self.container, Container::Chest(_)) {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
@@ -860,8 +876,10 @@ impl Game {
             return self.world.chest(p)?.slots[i];
         }
         match slot {
-            SlotRef::EnchantItem => return self.table[0],
-            SlotRef::EnchantLapis => return self.table[1],
+            SlotRef::EnchantItem => return self.work[0],
+            SlotRef::EnchantLapis | SlotRef::AnvilRight => return self.work[1],
+            SlotRef::AnvilLeft => return self.work[0],
+            SlotRef::AnvilResult => return self.anvil_preview().map(|(r, _)| r.output),
             _ => {}
         }
         if let Container::Brewing(p) = self.container {
@@ -927,6 +945,37 @@ impl Game {
         }
     }
 
+    /// The anvil's plus and arrow, and Java's cost line: green "Enchantment
+    /// Cost: n" (red if short of levels) or "Too Expensive!".
+    fn anvil_ui(&self, ui: &mut Ui, px: f32, py: f32) {
+        let dark = [0.45, 0.45, 0.45, 1.0];
+        // A plus between the inputs and an arrow to the result.
+        ui.rect(px + 55.0, py + 44.0, 13.0, 3.0, dark);
+        ui.rect(px + 60.0, py + 39.0, 3.0, 13.0, dark);
+        ui.rect(px + 102.0, py + 44.0, 18.0, 3.0, dark);
+        for i in 0..5 {
+            ui.rect(px + 120.0 + i as f32, py + 41.0 + i as f32, 1.0, 9.0 - 2.0 * i as f32, dark);
+        }
+        let Some((result, too_expensive)) = self.anvil_preview() else {
+            if self.work[0].is_some() && self.work[1].is_some() {
+                // Inputs that can't combine: Java crosses out the arrow.
+                ui.rect(px + 104.0, py + 38.0, 14.0, 2.0, [0.75, 0.2, 0.2, 1.0]);
+            }
+            return;
+        };
+        let (text, colour) = if too_expensive {
+            ("Too Expensive!".to_string(), [1.0, 0.38, 0.38, 1.0])
+        } else if self.mode == GameMode::Survival && self.vitals.xp.level < result.cost {
+            (format!("Enchantment Cost: {}", result.cost), [1.0, 0.38, 0.38, 1.0])
+        } else {
+            (format!("Enchantment Cost: {}", result.cost), [0.5, 1.0, 0.13, 1.0])
+        };
+        let w = Ui::text_width(&text);
+        let x = px + PANEL_W - 8.0 - w;
+        ui.rect(x - 2.0, py + 58.0, w + 4.0, 11.0, [0.25, 0.25, 0.25, 0.7]);
+        ui.text(x, py + 60.0, &text, colour);
+    }
+
     /// Java's offer tooltip: the clue enchantment with "...?", then the
     /// lapis and levels it costs (red when short).
     pub(super) fn offer_tooltip(&self, ui: &mut Ui, i: usize) {
@@ -935,7 +984,7 @@ impl Game {
         let creative = self.mode == GameMode::Creative;
         let mut lines = vec![(format!("{} . . . ?", e.describe(level)), WHITE)];
         if !creative {
-            let lapis = self.table[1].map_or(0, |s| s.count) as usize;
+            let lapis = self.work[1].map_or(0, |s| s.count) as usize;
             let red = [1.0, 0.33, 0.33, 1.0];
             let grey = [0.67, 0.67, 0.67, 1.0];
             if self.vitals.xp.level < offer.cost {

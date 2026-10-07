@@ -188,7 +188,11 @@ pub mod tex {
     /// boxes sample rows 4..16 of a side).
     pub const ENCHANT_TOP: u8 = LAPIS_BLOCK + 1;
     pub const ENCHANT_SIDE: u8 = ENCHANT_TOP + 1;
-    pub const COUNT: u32 = ENCHANT_SIDE as u32 + 1;
+    pub const IRON_BLOCK: u8 = ENCHANT_SIDE + 1;
+    /// Anvil body, then its top intact, chipped and damaged.
+    pub const ANVIL: u8 = IRON_BLOCK + 1;
+    pub const ANVIL_TOP: u8 = ANVIL + 1;
+    pub const COUNT: u32 = ANVIL_TOP as u32 + 3;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
@@ -377,6 +381,12 @@ impl Block {
     /// Enchants gear for levels and lapis (see `crate::enchant`); nearby
     /// bookshelves raise its offers.
     pub const ENCHANTING_TABLE: Block = Block(213);
+    pub const IRON_BLOCK: Block = Block(214);
+    /// Anvils, chipped anvils and damaged anvils (ids 215..=220), each with
+    /// the top running along z, then along x (see [`Block::anvil`]).
+    pub const ANVIL: Block = Block(215);
+    pub const CHIPPED_ANVIL: Block = Block(217);
+    pub const DAMAGED_ANVIL: Block = Block(219);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -481,6 +491,7 @@ impl Block {
             208 => Shaped::EndPortal,
             209 => Shaped::DragonEgg,
             213 => Shaped::EnchantingTable,
+            215..=220 => Shaped::Anvil { along_x: (self.0 - 215) % 2 == 1 },
             137..=140 => Shaped::Ladder(f(self.0 - 137)),
             141..=148 => Shaped::Gate { facing: f(self.0 - 141), open: self.0 >= 145 },
             149..=164 => {
@@ -489,6 +500,16 @@ impl Block {
             }
             _ => return None,
         })
+    }
+
+    pub fn is_anvil(self) -> bool {
+        matches!(self.shaped(), Some(Shaped::Anvil { .. }))
+    }
+
+    /// The next worse anvil (`None` once a damaged one breaks), keeping
+    /// its direction.
+    pub fn anvil_damaged(self) -> Option<Block> {
+        (self.is_anvil() && self.0 < 219).then(|| Block(self.0 + 2))
     }
 
     pub fn is_ladder(self) -> bool {
@@ -571,6 +592,10 @@ impl Block {
             137..=140 => Some((Block::LADDER, f(self.0 - 137))),
             141..=148 => Some((Block::FENCE_GATE, f((self.0 - 141) % 4))),
             149..=164 => Some((Block::OAK_DOOR, f((self.0 - 149) % 4))),
+            215..=220 => {
+                let along_x = (self.0 - 215) % 2 == 1;
+                Some((Block(self.0 - along_x as u8), if along_x { Facing::East } else { Facing::South }))
+            }
             _ => None,
         }
     }
@@ -586,6 +611,9 @@ impl Block {
         match self.base() {
             // Frames keep their eye.
             Block::END_PORTAL_FRAME => Block(200 + i + if self.0 >= 204 { 4 } else { 0 }),
+            // Anvils turn broadside to whoever places them (Java's facing
+            // is the placer's clockwise), so the top runs across their view.
+            b @ (Block::ANVIL | Block::CHIPPED_ANVIL | Block::DAMAGED_ANVIL) => Block(b.0 + !facing.along_x() as u8),
             b if i == 0 => b,
             Block::FURNACE => Block(46 + i),
             Block::LIT_FURNACE => Block(49 + i),
@@ -784,7 +812,11 @@ impl Block {
             Block::END_PORTAL_FRAME | Block::END_PORTAL | Block::END_GATEWAY => f32::INFINITY,
             Block::DRAGON_EGG => 3.0,
             Block::QUARTZ_ORE | Block::END_STONE | Block::LAPIS_ORE | Block::LAPIS_BLOCK => 3.0,
-            Block::ENCHANTING_TABLE => 5.0,
+            Block::ENCHANTING_TABLE
+            | Block::IRON_BLOCK
+            | Block::ANVIL
+            | Block::CHIPPED_ANVIL
+            | Block::DAMAGED_ANVIL => 5.0,
             Block::NETHER_PORTAL => f32::INFINITY,
             Block::DIRT | Block::SAND | Block::RED_SAND | Block::ICE => 0.5,
             Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL | Block::FARMLAND | Block::WET_FARMLAND | Block::CLAY => {
@@ -837,6 +869,10 @@ impl Block {
             | Block::LAPIS_ORE
             | Block::LAPIS_BLOCK
             | Block::ENCHANTING_TABLE
+            | Block::IRON_BLOCK
+            | Block::ANVIL
+            | Block::CHIPPED_ANVIL
+            | Block::DAMAGED_ANVIL
             | Block::ICE => Some(ToolKind::Pickaxe),
             Block::COBWEB => Some(ToolKind::Sword),
             Block::BOOKSHELF => Some(ToolKind::Axe),
@@ -882,9 +918,12 @@ impl Block {
             | Block::IRON_BARS
             | Block::COBWEB
             | Block::ENCHANTING_TABLE
+            | Block::ANVIL
+            | Block::CHIPPED_ANVIL
+            | Block::DAMAGED_ANVIL
             | Block::NETHER_BRICKS => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
-            Block::IRON_ORE | Block::LAPIS_ORE | Block::LAPIS_BLOCK => Some(1),
+            Block::IRON_ORE | Block::LAPIS_ORE | Block::LAPIS_BLOCK | Block::IRON_BLOCK => Some(1),
             Block::GOLD_ORE | Block::DIAMOND_ORE => Some(2),
             Block::OBSIDIAN => Some(3),
             _ => None,
@@ -901,7 +940,10 @@ impl Block {
             .chain(100..=103)
             .chain(105..=111)
             .chain((112..=132).step_by(4))
-            .chain([136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213])
+            .chain([
+                136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213, 214, 215,
+                217, 219,
+            ])
             .map(Block)
     }
 
@@ -928,7 +970,7 @@ impl Block {
 
     /// Sand, gravel and the dragon egg fall when nothing holds them up.
     pub fn has_gravity(self) -> bool {
-        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG)
+        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG) || self.is_anvil()
     }
 
     /// Whether this block can rest on `below`. Plants need soil and torches
@@ -1186,6 +1228,10 @@ pub enum Shaped {
     DragonEgg,
     /// A 12/16-high table.
     EnchantingTable,
+    /// Java's anvil: a base, a neck and a top running along x or z.
+    Anvil {
+        along_x: bool,
+    },
     Fence,
     /// Faces away from the wall it hangs on.
     Ladder(Facing),
@@ -1415,6 +1461,10 @@ const fn make(id: u8) -> BlockInfo {
         211 => ("lapis lazuli ore", Opaque, all(tex::LAPIS_ORE)),
         212 => ("block of lapis lazuli", Opaque, all(tex::LAPIS_BLOCK)),
         213 => ("enchanting table", Shaped, column(tex::ENCHANT_SIDE, tex::ENCHANT_TOP, tex::OBSIDIAN)),
+        214 => ("block of iron", Opaque, all(tex::IRON_BLOCK)),
+        215 | 216 => ("anvil", Shaped, column(tex::ANVIL, tex::ANVIL_TOP, tex::ANVIL)),
+        217 | 218 => ("chipped anvil", Shaped, column(tex::ANVIL, tex::ANVIL_TOP + 1, tex::ANVIL)),
+        219 | 220 => ("damaged anvil", Shaped, column(tex::ANVIL, tex::ANVIL_TOP + 2, tex::ANVIL)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are
@@ -1731,5 +1781,23 @@ mod tests {
         assert!(Block::LADDER.flat_icon() && !Block::OAK_FENCE.flat_icon());
         assert_eq!(Item::from_name("oak_door"), Some(Item::OAK_DOOR));
         assert_eq!(Block::from_name("oak fence"), Some(Block::OAK_FENCE));
+    }
+
+    #[test]
+    fn anvils_turn_broadside_fall_and_wear_down() {
+        use crate::world::block::Facing;
+        // Placed facing south or north (the placer looks along z), the top runs along x.
+        let placed = Block::ANVIL.with_facing(Facing::South);
+        assert_eq!(placed.shaped(), Some(Shaped::Anvil { along_x: true }));
+        assert_eq!(Block::ANVIL.with_facing(Facing::East).shaped(), Some(Shaped::Anvil { along_x: false }));
+        assert_eq!(placed.base(), Block::ANVIL);
+        assert_eq!(placed.drop(), Some(Block::ANVIL.into()));
+        assert!(placed.has_gravity() && placed.is_anvil() && !Block::IRON_BLOCK.is_anvil());
+        let chipped = placed.anvil_damaged().unwrap();
+        assert_eq!((chipped.base(), chipped.shaped()), (Block::CHIPPED_ANVIL, placed.shaped()));
+        let damaged = chipped.anvil_damaged().unwrap();
+        assert_eq!(damaged.base(), Block::DAMAGED_ANVIL);
+        assert_eq!(damaged.anvil_damaged(), None, "a damaged anvil breaks next");
+        assert_eq!(Item::from_name("chipped anvil"), Some(Item::from(Block::CHIPPED_ANVIL)));
     }
 }

@@ -2,6 +2,7 @@
 
 mod actions;
 mod agents;
+mod anvil;
 mod bed;
 mod bow;
 mod bucket;
@@ -101,6 +102,7 @@ pub(crate) enum Container {
     Chest(IVec3),
     Brewing(IVec3),
     Enchanting(IVec3),
+    Anvil(IVec3),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -154,8 +156,9 @@ struct Game {
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
     /// crafting table. Emptied back into the inventory when it closes.
     craft: crate::crafting::Grid,
-    /// The enchanting table's item and lapis slots while it's open.
-    table: enchanting::TableSlots,
+    /// The open enchanting table's item and lapis slots, or the anvil's two
+    /// inputs; emptied back into the inventory when the screen closes.
+    work: enchanting::WorkSlots,
     container: Container,
     recipe_book: recipe_book::RecipeBook,
     /// First visible row of the creative palette.
@@ -702,7 +705,7 @@ impl Game {
             inventory,
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
-            table: [None; 2],
+            work: [None; 2],
             container: Container::Inventory,
             recipe_book: recipe_book::RecipeBook::default(),
             creative_scroll: 0,
@@ -1019,7 +1022,7 @@ impl Game {
             if let Container::Chest(pos) = self.container {
                 self.chest_sound(pos, 0.8);
             }
-            let table = self.take_table();
+            let table = self.take_work();
             self.inventory.return_stacks(self.craft.take_all().into_iter().chain(table));
             self.craft = crate::crafting::Grid::new(2);
             self.container = Container::Inventory;
@@ -1202,6 +1205,9 @@ impl Game {
             }
             Some(s @ (hud::SlotRef::EnchantItem | hud::SlotRef::EnchantLapis | hud::SlotRef::EnchantOffer(_))) => {
                 self.table_click(s, right)
+            }
+            Some(s @ (hud::SlotRef::AnvilLeft | hud::SlotRef::AnvilRight | hud::SlotRef::AnvilResult)) => {
+                self.anvil_click(s, right)
             }
             Some(hud::SlotRef::Palette(item)) => {
                 // Creative palette: take a full stack, or trash the held one.
@@ -1406,6 +1412,7 @@ impl Game {
                     && (b == Block::CRAFTING_TABLE
                         || b == Block::BREWING_STAND
                         || b == Block::ENCHANTING_TABLE
+                        || b.is_anvil()
                         || b.is_bed()
                         || crate::world::furnace::is_furnace(b)
                         || crate::world::chest::is_chest(b)) =>
@@ -1418,6 +1425,7 @@ impl Game {
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
             Some(Block::BREWING_STAND) => return self.open_brewing(pos),
             Some(Block::ENCHANTING_TABLE) => return self.open_enchanting(pos),
+            Some(b) if b.is_anvil() => return self.open_anvil(pos),
             Some(Block::DRAGON_EGG) => return self.teleport_egg(pos),
             Some(b) if b.is_bed() => return self.use_bed(pos),
             Some(b) if b.is_door() || b.is_gate() => {
@@ -1535,6 +1543,7 @@ impl Game {
                 Some(b) if crate::world::chest::is_chest(b) => self.open_chest(p),
                 Some(Block::BREWING_STAND) => self.open_brewing(p),
                 Some(Block::ENCHANTING_TABLE) => self.open_enchanting(p),
+                Some(b) if b.is_anvil() => self.open_anvil(p),
                 _ => log::warn!("--open-block {p}: no container there"),
             }
         }
@@ -1630,7 +1639,7 @@ impl Game {
         props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
-        inventory.return_stacks(self.craft.cells.iter().chain(&self.table).flatten().copied());
+        inventory.return_stacks(self.craft.cells.iter().chain(&self.work).flatten().copied());
         props.insert("inventory".to_string(), inventory.serialize());
         props.insert("health".to_string(), self.vitals.health.to_string());
         props.insert("air".to_string(), format!("{:.2}", self.vitals.air));

@@ -79,8 +79,8 @@ pub(super) struct Body {
     attack_held: bool,
     attack_cooldown: f64,
     container: Container,
-    /// The enchanting table's slots while this player has it open.
-    table: super::enchanting::TableSlots,
+    /// The open enchanting table's or anvil's input slots.
+    work: super::enchanting::WorkSlots,
 }
 
 impl Default for Body {
@@ -94,7 +94,7 @@ impl Default for Body {
             attack_held: false,
             attack_cooldown: 0.0,
             container: Container::Inventory,
-            table: [None; 2],
+            work: [None; 2],
         }
     }
 }
@@ -594,19 +594,19 @@ impl Game {
         // With the bodies: bed occupancy pairs `sleeping` with `player`.
         swap(&mut self.sleeping, &mut bot.agent.sleeping);
         swap(&mut self.container, &mut body.container);
-        swap(&mut self.table, &mut body.table);
+        swap(&mut self.work, &mut body.work);
         true
     }
 
-    /// Controller player `name`'s enchanting table slots.
-    pub(super) fn pad_table(&self, name: &str) -> super::enchanting::TableSlots {
-        self.pads.seats.iter().find(|s| s.name == name).map_or([None; 2], |s| s.body.table)
+    /// Controller player `name`'s enchanting table or anvil input slots.
+    pub(super) fn pad_work(&self, name: &str) -> super::enchanting::WorkSlots {
+        self.pads.seats.iter().find(|s| s.name == name).map_or([None; 2], |s| s.body.work)
     }
 
-    /// Empties controller player `name`'s enchanting table slots.
-    pub(super) fn take_pad_table(&mut self, name: &str) -> Vec<crate::inventory::Stack> {
+    /// Empties controller player `name`'s enchanting table or anvil slots.
+    pub(super) fn take_pad_work(&mut self, name: &str) -> Vec<crate::inventory::Stack> {
         let Some(seat) = self.pads.seats.iter_mut().find(|s| s.name == name) else { return Vec::new() };
-        seat.body.table.iter_mut().filter_map(Option::take).collect()
+        seat.body.work.iter_mut().filter_map(Option::take).collect()
     }
 
     /// Runs host interaction code as controller player `i`. While `f` runs,
@@ -657,7 +657,8 @@ impl Game {
                 let eye = agent.player.eye();
                 let gone = match menu {
                     Menu::Items {
-                        tab: Tab::Chest(pos) | Tab::Furnace(pos) | Tab::Brewing(pos) | Tab::Enchanting(pos),
+                        tab:
+                            Tab::Chest(pos) | Tab::Furnace(pos) | Tab::Brewing(pos) | Tab::Enchanting(pos) | Tab::Anvil(pos),
                         ..
                     } => {
                         let still = |b: Block| {
@@ -665,6 +666,7 @@ impl Game {
                                 || crate::world::furnace::is_furnace(b)
                                 || b == Block::BREWING_STAND
                                 || b == Block::ENCHANTING_TABLE
+                                || b.is_anvil()
                         };
                         !self.world.get_block(pos).is_some_and(still)
                             || eye.distance(pos.as_dvec3() + 0.5) > super::REACH + 1.0
@@ -746,6 +748,8 @@ impl Game {
             seat.open(Menu::items(Tab::Brewing(pos)));
         } else if block == Block::ENCHANTING_TABLE {
             seat.open(Menu::items(Tab::Enchanting(pos)));
+        } else if block.is_anvil() {
+            seat.open(Menu::items(Tab::Anvil(pos)));
         } else if block.is_bed() {
             self.pad_sleep(i, pos);
         }

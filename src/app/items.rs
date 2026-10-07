@@ -42,6 +42,11 @@ impl Game {
             Container::Furnace(pos) => self.world.furnace(pos).is_none(),
             Container::Chest(pos) => self.world.chest(pos).is_none(),
             Container::Brewing(pos) => self.world.brewing_stand(pos).is_none(),
+            Container::Enchanting(pos) => {
+                self.world.get_block(pos) != Some(crate::world::block::Block::ENCHANTING_TABLE)
+            }
+            // An anvil can break in use, or fall away.
+            Container::Anvil(pos) => !self.world.get_block(pos).is_some_and(|b| b.is_anvil()),
             _ => false,
         };
         if gone && self.inventory_open {
@@ -205,7 +210,7 @@ impl Game {
     pub(super) fn drop_everything(&mut self) {
         let mut stacks = self.inventory.take_all();
         stacks.extend(self.craft.take_all());
-        stacks.extend(self.take_table());
+        stacks.extend(self.take_work());
         for stack in stacks {
             self.mobs.entities.scatter(stack, self.player.pos);
         }

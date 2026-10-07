@@ -31,6 +31,7 @@ impl Game {
                 || crate::world::chest::is_chest(b)
                 || b == Block::BREWING_STAND
                 || b == Block::ENCHANTING_TABLE
+                || b.is_anvil()
         })
     }
 
