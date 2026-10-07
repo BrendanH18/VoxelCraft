@@ -135,7 +135,7 @@ pub fn attack_cooldown(held: Option<Item>) -> f64 {
 /// Experience a harvested block drops (Java's ore ranges; silk touch
 /// skips it: see [`mined_xp`]).
 pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {
-    let (lo, hi) = match block {
+    let (lo, hi) = match block.as_stone_ore() {
         Block::COAL_ORE => (0, 2),
         Block::DIAMOND_ORE | Block::EMERALD_ORE => (3, 7),
         Block::REDSTONE_ORE => (1, 5),
@@ -177,7 +177,9 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::CLAY
             | Block::MELON
             | Block::COBWEB
-    ) || b.is_leaves();
+            | Block::DEEPSLATE
+    ) || b.is_leaves()
+        || b.is_deepslate_ore();
     (silky && Item::from(b).is_valid()).then(|| Item::from(b))
 }
 

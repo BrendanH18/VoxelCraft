@@ -33,16 +33,22 @@ pub struct Furnace {
     pub xp: f32,
 }
 
+fn ore_of(item: Item) -> Option<Block> {
+    item.block().map(Block::as_stone_ore)
+}
+
 /// What smelting `item` produces.
 pub fn smelt(item: Item) -> Option<Item> {
     let b = Item::from_block;
     Some(match item {
-        i if i == b(Block::IRON_ORE) || i == Item::RAW_IRON => Item::IRON_INGOT,
-        i if i == b(Block::GOLD_ORE) || i == Item::RAW_GOLD => Item::GOLD_INGOT,
-        i if i == b(Block::COPPER_ORE) || i == Item::RAW_COPPER => Item::COPPER_INGOT,
-        i if i == b(Block::COAL_ORE) => Item::COAL,
-        i if i == b(Block::DIAMOND_ORE) => Item::DIAMOND,
-        i if i == b(Block::LAPIS_ORE) => Item::LAPIS_LAZULI,
+        i if ore_of(i) == Some(Block::IRON_ORE) || i == Item::RAW_IRON => Item::IRON_INGOT,
+        i if ore_of(i) == Some(Block::GOLD_ORE) || i == Item::RAW_GOLD => Item::GOLD_INGOT,
+        i if ore_of(i) == Some(Block::COPPER_ORE) || i == Item::RAW_COPPER => Item::COPPER_INGOT,
+        i if ore_of(i) == Some(Block::COAL_ORE) => Item::COAL,
+        i if ore_of(i) == Some(Block::DIAMOND_ORE) => Item::DIAMOND,
+        i if ore_of(i) == Some(Block::LAPIS_ORE) => Item::LAPIS_LAZULI,
+        i if i == b(Block::STONE) => b(Block::SMOOTH_STONE),
+        i if i == b(Block::COBBLED_DEEPSLATE) => b(Block::DEEPSLATE),
         i if i == b(Block::ANCIENT_DEBRIS) => Item::NETHERITE_SCRAP,
         i if i == b(Block::SAND) => b(Block::GLASS),
         i if i == b(Block::COBBLESTONE) => b(Block::STONE),

@@ -306,21 +306,58 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         | tex::LAPIS_ORE
         | tex::COPPER_ORE
         | tex::REDSTONE_ORE
-        | tex::EMERALD_ORE => {
+        | tex::EMERALD_ORE
+        | tex::DEEPSLATE_COAL_ORE
+        | tex::DEEPSLATE_IRON_ORE
+        | tex::DEEPSLATE_COPPER_ORE
+        | tex::DEEPSLATE_GOLD_ORE
+        | tex::DEEPSLATE_REDSTONE_ORE
+        | tex::DEEPSLATE_EMERALD_ORE
+        | tex::DEEPSLATE_LAPIS_ORE
+        | tex::DEEPSLATE_DIAMOND_ORE => {
             let ore = match layer {
-                tex::COAL_ORE => [40, 40, 40],
-                tex::IRON_ORE => [216, 175, 147],
-                tex::GOLD_ORE => [250, 220, 70],
-                tex::LAPIS_ORE => [30, 70, 185],
-                tex::COPPER_ORE => [184, 99, 62],
-                tex::REDSTONE_ORE => [176, 16, 16],
-                tex::EMERALD_ORE => [20, 168, 72],
+                tex::COAL_ORE | tex::DEEPSLATE_COAL_ORE => [40, 40, 40],
+                tex::IRON_ORE | tex::DEEPSLATE_IRON_ORE => [216, 175, 147],
+                tex::GOLD_ORE | tex::DEEPSLATE_GOLD_ORE => [250, 220, 70],
+                tex::LAPIS_ORE | tex::DEEPSLATE_LAPIS_ORE => [30, 70, 185],
+                tex::COPPER_ORE | tex::DEEPSLATE_COPPER_ORE => [184, 99, 62],
+                tex::REDSTONE_ORE | tex::DEEPSLATE_REDSTONE_ORE => [176, 16, 16],
+                tex::EMERALD_ORE | tex::DEEPSLATE_EMERALD_ORE => [20, 168, 72],
                 _ => [95, 230, 225],
             };
+            let deep = matches!(
+                layer,
+                tex::DEEPSLATE_COAL_ORE
+                    | tex::DEEPSLATE_IRON_ORE
+                    | tex::DEEPSLATE_COPPER_ORE
+                    | tex::DEEPSLATE_GOLD_ORE
+                    | tex::DEEPSLATE_REDSTONE_ORE
+                    | tex::DEEPSLATE_EMERALD_ORE
+                    | tex::DEEPSLATE_LAPIS_ORE
+                    | tex::DEEPSLATE_DIAMOND_ORE
+            );
             let pts = points(layer, 5);
             let (d1, _, _) = voronoi(x, y, &pts);
-            if d1 < 1.5 { shade(ore, 0.85 + r * 0.25) } else { pixel(tex::STONE, x, y) }
+            if d1 < 1.5 {
+                shade(ore, 0.85 + r * 0.25)
+            } else if deep {
+                pixel(tex::DEEPSLATE, x, y)
+            } else {
+                pixel(tex::STONE, x, y)
+            }
         }
+        tex::GRANITE
+        | tex::POLISHED_GRANITE
+        | tex::DIORITE
+        | tex::POLISHED_DIORITE
+        | tex::ANDESITE
+        | tex::POLISHED_ANDESITE
+        | tex::TUFF
+        | tex::CALCITE
+        | tex::SMOOTH_STONE
+        | tex::DEEPSLATE
+        | tex::COBBLED_DEEPSLATE
+        | tex::POLISHED_DEEPSLATE => rock(layer, x, y, r),
         tex::CACTUS_SIDE => {
             let line = x % 4 == 1;
             let spike = rnd(layer, x, y, 8) < 0.05;
@@ -892,6 +929,67 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         _ => {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
+        }
+    }
+}
+
+/// Stone variants in the same noisy style as [`pixel`]'s stone and cobble.
+fn rock(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
+    match layer {
+        tex::GRANITE => {
+            let c = if rnd(layer, x, y, 2) < 0.22 {
+                [112, 68, 58]
+            } else if rnd(layer, x / 2, y / 2, 3) < 0.35 {
+                [176, 128, 108]
+            } else {
+                [149, 103, 86]
+            };
+            shade(c, 0.9 + r * 0.16)
+        }
+        tex::POLISHED_GRANITE => {
+            let blot = rnd(layer, x / 4, y / 4, 4);
+            shade([168, 114, 98], 0.9 + blot * 0.12 + r * 0.04)
+        }
+        tex::DIORITE => {
+            let c = if rnd(layer, x, y, 2) < 0.08 {
+                [60, 60, 64]
+            } else if rnd(layer, x, y, 3) < 0.15 {
+                [170, 170, 174]
+            } else {
+                [224, 224, 226]
+            };
+            shade(c, 0.94 + r * 0.08)
+        }
+        tex::POLISHED_DIORITE => shade([232, 232, 234], 0.94 + rnd(layer, x / 4, y / 4, 4) * 0.08),
+        tex::ANDESITE => {
+            let c = if rnd(layer, x, y, 2) < 0.2 { [96, 96, 98] } else { [136, 136, 137] };
+            shade(c, 0.88 + r * 0.18)
+        }
+        tex::POLISHED_ANDESITE => shade([148, 148, 150], 0.92 + rnd(layer, x / 4, y / 4, 4) * 0.1),
+        tex::TUFF => {
+            let pit = rnd(layer, x, y, 5) < 0.12;
+            shade(if pit { [72, 74, 66] } else { [108, 109, 102] }, if pit { 0.7 } else { 0.9 + r * 0.16 })
+        }
+        tex::CALCITE => {
+            let crack = (x + y).is_multiple_of(7) && rnd(layer, x, y, 6) < 0.5;
+            shade(if crack { [186, 186, 180] } else { [223, 224, 216] }, 0.94 + r * 0.08)
+        }
+        tex::SMOOTH_STONE => shade([158, 158, 158], 0.96 + r * 0.06),
+        tex::DEEPSLATE => {
+            let band = y.is_multiple_of(4);
+            let c = if band { [58, 58, 64] } else { [80, 80, 86] };
+            shade(c, 0.88 + r * 0.16)
+        }
+        tex::COBBLED_DEEPSLATE => {
+            let pts = points(layer, 7);
+            let (d1, d2, i) = voronoi(x, y, &pts);
+            let c = [72, 72, 78];
+            if d2 - d1 < 1.1 { shade(c, 0.45) } else { shade(c, 0.75 + rnd(layer, i, 0, 4) * 0.3) }
+        }
+        _ => {
+            // Polished deepslate: dark tiles.
+            let edge = x.is_multiple_of(8) || y.is_multiple_of(4);
+            shade([64, 64, 70], if edge { 0.7 } else { 0.95 + r * 0.08 })
         }
     }
 }

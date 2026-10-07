@@ -12,8 +12,11 @@
 //! and `TrapezoidHeight`.
 //!
 //! Veins are painted per Java 16×16 cell, including cells that only overlap
-//! this chunk, and only stone (later deepslate) is replaced. Buried variants
-//! skip blocks with an air neighbour inside the chunk.
+//! this chunk, and only stone or deepslate is replaced. A vein in deepslate
+//! writes the deepslate ore; granite, diorite, andesite and tuff (the
+//! `ore_granite` family, size 64) replace either. Buried variants skip
+//! blocks with an air neighbour inside the chunk. Calcite is not a placed
+//! feature in 1.21 (it only occurs in amethyst geodes).
 
 use glam::IVec3;
 
@@ -26,8 +29,6 @@ use super::terrain::Biome;
 /// Java y = -64 lands on this world's bedrock.
 pub const JAVA_Y_SHIFT: i32 = 64;
 const JAVA_CELL: i32 = 16;
-/// How far a size-64 blob can reach; smaller veins are well inside this.
-const VEIN_REACH: i32 = 16;
 
 #[derive(Clone, Copy)]
 enum Tries {
@@ -242,6 +243,72 @@ const FEATURES: &[Feature] = &[
         where_: Where::Mountains,
         ore: Block::EMERALD_ORE,
     },
+    // `ore_granite` / `ore_diorite` / `ore_andesite`: two blobs below the
+    // old sea level, and a rare one above. Size 64, no air discard.
+    Feature {
+        salt: 0x6A01,
+        tries: Tries::Count(2),
+        band: Band::Uniform(j(0), j(60)),
+        size: 64,
+        discard: 0.0,
+        where_: Where::Overworld,
+        ore: Block::GRANITE,
+    },
+    Feature {
+        salt: 0x6A02,
+        tries: Tries::Rarity(6),
+        band: Band::Uniform(j(64), j(128)),
+        size: 64,
+        discard: 0.0,
+        where_: Where::Overworld,
+        ore: Block::GRANITE,
+    },
+    Feature {
+        salt: 0xD101,
+        tries: Tries::Count(2),
+        band: Band::Uniform(j(0), j(60)),
+        size: 64,
+        discard: 0.0,
+        where_: Where::Overworld,
+        ore: Block::DIORITE,
+    },
+    Feature {
+        salt: 0xD102,
+        tries: Tries::Rarity(6),
+        band: Band::Uniform(j(64), j(128)),
+        size: 64,
+        discard: 0.0,
+        where_: Where::Overworld,
+        ore: Block::DIORITE,
+    },
+    Feature {
+        salt: 0xA401,
+        tries: Tries::Count(2),
+        band: Band::Uniform(j(0), j(60)),
+        size: 64,
+        discard: 0.0,
+        where_: Where::Overworld,
+        ore: Block::ANDESITE,
+    },
+    Feature {
+        salt: 0xA402,
+        tries: Tries::Rarity(6),
+        band: Band::Uniform(j(64), j(128)),
+        size: 64,
+        discard: 0.0,
+        where_: Where::Overworld,
+        ore: Block::ANDESITE,
+    },
+    // `ore_tuff`: two blobs from the bottom of the world up to Java y = 0.
+    Feature {
+        salt: 0x7F01,
+        tries: Tries::Count(2),
+        band: Band::Uniform(j(-64), j(0)),
+        size: 64,
+        discard: 0.0,
+        where_: Where::Overworld,
+        ore: Block::TUFF,
+    },
 ];
 
 fn band_limits(band: Band) -> (i32, i32) {
@@ -279,16 +346,19 @@ fn overlaps_chunk(band: Band, reach: i32, base_y: i32) -> bool {
     max + reach >= base_y && min - reach < base_y + CHUNK_SIZE_I
 }
 
-/// Replace stone in `blocks` with ore veins that can reach this chunk.
+/// Replace stone and deepslate in `blocks` with veins that can reach this chunk.
 pub fn paint(seed: u64, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, biome_at: impl Fn(i32, i32) -> Biome) {
-    let min_cx = (base.x - VEIN_REACH).div_euclid(JAVA_CELL);
-    let max_cx = (base.x + CHUNK_SIZE_I - 1 + VEIN_REACH).div_euclid(JAVA_CELL);
-    let min_cz = (base.z - VEIN_REACH).div_euclid(JAVA_CELL);
-    let max_cz = (base.z + CHUNK_SIZE_I - 1 + VEIN_REACH).div_euclid(JAVA_CELL);
     for feature in FEATURES {
-        if !overlaps_chunk(feature.band, vein_reach(feature.size), base.y) {
+        let reach = vein_reach(feature.size);
+        if !overlaps_chunk(feature.band, reach, base.y) {
             continue;
         }
+        // Each feature scans only the cells its own blob can reach, so a
+        // size-64 rock does not widen the search for a size-4 diamond vein.
+        let min_cx = (base.x - reach).div_euclid(JAVA_CELL);
+        let max_cx = (base.x + CHUNK_SIZE_I - 1 + reach).div_euclid(JAVA_CELL);
+        let min_cz = (base.z - reach).div_euclid(JAVA_CELL);
+        let max_cz = (base.z + CHUNK_SIZE_I - 1 + reach).div_euclid(JAVA_CELL);
         for cz in min_cz..=max_cz {
             for cx in min_cx..=max_cx {
                 paint_cell(seed, feature, cx, cz, blocks, base, &biome_at);
@@ -389,12 +459,26 @@ fn place_vein(rng: &mut Rng, origin: IVec3, feature: &Feature, blocks: &mut [Blo
         if radius < 0.0 {
             continue;
         }
-        let y_lo = (cy - radius).floor() as i32;
-        let y_hi = (cy + radius).floor() as i32;
-        let x_lo = (cx - radius).floor() as i32;
-        let x_hi = (cx + radius).floor() as i32;
-        let z_lo = (cz - radius).floor() as i32;
-        let z_hi = (cz + radius).floor() as i32;
+        let mut y_lo = (cy - radius).floor() as i32;
+        let mut y_hi = (cy + radius).floor() as i32;
+        let mut x_lo = (cx - radius).floor() as i32;
+        let mut x_hi = (cx + radius).floor() as i32;
+        let mut z_lo = (cz - radius).floor() as i32;
+        let mut z_hi = (cz + radius).floor() as i32;
+        // Partial discard rolls once per ellipsoid cell, including cells
+        // this chunk does not own. Solid blobs have no roll, so they can
+        // be clipped to the chunk.
+        if !(feature.discard > 0.0 && feature.discard < 1.0) {
+            x_lo = x_lo.max(base.x);
+            x_hi = x_hi.min(base.x + CHUNK_SIZE_I - 1);
+            y_lo = y_lo.max(base.y);
+            y_hi = y_hi.min(base.y + CHUNK_SIZE_I - 1);
+            z_lo = z_lo.max(base.z);
+            z_hi = z_hi.min(base.z + CHUNK_SIZE_I - 1);
+            if x_lo > x_hi || y_lo > y_hi || z_lo > z_hi {
+                continue;
+            }
+        }
         for y in y_lo..=y_hi {
             let dy = (f64::from(y) + 0.5 - cy) / radius;
             if dy * dy >= 1.0 || !(1..256).contains(&y) {
@@ -430,12 +514,16 @@ fn try_place(feature: &Feature, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3,
         return;
     }
     let i = index(local.x as usize, local.y as usize, local.z as usize);
-    if blocks[i] != Block::STONE {
-        if feature.discard > 0.0 && feature.discard < 1.0 {
-            let _ = rng.unit();
+    let placed = match blocks[i] {
+        Block::STONE => feature.ore,
+        Block::DEEPSLATE => deepslate_variant(feature.ore),
+        _ => {
+            if feature.discard > 0.0 && feature.discard < 1.0 {
+                let _ = rng.unit();
+            }
+            return;
         }
-        return;
-    }
+    };
     if feature.discard > 0.0
         && feature.discard < 1.0
         && rng.unit() < f64::from(feature.discard)
@@ -446,7 +534,22 @@ fn try_place(feature: &Feature, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3,
     if feature.discard >= 1.0 && exposed(blocks, base, p) {
         return;
     }
-    blocks[i] = feature.ore;
+    blocks[i] = placed;
+}
+
+/// Deepslate ore for a stone ore. Rocks (granite and the rest) stay themselves.
+fn deepslate_variant(ore: Block) -> Block {
+    match ore {
+        Block::COAL_ORE => Block::DEEPSLATE_COAL_ORE,
+        Block::IRON_ORE => Block::DEEPSLATE_IRON_ORE,
+        Block::COPPER_ORE => Block::DEEPSLATE_COPPER_ORE,
+        Block::GOLD_ORE => Block::DEEPSLATE_GOLD_ORE,
+        Block::REDSTONE_ORE => Block::DEEPSLATE_REDSTONE_ORE,
+        Block::EMERALD_ORE => Block::DEEPSLATE_EMERALD_ORE,
+        Block::LAPIS_ORE => Block::DEEPSLATE_LAPIS_ORE,
+        Block::DIAMOND_ORE => Block::DEEPSLATE_DIAMOND_ORE,
+        other => other,
+    }
 }
 
 fn exposed(blocks: &[Block; CHUNK_VOLUME], base: IVec3, p: IVec3) -> bool {
@@ -494,6 +597,9 @@ mod tests {
         let mut diamond = 0;
         let mut diamond_y = 0i64;
         let mut copper_y = 0i64;
+        let mut stone_below = 0;
+        let mut deepslate = 0;
+        let mut granite = 0;
         for cx in 0..3 {
             for cz in 0..3 {
                 for cy in 0..4 {
@@ -508,17 +614,22 @@ mod tests {
                                 assert_eq!(b, again.get(x, y, z), "ore painting is a pure function of the seed");
                                 let wy = base_y + y as i32;
                                 match b {
-                                    Block::COPPER_ORE => {
+                                    Block::COPPER_ORE | Block::DEEPSLATE_COPPER_ORE => {
                                         copper += 1;
                                         copper_y += i64::from(wy);
                                     }
-                                    Block::IRON_ORE => iron += 1,
-                                    Block::DIAMOND_ORE => {
+                                    Block::IRON_ORE | Block::DEEPSLATE_IRON_ORE => iron += 1,
+                                    Block::DIAMOND_ORE | Block::DEEPSLATE_DIAMOND_ORE => {
                                         diamond += 1;
                                         diamond_y += i64::from(wy);
                                         assert!(wy < 100, "shifted diamond stays deep");
                                     }
-                                    Block::REDSTONE_ORE => assert!(wy < 90, "redstone stays in the lower band"),
+                                    Block::REDSTONE_ORE | Block::DEEPSLATE_REDSTONE_ORE => {
+                                        assert!(wy < 90, "redstone stays in the lower band");
+                                    }
+                                    Block::STONE if wy < 64 => stone_below += 1,
+                                    Block::DEEPSLATE => deepslate += 1,
+                                    Block::GRANITE => granite += 1,
                                     _ => {}
                                 }
                             }
@@ -530,6 +641,9 @@ mod tests {
         assert!(copper > 20 && iron > 20, "copper {copper}, iron {iron}");
         assert!(diamond > 0, "diamond generates near bedrock");
         assert!(diamond_y / i64::from(diamond) < copper_y / i64::from(copper));
+        assert_eq!(stone_below, 0, "stone below the deepslate line is replaced");
+        assert!(deepslate > 100, "deepslate fills the bottom of the world");
+        assert!(granite > 20, "granite blobs generate, got {granite}");
     }
 
     /// The cull distance has to cover every block `place_vein` can write,

@@ -69,7 +69,7 @@ impl World {
         let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
         out.extend(block.drop().map(|item| Stack::new(item, 1)));
-        match block {
+        match block.as_stone_ore() {
             // Java's ore bonus: the drop times 1 + max(0, rand(fortune + 2) - 1).
             Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE | Block::EMERALD_ORE
                 if fortune > 0 =>

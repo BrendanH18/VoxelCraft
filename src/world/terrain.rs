@@ -19,6 +19,10 @@ use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
 use super::noise::{Perlin, hash_f, hash3};
 
 pub const SEA_LEVEL: i32 = 62;
+/// Java's deepslate starts at y = 0. Bedrock here is y = 0, so that line
+/// lands at y = 64, and the eight layers above it blend back to stone.
+const DEEPSLATE_Y: i32 = 64;
+const DEEPSLATE_BLEND: i32 = 8;
 /// Caves carved at or below this height fill with lava.
 pub const LAVA_LEVEL: i32 = 10;
 const TREE_CELL: i32 = 5;
@@ -546,6 +550,9 @@ impl Generator {
                 let lz = (z - base.z).clamp(0, CHUNK_SIZE_I - 1) as usize;
                 cols[lz][lx].biome
             };
+            if base.y < DEEPSLATE_Y + DEEPSLATE_BLEND {
+                self.paint_deepslate(blocks.as_mut(), base);
+            }
             super::ore::paint(self.seed, blocks.as_mut(), base, biome_at);
         }
         if base.y <= max_h + TREE_TOP && top >= min_h {
@@ -557,6 +564,33 @@ impl Generator {
         }
         self.dungeons.paint(self, &mut blocks, base);
         ChunkData::from_dense(blocks)
+    }
+
+    /// Stone below Java's deepslate line becomes deepslate. The blend is a
+    /// per-block hash, only on the eight transition layers.
+    fn paint_deepslate(&self, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
+        let top = (DEEPSLATE_Y + DEEPSLATE_BLEND - 1 - base.y).min(CHUNK_SIZE_I - 1);
+        if top < 0 {
+            return;
+        }
+        for z in 0..CHUNK_SIZE {
+            for y in 0..=top as usize {
+                let wy = base.y + y as i32;
+                let solid = wy < DEEPSLATE_Y;
+                for x in 0..CHUNK_SIZE {
+                    let i = index(x, y, z);
+                    if blocks[i] != Block::STONE {
+                        continue;
+                    }
+                    if solid
+                        || hash_f(base.x + x as i32, wy, base.z + z as i32, self.seed)
+                            < (DEEPSLATE_Y + DEEPSLATE_BLEND - wy) as f32 / DEEPSLATE_BLEND as f32
+                    {
+                        blocks[i] = Block::DEEPSLATE;
+                    }
+                }
+            }
+        }
     }
 
     /// Unmodified terrain at one point, used to validate a monster room

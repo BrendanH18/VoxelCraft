@@ -175,6 +175,11 @@ const GLASS: Ingredient = &[b(Block::GLASS)];
 const STONE: Ingredient = &[b(Block::STONE)];
 const SUGAR_CANE: Ingredient = &[b(Block::SUGAR_CANE)];
 const COBBLESTONE: Ingredient = &[b(Block::COBBLESTONE)];
+const GRANITE: Ingredient = &[b(Block::GRANITE)];
+const DIORITE: Ingredient = &[b(Block::DIORITE)];
+const ANDESITE: Ingredient = &[b(Block::ANDESITE)];
+const COBBLED_DEEPSLATE: Ingredient = &[b(Block::COBBLED_DEEPSLATE)];
+const QUARTZ: Ingredient = &[Item::NETHER_QUARTZ];
 const NETHER_BRICKS: Ingredient = &[b(Block::NETHER_BRICKS)];
 const STICK: Ingredient = &[Item::STICK];
 const LAPIS_BLOCK: Ingredient = &[b(Block::LAPIS_BLOCK)];
@@ -229,6 +234,14 @@ pub fn recipes() -> &'static [Recipe] {
             shapeless(&[COPPER_BLOCK], Item::COPPER_INGOT, 9),
             shaped(&["###", "###", "###"], &[('#', &[Item::EMERALD])], b(Block::EMERALD_BLOCK), 1),
             shapeless(&[EMERALD_BLOCK], Item::EMERALD, 9),
+            shaped(&["##", "##"], &[('#', GRANITE)], b(Block::POLISHED_GRANITE), 4),
+            shaped(&["##", "##"], &[('#', DIORITE)], b(Block::POLISHED_DIORITE), 4),
+            shaped(&["##", "##"], &[('#', ANDESITE)], b(Block::POLISHED_ANDESITE), 4),
+            shaped(&["##", "##"], &[('#', COBBLED_DEEPSLATE)], b(Block::POLISHED_DEEPSLATE), 4),
+            // Vanilla: diorite and quartz, no stonecutter.
+            shaped(&["CQ", "QC"], &[('C', COBBLESTONE), ('Q', QUARTZ)], b(Block::DIORITE), 2),
+            shaped(&["DQ", "QD"], &[('D', DIORITE), ('Q', QUARTZ)], b(Block::GRANITE), 1),
+            shaped(&["CD", "DC"], &[('C', COBBLESTONE), ('D', DIORITE)], b(Block::ANDESITE), 2),
             shapeless(
                 &[NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD],
                 Item::NETHERITE_INGOT,
@@ -565,5 +578,25 @@ mod tests {
         pack(Item::RAW_COPPER, Block::RAW_COPPER_BLOCK);
         pack(Item::COPPER_INGOT, Block::COPPER_BLOCK);
         pack(Item::EMERALD, Block::EMERALD_BLOCK);
+        let mut polished = Grid::new(2);
+        for cell in &mut polished.cells[..4] {
+            *cell = Some(Stack::new(Block::GRANITE, 1));
+        }
+        assert_eq!(polished.result(), Some(Stack::new(Block::POLISHED_GRANITE, 4)));
+        let mut andesite = Grid::new(2);
+        andesite.cells[0] = Some(Stack::new(Block::COBBLESTONE, 1));
+        andesite.cells[1] = Some(Stack::new(Block::DIORITE, 1));
+        andesite.cells[2] = Some(Stack::new(Block::DIORITE, 1));
+        andesite.cells[3] = Some(Stack::new(Block::COBBLESTONE, 1));
+        assert_eq!(andesite.result(), Some(Stack::new(Block::ANDESITE, 2)));
+        assert_eq!(
+            crate::world::furnace::smelt(Item::from_block(Block::STONE)),
+            Some(Item::from_block(Block::SMOOTH_STONE))
+        );
+        assert_eq!(
+            crate::world::furnace::smelt(Item::from_block(Block::COBBLED_DEEPSLATE)),
+            Some(Item::from_block(Block::DEEPSLATE))
+        );
+        assert_eq!(crate::world::furnace::smelt(Item::from_block(Block::DEEPSLATE_IRON_ORE)), Some(Item::IRON_INGOT));
     }
 }

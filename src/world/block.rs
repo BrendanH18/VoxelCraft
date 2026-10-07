@@ -213,7 +213,27 @@ pub mod tex {
     pub const RAW_COPPER_BLOCK: u16 = RAW_GOLD_BLOCK + 1;
     pub const COPPER_BLOCK: u16 = RAW_COPPER_BLOCK + 1;
     pub const EMERALD_BLOCK: u16 = COPPER_BLOCK + 1;
-    pub const COUNT: u32 = EMERALD_BLOCK as u32 + 1;
+    pub const GRANITE: u16 = EMERALD_BLOCK + 1;
+    pub const POLISHED_GRANITE: u16 = GRANITE + 1;
+    pub const DIORITE: u16 = POLISHED_GRANITE + 1;
+    pub const POLISHED_DIORITE: u16 = DIORITE + 1;
+    pub const ANDESITE: u16 = POLISHED_DIORITE + 1;
+    pub const POLISHED_ANDESITE: u16 = ANDESITE + 1;
+    pub const TUFF: u16 = POLISHED_ANDESITE + 1;
+    pub const CALCITE: u16 = TUFF + 1;
+    pub const SMOOTH_STONE: u16 = CALCITE + 1;
+    pub const DEEPSLATE: u16 = SMOOTH_STONE + 1;
+    pub const COBBLED_DEEPSLATE: u16 = DEEPSLATE + 1;
+    pub const POLISHED_DEEPSLATE: u16 = COBBLED_DEEPSLATE + 1;
+    pub const DEEPSLATE_COAL_ORE: u16 = POLISHED_DEEPSLATE + 1;
+    pub const DEEPSLATE_IRON_ORE: u16 = DEEPSLATE_COAL_ORE + 1;
+    pub const DEEPSLATE_COPPER_ORE: u16 = DEEPSLATE_IRON_ORE + 1;
+    pub const DEEPSLATE_GOLD_ORE: u16 = DEEPSLATE_COPPER_ORE + 1;
+    pub const DEEPSLATE_REDSTONE_ORE: u16 = DEEPSLATE_GOLD_ORE + 1;
+    pub const DEEPSLATE_EMERALD_ORE: u16 = DEEPSLATE_REDSTONE_ORE + 1;
+    pub const DEEPSLATE_LAPIS_ORE: u16 = DEEPSLATE_EMERALD_ORE + 1;
+    pub const DEEPSLATE_DIAMOND_ORE: u16 = DEEPSLATE_LAPIS_ORE + 1;
+    pub const COUNT: u32 = DEEPSLATE_DIAMOND_ORE as u32 + 1;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -424,6 +444,48 @@ impl Block {
     pub const RAW_COPPER_BLOCK: Block = Block(230);
     pub const COPPER_BLOCK: Block = Block(231);
     pub const EMERALD_BLOCK: Block = Block(232);
+    pub const GRANITE: Block = Block(233);
+    pub const POLISHED_GRANITE: Block = Block(234);
+    pub const DIORITE: Block = Block(235);
+    pub const POLISHED_DIORITE: Block = Block(236);
+    pub const ANDESITE: Block = Block(237);
+    pub const POLISHED_ANDESITE: Block = Block(238);
+    pub const TUFF: Block = Block(239);
+    pub const CALCITE: Block = Block(240);
+    /// Smelted from stone. Not placed by worldgen.
+    pub const SMOOTH_STONE: Block = Block(241);
+    /// Replaces stone below the shifted deepslate line (Java y = 0).
+    pub const DEEPSLATE: Block = Block(242);
+    pub const COBBLED_DEEPSLATE: Block = Block(243);
+    pub const POLISHED_DEEPSLATE: Block = Block(244);
+    pub const DEEPSLATE_COAL_ORE: Block = Block(245);
+    pub const DEEPSLATE_IRON_ORE: Block = Block(246);
+    pub const DEEPSLATE_COPPER_ORE: Block = Block(247);
+    pub const DEEPSLATE_GOLD_ORE: Block = Block(248);
+    pub const DEEPSLATE_REDSTONE_ORE: Block = Block(249);
+    pub const DEEPSLATE_EMERALD_ORE: Block = Block(250);
+    pub const DEEPSLATE_LAPIS_ORE: Block = Block(251);
+    pub const DEEPSLATE_DIAMOND_ORE: Block = Block(252);
+
+    /// The stone-ore form of a deepslate ore, or `self` for everything else.
+    /// Drops, fortune and smelting follow the stone ore.
+    pub fn as_stone_ore(self) -> Block {
+        match self {
+            Block::DEEPSLATE_COAL_ORE => Block::COAL_ORE,
+            Block::DEEPSLATE_IRON_ORE => Block::IRON_ORE,
+            Block::DEEPSLATE_COPPER_ORE => Block::COPPER_ORE,
+            Block::DEEPSLATE_GOLD_ORE => Block::GOLD_ORE,
+            Block::DEEPSLATE_REDSTONE_ORE => Block::REDSTONE_ORE,
+            Block::DEEPSLATE_EMERALD_ORE => Block::EMERALD_ORE,
+            Block::DEEPSLATE_LAPIS_ORE => Block::LAPIS_ORE,
+            Block::DEEPSLATE_DIAMOND_ORE => Block::DIAMOND_ORE,
+            other => other,
+        }
+    }
+
+    pub fn is_deepslate_ore(self) -> bool {
+        (Block::DEEPSLATE_COAL_ORE.0..=Block::DEEPSLATE_DIAMOND_ORE.0).contains(&self.0)
+    }
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age as u16 })
@@ -811,8 +873,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
-        match self.base() {
+        match self.base().as_stone_ore() {
             Block::STONE => Some(Block::COBBLESTONE.into()),
+            Block::DEEPSLATE => Some(Block::COBBLED_DEEPSLATE.into()),
             Block::GRASS | Block::SNOWY_GRASS => Some(Block::DIRT.into()),
             Block::COAL_ORE => Some(Item::COAL),
             Block::IRON_ORE => Some(Item::RAW_IRON),
@@ -901,6 +964,18 @@ impl Block {
             | Block::EMERALD_ORE
             | Block::COPPER_BLOCK => 3.0,
             Block::RAW_IRON_BLOCK | Block::RAW_GOLD_BLOCK | Block::RAW_COPPER_BLOCK | Block::EMERALD_BLOCK => 5.0,
+            Block::CALCITE => 0.75,
+            Block::GRANITE
+            | Block::POLISHED_GRANITE
+            | Block::DIORITE
+            | Block::POLISHED_DIORITE
+            | Block::ANDESITE
+            | Block::POLISHED_ANDESITE
+            | Block::TUFF => 1.5,
+            Block::SMOOTH_STONE => 2.0,
+            Block::DEEPSLATE => 3.0,
+            Block::COBBLED_DEEPSLATE | Block::POLISHED_DEEPSLATE => 3.5,
+            b if b.is_deepslate_ore() => 4.5,
             Block::FURNACE | Block::LIT_FURNACE => 3.5,
             Block::SPAWNER => 5.0,
             Block::OBSIDIAN => 50.0,
@@ -952,7 +1027,20 @@ impl Block {
             | Block::ANVIL
             | Block::CHIPPED_ANVIL
             | Block::DAMAGED_ANVIL
-            | Block::ICE => Some(ToolKind::Pickaxe),
+            | Block::ICE
+            | Block::GRANITE
+            | Block::POLISHED_GRANITE
+            | Block::DIORITE
+            | Block::POLISHED_DIORITE
+            | Block::ANDESITE
+            | Block::POLISHED_ANDESITE
+            | Block::TUFF
+            | Block::CALCITE
+            | Block::SMOOTH_STONE
+            | Block::DEEPSLATE
+            | Block::COBBLED_DEEPSLATE
+            | Block::POLISHED_DEEPSLATE => Some(ToolKind::Pickaxe),
+            b if b.is_deepslate_ore() => Some(ToolKind::Pickaxe),
             Block::COBWEB => Some(ToolKind::Sword),
             Block::BOOKSHELF => Some(ToolKind::Axe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
@@ -982,7 +1070,7 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
-        match self.material() {
+        match self.material().as_stone_ore() {
             Block::STONE
             | Block::COBBLESTONE
             | Block::MOSSY_COBBLESTONE
@@ -1005,7 +1093,19 @@ impl Block {
             | Block::ANVIL
             | Block::CHIPPED_ANVIL
             | Block::DAMAGED_ANVIL
-            | Block::NETHER_BRICKS => Some(0),
+            | Block::NETHER_BRICKS
+            | Block::GRANITE
+            | Block::POLISHED_GRANITE
+            | Block::DIORITE
+            | Block::POLISHED_DIORITE
+            | Block::ANDESITE
+            | Block::POLISHED_ANDESITE
+            | Block::TUFF
+            | Block::CALCITE
+            | Block::SMOOTH_STONE
+            | Block::DEEPSLATE
+            | Block::COBBLED_DEEPSLATE
+            | Block::POLISHED_DEEPSLATE => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
             Block::IRON_ORE
             | Block::COPPER_ORE
@@ -1040,7 +1140,7 @@ impl Block {
                 136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213, 214, 215,
                 217, 219, 221, 222, 223, 224,
             ])
-            .chain(225..=232)
+            .chain(225..=252)
             .map(Block)
     }
 
@@ -1587,6 +1687,26 @@ const fn make(id: u16) -> BlockInfo {
         230 => ("block of raw copper", Opaque, all(tex::RAW_COPPER_BLOCK)),
         231 => ("block of copper", Opaque, all(tex::COPPER_BLOCK)),
         232 => ("block of emerald", Opaque, all(tex::EMERALD_BLOCK)),
+        233 => ("granite", Opaque, all(tex::GRANITE)),
+        234 => ("polished granite", Opaque, all(tex::POLISHED_GRANITE)),
+        235 => ("diorite", Opaque, all(tex::DIORITE)),
+        236 => ("polished diorite", Opaque, all(tex::POLISHED_DIORITE)),
+        237 => ("andesite", Opaque, all(tex::ANDESITE)),
+        238 => ("polished andesite", Opaque, all(tex::POLISHED_ANDESITE)),
+        239 => ("tuff", Opaque, all(tex::TUFF)),
+        240 => ("calcite", Opaque, all(tex::CALCITE)),
+        241 => ("smooth stone", Opaque, all(tex::SMOOTH_STONE)),
+        242 => ("deepslate", Opaque, all(tex::DEEPSLATE)),
+        243 => ("cobbled deepslate", Opaque, all(tex::COBBLED_DEEPSLATE)),
+        244 => ("polished deepslate", Opaque, all(tex::POLISHED_DEEPSLATE)),
+        245 => ("deepslate coal ore", Opaque, all(tex::DEEPSLATE_COAL_ORE)),
+        246 => ("deepslate iron ore", Opaque, all(tex::DEEPSLATE_IRON_ORE)),
+        247 => ("deepslate copper ore", Opaque, all(tex::DEEPSLATE_COPPER_ORE)),
+        248 => ("deepslate gold ore", Opaque, all(tex::DEEPSLATE_GOLD_ORE)),
+        249 => ("deepslate redstone ore", Opaque, all(tex::DEEPSLATE_REDSTONE_ORE)),
+        250 => ("deepslate emerald ore", Opaque, all(tex::DEEPSLATE_EMERALD_ORE)),
+        251 => ("deepslate lapis lazuli ore", Opaque, all(tex::DEEPSLATE_LAPIS_ORE)),
+        252 => ("deepslate diamond ore", Opaque, all(tex::DEEPSLATE_DIAMOND_ORE)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are
@@ -1700,6 +1820,22 @@ mod tests {
         assert!(Block::creative_palette().any(|b| b == Block::EMERALD_ORE));
         assert_eq!(Item::from_name("raw_copper"), Some(Item::RAW_COPPER));
         assert_eq!(Item::REDSTONE, Item(365));
+        assert_eq!(Block::GRANITE, Block(233));
+        assert_eq!(Block::DEEPSLATE_DIAMOND_ORE, Block(252));
+        assert_eq!(Block::from_name("polished_andesite"), Some(Block::POLISHED_ANDESITE));
+        assert_eq!(Block::DEEPSLATE.drop(), Some(Block::COBBLED_DEEPSLATE.into()));
+        assert_eq!(Block::DEEPSLATE_IRON_ORE.drop(), Some(Item::RAW_IRON));
+        assert_eq!(Block::DEEPSLATE_IRON_ORE.as_stone_ore(), Block::IRON_ORE);
+        assert_eq!(Block::DEEPSLATE_DIAMOND_ORE.harvest_level(), Some(2));
+        assert_eq!(Block::DEEPSLATE_COAL_ORE.harvest_level(), Some(0));
+        assert_eq!(Block::GRANITE.hardness(), 1.5);
+        assert_eq!(Block::CALCITE.hardness(), 0.75);
+        assert_eq!(Block::DEEPSLATE.hardness(), 3.0);
+        assert_eq!(Block::COBBLED_DEEPSLATE.hardness(), 3.5);
+        assert_eq!(Block::DEEPSLATE_IRON_ORE.hardness(), 4.5);
+        assert_eq!(Block::GRANITE.best_tool(), Some(ToolKind::Pickaxe));
+        assert!(Block::creative_palette().any(|b| b == Block::TUFF));
+        assert!(Block::creative_palette().any(|b| b == Block::DEEPSLATE_EMERALD_ORE));
         assert_eq!(Block::SMITHING_TABLE.hardness(), 2.5);
         assert_eq!(Block::SMITHING_TABLE.best_tool(), Some(ToolKind::Axe));
         assert_eq!(
