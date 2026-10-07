@@ -49,6 +49,7 @@ pub enum Command {
         ears: [[f32; 4]; MAX_OTHERS],
     },
     Master(f32),
+    MusicVolume(f32),
     /// Low-pass the whole mix, 0..1: the share of split-screen players
     /// whose head is underwater.
     Muffle(f32),
@@ -134,6 +135,9 @@ pub struct Mixer {
     yaw: f32,
     others: [[f32; 4]; MAX_OTHERS],
     other_count: usize,
+    music: Option<voxelcraft::music::MusicReader>,
+    music_gain: f32,
+    music_target: f32,
     master: f32,
     master_target: f32,
     muffle: f32,
@@ -163,6 +167,9 @@ impl Mixer {
             yaw: 0.0,
             others: [[0.0; 4]; MAX_OTHERS],
             other_count: 0,
+            music: None,
+            music_gain: 1.0,
+            music_target: 1.0,
             master,
             master_target: master,
             muffle: 0.0,
@@ -173,6 +180,11 @@ impl Mixer {
             left: [0.0; BLOCK],
             right: [0.0; BLOCK],
         }
+    }
+
+    pub fn with_music(mut self, music: voxelcraft::music::MusicReader) -> Self {
+        self.music = Some(music);
+        self
     }
 
     #[cfg(test)]
@@ -213,6 +225,7 @@ impl Mixer {
                 self.others = ears;
                 self.other_count = (count as usize).min(MAX_OTHERS);
             }
+            Command::MusicVolume(g) => self.music_target = g.clamp(0.0, 1.0),
             Command::Master(g) => self.master_target = g.clamp(0.0, 2.0),
             Command::Muffle(amount) => self.muffle_target = amount.clamp(0.0, 1.0),
             Command::Ambience { wind, cave, rain } => {
@@ -358,6 +371,21 @@ impl Mixer {
             let (l, r) = (left[n - 1], right[n - 1]);
             for (i, lp) in self.lp.iter_mut().enumerate() {
                 lp.z = if i < 2 { l } else { r };
+            }
+        }
+
+        // Non-positional stereo Music category bypasses environmental
+        // muffling. This is one shared stream for every split-screen ear.
+        if let Some(music) = &mut self.music {
+            let start = self.music_gain;
+            self.music_gain += (self.music_target - start) * (1.0 - (-(n as f32) / (0.05 * self.out_rate)).exp());
+            let dg = (self.music_gain - start) * inv_n;
+            let mut gain = start;
+            for i in 0..n {
+                gain += dg;
+                let s = music.sample(self.out_rate);
+                left[i] += s[0] * gain;
+                right[i] += s[1] * gain;
             }
         }
 

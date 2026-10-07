@@ -6,7 +6,7 @@ use glam::IVec3;
 use crate::audio::sounds::Sound;
 use crate::world::block::{Block, Facing, Shaped};
 
-use super::{Game, GameMode};
+use super::Game;
 
 impl Game {
     /// Right-click on a door or fence gate opens or closes it (both halves
@@ -82,7 +82,7 @@ impl Game {
         let below = pos - IVec3::Y;
         let Some(lower) = self.world.get_block(below).filter(|b| b.is_door() && !b.is_door_upper()) else { return };
         self.world.set_block(below, Block::AIR);
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.world.spill_block(below, lower);
         }
     }

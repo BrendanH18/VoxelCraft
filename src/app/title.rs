@@ -15,6 +15,7 @@ use winit::window::CursorGrabMode;
 
 use crate::render::FrameParams;
 use crate::render::ui::{Ui, WHITE};
+use crate::simulation::difficulty::Difficulty;
 use crate::world::storage::Storage;
 
 use super::menu::{BUTTON, HOT, bevel, inside};
@@ -25,6 +26,8 @@ pub(crate) struct NewWorld {
     pub name: String,
     pub seed: Option<u64>,
     pub mode: GameMode,
+    pub difficulty: Difficulty,
+    pub hardcore: bool,
 }
 
 /// What the title screen asks the app to do.
@@ -64,6 +67,8 @@ enum Widget {
     NameField,
     SeedField,
     Mode,
+    Difficulty,
+    Hardcore,
     CreateWorld,
     Cancel,
     ConfirmDelete,
@@ -97,6 +102,8 @@ pub(super) struct Title {
     seed: String,
     focus: Field,
     mode: GameMode,
+    difficulty: Difficulty,
+    hardcore: bool,
     cursor_px: (f32, f32),
     last_click: Option<(usize, Instant)>,
     started: Instant,
@@ -122,6 +129,8 @@ impl Title {
             seed: String::new(),
             focus: Field::Name,
             mode: GameMode::Survival,
+            difficulty: Difficulty::Normal,
+            hardcore: false,
             cursor_px: (0.0, 0.0),
             last_click: None,
             started: Instant::now(),
@@ -132,6 +141,17 @@ impl Title {
 
     pub fn into_shell(self) -> Shell {
         self.shell
+    }
+
+    /// Opens the create-world screen for deterministic UI screenshots.
+    pub fn show_create(&mut self) {
+        self.screen = Screen::Create;
+        self.name = "New World".into();
+        self.seed.clear();
+        self.focus = Field::Name;
+        self.mode = GameMode::Survival;
+        self.difficulty = Difficulty::Normal;
+        self.hardcore = false;
     }
 
     pub fn request_redraw(&self) {
@@ -240,7 +260,13 @@ impl Title {
     fn create(&self) -> Action {
         let name = if self.name.trim().is_empty() { "New World".to_string() } else { self.name.trim().to_string() };
         let dir = folder_for(&name, |d| self.saves_dir.join(d).exists());
-        let new = NewWorld { name, seed: parse_seed(&self.seed), mode: self.mode };
+        let new = NewWorld {
+            name,
+            seed: parse_seed(&self.seed),
+            mode: self.mode,
+            difficulty: self.difficulty,
+            hardcore: self.hardcore,
+        };
         Action::Play(dir, Some(new))
     }
 
@@ -258,20 +284,25 @@ impl Title {
             }
             Widget::Play => return self.play_selected(),
             Widget::Create => {
-                self.screen = Screen::Create;
-                self.name = "New World".into();
-                self.seed.clear();
-                self.focus = Field::Name;
-                self.mode = GameMode::Survival;
+                self.show_create();
             }
             Widget::Delete if self.selected.is_some() => self.screen = Screen::ConfirmDelete,
             Widget::Quit => return Some(Action::Quit),
             Widget::NameField => self.focus = Field::Name,
             Widget::SeedField => self.focus = Field::Seed,
             Widget::Mode => {
+                self.hardcore = false;
                 self.mode = match self.mode {
                     GameMode::Survival => GameMode::Creative,
-                    GameMode::Creative => GameMode::Survival,
+                    GameMode::Creative | GameMode::Adventure | GameMode::Spectator => GameMode::Survival,
+                }
+            }
+            Widget::Difficulty if !self.hardcore => self.difficulty = self.difficulty.next(),
+            Widget::Hardcore => {
+                self.hardcore = !self.hardcore;
+                if self.hardcore {
+                    self.mode = GameMode::Survival;
+                    self.difficulty = Difficulty::Hard;
                 }
             }
             Widget::CreateWorld => return Some(self.create()),
@@ -280,7 +311,7 @@ impl Title {
                 self.delete_selected();
                 self.screen = Screen::List;
             }
-            Widget::Delete => {}
+            Widget::Delete | Widget::Difficulty => {}
         }
         None
     }
@@ -348,8 +379,10 @@ impl Title {
                 out.push((Widget::NameField, [x, y + 12.0, BUTTON_W, BUTTON_H]));
                 out.push((Widget::SeedField, [x, y + 52.0, BUTTON_W, BUTTON_H]));
                 out.push((Widget::Mode, [x, y + 82.0, BUTTON_W, BUTTON_H]));
-                out.push((Widget::CreateWorld, [cx - HALF_W - 2.0, y + 130.0, HALF_W, BUTTON_H]));
-                out.push((Widget::Cancel, [cx + 2.0, y + 130.0, HALF_W, BUTTON_H]));
+                out.push((Widget::Difficulty, [x, y + 106.0, BUTTON_W, BUTTON_H]));
+                out.push((Widget::Hardcore, [x, y + 130.0, BUTTON_W, BUTTON_H]));
+                out.push((Widget::CreateWorld, [cx - HALF_W - 2.0, y + 178.0, HALF_W, BUTTON_H]));
+                out.push((Widget::Cancel, [cx + 2.0, y + 178.0, HALF_W, BUTTON_H]));
             }
             Screen::ConfirmDelete => {
                 let y = (sh / 2.0 + 10.0).floor();
@@ -367,6 +400,10 @@ impl Title {
             Widget::Delete => "Delete".into(),
             Widget::Quit => "Quit Game".into(),
             Widget::Mode => format!("Game Mode: {}", super::capitalize(self.mode.name())),
+            Widget::Difficulty => {
+                format!("Difficulty: {}{}", self.difficulty, if self.hardcore { " Locked" } else { "" })
+            }
+            Widget::Hardcore => format!("Hardcore: {}", if self.hardcore { "On" } else { "Off" }),
             Widget::CreateWorld => "Create World".into(),
             Widget::Cancel => "Cancel".into(),
             Widget::ConfirmDelete => "Delete".into(),
@@ -409,7 +446,7 @@ impl Title {
                 } else {
                     "Gather, craft and stay alive"
                 };
-                centred(&mut ui, y + 108.0, hint, grey);
+                centred(&mut ui, y + 156.0, hint, grey);
             }
             Screen::ConfirmDelete => {
                 ui.rect(0.0, 0.0, sw, sh, [0.25, 0.0, 0.0, 0.75]);
@@ -532,9 +569,10 @@ fn list_worlds(saves_dir: &Path) -> Vec<Entry> {
             let level = storage.load_level().ok();
             let prop = |k: &str| level.as_ref().and_then(|l| l.props.get(k)).cloned();
             let played = std::fs::metadata(e.path().join("level.txt")).and_then(|m| m.modified()).ok();
+            let hardcore = prop("hardcore").is_some_and(|v| v == "true" || v == "1");
             Some(Entry {
                 name: prop("name").unwrap_or_else(|| dir.clone()),
-                mode: prop("mode").unwrap_or_else(|| "survival".into()),
+                mode: if hardcore { "hardcore".into() } else { prop("mode").unwrap_or_else(|| "survival".into()) },
                 nether: prop("dimension").as_deref() == Some("nether"),
                 dir,
                 played,

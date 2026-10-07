@@ -47,6 +47,7 @@ impl ArmorKind {
             ArmorMaterial::Iron => Self::Iron,
             ArmorMaterial::Gold => Self::Gold,
             ArmorMaterial::Diamond => Self::Diamond,
+            ArmorMaterial::Netherite => Self::Netherite,
         }
     }
 }
@@ -309,10 +310,12 @@ mod tests {
         let mut helmet = Stack::new(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Diamond), 1);
         helmet.enchants = helmet.enchants.with(Enchantment::Protection, 1);
         let boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Leather), 1);
-        let worn = from_stacks(&[Some(helmet), None, None, Some(boots)]);
+        let plate = Stack::new(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Netherite), 1);
+        let worn = from_stacks(&[Some(helmet), Some(plate), None, Some(boots)]);
         assert_eq!(worn[0], Some(Worn { kind: ArmorKind::Diamond, glint: true }));
+        assert_eq!(worn[1], Some(Worn { kind: ArmorKind::Netherite, glint: false }));
         assert_eq!(worn[3], Some(Worn { kind: ArmorKind::Leather, glint: false }));
-        assert!(worn[1].is_none());
+        assert!(worn[2].is_none());
     }
 
     #[test]

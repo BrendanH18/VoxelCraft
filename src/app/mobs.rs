@@ -9,7 +9,7 @@ use crate::audio::sounds::{Call, Sound, Voice};
 use crate::entity::{self, Entities, EntityEvent, MobKind, MobSound, PlayerId, Target};
 use crate::physics;
 
-use super::{Game, GameMode, REACH};
+use super::{Game, REACH};
 
 pub(super) struct Mobs {
     pub entities: Entities,
@@ -67,7 +67,7 @@ impl Game {
         let Some(i) = self.mob_target() else { return false };
         self.mobs.attack_held = true;
         if self.mobs.attack_cooldown <= 0.0 {
-            self.mobs.attack_cooldown = entity::ATTACK_COOLDOWN;
+            self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
             // A hit while falling is a critical one, like Minecraft.
             let p = &self.player;
             let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
@@ -78,7 +78,7 @@ impl Game {
                     .values()
                     .find(|b| b.id == self.actor)
                     .is_some_and(|b| b.agent.movement_input().sprint)
-                    && (self.mode == GameMode::Creative || self.vitals.hunger.can_sprint())
+                    && (self.mode.invulnerable() || self.vitals.hunger.can_sprint())
             } else {
                 self.movement_input(self.arrival.is_some()).sprint
             };
@@ -91,7 +91,7 @@ impl Game {
             let pitch = if critical { (1.25, 1.4) } else { (0.9, 1.1) };
             self.audio.play(Sound::Hit, Some(at), 0.8, pitch);
             self.wear_held(true);
-            if self.mode == GameMode::Survival {
+            if self.mode.is_survival() {
                 self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
             }
         }
@@ -115,7 +115,7 @@ impl Game {
         let Some(hit) = self.fight_target() else { return false };
         self.mobs.attack_held = true;
         if self.mobs.attack_cooldown <= 0.0 {
-            self.mobs.attack_cooldown = entity::ATTACK_COOLDOWN;
+            self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
             let p = &self.player;
             let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
             let base = crate::mining::attack_damage(self.held_item()) + self.vitals.effects.attack_bonus();
@@ -133,7 +133,7 @@ impl Game {
                 );
                 self.wear_held(true);
             }
-            if self.mode == GameMode::Survival {
+            if self.mode.is_survival() {
                 self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
             }
         }
@@ -167,6 +167,10 @@ impl Game {
     }
 
     pub(super) fn update_mobs(&mut self, dt: f64) {
+        self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
+        if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
+            self.mobs.entities.despawn_hostiles();
+        }
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
             self.mobs.entities.prime_tnt(cell, short_fuse);
             self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
@@ -180,7 +184,7 @@ impl Game {
                 .inventory
                 .get(self.actions.selected)
                 .map_or(Default::default(), |s| s.active_enchants()),
-            ..Target::new(PlayerId::HOST, self.player.pos, self.mode == GameMode::Survival && !self.vitals.is_dead())
+            ..Target::new(PlayerId::HOST, self.player.pos, self.mode.targetable() && !self.vitals.is_dead())
         }];
         // Agents keep source-dimension positions until arrival relocates them.
         if self.arrival.is_none() {
@@ -195,29 +199,37 @@ impl Game {
                 0.0
             },
             raining: self.weather.raining,
-            spawning: true,
+            spawning: self.difficulty != crate::simulation::difficulty::Difficulty::Peaceful
+                && self.gamerules.bool("doMobSpawning"),
             dimension: self.dimension,
         };
         let mut smashed = Vec::new();
-        for event in self.mobs.entities.update(dt, &self.world, &ctx) {
+        for event in self.mobs.entities.update_difficulty(dt, &self.world, &ctx, self.difficulty) {
             match event {
                 EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, cause } => {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
-                    if self.damage_player_armored(damage, cause) > 0.0 {
+                    if self.damage_player_armored(self.difficulty.mob_damage(damage), cause) > 0.0 {
                         self.player.hurt_from(knockback.as_dvec3());
-                        self.player.vel += knockback.as_dvec3();
+                        let resistance = self.inventory.knockback_resistance();
+                        self.player.vel +=
+                            crate::simulation::survival::knockback_taken(knockback.as_dvec3(), resistance);
                     }
                 }
                 EntityEvent::PlayerHit { player, damage, knockback, cause } => {
                     if let Some(bot) = self.agents.by_id_mut(player) {
-                        bot.agent.hurt(damage, cause, knockback.as_dvec3(), &mut self.mobs.entities);
+                        bot.agent.hurt(
+                            self.difficulty.mob_damage(damage),
+                            cause,
+                            knockback.as_dvec3(),
+                            &mut self.mobs.entities,
+                        );
                     }
                 }
                 EntityEvent::Explosion { center, power, cause } => self.explode(center, power, cause),
                 EntityEvent::PearlLanded { owner, pos } => self.pearl_landed(owner, pos),
                 EntityEvent::Ignite { player: PlayerId::HOST, secs } => {
-                    if self.mode == GameMode::Survival {
+                    if self.mode.is_survival() {
                         self.vitals.ignite(secs);
                     }
                 }
@@ -229,7 +241,9 @@ impl Game {
                     }
                 }
                 EntityEvent::IgniteBlock { cell } => {
-                    self.world.ignite(cell);
+                    if self.gamerules.bool("mobGriefing") {
+                        self.world.ignite(cell);
+                    }
                 }
                 EntityEvent::Fireball { .. } => {}
                 EntityEvent::Sound { sound, pos } => {
@@ -262,15 +276,23 @@ impl Game {
                 EntityEvent::Shoot { .. } | EntityEvent::DragonXp { .. } | EntityEvent::MobKilled { .. } => {}
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
-                    if self.mode == GameMode::Survival && !self.vitals.is_dead() {
-                        shove(&mut self.player.vel, velocity.as_dvec3());
+                    if self.mode.is_survival() && !self.vitals.is_dead() {
+                        let push = crate::simulation::survival::knockback_taken(
+                            velocity.as_dvec3(),
+                            self.inventory.knockback_resistance(),
+                        );
+                        shove(&mut self.player.vel, push);
                     }
                 }
                 EntityEvent::Shove { player, velocity } => {
                     if let Some(bot) = self.agents.by_id_mut(player)
                         && !bot.agent.creative
                     {
-                        shove(&mut bot.agent.player.vel, velocity.as_dvec3());
+                        let push = crate::simulation::survival::knockback_taken(
+                            velocity.as_dvec3(),
+                            bot.agent.inventory.knockback_resistance(),
+                        );
+                        shove(&mut bot.agent.player.vel, push);
                     }
                 }
                 EntityEvent::BuildGateway { pos } => self.world.build_gateway(pos),
@@ -291,8 +313,11 @@ impl Game {
                 }
             }
         }
+        if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
+            self.mobs.entities.despawn_hostiles();
+        }
         // All the blocks the dragon flew through this tick, in one edit.
-        if !smashed.is_empty() {
+        if self.gamerules.bool("mobGriefing") && !smashed.is_empty() {
             smashed.sort_unstable_by_key(|p| (p.x, p.y, p.z));
             smashed.dedup();
             self.world.break_blocks(&smashed);
@@ -333,7 +358,10 @@ impl Game {
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str) {
-        self.world.explode(center, power as f64);
+        let mob_can_grief = !cause.contains("creeper") || self.gamerules.bool("mobGriefing");
+        if mob_can_grief {
+            self.world.explode_with_drops(center, power as f64, self.gamerules.bool("doTileDrops"));
+        }
         self.mobs.entities.explode(center, power);
         // TNT caught in the blast goes off soon after.
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
@@ -342,11 +370,14 @@ impl Game {
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
         let mid = self.player.pos + DVec3::Y * 0.9;
         if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center))
+            && let damage = self.difficulty.mob_damage(damage)
             && self.damage_player_armored(damage, cause) > 0.0
         {
             let away = (mid - center).normalize_or(DVec3::Y);
             self.player.hurt_from(away);
-            self.player.vel += away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
+            let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
+            self.player.vel +=
+                crate::simulation::survival::knockback_taken(push, self.inventory.knockback_resistance());
         }
         if self.arrival.is_some() {
             return;
@@ -356,7 +387,7 @@ impl Game {
             if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center)) {
                 let away = (mid - center).normalize_or(DVec3::Y);
                 let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
-                bot.agent.hurt(damage, cause, push, &mut self.mobs.entities);
+                bot.agent.hurt(self.difficulty.mob_damage(damage), cause, push, &mut self.mobs.entities);
             }
         }
     }

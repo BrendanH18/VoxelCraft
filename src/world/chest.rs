@@ -57,7 +57,9 @@ impl World {
     /// chest keeps its contents).
     pub(super) fn track_chest(&mut self, p: IVec3, old: Block, new: Block) {
         if is_chest(old) && !is_chest(new) {
-            if let Some(chest) = self.chests.remove(&p) {
+            if let Some(chest) = self.chests.remove(&p)
+                && self.tile_drops
+            {
                 self.drops.extend(chest.slots.into_iter().flatten().map(|s| (p, s)));
             }
         } else if is_chest(new) {

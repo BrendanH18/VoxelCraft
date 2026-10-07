@@ -277,21 +277,22 @@ pub fn build_player(
         if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
             held.min = [-3.2; 3];
             held.max = [3.2; 3];
-            textured_box(out, &held, 0.0, origin, body, light, 2, block.info().tex[0] as u16, PLAYER_SCALE, UNTINTED);
+            textured_box(out, &held, 0.0, origin, body, light, 2, block.info().tex[0], PLAYER_SCALE, UNTINTED);
             // Use the appropriate face textures (grass, logs, crafting tables).
             let start = out.len() - 36;
             for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
+                let tex = block.info().tex[i ^ 1];
                 for vertex in face {
-                    vertex.torch[2] = block.info().tex[i ^ 1];
+                    vertex.torch[2] = tex as u8;
+                    vertex.torch[3] = (tex >> 8) as u8;
                 }
             }
         } else {
             // The default thirdperson_righthand display for handheld items.
             held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());
-            let layer = item.block().map_or_else(
-                || item.icon_layer().unwrap_or(crate::world::block::tex::ITEM_BASE),
-                |b| b.info().tex[0] as u16,
-            );
+            let layer = item
+                .block()
+                .map_or_else(|| item.icon_layer().unwrap_or(crate::world::block::tex::ITEM_BASE), |b| b.info().tex[0]);
             textured_box(out, &held, 0.0, origin, body, light, 2, layer, PLAYER_SCALE, UNTINTED);
         }
     }

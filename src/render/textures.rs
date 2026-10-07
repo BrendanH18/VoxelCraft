@@ -12,7 +12,7 @@ type Rgba = [u8; 4];
 
 /// Deterministic texture noise; `variation` selects a pattern within the layer.
 /// This is a procedural graphics helper with no cryptographic purpose.
-fn rnd(layer: u8, x: usize, y: usize, variation: i32) -> f32 {
+fn rnd(layer: u16, x: usize, y: usize, variation: i32) -> f32 {
     hash_f(x as i32, y as i32, variation, 0xB10C ^ layer as u64)
 }
 
@@ -21,7 +21,7 @@ fn shade(c: [u8; 3], f: f32) -> Rgba {
     [s(c[0]), s(c[1]), s(c[2]), 255]
 }
 
-fn noisy(layer: u8, x: usize, y: usize, c: [u8; 3], amount: f32) -> Rgba {
+fn noisy(layer: u16, x: usize, y: usize, c: [u8; 3], amount: f32) -> Rgba {
     shade(c, 1.0 - amount + rnd(layer, x, y, 0) * amount * 2.0)
 }
 
@@ -43,7 +43,7 @@ fn voronoi(x: usize, y: usize, pts: &[(f32, f32)]) -> (f32, f32, usize) {
     (d1, d2, idx)
 }
 
-fn points(layer: u8, n: usize) -> Vec<(f32, f32)> {
+fn points(layer: u16, n: usize) -> Vec<(f32, f32)> {
     (0..n).map(|i| (rnd(layer, i, 0, 99) * SIZE as f32, rnd(layer, i, 1, 99) * SIZE as f32)).collect()
 }
 
@@ -51,7 +51,7 @@ const STONE: [u8; 3] = [125, 125, 125];
 const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
-pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
+pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
     match layer {
         tex::STONE => {
@@ -137,7 +137,7 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             shade(colour, if seam { 0.68 } else { 0.92 + rnd(layer, x, board, 2) * 0.12 })
         }
         tex::SKIN => noisy(layer, x, y, [196, 141, 110], 0.05),
-        l if (tex::FIRE_0..tex::FIRE_0 + tex::FIRE_FRAMES).contains(&l) => {
+        l if (tex::FIRE_0..tex::FIRE_0 + tex::FIRE_FRAMES as u16).contains(&l) => {
             // Pixel flames rise from a solid base into separate tongues.
             // Each frame changes the tips and hot inner cores.
             let frame = (l - tex::FIRE_0) as usize;
@@ -276,6 +276,11 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let pts = points(layer, 9);
             let (d1, d2, i) = voronoi(x, y, &pts);
             if d2 - d1 < 1.1 { shade(STONE, 0.55) } else { shade(STONE, 0.8 + rnd(layer, i, 0, 4) * 0.35 - d1 * 0.03) }
+        }
+        tex::MOSSY_COBBLESTONE => {
+            let stone = pixel(tex::COBBLESTONE, x, y);
+            let moss = rnd(layer, x / 2, y / 2, 1) * 0.7 + rnd(layer, x, y, 2) * 0.3;
+            if moss > 0.47 && y > 2 { shade([65, 105, 45], 0.75 + r * 0.35) } else { stone }
         }
         tex::GLASS => {
             let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
@@ -506,8 +511,10 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             };
             shade([134, 96, 64], furrow * wet)
         }
-        l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat(l - tex::WHEAT_0, x, y),
-        l if (tex::NETHER_WART_0..tex::NETHER_WART_0 + 3).contains(&l) => nether_wart(l - tex::NETHER_WART_0, x, y),
+        l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat((l - tex::WHEAT_0) as u8, x, y),
+        l if (tex::NETHER_WART_0..tex::NETHER_WART_0 + 3).contains(&l) => {
+            nether_wart((l - tex::NETHER_WART_0) as u8, x, y)
+        }
         tex::OAK_SAPLING | tex::SPRUCE_SAPLING | tex::BIRCH_SAPLING | tex::JUNGLE_SAPLING | tex::ACACIA_SAPLING => {
             let (px, py) = (x as f32 - 7.5, y as f32);
             let stem = (x == 7 || x == 8) && y >= 10;
@@ -677,6 +684,20 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 },
             )
         }
+        tex::SMITHING_TOP => {
+            // Java's dark slate-blue iron plate: a lighter rim, a darker
+            // ring inside it and a mottled, scuffed middle.
+            let edge = x.min(y).min(SIZE - 1 - x).min(SIZE - 1 - y);
+            match edge {
+                0 => noisy(layer, x, y, [72, 74, 93], 0.1),
+                1 if rnd(layer, x, y, 31) < 0.6 => shade([57, 59, 72], 0.95 + r * 0.1),
+                _ if rnd(layer, x, y, 32) < 0.12 => shade([38, 39, 45], 1.0),
+                _ => {
+                    shade(if rnd(layer, x / 2, y / 2, 33) < 0.5 { [54, 55, 63] } else { [47, 48, 55] }, 0.94 + r * 0.12)
+                }
+            }
+        }
+        tex::SMITHING_FRONT | tex::SMITHING_SIDE | tex::SMITHING_BOTTOM => smithing_wood(layer, x, y, r),
         tex::IRON_BLOCK => {
             // Pale steel plate with a bevelled rim and a rivet line.
             let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
@@ -824,12 +845,57 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 [0, 0, 0, 0]
             }
         }
-        l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES).contains(&l) => crack(l - tex::CRACK_0, x, y),
+        l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES as u16).contains(&l) => {
+            crack((l - tex::CRACK_0) as u8, x, y)
+        }
         l if let Some((base, group)) = tex::untinted(l) => tint_foliage(pixel(base, x, y), group),
         _ => {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
         }
+    }
+}
+
+/// The smithing table's dark wood: Java's deep red planks (a lit row and a
+/// dark seam every four pixels). The front and sides sit under a three-row
+/// iron band and between near-black legs, the front showing tongs and the
+/// sides a hammer; the bottom is planks with black corners.
+fn smithing_wood(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
+    const IRON: [u8; 3] = [47, 48, 55];
+    const HANDLE: [u8; 3] = [140, 86, 60];
+    let plank = |y: usize| match y % 4 {
+        2 => shade([95, 39, 33], 0.92 + r * 0.14),
+        3 => shade([47, 20, 17], 0.9 + r * 0.15),
+        _ => shade(if rnd(layer, x / 3, y, 34) < 0.5 { [74, 31, 26] } else { [66, 28, 23] }, 0.95 + r * 0.1),
+    };
+    if layer == tex::SMITHING_BOTTOM {
+        let corner = !(2..=SIZE - 3).contains(&x) && !(2..=SIZE - 3).contains(&y);
+        let edge = x.min(y).min(SIZE - 1 - x).min(SIZE - 1 - y);
+        return if corner {
+            shade([26, 27, 30], 1.0)
+        } else if edge == 1 {
+            shade([47, 20, 17], 0.95 + r * 0.1)
+        } else if edge == 2 {
+            shade([82, 34, 29], 0.92 + r * 0.14)
+        } else {
+            shade([66, 28, 23], 0.95 + r * 0.08)
+        };
+    }
+    match (x, y) {
+        (_, 0..=2) => {
+            let c = if rnd(layer, x, y, 35) < 0.3 { [38, 39, 45] } else { IRON };
+            shade(c, 0.95 + r * 0.2)
+        }
+        (_, 3) => shade([17, 18, 19], 1.0),
+        (0 | 15, _) => shade([40, 41, 50], 0.85 + r * 0.25),
+        (1 | 14, _) => shade([24, 25, 28], 0.9 + r * 0.15),
+        // Tongs: two light handles meeting at an iron jaw.
+        (3 | 5, 8..=11) if layer == tex::SMITHING_FRONT => shade(HANDLE, 0.9 + r * 0.2),
+        (3..=5, 7) if layer == tex::SMITHING_FRONT => shade([73, 75, 95], 1.0),
+        // Hammer: an iron head over a wooden handle.
+        (3..=7, 8) if layer == tex::SMITHING_SIDE => shade([35, 37, 51], 0.95 + r * 0.15),
+        (5, 9..=13) if layer == tex::SMITHING_SIDE => shade(HANDLE, 0.9 + r * 0.2),
+        _ => plank(y),
     }
 }
 
@@ -872,12 +938,12 @@ fn wheat(stage: u8, x: usize, y: usize) -> Rgba {
         let notch = (x + y).is_multiple_of(2);
         return shade([224, 190, 84], if notch { 0.82 } else { 1.05 });
     }
-    shade(c, 0.85 + rnd(tex::WHEAT_0 + stage, x, y, 9) * 0.25)
+    shade(c, 0.85 + rnd(tex::WHEAT_0 + stage as u16, x, y, 9) * 0.25)
 }
 
 /// Stone bricks, two courses with staggered joints and bevelled edges;
 /// mossy ones are overgrown in patches and cracked ones split.
-fn stone_bricks(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
+fn stone_bricks(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
     let course = y / 8;
     let joint = if course == 0 { 0 } else { 8 };
     let (lx, ly) = ((x + 16 - joint) % 16, y % 8);
@@ -918,7 +984,7 @@ fn end_eye(x: usize, y: usize, r: f32) -> Rgba {
 /// once ripe, carry knobbly bulbs.
 fn nether_wart(stage: u8, x: usize, y: usize) -> Rgba {
     const STALKS: [usize; 4] = [2, 6, 10, 13];
-    let r = rnd(tex::NETHER_WART_0 + stage, x, y, 11);
+    let r = rnd(tex::NETHER_WART_0 + stage as u16, x, y, 11);
     let width = if stage == 0 { 1 } else { 2 };
     // Ripe bulbs swell a pixel past the stalk on either side.
     let reach = if stage == 2 { 1 } else { 0 };
@@ -939,7 +1005,7 @@ fn nether_wart(stage: u8, x: usize, y: usize) -> Rgba {
     if tip { shade([164, 30, 38], 0.85 + r * 0.35) } else { shade([108, 18, 28], 0.8 + r * 0.3) }
 }
 
-fn flower(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
+fn flower(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
     let (dx, dy) = (x as f32 - 7.5, y as f32 - 5.0);
     let d = (dx * dx + dy * dy * 1.3).sqrt();
     let (petal, centre) =
@@ -959,7 +1025,7 @@ fn flower(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
 
 /// Hunger icon: a drumstick (meat upper left, bone lower right); full,
 /// half (left side) or an empty outline.
-fn drumstick(layer: u8, x: usize, y: usize) -> Rgba {
+fn drumstick(layer: u16, x: usize, y: usize) -> Rgba {
     let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
     let meat = |px: f32, py: f32| (px - 6.5).powi(2) + (py - 6.5).powi(2) * 1.2 < 22.0;
     let bone = |px: f32, py: f32| {
@@ -991,7 +1057,7 @@ fn drumstick(layer: u8, x: usize, y: usize) -> Rgba {
 }
 
 /// Heart icon: full, half (left side filled) or empty outline.
-fn heart(layer: u8, x: usize, y: usize) -> Rgba {
+fn heart(layer: u16, x: usize, y: usize) -> Rgba {
     // Implicit heart curve (x²+y²-1)³ - x²y³ <= 0, mapped onto the tile.
     let inside = |px: f32, py: f32| {
         let (hx, hy) = ((px - 7.5) / 6.2, (8.0 - py) / 6.2);
@@ -1062,14 +1128,14 @@ pub fn texel(layer: u16, x: usize, y: usize) -> Rgba {
         Some(index) => {
             crate::item::sprite_for_layer(index).map_or([0, 0, 0, 0], |s| super::item_sprites::pixel(s, x, y))
         }
-        None => pixel(layer as u8, x, y),
+        None => pixel(layer, x, y),
     }
 }
 
 /// RGBA8 data for every mip level of the block texture array; each level
 /// contains all layers back to back, ready for `write_texture`.
 pub fn generate_mips() -> Vec<Vec<u8>> {
-    mips_of(tex::COUNT as usize, |l, x, y| pixel(l as u8, x, y))
+    mips_of(tex::COUNT as usize, |l, x, y| pixel(l as u16, x, y))
 }
 
 /// Layers of the item icon array: every item's icon, then the status

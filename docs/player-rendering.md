@@ -99,8 +99,8 @@ leggings. Textures are generated once into the skin array (no Mojang
 assets): leather is a grey sheet dyed `#A06540` with an undyed stitch
 overlay, and chainmail, iron, gold, diamond and netherite are generic
 panel patterns. Chainmail is rolled onto zombies and skeletons; it is not
-a player item. Netherite player pieces use the same path once those items
-exist. Enchanted pieces add a scrolling glint in the entity fragment
+a player item. Netherite helmets, chestplates, leggings and boots use
+the same path. Enchanted pieces add a scrolling glint in the entity fragment
 shader. Monster equipment follows Java's feet-first 15% roll at regional
 difficulty 1, without held weapons or local-difficulty scaling.
 

@@ -23,7 +23,7 @@ use glam::{DVec3, IVec3, Vec2};
 
 use super::actions::Actions;
 use super::pad_menu::{Action, Menu, Nav, Tab};
-use super::{Container, Game, GameMode};
+use super::{Container, Game};
 use crate::player::MoveInput;
 use crate::world::block::Block;
 use voxelcraft::agent::{Agent, Command};
@@ -472,8 +472,7 @@ impl Game {
         if !self.agents.players.contains_key(&name) {
             let mut agent = Agent::new(self.beside_host());
             agent.player.yaw = self.player.yaw;
-            agent.creative = self.mode == GameMode::Creative;
-            agent.player.can_fly = agent.creative;
+            agent.set_mode(self.mode);
             self.agents.insert(name.clone(), agent);
         }
         self.agents.players.get_mut(&name).unwrap().active = true;
@@ -597,12 +596,12 @@ impl Game {
         true
     }
 
-    /// Controller player `name`'s enchanting table or anvil input slots.
+    /// Controller player `name`'s enchanting, anvil or smithing input slots.
     pub(super) fn pad_work(&self, name: &str) -> super::enchanting::WorkSlots {
-        self.agents.players.get(name).map_or([None; 2], |b| b.agent.work)
+        self.agents.players.get(name).map_or([None; 3], |b| b.agent.work)
     }
 
-    /// Empties controller player `name`'s enchanting table or anvil slots.
+    /// Empties controller player `name`'s workstation input slots.
     pub(super) fn take_pad_work(&mut self, name: &str) -> Vec<crate::inventory::Stack> {
         let Some(bot) = self.agents.players.get_mut(name) else { return Vec::new() };
         bot.agent.work.iter_mut().filter_map(Option::take).collect()
@@ -616,13 +615,13 @@ impl Game {
     pub(super) fn puppet<R>(&mut self, i: usize, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
         let seat = &mut self.pads.seats[i];
         let bot = self.agents.players.get(&seat.name)?;
-        let (selected, creative, id) = (bot.agent.selected, bot.agent.creative, bot.id);
+        let (selected, player_mode, id) = (bot.agent.selected, bot.agent.mode, bot.id);
         // Switching slots interrupts mining, eating and drawing, as it does for the host.
         seat.body.actions.select(selected);
         if !self.swap_puppet(i) {
             return None;
         }
-        let mode = std::mem::replace(&mut self.mode, if creative { GameMode::Creative } else { GameMode::Survival });
+        let mode = std::mem::replace(&mut self.mode, player_mode);
         self.puppet = true;
         self.actor = id;
         let result = f(self);
@@ -661,7 +660,8 @@ impl Game {
                             | Tab::Furnace(pos)
                             | Tab::Brewing(pos)
                             | Tab::Enchanting(pos)
-                            | Tab::Anvil(pos)),
+                            | Tab::Anvil(pos)
+                            | Tab::Smithing(pos)),
                         ..
                     } => {
                         !self.world.get_block(pos).is_some_and(|b| tab.matches_block(b))
@@ -747,6 +747,8 @@ impl Game {
             seat.open(Menu::items(Tab::Enchanting(pos)));
         } else if block.is_anvil() {
             seat.open(Menu::items(Tab::Anvil(pos)));
+        } else if block == Block::SMITHING_TABLE {
+            seat.open(Menu::items(Tab::Smithing(pos)));
         } else if block.is_bed() {
             self.pad_sleep(i, pos);
         }
@@ -786,8 +788,13 @@ impl Game {
     /// left alone rather than looked up in the wrong world.
     fn respawn_pad(&mut self, i: usize) {
         let name = self.pads.seats[i].name.clone();
+        let keep_inventory = self.gamerules.bool("keepInventory");
         let Some(bot) = self.agents.players.get_mut(&name) else { return };
+        let kept_xp = keep_inventory.then_some(bot.agent.vitals.xp);
         let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
+        if let Some(xp) = kept_xp {
+            bot.agent.vitals.xp = xp;
+        }
         let at = if self.dimension == crate::world::terrain::Dimension::Overworld {
             self.puppet(i, |g| g.respawn_point())
         } else {

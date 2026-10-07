@@ -109,7 +109,7 @@ impl Builder<'_> {
 
     /// A box from `lo` to `hi` in model space; `tex` per face (+X, -X, +Y,
     /// -Y, +Z, -Z) and UVs from the model position like block faces.
-    fn cuboid(&mut self, m: Mat4, lo: Vec3, hi: Vec3, tex: [u8; 6]) {
+    fn cuboid(&mut self, m: Mat4, lo: Vec3, hi: Vec3, tex: [u16; 6]) {
         for (face, &layer) in tex.iter().enumerate() {
             let (d, positive) = (face / 2, face % 2 == 0);
             let (u, v) = ((d + 1) % 3, (d + 2) % 3);
@@ -131,7 +131,7 @@ impl Builder<'_> {
                 1 => [p.x, p.z],
                 _ => [p.x, 1.0 - p.y],
             });
-            self.quad(c.map(|p| m.transform_point3(p)), uv, layer.into());
+            self.quad(c.map(|p| m.transform_point3(p)), uv, layer);
         }
     }
 
@@ -256,7 +256,7 @@ pub(super) fn vertices(
         None => {
             // Flat items: Minecraft's first-person "handheld" transform.
             let layer = match item.block() {
-                Some(block) => block.info().tex[0].into(),
+                Some(block) => block.info().tex[0],
                 None => item.icon_layer().unwrap_or(tex::ITEM_BASE),
             };
             // Mirrored front to back, so the icon's right (a sword's tip)

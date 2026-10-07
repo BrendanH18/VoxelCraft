@@ -10,7 +10,7 @@ use crate::inventory::Stack;
 use crate::render::BlockModel;
 use crate::world::block::Block;
 
-use super::{Container, Game, GameMode, survival};
+use super::{Container, Game, survival};
 use crate::entity::PlayerId;
 
 /// Dropped items farther away than this aren't drawn.
@@ -47,6 +47,7 @@ impl Game {
             }
             // An anvil can break in use, or fall away.
             Container::Anvil(pos) => !self.world.get_block(pos).is_some_and(|b| b.is_anvil()),
+            Container::Smithing(pos) => self.world.get_block(pos) != Some(Block::SMITHING_TABLE),
             _ => false,
         };
         if gone && self.inventory_open {
@@ -101,7 +102,7 @@ impl Game {
         self.mobs.entities.throw_pearl(self.actor, p.eye(), p.forward().as_dvec3(), carry);
         // Java's throw is the bow sound, pitched well down.
         self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.inventory.take_one(self.actions.selected);
         }
         true
@@ -123,7 +124,7 @@ impl Game {
         let Some(target) = self.world.generator.strongholds.nearest(from.floor().as_ivec3()) else { return false };
         self.mobs.entities.release_eye(from, target.as_dvec3());
         eye_thrown_sound(&mut self.audio, from);
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.inventory.take_one(self.actions.selected);
         }
         true
@@ -137,7 +138,7 @@ impl Game {
         }
         let Some(opened) = self.world.insert_eye(pos) else { return false };
         frame_filled_sounds(&mut self.audio, pos, opened);
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.inventory.take_one(self.actions.selected);
         }
         true
@@ -231,7 +232,7 @@ impl Game {
             let block = item.stack.item.block().filter(|b| !b.flat_icon());
             let icon = match block {
                 Some(_) => None,
-                None => item.stack.item.block().map(|b| b.info().tex[0].into()).or(item.stack.item.icon_layer()),
+                None => item.stack.item.block().map(|b| b.info().tex[0]).or(item.stack.item.icon_layer()),
             };
             let size = if block.is_some() { 0.25 } else { 0.5 };
             let spin = item.age + item.phase;

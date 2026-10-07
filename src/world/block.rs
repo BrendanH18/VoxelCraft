@@ -1,13 +1,16 @@
 //! Block registry: ids, render classification and per-face texture layers.
 //!
-//! Block properties live in a 256-entry static table so hot loops (meshing,
+//! Block properties live in a 4096-entry static table so hot loops (meshing,
 //! physics) resolve them with a single indexed load instead of a `match`.
 
 use crate::item::{Item, ToolKind};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 #[repr(transparent)]
-pub struct Block(pub u8);
+pub struct Block(pub u16);
+
+/// Registry capacity; state IDs are append-only and must be below this bound.
+pub const STATE_CAPACITY: usize = 4096;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RenderKind {
@@ -36,173 +39,183 @@ pub struct BlockInfo {
     /// Hide faces between two blocks of this same type (glass, water).
     pub self_cull: bool,
     /// Texture layer per face, ordered +X, -X, +Y, -Y, +Z, -Z.
-    pub tex: [u8; 6],
+    pub tex: [u16; 6],
 }
 
 /// Texture array layers. Must match the generators in `render::textures`.
 pub mod tex {
-    pub const STONE: u8 = 0;
-    pub const DIRT: u8 = 1;
-    pub const GRASS_TOP: u8 = 2;
-    pub const GRASS_SIDE: u8 = 3;
-    pub const SAND: u8 = 4;
-    pub const WATER: u8 = 5;
-    pub const LOG_SIDE: u8 = 6;
-    pub const LOG_TOP: u8 = 7;
-    pub const LEAVES: u8 = 8;
-    pub const PLANKS: u8 = 9;
-    pub const COBBLESTONE: u8 = 10;
-    pub const GLASS: u8 = 11;
-    pub const BEDROCK: u8 = 12;
-    pub const GRAVEL: u8 = 13;
-    pub const SNOW: u8 = 14;
-    pub const SNOWY_GRASS_SIDE: u8 = 15;
-    pub const COAL_ORE: u8 = 16;
-    pub const IRON_ORE: u8 = 17;
-    pub const GOLD_ORE: u8 = 18;
-    pub const DIAMOND_ORE: u8 = 19;
-    pub const CACTUS_SIDE: u8 = 20;
-    pub const CACTUS_TOP: u8 = 21;
-    pub const BRICKS: u8 = 22;
-    pub const SANDSTONE_SIDE: u8 = 23;
-    pub const SANDSTONE_TOP: u8 = 24;
-    pub const GLOWSTONE: u8 = 25;
-    pub const SPRUCE_LEAVES: u8 = 26;
+    pub const STONE: u16 = 0;
+    pub const DIRT: u16 = 1;
+    pub const GRASS_TOP: u16 = 2;
+    pub const GRASS_SIDE: u16 = 3;
+    pub const SAND: u16 = 4;
+    pub const WATER: u16 = 5;
+    pub const LOG_SIDE: u16 = 6;
+    pub const LOG_TOP: u16 = 7;
+    pub const LEAVES: u16 = 8;
+    pub const PLANKS: u16 = 9;
+    pub const COBBLESTONE: u16 = 10;
+    pub const GLASS: u16 = 11;
+    pub const BEDROCK: u16 = 12;
+    pub const GRAVEL: u16 = 13;
+    pub const SNOW: u16 = 14;
+    pub const SNOWY_GRASS_SIDE: u16 = 15;
+    pub const COAL_ORE: u16 = 16;
+    pub const IRON_ORE: u16 = 17;
+    pub const GOLD_ORE: u16 = 18;
+    pub const DIAMOND_ORE: u16 = 19;
+    pub const CACTUS_SIDE: u16 = 20;
+    pub const CACTUS_TOP: u16 = 21;
+    pub const BRICKS: u16 = 22;
+    pub const SANDSTONE_SIDE: u16 = 23;
+    pub const SANDSTONE_TOP: u16 = 24;
+    pub const GLOWSTONE: u16 = 25;
+    pub const SPRUCE_LEAVES: u16 = 26;
     // HUD icons.
-    pub const HEART_FULL: u8 = 27;
-    pub const HEART_HALF: u8 = 28;
-    pub const HEART_EMPTY: u8 = 29;
-    pub const BUBBLE: u8 = 30;
+    pub const HEART_FULL: u16 = 27;
+    pub const HEART_HALF: u16 = 28;
+    pub const HEART_EMPTY: u16 = 29;
+    pub const BUBBLE: u16 = 30;
     /// Block-breaking crack overlays, stages 0..10.
-    pub const CRACK_0: u8 = 31;
+    pub const CRACK_0: u16 = 31;
     pub const CRACK_STAGES: u8 = 10;
     // Cross-shaped plants and torches.
-    pub const TALL_GRASS: u8 = 41;
-    pub const DANDELION: u8 = 42;
-    pub const POPPY: u8 = 43;
-    pub const DEAD_BUSH: u8 = 44;
-    pub const TORCH: u8 = 45;
-    pub const LAVA: u8 = 46;
-    pub const OBSIDIAN: u8 = 47;
-    pub const WOOL: u8 = 48;
-    pub const TABLE_TOP: u8 = 49;
-    pub const TABLE_SIDE: u8 = 50;
-    pub const FURNACE_FRONT: u8 = 51;
-    pub const FURNACE_LIT: u8 = 52;
-    pub const FURNACE_TOP: u8 = 53;
+    pub const TALL_GRASS: u16 = 41;
+    pub const DANDELION: u16 = 42;
+    pub const POPPY: u16 = 43;
+    pub const DEAD_BUSH: u16 = 44;
+    pub const TORCH: u16 = 45;
+    pub const LAVA: u16 = 46;
+    pub const OBSIDIAN: u16 = 47;
+    pub const WOOL: u16 = 48;
+    pub const TABLE_TOP: u16 = 49;
+    pub const TABLE_SIDE: u16 = 50;
+    pub const FURNACE_FRONT: u16 = 51;
+    pub const FURNACE_LIT: u16 = 52;
+    pub const FURNACE_TOP: u16 = 53;
     // Hunger bar icons.
-    pub const FOOD_FULL: u8 = 54;
-    pub const FOOD_HALF: u8 = 55;
-    pub const FOOD_EMPTY: u8 = 56;
-    pub const FURNACE_SIDE: u8 = 57;
-    pub const CHEST_TOP: u8 = 58;
-    pub const CHEST_SIDE: u8 = 59;
-    pub const CHEST_FRONT: u8 = 60;
-    pub const FARMLAND: u8 = 61;
-    pub const WET_FARMLAND: u8 = 62;
+    pub const FOOD_FULL: u16 = 54;
+    pub const FOOD_HALF: u16 = 55;
+    pub const FOOD_EMPTY: u16 = 56;
+    pub const FURNACE_SIDE: u16 = 57;
+    pub const CHEST_TOP: u16 = 58;
+    pub const CHEST_SIDE: u16 = 59;
+    pub const CHEST_FRONT: u16 = 60;
+    pub const FARMLAND: u16 = 61;
+    pub const WET_FARMLAND: u16 = 62;
     /// Wheat growth stages 0..8.
-    pub const WHEAT_0: u8 = 63;
-    pub const OAK_SAPLING: u8 = 71;
-    pub const SPRUCE_SAPLING: u8 = 72;
-    pub const BED_TOP_FOOT: u8 = 73;
-    pub const BED_TOP_HEAD: u8 = 74;
-    pub const BED_SIDE_FOOT: u8 = 75;
-    pub const BED_SIDE_HEAD: u8 = 76;
-    pub const NETHERRACK: u8 = 77;
-    pub const SOUL_SAND: u8 = 78;
-    pub const QUARTZ_ORE: u8 = 79;
-    pub const NETHER_BRICKS: u8 = 80;
-    pub const PORTAL: u8 = 81;
-    pub const TNT_SIDE: u8 = 82;
-    pub const TNT_TOP: u8 = 83;
-    pub const TNT_BOTTOM: u8 = 84;
-    pub const LADDER: u8 = 85;
-    pub const DOOR_TOP: u8 = 86;
-    pub const DOOR_BOTTOM: u8 = 87;
+    pub const WHEAT_0: u16 = 63;
+    pub const OAK_SAPLING: u16 = 71;
+    pub const SPRUCE_SAPLING: u16 = 72;
+    pub const BED_TOP_FOOT: u16 = 73;
+    pub const BED_TOP_HEAD: u16 = 74;
+    pub const BED_SIDE_FOOT: u16 = 75;
+    pub const BED_SIDE_HEAD: u16 = 76;
+    pub const NETHERRACK: u16 = 77;
+    pub const SOUL_SAND: u16 = 78;
+    pub const QUARTZ_ORE: u16 = 79;
+    pub const NETHER_BRICKS: u16 = 80;
+    pub const PORTAL: u16 = 81;
+    pub const TNT_SIDE: u16 = 82;
+    pub const TNT_TOP: u16 = 83;
+    pub const TNT_BOTTOM: u16 = 84;
+    pub const LADDER: u16 = 85;
+    pub const DOOR_TOP: u16 = 86;
+    pub const DOOR_BOTTOM: u16 = 87;
     /// The player's arm in first person.
-    pub const SKIN: u8 = 88;
+    pub const SKIN: u16 = 88;
     /// Seven flame animation frames.
-    pub const FIRE_0: u8 = 89;
+    pub const FIRE_0: u16 = 89;
     pub const FIRE_FRAMES: u8 = 7;
-    pub const SPRUCE_LOG_SIDE: u8 = 96;
-    pub const SPRUCE_LOG_TOP: u8 = 97;
-    pub const BIRCH_LOG_SIDE: u8 = 98;
-    pub const BIRCH_LOG_TOP: u8 = 99;
-    pub const JUNGLE_LOG_SIDE: u8 = 100;
-    pub const JUNGLE_LOG_TOP: u8 = 101;
-    pub const ACACIA_LOG_SIDE: u8 = 102;
-    pub const ACACIA_LOG_TOP: u8 = 103;
-    pub const BIRCH_LEAVES: u8 = 104;
-    pub const JUNGLE_LEAVES: u8 = 105;
-    pub const ACACIA_LEAVES: u8 = 106;
-    pub const SPRUCE_PLANKS: u8 = 107;
-    pub const BIRCH_PLANKS: u8 = 108;
-    pub const JUNGLE_PLANKS: u8 = 109;
-    pub const ACACIA_PLANKS: u8 = 110;
-    pub const BIRCH_SAPLING: u8 = 111;
-    pub const JUNGLE_SAPLING: u8 = 112;
-    pub const ACACIA_SAPLING: u8 = 113;
-    pub const RED_SAND: u8 = 114;
+    pub const SPRUCE_LOG_SIDE: u16 = 96;
+    pub const SPRUCE_LOG_TOP: u16 = 97;
+    pub const BIRCH_LOG_SIDE: u16 = 98;
+    pub const BIRCH_LOG_TOP: u16 = 99;
+    pub const JUNGLE_LOG_SIDE: u16 = 100;
+    pub const JUNGLE_LOG_TOP: u16 = 101;
+    pub const ACACIA_LOG_SIDE: u16 = 102;
+    pub const ACACIA_LOG_TOP: u16 = 103;
+    pub const BIRCH_LEAVES: u16 = 104;
+    pub const JUNGLE_LEAVES: u16 = 105;
+    pub const ACACIA_LEAVES: u16 = 106;
+    pub const SPRUCE_PLANKS: u16 = 107;
+    pub const BIRCH_PLANKS: u16 = 108;
+    pub const JUNGLE_PLANKS: u16 = 109;
+    pub const ACACIA_PLANKS: u16 = 110;
+    pub const BIRCH_SAPLING: u16 = 111;
+    pub const JUNGLE_SAPLING: u16 = 112;
+    pub const ACACIA_SAPLING: u16 = 113;
+    pub const RED_SAND: u16 = 114;
     /// Plain terracotta, then the six dyed colours (see `Block::TERRACOTTA`).
-    pub const TERRACOTTA: u8 = 115;
-    pub const CLAY: u8 = 122;
-    pub const SUGAR_CANE: u8 = 123;
-    pub const PUMPKIN_SIDE: u8 = 124;
-    pub const PUMPKIN_TOP: u8 = 125;
-    pub const MELON_SIDE: u8 = 126;
-    pub const MELON_TOP: u8 = 127;
-    pub const FERN: u8 = 128;
-    pub const BLUE_ORCHID: u8 = 129;
-    pub const ICE: u8 = 130;
+    pub const TERRACOTTA: u16 = 115;
+    pub const CLAY: u16 = 122;
+    pub const SUGAR_CANE: u16 = 123;
+    pub const PUMPKIN_SIDE: u16 = 124;
+    pub const PUMPKIN_TOP: u16 = 125;
+    pub const MELON_SIDE: u16 = 126;
+    pub const MELON_TOP: u16 = 127;
+    pub const FERN: u16 = 128;
+    pub const BLUE_ORCHID: u16 = 129;
+    pub const ICE: u16 = 130;
     /// Biome-coloured copies of [`FOLIAGE`] textures: for each foliage
     /// group from 1 (see `terrain::Biome::foliage`), one layer per entry.
-    pub const FOLIAGE_0: u8 = 131;
-    pub const FOLIAGE: [u8; 5] = [GRASS_TOP, GRASS_SIDE, LEAVES, TALL_GRASS, FERN];
+    pub const FOLIAGE_0: u16 = 131;
+    pub const FOLIAGE: [u16; 5] = [GRASS_TOP, GRASS_SIDE, LEAVES, TALL_GRASS, FERN];
     pub const FOLIAGE_GROUPS: u8 = 5;
-    pub const END_STONE: u8 = FOLIAGE_0 + (FOLIAGE_GROUPS - 1) * FOLIAGE.len() as u8;
-    pub const SPAWNER: u8 = END_STONE + 1;
+    pub const END_STONE: u16 = FOLIAGE_0 + (FOLIAGE_GROUPS as u16 - 1) * FOLIAGE.len() as u16;
+    pub const SPAWNER: u16 = END_STONE + 1;
     /// Nether wart's three looks: ages 0-1, age 2 and ripe (age 3).
-    pub const NETHER_WART_0: u8 = SPAWNER + 1;
+    pub const NETHER_WART_0: u16 = SPAWNER + 1;
     /// The brewing stand's sides and top: its rod down the middle columns
     /// and its stone plates along the bottom (shaped boxes sample a texture
     /// by their position in the cell).
-    pub const BREWING_SIDE: u8 = NETHER_WART_0 + 3;
-    pub const BREWING_TOP: u8 = BREWING_SIDE + 1;
+    pub const BREWING_SIDE: u16 = NETHER_WART_0 + 3;
+    pub const BREWING_TOP: u16 = BREWING_SIDE + 1;
     /// Stone bricks: plain, mossy and cracked.
-    pub const STONE_BRICKS: u8 = BREWING_TOP + 1;
-    pub const MOSSY_STONE_BRICKS: u8 = STONE_BRICKS + 1;
-    pub const CRACKED_STONE_BRICKS: u8 = STONE_BRICKS + 2;
-    pub const IRON_BARS: u8 = STONE_BRICKS + 3;
-    pub const BOOKSHELF: u8 = IRON_BARS + 1;
-    pub const COBWEB: u8 = BOOKSHELF + 1;
+    pub const STONE_BRICKS: u16 = BREWING_TOP + 1;
+    pub const MOSSY_STONE_BRICKS: u16 = STONE_BRICKS + 1;
+    pub const CRACKED_STONE_BRICKS: u16 = STONE_BRICKS + 2;
+    pub const IRON_BARS: u16 = STONE_BRICKS + 3;
+    pub const BOOKSHELF: u16 = IRON_BARS + 1;
+    pub const COBWEB: u16 = BOOKSHELF + 1;
     /// End portal frames: top and side, then the same with an eye of ender.
-    pub const FRAME_TOP: u8 = COBWEB + 1;
-    pub const FRAME_SIDE: u8 = FRAME_TOP + 1;
-    pub const FRAME_EYE_TOP: u8 = FRAME_TOP + 2;
-    pub const FRAME_EYE_SIDE: u8 = FRAME_TOP + 3;
-    pub const END_PORTAL: u8 = FRAME_TOP + 4;
-    pub const DRAGON_EGG: u8 = END_PORTAL + 1;
-    pub const LAPIS_ORE: u8 = DRAGON_EGG + 1;
-    pub const LAPIS_BLOCK: u8 = LAPIS_ORE + 1;
+    pub const FRAME_TOP: u16 = COBWEB + 1;
+    pub const FRAME_SIDE: u16 = FRAME_TOP + 1;
+    pub const FRAME_EYE_TOP: u16 = FRAME_TOP + 2;
+    pub const FRAME_EYE_SIDE: u16 = FRAME_TOP + 3;
+    pub const END_PORTAL: u16 = FRAME_TOP + 4;
+    pub const DRAGON_EGG: u16 = END_PORTAL + 1;
+    pub const LAPIS_ORE: u16 = DRAGON_EGG + 1;
+    pub const LAPIS_BLOCK: u16 = LAPIS_ORE + 1;
     /// The enchanting table's red cloth top and its 12-high sides (shaped
     /// boxes sample rows 4..16 of a side).
-    pub const ENCHANT_TOP: u8 = LAPIS_BLOCK + 1;
-    pub const ENCHANT_SIDE: u8 = ENCHANT_TOP + 1;
-    pub const IRON_BLOCK: u8 = ENCHANT_SIDE + 1;
+    pub const ENCHANT_TOP: u16 = LAPIS_BLOCK + 1;
+    pub const ENCHANT_SIDE: u16 = ENCHANT_TOP + 1;
+    pub const IRON_BLOCK: u16 = ENCHANT_SIDE + 1;
     /// Anvil body, then its top intact, chipped and damaged.
-    pub const ANVIL: u8 = IRON_BLOCK + 1;
-    pub const ANVIL_TOP: u8 = ANVIL + 1;
-    pub const DEBRIS_SIDE: u8 = ANVIL_TOP + 3;
-    pub const DEBRIS_TOP: u8 = DEBRIS_SIDE + 1;
-    pub const NETHERITE_BLOCK: u8 = DEBRIS_TOP + 1;
-    pub const COUNT: u32 = NETHERITE_BLOCK as u32 + 1;
-    // Layers are stored in a byte.
-    const _: () = assert!(COUNT <= 256);
+    pub const ANVIL: u16 = IRON_BLOCK + 1;
+    pub const ANVIL_TOP: u16 = ANVIL + 1;
+    pub const DEBRIS_SIDE: u16 = ANVIL_TOP + 3;
+    pub const DEBRIS_TOP: u16 = DEBRIS_SIDE + 1;
+    pub const NETHERITE_BLOCK: u16 = DEBRIS_TOP + 1;
+    /// The smithing table: an iron top, dark wooden front and back (tongs)
+    /// and sides (a hammer), and a plank bottom.
+    pub const SMITHING_TOP: u16 = NETHERITE_BLOCK + 1;
+    pub const SMITHING_FRONT: u16 = SMITHING_TOP + 1;
+    pub const SMITHING_SIDE: u16 = SMITHING_TOP + 2;
+    pub const SMITHING_BOTTOM: u16 = SMITHING_TOP + 3;
+    pub const MOSSY_COBBLESTONE: u16 = SMITHING_BOTTOM + 1;
+    pub const COUNT: u32 = MOSSY_COBBLESTONE as u32 + 1;
+    /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
+    pub const CAPACITY: u32 = 2048;
+    pub const PAGE_LAYERS: u32 = 256;
+    pub const PAGES: usize = (CAPACITY / PAGE_LAYERS) as usize;
+    const _: () = assert!(COUNT <= CAPACITY);
 
     /// Item icons live in a texture array of their own (see
     /// `item::sprite_for_layer`); renderers address icon `index` as layer
     /// `ITEM_BASE + index`, after every block layer.
-    pub const ITEM_BASE: u16 = 256;
+    pub const ITEM_BASE: u16 = CAPACITY as u16;
 
     pub const fn item_layer(index: u16) -> u16 {
         ITEM_BASE + index
@@ -216,18 +229,18 @@ pub mod tex {
     /// The layer to draw `layer` with in a column of foliage `group`:
     /// grass and oak leaves take on the colour of the biome.
     #[inline]
-    pub fn tinted(layer: u8, group: u8) -> u8 {
+    pub fn tinted(layer: u16, group: u8) -> u16 {
         if group == 0 {
             return layer;
         }
         match FOLIAGE.iter().position(|&l| l == layer) {
-            Some(i) => FOLIAGE_0 + (group - 1) * FOLIAGE.len() as u8 + i as u8,
+            Some(i) => FOLIAGE_0 + (group as u16 - 1) * FOLIAGE.len() as u16 + i as u16,
             None => layer,
         }
     }
 
     /// The plain layer and foliage group a tinted layer was made from.
-    pub fn untinted(layer: u8) -> Option<(u8, u8)> {
+    pub fn untinted(layer: u16) -> Option<(u16, u8)> {
         let i = layer.checked_sub(FOLIAGE_0)? as usize;
         (i < (FOLIAGE_GROUPS as usize - 1) * FOLIAGE.len())
             .then(|| (FOLIAGE[i % FOLIAGE.len()], (i / FOLIAGE.len()) as u8 + 1))
@@ -392,13 +405,16 @@ impl Block {
     pub const DAMAGED_ANVIL: Block = Block(219);
     pub const ANCIENT_DEBRIS: Block = Block(221);
     pub const NETHERITE_BLOCK: Block = Block(222);
+    /// Upgrades diamond gear to Netherite (see `crate::smithing`).
+    pub const SMITHING_TABLE: Block = Block(223);
+    pub const MOSSY_COBBLESTONE: Block = Block(224);
 
     pub const fn fire(age: u8) -> Block {
-        Block(165 + if age > 15 { 15 } else { age })
+        Block(165 + if age > 15 { 15 } else { age as u16 })
     }
 
     pub fn fire_age(self) -> Option<u8> {
-        (165..=180).contains(&self.0).then(|| self.0 - 165)
+        (165..=180).contains(&self.0).then(|| (self.0 - 165) as u8)
     }
 
     #[inline]
@@ -428,7 +444,10 @@ impl Block {
     pub fn ignited_by_lava(self) -> bool {
         self.fire_odds().0 > 0
             || self.is_bed()
-            || matches!(self.base(), Block::OAK_DOOR | Block::LADDER | Block::CRAFTING_TABLE | Block::CHEST)
+            || matches!(
+                self.base(),
+                Block::OAK_DOOR | Block::LADDER | Block::CRAFTING_TABLE | Block::CHEST | Block::SMITHING_TABLE
+            )
     }
 
     /// A complete top face can support fire, even on glass.
@@ -437,41 +456,41 @@ impl Block {
     }
 
     pub const fn flowing_water(level: u8) -> Block {
-        Block(23 + level)
+        Block(23 + level as u16)
     }
 
     pub const fn flowing_lava(level: u8) -> Block {
-        Block(37 + level)
+        Block(37 + level as u16)
     }
 
     /// Wheat crops at growth `stage` 0..=7 (7 is ripe).
     pub const fn wheat(stage: u8) -> Block {
-        Block(59 + stage)
+        Block(59 + stage as u16)
     }
 
     /// Growth stage of a wheat crop.
     pub fn crop_stage(self) -> Option<u8> {
-        (59..=66).contains(&self.0).then(|| self.0 - 59)
+        (59..=66).contains(&self.0).then(|| (self.0 - 59) as u8)
     }
 
     /// Nether wart at `age` 0..=3 (3 is ripe).
     pub const fn nether_wart(age: u8) -> Block {
-        Block(184 + if age > 3 { 3 } else { age })
+        Block(184 + if age > 3 { 3 } else { age as u16 })
     }
 
     /// Age of a nether wart crop.
     pub fn wart_age(self) -> Option<u8> {
-        (184..=187).contains(&self.0).then(|| self.0 - 184)
+        (184..=187).contains(&self.0).then(|| (self.0 - 184) as u8)
     }
 
     /// A fence gate facing `facing`.
     pub const fn gate(facing: Facing, open: bool) -> Block {
-        Block(141 + open as u8 * 4 + facing as u8)
+        Block(141 + open as u16 * 4 + facing as u16)
     }
 
     /// One half of a door facing `facing`.
     pub const fn door(facing: Facing, open: bool, upper: bool) -> Block {
-        Block(149 + upper as u8 * 8 + open as u8 * 4 + facing as u8)
+        Block(149 + upper as u16 * 8 + open as u16 * 4 + facing as u16)
     }
 
     /// The stairs cut from `base` (one of [`Block::SLAB_BASES`]), facing south.
@@ -486,8 +505,10 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
-        let f = |i: u8| Facing::ALL[i as usize % 4];
+        let f = |i: u16| Facing::ALL[i as usize % 4];
         Some(match self.0 {
+            #[cfg(test)]
+            4094 => Shaped::Stairs(Facing::South),
             112..=135 | 189..=192 => Shaped::Stairs(f(stairs_index(self.0).unwrap().1)),
             136 | 182 => Shaped::Fence,
             188 => Shaped::BrewingStand,
@@ -551,7 +572,7 @@ impl Block {
     /// Badlands terracotta: 0 plain, then orange, yellow, red, brown, white
     /// and light grey.
     pub const fn terracotta(colour: u8) -> Block {
-        Block(84 + colour)
+        Block(84 + colour as u16)
     }
 
     /// The kind of wood a log, leaves, planks or sapling block is made of.
@@ -582,7 +603,7 @@ impl Block {
     /// The block items, recipes and rules use for an oriented block (a
     /// furnace or chest facing any way), and the way it faces.
     pub fn oriented(self) -> Option<(Block, Facing)> {
-        let f = |i: u8| Facing::ALL[i as usize];
+        let f = |i: u16| Facing::ALL[i as usize];
         match self.0 {
             45 => Some((Block::FURNACE, Facing::South)),
             46 => Some((Block::LIT_FURNACE, Facing::South)),
@@ -599,7 +620,7 @@ impl Block {
             149..=164 => Some((Block::OAK_DOOR, f((self.0 - 149) % 4))),
             215..=220 => {
                 let along_x = (self.0 - 215) % 2 == 1;
-                Some((Block(self.0 - along_x as u8), if along_x { Facing::East } else { Facing::South }))
+                Some((Block(self.0 - along_x as u16), if along_x { Facing::East } else { Facing::South }))
             }
             _ => None,
         }
@@ -612,13 +633,13 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
-        let i = facing as u8;
+        let i = facing as u16;
         match self.base() {
             // Frames keep their eye.
             Block::END_PORTAL_FRAME => Block(200 + i + if self.0 >= 204 { 4 } else { 0 }),
             // Anvils turn broadside to whoever places them (Java's facing
             // is the placer's clockwise), so the top runs across their view.
-            b @ (Block::ANVIL | Block::CHIPPED_ANVIL | Block::DAMAGED_ANVIL) => Block(b.0 + !facing.along_x() as u8),
+            b @ (Block::ANVIL | Block::CHIPPED_ANVIL | Block::DAMAGED_ANVIL) => Block(b.0 + !facing.along_x() as u16),
             b if i == 0 => b,
             Block::FURNACE => Block(46 + i),
             Block::LIT_FURNACE => Block(49 + i),
@@ -630,9 +651,19 @@ impl Block {
         }
     }
 
+    /// Index of a live state. Ids are kept below [`STATE_CAPACITY`], so the
+    /// load is unchecked: a bounds check would not be a single indexed load.
+    #[inline(always)]
+    fn slot(self) -> usize {
+        let i = self.0 as usize;
+        debug_assert!(i < STATE_CAPACITY);
+        i
+    }
+
     #[inline(always)]
     pub fn info(self) -> &'static BlockInfo {
-        &INFO[self.0 as usize]
+        // SAFETY: `slot` is < STATE_CAPACITY for every id the game constructs.
+        unsafe { INFO.get_unchecked(self.slot()) }
     }
 
     #[inline(always)]
@@ -642,7 +673,8 @@ impl Block {
 
     #[inline(always)]
     pub fn is_opaque(self) -> bool {
-        OPAQUE[self.0 as usize]
+        // SAFETY: same bound as `info`.
+        unsafe { *OPAQUE.get_unchecked(self.slot()) }
     }
 
     #[inline(always)]
@@ -654,7 +686,7 @@ impl Block {
     pub fn water_level(self) -> Option<u8> {
         match self.0 {
             5 | 31 => Some(0),
-            24..=30 => Some(self.0 - 23),
+            24..=30 => Some((self.0 - 23) as u8),
             _ => None,
         }
     }
@@ -683,8 +715,8 @@ impl Block {
     pub fn fluid_level(self) -> Option<u8> {
         match self.0 {
             5 | 31 | 37 | 41 => Some(0),
-            24..=30 => Some(self.0 - 23),
-            38..=40 => Some(self.0 - 37),
+            24..=30 => Some((self.0 - 23) as u8),
+            38..=40 => Some((self.0 - 37) as u8),
             _ => None,
         }
     }
@@ -695,8 +727,8 @@ impl Block {
     pub fn fluid_drop(self) -> u8 {
         match self.0 {
             5 | 37 => 2,
-            24..=30 => 2 + (self.0 - 23) * 12 / 7,
-            38..=40 => 2 + (self.0 - 37) * 24 / 7,
+            24..=30 => 2 + ((self.0 - 23) * 12 / 7) as u8,
+            38..=40 => 2 + ((self.0 - 37) * 24 / 7) as u8,
             _ => 0,
         }
     }
@@ -837,8 +869,8 @@ impl Block {
             b if b.terracotta_colour().is_some() => 1.25,
             Block::STONE => 1.5,
             b if b.is_log() || b.is_planks() => 2.0,
-            Block::COBBLESTONE | Block::BRICKS => 2.0,
-            Block::CRAFTING_TABLE | Block::CHEST => 2.5,
+            Block::COBBLESTONE | Block::MOSSY_COBBLESTONE | Block::BRICKS => 2.0,
+            Block::CRAFTING_TABLE | Block::CHEST | Block::SMITHING_TABLE => 2.5,
             Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
             Block::FURNACE | Block::LIT_FURNACE => 3.5,
             Block::SPAWNER => 5.0,
@@ -854,6 +886,7 @@ impl Block {
         match self.material() {
             Block::STONE
             | Block::COBBLESTONE
+            | Block::MOSSY_COBBLESTONE
             | Block::BRICKS
             | Block::SANDSTONE
             | Block::COAL_ORE
@@ -898,9 +931,13 @@ impl Block {
             | Block::SOUL_SAND
             | Block::CLAY => Some(ToolKind::Shovel),
             b if b.is_log() || b.is_planks() => Some(ToolKind::Axe),
-            Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON | Block::LADDER | Block::OAK_DOOR => {
-                Some(ToolKind::Axe)
-            }
+            Block::CRAFTING_TABLE
+            | Block::CHEST
+            | Block::PUMPKIN
+            | Block::MELON
+            | Block::LADDER
+            | Block::OAK_DOOR
+            | Block::SMITHING_TABLE => Some(ToolKind::Axe),
             _ => None,
         }
     }
@@ -911,6 +948,7 @@ impl Block {
         match self.material() {
             Block::STONE
             | Block::COBBLESTONE
+            | Block::MOSSY_COBBLESTONE
             | Block::BRICKS
             | Block::SANDSTONE
             | Block::COAL_ORE
@@ -941,7 +979,7 @@ impl Block {
 
     /// Every block a creative player can pick from.
     pub fn creative_palette() -> impl Iterator<Item = Block> {
-        (1..=23u8)
+        (1..=23u16)
             .chain(32..=37)
             .chain(42..=45)
             .chain([53, 57, 67, 68])
@@ -951,7 +989,7 @@ impl Block {
             .chain((112..=132).step_by(4))
             .chain([
                 136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213, 214, 215,
-                217, 219, 221, 222,
+                217, 219, 221, 222, 223, 224,
             ])
             .map(Block)
     }
@@ -968,7 +1006,7 @@ impl Block {
 
     /// Colour index of a terracotta block (see [`Block::terracotta`]).
     pub fn terracotta_colour(self) -> Option<u8> {
-        (84..=90).contains(&self.0).then(|| self.0 - 84)
+        (84..=90).contains(&self.0).then(|| (self.0 - 84) as u8)
     }
 
     /// Whether the crosshair can select this block (anything visible but fluids).
@@ -1027,7 +1065,7 @@ impl Block {
     /// Looks a block up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<Block> {
         let name = name.replace('_', " ");
-        (0..=255u8)
+        (0..STATE_CAPACITY as u16)
             .map(Block)
             .find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
             .or((name == "air").then_some(Block::AIR))
@@ -1037,14 +1075,16 @@ impl Block {
     /// or this value if larger. 15 fully blocks light.
     #[inline(always)]
     pub fn light_opacity(self) -> u8 {
-        LIGHT_OPACITY[self.0 as usize]
+        // SAFETY: same bound as `info`.
+        unsafe { *LIGHT_OPACITY.get_unchecked(self.slot()) }
     }
 
     /// Blocks light but doesn't fill its cell (slabs, stairs): lit like
     /// the brightest cell beside or above it.
     #[inline(always)]
     pub fn borrows_light(self) -> bool {
-        BORROWS_LIGHT[self.0 as usize]
+        // SAFETY: same bound as `info`.
+        unsafe { *BORROWS_LIGHT.get_unchecked(self.slot()) }
     }
 
     /// Light level emitted by this block.
@@ -1068,16 +1108,16 @@ impl Block {
 
 /// Id of the slab of [`Block::SLAB_BASES`] entry `i`.
 const fn slab_id(i: usize) -> Block {
-    if i < 6 { Block(106 + i as u8) } else { Block::STONE_BRICK_SLAB }
+    if i < 6 { Block(106 + i as u16) } else { Block::STONE_BRICK_SLAB }
 }
 
 /// Id of the south-facing stairs of [`Block::SLAB_BASES`] entry `i`.
 const fn stairs_id(i: usize) -> Block {
-    if i < 6 { Block(112 + i as u8 * 4) } else { Block::STONE_BRICK_STAIRS }
+    if i < 6 { Block(112 + i as u16 * 4) } else { Block::STONE_BRICK_STAIRS }
 }
 
 /// The slab material index and facing index of a stairs id.
-const fn stairs_index(id: u8) -> Option<(usize, u8)> {
+const fn stairs_index(id: u16) -> Option<(usize, u16)> {
     match id {
         112..=135 => Some(((id as usize - 112) / 4, (id - 112) % 4)),
         189..=192 => Some((6, id - 189)),
@@ -1296,24 +1336,30 @@ impl Fluid {
     }
 }
 
-const fn all(t: u8) -> [u8; 6] {
+const fn all(t: u16) -> [u16; 6] {
     [t; 6]
 }
 
-const fn column(side: u8, top: u8, bottom: u8) -> [u8; 6] {
+const fn column(side: u16, top: u16, bottom: u16) -> [u16; 6] {
     [side, side, top, bottom, side, side]
 }
 
 /// Side textures with `front` on the face `facing` points out of.
-const fn fronted(front: u8, side: u8, top: u8, facing: Facing) -> [u8; 6] {
+const fn fronted(front: u16, side: u16, top: u16, facing: Facing) -> [u16; 6] {
     let mut t = [side, side, top, top, side, side];
     t[facing.face()] = front;
     t
 }
 
-const fn make(id: u8) -> BlockInfo {
+const fn make(id: u16) -> BlockInfo {
     use RenderKind::*;
     let (name, kind, tex) = match id {
+        #[cfg(test)]
+        4095 => ("test high cube", Opaque, all(2047)),
+        #[cfg(test)]
+        4094 => ("test high stairs", Shaped, all(1536)),
+        #[cfg(test)]
+        4093 => ("test high cross", Cross, all(1024)),
         0 => ("air", Invisible, all(0)),
         1 => ("stone", Opaque, all(tex::STONE)),
         2 => ("dirt", Opaque, all(tex::DIRT)),
@@ -1476,6 +1522,13 @@ const fn make(id: u8) -> BlockInfo {
         219 | 220 => ("damaged anvil", Shaped, column(tex::ANVIL, tex::ANVIL_TOP + 2, tex::ANVIL)),
         221 => ("ancient debris", Opaque, column(tex::DEBRIS_SIDE, tex::DEBRIS_TOP, tex::DEBRIS_TOP)),
         222 => ("block of netherite", Opaque, all(tex::NETHERITE_BLOCK)),
+        // Java's model: the tongs front on north and south, the hammer side
+        // on east and west.
+        223 => {
+            let (front, side) = (tex::SMITHING_FRONT, tex::SMITHING_SIDE);
+            ("smithing table", Opaque, [side, side, tex::SMITHING_TOP, tex::SMITHING_BOTTOM, front, front])
+        }
+        224 => ("mossy cobblestone", Opaque, all(tex::MOSSY_COBBLESTONE)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are
@@ -1484,25 +1537,28 @@ const fn make(id: u8) -> BlockInfo {
     BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104), tex }
 }
 
-pub static INFO: [BlockInfo; 256] = {
-    let mut arr = [make(0); 256];
+pub static INFO: [BlockInfo; STATE_CAPACITY] = {
+    let mut arr = [make(0); STATE_CAPACITY];
     let mut i = 0;
-    while i < 256 {
-        arr[i] = make(i as u8);
+    while i < STATE_CAPACITY {
+        arr[i] = make(i as u16);
         i += 1;
     }
     arr
 };
 
-static LIGHT_OPACITY: [u8; 256] = {
-    let mut arr = [15u8; 256];
+static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
+    let mut arr = [15u8; STATE_CAPACITY];
     let mut i = 0;
-    while i < 256 {
+    while i < STATE_CAPACITY {
         arr[i] = match INFO[i].kind {
             RenderKind::Opaque => 15,
             // Slabs and stairs keep the light out, like Minecraft's (they
             // borrow light from their neighbours instead; see `borrows_light`).
             _ if matches!(i, 106..=135 | 189..=193) => 15,
+            // Mesh bit tests use 4094 as a stairs stand-in at the layer limit.
+            #[cfg(test)]
+            _ if i == 4094 => 15,
             RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
             _ if matches!(i, 10 | 98 | 99) => 0, // glass, beds
             _ => 1,                              // leaves, water: attenuate skylight too
@@ -1512,20 +1568,20 @@ static LIGHT_OPACITY: [u8; 256] = {
     arr
 };
 
-static BORROWS_LIGHT: [bool; 256] = {
-    let mut arr = [false; 256];
+static BORROWS_LIGHT: [bool; STATE_CAPACITY] = {
+    let mut arr = [false; STATE_CAPACITY];
     let mut i = 0;
-    while i < 256 {
+    while i < STATE_CAPACITY {
         arr[i] = LIGHT_OPACITY[i] >= 15 && !matches!(INFO[i].kind, RenderKind::Opaque);
         i += 1;
     }
     arr
 };
 
-static OPAQUE: [bool; 256] = {
-    let mut arr = [false; 256];
+static OPAQUE: [bool; STATE_CAPACITY] = {
+    let mut arr = [false; STATE_CAPACITY];
     let mut i = 0;
-    while i < 256 {
+    while i < STATE_CAPACITY {
         arr[i] = matches!(INFO[i].kind, RenderKind::Opaque);
         i += 1;
     }
@@ -1564,9 +1620,30 @@ mod tests {
         for index in 0..300 {
             assert_eq!(tex::item_index(tex::item_layer(index)), Some(index));
         }
-        for layer in 0..tex::COUNT as u16 {
+        for layer in 0..tex::CAPACITY as u16 {
             assert_eq!(tex::item_index(layer), None);
         }
+    }
+
+    #[test]
+    fn smithing_table_has_its_fixed_id_textures_and_axe_rules() {
+        assert_eq!(Block::SMITHING_TABLE, Block(223));
+        assert_eq!(Block::from_name("smithing_table"), Some(Block::SMITHING_TABLE));
+        assert_eq!(Block::SMITHING_TABLE.name(), "smithing table");
+        assert_eq!(Block::SMITHING_TABLE.hardness(), 2.5);
+        assert_eq!(Block::SMITHING_TABLE.best_tool(), Some(ToolKind::Axe));
+        assert_eq!(
+            Block::SMITHING_TABLE.info().tex,
+            [
+                tex::SMITHING_SIDE,
+                tex::SMITHING_SIDE,
+                tex::SMITHING_TOP,
+                tex::SMITHING_BOTTOM,
+                tex::SMITHING_FRONT,
+                tex::SMITHING_FRONT,
+            ]
+        );
+        assert!(Block::creative_palette().any(|b| b == Block::SMITHING_TABLE));
     }
 
     #[test]

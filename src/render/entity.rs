@@ -20,6 +20,7 @@ impl EntityPass {
         globals: &wgpu::BindGroupLayout,
         blocks: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
+        paged_blocks: bool,
     ) -> Self {
         let skin_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("humanoid skin layout"),
@@ -69,7 +70,7 @@ impl EntityPass {
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("entity shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/entity.wgsl").into()),
+            source: super::block_shader(include_str!("shaders/entity.wgsl"), paged_blocks),
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("entities"),

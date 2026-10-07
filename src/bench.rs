@@ -8,7 +8,7 @@ use glam::{DVec3, IVec3};
 
 use crate::mesh::{self, D, MARGIN, MeshInput, NO_HEIGHT, Neighborhood, Region};
 use crate::world::World;
-use crate::world::chunk::{ChunkData, WORLD_HEIGHT_CHUNKS};
+use crate::world::chunk::{CHUNK_VOLUME, ChunkData, WORLD_HEIGHT_CHUNKS};
 use crate::world::terrain::Generator;
 
 pub fn run(seed: u64, rd: i32) {
@@ -31,6 +31,29 @@ pub fn run(seed: u64, rd: i32) {
         gen_time.as_secs_f64() * 1e3 / chunks.len() as f64,
         dense,
         chunks.len() - dense
+    );
+
+    println!(
+        "block storage: {:.2} MiB ({:.0} bytes/dense chunk)",
+        chunks.values().map(|c| c.heap_bytes()).sum::<usize>() as f64 / (1024.0 * 1024.0),
+        chunks.values().map(|c| c.heap_bytes()).sum::<usize>() as f64 / dense.max(1) as f64
+    );
+    // Repeated edits to existing states, including the copy-on-write snapshot.
+    let t = Instant::now();
+    let mut edited = 0;
+    for c in chunks.values().filter(|c| c.uniform().is_none()) {
+        let mut c = Arc::clone(c);
+        for i in 0..1024 {
+            let data = Arc::make_mut(&mut c);
+            data.set(i & 31, (i >> 5) & 31, 0, crate::world::block::Block::STONE);
+            edited += 1;
+        }
+        std::hint::black_box(c);
+    }
+    println!(
+        "edit (with COW): {edited} writes in {:.2} ms ({:.1} ns/write)",
+        t.elapsed().as_secs_f64() * 1e3,
+        t.elapsed().as_secs_f64() * 1e9 / edited as f64
     );
 
     // Column heightmaps, as the world would maintain them.
@@ -104,4 +127,86 @@ pub fn run(seed: u64, rd: i32) {
         uploads,
         t.elapsed().as_secs_f64()
     );
+    storage_profiles(chunks.values().map(Arc::as_ref).filter(|c| c.uniform().is_none()));
+}
+
+/// Compare representation costs using identical generated block contents. These
+/// probes are outside the generation/meshing/streaming throughput measurements.
+fn storage_profiles<'a>(chunks: impl Iterator<Item = &'a ChunkData>) {
+    use crate::world::block::{Block, STATE_CAPACITY};
+    let dense: Vec<_> = chunks
+        .map(|chunk| {
+            let mut blocks = ChunkData::new_dense(Block::AIR);
+            let mut i = 0;
+            chunk.for_each_block(|block| {
+                blocks[i] = block;
+                i += 1;
+            });
+            blocks
+        })
+        .collect();
+    if dense.is_empty() {
+        return;
+    }
+    for representation in ["bytes", "palette", "direct u16"] {
+        let t = Instant::now();
+        let stored: Vec<_> = dense
+            .iter()
+            .map(|blocks| {
+                let data = match representation {
+                    "bytes" => ChunkData::from_dense(blocks.clone()),
+                    "palette" => {
+                        let mut lookup = [u16::MAX; STATE_CAPACITY];
+                        let mut palette = Box::new([Block::AIR; 256]);
+                        let mut indices: Box<[u8; CHUNK_VOLUME]> =
+                            vec![0; CHUNK_VOLUME].into_boxed_slice().try_into().unwrap();
+                        let mut len = 0;
+                        for (&block, idx) in blocks.iter().zip(indices.iter_mut()) {
+                            let entry = &mut lookup[block.0 as usize];
+                            if *entry == u16::MAX {
+                                if len == 256 {
+                                    return Arc::new(ChunkData::Dense(blocks.clone()));
+                                }
+                                *entry = len;
+                                palette[len as usize] = block;
+                                len += 1;
+                            }
+                            *idx = *entry as u8;
+                        }
+                        ChunkData::Paletted { indices, palette, len }
+                    }
+                    _ => ChunkData::Dense(blocks.clone()),
+                };
+                Arc::new(data)
+            })
+            .collect();
+        let pack = t.elapsed();
+        let t = Instant::now();
+        let mut scratch = ChunkData::new_dense(Block::AIR);
+        for _ in 0..4 {
+            for chunk in &stored {
+                for row in 0..1024 {
+                    chunk.copy_row(row * 32, &mut scratch[row * 32..row * 32 + 32]);
+                }
+                std::hint::black_box(&scratch);
+            }
+        }
+        let copy = t.elapsed();
+        let t = Instant::now();
+        for chunk in &stored {
+            let mut edited = chunk.clone();
+            for i in 0..1024 {
+                Arc::make_mut(&mut edited).set(i & 31, i >> 5, 0, Block::STONE);
+            }
+            std::hint::black_box(edited);
+        }
+        let edit = t.elapsed();
+        println!(
+            "storage {representation}: {:.0} B/chunk, pack {:.1} us/chunk, copy {:.1} us/chunk, COW+1024 edits {:.1} us/chunk",
+            stored.iter().map(|c| c.heap_bytes()).sum::<usize>() as f64 / stored.len() as f64,
+            pack.as_secs_f64() * 1e6 / stored.len() as f64,
+            copy.as_secs_f64() * 1e6 / (stored.len() * 4) as f64,
+            edit.as_secs_f64() * 1e6 / stored.len() as f64
+        );
+    }
 }

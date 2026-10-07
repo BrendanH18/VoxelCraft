@@ -15,7 +15,47 @@ struct Globals {
 @group(0) @binding(0) var<uniform> g: Globals;
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;
-// Item icons, addressed as layers from 256 on (see `tex::ITEM_BASE`).
+@group(1) @binding(3) var blocks_1: texture_2d_array<f32>;
+@group(1) @binding(4) var blocks_2: texture_2d_array<f32>;
+@group(1) @binding(5) var blocks_3: texture_2d_array<f32>;
+@group(1) @binding(6) var blocks_4: texture_2d_array<f32>;
+@group(1) @binding(7) var blocks_5: texture_2d_array<f32>;
+@group(1) @binding(8) var blocks_6: texture_2d_array<f32>;
+@group(1) @binding(9) var blocks_7: texture_2d_array<f32>;
+// Specialized at startup: one array when supported, portable pages otherwise.
+const BLOCK_PAGING: bool = false;
+fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
+    if !BLOCK_PAGING { return textureSample(blocks, blocks_sampler, uv, layer); }
+    let dx = dpdx(uv);
+    let dy = dpdy(uv);
+    let local = layer & 255u;
+    switch layer >> 8u {
+        case 1u: { return textureSampleGrad(blocks_1, blocks_sampler, uv, local, dx, dy); }
+        case 2u: { return textureSampleGrad(blocks_2, blocks_sampler, uv, local, dx, dy); }
+        case 3u: { return textureSampleGrad(blocks_3, blocks_sampler, uv, local, dx, dy); }
+        case 4u: { return textureSampleGrad(blocks_4, blocks_sampler, uv, local, dx, dy); }
+        case 5u: { return textureSampleGrad(blocks_5, blocks_sampler, uv, local, dx, dy); }
+        case 6u: { return textureSampleGrad(blocks_6, blocks_sampler, uv, local, dx, dy); }
+        case 7u: { return textureSampleGrad(blocks_7, blocks_sampler, uv, local, dx, dy); }
+        default: { return textureSampleGrad(blocks, blocks_sampler, uv, local, dx, dy); }
+    }
+}
+fn sample_block_level(uv: vec2<f32>, layer: u32) -> vec4<f32> {
+    if !BLOCK_PAGING { return textureSampleLevel(blocks, blocks_sampler, uv, layer, 0.0); }
+    let local = layer & 255u;
+    switch layer >> 8u {
+        case 1u: { return textureSampleLevel(blocks_1, blocks_sampler, uv, local, 0.0); }
+        case 2u: { return textureSampleLevel(blocks_2, blocks_sampler, uv, local, 0.0); }
+        case 3u: { return textureSampleLevel(blocks_3, blocks_sampler, uv, local, 0.0); }
+        case 4u: { return textureSampleLevel(blocks_4, blocks_sampler, uv, local, 0.0); }
+        case 5u: { return textureSampleLevel(blocks_5, blocks_sampler, uv, local, 0.0); }
+        case 6u: { return textureSampleLevel(blocks_6, blocks_sampler, uv, local, 0.0); }
+        case 7u: { return textureSampleLevel(blocks_7, blocks_sampler, uv, local, 0.0); }
+        default: { return textureSampleLevel(blocks, blocks_sampler, uv, local, 0.0); }
+    }
+}
+
+// Item icons, addressed as layers from 2048 on (see `tex::ITEM_BASE`).
 @group(1) @binding(2) var items: texture_2d_array<f32>;
 @group(2) @binding(0) var font: texture_2d<f32>;
 
@@ -46,7 +86,7 @@ fn vs_decal(@location(0) pos: vec3<f32>, @location(1) uv: vec2<f32>, @location(2
 
 @fragment
 fn fs_decal(in: DecalOut) -> @location(0) vec4<f32> {
-    return textureSample(blocks, blocks_sampler, in.uv, in.layer);
+    return sample_block(in.uv, in.layer);
 }
 
 struct UiOut {
@@ -74,15 +114,15 @@ fn vs_ui(
 @fragment
 fn fs_ui(in: UiOut) -> @location(0) vec4<f32> {
     // layer -2: font glyph, -1: flat colour, >= 0: tinted block texture,
-    // >= 256: tinted item icon. A negative alpha fills the texture's shape
+    // >= 2048: tinted item icon. A negative alpha fills the texture's shape
     // with the colour instead (the enchantment glint).
     if in.layer >= 0.0 && in.color.a < 0.0 {
         let layer = i32(in.layer + 0.5);
         var a = 0.0;
-        if layer >= 256 {
-            a = textureSampleLevel(items, blocks_sampler, in.uv, layer - 256, 0.0).a;
+        if layer >= 2048 {
+            a = textureSampleLevel(items, blocks_sampler, in.uv, layer - 2048, 0.0).a;
         } else {
-            a = textureSampleLevel(blocks, blocks_sampler, in.uv, layer, 0.0).a;
+            a = sample_block_level(in.uv, u32(layer)).a;
         }
         return vec4<f32>(in.color.rgb, -in.color.a * a);
     }
@@ -94,8 +134,8 @@ fn fs_ui(in: UiOut) -> @location(0) vec4<f32> {
         return in.color;
     }
     let layer = i32(in.layer + 0.5);
-    if layer >= 256 {
-        return textureSampleLevel(items, blocks_sampler, in.uv, layer - 256, 0.0) * in.color;
+    if layer >= 2048 {
+        return textureSampleLevel(items, blocks_sampler, in.uv, layer - 2048, 0.0) * in.color;
     }
-    return textureSampleLevel(blocks, blocks_sampler, in.uv, layer, 0.0) * in.color;
+    return sample_block_level(in.uv, u32(layer)) * in.color;
 }

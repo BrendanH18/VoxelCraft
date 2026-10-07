@@ -110,7 +110,7 @@ pub struct FrameParams {
     /// slabs and shaped blocks are smaller).
     pub highlight: Option<(IVec3, [f32; 3], [f32; 3])>,
     /// Block being broken and the crack texture layer to overlay on it.
-    pub crack: Option<(IVec3, u8)>,
+    pub crack: Option<(IVec3, u16)>,
     /// Free-standing blocks (falling sand and gravel).
     pub block_models: Vec<BlockModel>,
     /// The first-person hand (`None` in third person or with the HUD hidden).
@@ -277,6 +277,16 @@ pub struct Renderer {
     pub force_offscreen: bool,
 }
 
+/// Specialize away paging branches on adapters that can hold all block layers.
+fn block_shader(source: &'static str, paged: bool) -> wgpu::ShaderSource<'static> {
+    let source = if paged {
+        std::borrow::Cow::Owned(source.replace("const BLOCK_PAGING: bool = false;", "const BLOCK_PAGING: bool = true;"))
+    } else {
+        std::borrow::Cow::Borrowed(source)
+    };
+    wgpu::ShaderSource::Wgsl(source)
+}
+
 impl Renderer {
     pub async fn new(window: Arc<Window>, vsync: bool) -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -294,11 +304,17 @@ impl Renderer {
         log::info!("GPU: {} ({:?})", info.name, info.backend);
         let gpu_name = format!("{} ({:?})", info.name, info.backend);
 
+        let paged_blocks = tex::COUNT > adapter.limits().max_texture_array_layers;
+        let page_layers = if paged_blocks { tex::PAGE_LAYERS } else { tex::COUNT };
+        let limits = wgpu::Limits {
+            max_texture_array_layers: page_layers.max(textures::item_layers()).max(256),
+            ..wgpu::Limits::default()
+        };
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("device"),
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
+                required_limits: limits,
                 ..Default::default()
             })
             .await
@@ -354,8 +370,24 @@ impl Renderer {
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals_buf.as_entire_binding() }],
         });
 
-        let blocks_view =
-            Self::create_texture_array(&device, &queue, "block textures", tex::COUNT, textures::generate_mips());
+        // Large arrays avoid page-selection cost on capable adapters. Portable
+        // pages preserve filtering on 256-layer adapters without extra features.
+        let block_mips = textures::generate_mips();
+        let block_views: Vec<_> = (0..tex::COUNT.div_ceil(page_layers))
+            .map(|page| {
+                let first = page * page_layers;
+                let layers = (tex::COUNT - first).min(page_layers);
+                let mips = block_mips
+                    .iter()
+                    .enumerate()
+                    .map(|(level, data)| {
+                        let bytes = (textures::SIZE >> level).pow(2) * 4;
+                        data[first as usize * bytes..(first + layers) as usize * bytes].to_vec()
+                    })
+                    .collect();
+                Self::create_texture_array(&device, &queue, "block textures", layers, mips)
+            })
+            .collect();
         let items_view = Self::create_texture_array(
             &device,
             &queue,
@@ -372,45 +404,45 @@ impl Renderer {
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
+        let texture_entry = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2Array,
+                multisampled: false,
+            },
+            count: None,
+        };
+        let mut layout_entries = vec![
+            texture_entry(0),
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            texture_entry(2),
+        ];
+        layout_entries.extend((1..tex::PAGES).map(|page| texture_entry(page as u32 + 2)));
         let blocks_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("blocks layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2Array,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2Array,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-            ],
+            entries: &layout_entries,
         });
+        let mut block_entries = vec![
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&block_views[0]) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&items_view) },
+        ];
+        // Empty pages share page zero rather than allocating unused GPU storage.
+        block_entries.extend((1..tex::PAGES).map(|page| wgpu::BindGroupEntry {
+            binding: page as u32 + 2,
+            resource: wgpu::BindingResource::TextureView(block_views.get(page).unwrap_or(&block_views[0])),
+        }));
         let blocks_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("blocks"),
             layout: &blocks_layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&blocks_view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&items_view) },
-            ],
+            entries: &block_entries,
         });
 
         let font_view = Self::create_font_texture(&device, &queue);
@@ -452,11 +484,11 @@ impl Renderer {
         // --- Pipelines ---------------------------------------------------
         let chunk_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("chunk shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/chunk.wgsl").into()),
+            source: block_shader(include_str!("shaders/chunk.wgsl"), paged_blocks),
         });
         let overlay_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("overlay shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/overlay.wgsl").into()),
+            source: block_shader(include_str!("shaders/overlay.wgsl"), paged_blocks),
         });
 
         // Quads come from the arena's storage buffers (vertex pulling); the
@@ -677,8 +709,8 @@ impl Renderer {
             cache: None,
         });
 
-        let entities = entity::EntityPass::new(&device, &queue, &globals_layout, &blocks_layout, format);
-        let block_models = block_model::BlockModelPass::new(&device, &layout, format);
+        let entities = entity::EntityPass::new(&device, &queue, &globals_layout, &blocks_layout, format, paged_blocks);
+        let block_models = block_model::BlockModelPass::new(&device, &layout, format, paged_blocks);
         let weather = weather::WeatherPass::new(&device, &layout, format);
 
         // --- Shared buffers ----------------------------------------------
@@ -954,7 +986,7 @@ impl Renderer {
     }
 
     /// Cube around a block, 6 faces x 2 triangles, as (pos, uv, layer).
-    fn decal_vertices(block: IVec3, camera: DVec3, layer: u8) -> Vec<u8> {
+    fn decal_vertices(block: IVec3, camera: DVec3, layer: u16) -> Vec<u8> {
         let e = 0.003;
         let min = (block.as_dvec3() - camera - DVec3::splat(e)).as_vec3();
         let s = 1.0 + 2.0 * e as f32;
@@ -1295,11 +1327,14 @@ mod tests {
             ("weather", include_str!("shaders/weather.wgsl")),
         ];
         for (name, source) in shaders {
-            let module =
-                naga::front::wgsl::parse_str(source).unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
-            naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
-                .validate(&module)
-                .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
+            for paged in [false, true] {
+                let wgpu::ShaderSource::Wgsl(source) = block_shader(source, paged) else { unreachable!() };
+                let module = naga::front::wgsl::parse_str(&source)
+                    .unwrap_or_else(|e| panic!("{name}, paged={paged}: {}", e.emit_to_string(&source)));
+                naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
+                    .validate(&module)
+                    .unwrap_or_else(|e| panic!("{name}, paged={paged}: {}", e.emit_to_string(&source)));
+            }
         }
     }
 

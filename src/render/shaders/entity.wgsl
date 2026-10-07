@@ -20,6 +20,31 @@ struct Globals {
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;
 @group(1) @binding(2) var items: texture_2d_array<f32>;
+@group(1) @binding(3) var blocks_1: texture_2d_array<f32>;
+@group(1) @binding(4) var blocks_2: texture_2d_array<f32>;
+@group(1) @binding(5) var blocks_3: texture_2d_array<f32>;
+@group(1) @binding(6) var blocks_4: texture_2d_array<f32>;
+@group(1) @binding(7) var blocks_5: texture_2d_array<f32>;
+@group(1) @binding(8) var blocks_6: texture_2d_array<f32>;
+@group(1) @binding(9) var blocks_7: texture_2d_array<f32>;
+// Specialized at startup: one array when supported, portable pages otherwise.
+const BLOCK_PAGING: bool = false;
+fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
+    if !BLOCK_PAGING { return textureSample(blocks, blocks_sampler, uv, layer); }
+    let dx = dpdx(uv);
+    let dy = dpdy(uv);
+    let local = layer & 255u;
+    switch layer >> 8u {
+        case 1u: { return textureSampleGrad(blocks_1, blocks_sampler, uv, local, dx, dy); }
+        case 2u: { return textureSampleGrad(blocks_2, blocks_sampler, uv, local, dx, dy); }
+        case 3u: { return textureSampleGrad(blocks_3, blocks_sampler, uv, local, dx, dy); }
+        case 4u: { return textureSampleGrad(blocks_4, blocks_sampler, uv, local, dx, dy); }
+        case 5u: { return textureSampleGrad(blocks_5, blocks_sampler, uv, local, dx, dy); }
+        case 6u: { return textureSampleGrad(blocks_6, blocks_sampler, uv, local, dx, dy); }
+        case 7u: { return textureSampleGrad(blocks_7, blocks_sampler, uv, local, dx, dy); }
+        default: { return textureSampleGrad(blocks, blocks_sampler, uv, local, dx, dy); }
+    }
+}
 @group(2) @binding(0) var skin: texture_2d_array<f32>;
 
 // Night vision (Java's lightmap): brightens every light level toward full,
@@ -109,6 +134,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // Colours are authored in sRGB, like the block textures.
     var base = pow(in.color.rgb, vec3<f32>(2.2)) * (1.0 + n * in.color.a);
 
+    // Held blocks and item icons share the terrain bind group. Both are
+    // sampled up front so derivatives stay in uniform control flow.
+    let held_block = sample_block(in.uv, min(in.layer, 2047u));
+    let held_icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 2048u) - 2048u);
     let texel = clamp(vec2<i32>(floor(in.uv)), vec2<i32>(0), vec2<i32>(63));
     if in.material == 1u {
         let tex = textureLoad(skin, texel, 0, 0);
@@ -120,9 +149,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         if tex.a < 0.5 { discard; }
         base = tex.rgb * pow(in.color.rgb, vec3<f32>(2.2));
     } else if in.material == 2u {
-        let block = textureSampleLevel(blocks, blocks_sampler, in.uv, min(in.layer, 255u), 0.0);
-        let icon = textureSampleLevel(items, blocks_sampler, in.uv, max(in.layer, 256u) - 256u, 0.0);
-        let tex = select(block, icon, in.layer >= 256u);
+        // Block layers are below tex::ITEM_BASE (2048); icons are at and above it.
+        let tex = select(held_block, held_icon, in.layer >= 2048u);
         if tex.a < 0.5 { discard; }
         base = tex.rgb;
     }
