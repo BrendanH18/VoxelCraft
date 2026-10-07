@@ -181,6 +181,7 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::QUARTZ_ORE
             | Block::LAPIS_ORE
             | Block::GLASS
+            | Block::GLASS_PANE
             | Block::GRAVEL
             | Block::GLOWSTONE
             | Block::ICE
@@ -190,7 +191,9 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::COBWEB
             | Block::DEEPSLATE
     ) || b.is_leaves()
-        || b.is_deepslate_ore();
+        || b.is_deepslate_ore()
+        || b.stained_glass_color().is_some()
+        || b.stained_pane_color().is_some();
     (silky && Item::from(b).is_valid()).then(|| Item::from(b))
 }
 

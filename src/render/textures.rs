@@ -62,6 +62,32 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             if weave { 0.85 + rnd(tex::WOOL, x, y, 0) * 0.08 } else { 0.93 + rnd(tex::WOOL, x, y, 0) * 0.07 },
         );
     }
+    if (tex::STAINED_GLASS..tex::STAINED_GLASS + 16).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL[(layer - tex::STAINED_GLASS) as usize].rgb();
+        let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+        let pane = x == 1 || y == 1 || x == SIZE - 2 || y == SIZE - 2;
+        if border {
+            return shade(rgb, 0.45 + r * 0.1);
+        }
+        if pane {
+            return shade(rgb, 0.7);
+        }
+        let mut p = shade(rgb, 0.85 + r * 0.08);
+        p[3] = 150;
+        return p;
+    }
+    if (tex::STAINED_TERRACOTTA..tex::STAINED_TERRACOTTA + 10).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL
+            [[2, 3, 5, 6, 7, 9, 10, 11, 13, 15][(layer - tex::STAINED_TERRACOTTA) as usize]]
+            .rgb();
+        let clay = [152u8, 94, 67];
+        let mixed = [
+            (rgb[0] as u16 / 2 + clay[0] as u16 / 2) as u8,
+            (rgb[1] as u16 / 2 + clay[1] as u16 / 2) as u8,
+            (rgb[2] as u16 / 2 + clay[2] as u16 / 2) as u8,
+        ];
+        return noisy(layer, x, y, mixed, 0.05);
+    }
     if (tex::COLORED_BED..tex::COLORED_BED + 64).contains(&layer) {
         let color = crate::color::DyeColor::ALL[((layer - tex::COLORED_BED) / 4) as usize];
         let part = (layer - tex::COLORED_BED) % 4;

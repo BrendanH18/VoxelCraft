@@ -264,7 +264,9 @@ pub mod tex {
     pub const RAIL_NE: u16 = RAIL + 5;
     pub const COLORED_WOOL: u16 = RAIL_NE + 1;
     pub const COLORED_BED: u16 = COLORED_WOOL + 16;
-    pub const COUNT: u32 = COLORED_BED as u32 + 64;
+    pub const STAINED_GLASS: u16 = COLORED_BED + 64;
+    pub const STAINED_TERRACOTTA: u16 = STAINED_GLASS + 16;
+    pub const COUNT: u32 = STAINED_TERRACOTTA as u32 + 10;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -655,7 +657,7 @@ impl Block {
             112..=135 | 189..=192 => Shaped::Stairs(f(stairs_index(self.0).unwrap().1)),
             136 | 182 => Shaped::Fence,
             188 => Shaped::BrewingStand,
-            197 => Shaped::Pane,
+            197 | 640..=656 => Shaped::Pane,
             200..=207 => Shaped::Frame { facing: f(self.0 - 200), eye: self.0 >= 204 },
             208 => Shaped::EndPortal,
             209 => Shaped::DragonEgg,
@@ -1024,6 +1026,7 @@ impl Block {
             // Bookshelves drop three books (see `World::spill_block`).
             Block::BOOKSHELF | Block::END_PORTAL_FRAME | Block::END_PORTAL | Block::END_GATEWAY => None,
             b if b.is_leaves() => None,
+            b if b.stained_glass_color().is_some() || b.is_glass_pane() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
             b if b.is_fluid() || b.is_fire() || b == Block::AIR => None,
             b => Some(b.into()),
@@ -1042,6 +1045,12 @@ impl Block {
         }
         if self.is_bed() {
             return 0.2;
+        }
+        if self.stained_glass_color().is_some() || self.is_glass_pane() {
+            return 0.3;
+        }
+        if self.stained_terracotta_color().is_some() {
+            return 1.25;
         }
         if self.is_door() {
             return 3.0;
@@ -1118,6 +1127,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if self.stained_terracotta_color().is_some() {
+            return Some(ToolKind::Pickaxe);
+        }
         match self.material() {
             Block::STONE
             | Block::COBBLESTONE
@@ -1202,6 +1214,9 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if self.stained_terracotta_color().is_some() {
+            return Some(0);
+        }
         match self.material().as_stone_ore() {
             Block::STONE
             | Block::COBBLESTONE
@@ -1315,6 +1330,7 @@ impl Block {
             Block::DEAD_BUSH => {
                 matches!(below, Block::SAND | Block::RED_SAND | Block::DIRT | Block::GRASS)
                     || below.terracotta_colour().is_some()
+                    || below.stained_terracotta_color().is_some()
             }
             // Sugar cane also needs water next to its lowest block; see
             // `World::cane_has_water`.
@@ -1929,8 +1945,9 @@ const fn make(id: u16) -> BlockInfo {
     };
     // Ice is see-through like water but solid underfoot; End portals are
     // a surface to fall through.
-    let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97) && id != 208 && id != 210;
-    BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104), tex }
+    let stained_glass = matches!(id, 624..=639);
+    let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97 || stained_glass) && id != 208 && id != 210;
+    BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104) || stained_glass, tex }
 }
 
 pub static INFO: [BlockInfo; STATE_CAPACITY] = {
@@ -1973,8 +1990,8 @@ static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
             #[cfg(test)]
             _ if i == 4094 => 15,
             RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
-            _ if matches!(i, 10 | 98 | 99 | 576..=623) => 0, // glass, beds
-            _ => 1,                                          // leaves, water: attenuate skylight too
+            _ if matches!(i, 10 | 98 | 99 | 576..=623 | 624..=639) => 0, // glass, beds, stained glass
+            _ => 1,                                                      // leaves, water: attenuate skylight too
         };
         i += 1;
     }

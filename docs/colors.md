@@ -28,3 +28,10 @@ saved, and sheep grazing/wool regrowth, breeding and mutton are deferred.
 
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/animal/Sheep.java
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/DyeItem.java
+
+Stained glass is translucent and solid, so it sorts with water. Panes join like
+iron bars, including to glass. Java's six badlands terracotta colours keep IDs
+85-90; the other ten are new. Plain terracotta still comes from smelting clay.
+Generated terracotta bands can wait for further badlands work. Stained glass
+and panes drop only with silk touch. Panes use the glass textures rather than
+extra layers.

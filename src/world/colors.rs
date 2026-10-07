@@ -1,8 +1,10 @@
-//! Append-only colour states (560..=623). Legacy white wool and red beds stay valid.
+//! Append-only colour states (560..=666). Legacy white wool, red beds and
+//! badlands terracotta keep their original IDs.
 use super::block::{Block, RenderKind, tex};
 use crate::color::DyeColor;
 
 impl Block {
+    pub const GLASS_PANE: Self = Self(640);
     pub const fn wool(c: DyeColor) -> Self {
         if matches!(c, DyeColor::White) { Self::WOOL } else { Self(560 + c as u16) }
     }
@@ -15,6 +17,17 @@ impl Block {
         } else {
             Self(592 + c as u16 * 2 + head as u16)
         }
+    }
+    pub const fn stained_glass(c: DyeColor) -> Self {
+        Self(624 + c as u16)
+    }
+    pub const fn stained_pane(c: DyeColor) -> Self {
+        Self(641 + c as u16)
+    }
+    /// Reuses badlands IDs 85..=90 for the six colours already in the world.
+    pub const fn stained_terracotta(c: DyeColor) -> Self {
+        const IDS: [u16; 16] = [89, 85, 657, 658, 86, 659, 660, 661, 90, 662, 663, 664, 88, 665, 87, 666];
+        Self(IDS[c as usize])
     }
     pub fn wool_color(self) -> Option<DyeColor> {
         if self == Self::WOOL {
@@ -36,11 +49,24 @@ impl Block {
     pub fn is_bed_head(self) -> bool {
         self == Self::BED_HEAD || self.bed_color().is_some() && self.0 % 2 == 1
     }
+    pub fn stained_glass_color(self) -> Option<DyeColor> {
+        self.0.checked_sub(624).filter(|&i| i < 16).map(|i| DyeColor::ALL[i as usize])
+    }
+    pub fn stained_pane_color(self) -> Option<DyeColor> {
+        self.0.checked_sub(641).filter(|&i| i < 16).map(|i| DyeColor::ALL[i as usize])
+    }
+    pub fn is_glass_pane(self) -> bool {
+        (640..=656).contains(&self.0)
+    }
+    pub fn stained_terracotta_color(self) -> Option<DyeColor> {
+        DyeColor::ALL.into_iter().find(|&c| Self::stained_terracotta(c) == self)
+    }
 }
 
 pub(super) fn palette_ids() -> impl Iterator<Item = u16> {
     // Wool (white stays Block::WOOL) and carpets. Beds are items, not block halves.
-    561..592
+    // 624..=666: stained glass, panes, remaining terracotta.
+    (561..592).chain(624..667)
 }
 
 pub(super) const fn definition(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
@@ -98,6 +124,54 @@ pub(super) const fn definition(id: u16) -> Option<(&'static str, RenderKind, [u1
         ["red bed foot", "red bed head"],
         ["black bed foot", "black bed head"],
     ];
+    const GLASS: [&str; 16] = [
+        "white stained glass",
+        "orange stained glass",
+        "magenta stained glass",
+        "light blue stained glass",
+        "yellow stained glass",
+        "lime stained glass",
+        "pink stained glass",
+        "gray stained glass",
+        "light gray stained glass",
+        "cyan stained glass",
+        "purple stained glass",
+        "blue stained glass",
+        "brown stained glass",
+        "green stained glass",
+        "red stained glass",
+        "black stained glass",
+    ];
+    const PANE: [&str; 16] = [
+        "white stained glass pane",
+        "orange stained glass pane",
+        "magenta stained glass pane",
+        "light blue stained glass pane",
+        "yellow stained glass pane",
+        "lime stained glass pane",
+        "pink stained glass pane",
+        "gray stained glass pane",
+        "light gray stained glass pane",
+        "cyan stained glass pane",
+        "purple stained glass pane",
+        "blue stained glass pane",
+        "brown stained glass pane",
+        "green stained glass pane",
+        "red stained glass pane",
+        "black stained glass pane",
+    ];
+    const EXTRA_TERRACOTTA: [&str; 10] = [
+        "magenta terracotta",
+        "light blue terracotta",
+        "lime terracotta",
+        "pink terracotta",
+        "gray terracotta",
+        "cyan terracotta",
+        "purple terracotta",
+        "blue terracotta",
+        "green terracotta",
+        "black terracotta",
+    ];
     match id {
         561..=575 => Some((WOOL[(id - 560) as usize], RenderKind::Opaque, [tex::COLORED_WOOL + id - 560; 6])),
         576..=591 => Some((CARPET[(id - 576) as usize], RenderKind::Cutout, [tex::COLORED_WOOL + id - 576; 6])),
@@ -107,6 +181,12 @@ pub(super) const fn definition(id: u16) -> Option<(&'static str, RenderKind, [u1
             let side = tex::COLORED_BED + color * 4 + 2 + head;
             let top = tex::COLORED_BED + color * 4 + head;
             Some((BEDS[color as usize][head as usize], RenderKind::Cutout, [side, side, top, tex::PLANKS, side, side]))
+        }
+        624..=639 => Some((GLASS[(id - 624) as usize], RenderKind::Translucent, [tex::STAINED_GLASS + id - 624; 6])),
+        640 => Some(("glass pane", RenderKind::Shaped, [tex::GLASS; 6])),
+        641..=656 => Some((PANE[(id - 641) as usize], RenderKind::Shaped, [tex::STAINED_GLASS + id - 641; 6])),
+        657..=666 => {
+            Some((EXTRA_TERRACOTTA[(id - 657) as usize], RenderKind::Opaque, [tex::STAINED_TERRACOTTA + id - 657; 6]))
         }
         _ => None,
     }
@@ -175,5 +255,34 @@ mod tests {
         }
         assert_eq!(Item::from_name("shears"), Some(Item::SHEARS));
         assert!(Item::creative_palette().any(|p| p == Item::SHEARS));
+    }
+
+    #[test]
+    fn stained_glass_panes_and_terracotta_keep_badlands_ids() {
+        use crate::world::block::RenderKind;
+        assert_eq!(Block::stained_terracotta(DyeColor::Orange), Block::terracotta(1));
+        assert_eq!(Block::stained_terracotta(DyeColor::White), Block(89));
+        assert_eq!(Block::GLASS_PANE.shaped(), Some(crate::world::block::Shaped::Pane));
+        assert!(Block::GLASS_PANE.is_solid() && Block::GLASS_PANE.hardness() == 0.3);
+        assert_eq!(Item::from_name("glass pane"), Some(Item::from_block(Block::GLASS_PANE)));
+        for c in DyeColor::ALL {
+            let glass = Block::stained_glass(c);
+            assert_eq!(glass.kind(), RenderKind::Translucent);
+            assert!(glass.is_solid() && glass.info().self_cull);
+            assert_eq!(glass.drop(), None);
+            assert_eq!(glass.hardness(), 0.3);
+            assert_eq!(Block::from_name(&format!("{} stained glass", c.adjective())), Some(glass));
+            let pane = Block::stained_pane(c);
+            assert!(pane.is_glass_pane() && pane.hardness() == 0.3);
+            assert_eq!(pane.drop(), None);
+            let terracotta = Block::stained_terracotta(c);
+            assert_eq!(terracotta.stained_terracotta_color(), Some(c));
+            assert_eq!(terracotta.hardness(), 1.25);
+            assert_eq!(terracotta.harvest_level(), Some(0));
+            assert_eq!(Block::from_name(&format!("{} terracotta", c.adjective())), Some(terracotta));
+            for b in [glass, pane, terracotta, Block::GLASS_PANE] {
+                assert!(Item::creative_palette().any(|p| p == Item::from_block(b)), "{}", b.name());
+            }
+        }
     }
 }

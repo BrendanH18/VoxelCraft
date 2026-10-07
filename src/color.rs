@@ -74,6 +74,27 @@ impl DyeColor {
         ];
         NAMES[self as usize]
     }
+    pub const fn adjective(self) -> &'static str {
+        const NAMES: [&str; 16] = [
+            "white",
+            "orange",
+            "magenta",
+            "light blue",
+            "yellow",
+            "lime",
+            "pink",
+            "gray",
+            "light gray",
+            "cyan",
+            "purple",
+            "blue",
+            "brown",
+            "green",
+            "red",
+            "black",
+        ];
+        NAMES[self as usize]
+    }
     pub const fn bed(self) -> Item {
         if matches!(self, Self::Red) { Item::BED } else { Item(592 + self as u16 - (self as u16 > 14) as u16) }
     }

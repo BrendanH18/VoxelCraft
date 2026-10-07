@@ -197,7 +197,11 @@ fn wall_connects(n: Block) -> bool {
 
 /// Whether iron bars join `n` on a side: other bars and full blocks.
 pub fn pane_connects(n: Block) -> bool {
-    n == Block::IRON_BARS || n.is_opaque()
+    n == Block::IRON_BARS
+        || n == Block::GLASS
+        || n.is_glass_pane()
+        || n.stained_glass_color().is_some()
+        || n.is_opaque()
 }
 
 /// Where an open door's panel lies: it swings to the left of someone

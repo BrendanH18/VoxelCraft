@@ -423,6 +423,7 @@ pub fn recipes() -> &'static [Recipe] {
         }
         add_dye_recipes(&mut r);
         add_wool_recipes(&mut r);
+        add_glass_terracotta_recipes(&mut r);
         r
     })
 }
@@ -748,6 +749,26 @@ fn add_wool_recipes(r: &mut Vec<Recipe>) {
     r.push(shaped(&[" #", "# "], &[('#', IRON)], Item::SHEARS, 1));
 }
 
+fn add_glass_terracotta_recipes(r: &mut Vec<Recipe>) {
+    use crate::color::DyeColor;
+    static DYES: [[Item; 1]; 16] = color_ingredients(0);
+    static GLASSES: [[Item; 1]; 16] = color_ingredients(4);
+    const TERRACOTTA: Ingredient = &[b(Block::TERRACOTTA)];
+    const PANE: Ingredient = &[b(Block::GLASS_PANE)];
+    r.push(shaped(&["###", "###"], &[('#', GLASS)], b(Block::GLASS_PANE), 16));
+    for (i, c) in DyeColor::ALL.into_iter().enumerate() {
+        r.push(shaped(&["###", "#D#", "###"], &[('#', GLASS), ('D', &DYES[i])], b(Block::stained_glass(c)), 8));
+        r.push(shaped(&["###", "###"], &[('#', &GLASSES[i])], b(Block::stained_pane(c)), 16));
+        r.push(shaped(&["###", "#D#", "###"], &[('#', PANE), ('D', &DYES[i])], b(Block::stained_pane(c)), 8));
+        r.push(shaped(
+            &["###", "#D#", "###"],
+            &[('#', TERRACOTTA), ('D', &DYES[i])],
+            b(Block::stained_terracotta(c)),
+            8,
+        ));
+    }
+}
+
 /// Build static ingredient tables once; vanilla recolouring excludes the result colour.
 const fn color_ingredients(family: u8) -> [[Item; 1]; 16] {
     let mut out = [[Item(0); 1]; 16];
@@ -758,6 +779,8 @@ const fn color_ingredients(family: u8) -> [[Item; 1]; 16] {
             0 => c.dye(),
             1 => Item::from_block(Block::wool(c)),
             2 => Item::from_block(Block::carpet(c)),
+            4 => Item::from_block(Block::stained_glass(c)),
+            5 => Item::from_block(Block::stained_pane(c)),
             _ => c.bed(),
         };
         i += 1;
@@ -812,5 +835,37 @@ mod wool_recipe_tests {
         g.cells[1] = Some(Stack::new(Item::IRON_INGOT, 1));
         g.cells[2] = Some(Stack::new(Item::IRON_INGOT, 1));
         assert_eq!(g.result(), Some(Stack::new(Item::SHEARS, 1)));
+    }
+}
+
+#[cfg(test)]
+mod glass_terracotta_recipe_tests {
+    use super::*;
+    use crate::color::DyeColor;
+    #[test]
+    fn dyeing_eight_around_a_dye_and_panes_from_six_glass() {
+        let mut g = Grid::new(3);
+        for i in 0..9 {
+            g.cells[i] = Some(Stack::new(Block::GLASS, 1));
+        }
+        assert_eq!(g.result(), None);
+        g.cells[4] = Some(Stack::new(DyeColor::Red.dye(), 1));
+        assert_eq!(g.result(), Some(Stack::new(Block::stained_glass(DyeColor::Red), 8)));
+        g.cells = [None; 9];
+        for i in 0..6 {
+            g.cells[i] = Some(Stack::new(Block::stained_glass(DyeColor::Blue), 1));
+        }
+        assert_eq!(g.result(), Some(Stack::new(Block::stained_pane(DyeColor::Blue), 16)));
+        g.cells = [None; 9];
+        for i in 0..6 {
+            g.cells[i] = Some(Stack::new(Block::GLASS, 1));
+        }
+        assert_eq!(g.result(), Some(Stack::new(Block::GLASS_PANE, 16)));
+        g.cells = [None; 9];
+        for i in 0..9 {
+            g.cells[i] = Some(Stack::new(Block::TERRACOTTA, 1));
+        }
+        g.cells[4] = Some(Stack::new(DyeColor::Black.dye(), 1));
+        assert_eq!(g.result(), Some(Stack::new(Block::stained_terracotta(DyeColor::Black), 8)));
     }
 }
