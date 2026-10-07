@@ -181,6 +181,9 @@ impl Game {
 
     pub(super) fn update_mobs(&mut self, dt: f64) {
         self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
+        if self.held_item() != Some(crate::item::Item::FISHING_ROD) || self.vitals.is_dead() {
+            self.mobs.entities.drop_bobber(self.actor);
+        }
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.mobs.entities.despawn_hostiles();
         }

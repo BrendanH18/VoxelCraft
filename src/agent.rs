@@ -790,6 +790,24 @@ impl Agent {
                     return Err("block is unchanged or unloaded".into());
                 }
             }
+            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD) => {
+                if !self.mode.can_interact() {
+                    return Err("spectators cannot use items".into());
+                }
+                if self.cooldown > 0.0 {
+                    return Err("action cooling down".into());
+                }
+                crate::survival_items::use_rod(
+                    &self.player,
+                    &mut self.inventory,
+                    self.selected,
+                    self.creative,
+                    self.id,
+                    entities,
+                );
+                self.cooldown = 0.22;
+                self.swings += 1;
+            }
             Command::Place
                 if self
                     .inventory
@@ -1147,6 +1165,10 @@ impl Agent {
         let feet = self.player.pos.floor().as_ivec3();
         if !world.is_loaded(feet) || !world.is_loaded(feet - IVec3::Y) {
             return;
+        }
+        let holding_rod = self.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD);
+        if self.vitals.is_dead() || !holding_rod {
+            entities.drop_bobber(self.id);
         }
         self.cooldown = (self.cooldown - TICK_SECONDS).max(0.0);
         if self.vitals.is_dead() {

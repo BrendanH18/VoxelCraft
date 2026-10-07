@@ -1510,7 +1510,11 @@ impl Game {
             return;
         }
         if !self.aiming_at_usable()
-            && (self.use_bucket() || self.throw_pearl() || self.throw_eye() || self.throw_projectile())
+            && (self.use_bucket()
+                || self.throw_pearl()
+                || self.throw_eye()
+                || self.throw_projectile()
+                || self.use_rod())
         {
             return;
         }

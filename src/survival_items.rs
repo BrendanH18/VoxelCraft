@@ -33,6 +33,31 @@ pub fn use_mob(
     false
 }
 
+/// Casts or reels a fishing rod. `Some` means the rod was used; the bool is
+/// whether that use broke it.
+pub fn use_rod(
+    player: &Player,
+    inventory: &mut Inventory,
+    slot: usize,
+    creative: bool,
+    owner: PlayerId,
+    entities: &mut Entities,
+) -> Option<bool> {
+    let held = inventory.get(slot)?;
+    if held.item != Item::FISHING_ROD {
+        return None;
+    }
+    if entities.has_bobber(owner) {
+        let wear = entities.reel(owner, player.pos).unwrap_or(0);
+        let broke = !creative && inventory.wear(slot, wear);
+        return Some(broke);
+    }
+    let lure = held.enchants.level(crate::enchant::Enchantment::Lure);
+    let luck = held.enchants.level(crate::enchant::Enchantment::LuckOfTheSea);
+    entities.cast_bobber(owner, player.eye(), player.forward().as_dvec3(), lure, luck);
+    Some(false)
+}
+
 /// Throws one snowball or egg. Returns whether the held item was one of those.
 pub fn throw_held(
     player: &Player,

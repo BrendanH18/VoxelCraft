@@ -166,6 +166,8 @@ pub enum ItemKind {
     Shears,
     /// Lights a Nether portal frame.
     FlintAndSteel,
+    /// Casts a bobber and reels it back in.
+    FishingRod,
     /// Drunk like food is eaten (see `crate::potion`).
     Potion(crate::potion::Potion),
     /// Crafting ingredient or mob drop with no use of its own.
@@ -195,6 +197,13 @@ pub enum Sprite {
     Pie,
     /// A slice of cake, as an item icon.
     Cake,
+    /// A fishing rod: a stick with a line.
+    FishingRod,
+    /// A cod or salmon, raw or cooked.
+    Fish {
+        salmon: bool,
+        cooked: bool,
+    },
     Lump([u8; 3]),
     Ingot([u8; 3]),
     Gem([u8; 3]),
@@ -439,6 +448,11 @@ const SURVIVAL_ITEMS: &[ItemInfo] = &[
         max_stack: 64,
         sprite: Sprite::Pie,
     },
+    ItemInfo { name: "fishing rod", kind: ItemKind::FishingRod, max_stack: 1, sprite: Sprite::FishingRod },
+    food("cod", 2, 0.4, Sprite::Fish { salmon: false, cooked: false }),
+    food("cooked cod", 5, 6.0, Sprite::Fish { salmon: false, cooked: true }),
+    food("salmon", 2, 0.4, Sprite::Fish { salmon: true, cooked: false }),
+    food("cooked salmon", 6, 9.6, Sprite::Fish { salmon: true, cooked: true }),
 ];
 
 const TOOL_KINDS: [ToolKind; 5] = [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword];
@@ -472,6 +486,11 @@ impl Item {
     pub const POISONOUS_POTATO: Item = Item(523);
     pub const CAKE: Item = Item(524);
     pub const PUMPKIN_PIE: Item = Item(525);
+    pub const FISHING_ROD: Item = Item(526);
+    pub const COD: Item = Item(527);
+    pub const COOKED_COD: Item = Item(528);
+    pub const SALMON: Item = Item(529);
+    pub const COOKED_SALMON: Item = Item(530);
     pub const SHEARS: Item = Item(512);
 
     pub const STICK: Item = Item(256);
@@ -689,6 +708,7 @@ impl Item {
             ItemKind::Armor(piece, material) => Some(material.durability(piece)),
             ItemKind::Bow => Some(BOW_DURABILITY),
             ItemKind::Shears => Some(238),
+            ItemKind::FishingRod => Some(64),
             ItemKind::FlintAndSteel => Some(FLINT_AND_STEEL_DURABILITY),
             _ => None,
         }

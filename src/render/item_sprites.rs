@@ -592,6 +592,30 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let slice = |x: i32, y: i32| (4..=13).contains(&y) && (3..=12).contains(&x);
             shaded(&slice, x, y, [150, 96, 52], 0.04).map(|p| if y <= 7 { tint([248, 248, 244], 1.0) } else { p })
         }
+        Sprite::FishingRod => {
+            let stick = (x + y).abs_diff(16) <= 1 && (2..=13).contains(&x);
+            let line = (x - 4).abs() + (y - 4).abs() <= 3 && y < 7 && x < 8;
+            if stick {
+                Some(tint([150, 104, 60], 1.0))
+            } else if line {
+                Some(tint([220, 220, 216], 1.0))
+            } else {
+                None
+            }
+        }
+        Sprite::Fish { salmon, cooked } => {
+            let body = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                (px - 8.0).powi(2) / 22.0 + (py - 8.0).powi(2) / 10.0 <= 1.0
+            };
+            let colour = match (salmon, cooked) {
+                (false, false) => [150, 160, 130],
+                (false, true) => [196, 168, 110],
+                (true, false) => [214, 112, 92],
+                (true, true) => [176, 82, 64],
+            };
+            shaded(&body, x, y, colour, 0.06)
+        }
         Sprite::Compass => compass_face(0, 32, x, y, [62, 86, 112], [176, 40, 36]),
         Sprite::Clock => compass_face(0, 64, x, y, [236, 214, 150], [250, 196, 48]),
         Sprite::Arrow => {

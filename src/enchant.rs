@@ -40,6 +40,8 @@ pub enum Enchantment {
     Mending,
     BindingCurse,
     VanishingCurse,
+    Lure,
+    LuckOfTheSea,
 }
 
 /// Which items an enchantment goes on (Java's item tags).
@@ -55,6 +57,7 @@ enum Fits {
     /// Pickaxes, shovels, axes and hoes.
     Mining,
     Bow,
+    FishingRod,
     /// Anything that wears out.
     Durable,
 }
@@ -70,6 +73,7 @@ impl Fits {
             (Fits::Weapon, ItemKind::Tool(k, _)) => matches!(k, ToolKind::Sword | ToolKind::Axe),
             (Fits::Mining, ItemKind::Tool(k, _)) => k != ToolKind::Sword,
             (Fits::Bow, ItemKind::Bow) => true,
+            (Fits::FishingRod, ItemKind::FishingRod) => true,
             (Fits::Durable, _) => item.durability().is_some(),
             _ => false,
         }
@@ -176,10 +180,12 @@ static DEFS: [Def; Enchantment::COUNT] = [
     in_group(treasure(def("mending", 1, 2, (25, 25), (75, 25), 4, Fits::Durable)), Group::Bow),
     curse(def("curse of binding", 1, 1, (25, 0), (50, 0), 8, Fits::Armor)),
     curse(def("curse of vanishing", 1, 1, (25, 0), (50, 0), 8, Fits::Durable)),
+    def("lure", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
+    def("luck of the sea", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
 ];
 
 impl Enchantment {
-    pub const COUNT: usize = 27;
+    pub const COUNT: usize = 29;
     pub const ALL: [Enchantment; Enchantment::COUNT] = {
         let mut all = [Enchantment::Protection; Enchantment::COUNT];
         let mut i = 0;
@@ -376,7 +382,7 @@ pub fn enchantability(item: Item) -> u32 {
             ArmorMaterial::Diamond => 10,
             ArmorMaterial::Netherite => 15,
         },
-        ItemKind::Bow => 1,
+        ItemKind::Bow | ItemKind::FishingRod => 1,
         _ if item == Item::BOOK => 1,
         _ => 0,
     }

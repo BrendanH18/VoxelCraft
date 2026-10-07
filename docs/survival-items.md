@@ -60,3 +60,13 @@ poisons for 5 seconds 60% of the time. Cake is a block of seven bites
 the milk buckets come back. Pumpkin pie is pumpkin, sugar and egg.
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/CropBlock.java
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/CakeBlock.java
+
+A fishing rod (durability 64, enchantability 1) casts one bobber and reels it
+on the next use. The bite wait is Java's 100–600 ticks, minus 100 per Lure
+level; rain can count a tick twice and a roof can skip one. Reeling during
+the nibble rolls fish (cod 60, salmon 25), junk or treasure. Luck of the Sea
+shifts those weights. Closed water, which fails the 5×4×5 open-water check,
+returns junk only. Cooked cod and salmon smelt from the raw fish. The bobber
+does not hook mobs, and tropical fish, pufferfish, lily pads and the other
+missing junk and treasure drops are left out.
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java

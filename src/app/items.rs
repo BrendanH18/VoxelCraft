@@ -108,6 +108,33 @@ impl Game {
         true
     }
 
+    /// Right-click with a fishing rod casts its bobber, or reels it in.
+    pub(super) fn use_rod(&mut self) -> bool {
+        let slot = self.actions.selected;
+        let Some(broke) = voxelcraft::survival_items::use_rod(
+            &self.player,
+            &mut self.inventory,
+            slot,
+            self.mode.is_creative(),
+            self.actor,
+            &mut self.mobs.entities,
+        ) else {
+            return false;
+        };
+        if broke {
+            self.show_popup("Fishing rod broke");
+            self.audio.play(
+                Sound::Break(crate::audio::sounds::Material::Wood),
+                Some(self.player.eye()),
+                0.8,
+                (1.3, 1.5),
+            );
+        } else {
+            self.audio.play(Sound::Bow, Some(self.player.eye()), 0.5, (0.42, 0.62));
+        }
+        true
+    }
+
     /// Right-click with a snowball or egg throws one (Java's stack of 16).
     pub(super) fn throw_projectile(&mut self) -> bool {
         let slot = self.actions.selected;

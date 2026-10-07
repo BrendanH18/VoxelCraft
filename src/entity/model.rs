@@ -609,6 +609,21 @@ pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64,
     }
 }
 
+/// A fishing bobber: a white float with a red tip. It dips while a fish bites.
+pub fn build_bobbers(bobbers: &[super::bobber::Bobber], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for b in bobbers {
+        let mut rel = (b.previous_pos.lerp(b.pos, alpha) - camera).as_vec3();
+        if b.biting {
+            rel.y -= 0.25;
+        }
+        let body = cube([-1.2, -1.2, -1.2], [1.2, 0.4, 1.2], [236, 236, 232], 12);
+        let tip = cube([-0.7, 0.4, -0.7], [0.7, 1.5, 0.7], [176, 40, 36], 8);
+        for (i, c) in [&body, &tip].into_iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
 /// Thrown ender pearls: small dark teal cubes with a pale glint.
 pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
     const PEARL: &[Cuboid] = &[

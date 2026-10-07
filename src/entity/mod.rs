@@ -13,6 +13,7 @@
 //! box-model vertices.
 
 pub mod armor;
+mod bobber;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
@@ -390,6 +391,7 @@ pub struct Entities {
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
     pub thrown: Vec<thrown::Thrown>,
+    pub bobbers: Vec<bobber::Bobber>,
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
     pub puffs: Vec<Puff>,
@@ -423,6 +425,7 @@ impl Entities {
             arrows: Vec::new(),
             pearls: Vec::new(),
             thrown: Vec::new(),
+            bobbers: Vec::new(),
             eyes: Vec::new(),
             fireballs: Vec::new(),
             puffs: Vec::new(),
@@ -545,6 +548,17 @@ impl Entities {
             self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
             self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
             self.thrown.retain_mut(|t| t.update(dt, world, mobs, rng, &mut events));
+        }
+        {
+            let rng = &mut self.rng;
+            let mut i = 0;
+            while i < self.bobbers.len() {
+                if self.bobbers[i].update(dt, world, rng, ctx) {
+                    i += 1;
+                } else {
+                    self.bobbers.swap_remove(i);
+                }
+            }
         }
         self.update_eyes(dt, &mut events);
         for e in &events {
@@ -927,6 +941,9 @@ impl Entities {
         for t in &mut self.thrown {
             t.previous_pos = t.pos;
         }
+        for b in &mut self.bobbers {
+            b.previous_pos = b.pos;
+        }
         for e in &mut self.eyes {
             e.previous_pos = e.pos;
         }
@@ -961,6 +978,7 @@ impl Entities {
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
         model::build_thrown(&self.thrown, camera, alpha, &mut self.verts);
+        model::build_bobbers(&self.bobbers, camera, alpha, &mut self.verts);
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
@@ -1012,6 +1030,37 @@ impl Entities {
     /// their velocity `carry`.
     pub fn throw_pearl(&mut self, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3) {
         self.pearls.push(pearl::Pearl::thrown(owner, eye, dir, carry, &mut self.rng));
+    }
+
+    /// Casts this player's bobber. A bobber they already had is replaced.
+    pub fn cast_bobber(&mut self, owner: PlayerId, eye: DVec3, dir: DVec3, lure: u8, luck: u8) {
+        self.bobbers.retain(|b| b.owner != owner);
+        self.bobbers.push(bobber::Bobber::cast(owner, eye, dir, lure, luck, &mut self.rng));
+    }
+
+    /// Reels this player's bobber, spawning the catch and its experience.
+    /// The number is how many uses the rod spends.
+    pub fn reel(&mut self, owner: PlayerId, player_pos: DVec3) -> Option<u16> {
+        let index = self.bobbers.iter().position(|b| b.owner == owner)?;
+        let bobber = self.bobbers.swap_remove(index);
+        let got = bobber.retrieve(&mut self.rng);
+        if let Some(stack) = got.catch {
+            let delta = player_pos - bobber.pos;
+            let lift = delta.length().sqrt() * 0.08;
+            let vel = DVec3::new(delta.x * 0.1, delta.y * 0.1 + lift, delta.z * 0.1);
+            self.items.push(item::ItemEntity::new(stack, bobber.pos, vel, 0.1, &mut self.rng));
+            self.spawn_xp(player_pos + DVec3::Y * 0.5, got.xp);
+        }
+        Some(got.wear)
+    }
+
+    /// Forgets this player's bobber (they put the rod away, or died).
+    pub fn drop_bobber(&mut self, owner: PlayerId) {
+        self.bobbers.retain(|b| b.owner != owner);
+    }
+
+    pub fn has_bobber(&self, owner: PlayerId) -> bool {
+        self.bobbers.iter().any(|b| b.owner == owner)
     }
 
     /// Throws a snowball or egg from `eye` along `dir`.

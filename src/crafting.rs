@@ -231,6 +231,7 @@ const MILK: Ingredient = &[Item::MILK_BUCKET];
 const SUGAR: Ingredient = &[Item::SUGAR];
 const EGG: Ingredient = &[Item::EGG];
 const WHEAT: Ingredient = &[Item::WHEAT];
+const STRING: Ingredient = &[Item::STRING];
 
 fn shaped(rows: &'static [&'static str], key: &[(char, Ingredient)], result: Item, count: u8) -> Recipe {
     Recipe { shape: Shape::Shaped(rows, key.to_vec()), result: Stack::new(result, count) }
@@ -327,6 +328,7 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&[" # ", "#X#", " # "], &[('#', GOLD), ('X', &[Item::REDSTONE])], Item::CLOCK, 1),
             shaped(&["AAA", "BEB", "CCC"], &[('A', MILK), ('B', SUGAR), ('E', EGG), ('C', WHEAT)], Item::CAKE, 1),
             shapeless(&[PUMPKIN, SUGAR, EGG], Item::PUMPKIN_PIE, 1),
+            shaped(&["  #", " #X", "# X"], &[('#', STICK), ('X', STRING)], Item::FISHING_ROD, 1),
             shaped(&[" #", "# "], &[('#', &[Item::IRON_INGOT])], Item::SHEARS, 1),
             shaped(&["# #", " # "], &[('#', GLASS)], Item::GLASS_BOTTLE, 3),
             shaped(&["X#X", "#X#", "X#X"], &[('X', &[Item::GUNPOWDER]), ('#', SAND)], b(Block::TNT), 1),
@@ -527,6 +529,13 @@ mod tests {
             g.cells[i] = leather;
         }
         assert_eq!(g.result().unwrap().item, Item::armor(ArmorPiece::Boots, ArmorMaterial::Leather));
+    }
+
+    #[test]
+    fn a_fishing_rod_is_three_sticks_and_two_string() {
+        let cells =
+            [(2, 0, Item::STICK), (1, 1, Item::STICK), (2, 1, Item::STRING), (0, 2, Item::STICK), (2, 2, Item::STRING)];
+        assert_eq!(grid(3, &cells).result(), Some(Stack::new(Item::FISHING_ROD, 1)));
     }
 
     fn grid(size: usize, cells: &[(usize, usize, Item)]) -> Grid {
