@@ -1,8 +1,9 @@
 //! Monster rooms, Java's `MonsterRoomFeature` terrain feature. Each 16x16
-//! column makes ten attempts over the full height and four attempts in the
-//! bottom 58 blocks (Java's -58..=-1 range shifted to this world's y=0).
-//! Layouts are seeded per column, validated against pristine terrain and
-//! painted in every touching 32³ chunk, so loading order cannot cut a room.
+//! column makes ten attempts over this world's full height and four attempts
+//! in Java's deep band (`above_bottom` 6 through absolute -1, that is
+//! y = -58..=-1), mapped with [`super::height::java_y`]. Layouts are seeded
+//! per column, validated against pristine terrain and painted in every
+//! touching 32³ chunk, so loading order cannot cut a room.
 
 use std::sync::{Arc, Mutex};
 
@@ -192,7 +193,14 @@ impl Dungeons {
                     for _ in 0..attempts {
                         let x = chunk16.x * 16 + rng.below(16) as i32;
                         let z = chunk16.y * 16 + rng.below(16) as i32;
-                        let y = if deep { rng.range(6, 63) as i32 } else { rng.below(256) as i32 };
+                        // Java `monster_room_deep`: uniform from above_bottom 6
+                        // (y = -58) through absolute -1. The old `6..=63` was
+                        // that range plus 64.
+                        let y = if deep {
+                            super::height::java_y(rng.range(0, 57) as i32 - 58)
+                        } else {
+                            rng.below(256) as i32
+                        };
                         let center = IVec3::new(x, y, z);
                         let room = Room::new(center, &mut rng);
                         // Most upper attempts are above the surface; reject

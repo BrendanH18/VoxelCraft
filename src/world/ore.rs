@@ -1,33 +1,34 @@
 //! Overworld ore veins, following Minecraft 1.21's `ore` feature and the
 //! vanilla placed-feature JSON (InventivetalentDev/minecraft-assets 1.21.4).
 //!
-//! Java's overworld bedrock is y = -64 and the column runs to y = 319. This
-//! world is still y = 0..255 with bedrock at 0, so every vanilla absolute Y
-//! is shifted by [`JAVA_Y_SHIFT`] and samples that fall outside 1..255 are
-//! dropped. The top of ranges that extend past y = 191 in Java (coal's
-//! ceiling, iron's mountain band, emerald's peak) is clipped. Decorator
-//! seeds are a per-cell hash, not Java's xoroshiro `RandomState`, so a
-//! vanilla seed will not reproduce the same coordinates; blob shape, count,
-//! discard-on-air and the triangular height providers match `OreFeature`
-//! and `TrapezoidHeight`.
+//! Bands are stored in Java Y and mapped with [`super::height::java_y`]: at
+//! or above sea level that is `y - 1`, and the underground compresses onto
+//! y = 0..62. Samples below Java bedrock (y = -64) or outside this world's
+//! 0..255 column are dropped, which clips coal's ceiling, iron's mountain
+//! band and emerald's peak. Decorator seeds are a per-cell hash, not Java's
+//! xoroshiro `RandomState`, so a vanilla seed will not reproduce the same
+//! coordinates; blob shape, discard-on-air and the triangular height
+//! providers match `OreFeature` and `TrapezoidHeight`.
 //!
-//! Veins are painted per Java 16×16 cell, including cells that only overlap
-//! this chunk, and only stone or deepslate is replaced. A vein in deepslate
-//! writes the deepslate ore; granite, diorite, andesite and tuff (the
-//! `ore_granite` family, size 64) replace either. Buried variants skip
-//! blocks with an air neighbour inside the chunk. Calcite is not a placed
-//! feature in 1.21 (it only occurs in amethyst geodes).
+//! Attempt counts are scaled by [`super::height::span_scale`] (62/127 for a
+//! band that lies fully under Java sea level) so the shorter underground
+//! does not receive Java's full vein budget. Veins are painted per Java
+//! 16×16 cell, including cells that only overlap this chunk, and only stone
+//! or deepslate is replaced. A vein in deepslate writes the deepslate ore;
+//! granite, diorite, andesite and tuff (the `ore_granite` family, size 64)
+//! replace either. Tuff's range is Java y ≤ 0, the deepslate layer. Buried
+//! variants skip blocks with an air neighbour inside the chunk. Calcite is
+//! not a placed feature in 1.21 (it only occurs in amethyst geodes).
 
 use glam::IVec3;
 
 use super::block::Block;
 use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME, index};
+use super::height;
 use super::noise::hash3;
 use super::structure::Rng;
 use super::terrain::Biome;
 
-/// Java y = -64 lands on this world's bedrock.
-pub const JAVA_Y_SHIFT: i32 = 64;
 const JAVA_CELL: i32 = 16;
 
 #[derive(Clone, Copy)]
@@ -42,9 +43,9 @@ enum Tries {
 
 #[derive(Clone, Copy)]
 enum Band {
-    /// `uniform` height, inclusive, in this world's Y.
+    /// `uniform` height, inclusive, in Java Y.
     Uniform(i32, i32),
-    /// `trapezoid` with plateau 0: Java's triangle distribution.
+    /// `trapezoid` with plateau 0: Java's triangle distribution, in Java Y.
     Triangle(i32, i32),
 }
 
@@ -66,16 +67,12 @@ struct Feature {
     ore: Block,
 }
 
-const fn j(y: i32) -> i32 {
-    y + JAVA_Y_SHIFT
-}
-
-/// Vanilla placed features, Y already shifted by [`JAVA_Y_SHIFT`].
+/// Vanilla placed features. Heights are Java Y; [`sample_world_y`] maps them.
 const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xC0A1,
         tries: Tries::Count(30),
-        band: Band::Uniform(j(136), j(319)),
+        band: Band::Uniform(136, 319),
         size: 17,
         discard: 0.0,
         where_: Where::Overworld,
@@ -84,7 +81,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xC0A2,
         tries: Tries::Count(20),
-        band: Band::Triangle(j(0), j(192)),
+        band: Band::Triangle(0, 192),
         size: 17,
         discard: 0.5,
         where_: Where::Overworld,
@@ -93,7 +90,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0x1701,
         tries: Tries::Count(10),
-        band: Band::Triangle(j(-24), j(56)),
+        band: Band::Triangle(-24, 56),
         size: 9,
         discard: 0.0,
         where_: Where::Overworld,
@@ -102,7 +99,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0x1702,
         tries: Tries::Count(90),
-        band: Band::Triangle(j(80), j(384)),
+        band: Band::Triangle(80, 384),
         size: 9,
         discard: 0.0,
         where_: Where::Overworld,
@@ -111,7 +108,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0x1703,
         tries: Tries::Count(10),
-        band: Band::Uniform(j(-64), j(72)),
+        band: Band::Uniform(-64, 72),
         size: 4,
         discard: 0.0,
         where_: Where::Overworld,
@@ -120,7 +117,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xC0C1,
         tries: Tries::Count(16),
-        band: Band::Triangle(j(-16), j(112)),
+        band: Band::Triangle(-16, 112),
         size: 20,
         discard: 0.0,
         where_: Where::Overworld,
@@ -129,7 +126,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xC0C2,
         tries: Tries::Count(16),
-        band: Band::Triangle(j(-16), j(112)),
+        band: Band::Triangle(-16, 112),
         size: 10,
         discard: 0.0,
         where_: Where::Overworld,
@@ -138,7 +135,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xA01D,
         tries: Tries::Count(4),
-        band: Band::Triangle(j(-64), j(32)),
+        band: Band::Triangle(-64, 32),
         size: 9,
         discard: 0.5,
         where_: Where::Overworld,
@@ -147,7 +144,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xA01E,
         tries: Tries::CountRange(0, 1),
-        band: Band::Uniform(j(-64), j(-48)),
+        band: Band::Uniform(-64, -48),
         size: 9,
         discard: 0.5,
         where_: Where::Overworld,
@@ -156,7 +153,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xA01F,
         tries: Tries::Count(50),
-        band: Band::Uniform(j(32), j(256)),
+        band: Band::Uniform(32, 256),
         size: 9,
         discard: 0.0,
         where_: Where::Badlands,
@@ -165,7 +162,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0x4ED5,
         tries: Tries::Count(4),
-        band: Band::Uniform(j(-64), j(15)),
+        band: Band::Uniform(-64, 15),
         size: 8,
         discard: 0.0,
         where_: Where::Overworld,
@@ -174,7 +171,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0x4ED6,
         tries: Tries::Count(8),
-        band: Band::Triangle(j(-96), j(-32)),
+        band: Band::Triangle(-96, -32),
         size: 8,
         discard: 0.0,
         where_: Where::Overworld,
@@ -183,7 +180,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0x1A91,
         tries: Tries::Count(2),
-        band: Band::Triangle(j(-32), j(32)),
+        band: Band::Triangle(-32, 32),
         size: 7,
         discard: 0.0,
         where_: Where::Overworld,
@@ -192,7 +189,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0x1A92,
         tries: Tries::Count(4),
-        band: Band::Uniform(j(-64), j(64)),
+        band: Band::Uniform(-64, 64),
         size: 7,
         discard: 1.0,
         where_: Where::Overworld,
@@ -201,7 +198,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xD1A1,
         tries: Tries::Count(7),
-        band: Band::Triangle(j(-144), j(16)),
+        band: Band::Triangle(-144, 16),
         size: 4,
         discard: 0.5,
         where_: Where::Overworld,
@@ -210,7 +207,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xD1A2,
         tries: Tries::Rarity(9),
-        band: Band::Triangle(j(-144), j(16)),
+        band: Band::Triangle(-144, 16),
         size: 12,
         discard: 0.7,
         where_: Where::Overworld,
@@ -219,7 +216,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xD1A3,
         tries: Tries::Count(2),
-        band: Band::Uniform(j(-64), j(-4)),
+        band: Band::Uniform(-64, -4),
         size: 8,
         discard: 0.5,
         where_: Where::Overworld,
@@ -228,7 +225,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xD1A4,
         tries: Tries::Count(4),
-        band: Band::Triangle(j(-144), j(16)),
+        band: Band::Triangle(-144, 16),
         size: 8,
         discard: 1.0,
         where_: Where::Overworld,
@@ -237,7 +234,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xE3E1,
         tries: Tries::Count(100),
-        band: Band::Triangle(j(-16), j(480)),
+        band: Band::Triangle(-16, 480),
         size: 3,
         discard: 0.0,
         where_: Where::Mountains,
@@ -248,7 +245,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0x6A01,
         tries: Tries::Count(2),
-        band: Band::Uniform(j(0), j(60)),
+        band: Band::Uniform(0, 60),
         size: 64,
         discard: 0.0,
         where_: Where::Overworld,
@@ -257,7 +254,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0x6A02,
         tries: Tries::Rarity(6),
-        band: Band::Uniform(j(64), j(128)),
+        band: Band::Uniform(64, 128),
         size: 64,
         discard: 0.0,
         where_: Where::Overworld,
@@ -266,7 +263,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xD101,
         tries: Tries::Count(2),
-        band: Band::Uniform(j(0), j(60)),
+        band: Band::Uniform(0, 60),
         size: 64,
         discard: 0.0,
         where_: Where::Overworld,
@@ -275,7 +272,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xD102,
         tries: Tries::Rarity(6),
-        band: Band::Uniform(j(64), j(128)),
+        band: Band::Uniform(64, 128),
         size: 64,
         discard: 0.0,
         where_: Where::Overworld,
@@ -284,7 +281,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xA401,
         tries: Tries::Count(2),
-        band: Band::Uniform(j(0), j(60)),
+        band: Band::Uniform(0, 60),
         size: 64,
         discard: 0.0,
         where_: Where::Overworld,
@@ -293,7 +290,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0xA402,
         tries: Tries::Rarity(6),
-        band: Band::Uniform(j(64), j(128)),
+        band: Band::Uniform(64, 128),
         size: 64,
         discard: 0.0,
         where_: Where::Overworld,
@@ -303,7 +300,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         salt: 0x7F01,
         tries: Tries::Count(2),
-        band: Band::Uniform(j(-64), j(0)),
+        band: Band::Uniform(-64, 0),
         size: 64,
         discard: 0.0,
         where_: Where::Overworld,
@@ -317,7 +314,7 @@ fn band_limits(band: Band) -> (i32, i32) {
     }
 }
 
-/// Java's `TrapezoidHeight` with plateau 0, or `UniformHeight`.
+/// Java's `TrapezoidHeight` with plateau 0, or `UniformHeight`, in Java Y.
 fn sample_band(rng: &mut Rng, band: Band) -> i32 {
     let (min, max) = band_limits(band);
     if min > max {
@@ -334,6 +331,43 @@ fn sample_band(rng: &mut Rng, band: Band) -> i32 {
     }
 }
 
+/// A placed origin in this world's Y, or `None` when the Java sample falls
+/// outside the column (below bedrock, or above y = 255).
+fn sample_world_y(rng: &mut Rng, band: Band) -> Option<i32> {
+    let java = sample_band(rng, band);
+    if java < height::JAVA_MIN_Y {
+        return None;
+    }
+    let y = height::java_y(java);
+    (0..256).contains(&y).then_some(y)
+}
+
+/// Multiply a Java attempt count by the band's height scale. A fractional
+/// part is rolled, so a count of 1 on a 62/127 band still happens sometimes
+/// instead of rounding away to zero.
+fn scale_count(n: u32, scale: f64, rng: &mut Rng) -> u32 {
+    if scale >= 1.0 {
+        return n;
+    }
+    let exact = f64::from(n) * scale;
+    let base = exact.floor() as u32;
+    let frac = exact - f64::from(base);
+    if frac > 0.0 && rng.unit() < frac { base + 1 } else { base }
+}
+
+fn scaled_attempts(tries: Tries, band: Band, rng: &mut Rng) -> u32 {
+    let (min, max) = band_limits(band);
+    let scale = height::span_scale(min, max);
+    match tries {
+        Tries::Count(n) => scale_count(n, scale, rng),
+        Tries::CountRange(lo, hi) => scale_count(rng.range(lo, hi), scale, rng),
+        Tries::Rarity(n) => {
+            let p = scale / f64::from(n);
+            if p > 0.0 && rng.unit() < p { 1 } else { 0 }
+        }
+    }
+}
+
 /// How far a vein can stick out from its origin. The endpoint sits up to
 /// `size/8 + size/16` away and the sphere radius adds `size/16`; `size/4 + 2`
 /// also covers the two blocks of vertical jitter.
@@ -341,8 +375,16 @@ fn vein_reach(size: i32) -> i32 {
     size / 4 + 2
 }
 
-fn overlaps_chunk(band: Band, reach: i32, base_y: i32) -> bool {
+/// World-Y extent of origins this band can place, before the vein's reach.
+fn world_limits(band: Band) -> (i32, i32) {
     let (min, max) = band_limits(band);
+    let lo = height::java_y(min.max(height::JAVA_MIN_Y));
+    let hi = height::java_y(max);
+    (lo.min(hi), lo.max(hi))
+}
+
+fn overlaps_chunk(band: Band, reach: i32, base_y: i32) -> bool {
+    let (min, max) = world_limits(band);
     max + reach >= base_y && min - reach < base_y + CHUNK_SIZE_I
 }
 
@@ -377,20 +419,11 @@ fn paint_cell(
     biome_at: &impl Fn(i32, i32) -> Biome,
 ) {
     let mut rng = Rng(hash3(cx, cz, feature.salt as i32, seed ^ feature.salt));
-    let tries = match feature.tries {
-        Tries::Count(n) => n,
-        Tries::CountRange(lo, hi) => rng.range(lo, hi),
-        Tries::Rarity(n) => {
-            if rng.unit() >= 1.0 / f64::from(n) {
-                return;
-            }
-            1
-        }
-    };
+    let tries = scaled_attempts(feature.tries, feature.band, &mut rng);
     for _ in 0..tries {
         let x = cx * JAVA_CELL + rng.below(JAVA_CELL as u32) as i32;
         let z = cz * JAVA_CELL + rng.below(JAVA_CELL as u32) as i32;
-        let y = sample_band(&mut rng, feature.band);
+        let Some(y) = sample_world_y(&mut rng, feature.band) else { continue };
         if feature.where_ != Where::Overworld {
             let biome = biome_at(x, z);
             let ok = match feature.where_ {
@@ -600,6 +633,8 @@ mod tests {
         let mut stone_below = 0;
         let mut deepslate = 0;
         let mut granite = 0;
+        let mut diamond_hist = [0u32; 64];
+        let mut iron_low = [0u32; 72];
         for cx in 0..3 {
             for cz in 0..3 {
                 for cy in 0..4 {
@@ -618,17 +653,26 @@ mod tests {
                                         copper += 1;
                                         copper_y += i64::from(wy);
                                     }
-                                    Block::IRON_ORE | Block::DEEPSLATE_IRON_ORE => iron += 1,
+                                    Block::IRON_ORE | Block::DEEPSLATE_IRON_ORE => {
+                                        iron += 1;
+                                        if wy < 72 {
+                                            iron_low[wy as usize] += 1;
+                                        }
+                                    }
                                     Block::DIAMOND_ORE | Block::DEEPSLATE_DIAMOND_ORE => {
                                         diamond += 1;
                                         diamond_y += i64::from(wy);
-                                        assert!(wy < 100, "shifted diamond stays deep");
+                                        assert!((0..56).contains(&wy), "diamond stays in the mapped band, y={wy}");
+                                        diamond_hist[wy as usize] += 1;
                                     }
                                     Block::REDSTONE_ORE | Block::DEEPSLATE_REDSTONE_ORE => {
-                                        assert!(wy < 90, "redstone stays in the lower band");
+                                        assert!(wy < 50, "redstone stays in the lower band, y={wy}");
                                     }
-                                    Block::STONE if wy < 64 => stone_below += 1,
-                                    Block::DEEPSLATE => deepslate += 1,
+                                    Block::STONE if wy <= height::java_y(0) => stone_below += 1,
+                                    Block::DEEPSLATE => {
+                                        deepslate += 1;
+                                        assert!(wy <= 40, "deepslate at y={wy}");
+                                    }
                                     Block::GRANITE => granite += 1,
                                     _ => {}
                                 }
@@ -644,6 +688,54 @@ mod tests {
         assert_eq!(stone_below, 0, "stone below the deepslate line is replaced");
         assert!(deepslate > 100, "deepslate fills the bottom of the world");
         assert!(granite > 20, "granite blobs generate, got {granite}");
+        let mode = |hist: &[u32]| hist.iter().enumerate().max_by_key(|(_, n)| *n).map(|(y, _)| y).unwrap() as i32;
+        // Block positions spread a vein around the origin. The origin
+        // distribution (below) is the peak; this only checks the blocks
+        // stayed in the deep band.
+        let diamond_peak = mode(&diamond_hist);
+        assert!(diamond_peak < 20, "diamond blocks peak at y={diamond_peak}");
+        let iron_peak = mode(&iron_low);
+        let iron_at = height::java_y(16);
+        assert!((iron_peak - iron_at).abs() <= 6, "iron peaks at y={iron_peak}, near java_y(16) = {iron_at}");
+    }
+
+    /// Origin distribution, independent of terrain. Iron's middle triangle
+    /// peaks at Java y = 16; diamond's triangle peaks on the bedrock floor
+    /// once samples below y = -64 are dropped.
+    #[test]
+    fn mapped_distributions_keep_java_peaks() {
+        let mode_of = |band: Band, draws: u32| {
+            let mut hist = [0u32; 256];
+            let mut rng = Rng(0x0E15);
+            for _ in 0..draws {
+                if let Some(y) = sample_world_y(&mut rng, band) {
+                    hist[y as usize] += 1;
+                }
+            }
+            hist.iter().enumerate().max_by_key(|(_, n)| *n).map(|(y, _)| y).unwrap() as i32
+        };
+        let iron = mode_of(Band::Triangle(-24, 56), 8000);
+        let at = height::java_y(16);
+        assert!((iron - at).abs() <= 2, "iron middle peaks at {iron}, java_y(16) = {at}");
+
+        let mut hist = [0u32; 256];
+        for feature in FEATURES.iter().filter(|f| f.ore == Block::DIAMOND_ORE) {
+            let weight = match feature.tries {
+                Tries::Count(n) => f64::from(n),
+                Tries::CountRange(lo, hi) => f64::from(lo + hi) / 2.0,
+                Tries::Rarity(n) => 1.0 / f64::from(n),
+            };
+            let (min, max) = band_limits(feature.band);
+            let draws = (weight * height::span_scale(min, max) * 2000.0).round() as u32;
+            let mut rng = Rng(feature.salt);
+            for _ in 0..draws.max(1) {
+                if let Some(y) = sample_world_y(&mut rng, feature.band) {
+                    hist[y as usize] += 1;
+                }
+            }
+        }
+        let diamond = hist.iter().enumerate().max_by_key(|(_, n)| *n).map(|(y, _)| y).unwrap() as i32;
+        assert!(diamond < 12, "diamonds peak at y={diamond}");
     }
 
     /// The cull distance has to cover every block `place_vein` can write,
