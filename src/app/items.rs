@@ -211,6 +211,7 @@ impl Game {
         let mut stacks = self.inventory.take_all();
         stacks.extend(self.craft.take_all());
         stacks.extend(self.take_work());
+        stacks.retain(|s| !s.active_enchants().has(crate::enchant::Enchantment::VanishingCurse));
         for stack in stacks {
             self.mobs.entities.scatter(stack, self.player.pos);
         }

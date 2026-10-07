@@ -146,6 +146,11 @@ pub enum EntityEvent {
         pos: DVec3,
         killed: bool,
     },
+    /// A player's thorns killed a mob (loot is dropped internally).
+    ThornsKill {
+        kind: MobKind,
+        pos: DVec3,
+    },
     /// The Ender Dragon flew through this block: remove it, without drops.
     BreakBlock {
         cell: IVec3,
@@ -463,10 +468,11 @@ impl Entities {
                     }
                 }
                 EntityEvent::DragonXp { pos, points } => self.spawn_xp(pos, points),
+                EntityEvent::ThornsKill { kind, pos } => self.drop_loot(kind, pos),
                 _ => {}
             }
         }
-        events.retain(|e| !matches!(e, EntityEvent::DragonXp { .. }));
+        events.retain(|e| !matches!(e, EntityEvent::DragonXp { .. } | EntityEvent::ThornsKill { .. }));
         self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
         self.orbs.retain_mut(|orb| !world.loaded(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
@@ -1226,6 +1232,27 @@ mod tests {
         e.mobs[0].hurt = 0.0;
         e.attack(0, DVec3::X, 100.0);
         assert!(sounds(e.update(1.0 / 60.0, &world, &c)).contains(&MobSound::Death(MobKind::Cow)));
+    }
+
+    #[test]
+    fn thorns_kills_drop_loot_and_experience() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].health = 0.5;
+        let c = Ctx {
+            // Thorns III on all four pieces: a hit back is near certain.
+            players: vec![Target { thorns: [3; 4], ..Target::new(PlayerId::HOST, DVec3::new(1.5, 10.0, 0.5), true) }],
+            daylight: 0.1,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        };
+        for _ in 0..90 {
+            e.update(1.0 / 60.0, &world, &c);
+        }
+        assert!(!e.mobs.first().is_some_and(|m| m.alive()), "thorns killed the zombie");
+        assert!(!e.orbs.is_empty(), "the kill drops experience like a melee kill");
     }
 
     #[test]

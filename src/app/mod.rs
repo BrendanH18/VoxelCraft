@@ -1292,15 +1292,17 @@ impl Game {
         }
         self.actions.breaking = None;
         self.action_cooldown = BREAK_DELAY;
-        // Broken ice melts into water, unless it was floating over nothing.
+        // Broken ice melts into water, unless it was floating over nothing
+        // or silk touch keeps it whole.
+        let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
         let melts = block == Block::ICE
+            && !tool.has(crate::enchant::Enchantment::SilkTouch)
             && self.dimension.has_sky()
             && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
         self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
         if crate::mining::can_harvest(block, held) {
-            let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
             self.world.spill_mined(pos, block, tool);
             if !tool.has(crate::enchant::Enchantment::SilkTouch) {
                 self.mobs.entities.drop_block_xp(block, pos);

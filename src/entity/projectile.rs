@@ -80,6 +80,12 @@ impl Arrow {
         }
     }
 
+    /// Power raises Java's base arrow damage of 2 by 0.5 per level + 0.5.
+    fn power_factor(&self) -> f64 {
+        let power = self.enchants.level(crate::enchant::Enchantment::Power) as f64;
+        if power > 0.0 { (2.5 + 0.5 * power) / 2.0 } else { 1.0 }
+    }
+
     /// Moves the arrow; returns `false` once it should be removed.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn update<W: BlockSource + ?Sized>(
@@ -129,7 +135,7 @@ impl Arrow {
                 if let Some((hit, _)) = boss.filter(|&(_, t)| mob.is_none_or(|(_, m)| t < m))
                     && let Some(fight) = fight.as_deref_mut()
                 {
-                    let damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE).ceil() as f32;
+                    let damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
                     if fight.strike(hit, damage, None, true) {
                         return false;
                     }
@@ -145,10 +151,7 @@ impl Arrow {
                     } else {
                         use crate::enchant::Enchantment;
                         let speed = self.vel.length();
-                        // Power raises Java's base damage of 2 by 0.5 per level + 0.5.
-                        let power = self.enchants.level(Enchantment::Power) as f64;
-                        let base = if power > 0.0 { (2.5 + 0.5 * power) / 2.0 } else { 1.0 };
-                        let mut damage = (speed / BOW_SPEED * BOW_DAMAGE * base).ceil() as f32;
+                        let mut damage = (speed / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
                         if self.critical {
                             damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
                         }

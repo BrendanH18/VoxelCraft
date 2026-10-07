@@ -662,7 +662,9 @@ impl Mob {
                             for level in target.thorns.into_iter().filter(|&l| l > 0) {
                                 if rng.chance(0.15 * level as f32) {
                                     let back = 1.0 + (rng.next_f32() * 4.0).floor().min(3.0);
-                                    self.damage(back, Some(-knockback * 0.5 + DVec3::Y * 3.0), rng);
+                                    if self.damage(back, Some(-knockback * 0.5 + DVec3::Y * 3.0), rng) {
+                                        events.push(EntityEvent::ThornsKill { kind: self.kind, pos: self.pos });
+                                    }
                                 }
                             }
                         }

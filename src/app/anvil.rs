@@ -91,12 +91,12 @@ impl Game {
         }
     }
 
-    /// Shift-click from the inventory onto the anvil: the left input if
-    /// it's empty, else the right. Returns what didn't move.
+    /// Shift-click from the inventory onto the anvil: one item into the left
+    /// input if it's empty, else the right. Returns what didn't move.
     pub(super) fn move_to_anvil(&mut self, stack: Stack) -> Option<Stack> {
         if self.work[0].is_none() {
-            self.work[0] = Some(stack);
-            return None;
+            self.work[0] = Some(Stack { count: 1, ..stack });
+            return (stack.count > 1).then_some(Stack { count: stack.count - 1, ..stack });
         }
         move_into(stack, std::slice::from_mut(&mut self.work[1]), &[0])
     }
