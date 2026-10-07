@@ -11,6 +11,8 @@
 //! down to sea level, swamps flatten into shallow pools and badlands rise
 //! into terraced plateaus. Temperature and humidity then pick the biome.
 
+use std::sync::{Arc, Mutex};
+
 use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
@@ -151,6 +153,16 @@ impl Dimension {
     }
 }
 
+/// Surface noise is independent of chunk Y. Keep a bounded set of column
+/// snapshots shared by generation workers, rather than resampling all eight
+/// vertical chunks. Values are immutable and eviction never changes output.
+const COLUMN_CACHE_LIMIT: usize = 512;
+struct ChunkColumns {
+    cols: [[Column; CHUNK_SIZE]; CHUNK_SIZE],
+    max_h: i32,
+    min_h: i32,
+}
+
 pub struct Generator {
     pub seed: u64,
     pub dimension: Dimension,
@@ -163,6 +175,7 @@ pub struct Generator {
     pub dungeons: super::dungeon::Dungeons,
     /// Abandoned mineshafts, placed per Java 16×16 chunk.
     pub mineshafts: super::mineshaft::Mineshafts,
+    columns: Mutex<FxHashMap<IVec2, Arc<ChunkColumns>>>,
     continent: Perlin,
     erosion: Perlin,
     ridge: Perlin,
@@ -207,6 +220,7 @@ impl Generator {
             strongholds: super::stronghold::Strongholds::new(seed),
             dungeons: super::dungeon::Dungeons::new(seed),
             mineshafts: super::mineshaft::Mineshafts::new(seed),
+            columns: Mutex::new(FxHashMap::default()),
             continent: p(1),
             erosion: p(2),
             ridge: p(3),
@@ -480,14 +494,12 @@ impl Generator {
         self.nether.as_ref().is_some_and(|n| n.fortresses.inside(p))
     }
 
-    pub fn generate(&self, cpos: IVec3) -> ChunkData {
-        if let Some(end) = &self.end {
-            return end.generate(cpos);
+    fn chunk_columns(&self, pos: IVec2) -> Arc<ChunkColumns> {
+        if let Some(found) = self.columns.lock().unwrap().get(&pos) {
+            return Arc::clone(found);
         }
-        if let Some(nether) = &self.nether {
-            return nether.generate(cpos);
-        }
-        let base = cpos * CHUNK_SIZE_I;
+        // Do noise work outside the lock, so unrelated columns run in parallel.
+        let base = IVec3::new(pos.x * CHUNK_SIZE_I, 0, pos.y * CHUNK_SIZE_I);
         let mut cols = [[Column { height: 0, biome: Biome::Plains, frozen: false }; CHUNK_SIZE]; CHUNK_SIZE];
         let mut max_h = i32::MIN;
         let mut min_h = i32::MAX;
@@ -498,6 +510,28 @@ impl Generator {
                 min_h = min_h.min(c.height);
             }
         }
+
+        let found = Arc::new(ChunkColumns { cols, max_h, min_h });
+        let mut cache = self.columns.lock().unwrap();
+        if cache.len() >= COLUMN_CACHE_LIMIT
+            && let Some(key) = cache.keys().next().copied()
+        {
+            cache.remove(&key);
+        }
+        Arc::clone(cache.entry(pos).or_insert(found))
+    }
+
+    pub fn generate(&self, cpos: IVec3) -> ChunkData {
+        if let Some(end) = &self.end {
+            return end.generate(cpos);
+        }
+        if let Some(nether) = &self.nether {
+            return nether.generate(cpos);
+        }
+        let base = cpos * CHUNK_SIZE_I;
+        let columns = self.chunk_columns(IVec2::new(cpos.x, cpos.z));
+        let ChunkColumns { cols, max_h, min_h } = &*columns;
+        let (max_h, min_h) = (*max_h, *min_h);
 
         let top = base.y + CHUNK_SIZE_I - 1;
         // Open sky: nothing (not even tree canopies) reaches this chunk.
@@ -560,7 +594,7 @@ impl Generator {
         }
         if base.y <= max_h + TREE_TOP && top >= min_h {
             self.place_trees(&mut blocks, base);
-            self.place_plants(&mut blocks, base, &cols);
+            self.place_plants(&mut blocks, base, cols);
         }
         if base.y < SEA_LEVEL {
             self.strongholds.paint(&mut blocks, base);
@@ -1073,6 +1107,32 @@ fn cactus(ground: IVec3, v: u32, put: Put) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Golden block IDs captured at 25c4c8a before the performance changes.
+    /// Cover the benchmark volume and distant columns in every dimension.
+    #[test]
+    fn generated_chunk_hashes_stay_identical() {
+        for (dimension, seed, expected) in [
+            (Dimension::Overworld, 12345, 0xa0c9_3724_7178_7228u64),
+            (Dimension::Overworld, 99, 0x337f_1929_ad17_49ffu64),
+            (Dimension::Nether, 12345, 0x17a0_1163_881c_778du64),
+            (Dimension::End, 12345, 0xc5aa_2549_4a63_5b2bu64),
+        ] {
+            let g = Generator::for_dimension(seed, dimension);
+            let mut hash = 0xcbf2_9ce4_8422_2325u64;
+            let mut positions: Vec<_> =
+                (-3..=3).flat_map(|x| (-3..=3).flat_map(move |z| (0..8).map(move |y| IVec3::new(x, y, z)))).collect();
+            positions.extend([IVec3::new(-31, 0, 17), IVec3::new(17, 1, -23), IVec3::new(4, 4, 39)]);
+            for p in positions {
+                g.generate(p).for_each_block(|block| {
+                    for byte in block.0.to_le_bytes() {
+                        hash = (hash ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3);
+                    }
+                });
+            }
+            assert_eq!(hash, expected, "{dimension:?} seed {seed}");
+        }
+    }
 
     #[test]
     fn generation_is_deterministic() {
