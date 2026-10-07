@@ -417,19 +417,39 @@ impl Entities {
         self.mobs.push(Mob::new(kind, pos, yaw));
     }
 
-    /// Snapshot positions and advance entity simulation by `dt` game seconds.
+    /// Removes monsters which Java does not allow to exist on Peaceful.
+    pub fn despawn_hostiles(&mut self) {
+        self.mobs.retain(|mob| !mob.kind.is_hostile());
+    }
+
+    /// Snapshot positions and advance entity simulation on Normal difficulty.
     /// Return events for the caller to apply world edits, damage, loot and sounds.
     pub fn update<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, ctx: &Ctx) -> Vec<EntityEvent> {
+        self.update_difficulty(dt, world, ctx, crate::simulation::difficulty::Difficulty::Normal)
+    }
+
+    /// [`Entities::update`] under this world's difficulty.
+    pub fn update_difficulty<W: MobWorld + ?Sized>(
+        &mut self,
+        dt: f64,
+        world: &W,
+        ctx: &Ctx,
+        difficulty: crate::simulation::difficulty::Difficulty,
+    ) -> Vec<EntityEvent> {
         self.snapshot_positions();
         let mut events = Vec::new();
-        if ctx.spawning {
+        if difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
+            self.despawn_hostiles();
+        } else if ctx.spawning {
             self.spawn_timer -= dt as f32;
             if self.spawn_timer <= 0.0 {
                 self.spawn_timer = SPAWN_INTERVAL;
                 self.natural_spawn(world, ctx);
             }
         }
-        self.run_spawners(dt as f32, world, ctx);
+        if difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
+            self.run_spawners(dt as f32, world, ctx);
+        }
 
         let mut i = 0;
         while i < self.mobs.len() {
@@ -2055,6 +2075,22 @@ mod tests {
         c.players[0].alive = true;
         e.run_spawners(0.6, &world, &c);
         assert!((1..=4).contains(&e.count(MobKind::Blaze)), "living creative players activate cages too");
+    }
+
+    #[test]
+    fn peaceful_removes_monsters_and_suppresses_spawners() {
+        let cell = IVec3::new(0, 11, 0);
+        let world = Caged(Grid::flat(10), vec![(cell, MobKind::Blaze)]);
+        let mut e = Entities::new(17);
+        e.spawn(MobKind::Zombie, DVec3::new(2.5, 11.0, 0.5));
+        e.spawn(MobKind::Cow, DVec3::new(3.5, 11.0, 0.5));
+        let c = ctx(DVec3::new(10.5, 10.0, 0.5));
+        for _ in 0..40 {
+            e.update_difficulty(0.05, &world, &c, crate::simulation::difficulty::Difficulty::Peaceful);
+        }
+        assert_eq!(e.count(MobKind::Cow), 1);
+        assert!(e.mobs.iter().all(|mob| !mob.kind.is_hostile()));
+        assert!(e.spawner_delays.is_empty());
     }
 
     #[test]

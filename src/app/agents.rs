@@ -264,7 +264,7 @@ impl Game {
         }
         let mut players = std::mem::take(&mut self.agents.players);
         for bot in players.values_mut().filter(|b| b.active) {
-            bot.agent.tick(&mut self.world, &mut self.mobs.entities);
+            bot.agent.tick_difficulty(&mut self.world, &mut self.mobs.entities, self.difficulty);
             if bot.agent.remaining == 0
                 && let Some(reply) = bot.reply.take()
             {

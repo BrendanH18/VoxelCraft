@@ -15,6 +15,7 @@ use winit::window::CursorGrabMode;
 
 use crate::render::FrameParams;
 use crate::render::ui::{Ui, WHITE};
+use crate::simulation::difficulty::Difficulty;
 use crate::world::storage::Storage;
 
 use super::menu::{BUTTON, HOT, bevel, inside};
@@ -25,6 +26,7 @@ pub(crate) struct NewWorld {
     pub name: String,
     pub seed: Option<u64>,
     pub mode: GameMode,
+    pub difficulty: Difficulty,
 }
 
 /// What the title screen asks the app to do.
@@ -64,6 +66,7 @@ enum Widget {
     NameField,
     SeedField,
     Mode,
+    Difficulty,
     CreateWorld,
     Cancel,
     ConfirmDelete,
@@ -97,6 +100,7 @@ pub(super) struct Title {
     seed: String,
     focus: Field,
     mode: GameMode,
+    difficulty: Difficulty,
     cursor_px: (f32, f32),
     last_click: Option<(usize, Instant)>,
     started: Instant,
@@ -122,6 +126,7 @@ impl Title {
             seed: String::new(),
             focus: Field::Name,
             mode: GameMode::Survival,
+            difficulty: Difficulty::Normal,
             cursor_px: (0.0, 0.0),
             last_click: None,
             started: Instant::now(),
@@ -240,7 +245,7 @@ impl Title {
     fn create(&self) -> Action {
         let name = if self.name.trim().is_empty() { "New World".to_string() } else { self.name.trim().to_string() };
         let dir = folder_for(&name, |d| self.saves_dir.join(d).exists());
-        let new = NewWorld { name, seed: parse_seed(&self.seed), mode: self.mode };
+        let new = NewWorld { name, seed: parse_seed(&self.seed), mode: self.mode, difficulty: self.difficulty };
         Action::Play(dir, Some(new))
     }
 
@@ -263,6 +268,7 @@ impl Title {
                 self.seed.clear();
                 self.focus = Field::Name;
                 self.mode = GameMode::Survival;
+                self.difficulty = Difficulty::Normal;
             }
             Widget::Delete if self.selected.is_some() => self.screen = Screen::ConfirmDelete,
             Widget::Quit => return Some(Action::Quit),
@@ -274,6 +280,7 @@ impl Title {
                     GameMode::Creative => GameMode::Survival,
                 }
             }
+            Widget::Difficulty => self.difficulty = self.difficulty.next(),
             Widget::CreateWorld => return Some(self.create()),
             Widget::Cancel => self.screen = Screen::List,
             Widget::ConfirmDelete => {
@@ -348,8 +355,9 @@ impl Title {
                 out.push((Widget::NameField, [x, y + 12.0, BUTTON_W, BUTTON_H]));
                 out.push((Widget::SeedField, [x, y + 52.0, BUTTON_W, BUTTON_H]));
                 out.push((Widget::Mode, [x, y + 82.0, BUTTON_W, BUTTON_H]));
-                out.push((Widget::CreateWorld, [cx - HALF_W - 2.0, y + 130.0, HALF_W, BUTTON_H]));
-                out.push((Widget::Cancel, [cx + 2.0, y + 130.0, HALF_W, BUTTON_H]));
+                out.push((Widget::Difficulty, [x, y + 106.0, BUTTON_W, BUTTON_H]));
+                out.push((Widget::CreateWorld, [cx - HALF_W - 2.0, y + 154.0, HALF_W, BUTTON_H]));
+                out.push((Widget::Cancel, [cx + 2.0, y + 154.0, HALF_W, BUTTON_H]));
             }
             Screen::ConfirmDelete => {
                 let y = (sh / 2.0 + 10.0).floor();
@@ -367,6 +375,7 @@ impl Title {
             Widget::Delete => "Delete".into(),
             Widget::Quit => "Quit Game".into(),
             Widget::Mode => format!("Game Mode: {}", super::capitalize(self.mode.name())),
+            Widget::Difficulty => format!("Difficulty: {}", self.difficulty),
             Widget::CreateWorld => "Create World".into(),
             Widget::Cancel => "Cancel".into(),
             Widget::ConfirmDelete => "Delete".into(),
@@ -409,7 +418,7 @@ impl Title {
                 } else {
                     "Gather, craft and stay alive"
                 };
-                centred(&mut ui, y + 108.0, hint, grey);
+                centred(&mut ui, y + 132.0, hint, grey);
             }
             Screen::ConfirmDelete => {
                 ui.rect(0.0, 0.0, sw, sh, [0.25, 0.0, 0.0, 0.75]);

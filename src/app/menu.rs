@@ -6,6 +6,7 @@
 //! hit-testing use, like the inventory screen.
 
 use crate::render::ui::{Color, Ui, WHITE};
+use crate::simulation::difficulty::Difficulty;
 
 use super::Game;
 use super::settings::{FOV, RENDER_DISTANCE, SENSITIVITY, Settings};
@@ -28,6 +29,7 @@ pub(super) enum Widget {
     Vsync,
     Graphics,
     Fps,
+    Difficulty,
     Done,
 }
 
@@ -48,7 +50,7 @@ impl Widget {
         matches!(self, Widget::RenderDistance | Widget::Fov | Widget::Sensitivity | Widget::Volume)
     }
 
-    fn label(self, s: &Settings) -> String {
+    fn label(self, s: &Settings, difficulty: Difficulty) -> String {
         match self {
             Widget::Resume => "Back to Game".into(),
             Widget::Options => "Options...".into(),
@@ -63,6 +65,7 @@ impl Widget {
             Widget::Vsync => format!("VSync: {}", if s.vsync { "On" } else { "Off" }),
             Widget::Graphics => format!("Graphics: {}", if s.enhanced_graphics { "Enhanced" } else { "Classic" }),
             Widget::Fps => format!("FPS Counter: {}", if s.show_fps { "On" } else { "Off" }),
+            Widget::Difficulty => format!("Difficulty: {difficulty}"),
             Widget::Done => "Done".into(),
         }
     }
@@ -110,6 +113,7 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
             Widget::Vsync,
             Widget::Graphics,
             Widget::Fps,
+            Widget::Difficulty,
             Widget::Done,
         ],
     };
@@ -217,6 +221,13 @@ impl Game {
                 self.settings.show_fps = !self.settings.show_fps;
                 self.apply_settings();
             }
+            Widget::Difficulty => {
+                self.difficulty = self.difficulty.next();
+                if self.difficulty == Difficulty::Peaceful {
+                    self.mobs.entities.despawn_hostiles();
+                }
+                self.show_popup(&format!("Difficulty: {}", self.difficulty));
+            }
             Widget::SaveAndQuit => return Some(MenuAction::Quit),
             _ => {}
         }
@@ -278,7 +289,7 @@ impl Game {
         let hovered = self.widget_under_cursor().map(|(w, _)| w);
         for (widget, [x, y, w, h]) in widgets {
             let hot = hovered == Some(widget) || self.menu_drag == Some(widget);
-            let label = widget.label(&self.settings);
+            let label = widget.label(&self.settings, self.difficulty);
             if widget.is_slider() {
                 // Minecraft-style: a dark track with a button-like handle.
                 bevel(ui, [x, y, w, h], [0.16, 0.16, 0.16, 1.0], false);
@@ -329,7 +340,7 @@ mod tests {
         assert_eq!(s.clamped(), s, "slider values are always valid settings");
         Widget::RenderDistance.set_value(0.2, &mut s);
         assert_eq!(s.render_distance, 8);
-        assert_eq!(Widget::RenderDistance.label(&s), "Render Distance: 8 chunks");
+        assert_eq!(Widget::RenderDistance.label(&s, Difficulty::Normal), "Render Distance: 8 chunks");
         // Every label fits inside its button.
         for w in [
             Widget::RenderDistance,
@@ -339,6 +350,7 @@ mod tests {
             Widget::Vsync,
             Widget::Graphics,
             Widget::Fps,
+            Widget::Difficulty,
         ] {
             let longest = Settings {
                 render_distance: 32,
@@ -349,7 +361,7 @@ mod tests {
                 enhanced_graphics: true,
                 show_fps: true,
             };
-            assert!(Ui::text_width(&w.label(&longest)) < BUTTON_W - 8.0, "{w:?} label too wide");
+            assert!(Ui::text_width(&w.label(&longest, Difficulty::Hard)) < BUTTON_W - 8.0, "{w:?} label too wide");
         }
     }
 

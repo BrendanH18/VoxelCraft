@@ -44,6 +44,7 @@ use crate::inventory::{HOTBAR_SLOTS, Inventory, Stack};
 use crate::item::Item;
 use crate::player::{MoveInput, Player};
 use crate::render::{FrameParams, Renderer};
+use crate::simulation::difficulty::Difficulty;
 use crate::world::World;
 use crate::world::block::Block;
 use crate::world::storage::{LevelInfo, Storage};
@@ -151,6 +152,8 @@ struct Game {
     mine_pressed: bool,
     action_cooldown: f64,
     mode: GameMode,
+    /// Shared world difficulty (old saves default to Normal).
+    difficulty: Difficulty,
     inventory: Inventory,
     inventory_open: bool,
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
@@ -563,6 +566,11 @@ impl Game {
                 (None, Some(m)) if m == "creative" => GameMode::Creative,
                 _ => GameMode::Survival,
             };
+        let difficulty = new
+            .as_ref()
+            .map(|n| n.difficulty)
+            .or_else(|| root_props.get("difficulty").and_then(|d| Difficulty::from_name(d)))
+            .unwrap_or_default();
         let inventory = existing
             .as_ref()
             .and_then(|l| l.props.get("inventory"))
@@ -702,6 +710,7 @@ impl Game {
             mine_pressed: false,
             action_cooldown: 0.0,
             mode,
+            difficulty,
             inventory,
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
@@ -1636,6 +1645,7 @@ impl Game {
         props.insert("agents".into(), self.agents.serialize(self.dimension.name()));
         props.insert("pads".into(), self.pads.serialize());
         props.insert("mode".to_string(), self.mode.name().to_string());
+        props.insert("difficulty".to_string(), self.difficulty.name().to_string());
         props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
@@ -1807,7 +1817,7 @@ impl Game {
         let hurts = if arriving || self.arrival.is_some() {
             Default::default()
         } else {
-            self.vitals.tick(dt as f32, &env, self.mode == GameMode::Creative)
+            self.vitals.tick_difficulty(dt as f32, &env, self.mode == GameMode::Creative, self.difficulty)
         };
         self.trample(hurts.landed);
         if hurts.fall > 0.0 {

@@ -161,6 +161,9 @@ impl Game {
     }
 
     pub(super) fn update_mobs(&mut self, dt: f64) {
+        if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
+            self.mobs.entities.despawn_hostiles();
+        }
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
             self.mobs.entities.prime_tnt(cell, short_fuse);
             self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
@@ -189,22 +192,27 @@ impl Game {
                 0.0
             },
             raining: self.weather.raining,
-            spawning: true,
+            spawning: self.difficulty != crate::simulation::difficulty::Difficulty::Peaceful,
             dimension: self.dimension,
         };
         let mut smashed = Vec::new();
-        for event in self.mobs.entities.update(dt, &self.world, &ctx) {
+        for event in self.mobs.entities.update_difficulty(dt, &self.world, &ctx, self.difficulty) {
             match event {
                 EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, cause } => {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
-                    if self.damage_player_armored(damage, cause) > 0.0 {
+                    if self.damage_player_armored(self.difficulty.mob_damage(damage), cause) > 0.0 {
                         self.player.vel += knockback.as_dvec3();
                     }
                 }
                 EntityEvent::PlayerHit { player, damage, knockback, cause } => {
                     if let Some(bot) = self.agents.by_id_mut(player) {
-                        bot.agent.hurt(damage, cause, knockback.as_dvec3(), &mut self.mobs.entities);
+                        bot.agent.hurt(
+                            self.difficulty.mob_damage(damage),
+                            cause,
+                            knockback.as_dvec3(),
+                            &mut self.mobs.entities,
+                        );
                     }
                 }
                 EntityEvent::Explosion { center, power, cause } => self.explode(center, power, cause),
@@ -284,6 +292,9 @@ impl Game {
                 }
             }
         }
+        if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
+            self.mobs.entities.despawn_hostiles();
+        }
         // All the blocks the dragon flew through this tick, in one edit.
         if !smashed.is_empty() {
             smashed.sort_unstable_by_key(|p| (p.x, p.y, p.z));
@@ -335,6 +346,7 @@ impl Game {
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
         let mid = self.player.pos + DVec3::Y * 0.9;
         if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center))
+            && let damage = self.difficulty.mob_damage(damage)
             && self.damage_player_armored(damage, cause) > 0.0
         {
             let away = (mid - center).normalize_or(DVec3::Y);
@@ -348,7 +360,7 @@ impl Game {
             if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center)) {
                 let away = (mid - center).normalize_or(DVec3::Y);
                 let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
-                bot.agent.hurt(damage, cause, push, &mut self.mobs.entities);
+                bot.agent.hurt(self.difficulty.mob_damage(damage), cause, push, &mut self.mobs.entities);
             }
         }
     }

@@ -679,6 +679,16 @@ impl Agent {
 
     /// Advance physics/survival/mining once. All sessions tick before the shared world systems.
     pub fn tick(&mut self, world: &mut World, entities: &mut Entities) {
+        self.tick_difficulty(world, entities, crate::simulation::difficulty::Difficulty::Normal);
+    }
+
+    /// [`Agent::tick`] using the host world's difficulty.
+    pub fn tick_difficulty(
+        &mut self,
+        world: &mut World,
+        entities: &mut Entities,
+        difficulty: crate::simulation::difficulty::Difficulty,
+    ) {
         self.previous_pos = self.player.pos;
         // Movement alone returning early is not enough: survival, mining,
         // pickups and timed commands must also wait for local terrain.
@@ -694,15 +704,17 @@ impl Agent {
         }
         let mut input = self.movement_input();
         input.sprint &= self.creative || self.vitals.hunger.can_sprint();
-        let hurts = simulation::tick_player(
-            &mut self.player,
-            world,
-            &mut self.vitals,
-            &self.inventory.armor,
-            input,
-            self.creative,
-        )
-        .hurts;
+        let before = self.player.pos;
+        self.player.apply_effects(&self.vitals.effects);
+        self.player
+            .wear_boots(crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::DepthStrider));
+        self.player.update(TICK_SECONDS, input, world);
+        let moved = (self.player.pos - before).with_y(0.0).length();
+        let env = simulation::survival::Env {
+            respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
+            ..simulation::player_environment(&self.player, world, input, moved)
+        };
+        let hurts = self.vitals.tick_difficulty(TICK_SECONDS as f32, &env, self.creative, difficulty);
         for (damage, cause) in [
             (hurts.fall, "hit the ground too hard"),
             (hurts.drown, "drowned"),
