@@ -27,6 +27,7 @@ pub mod fortress;
 pub mod furnace;
 mod growth;
 pub(crate) mod lighting;
+pub mod mineshaft;
 pub mod nether;
 pub mod noise;
 mod portal;

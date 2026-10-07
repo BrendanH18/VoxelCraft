@@ -205,7 +205,13 @@ pub mod tex {
     pub const SMITHING_SIDE: u16 = SMITHING_TOP + 2;
     pub const SMITHING_BOTTOM: u16 = SMITHING_TOP + 3;
     pub const MOSSY_COBBLESTONE: u16 = SMITHING_BOTTOM + 1;
-    pub const COUNT: u32 = MOSSY_COBBLESTONE as u32 + 1;
+    pub const RAIL: u16 = MOSSY_COBBLESTONE + 1;
+    pub const RAIL_EW: u16 = RAIL + 1;
+    pub const RAIL_SE: u16 = RAIL + 2;
+    pub const RAIL_SW: u16 = RAIL + 3;
+    pub const RAIL_NW: u16 = RAIL + 4;
+    pub const RAIL_NE: u16 = RAIL + 5;
+    pub const COUNT: u32 = RAIL_NE as u32 + 1;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -408,6 +414,10 @@ impl Block {
     /// Upgrades diamond gear to Netherite (see `crate::smithing`).
     pub const SMITHING_TABLE: Block = Block(223);
     pub const MOSSY_COBBLESTONE: Block = Block(224);
+    /// Rails, ids 500..=509: Java `RailShape` north_south, east_west,
+    /// ascending east/west/north/south, then south_east, south_west,
+    /// north_west, north_east. All render flat (no slope mesh).
+    pub const RAIL: Block = Block(500);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age as u16 })
@@ -524,12 +534,25 @@ impl Block {
                 let i = self.0 - 149;
                 Shaped::Door { facing: f(i), open: i % 8 >= 4, upper: i >= 8 }
             }
+            500..=509 => Shaped::Rail,
             _ => return None,
         })
     }
 
     pub fn is_anvil(self) -> bool {
         matches!(self.shaped(), Some(Shaped::Anvil { .. }))
+    }
+
+    pub fn is_rail(self) -> bool {
+        (500..=509).contains(&self.0)
+    }
+
+    pub const fn rail(shape: RailShape) -> Block {
+        Block(500 + shape as u16)
+    }
+
+    pub fn rail_shape(self) -> Option<RailShape> {
+        (500..=509).contains(&self.0).then(|| RailShape::ALL[(self.0 - 500) as usize])
     }
 
     /// The next worse anvil (`None` once a damaged one breaks), keeping
@@ -566,7 +589,7 @@ impl Block {
 
     /// Drawn as a flat sprite in inventories and when dropped.
     pub fn flat_icon(self) -> bool {
-        self.kind() == RenderKind::Cross || self.is_ladder()
+        self.kind() == RenderKind::Cross || self.is_ladder() || self.is_rail()
     }
 
     /// Badlands terracotta: 0 plain, then orange, yellow, red, brown, white
@@ -628,7 +651,7 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
-        self.oriented().map_or(self, |(b, _)| b)
+        if self.is_rail() { Block::RAIL } else { self.oriented().map_or(self, |(b, _)| b) }
     }
 
     /// The same block facing `facing` (unchanged if it has no front).
@@ -862,6 +885,7 @@ impl Block {
                 0.6
             }
             Block::SANDSTONE | Block::WOOL => 0.8,
+            Block::RAIL => 0.7,
             Block::BED_FOOT | Block::BED_HEAD => 0.2,
             Block::LADDER => 0.4,
             Block::OAK_DOOR => 3.0,
@@ -915,7 +939,8 @@ impl Block {
             | Block::ANVIL
             | Block::CHIPPED_ANVIL
             | Block::DAMAGED_ANVIL
-            | Block::ICE => Some(ToolKind::Pickaxe),
+            | Block::ICE
+            | Block::RAIL => Some(ToolKind::Pickaxe),
             Block::COBWEB => Some(ToolKind::Sword),
             Block::BOOKSHELF => Some(ToolKind::Axe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
@@ -989,7 +1014,7 @@ impl Block {
             .chain((112..=132).step_by(4))
             .chain([
                 136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213, 214, 215,
-                217, 219, 221, 222, 223, 224,
+                217, 219, 221, 222, 223, 224, 500,
             ])
             .map(Block)
     }
@@ -1037,6 +1062,7 @@ impl Block {
                 matches!(below, Block::SUGAR_CANE | Block::GRASS | Block::DIRT | Block::SAND | Block::RED_SAND)
             }
             Block::TORCH => below.is_opaque(),
+            b if b.is_rail() => below.is_opaque(),
             b if b.is_door() => {
                 if b.is_door_upper() {
                     below.is_door() && !below.is_door_upper()
@@ -1295,6 +1321,39 @@ pub enum Shaped {
         open: bool,
         upper: bool,
     },
+    /// A 2/16-high rail; Java's slope states still render flat.
+    Rail,
+}
+
+/// Java's `RailShape` for vanilla rails (block ids 500..=509).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u16)]
+pub enum RailShape {
+    NorthSouth = 0,
+    EastWest = 1,
+    AscendingEast = 2,
+    AscendingWest = 3,
+    AscendingNorth = 4,
+    AscendingSouth = 5,
+    SouthEast = 6,
+    SouthWest = 7,
+    NorthWest = 8,
+    NorthEast = 9,
+}
+
+impl RailShape {
+    pub const ALL: [RailShape; 10] = [
+        Self::NorthSouth,
+        Self::EastWest,
+        Self::AscendingEast,
+        Self::AscendingWest,
+        Self::AscendingNorth,
+        Self::AscendingSouth,
+        Self::SouthEast,
+        Self::SouthWest,
+        Self::NorthWest,
+        Self::NorthEast,
+    ];
 }
 
 /// A block type that flows: each has a source, a falling form and
@@ -1529,6 +1588,12 @@ const fn make(id: u16) -> BlockInfo {
             ("smithing table", Opaque, [side, side, tex::SMITHING_TOP, tex::SMITHING_BOTTOM, front, front])
         }
         224 => ("mossy cobblestone", Opaque, all(tex::MOSSY_COBBLESTONE)),
+        500 | 504 | 505 => ("rail", Shaped, all(tex::RAIL)),
+        501..=503 => ("rail", Shaped, all(tex::RAIL_EW)),
+        506 => ("rail", Shaped, all(tex::RAIL_SE)),
+        507 => ("rail", Shaped, all(tex::RAIL_SW)),
+        508 => ("rail", Shaped, all(tex::RAIL_NW)),
+        509 => ("rail", Shaped, all(tex::RAIL_NE)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are
@@ -1887,5 +1952,26 @@ mod tests {
         assert_eq!(damaged.base(), Block::DAMAGED_ANVIL);
         assert_eq!(damaged.anvil_damaged(), None, "a damaged anvil breaks next");
         assert_eq!(Item::from_name("chipped anvil"), Some(Item::from(Block::CHIPPED_ANVIL)));
+    }
+
+    #[test]
+    fn rails_are_thin_pickaxe_blocks_with_java_shapes() {
+        assert_eq!(Block::RAIL, Block(500));
+        assert_eq!(Block::from_name("rail"), Some(Block::RAIL));
+        assert_eq!(Block::RAIL.hardness(), 0.7);
+        assert_eq!(Block::RAIL.best_tool(), Some(ToolKind::Pickaxe));
+        assert!(Block::RAIL.can_stay_on(Block::STONE) && !Block::RAIL.can_stay_on(Block::AIR));
+        assert!(Block::RAIL.flat_icon() && Block::creative_palette().any(|b| b == Block::RAIL));
+        for (i, &shape) in RailShape::ALL.iter().enumerate() {
+            let b = Block::rail(shape);
+            assert_eq!(b, Block(500 + i as u16));
+            assert_eq!(b.rail_shape(), Some(shape));
+            assert_eq!(b.base(), Block::RAIL);
+            assert_eq!(b.shaped(), Some(Shaped::Rail));
+            assert_eq!(b.name(), "rail");
+            assert_eq!((b.hardness(), b.best_tool()), (0.7, Some(ToolKind::Pickaxe)));
+        }
+        let boxes = crate::world::shape::item_shape(Block::RAIL);
+        assert_eq!(boxes.as_slice(), &[crate::world::shape::Box16 { min: [0, 0, 0], max: [16, 2, 16] }]);
     }
 }

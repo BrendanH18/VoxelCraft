@@ -165,6 +165,7 @@ const ENCHANTING_TABLE: Box16 = b([0, 0, 0], [16, 12, 16]);
 /// Java's anvil with its top along z: base, step, neck and top.
 const ANVIL: [Box16; 4] =
     [b([2, 0, 2], [14, 4, 14]), b([4, 4, 3], [12, 5, 13]), b([6, 5, 4], [10, 10, 12]), b([3, 10, 0], [13, 16, 16])];
+const RAIL: Box16 = b([0, 0, 0], [16, 2, 16]);
 const FENCE_POST: Box16 = b([6, 0, 6], [10, 16, 10]);
 /// The two rails reaching out to a neighbour on the south side.
 const FENCE_RAILS: [Box16; 2] = [b([7, 6, 10], [9, 9, 16]), b([7, 12, 10], [9, 15, 16])];
@@ -225,6 +226,7 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
         Some(Shaped::Gate { facing, open }) => {
             out.push_turned(if open { &GATE_OPEN[..] } else { &GATE_CLOSED[..] }, facing)
         }
+        Some(Shaped::Rail) => out.push(RAIL),
         Some(Shaped::Fence) => {
             out.push(FENCE_POST);
             for f in Facing::ALL {

@@ -574,6 +574,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
             // See-through textures need the alpha test.
             let see_through = b.is_ladder()
                 || b.is_door()
+                || b.is_rail()
                 || matches!(b, Block::IRON_BARS | Block::BREWING_STAND)
                 || matches!(b.shaped(), Some(crate::world::block::Shaped::Frame { .. }));
             let pass = if see_through { CUTOUT } else { OPAQUE };

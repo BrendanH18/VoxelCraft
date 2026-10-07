@@ -213,8 +213,10 @@ impl Dungeons {
         }
         let found = Arc::new(rooms);
         let mut cache = self.cache.lock().unwrap();
-        if cache.len() >= CACHE_LIMIT {
-            cache.clear();
+        if cache.len() >= CACHE_LIMIT
+            && let Some(k) = cache.keys().next().copied()
+        {
+            cache.remove(&k);
         }
         cache.entry(column).or_insert(found).clone()
     }
