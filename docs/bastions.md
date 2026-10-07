@@ -53,3 +53,12 @@ shared placement: median **0.187 ms/chunk** (five runs: 0.215, 0.186,
 0.187, 0.187, 0.187). The reduction in fortress frequency offsets bastion
 painting; this is a fixed-area comparison, not a universal speedup.
 Use `bastion_locations` to reproduce screenshots of all four layouts.
+
+## End credits
+
+The first time a player enters the exit portal (saved as `credits_seen` in
+the player's level properties), a skippable scrolling credits screen plays
+with the music system's credits situation, then the player respawns. The
+text is original; Java's End Poem is not copied. Gap: split-screen gamepad
+seats and CLI agents don't see or save the credits flag, and gamepads can't
+skip them.

@@ -188,10 +188,11 @@ impl Audio {
 
     /// Update once per frame even while the simulation is paused. The host
     /// chooses the shared stream; underwater music requires an ocean biome.
-    pub fn update_music(&self, player: &Player, world: &World, creative: bool, dragon: bool) {
+    pub fn update_music(&self, player: &Player, world: &World, creative: bool, dragon: bool, credits: bool) {
         let column = world.generator.column(player.pos.x.floor() as i32, player.pos.z.floor() as i32);
         self.music.set_context(Context {
             title: false,
+            credits,
             dimension: world.generator.dimension,
             creative,
             underwater: player.head_in_water(world),
