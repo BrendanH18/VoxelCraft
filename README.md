@@ -194,7 +194,8 @@ bar appears below the crosshair while you hold right-click with food.
 | Left Shift | Sneak (you won't walk off edges) |
 | `[` / `]` | Decrease / increase view distance |
 | /, T or backtick | Command console with **Tab** completion: `/give`, `/tp`, `/time`, `/weather`, `/gamemode`, `/difficulty`, `/gamerule`, `/effect`, `/locate`, `/splitscreen`, `/help` and more |
-| F1 / F3 / F11 | Hide HUD / debug overlay / fullscreen |
+| F1 / F3 | Hide HUD / debug overlay |
+| F11 | Toggle fullscreen (Options → Fullscreen picks Borderless or Exclusive at native resolution; remembered) |
 | Esc | Pause menu: back to game, options (render distance, FOV, sensitivity, volume, vsync), save and quit |
 
 See the [gameplay guide](docs/gameplay.md) for all controls, survival rules, and mob behavior.

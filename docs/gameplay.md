@@ -32,7 +32,7 @@
 | V | Toggle vsync |
 | F1 | Toggle HUD |
 | F3 | Debug screen |
-| F11 | Fullscreen |
+| F11 | Toggle fullscreen; Options → Fullscreen chooses Borderless (macOS native fullscreen Space) or Exclusive (native resolution), and it is remembered |
 | Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
 
 The world autosaves every two minutes and on exit. Switching away from

@@ -62,6 +62,9 @@ Choose your download:
 
 ### Player
 
+- **Fullscreen:** a remembered **Fullscreen** option: Borderless (native
+  fullscreen on macOS) or Exclusive at the monitor's native resolution. **F11**
+  toggles it.
 - **Third-person camera:** **F5** cycles first person and both third-person
   views; the camera stops at walls.
 - **Player model:** a visible player with walking, swinging and sneaking

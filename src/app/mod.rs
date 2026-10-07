@@ -13,6 +13,7 @@ mod dimension;
 mod doors;
 mod enchanting;
 mod farming;
+mod fullscreen;
 mod gamepad;
 mod hand;
 mod hud;
@@ -41,7 +42,7 @@ use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{CursorGrabMode, Fullscreen, Icon, Window, WindowId};
+use winit::window::{CursorGrabMode, Icon, Window, WindowId};
 
 use crate::Args;
 use crate::inventory::{HOTBAR_SLOTS, Inventory, Stack};
@@ -315,6 +316,9 @@ impl ApplicationHandler for App {
             settings.enhanced_graphics = enhanced;
         }
 
+        if !scripted {
+            settings.fullscreen.apply(&window);
+        }
         let renderer = pollster::block_on(Renderer::new(window, settings.vsync));
         let mut audio = crate::audio::Audio::new(self.args.mute, settings.volume);
         audio.set_music_volume(settings.music_volume);
@@ -930,11 +934,18 @@ impl Game {
             KeyCode::F3 => self.show_debug = !self.show_debug,
             KeyCode::F5 => self.camera.cycle(),
             KeyCode::F11 => {
+                // Leaves whatever fullscreen the window is in, or enters the
+                // chosen mode (borderless if the option is Off).
                 let w = &self.renderer.window;
-                w.set_fullscreen(match w.fullscreen() {
-                    Some(_) => None,
-                    None => Some(Fullscreen::Borderless(None)),
-                });
+                self.settings.fullscreen = match fullscreen::Mode::current(w) {
+                    fullscreen::Mode::Off if self.settings.fullscreen == fullscreen::Mode::Off => {
+                        fullscreen::Mode::Borderless
+                    }
+                    fullscreen::Mode::Off => self.settings.fullscreen,
+                    _ => fullscreen::Mode::Off,
+                };
+                self.settings.fullscreen.apply(w);
+                self.save_settings();
             }
             KeyCode::BracketLeft | KeyCode::Minus | KeyCode::BracketRight | KeyCode::Equal => {
                 let step = if matches!(code, KeyCode::BracketLeft | KeyCode::Minus) { -1 } else { 1 };

@@ -31,6 +31,7 @@ pub(super) enum Widget {
     Graphics,
     Fps,
     ViewBobbing,
+    Fullscreen,
     Difficulty,
     Particles,
     Done,
@@ -78,6 +79,7 @@ impl Widget {
             Widget::ViewBobbing => format!("View Bobbing: {}", if s.view_bobbing { "On" } else { "Off" }),
             Widget::Difficulty => format!("Difficulty: {difficulty}{}", if hardcore { " Locked" } else { "" }),
             Widget::Particles => format!("Particles: {}", s.particles.name()),
+            Widget::Fullscreen => format!("Fullscreen: {}", s.fullscreen.name()),
             Widget::Done => "Done".into(),
         }
     }
@@ -126,6 +128,7 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
             Widget::Volume,
             Widget::MusicVolume,
             Widget::Vsync,
+            Widget::Fullscreen,
             Widget::Graphics,
             Widget::Fps,
             Widget::ViewBobbing,
@@ -254,6 +257,10 @@ impl Game {
                 }
             }
             Widget::Particles => self.settings.particles = self.settings.particles.next(),
+            Widget::Fullscreen => {
+                self.settings.fullscreen = self.settings.fullscreen.next();
+                self.settings.fullscreen.apply(&self.renderer.window);
+            }
             Widget::SaveAndQuit => return Some(MenuAction::Quit),
             _ => {}
         }
@@ -381,6 +388,7 @@ mod tests {
             Widget::ViewBobbing,
             Widget::Difficulty,
             Widget::Particles,
+            Widget::Fullscreen,
         ] {
             let longest = Settings {
                 render_distance: 32,
@@ -393,6 +401,7 @@ mod tests {
                 show_fps: true,
                 view_bobbing: true,
                 particles: crate::particles::Setting::Decreased,
+                fullscreen: super::super::fullscreen::Mode::Borderless,
             };
             assert!(
                 Ui::text_width(&w.label(&longest, Difficulty::Hard, false)) < BUTTON_W - 8.0,

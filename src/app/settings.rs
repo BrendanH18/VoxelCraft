@@ -20,6 +20,7 @@ pub struct Settings {
     pub show_fps: bool,
     pub view_bobbing: bool,
     pub particles: crate::particles::Setting,
+    pub fullscreen: super::fullscreen::Mode,
 }
 
 pub const RENDER_DISTANCE: (i32, i32) = (2, 32);
@@ -39,6 +40,7 @@ impl Default for Settings {
             show_fps: true,
             view_bobbing: true,
             particles: Default::default(),
+            fullscreen: Default::default(),
         }
     }
 }
@@ -82,6 +84,7 @@ impl Settings {
                 "particles" if value == "all" => s.particles = crate::particles::Setting::All,
                 "particles" if value == "decreased" => s.particles = crate::particles::Setting::Decreased,
                 "particles" if value == "minimal" => s.particles = crate::particles::Setting::Minimal,
+                "fullscreen" => s.fullscreen = super::fullscreen::Mode::parse(value).unwrap_or(s.fullscreen),
                 _ => {}
             }
         }
@@ -90,7 +93,7 @@ impl Settings {
 
     pub fn serialize(&self) -> String {
         format!(
-            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nmusic_volume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\nview_bobbing={}\nparticles={}\n",
+            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nmusic_volume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\nview_bobbing={}\nparticles={}\nfullscreen={}\n",
             self.render_distance,
             self.fov,
             self.sensitivity,
@@ -100,7 +103,8 @@ impl Settings {
             if self.enhanced_graphics { "enhanced" } else { "classic" },
             self.show_fps,
             self.view_bobbing,
-            self.particles.name().to_ascii_lowercase()
+            self.particles.name().to_ascii_lowercase(),
+            self.fullscreen.name().to_ascii_lowercase()
         )
     }
 
@@ -132,6 +136,7 @@ mod tests {
             show_fps: false,
             view_bobbing: false,
             particles: crate::particles::Setting::Decreased,
+            fullscreen: super::super::fullscreen::Mode::Exclusive,
         };
         assert_eq!(Settings::parse(&s.serialize()), s);
         let wild = Settings::parse("render_distance=99\nfov=5\nvolume=nan\nsensitivity=abc\njunk\nunknown=1\n");
