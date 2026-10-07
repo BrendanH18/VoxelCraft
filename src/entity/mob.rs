@@ -85,10 +85,11 @@ pub enum MobKind {
     /// Stronghold spawner mob: small, fast, nibbles for 1.
     Silverfish,
     CaveSpider,
+    Slime,
 }
 
 impl MobKind {
-    pub const ALL: [MobKind; 13] = [
+    pub const ALL: [MobKind; 14] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -102,6 +103,7 @@ impl MobKind {
         MobKind::Blaze,
         MobKind::Silverfish,
         MobKind::CaveSpider,
+        MobKind::Slime,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -120,6 +122,7 @@ impl MobKind {
             MobKind::Blaze => "blaze",
             MobKind::Silverfish => "silverfish",
             MobKind::CaveSpider => "cave spider",
+            MobKind::Slime => "slime",
         }
     }
 
@@ -141,6 +144,7 @@ impl MobKind {
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
             MobKind::CaveSpider => Shape::new(0.35, 0.5),
+            MobKind::Slime => Shape::new(0.255, 0.51),
             MobKind::Enderman => Shape::new(0.3, 2.9),
             MobKind::Blaze => Shape::new(0.3, 1.8),
             MobKind::Silverfish => Shape::new(0.2, 0.3),
@@ -156,6 +160,7 @@ impl MobKind {
             MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::ZombifiedPiglin | MobKind::Blaze => 20.0,
             MobKind::Spider => 16.0,
             MobKind::CaveSpider => 12.0,
+            MobKind::Slime => 1.0,
             MobKind::Enderman => 40.0,
         }
     }
@@ -173,6 +178,7 @@ impl MobKind {
                 | MobKind::Blaze
                 | MobKind::Silverfish
                 | MobKind::CaveSpider
+                | MobKind::Slime
         )
     }
 
@@ -240,7 +246,7 @@ impl MobKind {
             MobKind::Pig => 1.3,
             MobKind::Cow | MobKind::Zombie | MobKind::Creeper | MobKind::ZombifiedPiglin => 1.1,
             MobKind::Sheep | MobKind::Skeleton | MobKind::Blaze => 1.2,
-            MobKind::Chicken => 1.0,
+            MobKind::Chicken | MobKind::Slime => 1.0,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Enderman | MobKind::Silverfish => 1.4,
         }
     }
@@ -286,6 +292,7 @@ impl MobKind {
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
             MobKind::Silverfish => &[],
+            MobKind::Slime => &[(Item::SLIMEBALL, 0, 2)],
         }
     }
 
@@ -336,6 +343,10 @@ pub(super) enum Ai {
 
 pub struct Mob {
     pub kind: MobKind,
+    /// Java slime size (1, 2 or 4).
+    pub size: u8,
+    hop_left: f32,
+    hop_delay: f32,
     pub(super) difficulty: crate::simulation::difficulty::Difficulty,
     /// Feet position (bottom centre of the box).
     pub pos: DVec3,
@@ -415,6 +426,9 @@ impl Mob {
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,
+            size: 1,
+            hop_left: 0.0,
+            hop_delay: 1.0,
             difficulty: Default::default(),
             pos,
             previous_pos: pos,
@@ -465,7 +479,22 @@ impl Mob {
     }
 
     pub fn shape(&self) -> Shape {
-        self.kind.shape()
+        if self.kind == MobKind::Slime {
+            Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
+        } else {
+            self.kind.shape()
+        }
+    }
+
+    pub fn set_size(&mut self, size: u8) {
+        self.size = if size >= 4 {
+            4
+        } else if size >= 2 {
+            2
+        } else {
+            1
+        };
+        self.health = (self.size as f32).powi(2);
     }
 
     pub fn aabb(&self) -> (DVec3, DVec3) {
@@ -532,6 +561,10 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) {
         let dtf = dt as f32;
+        self.hop_left -= dtf;
+        if self.kind == MobKind::Slime && self.on_ground && self.hop_left <= 0.0 {
+            self.hop_delay = rng.range(0.5, 1.5);
+        }
         if let Some(sound) = self.cry.take() {
             events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
         }
@@ -647,7 +680,11 @@ impl Mob {
                 MobKind::Enderman => self.enderman_anger(dt, world, ctx, rng, events),
                 _ => true,
             };
-            let (range, height) = if self.kind == MobKind::Blaze { (BLAZE_RANGE, 24.0) } else { (CHASE_RANGE, 12.0) };
+            let (range, height) = match self.kind {
+                MobKind::Blaze => (BLAZE_RANGE, 24.0),
+                MobKind::CaveSpider | MobKind::Slime => (16.0, 4.0),
+                _ => (CHASE_RANGE, 12.0),
+            };
             let chasing = aggressive && target.is_some() && hdist < range && to_player.y.abs() < height;
             if chasing {
                 self.ai = Ai::Chase;
@@ -689,11 +726,17 @@ impl Mob {
                         }
                     }
                     _ => {
-                        if hdist <= ATTACK_RANGE && to_player.y.abs() < 1.6 && self.attack_cooldown <= 0.0 {
+                        let reach = if self.kind == MobKind::Slime { 0.6 * self.size as f64 } else { ATTACK_RANGE };
+                        let can_hurt = self.kind != MobKind::Slime || self.size > 1;
+                        if can_hurt && hdist <= reach && to_player.y.abs() < 1.6 && self.attack_cooldown <= 0.0 {
                             self.attack_cooldown = ATTACK_COOLDOWN;
                             self.attack_anim = 0.35;
                             let knockback = dir * 6.0 + DVec3::Y * 5.0;
-                            let (damage, cause) = self.kind.melee();
+                            let (damage, cause) = if self.kind == MobKind::Slime {
+                                (self.size as f32, "was slain by a slime")
+                            } else {
+                                self.kind.melee()
+                            };
                             events.push(EntityEvent::PlayerHit {
                                 player: target.id,
                                 damage,
@@ -1039,6 +1082,16 @@ impl Mob {
     fn physics_step<W: BlockSource + ?Sized>(&mut self, dt: f64, world: &W, wish: Option<DVec3>, speed: f64) {
         let shape = self.shape();
         self.in_water = physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
+        let hopping = self.kind == MobKind::Slime;
+        let speed = if hopping { (0.2 + 0.1 * self.size as f64) * 10.0 } else { speed };
+        let wish = if hopping && self.on_ground && self.hop_left > 0.0 { None } else { wish };
+        if hopping && self.on_ground && self.alive() && self.hop_left <= 0.0 {
+            self.vel.y = 8.4;
+            self.hop_left = self.hop_delay;
+            if self.ai == Ai::Chase {
+                self.hop_left /= 3.0;
+            }
+        }
         let target = wish.map_or(DVec3::ZERO, |d| d * speed);
 
         if self.in_water {

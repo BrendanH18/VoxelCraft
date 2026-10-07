@@ -25,6 +25,7 @@ pub mod pearl;
 pub mod player_model;
 mod player_pose;
 mod projectile;
+mod slime;
 pub mod tnt;
 
 use std::f32::consts::TAU;
@@ -239,6 +240,13 @@ pub trait MobWorld: BlockSource {
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         Vec::new()
     }
+    fn seed(&self) -> u64 {
+        0
+    }
+    fn biome(&self, _x: i32, _z: i32) -> crate::world::terrain::Biome {
+        crate::world::terrain::Biome::Plains
+    }
+    /// Java moon brightness; clients set this from their saved day count.
     /// Inside a Nether fortress piece, where fortress mobs spawn.
     fn in_fortress(&self, _p: IVec3) -> bool {
         false
@@ -246,6 +254,12 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn seed(&self) -> u64 {
+        self.generator.seed
+    }
+    fn biome(&self, x: i32, z: i32) -> crate::world::terrain::Biome {
+        self.generator.column(x, z).biome
+    }
     fn rains_on(&self, p: IVec3) -> bool {
         World::rains_on(self, p)
     }
@@ -399,6 +413,7 @@ pub struct Entities {
     pub fight: Option<dragon::Fight>,
     /// Java `doMobLoot`; set by the world before each update.
     pub mob_loot: bool,
+    pub moon_brightness: f32,
     rng: Rng,
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
@@ -426,6 +441,7 @@ impl Entities {
             orbs: Vec::new(),
             fight: None,
             mob_loot: true,
+            moon_brightness: 1.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
@@ -446,6 +462,9 @@ impl Entities {
             let (armor, glint) = armor::roll_monster_armor(&mut self.rng);
             mob.armor = armor;
             mob.armor_glint = glint;
+        }
+        if kind == MobKind::Slime {
+            mob.set_size(1 << (self.rng.next_f32() * 3.0) as u8);
         }
         self.mobs.push(mob);
     }
@@ -502,7 +521,17 @@ impl Entities {
                     burst.velocity_spread = DVec3::splat(0.02);
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
-                self.mobs.swap_remove(i);
+                let dead = self.mobs.swap_remove(i);
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME) && dead.kind == MobKind::Slime && dead.size > 1 {
+                    let count = 2 + (self.rng.next_f32() * 3.0) as usize;
+                    for n in 0..count {
+                        let offset =
+                            DVec3::new((n % 2) as f64 - 0.5, 0.5, (n / 2) as f64 - 0.5) * dead.size as f64 * 0.25;
+                        let mut child = Mob::new(dead.kind, dead.pos + offset, self.rng.range(0.0, TAU));
+                        child.set_size(dead.size / 2);
+                        self.mobs.push(child);
+                    }
+                }
                 continue;
             }
             self.mobs[i].difficulty = difficulty;
@@ -601,9 +630,17 @@ impl Entities {
         if !self.mob_loot {
             return;
         }
+        let size = self
+            .mobs
+            .iter()
+            .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
+            .map_or(1, |m| m.size);
         if player_kill {
-            let xp = kind.xp(&mut self.rng);
+            let xp = if kind == MobKind::Slime { size as u32 } else { kind.xp(&mut self.rng) };
             self.spawn_xp(pos, xp);
+        }
+        if kind == MobKind::Slime && size > 1 {
+            return;
         }
         for (item, count) in kind.drops(&mut self.rng, looting) {
             if !player_kill && matches!(item, crate::item::Item::SPIDER_EYE | crate::item::Item::BLAZE_ROD) {
@@ -733,6 +770,7 @@ impl Entities {
                 let x = (center.x + angle.cos() * dist).floor() as i32;
                 let z = (center.z + angle.sin() * dist).floor() as i32;
                 let spot = match ctx.dimension {
+                    Dimension::Overworld if kind == MobKind::Slime => self.slime_spot(world, x, z, ctx.daylight),
                     Dimension::Overworld => spawn_spot(world, kind, x, z, ctx.daylight),
                     Dimension::Nether => cavern_spot(world, kind, x, z, self.rng.range(40.0, 118.0) as i32),
                     Dimension::End => cavern_spot(world, kind, x, z, self.rng.range(30.0, 90.0) as i32),
@@ -765,6 +803,24 @@ impl Entities {
             if ctx.dimension == Dimension::Nether {
                 self.fortress_spawn(world, ctx, center);
             }
+        }
+    }
+
+    fn slime_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
+        use crate::world::{height::java_y, terrain::Biome};
+        if world.biome(x, z) == Biome::Swamp && self.rng.chance(0.5 * self.moon_brightness) {
+            let pos = spawn_spot(world, MobKind::Slime, x, z, 0.0)?;
+            let y = pos.y as i32;
+            let raw = (daylight * 15.0) as u8;
+            let light = world.block_light(pos.floor().as_ivec3()).max(raw);
+            if y > java_y(50) && y < java_y(70) && light <= (self.rng.next_f32() * 8.0) as u8 {
+                return Some(pos);
+            }
+        }
+        if slime::slime_chunk(world.seed(), x.div_euclid(16), z.div_euclid(16)) && self.rng.chance(0.1) {
+            cavern_spot(world, MobKind::Slime, x, z, java_y(39)).filter(|p| p.y < java_y(40) as f64)
+        } else {
+            None
         }
     }
 
@@ -1263,6 +1319,30 @@ mod tests {
         assert!(!MobKind::CaveSpider.spawns_in(Dimension::Overworld));
     }
 
+    #[test]
+    fn slime_sizes_split_without_loot_and_tiny_slimes_cannot_hurt() {
+        let world = Grid::flat(10);
+        let mut c = ctx(DVec3::new(1.0, 10.0, 0.5));
+        c.players[0].targetable = true;
+        c.daylight = 0.0;
+        let mut e = Entities::new(7);
+        e.spawn(MobKind::Slime, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].set_size(1);
+        assert_eq!(e.mobs[0].shape().height, 0.51);
+        assert!(!e.update(0.05, &world, &c).iter().any(|e| matches!(e, EntityEvent::PlayerHit { .. })));
+        e.mobs[0].set_size(4);
+        assert_eq!(e.mobs[0].health, 16.0);
+        assert_eq!(e.mobs[0].shape().height, 2.04);
+        assert!(e.attack(0, DVec3::ZERO, 100.0).is_some());
+        e.drop_loot(MobKind::Slime, e.mobs[0].pos);
+        assert!(e.items.is_empty(), "large slimes do not drop slimeballs");
+        e.mob_loot = false;
+        e.mobs[0].dying = Some(mob::DEATH_TIME);
+        e.update(0.05, &world, &c);
+        assert!((2..=4).contains(&e.mobs.len()));
+        assert!(e.mobs.iter().all(|m| m.size == 2 && m.health == 4.0));
+    }
+
     /// Runs one mob for `secs` at 60 Hz, forcing it to walk along +X.
     fn walk_east(world: &Grid, mut mob: Mob, secs: f64) -> Mob {
         let mut rng = Rng::new(1);
@@ -1753,7 +1833,8 @@ mod tests {
         // The grid is stone, so only hostile mobs spawn, each up to its cap.
         for kind in MobKind::ALL {
             let o = Dimension::Overworld;
-            let expected = if kind.is_hostile() && kind.spawns_in(o) { kind.spawn_cap(o) } else { 0 };
+            let expected =
+                if kind.is_hostile() && kind.spawns_in(o) && kind != MobKind::Slime { kind.spawn_cap(o) } else { 0 };
             assert_eq!(e.count(kind), expected, "{kind:?}");
         }
     }
@@ -1843,7 +1924,7 @@ mod tests {
             }
         }
         let o = Dimension::Overworld;
-        for kind in MobKind::ALL.into_iter().filter(|k| k.is_hostile() && k.spawns_in(o)) {
+        for kind in MobKind::ALL.into_iter().filter(|k| k.is_hostile() && k.spawns_in(o) && *k != MobKind::Slime) {
             for center in [a, b] {
                 assert_eq!(e.count_near(kind, center), kind.spawn_cap(o), "{kind:?} near {center}");
             }

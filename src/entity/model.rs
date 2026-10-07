@@ -43,6 +43,13 @@ pub(super) const fn cube(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) ->
     Cuboid { min, max, color, noise }
 }
 
+const SLIME_BODY: &[Cuboid] = &[
+    cube([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [105, 180, 78], 55),
+    cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [29, 60, 24], 0),
+    cube([1.1, 4.5, 4.1], [2.6, 6.0, 4.15], [29, 60, 24], 0),
+    cube([-1.1, 2.4, 4.1], [1.1, 3.4, 4.15], [29, 60, 24], 0),
+];
+
 // ---------------------------------------------------------------- pig
 
 const PIG_SKIN: Rgb = [238, 160, 158];
@@ -385,6 +392,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             part(CREEPER_LEG, [2.0, 6.0, -4.0], rx(swing)),
             part(CREEPER_HEAD, [0.0, 18.0, 0.0], head),
         ],
+        MobKind::Slime => vec![part(SLIME_BODY, [0.0; 3], Quat::IDENTITY)],
         MobKind::Spider | MobKind::CaveSpider => {
             // Four legs a side, fanned out and drooping onto the ground; the
             // pivot height puts each tip exactly at the feet.
@@ -522,7 +530,14 @@ pub fn build(
         let torch = (m.block_light.clamp(0.0, 1.0) * 255.0) as u8;
         // A lit creeper swells and flashes white; burning mobs glow orange.
         let fuse = m.fuse / FUSE_TIME;
-        let scale = (1.0 + fuse * 0.18) * if m.kind == MobKind::CaveSpider { 0.55 } else { 1.0 };
+        let scale = (1.0 + fuse * 0.18)
+            * if m.kind == MobKind::CaveSpider {
+                0.55
+            } else if m.kind == MobKind::Slime {
+                m.size as f32
+            } else {
+                1.0
+            };
         let tint = if m.fuse > 0.0 {
             ([255.0; 3], ((m.fuse * (8.0 + 16.0 * fuse)).sin() * 0.5 + 0.5) * 0.7)
         } else if m.kind == MobKind::CaveSpider {

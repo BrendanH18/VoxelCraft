@@ -21,6 +21,7 @@ pub enum Voice {
     Spider,
     Enderman,
     Blaze,
+    Slime,
 }
 
 /// What kind of sound a voice makes.
@@ -33,7 +34,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 10] = [
+    pub const ALL: [Voice; 11] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -44,6 +45,7 @@ impl Voice {
         Voice::Spider,
         Voice::Enderman,
         Voice::Blaze,
+        Voice::Slime,
     ];
 
     pub fn name(self) -> &'static str {
@@ -58,6 +60,7 @@ impl Voice {
             Voice::Spider => "spider",
             Voice::Enderman => "enderman",
             Voice::Blaze => "blaze",
+            Voice::Slime => "slime",
         }
     }
 }
@@ -148,6 +151,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Spider => spider(call, rng),
         Voice::Enderman => enderman(call, rng),
         Voice::Blaze => blaze(call, rng),
+        Voice::Slime => slime(call, rng),
     }
 }
 
@@ -498,4 +502,12 @@ pub fn hit(rng: &mut Rng) -> Vec<f32> {
     Biquad::bandpass(2400.0, 1.0).run(&mut slap);
     mix_into(&mut out, &slap, 0.4, 0);
     dsp::finish(out, 0.6)
+}
+
+fn slime(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = if call == Call::Death { 0.45 } else { 0.2 };
+    let mut buf = noise(rng, samples(secs), |t| dsp::ad(t, 0.01, 0.07));
+    Biquad::lowpass(650.0, 1.5).run(&mut buf);
+    add_mode(&mut buf, 0, Mode { freq: 140.0, amp: 0.6, tau: 0.08, glide: 0.5, glide_tau: 0.03 });
+    dsp::finish(buf, 0.5)
 }

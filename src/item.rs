@@ -354,6 +354,9 @@ static EXTRA_ITEMS: [ItemInfo; 6] = [
     item("emerald", Sprite::Gem([22, 186, 82])),
 ];
 
+static MOB_ITEMS: [ItemInfo; 1] = [item("slimeball", Sprite::Lump([100, 185, 72]))];
+const MOB_ITEM: u16 = 640;
+
 /// Uses before a bow breaks.
 pub const BOW_DURABILITY: u16 = 384;
 /// Uses before a flint and steel breaks.
@@ -451,6 +454,7 @@ impl Item {
     pub const COPPER_INGOT: Item = Item(364);
     pub const REDSTONE: Item = Item(365);
     pub const EMERALD: Item = Item(366);
+    pub const SLIMEBALL: Item = Item(640);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         match tier {
@@ -541,6 +545,9 @@ impl Item {
             };
         }
         if let Some(info) = self.0.checked_sub(EXTRA_ITEM).and_then(|i| EXTRA_ITEMS.get(i as usize)) {
+            return *info;
+        }
+        if let Some(info) = self.0.checked_sub(MOB_ITEM).and_then(|i| MOB_ITEMS.get(i as usize)) {
             return *info;
         }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
@@ -640,7 +647,11 @@ impl Item {
         let tools = (0..TOOL_COUNT + ARMOR_COUNT).map(|i| Item(FIRST_TOOL + i));
         let potions = (0..POTION_COUNT).map(|i| Item(FIRST_POTION + i));
         let extra = (0..EXTRA_ITEMS.len() as u16).map(|i| Item(EXTRA_ITEM + i));
-        materials.chain(tools).chain(potions).chain(extra)
+        materials
+            .chain(tools)
+            .chain(potions)
+            .chain(extra)
+            .chain((0..MOB_ITEMS.len() as u16).map(|i| Item(MOB_ITEM + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -665,13 +676,19 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if (EXTRA_ITEM..EXTRA_ITEM + EXTRA_ITEMS.len() as u16).contains(&i) => {
             Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + i - EXTRA_ITEM)
         }
+        i if (MOB_ITEM..MOB_ITEM + MOB_ITEMS.len() as u16).contains(&i) => {
+            Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + EXTRA_ITEMS.len() as u16 + i - MOB_ITEM)
+        }
         _ => None,
     }
 }
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32 + EXTRA_ITEMS.len() as u32
+    ITEMS.len() as u32
+        + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32
+        + EXTRA_ITEMS.len() as u32
+        + MOB_ITEMS.len() as u32
 }
 
 /// Layer of a status effect's icon: in the item icon array, after every

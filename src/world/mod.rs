@@ -27,7 +27,7 @@ pub mod forms;
 pub mod fortress;
 pub mod furnace;
 mod growth;
-mod height;
+pub(crate) mod height;
 pub(crate) mod lighting;
 pub mod mineshaft;
 pub mod nether;

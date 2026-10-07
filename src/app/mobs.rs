@@ -180,6 +180,8 @@ impl Game {
     }
 
     pub(super) fn update_mobs(&mut self, dt: f64) {
+        self.mobs.entities.moon_brightness =
+            [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
         self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.mobs.entities.despawn_hostiles();
@@ -389,6 +391,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Enderman => Voice::Enderman,
         MobKind::Blaze => Voice::Blaze,
         MobKind::Silverfish => Voice::Spider,
+        MobKind::Slime => Voice::Slime,
     }
 }
 
