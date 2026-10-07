@@ -97,13 +97,14 @@ impl Stack {
         }
     }
 
-    /// Whether `other` can merge into this stack (same item, wear and
-    /// enchantments).
+    /// Whether `other` can merge into this stack (same item, wear,
+    /// enchantments and custom name, like Java's component check).
     pub fn stacks_with(&self, other: &Stack) -> bool {
         self.item == other.item
             && self.damage == other.damage
             && self.enchants == other.enchants
             && self.repair_cost == other.repair_cost
+            && self.name == other.name
     }
 
     /// The enchantments that take effect when held or worn: a book's are

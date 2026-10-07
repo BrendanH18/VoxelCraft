@@ -7,6 +7,31 @@ struct Axes { right: vec4<f32>, up: vec4<f32> };
 @group(0) @binding(0) var<uniform> g: Globals;
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var block_sampler: sampler;
+// Extra 256-layer pages on adapters that cap texture arrays (see `block_shader`).
+@group(1) @binding(3) var blocks_1: texture_2d_array<f32>;
+@group(1) @binding(4) var blocks_2: texture_2d_array<f32>;
+@group(1) @binding(5) var blocks_3: texture_2d_array<f32>;
+@group(1) @binding(6) var blocks_4: texture_2d_array<f32>;
+@group(1) @binding(7) var blocks_5: texture_2d_array<f32>;
+@group(1) @binding(8) var blocks_6: texture_2d_array<f32>;
+@group(1) @binding(9) var blocks_7: texture_2d_array<f32>;
+const BLOCK_PAGING: bool = false;
+fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
+    if !BLOCK_PAGING { return textureSample(blocks, block_sampler, uv, layer); }
+    let dx = dpdx(uv);
+    let dy = dpdy(uv);
+    let local = layer & 255u;
+    switch layer >> 8u {
+        case 1u: { return textureSampleGrad(blocks_1, block_sampler, uv, local, dx, dy); }
+        case 2u: { return textureSampleGrad(blocks_2, block_sampler, uv, local, dx, dy); }
+        case 3u: { return textureSampleGrad(blocks_3, block_sampler, uv, local, dx, dy); }
+        case 4u: { return textureSampleGrad(blocks_4, block_sampler, uv, local, dx, dy); }
+        case 5u: { return textureSampleGrad(blocks_5, block_sampler, uv, local, dx, dy); }
+        case 6u: { return textureSampleGrad(blocks_6, block_sampler, uv, local, dx, dy); }
+        case 7u: { return textureSampleGrad(blocks_7, block_sampler, uv, local, dx, dy); }
+        default: { return textureSampleGrad(blocks, block_sampler, uv, local, dx, dy); }
+    }
+}
 @group(2) @binding(0) var sprites: texture_2d_array<f32>;
 @group(2) @binding(1) var sprite_sampler: sampler;
 @group(2) @binding(2) var<uniform> axes: Axes;
@@ -33,7 +58,7 @@ fn curve(l: f32) -> f32 { return l / (4. - 3. * l); }
 @fragment fn fs_main(in: Output) -> @location(0) vec4<f32> {
     var texel: vec4<f32>;
     if (in.light.w % 2.) > 0.5 {
-        texel = textureSample(blocks, block_sampler, in.uv, i32(in.light.z));
+        texel = sample_block(in.uv, u32(in.light.z));
     } else {
         texel = textureSampleLevel(sprites, sprite_sampler, in.uv, i32(in.light.z), 0.);
     }

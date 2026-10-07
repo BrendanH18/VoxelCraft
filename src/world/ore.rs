@@ -421,6 +421,10 @@ fn paint_cell(
     let mut rng = Rng(hash3(cx, cz, feature.salt as i32, seed ^ feature.salt));
     let tries = scaled_attempts(feature.tries, feature.band, &mut rng);
     for _ in 0..tries {
+        // Each try's vein shape draws from its own stream, so a chunk that
+        // skips an out-of-reach vein still agrees with its neighbours on every
+        // later try in the cell (no veins cut or shifted at chunk seams).
+        let mut vein_rng = Rng(rng.next_u64());
         let x = cx * JAVA_CELL + rng.below(JAVA_CELL as u32) as i32;
         let z = cz * JAVA_CELL + rng.below(JAVA_CELL as u32) as i32;
         let Some(y) = sample_world_y(&mut rng, feature.band) else { continue };
@@ -440,7 +444,7 @@ fn paint_cell(
         if misses(x, base.x) || misses(y, base.y) || misses(z, base.z) {
             continue;
         }
-        place_vein(&mut rng, IVec3::new(x, y, z), feature, blocks, base);
+        place_vein(&mut vein_rng, IVec3::new(x, y, z), feature, blocks, base);
     }
 }
 
@@ -620,6 +624,33 @@ mod tests {
             }
         }
         assert!(high > low * 2, "the middle of a triangle is where the ore is ({high} vs {low})");
+    }
+
+    #[test]
+    fn veins_match_across_overlapping_chunk_bases() {
+        // Painting is a pure function of world position: two bases that
+        // overlap by half a chunk must paint the shared half identically,
+        // even when one of them skips veins the other places.
+        let paint_at = |base: IVec3| {
+            let mut blocks = Box::new([Block::STONE; CHUNK_VOLUME]);
+            paint(11, &mut blocks, base, |_, _| Biome::Plains);
+            blocks
+        };
+        for y in [0, 32, 64] {
+            let a = paint_at(IVec3::new(0, y, 0));
+            let b = paint_at(IVec3::new(16, y + 16, 8));
+            for z in 8..CHUNK_SIZE_I {
+                for yy in 16..CHUNK_SIZE_I {
+                    for x in 16..CHUNK_SIZE_I {
+                        let (ia, ib) = (
+                            index(x as usize, yy as usize, z as usize),
+                            index((x - 16) as usize, (yy - 16) as usize, (z - 8) as usize),
+                        );
+                        assert_eq!(a[ia], b[ib], "seam mismatch at {x},{},{z}", y + yy);
+                    }
+                }
+            }
+        }
     }
 
     #[test]

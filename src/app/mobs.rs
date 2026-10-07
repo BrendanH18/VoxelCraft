@@ -285,7 +285,7 @@ impl Game {
                 }
                 EntityEvent::PlayerEffect { player, effect, amplifier, ticks } => {
                     if let Some(bot) = self.agents.by_id_mut(player)
-                        && !bot.agent.creative
+                        && bot.agent.mode.is_survival()
                     {
                         let damage = bot.agent.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
@@ -314,7 +314,7 @@ impl Game {
                 }
                 EntityEvent::PlayerMagic { player, amount } => {
                     if let Some(bot) = self.agents.by_id_mut(player)
-                        && !bot.agent.creative
+                        && bot.agent.mode.is_survival()
                     {
                         if amount > 0.0 {
                             bot.agent.hurt(amount, "was killed by magic", DVec3::ZERO, &mut self.mobs.entities);
@@ -341,7 +341,7 @@ impl Game {
                 }
                 EntityEvent::Ignite { player, secs } => {
                     if let Some(bot) = self.agents.by_id_mut(player)
-                        && !bot.agent.creative
+                        && bot.agent.mode.is_survival()
                     {
                         bot.agent.vitals.ignite(secs);
                     }
@@ -396,7 +396,7 @@ impl Game {
                 }
                 EntityEvent::Shove { player, velocity } => {
                     if let Some(bot) = self.agents.by_id_mut(player)
-                        && !bot.agent.creative
+                        && bot.agent.mode.is_survival()
                     {
                         let push = crate::simulation::survival::knockback_taken(
                             velocity.as_dvec3(),

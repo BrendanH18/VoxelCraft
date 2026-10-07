@@ -66,14 +66,13 @@ points. The desktop `Audio::update_music` chooses the primary player's biome,
 creative status, immersion and dragon boss bar each frame. `leave_world`
 returns to menu music. No extra stream is created for additional players.
 
-This checkout's Nether generator has no biome identity API and its End exit
-has no credits screen. Nether Wastes is therefore the active Nether palette;
-Crimson Forest, Warped Forest, Soul Sand Valley and Basalt Deltas are implemented
-and tested selections awaiting that API. A future credits screen should call
-`set_situation(Situation::Credits)` on the shared stream (and restore normal
-selection on exit). Silent biomes can call `set_info(MusicInfo { music: None,
-volume: 0.0 })`. These are integration gaps for the roadmap owner; private
-roadmap symlinks were left untouched per the delegated task's instructions.
+The credits screen (`src/app/credits.rs`), shown on the first trip through the
+End exit portal, passes `credits` to `Audio::update_music`, which selects
+`Situation::Credits` on the shared stream and returns to normal selection when
+the screen closes. The Nether generator has no biome identity API yet, so
+Nether Wastes is the active Nether palette; Crimson Forest, Warped Forest, Soul
+Sand Valley and Basalt Deltas are implemented and tested selections awaiting
+that API. Silent biomes can call `set_info(MusicInfo { music: None, volume: 0.0 })`.
 
 ## Verification
 

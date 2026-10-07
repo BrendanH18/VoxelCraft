@@ -578,6 +578,9 @@ pub struct Agent {
     /// Accumulated fraction broken, using the speed at each tick.
     breaking: Option<(IVec3, Block, f64)>,
     cooldown: f64,
+    /// The world's `keepInventory` rule, refreshed every tick so deaths
+    /// outside `tick_rules` (mobs, pearls, `kill`) honour it too.
+    keep_inventory: bool,
 }
 
 impl Agent {
@@ -605,6 +608,7 @@ impl Agent {
             bite: 0,
             breaking: None,
             cooldown: 0.0,
+            keep_inventory: false,
         }
     }
 
@@ -747,7 +751,11 @@ impl Agent {
                 self.work.fill(None);
             }
             Command::Kill => {
-                self.vitals.damage(f32::MAX, "was killed", false);
+                if !self.vitals.is_dead() {
+                    self.vitals.damage(f32::MAX, "was killed", false);
+                    self.drop_everything(entities);
+                    self.remaining = 0;
+                }
             }
             Command::Summon(kind, pos) => {
                 entities.spawn(kind, pos.resolve(self.player.pos)?);
@@ -1200,6 +1208,7 @@ impl Agent {
         rules: &crate::rules::GameRules,
     ) {
         self.previous_pos = self.player.pos;
+        self.keep_inventory = rules.bool("keepInventory");
         // Movement alone returning early is not enough: survival, mining,
         // pickups and timed commands must also wait for local terrain.
         let feet = self.player.pos.floor().as_ivec3();
@@ -1250,9 +1259,7 @@ impl Agent {
             }
         }
         if self.vitals.is_dead() {
-            if !rules.bool("keepInventory") {
-                self.drop_everything(entities);
-            }
+            self.drop_everything(entities);
             self.remaining = 0;
             return;
         }
@@ -1335,8 +1342,11 @@ impl Agent {
     }
 
     /// A dead survival agent's inventory and some of its experience spill
-    /// where it died.
+    /// where it died, unless `keepInventory` is on.
     fn drop_everything(&mut self, entities: &mut Entities) {
+        if self.keep_inventory {
+            return;
+        }
         let stacks = self.inventory.take_all().into_iter().chain(self.work.iter_mut().filter_map(Option::take));
         for stack in stacks.filter(|s| !s.active_enchants().has(crate::enchant::Enchantment::VanishingCurse)) {
             entities.scatter(stack, self.player.pos);
@@ -1748,6 +1758,32 @@ mod tests {
         assert!(bare.inventory.get(0).is_none());
         assert_eq!(entities.items.iter().map(|i| i.stack.count).sum::<u8>(), 2);
     }
+    #[test]
+    fn every_death_path_follows_keep_inventory() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        // `kill` drops everything, like other deaths.
+        let mut killed = Agent::new(DVec3::new(0.5, 150.0, 0.5));
+        killed.inventory.add(Item::DIAMOND, 3);
+        killed.execute(Command::Kill, &mut world, &mut entities, &[]).unwrap();
+        assert!(killed.vitals.is_dead() && killed.inventory.get(0).is_none());
+        assert_eq!(entities.items.iter().map(|i| i.stack.count).sum::<u8>(), 3);
+
+        // With keepInventory, mob damage and `kill` keep items and experience.
+        let mut rules = crate::rules::GameRules::default();
+        rules.set("keepInventory", "true").unwrap();
+        let mut kept = Agent::new(DVec3::new(0.5, 150.0, 0.5));
+        kept.tick_rules(&mut world, &mut entities, Default::default(), &rules);
+        kept.inventory.add(Item::DIAMOND, 2);
+        kept.vitals.xp.add_points(50);
+        let xp = kept.vitals.xp;
+        kept.hurt(100.0, "was slain by a zombie", DVec3::ZERO, &mut entities);
+        assert!(kept.vitals.is_dead());
+        assert!(kept.inventory.get(0).is_some(), "keepInventory keeps the hotbar");
+        assert_eq!(kept.vitals.xp, xp, "keepInventory keeps experience");
+        assert_eq!(entities.items.iter().map(|i| i.stack.count).sum::<u8>(), 3, "nothing new dropped");
+    }
+
     #[test]
     fn drinking_a_potion_applies_it_and_leaves_a_bottle() {
         use crate::potion::Potion;

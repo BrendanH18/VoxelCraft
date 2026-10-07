@@ -42,6 +42,7 @@ impl ParticlePass {
         globals: &wgpu::BindGroupLayout,
         blocks: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
+        paged_blocks: bool,
     ) -> Self {
         let sprite_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("particle sprites layout"),
@@ -109,7 +110,7 @@ impl ParticlePass {
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("particle shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/particles.wgsl").into()),
+            source: super::block_shader(include_str!("shaders/particles.wgsl"), paged_blocks),
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("particles"), layout: Some(&layout),

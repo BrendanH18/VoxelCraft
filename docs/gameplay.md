@@ -349,10 +349,10 @@ full performance display instead of duplicating the compact counter.
   one of each input and keeps the base's damage, enchantments, prior-work
   penalty and plain custom name. It works in the host, controller and
   agent (`smithing`) interfaces. Seven diamonds around a template over
-  netherrack copy it (two templates). Templates are reserved for bastion
-  loot: guaranteed in treasure chests and 10% in bridge, hoglin-stable and
-  generic chests, but bastions do not generate yet, so use Creative or
-  `give netherite_upgrade_smithing_template`. Diamond armor now also has
+  netherrack copy it (two templates). In survival, templates come from
+  bastion remnant loot in the Nether: guaranteed in treasure chests and 10%
+  in bridge, hoglin-stable and generic chests (`/locate structure
+  bastion_remnant` finds one). Diamond armor now also has
   its toughness of 2 per piece.
 - Lapis lazuli ore below y 32 (stone pickaxe or better) drops 4-9 lapis
   (with fortune's ore bonus) and 2-5 experience; nine make a block of

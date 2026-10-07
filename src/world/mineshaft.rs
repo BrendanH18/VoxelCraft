@@ -7,7 +7,7 @@
 //! `moveBelowSeaLevel`. Oak planks and fences, cobwebs, and rails are
 //! painted per chunk so seams match. Chest-minecarts become plain chests
 //! filled from `abandoned_mineshaft.json` mapped onto items we have.
-//! Cave-spider spawners are skipped: that mob is not in the roster.
+//! Spider corridors hold one cave-spider spawner, as in Java.
 
 use std::sync::{Arc, Mutex};
 
@@ -20,6 +20,7 @@ use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::fortress::Feature;
 use super::noise::{hash_f, hash3};
 use super::structure::{Bounds, Oriented, Paint, Rng};
+use crate::entity::MobKind;
 use crate::item::{Item, Tier, ToolKind};
 
 /// Java's `random_spread` frequency for mineshafts.
@@ -560,6 +561,10 @@ impl Mineshafts {
         for shaft in self.near(IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
             for p in shaft.pieces.iter().filter(|p| p.kind == Kind::Corridor && p.bounds.intersects(&chunk)) {
                 let end = p.sections * 5 - 1;
+                let spawner = p.world(1, 0, spider_spawner_z(p));
+                if p.spider && chunk.contains(spawner) {
+                    out.push((spawner, Feature::Spawner(MobKind::CaveSpider)));
+                }
                 for s in 0..p.sections {
                     let z = 2 + s * 5;
                     for &(lx, lz) in &[(2, z - 1), (0, z + 1)] {
@@ -578,6 +583,13 @@ impl Mineshafts {
     }
 }
 
+/// Java puts a spider corridor's spawner on the centre line, within a block
+/// of the middle (`l / 2 - 1 + nextInt(3)` of its length `l`).
+fn spider_spawner_z(p: &Piece) -> i32 {
+    let middle = (p.sections * 5 - 1) / 2;
+    middle - 1 + (hash3(p.bounds.min.x, p.bounds.min.y, p.bounds.min.z, p.variant ^ 0x5350) % 3) as i32
+}
+
 fn dx_ring(chunk16: IVec2, origin: IVec2, ring: i32) -> bool {
     let d = chunk16 - origin;
     d.x.abs() == ring || d.y.abs() == ring || ring == 0
@@ -591,7 +603,7 @@ fn floor_touches(p: &Piece, chunk: &Bounds) -> bool {
 }
 
 /// `chests/abandoned_mineshaft.json` mapped onto items we have. Missing
-/// entries (golden apples, name tags, redstone, seeds, glow berries,
+/// entries (golden apples, name tags, seeds, glow berries,
 /// powered/detector/activator rails) stay weighted blanks.
 type Entry = (Option<Item>, u32, u8, u8);
 const RARE: &[Entry] = &[
@@ -605,7 +617,7 @@ const RARE: &[Entry] = &[
 const COMMON: &[Entry] = &[
     (Some(Item::IRON_INGOT), 10, 1, 5),
     (Some(Item::GOLD_INGOT), 5, 1, 3),
-    (None, 5, 4, 9), // redstone
+    (Some(Item::REDSTONE), 5, 4, 9),
     (Some(Item::LAPIS_LAZULI), 5, 4, 9),
     (Some(Item::DIAMOND), 3, 1, 2),
     (Some(Item::COAL), 10, 3, 8),
@@ -740,6 +752,8 @@ impl Paint<'_, Piece> {
                     }
                 }
             }
+            // The spawner replaces whatever the webs left in its cell.
+            self.set(1, 0, spider_spawner_z(self.piece), Block::SPAWNER);
         }
         for s in 0..self.piece.sections {
             let z = 2 + s * 5;
@@ -959,5 +973,29 @@ mod tests {
         }
         assert!(planks > 0, "mineshaft should place oak planks or fences");
         assert!(rails > 0, "a has_rails corridor should place rail blocks, found {rails}");
+    }
+
+    #[test]
+    fn spider_corridors_register_a_cave_spider_spawner() {
+        let generator = Generator::new(11);
+        let piece = (0..4000)
+            .find_map(|i| {
+                generator
+                    .mineshafts
+                    .get(IVec2::new(i % 200, i / 200))
+                    .and_then(|s| s.pieces.iter().find(|p| p.kind == Kind::Corridor && p.spider).cloned())
+            })
+            .expect("some mineshaft should have a spider corridor");
+        let at = piece.world(1, 0, spider_spawner_z(&piece));
+        let cpos = at.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+        let features = generator.mineshafts.features(cpos);
+        assert!(features.contains(&(at, Feature::Spawner(MobKind::CaveSpider))));
+        let local = at - cpos * CHUNK_SIZE_I;
+        let generated = generator.generate(cpos);
+        if generated.get(local.x as usize, local.y as usize, local.z as usize) == Block::SPAWNER {
+            let mut world = super::super::World::new_headless(Arc::new(Generator::new(11)), Default::default(), 1);
+            world.register_structure_features(cpos, &generated);
+            assert_eq!(world.spawner(at), Some(MobKind::CaveSpider));
+        }
     }
 }

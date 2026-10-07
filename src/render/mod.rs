@@ -711,7 +711,8 @@ impl Renderer {
             cache: None,
         });
 
-        let particles = particles::ParticlePass::new(&device, &queue, &globals_layout, &blocks_layout, format);
+        let particles =
+            particles::ParticlePass::new(&device, &queue, &globals_layout, &blocks_layout, format, paged_blocks);
         let entities = entity::EntityPass::new(&device, &queue, &globals_layout, &blocks_layout, format, paged_blocks);
         let block_models = block_model::BlockModelPass::new(&device, &layout, format, paged_blocks);
         let weather = weather::WeatherPass::new(&device, &layout, format);

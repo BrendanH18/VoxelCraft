@@ -301,15 +301,13 @@ impl Game {
         if ticks == 0 {
             return;
         }
-        self.day_time += ticks as f64 / 24_000.0;
-        while self.day_time >= 1.0 {
-            self.day_time -= 1.0;
-            self.day_count = self.day_count.saturating_add(1);
-        }
-        while self.day_time < 0.0 {
-            self.day_time += 1.0;
-            self.day_count = self.day_count.saturating_sub(1);
-        }
+        // Whole days and the remainder in constant time: huge `/time add`
+        // values must not loop once per day.
+        let now = (self.day_time * 24_000.0).round() as i64;
+        let total = now.saturating_add(ticks);
+        let days = total.div_euclid(24_000);
+        self.day_time = total.rem_euclid(24_000) as f64 / 24_000.0;
+        self.day_count = self.day_count.saturating_add(days);
     }
 
     pub(super) fn apply_weather(&mut self, kind: WeatherKind) {

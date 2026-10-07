@@ -43,7 +43,8 @@ Choose your download:
 ### World and content
 
 - **Mossy cobblestone and dungeons:** monster rooms with spawners and chests.
-- **Abandoned mineshafts:** rails, supports, cobwebs and loot, with cave spiders.
+- **Abandoned mineshafts:** rails, supports, cobwebs, loot, and cave spider
+  spawners in their spider corridors.
 - **Ores:** copper, redstone and emerald, with raw metal drops.
 - **Stones and deepslate:** granite, diorite, andesite and deepslate, plus
   blackstone, basalt, magma and chains in the Nether. Underground heights now
@@ -128,8 +129,8 @@ Choose your download:
   inspect their target.
 - Fishing has cod, salmon and some junk and treasure only. Bobbers don't hook mobs.
 - Player poses don't cover riding, elytra, bows or offhand items.
-- Commands accept `@s` and `@p` only. `/locate` finds strongholds, fortresses
-  and biomes.
+- Commands accept `@s` and `@p` only. `/locate` finds strongholds, fortresses,
+  bastion remnants, mineshafts and biomes.
 - Credits don't play for split-screen players or hosted agents.
 - Dungeon books and loot have no enchantments or discs, and Frost Walker doesn't
   freeze water.

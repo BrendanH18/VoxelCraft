@@ -393,6 +393,8 @@ static MOB_ITEMS: [ItemInfo; 2] = [
 const MOB_ITEM: u16 = 640;
 /// Splash potions: `SPLASH_POTION + potion index`.
 const SPLASH_POTION: u16 = 436;
+const _: () = assert!(FIRST_POTION + POTION_COUNT <= SPLASH_POTION);
+const _: () = assert!(SPLASH_POTION + POTION_COUNT <= SURVIVAL_ITEM);
 
 /// Uses before a bow breaks.
 pub const BOW_DURABILITY: u16 = 384;

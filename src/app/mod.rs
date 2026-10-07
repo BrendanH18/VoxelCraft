@@ -898,7 +898,8 @@ impl Game {
             KeyCode::Escape => self.open_menu(),
             KeyCode::KeyE => self.toggle_inventory(),
             KeyCode::KeyQ => self.drop_selected(self.modifiers.control_key()),
-            KeyCode::KeyG => {
+            // Hardcore deaths end in spectator for good; only `/gamemode` cheats out.
+            KeyCode::KeyG if !self.hardcore => {
                 let mode = match self.mode {
                     GameMode::Survival => GameMode::Creative,
                     GameMode::Creative | GameMode::Adventure | GameMode::Spectator => GameMode::Survival,

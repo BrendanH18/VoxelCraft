@@ -194,9 +194,10 @@ impl Game {
             Arrival::Portal(p) => p,
             Arrival::EndSpawn => crate::world::end::SPAWN,
             Arrival::Gateway { exit, .. } => exit,
-            Arrival::Respawn => {
-                self.spawn_bed.unwrap_or_else(|| self.world.generator.find_spawn() + IVec3::Y * (SEARCH_RADIUS + 8))
-            }
+            // Load where `respawn_point` will put the player: the bed (checked
+            // once its chunk is in), else the set spawn point or the
+            // `spawnRadius` spot around the world spawn.
+            Arrival::Respawn => self.spawn_bed.unwrap_or_else(|| self.respawn_point().floor().as_ivec3()),
         };
         let r = match arrival {
             Arrival::Portal(_) => SEARCH_RADIUS,
