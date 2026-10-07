@@ -313,6 +313,8 @@ pub enum Feature {
     Chest(u64),
     /// A chest filled from a stronghold table (see `stronghold::loot`).
     StrongholdChest(u64),
+    /// A chest filled from the simple dungeon loot table.
+    DungeonChest(u64),
 }
 
 /// Fortress layouts for one Nether, cached by region.
