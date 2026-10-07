@@ -271,10 +271,14 @@ impl System {
                 p.lifetime = (6.0 / rng.range(0.6, 1.4)) as u16;
             }
             Kind::Smoke | Kind::LargeSmoke => {
+                // Java SmokeParticle / BaseAshSmokeParticle: friction 0.96,
+                // gravity -0.1, scale 1 or 2.5, grey rCol. VoxelCraft's
+                // particle shader gamma-crushes 0..0.3 into black blobs, so
+                // the grey is the 0.3..0.7 range the puffs should read as.
                 p.friction = 0.96;
                 p.gravity = -0.1;
                 p.velocity = p.velocity * 0.1 + velocity;
-                let c = rng.range(0.0, 0.3);
+                let c = rng.range(0.3, 0.7);
                 p.color = [c, c, c, 1.0];
                 p.size *= 0.75;
                 p.lifetime = (8.0 / rng.range(0.2, 1.0) * if kind == Kind::LargeSmoke { 2.5 } else { 1.0 }) as u16;
@@ -564,6 +568,23 @@ mod tests {
         let glyph = system.make(Kind::Glyph, DVec3::ZERO, DVec3::X * 2.0);
         assert!((30..=39).contains(&glyph.lifetime));
         assert_eq!(glyph.pos, DVec3::X * 2.0);
+    }
+
+    #[test]
+    fn smoke_is_small_grey_and_large_smoke_is_bigger() {
+        let mut system = System::new(11);
+        for _ in 0..32 {
+            let smoke = system.make(Kind::Smoke, DVec3::ZERO, DVec3::ZERO);
+            assert!((0.29..=0.71).contains(&smoke.color[0]), "{}", smoke.color[0]);
+            assert!((smoke.color[0] - smoke.color[1]).abs() < 1e-6);
+            assert!((smoke.color[1] - smoke.color[2]).abs() < 1e-6);
+            assert!((0.07..0.16).contains(&smoke.size), "{}", smoke.size);
+            assert_eq!(smoke.friction, 0.96);
+            assert!((smoke.gravity + 0.1).abs() < 1e-6);
+            let large = system.make(Kind::LargeSmoke, DVec3::ZERO, DVec3::ZERO);
+            assert!((0.29..=0.71).contains(&large.color[0]));
+            assert!((0.18..0.38).contains(&large.size), "{}", large.size);
+        }
     }
 
     #[test]

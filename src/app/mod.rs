@@ -669,7 +669,9 @@ impl Game {
         }
         player.can_fly = mode.can_fly();
         player.noclip = mode == GameMode::Spectator;
-        player.flying = mode == GameMode::Spectator;
+        if mode == GameMode::Spectator {
+            player.flying = true;
+        }
         let mut world = World::new(generator, saved, settings.render_distance);
         world.set_tile_drops(gamerules.bool("doTileDrops"));
         log::info!("{} worker threads", world.worker_threads());
