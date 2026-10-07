@@ -72,7 +72,13 @@ impl Game {
         if picked {
             self.audio.play(Sound::Pop, None, 0.35, (0.8, 1.8));
         }
-        if let Some(chime) = crate::entity::orb::absorb(&mut self.mobs.entities.orbs, player, &mut self.vitals.xp) {
+        if let Some(chime) = crate::entity::orb::absorb(
+            &mut self.mobs.entities.orbs,
+            player,
+            &mut self.vitals.xp,
+            &mut self.inventory,
+            self.actions.selected,
+        ) {
             xp_sounds(&mut self.audio, None, chime);
         }
     }

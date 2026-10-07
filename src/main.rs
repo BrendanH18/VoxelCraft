@@ -6,7 +6,7 @@ mod bench;
 mod data;
 mod render;
 
-use voxelcraft::{crafting, entity, inventory, item, mesh, mining, physics, player, simulation, world};
+use voxelcraft::{crafting, enchant, entity, inventory, item, mesh, mining, physics, player, simulation, world};
 
 use winit::event_loop::{ControlFlow, EventLoop};
 
@@ -69,6 +69,8 @@ pub struct Args {
     pub give: Vec<(item::Item, u8)>,
     /// Armor worn at startup (`--wear`).
     pub wear: Vec<item::Item>,
+    /// Enchantments put on the first stack given (`--enchant`).
+    pub enchants: Vec<(enchant::Enchantment, u8)>,
     /// Items thrown in front of the player once the world has loaded.
     pub drop: Vec<(item::Item, u8)>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
@@ -125,6 +127,8 @@ voxelcraft [options]
   --drop item[,n]   throw n of an item in front of the player once loaded
                     (repeatable; like --give)
   --wear item       put on a piece of armor at startup (repeatable)
+  --enchant e[,l]   enchant the first hotbar stack (or a book there) with
+                    level l (default 1) of enchantment e (repeatable)
   --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig, cow, sheep,
                     chicken, zombie, skeleton, creeper, spider,
                     zombified_piglin, enderman, blaze or silverfish; y may be ~
@@ -180,6 +184,7 @@ fn parse_args() -> Result<Args, String> {
         orbs: Vec::new(),
         give: Vec::new(),
         wear: Vec::new(),
+        enchants: Vec::new(),
         drop: Vec::new(),
         mute: false,
         volume: None,
@@ -324,6 +329,12 @@ fn parse_args() -> Result<Args, String> {
                 let count = count.trim().parse().map_err(|_| format!("{flag}: bad count in {v}"))?;
                 if flag == "--give" { &mut args.give } else { &mut args.drop }.push((item, count));
             }
+            "--enchant" => {
+                let v = value("--enchant")?;
+                let (name, level) = v.split_once(',').unwrap_or((&v, "1"));
+                let e = enchant::Enchantment::from_name(name.trim()).ok_or(format!("--enchant: unknown {name}"))?;
+                args.enchants.push((e, level.trim().parse().map_err(|_| format!("--enchant: bad level in {v}"))?));
+            }
             "--wear" => {
                 let v = value("--wear")?;
                 let item = item::Item::from_name(v.trim()).filter(|i| i.as_armor().is_some());
@@ -376,6 +387,7 @@ impl Args {
         self.orbs.clear();
         self.give.clear();
         self.wear.clear();
+        self.enchants.clear();
         self.drop.clear();
     }
 }

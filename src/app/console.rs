@@ -102,6 +102,7 @@ impl Game {
                     "dimension",
                     "xp",
                     "effect",
+                    "enchant",
                     "players",
                     "observe",
                     "splitscreen",
@@ -188,6 +189,12 @@ impl Game {
                 return Ok(self.xp_summary());
             }
             Command::XpQuery => return Ok(self.xp_summary()),
+            Command::Enchant(e, level) => {
+                let slot = &mut self.inventory.slots[self.actions.selected];
+                let stack = crate::enchant::command(*slot, e, level)?;
+                *slot = Some(stack);
+                return Ok(format!("Applied {} to {}", e.describe(level), stack.item.name()));
+            }
             Command::Effect(change) => {
                 let (damage, text) = change.apply(&mut self.vitals);
                 self.damage_player(damage, survival::CAUSE_MAGIC);

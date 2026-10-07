@@ -400,7 +400,12 @@ fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
 pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
     match (stack.item.block(), stack.item.icon_layer()) {
         (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
-        (None, Some(layer)) => ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE),
+        (None, Some(layer)) => {
+            ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE);
+            if !stack.enchants.is_empty() {
+                glint(ui, x + 1.0, y + 1.0, 16.0, layer);
+            }
+        }
         (None, None) => {}
     }
     if let Some(wear) = stack.wear() {
@@ -413,6 +418,20 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
     if counts && stack.count > 1 {
         let n = stack.count.to_string();
         ui.text(x + 17.0 - Ui::text_width(&n), y + 9.0, &n, WHITE);
+    }
+}
+
+/// The enchantment glint: a faint purple sheen over the icon's shape with
+/// a brighter band sweeping down it.
+fn glint(ui: &mut Ui, x: f32, y: f32, size: f32, layer: u16) {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    let t = START.get_or_init(Instant::now).elapsed().as_secs_f32();
+    ui.icon_shape(x, y, size, layer, [0.0, 0.0, 1.0, 1.0], [0.55, 0.25, 1.0, 0.3]);
+    let band = 0.3;
+    let top = (t * 0.6).fract() * (1.0 + band) - band;
+    let (v0, v1) = (top.max(0.0), (top + band).min(1.0));
+    if v1 > v0 {
+        ui.icon_shape(x, y, size, layer, [0.0, v0, 1.0, v1], [0.8, 0.6, 1.0, 0.35]);
     }
 }
 
@@ -694,22 +713,23 @@ impl Game {
                 ui.rect(x + 1.0, y + 1.0, SLOT - 2.0, SLOT - 2.0, [1.0, 1.0, 1.0, 0.35]);
             }
         }
-        let hovered_item = match hovered {
-            Some(SlotRef::Inventory(i)) => self.inventory.get(i).map(|s| s.item),
-            Some(SlotRef::Palette(item)) => Some(item),
-            Some(SlotRef::Craft(i)) => self.craft.cells[i].map(|s| s.item),
-            Some(SlotRef::CraftResult) => self.craft.result().map(|s| s.item),
-            Some(SlotRef::Armor(p)) => self.inventory.armor[p as usize].map(|s| s.item),
-            Some(f) => self.container_slot(f).map(|s| s.item),
+        let hovered_stack = match hovered {
+            Some(SlotRef::Inventory(i)) => self.inventory.get(i),
+            Some(SlotRef::Palette(item)) => Some(Stack::new(item, 1)),
+            Some(SlotRef::Craft(i)) => self.craft.cells[i],
+            Some(SlotRef::CraftResult) => self.craft.result(),
+            Some(SlotRef::Armor(p)) => self.inventory.armor[p as usize],
+            Some(f) => self.container_slot(f),
             None => None,
         };
         let recipe_hint = if self.recipe_book.open && self.shows_recipes() { self.recipe_book_ui(ui) } else { None };
         if let Some(hint) = recipe_hint {
             self.tooltip(ui, &hint);
-        } else if let Some(item) = hovered_item {
-            match item.as_potion() {
-                Some(potion) => self.potion_tooltip(ui, item.name(), potion),
-                None => self.tooltip(ui, item.name()),
+        } else if let Some(stack) = hovered_stack {
+            match stack.item.as_potion() {
+                Some(potion) => self.potion_tooltip(ui, stack.item.name(), potion),
+                None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
+                None => self.tooltip(ui, stack.item.name()),
             }
         }
         // The held stack follows the mouse.
@@ -817,6 +837,25 @@ impl Game {
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - 11.0).max(3.0));
         ui.rect(x - 3.0, y - 3.0, Ui::text_width(&text) + 6.0, 14.0, [0.08, 0.02, 0.12, 0.92]);
         ui.text(x, y, &text, WHITE);
+    }
+
+    /// An enchanted item's name (aqua; an enchanted book's yellow) with a
+    /// grey line per enchantment, curses in red, like Java.
+    pub(super) fn enchant_tooltip(&self, ui: &mut Ui, stack: Stack) {
+        let title = capitalize(stack.item.name());
+        let lines = stack.enchants.lines();
+        let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
+        let h = 14.0 + 11.0 * lines.len() as f32;
+        let (sw, sh) = ui.size();
+        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
+        ui.rect(x - 3.0, y - 3.0, w + 6.0, h, [0.08, 0.02, 0.12, 0.92]);
+        let colour = if stack.item == Item::ENCHANTED_BOOK { [1.0, 1.0, 0.33, 1.0] } else { [0.33, 1.0, 1.0, 1.0] };
+        ui.text(x, y, &title, colour);
+        for (i, (line, curse)) in lines.iter().enumerate() {
+            let c = if *curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] };
+            ui.text(x, y + 11.0 * (i + 1) as f32, line, c);
+        }
     }
 
     /// A potion's name with Java's effect line under it: blue for good

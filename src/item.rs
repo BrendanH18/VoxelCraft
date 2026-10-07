@@ -178,7 +178,8 @@ pub enum Sprite {
     /// A melon slice with a gold rind and sparkles.
     GlisteringMelon,
     Paper,
-    Book,
+    /// A book with this cover colour.
+    Book([u8; 3]),
     /// An ender pearl turned green with a slit pupil.
     EnderEye,
     /// A glass bottle, empty or holding liquid of this colour.
@@ -210,7 +211,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 50] = [
+static ITEMS: [ItemInfo; 51] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -274,8 +275,9 @@ static ITEMS: [ItemInfo; 50] = [
     item("glistering melon slice", Sprite::GlisteringMelon),
     food("spider eye", 2, 3.2, Sprite::SpiderEye),
     item("paper", Sprite::Paper),
-    item("book", Sprite::Book),
+    item("book", Sprite::Book([120, 66, 40])),
     ItemInfo { name: "eye of ender", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::EnderEye },
+    ItemInfo { name: "enchanted book", kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Book([112, 44, 110]) },
 ];
 
 /// Uses before a bow breaks.
@@ -352,6 +354,8 @@ impl Item {
     /// Thrown, it flies toward the nearest stronghold; set in an End
     /// portal frame, it helps open the portal.
     pub const EYE_OF_ENDER: Item = Item(305);
+    /// Stores enchantments for an anvil to put on gear.
+    pub const ENCHANTED_BOOK: Item = Item(306);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)

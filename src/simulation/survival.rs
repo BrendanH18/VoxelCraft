@@ -77,6 +77,9 @@ pub struct Env {
     pub climbing: bool,
     /// Eyes under water: uses up air.
     pub head_in_water: bool,
+    /// Respiration level of the worn helmet: air lasts `level + 1` times
+    /// as long (Java skips a tick's loss with chance `level / (level + 1)`).
+    pub respiration: u8,
     /// Body touching lava: burns.
     pub in_lava: bool,
     pub in_fire: bool,
@@ -359,7 +362,7 @@ impl Vitals {
 
         // Air and drowning.
         if env.head_in_water && !creative && !self.effects.has(Effect::WaterBreathing) {
-            self.air = (self.air - dt).max(0.0);
+            self.air = (self.air - dt / (env.respiration as f32 + 1.0)).max(0.0);
             if self.air <= 0.0 {
                 self.drown_timer += dt;
                 if self.drown_timer >= DROWN_INTERVAL {

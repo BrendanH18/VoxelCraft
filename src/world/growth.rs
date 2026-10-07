@@ -35,6 +35,11 @@ impl World {
         splitmix64(&mut self.rng)
     }
 
+    /// Uniform in `0..=n`, without a roll for 0 (fortune bonuses).
+    fn up_to(&mut self, n: u64) -> u64 {
+        if n == 0 { 0 } else { self.roll() % (n + 1) }
+    }
+
     /// True with probability `1 / n`.
     pub(super) fn one_in(&mut self, n: u64) -> bool {
         self.roll().is_multiple_of(n)
@@ -44,32 +49,75 @@ impl World {
     /// Minecraft's chance drops (seeds from grass and ripe wheat, saplings
     /// and apples from leaves).
     pub fn spill_block(&mut self, p: IVec3, block: Block) {
+        self.spill_mined(p, block, crate::enchant::Enchants::NONE);
+    }
+
+    /// [`World::spill_block`] for a block mined with a tool enchanted with
+    /// `tool`: silk touch drops the block itself, fortune adds to ore and
+    /// crop drops (Java's loot tables).
+    pub fn spill_mined(&mut self, p: IVec3, block: Block, tool: crate::enchant::Enchants) {
+        use crate::enchant::Enchantment;
+        if tool.has(Enchantment::SilkTouch)
+            && let Some(item) = crate::mining::silk_drop(block)
+        {
+            self.drops.push((p, Stack::new(item, 1)));
+            return;
+        }
+        let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
         out.extend(block.drop().map(|item| Stack::new(item, 1)));
         match block {
+            // Java's ore bonus: the drop times 1 + max(0, rand(fortune + 2) - 1).
+            Block::COAL_ORE | Block::DIAMOND_ORE | Block::QUARTZ_ORE if fortune > 0 => {
+                let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1) as u8;
+                if let Some(s) = out.first_mut() {
+                    s.count = times;
+                }
+            }
             b if b.crop_stage() == Some(7) => {
-                // One seed, plus three tries at 4 in 7.
-                let seeds = 1 + (0..3).filter(|_| self.roll() % 7 < 4).count() as u8;
+                // One seed, plus three tries (and one more per fortune
+                // level) at 4 in 7.
+                let seeds = 1 + (0..3 + fortune).filter(|_| self.roll() % 7 < 4).count() as u8;
                 out.push(Stack::new(Item::WHEAT_SEEDS, seeds));
             }
-            // Ripe wart drops 2-4.
-            b if b.wart_age() == Some(3) => out.push(Stack::new(Item::NETHER_WART, 1 + (self.roll() % 3) as u8)),
-            Block::TALL_GRASS | Block::FERN if self.one_in(8) => out.push(Stack::new(Item::WHEAT_SEEDS, 1)),
+            // Ripe wart drops 2-4 in all, plus 0..fortune.
+            b if b.wart_age() == Some(3) => {
+                let n = 1 + self.roll() % 3 + self.up_to(fortune);
+                out.push(Stack::new(Item::NETHER_WART, n as u8));
+            }
+            // A seed one time in eight, plus 0..2 per fortune level.
+            Block::TALL_GRASS | Block::FERN if self.one_in(8) => {
+                let n = 1 + self.up_to(2 * fortune);
+                out.push(Stack::new(Item::WHEAT_SEEDS, n as u8))
+            }
             Block::CLAY => out.push(Stack::new(Item::CLAY_BALL, 3)),
             Block::BOOKSHELF => out.push(Stack::new(Item::BOOK, 3)),
-            Block::GLOWSTONE => out.push(Stack::new(Item::GLOWSTONE_DUST, 2 + (self.roll() % 3) as u8)),
-            // Gravel sometimes gives flint instead of itself.
-            Block::GRAVEL if self.one_in(10) => out = vec![Stack::new(Item::FLINT, 1)],
-            Block::MELON => out.push(Stack::new(Item::MELON_SLICE, 2 + (self.roll() % 5) as u8)),
+            // 2-4 dust, plus 0..fortune, at most 4.
+            Block::GLOWSTONE => {
+                let n = (2 + self.roll() % 3 + self.up_to(fortune)).min(4);
+                out.push(Stack::new(Item::GLOWSTONE_DUST, n as u8));
+            }
+            // Gravel sometimes gives flint instead of itself (10%, 14%,
+            // 25%, then always with fortune).
+            Block::GRAVEL if self.one_in([10, 7, 4, 1][fortune.min(3) as usize]) => {
+                out = vec![Stack::new(Item::FLINT, 1)]
+            }
+            // 3-7 slices in all, plus 0..fortune, at most 9.
+            Block::MELON => {
+                let n = (3 + self.roll() % 5 + self.up_to(fortune)).min(9) - 1;
+                out.push(Stack::new(Item::MELON_SLICE, n as u8));
+            }
             b if b.is_leaves() => {
-                // Jungle leaves drop saplings less often, like Minecraft.
-                let odds = if b == Block::JUNGLE_LEAVES { 40 } else { 20 };
+                // Jungle leaves drop saplings less often, like Minecraft;
+                // fortune raises both chances.
+                let f = fortune.min(3) as usize;
+                let odds = if b == Block::JUNGLE_LEAVES { [40, 36, 32, 24][f] } else { [20, 16, 12, 10][f] };
                 if self.one_in(odds)
                     && let Some(wood) = b.wood()
                 {
                     out.push(Stack::new(wood.sapling(), 1));
                 }
-                if block == Block::LEAVES && self.one_in(200) {
+                if block == Block::LEAVES && self.one_in([200, 180, 160, 120][f]) {
                     out.push(Stack::new(Item::APPLE, 1));
                 }
             }

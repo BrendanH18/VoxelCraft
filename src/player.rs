@@ -69,11 +69,13 @@ struct Modifiers {
     speed: f64,
     jump_levels: u32,
     slow_falling: bool,
+    /// Depth strider level of the worn boots (see [`Player::wear_boots`]).
+    depth_strider: u8,
 }
 
 impl Default for Modifiers {
     fn default() -> Self {
-        Self { speed: 1.0, jump_levels: 0, slow_falling: false }
+        Self { speed: 1.0, jump_levels: 0, slow_falling: false, depth_strider: 0 }
     }
 }
 
@@ -179,7 +181,14 @@ impl Player {
             speed: effects.speed_factor(),
             jump_levels: effects.jump_boost(),
             slow_falling: effects.has(Effect::SlowFalling),
+            depth_strider: self.modifiers.depth_strider,
         };
+    }
+
+    /// Depth strider on the worn boots: swimming approaches walking speed
+    /// by a third per level (Java's water movement efficiency).
+    pub fn wear_boots(&mut self, depth_strider: u8) {
+        self.modifiers.depth_strider = depth_strider.min(3);
     }
 
     pub fn update(&mut self, dt: f64, input: MoveInput, world: &World) {
@@ -217,7 +226,9 @@ impl Player {
             let target = wish * speed + DVec3::Y * vertical * speed;
             self.vel = self.vel.lerp(target, (dt * 12.0).min(1.0));
         } else if self.in_water {
-            let target = wish * SWIM_SPEED * self.modifiers.speed;
+            let land = if input.sprint { SPRINT_SPEED } else { WALK_SPEED };
+            let efficiency = self.modifiers.depth_strider as f64 / 3.0;
+            let target = wish * (SWIM_SPEED + (land - SWIM_SPEED) * efficiency) * self.modifiers.speed;
             let k = (dt * 6.0).min(1.0);
             self.vel.x += (target.x - self.vel.x) * k;
             self.vel.z += (target.z - self.vel.z) * k;

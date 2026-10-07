@@ -57,6 +57,7 @@ impl Agents {
         self.players.values().filter(|b| b.active).map(|b| Target {
             alive: !b.agent.vitals.is_dead(),
             look: b.agent.player.forward().as_dvec3(),
+            thorns: Target::thorns_of(&b.agent.inventory.armor),
             ..Target::new(b.id, b.agent.player.pos, b.agent.targetable())
         })
     }

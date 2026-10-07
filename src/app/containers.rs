@@ -109,6 +109,9 @@ impl Game {
                 }
             }
             SlotRef::Armor(piece) => {
+                if !self.inventory.can_unequip(piece, self.mode == GameMode::Creative) {
+                    return;
+                }
                 let Some(stack) = self.inventory.armor[piece as usize].take() else { return };
                 self.inventory.armor[piece as usize] = self.move_to_player(stack);
             }

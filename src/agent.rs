@@ -19,7 +19,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,6 +72,8 @@ pub enum Command {
     XpQuery,
     /// Java's `/effect`.
     Effect(EffectChange),
+    /// Java's `/enchant`: enchants the held item.
+    Enchant(crate::enchant::Enchantment, u8),
 }
 
 /// `/effect give` (with seconds and amplifier) or `/effect clear`.
@@ -235,6 +237,11 @@ impl Command {
                 let amp = rest.get(1).map_or(Ok(0), |n| n.parse::<u8>().map_err(|_| bad()))?;
                 Self::Effect(EffectChange::Give(effect, secs, amp))
             }
+            ["enchant", name, rest @ ..] if rest.len() <= 1 => {
+                let e = crate::enchant::Enchantment::from_name(name).ok_or_else(bad)?;
+                let level = rest.first().map_or(Ok(1), |n| n.parse::<u8>().ok().filter(|&n| n > 0).ok_or_else(bad))?;
+                Self::Enchant(e, level)
+            }
             _ => return Err(bad()),
         })
     }
@@ -252,6 +259,7 @@ impl Command {
                 | Self::Dimension(..)
                 | Self::Xp(..)
                 | Self::Effect(..)
+                | Self::Enchant(..)
         )
     }
 }
@@ -384,6 +392,10 @@ impl Agent {
                 self.player.flying = on;
                 self.player.vel = DVec3::ZERO;
             }
+            Command::Enchant(e, level) => {
+                let slot = &mut self.inventory.slots[self.selected];
+                *slot = Some(crate::enchant::command(*slot, e, level)?);
+            }
             Command::Give(item, count) => {
                 let mut inv = self.inventory.clone();
                 if inv.add(item, count) > 0 {
@@ -398,7 +410,7 @@ impl Agent {
             }
             Command::Effect(change) => {
                 let (damage, _) = change.apply(&mut self.vitals);
-                self.vitals.damage(damage, survival::CAUSE_MAGIC, self.creative);
+                self.damage(damage, survival::CAUSE_MAGIC);
             }
             Command::Mode(creative) => {
                 self.creative = creative;
@@ -499,15 +511,18 @@ impl Agent {
                     .target(world)
                     .map_or(6.0, |(p, _)| self.player.eye().distance(p.as_dvec3() + DVec3::splat(0.5)).min(6.0));
                 let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
-                let held = self.inventory.get(self.selected).map(|s| s.item);
-                let damage = (mining::attack_damage(held) + self.vitals.effects.attack_bonus()).max(0.0);
+                let stack = self.inventory.get(self.selected);
+                let held = stack.map(|s| s.item);
+                let bonus = self.vitals.effects.attack_bonus();
                 if let Some((hit, _)) = entities.fight_raycast(eye, dir, distance) {
+                    let enchants = stack.map_or(Default::default(), |s| s.active_enchants());
+                    let damage = (mining::attack_damage(held) + bonus).max(0.0)
+                        + crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
                     entities.strike(hit, damage, self.id);
                 } else {
                     let (i, _) = entities.raycast(eye, dir, distance).ok_or("no mob within reach")?;
-                    if let Some(kind) = entities.attack(i, dir, damage) {
-                        entities.drop_loot(kind, entities.mobs[i].pos);
-                    }
+                    let sweep = self.player.on_ground;
+                    entities.melee(i, dir, stack, bonus, false, sweep);
                 }
                 if !self.creative
                     && let Some(held) = held
@@ -636,7 +651,15 @@ impl Agent {
         }
         let mut input = if self.remaining > 0 { self.input } else { MoveInput::default() };
         input.sprint &= self.creative || self.vitals.hunger.can_sprint();
-        let hurts = simulation::tick_player(&mut self.player, world, &mut self.vitals, input, self.creative).hurts;
+        let hurts = simulation::tick_player(
+            &mut self.player,
+            world,
+            &mut self.vitals,
+            &self.inventory.armor,
+            input,
+            self.creative,
+        )
+        .hurts;
         for (damage, cause) in [
             (hurts.fall, "hit the ground too hard"),
             (hurts.drown, "drowned"),
@@ -644,7 +667,7 @@ impl Agent {
             (hurts.fire + hurts.burn, "burned to death"),
             (hurts.starve, "starved to death"),
         ] {
-            if damage > 0.0 && self.vitals.damage(damage, cause, self.creative) > 0.0 {
+            if damage > 0.0 && self.damage(damage, cause) > 0.0 {
                 self.sleeping = None;
             }
         }
@@ -660,20 +683,24 @@ impl Agent {
             && let Some(block) = world.get_block(pos)
         {
             let held = self.inventory.get(self.selected).map(|s| s.item);
+            let digger = self.digger(world);
             let progress = self.breaking.filter(|(p, _)| *p == pos).map_or(0.0, |(_, n)| n) + TICK_SECONDS;
             self.breaking = Some((pos, progress));
             self.swings += 1;
             if block != Block::BEDROCK
                 && !block.is_door()
                 && !block.is_bed()
-                && (self.creative || progress >= mining::break_time(block, held) as f64)
+                && (self.creative || progress >= mining::dig_time(block, digger) as f64)
             {
                 world.set_block(pos, Block::AIR);
                 self.emit(Event::Broke(pos, block));
                 if !self.creative {
                     if mining::can_harvest(block, held) {
-                        world.spill_block(pos, block);
-                        entities.drop_block_xp(block, pos);
+                        let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
+                        world.spill_mined(pos, block, tool);
+                        if !tool.has(crate::enchant::Enchantment::SilkTouch) {
+                            entities.drop_block_xp(block, pos);
+                        }
                     }
                     if let Some(held) = held {
                         self.inventory.wear(self.selected, mining::wear(held, false));
@@ -695,7 +722,13 @@ impl Agent {
             item.stack.count = self.inventory.add_stack(item.stack);
             item.stack.count > 0
         });
-        if let Some(chime) = crate::entity::orb::absorb(&mut entities.orbs, self.player.pos, &mut self.vitals.xp) {
+        if let Some(chime) = crate::entity::orb::absorb(
+            &mut entities.orbs,
+            self.player.pos,
+            &mut self.vitals.xp,
+            &mut self.inventory,
+            self.selected,
+        ) {
             self.emit(Event::Xp(chime));
         }
     }
@@ -710,7 +743,7 @@ impl Agent {
         self.previous_pos = pos;
         self.player.vel = DVec3::ZERO;
         self.vitals.reset_fall();
-        self.vitals.damage(crate::entity::pearl::DAMAGE, "fell from a high place", self.creative);
+        self.damage(crate::entity::pearl::DAMAGE, "fell from a high place");
         if self.vitals.is_dead() {
             self.drop_everything(entities);
             self.remaining = 0;
@@ -747,7 +780,7 @@ impl Agent {
             self.bite = 0;
             if let Some(potion) = potion {
                 let damage = potion.drink(&mut self.vitals);
-                self.vitals.damage(damage, survival::CAUSE_MAGIC, self.creative);
+                self.damage(damage, survival::CAUSE_MAGIC);
                 if !self.creative {
                     self.inventory.slots[self.selected] = Some(Stack::new(Item::GLASS_BOTTLE, 1));
                 }
@@ -776,12 +809,18 @@ impl Agent {
         self.bite as f32 / EAT_TICKS as f32
     }
 
+    /// Damage through protection enchantments (armor points aside).
+    fn damage(&mut self, amount: f32, cause: &str) -> f32 {
+        let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
+        self.vitals.damage(amount, cause, self.creative)
+    }
+
     /// Armored damage from a mob, arrow or explosion. Knockback only lands
     /// with damage (hurt immunity also stops repeated shoves), and a survival
     /// agent killed this way drops everything. Returns the damage taken.
     pub fn hurt(&mut self, amount: f32, cause: &str, knockback: DVec3, entities: &mut Entities) -> f32 {
         let reduced = simulation::survival::armor_reduce(amount, self.inventory.armor_points());
-        let taken = self.vitals.damage(reduced, cause, self.creative);
+        let taken = self.damage(reduced, cause);
         if taken <= 0.0 {
             return 0.0;
         }
@@ -808,8 +847,17 @@ impl Agent {
     pub fn breaking(&self, world: &World) -> Option<(IVec3, f32)> {
         let (pos, seconds) = self.breaking?;
         let block = world.get_block(pos)?;
-        let held = self.inventory.get(self.selected).map(|s| s.item);
-        Some((pos, (seconds as f32 / mining::break_time(block, held).max(1e-3)).min(1.0)))
+        Some((pos, (seconds as f32 / mining::dig_time(block, self.digger(world)).max(1e-3)).min(1.0)))
+    }
+
+    /// What this agent mines with, and where it stands (Java's penalties).
+    fn digger(&self, world: &World) -> mining::Digger {
+        mining::Digger {
+            held: self.inventory.get(self.selected),
+            helmet: self.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
+            eyes_in_water: self.player.head_in_water(world),
+            on_ground: self.player.on_ground || self.player.flying,
+        }
     }
 
     /// Whether hostile mobs may attack this agent.
@@ -837,7 +885,10 @@ impl Agent {
             .iter()
             .enumerate()
             .filter_map(|(slot, s)| {
-                s.map(|s| json!({"slot":slot+1,"item":s.item.name(),"count":s.count,"damage":s.damage}))
+                s.map(|s| {
+                    let enchants: Vec<String> = s.enchants.lines().into_iter().map(|(l, _)| l).collect();
+                    json!({"slot":slot+1,"item":s.item.name(),"count":s.count,"damage":s.damage,"enchantments":enchants})
+                })
             })
             .collect();
         let target = self.target(world).map(
@@ -1026,6 +1077,11 @@ mod tests {
         EffectChange::Give(Effect::InstantHealth, 1, 1).apply(&mut vitals);
         assert_eq!(vitals.health, 18.0);
         assert!(matches!(Command::parse("/give dirt 64").unwrap(), Command::Give(_, 64)));
+        assert!(matches!(
+            Command::parse("/enchant silk_touch").unwrap(),
+            Command::Enchant(crate::enchant::Enchantment::SilkTouch, 1)
+        ));
+        assert!(Command::parse("/enchant sharpness 0").is_err() && Command::parse("/enchant speed").is_err());
         let xp = |text: &str| match Command::parse(text) {
             Ok(Command::Xp(c)) => Some((c.set, c.amount, c.levels)),
             _ => None,

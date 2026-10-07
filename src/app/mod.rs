@@ -574,6 +574,12 @@ impl Game {
                 inventory.armor[piece as usize] = Some(Stack::new(item, 1));
             }
         }
+        for &(e, level) in &args.enchants {
+            match crate::enchant::command(inventory.slots[0], e, level) {
+                Ok(stack) => inventory.slots[0] = Some(stack),
+                Err(err) => log::warn!("--enchant: {err}"),
+            }
+        }
 
         let prop = |k: &str| existing.as_ref().and_then(|l| l.props.get(k));
         let mut vitals = Vitals::restore(
@@ -912,12 +918,14 @@ impl Game {
     }
 
     /// The single entry point for hurting the player (falls, drowning,
-    /// mobs, ...). `amount` is in half hearts; `cause` completes the death
+    /// mobs, ...), through protection enchantments. `amount` is in half
+    /// hearts; `cause` completes the death
     /// message "Player <cause>", e.g. "drowned" or "was slain by a zombie".
     /// Returns the damage actually taken: zero in creative, while dead, or
     /// when absorbed by the 0.5 s hurt immunity that follows each hit (a
     /// stronger hit within it only deals the difference).
     pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
+        let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
         let taken = self.vitals.damage(amount, cause, self.mode == GameMode::Creative);
         if taken > 0.0 {
             self.sleeping = None;
@@ -1166,7 +1174,9 @@ impl Game {
                 crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
             }
             Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
-            Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right),
+            Some(hud::SlotRef::Armor(piece)) => {
+                self.inventory.click_armor(piece, right, self.mode == GameMode::Creative)
+            }
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Chest(pos) = self.container
                     && let Some(chest) = self.world.chest_mut(pos)
@@ -1254,7 +1264,13 @@ impl Game {
             return;
         }
         let held = self.held_item();
-        let progress = self.actions.mine(pos, block, held, dt);
+        let digger = crate::mining::Digger {
+            held: self.inventory.get(self.actions.selected),
+            helmet: self.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
+            eyes_in_water: self.player.head_in_water(&self.world),
+            on_ground: self.player.on_ground || self.player.flying,
+        };
+        let progress = self.actions.mine(pos, crate::mining::dig_time(block, digger), dt);
         if progress < 1.0 {
             self.audio.block_hit(block, pos, dt);
             return;
@@ -1269,8 +1285,11 @@ impl Game {
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
         if crate::mining::can_harvest(block, held) {
-            self.world.spill_block(pos, block);
-            self.mobs.entities.drop_block_xp(block, pos);
+            let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
+            self.world.spill_mined(pos, block, tool);
+            if !tool.has(crate::enchant::Enchantment::SilkTouch) {
+                self.mobs.entities.drop_block_xp(block, pos);
+            }
         }
         if block.is_bed() {
             self.break_bed_partner(pos, block);
@@ -1751,6 +1770,8 @@ impl Game {
         let before = self.player.pos;
         if !arriving {
             self.player.apply_effects(&self.vitals.effects);
+            let armor = &self.inventory.armor;
+            self.player.wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
             self.player.update(dt, input, &self.world);
             self.update_portal(dt);
         }
@@ -1758,7 +1779,10 @@ impl Game {
         self.weather.update(dt);
         self.update_sleep(dt);
         self.world.raining = self.weather.raining && self.dimension.has_sky();
-        let env = crate::simulation::player_environment(&self.player, &self.world, input, moved);
+        let env = crate::simulation::survival::Env {
+            respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
+            ..crate::simulation::player_environment(&self.player, &self.world, input, moved)
+        };
         let hurts = if arriving || self.arrival.is_some() {
             Default::default()
         } else {

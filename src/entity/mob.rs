@@ -215,6 +215,16 @@ impl MobKind {
         }
     }
 
+    /// What smite and bane of arthropods count it as.
+    pub fn creature(self) -> crate::enchant::Creature {
+        use crate::enchant::Creature;
+        match self {
+            MobKind::Zombie | MobKind::Skeleton | MobKind::ZombifiedPiglin => Creature::Undead,
+            MobKind::Spider | MobKind::Silverfish => Creature::Arthropod,
+            _ => Creature::Other,
+        }
+    }
+
     fn burns_in_sun(self) -> bool {
         matches!(self, MobKind::Zombie | MobKind::Skeleton)
     }
@@ -272,13 +282,16 @@ impl MobKind {
         }
     }
 
-    /// Rolls the drops for killing one of these.
-    pub fn drops(self, rng: &mut Rng) -> Vec<(Item, u8)> {
+    /// Rolls the drops for killing one of these; `looting` adds
+    /// `round(looting * uniform(0, 1))` to each (Java's
+    /// `enchanted_count_increase`).
+    pub fn drops(self, rng: &mut Rng, looting: u8) -> Vec<(Item, u8)> {
         self.loot()
             .iter()
             .map(|&(item, lo, hi)| {
                 let span = hi as i32 - lo as i32 + 1;
-                (item, (lo as i32 + (rng.next_f32() * span as f32) as i32).max(0) as u8)
+                let extra = if looting > 0 { (looting as f32 * rng.next_f32()).round() as i32 } else { 0 };
+                (item, (lo as i32 + (rng.next_f32() * span as f32) as i32).max(0) as u8 + extra as u8)
             })
             .filter(|&(_, n)| n > 0)
             .collect()
@@ -471,6 +484,13 @@ impl Mob {
         false
     }
 
+    /// Sets it alight for at least `secs` (fire aspect, flame arrows).
+    pub fn ignite(&mut self, secs: f32) {
+        if !self.kind.fire_immune() && !self.in_water {
+            self.fire_left = self.fire_left.max(secs);
+        }
+    }
+
     /// Advances the mob by `dt` seconds.
     pub fn update<W: MobWorld + ?Sized>(
         &mut self,
@@ -637,6 +657,14 @@ impl Mob {
                                 knockback: knockback.as_vec3(),
                                 cause,
                             });
+                            // Thorns: each piece has a 15% chance per level
+                            // to hit back for 1-4.
+                            for level in target.thorns.into_iter().filter(|&l| l > 0) {
+                                if rng.chance(0.15 * level as f32) {
+                                    let back = 1.0 + (rng.next_f32() * 4.0).floor().min(3.0);
+                                    self.damage(back, Some(-knockback * 0.5 + DVec3::Y * 3.0), rng);
+                                }
+                            }
                         }
                     }
                 }

@@ -119,7 +119,7 @@ fn fixed_steps_preserve_movement_and_survival_across_frame_rates() {
         let input = MoveInput { forward: 1.0, sprint: true, ..Default::default() };
         for _ in 0..1000 / frame_ms {
             for _ in 0..clock.advance(Duration::from_millis(frame_ms), false) {
-                let step = simulation::tick_player(&mut player, &world, &mut vitals, input, false);
+                let step = simulation::tick_player(&mut player, &world, &mut vitals, &[None; 4], input, false);
                 assert_eq!(step.hurts.fall, 0.0);
                 assert_eq!(step.hurts.fire, 0.0);
             }

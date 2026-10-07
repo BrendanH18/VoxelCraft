@@ -271,12 +271,19 @@ pub struct Target {
     pub alive: bool,
     /// Unit view direction (zero if unknown): endermen notice stares.
     pub look: DVec3,
+    /// Thorns level of each worn armor piece: melee attackers get hurt.
+    pub thorns: [u8; 4],
 }
 
 impl Target {
     /// A living player; set [`Target::alive`] for one waiting to respawn.
     pub fn new(id: PlayerId, pos: DVec3, targetable: bool) -> Self {
-        Self { id, pos, targetable, alive: true, look: DVec3::ZERO }
+        Self { id, pos, targetable, alive: true, look: DVec3::ZERO, thorns: [0; 4] }
+    }
+
+    /// Thorns levels from worn armor.
+    pub fn thorns_of(armor: &[Option<crate::inventory::Stack>; 4]) -> [u8; 4] {
+        armor.map(|s| s.map_or(0, |s| s.enchants.level(crate::enchant::Enchantment::Thorns)))
     }
 
     /// Whether `p` is inside this player's 0.6 x 1.8 box.
@@ -512,9 +519,15 @@ impl Entities {
     /// Drops the loot and experience of a mob of `kind` the player killed
     /// at `pos`.
     pub fn drop_loot(&mut self, kind: MobKind, pos: DVec3) {
+        self.drop_loot_with(kind, pos, 0);
+    }
+
+    /// [`Entities::drop_loot`] for a kill with a looting weapon: each drop
+    /// gains up to `looting` more.
+    pub fn drop_loot_with(&mut self, kind: MobKind, pos: DVec3, looting: u8) {
         let xp = kind.xp(&mut self.rng);
         self.spawn_xp(pos, xp);
-        for (item, count) in kind.drops(&mut self.rng) {
+        for (item, count) in kind.drops(&mut self.rng, looting) {
             let vel = DVec3::new(self.rng.range(-1.5, 1.5) as f64, 4.0, self.rng.range(-1.5, 1.5) as f64);
             let stack = crate::inventory::Stack::new(item, count);
             self.items.push(ItemEntity::new(stack, pos + DVec3::Y * 0.5, vel, item::PICKUP_DELAY, &mut self.rng));
@@ -892,7 +905,22 @@ impl Entities {
 
     /// The player looses an arrow with bow `power` 0..1.
     pub fn shoot_arrow(&mut self, eye: DVec3, dir: DVec3, power: f32, pickup: bool) {
-        self.arrows.push(Arrow::shot(eye, dir, power, pickup));
+        self.shoot_enchanted(eye, dir, power, pickup, Default::default());
+    }
+
+    /// [`Entities::shoot_arrow`] from a bow with `enchants` (power, punch,
+    /// flame).
+    pub fn shoot_enchanted(
+        &mut self,
+        eye: DVec3,
+        dir: DVec3,
+        power: f32,
+        pickup: bool,
+        enchants: crate::enchant::Enchants,
+    ) {
+        let mut arrow = Arrow::shot(eye, dir, power, pickup);
+        arrow.enchants = enchants;
+        self.arrows.push(arrow);
     }
 
     /// Stuck player arrows within reach of a player at `feet`, removed.
@@ -912,8 +940,14 @@ impl Entities {
     /// Player melee hit for `damage` on mob `index`, pushed along `dir`.
     /// Returns the kind of mob if this killed it.
     pub fn attack(&mut self, index: usize, dir: DVec3, damage: f32) -> Option<MobKind> {
+        self.knock(index, dir, damage, 0)
+    }
+
+    /// Hits mob `index` for `damage`, pushing it along `dir` harder for
+    /// each `extra` knockback level (Java: 0.4 + 0.5 per level).
+    fn knock(&mut self, index: usize, dir: DVec3, damage: f32, extra: u8) -> Option<MobKind> {
         let flat = DVec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
-        let knockback = flat * 6.0 + DVec3::Y * 5.0;
+        let knockback = flat * 6.0 * (1.0 + 1.25 * extra as f64) + DVec3::Y * 5.0;
         let mob = self.mobs.get_mut(index)?;
         let (kind, pos) = (mob.kind, mob.pos);
         let killed = mob.damage(damage, Some(knockback), &mut self.rng);
@@ -921,6 +955,69 @@ impl Entities {
             self.anger_piglins(pos);
         }
         killed.then_some(kind)
+    }
+
+    /// A player's melee hit on mob `index` with `held`, Java's way: the
+    /// weapon's damage plus `bonus` (strength), times 1.5 if `critical`,
+    /// then the enchantment bonus for that mob; knockback and fire aspect
+    /// apply, and a kill drops loot with looting. When `sweep` (a sword
+    /// swung on the ground, not critical), mobs right next to
+    /// the target take `1 + ratio * damage` (sweeping edge raises the
+    /// ratio). Returns the kind killed, if it was.
+    pub fn melee(
+        &mut self,
+        index: usize,
+        dir: DVec3,
+        held: Option<crate::inventory::Stack>,
+        bonus: f32,
+        critical: bool,
+        sweep: bool,
+    ) -> Option<MobKind> {
+        use crate::enchant::Enchantment;
+        let target = self.mobs.get(index)?;
+        let (kind, pos, shape) = (target.kind, target.pos, target.shape());
+        let base = (crate::mining::attack_damage(held.map(|s| s.item)) + bonus).max(0.0);
+        let enchants = held.map_or(Default::default(), |s| s.active_enchants());
+        let damage = base * if critical { 1.5 } else { 1.0 } + crate::enchant::damage_bonus(enchants, kind.creature());
+        let (knockback, fire) = crate::mining::weapon_extras(held);
+        let killed = self.knock(index, dir, damage, knockback);
+        if fire > 0.0 {
+            self.mobs[index].ignite(fire);
+        }
+        if let Some(kind) = killed {
+            self.drop_loot_with(kind, pos, enchants.level(Enchantment::Looting));
+        }
+        let sword = held.and_then(|s| s.item.as_tool()).is_some_and(|(k, _)| k == crate::item::ToolKind::Sword);
+        if sweep && sword {
+            let level = enchants.level(Enchantment::SweepingEdge) as f32;
+            let swept = 1.0 + level / (level + 1.0) * damage;
+            let (lo, hi) = (
+                pos - DVec3::new(shape.half_width + 1.0, 0.25, shape.half_width + 1.0),
+                pos + DVec3::new(shape.half_width + 1.0, shape.height + 0.25, shape.half_width + 1.0),
+            );
+            let near: Vec<usize> = (0..self.mobs.len())
+                .filter(|&i| {
+                    let m = &self.mobs[i];
+                    let s = m.shape();
+                    i != index
+                        && m.alive()
+                        && m.pos.x + s.half_width > lo.x
+                        && m.pos.x - s.half_width < hi.x
+                        && m.pos.z + s.half_width > lo.z
+                        && m.pos.z - s.half_width < hi.z
+                        && m.pos.y + s.height > lo.y
+                        && m.pos.y < hi.y
+                })
+                .collect();
+            for i in near {
+                let away = self.mobs[i].pos - pos;
+                if let Some(kind) = self.knock(i, away, swept, 0) {
+                    let at = self.mobs[i].pos;
+                    self.drop_loot_with(kind, at, enchants.level(Enchantment::Looting));
+                }
+            }
+        }
+        killed
     }
 
     /// Hitting one zombified piglin angers every one nearby.
@@ -1849,7 +1946,7 @@ mod tests {
         for kind in MobKind::ALL.into_iter().filter(|k| !k.loot().is_empty()) {
             let mut seen_any = false;
             for _ in 0..200 {
-                for (item, n) in kind.drops(&mut rng) {
+                for (item, n) in kind.drops(&mut rng, 0) {
                     let &(_, lo, hi) = kind.loot().iter().find(|l| l.0 == item).unwrap();
                     assert!((lo.max(1) as u8..=hi).contains(&n), "{kind:?} dropped {n} of {}", item.name());
                     seen_any = true;

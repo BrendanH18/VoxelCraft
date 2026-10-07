@@ -34,6 +34,8 @@ pub struct Arrow {
     pub pickup: bool,
     /// A fully drawn shot: deals a random bonus on hit.
     pub critical: bool,
+    /// The bow's enchantments: power, punch and flame.
+    pub enchants: crate::enchant::Enchants,
 }
 
 impl Arrow {
@@ -55,6 +57,7 @@ impl Arrow {
             from_player: false,
             pickup: false,
             critical: false,
+            enchants: Default::default(),
         }
     }
 
@@ -73,6 +76,7 @@ impl Arrow {
             from_player: true,
             pickup,
             critical: power >= 1.0,
+            enchants: Default::default(),
         }
     }
 
@@ -139,12 +143,22 @@ impl Arrow {
                     if mob.kind == super::MobKind::Enderman {
                         mob.teleport_pending = true;
                     } else {
+                        use crate::enchant::Enchantment;
                         let speed = self.vel.length();
-                        let mut damage = (speed / BOW_SPEED * BOW_DAMAGE).ceil() as f32;
+                        // Power raises Java's base damage of 2 by 0.5 per level + 0.5.
+                        let power = self.enchants.level(Enchantment::Power) as f64;
+                        let base = if power > 0.0 { (2.5 + 0.5 * power) / 2.0 } else { 1.0 };
+                        let mut damage = (speed / BOW_SPEED * BOW_DAMAGE * base).ceil() as f32;
                         if self.critical {
                             damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
                         }
-                        let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 4.0 + DVec3::Y * 4.0;
+                        // Punch adds 0.6 blocks/tick of shove per level.
+                        let punch = 1.0 + 3.0 * self.enchants.level(Enchantment::Punch) as f64;
+                        let push =
+                            DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 4.0 * punch + DVec3::Y * 4.0;
+                        if self.enchants.has(Enchantment::Flame) {
+                            mob.ignite(5.0);
+                        }
                         let killed = mob.damage(damage, Some(push), rng);
                         events.push(EntityEvent::MobShot { kind: mob.kind, pos: mob.pos, killed });
                         return false;

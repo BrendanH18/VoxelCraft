@@ -2,9 +2,6 @@
 
 use glam::IVec3;
 
-use crate::item::Item;
-use crate::world::block::Block;
-
 #[derive(Default)]
 pub(super) struct Actions {
     pub selected: usize,
@@ -34,9 +31,10 @@ impl Actions {
         self.bow_draw = None;
     }
 
-    pub fn mine(&mut self, pos: IVec3, block: Block, held: Option<Item>, dt: f64) -> f32 {
+    /// Advances breaking the block at `pos`, which takes `seconds` in all.
+    pub fn mine(&mut self, pos: IVec3, seconds: f32, dt: f64) -> f32 {
         let before = self.breaking.filter(|(p, _)| *p == pos).map_or(0.0, |(_, progress)| progress);
-        let progress = before + (dt / crate::mining::break_time(block, held) as f64) as f32;
+        let progress = before + (dt / seconds as f64) as f32;
         self.breaking = Some((pos, progress));
         progress
     }
@@ -57,7 +55,9 @@ impl Actions {
 mod tests {
     use super::*;
     use crate::inventory::{Inventory, Stack};
+    use crate::item::Item;
     use crate::item::{Tier, ToolKind};
+    use crate::world::block::Block;
 
     #[test]
     fn switching_tools_starts_mining_again_without_using_the_previous_speed() {
@@ -68,14 +68,14 @@ mod tests {
         inv.slots[0] = Some(Stack::new(gold, 1));
         inv.slots[1] = Some(Stack::new(wood, 1));
         for _ in 0..17 {
-            assert!(actions.mine(IVec3::ZERO, Block::STONE, Some(gold), 0.01) < 1.0);
+            assert!(actions.mine(IVec3::ZERO, crate::mining::break_time(Block::STONE, Some(gold)), 0.01) < 1.0);
         }
         assert!(actions.select(1));
         for _ in 0..12 {
-            assert!(actions.mine(IVec3::ZERO, Block::STONE, Some(wood), 0.01) < 1.0);
+            assert!(actions.mine(IVec3::ZERO, crate::mining::break_time(Block::STONE, Some(wood)), 0.01) < 1.0);
         }
         // Finish the wooden pickaxe's own attempt, then charge its wear.
-        while actions.mine(IVec3::ZERO, Block::STONE, Some(wood), 0.01) < 1.0 {}
+        while actions.mine(IVec3::ZERO, crate::mining::break_time(Block::STONE, Some(wood)), 0.01) < 1.0 {}
         inv.wear(actions.selected, crate::mining::wear(wood, false));
         assert_eq!(inv.get(0).unwrap().damage, 0);
         assert_eq!(inv.get(1).unwrap().damage, 1);
@@ -102,7 +102,7 @@ mod tests {
     #[test]
     fn reselecting_the_same_slot_keeps_progress() {
         let mut actions = Actions::default();
-        actions.mine(IVec3::ZERO, Block::STONE, None, 0.1);
+        actions.mine(IVec3::ZERO, crate::mining::break_time(Block::STONE, None), 0.1);
         actions.eat(0.1);
         let before = (actions.breaking, actions.eat_timer);
         assert!(!actions.select(0));

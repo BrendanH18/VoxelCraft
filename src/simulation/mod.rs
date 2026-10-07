@@ -79,14 +79,19 @@ pub fn tick_player(
     player: &mut Player,
     world: &World,
     vitals: &mut Vitals,
+    armor: &[Option<crate::inventory::Stack>; 4],
     input: MoveInput,
     creative: bool,
 ) -> PlayerStep {
     let before = player.pos;
     player.apply_effects(&vitals.effects);
+    player.wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
     player.update(TICK_SECONDS, input, world);
     let moved = (player.pos - before).with_y(0.0).length();
-    let env = player_environment(player, world, input, moved);
+    let env = Env {
+        respiration: crate::enchant::armor_level(armor, crate::enchant::Enchantment::Respiration),
+        ..player_environment(player, world, input, moved)
+    };
     PlayerStep { moved, hurts: vitals.tick(TICK_SECONDS as f32, &env, creative) }
 }
 
@@ -105,6 +110,7 @@ pub fn player_environment(player: &Player, world: &World, input: MoveInput, move
         moved: if player.flying { 0.0 } else { moved },
         sprinting: input.sprint && moved > 0.0,
         jumped: player.jumped,
+        respiration: 0,
     }
 }
 

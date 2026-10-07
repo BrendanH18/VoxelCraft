@@ -124,6 +124,15 @@ impl Ui {
         self.quad([[x, y], [x + size, y], [x + size, y + size], [x, y + size]], uv, layer.into() as f32, color);
     }
 
+    /// Fills the shape of an icon (its texture's alpha) with `color`.
+    pub fn icon_shape(&mut self, x: f32, y: f32, size: f32, layer: u16, uv: [f32; 4], color: Color) {
+        let [u0, v0, u1, v1] = uv;
+        let (px0, py0, px1, py1) = (x + u0 * size, y + v0 * size, x + u1 * size, y + v1 * size);
+        let uv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+        let color = [color[0], color[1], color[2], -color[3]];
+        self.quad([[px0, py0], [px1, py0], [px1, py1], [px0, py1]], uv, layer as f32, color);
+    }
+
     /// Isometric block icon filling a `size` square: a cube, a lowered one
     /// for low blocks, or the boxes of a shaped block.
     pub fn block_icon(&mut self, x: f32, y: f32, size: f32, block: Block) {

@@ -4,6 +4,7 @@
 pub mod agent;
 pub mod control;
 pub mod crafting;
+pub mod enchant;
 pub mod entity;
 pub mod inventory;
 pub mod item;
