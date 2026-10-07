@@ -171,6 +171,23 @@ mod tests {
     }
 
     #[test]
+    fn netherite_blocks_need_diamond_pickaxes_and_debris_gives_no_mining_xp() {
+        for block in [Block::ANCIENT_DEBRIS, Block::NETHERITE_BLOCK] {
+            for tier in [Tier::Wood, Tier::Stone, Tier::Iron, Tier::Gold] {
+                assert!(!can_harvest(block, tool(ToolKind::Pickaxe, tier)));
+            }
+            assert!(!can_harvest(block, None));
+            assert!(!can_harvest(block, tool(ToolKind::Axe, Tier::Diamond)));
+            assert!(can_harvest(block, tool(ToolKind::Pickaxe, Tier::Diamond)));
+            assert_eq!(block.drop(), Some(block.into()));
+        }
+        assert_eq!(break_time(Block::ANCIENT_DEBRIS, tool(ToolKind::Pickaxe, Tier::Diamond)), 5.625);
+        assert_eq!(break_time(Block::NETHERITE_BLOCK, tool(ToolKind::Pickaxe, Tier::Diamond)), 9.375);
+        let mut rng = crate::entity::Rng::new(17);
+        assert_eq!(ore_xp(Block::ANCIENT_DEBRIS, &mut rng), 0);
+    }
+
+    #[test]
     fn better_tools_mine_faster() {
         // Minecraft's numbers: stone takes 7.5 s by hand, 1.125 s with a
         // wooden pickaxe, 0.56 stone, 0.375 iron, 0.28 diamond, 0.19 gold.

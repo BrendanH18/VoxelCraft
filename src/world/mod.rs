@@ -1226,6 +1226,22 @@ mod tests {
     }
 
     #[test]
+    fn ancient_debris_drops_one_block_with_fortune_or_silk_touch() {
+        use crate::enchant::{Enchantment, Enchants};
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let p = IVec3::new(0, 200, 0);
+        for enchantment in [None, Some((Enchantment::Fortune, 3)), Some((Enchantment::SilkTouch, 1))] {
+            let mut tool = Enchants::NONE;
+            if let Some((enchantment, level)) = enchantment {
+                tool.set(enchantment, level);
+            }
+            world.drops.clear();
+            world.spill_mined(p, Block::ANCIENT_DEBRIS, tool);
+            assert_eq!(world.drops, vec![(p, crate::inventory::Stack::new(Block::ANCIENT_DEBRIS, 1))]);
+        }
+    }
+
+    #[test]
     fn explosions_carve_a_crater_but_spare_obsidian() {
         let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
         let y = 200;
@@ -1237,6 +1253,8 @@ mod tests {
             }
         }
         world.edit(IVec3::new(1, y, 0), Block::OBSIDIAN, false);
+        world.edit(IVec3::new(-1, y, 0), Block::ANCIENT_DEBRIS, false);
+        world.edit(IVec3::new(0, y, 1), Block::NETHERITE_BLOCK, false);
         // A sand column through the blast: the bottom is blown away (well
         // inside the ragged edge), the top survives (beyond it) and falls.
         for dy in 1..=6 {
@@ -1247,6 +1265,8 @@ mod tests {
         assert!(removed > 30, "only {removed} blocks");
         assert_eq!(world.get_block(IVec3::new(0, y, 0)), Some(Block::AIR));
         assert_eq!(world.get_block(IVec3::new(1, y, 0)), Some(Block::OBSIDIAN));
+        assert_eq!(world.get_block(IVec3::new(-1, y, 0)), Some(Block::ANCIENT_DEBRIS));
+        assert_eq!(world.get_block(IVec3::new(0, y, 1)), Some(Block::NETHERITE_BLOCK));
         assert_eq!(world.get_block(IVec3::new(6, y - 4, 6)), Some(Block::STONE), "outside the blast");
         assert_eq!(world.get_block(IVec3::new(0, y + 1, 0)), Some(Block::AIR));
         let falling = world.falling_blocks().len();

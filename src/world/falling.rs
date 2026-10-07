@@ -116,8 +116,9 @@ impl World {
 
     /// Destroys the blocks in a ragged sphere around `center` (radius about
     /// `0.9 * power`, like a Minecraft blast in open stone). Bedrock,
-    /// obsidian and fluids resist. Like Minecraft, each destroyed block drops
-    /// with a chance of `1 / power`. Chunks are remeshed on the workers;
+    /// obsidian, ancient debris, Netherite blocks and fluids resist. Each
+    /// destroyed block drops with a chance of `1 / power`, like Minecraft.
+    /// Chunks are remeshed on the workers;
     /// what rested on the blasted blocks falls or pops off. Returns how many
     /// blocks were destroyed.
     pub fn explode(&mut self, center: DVec3, power: f64) -> usize {
@@ -135,7 +136,10 @@ impl World {
                         continue;
                     }
                     let Some(b) = self.get_block(p) else { continue };
-                    let resists = b == Block::AIR || b == Block::BEDROCK || b == Block::OBSIDIAN || b.is_fluid();
+                    let resists = matches!(
+                        b,
+                        Block::AIR | Block::BEDROCK | Block::OBSIDIAN | Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK
+                    ) || b.is_fluid();
                     if !resists && self.edit(p, Block::AIR, false) {
                         removed.push(p);
                         if b == Block::TNT {

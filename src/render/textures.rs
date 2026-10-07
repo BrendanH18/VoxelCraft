@@ -645,6 +645,38 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let fleck = rnd(layer, x, y, 17) > 0.86;
             shade(if fleck { [70, 110, 215] } else { [30, 64, 160] }, if rim { 0.8 } else { 0.92 + r * 0.14 })
         }
+        tex::DEBRIS_SIDE => {
+            // Pale mineral bands folded through dark brown rubble.
+            let band = (y + x / 4 + (x / 7) * 2) % 8;
+            let c = match band {
+                0 | 1 => [151, 110, 88],
+                2 => [93, 62, 50],
+                _ => [74, 52, 45],
+            };
+            shade(c, 0.86 + r * 0.28)
+        }
+        tex::DEBRIS_TOP => {
+            // A squared spiral visible on the top and bottom of the debris.
+            let edge = x.min(SIZE - 1 - x).min(y.min(SIZE - 1 - y));
+            let seam = x == 8 && y > 7;
+            let c = if edge.is_multiple_of(3) && !seam { [153, 113, 91] } else { [76, 53, 44] };
+            shade(c, 0.88 + r * 0.24)
+        }
+        tex::NETHERITE_BLOCK => {
+            // Dark metal plates with a bright bevel and offset seams.
+            let seam = y == 0 || y == 8 || (x + if y < 8 { 0 } else { 8 }).is_multiple_of(16);
+            let bevel = y == 1 || y == 9;
+            shade(
+                [67, 60, 63],
+                if seam {
+                    0.58
+                } else if bevel {
+                    1.35
+                } else {
+                    0.92 + r * 0.16
+                },
+            )
+        }
         tex::IRON_BLOCK => {
             // Pale steel plate with a bevelled rim and a rivet line.
             let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;

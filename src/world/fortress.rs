@@ -20,7 +20,7 @@ use rustc_hash::FxHashMap;
 
 use super::block::{Block, Facing};
 use super::chest::Chest;
-use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
+use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::noise::hash3;
 use super::structure::{Bounds, LootEntry, Oriented, Paint, Rng, fill_chest};
 use crate::entity::MobKind;
@@ -400,6 +400,34 @@ impl Fortresses {
         }
     }
 
+    /// Paints just one terrain column with the same clipping and pillar stops
+    /// as `paint`. Ore checks can sample neighbours without building their chunks.
+    pub fn column_at(
+        &self,
+        x: i32,
+        z: i32,
+        base_y: i32,
+        terrain: [Block; CHUNK_SIZE],
+        open: &dyn Fn(i32, i32, i32, i32) -> bool,
+    ) -> [Block; CHUNK_SIZE] {
+        let mut cells = terrain;
+        let base = IVec3::new(x, base_y, z);
+        let top = IVec3::new(x, base_y + CHUNK_SIZE_I - 1, z);
+        for fortress in self.near(IVec2::new(x, z), IVec2::new(x, z)) {
+            for piece in &fortress.pieces {
+                let b = &piece.bounds;
+                if x < b.min.x || x > b.max.x || z < b.min.z || z > b.max.z || b.max.y < base.y {
+                    continue;
+                }
+                if b.min.y > top.y && !has_pillars(piece.kind) {
+                    continue;
+                }
+                Paint { blocks: &mut cells, base, top, piece, open, pillar: BRICKS }.piece();
+            }
+        }
+        cells
+    }
+
     /// Spawners and chests the fortresses put in the chunk at `cpos`.
     pub fn features(&self, cpos: IVec3) -> Vec<(IVec3, Feature)> {
         let base = cpos * CHUNK_SIZE_I;
@@ -757,6 +785,7 @@ impl Paint<'_, Piece> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::chunk::index;
 
     fn layouts(n: i32) -> Vec<Arc<Fortress>> {
         let f = Fortresses::new(42);
@@ -784,6 +813,30 @@ mod tests {
             assert!((f.bounds.min - start).abs().max_element() <= EXTENT);
             assert!((f.bounds.max - start).abs().max_element() <= EXTENT);
         }
+    }
+
+    #[test]
+    fn sampled_columns_stop_pillars_at_glowstone_like_chunk_painting() {
+        let f = Fortresses::new(42);
+        let fortress = f.get(IVec2::ZERO).unwrap();
+        let piece = &fortress.pieces[0];
+        assert_eq!(piece.kind, Kind::BridgeCrossing);
+        let start = piece.world(8, -1, 1);
+        let stop = start - IVec3::Y * 2;
+        let base = start - IVec3::new(5, 10, 5);
+        let local = stop - base;
+        let mut blocks = Box::new([Block::AIR; CHUNK_VOLUME]);
+        blocks[index(local.x as usize, local.y as usize, local.z as usize)] = Block::GLOWSTONE;
+        f.paint(&mut blocks, base, &|_, _, _, _| true);
+        let mut terrain = [Block::AIR; CHUNK_SIZE];
+        terrain[local.y as usize] = Block::GLOWSTONE;
+        let sampled = f.column_at(stop.x, stop.z, base.y, terrain, &|_, _, _, _| true);
+        for (y, &block) in sampled.iter().enumerate() {
+            assert_eq!(block, blocks[index(local.x as usize, y, local.z as usize)], "column y={y}");
+        }
+        assert_eq!(sampled[local.y as usize], Block::GLOWSTONE);
+        assert_eq!(sampled[local.y as usize - 1], Block::AIR, "pillar stops above the glowstone");
+        assert_eq!(sampled[local.y as usize + 1], Block::NETHER_BRICKS);
     }
 
     #[test]

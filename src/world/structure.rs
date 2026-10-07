@@ -6,7 +6,6 @@ use glam::IVec3;
 
 use super::block::{Block, Facing};
 use super::chest::{Chest, SLOTS};
-use super::chunk::{CHUNK_VOLUME, index};
 use super::noise::splitmix64;
 use crate::inventory::Stack;
 use crate::item::Item;
@@ -139,9 +138,10 @@ pub trait Oriented {
     }
 }
 
-/// Writes one piece's blocks into a chunk, clipped to it.
+/// Writes one piece into the region from `base` to `top`, inclusive.
+/// The buffer uses X-fastest, then Z, then Y order (like chunk storage).
 pub struct Paint<'a, P> {
-    pub blocks: &'a mut [Block; CHUNK_VOLUME],
+    pub blocks: &'a mut [Block],
     pub base: IVec3,
     pub top: IVec3,
     pub piece: &'a P,
@@ -151,13 +151,19 @@ pub struct Paint<'a, P> {
 }
 
 impl<P: Oriented> Paint<'_, P> {
-    /// Index into the chunk of local `(x, y, z)`, if it lies in the chunk.
+    #[inline]
+    fn index(&self, local: IVec3) -> usize {
+        let size = self.top - self.base + IVec3::ONE;
+        ((local.y * size.z + local.z) * size.x + local.x) as usize
+    }
+
+    /// Index of piece-local `(x, y, z)` if it lies in this clipped region.
     pub fn cell(&self, x: i32, y: i32, z: i32) -> Option<usize> {
         let p = self.piece.world(x, y, z);
         let inside = p.cmpge(self.base).all() && p.cmple(self.top).all();
         inside.then(|| {
             let l = p - self.base;
-            index(l.x as usize, l.y as usize, l.z as usize)
+            self.index(l)
         })
     }
 
@@ -172,7 +178,7 @@ impl<P: Oriented> Paint<'_, P> {
             for z in lo.z..=hi.z {
                 for x in lo.x..=hi.x {
                     let l = IVec3::new(x, y, z) - self.base;
-                    self.blocks[index(l.x as usize, l.y as usize, l.z as usize)] = block;
+                    self.blocks[self.index(l)] = block;
                 }
             }
         }
@@ -199,7 +205,7 @@ impl<P: Oriented> Paint<'_, P> {
         }
         let l = p - self.base;
         while wy > 1 && wy >= self.base.y {
-            let i = index(l.x as usize, (wy - self.base.y) as usize, l.z as usize);
+            let i = self.index(IVec3::new(l.x, wy - self.base.y, l.z));
             let b = self.blocks[i];
             if b != Block::AIR && !b.is_fluid() {
                 return;

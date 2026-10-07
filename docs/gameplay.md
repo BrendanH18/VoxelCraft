@@ -329,6 +329,14 @@ full performance display instead of duplicating the compact counter.
   use; at 40 levels survival says "Too Expensive!". Each survival use
   has a 12% chance to chip the anvil (chipped, damaged, then it breaks).
   Controller players have an anvil tab, and agents `anvil 1..9`.
+- Ancient debris buried in the Nether, concentrated around y 16, needs a
+  diamond pickaxe and drops itself (Fortune has no effect). Smelt it for
+  Netherite scrap and 2 XP per block. Four scraps plus four gold ingots in
+  any arrangement on a crafting table make one Netherite ingot; nine
+  ingots make a block of Netherite, which crafts back into nine ingots.
+  Debris and Netherite blocks resist explosions, and their dropped items,
+  scrap and ingots survive fire and float in lava. Netherite equipment and
+  smithing upgrades are not implemented yet.
 - Lapis lazuli ore below y 32 (stone pickaxe or better) drops 4-9 lapis
   (with fortune's ore bonus) and 2-5 experience; nine make a block of
   lapis lazuli and back.

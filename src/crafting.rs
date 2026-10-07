@@ -181,6 +181,10 @@ const LAPIS_BLOCK: Ingredient = &[b(Block::LAPIS_BLOCK)];
 const OBSIDIAN: Ingredient = &[b(Block::OBSIDIAN)];
 const IRON_BLOCK: Ingredient = &[b(Block::IRON_BLOCK)];
 const IRON: Ingredient = &[Item::IRON_INGOT];
+const GOLD: Ingredient = &[Item::GOLD_INGOT];
+const NETHERITE_SCRAP: Ingredient = &[Item::NETHERITE_SCRAP];
+const NETHERITE_INGOT: Ingredient = &[Item::NETHERITE_INGOT];
+const NETHERITE_BLOCK: Ingredient = &[b(Block::NETHERITE_BLOCK)];
 const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
 
 fn shaped(rows: &'static [&'static str], key: &[(char, Ingredient)], result: Item, count: u8) -> Recipe {
@@ -209,6 +213,13 @@ pub fn recipes() -> &'static [Recipe] {
             shapeless(&[LAPIS_BLOCK], Item::LAPIS_LAZULI, 9),
             shaped(&["###", "###", "###"], &[('#', IRON)], b(Block::IRON_BLOCK), 1),
             shapeless(&[IRON_BLOCK], Item::IRON_INGOT, 9),
+            shapeless(
+                &[NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD],
+                Item::NETHERITE_INGOT,
+                1,
+            ),
+            shaped(&["###", "###", "###"], &[('#', NETHERITE_INGOT)], b(Block::NETHERITE_BLOCK), 1),
+            shapeless(&[NETHERITE_BLOCK], Item::NETHERITE_INGOT, 9),
             shaped(&["III", " i ", "iii"], &[('I', IRON_BLOCK), ('i', IRON)], b(Block::ANVIL), 1),
             shaped(
                 &[" b ", "d#d", "###"],
@@ -308,6 +319,25 @@ pub fn recipes() -> &'static [Recipe] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn netherite_requires_four_scraps_and_four_gold_and_packs_losslessly() {
+        let mut g = Grid::new(3);
+        for (i, cell) in g.cells[..8].iter_mut().enumerate() {
+            *cell = Some(Stack::new(if i % 2 == 0 { Item::GOLD_INGOT } else { Item::NETHERITE_SCRAP }, 2));
+        }
+        assert_eq!(g.result(), Some(Stack::new(Item::NETHERITE_INGOT, 1)));
+        g.consume();
+        assert!(g.cells[..8].iter().all(|c| c.is_some_and(|s| s.count == 1)));
+        g.cells[7] = Some(Stack::new(Item::GOLD_INGOT, 1));
+        assert_eq!(g.result(), None, "five gold and three scraps cannot substitute");
+        g.cells = [Some(Stack::new(Item::NETHERITE_INGOT, 1)); 9];
+        assert_eq!(g.result(), Some(Stack::new(Block::NETHERITE_BLOCK, 1)));
+        g.consume();
+        assert_eq!(g.cells, [None; 9]);
+        g.cells[4] = Some(Stack::new(Block::NETHERITE_BLOCK, 1));
+        assert_eq!(g.result(), Some(Stack::new(Item::NETHERITE_INGOT, 9)));
+    }
 
     #[test]
     fn armor_recipes() {

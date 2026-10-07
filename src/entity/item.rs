@@ -57,7 +57,10 @@ impl ItemEntity {
         let dtf = dt as f32;
         self.age += dtf;
         self.pickup_delay = (self.pickup_delay - dtf).max(0.0);
-        if self.age >= LIFETIME || physics::touches_block(world, self.pos, SHAPE, |b| b.is_lava() || b.is_fire()) {
+        if self.age >= LIFETIME
+            || (!self.stack.item.fire_resistant()
+                && physics::touches_block(world, self.pos, SHAPE, |b| b.is_lava() || b.is_fire()))
+        {
             return false;
         }
         if physics::is_fluid_at(world, self.pos + DVec3::Y * 0.1) {
@@ -170,6 +173,50 @@ mod tests {
         assert_eq!(item.pickup_delay, 0.0);
         item.age = LIFETIME - 0.5;
         assert!(!settle(&mut item, &world, 1.0), "despawns after five minutes");
+    }
+
+    #[test]
+    fn netherite_materials_survive_fire_and_lava_but_still_expire() {
+        let mut world = Grid::flat(0);
+        let mut rng = Rng::new(31);
+        for hazard in [Block::LAVA, Block::FIRE] {
+            world.set(IVec3::ZERO, hazard);
+            for material in [
+                Block::ANCIENT_DEBRIS.into(),
+                Item::NETHERITE_SCRAP,
+                Item::NETHERITE_INGOT,
+                Block::NETHERITE_BLOCK.into(),
+                Item::GOLD_INGOT,
+            ] {
+                let mut item = ItemEntity::new(Stack::new(material, 1), DVec3::splat(0.5), DVec3::ZERO, 0.0, &mut rng);
+                assert_eq!(item.update(0.05, &world), material != Item::GOLD_INGOT);
+                if material != Item::GOLD_INGOT {
+                    item.age = LIFETIME;
+                    assert!(!item.update(0.05, &world), "fire resistance does not prevent despawning");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn netherite_materials_float_to_the_lava_surface() {
+        let mut world = Grid::flat(0);
+        for x in -2..=2 {
+            for z in -2..=2 {
+                for y in 0..5 {
+                    world.set(IVec3::new(x, y, z), Block::LAVA);
+                }
+            }
+        }
+        let mut rng = Rng::new(4);
+        for material in
+            [Block::ANCIENT_DEBRIS.into(), Item::NETHERITE_SCRAP, Item::NETHERITE_INGOT, Block::NETHERITE_BLOCK.into()]
+        {
+            let mut item =
+                ItemEntity::new(Stack::new(material, 1), DVec3::new(0.5, 1.0, 0.5), DVec3::ZERO, 0.0, &mut rng);
+            assert!(settle(&mut item, &world, 5.0));
+            assert!(item.pos.y > 4.0 && item.pos.y < 5.5, "floats near the lava surface: {:?}", item.pos);
+        }
     }
 
     #[test]

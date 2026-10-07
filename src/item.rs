@@ -211,7 +211,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 52] = [
+static ITEMS: [ItemInfo; 54] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -279,6 +279,8 @@ static ITEMS: [ItemInfo; 52] = [
     ItemInfo { name: "eye of ender", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::EnderEye },
     ItemInfo { name: "enchanted book", kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Book([112, 44, 110]) },
     item("lapis lazuli", Sprite::Gem([38, 76, 190])),
+    item("netherite scrap", Sprite::Lump([112, 78, 63])),
+    item("netherite ingot", Sprite::Ingot([76, 67, 70])),
 ];
 
 /// Uses before a bow breaks.
@@ -359,6 +361,8 @@ impl Item {
     pub const ENCHANTED_BOOK: Item = Item(306);
     /// Pays for enchanting (one to three per enchantment).
     pub const LAPIS_LAZULI: Item = Item(307);
+    pub const NETHERITE_SCRAP: Item = Item(308);
+    pub const NETHERITE_INGOT: Item = Item(309);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
@@ -446,6 +450,12 @@ impl Item {
 
     pub fn name(self) -> &'static str {
         self.info().name
+    }
+
+    /// Dropped Netherite materials survive fire and lava (but still despawn).
+    pub fn fire_resistant(self) -> bool {
+        matches!(self, Self::NETHERITE_SCRAP | Self::NETHERITE_INGOT)
+            || matches!(self.block(), Some(Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK))
     }
 
     pub fn max_stack(self) -> u8 {
@@ -600,6 +610,22 @@ mod tests {
         assert_eq!(Item::tool(ToolKind::Sword, Tier::Diamond).as_armor(), None);
         let full: u8 = ArmorPiece::ALL.iter().map(|&p| ArmorMaterial::Diamond.defense(p)).sum();
         assert_eq!(full, 20);
+    }
+
+    #[test]
+    fn netherite_resources_have_icons_names_and_survive_stack_saves() {
+        for item in
+            [Block::ANCIENT_DEBRIS.into(), Block::NETHERITE_BLOCK.into(), Item::NETHERITE_SCRAP, Item::NETHERITE_INGOT]
+        {
+            assert_eq!(Item::from_name(&item.name().replace(' ', "_")), Some(item));
+            assert!(Item::creative_palette().any(|i| i == item));
+            let stack = Some(crate::inventory::Stack::new(item, 64));
+            let saved = crate::inventory::stack_to_string(stack);
+            assert_eq!(crate::inventory::stack_from_str(&saved), Some(stack));
+            if item.block().is_none() {
+                assert!(item.icon_layer().is_some());
+            }
+        }
     }
 
     #[test]

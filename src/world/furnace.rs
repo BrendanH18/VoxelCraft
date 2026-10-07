@@ -42,6 +42,7 @@ pub fn smelt(item: Item) -> Option<Item> {
         i if i == b(Block::COAL_ORE) => Item::COAL,
         i if i == b(Block::DIAMOND_ORE) => Item::DIAMOND,
         i if i == b(Block::LAPIS_ORE) => Item::LAPIS_LAZULI,
+        i if i == b(Block::ANCIENT_DEBRIS) => Item::NETHERITE_SCRAP,
         i if i == b(Block::SAND) => b(Block::GLASS),
         i if i == b(Block::COBBLESTONE) => b(Block::STONE),
         i if i.block().is_some_and(Block::is_log) => Item::CHARCOAL,
@@ -62,6 +63,7 @@ pub fn smelt_xp(out: Item) -> f32 {
     match out {
         Item::GOLD_INGOT | Item::DIAMOND => 1.0,
         Item::IRON_INGOT => 0.7,
+        Item::NETHERITE_SCRAP => 2.0,
         Item::COOKED_PORKCHOP | Item::STEAK | Item::COOKED_CHICKEN => 0.35,
         i if i == b(Block::TERRACOTTA) => 0.35,
         Item::BRICK => 0.3,
@@ -299,6 +301,19 @@ mod tests {
         for _ in 0..(secs * 20.0) as usize {
             f.tick(0.05);
         }
+    }
+
+    #[test]
+    fn ancient_debris_smelts_into_scrap_and_awards_two_xp_per_item() {
+        let mut f = furnace(Block::ANCIENT_DEBRIS.into(), 2, Item::COAL, 1);
+        run(&mut f, 20.1);
+        assert_eq!(f.input, None);
+        assert_eq!(f.output, Some(Stack::new(Item::NETHERITE_SCRAP, 2)));
+        assert_eq!(f.xp, 4.0);
+        assert_eq!(f.take_output_xp(2, 0.5), None, "no XP before taking the output");
+        f.output = None;
+        assert_eq!(f.take_output_xp(2, 0.5), Some(4));
+        assert_eq!(f.xp, 0.0);
     }
 
     #[test]
