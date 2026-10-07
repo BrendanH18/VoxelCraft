@@ -32,6 +32,7 @@ pub(crate) mod lighting;
 pub mod mineshaft;
 pub mod nether;
 pub mod nether_blocks;
+pub mod nether_complexes;
 pub mod noise;
 pub mod ore;
 mod portal;
@@ -907,7 +908,8 @@ mod tests {
     #[test]
     fn fortress_chunks_register_loot_chests_and_blaze_spawners() {
         use super::fortress::{Fortresses, Kind};
-        let fortress = Fortresses::new(1).get(IVec2::ZERO).unwrap();
+        let layouts = Fortresses::new(1);
+        let fortress = (-2..=2).find_map(|x| layouts.get(IVec2::new(x, 0))).unwrap();
         let generator = Arc::new(Generator::for_dimension(1, super::terrain::Dimension::Nether));
         let mut found = (None, None);
         for piece in &fortress.pieces {

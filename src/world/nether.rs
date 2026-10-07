@@ -206,7 +206,8 @@ impl NetherGen {
                 std::array::from_fn(|y| self.exposure_terrain(key + IVec3::Y * y as i32, &mut cache.densities));
             let densities = RefCell::new(&mut cache.densities);
             let open = |x, z, top, bottom| self.column_open(x, z, top, bottom, &mut densities.borrow_mut());
-            self.fortresses.column_at(key.x, key.z, key.y, terrain, &open)
+            let terrain = self.fortresses.column_at(key.x, key.z, key.y, terrain, &open);
+            self.fortresses.bastions.column_at(key, terrain)
         });
         column[(p.y - key.y) as usize] == Block::AIR
     }
@@ -347,6 +348,7 @@ impl NetherGen {
         let cache = RefCell::new(FxHashMap::default());
         let open = |x, z, top, bottom| self.column_open(x, z, top, bottom, &mut cache.borrow_mut());
         self.fortresses.paint(&mut blocks, base, &open);
+        self.fortresses.bastions.paint(&mut blocks, base);
         self.paint_ancient_debris(&mut blocks, base);
         ChunkData::from_dense(blocks)
     }

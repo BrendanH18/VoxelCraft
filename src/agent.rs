@@ -335,7 +335,7 @@ pub fn tab_complete(input: &str) -> Option<String> {
         "time" if stem.len() == 2 && stem[1] == "query" => complete_options(&["daytime", "day", "gametime"], partial)?,
         "locate" if stem.len() <= 1 => complete_options(&["structure", "biome"], partial)?,
         "locate" if stem.len() == 2 && stem[1] == "structure" => complete_options(
-            &["stronghold", "fortress", "nether_fortress", "mineshaft", "abandoned_mineshaft"],
+            &["stronghold", "fortress", "nether_fortress", "bastion_remnant", "mineshaft", "abandoned_mineshaft"],
             partial,
         )?,
         "locate" if stem.len() == 2 && stem[1] == "biome" => {
