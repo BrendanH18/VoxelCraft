@@ -277,6 +277,11 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let (d1, d2, i) = voronoi(x, y, &pts);
             if d2 - d1 < 1.1 { shade(STONE, 0.55) } else { shade(STONE, 0.8 + rnd(layer, i, 0, 4) * 0.35 - d1 * 0.03) }
         }
+        tex::MOSSY_COBBLESTONE => {
+            let stone = pixel(tex::COBBLESTONE, x, y);
+            let moss = rnd(layer, x / 2, y / 2, 1) * 0.7 + rnd(layer, x, y, 2) * 0.3;
+            if moss > 0.47 && y > 2 { shade([65, 105, 45], 0.75 + r * 0.35) } else { stone }
+        }
         tex::GLASS => {
             let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
             let streak = (x + y == 9 || x + y == 10) && (3..8).contains(&x);

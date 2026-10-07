@@ -195,7 +195,8 @@ pub mod tex {
     pub const DEBRIS_SIDE: u8 = ANVIL_TOP + 3;
     pub const DEBRIS_TOP: u8 = DEBRIS_SIDE + 1;
     pub const NETHERITE_BLOCK: u8 = DEBRIS_TOP + 1;
-    pub const COUNT: u32 = NETHERITE_BLOCK as u32 + 1;
+    pub const MOSSY_COBBLESTONE: u8 = NETHERITE_BLOCK + 1;
+    pub const COUNT: u32 = MOSSY_COBBLESTONE as u32 + 1;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
@@ -392,6 +393,7 @@ impl Block {
     pub const DAMAGED_ANVIL: Block = Block(219);
     pub const ANCIENT_DEBRIS: Block = Block(221);
     pub const NETHERITE_BLOCK: Block = Block(222);
+    pub const MOSSY_COBBLESTONE: Block = Block(224);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -837,7 +839,7 @@ impl Block {
             b if b.terracotta_colour().is_some() => 1.25,
             Block::STONE => 1.5,
             b if b.is_log() || b.is_planks() => 2.0,
-            Block::COBBLESTONE | Block::BRICKS => 2.0,
+            Block::COBBLESTONE | Block::MOSSY_COBBLESTONE | Block::BRICKS => 2.0,
             Block::CRAFTING_TABLE | Block::CHEST => 2.5,
             Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
             Block::FURNACE | Block::LIT_FURNACE => 3.5,
@@ -854,6 +856,7 @@ impl Block {
         match self.material() {
             Block::STONE
             | Block::COBBLESTONE
+            | Block::MOSSY_COBBLESTONE
             | Block::BRICKS
             | Block::SANDSTONE
             | Block::COAL_ORE
@@ -911,6 +914,7 @@ impl Block {
         match self.material() {
             Block::STONE
             | Block::COBBLESTONE
+            | Block::MOSSY_COBBLESTONE
             | Block::BRICKS
             | Block::SANDSTONE
             | Block::COAL_ORE
@@ -951,7 +955,7 @@ impl Block {
             .chain((112..=132).step_by(4))
             .chain([
                 136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213, 214, 215,
-                217, 219, 221, 222,
+                217, 219, 221, 222, 224,
             ])
             .map(Block)
     }
@@ -1476,6 +1480,7 @@ const fn make(id: u8) -> BlockInfo {
         219 | 220 => ("damaged anvil", Shaped, column(tex::ANVIL, tex::ANVIL_TOP + 2, tex::ANVIL)),
         221 => ("ancient debris", Opaque, column(tex::DEBRIS_SIDE, tex::DEBRIS_TOP, tex::DEBRIS_TOP)),
         222 => ("block of netherite", Opaque, all(tex::NETHERITE_BLOCK)),
+        224 => ("mossy cobblestone", Opaque, all(tex::MOSSY_COBBLESTONE)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are
