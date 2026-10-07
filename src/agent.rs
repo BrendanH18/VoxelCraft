@@ -22,7 +22,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -790,6 +790,21 @@ impl Agent {
                 let p = &self.player;
                 let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
                 entities.throw_pearl(self.id, p.eye(), p.forward().as_dvec3(), carry);
+                self.swings += 1;
+                if !self.creative {
+                    self.inventory.take_one(self.selected);
+                }
+            }
+            Command::Place
+                if self.inventory.get(self.selected).is_some_and(|s| s.item.as_splash_potion().is_some()) =>
+            {
+                if !self.mode.can_interact() {
+                    return Err("spectators cannot use items".into());
+                }
+                let potion = self.inventory.get(self.selected).and_then(|s| s.item.as_splash_potion()).unwrap();
+                let p = &self.player;
+                let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
+                entities.throw_potion(self.id, potion, p.eye(), p.forward().as_dvec3(), carry);
                 self.swings += 1;
                 if !self.creative {
                     self.inventory.take_one(self.selected);

@@ -520,6 +520,30 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 None
             }
         }
+        Sprite::SplashBottle(liquid) => {
+            // A wider flask than the drinkable bottle, with a short neck and
+            // a grey rim for the gunpowder.
+            let (px, py) = centre(x, y);
+            let d = (px - 8.0).powi(2) + (py - 10.0).powi(2);
+            let body = d <= 38.0;
+            let neck = (6..=9).contains(&x) && (3..=4).contains(&y);
+            let cork = (6..=9).contains(&x) && (1..=2).contains(&y);
+            let rim = body && d > 28.0;
+            let glint = (4..=5).contains(&x) && (8..=10).contains(&y);
+            if cork {
+                Some(tint([150, 104, 60], if x == 6 { 1.15 } else { 0.95 }))
+            } else if neck {
+                Some(tint([150, 150, 156], 1.0))
+            } else if rim {
+                Some(tint([142, 142, 150], if x + y < 14 { 1.2 } else { 0.8 }))
+            } else if body && glint {
+                Some([245, 250, 255, 255])
+            } else if body {
+                Some(tint(liquid, 1.15 - (py - 7.0) / 14.0))
+            } else {
+                None
+            }
+        }
         Sprite::Door => {
             // The door's own two textures, squeezed to half width.
             let (layer, ty) = if y < 8 { (tex::DOOR_TOP, y * 2) } else { (tex::DOOR_BOTTOM, (y - 8) * 2) };

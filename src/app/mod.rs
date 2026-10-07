@@ -1498,7 +1498,9 @@ impl Game {
         if self.use_sheep() {
             return;
         }
-        if !self.aiming_at_usable() && (self.use_bucket() || self.throw_pearl() || self.throw_eye()) {
+        if !self.aiming_at_usable()
+            && (self.use_bucket() || self.throw_pearl() || self.throw_splash_potion() || self.throw_eye())
+        {
             return;
         }
         let Some((pos, normal)) = self.target() else { return };

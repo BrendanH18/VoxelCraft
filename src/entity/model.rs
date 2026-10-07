@@ -134,6 +134,34 @@ macro_rules! zombie_boxes {
 zombie_boxes!(HUSK_BODY, HUSK_LEG, HUSK_ARM, HUSK_HEAD, [150, 128, 92], [118, 100, 70], [86, 72, 50]);
 zombie_boxes!(DROWNED_BODY, DROWNED_LEG, DROWNED_ARM, DROWNED_HEAD, [104, 164, 152], [62, 118, 124], [48, 82, 120]);
 
+// ---------------------------------------------------------------- witch
+
+const WITCH_SKIN: Rgb = [142, 168, 118];
+const WITCH_ROBE: Rgb = [84, 44, 118];
+const WITCH_HAT: Rgb = [38, 28, 52];
+const WITCH_NOSE: Rgb = [118, 96, 78];
+
+const WITCH_BODY: &[Cuboid] = &[
+    cube([-4.0, 8.0, -3.0], [4.0, 19.0, 3.0], WITCH_ROBE, 36),
+    cube([-4.5, 5.0, -3.5], [4.5, 10.0, 3.5], WITCH_ROBE, 36),
+    // Crossed arms.
+    cube([-7.0, 11.0, 3.0], [7.0, 15.0, 6.0], WITCH_ROBE, 30),
+    cube([-1.5, 11.0, 5.5], [1.5, 14.0, 6.5], WITCH_SKIN, 30),
+];
+const WITCH_LEG: &[Cuboid] = &[cube([-2.0, -8.0, -2.0], [2.0, 0.0, 2.0], WITCH_ROBE, 36)];
+const WITCH_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], WITCH_SKIN, 36),
+    cube([-1.0, 1.5, 4.0], [1.0, 4.5, 6.0], WITCH_NOSE, 30),
+    cube([0.2, 2.0, 5.5], [1.2, 3.0, 6.4], [90, 130, 80], 0),
+    cube([-3.0, 4.5, 4.0], [-1.0, 6.0, 4.1], [30, 40, 24], 0),
+    cube([1.0, 4.5, 4.0], [3.0, 6.0, 4.1], [30, 40, 24], 0),
+    // The pointed hat.
+    cube([-5.0, 8.0, -5.0], [5.0, 9.0, 5.0], WITCH_HAT, 24),
+    cube([-3.5, 9.0, -3.5], [3.5, 10.5, 3.5], WITCH_HAT, 24),
+    cube([-2.5, 10.5, -2.5], [2.5, 11.5, 2.5], WITCH_HAT, 24),
+    cube([-1.5, 11.5, -1.5], [1.5, 12.0, 1.5], WITCH_HAT, 24),
+];
+
 // ---------------------------------------------------------------- zombified piglin
 
 const PIGLIN_SKIN: Rgb = [226, 150, 140];
@@ -460,6 +488,12 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
                 part(WITHER_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
+        MobKind::Witch => vec![
+            part(WITCH_BODY, [0.0; 3], Quat::IDENTITY),
+            part(WITCH_LEG, [-2.0, 8.0, 0.0], rx(swing)),
+            part(WITCH_LEG, [2.0, 8.0, 0.0], rx(-swing)),
+            part(WITCH_HEAD, [0.0, 19.0, 0.0], head),
+        ],
         MobKind::Creeper => vec![
             part(CREEPER_BODY, [0.0; 3], Quat::IDENTITY),
             part(CREEPER_LEG, [-2.0, 6.0, 4.0], rx(swing)),
@@ -729,6 +763,23 @@ pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, o
         let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
         for (i, c) in PEARL.iter().enumerate() {
             push_cuboid(out, c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
+/// Thrown splash potions: a small tumbling flask tinted like its liquid.
+pub fn build_potions(potions: &[super::potion::ThrownPotion], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for p in potions {
+        let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
+        let colour = p.potion.colour();
+        let flask = [
+            cube([-2.0, -2.0, -2.0], [2.0, 2.0, 2.0], colour, 16),
+            cube([-1.0, 2.0, -1.0], [1.0, 3.5, 1.0], [150, 150, 158], 8),
+            cube([-0.8, 3.5, -0.8], [0.8, 4.3, 0.8], [140, 98, 58], 8),
+        ];
+        let spin = Quat::from_rotation_z(p.pos.x as f32 * 2.0) * Quat::from_rotation_x(p.pos.z as f32 * 2.0);
+        for (i, c) in flask.iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + spin * v / 16.0, spin, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
         }
     }
 }

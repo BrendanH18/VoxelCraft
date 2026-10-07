@@ -108,6 +108,20 @@ impl Game {
         true
     }
 
+    /// Right-click with a splash potion throws it (Java has no cooldown).
+    /// Returns whether one was thrown.
+    pub(super) fn throw_splash_potion(&mut self) -> bool {
+        let Some(potion) = self.held_item().and_then(crate::item::Item::as_splash_potion) else { return false };
+        let p = &self.player;
+        let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
+        self.mobs.entities.throw_potion(self.actor, potion, p.eye(), p.forward().as_dvec3(), carry);
+        self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
+        if self.mode.is_survival() {
+            self.inventory.take_one(self.actions.selected);
+        }
+        true
+    }
+
     /// Right-click with an eye of ender in the overworld releases it toward
     /// the nearest stronghold (not while aiming at a portal frame).
     pub(super) fn throw_eye(&mut self) -> bool {

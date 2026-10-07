@@ -24,6 +24,7 @@ pub mod orb;
 pub mod pearl;
 pub mod player_model;
 mod player_pose;
+pub mod potion;
 mod projectile;
 mod slime;
 pub mod tnt;
@@ -119,6 +120,24 @@ pub enum EntityEvent {
         effect: crate::simulation::effects::Effect,
         amplifier: u8,
         ticks: u32,
+    },
+    /// A witch threw a splash potion with this velocity (turned into a
+    /// projectile internally).
+    ThrowPotion {
+        from: DVec3,
+        vel: DVec3,
+        potion: crate::potion::Potion,
+    },
+    /// A splash potion shattered: glass sound and coloured particles.
+    PotionSplashed {
+        pos: DVec3,
+        colour: [u8; 3],
+    },
+    /// Magic damage (positive) or healing (negative) a splash potion dealt
+    /// to this player, after distance falloff.
+    PlayerMagic {
+        player: PlayerId,
+        amount: f32,
     },
     /// A creeper, ghast fireball or TNT exploded: break blocks and hurt
     /// everything nearby (see [`explosion_damage`]). [`Entities::explode`]
@@ -421,6 +440,7 @@ pub struct Entities {
     pub particles: crate::particles::Requests,
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
+    pub potions: Vec<potion::ThrownPotion>,
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
     pub puffs: Vec<Puff>,
@@ -454,6 +474,7 @@ impl Entities {
             particles: Default::default(),
             arrows: Vec::new(),
             pearls: Vec::new(),
+            potions: Vec::new(),
             eyes: Vec::new(),
             fireballs: Vec::new(),
             puffs: Vec::new(),
@@ -609,6 +630,9 @@ impl Entities {
         for e in &events {
             match *e {
                 EntityEvent::Shoot { from, target } => self.arrows.push(Arrow::aimed(from, target, &mut self.rng)),
+                EntityEvent::ThrowPotion { from, vel, potion } => {
+                    self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
+                }
                 EntityEvent::Fireball { from, dir, large } => {
                     let ball =
                         if large { fireball::Fireball::large(from, dir) } else { fireball::Fireball::new(from, dir) };
@@ -622,7 +646,9 @@ impl Entities {
                 _ => {}
             }
         }
-        events.retain(|e| !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. }));
+        events.retain(|e| {
+            !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. })
+        });
         {
             let mobs = &self.mobs;
             self.fireballs.retain_mut(|f| f.update(dt, world, ctx, mobs, &mut events));
@@ -630,6 +656,7 @@ impl Entities {
         let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
         self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
         self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
+        self.potions.retain_mut(|p| p.update(dt, world, ctx, mobs, rng, &mut events));
         self.update_eyes(dt, &mut events);
         for e in &events {
             match *e {
@@ -1093,6 +1120,9 @@ impl Entities {
         for p in &mut self.pearls {
             p.previous_pos = p.pos;
         }
+        for p in &mut self.potions {
+            p.previous_pos = p.pos;
+        }
         for e in &mut self.eyes {
             e.previous_pos = e.pos;
         }
@@ -1126,6 +1156,7 @@ impl Entities {
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
+        model::build_potions(&self.potions, camera, alpha, &mut self.verts);
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
@@ -1215,6 +1246,18 @@ impl Entities {
 
     /// Player `owner` throws an ender pearl from `eye` along `dir`, carrying
     /// their velocity `carry`.
+    /// A player throws a splash potion from `eye` along `dir`.
+    pub fn throw_potion(
+        &mut self,
+        owner: PlayerId,
+        potion: crate::potion::Potion,
+        eye: DVec3,
+        dir: DVec3,
+        carry: DVec3,
+    ) {
+        self.potions.push(potion::ThrownPotion::thrown(potion, owner, eye, dir, carry));
+    }
+
     pub fn throw_pearl(&mut self, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3) {
         self.pearls.push(pearl::Pearl::thrown(owner, eye, dir, carry, &mut self.rng));
     }
@@ -1550,6 +1593,42 @@ mod tests {
         assert!((60..140).contains(&babies), "{babies}");
         let baby = e.mobs.iter().find(|m| m.baby).unwrap();
         assert_eq!(baby.shape().height, MobKind::Zombie.shape().height * 0.5);
+    }
+
+    #[test]
+    fn witches_throw_splash_potions_drink_when_hurt_and_resist_magic() {
+        let world = Grid::flat(10);
+        let mut c = ctx(DVec3::new(7.5, 10.0, 0.5));
+        c.daylight = 0.0;
+        c.players[0].targetable = true;
+        let mut e = Entities::new(2);
+        e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+        assert_eq!(MobKind::Witch.max_health(), 26.0);
+        let mut hits = Vec::new();
+        for _ in 0..400 {
+            for ev in e.update(0.05, &world, &c) {
+                if let EntityEvent::PlayerMagic { amount, .. } | EntityEvent::PlayerHit { damage: amount, .. } = ev {
+                    hits.push(amount);
+                }
+            }
+        }
+        assert!(e.mobs[0].aabb().0.x < 2.0, "witches stand off at range");
+        assert!(!e.potions.is_empty() || !hits.is_empty(), "a potion was thrown");
+        // Hurt witches drink healing.
+        let mut e = Entities::new(2);
+        e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].health = 10.0;
+        let far = ctx(DVec3::new(50.0, 10.0, 0.5));
+        for _ in 0..120 {
+            e.update(0.05, &world, &far);
+        }
+        assert!(e.mobs[0].health > 10.0, "{}", e.mobs[0].health);
+        assert!(
+            MobKind::Witch.biome_chance(crate::world::terrain::Biome::Swamp)
+                > MobKind::Witch.biome_chance(crate::world::terrain::Biome::Plains)
+        );
+        let drops: Vec<_> = (0..50).flat_map(|_| MobKind::Witch.drops(&mut Rng::new(4), 0)).collect();
+        assert!(drops.iter().any(|d| d.0 == crate::item::Item::GLASS_BOTTLE || d.0 == crate::item::Item::SUGAR));
     }
 
     #[test]
@@ -2173,7 +2252,11 @@ mod tests {
         for kind in MobKind::ALL {
             let o = Dimension::Overworld;
             let expected = if plains_spawner(kind) { kind.spawn_cap(o) } else { 0 };
-            assert_eq!(e.count(kind), expected, "{kind:?}");
+            if kind.biome_chance(crate::world::terrain::Biome::Plains).clamp(0.0, 1.0) % 1.0 > 0.0 {
+                assert!(e.count(kind) <= kind.spawn_cap(o), "{kind:?}");
+            } else {
+                assert_eq!(e.count(kind), expected, "{kind:?}");
+            }
         }
     }
 

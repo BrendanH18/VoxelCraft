@@ -58,19 +58,31 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
 /// Whether `item` is used by any brewing mix (the ingredient slot takes
 /// only these).
 pub fn is_ingredient(item: Item) -> bool {
-    Potion::all().any(|p| brew(p, item).is_some())
+    item == Item::GUNPOWDER || Potion::all().any(|p| brew(p, item).is_some())
+}
+
+/// What `ingredient` turns the bottle `item` into: gunpowder makes a potion
+/// splash, and the other mixes keep a splash potion splash.
+pub fn brew_item(item: Item, ingredient: Item) -> Option<Item> {
+    if ingredient == Item::GUNPOWDER {
+        return item.as_potion().map(Item::splash_potion);
+    }
+    if let Some(p) = item.as_splash_potion() {
+        return brew(p, ingredient).map(Item::splash_potion);
+    }
+    item.as_potion().and_then(|p| brew(p, ingredient)).map(Item::potion)
 }
 
 /// The bottle slots hold potions (and water bottles) and glass bottles.
 pub fn fits_bottle_slot(item: Item) -> bool {
-    item.as_potion().is_some() || item == Item::GLASS_BOTTLE
+    item.as_potion().is_some() || item.as_splash_potion().is_some() || item == Item::GLASS_BOTTLE
 }
 
 impl BrewingStand {
     /// Whether the ingredient would change at least one bottle.
     fn can_brew(&self) -> bool {
         let Some(ingredient) = self.ingredient else { return false };
-        self.bottles.iter().flatten().any(|b| b.item.as_potion().is_some_and(|p| brew(p, ingredient.item).is_some()))
+        self.bottles.iter().flatten().any(|b| brew_item(b.item, ingredient.item).is_some())
     }
 
     pub fn is_brewing(&self) -> bool {
@@ -109,8 +121,8 @@ impl BrewingStand {
     fn finish(&mut self) {
         let Some(ingredient) = self.ingredient else { return };
         for bottle in self.bottles.iter_mut().flatten() {
-            if let Some(out) = bottle.item.as_potion().and_then(|p| brew(p, ingredient.item)) {
-                *bottle = Stack::new(Item::potion(out), 1);
+            if let Some(out) = brew_item(bottle.item, ingredient.item) {
+                *bottle = Stack::new(out, 1);
             }
         }
         self.ingredient = take_one(self.ingredient);
@@ -213,6 +225,22 @@ impl World {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn gunpowder_makes_splash_potions_that_keep_brewing() {
+        use super::*;
+        let poison = Potion::from_id("poison").unwrap();
+        let splash = brew_item(Item::potion(poison), Item::GUNPOWDER).unwrap();
+        assert_eq!(splash.as_splash_potion(), Some(poison));
+        assert_eq!(splash.name(), "splash potion of poison");
+        assert_eq!(
+            brew_item(splash, Item::REDSTONE),
+            Some(Item::splash_potion(Potion::from_id("long_poison").unwrap()))
+        );
+        assert_eq!(brew_item(splash, Item::GUNPOWDER), None, "already splash");
+        assert_eq!(brew_item(Item::potion(Potion::WATER), Item::GUNPOWDER), Some(Item::splash_potion(Potion::WATER)));
+        assert!(is_ingredient(Item::GUNPOWDER) && fits_bottle_slot(splash));
+    }
+
     use super::*;
 
     fn potion(id: &str) -> Option<Stack> {

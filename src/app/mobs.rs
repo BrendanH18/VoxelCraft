@@ -290,6 +290,37 @@ impl Game {
                         }
                     }
                 }
+                EntityEvent::PotionSplashed { pos, colour } => {
+                    let mut burst = crate::particles::Burst::new(crate::particles::Kind::Effect, pos, 40);
+                    burst.spread = DVec3::splat(0.4);
+                    burst.velocity_spread = DVec3::splat(0.12);
+                    burst.color =
+                        Some([colour[0] as f32 / 255.0, colour[1] as f32 / 255.0, colour[2] as f32 / 255.0, 1.0]);
+                    self.world.particles.push(crate::particles::Request::Burst(burst));
+                    self.audio.play(Sound::Break(crate::audio::sounds::Material::Glass), Some(pos), 1.0, (0.9, 1.1));
+                }
+                EntityEvent::PlayerMagic { player: PlayerId::HOST, amount } => {
+                    if self.mode.is_survival() {
+                        if amount > 0.0 {
+                            self.damage_player(amount, "was killed by magic");
+                        } else {
+                            self.vitals.health =
+                                (self.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
+                        }
+                    }
+                }
+                EntityEvent::PlayerMagic { player, amount } => {
+                    if let Some(bot) = self.agents.by_id_mut(player)
+                        && !bot.agent.creative
+                    {
+                        if amount > 0.0 {
+                            bot.agent.hurt(amount, "was killed by magic", DVec3::ZERO, &mut self.mobs.entities);
+                        } else {
+                            bot.agent.vitals.health =
+                                (bot.agent.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
+                        }
+                    }
+                }
                 EntityEvent::Explosion { center, power, cause, credit_player } => {
                     self.explode(center, power, cause, credit_player)
                 }
@@ -317,7 +348,7 @@ impl Game {
                         self.world.ignite(cell);
                     }
                 }
-                EntityEvent::Fireball { .. } => {}
+                EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. } => {}
                 EntityEvent::Sound { sound, pos } => {
                     let (sound, gain) = match sound {
                         MobSound::Fuse => (Sound::Fuse, 1.0),
@@ -425,6 +456,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Silverfish => Voice::Spider,
         MobKind::Slime | MobKind::MagmaCube => Voice::Slime,
         MobKind::Ghast => Voice::Ghast,
+        MobKind::Witch => Voice::Witch,
     }
 }
 

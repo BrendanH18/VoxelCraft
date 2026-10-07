@@ -220,6 +220,8 @@ pub enum Sprite {
     Template,
     /// A glass bottle, empty or holding liquid of this colour.
     Bottle(Option<[u8; 3]>),
+    /// A wide flask for a splash potion, with a gunpowder-grey rim.
+    SplashBottle([u8; 3]),
     Tool(ToolKind, Tier),
     Armor(ArmorPiece, ArmorMaterial),
 }
@@ -361,6 +363,8 @@ static MOB_ITEMS: [ItemInfo; 2] = [
     item("wither skeleton skull", Sprite::Pearl([34, 34, 38], [118, 118, 124])),
 ];
 const MOB_ITEM: u16 = 640;
+/// Splash potions: `SPLASH_POTION + potion index`.
+const SPLASH_POTION: u16 = 436;
 
 /// Uses before a bow breaks.
 pub const BOW_DURABILITY: u16 = 384;
@@ -484,6 +488,16 @@ impl Item {
         Item(FIRST_POTION + potion.0 as u16)
     }
 
+    pub const fn splash_potion(potion: crate::potion::Potion) -> Item {
+        Item(SPLASH_POTION + potion.0 as u16)
+    }
+
+    /// The potion of a throwable splash potion item.
+    pub fn as_splash_potion(self) -> Option<crate::potion::Potion> {
+        let i = self.0.checked_sub(SPLASH_POTION).filter(|&i| i < POTION_COUNT)?;
+        Some(crate::potion::Potion(i as u8))
+    }
+
     /// The potion this item is (a water bottle is one too).
     pub fn as_potion(self) -> Option<crate::potion::Potion> {
         let i = self.0.checked_sub(FIRST_POTION).filter(|&i| i < POTION_COUNT)?;
@@ -569,6 +583,14 @@ impl Item {
                 kind: ItemKind::Potion(potion),
                 max_stack: 1,
                 sprite: Sprite::Bottle(Some(potion.colour())),
+            };
+        }
+        if let Some(potion) = self.as_splash_potion() {
+            return ItemInfo {
+                name: splash_names()[potion.0 as usize],
+                kind: ItemKind::Material,
+                max_stack: 1,
+                sprite: Sprite::SplashBottle(potion.colour()),
             };
         }
         if let Some(i) = self.0.checked_sub(FIRST_TOOL).filter(|&i| i < TOOL_COUNT) {
@@ -705,6 +727,7 @@ impl Item {
             .chain(extra)
             .chain((576..611).map(Item))
             .chain((0..MOB_ITEMS.len() as u16).map(|i| Item(MOB_ITEM + i)))
+            .chain((0..POTION_COUNT).map(|i| Item(SPLASH_POTION + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -717,6 +740,21 @@ impl From<Block> for Item {
     fn from(b: Block) -> Self {
         Item::from_block(b)
     }
+}
+
+/// "splash potion of x" for each potion, built once.
+fn splash_names() -> &'static [&'static str] {
+    static NAMES: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    NAMES.get_or_init(|| {
+        crate::potion::Potion::all()
+            .map(|p| {
+                let name = p.info().name;
+                let name =
+                    if name == "water bottle" { "splash water bottle".to_string() } else { format!("splash {name}") };
+                &*Box::leak(name.into_boxed_str())
+            })
+            .collect()
+    })
 }
 
 /// Index of an item's icon among the item texture layers.
@@ -736,6 +774,18 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if (MOB_ITEM..MOB_ITEM + MOB_ITEMS.len() as u16).contains(&i) => {
             Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + EXTRA_ITEMS.len() as u16 + 35 + i - MOB_ITEM)
         }
+        // Splash potions come last, after every mob item.
+        i if item.as_splash_potion().is_some() => Some(
+            materials
+                + TOOL_COUNT
+                + ARMOR_COUNT
+                + POTION_COUNT
+                + EXTRA_ITEMS.len() as u16
+                + 35
+                + MOB_ITEMS.len() as u16
+                + i
+                - SPLASH_POTION,
+        ),
         _ => None,
     }
 }
@@ -747,6 +797,7 @@ pub const fn icon_count() -> u32 {
         + EXTRA_ITEMS.len() as u32
         + 35
         + MOB_ITEMS.len() as u32
+        + POTION_COUNT as u32
 }
 
 /// Layer of a status effect's icon: in the item icon array, after every

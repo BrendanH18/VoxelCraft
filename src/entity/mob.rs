@@ -33,6 +33,9 @@ const PROVOKED_TIME: f32 = 12.0;
 pub const PIGLIN_ANGER_TIME: f32 = 30.0;
 /// Skeletons shoot from up to this far, and keep between these distances.
 const SHOOT_RANGE: f64 = 16.0;
+/// Witches throw from up to this far (Java's attack radius).
+const WITCH_RANGE: f64 = 10.0;
+const WITCH_SPEED: f64 = crate::entity::potion::WITCH_SPEED;
 const SKELETON_NEAR: f64 = 5.0;
 const SKELETON_FAR: f64 = 10.0;
 /// Creepers light their fuse this close and keep it lit within `FUSE_KEEP`.
@@ -101,6 +104,8 @@ pub enum MobKind {
     Husk,
     /// River and ocean zombie that swims.
     Drowned,
+    /// Throws splash potions, and drinks its own.
+    Witch,
 }
 
 impl MobKind {
@@ -111,7 +116,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 19] = [
+    pub const ALL: [MobKind; 20] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -131,6 +136,7 @@ impl MobKind {
         MobKind::WitherSkeleton,
         MobKind::Husk,
         MobKind::Drowned,
+        MobKind::Witch,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -155,6 +161,7 @@ impl MobKind {
             MobKind::WitherSkeleton => "wither skeleton",
             MobKind::Husk => "husk",
             MobKind::Drowned => "drowned",
+            MobKind::Witch => "witch",
         }
     }
 
@@ -171,7 +178,9 @@ impl MobKind {
             MobKind::Cow => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
             MobKind::Chicken => Shape::new(0.2, 0.7),
-            MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombifiedPiglin => Shape::new(0.3, 1.95),
+            MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombifiedPiglin | MobKind::Witch => {
+                Shape::new(0.3, 1.95)
+            }
             MobKind::Skeleton => Shape::new(0.3, 1.99),
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
@@ -201,6 +210,7 @@ impl MobKind {
             | MobKind::Blaze => 20.0,
             MobKind::Spider => 16.0,
             MobKind::CaveSpider => 12.0,
+            MobKind::Witch => 26.0,
             MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Ghast => 10.0,
             MobKind::Enderman => 40.0,
@@ -226,6 +236,7 @@ impl MobKind {
                 | MobKind::MagmaCube
                 | MobKind::Ghast
                 | MobKind::WitherSkeleton
+                | MobKind::Witch
         )
     }
 
@@ -283,6 +294,10 @@ impl MobKind {
             (MobKind::Zombie, Biome::River | Biome::Ocean) => 0.2,
             (MobKind::Drowned, Biome::River | Biome::Ocean) => 1.0,
             (MobKind::Drowned, _) => 0.0,
+            // Java's weight 5 against 100 for most monsters; swamp huts keep
+            // swamps full of them.
+            (MobKind::Witch, Biome::Swamp) => 0.25,
+            (MobKind::Witch, _) => 0.05,
             _ => 1.0,
         }
     }
@@ -291,6 +306,7 @@ impl MobKind {
     pub fn spawn_cap(self, dimension: Dimension) -> usize {
         match self {
             MobKind::Zombie => 4,
+            MobKind::Witch => 1,
             MobKind::Ghast => 4,
             MobKind::ZombifiedPiglin => 8,
             MobKind::Enderman if dimension == Dimension::End => 12,
@@ -323,6 +339,7 @@ impl MobKind {
         match self {
             MobKind::Pig => 1.3,
             MobKind::Cow
+            | MobKind::Witch
             | MobKind::Zombie
             | MobKind::Husk
             | MobKind::Drowned
@@ -385,6 +402,16 @@ impl MobKind {
             MobKind::Ghast => &[(Item::GUNPOWDER, 0, 2), (Item::GHAST_TEAR, 0, 1)],
             // The skull is rolled in `drops`.
             MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
+            // Java rolls a few of these; each is rolled on its own here.
+            MobKind::Witch => &[
+                (Item::GLASS_BOTTLE, 0, 2),
+                (Item::GLOWSTONE_DUST, 0, 2),
+                (Item::GUNPOWDER, 0, 2),
+                (Item::REDSTONE, 0, 2),
+                (Item::SPIDER_EYE, 0, 2),
+                (Item::SUGAR, 0, 2),
+                (Item::STICK, 0, 2),
+            ],
         }
     }
 
@@ -446,6 +473,13 @@ pub struct Mob {
     pub baby: bool,
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
+    /// Witch: seconds left drinking, whether it's swiftness, swiftness left,
+    /// and seconds before it may throw slowness or poison again.
+    drink_left: f32,
+    drinking_swift: bool,
+    swift_left: f32,
+    slow_cd: f32,
+    poison_cd: f32,
     hop_left: f32,
     hop_delay: f32,
     pub(super) difficulty: crate::simulation::difficulty::Difficulty,
@@ -531,6 +565,11 @@ impl Mob {
             baby: false,
             wool_color: crate::color::DyeColor::White,
             sheared: false,
+            drink_left: 0.0,
+            drinking_swift: false,
+            swift_left: 0.0,
+            slow_cd: 0.0,
+            poison_cd: 0.0,
             hop_left: 0.0,
             hop_delay: 1.0,
             difficulty: Default::default(),
@@ -779,6 +818,9 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        if self.kind == MobKind::Witch && self.witch_upkeep(dt, rng) {
+            return (None, 0.0);
+        }
         self.ai_timer -= dt;
         let target = ctx.nearest_target(self.pos);
         let to_player = target.map_or(DVec3::ZERO, |t| t.pos - self.pos);
@@ -833,6 +875,7 @@ impl Mob {
                             return stop;
                         }
                     }
+                    MobKind::Witch => return self.witch_tactics(world, target.pos, dir, hdist, rng, events),
                     MobKind::Ghast => {
                         return self.ghast_tactics(world, target.pos, dir, hdist, events);
                     }
@@ -1248,6 +1291,78 @@ impl Mob {
         } else {
             (Some(side), 1.0)
         }
+    }
+
+    /// Java's witch: drinks healing when hurt (1.6 s, standing still), and
+    /// returns whether it is mid-drink. Cooldowns tick here too.
+    fn witch_upkeep(&mut self, dt: f32, rng: &mut Rng) -> bool {
+        self.slow_cd = (self.slow_cd - dt).max(0.0);
+        self.poison_cd = (self.poison_cd - dt).max(0.0);
+        self.swift_left = (self.swift_left - dt).max(0.0);
+        if self.drink_left > 0.0 {
+            self.drink_left -= dt;
+            if self.drink_left <= 0.0 {
+                if self.drinking_swift {
+                    // Swiftness: 3 minutes of +20% speed.
+                    self.swift_left = 180.0;
+                } else {
+                    self.health = (self.health + 4.0).min(self.kind.max_health());
+                }
+            }
+            return self.drink_left > 0.0;
+        }
+        if self.health < self.kind.max_health() && rng.chance(dt) {
+            self.drink_left = 1.6;
+            self.drinking_swift = false;
+            return true;
+        }
+        false
+    }
+
+    /// Java's witch: lobs a splash potion every three seconds from up to ten
+    /// blocks away (slowness from afar, poison, otherwise harming), standing
+    /// still while it has a clear throw, and drinks swiftness to close a
+    /// long gap. The potion isn't chosen from the target's health or effects.
+    fn witch_tactics<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        player: DVec3,
+        dir: DVec3,
+        hdist: f64,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) -> (Option<DVec3>, f64) {
+        let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
+        let target = player + DVec3::Y * 1.2;
+        let boost = if self.swift_left > 0.0 { 1.2 } else { 1.0 };
+        let sees = line_of_sight(world, eye, target);
+        if self.swift_left <= 0.0 && hdist > 11.0 && rng.chance(0.01) {
+            self.drink_left = 1.6;
+            self.drinking_swift = true;
+            return (None, 0.0);
+        }
+        if hdist <= WITCH_RANGE && sees {
+            if self.attack_cooldown <= 0.0 {
+                let id = if hdist >= 8.0 && self.slow_cd <= 0.0 {
+                    self.slow_cd = 30.0;
+                    "slowness"
+                } else if self.poison_cd <= 0.0 {
+                    self.poison_cd = 45.0;
+                    "poison"
+                } else {
+                    "harming"
+                };
+                let flat = DVec3::new(target.x - eye.x, 0.0, target.z - eye.z);
+                let aim = DVec3::new(flat.x, target.y - 1.1 - eye.y + flat.length() * 0.2, flat.z).normalize_or(dir);
+                if let Some(potion) = crate::potion::Potion::from_id(id) {
+                    events.push(EntityEvent::ThrowPotion { from: eye + dir * 0.4, vel: aim * WITCH_SPEED, potion });
+                }
+                self.attack_cooldown = 3.0;
+                self.attack_anim = 0.35;
+            }
+            return (None, 0.0);
+        }
+        (Some(dir), self.kind.chase_speed() * boost)
     }
 
     /// Creepers stop and hiss when close; returns the movement to use

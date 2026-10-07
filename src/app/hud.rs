@@ -818,7 +818,7 @@ impl Game {
         } else if let Some(SlotRef::EnchantOffer(i)) = hovered {
             self.offer_tooltip(ui, i);
         } else if let Some(stack) = hovered_stack {
-            match stack.item.as_potion() {
+            match stack.item.as_potion().or(stack.item.as_splash_potion()) {
                 Some(potion) => self.potion_tooltip(ui, stack.display_name(), potion),
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
                 None => self.tooltip(ui, stack.display_name()),
