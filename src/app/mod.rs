@@ -948,7 +948,7 @@ impl Game {
     /// Hurts the player through their armor (mobs, arrows, blasts, lava),
     /// wearing it down when the hit lands.
     pub(crate) fn damage_player_armored(&mut self, amount: f32, cause: &str) -> f32 {
-        let reduced = survival::armor_reduce(amount, self.inventory.armor_points());
+        let reduced = survival::armor_reduce(amount, self.inventory.armor_points(), self.inventory.armor_toughness());
         let taken = self.damage_player(reduced, cause);
         if taken > 0.0 && self.mode == GameMode::Survival {
             for item in self.inventory.wear_armor(amount) {

@@ -199,7 +199,9 @@ impl Game {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
                     if self.damage_player_armored(damage, cause) > 0.0 {
-                        self.player.vel += knockback.as_dvec3();
+                        let resistance = self.inventory.knockback_resistance();
+                        self.player.vel +=
+                            crate::simulation::survival::knockback_taken(knockback.as_dvec3(), resistance);
                     }
                 }
                 EntityEvent::PlayerHit { player, damage, knockback, cause } => {

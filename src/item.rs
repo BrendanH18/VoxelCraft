@@ -24,6 +24,7 @@ pub enum ToolKind {
 }
 
 /// Tool material, from worst to best harvest level (gold is fast but weak).
+/// Netherite only comes from upgrading diamond gear at a smithing table.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Tier {
     Wood,
@@ -31,18 +32,21 @@ pub enum Tier {
     Iron,
     Gold,
     Diamond,
+    Netherite,
 }
 
 impl Tier {
-    pub const ALL: [Tier; 5] = [Tier::Wood, Tier::Stone, Tier::Iron, Tier::Gold, Tier::Diamond];
+    pub const ALL: [Tier; 6] = [Tier::Wood, Tier::Stone, Tier::Iron, Tier::Gold, Tier::Diamond, Tier::Netherite];
 
-    /// Which blocks the tier can harvest: 0 wood/gold, 1 stone, 2 iron, 3 diamond.
+    /// Which blocks the tier can harvest: 0 wood/gold, 1 stone, 2 iron, 3
+    /// diamond, 4 Netherite (everything diamond can).
     pub fn level(self) -> u8 {
         match self {
             Tier::Wood | Tier::Gold => 0,
             Tier::Stone => 1,
             Tier::Iron => 2,
             Tier::Diamond => 3,
+            Tier::Netherite => 4,
         }
     }
 
@@ -53,6 +57,7 @@ impl Tier {
             Tier::Stone => 4.0,
             Tier::Iron => 6.0,
             Tier::Diamond => 8.0,
+            Tier::Netherite => 9.0,
             Tier::Gold => 12.0,
         }
     }
@@ -64,6 +69,7 @@ impl Tier {
             Tier::Stone => 131,
             Tier::Iron => 250,
             Tier::Diamond => 1561,
+            Tier::Netherite => 2031,
             Tier::Gold => 32,
         }
     }
@@ -89,11 +95,17 @@ pub enum ArmorMaterial {
     Iron,
     Gold,
     Diamond,
+    Netherite,
 }
 
 impl ArmorMaterial {
-    pub const ALL: [ArmorMaterial; 4] =
-        [ArmorMaterial::Leather, ArmorMaterial::Iron, ArmorMaterial::Gold, ArmorMaterial::Diamond];
+    pub const ALL: [ArmorMaterial; 5] = [
+        ArmorMaterial::Leather,
+        ArmorMaterial::Iron,
+        ArmorMaterial::Gold,
+        ArmorMaterial::Diamond,
+        ArmorMaterial::Netherite,
+    ];
 
     /// Armor points (half chestplates on the HUD) per piece, as in Minecraft.
     pub fn defense(self, piece: ArmorPiece) -> u8 {
@@ -101,7 +113,7 @@ impl ArmorMaterial {
             ArmorMaterial::Leather => [1, 3, 2, 1],
             ArmorMaterial::Gold => [2, 5, 3, 1],
             ArmorMaterial::Iron => [2, 6, 5, 2],
-            ArmorMaterial::Diamond => [3, 8, 6, 3],
+            ArmorMaterial::Diamond | ArmorMaterial::Netherite => [3, 8, 6, 3],
         };
         points[piece as usize]
     }
@@ -113,8 +125,24 @@ impl ArmorMaterial {
             ArmorMaterial::Gold => 7,
             ArmorMaterial::Iron => 15,
             ArmorMaterial::Diamond => 33,
+            ArmorMaterial::Netherite => 37,
         };
         base * [11, 16, 15, 13][piece as usize]
+    }
+
+    /// Armor toughness per piece: lets armor hold up against big hits (see
+    /// `survival::armor_reduce`).
+    pub fn toughness(self) -> f32 {
+        match self {
+            ArmorMaterial::Diamond => 2.0,
+            ArmorMaterial::Netherite => 3.0,
+            _ => 0.0,
+        }
+    }
+
+    /// Share of knockback each piece shrugs off.
+    pub fn knockback_resistance(self) -> f32 {
+        if self == ArmorMaterial::Netherite { 0.1 } else { 0.0 }
     }
 }
 
@@ -182,6 +210,8 @@ pub enum Sprite {
     Book([u8; 3]),
     /// An ender pearl turned green with a slit pupil.
     EnderEye,
+    /// A smithing template: a chipped tablet with a gem set in it.
+    Template,
     /// A glass bottle, empty or holding liquid of this colour.
     Bottle(Option<[u8; 3]>),
     Tool(ToolKind, Tier),
@@ -204,6 +234,21 @@ const fn food(name: &'static str, hunger: u8, saturation: f32, sprite: Sprite) -
     ItemInfo { name, kind: ItemKind::Food { hunger, saturation }, max_stack: 64, sprite }
 }
 
+const fn netherite_tool(name: &'static str, kind: ToolKind) -> ItemInfo {
+    ItemInfo {
+        name,
+        kind: ItemKind::Tool(kind, Tier::Netherite),
+        max_stack: 1,
+        sprite: Sprite::Tool(kind, Tier::Netherite),
+    }
+}
+
+const fn netherite_armor(name: &'static str, piece: ArmorPiece) -> ItemInfo {
+    let (kind, sprite) =
+        (ItemKind::Armor(piece, ArmorMaterial::Netherite), Sprite::Armor(piece, ArmorMaterial::Netherite));
+    ItemInfo { name, kind, max_stack: 1, sprite }
+}
+
 const RAW_MEAT: [u8; 3] = [226, 110, 110];
 const COOKED_MEAT: [u8; 3] = [150, 88, 52];
 const FAT: [u8; 3] = [250, 225, 215];
@@ -211,7 +256,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 54] = [
+static ITEMS: [ItemInfo; 64] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -281,6 +326,17 @@ static ITEMS: [ItemInfo; 54] = [
     item("lapis lazuli", Sprite::Gem([38, 76, 190])),
     item("netherite scrap", Sprite::Lump([112, 78, 63])),
     item("netherite ingot", Sprite::Ingot([76, 67, 70])),
+    item("netherite upgrade smithing template", Sprite::Template),
+    // Netherite gear came after the other tiers' id blocks (see `Item::tool`).
+    netherite_tool("netherite pickaxe", ToolKind::Pickaxe),
+    netherite_tool("netherite shovel", ToolKind::Shovel),
+    netherite_tool("netherite axe", ToolKind::Axe),
+    netherite_tool("netherite hoe", ToolKind::Hoe),
+    netherite_tool("netherite sword", ToolKind::Sword),
+    netherite_armor("netherite helmet", ArmorPiece::Helmet),
+    netherite_armor("netherite chestplate", ArmorPiece::Chestplate),
+    netherite_armor("netherite leggings", ArmorPiece::Leggings),
+    netherite_armor("netherite boots", ArmorPiece::Boots),
 ];
 
 /// Uses before a bow breaks.
@@ -288,13 +344,19 @@ pub const BOW_DURABILITY: u16 = 384;
 /// Uses before a flint and steel breaks.
 pub const FLINT_AND_STEEL_DURABILITY: u16 = 64;
 
-/// Tools start at this id: `FIRST_TOOL + tier * 5 + kind`.
+/// Tools of the first five tiers start at this id: `FIRST_TOOL + tier * 5
+/// + kind`. Netherite tools are `NETHERITE_TOOLS + kind`.
 const FIRST_TOOL: u16 = 320;
 const TOOL_KINDS: [ToolKind; 5] = [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword];
-const TOOL_COUNT: u16 = (Tier::ALL.len() * TOOL_KINDS.len()) as u16;
-/// Armor starts at this id: `FIRST_ARMOR + material * 4 + piece`.
+/// Tiers in the `FIRST_TOOL` block (all but Netherite).
+const ID_TIERS: usize = 5;
+const TOOL_COUNT: u16 = (ID_TIERS * TOOL_KINDS.len()) as u16;
+/// Armor of the first four materials starts at this id: `FIRST_ARMOR +
+/// material * 4 + piece`. Netherite armor is `NETHERITE_ARMOR + piece`.
 const FIRST_ARMOR: u16 = FIRST_TOOL + TOOL_COUNT;
 const ARMOR_COUNT: u16 = 16;
+const NETHERITE_TOOLS: u16 = 311;
+const NETHERITE_ARMOR: u16 = NETHERITE_TOOLS + TOOL_KINDS.len() as u16;
 /// Potions start at this id: `FIRST_POTION + potion index`.
 const FIRST_POTION: u16 = 400;
 const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
@@ -363,13 +425,21 @@ impl Item {
     pub const LAPIS_LAZULI: Item = Item(307);
     pub const NETHERITE_SCRAP: Item = Item(308);
     pub const NETHERITE_INGOT: Item = Item(309);
+    /// Upgrades diamond gear to Netherite at a smithing table.
+    pub const NETHERITE_UPGRADE: Item = Item(310);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
-        Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)
+        match tier {
+            Tier::Netherite => Item(NETHERITE_TOOLS + kind as u16),
+            _ => Item(FIRST_TOOL + tier as u16 * 5 + kind as u16),
+        }
     }
 
     pub const fn armor(piece: ArmorPiece, material: ArmorMaterial) -> Item {
-        Item(FIRST_ARMOR + material as u16 * 4 + piece as u16)
+        match material {
+            ArmorMaterial::Netherite => Item(NETHERITE_ARMOR + piece as u16),
+            _ => Item(FIRST_ARMOR + material as u16 * 4 + piece as u16),
+        }
     }
 
     pub const fn potion(potion: crate::potion::Potion) -> Item {
@@ -421,9 +491,8 @@ impl Item {
                 sprite: Sprite::Bottle(Some(potion.colour())),
             };
         }
-        if let Some(i) = self.0.checked_sub(FIRST_TOOL)
-            && let (Some(&tier), Some(&kind)) = (Tier::ALL.get(i as usize / 5), TOOL_KINDS.get(i as usize % 5))
-        {
+        if let Some(i) = self.0.checked_sub(FIRST_TOOL).filter(|&i| i < TOOL_COUNT) {
+            let (tier, kind) = (Tier::ALL[i as usize / 5], TOOL_KINDS[i as usize % 5]);
             return ItemInfo {
                 name: tool_name(kind, tier),
                 kind: ItemKind::Tool(kind, tier),
@@ -452,10 +521,13 @@ impl Item {
         self.info().name
     }
 
-    /// Dropped Netherite materials survive fire and lava (but still despawn).
+    /// Dropped Netherite materials and gear survive fire and lava (but
+    /// still despawn).
     pub fn fire_resistant(self) -> bool {
         matches!(self, Self::NETHERITE_SCRAP | Self::NETHERITE_INGOT)
             || matches!(self.block(), Some(Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK))
+            || matches!(self.as_tool(), Some((_, Tier::Netherite)))
+            || matches!(self.as_armor(), Some((_, ArmorMaterial::Netherite)))
     }
 
     pub fn max_stack(self) -> u8 {
@@ -626,6 +698,58 @@ mod tests {
                 assert!(item.icon_layer().is_some());
             }
         }
+    }
+
+    #[test]
+    fn netherite_gear_has_java_ids_stats_and_fire_resistance() {
+        use crate::inventory::{Stack, stack_from_str, stack_to_string};
+        assert_eq!(Item::NETHERITE_UPGRADE, Item(310));
+        assert_eq!(Item::NETHERITE_UPGRADE.name(), "netherite upgrade smithing template");
+        assert!(!Item::NETHERITE_UPGRADE.fire_resistant(), "Java's templates burn");
+        assert_eq!(Item::tool(ToolKind::Pickaxe, Tier::Netherite), Item(311));
+        assert_eq!(Item::tool(ToolKind::Sword, Tier::Netherite), Item(315));
+        assert_eq!(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Netherite), Item(316));
+        assert_eq!(Item::armor(ArmorPiece::Boots, ArmorMaterial::Netherite), Item(319));
+        // Every tier and material maps to its own id and back.
+        let mut ids = std::collections::HashSet::new();
+        for tier in Tier::ALL {
+            for kind in TOOL_KINDS {
+                let item = Item::tool(kind, tier);
+                assert_eq!(item.as_tool(), Some((kind, tier)), "{item:?}");
+                assert!(ids.insert(item));
+            }
+        }
+        for material in ArmorMaterial::ALL {
+            for piece in ArmorPiece::ALL {
+                let item = Item::armor(piece, material);
+                assert_eq!(item.as_armor(), Some((piece, material)), "{item:?}");
+                assert!(ids.insert(item));
+            }
+        }
+        let pick = Item::tool(ToolKind::Pickaxe, Tier::Netherite);
+        assert_eq!((pick.name(), pick.durability(), pick.max_stack()), ("netherite pickaxe", Some(2031), 1));
+        assert_eq!((Tier::Netherite.speed(), Tier::Netherite.level()), (9.0, 4));
+        let durability: Vec<_> =
+            ArmorPiece::ALL.map(|p| Item::armor(p, ArmorMaterial::Netherite).durability().unwrap()).into();
+        assert_eq!(durability, [407, 592, 555, 481]);
+        let full: u8 = ArmorPiece::ALL.iter().map(|&p| ArmorMaterial::Netherite.defense(p)).sum();
+        assert_eq!(full, 20);
+        assert_eq!((ArmorMaterial::Netherite.toughness(), ArmorMaterial::Diamond.toughness()), (3.0, 2.0));
+        assert_eq!(ArmorMaterial::Netherite.knockback_resistance(), 0.1);
+        assert_eq!(ArmorMaterial::Diamond.knockback_resistance(), 0.0);
+        for item in Item::all_items().filter(|i| i.name().starts_with("netherite ") && *i != Item::NETHERITE_UPGRADE) {
+            assert!(item.fire_resistant(), "{}", item.name());
+        }
+        assert!(!Item::tool(ToolKind::Sword, Tier::Diamond).fire_resistant());
+        // Damage and enchantments survive a save.
+        let enchants = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::Sharpness, 5);
+        let sword = Some(Stack {
+            damage: 77,
+            enchants,
+            repair_cost: 7,
+            ..Stack::new(Item::tool(ToolKind::Sword, Tier::Netherite), 1)
+        });
+        assert_eq!(stack_from_str(&stack_to_string(sword)), Some(sword));
     }
 
     #[test]

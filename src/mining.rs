@@ -94,6 +94,7 @@ pub fn attack_damage(held: Option<Item>) -> f32 {
         Tier::Stone => 1.0,
         Tier::Iron => 2.0,
         Tier::Diamond => 3.0,
+        Tier::Netherite => 4.0,
     };
     let base = match kind {
         ToolKind::Sword => 4.0,
@@ -182,6 +183,13 @@ mod tests {
             assert_eq!(block.drop(), Some(block.into()));
         }
         assert_eq!(break_time(Block::ANCIENT_DEBRIS, tool(ToolKind::Pickaxe, Tier::Diamond)), 5.625);
+        // Netherite harvests everything diamond does, a little faster.
+        let netherite = tool(ToolKind::Pickaxe, Tier::Netherite);
+        for block in [Block::OBSIDIAN, Block::ANCIENT_DEBRIS, Block::NETHERITE_BLOCK, Block::DIAMOND_ORE] {
+            assert!(can_harvest(block, netherite), "{block:?}");
+        }
+        assert_eq!(break_time(Block::OBSIDIAN, netherite), 50.0 * 1.5 / 9.0);
+        assert_eq!(attack_damage(tool(ToolKind::Sword, Tier::Netherite)), 8.0);
         assert_eq!(break_time(Block::NETHERITE_BLOCK, tool(ToolKind::Pickaxe, Tier::Diamond)), 9.375);
         let mut rng = crate::entity::Rng::new(17);
         assert_eq!(ore_xp(Block::ANCIENT_DEBRIS, &mut rng), 0);

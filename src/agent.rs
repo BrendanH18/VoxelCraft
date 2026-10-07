@@ -917,12 +917,13 @@ impl Agent {
     /// with damage (hurt immunity also stops repeated shoves), and a survival
     /// agent killed this way drops everything. Returns the damage taken.
     pub fn hurt(&mut self, amount: f32, cause: &str, knockback: DVec3, entities: &mut Entities) -> f32 {
-        let reduced = simulation::survival::armor_reduce(amount, self.inventory.armor_points());
+        let inv = &self.inventory;
+        let reduced = simulation::survival::armor_reduce(amount, inv.armor_points(), inv.armor_toughness());
         let taken = self.damage(reduced, cause);
         if taken <= 0.0 {
             return 0.0;
         }
-        self.player.vel += knockback;
+        self.player.vel += simulation::survival::knockback_taken(knockback, self.inventory.knockback_resistance());
         self.inventory.wear_armor(amount);
         self.sleeping = None;
         if self.vitals.is_dead() {
@@ -1124,6 +1125,15 @@ mod tests {
         // Hurt immunity: an equal hit right after doesn't land or shove.
         assert_eq!(bare.hurt(4.0, "was slain by a zombie", push, &mut entities), 0.0);
         assert_eq!(bare.player.vel, push);
+        // Full Netherite: toughness and 0.4 knockback resistance.
+        let mut netherite = Agent::new(DVec3::new(0.5, 150.0, 0.5));
+        for piece in crate::item::ArmorPiece::ALL {
+            let item = Item::armor(piece, crate::item::ArmorMaterial::Netherite);
+            netherite.inventory.armor[piece as usize] = Some(Stack::new(item, 1));
+        }
+        let taken = netherite.hurt(20.0, "was slain by a zombie", push, &mut entities);
+        assert!((taken - 20.0 * 9.0 / 25.0).abs() < 1e-4, "{taken}");
+        assert!((netherite.player.vel - push * 0.6).length() < 1e-6);
 
         let mut creative = Agent::new(DVec3::ZERO);
         creative.creative = true;

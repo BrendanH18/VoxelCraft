@@ -172,6 +172,16 @@ impl Inventory {
         self.armor.iter().flatten().filter_map(|s| s.item.as_armor()).map(|(p, m)| m.defense(p) as u32).sum()
     }
 
+    /// Total armor toughness worn (2 per diamond piece, 3 per Netherite).
+    pub fn armor_toughness(&self) -> f32 {
+        self.armor.iter().flatten().filter_map(|s| s.item.as_armor()).map(|(_, m)| m.toughness()).sum()
+    }
+
+    /// Share of knockback the worn armor cancels (0.1 per Netherite piece).
+    pub fn knockback_resistance(&self) -> f32 {
+        self.armor.iter().flatten().filter_map(|s| s.item.as_armor()).map(|(_, m)| m.knockback_resistance()).sum()
+    }
+
     /// Puts on the armor in `slot`, swapping out whatever piece was worn
     /// there. Returns `false` if the slot holds no armor, or the worn piece
     /// is bound.

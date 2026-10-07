@@ -182,6 +182,7 @@ const OBSIDIAN: Ingredient = &[b(Block::OBSIDIAN)];
 const IRON_BLOCK: Ingredient = &[b(Block::IRON_BLOCK)];
 const IRON: Ingredient = &[Item::IRON_INGOT];
 const GOLD: Ingredient = &[Item::GOLD_INGOT];
+const NETHERRACK: Ingredient = &[b(Block::NETHERRACK)];
 const NETHERITE_SCRAP: Ingredient = &[Item::NETHERITE_SCRAP];
 const NETHERITE_INGOT: Ingredient = &[Item::NETHERITE_INGOT];
 const NETHERITE_BLOCK: Ingredient = &[b(Block::NETHERITE_BLOCK)];
@@ -220,6 +221,14 @@ pub fn recipes() -> &'static [Recipe] {
             ),
             shaped(&["###", "###", "###"], &[('#', NETHERITE_INGOT)], b(Block::NETHERITE_BLOCK), 1),
             shapeless(&[NETHERITE_BLOCK], Item::NETHERITE_INGOT, 9),
+            // Java copies an upgrade template with seven diamonds around
+            // it and a netherrack below it.
+            shaped(
+                &["#S#", "#C#", "###"],
+                &[('#', &[Item::DIAMOND]), ('S', &[Item::NETHERITE_UPGRADE]), ('C', NETHERRACK)],
+                Item::NETHERITE_UPGRADE,
+                2,
+            ),
             shaped(&["III", " i ", "iii"], &[('I', IRON_BLOCK), ('i', IRON)], b(Block::ANVIL), 1),
             shaped(
                 &[" b ", "d#d", "###"],
@@ -340,6 +349,19 @@ mod tests {
     }
 
     #[test]
+    fn upgrade_templates_copy_with_diamonds_and_netherrack() {
+        let (d, t, n) = (Item::DIAMOND, Item::NETHERITE_UPGRADE, b(Block::NETHERRACK));
+        let cells = [(0, 0, d), (1, 0, t), (2, 0, d), (0, 1, d), (1, 1, n), (2, 1, d), (0, 2, d), (1, 2, d), (2, 2, d)];
+        let mut g = grid(3, &cells);
+        assert_eq!(g.result(), Some(Stack::new(Item::NETHERITE_UPGRADE, 2)));
+        g.consume();
+        assert!(g.cells.iter().all(|c| c.is_some_and(|s| s.count == 1)), "one of each input is used");
+        g.cells[4] = Some(Stack::new(Block::COBBLESTONE, 1));
+        assert_eq!(g.result(), None, "only netherrack");
+        assert_eq!(grid(3, &cells[1..]).result(), None, "all seven diamonds");
+    }
+
+    #[test]
     fn armor_recipes() {
         let iron = Some(Stack::new(Item::IRON_INGOT, 1));
         let mut g = Grid::new(3);
@@ -441,8 +463,13 @@ mod tests {
         let craftable: Vec<Item> = recipes().iter().map(|r| r.result.item).collect();
         for tier in Tier::ALL {
             for kind in [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword] {
-                assert!(craftable.contains(&Item::tool(kind, tier)), "{kind:?} {tier:?}");
+                // Netherite gear only comes from smithing diamond gear.
+                let netherite = tier == Tier::Netherite;
+                assert_eq!(craftable.contains(&Item::tool(kind, tier)), !netherite, "{kind:?} {tier:?}");
             }
+        }
+        for piece in crate::item::ArmorPiece::ALL {
+            assert!(!craftable.contains(&Item::armor(piece, crate::item::ArmorMaterial::Netherite)));
         }
     }
 
