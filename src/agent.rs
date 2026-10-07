@@ -19,7 +19,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -79,6 +79,9 @@ pub enum Command {
     Enchanting(usize),
     /// Combines the held stack with hotbar slot 0..9 on the targeted anvil.
     Anvil(usize),
+    /// Upgrades held diamond gear at the targeted smithing table, consuming
+    /// a template and Netherite ingot from the inventory.
+    Smithing,
 }
 
 /// `/effect give` (with seconds and amplifier) or `/effect clear`.
@@ -243,6 +246,7 @@ impl Command {
                 Self::Effect(EffectChange::Give(effect, secs, amp))
             }
             ["anvil", n] => Self::Anvil(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
+            ["smithing"] => Self::Smithing,
             ["enchanting", n] => {
                 Self::Enchanting(n.parse::<usize>().ok().filter(|n| (1..=3).contains(n)).ok_or_else(bad)? - 1)
             }
@@ -277,9 +281,9 @@ pub struct Agent {
     pub player: Player,
     pub previous_pos: DVec3,
     pub inventory: Inventory,
-    /// Transient enchanting table / anvil inputs for a controller player.
+    /// Transient enchanting, anvil or smithing inputs for a controller player.
     /// Saved as returned inventory and dropped on death with the other gear.
-    pub work: [Option<Stack>; 2],
+    pub work: [Option<Stack>; 3],
     pub vitals: Vitals,
     /// The host's stable ID for this player (owner of its thrown pearls).
     pub id: crate::entity::PlayerId,
@@ -312,7 +316,7 @@ impl Agent {
             player: Player::new(pos),
             previous_pos: pos,
             inventory: Inventory::default(),
-            work: [None; 2],
+            work: [None; 3],
             vitals: Vitals::default(),
             id: crate::entity::PlayerId::default(),
             creative: false,
@@ -544,7 +548,7 @@ impl Agent {
                 {
                     self.inventory.wear(self.selected, mining::wear(held, true));
                 }
-                self.cooldown = crate::entity::ATTACK_COOLDOWN;
+                self.cooldown = mining::attack_cooldown(held);
                 self.swings += 1;
             }
             Command::Craft(item) => self.craft(item, world)?,
@@ -602,6 +606,24 @@ impl Agent {
                     self.vitals.xp.add_levels(-(r.cost as i64));
                     crate::enchant::wear_anvil(world, pos);
                 }
+            }
+            Command::Smithing => {
+                let (pos, _) = self.target(world).ok_or("no smithing table within reach")?;
+                if world.get_block(pos) != Some(Block::SMITHING_TABLE) {
+                    return Err("target is not a smithing table".into());
+                }
+                let base = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+                let template_slot = self.inventory.find(Item::NETHERITE_UPGRADE).ok_or("no upgrade template")?;
+                let addition_slot = self.inventory.find(Item::NETHERITE_INGOT).ok_or("no Netherite ingot")?;
+                let result = crate::smithing::upgrade(
+                    self.inventory.get(template_slot).unwrap(),
+                    base,
+                    self.inventory.get(addition_slot).unwrap(),
+                )
+                .ok_or("selected item is not diamond gear")?;
+                self.inventory.take_one(template_slot);
+                self.inventory.take_one(addition_slot);
+                self.inventory.slots[self.selected] = Some(result);
             }
             Command::Drop => {
                 let stack = self.inventory.slots[self.selected].take().ok_or("selected slot empty")?;
@@ -993,7 +1015,7 @@ impl Agent {
             .filter_map(|(slot, s)| {
                 s.map(|s| {
                     let enchants: Vec<String> = s.enchants.lines().into_iter().map(|(l, _)| l).collect();
-                    json!({"slot":slot+1,"item":s.item.name(),"count":s.count,"damage":s.damage,"enchantments":enchants})
+                    json!({"slot":slot+1,"item":s.item.name(),"display_name":s.display_name(),"count":s.count,"damage":s.damage,"enchantments":enchants})
                 })
             })
             .collect();
@@ -1339,7 +1361,7 @@ mod tests {
         let mut entities = Entities::new(1);
         a.hurt(30.0, "was slain by a zombie", DVec3::ZERO, &mut entities);
         assert!(a.vitals.is_dead());
-        assert_eq!(a.work, [None; 2]);
+        assert_eq!(a.work, [None; 3]);
         assert_eq!(entities.items.len(), 1);
         assert_eq!(entities.items[0].stack, Stack::new(Item::DIAMOND, 2));
     }
@@ -1405,6 +1427,36 @@ mod tests {
         assert_eq!(a.inventory.get(0).unwrap().enchants.level(Enchantment::Sharpness), 2);
         assert_eq!(a.inventory.get(1), None, "the book is used up");
         assert_eq!(a.vitals.xp.level, 1);
+    }
+
+    #[test]
+    fn agents_upgrade_held_diamond_gear_at_a_smithing_table() {
+        use crate::enchant::{Enchantment, Enchants};
+        use crate::item::{Tier, ToolKind};
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        world.set_block(IVec3::new(4, 151, 1), Block::SMITHING_TABLE);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let base = Stack {
+            damage: 75,
+            enchants: Enchants::NONE.with(Enchantment::Efficiency, 4),
+            repair_cost: 7,
+            ..Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Diamond), 1).with_name("Deep Delver").unwrap()
+        };
+        a.inventory.slots[0] = Some(base);
+        a.inventory.slots[1] = Some(Stack::new(Item::NETHERITE_UPGRADE, 2));
+        a.inventory.slots[2] = Some(Stack::new(Item::NETHERITE_INGOT, 3));
+        a.execute(Command::Smithing, &mut world, &mut entities, &[]).unwrap();
+        let result = a.inventory.get(0).unwrap();
+        assert_eq!(result.item, Item::tool(ToolKind::Pickaxe, Tier::Netherite));
+        assert_eq!((result.damage, result.enchants, result.repair_cost), (75, base.enchants, 7));
+        assert_eq!(result.display_name(), "Deep Delver");
+        assert_eq!(a.inventory.get(1).unwrap().count, 1);
+        assert_eq!(a.inventory.get(2).unwrap().count, 2);
+        assert!(
+            a.execute(Command::Smithing, &mut world, &mut entities, &[]).is_err(),
+            "Netherite cannot upgrade again"
+        );
     }
 
     #[test]

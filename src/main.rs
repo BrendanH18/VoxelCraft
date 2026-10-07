@@ -6,7 +6,9 @@ mod bench;
 mod data;
 mod render;
 
-use voxelcraft::{crafting, enchant, entity, inventory, item, mesh, mining, physics, player, simulation, world};
+use voxelcraft::{
+    crafting, enchant, entity, inventory, item, mesh, mining, physics, player, simulation, smithing, world,
+};
 
 use winit::event_loop::{ControlFlow, EventLoop};
 
@@ -111,7 +113,7 @@ voxelcraft [options]
                     (screenshots)
   --open-menu <m>   start with a menu open: pause, options or title (screenshots)
   --open-block x,y,z  open the furnace, chest, brewing stand, enchanting
-                    table or anvil there once loaded (screenshots)
+                    table, anvil or smithing table once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water; b may be a raw block id)
   --health <0..20>  starting health in half hearts (0 opens the death screen)

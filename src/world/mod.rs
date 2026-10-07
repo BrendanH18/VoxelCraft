@@ -12,6 +12,7 @@
 //! discarded. Each chunk column also keeps a heightmap of its highest
 //! light-blocking block, which seeds skylight in mesh jobs.
 
+pub mod bastion;
 pub mod block;
 pub mod brewing;
 pub mod chest;

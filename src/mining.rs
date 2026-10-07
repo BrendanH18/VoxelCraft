@@ -89,12 +89,21 @@ pub fn hit_damage(held: Option<Stack>, target: enchant::Creature) -> f32 {
 /// Melee damage of a hit with `held` (a fist does 1).
 pub fn attack_damage(held: Option<Item>) -> f32 {
     let Some((kind, tier)) = held.and_then(Item::as_tool) else { return 1.0 };
+    if tier == Tier::Netherite {
+        return match kind {
+            ToolKind::Sword => 8.0,
+            ToolKind::Shovel => 6.5,
+            ToolKind::Pickaxe => 6.0,
+            ToolKind::Axe => 10.0,
+            ToolKind::Hoe => 1.0,
+        };
+    }
     let bonus = match tier {
         Tier::Wood | Tier::Gold => 0.0,
         Tier::Stone => 1.0,
         Tier::Iron => 2.0,
         Tier::Diamond => 3.0,
-        Tier::Netherite => 4.0,
+        Tier::Netherite => unreachable!(),
     };
     let base = match kind {
         ToolKind::Sword => 4.0,
@@ -104,6 +113,23 @@ pub fn attack_damage(held: Option<Item>) -> f32 {
         ToolKind::Hoe => return 1.0,
     };
     base + bonus
+}
+
+/// Fully charged attacks per second. Existing tiers retain VoxelCraft's
+/// two-per-second combat until their broader Java stat pass; Netherite
+/// implements Java's per-tool attributes.
+pub fn attack_speed(held: Option<Item>) -> f64 {
+    match held.and_then(Item::as_tool) {
+        Some((ToolKind::Sword, Tier::Netherite)) => 1.6,
+        Some((ToolKind::Shovel | ToolKind::Axe, Tier::Netherite)) => 1.0,
+        Some((ToolKind::Pickaxe, Tier::Netherite)) => 1.2,
+        Some((ToolKind::Hoe, Tier::Netherite)) => 4.0,
+        _ => 2.0,
+    }
+}
+
+pub fn attack_cooldown(held: Option<Item>) -> f64 {
+    1.0 / attack_speed(held)
 }
 
 /// Experience a harvested block drops (Java's ore ranges; silk touch
@@ -190,6 +216,15 @@ mod tests {
         }
         assert_eq!(break_time(Block::OBSIDIAN, netherite), 50.0 * 1.5 / 9.0);
         assert_eq!(attack_damage(tool(ToolKind::Sword, Tier::Netherite)), 8.0);
+        assert_eq!(attack_damage(tool(ToolKind::Shovel, Tier::Netherite)), 6.5);
+        assert_eq!(attack_damage(tool(ToolKind::Pickaxe, Tier::Netherite)), 6.0);
+        assert_eq!(attack_damage(tool(ToolKind::Axe, Tier::Netherite)), 10.0);
+        assert_eq!(attack_damage(tool(ToolKind::Hoe, Tier::Netherite)), 1.0);
+        assert_eq!(attack_speed(tool(ToolKind::Sword, Tier::Netherite)), 1.6);
+        assert_eq!(attack_speed(tool(ToolKind::Shovel, Tier::Netherite)), 1.0);
+        assert_eq!(attack_speed(tool(ToolKind::Pickaxe, Tier::Netherite)), 1.2);
+        assert_eq!(attack_speed(tool(ToolKind::Axe, Tier::Netherite)), 1.0);
+        assert_eq!(attack_speed(tool(ToolKind::Hoe, Tier::Netherite)), 4.0);
         assert_eq!(break_time(Block::NETHERITE_BLOCK, tool(ToolKind::Pickaxe, Tier::Diamond)), 9.375);
         let mut rng = crate::entity::Rng::new(17);
         assert_eq!(ore_xp(Block::ANCIENT_DEBRIS, &mut rng), 0);

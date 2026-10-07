@@ -299,7 +299,11 @@ mod tests {
         let mut agents = Agents::default();
         let mut agent = Agent::new(DVec3::ZERO);
         agent.inventory.slots.fill(Some(Stack::new(Item::STICK, 64)));
-        agent.work = [Some(Stack::new(Item::ENCHANTED_BOOK, 1)), Some(Stack::new(Item::LAPIS_LAZULI, 3))];
+        agent.work = [
+            Some(Stack::new(Item::ENCHANTED_BOOK, 1)),
+            Some(Stack::new(Item::LAPIS_LAZULI, 3)),
+            Some(Stack::new(Item::NETHERITE_INGOT, 2)),
+        ];
         agents.insert("Player2".into(), agent);
         let text = agents.serialize("overworld");
         let mut restored = Agents::default();
@@ -307,7 +311,7 @@ mod tests {
         let inv = &mut restored.players.get_mut("Player2").unwrap().agent.inventory;
         assert_eq!(inv.slots.iter().flatten().count(), SLOTS);
         assert_eq!(inv.take_spill(), agents.players["Player2"].agent.work.into_iter().flatten().collect::<Vec<_>>());
-        assert_eq!(restored.players["Player2"].agent.work, [None; 2]);
+        assert_eq!(restored.players["Player2"].agent.work, [None; 3]);
         assert!(agents.players["Player2"].agent.work.iter().all(Option::is_some));
     }
 

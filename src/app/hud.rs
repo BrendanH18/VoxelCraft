@@ -41,6 +41,11 @@ pub(super) enum SlotRef {
     AnvilLeft,
     AnvilRight,
     AnvilResult,
+    /// Smithing template, base, addition and transform result.
+    SmithTemplate,
+    SmithBase,
+    SmithAddition,
+    SmithResult,
     /// Worn armor (survival inventory).
     Armor(ArmorPiece),
 }
@@ -498,7 +503,11 @@ impl Game {
         self.has_top_section()
             && !matches!(
                 self.container,
-                Container::Furnace(_) | Container::Chest(_) | Container::Enchanting(_) | Container::Anvil(_)
+                Container::Furnace(_)
+                    | Container::Chest(_)
+                    | Container::Enchanting(_)
+                    | Container::Anvil(_)
+                    | Container::Smithing(_)
             )
     }
 
@@ -564,6 +573,13 @@ impl Game {
             out.push((SlotRef::AnvilLeft, px + 26.0, py + 36.0));
             out.push((SlotRef::AnvilRight, px + 75.0, py + 36.0));
             out.push((SlotRef::AnvilResult, px + 133.0, py + 36.0));
+            CRAFT_H
+        } else if let Container::Smithing(_) = self.container {
+            // Java 1.21: template, base, addition -> result.
+            out.push((SlotRef::SmithTemplate, px + 15.0, py + 48.0));
+            out.push((SlotRef::SmithBase, px + 33.0, py + 48.0));
+            out.push((SlotRef::SmithAddition, px + 51.0, py + 48.0));
+            out.push((SlotRef::SmithResult, px + 105.0, py + 48.0));
             CRAFT_H
         } else if let Container::Brewing(_) = self.container {
             // Java's layout: fuel top left, the ingredient over three
@@ -675,6 +691,7 @@ impl Game {
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
             (Container::Anvil(_), _) => "Anvil",
+            (Container::Smithing(_), _) => "Upgrade Gear",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
         };
@@ -691,6 +708,8 @@ impl Game {
             self.enchanting_ui(ui, px, py);
         } else if let Container::Anvil(_) = self.container {
             self.anvil_ui(ui, px, py);
+        } else if let Container::Smithing(_) = self.container {
+            self.smithing_ui(ui, px, py);
         } else if self.has_top_section() && !matches!(self.container, Container::Chest(_)) {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
@@ -753,6 +772,9 @@ impl Game {
             let outline = match (r, stack) {
                 (SlotRef::Armor(p), None) => Item::armor(p, ArmorMaterial::Iron).icon_layer(),
                 (SlotRef::EnchantLapis, None) => Item::LAPIS_LAZULI.icon_layer(),
+                (SlotRef::SmithTemplate, None) => Item::NETHERITE_UPGRADE.icon_layer(),
+                (SlotRef::SmithBase, None) => Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Diamond).icon_layer(),
+                (SlotRef::SmithAddition, None) => Item::NETHERITE_INGOT.icon_layer(),
                 _ => None,
             };
             if let Some(layer) = outline {
@@ -791,9 +813,9 @@ impl Game {
             self.offer_tooltip(ui, i);
         } else if let Some(stack) = hovered_stack {
             match stack.item.as_potion() {
-                Some(potion) => self.potion_tooltip(ui, stack.item.name(), potion),
+                Some(potion) => self.potion_tooltip(ui, stack.display_name(), potion),
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
-                None => self.tooltip(ui, stack.item.name()),
+                None => self.tooltip(ui, stack.display_name()),
             }
         }
         // The held stack follows the mouse.
@@ -880,6 +902,10 @@ impl Game {
             SlotRef::EnchantLapis | SlotRef::AnvilRight => return self.work[1],
             SlotRef::AnvilLeft => return self.work[0],
             SlotRef::AnvilResult => return self.anvil_preview().map(|(r, _)| r.output),
+            SlotRef::SmithTemplate => return self.work[0],
+            SlotRef::SmithBase => return self.work[1],
+            SlotRef::SmithAddition => return self.work[2],
+            SlotRef::SmithResult => return self.smithing_result(),
             _ => {}
         }
         if let Container::Brewing(p) = self.container {
@@ -976,6 +1002,19 @@ impl Game {
         ui.text(x, py + 60.0, &text, colour);
     }
 
+    /// Smithing's arrow and invalid-recipe cross. Slot outlines explain the
+    /// template/base/addition order without reproducing Java's full artwork.
+    fn smithing_ui(&self, ui: &mut Ui, px: f32, py: f32) {
+        let dark = [0.45, 0.45, 0.45, 1.0];
+        ui.rect(px + 76.0, py + 56.0, 18.0, 3.0, dark);
+        for i in 0..5 {
+            ui.rect(px + 94.0 + i as f32, py + 53.0 + i as f32, 1.0, 9.0 - 2.0 * i as f32, dark);
+        }
+        if self.work.iter().all(Option::is_some) && self.smithing_result().is_none() {
+            ui.rect(px + 79.0, py + 49.0, 14.0, 2.0, [0.75, 0.2, 0.2, 1.0]);
+        }
+    }
+
     /// Java's offer tooltip: the clue enchantment with "...?", then the
     /// lapis and levels it costs (red when short).
     pub(super) fn offer_tooltip(&self, ui: &mut Ui, i: usize) {
@@ -1010,7 +1049,7 @@ impl Game {
     /// An enchanted item's name (aqua; an enchanted book's yellow) with a
     /// grey line per enchantment, curses in red, like Java.
     pub(super) fn enchant_tooltip(&self, ui: &mut Ui, stack: Stack) {
-        let title = capitalize(stack.item.name());
+        let title = capitalize(stack.display_name());
         let lines = stack.enchants.lines();
         let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
         let h = 14.0 + 11.0 * lines.len() as f32;

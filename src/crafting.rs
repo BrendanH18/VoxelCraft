@@ -245,6 +245,7 @@ pub fn recipes() -> &'static [Recipe] {
             ),
             shaped(&["#", "#"], &[('#', PLANKS)], Item::STICK, 4),
             shaped(&["##", "##"], &[('#', PLANKS)], b(Block::CRAFTING_TABLE), 1),
+            shaped(&["@@", "##", "##"], &[('@', IRON), ('#', PLANKS)], b(Block::SMITHING_TABLE), 1),
             shaped(&["###", "# #", "###"], &[('#', COBBLESTONE)], b(Block::FURNACE), 1),
             shaped(&[" r ", "###"], &[('r', &[Item::BLAZE_ROD]), ('#', COBBLESTONE)], b(Block::BREWING_STAND), 1),
             shaped(&["###", "# #", "###"], &[('#', PLANKS)], b(Block::CHEST), 1),
@@ -359,6 +360,20 @@ mod tests {
         g.cells[4] = Some(Stack::new(Block::COBBLESTONE, 1));
         assert_eq!(g.result(), None, "only netherrack");
         assert_eq!(grid(3, &cells[1..]).result(), None, "all seven diamonds");
+    }
+
+    #[test]
+    fn smithing_table_uses_two_iron_over_four_planks() {
+        let cells = [
+            (0, 0, Item::IRON_INGOT),
+            (1, 0, Item::IRON_INGOT),
+            (0, 1, b(Block::PLANKS)),
+            (1, 1, b(Block::SPRUCE_PLANKS)),
+            (0, 2, b(Block::BIRCH_PLANKS)),
+            (1, 2, b(Block::JUNGLE_PLANKS)),
+        ];
+        assert_eq!(grid(3, &cells).result(), Some(Stack::new(Block::SMITHING_TABLE, 1)));
+        assert_eq!(grid(3, &cells[1..]).result(), None);
     }
 
     #[test]

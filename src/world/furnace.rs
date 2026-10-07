@@ -80,7 +80,7 @@ pub fn burn_time(item: Item) -> Option<f32> {
         Item::LAVA_BUCKET => Some(1000.0),
         Item::COAL | Item::CHARCOAL => Some(80.0),
         i if i.block().is_some_and(|b| b.is_log() || b.is_planks()) => Some(15.0),
-        i if [Block::CRAFTING_TABLE, Block::CHEST].map(b).contains(&i) => Some(15.0),
+        i if [Block::CRAFTING_TABLE, Block::CHEST, Block::SMITHING_TABLE].map(b).contains(&i) => Some(15.0),
         Item::STICK => Some(5.0),
         i if i.as_tool().is_some_and(|(_, tier)| tier == Tier::Wood) => Some(10.0),
         _ => None,
@@ -364,6 +364,7 @@ mod tests {
         assert!(!f.is_lit());
         assert_eq!(smelt(Item::RAW_BEEF), Some(Item::STEAK));
         assert!(burn_time(Item::IRON_INGOT).is_none());
+        assert_eq!(burn_time(Item::from(Block::SMITHING_TABLE)), Some(15.0));
     }
 
     #[test]
