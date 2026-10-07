@@ -74,7 +74,7 @@ impl Agents {
             let mut inventory = b.agent.inventory.clone();
             inventory.return_stacks(b.agent.work.into_iter().flatten());
             let mode = if b.agent.creative { voxelcraft::rules::GameMode::Creative } else { b.agent.mode };
-            json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"effects":b.agent.vitals.effects.serialize(),"inventory":inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})
+            json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"effects":b.agent.vitals.effects.serialize(),"inventory":inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.spawn_point.map(|p|p.to_array()),"dimension":dimension})
         }).collect();
         json!(profiles).to_string()
     }
@@ -108,6 +108,10 @@ impl Agents {
             agent.player.flying =
                 (mode.can_fly() && p["flying"] == true) || mode == voxelcraft::rules::GameMode::Spectator;
             agent.spawn_bed = p["bed"]
+                .as_array()
+                .filter(|v| v.len() == 3)
+                .and_then(|v| Some(IVec3::new(v[0].as_i64()? as i32, v[1].as_i64()? as i32, v[2].as_i64()? as i32)));
+            agent.spawn_point = p["spawn_point"]
                 .as_array()
                 .filter(|v| v.len() == 3)
                 .and_then(|v| Some(IVec3::new(v[0].as_i64()? as i32, v[1].as_i64()? as i32, v[2].as_i64()? as i32)));
@@ -232,8 +236,9 @@ impl Game {
                             return Err("player is dead; respawn first".into());
                         }
                         Command::Sleep => {}
-                        Command::Time(t) => self.day_time = t,
-                        Command::Weather(r) => self.weather.set(r, true),
+                        Command::Time(t) => self.day_time = t.rem_euclid(1.0),
+                        Command::TimeAdd(ticks) => self.add_time_ticks(ticks),
+                        Command::Weather(kind) => self.apply_weather(kind),
                         Command::Respawn => {
                             let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.vitals.xp);
                             bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[])?;

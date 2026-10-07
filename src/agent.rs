@@ -10,17 +10,19 @@ use crate::inventory::{Inventory, Stack};
 use crate::item::Item;
 use crate::mining;
 use crate::player::{MoveInput, Player};
-use crate::rules::GameMode;
+use crate::rules::{GameMode, GameRules, RuleValue};
+use crate::simulation::difficulty::Difficulty;
 use crate::simulation::effects::Effect;
 use crate::simulation::survival::{self, Vitals};
 use crate::simulation::{self, TICK_SECONDS};
+use crate::world::terrain::Biome;
 use crate::world::{
     World,
     block::{Block, RenderKind},
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | drop | respawn | leave. Cheats: give item [count], gamemode survival/creative/adventure/spectator, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -62,11 +64,26 @@ pub enum Command {
     Respawn,
     Leave,
     Give(Item, u8),
+    Clear,
+    Kill,
+    Summon(crate::entity::MobKind, PositionSpec),
     Mode(GameMode),
-    Teleport(DVec3),
+    Teleport(PositionSpec),
+    SpawnPoint(PositionSpec),
     SetBlock(IVec3, Block),
     Time(f64),
-    Weather(bool),
+    TimeAdd(i64),
+    TimeQuery(TimeQuery),
+    Weather(WeatherKind),
+    Difficulty(Difficulty),
+    GameRule {
+        name: String,
+        value: Option<String>,
+    },
+    LocateStructure(String),
+    LocateBiome(Biome),
+    Seed,
+    SetWorldSpawn(PositionSpec),
     Dimension(Dimension),
     /// Java's `/xp`: add or set an amount, counted in levels or points.
     Xp(XpChange),
@@ -80,6 +97,108 @@ pub enum Command {
     Enchanting(usize),
     /// Combines the held stack with hotbar slot 0..9 on the targeted anvil.
     Anvil(usize),
+    Say(String),
+}
+
+/// `/time query` targets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TimeQuery {
+    Daytime,
+    Day,
+    Gametime,
+}
+
+/// `/weather` modes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeatherKind {
+    Clear,
+    Rain,
+    Thunder,
+}
+
+const COMMAND_NAMES: &[&str] = &[
+    "help",
+    "give",
+    "clear",
+    "kill",
+    "summon",
+    "gamemode",
+    "tp",
+    "spawnpoint",
+    "setworldspawn",
+    "setblock",
+    "time",
+    "weather",
+    "difficulty",
+    "gamerule",
+    "locate",
+    "seed",
+    "dimension",
+    "xp",
+    "experience",
+    "effect",
+    "enchant",
+    "say",
+    "players",
+    "catalog",
+];
+
+const MOB_COMMAND_NAMES: &[&str] = &[
+    "pig",
+    "cow",
+    "sheep",
+    "chicken",
+    "zombie",
+    "skeleton",
+    "creeper",
+    "spider",
+    "zombified_piglin",
+    "enderman",
+    "blaze",
+    "silverfish",
+];
+
+/// One Java command coordinate: absolute, or relative to the executor.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Coordinate {
+    Absolute(f64),
+    Relative(f64),
+}
+
+impl Coordinate {
+    fn parse(text: &str) -> Result<Self, String> {
+        if let Some(offset) = text.strip_prefix('~') {
+            Ok(Self::Relative(if offset.is_empty() { 0.0 } else { number(offset)? }))
+        } else {
+            Ok(Self::Absolute(number(text)?))
+        }
+    }
+
+    fn resolve(self, origin: f64) -> f64 {
+        match self {
+            Self::Absolute(value) => value,
+            Self::Relative(offset) => origin + offset,
+        }
+    }
+}
+
+/// Three Java command coordinates with `~` support.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PositionSpec(pub [Coordinate; 3]);
+
+impl PositionSpec {
+    pub fn parse(x: &str, y: &str, z: &str) -> Result<Self, String> {
+        Ok(Self([Coordinate::parse(x)?, Coordinate::parse(y)?, Coordinate::parse(z)?]))
+    }
+
+    pub fn resolve(self, origin: DVec3) -> Result<DVec3, String> {
+        let [x, y, z] = self.0;
+        let pos = DVec3::new(x.resolve(origin.x), y.resolve(origin.y), z.resolve(origin.z));
+        if !pos.is_finite() || pos.abs().max_element() > 30_000_000.0 {
+            return Err("coordinates exceed world bounds".into());
+        }
+        Ok(pos)
+    }
 }
 
 /// `/effect give` (with seconds and amplifier) or `/effect clear`.
@@ -143,6 +262,110 @@ fn ticks(text: &str) -> Result<u32, String> {
     text.parse::<u32>().ok().filter(|n| (1..=200).contains(n)).ok_or_else(|| "ticks must be 1..200".into())
 }
 
+fn parse_time_fraction(token: &str) -> Result<f64, String> {
+    match token {
+        "day" => Ok(1_000.0 / 24_000.0),
+        "noon" => Ok(0.25),
+        "night" => Ok(13_000.0 / 24_000.0),
+        "midnight" => Ok(0.75),
+        n => Ok((number(n)? / 24_000.0).rem_euclid(1.0)),
+    }
+}
+
+fn common_prefix<'a>(options: impl IntoIterator<Item = &'a str>) -> String {
+    let mut iter = options.into_iter();
+    let Some(first) = iter.next() else { return String::new() };
+    let mut prefix: Vec<char> = first.chars().collect();
+    for word in iter {
+        prefix.truncate(prefix.iter().zip(word.chars()).take_while(|(a, b)| *a == b).count());
+        if prefix.is_empty() {
+            break;
+        }
+    }
+    prefix.into_iter().collect()
+}
+
+fn complete_options(options: &[&str], partial: &str) -> Option<String> {
+    let mut matches: Vec<&str> = options.iter().copied().filter(|o| o.starts_with(partial)).collect();
+    matches.sort_unstable();
+    match matches.len() {
+        0 => None,
+        1 => {
+            let word = matches[0];
+            Some(if partial == word { format!("{word} ") } else { word.to_string() })
+        }
+        _ => {
+            let pref = common_prefix(matches);
+            if pref.len() > partial.len() { Some(pref) } else { None }
+        }
+    }
+}
+
+/// Tab-completes a slash command line for the host console.
+pub fn tab_complete(input: &str) -> Option<String> {
+    if !input.starts_with('/') {
+        return None;
+    }
+    let rest = input.trim_start_matches('/');
+    if rest.is_empty() {
+        return Some("/help ".into());
+    }
+    let trailing = input.ends_with(' ') || input.ends_with('\t');
+    let tokens: Vec<&str> = rest.split_whitespace().collect();
+    let (stem, partial) = if trailing {
+        (&tokens[..], "")
+    } else {
+        let partial = *tokens.last()?;
+        (&tokens[..tokens.len().saturating_sub(1)], partial)
+    };
+    let completed = match stem.first().copied().unwrap_or("") {
+        "" => complete_options(COMMAND_NAMES, partial)?,
+        "gamemode" if stem.len() <= 1 => {
+            complete_options(&["survival", "creative", "adventure", "spectator"], partial)?
+        }
+        "difficulty" if stem.len() <= 1 => complete_options(&["peaceful", "easy", "normal", "hard"], partial)?,
+        "weather" if stem.len() <= 1 => complete_options(&["clear", "rain", "thunder"], partial)?,
+        "time" if stem.len() <= 1 => {
+            complete_options(&["set", "add", "query", "day", "noon", "night", "midnight"], partial)?
+        }
+        "time" if stem.len() == 2 && stem[1] == "query" => complete_options(&["daytime", "day", "gametime"], partial)?,
+        "locate" if stem.len() <= 1 => complete_options(&["structure", "biome"], partial)?,
+        "locate" if stem.len() == 2 && stem[1] == "structure" => {
+            complete_options(&["stronghold", "fortress", "nether_fortress"], partial)?
+        }
+        "locate" if stem.len() == 2 && stem[1] == "biome" => {
+            let names: Vec<&str> = Biome::ALL.iter().map(|b| b.name()).collect();
+            complete_options(&names, partial)?
+        }
+        "gamerule" if stem.len() <= 1 => {
+            let names: Vec<&str> = GameRules::names().collect();
+            complete_options(&names, partial)?
+        }
+        "gamerule" if stem.len() == 2 => match GameRules::default().get(stem[1]) {
+            Some(RuleValue::Bool(_)) => complete_options(&["true", "false"], partial)?,
+            Some(RuleValue::Int(_)) => return None,
+            None => return None,
+        },
+        "summon" if stem.len() <= 1 => complete_options(MOB_COMMAND_NAMES, partial)?,
+        "effect" if stem.len() <= 1 => complete_options(&["give", "clear"], partial)?,
+        "xp" | "experience" if stem.len() <= 1 => complete_options(&["add", "set", "query"], partial)?,
+        _ if stem.is_empty() => complete_options(COMMAND_NAMES, partial)?,
+        _ => return None,
+    };
+    let mut out = String::from("/");
+    for (i, token) in stem.iter().enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        out.push_str(token);
+    }
+    if !stem.is_empty() || trailing {
+        out.push(' ');
+    }
+    out.push_str(&completed);
+    Some(out)
+}
+
 impl Command {
     /// Parse slash commands and CLI input identically, rejecting extra arguments and non-finite numbers.
     pub fn parse(text: &str) -> Result<Self, String> {
@@ -202,22 +425,67 @@ impl Command {
             ["drop"] => Self::Drop,
             ["respawn"] => Self::Respawn,
             ["leave"] => Self::Leave,
+            ["give", "@s" | "@p", name] => Self::Give(item(name)?, 1),
+            ["give", "@s" | "@p", name, n] => {
+                Self::Give(item(name)?, n.parse::<u8>().ok().filter(|n| *n > 0).ok_or_else(bad)?)
+            }
             ["give", name] => Self::Give(item(name)?, 1),
             ["give", name, n] => Self::Give(item(name)?, n.parse::<u8>().ok().filter(|n| *n > 0).ok_or_else(bad)?),
+            ["clear"] | ["clear", "@s" | "@p"] => Self::Clear,
+            ["kill"] | ["kill", "@s" | "@p"] => Self::Kill,
+            ["summon", name] => Self::Summon(
+                crate::entity::MobKind::from_name(name).ok_or_else(bad)?,
+                PositionSpec([Coordinate::Relative(0.0), Coordinate::Relative(0.0), Coordinate::Relative(0.0)]),
+            ),
+            ["summon", name, x, y, z] => {
+                Self::Summon(crate::entity::MobKind::from_name(name).ok_or_else(bad)?, PositionSpec::parse(x, y, z)?)
+            }
             ["gamemode", name] => Self::Mode(GameMode::from_name(name).ok_or_else(bad)?),
-            ["tp", x, y, z] => Self::Teleport(xyz(x, y, z)?),
+            ["gamemode", name, "@s" | "@p"] => Self::Mode(GameMode::from_name(name).ok_or_else(bad)?),
+            ["gamemode", "@s" | "@p", name] => Self::Mode(GameMode::from_name(name).ok_or_else(bad)?),
+            ["tp", x, y, z] => Self::Teleport(PositionSpec::parse(x, y, z)?),
+            ["tp", "@s" | "@p", x, y, z] => Self::Teleport(PositionSpec::parse(x, y, z)?),
+            ["spawnpoint"] | ["spawnpoint", "@s" | "@p"] => Self::SpawnPoint(PositionSpec([
+                Coordinate::Relative(0.0),
+                Coordinate::Relative(0.0),
+                Coordinate::Relative(0.0),
+            ])),
+            ["spawnpoint", x, y, z] | ["spawnpoint", "@s" | "@p", x, y, z] => {
+                Self::SpawnPoint(PositionSpec::parse(x, y, z)?)
+            }
+            ["setworldspawn"] | ["setworldspawn", "@s" | "@p"] => Self::SetWorldSpawn(PositionSpec([
+                Coordinate::Relative(0.0),
+                Coordinate::Relative(0.0),
+                Coordinate::Relative(0.0),
+            ])),
+            ["setworldspawn", x, y, z] | ["setworldspawn", "@s" | "@p", x, y, z] => {
+                Self::SetWorldSpawn(PositionSpec::parse(x, y, z)?)
+            }
             ["setblock", x, y, z, name] => {
                 Self::SetBlock(xyz(x, y, z)?.floor().as_ivec3(), Block::from_name(name).ok_or_else(bad)?)
             }
-            ["time", "day"] => Self::Time(0.0),
-            ["time", "noon"] => Self::Time(0.25),
-            ["time", "night"] => Self::Time(0.75),
-            ["time", n] => Self::Time(number(n)?.rem_euclid(1.0)),
-            ["weather", "clear"] => Self::Weather(false),
-            ["weather", "rain"] => Self::Weather(true),
+            ["time", "set", t] => Self::Time(parse_time_fraction(t)?),
+            ["time", "add", n] => Self::TimeAdd(n.parse::<i64>().map_err(|_| "time add needs an integer".to_string())?),
+            ["time", "query", "daytime"] => Self::TimeQuery(TimeQuery::Daytime),
+            ["time", "query", "day"] => Self::TimeQuery(TimeQuery::Day),
+            ["time", "query", "gametime"] => Self::TimeQuery(TimeQuery::Gametime),
+            ["time", "day"] => Self::Time(parse_time_fraction("day")?),
+            ["time", "noon"] => Self::Time(parse_time_fraction("noon")?),
+            ["time", "night"] => Self::Time(parse_time_fraction("night")?),
+            ["time", "midnight"] => Self::Time(parse_time_fraction("midnight")?),
+            ["time", n] => Self::Time(parse_time_fraction(n)?),
+            ["weather", "clear"] => Self::Weather(WeatherKind::Clear),
+            ["weather", "rain"] => Self::Weather(WeatherKind::Rain),
+            ["weather", "thunder"] => Self::Weather(WeatherKind::Thunder),
+            ["difficulty", name] => Self::Difficulty(Difficulty::from_name(name).ok_or_else(bad)?),
+            ["gamerule", name] => Self::GameRule { name: name.to_string(), value: None },
+            ["gamerule", name, value] => Self::GameRule { name: name.to_string(), value: Some(value.to_string()) },
+            ["locate", "structure", name] => Self::LocateStructure(name.to_string()),
+            ["locate", "biome", name] => Self::LocateBiome(Biome::from_name(name).ok_or_else(bad)?),
+            ["seed"] => Self::Seed,
             ["dimension", name] => Self::Dimension(Dimension::from_name(name).ok_or_else(bad)?),
-            ["xp", "query"] => Self::XpQuery,
-            ["xp", op @ ("add" | "set"), n, unit @ ..] => {
+            ["xp" | "experience", "query"] => Self::XpQuery,
+            ["xp" | "experience", op @ ("add" | "set"), n, unit @ ..] => {
                 let amount = n.parse::<i64>().ok().filter(|n| n.abs() <= 1_000_000).ok_or_else(bad)?;
                 let levels = match unit {
                     [] | ["points"] => false,
@@ -251,6 +519,7 @@ impl Command {
                 let level = rest.first().map_or(Ok(1), |n| n.parse::<u8>().ok().filter(|&n| n > 0).ok_or_else(bad))?;
                 Self::Enchant(e, level)
             }
+            ["say", message @ ..] if !message.is_empty() => Self::Say(message.join(" ")),
             _ => return Err(bad()),
         })
     }
@@ -260,11 +529,17 @@ impl Command {
         matches!(
             self,
             Self::Give(..)
+                | Self::Clear
+                | Self::Kill
+                | Self::Summon(..)
                 | Self::Mode(..)
                 | Self::Teleport(..)
+                | Self::SpawnPoint(..)
                 | Self::SetBlock(..)
                 | Self::Time(..)
                 | Self::Weather(..)
+                | Self::TimeAdd(..)
+                | Self::Say(..)
                 | Self::Dimension(..)
                 | Self::Xp(..)
                 | Self::Effect(..)
@@ -298,6 +573,8 @@ pub struct Agent {
     pub sleeping: Option<f32>,
     /// Foot of the Overworld bed last used, where a dead agent respawns.
     pub spawn_bed: Option<IVec3>,
+    /// Exact command-set Overworld spawn point, replacing a bed spawn.
+    pub spawn_point: Option<IVec3>,
     input: MoveInput,
     mining: bool,
     /// Holding "use" eats held food; `bite` counts the ticks chewed.
@@ -326,6 +603,7 @@ impl Agent {
             events: Vec::new(),
             sleeping: None,
             spawn_bed: None,
+            spawn_point: None,
             input: MoveInput::default(),
             mining: false,
             eating: false,
@@ -386,6 +664,11 @@ impl Agent {
                     | Command::Fly(..)
                     | Command::Mode(..)
                     | Command::Teleport(..)
+                    | Command::SpawnPoint(..)
+                    | Command::Summon(..)
+                    | Command::Clear
+                    | Command::Kill
+                    | Command::Say(..)
                     | Command::Leave
             )
         {
@@ -464,6 +747,16 @@ impl Agent {
                 }
                 self.inventory = inv;
             }
+            Command::Clear => {
+                self.inventory.take_all();
+                self.work.fill(None);
+            }
+            Command::Kill => {
+                self.vitals.damage(f32::MAX, "was killed", false);
+            }
+            Command::Summon(kind, pos) => {
+                entities.spawn(kind, pos.resolve(self.player.pos)?);
+            }
             Command::Xp(change) => {
                 if let Some(chime) = change.apply(&mut self.vitals.xp) {
                     self.emit(Event::Xp(Some(chime)));
@@ -475,10 +768,16 @@ impl Agent {
             }
             Command::Mode(mode) => self.set_mode(mode),
             Command::Teleport(pos) => {
+                let pos = pos.resolve(self.player.pos)?;
                 self.player.pos = pos;
                 self.previous_pos = pos;
                 self.player.vel = DVec3::ZERO;
                 self.vitals.reset_fall();
+            }
+            Command::SpawnPoint(pos) => {
+                let pos = pos.resolve(self.player.pos)?.floor().as_ivec3();
+                self.spawn_bed = None;
+                self.spawn_point = Some(pos);
             }
             Command::SetBlock(pos, block) => {
                 if !world.set_block(pos, block) {
@@ -666,16 +965,19 @@ impl Agent {
                 if overworld && bed.is_none() {
                     self.spawn_bed = None; // broken: forget it
                 }
-                let at = match bed {
-                    Some(b) => DVec3::new(b.x as f64 + 0.5, b.y as f64 + Block::BED_FOOT.height(), b.z as f64 + 0.5),
-                    None => world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5),
+                let at = match (self.spawn_point.filter(|_| overworld), bed) {
+                    (Some(p), _) => p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5),
+                    (None, Some(b)) => {
+                        DVec3::new(b.x as f64 + 0.5, b.y as f64 + Block::BED_FOOT.height(), b.z as f64 + 0.5)
+                    }
+                    (None, None) => world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5),
                 };
                 self.player = Player::new(at);
                 self.player.can_fly = self.creative || self.mode.can_fly();
                 self.player.noclip = self.mode == GameMode::Spectator;
                 self.vitals = Vitals::default();
             }
-            Command::Observe(_) | Command::Help | Command::XpQuery => {}
+            Command::Observe(_) | Command::Help | Command::XpQuery | Command::Say(_) => {}
             _ => return Err("command requires host console".into()),
         }
         Ok(())
@@ -1086,7 +1388,7 @@ impl Agent {
         let target = self.target(world).map(|(p, n)| {
             json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers})
         });
-        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"level":self.vitals.xp.level,"xp_progress":self.vitals.xp.progress(),"dead":self.vitals.is_dead(),"mode":self.mode.name(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"spawn_bed":self.spawn_bed.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
+        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"level":self.vitals.xp.level,"xp_progress":self.vitals.xp.progress(),"dead":self.vitals.is_dead(),"mode":self.mode.name(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"spawn_bed":self.spawn_bed.map(|p|p.to_array()),"spawn_point":self.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
 }
 
@@ -1369,6 +1671,11 @@ mod tests {
         assert!(xp("xp set -1 levels").is_none() && xp("xp add 5 hearts").is_none() && xp("xp add").is_none());
         assert!(matches!(Command::parse("xp query"), Ok(Command::XpQuery)));
         assert!(Command::parse("xp add 1").unwrap().cheat());
+        assert!(matches!(Command::parse("gamerule keepInventory").unwrap(), Command::GameRule { .. }));
+        assert!(matches!(Command::parse("time query daytime").unwrap(), Command::TimeQuery(TimeQuery::Daytime)));
+        assert!(matches!(Command::parse("weather thunder").unwrap(), Command::Weather(WeatherKind::Thunder)));
+        assert!(matches!(Command::parse("locate biome plains").unwrap(), Command::LocateBiome(Biome::Plains)));
+        assert!(tab_complete("/gamemode surv").unwrap().starts_with("/gamemode survival"));
     }
 
     #[test]

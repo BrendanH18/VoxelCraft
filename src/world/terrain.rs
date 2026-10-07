@@ -11,7 +11,7 @@
 //! down to sea level, swamps flatten into shallow pools and badlands rise
 //! into terraced plateaus. Temperature and humidity then pick the biome.
 
-use glam::IVec3;
+use glam::{IVec2, IVec3};
 
 use super::block::{Block, Wood};
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
@@ -47,6 +47,47 @@ pub enum Biome {
 }
 
 impl Biome {
+    pub const ALL: [Biome; 14] = [
+        Biome::Ocean,
+        Biome::Beach,
+        Biome::River,
+        Biome::Plains,
+        Biome::Forest,
+        Biome::BirchForest,
+        Biome::Swamp,
+        Biome::Desert,
+        Biome::Badlands,
+        Biome::Savanna,
+        Biome::Jungle,
+        Biome::Mountains,
+        Biome::Snowy,
+        Biome::Taiga,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Biome::Ocean => "ocean",
+            Biome::Beach => "beach",
+            Biome::River => "river",
+            Biome::Plains => "plains",
+            Biome::Forest => "forest",
+            Biome::BirchForest => "birch_forest",
+            Biome::Swamp => "swamp",
+            Biome::Desert => "desert",
+            Biome::Badlands => "badlands",
+            Biome::Savanna => "savanna",
+            Biome::Jungle => "jungle",
+            Biome::Mountains => "mountains",
+            Biome::Snowy => "snowy",
+            Biome::Taiga => "taiga",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        let name = name.strip_prefix("minecraft:").unwrap_or(name);
+        Self::ALL.into_iter().find(|biome| biome.name() == name)
+    }
+
     /// Which colour grass and leaves take on here (see `block::tex::tinted`):
     /// 0 temperate green, 1 murky swamp, 2 dry and yellow, 3 lush jungle,
     /// 4 cold and blue.
@@ -173,6 +214,39 @@ impl Generator {
     /// The End's layout (pillars, exit portal), in the End only.
     pub fn end(&self) -> Option<&super::end::EndGen> {
         self.end.as_ref()
+    }
+
+    /// Nearest Nether fortress, when this is a Nether generator.
+    pub fn nearest_fortress(&self, p: glam::IVec2) -> Option<IVec3> {
+        self.nether.as_ref()?.fortresses.nearest(p)
+    }
+
+    /// Nearest column of `target`, searching outward from `origin` in 32-block
+    /// steps (Java `/locate biome` uses a similar spiral; capped for speed).
+    pub fn nearest_biome(&self, origin: IVec2, target: Biome, max_blocks: i32) -> Option<IVec3> {
+        if self.dimension != Dimension::Overworld {
+            return None;
+        }
+        let here = |x, z| self.column(x, z).biome == target;
+        if here(origin.x, origin.y) {
+            return Some(IVec3::new(origin.x, self.column(origin.x, origin.y).height + 1, origin.y));
+        }
+        let steps = (max_blocks / 32).max(1);
+        for ring in 1..=steps {
+            for dx in -ring..=ring {
+                for dz in -ring..=ring {
+                    if dx.abs() != ring && dz.abs() != ring {
+                        continue;
+                    }
+                    let x = origin.x + dx * 32;
+                    let z = origin.y + dz * 32;
+                    if here(x, z) {
+                        return Some(IVec3::new(x, self.column(x, z).height + 1, z));
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Surface height and biome of a world column.
@@ -999,6 +1073,15 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn nearest_biome_finds_a_matching_column() {
+        let g = Generator::new(42);
+        let origin = IVec2::new(0, 0);
+        let here = g.column(origin.x, origin.y).biome;
+        assert_eq!(g.nearest_biome(origin, here, 256).map(|p| IVec2::new(p.x, p.z)), Some(origin));
+        assert!(g.nearest_biome(origin, Biome::Ocean, 12_800).is_some());
     }
 
     #[test]

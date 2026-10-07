@@ -168,10 +168,14 @@ struct Game {
     rendered_eye: DVec3,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     day_time: f64,
+    /// Completed daylight cycles for `/time query day`.
+    day_count: i64,
     /// Seconds spent asleep so far (the screen fades out), if in bed.
     sleeping: Option<f32>,
     /// Foot of the bed the player respawns at.
     spawn_bed: Option<glam::IVec3>,
+    /// Exact Overworld point set by `/spawnpoint`, replacing a bed spawn.
+    spawn_point: Option<glam::IVec3>,
     /// Shared Overworld spawn changed by `/setworldspawn`.
     world_spawn: glam::IVec3,
     weather: weather::Weather,
@@ -738,10 +742,15 @@ impl Game {
                 .time
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
                 .unwrap_or(0.08),
+            day_count: root_props.get("day_count").and_then(|value| value.parse().ok()).unwrap_or(0),
             sleeping: None,
             spawn_bed: existing.as_ref().and_then(|l| l.props.get("bed")).and_then(|t| {
                 let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
                 (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
+            }),
+            spawn_point: existing.as_ref().and_then(|l| l.props.get("spawn_point")).and_then(|text| {
+                let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
+                (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
             }),
             world_spawn: root_props
                 .get("world_spawn")
@@ -1711,9 +1720,13 @@ impl Game {
         }
         props.insert("dimension".to_string(), self.dimension.name().to_string());
         props.insert("time".to_string(), format!("{:.5}", self.day_time));
+        props.insert("day_count".to_string(), self.day_count.to_string());
         props.insert("weather".to_string(), self.weather.serialize());
         if let Some(b) = self.spawn_bed {
             props.insert("bed".to_string(), format!("{},{},{}", b.x, b.y, b.z));
+        }
+        if let Some(p) = self.spawn_point {
+            props.insert("spawn_point".to_string(), format!("{},{},{}", p.x, p.y, p.z));
         }
         let seed = self.world.generator.seed;
         let chunks = self.world.modified_chunks();
@@ -1916,7 +1929,11 @@ impl Game {
         self.update_mobs(dt);
         self.update_items();
         if self.gamerules.bool("doDaylightCycle") {
-            self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
+            self.day_time += dt / DAY_LENGTH;
+            if self.day_time >= 1.0 {
+                self.day_time = self.day_time.fract();
+                self.day_count = self.day_count.saturating_add(1);
+            }
         }
     }
 

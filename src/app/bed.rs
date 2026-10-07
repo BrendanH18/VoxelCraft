@@ -89,6 +89,7 @@ impl Game {
         let (foot, rest) = self.bed_rules(pos)?;
         if self.spawn_bed != Some(foot) {
             self.spawn_bed = Some(foot);
+            self.spawn_point = None;
             self.show_popup("Respawn point set");
         }
         rest.map_err(|e| self.show_popup(e)).ok()
@@ -130,6 +131,7 @@ impl Game {
         let (foot, rest) = self.bed_rules(pos).ok_or("not looking at a bed")?;
         let agent = &mut self.agents.players.get_mut(name).unwrap().agent;
         agent.spawn_bed = Some(foot);
+        agent.spawn_point = None;
         let at = rest?;
         agent.player.pos = at;
         agent.player.vel = DVec3::ZERO;
@@ -194,6 +196,9 @@ impl Game {
             }
             self.spawn_bed = None;
             self.show_popup("Your home bed was missing");
+        }
+        if let Some(point) = self.spawn_point {
+            return point.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
         }
         let radius = self.gamerules.int("spawnRadius");
         let offset = spawn_offset(self.world.generator.seed, radius);

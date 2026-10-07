@@ -353,6 +353,23 @@ impl Fortresses {
         cache.entry(region).or_insert(fortress).clone()
     }
 
+    /// Centre of the fortress nearest `p`, searching the current placement
+    /// region and its neighbours.
+    pub fn nearest(&self, p: IVec2) -> Option<IVec3> {
+        let region = p.div_euclid(IVec2::splat(REGION));
+        (-1..=1)
+            .flat_map(|z| (-1..=1).map(move |x| region + IVec2::new(x, z)))
+            .filter_map(|region| self.get(region))
+            .map(|fortress| {
+                let b = fortress.bounds;
+                IVec3::new((b.min.x + b.max.x) / 2, b.min.y, (b.min.z + b.max.z) / 2)
+            })
+            .min_by_key(|at| {
+                let delta = IVec2::new(at.x, at.z) - p;
+                delta.as_i64vec2().length_squared()
+            })
+    }
+
     /// Fortresses with blocks in the columns from `min` to `max` (x and z).
     pub fn near(&self, min: IVec2, max: IVec2) -> Vec<Arc<Fortress>> {
         let lo = (min - EXTENT - START_MAX).div_euclid(IVec2::splat(REGION));
