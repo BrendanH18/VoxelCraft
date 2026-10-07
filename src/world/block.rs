@@ -192,7 +192,10 @@ pub mod tex {
     /// Anvil body, then its top intact, chipped and damaged.
     pub const ANVIL: u8 = IRON_BLOCK + 1;
     pub const ANVIL_TOP: u8 = ANVIL + 1;
-    pub const COUNT: u32 = ANVIL_TOP as u32 + 3;
+    pub const DEBRIS_SIDE: u8 = ANVIL_TOP + 3;
+    pub const DEBRIS_TOP: u8 = DEBRIS_SIDE + 1;
+    pub const NETHERITE_BLOCK: u8 = DEBRIS_TOP + 1;
+    pub const COUNT: u32 = NETHERITE_BLOCK as u32 + 1;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
@@ -387,6 +390,8 @@ impl Block {
     pub const ANVIL: Block = Block(215);
     pub const CHIPPED_ANVIL: Block = Block(217);
     pub const DAMAGED_ANVIL: Block = Block(219);
+    pub const ANCIENT_DEBRIS: Block = Block(221);
+    pub const NETHERITE_BLOCK: Block = Block(222);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -811,6 +816,8 @@ impl Block {
             Block::BOOKSHELF => 1.5,
             Block::END_PORTAL_FRAME | Block::END_PORTAL | Block::END_GATEWAY => f32::INFINITY,
             Block::DRAGON_EGG => 3.0,
+            Block::ANCIENT_DEBRIS => 30.0,
+            Block::NETHERITE_BLOCK => 50.0,
             Block::QUARTZ_ORE | Block::END_STONE | Block::LAPIS_ORE | Block::LAPIS_BLOCK => 3.0,
             Block::ENCHANTING_TABLE
             | Block::IRON_BLOCK
@@ -868,6 +875,8 @@ impl Block {
             | Block::IRON_BARS
             | Block::LAPIS_ORE
             | Block::LAPIS_BLOCK
+            | Block::ANCIENT_DEBRIS
+            | Block::NETHERITE_BLOCK
             | Block::ENCHANTING_TABLE
             | Block::IRON_BLOCK
             | Block::ANVIL
@@ -925,7 +934,7 @@ impl Block {
             b if b.terracotta_colour().is_some() => Some(0),
             Block::IRON_ORE | Block::LAPIS_ORE | Block::LAPIS_BLOCK | Block::IRON_BLOCK => Some(1),
             Block::GOLD_ORE | Block::DIAMOND_ORE => Some(2),
-            Block::OBSIDIAN => Some(3),
+            Block::OBSIDIAN | Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK => Some(3),
             _ => None,
         }
     }
@@ -942,7 +951,7 @@ impl Block {
             .chain((112..=132).step_by(4))
             .chain([
                 136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213, 214, 215,
-                217, 219,
+                217, 219, 221, 222,
             ])
             .map(Block)
     }
@@ -1465,6 +1474,8 @@ const fn make(id: u8) -> BlockInfo {
         215 | 216 => ("anvil", Shaped, column(tex::ANVIL, tex::ANVIL_TOP, tex::ANVIL)),
         217 | 218 => ("chipped anvil", Shaped, column(tex::ANVIL, tex::ANVIL_TOP + 1, tex::ANVIL)),
         219 | 220 => ("damaged anvil", Shaped, column(tex::ANVIL, tex::ANVIL_TOP + 2, tex::ANVIL)),
+        221 => ("ancient debris", Opaque, column(tex::DEBRIS_SIDE, tex::DEBRIS_TOP, tex::DEBRIS_TOP)),
+        222 => ("block of netherite", Opaque, all(tex::NETHERITE_BLOCK)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are
