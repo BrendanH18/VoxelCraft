@@ -2067,6 +2067,7 @@ mod tests {
     fn emission_table_matches_base_state_lookup_for_every_state() {
         fn reference(block: Block) -> u8 {
             match block.base() {
+                Block::MAGMA => 3,
                 Block::GLOWSTONE => 15,
                 Block::TORCH => 14,
                 Block::LIT_FURNACE => 13,
