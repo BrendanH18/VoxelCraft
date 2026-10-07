@@ -166,7 +166,11 @@ const PLANKS: Ingredient = &[
     b(Block::BIRCH_PLANKS),
     b(Block::JUNGLE_PLANKS),
     b(Block::ACACIA_PLANKS),
+    b(Block::DARK_OAK_PLANKS),
+    b(Block::MANGROVE_PLANKS),
+    b(Block::CHERRY_PLANKS),
 ];
+const OAK_PLANKS: Ingredient = &[b(Block::PLANKS)];
 const MELON: Ingredient = &[b(Block::MELON)];
 const SAND: Ingredient = &[b(Block::SAND)];
 const SAND_STONE: Ingredient = &[b(Block::SANDSTONE)];
@@ -179,6 +183,26 @@ const GRANITE: Ingredient = &[b(Block::GRANITE)];
 const DIORITE: Ingredient = &[b(Block::DIORITE)];
 const ANDESITE: Ingredient = &[b(Block::ANDESITE)];
 const COBBLED_DEEPSLATE: Ingredient = &[b(Block::COBBLED_DEEPSLATE)];
+const MOSSY_COBBLE: Ingredient = &[b(Block::MOSSY_COBBLESTONE)];
+const POLISHED_GRANITE: Ingredient = &[b(Block::POLISHED_GRANITE)];
+const POLISHED_DIORITE: Ingredient = &[b(Block::POLISHED_DIORITE)];
+const POLISHED_ANDESITE: Ingredient = &[b(Block::POLISHED_ANDESITE)];
+const TUFF: Ingredient = &[b(Block::TUFF)];
+const CALCITE: Ingredient = &[b(Block::CALCITE)];
+const SMOOTH_STONE: Ingredient = &[b(Block::SMOOTH_STONE)];
+const DEEPSLATE: Ingredient = &[b(Block::DEEPSLATE)];
+const POLISHED_DEEPSLATE: Ingredient = &[b(Block::POLISHED_DEEPSLATE)];
+const STONE_BRICKS: Ingredient = &[b(Block::STONE_BRICKS)];
+const SPRUCE_PLANKS: Ingredient = &[b(Block::SPRUCE_PLANKS)];
+const BIRCH_PLANKS: Ingredient = &[b(Block::BIRCH_PLANKS)];
+const JUNGLE_PLANKS: Ingredient = &[b(Block::JUNGLE_PLANKS)];
+const ACACIA_PLANKS: Ingredient = &[b(Block::ACACIA_PLANKS)];
+const DARK_OAK_PLANKS: Ingredient = &[b(Block::DARK_OAK_PLANKS)];
+const MANGROVE_PLANKS: Ingredient = &[b(Block::MANGROVE_PLANKS)];
+const CHERRY_PLANKS: Ingredient = &[b(Block::CHERRY_PLANKS)];
+const DARK_OAK_LOG: Ingredient = &[b(Block::DARK_OAK_LOG)];
+const MANGROVE_LOG: Ingredient = &[b(Block::MANGROVE_LOG)];
+const CHERRY_LOG: Ingredient = &[b(Block::CHERRY_LOG)];
 const QUARTZ: Ingredient = &[Item::NETHER_QUARTZ];
 const NETHER_BRICKS: Ingredient = &[b(Block::NETHER_BRICKS)];
 const STICK: Ingredient = &[Item::STICK];
@@ -328,15 +352,63 @@ pub fn recipes() -> &'static [Recipe] {
             r.push(tool(ToolKind::Sword, &["X", "X", "#"]));
         }
         const SLABS: [Ingredient; 6] =
-            [&[b(Block::STONE)], COBBLESTONE, PLANKS, SAND_STONE, &[b(Block::BRICKS)], &[b(Block::NETHER_BRICKS)]];
+            [&[b(Block::STONE)], COBBLESTONE, OAK_PLANKS, SAND_STONE, &[b(Block::BRICKS)], &[b(Block::NETHER_BRICKS)]];
         for (i, base) in SLABS.into_iter().enumerate() {
             r.push(shaped(&["###"], &[('#', base)], b(Block(Block::STONE_SLAB.0 + i as u16)), 6));
             r.push(shaped(&["#  ", "## ", "###"], &[('#', base)], b(Block(Block::STONE_STAIRS.0 + i as u16 * 4)), 4));
         }
-        r.push(shaped(&["#s#", "#s#"], &[('#', PLANKS), ('s', STICK)], b(Block::OAK_FENCE), 3));
-        r.push(shaped(&["s#s", "s#s"], &[('#', PLANKS), ('s', STICK)], b(Block::FENCE_GATE), 1));
+        r.push(shaped(&["#s#", "#s#"], &[('#', OAK_PLANKS), ('s', STICK)], b(Block::OAK_FENCE), 3));
+        r.push(shaped(&["s#s", "s#s"], &[('#', OAK_PLANKS), ('s', STICK)], b(Block::FENCE_GATE), 1));
         r.push(shaped(&["s s", "sss", "s s"], &[('s', STICK)], b(Block::LADDER), 3));
-        r.push(shaped(&["##", "##", "##"], &[('#', PLANKS)], Item::OAK_DOOR, 3));
+        r.push(shaped(&["##", "##", "##"], &[('#', OAK_PLANKS)], Item::OAK_DOOR, 3));
+        const STONE_SHAPES: [Ingredient; 13] = [
+            MOSSY_COBBLE,
+            GRANITE,
+            POLISHED_GRANITE,
+            DIORITE,
+            POLISHED_DIORITE,
+            ANDESITE,
+            POLISHED_ANDESITE,
+            TUFF,
+            CALCITE,
+            SMOOTH_STONE,
+            DEEPSLATE,
+            COBBLED_DEEPSLATE,
+            POLISHED_DEEPSLATE,
+        ];
+        for (i, mat) in STONE_SHAPES.into_iter().enumerate() {
+            let i = i as u16;
+            r.push(shaped(&["#  ", "## ", "###"], &[('#', mat)], b(crate::world::forms::stone_id(i, 0)), 4));
+            r.push(shaped(&["###"], &[('#', mat)], b(crate::world::forms::stone_id(i, 4)), 6));
+            r.push(shaped(&["###", "###"], &[('#', mat)], b(crate::world::forms::stone_id(i, 5)), 6));
+        }
+        r.push(shaped(&["###", "###"], &[('#', COBBLESTONE)], b(Block::COBBLESTONE_WALL), 6));
+        r.push(shaped(&["###", "###"], &[('#', STONE_BRICKS)], b(Block::STONE_BRICK_WALL), 6));
+        const WOOD_SHAPES: [Ingredient; 7] = [
+            DARK_OAK_PLANKS,
+            SPRUCE_PLANKS,
+            BIRCH_PLANKS,
+            JUNGLE_PLANKS,
+            ACACIA_PLANKS,
+            MANGROVE_PLANKS,
+            CHERRY_PLANKS,
+        ];
+        const EXTRA_LOGS: [(Ingredient, Block); 3] = [
+            (DARK_OAK_LOG, Block::DARK_OAK_PLANKS),
+            (MANGROVE_LOG, Block::MANGROVE_PLANKS),
+            (CHERRY_LOG, Block::CHERRY_PLANKS),
+        ];
+        for (log, planks) in EXTRA_LOGS {
+            r.push(shapeless(&[log], b(planks), 4));
+        }
+        for (i, mat) in WOOD_SHAPES.into_iter().enumerate() {
+            let i = i as u16;
+            r.push(shaped(&["#  ", "## ", "###"], &[('#', mat)], b(crate::world::forms::wood_id(i, 0)), 4));
+            r.push(shaped(&["###"], &[('#', mat)], b(crate::world::forms::wood_id(i, 4)), 6));
+            r.push(shaped(&["#s#", "#s#"], &[('#', mat), ('s', STICK)], b(crate::world::forms::wood_id(i, 5)), 3));
+            r.push(shaped(&["s#s", "s#s"], &[('#', mat), ('s', STICK)], b(crate::world::forms::wood_id(i, 6)), 1));
+            r.push(shaped(&["##", "##", "##"], &[('#', mat)], b(crate::world::forms::wood_id(i, 14)), 3));
+        }
         const ARMOR: [(ArmorMaterial, Ingredient); 4] = [
             (ArmorMaterial::Leather, &[Item::LEATHER]),
             (ArmorMaterial::Iron, &[Item::IRON_INGOT]),

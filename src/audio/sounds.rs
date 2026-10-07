@@ -58,7 +58,15 @@ impl Material {
 /// The one place blocks are mapped to sound materials.
 pub fn material(block: Block) -> Material {
     match block.base() {
-        b if b.is_log() || b.is_planks() => Material::Wood,
+        b if b.is_log()
+            || b.is_planks()
+            || block.is_door()
+            || block.stairs_base().is_some_and(Block::is_planks)
+            || block.slab_base().is_some_and(Block::is_planks)
+            || crate::world::forms::planks_of(block).is_some() =>
+        {
+            Material::Wood
+        }
         Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON | Block::SMITHING_TABLE => Material::Wood,
         Block::DIRT | Block::FARMLAND | Block::WET_FARMLAND => Material::Dirt,
         Block::TORCH => Material::Wood,

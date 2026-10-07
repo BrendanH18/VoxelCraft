@@ -4,7 +4,9 @@
 use glam::IVec3;
 
 use crate::audio::sounds::Sound;
+use crate::item::Item;
 use crate::world::block::{Block, Facing, Shaped};
+use crate::world::forms::{self, WoodForm};
 
 use super::Game;
 
@@ -14,10 +16,20 @@ impl Game {
     pub(super) fn toggle_door(&mut self, pos: IVec3, forward: glam::Vec3) -> bool {
         let Some(b) = self.world.get_block(pos) else { return false };
         let open = match b.shaped() {
-            Some(Shaped::Door { facing, open, upper }) => {
+            Some(Shaped::Door { mut facing, mut open, upper }) => {
                 let other = if upper { pos - IVec3::Y } else { pos + IVec3::Y };
+                let partner = self.world.get_block(other).filter(|o| o.is_door());
+                // A wood door's upper half does not store facing, so the
+                // lower half is the one that flips.
+                if upper
+                    && let Some(lower) = partner
+                    && let Some(Shaped::Door { facing: f, open: o, upper: false }) = lower.shaped()
+                {
+                    facing = f;
+                    open = o;
+                }
                 self.world.set_block(pos, b.toggled(facing));
-                if let Some(o) = self.world.get_block(other).filter(|o| o.is_door()) {
+                if let Some(o) = partner {
                     self.world.set_block(other, o.toggled(facing));
                 }
                 !open
@@ -26,7 +38,7 @@ impl Game {
                 // A gate swings away from whoever opens it.
                 let toward = Facing::toward(forward);
                 let facing = if !open && toward.along_x() == facing.along_x() { toward } else { facing };
-                self.world.set_block(pos, Block::gate(facing, !open));
+                self.world.set_block(pos, b.toggled(facing));
                 !open
             }
             _ => return false,
@@ -37,7 +49,7 @@ impl Game {
 
     /// Places a door with its lower half at `at`, facing the player.
     /// Returns whether it went down.
-    pub(super) fn place_door(&mut self, at: IVec3) -> bool {
+    pub(super) fn place_door(&mut self, at: IVec3, item: Item) -> bool {
         let up = at + IVec3::Y;
         let free =
             |p: IVec3| self.world.get_block(p).is_some_and(|b| b.is_replaceable()) && !self.player.intersects_block(p);
@@ -49,8 +61,17 @@ impl Game {
             return false;
         }
         let facing = Facing::toward(self.player.forward());
-        self.world.set_block(at, Block::door(facing, false, false));
-        self.world.set_block(up, Block::door(facing, false, true));
+        let (lower, upper) = if item == Item::OAK_DOOR {
+            (Block::door(facing, false, false), Block::door(facing, false, true))
+        } else if let Some(block) = item.block()
+            && let Some(WoodForm::Door { index, .. }) = forms::wood_form(block.0)
+        {
+            (forms::wood_id(index, 14 + facing as u16), forms::wood_id(index, 22))
+        } else {
+            return false;
+        };
+        self.world.set_block(at, lower);
+        self.world.set_block(up, upper);
         self.audio.block_place(Block::PLANKS, at);
         true
     }

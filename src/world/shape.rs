@@ -170,6 +170,12 @@ const FENCE_POST: Box16 = b([6, 0, 6], [10, 16, 10]);
 const FENCE_RAILS: [Box16; 2] = [b([7, 6, 10], [9, 9, 16]), b([7, 12, 10], [9, 15, 16])];
 const FENCE_POST_COLLISION: Box16 = b([6, 0, 6], [10, 24, 10]);
 const FENCE_ARM_COLLISION: Box16 = b([6, 0, 10], [10, 24, 16]);
+/// A wall post. The low arm (south) stops at 14; a tall arm meets fences.
+const WALL_POST: Box16 = b([4, 0, 4], [12, 16, 12]);
+const WALL_ARM: Box16 = b([5, 0, 8], [11, 14, 16]);
+const WALL_ARM_TALL: Box16 = b([5, 0, 8], [11, 16, 16]);
+const WALL_POST_COLLISION: Box16 = b([4, 0, 4], [12, 24, 12]);
+const WALL_ARM_COLLISION: Box16 = b([4, 0, 8], [12, 24, 16]);
 
 /// Whether fence `fence` joins up with `n` on its `side`. Wooden and nether
 /// brick fences don't join each other, like Java's.
@@ -178,8 +184,14 @@ pub fn fence_connects(fence: Block, n: Block, side: Facing) -> bool {
         Some(Shaped::Fence) => (n == Block::NETHER_BRICK_FENCE) == (fence == Block::NETHER_BRICK_FENCE),
         // A gate joins fences at either end of its run.
         Some(Shaped::Gate { facing, .. }) => facing.along_x() != side.along_x(),
+        Some(Shaped::Wall) => true,
         _ => n.is_opaque(),
     }
+}
+
+/// Walls join full blocks, fences, gates and other walls.
+fn wall_connects(n: Block) -> bool {
+    matches!(n.shaped(), Some(Shaped::Wall | Shaped::Fence | Shaped::Gate { .. })) || n.is_opaque()
 }
 
 /// Whether iron bars join `n` on a side: other bars and full blocks.
@@ -194,8 +206,10 @@ fn open_door_side(facing: Facing) -> Facing {
 }
 
 /// The visible boxes of `block`; `neighbour(f)` is the block on side `f`
-/// (fences and gates only look at it). Empty for blocks that aren't shaped.
-pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
+/// (fences, gates and walls look at it). `below` is the block under this
+/// one: a wood door's upper half stores no facing, so it copies the lower
+/// half. Empty for blocks that aren't shaped.
+pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) -> Boxes {
     let mut out = Boxes::new();
     match block.shaped() {
         Some(Shaped::Stairs(f)) => out.push_turned(&STAIRS, f),
@@ -219,8 +233,32 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
         Some(Shaped::DragonEgg) => DRAGON_EGG.iter().for_each(|&e| out.push(e)),
         Some(Shaped::EnchantingTable) => out.push(ENCHANTING_TABLE),
         Some(Shaped::Anvil { along_x }) => out.push_turned(&ANVIL, if along_x { Facing::East } else { Facing::South }),
-        Some(Shaped::Door { facing, open, .. }) => {
+        Some(Shaped::Door { facing, open, upper }) => {
+            let (facing, open) = if upper {
+                match below.shaped() {
+                    Some(Shaped::Door { facing, open, upper: false }) => (facing, open),
+                    _ => (facing, open),
+                }
+            } else {
+                (facing, open)
+            };
             out.push_turned(&DOOR, if open { open_door_side(facing) } else { facing })
+        }
+        Some(Shaped::Wall) => {
+            let linked = |f: Facing| wall_connects(neighbour(f));
+            let (north, south, east, west) =
+                (linked(Facing::North), linked(Facing::South), linked(Facing::East), linked(Facing::West));
+            let straight = (north && south && !east && !west) || (east && west && !north && !south);
+            if !straight {
+                out.push(WALL_POST);
+            }
+            for f in Facing::ALL {
+                if linked(f) {
+                    let tall =
+                        matches!(neighbour(f).shaped(), Some(Shaped::Wall | Shaped::Fence | Shaped::Gate { .. }));
+                    out.push((if tall { WALL_ARM_TALL } else { WALL_ARM }).turned(f));
+                }
+            }
         }
         Some(Shaped::Gate { facing, open }) => {
             out.push_turned(if open { &GATE_OPEN[..] } else { &GATE_CLOSED[..] }, facing)
@@ -241,7 +279,7 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
 /// What `block` collides with: like [`shape`], but ladders are thicker, open
 /// gates let you through, and fences and closed gates are 1.5 blocks tall
 /// so nothing can jump them.
-pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
+pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) -> Boxes {
     let mut out = Boxes::new();
     match block.shaped() {
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER_COLLISION, f),
@@ -258,7 +296,15 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
                 }
             }
         }
-        _ => return shape(block, neighbour),
+        Some(Shaped::Wall) => {
+            out.push(WALL_POST_COLLISION);
+            for f in Facing::ALL {
+                if wall_connects(neighbour(f)) {
+                    out.push(WALL_ARM_COLLISION.turned(f));
+                }
+            }
+        }
+        _ => return shape(block, neighbour, below),
     }
     out
 }
@@ -268,7 +314,7 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
 /// icon, and fences reach out east and west.
 pub fn item_shape(block: Block) -> Boxes {
     let block = if block.stairs_base().is_some() { block.with_facing(Facing::East) } else { block };
-    shape(block, |f| if f.along_x() { block } else { Block::AIR })
+    shape(block, |f| if f.along_x() { block } else { Block::AIR }, Block::AIR)
 }
 
 #[cfg(test)]
@@ -291,7 +337,7 @@ mod tests {
 
     #[test]
     fn stairs_rise_away_from_their_front() {
-        let s = shape(Block::STONE_STAIRS.with_facing(Facing::East), none);
+        let s = shape(Block::STONE_STAIRS.with_facing(Facing::East), none, Block::AIR);
         assert_eq!(s.as_slice(), &[b([0, 0, 0], [16, 8, 16]), b([0, 8, 0], [8, 16, 16])]);
         // The tall half's underside sits on the slab, so it's hidden.
         assert!(s.face_hidden(1, 1, false, [0, 16, 0, 8]));
@@ -301,34 +347,44 @@ mod tests {
 
     #[test]
     fn fences_join_fences_gates_and_walls() {
-        let lone = shape(Block::OAK_FENCE, none);
+        let lone = shape(Block::OAK_FENCE, none, Block::AIR);
         assert_eq!(lone.as_slice(), &[FENCE_POST]);
-        let joined = shape(Block::OAK_FENCE, |f| match f {
-            Facing::East => Block::OAK_FENCE,
-            Facing::West => Block::STONE,
-            // A gate running along X doesn't join on its side.
-            Facing::South => Block::gate(Facing::South, false),
-            Facing::North => Block::gate(Facing::East, false),
-        });
+        let joined = shape(
+            Block::OAK_FENCE,
+            |f| match f {
+                Facing::East => Block::OAK_FENCE,
+                Facing::West => Block::STONE,
+                // A gate running along X doesn't join on its side.
+                Facing::South => Block::gate(Facing::South, false),
+                Facing::North => Block::gate(Facing::East, false),
+            },
+            Block::AIR,
+        );
         assert_eq!(joined.as_slice().len(), 1 + 3 * 2);
-        let tall = collision(Block::OAK_FENCE, none).bounds().unwrap();
+        let tall = collision(Block::OAK_FENCE, none, Block::AIR).bounds().unwrap();
         let mixed = |f: Facing| if f == Facing::East { Block::NETHER_BRICK_FENCE } else { Block::AIR };
-        assert_eq!(shape(Block::OAK_FENCE, mixed).as_slice().len(), 1, "wood and nether brick don't join");
+        assert_eq!(shape(Block::OAK_FENCE, mixed, Block::AIR).as_slice().len(), 1, "wood and nether brick don't join");
         let oak = |f: Facing| if f == Facing::East { Block::OAK_FENCE } else { Block::AIR };
-        assert_eq!(shape(Block::NETHER_BRICK_FENCE, oak).as_slice().len(), 1, "either way round");
+        assert_eq!(shape(Block::NETHER_BRICK_FENCE, oak, Block::AIR).as_slice().len(), 1, "either way round");
         let nether = |f: Facing| if f == Facing::East { Block::NETHER_BRICK_FENCE } else { Block::AIR };
-        assert_eq!(shape(Block::NETHER_BRICK_FENCE, nether).as_slice().len(), 3);
+        assert_eq!(shape(Block::NETHER_BRICK_FENCE, nether, Block::AIR).as_slice().len(), 3);
         assert_eq!(tall.max[1], 24);
     }
 
     #[test]
     fn doors_swing_and_gates_open_up() {
-        let closed = shape(Block::door(Facing::South, false, false), none);
-        let open = shape(Block::door(Facing::South, true, false), none);
+        let closed = shape(Block::door(Facing::South, false, false), none, Block::AIR);
+        let open = shape(Block::door(Facing::South, true, false), none, Block::AIR);
         assert_eq!(closed.as_slice(), &DOOR);
         assert_ne!(open.as_slice(), closed.as_slice());
-        assert!(collision(Block::gate(Facing::North, true), none).is_empty());
-        assert_eq!(collision(Block::gate(Facing::East, false), none).bounds().unwrap().max[1], 24);
-        assert!(shape(Block::STONE, none).is_empty());
+        // A compact upper door copies the lower half, which is the only
+        // place its facing and open bit are stored.
+        let lower = crate::world::forms::wood_id(0, 18);
+        let upper = crate::world::forms::wood_id(0, 22);
+        let copied = shape(upper, none, lower);
+        assert_eq!(copied.as_slice(), open.as_slice());
+        assert!(collision(Block::gate(Facing::North, true), none, Block::AIR).is_empty());
+        assert_eq!(collision(Block::gate(Facing::East, false), none, Block::AIR).bounds().unwrap().max[1], 24);
+        assert!(shape(Block::STONE, none, Block::AIR).is_empty());
     }
 }

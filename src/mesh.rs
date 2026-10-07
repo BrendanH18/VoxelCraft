@@ -474,7 +474,8 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                                     let o = f.offset();
                                     blocks[(i as isize + o.x as isize + o.z as isize * D as isize) as usize]
                                 };
-                                shaped_cells.push((i, shape::shape(b, neighbour)));
+                                let below = i.checked_sub(D * D).map(|j| blocks[j]).unwrap_or(Block::AIR);
+                                shaped_cells.push((i, shape::shape(b, neighbour, below)));
                                 false
                             }
                             _ => false,

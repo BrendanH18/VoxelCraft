@@ -77,11 +77,20 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let c = noisy(layer, x, y, [44, 90, 200], 0.08);
             [c[0], c[1], c[2], 170]
         }
-        tex::LOG_SIDE | tex::SPRUCE_LOG_SIDE | tex::JUNGLE_LOG_SIDE | tex::ACACIA_LOG_SIDE => {
+        tex::LOG_SIDE
+        | tex::SPRUCE_LOG_SIDE
+        | tex::JUNGLE_LOG_SIDE
+        | tex::ACACIA_LOG_SIDE
+        | tex::DARK_OAK_LOG_SIDE
+        | tex::MANGROVE_LOG_SIDE
+        | tex::CHERRY_LOG_SIDE => {
             let bark = match layer {
                 tex::LOG_SIDE => [104, 82, 51],
                 tex::SPRUCE_LOG_SIDE => [70, 50, 30],
                 tex::JUNGLE_LOG_SIDE => [88, 70, 32],
+                tex::DARK_OAK_LOG_SIDE => [58, 40, 22],
+                tex::MANGROVE_LOG_SIDE => [118, 54, 49],
+                tex::CHERRY_LOG_SIDE => [54, 32, 40],
                 _ => [104, 96, 88],
             };
             let stripe = (x + (rnd(layer, 0, y / 4, 3) * 2.0) as usize).is_multiple_of(4);
@@ -96,12 +105,22 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let mark = rnd(layer, x / 3, y, 4) < 0.16 && rnd(layer, x, y, 5) < 0.85;
             if mark { shade([50, 46, 40], 0.8 + r * 0.3) } else { shade([216, 214, 204], 0.9 + r * 0.12) }
         }
-        tex::LOG_TOP | tex::SPRUCE_LOG_TOP | tex::BIRCH_LOG_TOP | tex::JUNGLE_LOG_TOP | tex::ACACIA_LOG_TOP => {
+        tex::LOG_TOP
+        | tex::SPRUCE_LOG_TOP
+        | tex::BIRCH_LOG_TOP
+        | tex::JUNGLE_LOG_TOP
+        | tex::ACACIA_LOG_TOP
+        | tex::DARK_OAK_LOG_TOP
+        | tex::MANGROVE_LOG_TOP
+        | tex::CHERRY_LOG_TOP => {
             let (bark, light, dark) = match layer {
                 tex::LOG_TOP => ([104, 82, 51], [176, 142, 88], [150, 118, 70]),
                 tex::SPRUCE_LOG_TOP => ([70, 50, 30], [128, 96, 58], [106, 78, 46]),
                 tex::BIRCH_LOG_TOP => ([216, 214, 204], [200, 182, 128], [178, 160, 108]),
                 tex::JUNGLE_LOG_TOP => ([88, 70, 32], [170, 124, 86], [146, 104, 70]),
+                tex::DARK_OAK_LOG_TOP => ([58, 40, 22], [96, 70, 42], [72, 50, 28]),
+                tex::MANGROVE_LOG_TOP => ([118, 54, 49], [150, 90, 74], [120, 68, 58]),
+                tex::CHERRY_LOG_TOP => ([54, 32, 40], [214, 170, 164], [186, 140, 138]),
                 _ => ([104, 96, 88], [176, 96, 54], [150, 80, 44]),
             };
             let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
@@ -123,12 +142,22 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             };
             if rnd(layer, x, y, 11) < holes { [0, 0, 0, 0] } else { shade(base, 0.7 + r * 0.45) }
         }
-        tex::PLANKS | tex::SPRUCE_PLANKS | tex::BIRCH_PLANKS | tex::JUNGLE_PLANKS | tex::ACACIA_PLANKS => {
+        tex::PLANKS
+        | tex::SPRUCE_PLANKS
+        | tex::BIRCH_PLANKS
+        | tex::JUNGLE_PLANKS
+        | tex::ACACIA_PLANKS
+        | tex::DARK_OAK_PLANKS
+        | tex::MANGROVE_PLANKS
+        | tex::CHERRY_PLANKS => {
             let colour = match layer {
                 tex::PLANKS => [162, 130, 78],
                 tex::SPRUCE_PLANKS => [114, 84, 50],
                 tex::BIRCH_PLANKS => [196, 180, 124],
                 tex::JUNGLE_PLANKS => [160, 114, 80],
+                tex::DARK_OAK_PLANKS => [66, 43, 20],
+                tex::MANGROVE_PLANKS => [117, 54, 48],
+                tex::CHERRY_PLANKS => [226, 178, 172],
                 _ => [170, 92, 50],
             };
             let board = y / 4;
@@ -163,26 +192,28 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             }
         }
         tex::DOOR_TOP | tex::DOOR_BOTTOM => {
-            // A frame of vertical boards around raised panels; the upper
-            // half has two windows.
-            let frame =
-                x <= 1 || x >= 14 || (layer == tex::DOOR_TOP && y <= 1) || (layer == tex::DOOR_BOTTOM && y >= 14);
-            let window = layer == tex::DOOR_TOP && (3..=6).contains(&y) && matches!(x, 3..=6 | 9..=12);
-            let rail = y == 8 || y == 9;
-            let inset = matches!(x, 3 | 12) || (layer == tex::DOOR_BOTTOM && matches!(y, 2 | 12));
-            if window {
-                [0, 0, 0, 0]
-            } else {
-                let board = 0.92 + rnd(layer, x / 3, 0, 5) * 0.12 + r * 0.05;
-                let f = if frame || rail {
-                    0.8
-                } else if inset {
-                    0.7
-                } else {
-                    board
-                };
-                shade([150, 116, 68], f)
-            }
+            wooden_door(layer, x, y, r, [150, 116, 68], tex::DOOR_TOP, tex::DOOR_BOTTOM)
+        }
+        tex::DARK_OAK_DOOR_TOP | tex::DARK_OAK_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [66, 43, 20], tex::DARK_OAK_DOOR_TOP, tex::DARK_OAK_DOOR_BOTTOM)
+        }
+        tex::SPRUCE_DOOR_TOP | tex::SPRUCE_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [114, 84, 50], tex::SPRUCE_DOOR_TOP, tex::SPRUCE_DOOR_BOTTOM)
+        }
+        tex::BIRCH_DOOR_TOP | tex::BIRCH_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [196, 180, 124], tex::BIRCH_DOOR_TOP, tex::BIRCH_DOOR_BOTTOM)
+        }
+        tex::JUNGLE_DOOR_TOP | tex::JUNGLE_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [160, 114, 80], tex::JUNGLE_DOOR_TOP, tex::JUNGLE_DOOR_BOTTOM)
+        }
+        tex::ACACIA_DOOR_TOP | tex::ACACIA_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [170, 92, 50], tex::ACACIA_DOOR_TOP, tex::ACACIA_DOOR_BOTTOM)
+        }
+        tex::MANGROVE_DOOR_TOP | tex::MANGROVE_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [117, 54, 48], tex::MANGROVE_DOOR_TOP, tex::MANGROVE_DOOR_BOTTOM)
+        }
+        tex::CHERRY_DOOR_TOP | tex::CHERRY_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [226, 178, 172], tex::CHERRY_DOOR_TOP, tex::CHERRY_DOOR_BOTTOM)
         }
         tex::RED_SAND => noisy(layer, x, y, [190, 102, 36], 0.07),
         l if (tex::TERRACOTTA..tex::TERRACOTTA + 7).contains(&l) => {
@@ -930,6 +961,27 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
         }
+    }
+}
+
+/// A framed wooden door. `top` and `bottom` pick which half `layer` is.
+fn wooden_door(layer: u16, x: usize, y: usize, r: f32, colour: [u8; 3], top: u16, bottom: u16) -> Rgba {
+    let frame = x <= 1 || x >= 14 || (layer == top && y <= 1) || (layer == bottom && y >= 14);
+    let window = layer == top && (3..=6).contains(&y) && matches!(x, 3..=6 | 9..=12);
+    let rail = y == 8 || y == 9;
+    let inset = matches!(x, 3 | 12) || (layer == bottom && matches!(y, 2 | 12));
+    if window {
+        [0, 0, 0, 0]
+    } else {
+        let board = 0.92 + rnd(layer, x / 3, 0, 5) * 0.12 + r * 0.05;
+        let f = if frame || rail {
+            0.8
+        } else if inset {
+            0.7
+        } else {
+            board
+        };
+        shade(colour, f)
     }
 }
 

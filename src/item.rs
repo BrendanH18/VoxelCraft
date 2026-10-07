@@ -625,7 +625,7 @@ impl Item {
         if let Some(b) = Block::from_name(name) {
             // Doors and nether wart are placed by an item, not as a block.
             return Some(match b {
-                b if b.is_door() => Item::OAK_DOOR,
+                b if (149..=164).contains(&b.0) => Item::OAK_DOOR,
                 b if b.wart_age().is_some() => Item::NETHER_WART,
                 b => Item::from_block(b),
             });

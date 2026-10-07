@@ -428,7 +428,8 @@ impl System {
         // Selection boxes preserve stairs/slabs/doors and 64 crumbs for a cube.
         let neighbour = |side: crate::world::block::Facing| world.get_block(cell + side.offset()).unwrap_or(Block::AIR);
         let boxes = if block.kind() == crate::world::block::RenderKind::Shaped {
-            crate::world::shape::shape(block, neighbour)
+            let below = world.get_block(cell - IVec3::Y).unwrap_or(Block::AIR);
+            crate::world::shape::shape(block, neighbour, below)
         } else {
             crate::world::shape::Boxes::from_box(crate::world::shape::Box16 {
                 min: [0; 3],

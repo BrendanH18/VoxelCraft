@@ -23,6 +23,7 @@ pub mod end_portal;
 pub mod falling;
 mod fire;
 mod fluid;
+pub mod forms;
 pub mod fortress;
 pub mod furnace;
 mod growth;
@@ -775,7 +776,8 @@ impl World {
         let Some(b) = self.get_block(p) else { return ([0.0; 3], [1.0; 3]) };
         if b.kind() == RenderKind::Shaped {
             let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
-            if let Some(bx) = shape::shape(b, neighbour).bounds() {
+            let below = self.get_block(p - IVec3::Y).unwrap_or(block::Block::AIR);
+            if let Some(bx) = shape::shape(b, neighbour, below).bounds() {
                 return (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
             }
         }

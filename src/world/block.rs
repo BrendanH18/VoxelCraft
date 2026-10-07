@@ -233,7 +233,30 @@ pub mod tex {
     pub const DEEPSLATE_EMERALD_ORE: u16 = DEEPSLATE_REDSTONE_ORE + 1;
     pub const DEEPSLATE_LAPIS_ORE: u16 = DEEPSLATE_EMERALD_ORE + 1;
     pub const DEEPSLATE_DIAMOND_ORE: u16 = DEEPSLATE_LAPIS_ORE + 1;
-    pub const COUNT: u32 = DEEPSLATE_DIAMOND_ORE as u32 + 1;
+    pub const DARK_OAK_LOG_SIDE: u16 = DEEPSLATE_DIAMOND_ORE + 1;
+    pub const DARK_OAK_LOG_TOP: u16 = DARK_OAK_LOG_SIDE + 1;
+    pub const MANGROVE_LOG_SIDE: u16 = DARK_OAK_LOG_TOP + 1;
+    pub const MANGROVE_LOG_TOP: u16 = MANGROVE_LOG_SIDE + 1;
+    pub const CHERRY_LOG_SIDE: u16 = MANGROVE_LOG_TOP + 1;
+    pub const CHERRY_LOG_TOP: u16 = CHERRY_LOG_SIDE + 1;
+    pub const DARK_OAK_PLANKS: u16 = CHERRY_LOG_TOP + 1;
+    pub const MANGROVE_PLANKS: u16 = DARK_OAK_PLANKS + 1;
+    pub const CHERRY_PLANKS: u16 = MANGROVE_PLANKS + 1;
+    pub const DARK_OAK_DOOR_BOTTOM: u16 = CHERRY_PLANKS + 1;
+    pub const DARK_OAK_DOOR_TOP: u16 = DARK_OAK_DOOR_BOTTOM + 1;
+    pub const SPRUCE_DOOR_BOTTOM: u16 = DARK_OAK_DOOR_TOP + 1;
+    pub const SPRUCE_DOOR_TOP: u16 = SPRUCE_DOOR_BOTTOM + 1;
+    pub const BIRCH_DOOR_BOTTOM: u16 = SPRUCE_DOOR_TOP + 1;
+    pub const BIRCH_DOOR_TOP: u16 = BIRCH_DOOR_BOTTOM + 1;
+    pub const JUNGLE_DOOR_BOTTOM: u16 = BIRCH_DOOR_TOP + 1;
+    pub const JUNGLE_DOOR_TOP: u16 = JUNGLE_DOOR_BOTTOM + 1;
+    pub const ACACIA_DOOR_BOTTOM: u16 = JUNGLE_DOOR_TOP + 1;
+    pub const ACACIA_DOOR_TOP: u16 = ACACIA_DOOR_BOTTOM + 1;
+    pub const MANGROVE_DOOR_BOTTOM: u16 = ACACIA_DOOR_TOP + 1;
+    pub const MANGROVE_DOOR_TOP: u16 = MANGROVE_DOOR_BOTTOM + 1;
+    pub const CHERRY_DOOR_BOTTOM: u16 = MANGROVE_DOOR_TOP + 1;
+    pub const CHERRY_DOOR_TOP: u16 = CHERRY_DOOR_BOTTOM + 1;
+    pub const COUNT: u32 = CHERRY_DOOR_TOP as u32 + 1;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -466,6 +489,15 @@ impl Block {
     pub const DEEPSLATE_EMERALD_ORE: Block = Block(250);
     pub const DEEPSLATE_LAPIS_ORE: Block = Block(251);
     pub const DEEPSLATE_DIAMOND_ORE: Block = Block(252);
+    pub const DARK_OAK_LOG: Block = Block(333);
+    pub const MANGROVE_LOG: Block = Block(334);
+    pub const CHERRY_LOG: Block = Block(335);
+    pub const DARK_OAK_PLANKS: Block = Block(336);
+    pub const MANGROVE_PLANKS: Block = Block(337);
+    pub const CHERRY_PLANKS: Block = Block(338);
+    /// Cobblestone already has stairs and a slab; only the wall is new.
+    pub const COBBLESTONE_WALL: Block = Block(331);
+    pub const STONE_BRICK_WALL: Block = Block(332);
 
     /// The stone-ore form of a deepslate ore, or `self` for everything else.
     /// Drops, fortune and smelting follow the stone ore.
@@ -578,11 +610,28 @@ impl Block {
 
     /// The full block stairs were cut from.
     pub fn stairs_base(self) -> Option<Block> {
+        if let Some(super::forms::StoneForm::Stairs { index, .. }) = super::forms::stone_form(self.0) {
+            return Some(super::forms::stone_base(index));
+        }
+        if let Some(super::forms::WoodForm::Stairs { index, .. }) = super::forms::wood_form(self.0) {
+            return Some(super::forms::wood_planks(index));
+        }
         stairs_index(self.0).map(|(i, _)| Self::SLAB_BASES[i])
+    }
+
+    /// The full block a wall was built from.
+    pub fn wall_base(self) -> Option<Block> {
+        match super::forms::stone_form(self.0) {
+            Some(super::forms::StoneForm::Wall { index }) => Some(super::forms::wall_material(index)),
+            _ => None,
+        }
     }
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if let Some(shaped) = super::forms::as_shaped(self.0) {
+            return Some(shaped);
+        }
         let f = |i: u16| Facing::ALL[i as usize % 4];
         Some(match self.0 {
             #[cfg(test)]
@@ -636,8 +685,17 @@ impl Block {
     /// `facing`.
     pub fn toggled(self, facing: Facing) -> Block {
         match self.shaped() {
-            Some(Shaped::Gate { open, .. }) => Block::gate(facing, !open),
-            Some(Shaped::Door { open, upper, .. }) => Block::door(facing, !open, upper),
+            Some(Shaped::Gate { open, .. }) => match super::forms::gate_index(self) {
+                Some(index) => super::forms::wood_id(index, 6 + (!open as u16) * 4 + facing as u16),
+                None => Block::gate(facing, !open),
+            },
+            Some(Shaped::Door { open, upper, .. }) => match super::forms::wood_form(self.0) {
+                Some(super::forms::WoodForm::Door { index, upper: true, .. }) => super::forms::wood_id(index, 22),
+                Some(super::forms::WoodForm::Door { index, .. }) => {
+                    super::forms::wood_id(index, 14 + (!open as u16) * 4 + facing as u16)
+                }
+                _ => Block::door(facing, !open, upper),
+            },
             _ => self,
         }
     }
@@ -659,7 +717,7 @@ impl Block {
     }
 
     pub fn is_log(self) -> bool {
-        matches!(self.0, 6 | 69..=72)
+        matches!(self.0, 6 | 69..=72 | 333..=335)
     }
 
     pub fn is_leaves(self) -> bool {
@@ -667,7 +725,7 @@ impl Block {
     }
 
     pub fn is_planks(self) -> bool {
-        matches!(self.0, 8 | 76..=79)
+        matches!(self.0, 8 | 76..=79 | 336..=338)
     }
 
     pub fn is_sapling(self) -> bool {
@@ -681,6 +739,21 @@ impl Block {
     /// The block items, recipes and rules use for an oriented block (a
     /// furnace or chest facing any way), and the way it faces.
     pub fn oriented(self) -> Option<(Block, Facing)> {
+        if let Some(super::forms::StoneForm::Stairs { index, facing }) = super::forms::stone_form(self.0) {
+            return Some((super::forms::stone_id(index, 0), facing));
+        }
+        match super::forms::wood_form(self.0) {
+            Some(super::forms::WoodForm::Stairs { index, facing }) => {
+                return Some((super::forms::wood_id(index, 0), facing));
+            }
+            Some(super::forms::WoodForm::Gate { index, facing, .. }) => {
+                return Some((super::forms::wood_id(index, 6), facing));
+            }
+            Some(super::forms::WoodForm::Door { index, facing, .. }) => {
+                return Some((super::forms::wood_id(index, 14), facing));
+            }
+            _ => {}
+        }
         let f = |i: u16| Facing::ALL[i as usize];
         match self.0 {
             45 => Some((Block::FURNACE, Facing::South)),
@@ -724,6 +797,7 @@ impl Block {
             Block::CHEST => Block(53 + i),
             Block::LADDER => Block(137 + i),
             Block::FENCE_GATE => Block::gate(facing, false),
+            b if let Some(index) = super::forms::gate_index(b) => super::forms::wood_id(index, 6 + i),
             b if b.stairs_base().is_some() => Block(b.0 + i),
             _ => self,
         }
@@ -829,6 +903,12 @@ impl Block {
 
     /// The full block a slab was cut from (two stacked slabs make it).
     pub fn slab_base(self) -> Option<Block> {
+        if let Some(super::forms::StoneForm::Slab { index }) = super::forms::stone_form(self.0) {
+            return Some(super::forms::stone_base(index));
+        }
+        if let Some(super::forms::WoodForm::Slab { index }) = super::forms::wood_form(self.0) {
+            return Some(super::forms::wood_planks(index));
+        }
         match self.0 {
             106..=111 => Some(Self::SLAB_BASES[self.0 as usize - 106]),
             193 => Some(Block::STONE_BRICKS),
@@ -846,7 +926,9 @@ impl Block {
         match self.base() {
             Block::OAK_FENCE | Block::FENCE_GATE => Block::PLANKS,
             Block::NETHER_BRICK_FENCE => Block::NETHER_BRICKS,
-            b => b.slab_base().or(b.stairs_base()).unwrap_or(b),
+            b => {
+                b.slab_base().or(b.stairs_base()).or(b.wall_base()).or_else(|| super::forms::planks_of(b)).unwrap_or(b)
+            }
         }
     }
 
@@ -899,6 +981,9 @@ impl Block {
             Block::BED_HEAD => None,
             // Only the lower half of a door drops it.
             Block::OAK_DOOR => (!self.is_door_upper()).then_some(Item::OAK_DOOR),
+            b if super::forms::planks_of(b).is_some() && b.is_door() => {
+                (!self.is_door_upper()).then(|| Item::from_block(b))
+            }
             Block::QUARTZ_ORE => Some(Item::NETHER_QUARTZ),
             // Glowstone breaks into dust (see `World::spill_block`).
             Block::GLOWSTONE | Block::NETHER_PORTAL | Block::SPAWNER => None,
@@ -916,6 +1001,9 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if self.is_door() {
+            return 3.0;
+        }
         match self.material() {
             Block::COBWEB => 4.0,
             b if b.kind() == RenderKind::Cross => 0.0,
@@ -1141,6 +1229,7 @@ impl Block {
                 217, 219, 221, 222, 223, 224,
             ])
             .chain(225..=252)
+            .chain(super::forms::palette_ids())
             .map(Block)
     }
 
@@ -1445,6 +1534,8 @@ pub enum Shaped {
         open: bool,
         upper: bool,
     },
+    /// A cobblestone-style wall: a post and arms out to what it joins.
+    Wall,
 }
 
 /// A block type that flows: each has a source, a falling form and
@@ -1707,6 +1798,43 @@ const fn make(id: u16) -> BlockInfo {
         250 => ("deepslate emerald ore", Opaque, all(tex::DEEPSLATE_EMERALD_ORE)),
         251 => ("deepslate lapis lazuli ore", Opaque, all(tex::DEEPSLATE_LAPIS_ORE)),
         252 => ("deepslate diamond ore", Opaque, all(tex::DEEPSLATE_DIAMOND_ORE)),
+        331 => ("cobblestone wall", Shaped, all(tex::COBBLESTONE)),
+        332 => ("stone brick wall", Shaped, all(tex::STONE_BRICKS)),
+        333 => ("dark oak log", Opaque, column(tex::DARK_OAK_LOG_SIDE, tex::DARK_OAK_LOG_TOP, tex::DARK_OAK_LOG_TOP)),
+        334 => ("mangrove log", Opaque, column(tex::MANGROVE_LOG_SIDE, tex::MANGROVE_LOG_TOP, tex::MANGROVE_LOG_TOP)),
+        335 => ("cherry log", Opaque, column(tex::CHERRY_LOG_SIDE, tex::CHERRY_LOG_TOP, tex::CHERRY_LOG_TOP)),
+        336 => ("dark oak planks", Opaque, all(tex::DARK_OAK_PLANKS)),
+        337 => ("mangrove planks", Opaque, all(tex::MANGROVE_PLANKS)),
+        338 => ("cherry planks", Opaque, all(tex::CHERRY_PLANKS)),
+        id if super::forms::stone_form(id).is_some() => {
+            let form = super::forms::stone_form(id).unwrap();
+            let base = match form {
+                super::forms::StoneForm::Wall { index } => super::forms::wall_material(index),
+                super::forms::StoneForm::Stairs { index, .. } | super::forms::StoneForm::Slab { index } => {
+                    super::forms::stone_base(index)
+                }
+            };
+            let kind = match form {
+                super::forms::StoneForm::Slab { .. } => Cutout,
+                _ => Shaped,
+            };
+            (super::forms::stone_name(form), kind, make(base.0).tex)
+        }
+        id if super::forms::wood_form(id).is_some() => {
+            let form = super::forms::wood_form(id).unwrap();
+            let name = super::forms::wood_name(form);
+            match form {
+                super::forms::WoodForm::Door { index, upper, .. } => {
+                    (name, Shaped, all(super::forms::door_tex(index, upper)))
+                }
+                super::forms::WoodForm::Slab { index } => (name, Cutout, make(super::forms::wood_planks(index).0).tex),
+                super::forms::WoodForm::Stairs { index, .. }
+                | super::forms::WoodForm::Fence { index }
+                | super::forms::WoodForm::Gate { index, .. } => {
+                    (name, Shaped, make(super::forms::wood_planks(index).0).tex)
+                }
+            }
+        }
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are
@@ -1725,6 +1853,23 @@ pub static INFO: [BlockInfo; STATE_CAPACITY] = {
     arr
 };
 
+/// Slabs and stairs keep light out the way the original seven do. Walls,
+/// fences, gates and doors stay open.
+const fn shape_blocks_light(id: u16) -> bool {
+    if matches!(id, 106..=135 | 189..=193) {
+        return true;
+    }
+    if let Some(super::forms::StoneForm::Stairs { .. } | super::forms::StoneForm::Slab { .. }) =
+        super::forms::stone_form(id)
+    {
+        return true;
+    }
+    matches!(
+        super::forms::wood_form(id),
+        Some(super::forms::WoodForm::Stairs { .. } | super::forms::WoodForm::Slab { .. })
+    )
+}
+
 static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
     let mut arr = [15u8; STATE_CAPACITY];
     let mut i = 0;
@@ -1733,7 +1878,7 @@ static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
             RenderKind::Opaque => 15,
             // Slabs and stairs keep the light out, like Minecraft's (they
             // borrow light from their neighbours instead; see `borrows_light`).
-            _ if matches!(i, 106..=135 | 189..=193) => 15,
+            _ if shape_blocks_light(i as u16) => 15,
             // Mesh bit tests use 4094 as a stairs stand-in at the layer limit.
             #[cfg(test)]
             _ if i == 4094 => 15,
@@ -1836,6 +1981,30 @@ mod tests {
         assert_eq!(Block::GRANITE.best_tool(), Some(ToolKind::Pickaxe));
         assert!(Block::creative_palette().any(|b| b == Block::TUFF));
         assert!(Block::creative_palette().any(|b| b == Block::DEEPSLATE_EMERALD_ORE));
+        assert_eq!(Block::DARK_OAK_LOG, Block(333));
+        assert_eq!(Block::CHERRY_PLANKS, Block(338));
+        assert_eq!(Block(499).name(), "cherry door");
+        assert!(Block(499).is_door_upper());
+        assert_eq!(crate::world::forms::wood_id(0, 0).stairs_base(), Some(Block::DARK_OAK_PLANKS));
+        assert_eq!(crate::world::forms::stone_id(0, 0).stairs_base(), Some(Block::MOSSY_COBBLESTONE));
+        assert_eq!(crate::world::forms::stone_id(10, 4).slab_base(), Some(Block::DEEPSLATE));
+        assert_eq!(Block::COBBLESTONE_WALL.wall_base(), Some(Block::COBBLESTONE));
+        assert_eq!(Block::from_name("cherry_door"), Some(crate::world::forms::wood_id(6, 14)));
+        assert_eq!(Item::from_name("spruce_door"), Some(Item::from_block(crate::world::forms::wood_id(1, 14))));
+        assert_eq!(Item::from_name("oak_door"), Some(Item::OAK_DOOR));
+        assert!(Block::creative_palette().any(|b| b == Block::CHERRY_LOG));
+        assert!(Block::creative_palette().any(|b| b == crate::world::forms::wood_id(6, 14)));
+        assert!(!Block::creative_palette().any(|b| b == Block(499)));
+        let gate = crate::world::forms::wood_id(2, 6);
+        assert_eq!(gate.with_facing(Facing::East).shaped(), Some(Shaped::Gate { facing: Facing::East, open: false }));
+        assert_eq!(gate.toggled(Facing::South).shaped(), Some(Shaped::Gate { facing: Facing::South, open: true }));
+        let deepslate_slab = crate::world::forms::stone_id(10, 4);
+        let dark_oak_stairs = crate::world::forms::wood_id(0, 0);
+        assert!(deepslate_slab.light_opacity() == 15 && deepslate_slab.borrows_light());
+        assert!(dark_oak_stairs.borrows_light() && dark_oak_stairs.best_tool() == Some(ToolKind::Axe));
+        assert_eq!(crate::world::forms::wood_id(0, 5).light_opacity(), 0);
+        assert_eq!(Block::COBBLESTONE_WALL.light_opacity(), 0);
+        assert_eq!(crate::world::forms::wood_id(6, 14).hardness(), 3.0);
         assert_eq!(Block::SMITHING_TABLE.hardness(), 2.5);
         assert_eq!(Block::SMITHING_TABLE.best_tool(), Some(ToolKind::Axe));
         assert_eq!(

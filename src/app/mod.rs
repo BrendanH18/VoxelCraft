@@ -1527,7 +1527,14 @@ impl Game {
         }
         let placed = match self.held_item() {
             Some(Item::BED) => Some(self.place_bed(at)),
-            Some(Item::OAK_DOOR) => Some(self.place_door(at)),
+            Some(i)
+                if i == Item::OAK_DOOR
+                    || i.block().is_some_and(|b| {
+                        matches!(crate::world::forms::wood_form(b.0), Some(crate::world::forms::WoodForm::Door { .. }))
+                    }) =>
+            {
+                Some(self.place_door(at, i))
+            }
             Some(i) if i.block().is_some_and(|b| b.is_ladder()) => Some(self.place_ladder(pos, normal)),
             _ => None,
         };
