@@ -75,7 +75,9 @@ pub fn material(block: Block) -> Material {
         }
         Block::GRAVEL | Block::CLAY => Material::Gravel,
         Block::SAND | Block::RED_SAND => Material::Sand,
-        Block::SNOW | Block::SNOWY_GRASS | Block::WOOL => Material::Snow,
+        b if b == Block::SNOW || b == Block::SNOWY_GRASS || b.wool_color().is_some() || b.carpet_color().is_some() => {
+            Material::Snow
+        }
         b if b.is_leaves() => Material::Leaves,
         Block::GLASS | Block::GLOWSTONE | Block::ICE => Material::Glass,
         b if b.is_fluid() => Material::Water,

@@ -22,6 +22,14 @@ pub fn break_time(block: Block, held: Option<Item>) -> f32 {
 
 /// How fast the held item digs `block` (1 for a hand or the wrong tool).
 fn tool_speed(block: Block, held: Option<Item>) -> f32 {
+    if held == Some(Item::SHEARS) {
+        if block.wool_color().is_some() {
+            return 5.0;
+        }
+        if block.is_leaves() || block == Block::COBWEB {
+            return 15.0;
+        }
+    }
     match held.and_then(Item::as_tool) {
         // Swords cut cobwebs fifteen times as fast (Java).
         Some((ToolKind::Sword, _)) if block == Block::COBWEB => 15.0,
@@ -65,6 +73,9 @@ pub fn dig_time(block: Block, digger: Digger) -> f32 {
 /// Durability a tool loses for breaking a block (swords wear faster, as
 /// they're not meant for it) or for hitting a mob (the reverse).
 pub fn wear(held: Item, hitting_mob: bool) -> u16 {
+    if held == Item::SHEARS {
+        return (!hitting_mob) as u16;
+    }
     match (held.as_tool(), hitting_mob) {
         (Some((ToolKind::Sword, _)), false)
         | (Some((ToolKind::Pickaxe | ToolKind::Shovel | ToolKind::Axe, _)), true) => 2,

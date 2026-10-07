@@ -14,3 +14,17 @@ recipes are deferred until those ingredients exist. No substitute sources.
 Sources:
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/DyeColor.java
 - https://github.com/InventivetalentDev/minecraft-assets/tree/1.21/data/minecraft/recipe
+
+Wool and carpets have all 16 colours. Beds use matching wool in their recipe;
+`bed` remains the saved/default red bed, with `red_bed` as an alias.
+Sheep use Java's natural distribution, can be dyed and sheared with craftable
+shears, and drop their own colour of wool. Sheared sheep drop no wool.
+The shared interaction works for mouse, gamepad and CLI `place` actions.
+Coloured beds share placement, breaking, sleep and respawn rules.
+
+Current engine limits: beds still use the existing unrotated two-half model
+and neighbour matching (no stored facing); mobs are transient rather than
+saved, and sheep grazing/wool regrowth, breeding and mutton are deferred.
+
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/animal/Sheep.java
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/DyeItem.java

@@ -53,6 +53,27 @@ const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
+    if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
+        let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };
+        let rgb = crate::color::DyeColor::ALL[color].rgb();
+        let weave = (x + y).is_multiple_of(3);
+        return shade(
+            rgb,
+            if weave { 0.85 + rnd(tex::WOOL, x, y, 0) * 0.08 } else { 0.93 + rnd(tex::WOOL, x, y, 0) * 0.07 },
+        );
+    }
+    if (tex::COLORED_BED..tex::COLORED_BED + 64).contains(&layer) {
+        let color = crate::color::DyeColor::ALL[((layer - tex::COLORED_BED) / 4) as usize];
+        let part = (layer - tex::COLORED_BED) % 4;
+        let base = [tex::BED_TOP_FOOT, tex::BED_TOP_HEAD, tex::BED_SIDE_FOOT, tex::BED_SIDE_HEAD][part as usize];
+        let mut p = pixel(base, x, y);
+        // Recolour only the blanket, retaining the pillow and wooden frame.
+        if p[0] / 2 > p[1] && p[0] / 2 > p[2] {
+            let rgb = color.rgb();
+            p = shade(rgb, p[0] as f32 / 178.0);
+        }
+        return p;
+    }
     match layer {
         tex::STONE => {
             let streak = rnd(layer, x / 3, y, 5) < 0.12;
@@ -471,11 +492,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let heat = edge * 0.7 + r * 0.3;
             let c = [255, (90.0 + heat * 140.0) as u8, (20.0 + heat * 40.0) as u8];
             shade(c, 0.75 + heat * 0.3)
-        }
-        tex::WOOL => {
-            // Soft weave: alternating diagonal ridges.
-            let ridge = (x + y) % 4 < 2;
-            shade([234, 234, 228], if ridge { 0.96 + r * 0.06 } else { 0.86 + r * 0.06 })
         }
         tex::BED_TOP_FOOT => {
             // Red blanket with a lighter hem around the edge.

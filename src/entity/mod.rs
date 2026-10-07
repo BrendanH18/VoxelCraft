@@ -360,6 +360,18 @@ impl Rng {
         Self(seed)
     }
 
+    /// Unbiased bounded integer draw for Java-style spawn/drop rolls.
+    pub fn next_int(&mut self, bound: u32) -> u32 {
+        assert!(bound > 0);
+        let threshold = bound.wrapping_neg() % bound;
+        loop {
+            let n = splitmix64(&mut self.0) as u32;
+            if n >= threshold {
+                return n % bound;
+            }
+        }
+    }
+
     pub fn next_f32(&mut self) -> f32 {
         (splitmix64(&mut self.0) >> 40) as f32 / (1u64 << 24) as f32
     }
@@ -428,6 +440,30 @@ impl Entities {
         }
     }
 
+    /// Shared host, gamepad and CLI sheep action. `true`: shears, `false`: dye.
+    pub fn use_on_sheep(&mut self, index: usize, item: crate::item::Item) -> Option<bool> {
+        let mob = self.mobs.get_mut(index)?;
+        if mob.kind != MobKind::Sheep || !mob.alive() {
+            return None;
+        }
+        if let Some(color) = item.dye_color() {
+            if mob.wool_color == color {
+                return None;
+            }
+            mob.wool_color = color;
+            return Some(false);
+        }
+        if item != crate::item::Item::SHEARS || mob.sheared {
+            return None;
+        }
+        mob.sheared = true;
+        let color = mob.wool_color;
+        let pos = mob.pos;
+        let count = 1 + self.rng.next_int(3) as u8;
+        self.scatter(crate::inventory::Stack::new(Block::wool(color), count), pos);
+        Some(true)
+    }
+
     pub fn count(&self, kind: MobKind) -> usize {
         self.mobs.iter().filter(|m| m.kind == kind && m.alive()).count()
     }
@@ -435,6 +471,11 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
+        if kind == MobKind::Sheep {
+            let roll = self.rng.next_int(100);
+            let rare = if roll >= 18 { self.rng.next_int(500) } else { 1 };
+            mob.wool_color = crate::color::DyeColor::natural_sheep(roll, rare);
+        }
         if matches!(kind, MobKind::Zombie | MobKind::Skeleton) {
             let (armor, glint) = armor::roll_monster_armor(&mut self.rng);
             mob.armor = armor;
@@ -597,7 +638,25 @@ impl Entities {
             let xp = kind.xp(&mut self.rng);
             self.spawn_xp(pos, xp);
         }
+        let sheep = (kind == MobKind::Sheep).then(|| {
+            self.mobs
+                .iter()
+                .find(|m| m.kind == kind && m.pos == pos && !m.alive())
+                .map_or((crate::color::DyeColor::White, false), |m| (m.wool_color, m.sheared))
+        });
         for (item, count) in kind.drops(&mut self.rng, looting) {
+            let item = if let Some((color, sheared)) = sheep {
+                if item == crate::item::Item::from(Block::WOOL) {
+                    if sheared {
+                        continue;
+                    }
+                    crate::item::Item::from(Block::wool(color))
+                } else {
+                    item
+                }
+            } else {
+                item
+            };
             if !player_kill && matches!(item, crate::item::Item::SPIDER_EYE | crate::item::Item::BLAZE_ROD) {
                 continue;
             }
@@ -2315,5 +2374,34 @@ mod tests {
             }
             assert!(seen_any, "{kind:?} never dropped anything");
         }
+    }
+}
+
+#[cfg(test)]
+mod colored_sheep_tests {
+    use super::*;
+    use crate::{color::DyeColor, item::Item};
+    #[test]
+    fn dye_shear_and_death_keep_the_sheeps_color() {
+        let mut e = Entities::new(7);
+        e.spawn(MobKind::Sheep, DVec3::ZERO);
+        for color in DyeColor::ALL {
+            e.mobs[0].sheared = false;
+            e.mobs[0].wool_color = if color == DyeColor::White { DyeColor::Black } else { DyeColor::White };
+            assert_eq!(e.use_on_sheep(0, color.dye()), Some(false));
+            assert_eq!(e.use_on_sheep(0, color.dye()), None);
+            assert_eq!(e.use_on_sheep(0, Item::SHEARS), Some(true));
+            assert_eq!(e.use_on_sheep(0, Item::SHEARS), None);
+            assert_eq!(e.items.last().unwrap().stack.item, Item::from(Block::wool(color)));
+            assert!((1..=3).contains(&e.items.last().unwrap().stack.count));
+        }
+        e.items.clear();
+        e.mobs[0].dying = Some(0.0);
+        e.drop_loot(MobKind::Sheep, DVec3::ZERO);
+        assert!(e.items.is_empty(), "sheared sheep drop no wool");
+        e.mobs[0].sheared = false;
+        e.drop_loot(MobKind::Sheep, DVec3::ZERO);
+        assert_eq!(e.items[0].stack.item, Item::from(Block::wool(DyeColor::Black)));
+        assert_eq!(e.items[0].stack.count, 1);
     }
 }

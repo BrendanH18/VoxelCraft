@@ -74,7 +74,42 @@ impl DyeColor {
         ];
         NAMES[self as usize]
     }
+    pub const fn bed(self) -> Item {
+        if matches!(self, Self::Red) { Item::BED } else { Item(592 + self as u16 - (self as u16 > 14) as u16) }
+    }
+    pub const fn bed_name(self) -> &'static str {
+        const NAMES: [&str; 16] = [
+            "white bed",
+            "orange bed",
+            "magenta bed",
+            "light blue bed",
+            "yellow bed",
+            "lime bed",
+            "pink bed",
+            "gray bed",
+            "light gray bed",
+            "cyan bed",
+            "purple bed",
+            "blue bed",
+            "brown bed",
+            "green bed",
+            "red bed",
+            "black bed",
+        ];
+        NAMES[self as usize]
+    }
     /// Java Sheep.createSheepColor: white is 230, others diffuse * 0.75.
+    /// Java's two bounded draws, giving white 81.836%, pink 0.164%.
+    pub const fn natural_sheep(roll: u32, rare: u32) -> Self {
+        match roll {
+            0..=4 => Self::Black,
+            5..=9 => Self::Gray,
+            10..=14 => Self::LightGray,
+            15..=17 => Self::Brown,
+            _ if rare == 0 => Self::Pink,
+            _ => Self::White,
+        }
+    }
     pub fn sheep_rgb(self) -> [u8; 3] {
         if self == Self::White { [230; 3] } else { self.rgb().map(|v| (v as f32 * 0.75) as u8) }
     }
@@ -95,5 +130,26 @@ mod tests {
             assert!(Item::creative_palette().any(|p| p == i));
             assert!(i.icon_layer().is_some());
         }
+    }
+}
+
+#[cfg(test)]
+mod sheep_tests {
+    use super::*;
+    #[test]
+    fn java_natural_sheep_distribution_is_exact() {
+        let mut counts = [0; 16];
+        for roll in 0..100 {
+            for rare in 0..500 {
+                counts[DyeColor::natural_sheep(roll, rare) as usize] += 1;
+            }
+        }
+        assert_eq!(counts[0], 40918);
+        assert_eq!(counts[6], 82);
+        for i in [7, 8, 15] {
+            assert_eq!(counts[i], 2500);
+        }
+        assert_eq!(counts[12], 1500);
+        assert_eq!(counts.iter().sum::<u32>(), 50000);
     }
 }

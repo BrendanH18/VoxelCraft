@@ -262,7 +262,9 @@ pub mod tex {
     pub const RAIL_SW: u16 = RAIL + 3;
     pub const RAIL_NW: u16 = RAIL + 4;
     pub const RAIL_NE: u16 = RAIL + 5;
-    pub const COUNT: u32 = RAIL_NE as u32 + 1;
+    pub const COLORED_WOOL: u16 = RAIL_NE + 1;
+    pub const COLORED_BED: u16 = COLORED_WOOL + 16;
+    pub const COUNT: u32 = COLORED_BED as u32 + 64;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -546,10 +548,13 @@ impl Block {
     /// Minecraft's (encouragement, consumption) fire odds. Wooden doors,
     /// ladders and containers can kindle lava fires but aren't consumed.
     pub fn fire_odds(self) -> (u8, u8) {
+        if self.carpet_color().is_some() {
+            return (60, 20);
+        }
         match self.material() {
             b if b.is_log() => (5, 5),
             b if b.is_planks() => (5, 20),
-            b if b.is_leaves() || b == Block::WOOL => (30, 60),
+            b if b.is_leaves() || b.wool_color().is_some() => (30, 60),
             Block::TNT => (15, 100),
             Block::TALL_GRASS
             | Block::FERN
@@ -957,7 +962,7 @@ impl Block {
     }
 
     pub fn is_bed(self) -> bool {
-        matches!(self, Block::BED_FOOT | Block::BED_HEAD)
+        self.bed_color().is_some()
     }
 
     /// How far (in 1/16 block) the top of this block sits below the top of
@@ -965,6 +970,7 @@ impl Block {
     pub fn top_drop(self) -> u8 {
         match self {
             b if b.is_bed() => 7,
+            b if b.carpet_color().is_some() => 15,
             b if b.is_slab() => 8,
             _ => 0,
         }
@@ -979,6 +985,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some(c) = self.bed_color() {
+            return (!self.is_bed_head()).then_some(c.bed());
+        }
         match self.base().as_stone_ore() {
             Block::STONE => Some(Block::COBBLESTONE.into()),
             Block::DEEPSLATE => Some(Block::COBBLED_DEEPSLATE.into()),
@@ -1025,6 +1034,15 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if self.wool_color().is_some() {
+            return 0.8;
+        }
+        if self.carpet_color().is_some() {
+            return 0.1;
+        }
+        if self.is_bed() {
+            return 0.2;
+        }
         if self.is_door() {
             return 3.0;
         }
@@ -1256,6 +1274,7 @@ impl Block {
             ])
             .chain(225..=252)
             .chain(super::forms::palette_ids())
+            .chain(super::colors::palette_ids())
             .map(Block)
     }
 
@@ -1289,6 +1308,7 @@ impl Block {
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
         match self {
+            b if b.carpet_color().is_some() => below.is_solid(),
             Block::TALL_GRASS | Block::DANDELION | Block::POPPY | Block::FERN | Block::BLUE_ORCHID => {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS)
             }
@@ -1331,6 +1351,9 @@ impl Block {
     /// Looks a block up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<Block> {
         let name = name.replace('_', " ");
+        if name == "white wool" {
+            return Some(Block::WOOL);
+        }
         (0..STATE_CAPACITY as u16)
             .map(Block)
             .find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
@@ -1655,6 +1678,7 @@ const fn fronted(front: u16, side: u16, top: u16, facing: Facing) -> [u16; 6] {
 const fn make(id: u16) -> BlockInfo {
     use RenderKind::*;
     let (name, kind, tex) = match id {
+        id if super::colors::definition(id).is_some() => super::colors::definition(id).unwrap(),
         #[cfg(test)]
         4095 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]
@@ -1949,8 +1973,8 @@ static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
             #[cfg(test)]
             _ if i == 4094 => 15,
             RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
-            _ if matches!(i, 10 | 98 | 99) => 0, // glass, beds
-            _ => 1,                              // leaves, water: attenuate skylight too
+            _ if matches!(i, 10 | 98 | 99 | 576..=623) => 0, // glass, beds
+            _ => 1,                                          // leaves, water: attenuate skylight too
         };
         i += 1;
     }
