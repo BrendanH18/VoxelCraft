@@ -8,6 +8,9 @@ use crate::world::block::Block;
 
 /// Whether mining `block` with `held` yields its drop.
 pub fn can_harvest(block: Block, held: Option<Item>) -> bool {
+    if held == Some(Item::SHEARS) && block == Block::COBWEB {
+        return true;
+    }
     let Some(level) = block.harvest_level() else { return true };
     match held.and_then(Item::as_tool) {
         Some((kind, tier)) => Some(kind) == block.best_tool() && tier.level() >= level,
@@ -188,6 +191,7 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::BOOKSHELF
             | Block::CLAY
             | Block::MELON
+            | Block::SNOW
             | Block::COBWEB
             | Block::DEEPSLATE
             | Block::GILDED_BLACKSTONE

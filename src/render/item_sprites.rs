@@ -167,6 +167,39 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     let out = match sprite {
+        Sprite::Egg => {
+            let egg = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let nx = (px - 8.0) / 3.2;
+                let ny = (py - 8.2) / 4.4;
+                nx * nx + ny * ny <= 1.0
+            };
+            shaded(&egg, x, y, [244, 236, 214], 0.04).map(
+                |p| {
+                    if (x + y) % 5 == 0 { tint([214, 168, 92], 0.9) } else { p }
+                },
+            )
+        }
+        Sprite::Bowl(soup) => {
+            let bowl = |x: i32, y: i32| (3..=12).contains(&x) && (8..=13).contains(&y) && y < 17 - (x - 7).abs();
+            if (4..=11).contains(&x)
+                && (8..=9).contains(&y)
+                && let Some(c) = soup
+            {
+                Some(tint(c, 0.9 + noise(x, y, 41) * 0.2))
+            } else {
+                shaded(&bowl, x, y, [137, 94, 51], 0.04)
+            }
+        }
+        Sprite::Shears => {
+            let blade = |x: i32, y: i32| (3..=10).contains(&y) && ((x - y).abs() <= 1 || (x + y - 15).abs() <= 1);
+            let ring = |x: i32, y: i32| {
+                let a = (x - 4).pow(2) + (y - 12).pow(2);
+                let b = (x - 11).pow(2) + (y - 12).pow(2);
+                (2..=9).contains(&a) || (2..=9).contains(&b)
+            };
+            shaded(&blade, x, y, [210, 215, 217], 0.02).or_else(|| shaded(&ring, x, y, [106, 110, 116], 0.03))
+        }
         Sprite::Stick => handle(x, y, 2, 13),
         Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
         Sprite::Armor(piece, material) => armor(piece, material, x, y),
@@ -321,13 +354,6 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 }
             };
             shaded(&bed, x, y, c, 0.05)
-        }
-        Sprite::Shears => {
-            let shape = |x: i32, y: i32| {
-                ((x - y).abs() <= 1 || (x + y - 15).abs() <= 1) && (2..=12).contains(&y)
-                    || ((10..=14).contains(&y) && ((2..=5).contains(&x) || (10..=13).contains(&x)))
-            };
-            shaded(&shape, x, y, if y >= 10 { [76, 70, 65] } else { [205, 209, 210] }, 0.06)
         }
         Sprite::MelonSlice => {
             // A half-disc wedge: green rind on the curve, red flesh with seeds.
@@ -570,6 +596,58 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&pail, x, y, [200, 200, 205], 0.03)
             }
         }
+        Sprite::Carrot => {
+            let body = |x: i32, y: i32| (4..=12).contains(&y) && (x - 8).abs() <= (14 - y) / 3;
+            shaded(&body, x, y, [214, 112, 28], 0.05).map(|p| if y <= 5 { tint([70, 150, 40], 1.0) } else { p })
+        }
+        Sprite::Potato { baked, poison } => {
+            let colour = if poison {
+                [120, 150, 60]
+            } else if baked {
+                [150, 96, 42]
+            } else {
+                [196, 164, 92]
+            };
+            let lump = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                (px - 8.0).powi(2) / 18.0 + (py - 8.5).powi(2) / 14.0 <= 1.0
+            };
+            shaded(&lump, x, y, colour, 0.08)
+        }
+        Sprite::Pie => {
+            let wedge = |x: i32, y: i32| (3..=13).contains(&y) && (x - 8).abs() <= (y - 2) / 2;
+            shaded(&wedge, x, y, [214, 126, 42], 0.05).map(|p| if y <= 5 { tint([232, 176, 72], 1.0) } else { p })
+        }
+        Sprite::Cake => {
+            let slice = |x: i32, y: i32| (4..=13).contains(&y) && (3..=12).contains(&x);
+            shaded(&slice, x, y, [150, 96, 52], 0.04).map(|p| if y <= 7 { tint([248, 248, 244], 1.0) } else { p })
+        }
+        Sprite::FishingRod => {
+            let stick = (x + y).abs_diff(16) <= 1 && (2..=13).contains(&x);
+            let line = (x - 4).abs() + (y - 4).abs() <= 3 && y < 7 && x < 8;
+            if stick {
+                Some(tint([150, 104, 60], 1.0))
+            } else if line {
+                Some(tint([220, 220, 216], 1.0))
+            } else {
+                None
+            }
+        }
+        Sprite::Fish { salmon, cooked } => {
+            let body = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                (px - 8.0).powi(2) / 22.0 + (py - 8.0).powi(2) / 10.0 <= 1.0
+            };
+            let colour = match (salmon, cooked) {
+                (false, false) => [150, 160, 130],
+                (false, true) => [196, 168, 110],
+                (true, false) => [214, 112, 92],
+                (true, true) => [176, 82, 64],
+            };
+            shaded(&body, x, y, colour, 0.06)
+        }
+        Sprite::Compass => compass_face(0, 32, x, y, [62, 86, 112], [176, 40, 36]),
+        Sprite::Clock => compass_face(0, 64, x, y, [236, 214, 150], [250, 196, 48]),
         Sprite::Arrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);
@@ -585,6 +663,29 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     out.unwrap_or(CLEAR)
+}
+
+/// One compass or clock frame. `frame` 0 points the marker up; later frames turn clockwise.
+pub fn compass_face(frame: u16, frames: u16, x: i32, y: i32, face: [u8; 3], marker: [u8; 3]) -> Option<Rgba> {
+    let (px, py) = centre(x, y);
+    let (dx, dy) = (px - 8.0, py - 8.0);
+    let radius = dx.hypot(dy);
+    if !(2.2..7.2).contains(&radius) {
+        return None;
+    }
+    let angle = frame as f32 / frames as f32 * std::f32::consts::TAU;
+    let (nx, ny) = (angle.sin(), -angle.cos());
+    let along = dx * nx + dy * ny;
+    let side = (dx * ny - dy * nx).abs();
+    if along > 0.4 && along < 4.8 && side < 0.7 {
+        Some(tint(marker, 1.0))
+    } else if along < -0.4 && along > -3.2 && side < 0.55 {
+        Some(tint([230, 230, 226], 1.0))
+    } else if radius > 5.4 {
+        Some(tint([168, 132, 62], 0.85 + (7.2 - radius) * 0.08))
+    } else {
+        Some(tint(face, 0.92 + noise(x, y, 6) * 0.12))
+    }
 }
 
 /// 8x8 glyphs of the status effect icons, drawn at double size.

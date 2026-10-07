@@ -62,6 +62,7 @@ impl HandAnim {
             death: vitals.is_dead().then(|| vitals.since_damage()),
             alpha: alpha as f32,
             armor: crate::entity::armor::from_stacks(&worn),
+            held_icon: None,
         }
     }
 
@@ -74,6 +75,7 @@ impl HandAnim {
             eating,
             sky_light,
             block_light,
+            icon: None,
         }
     }
 }

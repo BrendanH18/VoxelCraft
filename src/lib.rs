@@ -21,5 +21,6 @@ pub mod potion;
 pub mod rules;
 pub mod simulation;
 pub mod smithing;
+pub mod survival_items;
 mod workers;
 pub mod world;

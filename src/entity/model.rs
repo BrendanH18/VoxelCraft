@@ -229,6 +229,9 @@ const COW_HEAD: &[Cuboid] = &[
 const WOOL: Rgb = [232, 232, 226];
 const SHEEP_SKIN: Rgb = [214, 190, 170];
 
+const SHEARED_BODY: &[Cuboid] = &[cube([-4.0, 11.0, -7.0], [4.0, 18.0, 7.0], SHEEP_SKIN, 14)];
+const SHEARED_HEAD: &[Cuboid] = &[cube([-3.0, -3.0, 0.0], [3.0, 3.0, 7.0], SHEEP_SKIN, 14)];
+const SHEARED_LEG: &[Cuboid] = &[cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], SHEEP_SKIN, 14)];
 const SHEEP_BODY: &[Cuboid] = &[cube([-5.0, 10.0, -8.0], [5.0, 19.0, 8.0], WOOL, 34)];
 const SHEEP_LEG: &[Cuboid] =
     &[cube([-2.5, -5.0, -2.5], [2.5, 0.0, 2.5], WOOL, 34), cube([-2.0, -12.0, -2.0], [2.0, -5.0, 2.0], SHEEP_SKIN, 14)];
@@ -442,12 +445,12 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             part(COW_HEAD, [0.0, 18.0, 9.0], head),
         ],
         MobKind::Sheep => vec![
-            part(SHEEP_BODY, [0.0; 3], Quat::IDENTITY),
-            part(SHEEP_LEG, [-3.0, 12.0, 5.0], rx(swing)),
-            part(SHEEP_LEG, [3.0, 12.0, 5.0], rx(-swing)),
-            part(SHEEP_LEG, [-3.0, 12.0, -5.0], rx(-swing)),
-            part(SHEEP_LEG, [3.0, 12.0, -5.0], rx(swing)),
-            part(SHEEP_HEAD, [0.0, 16.0, 7.0], head),
+            part(if m.sheared { SHEARED_BODY } else { SHEEP_BODY }, [0.0; 3], Quat::IDENTITY),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, 5.0], rx(swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, 5.0], rx(-swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, -5.0], rx(-swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, -5.0], rx(swing)),
+            part(if m.sheared { SHEARED_HEAD } else { SHEEP_HEAD }, [0.0, 16.0, 7.0], head),
         ],
         MobKind::Chicken => {
             // Wings flap while airborne.
@@ -666,7 +669,7 @@ pub fn build(
                 m.size as f32
             } else if m.kind == MobKind::WitherSkeleton {
                 1.2
-            } else if m.baby {
+            } else if m.baby || m.age < 0 {
                 0.5
             } else {
                 1.0
@@ -749,6 +752,34 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<E
         let origin = if a.is_stuck() { rel - a.dir * 0.2 } else { rel };
         for (i, c) in ARROW.iter().enumerate() {
             push_cuboid(out, c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
+/// Thrown snowballs and eggs: small cubes that tumble with no facing.
+pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for t in thrown {
+        let rel = (t.previous_pos.lerp(t.pos, alpha) - camera).as_vec3();
+        let (color, size) = match t.kind {
+            super::thrown::Kind::Snowball => ([245, 245, 250], 2.0),
+            super::thrown::Kind::Egg => ([236, 224, 196], 2.2),
+        };
+        let c = cube([-size, -size, -size], [size, size, size], color, 16);
+        push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);
+    }
+}
+
+/// A fishing bobber: a white float with a red tip. It dips while a fish bites.
+pub fn build_bobbers(bobbers: &[super::bobber::Bobber], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for b in bobbers {
+        let mut rel = (b.previous_pos.lerp(b.pos, alpha) - camera).as_vec3();
+        if b.biting {
+            rel.y -= 0.25;
+        }
+        let body = cube([-1.2, -1.2, -1.2], [1.2, 0.4, 1.2], [236, 236, 232], 12);
+        let tip = cube([-0.7, 0.4, -0.7], [0.7, 1.5, 0.7], [176, 40, 36], 8);
+        for (i, c) in [&body, &tip].into_iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
         }
     }
 }

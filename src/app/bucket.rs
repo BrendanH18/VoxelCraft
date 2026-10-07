@@ -13,6 +13,11 @@ impl Game {
         matches!(self.held_item(), Some(Item::BUCKET | Item::WATER_BUCKET | Item::LAVA_BUCKET))
     }
 
+    /// Snowballs, eggs and the fishing rod act once per click, like buckets.
+    pub(super) fn holding_throwable(&self) -> bool {
+        matches!(self.held_item(), Some(Item::SNOWBALL | Item::EGG | Item::FISHING_ROD))
+    }
+
     /// Right-click with a bucket. Returns whether the bucket was used.
     pub(super) fn use_bucket(&mut self) -> bool {
         match self.held_item() {

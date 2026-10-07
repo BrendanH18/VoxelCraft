@@ -76,6 +76,7 @@ pub(super) struct HudPlayer<'a> {
     pub selected: usize,
     pub survival: bool,
     pub underwater: bool,
+    pub dial: crate::item::Dial,
 }
 
 impl Game {
@@ -197,6 +198,7 @@ impl Game {
             selected: self.actions.selected,
             survival: self.mode.is_survival(),
             underwater: self.player.head_in_water(&self.world),
+            dial: self.dial_of(&self.player),
         };
         let y0 = self.bar_ui(ui, &hud, now);
         let survival = hud.survival;
@@ -232,7 +234,7 @@ impl Game {
                 }
             }
             if let Some(stack) = hud.inventory.get(i) {
-                draw_stack(ui, sx + 1.0, y0 + 2.0, stack, hud.survival);
+                draw_stack(ui, sx + 1.0, y0 + 2.0, stack, hud.survival, hud.dial);
                 // Java's item cooldown: a pale veil that drains downward.
                 let cooling = hud.vitals.pearl_cooldown / crate::entity::pearl::COOLDOWN;
                 if stack.item == Item::ENDER_PEARL && cooling > 0.0 {
@@ -306,9 +308,39 @@ impl Game {
         }
     }
 
+    /// Facing, spawn and time for compass and clock icons.
+    pub(super) fn dial_of(&self, player: &crate::player::Player) -> crate::item::Dial {
+        crate::item::Dial {
+            yaw: player.yaw,
+            x: player.pos.x,
+            z: player.pos.z,
+            spawn_x: self.world_spawn.x as f64 + 0.5,
+            spawn_z: self.world_spawn.z as f64 + 0.5,
+            overworld: self.dimension == crate::world::terrain::Dimension::Overworld,
+            day_time: self.day_time as f32,
+            spin: self.started.elapsed().as_secs_f32(),
+        }
+    }
+
+    pub(super) fn stamp_hand(
+        dial: crate::item::Dial,
+        mut hand: crate::render::hand::Hand,
+    ) -> crate::render::hand::Hand {
+        hand.icon = hand.item.and_then(|item| item.dial_layer(dial));
+        hand
+    }
+
+    pub(super) fn stamp_look(
+        dial: crate::item::Dial,
+        mut look: crate::entity::model::PlayerAppearance,
+    ) -> crate::entity::model::PlayerAppearance {
+        look.held_icon = look.held.and_then(|item| item.dial_layer(dial));
+        look
+    }
+
     /// Item icon, durability bar and stack count in an 18x18 slot at (x, y).
     fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
-        draw_stack(ui, x, y, stack, self.mode.is_survival());
+        draw_stack(ui, x, y, stack, self.mode.is_survival(), self.dial_of(&self.player));
     }
 }
 
@@ -433,8 +465,9 @@ fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
 
 /// Item icon, durability bar and (when `counts`) stack size in an 18x18
 /// slot at (x, y).
-pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
-    match (stack.item.block(), stack.item.icon_layer()) {
+pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool, dial: crate::item::Dial) {
+    let layer = stack.item.dial_layer(dial).or_else(|| stack.item.icon_layer());
+    match (stack.item.block(), layer) {
         (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
         (None, Some(layer)) => {
             ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE);

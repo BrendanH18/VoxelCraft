@@ -419,7 +419,7 @@ impl MobKind {
     /// `round(looting * uniform(0, 1))` to each (Java's
     /// `enchanted_count_increase`).
     pub fn drops(self, rng: &mut Rng, looting: u8) -> Vec<(Item, u8)> {
-        let mut drops: Vec<(Item, u8)> = self
+        let mut out: Vec<(Item, u8)> = self
             .loot()
             .iter()
             .map(|&(item, lo, hi)| {
@@ -437,10 +437,20 @@ impl MobKind {
             })
             .filter(|&(_, n)| n > 0)
             .collect();
-        if self == MobKind::WitherSkeleton && rng.chance(0.025 + 0.01 * looting as f32) {
-            drops.push((Item::WITHER_SKULL, 1));
+        if self == MobKind::Zombie {
+            // Java: 2.5% plus 1% per looting level, rolled separately.
+            let chance = 0.025 + 0.01 * looting as f32;
+            if rng.next_f32() < chance {
+                out.push((Item::CARROT, 1));
+            }
+            if rng.next_f32() < chance {
+                out.push((Item::POTATO, 1));
+            }
         }
-        drops
+        if self == MobKind::WitherSkeleton && rng.chance(0.025 + 0.01 * looting as f32) {
+            out.push((Item::WITHER_SKULL, 1));
+        }
+        out
     }
 
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
@@ -480,6 +490,10 @@ pub struct Mob {
     swift_left: f32,
     slow_cd: f32,
     poison_cd: f32,
+    /// Negative while a baby. Java's chicks start at -24000 and grow one tick at a time.
+    pub age: i32,
+    /// Seconds until a grown chicken lays an egg (Java's 6000–12000 ticks).
+    pub(crate) egg_timer: f32,
     hop_left: f32,
     hop_delay: f32,
     pub(super) difficulty: crate::simulation::difficulty::Difficulty,
@@ -570,6 +584,8 @@ impl Mob {
             swift_left: 0.0,
             slow_cd: 0.0,
             poison_cd: 0.0,
+            age: 0,
+            egg_timer: if kind == MobKind::Chicken { 300.0 + yaw.rem_euclid(TAU) / TAU * 300.0 } else { f32::MAX },
             hop_left: 0.0,
             hop_delay: 1.0,
             difficulty: Default::default(),
@@ -624,7 +640,7 @@ impl Mob {
     pub fn shape(&self) -> Shape {
         if self.kind.is_cube() {
             Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
-        } else if self.baby {
+        } else if self.baby || self.age < 0 {
             let s = self.kind.shape();
             Shape::new(s.half_width * 0.5, s.height * 0.5)
         } else {
@@ -805,6 +821,18 @@ impl Mob {
             self.provoked = provoked;
             if self.health < health && rng.chance(0.9) {
                 self.teleport_pending = true;
+            }
+        }
+        if self.alive() && self.kind == MobKind::Chicken {
+            let ticks = ((dt * 20.0).round() as i32).max(1);
+            if self.age < 0 {
+                self.age = (self.age + ticks).min(0);
+            } else {
+                self.egg_timer -= dtf;
+                if self.egg_timer <= 0.0 {
+                    self.egg_timer = rng.range(300.0, 600.0);
+                    events.push(EntityEvent::LaidEgg { pos: self.pos });
+                }
             }
         }
     }

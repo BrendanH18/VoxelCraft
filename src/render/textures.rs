@@ -143,6 +143,20 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         return p;
     }
     match layer {
+        tex::BROWN_MUSHROOM | tex::RED_MUSHROOM => {
+            // Java's small mushroom occupies six pixels of the crossed 16x16 plane.
+            if (7..=8).contains(&x) && (12..=15).contains(&y) {
+                shade([212, 190, 153], 0.9 + r * 0.15)
+            } else if (5..=10).contains(&x) && (10..=12).contains(&y) {
+                if layer == tex::RED_MUSHROOM {
+                    shade(if r < 0.25 { [238, 220, 192] } else { [183, 43, 32] }, 0.9 + r * 0.15)
+                } else {
+                    shade([150, 108, 72], 0.8 + r * 0.3)
+                }
+            } else {
+                [0; 4]
+            }
+        }
         tex::STONE => {
             let streak = rnd(layer, x / 3, y, 5) < 0.12;
             shade(STONE, if streak { 0.82 } else { 0.9 + r * 0.18 })
@@ -674,6 +688,29 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             shade([134, 96, 64], furrow * wet)
         }
         l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat((l - tex::WHEAT_0) as u8, x, y),
+        l if (tex::CARROT_0..tex::CARROT_0 + 8).contains(&l) => {
+            crop_cross((l - tex::CARROT_0) as u8, x, y, [72, 150, 40], [214, 112, 28])
+        }
+        l if (tex::POTATO_0..tex::POTATO_0 + 8).contains(&l) => {
+            crop_cross((l - tex::POTATO_0) as u8, x, y, [64, 140, 36], [168, 124, 64])
+        }
+        tex::CAKE_TOP => {
+            if !(1..15).contains(&x) || !(1..15).contains(&y) {
+                [0, 0, 0, 0]
+            } else if (x + y).is_multiple_of(6) {
+                shade([196, 48, 42], 1.0)
+            } else {
+                shade([248, 248, 244], 0.95 + r * 0.08)
+            }
+        }
+        tex::CAKE_SIDE => {
+            if y < 7 {
+                shade([244, 244, 240], 1.0)
+            } else {
+                shade([156, 96, 52], 0.9 + r * 0.1)
+            }
+        }
+        tex::CAKE_BOTTOM => shade([140, 84, 44], 0.9 + r * 0.1),
         l if (tex::NETHER_WART_0..tex::NETHER_WART_0 + 3).contains(&l) => {
             nether_wart((l - tex::NETHER_WART_0) as u8, x, y)
         }
@@ -1317,6 +1354,15 @@ fn wheat(stage: u8, x: usize, y: usize) -> Rgba {
     shade(c, 0.85 + rnd(tex::WHEAT_0 + stage as u16, x, y, 9) * 0.25)
 }
 
+/// A wheat-shaped crop with a coloured top once it is nearly ripe.
+fn crop_cross(stage: u8, x: usize, y: usize, leaf: [u8; 3], fruit: [u8; 3]) -> Rgba {
+    let grown = wheat(stage, x, y);
+    if grown[3] == 0 {
+        return grown;
+    }
+    if stage >= 4 && y + (stage as usize) < 12 { shade(fruit, 1.0) } else { shade(leaf, 0.95) }
+}
+
 /// Stone bricks, two courses with staggered joints and bevelled edges;
 /// mossy ones are overgrown in patches and cracked ones split.
 fn stone_bricks(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
@@ -1497,10 +1543,30 @@ fn crack(stage: u8, x: usize, y: usize) -> Rgba {
 pub fn texel(layer: u16, x: usize, y: usize) -> Rgba {
     use crate::simulation::effects::Effect;
     let icons = crate::item::icon_count() as u16;
+    let clock = icons + crate::item::COMPASS_FRAMES;
+    let effects = clock + crate::item::CLOCK_FRAMES;
     match tex::item_index(layer) {
-        Some(index) if index >= icons => Effect::ALL
-            .get((index - icons) as usize)
+        Some(index) if index >= effects => Effect::ALL
+            .get((index - effects) as usize)
             .map_or([0, 0, 0, 0], |&e| super::item_sprites::effect_pixel(e, x, y)),
+        Some(index) if index >= clock => super::item_sprites::compass_face(
+            index - clock,
+            crate::item::CLOCK_FRAMES,
+            x as i32,
+            y as i32,
+            [236, 214, 150],
+            [250, 196, 48],
+        )
+        .unwrap_or([0, 0, 0, 0]),
+        Some(index) if index >= icons => super::item_sprites::compass_face(
+            index - icons,
+            crate::item::COMPASS_FRAMES,
+            x as i32,
+            y as i32,
+            [62, 86, 112],
+            [176, 40, 36],
+        )
+        .unwrap_or([0, 0, 0, 0]),
         Some(index) => {
             crate::item::sprite_for_layer(index).map_or([0, 0, 0, 0], |s| super::item_sprites::pixel(s, x, y))
         }
@@ -1514,10 +1580,10 @@ pub fn generate_mips() -> Vec<Vec<u8>> {
     mips_of(tex::COUNT as usize, |l, x, y| pixel(l as u16, x, y))
 }
 
-/// Layers of the item icon array: every item's icon, then the status
-/// effect icons.
+/// Layers of the item icon array: every item's icon, the compass and clock
+/// frames, then the status effect icons.
 pub fn item_layers() -> u32 {
-    crate::item::icon_count() + crate::simulation::effects::Effect::ALL.len() as u32
+    crate::item::icon_count() + crate::item::animated_icons() + crate::simulation::effects::Effect::ALL.len() as u32
 }
 
 /// Mip levels of the item icon array (see [`generate_mips`]).

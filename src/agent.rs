@@ -702,7 +702,7 @@ impl Agent {
             }
             Command::Eat => {
                 let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
-                if held.item.as_potion().is_none() {
+                if !held.item.is_drink() {
                     held.item.food().ok_or("selected item is not food or a potion")?;
                     if self.creative || !self.vitals.hunger.can_eat() {
                         return Err("not hungry".into());
@@ -779,6 +779,47 @@ impl Agent {
                     return Err("block is unchanged or unloaded".into());
                 }
             }
+            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD) => {
+                if !self.mode.can_interact() {
+                    return Err("spectators cannot use items".into());
+                }
+                if self.cooldown > 0.0 {
+                    return Err("action cooling down".into());
+                }
+                crate::survival_items::use_rod(
+                    &self.player,
+                    &mut self.inventory,
+                    self.selected,
+                    self.creative,
+                    self.id,
+                    entities,
+                );
+                self.cooldown = 0.22;
+                self.swings += 1;
+            }
+            Command::Place
+                if self
+                    .inventory
+                    .get(self.selected)
+                    .is_some_and(|s| s.item == Item::SNOWBALL || s.item == Item::EGG) =>
+            {
+                if !self.mode.can_interact() {
+                    return Err("spectators cannot use items".into());
+                }
+                if self.cooldown > 0.0 {
+                    return Err("action cooling down".into());
+                }
+                crate::survival_items::throw_held(
+                    &self.player,
+                    &mut self.inventory,
+                    self.selected,
+                    self.creative,
+                    self.id,
+                    entities,
+                );
+                self.cooldown = 0.22;
+                self.swings += 1;
+            }
             Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::ENDER_PEARL) => {
                 if !self.mode.can_interact() {
                     return Err("spectators cannot use items".into());
@@ -841,33 +882,27 @@ impl Agent {
                 }
             }
             Command::Place
-                if self
-                    .inventory
-                    .get(self.selected)
-                    .is_some_and(|s| s.item.dye_color().is_some() || s.item == Item::SHEARS) =>
+                if crate::survival_items::use_mob(
+                    &self.player,
+                    &mut self.inventory,
+                    self.selected,
+                    self.creative,
+                    world,
+                    entities,
+                ) =>
             {
-                if !self.mode.can_interact() {
-                    return Err("spectators cannot use items".into());
-                }
-                if self.cooldown > 0.0 {
-                    return Err("action cooling down".into());
-                }
-                let eye = self.player.eye();
-                let dir = self.player.forward().as_dvec3();
-                let distance = world.raycast(eye, dir, 6.0).map_or(6.0, |(p, _)| {
-                    crate::physics::ray_aabb(eye, dir, p.as_dvec3(), p.as_dvec3() + DVec3::ONE).unwrap_or(6.0)
-                });
-                let (index, _) = entities.raycast(eye, dir, distance).ok_or("no sheep within reach")?;
-                let item = self.inventory.get(self.selected).unwrap().item;
-                let shears = entities.use_on_sheep(index, item).ok_or("sheep cannot use this item")?;
-                if !self.creative {
-                    if shears {
-                        self.inventory.wear(self.selected, 1);
-                    } else {
-                        self.inventory.take_one(self.selected);
-                    }
-                }
                 self.cooldown = 0.22;
+                self.swings += 1;
+            }
+            Command::Place
+                if self
+                    .target(world)
+                    .is_some_and(|(pos, _)| world.get_block(pos).is_some_and(|b| b.cake_bites().is_some())) =>
+            {
+                let (pos, _) = self.target(world).unwrap();
+                if !crate::survival_items::bite_cake(world, pos, &mut self.vitals, self.creative) {
+                    return Err("not hungry enough to eat cake".into());
+                }
                 self.swings += 1;
             }
             Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item.bed_color().is_some()) => {
@@ -909,7 +944,7 @@ impl Agent {
                 }
                 let (pos, normal) = self.target(world).ok_or("no block within reach")?;
                 let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
-                let block = held.item.block().ok_or("selected item is not a block")?;
+                let block = held.item.places().ok_or("selected item cannot be placed")?;
                 // Complex multi-cell placements use client gameplay until the shared action boundary is extracted.
                 if block.is_door()
                     || block.is_bed()
@@ -924,7 +959,14 @@ impl Agent {
                 if !world.get_block(at).is_some_and(|b| b == Block::AIR || b.is_water() || b.is_lava()) {
                     return Err("destination occupied or unloaded".into());
                 }
-                if self.player.intersects_block(at) || others.iter().any(|&p| Player::new(p).intersects_block(at)) {
+                if !world.get_block(at - IVec3::Y).is_some_and(|below| block.can_stay_on(below))
+                    || (block.is_mushroom() && !world.mushroom_survives(at))
+                {
+                    return Err("block cannot survive here".into());
+                }
+                if (block.is_solid() && self.player.intersects_block(at))
+                    || others.iter().any(|&p| Player::new(p).intersects_block(at))
+                {
                     return Err("placement intersects a player".into());
                 }
                 if !world.set_block(at, block) {
@@ -1110,7 +1152,13 @@ impl Agent {
             }
             let options = recipe.alternatives(i).unwrap();
             let slot = inventory.slots.iter().position(|s| s.is_some_and(|s| options.contains(&s.item)))?;
+            let used = inventory.get(slot)?.item;
             inventory.take_one(slot);
+            if let Some(rest) = used.remainder()
+                && inventory.add(rest, 1) != 0
+            {
+                return None;
+            }
         }
         (inventory.add_stack(recipe.result) == 0).then_some(inventory)
     }
@@ -1157,6 +1205,10 @@ impl Agent {
         let feet = self.player.pos.floor().as_ivec3();
         if !world.is_loaded(feet) || !world.is_loaded(feet - IVec3::Y) {
             return;
+        }
+        let holding_rod = self.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD);
+        if self.vitals.is_dead() || !holding_rod {
+            entities.drop_bobber(self.id);
         }
         self.cooldown = (self.cooldown - TICK_SECONDS).max(0.0);
         if self.vitals.is_dead() {
@@ -1229,7 +1281,7 @@ impl Agent {
                     if mining::can_harvest(block, held) {
                         let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
                         if rules.bool("doTileDrops") {
-                            world.spill_mined(pos, block, tool);
+                            world.spill_with_item(pos, block, digger.held);
                             entities.drop_mined_xp(block, pos, tool);
                         }
                     }
@@ -1244,7 +1296,7 @@ impl Agent {
         } else {
             self.breaking = None;
         }
-        self.chew();
+        self.chew(entities);
         self.remaining = self.remaining.saturating_sub(1);
         entities.items.retain_mut(|item| {
             if item.pickup_delay > 0.0 || !item.touches_player(self.player.pos) {
@@ -1295,11 +1347,12 @@ impl Agent {
 
     /// One tick of eating: a bite finishes after [`EAT_TICKS`] of holding
     /// the same food, like Java. Switching slots restarts it via `select`.
-    fn chew(&mut self) {
+    fn chew(&mut self, entities: &mut Entities) {
         let held = self.inventory.get(self.selected).map(|s| s.item);
+        let milk = held == Some(Item::MILK_BUCKET);
         let potion = held.and_then(Item::as_potion);
         let food = held.and_then(|i| i.food()).filter(|_| !self.creative && self.vitals.hunger.can_eat());
-        if self.remaining == 0 || !self.eating || (potion.is_none() && food.is_none()) {
+        if self.remaining == 0 || !self.eating || (!milk && potion.is_none() && food.is_none()) {
             self.bite = 0;
             return;
         }
@@ -1310,16 +1363,37 @@ impl Agent {
         }
         if self.bite >= EAT_TICKS {
             self.bite = 0;
-            if let Some(potion) = potion {
+            if milk {
+                self.vitals.effects.clear();
+                crate::survival_items::exchange(
+                    &mut self.inventory,
+                    self.selected,
+                    Item::BUCKET,
+                    self.creative,
+                    entities,
+                    &self.player,
+                );
+            } else if let Some(potion) = potion {
                 let damage = potion.drink(&mut self.vitals);
                 self.damage(damage, survival::CAUSE_MAGIC);
                 if !self.creative {
                     self.inventory.slots[self.selected] = Some(Stack::new(Item::GLASS_BOTTLE, 1));
                 }
             } else if let Some((hunger, saturation)) = food {
-                self.inventory.take_one(self.selected);
+                if let Some(remainder) = held.and_then(Item::remainder) {
+                    crate::survival_items::exchange(
+                        &mut self.inventory,
+                        self.selected,
+                        remainder,
+                        false,
+                        entities,
+                        &self.player,
+                    );
+                } else {
+                    self.inventory.take_one(self.selected);
+                }
                 self.vitals.hunger.eat(hunger, saturation);
-                if let Some((effect, amp, ticks)) = held.and_then(Item::food_effect) {
+                if let Some((effect, amp, ticks)) = held.and_then(|item| item.food_effect_roll(entities.roll())) {
                     self.vitals.apply_effect(effect, amp, ticks);
                 }
             }
@@ -1523,6 +1597,33 @@ mod tests {
         }
         panic!("world failed to load");
     }
+    #[test]
+    fn milk_clears_effects_at_full_hunger_and_stew_returns_a_bowl() {
+        use crate::simulation::effects::Effect;
+        let mut w = world();
+        let mut e = Entities::new(6);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        w.set_block(IVec3::new(1, 149, 1), Block::STONE);
+        a.inventory.slots[0] = Some(Stack::new(Item::MILK_BUCKET, 1));
+        a.vitals.apply_effect(Effect::Poison, 0, 600);
+        a.vitals.apply_effect(Effect::Speed, 1, 600);
+        a.execute(Command::Eat, &mut w, &mut e, &[]).unwrap();
+        for _ in 0..EAT_TICKS {
+            a.tick(&mut w, &mut e);
+        }
+        assert!(!a.vitals.effects.has(Effect::Poison));
+        assert!(!a.vitals.effects.has(Effect::Speed));
+        assert_eq!(a.inventory.get(0).unwrap().item, Item::BUCKET);
+        a.inventory.slots[0] = Some(Stack::new(Item::MUSHROOM_STEW, 1));
+        a.vitals.hunger.food = 10.0;
+        a.execute(Command::Eat, &mut w, &mut e, &[]).unwrap();
+        for _ in 0..EAT_TICKS {
+            a.tick(&mut w, &mut e);
+        }
+        assert_eq!(a.inventory.get(0).unwrap().item, Item::BOWL);
+        assert_eq!(a.vitals.hunger.food, 16.0);
+    }
+
     #[test]
     fn replacing_a_targeted_block_resets_mining_progress() {
         let mut world = world();

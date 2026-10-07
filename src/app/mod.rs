@@ -1400,7 +1400,7 @@ impl Game {
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
         if self.gamerules.bool("doTileDrops") && crate::mining::can_harvest(block, held) {
-            self.world.spill_mined(pos, block, tool);
+            self.world.spill_with_item(pos, block, digger.held);
             self.mobs.entities.drop_mined_xp(block, pos, tool);
         }
         if block.is_bed() {
@@ -1419,10 +1419,12 @@ impl Game {
     /// finishes a bite after [`EAT_TIME`] seconds. Potions drink the same
     /// way, in any mode.
     fn eat(&mut self, acting: bool, dt: f64) {
-        let potion = self.held_item().and_then(|i| i.as_potion());
+        let held = self.held_item();
+        let milk = held == Some(Item::MILK_BUCKET);
+        let potion = held.and_then(|i| i.as_potion());
         let food = self.held_item().and_then(|i| i.food());
         let hungry = self.mode.is_survival() && self.vitals.hunger.can_eat();
-        let using = acting && self.right_held && (potion.is_some() || (food.is_some() && hungry));
+        let using = acting && self.right_held && (milk || potion.is_some() || (food.is_some() && hungry));
         if !using {
             self.actions.eat_timer = 0.0;
             return;
@@ -1437,7 +1439,17 @@ impl Game {
         if !finished {
             return;
         }
-        if let Some(potion) = potion {
+        if milk {
+            self.vitals.effects.clear();
+            voxelcraft::survival_items::exchange(
+                &mut self.inventory,
+                self.actions.selected,
+                Item::BUCKET,
+                self.mode.is_creative(),
+                &mut self.mobs.entities,
+                &self.player,
+            );
+        } else if let Some(potion) = potion {
             // Creative keeps the potion; survival is left with the bottle.
             if self.mode.is_survival() {
                 self.inventory.slots[self.actions.selected] = Some(crate::inventory::Stack::new(Item::GLASS_BOTTLE, 1));
@@ -1445,8 +1457,19 @@ impl Game {
             let damage = potion.drink(&mut self.vitals);
             self.damage_player(damage, survival::CAUSE_MAGIC);
         } else if let Some((hunger, saturation)) = food {
-            let effect = self.held_item().and_then(Item::food_effect);
-            self.inventory.take_one(self.actions.selected);
+            let effect = self.held_item().and_then(|item| item.food_effect_roll(self.mobs.entities.roll()));
+            if let Some(remainder) = held.and_then(Item::remainder) {
+                voxelcraft::survival_items::exchange(
+                    &mut self.inventory,
+                    self.actions.selected,
+                    remainder,
+                    false,
+                    &mut self.mobs.entities,
+                    &self.player,
+                );
+            } else {
+                self.inventory.take_one(self.actions.selected);
+            }
             self.vitals.hunger.eat(hunger, saturation);
             if let Some((effect, amp, ticks)) = effect {
                 self.vitals.apply_effect(effect, amp, ticks);
@@ -1498,8 +1521,23 @@ impl Game {
         if self.use_sheep() {
             return;
         }
+        if voxelcraft::survival_items::use_mob(
+            &self.player,
+            &mut self.inventory,
+            self.actions.selected,
+            self.mode.is_creative(),
+            &self.world,
+            &mut self.mobs.entities,
+        ) {
+            return;
+        }
         if !self.aiming_at_usable()
-            && (self.use_bucket() || self.throw_pearl() || self.throw_splash_potion() || self.throw_eye())
+            && (self.use_bucket()
+                || self.throw_pearl()
+                || self.throw_splash_potion()
+                || self.throw_eye()
+                || self.throw_projectile()
+                || self.use_rod())
         {
             return;
         }
@@ -1533,6 +1571,10 @@ impl Game {
             Some(b) if b.is_anvil() => return self.open_anvil(pos),
             Some(Block::SMITHING_TABLE) => return self.open_smithing(pos),
             Some(Block::DRAGON_EGG) => return self.teleport_egg(pos),
+            Some(b) if b.cake_bites().is_some() => {
+                voxelcraft::survival_items::bite_cake(&mut self.world, pos, &mut self.vitals, self.mode.is_creative());
+                return;
+            }
             Some(b) if b.is_bed() => return self.use_bed(pos),
             Some(b) if b.is_door() || b.is_gate() => {
                 self.toggle_door(pos, self.player.forward());
@@ -1597,7 +1639,8 @@ impl Game {
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
         let below = self.world.get_block(at - glam::IVec3::Y);
         let supported = below.is_some_and(|below| block.can_stay_on(below))
-            && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || self.world.cane_has_water(at));
+            && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || self.world.cane_has_water(at))
+            && (!block.is_mushroom() || self.world.mushroom_survives(at));
         if free
             && supported
             && !(block.is_solid() && self.player.intersects_block(at))
@@ -1901,7 +1944,7 @@ impl Game {
             && (self.left_held || self.right_held)
             && self.actions.bow_draw.is_none()
             // Buckets act once per click.
-            && !(self.right_held && !self.left_held && self.holding_bucket())
+            && !(self.right_held && !self.left_held && (self.holding_bucket() || self.holding_throwable()))
         {
             if self.left_held {
                 self.break_block();
@@ -2086,16 +2129,21 @@ impl Game {
             now,
         };
         let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } = self.fog(&scene, camera);
+        let dial = self.dial_of(&self.player);
         let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance)> = self
             .agents
             .players
             .values()
             .filter(|b| b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0))
             .map(|b| {
+                let pose = dial.at(b.agent.player.yaw, b.agent.player.pos.x, b.agent.player.pos.z);
                 (
                     &b.agent.player,
                     b.agent.previous_pos.lerp(b.agent.player.pos, alpha),
-                    b.hand.appearance(&b.agent.vitals, b.agent.eating(), alpha, b.agent.inventory.armor),
+                    Self::stamp_look(
+                        pose,
+                        b.hand.appearance(&b.agent.vitals, b.agent.eating(), alpha, b.agent.inventory.armor),
+                    ),
                 )
             })
             .collect();
@@ -2111,11 +2159,14 @@ impl Game {
                     self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
                 ),
                 scene.time,
-                self.hand.appearance(
-                    &self.vitals,
-                    (self.actions.eat_timer / EAT_TIME) as f32,
-                    alpha,
-                    self.inventory.armor,
+                Self::stamp_look(
+                    dial,
+                    self.hand.appearance(
+                        &self.vitals,
+                        (self.actions.eat_timer / EAT_TIME) as f32,
+                        alpha,
+                        self.inventory.armor,
+                    ),
                 ),
                 verts,
             );
@@ -2160,7 +2211,10 @@ impl Game {
                 .then(|| {
                     let eye = self.player.eye();
                     let eating = (self.actions.eat_timer / EAT_TIME) as f32;
-                    self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye))
+                    Self::stamp_hand(
+                        dial,
+                        self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye)),
+                    )
                 }),
             rain: scene.rain,
             night_vision: self.vitals.effects.night_vision(scene.time),

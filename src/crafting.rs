@@ -51,9 +51,10 @@ impl Grid {
     pub fn consume(&mut self) {
         for cell in self.cells.iter_mut().take(self.size * self.size) {
             if let Some(s) = cell {
+                let rest = s.item.remainder();
                 s.count -= 1;
                 if s.count == 0 {
-                    *cell = None;
+                    *cell = rest.map(|item| Stack::new(item, 1));
                 }
             }
         }
@@ -221,6 +222,16 @@ const NETHERITE_SCRAP: Ingredient = &[Item::NETHERITE_SCRAP];
 const NETHERITE_INGOT: Ingredient = &[Item::NETHERITE_INGOT];
 const NETHERITE_BLOCK: Ingredient = &[b(Block::NETHERITE_BLOCK)];
 const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
+const BROWN_MUSHROOM: Ingredient = &[b(Block::BROWN_MUSHROOM)];
+const RED_MUSHROOM: Ingredient = &[b(Block::RED_MUSHROOM)];
+const BOWL: Ingredient = &[Item::BOWL];
+const SNOWBALL: Ingredient = &[Item::SNOWBALL];
+const PUMPKIN: Ingredient = &[b(Block::PUMPKIN)];
+const MILK: Ingredient = &[Item::MILK_BUCKET];
+const SUGAR: Ingredient = &[Item::SUGAR];
+const EGG: Ingredient = &[Item::EGG];
+const WHEAT: Ingredient = &[Item::WHEAT];
+const STRING: Ingredient = &[Item::STRING];
 
 fn shaped(rows: &'static [&'static str], key: &[(char, Ingredient)], result: Item, count: u8) -> Recipe {
     Recipe { shape: Shape::Shaped(rows, key.to_vec()), result: Stack::new(result, count) }
@@ -309,6 +320,15 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', &[Item::STRING])], b(Block::WOOL), 1),
             shapeless(&[&[Item::IRON_INGOT], &[Item::FLINT]], Item::FLINT_AND_STEEL, 1),
             shaped(&["# #", " # "], &[('#', &[Item::IRON_INGOT])], Item::BUCKET, 1),
+            shaped(&["# #", " # "], &[('#', PLANKS)], Item::BOWL, 4),
+            shapeless(&[BROWN_MUSHROOM, RED_MUSHROOM, BOWL], Item::MUSHROOM_STEW, 1),
+            shaped(&["##", "##"], &[('#', SNOWBALL)], b(Block::SNOW), 1),
+            shaped(&[" # ", "#X#", " # "], &[('#', IRON), ('X', &[Item::REDSTONE])], Item::COMPASS, 1),
+            shaped(&[" # ", "#X#", " # "], &[('#', GOLD), ('X', &[Item::REDSTONE])], Item::CLOCK, 1),
+            shaped(&["AAA", "BEB", "CCC"], &[('A', MILK), ('B', SUGAR), ('E', EGG), ('C', WHEAT)], Item::CAKE, 1),
+            shapeless(&[PUMPKIN, SUGAR, EGG], Item::PUMPKIN_PIE, 1),
+            shaped(&["  #", " #X", "# X"], &[('#', STICK), ('X', STRING)], Item::FISHING_ROD, 1),
+            shaped(&[" #", "# "], &[('#', &[Item::IRON_INGOT])], Item::SHEARS, 1),
             shaped(&["# #", " # "], &[('#', GLASS)], Item::GLASS_BOTTLE, 3),
             shaped(&["X#X", "#X#", "X#X"], &[('X', &[Item::GUNPOWDER]), ('#', SAND)], b(Block::TNT), 1),
             shaped(&["##", "##"], &[('#', &[Item::NETHER_BRICK])], b(Block::NETHER_BRICKS), 1),
@@ -535,6 +555,13 @@ mod tests {
         assert_eq!(g.result().unwrap().item, Item::armor(ArmorPiece::Boots, ArmorMaterial::Leather));
     }
 
+    #[test]
+    fn a_fishing_rod_is_three_sticks_and_two_string() {
+        let cells =
+            [(2, 0, Item::STICK), (1, 1, Item::STICK), (2, 1, Item::STRING), (0, 2, Item::STICK), (2, 2, Item::STRING)];
+        assert_eq!(grid(3, &cells).result(), Some(Stack::new(Item::FISHING_ROD, 1)));
+    }
+
     fn grid(size: usize, cells: &[(usize, usize, Item)]) -> Grid {
         let mut g = Grid::new(size);
         for &(x, y, item) in cells {
@@ -545,6 +572,67 @@ mod tests {
 
     const P: Item = b(Block::PLANKS);
     const C: Item = b(Block::COBBLESTONE);
+
+    #[test]
+    fn cake_returns_the_milk_buckets() {
+        let cells = [
+            (0, 0, Item::MILK_BUCKET),
+            (1, 0, Item::MILK_BUCKET),
+            (2, 0, Item::MILK_BUCKET),
+            (0, 1, Item::SUGAR),
+            (1, 1, Item::EGG),
+            (2, 1, Item::SUGAR),
+            (0, 2, Item::WHEAT),
+            (1, 2, Item::WHEAT),
+            (2, 2, Item::WHEAT),
+        ];
+        let mut g = Grid::new(3);
+        for (x, y, item) in cells {
+            g.cells[y * 3 + x] = Some(Stack::new(item, 1));
+        }
+        assert_eq!(g.result(), Some(Stack::new(Item::CAKE, 1)));
+        g.consume();
+        let buckets = g.cells.iter().flatten().filter(|s| s.item == Item::BUCKET).count();
+        assert_eq!(buckets, 3);
+        let mut pie = Grid::new(3);
+        pie.cells[0] = Some(Stack::new(Block::PUMPKIN, 1));
+        pie.cells[1] = Some(Stack::new(Item::SUGAR, 1));
+        pie.cells[2] = Some(Stack::new(Item::EGG, 1));
+        assert_eq!(pie.result(), Some(Stack::new(Item::PUMPKIN_PIE, 1)));
+    }
+
+    #[test]
+    fn compass_and_clock_use_redstone() {
+        let compass = grid(
+            3,
+            &[
+                (1, 0, Item::IRON_INGOT),
+                (0, 1, Item::IRON_INGOT),
+                (1, 1, Item::REDSTONE),
+                (2, 1, Item::IRON_INGOT),
+                (1, 2, Item::IRON_INGOT),
+            ],
+        );
+        assert_eq!(compass.result(), Some(Stack::new(Item::COMPASS, 1)));
+        let clock = grid(
+            3,
+            &[
+                (1, 0, Item::GOLD_INGOT),
+                (0, 1, Item::GOLD_INGOT),
+                (1, 1, Item::REDSTONE),
+                (2, 1, Item::GOLD_INGOT),
+                (1, 2, Item::GOLD_INGOT),
+            ],
+        );
+        assert_eq!(clock.result(), Some(Stack::new(Item::CLOCK, 1)));
+    }
+
+    #[test]
+    fn four_snowballs_craft_a_snow_block() {
+        let g =
+            grid(2, &[(0, 0, Item::SNOWBALL), (1, 0, Item::SNOWBALL), (0, 1, Item::SNOWBALL), (1, 1, Item::SNOWBALL)]);
+        assert_eq!(g.result(), Some(Stack::new(Block::SNOW, 1)));
+    }
 
     #[test]
     fn shaped_recipes_match_anywhere_and_mirrored() {
@@ -710,6 +798,25 @@ mod tests {
             Some(Item::from_block(Block::DEEPSLATE))
         );
         assert_eq!(crate::world::furnace::smelt(Item::from_block(Block::DEEPSLATE_IRON_ORE)), Some(Item::IRON_INGOT));
+    }
+
+    #[test]
+    fn bowls_and_mushroom_stew_follow_the_vanilla_recipes() {
+        let mut bowl = Grid::new(3);
+        bowl.cells[0] = Some(Stack::new(Block::PLANKS, 1));
+        bowl.cells[2] = Some(Stack::new(Block::PLANKS, 1));
+        bowl.cells[4] = Some(Stack::new(Block::PLANKS, 1));
+        assert_eq!(bowl.result(), Some(Stack::new(Item::BOWL, 4)));
+        let mut stew = Grid::new(2);
+        stew.cells[0] = Some(Stack::new(Block::BROWN_MUSHROOM, 1));
+        stew.cells[1] = Some(Stack::new(Block::RED_MUSHROOM, 1));
+        stew.cells[2] = Some(Stack::new(Item::BOWL, 1));
+        assert_eq!(stew.result(), Some(Stack::new(Item::MUSHROOM_STEW, 1)));
+        assert_eq!(Item::from_name("milk_bucket"), Some(Item::MILK_BUCKET));
+        assert_eq!(Item::MUSHROOM_STEW.food(), Some((6, 7.2)));
+        assert_eq!(Item::MUSHROOM_STEW.remainder(), Some(Item::BOWL));
+        assert!(Item::creative_palette().any(|item| item == Item::BOWL));
+        assert!(Block::creative_palette().any(|block| block == Block::RED_MUSHROOM));
     }
 }
 

@@ -277,6 +277,7 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
             out.push(b(min, max));
         }
         Some(Shaped::Rail) => out.push(RAIL),
+        Some(Shaped::Cake { bites }) => out.push(b([1 + 2 * bites, 0, 1], [15, 8, 15])),
         Some(Shaped::Fence) => {
             out.push(FENCE_POST);
             for f in Facing::ALL {

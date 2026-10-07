@@ -213,6 +213,9 @@ impl Game {
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
         self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
+        if self.held_item() != Some(crate::item::Item::FISHING_ROD) || self.vitals.is_dead() {
+            self.mobs.entities.drop_bobber(self.actor);
+        }
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.mobs.entities.despawn_hostiles();
         }
@@ -376,7 +379,11 @@ impl Game {
                 EntityEvent::MobShot { pos, .. } => {
                     self.audio.play(Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
-                EntityEvent::Shoot { .. } | EntityEvent::DragonXp { .. } | EntityEvent::MobKilled { .. } => {}
+                EntityEvent::Shoot { .. }
+                | EntityEvent::DragonXp { .. }
+                | EntityEvent::MobKilled { .. }
+                | EntityEvent::LaidEgg { .. }
+                | EntityEvent::Hatched { .. } => {}
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
                     if self.mode.is_survival() && !self.vitals.is_dead() {

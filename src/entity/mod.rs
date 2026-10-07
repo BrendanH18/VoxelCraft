@@ -13,6 +13,7 @@
 //! box-model vertices.
 
 pub mod armor;
+mod bobber;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
@@ -27,6 +28,7 @@ mod player_pose;
 pub mod potion;
 mod projectile;
 mod slime;
+mod thrown;
 pub mod tnt;
 
 use std::f32::consts::TAU;
@@ -197,6 +199,15 @@ pub enum EntityEvent {
     /// The Ender Dragon flew through this block: remove it, without drops.
     BreakBlock {
         cell: IVec3,
+    },
+    /// A chicken laid an egg at its feet.
+    LaidEgg {
+        pos: DVec3,
+    },
+    /// A thrown egg hatched `count` chicks (one or four) at `pos`.
+    Hatched {
+        pos: DVec3,
+        count: u8,
     },
     /// The dragon's death is over: open the exit portal, and on the `first`
     /// kill put the egg on top.
@@ -441,6 +452,8 @@ pub struct Entities {
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
     pub potions: Vec<potion::ThrownPotion>,
+    pub thrown: Vec<thrown::Thrown>,
+    pub bobbers: Vec<bobber::Bobber>,
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
     pub puffs: Vec<Puff>,
@@ -475,6 +488,8 @@ impl Entities {
             arrows: Vec::new(),
             pearls: Vec::new(),
             potions: Vec::new(),
+            thrown: Vec::new(),
+            bobbers: Vec::new(),
             eyes: Vec::new(),
             fireballs: Vec::new(),
             puffs: Vec::new(),
@@ -653,10 +668,24 @@ impl Entities {
             let mobs = &self.mobs;
             self.fireballs.retain_mut(|f| f.update(dt, world, ctx, mobs, &mut events));
         }
-        let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
-        self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
-        self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
-        self.potions.retain_mut(|p| p.update(dt, world, ctx, mobs, rng, &mut events));
+        {
+            let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
+            self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
+            self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
+            self.potions.retain_mut(|p| p.update(dt, world, ctx, mobs, rng, &mut events));
+            self.thrown.retain_mut(|t| t.update(dt, world, mobs, rng, &mut events));
+        }
+        {
+            let rng = &mut self.rng;
+            let mut i = 0;
+            while i < self.bobbers.len() {
+                if self.bobbers[i].update(dt, world, rng, ctx) {
+                    i += 1;
+                } else {
+                    self.bobbers.swap_remove(i);
+                }
+            }
+        }
         self.update_eyes(dt, &mut events);
         for e in &events {
             match *e {
@@ -676,10 +705,29 @@ impl Entities {
                 EntityEvent::MobKilled { kind, pos, burning, player_kill, looting } => {
                     self.drop_loot_with_fire(kind, pos, looting, burning, player_kill);
                 }
+                EntityEvent::LaidEgg { pos } => {
+                    self.drop_from_block(
+                        crate::inventory::Stack::new(crate::item::Item::EGG, 1),
+                        pos.floor().as_ivec3(),
+                    );
+                }
+                EntityEvent::Hatched { pos, count } => {
+                    for _ in 0..count {
+                        self.spawn_baby(MobKind::Chicken, pos);
+                    }
+                }
                 _ => {}
             }
         }
-        events.retain(|e| !matches!(e, EntityEvent::DragonXp { .. } | EntityEvent::MobKilled { .. }));
+        events.retain(|e| {
+            !matches!(
+                e,
+                EntityEvent::DragonXp { .. }
+                    | EntityEvent::MobKilled { .. }
+                    | EntityEvent::LaidEgg { .. }
+                    | EntityEvent::Hatched { .. }
+            )
+        });
         self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
         self.orbs.retain_mut(|orb| !world.loaded(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
@@ -1123,6 +1171,12 @@ impl Entities {
         for p in &mut self.potions {
             p.previous_pos = p.pos;
         }
+        for t in &mut self.thrown {
+            t.previous_pos = t.pos;
+        }
+        for b in &mut self.bobbers {
+            b.previous_pos = b.pos;
+        }
         for e in &mut self.eyes {
             e.previous_pos = e.pos;
         }
@@ -1157,6 +1211,8 @@ impl Entities {
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
         model::build_potions(&self.potions, camera, alpha, &mut self.verts);
+        model::build_thrown(&self.thrown, camera, alpha, &mut self.verts);
+        model::build_bobbers(&self.bobbers, camera, alpha, &mut self.verts);
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
@@ -1260,6 +1316,51 @@ impl Entities {
 
     pub fn throw_pearl(&mut self, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3) {
         self.pearls.push(pearl::Pearl::thrown(owner, eye, dir, carry, &mut self.rng));
+    }
+
+    /// Casts this player's bobber. A bobber they already had is replaced.
+    pub fn cast_bobber(&mut self, owner: PlayerId, eye: DVec3, dir: DVec3, lure: u8, luck: u8) {
+        self.bobbers.retain(|b| b.owner != owner);
+        self.bobbers.push(bobber::Bobber::cast(owner, eye, dir, lure, luck, &mut self.rng));
+    }
+
+    /// Reels this player's bobber, spawning the catch and its experience.
+    /// The number is how many uses the rod spends.
+    pub fn reel(&mut self, owner: PlayerId, player_pos: DVec3) -> Option<u16> {
+        let index = self.bobbers.iter().position(|b| b.owner == owner)?;
+        let bobber = self.bobbers.swap_remove(index);
+        let got = bobber.retrieve(&mut self.rng);
+        if let Some(stack) = got.catch {
+            let delta = player_pos - bobber.pos;
+            let lift = delta.length().sqrt() * 0.08;
+            let vel = DVec3::new(delta.x * 0.1, delta.y * 0.1 + lift, delta.z * 0.1);
+            self.items.push(item::ItemEntity::new(stack, bobber.pos, vel, 0.1, &mut self.rng));
+            self.spawn_xp(player_pos + DVec3::Y * 0.5, got.xp);
+        }
+        Some(got.wear)
+    }
+
+    /// Forgets this player's bobber (they put the rod away, or died).
+    pub fn drop_bobber(&mut self, owner: PlayerId) {
+        self.bobbers.retain(|b| b.owner != owner);
+    }
+
+    pub fn has_bobber(&self, owner: PlayerId) -> bool {
+        self.bobbers.iter().any(|b| b.owner == owner)
+    }
+
+    /// Throws a snowball or egg from `eye` along `dir`.
+    pub fn throw_projectile(&mut self, item: crate::item::Item, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3) {
+        let Some(kind) = thrown::Kind::from_item(item) else { return };
+        self.thrown.push(thrown::Thrown::launch(kind, owner, eye, dir, carry, &mut self.rng));
+    }
+
+    /// Spawns a baby that grows up after Java's 24000 ticks.
+    pub fn spawn_baby(&mut self, kind: MobKind, pos: DVec3) {
+        let yaw = self.rng.range(0.0, TAU);
+        let mut mob = Mob::new(kind, pos, yaw);
+        mob.age = -24000;
+        self.mobs.push(mob);
     }
 
     /// An eye of ender released at `pos` to fly toward the stronghold at
@@ -1895,8 +1996,17 @@ mod tests {
             let extra = (u8::MAX as f32 * expected_rng.next_f32()).round() as u32;
             let base = (expected_rng.next_f32() * 3.0) as u32;
             let drops = MobKind::Zombie.drops(&mut rng, u8::MAX);
+            // Looting 255 makes the separate carrot and potato rolls certain.
+            let _ = (expected_rng.next_f32(), expected_rng.next_f32());
             assert!(!drops.is_empty(), "maximum looting produces a drop for these rolls");
-            assert_eq!(drops, vec![(crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8)]);
+            assert_eq!(
+                drops,
+                vec![
+                    (crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8),
+                    (crate::item::Item::CARROT, 1),
+                    (crate::item::Item::POTATO, 1),
+                ]
+            );
         }
     }
 
@@ -2150,6 +2260,20 @@ mod tests {
         };
         let hit = (0..60 * 10).any(|_| e.update(1.0 / 60.0, &world, &c).iter().any(is_hit));
         assert!(hit, "zombie stuck at {:?}", e.mobs[0].pos);
+    }
+
+    #[test]
+    fn chickens_lay_eggs_and_hatch_half_size_chicks() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Chicken, DVec3::new(0.5, 10.0, 0.5));
+        let grown = e.mobs[0].shape().height;
+        e.mobs[0].egg_timer = 0.01;
+        e.update(0.05, &world, &ctx(DVec3::new(40.0, 10.0, 0.0)));
+        assert!(e.items.iter().any(|item| item.stack.item == crate::item::Item::EGG));
+        e.spawn_baby(MobKind::Chicken, DVec3::new(2.5, 10.0, 0.5));
+        let chick = e.mobs.iter().find(|m| m.age < 0).unwrap();
+        assert!((chick.shape().height - grown * 0.5).abs() < 1e-4);
     }
 
     #[test]
@@ -2844,9 +2968,11 @@ mod tests {
         for kind in MobKind::ALL.into_iter().filter(|k| !k.loot().is_empty()) {
             let mut seen_any = false;
             for _ in 0..200 {
-                for (item, n) in kind.drops(&mut rng, 0).into_iter().filter(|d| d.0 != crate::item::Item::WITHER_SKULL)
-                {
-                    let &(_, lo, hi) = kind.loot().iter().find(|l| l.0 == item).unwrap();
+                for (item, n) in kind.drops(&mut rng, 0) {
+                    let Some(&(_, lo, hi)) = kind.loot().iter().find(|l| l.0 == item) else {
+                        assert_eq!(n, 1, "{kind:?} rare drop {}", item.name());
+                        continue;
+                    };
                     assert!((lo.max(1) as u8..=hi).contains(&n), "{kind:?} dropped {n} of {}", item.name());
                     seen_any = true;
                 }

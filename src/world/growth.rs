@@ -55,6 +55,17 @@ impl World {
     /// [`World::spill_block`] for a block mined with a tool enchanted with
     /// `tool`: silk touch drops the block itself, fortune adds to ore and
     /// crop drops (Java's loot tables).
+    pub fn spill_with_item(&mut self, p: IVec3, block: Block, held: Option<Stack>) {
+        if self.tile_drops
+            && held.is_some_and(|s| s.item == Item::SHEARS)
+            && (block.is_leaves() || block == Block::COBWEB)
+        {
+            self.drops.push((p, Stack::new(block.base(), 1)));
+        } else {
+            self.spill_mined(p, block, held.map_or(Default::default(), |s| s.active_enchants()));
+        }
+    }
+
     pub fn spill_mined(&mut self, p: IVec3, block: Block, tool: crate::enchant::Enchants) {
         if !self.tile_drops {
             return;
@@ -79,11 +90,25 @@ impl World {
                     s.count = times;
                 }
             }
-            b if b.crop_stage() == Some(7) => {
+            b if b.as_crop() == Some((crate::world::block::Crop::Wheat, 7)) => {
                 // One seed, plus three tries (and one more per fortune
                 // level) at 4 in 7.
                 let seeds = 1 + (0..3 + fortune).filter(|_| self.roll() % 7 < 4).count() as u8;
                 out.push(Stack::new(Item::WHEAT_SEEDS, seeds));
+            }
+            b if matches!(
+                b.as_crop(),
+                Some((crate::world::block::Crop::Carrot | crate::world::block::Crop::Potato, 7))
+            ) =>
+            {
+                // Java's crop bonus: one item, plus three (plus fortune) tries at 4 in 7.
+                let extra = (0..3 + fortune).filter(|_| self.roll() % 7 < 4).count() as u8;
+                if let Some(stack) = out.first_mut() {
+                    stack.count = stack.count.saturating_add(extra);
+                }
+                if b.as_crop().is_some_and(|(crop, _)| crop == crate::world::block::Crop::Potato) && self.one_in(50) {
+                    out.push(Stack::new(Item::POISONOUS_POTATO, 1));
+                }
             }
             // Ripe wart drops 2-4 in all, plus 0..fortune.
             b if b.wart_age() == Some(3) => {
@@ -113,6 +138,7 @@ impl World {
                 out.push(Stack::new(Item::LAPIS_LAZULI, n as u8));
             }
             Block::CLAY => out.push(Stack::new(Item::CLAY_BALL, 3)),
+            Block::SNOW => out.push(Stack::new(Item::SNOWBALL, 4)),
             Block::BOOKSHELF => out.push(Stack::new(Item::BOOK, 3)),
             // 2-4 dust, plus 0..fortune, at most 4.
             Block::GLOWSTONE => {
@@ -217,10 +243,12 @@ impl World {
                 }
             }
             Block::SUGAR_CANE => self.tick_cane(p),
+            b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if b.crop_stage().is_some_and(|s| s < 7) => {
                 let wet = self.get_block(p - IVec3::Y) == Some(Block::WET_FARMLAND);
                 if self.grows_here(p) && self.one_in(if wet { CROP_GROWTH } else { 2 * CROP_GROWTH }) {
-                    self.edit(p, Block::wheat(b.crop_stage().unwrap() + 1), false);
+                    let (crop, stage) = b.as_crop().unwrap();
+                    self.edit(p, Block::crop(crop, stage + 1), false);
                 }
             }
             // Java: one in ten random ticks, whatever the light.
@@ -317,8 +345,9 @@ impl World {
         let Some(b) = self.get_block(p) else { return false };
         match b {
             b if b.crop_stage().is_some_and(|s| s < 7) => {
-                let stage = (b.crop_stage().unwrap() + 2 + (self.roll() % 4) as u8).min(7);
-                self.edit(p, Block::wheat(stage), true);
+                let (crop, stage) = b.as_crop().unwrap();
+                let stage = (stage + 2 + (self.roll() % 4) as u8).min(7);
+                self.edit(p, Block::crop(crop, stage), true);
                 true
             }
             b if b.is_sapling() => {
@@ -454,6 +483,33 @@ mod tests {
     use crate::world::chunk::ChunkData;
     use crate::world::terrain::Generator;
     use std::sync::Arc;
+
+    #[test]
+    fn ripe_potatoes_can_drop_a_poisonous_one() {
+        let mut world = World::new_headless(Arc::new(Generator::new(11)), Default::default(), 2);
+        let mut poison = 0;
+        for _ in 0..400 {
+            world.drops.clear();
+            world.spill_block(IVec3::ZERO, Block::crop(crate::world::block::Crop::Potato, 7));
+            let potatoes = world.drops.iter().find(|(_, s)| s.item == Item::POTATO).map(|(_, s)| s.count).unwrap();
+            assert!((1..=4).contains(&potatoes));
+            if world.drops.iter().any(|(_, s)| s.item == Item::POISONOUS_POTATO) {
+                poison += 1;
+            }
+        }
+        assert!((1..30).contains(&poison), "about 2% of 400, got {poison}");
+    }
+
+    #[test]
+    fn snow_drops_four_snowballs_unless_silk_touched() {
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        world.spill_block(IVec3::ZERO, Block::SNOW);
+        assert_eq!(world.drops, vec![(IVec3::ZERO, Stack::new(Item::SNOWBALL, 4))]);
+        world.drops.clear();
+        let silk = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::SilkTouch, 1);
+        world.spill_mined(IVec3::ZERO, Block::SNOW, silk);
+        assert_eq!(world.drops, vec![(IVec3::ZERO, Stack::new(Block::SNOW, 1))]);
+    }
 
     #[test]
     fn gilded_blackstone_fortune_and_silk_follow_java() {
