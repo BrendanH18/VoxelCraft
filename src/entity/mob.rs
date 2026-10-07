@@ -61,6 +61,12 @@ const BLAZE_MELEE: f64 = 2.0;
 const BLAZE_CHARGE: f32 = 3.0;
 const BLAZE_VOLLEY: f32 = 0.3;
 const BLAZE_REST: f32 = 5.0;
+/// Ghasts notice players this far (Java's follow range), charge for a
+/// second, then rest two seconds. Flying speed is 0.7 blocks a tick.
+const GHAST_RANGE: f64 = 100.0;
+const GHAST_CHARGE: f32 = 1.0;
+const GHAST_REST: f32 = 2.0;
+const GHAST_SPEED: f64 = 14.0;
 /// Enderman eye height (Java's 2.55).
 const ENDERMAN_EYE: f64 = 2.55;
 /// Falls deeper than this are avoided (blocks).
@@ -87,13 +93,15 @@ pub enum MobKind {
     CaveSpider,
     Slime,
     MagmaCube,
+    /// Nether flyer: charges, then shoots a fireball a player can punch back.
+    Ghast,
 }
 
 impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 15] = [
+    pub const ALL: [MobKind; 16] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -109,6 +117,7 @@ impl MobKind {
         MobKind::CaveSpider,
         MobKind::Slime,
         MobKind::MagmaCube,
+        MobKind::Ghast,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -129,6 +138,7 @@ impl MobKind {
             MobKind::CaveSpider => "cave spider",
             MobKind::Slime => "slime",
             MobKind::MagmaCube => "magma cube",
+            MobKind::Ghast => "ghast",
         }
     }
 
@@ -153,6 +163,7 @@ impl MobKind {
             MobKind::Slime | MobKind::MagmaCube => Shape::new(0.255, 0.51),
             MobKind::Enderman => Shape::new(0.3, 2.9),
             MobKind::Blaze => Shape::new(0.3, 1.8),
+            MobKind::Ghast => Shape::new(2.0, 4.0),
             MobKind::Silverfish => Shape::new(0.2, 0.3),
         }
     }
@@ -167,6 +178,7 @@ impl MobKind {
             MobKind::Spider => 16.0,
             MobKind::CaveSpider => 12.0,
             MobKind::Slime | MobKind::MagmaCube => 1.0,
+            MobKind::Ghast => 10.0,
             MobKind::Enderman => 40.0,
         }
     }
@@ -186,12 +198,13 @@ impl MobKind {
                 | MobKind::CaveSpider
                 | MobKind::Slime
                 | MobKind::MagmaCube
+                | MobKind::Ghast
         )
     }
 
     /// Unharmed by fire and lava.
     pub fn fire_immune(self) -> bool {
-        matches!(self, MobKind::ZombifiedPiglin | MobKind::Blaze | MobKind::MagmaCube)
+        matches!(self, MobKind::ZombifiedPiglin | MobKind::Blaze | MobKind::MagmaCube | MobKind::Ghast)
     }
 
     /// Hurt by water and rain, like Java's endermen and blazes.
@@ -207,7 +220,7 @@ impl MobKind {
             MobKind::Blaze => false,
             // Only from stronghold spawners (and infested blocks, later).
             MobKind::Silverfish | MobKind::CaveSpider => false,
-            MobKind::MagmaCube | MobKind::ZombifiedPiglin => dimension == Dimension::Nether,
+            MobKind::MagmaCube | MobKind::ZombifiedPiglin | MobKind::Ghast => dimension == Dimension::Nether,
             _ => dimension == Dimension::Overworld,
         }
     }
@@ -222,6 +235,8 @@ impl MobKind {
             // Basalt deltas (weight 100) are not a biome here; fortresses
             // use the separate weighted list.
             (MobKind::MagmaCube, Dimension::Nether) => 0.02,
+            // Nether wastes weight 50 against zombified piglins at 100.
+            (MobKind::Ghast, Dimension::Nether) => 0.5,
             _ => 1.0,
         }
     }
@@ -230,6 +245,7 @@ impl MobKind {
     pub fn spawn_cap(self, dimension: Dimension) -> usize {
         match self {
             MobKind::Zombie => 4,
+            MobKind::Ghast => 4,
             MobKind::ZombifiedPiglin => 8,
             MobKind::Enderman if dimension == Dimension::End => 12,
             MobKind::Enderman => 1,
@@ -258,6 +274,7 @@ impl MobKind {
             MobKind::Cow | MobKind::Zombie | MobKind::Creeper | MobKind::ZombifiedPiglin => 1.1,
             MobKind::Sheep | MobKind::Skeleton | MobKind::Blaze => 1.2,
             MobKind::Chicken | MobKind::Slime | MobKind::MagmaCube => 1.0,
+            MobKind::Ghast => 4.0,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Enderman | MobKind::Silverfish => 1.4,
         }
     }
@@ -305,6 +322,7 @@ impl MobKind {
             MobKind::Silverfish => &[],
             MobKind::Slime => &[(Item::SLIMEBALL, 0, 2)],
             MobKind::MagmaCube => &[(Item::MAGMA_CREAM, -2, 1)],
+            MobKind::Ghast => &[(Item::GUNPOWDER, 0, 2), (Item::GHAST_TEAR, 0, 1)],
         }
     }
 
@@ -699,6 +717,7 @@ impl Mob {
             };
             let (range, height) = match self.kind {
                 MobKind::Blaze => (BLAZE_RANGE, 24.0),
+                MobKind::Ghast => (GHAST_RANGE, GHAST_RANGE),
                 MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => (16.0, 4.0),
                 _ => (CHASE_RANGE, 12.0),
             };
@@ -736,6 +755,9 @@ impl Mob {
                         if let Some(stop) = self.blaze_tactics(dt, world, &target, rng, events) {
                             return stop;
                         }
+                    }
+                    MobKind::Ghast => {
+                        return self.ghast_tactics(world, target.pos, dir, hdist, events);
                     }
                     MobKind::Creeper => {
                         if let Some(stop) = self.creeper_fuse(dt, hdist, events) {
@@ -911,7 +933,7 @@ impl Mob {
                     let spread = dist.sqrt() * 0.5 * 0.1;
                     let mut r = || rng.range(-1.0, 1.0) as f64 * spread;
                     let dir = (to / dist + DVec3::new(r(), 0.0, r())).normalize();
-                    events.push(EntityEvent::Fireball { from: eye + dir * 0.5, dir });
+                    events.push(EntityEvent::Fireball { from: eye + dir * 0.5, dir, large: false });
                     events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: eye });
                 }
                 _ => {
@@ -922,6 +944,51 @@ impl Mob {
             }
         }
         Some((None, 0.0))
+    }
+
+    /// Java's ghast: hover out of reach, charge for a second while it can
+    /// see the target, then shoot one explosive fireball.
+    fn ghast_tactics<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        player: DVec3,
+        dir: DVec3,
+        hdist: f64,
+        events: &mut Vec<EntityEvent>,
+    ) -> (Option<DVec3>, f64) {
+        let eye = self.pos + DVec3::Y * (self.shape().height * 0.5);
+        let target_eye = player + DVec3::Y * crate::player::EYE_HEIGHT;
+        let to = target_eye - eye;
+        let dist = to.length().max(1e-6);
+        let see = dist < GHAST_RANGE && line_of_sight(world, eye, target_eye);
+        let flat = if hdist > 28.0 {
+            dir
+        } else if hdist < 14.0 {
+            -dir
+        } else {
+            DVec3::new(-dir.z, 0.0, dir.x)
+        };
+        let dy = (target_eye.y + 3.0 - eye.y).clamp(-8.0, 8.0);
+        let wish = (flat * 8.0 + DVec3::Y * dy).normalize_or(DVec3::Y);
+        if see {
+            if self.attack_cooldown <= 0.0 {
+                if !self.charged {
+                    self.charged = true;
+                    self.attack_cooldown = GHAST_CHARGE;
+                    events.push(EntityEvent::Sound { sound: MobSound::Ambient(MobKind::Ghast), pos: eye });
+                } else {
+                    self.charged = false;
+                    self.attack_cooldown = GHAST_REST;
+                    let shot = to / dist;
+                    let from = eye + shot * (self.shape().half_width.max(self.shape().height * 0.5) * 2.2);
+                    events.push(EntityEvent::Fireball { from, dir: shot, large: true });
+                    events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: eye });
+                }
+            }
+        } else {
+            self.charged = false;
+        }
+        (Some(wish), GHAST_SPEED)
     }
 
     /// Where an enderman's eyes are.
@@ -1095,7 +1162,12 @@ impl Mob {
         self.fuse += dt;
         if self.fuse >= FUSE_TIME {
             let center = self.pos + DVec3::Y * (self.shape().height * 0.5);
-            events.push(EntityEvent::Explosion { center, power: CREEPER_POWER, cause: "was blown up by a creeper" });
+            events.push(EntityEvent::Explosion {
+                center,
+                power: CREEPER_POWER,
+                cause: "was blown up by a creeper",
+                credit_player: false,
+            });
             // Gone in the blast: no death animation, no loot.
             self.health = 0.0;
             self.dying = Some(DEATH_TIME);
@@ -1121,7 +1193,11 @@ impl Mob {
         }
         let target = wish.map_or(DVec3::ZERO, |d| d * speed);
 
-        if self.in_water {
+        if self.kind == MobKind::Ghast && self.alive() {
+            // Java ghasts fly: no gravity, and they steer in three dimensions.
+            let k = (dt * 1.6).min(1.0);
+            self.vel += (target - self.vel) * k;
+        } else if self.in_water {
             let k = (dt * 4.0).min(1.0);
             self.vel.x += (target.x * 0.6 - self.vel.x) * k;
             self.vel.z += (target.z * 0.6 - self.vel.z) * k;

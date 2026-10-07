@@ -390,7 +390,7 @@ impl Game {
         let half = self.world.get_block(pos).unwrap_or(Block::AIR);
         self.world.set_block(pos, Block::AIR);
         self.break_bed_partner(pos, half);
-        self.explode(pos.as_dvec3() + DVec3::splat(0.5), 5.0, "was killed by [Intentional Game Design]");
+        self.explode(pos.as_dvec3() + DVec3::splat(0.5), 5.0, "was killed by [Intentional Game Design]", false);
         true
     }
 }

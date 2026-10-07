@@ -120,13 +120,15 @@ pub enum EntityEvent {
         amplifier: u8,
         ticks: u32,
     },
-    /// A creeper or TNT exploded: break blocks and hurt everything nearby
-    /// (see [`explosion_damage`]). [`Entities::explode`] handles the mobs;
-    /// `cause` is the death message.
+    /// A creeper, ghast fireball or TNT exploded: break blocks and hurt
+    /// everything nearby (see [`explosion_damage`]). [`Entities::explode`]
+    /// handles the mobs; `cause` is the death message. `credit_player` marks
+    /// a deflected ghast fireball so the mobs it kills drop loot.
     Explosion {
         center: DVec3,
         power: f32,
         cause: &'static str,
+        credit_player: bool,
     },
     Sound {
         sound: MobSound,
@@ -137,10 +139,12 @@ pub enum EntityEvent {
         from: DVec3,
         target: DVec3,
     },
-    /// A blaze shot a fireball (turned into a projectile internally).
+    /// A blaze or ghast shot a fireball (turned into a projectile internally).
+    /// `large` is a ghast fireball: slower, explosive, and punchable.
     Fireball {
         from: DVec3,
         dir: DVec3,
+        large: bool,
     },
     /// A fireball set `player` alight for `secs`.
     Ignite {
@@ -561,12 +565,27 @@ impl Entities {
         for e in &events {
             match *e {
                 EntityEvent::Shoot { from, target } => self.arrows.push(Arrow::aimed(from, target, &mut self.rng)),
-                EntityEvent::Fireball { from, dir } => self.fireballs.push(fireball::Fireball::new(from, dir)),
+                EntityEvent::Fireball { from, dir, large } => {
+                    let ball = if large {
+                        fireball::Fireball::large(from, dir)
+                    } else {
+                        fireball::Fireball::new(from, dir)
+                    };
+                    if large {
+                        let mut burst = crate::particles::Burst::new(crate::particles::Kind::LargeSmoke, from, 6);
+                        burst.spread = DVec3::splat(0.4);
+                        self.particles.push(crate::particles::Request::Burst(burst));
+                    }
+                    self.fireballs.push(ball);
+                }
                 _ => {}
             }
         }
         events.retain(|e| !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. }));
-        self.fireballs.retain_mut(|f| f.update(dt, world, ctx, &mut events));
+        {
+            let mobs = &self.mobs;
+            self.fireballs.retain_mut(|f| f.update(dt, world, ctx, mobs, &mut events));
+        }
         let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
         self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
         self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
@@ -616,16 +635,35 @@ impl Entities {
 
     /// Hurts and flings mobs caught in an explosion, and puffs smoke.
     pub fn explode(&mut self, center: DVec3, power: f32) {
+        self.blast(center, power, false);
+    }
+
+    /// As [`Entities::explode`], but mobs it kills count as the player's
+    /// (a ghast fireball punched back).
+    pub fn explode_credited(&mut self, center: DVec3, power: f32) {
+        self.blast(center, power, true);
+    }
+
+    fn blast(&mut self, center: DVec3, power: f32, credit_player: bool) {
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
+        let mut killed = Vec::new();
         for m in &mut self.mobs {
             let mid = m.pos + DVec3::Y * (m.shape().height * 0.5);
             let Some((damage, impact)) = explosion_damage(power, mid.distance(center)) else { continue };
             let away = (mid - center).normalize_or(DVec3::Y);
-            m.damage(damage, Some(away * (impact as f64 * 14.0) + DVec3::Y * 6.0), &mut self.rng);
+            if credit_player {
+                m.player_hit();
+            }
+            if m.damage(damage, Some(away * (impact as f64 * 14.0) + DVec3::Y * 6.0), &mut self.rng) && credit_player {
+                killed.push((m.kind, m.pos, m.burning));
+            }
         }
         self.particles.push(crate::particles::Request::Explosion { pos: center, large: power >= 2.0 });
+        for (kind, pos, burning) in killed {
+            self.drop_loot_with_fire(kind, pos, 0, burning, true);
+        }
     }
 
     /// Drops the loot and experience of a mob of `kind` the player killed
@@ -658,7 +696,12 @@ impl Entities {
             return;
         }
         for (item, count) in kind.drops(&mut self.rng, looting) {
-            if !player_kill && matches!(item, crate::item::Item::SPIDER_EYE | crate::item::Item::BLAZE_ROD) {
+            if !player_kill
+                && matches!(
+                    item,
+                    crate::item::Item::SPIDER_EYE | crate::item::Item::BLAZE_ROD | crate::item::Item::GHAST_TEAR
+                )
+            {
                 continue;
             }
             let item = if burning {
@@ -798,8 +841,12 @@ impl Entities {
                 // Animals come in small herds, zombified piglins and End
                 // endermen in packs.
                 if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
-                    // Nether wastes magma cubes spawn in groups of exactly 4.
-                    let extra = if kind == MobKind::MagmaCube { 3 } else { (self.rng.next_f32() * 3.0) as i32 };
+                    // Nether wastes ghasts and magma cubes spawn in groups of exactly 4.
+                    let extra = if matches!(kind, MobKind::MagmaCube | MobKind::Ghast) {
+                        3
+                    } else {
+                        (self.rng.next_f32() * 3.0) as i32
+                    };
                     for _ in 0..extra {
                         let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
                         let spot = if ctx.dimension.has_sky() {
@@ -1010,6 +1057,46 @@ impl Entities {
             })
             .filter(|&(_, t)| t <= max_dist)
             .min_by(|a, b| a.1.total_cmp(&b.1))
+    }
+
+    /// Index of a ghast fireball along the look ray, when it is closer than
+    /// any mob or End-fight target.
+    pub fn large_fireball(&self, eye: DVec3, dir: DVec3, max_dist: f64) -> Option<usize> {
+        let dir = dir.normalize_or_zero();
+        if dir == DVec3::ZERO {
+            return None;
+        }
+        let mut best: Option<(usize, f64)> = None;
+        for (i, f) in self.fireballs.iter().enumerate() {
+            if !f.is_large() {
+                continue;
+            }
+            let t = (f.pos - eye).dot(dir);
+            if !(0.0..=max_dist).contains(&t) {
+                continue;
+            }
+            if (eye + dir * t - f.pos).length_squared() > 1.0 {
+                continue;
+            }
+            if best.is_none_or(|(_, bt)| t < bt) {
+                best = Some((i, t));
+            }
+        }
+        let (i, t) = best?;
+        if self.raycast(eye, dir, max_dist).is_some_and(|(_, mt)| mt < t) {
+            return None;
+        }
+        if self.fight.as_ref().and_then(|f| f.raycast(eye, dir, max_dist)).is_some_and(|(_, ft)| ft < t) {
+            return None;
+        }
+        Some(i)
+    }
+
+    /// Punches the ghast fireball under the crosshair back along `dir`.
+    pub fn punch_fireball(&mut self, eye: DVec3, dir: DVec3, max_dist: f64) -> bool {
+        let Some(i) = self.large_fireball(eye, dir, max_dist) else { return false };
+        self.fireballs[i].deflect(dir);
+        true
     }
 
     /// The End crystal or dragon part a ray hits within `max_dist`, if it's
@@ -1385,6 +1472,51 @@ mod tests {
             assert_eq!(m.health, (m.size as f32).powi(2));
         }
         assert!(seen[1] && seen[2] && seen[4], "sizes 1, 2 and 4: {seen:?}");
+    }
+
+    #[test]
+    fn ghasts_hover_shoot_and_credit_a_deflected_blast() {
+        let world = Grid::flat(0);
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Ghast, DVec3::new(0.5, 40.0, 0.5));
+        assert_eq!(e.mobs[0].health, 10.0);
+        assert!(MobKind::Ghast.fire_immune());
+        assert!(!MobKind::Ghast.spawns_in(Dimension::Overworld));
+        assert!(MobKind::Ghast.spawns_in(Dimension::Nether));
+        assert_eq!(MobKind::Ghast.spawn_chance(Dimension::Nether), 0.5);
+        assert_eq!(MobKind::Ghast.spawn_cap(Dimension::Nether), 4);
+        assert_eq!(MobKind::Ghast.loot(), &[(crate::item::Item::GUNPOWDER, 0, 2), (crate::item::Item::GHAST_TEAR, 0, 1)]);
+        let hover = Ctx {
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(0.5, 40.0, 0.5), false)],
+            ..night(DVec3::ZERO)
+        };
+        for _ in 0..120 {
+            e.update(1.0 / 60.0, &world, &hover);
+        }
+        assert!((e.mobs[0].pos.y - 40.0).abs() < 1.5, "flew without falling: {}", e.mobs[0].pos.y);
+
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Ghast, DVec3::new(0.5, 40.0, 0.5));
+        let hunt = night(DVec3::new(32.5, 40.0, 0.5));
+        for _ in 0..90 {
+            e.update(1.0 / 60.0, &world, &hunt);
+        }
+        assert!(e.fireballs.iter().any(|f| f.is_large()), "charged and shot");
+        let ball = e.fireballs[0].pos;
+        let heading = e.fireballs[0].heading().as_dvec3();
+        let eye = ball + heading * 3.0;
+        assert!(e.punch_fireball(eye, -heading, 6.0));
+        assert!(e.fireballs[0].heading().dot((-heading).as_vec3()) > 0.9);
+
+        let mut e = Entities::new(6);
+        e.spawn(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].health = 1.0;
+        e.explode(DVec3::new(0.5, 10.9, 0.5), 3.0);
+        assert!(e.items.is_empty(), "an uncredited blast drops nothing");
+        e.spawn(MobKind::Pig, DVec3::new(4.5, 10.0, 0.5));
+        e.mobs.last_mut().unwrap().health = 1.0;
+        e.explode_credited(DVec3::new(4.5, 10.9, 0.5), 3.0);
+        assert!(!e.items.is_empty(), "a deflected blast drops the victim's loot");
     }
 
     /// Runs one mob for `secs` at 60 Hz, forcing it to walk along +X.
@@ -2378,7 +2510,9 @@ mod tests {
         assert!(
             e.mobs
                 .iter()
-                .all(|m| { matches!(m.kind, MobKind::ZombifiedPiglin | MobKind::Enderman | MobKind::MagmaCube) })
+                .all(|m| {
+                    matches!(m.kind, MobKind::ZombifiedPiglin | MobKind::Enderman | MobKind::MagmaCube | MobKind::Ghast)
+                })
         );
     }
 

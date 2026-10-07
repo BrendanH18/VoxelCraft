@@ -45,3 +45,17 @@ There is no basalt-deltas biome, so that weight-100 pool is absent.
 
 Sources: [MagmaCube](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/MagmaCube.java),
 [loot table](https://raw.githubusercontent.com/misode/mcmeta/1.21.5-data/data/minecraft/loot_table/entities/magma_cube.json).
+
+## Ghast
+
+10 health, 4 × 4 hitbox, follow range 100, flying speed 14 blocks/s (Java's 0.7
+per tick), fire immune. Nether wastes weight 50 (chance 0.5) in groups of 4,
+cap 4. Charges one second, then shoots one large fireball and rests two seconds.
+The fireball explodes at power 1, can be punched back by the host or an agent,
+and a deflected blast credits the player so the kill drops loot. Block breaking
+follows `mobGriefing`, same as creepers. Drops 0–2 gunpowder and, on a player
+kill, 0–1 ghast tears (item 642). Awkward + tear brews regeneration; redstone
+and glowstone make the long and strong variants. Soul sand valleys are not a
+separate biome, so ghasts share the single Nether cavern.
+
+Sources: [Ghast](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/Ghast.java).

@@ -872,7 +872,9 @@ impl Agent {
                 let stack = self.inventory.get(self.selected);
                 let held = stack.map(|s| s.item);
                 let bonus = self.vitals.effects.attack_bonus();
-                if let Some((hit, t)) = entities.fight_raycast(eye, dir, distance) {
+                if entities.large_fireball(eye, dir, distance).is_some() {
+                    entities.punch_fireball(eye, dir, distance);
+                } else if let Some((hit, t)) = entities.fight_raycast(eye, dir, distance) {
                     let enchants = stack.map_or(Default::default(), |s| s.active_enchants());
                     let enchant = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
                     let damage = (mining::attack_damage(held) + bonus).max(0.0) + enchant;

@@ -46,7 +46,8 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
         ("awkward", Item::SPIDER_EYE) => to("poison"),
         ("awkward", Item::BLAZE_POWDER) => to("strength"),
         ("awkward", Item::MAGMA_CREAM) => to("fire_resistance"),
-        ("water", Item::MAGMA_CREAM | Item::REDSTONE) => to("mundane"),
+        ("awkward", Item::GHAST_TEAR) => to("regeneration"),
+        ("water", Item::MAGMA_CREAM | Item::REDSTONE | Item::GHAST_TEAR) => to("mundane"),
         (id, Item::REDSTONE) if to(&format!("long_{id}")).is_some() => to(&format!("long_{id}")),
         // Glowstone strengthens to level II.
         (id, i) if i == glowstone && to(&format!("strong_{id}")).is_some() => to(&format!("strong_{id}")),
@@ -230,6 +231,16 @@ mod tests {
         assert_eq!(brew(fire, Item::GLOWSTONE_DUST), None);
         assert_eq!(brew(Potion::WATER, Item::MAGMA_CREAM), Some(Potion::MUNDANE));
         assert!(is_ingredient(Item::REDSTONE));
+    }
+
+    #[test]
+    fn ghast_tear_brews_regeneration() {
+        let regen = Potion::from_id("regeneration").unwrap();
+        assert_eq!(brew(Potion::AWKWARD, Item::GHAST_TEAR), Some(regen));
+        assert_eq!(brew(regen, Item::REDSTONE), Potion::from_id("long_regeneration"));
+        assert_eq!(brew(regen, Item::GLOWSTONE_DUST), Potion::from_id("strong_regeneration"));
+        assert_eq!(brew(Potion::WATER, Item::GHAST_TEAR), Some(Potion::MUNDANE));
+        assert!(is_ingredient(Item::GHAST_TEAR));
     }
 
     #[test]

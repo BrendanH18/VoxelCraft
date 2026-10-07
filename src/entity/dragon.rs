@@ -429,6 +429,7 @@ impl Fight {
             center: crystal.center(),
             power: CRYSTAL_POWER,
             cause: "was blown up by an End crystal",
+            credit_player: false,
         });
         if let Some(d) = &mut self.dragon {
             // Destroying the crystal healing it hurts the dragon.

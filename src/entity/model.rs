@@ -51,6 +51,13 @@ const MAGMA_GLOW: &[Cuboid] = &[
     cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [255, 205, 55], 0),
     cube([1.1, 4.5, 4.1], [2.6, 6.0, 4.15], [255, 205, 55], 0),
 ];
+const GHAST_BODY: &[Cuboid] = &[
+    cube([-18.0, 24.0, -18.0], [18.0, 64.0, 18.0], [236, 236, 236], 16),
+    cube([-7.0, 42.0, 18.0], [-2.0, 48.0, 18.5], [176, 32, 32], 0),
+    cube([2.0, 42.0, 18.0], [7.0, 48.0, 18.5], [176, 32, 32], 0),
+    cube([-3.5, 34.0, 18.0], [3.5, 38.0, 18.4], [120, 36, 40], 0),
+];
+const GHAST_TENTACLE: &[Cuboid] = &[cube([-2.0, -24.0, -2.0], [2.0, 0.0, 2.0], [214, 214, 214], 12)];
 const SLIME_BODY: &[Cuboid] = &[
     cube([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [105, 180, 78], 55),
     cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [29, 60, 24], 0),
@@ -403,6 +410,21 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
         MobKind::MagmaCube => {
             vec![part(MAGMA_BODY, [0.0; 3], Quat::IDENTITY), part(MAGMA_GLOW, [0.0; 3], Quat::IDENTITY)]
         }
+        MobKind::Ghast => {
+            // Nine-tenths of the body is the cube; eight tentacles hang to
+            // the feet and twist around their own axis so they stay on the ground.
+            let mut parts = vec![part(GHAST_BODY, [0.0; 3], Quat::IDENTITY)];
+            for i in 0..8 {
+                let a = i as f32 * FRAC_PI_2 * 0.5;
+                let twist = (time * 1.4 + i as f32 * 0.7).sin() * 0.45;
+                parts.push(part(
+                    GHAST_TENTACLE,
+                    [a.cos() * 12.0, 24.0, a.sin() * 12.0],
+                    Quat::from_rotation_y(twist),
+                ));
+            }
+            parts
+        }
         MobKind::Slime => vec![part(SLIME_BODY, [0.0; 3], Quat::IDENTITY)],
         MobKind::Spider | MobKind::CaveSpider => {
             // Four legs a side, fanned out and drooping onto the ground; the
@@ -553,6 +575,8 @@ pub fn build(
             ([255.0; 3], ((m.fuse * (8.0 + 16.0 * fuse)).sin() * 0.5 + 0.5) * 0.7)
         } else if m.kind == MobKind::CaveSpider {
             ([40.0, 80.0, 95.0], 0.65)
+        } else if m.kind == MobKind::Ghast && m.charged {
+            ([210.0, 48.0, 36.0], 0.55)
         } else if m.burning {
             (FIRE, 0.3)
         } else {
@@ -668,8 +692,17 @@ pub fn build_fireballs(
         let rel = (f.previous_pos.lerp(f.pos, alpha) - camera).as_vec3();
         let rot = Quat::from_rotation_arc(Vec3::X, f.heading().normalize_or(Vec3::X))
             * Quat::from_rotation_x(time * 9.0 + i as f32);
+        let scale = if f.is_large() { 3.0 } else { 1.0 };
         for (j, c) in BALL.iter().enumerate() {
-            push_cuboid(out, c, &|v: Vec3| rel + rot * v / 16.0, rot, ([255, 255, 0, 255], 0), (FIRE, 0.0), j as f32);
+            push_cuboid(
+                out,
+                c,
+                &|v: Vec3| rel + rot * v * scale / 16.0,
+                rot,
+                ([255, 255, 0, 255], 0),
+                (FIRE, 0.0),
+                j as f32,
+            );
         }
     }
 }

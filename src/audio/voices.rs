@@ -22,6 +22,7 @@ pub enum Voice {
     Enderman,
     Blaze,
     Slime,
+    Ghast,
 }
 
 /// What kind of sound a voice makes.
@@ -34,7 +35,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 11] = [
+    pub const ALL: [Voice; 12] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -46,6 +47,7 @@ impl Voice {
         Voice::Enderman,
         Voice::Blaze,
         Voice::Slime,
+        Voice::Ghast,
     ];
 
     pub fn name(self) -> &'static str {
@@ -61,6 +63,7 @@ impl Voice {
             Voice::Enderman => "enderman",
             Voice::Blaze => "blaze",
             Voice::Slime => "slime",
+            Voice::Ghast => "ghast",
         }
     }
 }
@@ -152,6 +155,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Enderman => enderman(call, rng),
         Voice::Blaze => blaze(call, rng),
         Voice::Slime => slime(call, rng),
+        Voice::Ghast => ghast(call, rng),
     }
 }
 
@@ -502,6 +506,32 @@ pub fn hit(rng: &mut Rng) -> Vec<f32> {
     Biquad::bandpass(2400.0, 1.0).run(&mut slap);
     mix_into(&mut out, &slap, 0.4, 0);
     dsp::finish(out, 0.6)
+}
+
+fn ghast(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => 1.4,
+        Call::Hurt => 0.5,
+        Call::Death => 1.2,
+    };
+    let base = match call {
+        Call::Ambient => 108.0,
+        Call::Hurt => 150.0,
+        Call::Death => 86.0,
+    };
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * lerp(1.2, 0.62, t / secs),
+            env: &|t| swell(t, 0.15, 0.4, secs),
+            formants: [(260.0, 2.5, 1.0), (820.0, 4.0, 0.4), (2100.0, 5.0, 0.12)],
+            shift: FLAT,
+            jitter: 0.09,
+            breath: 0.9,
+        },
+    );
+    dsp::finish(out, 0.55)
 }
 
 fn slime(call: Call, rng: &mut Rng) -> Vec<f32> {

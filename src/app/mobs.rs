@@ -61,6 +61,21 @@ impl Game {
     /// Left-button press: hits the mob under the crosshair. Returns `true`
     /// if a mob was targeted, in which case no block should be broken.
     pub(super) fn attack(&mut self) -> bool {
+        let eye = self.player.eye();
+        let dir = self.player.forward().as_dvec3();
+        if self.mobs.entities.large_fireball(eye, dir, REACH).is_some() {
+            self.mobs.attack_held = true;
+            if self.mobs.attack_cooldown <= 0.0 {
+                self.mobs.entities.punch_fireball(eye, dir, REACH);
+                self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
+                self.audio.play(Sound::Hit, Some(eye + dir * 2.0), 0.7, (0.6, 0.8));
+                self.wear_held(true);
+                if self.mode.is_survival() {
+                    self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
+                }
+            }
+            return true;
+        }
         if self.strike_fight() {
             return true;
         }
@@ -260,7 +275,9 @@ impl Game {
                         }
                     }
                 }
-                EntityEvent::Explosion { center, power, cause } => self.explode(center, power, cause),
+                EntityEvent::Explosion { center, power, cause, credit_player } => {
+                    self.explode(center, power, cause, credit_player)
+                }
                 EntityEvent::PearlLanded { owner, pos } => {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::Portal, pos + DVec3::Y, 32);
                     burst.spread = DVec3::Y;
@@ -392,18 +409,24 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Blaze => Voice::Blaze,
         MobKind::Silverfish => Voice::Spider,
         MobKind::Slime | MobKind::MagmaCube => Voice::Slime,
+        MobKind::Ghast => Voice::Ghast,
     }
 }
 
 impl Game {
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
-    pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str) {
-        let mob_can_grief = !cause.contains("creeper") || self.gamerules.bool("mobGriefing");
+    pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str, credit_player: bool) {
+        let griefing_mob = cause.contains("creeper") || cause.contains("ghast");
+        let mob_can_grief = !griefing_mob || self.gamerules.bool("mobGriefing");
         if mob_can_grief {
             self.world.explode_with_drops(center, power as f64, self.gamerules.bool("doTileDrops"));
         }
-        self.mobs.entities.explode(center, power);
+        if credit_player {
+            self.mobs.entities.explode_credited(center, power);
+        } else {
+            self.mobs.entities.explode(center, power);
+        }
         // TNT caught in the blast goes off soon after.
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
             self.mobs.entities.prime_tnt(cell, short_fuse);
