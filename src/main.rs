@@ -307,7 +307,7 @@ fn parse_args() -> Result<Args, String> {
                     .map(|s| if *s == "~" { Ok(i32::MIN) } else { s.parse().map_err(|_| bad()) })
                     .collect::<Result<_, _>>()?;
                 let armor = if parts.len() >= 5 {
-                    if !matches!(kind, entity::MobKind::Zombie | entity::MobKind::Skeleton) {
+                    if !(kind.is_zombie() || kind == entity::MobKind::Skeleton) {
                         return Err("--spawn armor is only for zombies and skeletons".into());
                     }
                     let material = entity::armor::ArmorKind::from_name(parts[4])

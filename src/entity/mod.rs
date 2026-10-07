@@ -508,7 +508,10 @@ impl Entities {
             let rare = if roll >= 18 { self.rng.next_int(500) } else { 1 };
             mob.wool_color = crate::color::DyeColor::natural_sheep(roll, rare);
         }
-        if matches!(kind, MobKind::Zombie | MobKind::Skeleton) {
+        if kind.is_zombie() && self.rng.chance(0.05) {
+            mob.baby = true;
+        }
+        if kind.is_zombie() || kind == MobKind::Skeleton {
             let (armor, glint) = armor::roll_monster_armor(&mut self.rng);
             mob.armor = armor;
             mob.armor_glint = glint;
@@ -724,9 +727,17 @@ impl Entities {
             .mobs
             .iter()
             .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
-            .map_or(1, |m| m.size);
+            .map_or((1, false), |m| (m.size, m.baby));
+        let (size, baby) = size;
         if player_kill {
-            let xp = if kind.is_cube() { size as u32 } else { kind.xp(&mut self.rng) };
+            let xp = if kind.is_cube() {
+                size as u32
+            } else if baby {
+                // Java gives baby zombies 2.5 times the base experience.
+                12
+            } else {
+                kind.xp(&mut self.rng)
+            };
             self.spawn_xp(pos, xp);
         }
         // Large slimes only split. Tiny magma cubes drop nothing; sizes 2 and 4 drop cream.
@@ -886,7 +897,11 @@ impl Entities {
                 let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
                 let x = (center.x + angle.cos() * dist).floor() as i32;
                 let z = (center.z + angle.sin() * dist).floor() as i32;
+                if ctx.dimension == Dimension::Overworld && !self.rng.chance(kind.biome_chance(world.biome(x, z))) {
+                    continue;
+                }
                 let spot = match ctx.dimension {
+                    Dimension::Overworld if kind == MobKind::Drowned => self.drowned_spot(world, x, z, ctx.daylight),
                     Dimension::Overworld if kind == MobKind::Slime => self.slime_spot(world, x, z, ctx.daylight),
                     Dimension::Overworld => spawn_spot(world, kind, x, z, ctx.daylight),
                     Dimension::Nether => cavern_spot(world, kind, x, z, self.rng.range(40.0, 118.0) as i32),
@@ -926,6 +941,24 @@ impl Entities {
                 self.fortress_spawn(world, ctx, center);
             }
         }
+    }
+
+    /// Java's drowned rules: in water, in rivers one attempt in 15, in oceans
+    /// one in 40 and only deeper than five blocks below sea level. Deep water
+    /// is dark enough in daylight; shallow water needs night.
+    fn drowned_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
+        use crate::world::terrain::{Biome, SEA_LEVEL};
+        let river = world.biome(x, z) == Biome::River;
+        if !self.rng.chance(if river { 1.0 / 15.0 } else { 1.0 / 40.0 }) {
+            return None;
+        }
+        let top = (SEA_LEVEL - 8..=SEA_LEVEL + 1)
+            .rev()
+            .find(|&y| world.block(IVec3::new(x, y, z)).is_some_and(Block::is_water))?;
+        let y = if river { top } else { top - 5 - (self.rng.next_f32() * 6.0) as i32 };
+        let dark = daylight < HOSTILE_SPAWN_DAYLIGHT || top - y >= 4;
+        let wet = |dy: i32| world.block(IVec3::new(x, y + dy, z)).is_some_and(Block::is_water);
+        (dark && wet(0) && wet(1)).then(|| DVec3::new(x as f64 + 0.5, y as f64, z as f64 + 0.5))
     }
 
     fn slime_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
@@ -1446,6 +1479,14 @@ mod tests {
         }
     }
 
+    /// Hostile kinds that fill their cap on the flat plains test grid.
+    fn plains_spawner(kind: MobKind) -> bool {
+        kind.is_hostile()
+            && kind.spawns_in(Dimension::Overworld)
+            && kind != MobKind::Slime
+            && kind.biome_chance(crate::world::terrain::Biome::Plains) >= 1.0
+    }
+
     fn ctx(player: DVec3) -> Ctx {
         Ctx {
             players: vec![Target::new(PlayerId::HOST, player, false)],
@@ -1479,6 +1520,36 @@ mod tests {
             assert_eq!(e.mobs[0].health, 12.0);
         }
         assert!(!MobKind::CaveSpider.spawns_in(Dimension::Overworld));
+    }
+
+    #[test]
+    fn husks_inflict_hunger_and_zombie_variants_follow_biome_rules() {
+        use crate::simulation::{difficulty::Difficulty, effects::Effect};
+        use crate::world::terrain::Biome;
+        for (difficulty, ticks) in [(Difficulty::Easy, 140), (Difficulty::Normal, 280), (Difficulty::Hard, 420)] {
+            let mut e = Entities::new(1);
+            e.spawn(MobKind::Husk, DVec3::new(0.5, 10.0, 0.5));
+            let mut c = ctx(DVec3::new(100.0, 10.0, 0.5));
+            c.players.push(Target::new(PlayerId(2), DVec3::new(1.0, 10.0, 0.5), true));
+            let events = e.update_difficulty(0.05, &Grid::flat(10), &c, difficulty);
+            assert!(events.iter().any(|ev| matches!(ev,
+                EntityEvent::PlayerEffect { player: PlayerId(2), effect: Effect::Hunger, ticks: t, .. } if *t == ticks)));
+        }
+        assert!(!MobKind::Husk.burns_in_sun() && MobKind::Drowned.burns_in_sun());
+        assert_eq!(MobKind::Husk.biome_chance(Biome::Desert), 1.0);
+        assert_eq!(MobKind::Husk.biome_chance(Biome::Plains), 0.0);
+        assert_eq!(MobKind::Drowned.biome_chance(Biome::River), 1.0);
+        assert_eq!(MobKind::Drowned.biome_chance(Biome::Desert), 0.0);
+        assert!(MobKind::Zombie.biome_chance(Biome::Desert) < 0.5);
+        // About one in twenty zombies is a baby: half size, 50% faster.
+        let mut e = Entities::new(5);
+        for _ in 0..2000 {
+            e.spawn(MobKind::Zombie, DVec3::ZERO);
+        }
+        let babies = e.mobs.iter().filter(|m| m.baby).count();
+        assert!((60..140).contains(&babies), "{babies}");
+        let baby = e.mobs.iter().find(|m| m.baby).unwrap();
+        assert_eq!(baby.shape().height, MobKind::Zombie.shape().height * 0.5);
     }
 
     #[test]
@@ -2101,8 +2172,7 @@ mod tests {
         // The grid is stone, so only hostile mobs spawn, each up to its cap.
         for kind in MobKind::ALL {
             let o = Dimension::Overworld;
-            let expected =
-                if kind.is_hostile() && kind.spawns_in(o) && kind != MobKind::Slime { kind.spawn_cap(o) } else { 0 };
+            let expected = if plains_spawner(kind) { kind.spawn_cap(o) } else { 0 };
             assert_eq!(e.count(kind), expected, "{kind:?}");
         }
     }
@@ -2192,7 +2262,7 @@ mod tests {
             }
         }
         let o = Dimension::Overworld;
-        for kind in MobKind::ALL.into_iter().filter(|k| k.is_hostile() && k.spawns_in(o) && *k != MobKind::Slime) {
+        for kind in MobKind::ALL.into_iter().filter(|k| plains_spawner(*k)) {
             for center in [a, b] {
                 assert_eq!(e.count_near(kind, center), kind.spawn_cap(o), "{kind:?} near {center}");
             }

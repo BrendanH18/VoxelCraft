@@ -111,6 +111,29 @@ const ZOMBIE_HEAD: &[Cuboid] = &[
     cube([-2.0, 1.0, 4.0], [2.0, 1.6, 4.05], ZOMBIE_EYES, 10),
 ];
 
+/// Zombie-shaped boxes in another palette.
+macro_rules! zombie_boxes {
+    ($body:ident, $leg:ident, $arm:ident, $head:ident, $skin:expr, $shirt:expr, $pants:expr) => {
+        const $body: &[Cuboid] = &[cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], $shirt, 40)];
+        const $leg: &[Cuboid] = &[
+            cube([-2.0, -10.0, -2.0], [2.0, 0.0, 2.0], $pants, 40),
+            cube([-2.0, -12.0, -2.0], [2.0, -10.0, 2.0], ZOMBIE_SHOES, 30),
+        ];
+        const $arm: &[Cuboid] = &[
+            cube([-2.0, -4.0, -2.0], [2.0, 2.0, 2.0], $shirt, 40),
+            cube([-2.0, -10.0, -2.0], [2.0, -4.0, 2.0], $skin, 36),
+        ];
+        const $head: &[Cuboid] = &[
+            cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], $skin, 36),
+            cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], ZOMBIE_EYES, 0),
+            cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], ZOMBIE_EYES, 0),
+            cube([-2.0, 1.0, 4.0], [2.0, 1.6, 4.05], ZOMBIE_EYES, 10),
+        ];
+    };
+}
+zombie_boxes!(HUSK_BODY, HUSK_LEG, HUSK_ARM, HUSK_HEAD, [150, 128, 92], [118, 100, 70], [86, 72, 50]);
+zombie_boxes!(DROWNED_BODY, DROWNED_LEG, DROWNED_ARM, DROWNED_HEAD, [104, 164, 152], [62, 118, 124], [48, 82, 120]);
+
 // ---------------------------------------------------------------- zombified piglin
 
 const PIGLIN_SKIN: Rgb = [226, 150, 140];
@@ -549,18 +572,23 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             }
             parts
         }
-        MobKind::Zombie => {
+        MobKind::Zombie | MobKind::Husk | MobKind::Drowned => {
+            let (body, leg, arm_box, head_box) = match m.kind {
+                MobKind::Husk => (HUSK_BODY, HUSK_LEG, HUSK_ARM, HUSK_HEAD),
+                MobKind::Drowned => (DROWNED_BODY, DROWNED_LEG, DROWNED_ARM, DROWNED_HEAD),
+                _ => (ZOMBIE_BODY, ZOMBIE_LEG, ZOMBIE_ARM, ZOMBIE_HEAD),
+            };
             // Arms held forward, bobbing a little, chopping down on attack.
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.7 } else { 0.0 };
             let bob = (time * 1.6).sin() * 0.05;
             let arm = |s: f32| rx(-FRAC_PI_2 + bob * s + swing * 0.25 * s + chop);
             vec![
-                part(ZOMBIE_BODY, [0.0; 3], Quat::IDENTITY),
-                part(ZOMBIE_LEG, [-2.0, 12.0, 0.0], rx(swing)),
-                part(ZOMBIE_LEG, [2.0, 12.0, 0.0], rx(-swing)),
-                part(ZOMBIE_ARM, [-6.0, 22.0, 0.0], arm(1.0)),
-                part(ZOMBIE_ARM, [6.0, 22.0, 0.0], arm(-1.0)),
-                part(ZOMBIE_HEAD, [0.0, 24.0, 0.0], head),
+                part(body, [0.0; 3], Quat::IDENTITY),
+                part(leg, [-2.0, 12.0, 0.0], rx(swing)),
+                part(leg, [2.0, 12.0, 0.0], rx(-swing)),
+                part(arm_box, [-6.0, 22.0, 0.0], arm(1.0)),
+                part(arm_box, [6.0, 22.0, 0.0], arm(-1.0)),
+                part(head_box, [0.0, 24.0, 0.0], head),
             ]
         }
     }
@@ -604,6 +632,8 @@ pub fn build(
                 m.size as f32
             } else if m.kind == MobKind::WitherSkeleton {
                 1.2
+            } else if m.baby {
+                0.5
             } else {
                 1.0
             };
@@ -637,7 +667,7 @@ pub fn build(
                 push_cuboid(out, &cuboid, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
             }
         }
-        if matches!(m.kind, MobKind::Zombie | MobKind::Skeleton) {
+        if m.kind.is_zombie() || m.kind == MobKind::Skeleton {
             let limbs = humanoid_armor(&posed);
             let worn = super::armor::worn_pieces(m.armor, m.armor_glint);
             super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));

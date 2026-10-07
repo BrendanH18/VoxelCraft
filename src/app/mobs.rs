@@ -415,7 +415,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Cow => Voice::Cow,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
-        MobKind::Zombie => Voice::Zombie,
+        MobKind::Zombie | MobKind::Husk | MobKind::Drowned => Voice::Zombie,
         MobKind::Skeleton | MobKind::WitherSkeleton => Voice::Skeleton,
         MobKind::Creeper => Voice::Creeper,
         MobKind::Spider | MobKind::CaveSpider => Voice::Spider,

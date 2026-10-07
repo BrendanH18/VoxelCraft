@@ -97,13 +97,21 @@ pub enum MobKind {
     Ghast,
     /// Fortress skeleton: tall, melee, withers what it hits.
     WitherSkeleton,
+    /// Desert zombie that doesn't burn and inflicts Hunger.
+    Husk,
+    /// River and ocean zombie that swims.
+    Drowned,
 }
 
 impl MobKind {
+    /// Zombie, husk or drowned: shares the zombie's walk, armor and baby rolls.
+    pub fn is_zombie(self) -> bool {
+        matches!(self, Self::Zombie | Self::Husk | Self::Drowned)
+    }
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 17] = [
+    pub const ALL: [MobKind; 19] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -121,6 +129,8 @@ impl MobKind {
         MobKind::MagmaCube,
         MobKind::Ghast,
         MobKind::WitherSkeleton,
+        MobKind::Husk,
+        MobKind::Drowned,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -143,6 +153,8 @@ impl MobKind {
             MobKind::MagmaCube => "magma cube",
             MobKind::Ghast => "ghast",
             MobKind::WitherSkeleton => "wither skeleton",
+            MobKind::Husk => "husk",
+            MobKind::Drowned => "drowned",
         }
     }
 
@@ -159,7 +171,7 @@ impl MobKind {
             MobKind::Cow => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
             MobKind::Chicken => Shape::new(0.2, 0.7),
-            MobKind::Zombie | MobKind::ZombifiedPiglin => Shape::new(0.3, 1.95),
+            MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombifiedPiglin => Shape::new(0.3, 1.95),
             MobKind::Skeleton => Shape::new(0.3, 1.99),
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
@@ -180,6 +192,8 @@ impl MobKind {
             MobKind::Sheep | MobKind::Silverfish => 8.0,
             MobKind::Chicken => 4.0,
             MobKind::Zombie
+            | MobKind::Husk
+            | MobKind::Drowned
             | MobKind::Skeleton
             | MobKind::WitherSkeleton
             | MobKind::Creeper
@@ -198,6 +212,8 @@ impl MobKind {
         matches!(
             self,
             MobKind::Zombie
+                | MobKind::Husk
+                | MobKind::Drowned
                 | MobKind::Skeleton
                 | MobKind::Creeper
                 | MobKind::Spider
@@ -255,6 +271,22 @@ impl MobKind {
         }
     }
 
+    /// Chance a surface spawn attempt for this kind goes ahead in `biome`
+    /// (Java's biome spawn lists: deserts spawn husks in place of most zombies,
+    /// drowned only in rivers and oceans, and witches mostly in swamps).
+    pub fn biome_chance(self, biome: crate::world::terrain::Biome) -> f32 {
+        use crate::world::terrain::Biome;
+        match (self, biome) {
+            (MobKind::Husk, Biome::Desert) => 1.0,
+            (MobKind::Husk, _) => 0.0,
+            (MobKind::Zombie, Biome::Desert) => 0.2,
+            (MobKind::Zombie, Biome::River | Biome::Ocean) => 0.2,
+            (MobKind::Drowned, Biome::River | Biome::Ocean) => 1.0,
+            (MobKind::Drowned, _) => 0.0,
+            _ => 1.0,
+        }
+    }
+
     /// Most mobs of this kind that spawn naturally around the player.
     pub fn spawn_cap(self, dimension: Dimension) -> usize {
         match self {
@@ -272,22 +304,30 @@ impl MobKind {
     pub fn creature(self) -> crate::enchant::Creature {
         use crate::enchant::Creature;
         match self {
-            MobKind::Zombie | MobKind::Skeleton | MobKind::WitherSkeleton | MobKind::ZombifiedPiglin => {
-                Creature::Undead
-            }
+            MobKind::Zombie
+            | MobKind::Husk
+            | MobKind::Drowned
+            | MobKind::Skeleton
+            | MobKind::WitherSkeleton
+            | MobKind::ZombifiedPiglin => Creature::Undead,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish => Creature::Arthropod,
             _ => Creature::Other,
         }
     }
 
-    fn burns_in_sun(self) -> bool {
-        matches!(self, MobKind::Zombie | MobKind::Skeleton)
+    pub(super) fn burns_in_sun(self) -> bool {
+        matches!(self, MobKind::Zombie | MobKind::Drowned | MobKind::Skeleton)
     }
 
     fn wander_speed(self) -> f64 {
         match self {
             MobKind::Pig => 1.3,
-            MobKind::Cow | MobKind::Zombie | MobKind::Creeper | MobKind::ZombifiedPiglin => 1.1,
+            MobKind::Cow
+            | MobKind::Zombie
+            | MobKind::Husk
+            | MobKind::Drowned
+            | MobKind::Creeper
+            | MobKind::ZombifiedPiglin => 1.1,
             MobKind::Sheep | MobKind::Skeleton | MobKind::WitherSkeleton | MobKind::Blaze => 1.2,
             MobKind::Chicken | MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Ghast => 4.0,
@@ -316,6 +356,8 @@ impl MobKind {
             MobKind::Enderman => (7.0, "was slain by an enderman"),
             MobKind::Blaze => (6.0, "was slain by a blaze"),
             MobKind::WitherSkeleton => (8.0, "was slain by a wither skeleton"),
+            MobKind::Husk => (3.0, "was slain by a husk"),
+            MobKind::Drowned => (3.0, "was slain by a drowned"),
             MobKind::Silverfish => (1.0, "was slain by a silverfish"),
             _ => (3.0, "was slain by a zombie"),
         }
@@ -330,7 +372,7 @@ impl MobKind {
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
             MobKind::Sheep => &[(WOOL, 1, 1)],
             MobKind::Chicken => &[(Item::RAW_CHICKEN, 1, 1), (Item::FEATHER, 0, 2)],
-            MobKind::Zombie => &[(Item::ROTTEN_FLESH, 0, 2)],
+            MobKind::Zombie | MobKind::Husk | MobKind::Drowned => &[(Item::ROTTEN_FLESH, 0, 2)],
             MobKind::Skeleton => &[(Item::BONE, 0, 2), (Item::ARROW, 0, 2)],
             MobKind::Creeper => &[(Item::GUNPOWDER, 0, 2)],
             MobKind::Spider | MobKind::CaveSpider => &[(Item::STRING, 0, 2), (Item::SPIDER_EYE, -1, 1)],
@@ -400,6 +442,8 @@ pub struct Mob {
     pub kind: MobKind,
     /// Java slime size (1, 2 or 4).
     pub size: u8,
+    /// A baby zombie: half size and 50% faster.
+    pub baby: bool,
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
     hop_left: f32,
@@ -484,6 +528,7 @@ impl Mob {
         Self {
             kind,
             size: 1,
+            baby: false,
             wool_color: crate::color::DyeColor::White,
             sheared: false,
             hop_left: 0.0,
@@ -540,6 +585,9 @@ impl Mob {
     pub fn shape(&self) -> Shape {
         if self.kind.is_cube() {
             Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
+        } else if self.baby {
+            let s = self.kind.shape();
+            Shape::new(s.half_width * 0.5, s.height * 0.5)
         } else {
             self.kind.shape()
         }
@@ -818,6 +866,23 @@ impl Mob {
                                 knockback: knockback.as_vec3(),
                                 cause,
                             });
+                            if self.kind == MobKind::Husk {
+                                // Java: 140 ticks times the local difficulty (about 1, 2, 3).
+                                let scale = match self.difficulty {
+                                    crate::simulation::difficulty::Difficulty::Peaceful => 0,
+                                    crate::simulation::difficulty::Difficulty::Easy => 1,
+                                    crate::simulation::difficulty::Difficulty::Normal => 2,
+                                    crate::simulation::difficulty::Difficulty::Hard => 3,
+                                };
+                                if scale > 0 {
+                                    events.push(EntityEvent::PlayerEffect {
+                                        player: target.id,
+                                        effect: crate::simulation::effects::Effect::Hunger,
+                                        amplifier: 0,
+                                        ticks: 140 * scale,
+                                    });
+                                }
+                            }
                             if self.kind == MobKind::WitherSkeleton {
                                 events.push(EntityEvent::PlayerEffect {
                                     player: target.id,
@@ -879,7 +944,7 @@ impl Mob {
                 } else {
                     dir
                 };
-                (Some(dir), self.kind.chase_speed())
+                (Some(dir), self.kind.chase_speed() * if self.baby { 1.5 } else { 1.0 })
             }
             Ai::Panic => {
                 if self.ai_timer <= 0.0 {
