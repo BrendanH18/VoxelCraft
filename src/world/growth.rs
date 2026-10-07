@@ -225,6 +225,7 @@ impl World {
                 }
             }
             Block::SUGAR_CANE => self.tick_cane(p),
+            b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if b.crop_stage().is_some_and(|s| s < 7) => {
                 let wet = self.get_block(p - IVec3::Y) == Some(Block::WET_FARMLAND);
                 if self.grows_here(p) && self.one_in(if wet { CROP_GROWTH } else { 2 * CROP_GROWTH }) {

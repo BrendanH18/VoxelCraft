@@ -54,6 +54,20 @@ const GRASS: [u8; 3] = [95, 159, 53];
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
     match layer {
+        tex::BROWN_MUSHROOM | tex::RED_MUSHROOM => {
+            // Java's small mushroom occupies six pixels of the crossed 16x16 plane.
+            if (7..=8).contains(&x) && (12..=15).contains(&y) {
+                shade([212, 190, 153], 0.9 + r * 0.15)
+            } else if (5..=10).contains(&x) && (10..=12).contains(&y) {
+                if layer == tex::RED_MUSHROOM {
+                    shade(if r < 0.25 { [238, 220, 192] } else { [183, 43, 32] }, 0.9 + r * 0.15)
+                } else {
+                    shade([150, 108, 72], 0.8 + r * 0.3)
+                }
+            } else {
+                [0; 4]
+            }
+        }
         tex::STONE => {
             let streak = rnd(layer, x / 3, y, 5) < 0.12;
             shade(STONE, if streak { 0.82 } else { 0.9 + r * 0.18 })

@@ -1400,10 +1400,12 @@ impl Game {
     /// finishes a bite after [`EAT_TIME`] seconds. Potions drink the same
     /// way, in any mode.
     fn eat(&mut self, acting: bool, dt: f64) {
-        let potion = self.held_item().and_then(|i| i.as_potion());
+        let held = self.held_item();
+        let milk = held == Some(Item::MILK_BUCKET);
+        let potion = held.and_then(|i| i.as_potion());
         let food = self.held_item().and_then(|i| i.food());
         let hungry = self.mode.is_survival() && self.vitals.hunger.can_eat();
-        let using = acting && self.right_held && (potion.is_some() || (food.is_some() && hungry));
+        let using = acting && self.right_held && (milk || potion.is_some() || (food.is_some() && hungry));
         if !using {
             self.actions.eat_timer = 0.0;
             return;
@@ -1418,7 +1420,17 @@ impl Game {
         if !finished {
             return;
         }
-        if let Some(potion) = potion {
+        if milk {
+            self.vitals.effects.clear();
+            voxelcraft::survival_items::exchange(
+                &mut self.inventory,
+                self.actions.selected,
+                Item::BUCKET,
+                self.mode.is_creative(),
+                &mut self.mobs.entities,
+                &self.player,
+            );
+        } else if let Some(potion) = potion {
             // Creative keeps the potion; survival is left with the bottle.
             if self.mode.is_survival() {
                 self.inventory.slots[self.actions.selected] = Some(crate::inventory::Stack::new(Item::GLASS_BOTTLE, 1));
@@ -1427,7 +1439,18 @@ impl Game {
             self.damage_player(damage, survival::CAUSE_MAGIC);
         } else if let Some((hunger, saturation)) = food {
             let effect = self.held_item().and_then(Item::food_effect);
-            self.inventory.take_one(self.actions.selected);
+            if let Some(remainder) = held.and_then(Item::remainder) {
+                voxelcraft::survival_items::exchange(
+                    &mut self.inventory,
+                    self.actions.selected,
+                    remainder,
+                    false,
+                    &mut self.mobs.entities,
+                    &self.player,
+                );
+            } else {
+                self.inventory.take_one(self.actions.selected);
+            }
             self.vitals.hunger.eat(hunger, saturation);
             if let Some((effect, amp, ticks)) = effect {
                 self.vitals.apply_effect(effect, amp, ticks);
@@ -1582,7 +1605,8 @@ impl Game {
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
         let below = self.world.get_block(at - glam::IVec3::Y);
         let supported = below.is_some_and(|below| block.can_stay_on(below))
-            && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || self.world.cane_has_water(at));
+            && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || self.world.cane_has_water(at))
+            && (!block.is_mushroom() || self.world.mushroom_survives(at));
         if free
             && supported
             && !(block.is_solid() && self.player.intersects_block(at))

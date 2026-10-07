@@ -14,3 +14,18 @@ https://github.com/InventivetalentDev/minecraft-assets/tree/1.21/data/minecraft/
 Java references:
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/ShearsItem.java
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/animal/Sheep.java
+
+Milk can be collected from cows with a bucket, including stacked empty
+buckets. Creative keeps the bucket and gains one milk bucket. Drinking takes
+32 ticks, works at full hunger, clears every effect, and returns the bucket. Mushroom stew restores 6 hunger/7.2 saturation and
+returns its bowl. Beetroot and rabbit stews are deferred because their
+ingredients are absent.
+
+Brown/red mushrooms generate in caves, covered ground and swamps via an
+isolated decoration pass. Random ticks spread with Java's 1/25 chance,
+five-mushroom density limit and four-step random walk. They require a solid
+surface and brightness below 13. Sky brightness uses the engine's vertical
+exposure approximation, so outdoor shade is conservative and exposed swamp
+mushrooms disappear. Huge mushrooms/mycelium/podzol are deferred.
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/MilkBucketItem.java
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/MushroomBlock.java

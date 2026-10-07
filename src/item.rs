@@ -177,6 +177,7 @@ pub enum ItemKind {
 pub enum Sprite {
     Stick,
     Shears,
+    Bowl(Option<[u8; 3]>),
     Lump([u8; 3]),
     Ingot([u8; 3]),
     Gem([u8; 3]),
@@ -366,8 +367,22 @@ pub const FLINT_AND_STEEL_DURABILITY: u16 = 64;
 const FIRST_TOOL: u16 = 320;
 // Everyday survival items occupy a separate append-only range; 400..512 is reserved for potions.
 const SURVIVAL_ITEM: u16 = 512;
-const SURVIVAL_ITEMS: &[ItemInfo] =
-    &[ItemInfo { name: "shears", kind: ItemKind::Shears, max_stack: 1, sprite: Sprite::Shears }];
+const SURVIVAL_ITEMS: &[ItemInfo] = &[
+    ItemInfo { name: "shears", kind: ItemKind::Shears, max_stack: 1, sprite: Sprite::Shears },
+    ItemInfo {
+        name: "milk bucket",
+        kind: ItemKind::Material,
+        max_stack: 1,
+        sprite: Sprite::Bucket(Some([242, 241, 225])),
+    },
+    item("bowl", Sprite::Bowl(None)),
+    ItemInfo {
+        name: "mushroom stew",
+        kind: ItemKind::Food { hunger: 6, saturation: 7.2 },
+        max_stack: 1,
+        sprite: Sprite::Bowl(Some([155, 113, 66])),
+    },
+];
 
 const TOOL_KINDS: [ToolKind; 5] = [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword];
 /// Tiers in the `FIRST_TOOL` block (all but Netherite).
@@ -387,6 +402,9 @@ const EXTRA_ITEM: u16 = 361;
 const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
 
 impl Item {
+    pub const MILK_BUCKET: Item = Item(513);
+    pub const BOWL: Item = Item(514);
+    pub const MUSHROOM_STEW: Item = Item(515);
     pub const SHEARS: Item = Item(512);
 
     pub const STICK: Item = Item(256);
@@ -610,6 +628,18 @@ impl Item {
     /// 5 s).
     pub fn food_effect(self) -> Option<(crate::simulation::effects::Effect, u8, u32)> {
         (self == Item::SPIDER_EYE).then_some((crate::simulation::effects::Effect::Poison, 0, 100))
+    }
+
+    pub fn remainder(self) -> Option<Item> {
+        match self {
+            Self::MILK_BUCKET => Some(Self::BUCKET),
+            Self::MUSHROOM_STEW => Some(Self::BOWL),
+            _ => None,
+        }
+    }
+
+    pub fn is_drink(self) -> bool {
+        self.as_potion().is_some() || self == Self::MILK_BUCKET
     }
 
     /// Hunger and saturation restored, for food.

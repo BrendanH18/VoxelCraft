@@ -167,6 +167,17 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     let out = match sprite {
+        Sprite::Bowl(soup) => {
+            let bowl = |x: i32, y: i32| (3..=12).contains(&x) && (8..=13).contains(&y) && y < 17 - (x - 7).abs();
+            if (4..=11).contains(&x)
+                && (8..=9).contains(&y)
+                && let Some(c) = soup
+            {
+                Some(tint(c, 0.9 + noise(x, y, 41) * 0.2))
+            } else {
+                shaded(&bowl, x, y, [137, 94, 51], 0.04)
+            }
+        }
         Sprite::Shears => {
             let blade = |x: i32, y: i32| (3..=10).contains(&y) && ((x - y).abs() <= 1 || (x + y - 15).abs() <= 1);
             let ring = |x: i32, y: i32| {

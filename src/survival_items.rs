@@ -20,7 +20,36 @@ pub fn use_mob(
         }
         return true;
     }
+    if held.item == Item::BUCKET && entities.mobs[index].kind == crate::entity::MobKind::Cow {
+        exchange(inventory, slot, Item::MILK_BUCKET, creative, entities, player);
+        return true;
+    }
     false
+}
+
+/// Java's `ItemUtils.createFilledResult`: creative keeps the original and gains
+/// `result` once; survival consumes one and returns `result` to the hand,
+/// inventory, or the ground.
+pub fn exchange(
+    inventory: &mut Inventory,
+    slot: usize,
+    result: Item,
+    creative: bool,
+    entities: &mut Entities,
+    player: &Player,
+) {
+    if creative {
+        if !inventory.slots.iter().flatten().any(|stack| stack.item == result) {
+            let _ = inventory.add(result, 1);
+        }
+        return;
+    }
+    inventory.take_one(slot);
+    if inventory.get(slot).is_none() {
+        inventory.slots[slot] = Some(crate::inventory::Stack::new(result, 1));
+    } else if inventory.add(result, 1) != 0 {
+        entities.throw(crate::inventory::Stack::new(result, 1), player.eye(), player.forward().as_dvec3());
+    }
 }
 
 #[cfg(test)]
@@ -47,5 +76,22 @@ mod tests {
         let Stack { item, count, .. } = entities.items[0].stack;
         assert_eq!(item, Block::WOOL.into());
         assert!((1..=3).contains(&count));
+    }
+
+    #[test]
+    fn creative_milking_keeps_the_bucket_and_adds_milk_once() {
+        use crate::entity::Entities;
+        use crate::inventory::Inventory;
+        use crate::player::Player;
+        let mut inventory = Inventory::default();
+        inventory.slots[0] = Some(Stack::new(Item::BUCKET, 1));
+        let player = Player::new(glam::DVec3::ZERO);
+        let mut entities = Entities::new(1);
+        super::exchange(&mut inventory, 0, Item::MILK_BUCKET, true, &mut entities, &player);
+        assert_eq!(inventory.get(0).unwrap().item, Item::BUCKET);
+        assert!(inventory.slots.iter().flatten().any(|stack| stack.item == Item::MILK_BUCKET));
+        let milk = inventory.slots.iter().flatten().filter(|stack| stack.item == Item::MILK_BUCKET).count();
+        super::exchange(&mut inventory, 0, Item::MILK_BUCKET, true, &mut entities, &player);
+        assert_eq!(inventory.slots.iter().flatten().filter(|stack| stack.item == Item::MILK_BUCKET).count(), milk);
     }
 }

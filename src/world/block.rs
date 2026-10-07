@@ -262,7 +262,9 @@ pub mod tex {
     pub const RAIL_SW: u16 = RAIL + 3;
     pub const RAIL_NW: u16 = RAIL + 4;
     pub const RAIL_NE: u16 = RAIL + 5;
-    pub const COUNT: u32 = RAIL_NE as u32 + 1;
+    pub const BROWN_MUSHROOM: u16 = RAIL_NE + 1;
+    pub const RED_MUSHROOM: u16 = BROWN_MUSHROOM + 1;
+    pub const COUNT: u32 = RED_MUSHROOM as u32 + 1;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -318,6 +320,12 @@ impl Block {
     pub const GLASS: Block = Block(10);
     pub const BEDROCK: Block = Block(11);
     pub const GRAVEL: Block = Block(12);
+    pub const BROWN_MUSHROOM: Block = Block(520);
+    pub const RED_MUSHROOM: Block = Block(521);
+    pub fn is_mushroom(self) -> bool {
+        matches!(self.0, 520 | 521)
+    }
+
     pub const SNOW: Block = Block(13);
     pub const SNOWY_GRASS: Block = Block(14);
     pub const COAL_ORE: Block = Block(15);
@@ -557,6 +565,7 @@ impl Block {
             | Block::DANDELION
             | Block::POPPY
             | Block::BLUE_ORCHID => (60, 100),
+            b if b.is_mushroom() => (60, 100),
             b if b.is_sapling() => (60, 100),
             _ => (0, 0),
         }
@@ -1254,6 +1263,7 @@ impl Block {
                 136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213, 214, 215,
                 217, 219, 221, 222, 223, 224, 500,
             ])
+            .chain([520, 521])
             .chain(225..=252)
             .chain(super::forms::palette_ids())
             .map(Block)
@@ -1289,6 +1299,7 @@ impl Block {
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
         match self {
+            b if b.is_mushroom() => below.is_opaque(),
             Block::TALL_GRASS | Block::DANDELION | Block::POPPY | Block::FERN | Block::BLUE_ORCHID => {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS)
             }
@@ -1858,6 +1869,8 @@ const fn make(id: u16) -> BlockInfo {
         250 => ("deepslate emerald ore", Opaque, all(tex::DEEPSLATE_EMERALD_ORE)),
         251 => ("deepslate lapis lazuli ore", Opaque, all(tex::DEEPSLATE_LAPIS_ORE)),
         252 => ("deepslate diamond ore", Opaque, all(tex::DEEPSLATE_DIAMOND_ORE)),
+        520 => ("brown mushroom", Cross, all(tex::BROWN_MUSHROOM)),
+        521 => ("red mushroom", Cross, all(tex::RED_MUSHROOM)),
         331 => ("cobblestone wall", Shaped, all(tex::COBBLESTONE)),
         332 => ("stone brick wall", Shaped, all(tex::STONE_BRICKS)),
         333 => ("dark oak log", Opaque, column(tex::DARK_OAK_LOG_SIDE, tex::DARK_OAK_LOG_TOP, tex::DARK_OAK_LOG_TOP)),

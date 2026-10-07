@@ -221,6 +221,9 @@ const NETHERITE_SCRAP: Ingredient = &[Item::NETHERITE_SCRAP];
 const NETHERITE_INGOT: Ingredient = &[Item::NETHERITE_INGOT];
 const NETHERITE_BLOCK: Ingredient = &[b(Block::NETHERITE_BLOCK)];
 const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
+const BROWN_MUSHROOM: Ingredient = &[b(Block::BROWN_MUSHROOM)];
+const RED_MUSHROOM: Ingredient = &[b(Block::RED_MUSHROOM)];
+const BOWL: Ingredient = &[Item::BOWL];
 
 fn shaped(rows: &'static [&'static str], key: &[(char, Ingredient)], result: Item, count: u8) -> Recipe {
     Recipe { shape: Shape::Shaped(rows, key.to_vec()), result: Stack::new(result, count) }
@@ -310,6 +313,8 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["WWW", "###"], &[('W', WOOL), ('#', PLANKS)], Item::BED, 1),
             shapeless(&[&[Item::IRON_INGOT], &[Item::FLINT]], Item::FLINT_AND_STEEL, 1),
             shaped(&["# #", " # "], &[('#', &[Item::IRON_INGOT])], Item::BUCKET, 1),
+            shaped(&["# #", " # "], &[('#', PLANKS)], Item::BOWL, 4),
+            shapeless(&[BROWN_MUSHROOM, RED_MUSHROOM, BOWL], Item::MUSHROOM_STEW, 1),
             shaped(&[" #", "# "], &[('#', &[Item::IRON_INGOT])], Item::SHEARS, 1),
             shaped(&["# #", " # "], &[('#', GLASS)], Item::GLASS_BOTTLE, 3),
             shaped(&["X#X", "#X#", "X#X"], &[('X', &[Item::GUNPOWDER]), ('#', SAND)], b(Block::TNT), 1),
@@ -687,5 +692,24 @@ mod tests {
             Some(Item::from_block(Block::DEEPSLATE))
         );
         assert_eq!(crate::world::furnace::smelt(Item::from_block(Block::DEEPSLATE_IRON_ORE)), Some(Item::IRON_INGOT));
+    }
+
+    #[test]
+    fn bowls_and_mushroom_stew_follow_the_vanilla_recipes() {
+        let mut bowl = Grid::new(3);
+        bowl.cells[0] = Some(Stack::new(Block::PLANKS, 1));
+        bowl.cells[2] = Some(Stack::new(Block::PLANKS, 1));
+        bowl.cells[4] = Some(Stack::new(Block::PLANKS, 1));
+        assert_eq!(bowl.result(), Some(Stack::new(Item::BOWL, 4)));
+        let mut stew = Grid::new(2);
+        stew.cells[0] = Some(Stack::new(Block::BROWN_MUSHROOM, 1));
+        stew.cells[1] = Some(Stack::new(Block::RED_MUSHROOM, 1));
+        stew.cells[2] = Some(Stack::new(Item::BOWL, 1));
+        assert_eq!(stew.result(), Some(Stack::new(Item::MUSHROOM_STEW, 1)));
+        assert_eq!(Item::from_name("milk_bucket"), Some(Item::MILK_BUCKET));
+        assert_eq!(Item::MUSHROOM_STEW.food(), Some((6, 7.2)));
+        assert_eq!(Item::MUSHROOM_STEW.remainder(), Some(Item::BOWL));
+        assert!(Item::creative_palette().any(|item| item == Item::BOWL));
+        assert!(Block::creative_palette().any(|block| block == Block::RED_MUSHROOM));
     }
 }
