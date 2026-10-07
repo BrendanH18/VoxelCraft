@@ -284,13 +284,16 @@ full performance display instead of duplicating the compact counter.
 - Enchantments, with Java 1.21's levels, costs and effects: protection,
   fire/blast/projectile protection and feather falling (protection
   factors, capped at 80%), respiration (air lasts level + 1 times as
-  long), aqua affinity, thorns (15% a level to hit back for 1-4), depth
-  strider, sharpness (+0.5 a level + 0.5), smite and bane of arthropods
+  long), aqua affinity, thorns (15% a level to hit back for 1-5 damage,
+  using mainhand Looting), depth strider (half the bonus off the ground),
+  sharpness (+0.5 a level + 0.5), smite and bane of arthropods
   (+2.5 a level against undead / spiders and silverfish), knockback, fire
-  aspect (4 s of fire a level; burning animals drop cooked meat, and fire
+  aspect (4 s of fire a level; melee kills cook meat even in water, and fire
   kills within five seconds of a player hit award XP), looting (up to one
-  more of each drop a level), sweeping edge (sword hits on the ground sweep
-  mobs next to the target for 1 + level / (level + 1) of the damage),
+  more of each eligible drop a level; sheep still drop one wool), sweeping
+  edge (sword hits on the ground sweep mobs next to the target within three
+  blocks of the player for 1 + level / (level + 1) times base damage, plus
+  each mob's enchantment bonus; Fire Aspect also applies to sweeps),
   efficiency (level² + 1 mining speed), silk touch (the block itself, no
   ore experience; spawners still award XP), fortune (Java's ore, crop,
   glowstone, melon, gravel and leaf bonuses),

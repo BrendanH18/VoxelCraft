@@ -153,6 +153,7 @@ pub enum EntityEvent {
         pos: DVec3,
         burning: bool,
         player_kill: bool,
+        looting: u8,
     },
     /// The Ender Dragon flew through this block: remove it, without drops.
     BreakBlock {
@@ -281,12 +282,14 @@ pub struct Target {
     pub look: DVec3,
     /// Thorns level of each worn armor piece: melee attackers get hurt.
     pub thorns: [u8; 4],
+    /// Mainhand enchantments apply to kills caused by this player's Thorns.
+    pub held_enchants: crate::enchant::Enchants,
 }
 
 impl Target {
     /// A living player; set [`Target::alive`] for one waiting to respawn.
     pub fn new(id: PlayerId, pos: DVec3, targetable: bool) -> Self {
-        Self { id, pos, targetable, alive: true, look: DVec3::ZERO, thorns: [0; 4] }
+        Self { id, pos, targetable, alive: true, look: DVec3::ZERO, thorns: [0; 4], held_enchants: Default::default() }
     }
 
     /// Thorns levels from worn armor.
@@ -471,9 +474,8 @@ impl Entities {
                     }
                 }
                 EntityEvent::DragonXp { pos, points } => self.spawn_xp(pos, points),
-                EntityEvent::MobKilled { kind, pos, burning, player_kill } => {
-                    // Environmental damage has no attacking entity for Looting.
-                    self.drop_loot_with_fire(kind, pos, 0, burning, player_kill)
+                EntityEvent::MobKilled { kind, pos, burning, player_kill, looting } => {
+                    self.drop_loot_with_fire(kind, pos, looting, burning, player_kill)
                 }
                 _ => {}
             }
@@ -999,8 +1001,10 @@ impl Entities {
     /// then the enchantment bonus for that mob; knockback and fire aspect
     /// apply, and a kill drops loot with looting. When `sweep` (a sword
     /// swung on the ground, not critical), mobs right next to
-    /// the target take `1 + ratio * damage` (sweeping edge raises the
-    /// ratio). Returns the kind killed, if it was.
+    /// the target and within three blocks of the player's feet take
+    /// `1 + ratio * base damage` plus their own enchantment bonus.
+    /// `sweep` supplies the player's feet when sweeping is allowed.
+    /// Returns the kind killed, if it was.
     pub fn melee(
         &mut self,
         index: usize,
@@ -1008,7 +1012,7 @@ impl Entities {
         held: Option<crate::inventory::Stack>,
         bonus: f32,
         critical: bool,
-        sweep: bool,
+        sweep: Option<DVec3>,
     ) -> Option<MobKind> {
         use crate::enchant::Enchantment;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
@@ -1022,12 +1026,18 @@ impl Entities {
         }
         let killed = self.knock(index, dir, damage, knockback);
         if let Some(kind) = killed {
-            self.drop_loot_with_fire(kind, pos, enchants.level(Enchantment::Looting), self.mobs[index].burning, true);
+            self.drop_loot_with_fire(
+                kind,
+                pos,
+                enchants.level(Enchantment::Looting),
+                self.mobs[index].burning || fire > 0.0,
+                true,
+            );
         }
         let sword = held.and_then(|s| s.item.as_tool()).is_some_and(|(k, _)| k == crate::item::ToolKind::Sword);
-        if sweep && sword {
+        if let Some(origin) = sweep.filter(|_| sword) {
             let level = enchants.level(Enchantment::SweepingEdge) as f32;
-            let swept = 1.0 + level / (level + 1.0) * damage;
+            let swept = 1.0 + level / (level + 1.0) * base;
             let (lo, hi) = (
                 pos - DVec3::new(shape.half_width + 1.0, 0.25, shape.half_width + 1.0),
                 pos + DVec3::new(shape.half_width + 1.0, shape.height + 0.25, shape.half_width + 1.0),
@@ -1038,6 +1048,7 @@ impl Entities {
                     let s = m.shape();
                     i != index
                         && m.alive()
+                        && m.pos.distance_squared(origin) < 9.0
                         && m.pos.x + s.half_width > lo.x
                         && m.pos.x - s.half_width < hi.x
                         && m.pos.z + s.half_width > lo.z
@@ -1048,14 +1059,18 @@ impl Entities {
                 .collect();
             for i in near {
                 let away = self.mobs[i].pos - pos;
-                let killed = self.knock(i, away, swept, 0);
+                let damage = swept + crate::enchant::damage_bonus(enchants, self.mobs[i].kind.creature());
+                if fire > 0.0 {
+                    self.mobs[i].ignite(fire);
+                }
+                let killed = self.knock(i, away, damage, 0);
                 if let Some(kind) = killed {
                     let at = self.mobs[i].pos;
                     self.drop_loot_with_fire(
                         kind,
                         at,
                         enchants.level(Enchantment::Looting),
-                        self.mobs[i].burning,
+                        self.mobs[i].burning || fire > 0.0,
                         true,
                     );
                 }
@@ -1319,7 +1334,7 @@ mod tests {
         let mut e = Entities::new(5);
         e.spawn(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5));
         e.mobs[0].health = 1.0;
-        assert_eq!(e.melee(0, DVec3::X, Some(sword), 0.0, false, false), Some(MobKind::Pig));
+        assert_eq!(e.melee(0, DVec3::X, Some(sword), 0.0, false, None), Some(MobKind::Pig));
         assert!(!e.items.is_empty());
         assert!(e.items.iter().all(|i| i.stack.item == Item::COOKED_PORKCHOP));
 
@@ -1327,7 +1342,7 @@ mod tests {
         let mut e = Entities::new(5);
         e.spawn(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5));
         e.mobs[0].health = crate::mining::attack_damage(Some(sword.item)) + 0.5;
-        assert_eq!(e.melee(0, DVec3::X, Some(sword), 0.0, false, false), None);
+        assert_eq!(e.melee(0, DVec3::X, Some(sword), 0.0, false, None), None);
         assert!(e.items.is_empty() && e.orbs.is_empty());
         run(&mut e, &world, &c, 1.1);
         let loot = e.items.iter().map(|i| i.stack.count as u32).sum::<u32>();
@@ -1354,7 +1369,7 @@ mod tests {
             ..Stack::new(Item::tool(ToolKind::Sword, Tier::Wood), 1)
         };
         e.mobs[0].health = crate::mining::attack_damage(Some(sword.item)) + 5.5;
-        e.melee(0, DVec3::X, Some(sword), 0.0, false, false);
+        e.melee(0, DVec3::X, Some(sword), 0.0, false, None);
         run(&mut e, &world, &c, 6.5);
         assert!(e.items.iter().any(|i| i.stack.item == Item::STEAK), "loot does not need player credit");
         assert!(e.orbs.is_empty(), "XP requires a player hit within five seconds");
@@ -1383,6 +1398,88 @@ mod tests {
     }
 
     #[test]
+    fn looting_does_not_increase_sheep_wool() {
+        for seed in 0..100 {
+            assert_eq!(MobKind::Sheep.drops(&mut Rng::new(seed), 7), vec![(crate::item::Item::from(Block::WOOL), 1)]);
+        }
+    }
+
+    #[test]
+    fn sweep_damage_uses_each_targets_enchantments_and_player_reach() {
+        use crate::enchant::{Enchantment, Enchants};
+        use crate::inventory::Stack;
+        use crate::item::{Item, Tier, ToolKind};
+        let origin = DVec3::new(0.0, 10.0, 0.0);
+        for (enchantment, level, expected) in [(Enchantment::Sharpness, 0, 4.0), (Enchantment::Smite, 3, 6.25)] {
+            let mut e = Entities::new(5);
+            e.spawn(MobKind::Zombie, origin + DVec3::X * 2.0);
+            e.spawn(MobKind::Cow, origin + DVec3::new(2.0, 0.0, 0.8));
+            e.spawn(MobKind::Zombie, origin + DVec3::new(2.0, 0.0, -0.8));
+            e.spawn(MobKind::Cow, origin + DVec3::X * 3.0);
+            let sword = Stack {
+                enchants: Enchants::NONE
+                    .with(enchantment, 5)
+                    .with(Enchantment::SweepingEdge, level)
+                    .with(Enchantment::FireAspect, 1),
+                ..Stack::new(Item::tool(ToolKind::Sword, Tier::Diamond), 1)
+            };
+            e.melee(0, DVec3::X, Some(sword), 0.0, false, Some(origin));
+            assert_eq!(e.mobs[1].health, MobKind::Cow.max_health() - expected);
+            let undead_damage = if enchantment == Enchantment::Smite { expected + 12.5 } else { expected };
+            assert_eq!(e.mobs[2].health, MobKind::Zombie.max_health() - undead_damage);
+            assert!(e.mobs[1].burning && e.mobs[2].burning);
+            assert_eq!(e.mobs[3].health, MobKind::Cow.max_health());
+            assert!(!e.mobs[3].burning, "sweeps stop short of three blocks from the player");
+        }
+    }
+
+    #[test]
+    fn fire_aspect_cooks_melee_and_sweep_loot_in_water() {
+        use crate::enchant::{Enchantment, Enchants};
+        use crate::inventory::Stack;
+        use crate::item::{Item, Tier, ToolKind};
+        let mut e = Entities::new(5);
+        let origin = DVec3::new(0.0, 10.0, 0.0);
+        for z in [0.0, 0.8] {
+            e.spawn(MobKind::Pig, origin + DVec3::new(1.0, 0.0, z));
+            let m = e.mobs.last_mut().unwrap();
+            m.health = 0.5;
+            m.in_water = true;
+        }
+        let sword = Stack {
+            enchants: Enchants::NONE.with(Enchantment::FireAspect, 1),
+            ..Stack::new(Item::tool(ToolKind::Sword, Tier::Wood), 1)
+        };
+        e.melee(0, DVec3::X, Some(sword), 0.0, false, Some(origin));
+        assert!(e.mobs.iter().all(|m| !m.alive() && !m.burning));
+        assert!(e.items.len() >= 2);
+        assert!(e.items.iter().all(|i| i.stack.item == Item::COOKED_PORKCHOP));
+    }
+
+    #[test]
+    fn thorns_rolls_fractional_damage_up_to_five() {
+        let world = Grid::flat(10);
+        let c = Ctx {
+            players: vec![Target {
+                thorns: [7, 0, 0, 0],
+                ..Target::new(PlayerId::HOST, DVec3::new(1.5, 10.0, 0.5), true)
+            }],
+            ..ctx(DVec3::ZERO)
+        };
+        let mut max_damage = 0.0f32;
+        for seed in 0..32 {
+            let mut e = Entities::new(seed);
+            e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
+            e.update(1.0 / 60.0, &world, &c);
+            let damage = MobKind::Zombie.max_health() - e.mobs[0].health;
+            assert!((1.0..5.0).contains(&damage));
+            assert_ne!(damage.fract(), 0.0);
+            max_damage = max_damage.max(damage);
+        }
+        assert!(max_damage > 4.0);
+    }
+
+    #[test]
     fn thorns_kills_drop_loot_and_experience() {
         let world = Grid::flat(10);
         let mut e = Entities::new(5);
@@ -1390,7 +1487,11 @@ mod tests {
         e.mobs[0].health = 0.5;
         let c = Ctx {
             // Thorns III on all four pieces: a hit back is near certain.
-            players: vec![Target { thorns: [3; 4], ..Target::new(PlayerId::HOST, DVec3::new(1.5, 10.0, 0.5), true) }],
+            players: vec![Target {
+                thorns: [3; 4],
+                held_enchants: crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::Looting, 7),
+                ..Target::new(PlayerId::HOST, DVec3::new(1.5, 10.0, 0.5), true)
+            }],
             daylight: 0.1,
             spawning: false,
             raining: false,
@@ -1401,6 +1502,7 @@ mod tests {
         }
         assert!(!e.mobs.first().is_some_and(|m| m.alive()), "thorns killed the zombie");
         assert!(!e.orbs.is_empty(), "the kill drops experience like a melee kill");
+        assert!(e.items.iter().map(|i| i.stack.count as u32).sum::<u32>() > 2, "Thorns uses mainhand Looting");
     }
 
     #[test]

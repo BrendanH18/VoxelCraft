@@ -71,7 +71,7 @@ impl Game {
             // A hit while falling is a critical one, like Minecraft.
             let p = &self.player;
             let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
-            let sweep = p.on_ground && !critical;
+            let sweep = (p.on_ground && !critical).then_some(p.pos);
             let held = self.inventory.get(self.actions.selected);
             let bonus = self.vitals.effects.attack_bonus();
             let dir = self.player.forward().as_dvec3();
@@ -159,6 +159,10 @@ impl Game {
             alive: !self.vitals.is_dead(),
             look: self.player.forward().as_dvec3(),
             thorns: Target::thorns_of(&self.inventory.armor),
+            held_enchants: self
+                .inventory
+                .get(self.actions.selected)
+                .map_or(Default::default(), |s| s.active_enchants()),
             ..Target::new(PlayerId::HOST, self.player.pos, self.mode == GameMode::Survival && !self.vitals.is_dead())
         }];
         // Agents keep source-dimension positions until arrival relocates them.

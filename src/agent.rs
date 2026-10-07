@@ -300,6 +300,7 @@ pub struct Agent {
     /// Holding "use" eats held food; `bite` counts the ticks chewed.
     eating: bool,
     bite: u32,
+    /// Accumulated fraction broken, using the speed at each tick.
     breaking: Option<(IVec3, f64)>,
     cooldown: f64,
 }
@@ -534,7 +535,7 @@ impl Agent {
                     entities.strike(hit, damage, self.id);
                 } else {
                     let (i, _) = entities.raycast(eye, dir, distance).ok_or("no mob within reach")?;
-                    let sweep = self.player.on_ground;
+                    let sweep = self.player.on_ground.then_some(self.player.pos);
                     entities.melee(i, dir, stack, bonus, false, sweep);
                 }
                 if !self.creative
@@ -725,14 +726,11 @@ impl Agent {
         {
             let held = self.inventory.get(self.selected).map(|s| s.item);
             let digger = self.digger(world);
-            let progress = self.breaking.filter(|(p, _)| *p == pos).map_or(0.0, |(_, n)| n) + TICK_SECONDS;
+            let progress = self.breaking.filter(|(p, _)| *p == pos).map_or(0.0, |(_, n)| n)
+                + TICK_SECONDS / mining::dig_time(block, digger).max(1e-3) as f64;
             self.breaking = Some((pos, progress));
             self.swings += 1;
-            if block != Block::BEDROCK
-                && !block.is_door()
-                && !block.is_bed()
-                && (self.creative || progress >= mining::dig_time(block, digger) as f64)
-            {
+            if block != Block::BEDROCK && !block.is_door() && !block.is_bed() && (self.creative || progress >= 1.0) {
                 world.set_block(pos, Block::AIR);
                 self.emit(Event::Broke(pos, block));
                 if !self.creative {
@@ -944,9 +942,9 @@ impl Agent {
 
     /// The block being mined and the fraction broken (for crack overlays).
     pub fn breaking(&self, world: &World) -> Option<(IVec3, f32)> {
-        let (pos, seconds) = self.breaking?;
-        let block = world.get_block(pos)?;
-        Some((pos, (seconds as f32 / mining::dig_time(block, self.digger(world)).max(1e-3)).min(1.0)))
+        let (pos, progress) = self.breaking?;
+        world.get_block(pos)?;
+        Some((pos, (progress as f32).min(1.0)))
     }
 
     /// What this agent mines with, and where it stands (Java's penalties).
@@ -1018,6 +1016,57 @@ mod tests {
         }
         panic!("world failed to load");
     }
+    #[test]
+    fn mining_speed_changes_only_affect_future_progress() {
+        use crate::enchant::Enchantment;
+        let mut world = world();
+        for x in 0..5 {
+            for z in 0..3 {
+                world.set_block(IVec3::new(x, 149, z), Block::STONE);
+            }
+        }
+        let at = IVec3::new(3, 151, 1);
+        world.set_block(at, Block::STONE);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.slots[0] = Some(Stack::new(Item::tool(crate::item::ToolKind::Pickaxe, crate::item::Tier::Wood), 1));
+        let mut entities = Entities::new(1);
+        for _ in 0..3 {
+            a.hold(MoveInput::default(), true, false);
+            a.tick(&mut world, &mut entities);
+        }
+        let before = a.breaking(&world).unwrap();
+        assert_eq!(before.0, at);
+        a.inventory.slots[0].as_mut().unwrap().enchants =
+            crate::enchant::Enchants::NONE.with(Enchantment::Efficiency, 5);
+        assert_eq!(a.breaking(&world).unwrap(), before, "changing tools cannot change existing progress");
+        a.hold(MoveInput::default(), true, false);
+        a.tick(&mut world, &mut entities);
+        let after = a.breaking(&world).unwrap();
+        let expected = before.1 + (TICK_SECONDS / mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
+        assert!((after.1 - expected).abs() < 1e-6);
+        assert_eq!(world.get_block(at), Some(Block::STONE), "a faster tool does not retroactively finish the dig");
+    }
+
+    #[test]
+    fn depth_strider_bonus_is_halved_off_the_ground() {
+        let mut world = world();
+        world.set_block(IVec3::new(1, 149, 1), Block::STONE);
+        world.set_block(IVec3::new(1, 150, 1), Block::WATER);
+        let speed = |world: &World, grounded, level| {
+            let mut p = Player::new(DVec3::new(1.5, 150.0, 1.5));
+            p.on_ground = grounded;
+            p.wear_boots(level);
+            p.update(1.0 / 120.0, MoveInput { forward: 1.0, ..Default::default() }, world);
+            p.vel.x
+        };
+        let grounded_bonus = speed(&world, true, 3) - speed(&world, true, 0);
+        let airborne_bonus = speed(&world, false, 3) - speed(&world, false, 0);
+        assert!(grounded_bonus > 0.0);
+        assert!((airborne_bonus * 2.0 - grounded_bonus).abs() < 1e-9);
+        world.set_block(IVec3::new(1, 150, 1), Block::LAVA);
+        assert_eq!(speed(&world, true, 3), speed(&world, true, 0));
+    }
+
     #[test]
     fn hurt_applies_armor_knockback_immunity_and_death_drops() {
         let mut entities = Entities::new(1);

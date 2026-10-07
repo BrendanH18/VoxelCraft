@@ -127,12 +127,11 @@ pub fn mined_xp(block: Block, tool: Enchants, rng: &mut crate::entity::Rng) -> u
 /// Whether a block mined with silk touch drops itself (Java's
 /// silk-touchable blocks among ours).
 pub fn silk_drop(block: Block) -> Option<Item> {
-    let b = block.base();
+    let b = if block.base() == Block::SNOWY_GRASS { Block::GRASS } else { block.base() };
     let silky = matches!(
         b,
         Block::STONE
             | Block::GRASS
-            | Block::SNOWY_GRASS
             | Block::COAL_ORE
             | Block::DIAMOND_ORE
             | Block::QUARTZ_ORE
@@ -222,6 +221,7 @@ mod tests {
         let d = Digger { held, helmet: none, eyes_in_water: false, on_ground: true };
         assert_eq!(dig_time(Block::LOG, d), break_time(Block::LOG, None));
         assert_eq!(silk_drop(Block::DIAMOND_ORE), Some(Item::from(Block::DIAMOND_ORE)));
+        assert_eq!(silk_drop(Block::SNOWY_GRASS), Some(Item::from(Block::GRASS)));
         assert_eq!(silk_drop(Block::DIRT), None);
     }
 

@@ -58,6 +58,7 @@ impl Agents {
             alive: !b.agent.vitals.is_dead(),
             look: b.agent.player.forward().as_dvec3(),
             thorns: Target::thorns_of(&b.agent.inventory.armor),
+            held_enchants: b.agent.inventory.get(b.agent.selected).map_or(Default::default(), |s| s.active_enchants()),
             ..Target::new(b.id, b.agent.player.pos, b.agent.targetable())
         })
     }

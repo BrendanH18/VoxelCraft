@@ -186,7 +186,7 @@ impl Player {
     }
 
     /// Depth strider on the worn boots: swimming approaches walking speed
-    /// by a third per level (Java's water movement efficiency).
+    /// by a third per level, halved off the ground (Java's water movement efficiency).
     pub fn wear_boots(&mut self, depth_strider: u8) {
         self.modifiers.depth_strider = depth_strider.min(3);
     }
@@ -207,7 +207,8 @@ impl Player {
     fn step(&mut self, dt: f64, input: MoveInput, world: &World) {
         let feet = self.pos + DVec3::new(0.0, 0.3, 0.0);
         // Lava swims like (slow) water.
-        self.in_water = world.get_block(feet.floor().as_ivec3()).is_some_and(|b| b.is_fluid());
+        let fluid = world.get_block(feet.floor().as_ivec3());
+        self.in_water = fluid.is_some_and(|b| b.is_fluid());
         self.sneaking = input.descend && !self.flying && !self.in_water;
         let target = if self.sneaking { 1.0 } else { 0.0 };
         self.crouch += (target - self.crouch) * (dt * 14.0).min(1.0);
@@ -227,7 +228,11 @@ impl Player {
             self.vel = self.vel.lerp(target, (dt * 12.0).min(1.0));
         } else if self.in_water {
             let land = if input.sprint { SPRINT_SPEED } else { WALK_SPEED };
-            let efficiency = self.modifiers.depth_strider as f64 / 3.0;
+            let efficiency = if fluid.is_some_and(|b| b.is_water()) {
+                self.modifiers.depth_strider as f64 / 3.0 * if self.on_ground { 1.0 } else { 0.5 }
+            } else {
+                0.0 // Depth Strider does not affect lava.
+            };
             let target = wish * (SWIM_SPEED + (land - SWIM_SPEED) * efficiency) * self.modifiers.speed;
             let k = (dt * 6.0).min(1.0);
             self.vel.x += (target.x - self.vel.x) * k;

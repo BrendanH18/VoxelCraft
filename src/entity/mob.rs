@@ -292,7 +292,12 @@ impl MobKind {
                 let span = hi as i32 - lo as i32 + 1;
                 // Java adds this even to a zero roll (looting raises the
                 // maximum, so a 0-1 drop becomes 0-2 with Looting I).
-                let extra = if looting > 0 { (looting as f32 * rng.next_f32()).round() as i32 } else { 0 };
+                // Sheep's wool pool has no enchanted_count_increase.
+                let extra = if looting > 0 && item != Item::from(Block::WOOL) {
+                    (looting as f32 * rng.next_f32()).round() as i32
+                } else {
+                    0
+                };
                 let base = lo as i32 + (rng.next_f32() * span as f32) as i32;
                 (item, (base.max(0) + extra).clamp(0, u8::MAX as i32) as u8)
             })
@@ -592,6 +597,7 @@ impl Mob {
                 pos: self.pos,
                 burning: self.fire_left > 0.0,
                 player_kill,
+                looting: 0, // Environmental damage has no attacking entity.
             });
         }
         // Endermen hurt by anything but a mob or player usually teleport,
@@ -680,17 +686,19 @@ impl Mob {
                                 cause,
                             });
                             // Thorns: each piece has a 15% chance per level
-                            // to hit back for 1-4.
+                            // to hit back for a uniform 1.0-5.0 damage.
                             for level in target.thorns.into_iter().filter(|&l| l > 0) {
                                 if rng.chance(0.15 * level as f32) {
-                                    let back = 1.0 + (rng.next_f32() * 4.0).floor().min(3.0);
+                                    let back = rng.range(1.0, 5.0);
                                     self.player_hit();
                                     if self.damage(back, Some(-knockback * 0.5 + DVec3::Y * 3.0), rng) {
                                         events.push(EntityEvent::MobKilled {
                                             kind: self.kind,
                                             pos: self.pos,
-                                            burning: self.burning,
+                                            burning: self.burning
+                                                || target.held_enchants.has(crate::enchant::Enchantment::FireAspect),
                                             player_kill: true,
+                                            looting: target.held_enchants.level(crate::enchant::Enchantment::Looting),
                                         });
                                     }
                                 }
