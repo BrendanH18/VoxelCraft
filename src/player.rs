@@ -46,6 +46,8 @@ pub struct Player {
     pub flying: bool,
     /// Creative mode: flight allowed.
     pub can_fly: bool,
+    /// Spectator mode: movement ignores block collision.
+    pub noclip: bool,
     pub in_water: bool,
     /// Jumped off the ground during the last `update` (hunger).
     pub jumped: bool,
@@ -89,6 +91,7 @@ impl Player {
             on_ground: false,
             flying: false,
             can_fly: false,
+            noclip: false,
             in_water: false,
             jumped: false,
             climbing: false,
@@ -295,6 +298,12 @@ impl Player {
         }
         if self.sneaking && self.on_ground {
             self.hold_edges(world, &mut delta);
+        }
+        if self.noclip {
+            self.pos += delta;
+            self.on_ground = false;
+            self.pushing_wall = false;
+            return;
         }
         let hit = if self.on_ground && !self.flying {
             physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, SHAPE, STEP_HEIGHT)

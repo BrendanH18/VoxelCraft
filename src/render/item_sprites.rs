@@ -55,6 +55,7 @@ fn tier_colour(tier: Tier) -> [u8; 3] {
         Tier::Iron => [212, 212, 212],
         Tier::Gold => [246, 208, 62],
         Tier::Diamond => [70, 222, 210],
+        Tier::Netherite => [104, 94, 102],
     }
 }
 
@@ -129,6 +130,7 @@ fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
         ArmorMaterial::Iron => [206, 206, 206],
         ArmorMaterial::Gold => [246, 208, 62],
         ArmorMaterial::Diamond => [70, 222, 210],
+        ArmorMaterial::Netherite => [96, 88, 94],
     }
 }
 
@@ -417,6 +419,27 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 Some(tint([232, 226, 206], if y % 2 == 0 { 1.0 } else { 0.9 }))
             } else {
                 shaded(&cover, x, y, colour, 0.06).map(|p| if x == 4 { tint([p[0], p[1], p[2]], 0.75) } else { p })
+            }
+        }
+        Sprite::Template => {
+            // Java's upgrade template: a chipped red-brown tablet, darker
+            // at the rim, with a diamond-blue gem set in the middle.
+            let tablet = |x: i32, y: i32| match y {
+                1 | 13 => (4..=12).contains(&x),
+                2..=12 => (3..=13).contains(&x),
+                14 => (5..=9).contains(&x),
+                _ => false,
+            };
+            let gem = |x: i32, y: i32| (x as f32 - 7.5).abs() + (y as f32 - 7.5).abs() <= 2.6;
+            if gem(x, y) {
+                let lit = if x + y <= 15 { 1.2 } else { 0.85 };
+                Some(tint([75, 201, 201], lit * (0.95 + noise(x, y, 41) * 0.1)))
+            } else if gem(x - 1, y) || gem(x + 1, y) || gem(x, y - 1) || gem(x, y + 1) {
+                Some(tint([81, 21, 21], 1.0))
+            } else {
+                let rim = !tablet(x - 1, y) || !tablet(x + 1, y) || !tablet(x, y - 1) || !tablet(x, y + 1);
+                let body = || tint([120, 54, 54], 0.9 + noise(x, y, 42) * 0.22);
+                tablet(x, y).then(|| if rim { tint([52, 14, 14], 1.0) } else { body() })
             }
         }
         Sprite::EnderEye => {

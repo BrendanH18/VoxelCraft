@@ -137,6 +137,8 @@ src/
     items.rs         dropped items: spawning, pickup, throwing, death drops
     containers.rs    chest screens and shift-click quick moves
     enchanting.rs    enchanting table screen: item and lapis slots, offers
+    anvil.rs         anvil input/result rules, level payment and wear
+    smithing.rs      smithing table input/result screen and consumption
     farming.rs       hoe tilling, bone meal, trampling farmland
     doors.rs         doors, ladders and gates: placing, opening, breaking
     hand.rs          first-person hand animation: swings, item switches, bob
@@ -146,6 +148,7 @@ src/
   item.rs            item registry: blocks, materials, food and tools
   enchant.rs         enchantments: Java's definitions, effects, table offers,
                      anvil rules, java.util.Random port
+  smithing.rs        diamond-to-Netherite metadata-preserving transforms
   player.rs          player movement
   physics.rs         shared AABB-vs-block collision, ray-vs-box test
   entity/
@@ -178,6 +181,7 @@ src/
     terrain.rs       world generation
     nether.rs        Nether caverns
     fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
+    bastion.rs       reserved bastion-remnant loot data
     stronghold.rs    stronghold rings and layouts (Java's pieces), painted per chunk
     structure.rs     shared structure-piece frames, chunk painting and chest loot
     brewing.rs       brewing stand contents and Java's brewing mixes

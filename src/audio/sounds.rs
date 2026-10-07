@@ -59,7 +59,7 @@ impl Material {
 pub fn material(block: Block) -> Material {
     match block.base() {
         b if b.is_log() || b.is_planks() => Material::Wood,
-        Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON => Material::Wood,
+        Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON | Block::SMITHING_TABLE => Material::Wood,
         Block::DIRT | Block::FARMLAND | Block::WET_FARMLAND => Material::Dirt,
         Block::TORCH => Material::Wood,
         b if b == Block::GRASS || b == Block::CACTUS || b.kind() == crate::world::block::RenderKind::Cross => {

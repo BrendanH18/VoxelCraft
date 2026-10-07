@@ -21,6 +21,9 @@ const SNOW_LINE: i32 = 150;
 
 pub struct Weather {
     pub raining: bool,
+    /// Thunderstorms currently share rain rendering; retained for command
+    /// state, saving, and future lightning.
+    pub thundering: bool,
     /// Seconds until the weather changes.
     pub timer: f64,
     /// Rain strength 0..1, fading in and out.
@@ -39,7 +42,7 @@ pub enum Precipitation {
 impl Weather {
     /// Start a clear spell using a deterministic weather RNG derived from the world seed.
     pub fn new(seed: u64) -> Self {
-        let mut w = Weather { raining: false, timer: 0.0, strength: 0.0, rng: seed ^ 0x3EA7_4E12 };
+        let mut w = Weather { raining: false, thundering: false, timer: 0.0, strength: 0.0, rng: seed ^ 0x3EA7_4E12 };
         w.timer = w.spell(CLEAR);
         w
     }
@@ -68,15 +71,23 @@ impl Weather {
     /// Starts or stops rain (`now`: without fading) with a fresh timer.
     pub fn set(&mut self, raining: bool, now: bool) {
         self.raining = raining;
+        self.thundering = false;
         self.timer = self.spell(if raining { RAIN } else { CLEAR });
         if now {
             self.strength = if raining { 1.0 } else { 0.0 };
         }
     }
 
-    /// `raining,seconds left` for the level file.
+    /// Starts a thunderstorm; rendering and precipitation match rain until
+    /// lightning is implemented.
+    pub fn set_thunder(&mut self, now: bool) {
+        self.set(true, now);
+        self.thundering = true;
+    }
+
+    /// `raining,seconds left,thundering` for the level file.
     pub fn serialize(&self) -> String {
-        format!("{},{:.0}", self.raining as u8, self.timer)
+        format!("{},{:.0},{}", self.raining as u8, self.timer, self.thundering as u8)
     }
 
     /// Restore rain and remaining seconds from a level-file entry, snapping the rain fade.
@@ -86,6 +97,7 @@ impl Weather {
         if let (Some(r), Some(t)) = (parts.next(), parts.next().and_then(|t| t.parse::<f64>().ok())) {
             self.raining = r == "1";
             self.timer = t.max(1.0);
+            self.thundering = parts.next() == Some("1") && self.raining;
             self.strength = if self.raining { 1.0 } else { 0.0 };
         }
     }

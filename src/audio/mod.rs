@@ -23,9 +23,10 @@ use crate::world::World;
 use crate::world::block::Block;
 use crate::world::terrain::SEA_LEVEL;
 use dsp::Rng;
-pub use export::export_sounds;
+pub use export::{export_music, export_sounds};
 use mixer::{Command, Mixer};
 pub use sounds::{Bank, Material, Sound, material};
+use voxelcraft::music::{Context, MusicReader, MusicStream};
 
 /// Horizontal distance between footsteps, in blocks (Minecraft's ~1.67).
 const STRIDE: f64 = 1.67;
@@ -36,6 +37,7 @@ const HIT_INTERVAL: f64 = 0.22;
 
 pub struct Audio {
     tx: Option<Sender<Command>>,
+    music: MusicStream,
     /// Dropping this ends the audio thread (and closes the device).
     _stop: Option<Sender<()>>,
     muted: bool,
@@ -63,6 +65,9 @@ impl Audio {
         let volume = volume.clamp(0.0, 1.0);
         let (tx, rx) = crossbeam_channel::bounded::<Command>(256);
         let (stop_tx, stop_rx) = crossbeam_channel::bounded::<()>(0);
+        let seed =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
+        let (music, reader) = MusicStream::new(seed);
         let master = if muted { 0.0 } else { volume };
         let spawned = std::thread::Builder::new().name("audio".into()).spawn(move || {
             let start = Instant::now();
@@ -74,7 +79,7 @@ impl Audio {
                 bank.total_samples() as f32 / dsp::RATE,
                 start.elapsed().as_secs_f64() * 1000.0
             );
-            match device::open(bank, rx, master) {
+            match device::open(bank, rx, master, reader) {
                 Ok(stream) => {
                     // Park until the game drops its `Audio`.
                     let _ = stop_rx.recv();
@@ -90,10 +95,10 @@ impl Audio {
                 (None, None)
             }
         };
-        let seed =
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
+
         Self {
             tx,
+            music,
             _stop: stop,
             muted,
             volume,
@@ -158,6 +163,7 @@ impl Audio {
     /// Fades out the world's ambience and lifts underwater muffling (back
     /// to the title screen).
     pub fn leave_world(&mut self) {
+        self.music.set_context(Context::default());
         self.muffle = 0.0;
         self.send(Command::Muffle(0.0));
         self.send(Command::Ambience { wind: 0.0, cave: 0.0, rain: 0.0 });
@@ -173,6 +179,26 @@ impl Audio {
         if !self.muted {
             self.send(Command::Master(self.volume));
         }
+    }
+
+    /// The independent Music category, multiplied by master volume.
+    pub fn set_music_volume(&mut self, volume: f32) {
+        self.send(Command::MusicVolume(volume));
+    }
+
+    /// Update once per frame even while the simulation is paused. The host
+    /// chooses the shared stream; underwater music requires an ocean biome.
+    pub fn update_music(&self, player: &Player, world: &World, creative: bool, dragon: bool) {
+        let column = world.generator.column(player.pos.x.floor() as i32, player.pos.z.floor() as i32);
+        self.music.set_context(Context {
+            title: false,
+            dimension: world.generator.dimension,
+            creative,
+            underwater: player.head_in_water(world),
+            biome: column.biome,
+            dragon,
+            ..Context::default()
+        });
     }
 
     /// Toggles mute; returns whether sound is now muted.
@@ -378,13 +404,18 @@ mod device {
 
     use super::*;
 
-    pub fn open(bank: Arc<Bank>, rx: crossbeam_channel::Receiver<Command>, master: f32) -> Result<Stream, String> {
+    pub fn open(
+        bank: Arc<Bank>,
+        rx: crossbeam_channel::Receiver<Command>,
+        master: f32,
+        music: MusicReader,
+    ) -> Result<Stream, String> {
         let host = cpal::default_host();
         let device = host.default_output_device().ok_or("no audio output device")?;
         let supported = device.default_output_config().map_err(|e| e.to_string())?;
         let format = supported.sample_format();
         let config: StreamConfig = supported.into();
-        let mixer = Mixer::new(bank, rx, config.sample_rate as f32, master);
+        let mixer = Mixer::new(bank, rx, config.sample_rate as f32, master).with_music(music);
         let stream = match format {
             SampleFormat::F32 => build::<f32>(&device, &config, mixer),
             SampleFormat::I16 => build::<i16>(&device, &config, mixer),

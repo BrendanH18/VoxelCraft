@@ -198,7 +198,14 @@ pub mod tex {
     pub const DEBRIS_SIDE: u16 = ANVIL_TOP + 3;
     pub const DEBRIS_TOP: u16 = DEBRIS_SIDE + 1;
     pub const NETHERITE_BLOCK: u16 = DEBRIS_TOP + 1;
-    pub const COUNT: u32 = NETHERITE_BLOCK as u32 + 1;
+    /// The smithing table: an iron top, dark wooden front and back (tongs)
+    /// and sides (a hammer), and a plank bottom.
+    pub const SMITHING_TOP: u16 = NETHERITE_BLOCK + 1;
+    pub const SMITHING_FRONT: u16 = SMITHING_TOP + 1;
+    pub const SMITHING_SIDE: u16 = SMITHING_TOP + 2;
+    pub const SMITHING_BOTTOM: u16 = SMITHING_TOP + 3;
+    pub const MOSSY_COBBLESTONE: u16 = SMITHING_BOTTOM + 1;
+    pub const COUNT: u32 = MOSSY_COBBLESTONE as u32 + 1;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -398,6 +405,9 @@ impl Block {
     pub const DAMAGED_ANVIL: Block = Block(219);
     pub const ANCIENT_DEBRIS: Block = Block(221);
     pub const NETHERITE_BLOCK: Block = Block(222);
+    /// Upgrades diamond gear to Netherite (see `crate::smithing`).
+    pub const SMITHING_TABLE: Block = Block(223);
+    pub const MOSSY_COBBLESTONE: Block = Block(224);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age as u16 })
@@ -434,7 +444,10 @@ impl Block {
     pub fn ignited_by_lava(self) -> bool {
         self.fire_odds().0 > 0
             || self.is_bed()
-            || matches!(self.base(), Block::OAK_DOOR | Block::LADDER | Block::CRAFTING_TABLE | Block::CHEST)
+            || matches!(
+                self.base(),
+                Block::OAK_DOOR | Block::LADDER | Block::CRAFTING_TABLE | Block::CHEST | Block::SMITHING_TABLE
+            )
     }
 
     /// A complete top face can support fire, even on glass.
@@ -856,8 +869,8 @@ impl Block {
             b if b.terracotta_colour().is_some() => 1.25,
             Block::STONE => 1.5,
             b if b.is_log() || b.is_planks() => 2.0,
-            Block::COBBLESTONE | Block::BRICKS => 2.0,
-            Block::CRAFTING_TABLE | Block::CHEST => 2.5,
+            Block::COBBLESTONE | Block::MOSSY_COBBLESTONE | Block::BRICKS => 2.0,
+            Block::CRAFTING_TABLE | Block::CHEST | Block::SMITHING_TABLE => 2.5,
             Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
             Block::FURNACE | Block::LIT_FURNACE => 3.5,
             Block::SPAWNER => 5.0,
@@ -873,6 +886,7 @@ impl Block {
         match self.material() {
             Block::STONE
             | Block::COBBLESTONE
+            | Block::MOSSY_COBBLESTONE
             | Block::BRICKS
             | Block::SANDSTONE
             | Block::COAL_ORE
@@ -917,9 +931,13 @@ impl Block {
             | Block::SOUL_SAND
             | Block::CLAY => Some(ToolKind::Shovel),
             b if b.is_log() || b.is_planks() => Some(ToolKind::Axe),
-            Block::CRAFTING_TABLE | Block::CHEST | Block::PUMPKIN | Block::MELON | Block::LADDER | Block::OAK_DOOR => {
-                Some(ToolKind::Axe)
-            }
+            Block::CRAFTING_TABLE
+            | Block::CHEST
+            | Block::PUMPKIN
+            | Block::MELON
+            | Block::LADDER
+            | Block::OAK_DOOR
+            | Block::SMITHING_TABLE => Some(ToolKind::Axe),
             _ => None,
         }
     }
@@ -930,6 +948,7 @@ impl Block {
         match self.material() {
             Block::STONE
             | Block::COBBLESTONE
+            | Block::MOSSY_COBBLESTONE
             | Block::BRICKS
             | Block::SANDSTONE
             | Block::COAL_ORE
@@ -970,7 +989,7 @@ impl Block {
             .chain((112..=132).step_by(4))
             .chain([
                 136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213, 214, 215,
-                217, 219, 221, 222,
+                217, 219, 221, 222, 223, 224,
             ])
             .map(Block)
     }
@@ -1503,6 +1522,13 @@ const fn make(id: u16) -> BlockInfo {
         219 | 220 => ("damaged anvil", Shaped, column(tex::ANVIL, tex::ANVIL_TOP + 2, tex::ANVIL)),
         221 => ("ancient debris", Opaque, column(tex::DEBRIS_SIDE, tex::DEBRIS_TOP, tex::DEBRIS_TOP)),
         222 => ("block of netherite", Opaque, all(tex::NETHERITE_BLOCK)),
+        // Java's model: the tongs front on north and south, the hammer side
+        // on east and west.
+        223 => {
+            let (front, side) = (tex::SMITHING_FRONT, tex::SMITHING_SIDE);
+            ("smithing table", Opaque, [side, side, tex::SMITHING_TOP, tex::SMITHING_BOTTOM, front, front])
+        }
+        224 => ("mossy cobblestone", Opaque, all(tex::MOSSY_COBBLESTONE)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are
@@ -1597,6 +1623,27 @@ mod tests {
         for layer in 0..tex::CAPACITY as u16 {
             assert_eq!(tex::item_index(layer), None);
         }
+    }
+
+    #[test]
+    fn smithing_table_has_its_fixed_id_textures_and_axe_rules() {
+        assert_eq!(Block::SMITHING_TABLE, Block(223));
+        assert_eq!(Block::from_name("smithing_table"), Some(Block::SMITHING_TABLE));
+        assert_eq!(Block::SMITHING_TABLE.name(), "smithing table");
+        assert_eq!(Block::SMITHING_TABLE.hardness(), 2.5);
+        assert_eq!(Block::SMITHING_TABLE.best_tool(), Some(ToolKind::Axe));
+        assert_eq!(
+            Block::SMITHING_TABLE.info().tex,
+            [
+                tex::SMITHING_SIDE,
+                tex::SMITHING_SIDE,
+                tex::SMITHING_TOP,
+                tex::SMITHING_BOTTOM,
+                tex::SMITHING_FRONT,
+                tex::SMITHING_FRONT,
+            ]
+        );
+        assert!(Block::creative_palette().any(|b| b == Block::SMITHING_TABLE));
     }
 
     #[test]

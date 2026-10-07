@@ -12,10 +12,12 @@
 //! discarded. Each chunk column also keeps a heightmap of its highest
 //! light-blocking block, which seeds skylight in mesh jobs.
 
+pub mod bastion;
 pub mod block;
 pub mod brewing;
 pub mod chest;
 pub mod chunk;
+pub mod dungeon;
 pub mod end;
 pub mod end_portal;
 pub mod falling;
@@ -104,6 +106,8 @@ pub struct World {
     random_ticks: f64,
     /// Random state for growth and chance drops.
     rng: u64,
+    /// Java `doTileDrops`; block and block-entity removal still occurs when false.
+    tile_drops: bool,
     /// Items the world let go of (mined blocks, container contents, plants
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
@@ -176,6 +180,7 @@ impl World {
             leaf_decay: FxHashMap::default(),
             random_ticks: 0.0,
             rng,
+            tile_drops: true,
             drops: Vec::new(),
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
@@ -188,6 +193,10 @@ impl World {
 
     pub fn render_distance(&self) -> i32 {
         self.render_distance
+    }
+
+    pub fn set_tile_drops(&mut self, enabled: bool) {
+        self.tile_drops = enabled;
     }
 
     pub fn set_render_distance(&mut self, rd: i32) {

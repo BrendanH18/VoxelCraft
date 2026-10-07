@@ -10,7 +10,7 @@ use crate::enchant::{self, AnvilResult};
 use crate::inventory::{Stack, move_into};
 
 use super::hud::SlotRef;
-use super::{Container, Game, GameMode};
+use super::{Container, Game};
 
 impl Game {
     /// Right-click on an anvil.
@@ -25,7 +25,7 @@ impl Game {
     /// What the inputs make, ignoring the survival cost limit, and whether
     /// it's "Too Expensive!" for this player.
     pub(super) fn anvil_preview(&self) -> Option<(AnvilResult, bool)> {
-        let creative = self.mode == GameMode::Creative;
+        let creative = self.mode.is_creative();
         let result = enchant::anvil_any_cost(self.work[0]?, self.work[1], creative)?;
         Some((result, !creative && result.cost >= enchant::TOO_EXPENSIVE))
     }
@@ -33,7 +33,7 @@ impl Game {
     /// The result a click can take now: affordable and not too expensive.
     pub(super) fn anvil_result(&self) -> Option<AnvilResult> {
         let (result, too_expensive) = self.anvil_preview()?;
-        let affordable = self.mode == GameMode::Creative || self.vitals.xp.level >= result.cost;
+        let affordable = self.mode.is_creative() || self.vitals.xp.level >= result.cost;
         (!too_expensive && affordable).then_some(result)
     }
 
@@ -59,7 +59,7 @@ impl Game {
     pub(super) fn take_anvil_result(&mut self) -> Option<Stack> {
         let Container::Anvil(pos) = self.container else { return None };
         let result = self.anvil_result()?;
-        let survival = self.mode == GameMode::Survival;
+        let survival = self.mode.is_survival();
         if survival {
             self.vitals.xp.add_levels(-(result.cost as i64));
         }
