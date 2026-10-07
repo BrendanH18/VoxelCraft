@@ -374,6 +374,8 @@ pub struct Entities {
     pub orbs: Vec<XpOrb>,
     /// The dragon fight, in the End.
     pub fight: Option<dragon::Fight>,
+    /// Java `doMobLoot`; set by the world before each update.
+    pub mob_loot: bool,
     rng: Rng,
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
@@ -399,6 +401,7 @@ impl Entities {
             items: Vec::new(),
             orbs: Vec::new(),
             fight: None,
+            mob_loot: true,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
@@ -486,16 +489,20 @@ impl Entities {
         for e in &events {
             match *e {
                 EntityEvent::MobShot { kind, pos, killed, burning } => {
-                    if killed {
+                    if killed && self.mob_loot {
                         self.drop_loot_with_fire(kind, pos, 0, burning, true);
                     }
                     if kind == MobKind::ZombifiedPiglin {
                         self.anger_piglins(pos);
                     }
                 }
-                EntityEvent::DragonXp { pos, points } => self.spawn_xp(pos, points),
+                EntityEvent::DragonXp { pos, points } => {
+                    if self.mob_loot {
+                        self.spawn_xp(pos, points);
+                    }
+                }
                 EntityEvent::MobKilled { kind, pos, burning, player_kill, looting } => {
-                    self.drop_loot_with_fire(kind, pos, looting, burning, player_kill)
+                    self.drop_loot_with_fire(kind, pos, looting, burning, player_kill);
                 }
                 _ => {}
             }
@@ -563,6 +570,9 @@ impl Entities {
     }
 
     fn drop_loot_with_fire(&mut self, kind: MobKind, pos: DVec3, looting: u8, burning: bool, player_kill: bool) {
+        if !self.mob_loot {
+            return;
+        }
         if player_kill {
             let xp = kind.xp(&mut self.rng);
             self.spawn_xp(pos, xp);

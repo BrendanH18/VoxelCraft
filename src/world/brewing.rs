@@ -165,7 +165,9 @@ impl World {
     /// Keeps the brewing stand table in step with a block change at `p`.
     pub(super) fn track_brewing_stand(&mut self, p: IVec3, old: Block, new: Block) {
         if old == Block::BREWING_STAND && new != Block::BREWING_STAND {
-            if let Some(mut stand) = self.brewing_stands.remove(&p) {
+            if let Some(mut stand) = self.brewing_stands.remove(&p)
+                && self.tile_drops
+            {
                 self.drops.extend(stand.take_all().into_iter().map(|s| (p, s)));
             }
         } else if new == Block::BREWING_STAND {

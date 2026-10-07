@@ -176,9 +176,9 @@ impl Hunger {
 
     /// Advances regeneration and starvation; returns (health healed,
     /// starvation damage).
-    fn tick(&mut self, dt: f32, health: f32, difficulty: Difficulty) -> (f32, f32) {
+    fn tick(&mut self, dt: f32, health: f32, difficulty: Difficulty, natural_regeneration: bool) -> (f32, f32) {
         let hurt = health < MAX_HEALTH;
-        if self.food >= MAX_FOOD && self.saturation > 0.0 && hurt {
+        if natural_regeneration && self.food >= MAX_FOOD && self.saturation > 0.0 && hurt {
             // Full and saturated: heal fast, paying in saturation.
             self.timer += dt;
             if self.timer >= FAST_FOOD_TICK {
@@ -187,7 +187,7 @@ impl Hunger {
                 self.exhaust(spend);
                 return (spend / 6.0, 0.0);
             }
-        } else if self.food >= REGEN_FOOD && hurt {
+        } else if natural_regeneration && self.food >= REGEN_FOOD && hurt {
             self.timer += dt;
             if self.timer >= FOOD_TICK {
                 self.timer = 0.0;
@@ -329,6 +329,18 @@ impl Vitals {
 
     /// [`Vitals::tick`] under this world's difficulty.
     pub fn tick_difficulty(&mut self, dt: f32, env: &Env, creative: bool, difficulty: Difficulty) -> Hurts {
+        self.tick_rules(dt, env, creative, difficulty, true)
+    }
+
+    /// [`Vitals::tick_difficulty`] with natural health regeneration toggled.
+    pub fn tick_rules(
+        &mut self,
+        dt: f32,
+        env: &Env,
+        creative: bool,
+        difficulty: Difficulty,
+        natural_regeneration: bool,
+    ) -> Hurts {
         let mut hurts = Hurts::default();
         self.since_damage = (self.since_damage + dt).min(1e3);
         self.xp.tick(dt);
@@ -421,7 +433,9 @@ impl Vitals {
             self.peaceful_timer += dt;
             while self.peaceful_timer >= 1.0 {
                 self.peaceful_timer -= 1.0;
-                self.health = (self.health + 1.0).min(MAX_HEALTH);
+                if natural_regeneration {
+                    self.health = (self.health + 1.0).min(MAX_HEALTH);
+                }
                 self.hunger.food = (self.hunger.food + 2.0).min(MAX_FOOD);
             }
         } else if !creative {
@@ -438,7 +452,7 @@ impl Vitals {
             if env.jumped {
                 h.exhaust(if env.sprinting { EXHAUST_SPRINT_JUMP } else { EXHAUST_JUMP });
             }
-            let (heal, starve) = h.tick(dt, self.health, difficulty);
+            let (heal, starve) = h.tick(dt, self.health, difficulty, natural_regeneration);
             self.health = (self.health + heal).min(MAX_HEALTH);
             hurts.starve = starve;
         }
@@ -501,6 +515,21 @@ mod tests {
         assert!(v.burning(), "lava ignites for longer than fire");
         v.respawn();
         assert!(!v.burning());
+    }
+
+    #[test]
+    fn natural_regeneration_rule_stops_hunger_and_peaceful_healing() {
+        let mut v = Vitals { health: 10.0, ..Default::default() };
+        for _ in 0..20 {
+            v.tick_rules(1.0, &Env::default(), false, Difficulty::Normal, false);
+        }
+        assert_eq!(v.health, 10.0);
+
+        for _ in 0..5 {
+            v.tick_rules(1.0, &Env::default(), false, Difficulty::Peaceful, false);
+        }
+        assert_eq!(v.health, 10.0);
+        assert_eq!(v.hunger.food, MAX_FOOD);
     }
 
     fn ground(y: f64) -> Env {

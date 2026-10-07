@@ -50,6 +50,7 @@ use crate::world::World;
 use crate::world::block::Block;
 use crate::world::storage::{LevelInfo, Storage};
 use crate::world::terrain::{Dimension, Generator};
+use voxelcraft::rules::GameRules;
 
 use survival::Vitals;
 
@@ -142,6 +143,7 @@ struct Game {
     difficulty: Difficulty,
     /// World-wide one-life flag; locks difficulty to Hard.
     hardcore: bool,
+    gamerules: GameRules,
     inventory: Inventory,
     inventory_open: bool,
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
@@ -170,6 +172,8 @@ struct Game {
     sleeping: Option<f32>,
     /// Foot of the bed the player respawns at.
     spawn_bed: Option<glam::IVec3>,
+    /// Shared Overworld spawn changed by `/setworldspawn`.
+    world_spawn: glam::IVec3,
     weather: weather::Weather,
     weather_verts: Vec<crate::render::weather::WeatherVertex>,
     started: Instant,
@@ -567,6 +571,8 @@ impl Game {
                 .or_else(|| root_props.get("difficulty").and_then(|d| Difficulty::from_name(d)))
                 .unwrap_or_default()
         };
+        let gamerules =
+            root_props.get("gamerules").map_or_else(GameRules::default, |text| GameRules::deserialize(text));
         let inventory = existing
             .as_ref()
             .and_then(|l| l.props.get("inventory"))
@@ -654,7 +660,8 @@ impl Game {
         player.can_fly = mode.can_fly();
         player.noclip = mode == GameMode::Spectator;
         player.flying = mode == GameMode::Spectator;
-        let world = World::new(generator, saved, settings.render_distance);
+        let mut world = World::new(generator, saved, settings.render_distance);
+        world.set_tile_drops(gamerules.bool("doTileDrops"));
         log::info!("{} worker threads", world.worker_threads());
 
         let now = Instant::now();
@@ -710,6 +717,7 @@ impl Game {
             mode,
             difficulty,
             hardcore,
+            gamerules,
             inventory,
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
@@ -735,6 +743,13 @@ impl Game {
                 let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
                 (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
             }),
+            world_spawn: root_props
+                .get("world_spawn")
+                .and_then(|text| {
+                    let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
+                    (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
+                })
+                .unwrap_or_else(|| Generator::new(seed).find_spawn()),
             weather: {
                 let mut w = weather::Weather::new(seed);
                 if let Some(text) = existing.as_ref().and_then(|l| l.props.get("weather")) {
@@ -972,11 +987,13 @@ impl Game {
     /// survival player drops everything they carried.
     fn on_death(&mut self) {
         self.vitals.effects.clear();
-        log::info!("player {}", self.vitals.death.as_deref().unwrap_or("died"));
+        if self.gamerules.bool("showDeathMessages") {
+            log::info!("player {}", self.vitals.death.as_deref().unwrap_or("died"));
+        }
         if self.inventory_open {
             self.toggle_inventory();
         }
-        if self.mode.is_survival() {
+        if self.mode.is_survival() && !self.gamerules.bool("keepInventory") {
             self.drop_everything();
         }
         if self.hardcore {
@@ -991,12 +1008,21 @@ impl Game {
         self.jump_pressed = false;
         self.mine_pressed = false;
         self.actions.reset();
+        if self.hardcore {
+            self.set_grab(true);
+        } else if self.gamerules.bool("doImmediateRespawn") {
+            self.respawn();
+        }
     }
 
     /// Back to the world spawn with full health.
     fn respawn(&mut self) {
+        let kept_xp = self.gamerules.bool("keepInventory").then_some(self.vitals.xp);
         if self.dimension != Dimension::Overworld {
             self.vitals.respawn();
+            if let Some(xp) = kept_xp {
+                self.vitals.xp = xp;
+            }
             self.switch_dimension(Dimension::Overworld, dimension::Arrival::Respawn);
             self.set_grab(true);
             return;
@@ -1005,6 +1031,9 @@ impl Game {
         self.player.vel = DVec3::ZERO;
         self.player.flying = false;
         self.vitals.respawn();
+        if let Some(xp) = kept_xp {
+            self.vitals.xp = xp;
+        }
         self.set_grab(true);
     }
 
@@ -1320,7 +1349,7 @@ impl Game {
         self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
-        if crate::mining::can_harvest(block, held) {
+        if self.gamerules.bool("doTileDrops") && crate::mining::can_harvest(block, held) {
             self.world.spill_mined(pos, block, tool);
             self.mobs.entities.drop_mined_xp(block, pos, tool);
         }
@@ -1661,6 +1690,11 @@ impl Game {
         props.insert("mode".to_string(), self.mode.name().to_string());
         props.insert("difficulty".to_string(), self.difficulty.name().to_string());
         props.insert("hardcore".to_string(), self.hardcore.to_string());
+        props.insert("gamerules".to_string(), self.gamerules.serialize());
+        props.insert(
+            "world_spawn".to_string(),
+            format!("{},{},{}", self.world_spawn.x, self.world_spawn.y, self.world_spawn.z),
+        );
         props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
@@ -1814,6 +1848,7 @@ impl Game {
     /// One fixed gameplay step. Rendering and worker polling never
     /// change the amount of simulation time advanced here.
     fn tick(&mut self) {
+        self.world.set_tile_drops(self.gamerules.bool("doTileDrops"));
         let dt = crate::simulation::TICK_SECONDS;
         let arriving = self.update_arrival();
         let input = self.movement_input(arriving);
@@ -1828,7 +1863,9 @@ impl Game {
             self.update_portal(dt);
         }
         let moved = (self.player.pos - before).with_y(0.0).length();
-        self.weather.update(dt);
+        if self.gamerules.bool("doWeatherCycle") {
+            self.weather.update(dt);
+        }
         self.update_sleep(dt);
         self.world.raining = self.weather.raining && self.dimension.has_sky();
         let env = crate::simulation::survival::Env {
@@ -1838,22 +1875,28 @@ impl Game {
         let hurts = if arriving || self.arrival.is_some() {
             Default::default()
         } else {
-            self.vitals.tick_difficulty(dt as f32, &env, self.mode.invulnerable(), self.difficulty)
+            self.vitals.tick_rules(
+                dt as f32,
+                &env,
+                self.mode.invulnerable(),
+                self.difficulty,
+                self.gamerules.bool("naturalRegeneration"),
+            )
         };
         self.trample(hurts.landed);
-        if hurts.fall > 0.0 {
+        if hurts.fall > 0.0 && self.gamerules.bool("fallDamage") {
             self.damage_player(hurts.fall, survival::CAUSE_FALL);
         }
-        if hurts.drown > 0.0 {
+        if hurts.drown > 0.0 && self.gamerules.bool("drowningDamage") {
             self.damage_player(hurts.drown, survival::CAUSE_DROWN);
         }
-        if hurts.lava > 0.0 {
+        if hurts.lava > 0.0 && self.gamerules.bool("fireDamage") {
             self.damage_player_armored(hurts.lava, survival::CAUSE_LAVA);
         }
-        if hurts.fire > 0.0 {
+        if hurts.fire > 0.0 && self.gamerules.bool("fireDamage") {
             self.damage_player_armored(hurts.fire, survival::CAUSE_FIRE);
         }
-        if hurts.burn > 0.0 {
+        if hurts.burn > 0.0 && self.gamerules.bool("fireDamage") {
             self.damage_player(hurts.burn, survival::CAUSE_FIRE);
         }
         if hurts.starve > 0.0 {
@@ -1864,10 +1907,17 @@ impl Game {
         self.act(acting, dt);
         self.drive_pads(dt);
         self.tick_agents();
-        crate::simulation::tick_world(&mut self.world, self.player.pos);
+        crate::simulation::tick_world_rules(
+            &mut self.world,
+            self.player.pos,
+            self.gamerules.bool("doFireTick"),
+            self.gamerules.int("randomTickSpeed") as u32,
+        );
         self.update_mobs(dt);
         self.update_items();
-        self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
+        if self.gamerules.bool("doDaylightCycle") {
+            self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
+        }
     }
 
     /// Poll streaming, run due fixed gameplay ticks and render interpolated positions.

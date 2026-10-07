@@ -122,6 +122,11 @@ impl World {
     /// what rested on the blasted blocks falls or pops off. Returns how many
     /// blocks were destroyed.
     pub fn explode(&mut self, center: DVec3, power: f64) -> usize {
+        self.explode_with_drops(center, power, true)
+    }
+
+    /// As [`World::explode`], with block drops controlled by `drop_blocks`.
+    pub fn explode_with_drops(&mut self, center: DVec3, power: f64, drop_blocks: bool) -> usize {
         let radius = power * 0.9 + 0.5;
         let c = center.floor().as_ivec3();
         let r = radius.ceil() as i32;
@@ -144,7 +149,9 @@ impl World {
                         removed.push(p);
                         if b == Block::TNT {
                             self.primed_tnt.push((p, true));
-                        } else if (super::noise::hash_f(p.x, p.y, p.z, seed ^ 0xD20F) as f64) < 1.0 / power {
+                        } else if drop_blocks
+                            && (super::noise::hash_f(p.x, p.y, p.z, seed ^ 0xD20F) as f64) < 1.0 / power
+                        {
                             self.spill_block(p, b);
                         }
                     }

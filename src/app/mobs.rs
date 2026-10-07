@@ -161,6 +161,7 @@ impl Game {
     }
 
     pub(super) fn update_mobs(&mut self, dt: f64) {
+        self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.mobs.entities.despawn_hostiles();
         }
@@ -192,7 +193,8 @@ impl Game {
                 0.0
             },
             raining: self.weather.raining,
-            spawning: self.difficulty != crate::simulation::difficulty::Difficulty::Peaceful,
+            spawning: self.difficulty != crate::simulation::difficulty::Difficulty::Peaceful
+                && self.gamerules.bool("doMobSpawning"),
             dimension: self.dimension,
         };
         let mut smashed = Vec::new();
@@ -230,7 +232,9 @@ impl Game {
                     }
                 }
                 EntityEvent::IgniteBlock { cell } => {
-                    self.world.ignite(cell);
+                    if self.gamerules.bool("mobGriefing") {
+                        self.world.ignite(cell);
+                    }
                 }
                 EntityEvent::Fireball { .. } => {}
                 EntityEvent::Sound { sound, pos } => {
@@ -296,7 +300,7 @@ impl Game {
             self.mobs.entities.despawn_hostiles();
         }
         // All the blocks the dragon flew through this tick, in one edit.
-        if !smashed.is_empty() {
+        if self.gamerules.bool("mobGriefing") && !smashed.is_empty() {
             smashed.sort_unstable_by_key(|p| (p.x, p.y, p.z));
             smashed.dedup();
             self.world.break_blocks(&smashed);
@@ -337,7 +341,10 @@ impl Game {
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: &str) {
-        self.world.explode(center, power as f64);
+        let mob_can_grief = !cause.contains("creeper") || self.gamerules.bool("mobGriefing");
+        if mob_can_grief {
+            self.world.explode_with_drops(center, power as f64, self.gamerules.bool("doTileDrops"));
+        }
         self.mobs.entities.explode(center, power);
         // TNT caught in the blast goes off soon after.
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {

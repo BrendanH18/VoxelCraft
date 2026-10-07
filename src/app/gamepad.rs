@@ -782,8 +782,13 @@ impl Game {
     /// left alone rather than looked up in the wrong world.
     fn respawn_pad(&mut self, i: usize) {
         let name = self.pads.seats[i].name.clone();
+        let keep_inventory = self.gamerules.bool("keepInventory");
         let Some(bot) = self.agents.players.get_mut(&name) else { return };
+        let kept_xp = keep_inventory.then_some(bot.agent.vitals.xp);
         let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
+        if let Some(xp) = kept_xp {
+            bot.agent.vitals.xp = xp;
+        }
         let at = if self.dimension == crate::world::terrain::Dimension::Overworld {
             self.puppet(i, |g| g.respawn_point())
         } else {

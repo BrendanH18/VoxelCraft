@@ -234,6 +234,13 @@ impl Game {
                         Command::Sleep => {}
                         Command::Time(t) => self.day_time = t,
                         Command::Weather(r) => self.weather.set(r, true),
+                        Command::Respawn => {
+                            let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.vitals.xp);
+                            bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[])?;
+                            if let Some(xp) = kept_xp {
+                                bot.agent.vitals.xp = xp;
+                            }
+                        }
                         _ => {
                             let mut others = self.agents.positions();
                             others.push(self.player.pos);
@@ -271,10 +278,20 @@ impl Game {
             return;
         }
         let mut players = std::mem::take(&mut self.agents.players);
-        for bot in players.values_mut().filter(|b| b.active) {
-            bot.agent.tick_difficulty(&mut self.world, &mut self.mobs.entities, self.difficulty);
+        for (name, bot) in players.iter_mut().filter(|(_, b)| b.active) {
+            let was_dead = bot.agent.vitals.is_dead();
+            bot.agent.tick_rules(&mut self.world, &mut self.mobs.entities, self.difficulty, &self.gamerules);
+            if !was_dead && bot.agent.vitals.is_dead() && self.gamerules.bool("showDeathMessages") {
+                log::info!("{name} {}", bot.agent.vitals.death.as_deref().unwrap_or("died"));
+            }
             if self.hardcore {
                 bot.agent.hardcore_spectate();
+            } else if self.gamerules.bool("doImmediateRespawn") && bot.agent.vitals.is_dead() {
+                let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.vitals.xp);
+                let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
+                if let Some(xp) = kept_xp {
+                    bot.agent.vitals.xp = xp;
+                }
             }
             if bot.agent.remaining == 0
                 && let Some(reply) = bot.reply.take()

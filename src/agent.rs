@@ -740,6 +740,17 @@ impl Agent {
         entities: &mut Entities,
         difficulty: crate::simulation::difficulty::Difficulty,
     ) {
+        self.tick_rules(world, entities, difficulty, &crate::rules::GameRules::default());
+    }
+
+    /// [`Agent::tick_difficulty`] with natural regeneration toggled.
+    pub fn tick_rules(
+        &mut self,
+        world: &mut World,
+        entities: &mut Entities,
+        difficulty: crate::simulation::difficulty::Difficulty,
+        rules: &crate::rules::GameRules,
+    ) {
         self.previous_pos = self.player.pos;
         // Movement alone returning early is not enough: survival, mining,
         // pickups and timed commands must also wait for local terrain.
@@ -765,17 +776,18 @@ impl Agent {
             respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
             ..simulation::player_environment(&self.player, world, input, moved)
         };
-        let hurts = self.vitals.tick_difficulty(
+        let hurts = self.vitals.tick_rules(
             TICK_SECONDS as f32,
             &env,
             self.creative || self.mode.invulnerable(),
             difficulty,
+            rules.bool("naturalRegeneration"),
         );
         for (damage, cause) in [
-            (hurts.fall, "hit the ground too hard"),
-            (hurts.drown, "drowned"),
-            (hurts.lava, "tried to swim in lava"),
-            (hurts.fire + hurts.burn, "burned to death"),
+            (hurts.fall * rules.bool("fallDamage") as u8 as f32, "hit the ground too hard"),
+            (hurts.drown * rules.bool("drowningDamage") as u8 as f32, "drowned"),
+            (hurts.lava * rules.bool("fireDamage") as u8 as f32, "tried to swim in lava"),
+            ((hurts.fire + hurts.burn) * rules.bool("fireDamage") as u8 as f32, "burned to death"),
             (hurts.starve, "starved to death"),
         ] {
             if damage > 0.0 && self.damage(damage, cause) > 0.0 {
@@ -783,7 +795,9 @@ impl Agent {
             }
         }
         if self.vitals.is_dead() {
-            self.drop_everything(entities);
+            if !rules.bool("keepInventory") {
+                self.drop_everything(entities);
+            }
             self.remaining = 0;
             return;
         }
@@ -805,8 +819,10 @@ impl Agent {
                 if !self.creative {
                     if mining::can_harvest(block, held) {
                         let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
-                        world.spill_mined(pos, block, tool);
-                        entities.drop_mined_xp(block, pos, tool);
+                        if rules.bool("doTileDrops") {
+                            world.spill_mined(pos, block, tool);
+                            entities.drop_mined_xp(block, pos, tool);
+                        }
                     }
                     if let Some(held) = held {
                         self.inventory.wear(self.selected, mining::wear(held, false));
