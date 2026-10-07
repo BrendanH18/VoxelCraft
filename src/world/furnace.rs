@@ -60,6 +60,7 @@ pub fn smelt(item: Item) -> Option<Item> {
         Item::RAW_PORKCHOP => Item::COOKED_PORKCHOP,
         Item::RAW_BEEF => Item::STEAK,
         Item::RAW_CHICKEN => Item::COOKED_CHICKEN,
+        Item::POTATO => Item::BAKED_POTATO,
         _ => return None,
     })
 }
@@ -71,7 +72,7 @@ pub fn smelt_xp(out: Item) -> f32 {
         Item::GOLD_INGOT | Item::DIAMOND => 1.0,
         Item::IRON_INGOT | Item::COPPER_INGOT => 0.7,
         Item::NETHERITE_SCRAP => 2.0,
-        Item::COOKED_PORKCHOP | Item::STEAK | Item::COOKED_CHICKEN => 0.35,
+        Item::COOKED_PORKCHOP | Item::STEAK | Item::COOKED_CHICKEN | Item::BAKED_POTATO => 0.35,
         i if i == b(Block::TERRACOTTA) => 0.35,
         Item::BRICK => 0.3,
         Item::NETHER_QUARTZ | Item::LAPIS_LAZULI => 0.2,

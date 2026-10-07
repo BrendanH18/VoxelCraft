@@ -1432,8 +1432,17 @@ mod tests {
             let extra = (u8::MAX as f32 * expected_rng.next_f32()).round() as u32;
             let base = (expected_rng.next_f32() * 3.0) as u32;
             let drops = MobKind::Zombie.drops(&mut rng, u8::MAX);
+            // Looting 255 makes the separate carrot and potato rolls certain.
+            let _ = (expected_rng.next_f32(), expected_rng.next_f32());
             assert!(!drops.is_empty(), "maximum looting produces a drop for these rolls");
-            assert_eq!(drops, vec![(crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8)]);
+            assert_eq!(
+                drops,
+                vec![
+                    (crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8),
+                    (crate::item::Item::CARROT, 1),
+                    (crate::item::Item::POTATO, 1),
+                ]
+            );
         }
     }
 
@@ -2390,7 +2399,10 @@ mod tests {
             let mut seen_any = false;
             for _ in 0..200 {
                 for (item, n) in kind.drops(&mut rng, 0) {
-                    let &(_, lo, hi) = kind.loot().iter().find(|l| l.0 == item).unwrap();
+                    let Some(&(_, lo, hi)) = kind.loot().iter().find(|l| l.0 == item) else {
+                        assert_eq!(n, 1, "{kind:?} rare drop {}", item.name());
+                        continue;
+                    };
                     assert!((lo.max(1) as u8..=hi).contains(&n), "{kind:?} dropped {n} of {}", item.name());
                     seen_any = true;
                 }

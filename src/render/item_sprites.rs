@@ -566,6 +566,32 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&pail, x, y, [200, 200, 205], 0.03)
             }
         }
+        Sprite::Carrot => {
+            let body = |x: i32, y: i32| (4..=12).contains(&y) && (x - 8).abs() <= (14 - y) / 3;
+            shaded(&body, x, y, [214, 112, 28], 0.05).map(|p| if y <= 5 { tint([70, 150, 40], 1.0) } else { p })
+        }
+        Sprite::Potato { baked, poison } => {
+            let colour = if poison {
+                [120, 150, 60]
+            } else if baked {
+                [150, 96, 42]
+            } else {
+                [196, 164, 92]
+            };
+            let lump = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                (px - 8.0).powi(2) / 18.0 + (py - 8.5).powi(2) / 14.0 <= 1.0
+            };
+            shaded(&lump, x, y, colour, 0.08)
+        }
+        Sprite::Pie => {
+            let wedge = |x: i32, y: i32| (3..=13).contains(&y) && (x - 8).abs() <= (y - 2) / 2;
+            shaded(&wedge, x, y, [214, 126, 42], 0.05).map(|p| if y <= 5 { tint([232, 176, 72], 1.0) } else { p })
+        }
+        Sprite::Cake => {
+            let slice = |x: i32, y: i32| (4..=13).contains(&y) && (3..=12).contains(&x);
+            shaded(&slice, x, y, [150, 96, 52], 0.04).map(|p| if y <= 7 { tint([248, 248, 244], 1.0) } else { p })
+        }
         Sprite::Compass => compass_face(0, 32, x, y, [62, 86, 112], [176, 40, 36]),
         Sprite::Clock => compass_face(0, 64, x, y, [236, 214, 150], [250, 196, 48]),
         Sprite::Arrow => {

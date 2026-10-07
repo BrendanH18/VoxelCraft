@@ -54,6 +54,23 @@ pub fn throw_held(
     true
 }
 
+/// Eats one bite of cake. Seven bites remove it. A full survival player leaves it.
+pub fn bite_cake(
+    world: &mut World,
+    pos: glam::IVec3,
+    vitals: &mut crate::simulation::survival::Vitals,
+    creative: bool,
+) -> bool {
+    let Some(bites) = world.get_block(pos).and_then(|block| block.cake_bites()) else { return false };
+    if !creative && vitals.hunger.food >= 20.0 {
+        return false;
+    }
+    vitals.hunger.eat(2, 0.4);
+    let next = if bites >= 6 { crate::world::block::Block::AIR } else { crate::world::block::Block::cake(bites + 1) };
+    world.set_block(pos, next);
+    true
+}
+
 /// Java's `ItemUtils.createFilledResult`: creative keeps the original and gains
 /// `result` once; survival consumes one and returns `result` to the hand,
 /// inventory, or the ground.

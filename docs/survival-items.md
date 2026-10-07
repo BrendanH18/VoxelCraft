@@ -49,3 +49,14 @@ inventory, the first-person hand and the third-person grip. An agent holding
 one gets `compass` or `clock` on its observation.
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/CompassItem.java
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/ClockItem.java
+
+Carrots and potatoes grow through Java's eight stages on farmland and drop
+one crop when young, or one plus up to three (and fortune) bonus rolls of
+4/7 when ripe. Ripe potatoes also drop a poisonous potato 2% of the time.
+Zombies drop a carrot or a potato at 2.5% plus 1% per looting level.
+Potatoes smelt into baked potatoes. A poisonous potato restores 2 hunger and
+poisons for 5 seconds 60% of the time. Cake is a block of seven bites
+(2 hunger and 0.4 saturation each) crafted from milk, sugar, egg and wheat;
+the milk buckets come back. Pumpkin pie is pumpkin, sugar and egg.
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/CropBlock.java
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/CakeBlock.java

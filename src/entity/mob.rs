@@ -286,7 +286,8 @@ impl MobKind {
     /// `round(looting * uniform(0, 1))` to each (Java's
     /// `enchanted_count_increase`).
     pub fn drops(self, rng: &mut Rng, looting: u8) -> Vec<(Item, u8)> {
-        self.loot()
+        let mut out: Vec<(Item, u8)> = self
+            .loot()
             .iter()
             .map(|&(item, lo, hi)| {
                 let span = hi as i32 - lo as i32 + 1;
@@ -302,7 +303,18 @@ impl MobKind {
                 (item, (base.max(0) + extra).clamp(0, u8::MAX as i32) as u8)
             })
             .filter(|&(_, n)| n > 0)
-            .collect()
+            .collect();
+        if self == MobKind::Zombie {
+            // Java: 2.5% plus 1% per looting level, rolled separately.
+            let chance = 0.025 + 0.01 * looting as f32;
+            if rng.next_f32() < chance {
+                out.push((Item::CARROT, 1));
+            }
+            if rng.next_f32() < chance {
+                out.push((Item::POTATO, 1));
+            }
+        }
+        out
     }
 
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).

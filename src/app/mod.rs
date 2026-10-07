@@ -1438,7 +1438,7 @@ impl Game {
             let damage = potion.drink(&mut self.vitals);
             self.damage_player(damage, survival::CAUSE_MAGIC);
         } else if let Some((hunger, saturation)) = food {
-            let effect = self.held_item().and_then(Item::food_effect);
+            let effect = self.held_item().and_then(|item| item.food_effect_roll(self.mobs.entities.roll()));
             if let Some(remainder) = held.and_then(Item::remainder) {
                 voxelcraft::survival_items::exchange(
                     &mut self.inventory,
@@ -1544,6 +1544,10 @@ impl Game {
             Some(b) if b.is_anvil() => return self.open_anvil(pos),
             Some(Block::SMITHING_TABLE) => return self.open_smithing(pos),
             Some(Block::DRAGON_EGG) => return self.teleport_egg(pos),
+            Some(b) if b.cake_bites().is_some() => {
+                voxelcraft::survival_items::bite_cake(&mut self.world, pos, &mut self.vitals, self.mode.is_creative());
+                return;
+            }
             Some(b) if b.is_bed() => return self.use_bed(pos),
             Some(b) if b.is_door() || b.is_gate() => {
                 self.toggle_door(pos, self.player.forward());

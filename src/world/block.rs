@@ -264,7 +264,12 @@ pub mod tex {
     pub const RAIL_NE: u16 = RAIL + 5;
     pub const BROWN_MUSHROOM: u16 = RAIL_NE + 1;
     pub const RED_MUSHROOM: u16 = BROWN_MUSHROOM + 1;
-    pub const COUNT: u32 = RED_MUSHROOM as u32 + 1;
+    pub const CARROT_0: u16 = RED_MUSHROOM + 1;
+    pub const POTATO_0: u16 = CARROT_0 + 8;
+    pub const CAKE_TOP: u16 = POTATO_0 + 8;
+    pub const CAKE_SIDE: u16 = CAKE_TOP + 1;
+    pub const CAKE_BOTTOM: u16 = CAKE_SIDE + 1;
+    pub const COUNT: u32 = CAKE_BOTTOM as u32 + 1;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -598,9 +603,37 @@ impl Block {
         Block(59 + stage as u16)
     }
 
-    /// Growth stage of a wheat crop.
+    /// Growth stage of wheat, carrots or potatoes.
     pub fn crop_stage(self) -> Option<u8> {
-        (59..=66).contains(&self.0).then(|| (self.0 - 59) as u8)
+        self.as_crop().map(|(_, stage)| stage)
+    }
+
+    /// Wheat, carrots or potatoes at `stage` 0..=7.
+    pub const fn crop(kind: Crop, stage: u8) -> Block {
+        let stage = if stage > 7 { 7 } else { stage } as u16;
+        match kind {
+            Crop::Wheat => Block(59 + stage),
+            Crop::Carrot => Block(522 + stage),
+            Crop::Potato => Block(530 + stage),
+        }
+    }
+
+    pub fn as_crop(self) -> Option<(Crop, u8)> {
+        match self.0 {
+            59..=66 => Some((Crop::Wheat, (self.0 - 59) as u8)),
+            522..=529 => Some((Crop::Carrot, (self.0 - 522) as u8)),
+            530..=537 => Some((Crop::Potato, (self.0 - 530) as u8)),
+            _ => None,
+        }
+    }
+
+    /// Cake with `bites` already eaten, 0..=6.
+    pub const fn cake(bites: u8) -> Block {
+        Block(538 + (if bites > 6 { 6 } else { bites }) as u16)
+    }
+
+    pub fn cake_bites(self) -> Option<u8> {
+        (538..=544).contains(&self.0).then(|| (self.0 - 538) as u8)
     }
 
     /// Nether wart at `age` 0..=3 (3 is ripe).
@@ -672,6 +705,7 @@ impl Block {
                 Shaped::Door { facing: f(i), open: i % 8 >= 4, upper: i >= 8 }
             }
             500..=509 => Shaped::Rail,
+            538..=544 => Shaped::Cake { bites: (self.0 - 538) as u8 },
             _ => return None,
         })
     }
@@ -1004,8 +1038,10 @@ impl Block {
             Block::DEAD_BUSH => Some(Item::STICK),
             Block::LIT_FURNACE => Some(Block::FURNACE.into()),
             Block::FARMLAND | Block::WET_FARMLAND => Some(Block::DIRT.into()),
-            b if b.crop_stage() == Some(7) => Some(Item::WHEAT),
-            b if b.crop_stage().is_some() => Some(Item::WHEAT_SEEDS),
+            b if b.as_crop() == Some((Crop::Wheat, 7)) => Some(Item::WHEAT),
+            b if matches!(b.as_crop(), Some((Crop::Wheat, _))) => Some(Item::WHEAT_SEEDS),
+            b if matches!(b.as_crop(), Some((Crop::Carrot, _))) => Some(Item::CARROT),
+            b if matches!(b.as_crop(), Some((Crop::Potato, _))) => Some(Item::POTATO),
             b if b.wart_age().is_some() => Some(Item::NETHER_WART),
             Block::CLAY => Some(Item::CLAY_BALL),
             Block::MELON => Some(Item::MELON_SLICE),
@@ -1045,6 +1081,7 @@ impl Block {
             Block::TNT => 0.0,
             b if b.is_leaves() => 0.2,
             Block::SNOW => 0.2,
+            b if b.cake_bites().is_some() => 0.5,
             Block::GLASS | Block::GLOWSTONE => 0.3,
             Block::CACTUS | Block::NETHERRACK => 0.4,
             Block::SOUL_SAND => 0.5,
@@ -1265,7 +1302,7 @@ impl Block {
                 136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213, 214, 215,
                 217, 219, 221, 222, 223, 224, 500,
             ])
-            .chain([520, 521])
+            .chain([520, 521, 522, 530])
             .chain(225..=252)
             .chain(super::forms::palette_ids())
             .map(Block)
@@ -1327,6 +1364,7 @@ impl Block {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS) || below.is_farmland()
             }
             b if b.crop_stage().is_some() => below.is_farmland(),
+            b if b.cake_bites().is_some() => below.is_opaque(),
             b if b.wart_age().is_some() => below == Block::SOUL_SAND,
             _ => true,
         }
@@ -1536,6 +1574,14 @@ impl Facing {
     }
 }
 
+/// A farm crop that grows through eight stages.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Crop {
+    Wheat,
+    Carrot,
+    Potato,
+}
+
 /// The state of a [`RenderKind::Shaped`] block (see `world::shape`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Shaped {
@@ -1554,6 +1600,10 @@ pub enum Shaped {
     EndPortal,
     /// Stacked boxes rounding to a point.
     DragonEgg,
+    /// Java's cake: 7/16 tall, shrinking from the west as it is eaten.
+    Cake {
+        bites: u8,
+    },
     /// A 12/16-high table.
     EnchantingTable,
     /// Java's anvil: a base, a neck and a top running along x or z.
@@ -1873,6 +1923,9 @@ const fn make(id: u16) -> BlockInfo {
         252 => ("deepslate diamond ore", Opaque, all(tex::DEEPSLATE_DIAMOND_ORE)),
         520 => ("brown mushroom", Cross, all(tex::BROWN_MUSHROOM)),
         521 => ("red mushroom", Cross, all(tex::RED_MUSHROOM)),
+        522..=529 => ("carrot crops", Cross, all(tex::CARROT_0 + (id - 522))),
+        530..=537 => ("potato crops", Cross, all(tex::POTATO_0 + (id - 530))),
+        538..=544 => ("cake", Shaped, column(tex::CAKE_SIDE, tex::CAKE_TOP, tex::CAKE_BOTTOM)),
         331 => ("cobblestone wall", Shaped, all(tex::COBBLESTONE)),
         332 => ("stone brick wall", Shaped, all(tex::STONE_BRICKS)),
         333 => ("dark oak log", Opaque, column(tex::DARK_OAK_LOG_SIDE, tex::DARK_OAK_LOG_TOP, tex::DARK_OAK_LOG_TOP)),
@@ -2192,6 +2245,11 @@ mod tests {
         }
         assert_eq!(Block::wheat(3).drop(), Some(Item::WHEAT_SEEDS));
         assert_eq!(Block::wheat(7).drop(), Some(Item::WHEAT));
+        assert_eq!(Block::crop(Crop::Carrot, 2).drop(), Some(Item::CARROT));
+        assert_eq!(Block::crop(Crop::Potato, 7).drop(), Some(Item::POTATO));
+        assert_eq!(Block::cake(0).cake_bites(), Some(0));
+        assert_eq!(Block::cake(6).hardness(), 0.5);
+        assert!(Block::cake(0).can_stay_on(Block::STONE));
         assert_eq!(Block::FARMLAND.drop(), Some(Block::DIRT.into()));
         assert!(Block::OAK_SAPLING.can_stay_on(Block::GRASS) && !Block::OAK_SAPLING.can_stay_on(Block::SAND));
         assert_eq!(Block::from_name("wheat crops"), Some(Block::wheat(0)));

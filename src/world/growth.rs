@@ -90,11 +90,25 @@ impl World {
                     s.count = times;
                 }
             }
-            b if b.crop_stage() == Some(7) => {
+            b if b.as_crop() == Some((crate::world::block::Crop::Wheat, 7)) => {
                 // One seed, plus three tries (and one more per fortune
                 // level) at 4 in 7.
                 let seeds = 1 + (0..3 + fortune).filter(|_| self.roll() % 7 < 4).count() as u8;
                 out.push(Stack::new(Item::WHEAT_SEEDS, seeds));
+            }
+            b if matches!(
+                b.as_crop(),
+                Some((crate::world::block::Crop::Carrot | crate::world::block::Crop::Potato, 7))
+            ) =>
+            {
+                // Java's crop bonus: one item, plus three (plus fortune) tries at 4 in 7.
+                let extra = (0..3 + fortune).filter(|_| self.roll() % 7 < 4).count() as u8;
+                if let Some(stack) = out.first_mut() {
+                    stack.count = stack.count.saturating_add(extra);
+                }
+                if b.as_crop().is_some_and(|(crop, _)| crop == crate::world::block::Crop::Potato) && self.one_in(50) {
+                    out.push(Stack::new(Item::POISONOUS_POTATO, 1));
+                }
             }
             // Ripe wart drops 2-4 in all, plus 0..fortune.
             b if b.wart_age() == Some(3) => {
@@ -230,7 +244,8 @@ impl World {
             b if b.crop_stage().is_some_and(|s| s < 7) => {
                 let wet = self.get_block(p - IVec3::Y) == Some(Block::WET_FARMLAND);
                 if self.grows_here(p) && self.one_in(if wet { CROP_GROWTH } else { 2 * CROP_GROWTH }) {
-                    self.edit(p, Block::wheat(b.crop_stage().unwrap() + 1), false);
+                    let (crop, stage) = b.as_crop().unwrap();
+                    self.edit(p, Block::crop(crop, stage + 1), false);
                 }
             }
             // Java: one in ten random ticks, whatever the light.
@@ -327,8 +342,9 @@ impl World {
         let Some(b) = self.get_block(p) else { return false };
         match b {
             b if b.crop_stage().is_some_and(|s| s < 7) => {
-                let stage = (b.crop_stage().unwrap() + 2 + (self.roll() % 4) as u8).min(7);
-                self.edit(p, Block::wheat(stage), true);
+                let (crop, stage) = b.as_crop().unwrap();
+                let stage = (stage + 2 + (self.roll() % 4) as u8).min(7);
+                self.edit(p, Block::crop(crop, stage), true);
                 true
             }
             b if b.is_sapling() => {
@@ -464,6 +480,22 @@ mod tests {
     use crate::world::chunk::ChunkData;
     use crate::world::terrain::Generator;
     use std::sync::Arc;
+
+    #[test]
+    fn ripe_potatoes_can_drop_a_poisonous_one() {
+        let mut world = World::new_headless(Arc::new(Generator::new(11)), Default::default(), 2);
+        let mut poison = 0;
+        for _ in 0..400 {
+            world.drops.clear();
+            world.spill_block(IVec3::ZERO, Block::crop(crate::world::block::Crop::Potato, 7));
+            let potatoes = world.drops.iter().find(|(_, s)| s.item == Item::POTATO).map(|(_, s)| s.count).unwrap();
+            assert!((1..=4).contains(&potatoes));
+            if world.drops.iter().any(|(_, s)| s.item == Item::POISONOUS_POTATO) {
+                poison += 1;
+            }
+        }
+        assert!((1..30).contains(&poison), "about 2% of 400, got {poison}");
+    }
 
     #[test]
     fn snow_drops_four_snowballs_unless_silk_touched() {

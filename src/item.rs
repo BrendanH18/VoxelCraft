@@ -184,6 +184,17 @@ pub enum Sprite {
     Compass,
     /// A clock face; the sun's position is a separate texture frame.
     Clock,
+    /// An orange carrot.
+    Carrot,
+    /// A brown potato. `baked` is darker; `poison` is greenish.
+    Potato {
+        baked: bool,
+        poison: bool,
+    },
+    /// A pumpkin pie.
+    Pie,
+    /// A slice of cake, as an item icon.
+    Cake,
     Lump([u8; 3]),
     Ingot([u8; 3]),
     Gem([u8; 3]),
@@ -397,6 +408,37 @@ const SURVIVAL_ITEMS: &[ItemInfo] = &[
     ItemInfo { name: "egg", kind: ItemKind::Material, max_stack: 16, sprite: Sprite::Egg },
     ItemInfo { name: "compass", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Compass },
     ItemInfo { name: "clock", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Clock },
+    ItemInfo {
+        name: "carrot",
+        kind: ItemKind::Food { hunger: 3, saturation: 3.6 },
+        max_stack: 64,
+        sprite: Sprite::Carrot,
+    },
+    ItemInfo {
+        name: "potato",
+        kind: ItemKind::Food { hunger: 1, saturation: 0.6 },
+        max_stack: 64,
+        sprite: Sprite::Potato { baked: false, poison: false },
+    },
+    ItemInfo {
+        name: "baked potato",
+        kind: ItemKind::Food { hunger: 5, saturation: 6.0 },
+        max_stack: 64,
+        sprite: Sprite::Potato { baked: true, poison: false },
+    },
+    ItemInfo {
+        name: "poisonous potato",
+        kind: ItemKind::Food { hunger: 2, saturation: 1.2 },
+        max_stack: 64,
+        sprite: Sprite::Potato { baked: false, poison: true },
+    },
+    ItemInfo { name: "cake", kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Cake },
+    ItemInfo {
+        name: "pumpkin pie",
+        kind: ItemKind::Food { hunger: 8, saturation: 4.8 },
+        max_stack: 64,
+        sprite: Sprite::Pie,
+    },
 ];
 
 const TOOL_KINDS: [ToolKind; 5] = [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword];
@@ -424,6 +466,12 @@ impl Item {
     pub const EGG: Item = Item(517);
     pub const COMPASS: Item = Item(518);
     pub const CLOCK: Item = Item(519);
+    pub const CARROT: Item = Item(520);
+    pub const POTATO: Item = Item(521);
+    pub const BAKED_POTATO: Item = Item(522);
+    pub const POISONOUS_POTATO: Item = Item(523);
+    pub const CAKE: Item = Item(524);
+    pub const PUMPKIN_PIE: Item = Item(525);
     pub const SHEARS: Item = Item(512);
 
     pub const STICK: Item = Item(256);
@@ -531,6 +579,9 @@ impl Item {
     pub fn places(self) -> Option<Block> {
         match self {
             Item::WHEAT_SEEDS => Some(Block::wheat(0)),
+            Item::CARROT => Some(Block::crop(crate::world::block::Crop::Carrot, 0)),
+            Item::POTATO => Some(Block::crop(crate::world::block::Crop::Potato, 0)),
+            Item::CAKE => Some(Block::cake(0)),
             Item::NETHER_WART => Some(Block::nether_wart(0)),
             i => i.block(),
         }
@@ -646,7 +697,18 @@ impl Item {
     /// The status effect eating this gives (Java's spider eye: Poison I for
     /// 5 s).
     pub fn food_effect(self) -> Option<(crate::simulation::effects::Effect, u8, u32)> {
-        (self == Item::SPIDER_EYE).then_some((crate::simulation::effects::Effect::Poison, 0, 100))
+        match self {
+            Item::SPIDER_EYE | Item::POISONOUS_POTATO => Some((crate::simulation::effects::Effect::Poison, 0, 100)),
+            _ => None,
+        }
+    }
+
+    /// Applies the food effect when `unit` (0..1) falls under its chance.
+    /// A poisonous potato poisons 60% of the time; a spider eye always does.
+    pub fn food_effect_roll(self, unit: f32) -> Option<(crate::simulation::effects::Effect, u8, u32)> {
+        let effect = self.food_effect()?;
+        let chance = if self == Item::POISONOUS_POTATO { 0.6 } else { 1.0 };
+        (unit < chance).then_some(effect)
     }
 
     pub fn remainder(self) -> Option<Item> {
@@ -689,6 +751,7 @@ impl Item {
             return Some(match b {
                 b if (149..=164).contains(&b.0) => Item::OAK_DOOR,
                 b if b.wart_age().is_some() => Item::NETHER_WART,
+                b if b.cake_bites().is_some() => Item::CAKE,
                 b => Item::from_block(b),
             });
         }

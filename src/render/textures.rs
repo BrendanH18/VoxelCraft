@@ -604,6 +604,29 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             shade([134, 96, 64], furrow * wet)
         }
         l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat((l - tex::WHEAT_0) as u8, x, y),
+        l if (tex::CARROT_0..tex::CARROT_0 + 8).contains(&l) => {
+            crop_cross((l - tex::CARROT_0) as u8, x, y, [72, 150, 40], [214, 112, 28])
+        }
+        l if (tex::POTATO_0..tex::POTATO_0 + 8).contains(&l) => {
+            crop_cross((l - tex::POTATO_0) as u8, x, y, [64, 140, 36], [168, 124, 64])
+        }
+        tex::CAKE_TOP => {
+            if !(1..15).contains(&x) || !(1..15).contains(&y) {
+                [0, 0, 0, 0]
+            } else if (x + y).is_multiple_of(6) {
+                shade([196, 48, 42], 1.0)
+            } else {
+                shade([248, 248, 244], 0.95 + r * 0.08)
+            }
+        }
+        tex::CAKE_SIDE => {
+            if y < 7 {
+                shade([244, 244, 240], 1.0)
+            } else {
+                shade([156, 96, 52], 0.9 + r * 0.1)
+            }
+        }
+        tex::CAKE_BOTTOM => shade([140, 84, 44], 0.9 + r * 0.1),
         l if (tex::NETHER_WART_0..tex::NETHER_WART_0 + 3).contains(&l) => {
             nether_wart((l - tex::NETHER_WART_0) as u8, x, y)
         }
@@ -1191,6 +1214,15 @@ fn wheat(stage: u8, x: usize, y: usize) -> Rgba {
         return shade([224, 190, 84], if notch { 0.82 } else { 1.05 });
     }
     shade(c, 0.85 + rnd(tex::WHEAT_0 + stage as u16, x, y, 9) * 0.25)
+}
+
+/// A wheat-shaped crop with a coloured top once it is nearly ripe.
+fn crop_cross(stage: u8, x: usize, y: usize, leaf: [u8; 3], fruit: [u8; 3]) -> Rgba {
+    let grown = wheat(stage, x, y);
+    if grown[3] == 0 {
+        return grown;
+    }
+    if stage >= 4 && y + (stage as usize) < 12 { shade(fruit, 1.0) } else { shade(leaf, 0.95) }
 }
 
 /// Stone bricks, two courses with staggered joints and bevelled edges;

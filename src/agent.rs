@@ -871,6 +871,17 @@ impl Agent {
             {
                 self.swings += 1;
             }
+            Command::Place
+                if self
+                    .target(world)
+                    .is_some_and(|(pos, _)| world.get_block(pos).is_some_and(|b| b.cake_bites().is_some())) =>
+            {
+                let (pos, _) = self.target(world).unwrap();
+                if !crate::survival_items::bite_cake(world, pos, &mut self.vitals, self.creative) {
+                    return Err("not hungry enough to eat cake".into());
+                }
+                self.swings += 1;
+            }
             Command::Place => {
                 if !self.mode.can_build() {
                     return Err("this game mode cannot place blocks".into());
@@ -1083,7 +1094,13 @@ impl Agent {
             }
             let options = recipe.alternatives(i).unwrap();
             let slot = inventory.slots.iter().position(|s| s.is_some_and(|s| options.contains(&s.item)))?;
+            let used = inventory.get(slot)?.item;
             inventory.take_one(slot);
+            if let Some(rest) = used.remainder()
+                && inventory.add(rest, 1) != 0
+            {
+                return None;
+            }
         }
         (inventory.add_stack(recipe.result) == 0).then_some(inventory)
     }
@@ -1309,7 +1326,7 @@ impl Agent {
                     self.inventory.take_one(self.selected);
                 }
                 self.vitals.hunger.eat(hunger, saturation);
-                if let Some((effect, amp, ticks)) = held.and_then(Item::food_effect) {
+                if let Some((effect, amp, ticks)) = held.and_then(|item| item.food_effect_roll(entities.roll())) {
                     self.vitals.apply_effect(effect, amp, ticks);
                 }
             }

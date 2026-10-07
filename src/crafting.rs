@@ -51,9 +51,10 @@ impl Grid {
     pub fn consume(&mut self) {
         for cell in self.cells.iter_mut().take(self.size * self.size) {
             if let Some(s) = cell {
+                let rest = s.item.remainder();
                 s.count -= 1;
                 if s.count == 0 {
-                    *cell = None;
+                    *cell = rest.map(|item| Stack::new(item, 1));
                 }
             }
         }
@@ -225,6 +226,11 @@ const BROWN_MUSHROOM: Ingredient = &[b(Block::BROWN_MUSHROOM)];
 const RED_MUSHROOM: Ingredient = &[b(Block::RED_MUSHROOM)];
 const BOWL: Ingredient = &[Item::BOWL];
 const SNOWBALL: Ingredient = &[Item::SNOWBALL];
+const PUMPKIN: Ingredient = &[b(Block::PUMPKIN)];
+const MILK: Ingredient = &[Item::MILK_BUCKET];
+const SUGAR: Ingredient = &[Item::SUGAR];
+const EGG: Ingredient = &[Item::EGG];
+const WHEAT: Ingredient = &[Item::WHEAT];
 
 fn shaped(rows: &'static [&'static str], key: &[(char, Ingredient)], result: Item, count: u8) -> Recipe {
     Recipe { shape: Shape::Shaped(rows, key.to_vec()), result: Stack::new(result, count) }
@@ -319,6 +325,8 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["##", "##"], &[('#', SNOWBALL)], b(Block::SNOW), 1),
             shaped(&[" # ", "#X#", " # "], &[('#', IRON), ('X', &[Item::REDSTONE])], Item::COMPASS, 1),
             shaped(&[" # ", "#X#", " # "], &[('#', GOLD), ('X', &[Item::REDSTONE])], Item::CLOCK, 1),
+            shaped(&["AAA", "BEB", "CCC"], &[('A', MILK), ('B', SUGAR), ('E', EGG), ('C', WHEAT)], Item::CAKE, 1),
+            shapeless(&[PUMPKIN, SUGAR, EGG], Item::PUMPKIN_PIE, 1),
             shaped(&[" #", "# "], &[('#', &[Item::IRON_INGOT])], Item::SHEARS, 1),
             shaped(&["# #", " # "], &[('#', GLASS)], Item::GLASS_BOTTLE, 3),
             shaped(&["X#X", "#X#", "X#X"], &[('X', &[Item::GUNPOWDER]), ('#', SAND)], b(Block::TNT), 1),
@@ -531,6 +539,34 @@ mod tests {
 
     const P: Item = b(Block::PLANKS);
     const C: Item = b(Block::COBBLESTONE);
+
+    #[test]
+    fn cake_returns_the_milk_buckets() {
+        let cells = [
+            (0, 0, Item::MILK_BUCKET),
+            (1, 0, Item::MILK_BUCKET),
+            (2, 0, Item::MILK_BUCKET),
+            (0, 1, Item::SUGAR),
+            (1, 1, Item::EGG),
+            (2, 1, Item::SUGAR),
+            (0, 2, Item::WHEAT),
+            (1, 2, Item::WHEAT),
+            (2, 2, Item::WHEAT),
+        ];
+        let mut g = Grid::new(3);
+        for (x, y, item) in cells {
+            g.cells[y * 3 + x] = Some(Stack::new(item, 1));
+        }
+        assert_eq!(g.result(), Some(Stack::new(Item::CAKE, 1)));
+        g.consume();
+        let buckets = g.cells.iter().flatten().filter(|s| s.item == Item::BUCKET).count();
+        assert_eq!(buckets, 3);
+        let mut pie = Grid::new(3);
+        pie.cells[0] = Some(Stack::new(Block::PUMPKIN, 1));
+        pie.cells[1] = Some(Stack::new(Item::SUGAR, 1));
+        pie.cells[2] = Some(Stack::new(Item::EGG, 1));
+        assert_eq!(pie.result(), Some(Stack::new(Item::PUMPKIN_PIE, 1)));
+    }
 
     #[test]
     fn compass_and_clock_use_redstone() {
