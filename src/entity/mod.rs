@@ -21,6 +21,7 @@ mod mob;
 pub mod model;
 pub mod orb;
 pub mod pearl;
+pub mod player_model;
 mod projectile;
 pub mod tnt;
 

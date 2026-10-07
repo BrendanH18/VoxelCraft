@@ -675,7 +675,7 @@ impl Renderer {
             cache: None,
         });
 
-        let entities = entity::EntityPass::new(&device, &layout, format);
+        let entities = entity::EntityPass::new(&device, &queue, &globals_layout, &blocks_layout, format);
         let block_models = block_model::BlockModelPass::new(&device, &layout, format);
         let weather = weather::WeatherPass::new(&device, &layout, format);
 

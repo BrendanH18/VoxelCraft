@@ -1917,12 +1917,18 @@ impl Game {
         };
         let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } =
             self.fog(&scene, &self.player);
-        let others: Vec<(&Player, DVec3)> = self
+        let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance)> = self
             .agents
             .players
             .values()
-            .filter(|b| b.active && !b.agent.vitals.is_dead())
-            .map(|b| (&b.agent.player, b.agent.previous_pos.lerp(b.agent.player.pos, alpha)))
+            .filter(|b| b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0))
+            .map(|b| {
+                (
+                    &b.agent.player,
+                    b.agent.previous_pos.lerp(b.agent.player.pos, alpha),
+                    b.hand.appearance(&b.agent.vitals, b.agent.eating(), alpha),
+                )
+            })
             .collect();
         let verts = self.mobs.entities.mesh(camera, self.player.forward(), fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
@@ -2027,13 +2033,13 @@ impl Game {
 /// fog range of `camera`.
 fn push_avatars(
     world: &World,
-    players: &[(&Player, DVec3)],
+    players: &[(&Player, DVec3, crate::entity::model::PlayerAppearance)],
     camera: DVec3,
     fog_end: f32,
     time: f32,
     verts: &mut Vec<crate::entity::model::EntityVertex>,
 ) {
-    for &(player, feet) in players {
+    for &(player, feet, appearance) in players {
         // A body around the camera (players can share a spot) would fill the view.
         let inside = (camera - feet).with_y(0.0).length() < 0.4 && (feet.y..feet.y + 1.9).contains(&camera.y);
         if !inside && feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
@@ -2041,9 +2047,12 @@ fn push_avatars(
                 player,
                 feet,
                 camera,
-                crate::entity::sky_light(world, player.eye()),
-                world.block_light(player.eye().floor().as_ivec3()) as f32 / 15.0,
+                (
+                    crate::entity::sky_light(world, player.eye()),
+                    world.block_light(player.eye().floor().as_ivec3()) as f32 / 15.0,
+                ),
                 time,
+                appearance,
                 verts,
             );
         }

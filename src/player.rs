@@ -37,6 +37,8 @@ pub struct MoveInput {
 }
 
 pub struct Player {
+    /// Distance-driven render animation, shared by host, controllers and CLI players.
+    pub animation: crate::entity::player_model::WalkAnimation,
     /// Feet position (bottom centre of the bounding box).
     pub pos: DVec3,
     pub vel: DVec3,
@@ -82,6 +84,7 @@ impl Default for Modifiers {
 impl Player {
     pub fn new(pos: DVec3) -> Self {
         Self {
+            animation: Default::default(),
             pos,
             vel: DVec3::ZERO,
             yaw: 0.0,
@@ -196,12 +199,14 @@ impl Player {
         if !world.is_loaded(self.pos.floor().as_ivec3()) {
             return;
         }
+        let before = self.pos;
         let steps = (dt / MAX_STEP).ceil().max(1.0) as u32;
         let h = dt / steps as f64;
         self.jumped = false;
         for _ in 0..steps {
             self.step(h, input, world);
         }
+        self.animation.update((self.pos - before).with_y(0.0).length() as f32, dt as f32, self.yaw, self.flying);
     }
 
     fn step(&mut self, dt: f64, input: MoveInput, world: &World) {

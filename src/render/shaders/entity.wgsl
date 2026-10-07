@@ -17,6 +17,10 @@ struct Globals {
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
+@group(1) @binding(0) var blocks: texture_2d_array<f32>;
+@group(1) @binding(1) var blocks_sampler: sampler;
+@group(1) @binding(2) var items: texture_2d_array<f32>;
+@group(2) @binding(0) var skin: texture_2d<f32>;
 
 // Night vision (Java's lightmap): brightens every light level toward full,
 // keeping its hue; g.effects.x is its strength.
@@ -34,6 +38,8 @@ struct VsOut {
     @location(3) dist: f32,
     @location(5) rel: vec3<f32>,
     @location(4) torch: f32,
+    @location(6) @interpolate(flat) material: u32,
+    @location(7) @interpolate(flat) layer: u32,
 };
 
 @vertex
@@ -46,6 +52,8 @@ fn vs_main(
 ) -> VsOut {
     var out: VsOut;
     out.torch = torch.x;
+    out.material = u32(round(torch.y * 255.0));
+    out.layer = u32(round(torch.z * 255.0)) + u32(round(torch.w * 255.0)) * 256u;
     out.clip = g.view_proj * vec4<f32>(pos, 1.0);
     out.uv = uv;
     out.color = color;
@@ -100,6 +108,18 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let n = hash2(floor(in.uv) + 0.5) - 0.5;
     // Colours are authored in sRGB, like the block textures.
     var base = pow(in.color.rgb, vec3<f32>(2.2)) * (1.0 + n * in.color.a);
+
+    if in.material == 1u {
+        let tex = textureLoad(skin, clamp(vec2<i32>(floor(in.uv)), vec2<i32>(0), vec2<i32>(63)), 0);
+        if tex.a < 0.5 { discard; }
+        base = tex.rgb;
+    } else if in.material == 2u {
+        let block = textureSampleLevel(blocks, blocks_sampler, in.uv, min(in.layer, 255u), 0.0);
+        let icon = textureSampleLevel(items, blocks_sampler, in.uv, max(in.layer, 256u) - 256u, 0.0);
+        let tex = select(block, icon, in.layer >= 256u);
+        if tex.a < 0.5 { discard; }
+        base = tex.rgb;
+    }
 
     // Sky light scaled by daylight, or warm torch light, whichever is brighter.
     let sky = curve(in.light.x) * g.params.z * daylight_tint(normal);

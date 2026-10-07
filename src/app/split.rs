@@ -188,13 +188,21 @@ impl Game {
                 Vec::new()
             };
             // Everyone else is visible from this view, the host included.
-            let mut others: Vec<(&crate::player::Player, DVec3)> = Vec::new();
-            if !self.vitals.is_dead() {
-                others.push((&self.player, host_feet));
+            let mut others: Vec<(&crate::player::Player, DVec3, crate::entity::model::PlayerAppearance)> = Vec::new();
+            if !self.vitals.is_dead() || self.vitals.since_damage() < 1.0 {
+                others.push((
+                    &self.player,
+                    host_feet,
+                    self.hand.appearance(&self.vitals, (self.actions.eat_timer / super::EAT_TIME) as f32, scene.alpha),
+                ));
             }
             for (other, b) in &self.agents.players {
-                if other != name && b.active && !b.agent.vitals.is_dead() {
-                    others.push((&b.agent.player, b.agent.previous_pos.lerp(b.agent.player.pos, scene.alpha)));
+                if other != name && b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0) {
+                    others.push((
+                        &b.agent.player,
+                        b.agent.previous_pos.lerp(b.agent.player.pos, scene.alpha),
+                        b.hand.appearance(&b.agent.vitals, b.agent.eating(), scene.alpha),
+                    ));
                 }
             }
             let verts = self.mobs.entities.mesh(camera, forward, fog.end, scene.time, scene.alpha);

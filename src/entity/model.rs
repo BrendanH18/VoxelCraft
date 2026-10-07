@@ -742,50 +742,7 @@ pub(super) fn push_cuboid(
     }
 }
 
-/// Visible hosted player avatar, using the same box model pass and lighting as mobs.
-pub fn build_player(
-    player: &crate::player::Player,
-    position: DVec3,
-    camera: DVec3,
-    sky: f32,
-    torch: f32,
-    time: f32,
-    out: &mut Vec<EntityVertex>,
-) {
-    const HEAD: &[Cuboid] = &[
-        cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [186, 132, 94], 18),
-        cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], [50, 60, 90], 0),
-        cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], [50, 60, 90], 0),
-    ];
-    const BODY: &[Cuboid] = &[cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], [28, 154, 176], 26)];
-    const ARM: &[Cuboid] = &[cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], [186, 132, 94], 18)];
-    const LEG: &[Cuboid] = &[cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], [48, 57, 120], 26)];
-    let swing = (time * 9.0).sin() * (player.vel.with_y(0.0).length() as f32 / 5.0).min(1.0) * 0.6;
-    let parts = [
-        part(BODY, [0.0; 3], Quat::IDENTITY),
-        part(HEAD, [0.0, 24.0, 0.0], Quat::from_rotation_x(-player.pitch)),
-        part(ARM, [-6.0, 22.0, 0.0], Quat::from_rotation_x(swing)),
-        part(ARM, [6.0, 22.0, 0.0], Quat::from_rotation_x(-swing)),
-        part(LEG, [-2.0, 12.0, 0.0], Quat::from_rotation_x(-swing)),
-        part(LEG, [2.0, 12.0, 0.0], Quat::from_rotation_x(swing)),
-    ];
-    let origin = (position - camera).as_vec3();
-    let body = Quat::from_rotation_y(FRAC_PI_2 - player.yaw);
-    let light = [(sky.clamp(0.0, 1.0) * 255.0) as u8, 0, 0, 0];
-    for (i, p) in parts.iter().enumerate() {
-        for c in p.boxes {
-            push_cuboid(
-                out,
-                c,
-                &|v| origin + body * (p.pivot + p.rot * v) / 16.0,
-                body * p.rot,
-                (light, (torch.clamp(0.0, 1.0) * 255.0) as u8),
-                (FIRE, 0.0),
-                i as f32,
-            );
-        }
-    }
-}
+pub use super::player_model::{PlayerAppearance, build_player};
 
 #[cfg(test)]
 mod tests {

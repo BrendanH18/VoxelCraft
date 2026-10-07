@@ -55,6 +55,22 @@ impl HandAnim {
         self.bob += (target - self.bob) * (dt * 10.0).min(1.0);
     }
 
+    pub(super) fn appearance(
+        &self,
+        vitals: &crate::simulation::survival::Vitals,
+        eating: f32,
+        alpha: f64,
+    ) -> crate::entity::model::PlayerAppearance {
+        crate::entity::model::PlayerAppearance {
+            held: self.shown,
+            swing: self.swing.map_or(0.0, |t| t / SWING_TIME),
+            using: eating,
+            hurt: vitals.since_damage() < 0.5,
+            death: vitals.is_dead().then(|| vitals.since_damage()),
+            alpha: alpha as f32,
+        }
+    }
+
     /// The hand to draw; `eating` is chewing progress 0..1.
     pub(super) fn view(&self, eating: f32, sky_light: f32, block_light: f32) -> Hand {
         Hand {
