@@ -341,6 +341,7 @@ pub(super) enum Ai {
 
 pub struct Mob {
     pub kind: MobKind,
+    pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
     /// Negative while a baby. Java's chicks start at -24000 and grow one tick at a time.
     pub age: i32,
@@ -424,6 +425,7 @@ impl Mob {
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,
+            wool_color: crate::color::DyeColor::White,
             sheared: false,
             age: 0,
             egg_timer: if kind == MobKind::Chicken { 300.0 + yaw.rem_euclid(TAU) / TAU * 300.0 } else { f32::MAX },

@@ -3,6 +3,7 @@
 
 pub mod agent;
 pub mod camera;
+pub mod color;
 pub mod control;
 pub mod crafting;
 pub mod enchant;

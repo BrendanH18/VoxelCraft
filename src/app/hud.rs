@@ -101,6 +101,10 @@ impl Game {
             }
         }
 
+        if let Some(t) = self.credits {
+            self.credits_ui(&mut ui, t);
+            return ui.verts;
+        }
         if self.portal_time > 0.0 {
             // The portal's purple swims in as it takes hold.
             let k = (self.portal_time / self.portal_needed()).min(1.0);

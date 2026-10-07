@@ -1,7 +1,7 @@
 //! Nether fortresses, laid out like Java's `NetherFortressPieces`.
 //!
-//! Each 432-block region of the Nether (Java's 27-chunk spacing; every
-//! region gets one until bastions exist) holds a fortress. Its layout is a
+//! Each 432-block region uses Java's shared Nether-complex placement:
+//! fortress weight 2, bastion weight 3. A fortress layout is a
 //! tree of pieces grown from a bridge crossing: bridges with pillars down
 //! through the lava sea, small crossings, stair rooms, blaze spawner
 //! thrones, and through a castle entrance, enclosed corridors with chests
@@ -317,17 +317,19 @@ pub enum Feature {
     DungeonChest(u64),
     /// A chest filled from the abandoned mineshaft table.
     MineshaftChest(u64),
+    BastionChest(u64, super::bastion::ChestKind),
 }
 
 /// Fortress layouts for one Nether, cached by region.
 pub struct Fortresses {
     seed: u64,
+    pub bastions: super::bastion::Bastions,
     cache: Mutex<FxHashMap<IVec2, Option<Arc<Fortress>>>>,
 }
 
 impl Fortresses {
     pub fn new(seed: u64) -> Self {
-        Self { seed, cache: Mutex::new(FxHashMap::default()) }
+        Self { seed, bastions: super::bastion::Bastions::new(seed), cache: Mutex::new(FxHashMap::default()) }
     }
 
     fn rng(&self, region: IVec2) -> Rng {
@@ -337,16 +339,16 @@ impl Fortresses {
     /// Corner of the start piece in `region`: the block (2, 2) of a chunk
     /// picked among the first 23 of each axis, like Java's random spread.
     fn start(&self, region: IVec2) -> (IVec2, Rng) {
-        let mut rng = self.rng(region);
-        let cx = rng.below(SPREAD) as i32;
-        let cz = rng.below(SPREAD) as i32;
-        (region * REGION + IVec2::new(cx * 16 + 2, cz * 16 + 2), rng)
+        (super::nether_complexes::placement(self.seed, region).0, self.rng(region))
     }
 
     /// The fortress of `region`, if any.
     pub fn get(&self, region: IVec2) -> Option<Arc<Fortress>> {
         if let Some(f) = self.cache.lock().unwrap().get(&region) {
             return f.clone();
+        }
+        if super::nether_complexes::placement(self.seed, region).1 != super::nether_complexes::Complex::Fortress {
+            return None;
         }
         let (start, rng) = self.start(region);
         let fortress = Some(Arc::new(Fortress::generate(rng, start.x, start.y)));
@@ -361,8 +363,8 @@ impl Fortresses {
     /// region and its neighbours.
     pub fn nearest(&self, p: IVec2) -> Option<IVec3> {
         let region = p.div_euclid(IVec2::splat(REGION));
-        (-1..=1)
-            .flat_map(|z| (-1..=1).map(move |x| region + IVec2::new(x, z)))
+        (-2..=2)
+            .flat_map(|z| (-2..=2).map(move |x| region + IVec2::new(x, z)))
             .filter_map(|region| self.get(region))
             .map(|fortress| {
                 let b = fortress.bounds;
@@ -454,7 +456,7 @@ impl Fortresses {
         let base = cpos * CHUNK_SIZE_I;
         let top = base + IVec3::splat(CHUNK_SIZE_I - 1);
         let chunk = Bounds { min: base, max: top };
-        let mut out = Vec::new();
+        let mut out = self.bastions.features(cpos);
         for fortress in self.near(IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
             for piece in fortress.pieces.iter().filter(|p| p.bounds.intersects(&chunk)) {
                 let found = match piece.kind {
@@ -818,7 +820,11 @@ mod tests {
         let a = Fortresses::new(9);
         let b = Fortresses::new(9);
         for r in [IVec2::ZERO, IVec2::new(-3, 5)] {
-            let (fa, fb) = (a.get(r).unwrap(), b.get(r).unwrap());
+            let (fa, fb) = (a.get(r), b.get(r));
+            assert_eq!(fa.is_some(), fb.is_some());
+            let (Some(fa), Some(fb)) = (fa, fb) else {
+                continue;
+            };
             assert_eq!(fa.pieces.len(), fb.pieces.len());
             assert!(fa.pieces.iter().zip(&fb.pieces).all(|(p, q)| p.bounds == q.bounds && p.kind == q.kind));
         }

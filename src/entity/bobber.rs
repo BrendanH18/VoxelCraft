@@ -429,7 +429,8 @@ mod tests {
         assert!(Enchantment::Lure.fits(Item::FISHING_ROD) && Enchantment::LuckOfTheSea.fits(Item::FISHING_ROD));
         assert!(!Enchantment::Lure.fits(Item::STICK));
         assert_eq!(Enchantment::ALL[26], Enchantment::VanishingCurse);
-        assert_eq!(Enchantment::ALL[27], Enchantment::Lure);
+        assert_eq!(Enchantment::ALL[27], Enchantment::FrostWalker);
+        assert_eq!(Enchantment::ALL[28], Enchantment::Lure);
         assert_eq!(crate::world::furnace::smelt(Item::SALMON), Some(Item::COOKED_SALMON));
 
         let mut rng = Rng::new(9);

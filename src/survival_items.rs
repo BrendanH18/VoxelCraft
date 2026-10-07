@@ -20,9 +20,15 @@ pub fn use_mob(
     let dir = player.forward().as_dvec3();
     let reach = world.raycast(eye, dir, 6.0).map_or(6.0, |(p, _)| eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5)));
     let Some((index, _)) = entities.raycast(eye, dir, reach) else { return false };
-    if held.item == Item::SHEARS && entities.shear(index) {
+    if (held.item.dye_color().is_some() || held.item == Item::SHEARS)
+        && let Some(shears) = entities.use_on_sheep(index, held.item)
+    {
         if !creative {
-            inventory.wear(slot, 1);
+            if shears {
+                inventory.wear(slot, 1);
+            } else {
+                inventory.take_one(slot);
+            }
         }
         return true;
     }
@@ -140,10 +146,10 @@ mod tests {
         assert!((mining::break_time(Block::WOOL, Some(Item::SHEARS)) - 0.24).abs() < 1e-6);
         let mut entities = Entities::new(7);
         entities.spawn(MobKind::Sheep, glam::DVec3::ZERO);
-        assert!(entities.shear(0));
-        assert!(!entities.shear(0));
+        assert_eq!(entities.use_on_sheep(0, Item::SHEARS), Some(true));
+        assert_eq!(entities.use_on_sheep(0, Item::SHEARS), None);
         let Stack { item, count, .. } = entities.items[0].stack;
-        assert_eq!(item, Block::WOOL.into());
+        assert_eq!(item, Item::from(Block::wool(entities.mobs[0].wool_color)));
         assert!((1..=3).contains(&count));
     }
 

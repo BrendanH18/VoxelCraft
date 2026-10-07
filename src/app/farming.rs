@@ -66,6 +66,7 @@ pub(super) fn picked_item(block: Block) -> Item {
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Potato, _))) => Item::POTATO,
         b if b.wart_age().is_some() => Item::NETHER_WART,
         Block::OAK_DOOR => Item::OAK_DOOR,
+        b if let Some(c) = b.bed_color() => c.bed(),
         b => b.into(),
     }
 }

@@ -1,6 +1,7 @@
 //! In-game slash command entry, scrollback and shared host command dispatch.
 use super::Game;
 use crate::render::ui::{Ui, WHITE};
+use crate::world::terrain::Dimension;
 use glam::{DVec3, IVec2, IVec3};
 use std::collections::VecDeque;
 use voxelcraft::agent::{Command, HELP, TimeQuery, WeatherKind};
@@ -208,6 +209,11 @@ impl Game {
                         self.player.pos.x.floor() as i32,
                         self.player.pos.z.floor() as i32,
                     )),
+                    "bastion_remnant" | "bastion" if self.dimension == Dimension::Nether => {
+                        crate::world::bastion::Bastions::new(self.world.generator.seed)
+                            .nearest(IVec2::new(self.player.pos.x.floor() as i32, self.player.pos.z.floor() as i32))
+                    }
+                    "bastion_remnant" | "bastion" => None,
                     "mineshaft" | "abandoned_mineshaft" => {
                         self.world.generator.mineshafts.nearest(self.player.pos.floor().as_ivec3())
                     }

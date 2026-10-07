@@ -222,6 +222,7 @@ pub enum Sprite {
     Wheat,
     MelonSlice,
     Bed,
+    ColoredBed([u8; 3]),
     Bow,
     FlintAndSteel,
     Nugget([u8; 3]),
@@ -528,6 +529,9 @@ impl Item {
     pub const NETHER_BRICK: Item = Item(288);
     pub const GLOWSTONE_DUST: Item = Item(289);
     pub const GOLD_NUGGET: Item = Item(290);
+    pub const MAGMA_CREAM: Item = Item(608);
+    pub const IRON_NUGGET: Item = Item(609);
+    pub const SLIME_BALL: Item = Item(610);
     pub const BUCKET: Item = Item(291);
     pub const WATER_BUCKET: Item = Item(292);
     pub const LAVA_BUCKET: Item = Item(293);
@@ -623,7 +627,39 @@ impl Item {
         }
     }
 
+    pub fn dye_color(self) -> Option<crate::color::DyeColor> {
+        self.0.checked_sub(576).filter(|&i| i < 16).map(|i| crate::color::DyeColor::ALL[i as usize])
+    }
+
+    pub fn bed_color(self) -> Option<crate::color::DyeColor> {
+        if self == Self::BED {
+            Some(crate::color::DyeColor::Red)
+        } else {
+            self.0
+                .checked_sub(592)
+                .filter(|&i| i < 15)
+                .map(|i| crate::color::DyeColor::ALL[if i == 14 { 15 } else { i } as usize])
+        }
+    }
+
     pub fn info(self) -> ItemInfo {
+        match self {
+            Self::MAGMA_CREAM => return item("magma cream", Sprite::Lump([242, 115, 30])),
+            Self::IRON_NUGGET => return item("iron nugget", Sprite::Nugget([202, 206, 212])),
+            Self::SLIME_BALL => return item("slimeball", Sprite::Lump([104, 180, 83])),
+            _ => {}
+        }
+        if let Some(c) = self.bed_color() {
+            return ItemInfo {
+                name: if self == Self::BED { "bed" } else { c.bed_name() },
+                kind: ItemKind::Material,
+                max_stack: 1,
+                sprite: Sprite::ColoredBed(c.rgb()),
+            };
+        }
+        if let Some(c) = self.dye_color() {
+            return item(c.dye_name(), Sprite::Powder(c.rgb()));
+        }
         if let Some(b) = self.block() {
             return ItemInfo { name: b.name(), kind: ItemKind::Block(b), max_stack: 64, sprite: Sprite::Stick };
         }
@@ -661,6 +697,10 @@ impl Item {
         }
         if let Some(info) = self.0.checked_sub(SURVIVAL_ITEM).and_then(|i| SURVIVAL_ITEMS.get(i as usize)) {
             return *info;
+        }
+        // Saves from the integration branch stored shears at 607.
+        if self.0 == 607 {
+            return SURVIVAL_ITEMS[0];
         }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
     }
@@ -703,6 +743,9 @@ impl Item {
 
     /// Uses before breaking, for tools and armor.
     pub fn durability(self) -> Option<u16> {
+        if self == Self::SHEARS {
+            return Some(238);
+        }
         match self.info().kind {
             ItemKind::Tool(_, tier) => Some(tier.durability()),
             ItemKind::Armor(piece, material) => Some(material.durability(piece)),
@@ -766,12 +809,16 @@ impl Item {
     }
 
     pub fn from_name(name: &str) -> Option<Item> {
+        if name.replace('_', " ") == "red bed" {
+            return Some(Item::BED);
+        }
         if let Some(b) = Block::from_name(name) {
             // Doors and nether wart are placed by an item, not as a block.
             return Some(match b {
                 b if (149..=164).contains(&b.0) => Item::OAK_DOOR,
                 b if b.wart_age().is_some() => Item::NETHER_WART,
                 b if b.cake_bites().is_some() => Item::CAKE,
+                b if let Some(c) = b.bed_color() => c.bed(),
                 b => Item::from_block(b),
             });
         }
@@ -790,6 +837,8 @@ impl Item {
             .chain(potions)
             .chain(extra)
             .chain((0..SURVIVAL_ITEMS.len() as u16).map(|i| Item(SURVIVAL_ITEM + i)))
+            .chain((576..607).map(Item))
+            .chain((608..611).map(Item))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -817,6 +866,15 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if (SURVIVAL_ITEM..SURVIVAL_ITEM + SURVIVAL_ITEMS.len() as u16).contains(&i) => {
             Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + EXTRA_ITEMS.len() as u16 + i - SURVIVAL_ITEM)
         }
+        // The integration branch stored shears at 607. They are item 512 now;
+        // a saved 607 still draws the same icon.
+        607 => Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + EXTRA_ITEMS.len() as u16),
+        // Dyes and colour items, then the bastion/mob materials, after the survival items.
+        576..=606 | 608..=610 => {
+            let base = materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + EXTRA_ITEMS.len() as u16;
+            let past_shears = u16::from(item.0 > 607);
+            Some(base + SURVIVAL_ITEMS.len() as u16 + item.0 - 576 - past_shears)
+        }
         _ => None,
     }
 }
@@ -827,6 +885,7 @@ pub const fn icon_count() -> u32 {
         + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32
         + EXTRA_ITEMS.len() as u32
         + SURVIVAL_ITEMS.len() as u32
+        + 34
 }
 
 /// Compass needle frames, after the item icons. Frame 0 points up.

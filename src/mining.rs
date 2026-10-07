@@ -26,11 +26,11 @@ pub fn break_time(block: Block, held: Option<Item>) -> f32 {
 /// How fast the held item digs `block` (1 for a hand or the wrong tool).
 fn tool_speed(block: Block, held: Option<Item>) -> f32 {
     if held == Some(Item::SHEARS) {
+        if block.wool_color().is_some() {
+            return 5.0;
+        }
         if block.is_leaves() || block == Block::COBWEB {
             return 15.0;
-        }
-        if block == Block::WOOL {
-            return 5.0;
         }
     }
     match held.and_then(Item::as_tool) {
@@ -76,8 +76,8 @@ pub fn dig_time(block: Block, digger: Digger) -> f32 {
 /// Durability a tool loses for breaking a block (swords wear faster, as
 /// they're not meant for it) or for hitting a mob (the reverse).
 pub fn wear(held: Item, hitting_mob: bool) -> u16 {
-    if held == Item::SHEARS && !hitting_mob {
-        return 1;
+    if held == Item::SHEARS {
+        return (!hitting_mob) as u16;
     }
     match (held.as_tool(), hitting_mob) {
         (Some((ToolKind::Sword, _)), false)
@@ -184,6 +184,7 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::QUARTZ_ORE
             | Block::LAPIS_ORE
             | Block::GLASS
+            | Block::GLASS_PANE
             | Block::GRAVEL
             | Block::GLOWSTONE
             | Block::ICE
@@ -193,8 +194,11 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::SNOW
             | Block::COBWEB
             | Block::DEEPSLATE
+            | Block::GILDED_BLACKSTONE
     ) || b.is_leaves()
-        || b.is_deepslate_ore();
+        || b.is_deepslate_ore()
+        || b.stained_glass_color().is_some()
+        || b.stained_pane_color().is_some();
     (silky && Item::from(b).is_valid()).then(|| Item::from(b))
 }
 

@@ -40,6 +40,7 @@ pub enum Enchantment {
     Mending,
     BindingCurse,
     VanishingCurse,
+    FrostWalker,
     Lure,
     LuckOfTheSea,
 }
@@ -180,12 +181,13 @@ static DEFS: [Def; Enchantment::COUNT] = [
     in_group(treasure(def("mending", 1, 2, (25, 25), (75, 25), 4, Fits::Durable)), Group::Bow),
     curse(def("curse of binding", 1, 1, (25, 0), (50, 0), 8, Fits::Armor)),
     curse(def("curse of vanishing", 1, 1, (25, 0), (50, 0), 8, Fits::Durable)),
+    treasure(def("frost walker", 2, 2, (10, 10), (25, 10), 4, Fits::Feet)),
     def("lure", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
     def("luck of the sea", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
 ];
 
 impl Enchantment {
-    pub const COUNT: usize = 29;
+    pub const COUNT: usize = 30;
     pub const ALL: [Enchantment; Enchantment::COUNT] = {
         let mut all = [Enchantment::Protection; Enchantment::COUNT];
         let mut i = 0;
@@ -219,6 +221,9 @@ impl Enchantment {
 
     /// Whether `self` and `other` may share an item.
     pub fn compatible(self, other: Enchantment) -> bool {
+        if matches!((self, other), (Self::FrostWalker, Self::DepthStrider) | (Self::DepthStrider, Self::FrostWalker)) {
+            return false;
+        }
         let (a, b) = (self.def().group, other.def().group);
         self != other && (a == Group::None || a != b)
     }

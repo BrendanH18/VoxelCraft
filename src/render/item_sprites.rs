@@ -336,7 +336,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 })
             })
         }
-        Sprite::Bed => {
+        Sprite::Bed | Sprite::ColoredBed(_) => {
             // Side view: pillow on the left, red blanket, wooden frame, legs.
             let bed = |x: i32, y: i32| {
                 ((5..=11).contains(&y) && (1..=14).contains(&x))
@@ -345,7 +345,13 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let c = match (x, y) {
                 (_, 10..) => [137, 103, 39],
                 (1..=4, _) => [236, 236, 230],
-                _ => [178, 34, 34],
+                _ => {
+                    if let Sprite::ColoredBed(c) = sprite {
+                        c
+                    } else {
+                        [178, 34, 34]
+                    }
+                }
             };
             shaded(&bed, x, y, c, 0.05)
         }

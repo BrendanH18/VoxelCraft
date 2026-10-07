@@ -17,6 +17,7 @@ pub mod block;
 pub mod brewing;
 pub mod chest;
 pub mod chunk;
+pub mod colors;
 pub mod dungeon;
 pub mod end;
 pub mod end_portal;
@@ -32,6 +33,8 @@ mod height;
 pub(crate) mod lighting;
 pub mod mineshaft;
 pub mod nether;
+pub mod nether_blocks;
+pub mod nether_complexes;
 pub mod noise;
 pub mod ore;
 mod portal;
@@ -910,7 +913,8 @@ mod tests {
     #[test]
     fn fortress_chunks_register_loot_chests_and_blaze_spawners() {
         use super::fortress::{Fortresses, Kind};
-        let fortress = Fortresses::new(1).get(IVec2::ZERO).unwrap();
+        let layouts = Fortresses::new(1);
+        let fortress = (-2..=2).find_map(|x| layouts.get(IVec2::new(x, 0))).unwrap();
         let generator = Arc::new(Generator::for_dimension(1, super::terrain::Dimension::Nether));
         let mut found = (None, None);
         for piece in &fortress.pieces {
@@ -1251,6 +1255,28 @@ mod tests {
         fall(&mut world);
         assert_eq!([at(&world, 1, y + 1), at(&world, 1, y + 2), at(&world, 1, y + 3)], column[1..4]);
         assert_eq!(at(&world, 1, y + 4), Block::AIR);
+    }
+
+    #[test]
+    fn concrete_powder_solidifies_in_and_beside_water() {
+        use crate::color::DyeColor;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let y = 200;
+        for x in -2..=2 {
+            for z in -2..=2 {
+                world.edit(IVec3::new(x, y, z), Block::STONE, false);
+            }
+        }
+        world.set_block(IVec3::new(0, y + 1, 0), Block::WATER);
+        world.set_block(IVec3::new(1, y + 1, 0), Block::concrete_powder(DyeColor::Red));
+        assert_eq!(world.get_block(IVec3::new(1, y + 1, 0)), Some(Block::concrete(DyeColor::Red)));
+        world.set_block(IVec3::new(2, y + 1, 0), Block::WATER);
+        world.set_block(IVec3::new(2, y + 4, 0), Block::concrete_powder(DyeColor::Blue));
+        for _ in 0..180 {
+            world.tick_falling(1.0 / 60.0);
+        }
+        assert_eq!(world.get_block(IVec3::new(2, y + 1, 0)), Some(Block::concrete(DyeColor::Blue)));
+        assert!(world.falling_blocks().is_empty());
     }
 
     #[test]

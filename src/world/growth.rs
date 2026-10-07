@@ -147,6 +147,9 @@ impl World {
             }
             // Gravel sometimes gives flint instead of itself (10%, 14%,
             // 25%, then always with fortune).
+            Block::GILDED_BLACKSTONE if self.one_in([10, 7, 4, 1][fortune.min(3) as usize]) => {
+                out = vec![Stack::new(Item::GOLD_NUGGET, (2 + self.roll() % 4) as u8)];
+            }
             Block::GRAVEL if self.one_in([10, 7, 4, 1][fortune.min(3) as usize]) => {
                 out = vec![Stack::new(Item::FLINT, 1)]
             }
@@ -506,6 +509,25 @@ mod tests {
         let silk = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::SilkTouch, 1);
         world.spill_mined(IVec3::ZERO, Block::SNOW, silk);
         assert_eq!(world.drops, vec![(IVec3::ZERO, Stack::new(Block::SNOW, 1))]);
+    }
+
+    #[test]
+    fn gilded_blackstone_fortune_and_silk_follow_java() {
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        let silk = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::SilkTouch, 1);
+        world.spill_mined(IVec3::ZERO, Block::GILDED_BLACKSTONE, silk);
+        assert_eq!(world.drops.pop().unwrap().1, Stack::new(Block::GILDED_BLACKSTONE, 1));
+        let fortune = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::Fortune, 3);
+        for _ in 0..100 {
+            world.spill_mined(IVec3::ZERO, Block::GILDED_BLACKSTONE, fortune);
+        }
+        assert!(world.drops.iter().all(|(_, s)| s.item == Item::GOLD_NUGGET && (2..=5).contains(&s.count)));
+        world.drops.clear();
+        for _ in 0..10000 {
+            world.spill_block(IVec3::ZERO, Block::GILDED_BLACKSTONE);
+        }
+        let nuggets = world.drops.iter().filter(|(_, s)| s.item == Item::GOLD_NUGGET).count();
+        assert!((850..1150).contains(&nuggets), "10 percent chance, got {nuggets}");
     }
 
     #[test]

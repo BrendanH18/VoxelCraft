@@ -311,6 +311,9 @@ impl Game {
     /// dimension. Falling into an End portal takes you at once: to the End's
     /// obsidian platform, or out of the End to your spawn point.
     pub(super) fn update_portal(&mut self, dt: f64) {
+        if self.credits.is_some() {
+            return;
+        }
         if self.dimension == Dimension::End
             && !self.vitals.is_dead()
             && let Some(cell) = self.touched(Block::END_GATEWAY)
@@ -321,6 +324,9 @@ impl Game {
         // Java's End portal block spans 6..12 sixteenths: coming up from
         // below takes you only once you reach it.
         if !self.vitals.is_dead() && self.in_portal(Block::END_PORTAL, (6.0 / 16.0, 0.75)) {
+            if self.dimension == Dimension::End && self.begin_credits() {
+                return;
+            }
             let (to, arrival) = match self.dimension {
                 Dimension::End => (Dimension::Overworld, Arrival::Respawn),
                 _ => (Dimension::End, Arrival::EndSpawn),

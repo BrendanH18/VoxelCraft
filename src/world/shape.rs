@@ -197,7 +197,11 @@ fn wall_connects(n: Block) -> bool {
 
 /// Whether iron bars join `n` on a side: other bars and full blocks.
 pub fn pane_connects(n: Block) -> bool {
-    n == Block::IRON_BARS || n.is_opaque()
+    n == Block::IRON_BARS
+        || n == Block::GLASS
+        || n.is_glass_pane()
+        || n.stained_glass_color().is_some()
+        || n.is_opaque()
 }
 
 /// Where an open door's panel lies: it swings to the left of someone
@@ -263,6 +267,14 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
         }
         Some(Shaped::Gate { facing, open }) => {
             out.push_turned(if open { &GATE_OPEN[..] } else { &GATE_CLOSED[..] }, facing)
+        }
+        Some(Shaped::Chain(axis)) => {
+            let (min, max) = match axis {
+                1 => ([0, 6, 6], [16, 9, 9]),
+                2 => ([6, 6, 0], [9, 9, 16]),
+                _ => ([6, 0, 6], [9, 16, 9]),
+            };
+            out.push(b(min, max));
         }
         Some(Shaped::Rail) => out.push(RAIL),
         Some(Shaped::Cake { bites }) => out.push(b([1 + 2 * bites, 0, 1], [15, 8, 15])),
