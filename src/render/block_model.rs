@@ -200,13 +200,13 @@ impl BlockModelPass {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         models: &[BlockModel],
-        hand: Option<(&super::hand::Hand, Vec3, f32, f32)>,
+        hand: Option<(&super::hand::Hand, Vec3, f32, f32, glam::Mat4)>,
         camera: DVec3,
     ) {
         let mut verts = vertices(models, camera);
         self.count = verts.len() as u32;
-        if let Some((hand, forward, fov_y, aspect)) = hand {
-            verts.extend(super::hand::vertices(hand, forward, fov_y, aspect, &mut self.sprite_masks));
+        if let Some((hand, forward, fov_y, aspect, view_effect)) = hand {
+            verts.extend(super::hand::vertices(hand, forward, fov_y, aspect, view_effect, &mut self.sprite_masks));
         }
         self.hand_count = verts.len() as u32 - self.count;
         if verts.len() > self.capacity {

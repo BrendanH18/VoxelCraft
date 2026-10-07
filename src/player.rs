@@ -118,6 +118,13 @@ impl Player {
         self.pitch = (self.pitch - dy).clamp(-1.5533, 1.5533); // ±89°
     }
 
+    /// Track the source of damage for Java's directional camera tilt.
+    pub fn hurt_from(&mut self, push: DVec3) {
+        if push.with_y(0.0).length_squared() > 1e-8 {
+            self.animation.hurt_direction = (-push.z).atan2(-push.x) as f32 - self.yaw + std::f32::consts::FRAC_PI_2;
+        }
+    }
+
     pub fn head_in_water(&self, world: &World) -> bool {
         let eye = self.eye();
         world.get_block(eye.floor().as_ivec3()).is_some_and(|b| {
@@ -206,7 +213,13 @@ impl Player {
         for _ in 0..steps {
             self.step(h, input, world);
         }
-        self.animation.update((self.pos - before).with_y(0.0).length() as f32, dt as f32, self.yaw, self.flying);
+        self.animation.update(
+            (self.pos - before).with_y(0.0).length() as f32,
+            dt as f32,
+            self.yaw,
+            self.flying,
+            self.on_ground,
+        );
     }
 
     fn step(&mut self, dt: f64, input: MoveInput, world: &World) {

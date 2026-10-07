@@ -12,6 +12,7 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod armor;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
@@ -415,7 +416,13 @@ impl Entities {
 
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
-        self.mobs.push(Mob::new(kind, pos, yaw));
+        let mut mob = Mob::new(kind, pos, yaw);
+        if matches!(kind, MobKind::Zombie | MobKind::Skeleton) {
+            let (armor, glint) = armor::roll_monster_armor(&mut self.rng);
+            mob.armor = armor;
+            mob.armor_glint = glint;
+        }
+        self.mobs.push(mob);
     }
 
     /// Snapshot positions and advance entity simulation by `dt` game seconds.

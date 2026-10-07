@@ -19,14 +19,14 @@ pub(super) struct Mobs {
     /// until it's released.
     pub(super) attack_held: bool,
     /// `--spawn` requests, applied once the world has loaded.
-    pending: Vec<(MobKind, IVec3)>,
+    pending: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>,
     /// `--wait`: seconds to keep simulating before a `--screenshot`.
     wait: f64,
     wait_start: Option<Instant>,
 }
 
 impl Mobs {
-    pub fn new(seed: u64, spawn: Vec<(MobKind, IVec3)>, wait: f64) -> Self {
+    pub fn new(seed: u64, spawn: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>, wait: f64) -> Self {
         Self {
             entities: Entities::new(seed),
             attack_cooldown: 0.0,
@@ -152,11 +152,17 @@ impl Game {
 
     /// Applies `--spawn` requests (with the other `--place` edits).
     pub(super) fn spawn_pending_mobs(&mut self) {
-        for (kind, mut pos) in std::mem::take(&mut self.mobs.pending) {
+        for (kind, mut pos, armor) in std::mem::take(&mut self.mobs.pending) {
             if pos.y == i32::MIN {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
             }
             self.mobs.entities.spawn(kind, pos.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+            if let Some(equipped) = armor
+                && let Some(mob) = self.mobs.entities.mobs.last_mut()
+            {
+                mob.armor = [Some(equipped.kind); 4];
+                mob.armor_glint = if equipped.glint { 0b1111 } else { 0 };
+            }
         }
     }
 
@@ -199,6 +205,7 @@ impl Game {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
                     if self.damage_player_armored(damage, cause) > 0.0 {
+                        self.player.hurt_from(knockback.as_dvec3());
                         self.player.vel += knockback.as_dvec3();
                     }
                 }
@@ -338,6 +345,7 @@ impl Game {
             && self.damage_player_armored(damage, cause) > 0.0
         {
             let away = (mid - center).normalize_or(DVec3::Y);
+            self.player.hurt_from(away);
             self.player.vel += away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
         }
         if self.arrival.is_some() {

@@ -91,6 +91,8 @@ fn group_mask(faces: u8, pass: usize) -> u8 {
 pub struct FrameParams {
     pub camera: DVec3,
     pub forward: Vec3,
+    /// Hurt tilt and walking bob in camera view space.
+    pub view_effect: glam::Mat4,
     pub fov_y: f32,
     pub sky_color: [f64; 3],
     pub fog_color: [f32; 3],
@@ -1070,7 +1072,7 @@ impl Renderer {
         // wgpu NDC is DirectX-style: Z in [0, 1], Y up.
         let proj = glam::camera::rh::proj::directx::perspective_infinite_reverse(p.fov_y, vp.aspect(), 0.05);
         let view_mat = glam::camera::rh::view::look_to_mat4(Vec3::ZERO, p.forward, Vec3::Y);
-        let view_proj = proj * view_mat;
+        let view_proj = proj * p.view_effect * view_mat;
         let frustum = Frustum::new(view_proj);
 
         // Cull and sort (front to back for early-z; translucents walk it
@@ -1131,7 +1133,7 @@ impl Renderer {
             let verts = self.outline_vertices(b, lo, hi, p.camera);
             self.queue.write_buffer(&self.line_buf, 0, bytemuck::cast_slice(&verts));
         }
-        let hand = p.hand.as_ref().map(|h| (h, p.forward, p.fov_y, vp.aspect()));
+        let hand = p.hand.as_ref().map(|h| (h, p.forward, p.fov_y, vp.aspect(), p.view_effect));
         self.block_models.set(&self.device, &self.queue, &p.block_models, hand, p.camera);
         let hud = &p.ui;
         if hud.len() > self.ui_capacity {

@@ -379,6 +379,10 @@ pub struct Mob {
     detour_side: f64,
     /// Seconds until the next idle call.
     ambient_timer: f32,
+    /// Helmet, chest, leggings, boots. Zombies and skeletons roll these.
+    pub armor: [Option<super::armor::ArmorKind>; 4],
+    /// Bit per armor slot: enchantment glint.
+    pub armor_glint: u8,
     /// A hurt or death cry waiting to be reported by the next update.
     cry: Option<MobSound>,
     /// Endermen: teleport away at the next update (an arrow, water, fire).
@@ -436,6 +440,8 @@ impl Mob {
             detour: 0.0,
             detour_side: 1.0,
             ambient_timer: 2.0 + (yaw * 1000.0).rem_euclid(10.0),
+            armor: [None; 4],
+            armor_glint: 0,
             cry: None,
             teleport_pending: false,
             stare: 0.0,

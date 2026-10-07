@@ -27,9 +27,6 @@ pub struct Hand {
     pub swing: f32,
     /// 0 when raised, 1 when lowered out of view (switching items).
     pub equip: f32,
-    /// Walking bob: phase in half-strides and strength 0..1.
-    pub bob_phase: f32,
-    pub bob: f32,
     /// Eating: 0..1 while chewing, moving the food to the mouth.
     pub eating: f32,
     pub sky_light: f32,
@@ -180,6 +177,7 @@ pub(super) fn vertices(
     forward: Vec3,
     fov_y: f32,
     aspect: f32,
+    view_effect: Mat4,
     masks: &mut SpriteMasks,
 ) -> Vec<BlockVertex> {
     let mut out = Vec::new();
@@ -189,16 +187,19 @@ pub(super) fn vertices(
     let u = r.cross(f);
     let k = (fov_y / 2.0).tan() / (HAND_FOV / 2.0).tan();
     let to_world = Mat4::from_cols(r.extend(0.0), u.extend(0.0), (-f).extend(0.0), Vec3::ZERO.extend(1.0))
-        * Mat4::from_scale(Vec3::new(k, k, 1.0));
+        // The world projection already applies view_effect. Conjugate it
+        // around the FOV correction so the hand sees the identical Java bob
+        // in its own fixed 70-degree projection, exactly once.
+        * view_effect.inverse()
+        * Mat4::from_scale(Vec3::new(k, k, 1.0))
+        * view_effect;
     let mut b = Builder { out: &mut out, to_world, light: (hand.sky_light, hand.block_light) };
 
     let s = hand.swing;
     let root = s.sqrt();
-    // Walking bob: a sway and a dip each stride.
-    let phase = hand.bob_phase * PI;
     // Narrow views slide the hand toward the centre without squashing it.
     let inward = 0.56 * (1.0 - (aspect / WIDE_ASPECT).clamp(0.0, 1.0));
-    let bob = translate(phase.sin() * hand.bob * 0.5 * 0.1 - inward, -(phase.cos() * hand.bob).abs() * 0.1, 0.0);
+    let bob = translate(-inward, 0.0, 0.0);
 
     let Some(item) = hand.item else {
         // The bare arm (Minecraft's `renderPlayerArm`).
@@ -291,7 +292,7 @@ mod tests {
             [None, Some(Item::from_block(Block::STONE)), Some(Item::STICK), Some(Item::from_block(Block::TORCH))]
         {
             let hand = Hand { item, sky_light: 1.0, ..Default::default() };
-            let v = vertices(&hand, forward, 70f32.to_radians(), WIDE_ASPECT, &mut masks);
+            let v = vertices(&hand, forward, 70f32.to_radians(), WIDE_ASPECT, Mat4::IDENTITY, &mut masks);
             assert!(!v.is_empty() && v.len().is_multiple_of(6), "{item:?}");
             let (lo, hi) = bounds(&v);
             // In front of the eye (looking down -Z), right of and below centre.
@@ -300,7 +301,7 @@ mod tests {
         }
         // Lowered for an item switch, it drops out of view.
         let low = Hand { item: Some(Item::STICK), equip: 1.0, ..Default::default() };
-        let (_, hi) = bounds(&vertices(&low, forward, 70f32.to_radians(), WIDE_ASPECT, &mut masks));
+        let (_, hi) = bounds(&vertices(&low, forward, 70f32.to_radians(), WIDE_ASPECT, Mat4::IDENTITY, &mut masks));
         assert!(hi.y < -0.3, "{hi}");
     }
 
@@ -311,7 +312,7 @@ mod tests {
         // Leftmost screen-x of the hand as a fraction of the half-width.
         let left_edge = |aspect: f32, masks: &mut SpriteMasks| {
             let hand = Hand { item: Some(Item::STICK), sky_light: 1.0, ..Default::default() };
-            let v = vertices(&hand, Vec3::NEG_Z, fov, aspect, masks);
+            let v = vertices(&hand, Vec3::NEG_Z, fov, aspect, Mat4::IDENTITY, masks);
             v.iter().map(|v| v.pos[0] / -v.pos[2] / ((fov / 2.0).tan() * aspect)).fold(f32::MAX, f32::min)
         };
         let wide = left_edge(WIDE_ASPECT, &mut masks);
@@ -322,8 +323,27 @@ mod tests {
         let mut a = SpriteMasks::default();
         let hand = Hand { item: Some(Item::STICK), ..Default::default() };
         assert_eq!(
-            bounds(&vertices(&hand, Vec3::NEG_Z, fov, 2.4, &mut a)),
-            bounds(&vertices(&hand, Vec3::NEG_Z, fov, WIDE_ASPECT, &mut a))
+            bounds(&vertices(&hand, Vec3::NEG_Z, fov, 2.4, Mat4::IDENTITY, &mut a)),
+            bounds(&vertices(&hand, Vec3::NEG_Z, fov, WIDE_ASPECT, Mat4::IDENTITY, &mut a))
         );
+    }
+    #[test]
+    fn camera_bob_is_applied_once_at_the_fixed_hand_fov() {
+        let hand = Hand { item: Some(Item::STICK), sky_light: 1.0, ..Default::default() };
+        let effect = Mat4::from_translation(Vec3::new(0.04, -0.08, 0.))
+            * Mat4::from_rotation_z(0.07)
+            * Mat4::from_rotation_x(0.01);
+        let mut masks = SpriteMasks::default();
+        let reference = vertices(&hand, Vec3::NEG_Z, HAND_FOV, WIDE_ASPECT, Mat4::IDENTITY, &mut masks);
+        let projection = |fov| glam::camera::rh::proj::directx::perspective_infinite_reverse(fov, WIDE_ASPECT, 0.05);
+        for degrees in [30f32, 70., 110.] {
+            let fov = degrees.to_radians();
+            let actual = vertices(&hand, Vec3::NEG_Z, fov, WIDE_ASPECT, effect, &mut masks);
+            for (a, b) in actual.iter().zip(&reference) {
+                let clip_a = projection(fov) * effect * Vec3::from_array(a.pos).extend(1.);
+                let clip_b = projection(HAND_FOV) * effect * Vec3::from_array(b.pos).extend(1.);
+                assert!((clip_a / clip_a.w).abs_diff_eq(clip_b / clip_b.w, 1e-5));
+            }
+        }
     }
 }

@@ -52,7 +52,8 @@ pub struct Args {
     /// Opens the container at this block once loaded (screenshots).
     pub open_block: Option<glam::IVec3>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
-    pub spawn: Vec<(entity::MobKind, glam::IVec3)>,
+    /// The optional armor material forces a full set on a zombie or skeleton.
+    pub spawn: Vec<(entity::MobKind, glam::IVec3, Option<entity::armor::Equipped>)>,
     /// Seconds to keep running after loading before `--screenshot`.
     pub wait: f64,
     /// x,y,z,yaw_deg,pitch_deg
@@ -131,10 +132,13 @@ voxelcraft [options]
   --wear item       put on a piece of armor at startup (repeatable)
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
-  --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig, cow, sheep,
+  --spawn kind,x,y,z[,material[,glint]]
+                    spawn a mob once loaded (repeatable; pig, cow, sheep,
                     chicken, zombie, skeleton, creeper, spider,
                     zombified_piglin, enderman, blaze or silverfish; y may be ~
-                    for the terrain surface, e.g. zombie,4,~,10)
+                    for the terrain surface, e.g. zombie,4,~,10). material
+                    (leather, chainmail, iron, gold, diamond, netherite) and
+                    glint equip a zombie or skeleton
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies or rain (clear, rain)
@@ -286,15 +290,33 @@ fn parse_args() -> Result<Args, String> {
                 let v = value("--spawn")?;
                 let parts: Vec<&str> = v.split(',').map(str::trim).collect();
                 let bad = || format!("--spawn needs kind,x,y,z (got {v})");
-                if parts.len() != 4 {
+                if !(4..=6).contains(&parts.len()) {
                     return Err(bad());
                 }
                 let kind = entity::MobKind::from_name(parts[0]).ok_or_else(bad)?;
-                let n: Vec<i32> = parts[1..]
+                let n: Vec<i32> = parts[1..4]
                     .iter()
                     .map(|s| if *s == "~" { Ok(i32::MIN) } else { s.parse().map_err(|_| bad()) })
                     .collect::<Result<_, _>>()?;
-                args.spawn.push((kind, glam::IVec3::new(n[0], n[1], n[2])));
+                let armor = if parts.len() >= 5 {
+                    if !matches!(kind, entity::MobKind::Zombie | entity::MobKind::Skeleton) {
+                        return Err("--spawn armor is only for zombies and skeletons".into());
+                    }
+                    let material = entity::armor::ArmorKind::from_name(parts[4])
+                        .ok_or_else(|| format!("--spawn: unknown armor {}", parts[4]))?;
+                    let glint = if parts.len() == 6 {
+                        if parts[5] != "glint" {
+                            return Err("--spawn: expected glint after the armor material".into());
+                        }
+                        true
+                    } else {
+                        false
+                    };
+                    Some(entity::armor::Equipped { kind: material, glint })
+                } else {
+                    None
+                };
+                args.spawn.push((kind, glam::IVec3::new(n[0], n[1], n[2]), armor));
             }
             "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),

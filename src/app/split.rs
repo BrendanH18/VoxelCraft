@@ -163,7 +163,7 @@ impl Game {
                 bot.seen_swings = a.swings;
                 bot.hand.swing();
             }
-            bot.hand.update(dt, a.inventory.get(a.selected).map(|s| s.item), walked, a.player.on_ground);
+            bot.hand.update(dt, a.inventory.get(a.selected).map(|s| s.item));
         }
     }
 
@@ -199,7 +199,12 @@ impl Game {
                 others.push((
                     &self.player,
                     host_feet,
-                    self.hand.appearance(&self.vitals, (self.actions.eat_timer / super::EAT_TIME) as f32, scene.alpha),
+                    self.hand.appearance(
+                        &self.vitals,
+                        (self.actions.eat_timer / super::EAT_TIME) as f32,
+                        scene.alpha,
+                        self.inventory.armor,
+                    ),
                 ));
             }
             for (other, b) in &self.agents.players {
@@ -207,7 +212,7 @@ impl Game {
                     others.push((
                         &b.agent.player,
                         b.agent.previous_pos.lerp(b.agent.player.pos, scene.alpha),
-                        b.hand.appearance(&b.agent.vitals, b.agent.eating(), scene.alpha),
+                        b.hand.appearance(&b.agent.vitals, b.agent.eating(), scene.alpha, b.agent.inventory.armor),
                     ));
                 }
             }
@@ -223,7 +228,7 @@ impl Game {
                         self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
                     ),
                     scene.time,
-                    bot.hand.appearance(&a.vitals, pad.map_or(a.eating(), |p| p.1), scene.alpha),
+                    bot.hand.appearance(&a.vitals, pad.map_or(a.eating(), |p| p.1), scene.alpha, a.inventory.armor),
                     verts,
                 );
             }
@@ -233,6 +238,12 @@ impl Game {
             let params = FrameParams {
                 camera,
                 forward,
+                view_effect: voxelcraft::camera::view_effect(
+                    &a.player,
+                    &a.vitals,
+                    scene.alpha as f32,
+                    self.settings.view_bobbing,
+                ),
                 fov_y: self.settings.fov.to_radians(),
                 sky_color: fog.color.map(|c| c as f64),
                 fog_color: fog.color,

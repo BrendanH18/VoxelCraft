@@ -939,6 +939,7 @@ impl Game {
         let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
         let taken = self.vitals.damage(amount, cause, self.mode == GameMode::Creative);
         if taken > 0.0 {
+            self.player.animation.hurt_direction = 0.0;
             self.sleeping = None;
             self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
         }
@@ -1884,11 +1885,9 @@ impl Game {
         self.agent_sounds();
         let alpha = if paused { 1.0 } else { self.clock.alpha() };
         let eye = crate::simulation::interpolated_eye(self.previous_eye, self.player.eye(), alpha);
-        let distance = (eye - self.rendered_eye).with_y(0.0).length();
-        let walked = if paused || self.player.flying || distance > 4.0 { 0.0 } else { distance as f32 };
         self.rendered_eye = eye;
         let (camera, forward) = self.camera.view(&self.world, eye, self.player.forward());
-        self.hand.update(dt as f32, self.held_item(), walked, self.player.on_ground);
+        self.hand.update(dt as f32, self.held_item());
         self.animate_hands(dt as f32, alpha, paused);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);
@@ -1929,7 +1928,7 @@ impl Game {
                 (
                     &b.agent.player,
                     b.agent.previous_pos.lerp(b.agent.player.pos, alpha),
-                    b.hand.appearance(&b.agent.vitals, b.agent.eating(), alpha),
+                    b.hand.appearance(&b.agent.vitals, b.agent.eating(), alpha, b.agent.inventory.armor),
                 )
             })
             .collect();
@@ -1945,7 +1944,12 @@ impl Game {
                     self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
                 ),
                 scene.time,
-                self.hand.appearance(&self.vitals, (self.actions.eat_timer / EAT_TIME) as f32, alpha),
+                self.hand.appearance(
+                    &self.vitals,
+                    (self.actions.eat_timer / EAT_TIME) as f32,
+                    alpha,
+                    self.inventory.armor,
+                ),
                 verts,
             );
         }
@@ -1956,6 +1960,12 @@ impl Game {
         let params = FrameParams {
             camera,
             forward,
+            view_effect: voxelcraft::camera::view_effect(
+                &self.player,
+                &self.vitals,
+                alpha as f32,
+                self.settings.view_bobbing,
+            ),
             fov_y: self.settings.fov.to_radians()
                 * if input.sprint && input.forward > 0.0 { 1.08 } else { 1.0 }
                 * (1.0 - 0.15 * self.bow_power().unwrap_or(0.0)),

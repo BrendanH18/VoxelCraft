@@ -16,6 +16,7 @@ pub struct Settings {
     pub vsync: bool,
     pub enhanced_graphics: bool,
     pub show_fps: bool,
+    pub view_bobbing: bool,
 }
 
 pub const RENDER_DISTANCE: (i32, i32) = (2, 32);
@@ -32,6 +33,7 @@ impl Default for Settings {
             vsync: true,
             enhanced_graphics: true,
             show_fps: true,
+            view_bobbing: true,
         }
     }
 }
@@ -64,6 +66,8 @@ impl Settings {
                 "fov" => s.fov = num().unwrap_or(s.fov),
                 "sensitivity" => s.sensitivity = num().unwrap_or(s.sensitivity),
                 "volume" => s.volume = num().unwrap_or(s.volume),
+                "view_bobbing" if value == "true" => s.view_bobbing = true,
+                "view_bobbing" if value == "false" => s.view_bobbing = false,
                 "vsync" => s.vsync = value != "false",
                 "show_fps" if value == "true" => s.show_fps = true,
                 "show_fps" if value == "false" => s.show_fps = false,
@@ -77,14 +81,15 @@ impl Settings {
 
     pub fn serialize(&self) -> String {
         format!(
-            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\n",
+            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\nview_bobbing={}\n",
             self.render_distance,
             self.fov,
             self.sensitivity,
             self.volume,
             self.vsync,
             if self.enhanced_graphics { "enhanced" } else { "classic" },
-            self.show_fps
+            self.show_fps,
+            self.view_bobbing
         )
     }
 
@@ -112,6 +117,7 @@ mod tests {
             vsync: false,
             enhanced_graphics: false,
             show_fps: false,
+            view_bobbing: false,
         };
         assert_eq!(Settings::parse(&s.serialize()), s);
         let wild = Settings::parse("render_distance=99\nfov=5\nvolume=nan\nsensitivity=abc\njunk\nunknown=1\n");

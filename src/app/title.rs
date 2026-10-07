@@ -493,6 +493,7 @@ impl Title {
         let params = FrameParams {
             camera: DVec3::new(0.0, 90.0, 0.0),
             forward,
+            view_effect: glam::Mat4::IDENTITY,
             fov_y: 70f32.to_radians(),
             sky_color: sky.horizon.map(|c| c as f64),
             fog_color: sky.horizon,

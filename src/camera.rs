@@ -1,5 +1,5 @@
 //! Per-view Java camera modes and eight-probe third-person clipping.
-use glam::{DVec3, IVec3, Vec3};
+use glam::{DVec3, IVec3, Mat4, Vec3};
 
 use crate::physics::{BlockSource, ray_aabb, ray_shape};
 
@@ -105,6 +105,39 @@ fn clip(world: &impl BlockSource, origin: DVec3, dir: DVec3, max: f64) -> Option
     None
 }
 
+/// GameRenderer.bobView: applied before camera rotation, in view space.
+/// Java intentionally extrapolates walkDist by the current tick delta.
+pub fn bob_view(walk: &crate::entity::player_model::WalkAnimation, alpha: f32) -> Mat4 {
+    let phase = -(walk.walk_dist + (walk.walk_dist - walk.previous_walk_dist) * alpha) * std::f32::consts::PI;
+    let bob = walk.previous_bob + (walk.bob - walk.previous_bob) * alpha;
+    Mat4::from_translation(Vec3::new(phase.sin() * bob * 0.5, -(phase.cos() * bob).abs(), 0.0))
+        * Mat4::from_rotation_z((phase.sin() * bob * 3.0).to_radians())
+        * Mat4::from_rotation_x(((phase - 0.2).cos() * bob).abs() * 5f32.to_radians())
+}
+
+/// GameRenderer.bobHurt: a ten-tick hurt interval, quartic envelope and
+/// fourteen-degree directional tilt, plus the twenty-tick death roll.
+pub fn bob_hurt(since_damage: f32, death: Option<f32>, direction: f32) -> Mat4 {
+    let roll = death.map_or(0.0, |t| (40.0 - 8000.0 / ((t * 20.0).min(20.0) + 200.0)).to_radians());
+    let remaining = (1.0 - since_damage / 0.5).clamp(0.0, 1.0);
+    let tilt = -(remaining.powi(4) * std::f32::consts::PI).sin() * 14f32.to_radians();
+    Mat4::from_rotation_z(roll)
+        * Mat4::from_rotation_y(-direction)
+        * Mat4::from_rotation_z(tilt)
+        * Mat4::from_rotation_y(direction)
+}
+
+pub fn view_effect(
+    player: &crate::player::Player,
+    vitals: &crate::simulation::survival::Vitals,
+    alpha: f32,
+    bobbing: bool,
+) -> Mat4 {
+    let elapsed = vitals.since_damage() + alpha * 0.05;
+    let hurt = bob_hurt(elapsed, vitals.is_dead().then_some(elapsed), player.animation.hurt_direction);
+    if bobbing && !vitals.is_dead() { hurt * bob_view(&player.animation, alpha) } else { hurt }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,5 +188,29 @@ mod tests {
         assert!(max_zoom(&world, eye, DVec3::Y, 4.) < 0.5);
         assert!(max_zoom(&world, eye, DVec3::NEG_X, 4.) < 1.5);
         assert_eq!(max_zoom(&world, DVec3::new(0.5, 2.5, 0.5), DVec3::X, 4.), 0.);
+    }
+    #[test]
+    fn java_bob_translation_and_rotation_amplitudes() {
+        let mut walk = crate::entity::player_model::WalkAnimation::default();
+        walk.walk_dist = 0.5;
+        walk.previous_walk_dist = 0.5;
+        walk.bob = 0.1;
+        walk.previous_bob = 0.1;
+        let bob = bob_view(&walk, 1.0);
+        assert!((bob.w_axis.x + 0.05).abs() < 1e-6);
+        assert!(bob.w_axis.y.abs() < 1e-6);
+        let expected = Mat4::from_translation(Vec3::new(-0.05, 0., 0.))
+            * Mat4::from_rotation_z(-0.3f32.to_radians())
+            * Mat4::from_rotation_x(((-std::f32::consts::FRAC_PI_2 - 0.2).cos() * 0.1).abs() * 5f32.to_radians());
+        assert!(bob.abs_diff_eq(expected, 1e-6));
+    }
+    #[test]
+    fn hurt_uses_quartic_envelope_and_damage_direction() {
+        assert!(bob_hurt(0.5, None, 0.).abs_diff_eq(Mat4::IDENTITY, 1e-6));
+        let angle = -(0.5f32.powi(4) * std::f32::consts::PI).sin() * 14f32.to_radians();
+        assert!(bob_hurt(0.25, None, 0.).abs_diff_eq(Mat4::from_rotation_z(angle), 1e-6));
+        assert!(bob_hurt(0.25, None, std::f32::consts::FRAC_PI_2).abs_diff_eq(Mat4::from_rotation_x(-angle), 1e-6));
+        let death = bob_hurt(2., Some(1.), 0.);
+        assert!(death.abs_diff_eq(Mat4::from_rotation_z((40f32 - 8000. / 220.).to_radians()), 1e-6));
     }
 }

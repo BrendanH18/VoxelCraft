@@ -28,7 +28,7 @@ impl EntityPass {
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Texture {
                     sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2,
+                    view_dimension: wgpu::TextureViewDimension::D2Array,
                     multisampled: false,
                 },
                 count: None,
@@ -39,9 +39,10 @@ impl EntityPass {
             bind_group_layouts: &[Some(globals), Some(blocks), Some(&skin_layout)],
             immediate_size: 0,
         });
+        let layers = crate::entity::armor::ARRAY_LAYERS;
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("original 64x64 player skin"),
-            size: wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 },
+            label: Some("player skin and armor"),
+            size: wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: layers },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -49,9 +50,12 @@ impl EntityPass {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+        let mut pixels = crate::entity::player_model::skin_pixels();
+        pixels.extend(crate::entity::armor::layer_pixels());
+        debug_assert_eq!(pixels.len(), layers as usize * 64 * 64 * 4);
         queue.write_texture(
             texture.as_image_copy(),
-            &crate::entity::player_model::skin_pixels(),
+            &pixels,
             wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(256), rows_per_image: Some(64) },
             texture.size(),
         );

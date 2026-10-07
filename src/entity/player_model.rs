@@ -14,14 +14,25 @@ pub struct WalkAnimation {
     pub speed: f32,
     pub previous_speed: f32,
     pub body_yaw: f32,
+    pub walk_dist: f32,
+    pub previous_walk_dist: f32,
+    pub bob: f32,
+    pub previous_bob: f32,
+    /// Direction of the latest knockback in the Java camera frame, radians.
+    pub hurt_direction: f32,
     initialized: bool,
 }
 
 impl WalkAnimation {
     /// LivingEntity.calculateEntityAnimation: displacement * 4, capped at 1;
     /// WalkAnimationState smooths speed by 0.4 per 20 Hz tick, then accumulates it.
-    pub fn update(&mut self, distance: f32, dt: f32, yaw: f32, flying: bool) {
+    pub fn update(&mut self, distance: f32, dt: f32, yaw: f32, flying: bool, on_ground: bool) {
         let ticks = dt * 20.0;
+        self.previous_walk_dist = self.walk_dist;
+        self.walk_dist += distance * 0.6;
+        self.previous_bob = self.bob;
+        let bob_target = if on_ground && !flying { (distance / ticks.max(1e-4)).min(0.1) } else { 0.0 };
+        self.bob += (bob_target - self.bob) * (1.0 - 0.6f32.powf(ticks));
         self.previous_speed = self.speed;
         let target = if flying { 0.0 } else { (distance * 4.0 / ticks.max(1e-4)).min(1.0) };
         self.speed += (target - self.speed) * (1.0 - 0.6f32.powf(ticks));
@@ -55,10 +66,15 @@ pub struct PlayerAppearance {
     /// Seconds since death; absent for a living player.
     pub death: Option<f32>,
     pub alpha: f32,
+    /// Helmet, chest, leggings, boots.
+    pub armor: [Option<super::armor::Worn>; 4],
 }
 
+const PLAYER_SCALE: f32 = 0.9375;
+const UNTINTED: [u8; 4] = [255, 255, 255, 0];
+
 #[derive(Clone, Copy)]
-pub(super) struct Limb {
+pub(crate) struct Limb {
     pub pivot: Vec3,
     pub rot: Quat,
     pub min: [f32; 3],
@@ -152,7 +168,7 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
 /// One texture-mapped box, still in the single entity vertex batch.
 /// `material`: 1 = procedural skin atlas; 2 = existing block/item atlas.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn textured_box(
+pub(crate) fn textured_box(
     out: &mut Vec<EntityVertex>,
     p: &Limb,
     inflation: f32,
@@ -161,13 +177,15 @@ pub(super) fn textured_box(
     light: ([u8; 4], u8),
     material: u8,
     layer: u16,
+    scale: f32,
+    tint: [u8; 4],
 ) {
     let c = cube(p.min.map(|v| v - inflation), p.max.map(|v| v + inflation), [255; 3], 0);
     let start = out.len();
     push_cuboid(
         out,
         &c,
-        &|v| origin + body * (p.pivot + p.rot * v) * (0.9375 / 16.0),
+        &|v| origin + body * (p.pivot + p.rot * v) * (scale / 16.0),
         body * p.rot,
         light,
         ([0.0; 3], 0.0),
@@ -217,6 +235,7 @@ pub(super) fn textured_box(
                 _ => (if positive { a } else { 1.0 - a }, 1.0 - b),
             };
             vertex.uv = if material == 2 { [x, y] } else { [rect[0] + x * rect[2], rect[1] + y * rect[3]] };
+            vertex.color = tint;
             vertex.torch[1] = material;
             vertex.torch[2] = layer as u8;
             vertex.torch[3] = (layer >> 8) as u8;
@@ -243,11 +262,12 @@ pub fn build_player(
     let parts = pose(player, &appearance, time);
     const OVERLAYS: [[f32; 2]; 6] = [[32., 0.], [16., 32.], [40., 32.], [48., 48.], [0., 32.], [0., 48.]];
     for (i, p) in parts.iter().enumerate() {
-        textured_box(out, p, 0.0, origin, body, light, 1, 0);
+        textured_box(out, p, 0.0, origin, body, light, 1, 0, PLAYER_SCALE, UNTINTED);
         let mut overlay = *p;
         overlay.uv = OVERLAYS[i];
-        textured_box(out, &overlay, if i == 0 { 0.5 } else { 0.25 }, origin, body, light, 1, 0);
+        textured_box(out, &overlay, if i == 0 { 0.5 } else { 0.25 }, origin, body, light, 1, 0, PLAYER_SCALE, UNTINTED);
     }
+    draw_armor(out, &parts, &appearance.armor, origin, body, PLAYER_SCALE, light);
     if let Some(item) = appearance.held {
         let arm = parts[2];
         // ItemInHandLayer's right grip: translated to the fist, then down 90°.
@@ -257,7 +277,7 @@ pub fn build_player(
         if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
             held.min = [-3.2; 3];
             held.max = [3.2; 3];
-            textured_box(out, &held, 0.0, origin, body, light, 2, block.info().tex[0] as u16);
+            textured_box(out, &held, 0.0, origin, body, light, 2, block.info().tex[0] as u16, PLAYER_SCALE, UNTINTED);
             // Use the appropriate face textures (grass, logs, crafting tables).
             let start = out.len() - 36;
             for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
@@ -272,7 +292,38 @@ pub fn build_player(
                 || item.icon_layer().unwrap_or(crate::world::block::tex::ITEM_BASE),
                 |b| b.info().tex[0] as u16,
             );
-            textured_box(out, &held, 0.0, origin, body, light, 2, layer);
+            textured_box(out, &held, 0.0, origin, body, light, 2, layer, PLAYER_SCALE, UNTINTED);
+        }
+    }
+}
+
+/// HumanoidArmorLayer part order: head, body, right arm, left arm, right leg, left leg.
+/// Outer pieces inflate by 1; leggings by 0.5. Leather draws an undyed trim just outside.
+pub(crate) fn draw_armor(
+    out: &mut Vec<EntityVertex>,
+    parts: &[Limb; 6],
+    worn: &[Option<super::armor::Worn>; 4],
+    origin: Vec3,
+    body: Quat,
+    scale: f32,
+    light: ([u8; 4], u8),
+) {
+    for (slot, piece) in worn.iter().enumerate() {
+        let Some(piece) = *piece else { continue };
+        let (indices, inflation, inner): (&[usize], f32, bool) = match slot {
+            0 => (&[0], 1.0, false),
+            1 => (&[1, 2, 3], 1.0, false),
+            2 => (&[1, 4, 5], 0.5, true),
+            _ => (&[4, 5], 1.0, false),
+        };
+        let paint = |out: &mut Vec<EntityVertex>, extra: f32, layer: u16, tint: [u8; 4]| {
+            for &i in indices {
+                textured_box(out, &parts[i], inflation + extra, origin, body, light, 3, layer, scale, tint);
+            }
+        };
+        paint(out, 0.0, super::armor::layer(piece.kind, inner), super::armor::tint(&piece, false));
+        if piece.kind == super::armor::ArmorKind::Leather {
+            paint(out, 0.08, super::armor::leather_overlay(inner), super::armor::tint(&piece, true));
         }
     }
 }
@@ -378,10 +429,12 @@ mod tests {
     #[test]
     fn walk_uses_distance_and_java_tick_smoothing() {
         let mut w = WalkAnimation::default();
-        w.update(0.2, 0.05, 0., false);
+        w.update(0.2, 0.05, 0., false, true);
         assert!((w.speed - 0.32).abs() < 1e-6);
         assert!((w.position - 0.32).abs() < 1e-6);
-        w.update(0., 0.05, 0., false);
+        assert!((w.bob - 0.04).abs() < 1e-6);
+        assert!((w.walk_dist - 0.12).abs() < 1e-6);
+        w.update(0., 0.05, 0., false, true);
         assert!((w.speed - 0.192).abs() < 1e-6);
     }
     #[test]
@@ -399,6 +452,26 @@ mod tests {
         assert_eq!(parts[0].pivot.y, 19.8);
         assert_eq!(parts[4].pivot.z, -4.);
     }
+    #[test]
+    fn outer_armor_sits_one_pixel_outside_leggings() {
+        let body = limb([0.; 3], [-4., -12., -2.], [4., 0., 2.], [16., 16.], Quat::IDENTITY);
+        let parts = [body; 6];
+        let mut worn = [None; 4];
+        worn[1] = Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: false });
+        worn[2] = Some(crate::entity::armor::Worn { kind: crate::entity::armor::ArmorKind::Iron, glint: true });
+        let mut out = Vec::new();
+        draw_armor(&mut out, &parts, &worn, Vec3::ZERO, Quat::IDENTITY, 1.0, ([255, 0, 0, 0], 0));
+        let extent = |inner: bool| {
+            out.iter()
+                .filter(|v| v.torch[1] == 3 && (v.torch[2].is_multiple_of(2) == inner))
+                .map(|v| v.pos[0])
+                .fold(0.0f32, f32::max)
+        };
+        assert!((extent(false) - 5.0 / 16.0).abs() < 1e-5);
+        assert!((extent(true) - 4.5 / 16.0).abs() < 1e-5);
+        assert!(out.iter().any(|v| v.color[3] == 255));
+    }
+
     #[test]
     fn skin_has_a_face_and_transparent_overlays() {
         let skin = skin_pixels();

@@ -63,3 +63,52 @@ collision uses the engine's existing visual/collision shape definitions;
 shape differences from Java remain an engine-wide parity issue.
 
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/client/Camera.java
+
+## Walking bob and hurt tilt
+
+Walking bob uses GameRenderer.bobView's phase
+`-(walkDist + (walkDist - walkDistO) * partialTick) * pi`, translation
+`(sin(phase)*bob*0.5, -abs(cos(phase)*bob), 0)`, Z rotation
+`sin(phase)*bob*3` degrees and X rotation
+`abs(cos(phase-0.2)*bob)*5` degrees. walkDist advances by horizontal
+movement *0.6. Bob strength approaches a target capped at 0.1 with 0.4
+smoothing per 20 Hz tick, decaying in flight/air. The target uses actual
+horizontal displacement per tick rather than Java's velocity (the engine's
+velocity has different physics units); swimming suppression awaits the
+separate swimming pose work.
+
+Hurt tilt uses a ten-tick interval and `-sin(remaining^4*pi)*14` degrees,
+conjugated by the damage-source yaw. Mob, projectile and explosion
+knockback supply that yaw for both host and CLI/controller players.
+Death roll is `40-8000/(min(deathTicks,20)+200)` degrees. Death ticks have
+the Vitals timing approximation described above. Damage tilt strength
+uses Java's default 100%; a separate strength slider is not implemented.
+
+Each view supplies the combined hurt/bob matrix before its view rotation.
+The hand cancels and reapplies the same matrix around its FOV correction,
+so it bobs exactly once in its fixed 70-degree projection at all FOVs.
+Equip, attack and eating animation remain. View Bobbing is saved in options,
+defaults on, and affects both world and hand; hurt tilt remains when it is
+off. The options layout contracts spacing to fit split-screen views.
+
+## Armor
+
+HumanoidArmorLayer draws the same posed boxes one pixel outside the body
+for the helmet, chestplate and boots, and half a pixel outside for
+leggings. Textures are generated once into the skin array (no Mojang
+assets): leather is a grey sheet dyed `#A06540` with an undyed stitch
+overlay, and chainmail, iron, gold, diamond and netherite are generic
+panel patterns. Chainmail is rolled onto zombies and skeletons; it is not
+a player item. Netherite player pieces use the same path once those items
+exist. Enchanted pieces add a scrolling glint in the entity fragment
+shader. Monster equipment follows Java's feet-first 15% roll at regional
+difficulty 1, without held weapons or local-difficulty scaling.
+
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/client/renderer/entity/layers/HumanoidArmorLayer.java
+
+The formulas were also checked against the decompiled **1.21.1** client:
+
+- https://raw.githubusercontent.com/Soumeh/1.21.1-Deobfuscated/main/minecraft/src/net/minecraft/client/render/GameRenderer.java
+- https://raw.githubusercontent.com/Soumeh/1.21.1-Deobfuscated/main/minecraft/src/net/minecraft/entity/player/PlayerEntity.java
+- https://raw.githubusercontent.com/Soumeh/1.21.1-Deobfuscated/main/minecraft/src/net/minecraft/client/render/Camera.java
+- https://raw.githubusercontent.com/Soumeh/1.21.1-Deobfuscated/main/minecraft/src/net/minecraft/client/render/entity/model/BipedEntityModel.java

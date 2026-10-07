@@ -910,7 +910,11 @@ impl Agent {
     /// Damage through protection enchantments (armor points aside).
     fn damage(&mut self, amount: f32, cause: &str) -> f32 {
         let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
-        self.vitals.damage(amount, cause, self.creative)
+        let taken = self.vitals.damage(amount, cause, self.creative);
+        if taken > 0.0 {
+            self.player.animation.hurt_direction = 0.0;
+        }
+        taken
     }
 
     /// Armored damage from a mob, arrow or explosion. Knockback only lands
@@ -922,6 +926,7 @@ impl Agent {
         if taken <= 0.0 {
             return 0.0;
         }
+        self.player.hurt_from(knockback);
         self.player.vel += knockback;
         self.inventory.wear_armor(amount);
         self.sleeping = None;

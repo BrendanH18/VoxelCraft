@@ -28,6 +28,7 @@ pub(super) enum Widget {
     Vsync,
     Graphics,
     Fps,
+    ViewBobbing,
     Done,
 }
 
@@ -63,6 +64,7 @@ impl Widget {
             Widget::Vsync => format!("VSync: {}", if s.vsync { "On" } else { "Off" }),
             Widget::Graphics => format!("Graphics: {}", if s.enhanced_graphics { "Enhanced" } else { "Classic" }),
             Widget::Fps => format!("FPS Counter: {}", if s.show_fps { "On" } else { "Off" }),
+            Widget::ViewBobbing => format!("View Bobbing: {}", if s.view_bobbing { "On" } else { "Off" }),
             Widget::Done => "Done".into(),
         }
     }
@@ -110,21 +112,24 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
             Widget::Vsync,
             Widget::Graphics,
             Widget::Fps,
+            Widget::ViewBobbing,
             Widget::Done,
         ],
     };
-    let total = widgets.len() as f32 * (BUTTON_H + GAP) + GAP * 2.0;
+    // The added camera option also fits the shorter split-screen HUD.
+    let gap = GAP.min(((sh - widgets.len() as f32 * BUTTON_H - 24.0) / (widgets.len() as f32 + 1.0)).max(1.0));
+    let total = widgets.len() as f32 * BUTTON_H + (widgets.len() as f32 + 1.0) * gap + 20.0;
     let x = ((sw - BUTTON_W) / 2.0).floor();
-    let mut y = ((sh - total) / 2.0).floor() + 12.0;
+    let mut y = ((sh - total) / 2.0).floor() + 20.0;
     widgets
         .iter()
         .map(|&w| {
             // "Done" and "Save and Quit" sit a little apart from the rest.
             if matches!(w, Widget::Done | Widget::SaveAndQuit) {
-                y += GAP * 2.0;
+                y += gap * 2.0;
             }
             let r = [x, y, BUTTON_W, BUTTON_H];
-            y += BUTTON_H + GAP;
+            y += BUTTON_H + gap;
             (w, r)
         })
         .collect()
@@ -215,6 +220,10 @@ impl Game {
             }
             Widget::Fps => {
                 self.settings.show_fps = !self.settings.show_fps;
+                self.apply_settings();
+            }
+            Widget::ViewBobbing => {
+                self.settings.view_bobbing = !self.settings.view_bobbing;
                 self.apply_settings();
             }
             Widget::SaveAndQuit => return Some(MenuAction::Quit),
@@ -348,6 +357,7 @@ mod tests {
                 vsync: false,
                 enhanced_graphics: true,
                 show_fps: true,
+                view_bobbing: true,
             };
             assert!(Ui::text_width(&w.label(&longest)) < BUTTON_W - 8.0, "{w:?} label too wide");
         }

@@ -20,7 +20,7 @@ struct Globals {
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;
 @group(1) @binding(2) var items: texture_2d_array<f32>;
-@group(2) @binding(0) var skin: texture_2d<f32>;
+@group(2) @binding(0) var skin: texture_2d_array<f32>;
 
 // Night vision (Java's lightmap): brightens every light level toward full,
 // keeping its hue; g.effects.x is its strength.
@@ -109,10 +109,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // Colours are authored in sRGB, like the block textures.
     var base = pow(in.color.rgb, vec3<f32>(2.2)) * (1.0 + n * in.color.a);
 
+    let texel = clamp(vec2<i32>(floor(in.uv)), vec2<i32>(0), vec2<i32>(63));
     if in.material == 1u {
-        let tex = textureLoad(skin, clamp(vec2<i32>(floor(in.uv)), vec2<i32>(0), vec2<i32>(63)), 0);
+        let tex = textureLoad(skin, texel, 0, 0);
         if tex.a < 0.5 { discard; }
         base = tex.rgb;
+    } else if in.material == 3u {
+        // Armor sheet. Vertex colour is the leather dye (white for the rest).
+        let tex = textureLoad(skin, texel, i32(in.layer), 0);
+        if tex.a < 0.5 { discard; }
+        base = tex.rgb * pow(in.color.rgb, vec3<f32>(2.2));
     } else if in.material == 2u {
         let block = textureSampleLevel(blocks, blocks_sampler, in.uv, min(in.layer, 255u), 0.0);
         let icon = textureSampleLevel(items, blocks_sampler, in.uv, max(in.layer, 256u) - 256u, 0.0);
@@ -128,5 +134,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     var c = base * lit;
     // Hurt: Minecraft-style red overlay.
     c = mix(c, vec3<f32>(0.8, 0.0, 0.0) * max(lit, vec3<f32>(0.25)), in.light.z * 0.6);
+    // Enchantment glint: a scrolling band, cheap enough to stay in this pass.
+    if in.material == 3u && in.color.a > 0.5 {
+        let stripe = abs(fract(in.uv.x * 0.11 - in.uv.y * 0.11 + g.sun.w * 0.35) - 0.5);
+        c += vec3<f32>(0.55, 0.42, 0.9) * smoothstep(0.40, 0.50, 0.5 - stripe);
+    }
     return vec4<f32>(apply_fog(c, in.dist), 1.0);
 }
