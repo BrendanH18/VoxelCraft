@@ -205,7 +205,15 @@ pub mod tex {
     pub const SMITHING_SIDE: u16 = SMITHING_TOP + 2;
     pub const SMITHING_BOTTOM: u16 = SMITHING_TOP + 3;
     pub const MOSSY_COBBLESTONE: u16 = SMITHING_BOTTOM + 1;
-    pub const COUNT: u32 = MOSSY_COBBLESTONE as u32 + 1;
+    pub const COPPER_ORE: u16 = MOSSY_COBBLESTONE + 1;
+    pub const REDSTONE_ORE: u16 = COPPER_ORE + 1;
+    pub const EMERALD_ORE: u16 = REDSTONE_ORE + 1;
+    pub const RAW_IRON_BLOCK: u16 = EMERALD_ORE + 1;
+    pub const RAW_GOLD_BLOCK: u16 = RAW_IRON_BLOCK + 1;
+    pub const RAW_COPPER_BLOCK: u16 = RAW_GOLD_BLOCK + 1;
+    pub const COPPER_BLOCK: u16 = RAW_COPPER_BLOCK + 1;
+    pub const EMERALD_BLOCK: u16 = COPPER_BLOCK + 1;
+    pub const COUNT: u32 = EMERALD_BLOCK as u32 + 1;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -408,6 +416,14 @@ impl Block {
     /// Upgrades diamond gear to Netherite (see `crate::smithing`).
     pub const SMITHING_TABLE: Block = Block(223);
     pub const MOSSY_COBBLESTONE: Block = Block(224);
+    pub const COPPER_ORE: Block = Block(225);
+    pub const REDSTONE_ORE: Block = Block(226);
+    pub const EMERALD_ORE: Block = Block(227);
+    pub const RAW_IRON_BLOCK: Block = Block(228);
+    pub const RAW_GOLD_BLOCK: Block = Block(229);
+    pub const RAW_COPPER_BLOCK: Block = Block(230);
+    pub const COPPER_BLOCK: Block = Block(231);
+    pub const EMERALD_BLOCK: Block = Block(232);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age as u16 })
@@ -799,7 +815,12 @@ impl Block {
             Block::STONE => Some(Block::COBBLESTONE.into()),
             Block::GRASS | Block::SNOWY_GRASS => Some(Block::DIRT.into()),
             Block::COAL_ORE => Some(Item::COAL),
+            Block::IRON_ORE => Some(Item::RAW_IRON),
+            Block::GOLD_ORE => Some(Item::RAW_GOLD),
             Block::DIAMOND_ORE => Some(Item::DIAMOND),
+            Block::EMERALD_ORE => Some(Item::EMERALD),
+            // Copper (2-5) and redstone (4-5) vary; see `World::spill_mined`.
+            Block::COPPER_ORE | Block::REDSTONE_ORE => None,
             // Lapis ore drops 4-9 (see `World::spill_mined`).
             Block::LAPIS_ORE => None,
             Block::DEAD_BUSH => Some(Item::STICK),
@@ -871,7 +892,15 @@ impl Block {
             b if b.is_log() || b.is_planks() => 2.0,
             Block::COBBLESTONE | Block::MOSSY_COBBLESTONE | Block::BRICKS => 2.0,
             Block::CRAFTING_TABLE | Block::CHEST | Block::SMITHING_TABLE => 2.5,
-            Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE => 3.0,
+            Block::COAL_ORE
+            | Block::IRON_ORE
+            | Block::GOLD_ORE
+            | Block::DIAMOND_ORE
+            | Block::COPPER_ORE
+            | Block::REDSTONE_ORE
+            | Block::EMERALD_ORE
+            | Block::COPPER_BLOCK => 3.0,
+            Block::RAW_IRON_BLOCK | Block::RAW_GOLD_BLOCK | Block::RAW_COPPER_BLOCK | Block::EMERALD_BLOCK => 5.0,
             Block::FURNACE | Block::LIT_FURNACE => 3.5,
             Block::SPAWNER => 5.0,
             Block::OBSIDIAN => 50.0,
@@ -893,6 +922,14 @@ impl Block {
             | Block::IRON_ORE
             | Block::GOLD_ORE
             | Block::DIAMOND_ORE
+            | Block::COPPER_ORE
+            | Block::REDSTONE_ORE
+            | Block::EMERALD_ORE
+            | Block::RAW_IRON_BLOCK
+            | Block::RAW_GOLD_BLOCK
+            | Block::RAW_COPPER_BLOCK
+            | Block::COPPER_BLOCK
+            | Block::EMERALD_BLOCK
             | Block::OBSIDIAN
             | Block::FURNACE
             | Block::LIT_FURNACE
@@ -970,8 +1007,20 @@ impl Block {
             | Block::DAMAGED_ANVIL
             | Block::NETHER_BRICKS => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
-            Block::IRON_ORE | Block::LAPIS_ORE | Block::LAPIS_BLOCK | Block::IRON_BLOCK => Some(1),
-            Block::GOLD_ORE | Block::DIAMOND_ORE => Some(2),
+            Block::IRON_ORE
+            | Block::COPPER_ORE
+            | Block::LAPIS_ORE
+            | Block::LAPIS_BLOCK
+            | Block::IRON_BLOCK
+            | Block::RAW_IRON_BLOCK
+            | Block::RAW_COPPER_BLOCK
+            | Block::COPPER_BLOCK => Some(1),
+            Block::GOLD_ORE
+            | Block::DIAMOND_ORE
+            | Block::REDSTONE_ORE
+            | Block::EMERALD_ORE
+            | Block::RAW_GOLD_BLOCK
+            | Block::EMERALD_BLOCK => Some(2),
             Block::OBSIDIAN | Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK => Some(3),
             _ => None,
         }
@@ -991,6 +1040,7 @@ impl Block {
                 136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213, 214, 215,
                 217, 219, 221, 222, 223, 224,
             ])
+            .chain(225..=232)
             .map(Block)
     }
 
@@ -1529,6 +1579,14 @@ const fn make(id: u16) -> BlockInfo {
             ("smithing table", Opaque, [side, side, tex::SMITHING_TOP, tex::SMITHING_BOTTOM, front, front])
         }
         224 => ("mossy cobblestone", Opaque, all(tex::MOSSY_COBBLESTONE)),
+        225 => ("copper ore", Opaque, all(tex::COPPER_ORE)),
+        226 => ("redstone ore", Opaque, all(tex::REDSTONE_ORE)),
+        227 => ("emerald ore", Opaque, all(tex::EMERALD_ORE)),
+        228 => ("block of raw iron", Opaque, all(tex::RAW_IRON_BLOCK)),
+        229 => ("block of raw gold", Opaque, all(tex::RAW_GOLD_BLOCK)),
+        230 => ("block of raw copper", Opaque, all(tex::RAW_COPPER_BLOCK)),
+        231 => ("block of copper", Opaque, all(tex::COPPER_BLOCK)),
+        232 => ("block of emerald", Opaque, all(tex::EMERALD_BLOCK)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are
@@ -1630,6 +1688,18 @@ mod tests {
         assert_eq!(Block::SMITHING_TABLE, Block(223));
         assert_eq!(Block::from_name("smithing_table"), Some(Block::SMITHING_TABLE));
         assert_eq!(Block::SMITHING_TABLE.name(), "smithing table");
+        assert_eq!(Block::COPPER_ORE, Block(225));
+        assert_eq!(Block::EMERALD_BLOCK, Block(232));
+        assert_eq!(Block::from_name("copper_ore"), Some(Block::COPPER_ORE));
+        assert_eq!(Block::from_name("block of raw iron"), Some(Block::RAW_IRON_BLOCK));
+        assert_eq!(Block::IRON_ORE.drop(), Some(Item::RAW_IRON));
+        assert_eq!(Block::COPPER_ORE.drop(), None);
+        assert_eq!(Block::REDSTONE_ORE.harvest_level(), Some(2));
+        assert_eq!(Block::COPPER_ORE.harvest_level(), Some(1));
+        assert_eq!(Block::EMERALD_BLOCK.hardness(), 5.0);
+        assert!(Block::creative_palette().any(|b| b == Block::EMERALD_ORE));
+        assert_eq!(Item::from_name("raw_copper"), Some(Item::RAW_COPPER));
+        assert_eq!(Item::REDSTONE, Item(365));
         assert_eq!(Block::SMITHING_TABLE.hardness(), 2.5);
         assert_eq!(Block::SMITHING_TABLE.best_tool(), Some(ToolKind::Axe));
         assert_eq!(

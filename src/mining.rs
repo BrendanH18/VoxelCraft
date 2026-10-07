@@ -137,7 +137,8 @@ pub fn attack_cooldown(held: Option<Item>) -> f64 {
 pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {
     let (lo, hi) = match block {
         Block::COAL_ORE => (0, 2),
-        Block::DIAMOND_ORE => (3, 7),
+        Block::DIAMOND_ORE | Block::EMERALD_ORE => (3, 7),
+        Block::REDSTONE_ORE => (1, 5),
         Block::QUARTZ_ORE | Block::LAPIS_ORE => (2, 5),
         Block::SPAWNER => (15, 43),
         _ => return 0,
@@ -160,7 +161,12 @@ pub fn silk_drop(block: Block) -> Option<Item> {
         Block::STONE
             | Block::GRASS
             | Block::COAL_ORE
+            | Block::IRON_ORE
+            | Block::GOLD_ORE
             | Block::DIAMOND_ORE
+            | Block::COPPER_ORE
+            | Block::REDSTONE_ORE
+            | Block::EMERALD_ORE
             | Block::QUARTZ_ORE
             | Block::LAPIS_ORE
             | Block::GLASS

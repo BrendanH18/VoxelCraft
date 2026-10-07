@@ -37,8 +37,9 @@ pub struct Furnace {
 pub fn smelt(item: Item) -> Option<Item> {
     let b = Item::from_block;
     Some(match item {
-        i if i == b(Block::IRON_ORE) => Item::IRON_INGOT,
-        i if i == b(Block::GOLD_ORE) => Item::GOLD_INGOT,
+        i if i == b(Block::IRON_ORE) || i == Item::RAW_IRON => Item::IRON_INGOT,
+        i if i == b(Block::GOLD_ORE) || i == Item::RAW_GOLD => Item::GOLD_INGOT,
+        i if i == b(Block::COPPER_ORE) || i == Item::RAW_COPPER => Item::COPPER_INGOT,
         i if i == b(Block::COAL_ORE) => Item::COAL,
         i if i == b(Block::DIAMOND_ORE) => Item::DIAMOND,
         i if i == b(Block::LAPIS_ORE) => Item::LAPIS_LAZULI,
@@ -62,7 +63,7 @@ pub fn smelt_xp(out: Item) -> f32 {
     let b = Item::from_block;
     match out {
         Item::GOLD_INGOT | Item::DIAMOND => 1.0,
-        Item::IRON_INGOT => 0.7,
+        Item::IRON_INGOT | Item::COPPER_INGOT => 0.7,
         Item::NETHERITE_SCRAP => 2.0,
         Item::COOKED_PORKCHOP | Item::STEAK | Item::COOKED_CHICKEN => 0.35,
         i if i == b(Block::TERRACOTTA) => 0.35,

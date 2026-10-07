@@ -299,12 +299,22 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             shade(c, 0.7 + r * 0.45)
         }
         tex::SNOW => noisy(layer, x, y, [240, 245, 252], 0.03),
-        tex::COAL_ORE | tex::IRON_ORE | tex::GOLD_ORE | tex::DIAMOND_ORE | tex::LAPIS_ORE => {
+        tex::COAL_ORE
+        | tex::IRON_ORE
+        | tex::GOLD_ORE
+        | tex::DIAMOND_ORE
+        | tex::LAPIS_ORE
+        | tex::COPPER_ORE
+        | tex::REDSTONE_ORE
+        | tex::EMERALD_ORE => {
             let ore = match layer {
                 tex::COAL_ORE => [40, 40, 40],
                 tex::IRON_ORE => [216, 175, 147],
                 tex::GOLD_ORE => [250, 220, 70],
                 tex::LAPIS_ORE => [30, 70, 185],
+                tex::COPPER_ORE => [184, 99, 62],
+                tex::REDSTONE_ORE => [176, 16, 16],
+                tex::EMERALD_ORE => [20, 168, 72],
                 _ => [95, 230, 225],
             };
             let pts = points(layer, 5);
@@ -698,6 +708,36 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             }
         }
         tex::SMITHING_FRONT | tex::SMITHING_SIDE | tex::SMITHING_BOTTOM => smithing_wood(layer, x, y, r),
+        tex::RAW_IRON_BLOCK | tex::RAW_GOLD_BLOCK | tex::RAW_COPPER_BLOCK => {
+            // Chunks of raw metal, darker in the cracks between them.
+            let colour = match layer {
+                tex::RAW_GOLD_BLOCK => [232, 188, 62],
+                tex::RAW_COPPER_BLOCK => [176, 98, 64],
+                _ => [198, 148, 118],
+            };
+            let pts = points(layer, 8);
+            let (d1, d2, i) = voronoi(x, y, &pts);
+            let crack = d2 - d1 < 1.0;
+            shade(colour, if crack { 0.62 } else { 0.86 + rnd(layer, i, 0, 4) * 0.22 + r * 0.06 })
+        }
+        tex::COPPER_BLOCK => {
+            let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+            shade([196, 112, 76], if rim { 0.75 } else { 0.94 + r * 0.08 })
+        }
+        tex::EMERALD_BLOCK => {
+            let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+            let facet = (x / 4 + y / 4).is_multiple_of(2);
+            shade(
+                [24, 176, 78],
+                if rim {
+                    0.7
+                } else if facet {
+                    1.02 + r * 0.06
+                } else {
+                    0.88 + r * 0.06
+                },
+            )
+        }
         tex::IRON_BLOCK => {
             // Pale steel plate with a bevelled rim and a rivet line.
             let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;

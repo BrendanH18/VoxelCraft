@@ -71,7 +71,9 @@ impl World {
         out.extend(block.drop().map(|item| Stack::new(item, 1)));
         match block {
             // Java's ore bonus: the drop times 1 + max(0, rand(fortune + 2) - 1).
-            Block::COAL_ORE | Block::DIAMOND_ORE | Block::QUARTZ_ORE if fortune > 0 => {
+            Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE | Block::EMERALD_ORE
+                if fortune > 0 =>
+            {
                 let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1) as u8;
                 if let Some(s) = out.first_mut() {
                     s.count = times;
@@ -92,6 +94,17 @@ impl World {
             Block::TALL_GRASS | Block::FERN if self.one_in(8) => {
                 let n = 1 + self.up_to(2 * fortune);
                 out.push(Stack::new(Item::WHEAT_SEEDS, n as u8))
+            }
+            // Copper: 2-5 raw copper, times Java's ore bonus.
+            Block::COPPER_ORE => {
+                let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1);
+                let n = ((2 + self.roll() % 4) * times).min(64);
+                out.push(Stack::new(Item::RAW_COPPER, n as u8));
+            }
+            // Redstone: 4-5, plus a uniform 0..=fortune (Java's uniform_bonus_count).
+            Block::REDSTONE_ORE => {
+                let n = (4 + self.roll() % 2 + self.up_to(fortune)).min(64);
+                out.push(Stack::new(Item::REDSTONE, n as u8));
             }
             // Lapis: 4-9, times Java's ore bonus with fortune.
             Block::LAPIS_ORE => {
@@ -518,5 +531,40 @@ mod tests {
         world.set_block(near + IVec3::Y, Block::GLOWSTONE);
         assert!(world.grows_here(crop));
         assert!(world.mesh_uploads.is_empty());
+    }
+
+    #[test]
+    fn metal_ores_drop_raw_materials_and_gems() {
+        let mut world = World::new_headless(Arc::new(Generator::new(3)), Default::default(), 2);
+        let silk = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::SilkTouch, 1);
+        world.spill_block(IVec3::ZERO, Block::IRON_ORE);
+        world.spill_block(IVec3::ZERO, Block::GOLD_ORE);
+        world.spill_block(IVec3::ZERO, Block::EMERALD_ORE);
+        assert_eq!(
+            world.drops,
+            vec![
+                (IVec3::ZERO, Stack::new(Item::RAW_IRON, 1)),
+                (IVec3::ZERO, Stack::new(Item::RAW_GOLD, 1)),
+                (IVec3::ZERO, Stack::new(Item::EMERALD, 1)),
+            ]
+        );
+        world.drops.clear();
+        world.spill_mined(IVec3::ZERO, Block::IRON_ORE, silk);
+        world.spill_mined(IVec3::ZERO, Block::COPPER_ORE, silk);
+        assert_eq!(
+            world.drops,
+            vec![(IVec3::ZERO, Stack::new(Block::IRON_ORE, 1)), (IVec3::ZERO, Stack::new(Block::COPPER_ORE, 1)),]
+        );
+        world.drops.clear();
+        for _ in 0..30 {
+            world.spill_block(IVec3::ZERO, Block::COPPER_ORE);
+            world.spill_block(IVec3::ZERO, Block::REDSTONE_ORE);
+        }
+        assert!(world.drops.iter().any(|(_, s)| s.item == Item::RAW_COPPER && (2..=5).contains(&s.count)));
+        assert!(world.drops.iter().any(|(_, s)| s.item == Item::REDSTONE && (4..=5).contains(&s.count)));
+        assert!(world.drops.iter().all(|(_, s)| {
+            (s.item == Item::RAW_COPPER && (2..=5).contains(&s.count))
+                || (s.item == Item::REDSTONE && (4..=5).contains(&s.count))
+        }));
     }
 }

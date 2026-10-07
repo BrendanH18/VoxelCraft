@@ -29,6 +29,7 @@ mod growth;
 pub(crate) mod lighting;
 pub mod nether;
 pub mod noise;
+pub mod ore;
 mod portal;
 pub mod shape;
 mod spawner;

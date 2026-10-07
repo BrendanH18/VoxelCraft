@@ -343,6 +343,17 @@ static ITEMS: [ItemInfo; 64] = [
     netherite_armor("netherite boots", ArmorPiece::Boots),
 ];
 
+/// Non-block items in the materials id range, after the saved tool and
+/// armor blocks. Append only within 361..=399.
+static EXTRA_ITEMS: [ItemInfo; 6] = [
+    item("raw iron", Sprite::Lump([216, 164, 122])),
+    item("raw gold", Sprite::Lump([246, 196, 70])),
+    item("raw copper", Sprite::Lump([196, 112, 72])),
+    item("copper ingot", Sprite::Ingot([200, 118, 86])),
+    item("redstone", Sprite::Powder([170, 24, 20])),
+    item("emerald", Sprite::Gem([22, 186, 82])),
+];
+
 /// Uses before a bow breaks.
 pub const BOW_DURABILITY: u16 = 384;
 /// Uses before a flint and steel breaks.
@@ -363,6 +374,9 @@ const NETHERITE_TOOLS: u16 = 311;
 const NETHERITE_ARMOR: u16 = NETHERITE_TOOLS + TOOL_KINDS.len() as u16;
 /// Potions start at this id: `FIRST_POTION + potion index`.
 const FIRST_POTION: u16 = 400;
+/// Raw metals and gems. 360 is diamond boots (`FIRST_ARMOR` ends there),
+/// so these start at 361.
+const EXTRA_ITEM: u16 = 361;
 const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
 
 impl Item {
@@ -431,6 +445,12 @@ impl Item {
     pub const NETHERITE_INGOT: Item = Item(309);
     /// Upgrades diamond gear to Netherite at a smithing table.
     pub const NETHERITE_UPGRADE: Item = Item(310);
+    pub const RAW_IRON: Item = Item(361);
+    pub const RAW_GOLD: Item = Item(362);
+    pub const RAW_COPPER: Item = Item(363);
+    pub const COPPER_INGOT: Item = Item(364);
+    pub const REDSTONE: Item = Item(365);
+    pub const EMERALD: Item = Item(366);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         match tier {
@@ -519,6 +539,9 @@ impl Item {
                 max_stack: 1,
                 sprite: Sprite::Armor(piece, material),
             };
+        }
+        if let Some(info) = self.0.checked_sub(EXTRA_ITEM).and_then(|i| EXTRA_ITEMS.get(i as usize)) {
+            return *info;
         }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
     }
@@ -616,7 +639,8 @@ impl Item {
         let materials = (0..ITEMS.len() as u16).map(|i| Item(FIRST_ITEM + i));
         let tools = (0..TOOL_COUNT + ARMOR_COUNT).map(|i| Item(FIRST_TOOL + i));
         let potions = (0..POTION_COUNT).map(|i| Item(FIRST_POTION + i));
-        materials.chain(tools).chain(potions)
+        let extra = (0..EXTRA_ITEMS.len() as u16).map(|i| Item(EXTRA_ITEM + i));
+        materials.chain(tools).chain(potions).chain(extra)
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -638,13 +662,16 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some(i - FIRST_ITEM),
         i if item.as_tool().is_some() || item.as_armor().is_some() => Some(materials + i - FIRST_TOOL),
         i if item.as_potion().is_some() => Some(materials + TOOL_COUNT + ARMOR_COUNT + i - FIRST_POTION),
+        i if (EXTRA_ITEM..EXTRA_ITEM + EXTRA_ITEMS.len() as u16).contains(&i) => {
+            Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + i - EXTRA_ITEM)
+        }
         _ => None,
     }
 }
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32
+    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32 + EXTRA_ITEMS.len() as u32
 }
 
 /// Layer of a status effect's icon: in the item icon array, after every

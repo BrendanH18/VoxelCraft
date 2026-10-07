@@ -513,7 +513,7 @@ impl Generator {
                     let mut b = if wy == 0 || (wy < 4 && hash_f(wx, wy, wz, self.seed) < (4 - wy) as f32 / 4.0) {
                         Block::BEDROCK
                     } else if wy < col.height - depth {
-                        self.ore_or_stone(wx, wy, wz)
+                        Block::STONE
                     } else if wy < col.height {
                         self.filler_block(col, wy)
                     } else if wy == col.height {
@@ -540,6 +540,14 @@ impl Generator {
             }
         }
 
+        if base.y < max_h {
+            let biome_at = |x: i32, z: i32| {
+                let lx = (x - base.x).clamp(0, CHUNK_SIZE_I - 1) as usize;
+                let lz = (z - base.z).clamp(0, CHUNK_SIZE_I - 1) as usize;
+                cols[lz][lx].biome
+            };
+            super::ore::paint(self.seed, blocks.as_mut(), base, biome_at);
+        }
         if base.y <= max_h + TREE_TOP && top >= min_h {
             self.place_trees(&mut blocks, base);
             self.place_plants(&mut blocks, base, &cols);
@@ -605,20 +613,6 @@ impl Generator {
         let tunnel = v[0] * v[0] + v[1] * v[1] < 0.0045;
         let cavern = p.y < 48 && v[2] > 0.42 - (48 - p.y) as f32 * 0.002;
         if tunnel || cavern { if p.y <= LAVA_LEVEL { Block::LAVA } else { Block::AIR } } else { Block::STONE }
-    }
-
-    fn ore_or_stone(&self, x: i32, y: i32, z: i32) -> Block {
-        // Ores form small clusters: pick a 2x2x2 cell, then thin it out.
-        let cell = hash3(x >> 1, y >> 1, z >> 1, self.seed ^ 0x0E5) % 1000;
-        let ore = match cell {
-            0..=11 if y < 128 => Block::COAL_ORE,
-            12..=18 if y < 64 => Block::IRON_ORE,
-            19..=21 if y < 32 => Block::GOLD_ORE,
-            22..=23 if y < 16 => Block::DIAMOND_ORE,
-            24..=25 if y < 32 => Block::LAPIS_ORE,
-            _ => return Block::STONE,
-        };
-        if !hash3(x, y, z, self.seed ^ 0x0E6).is_multiple_of(3) { ore } else { Block::STONE }
     }
 
     /// Samples the cave noises on a coarse grid; per-block values are

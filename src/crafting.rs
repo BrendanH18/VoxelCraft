@@ -180,6 +180,11 @@ const STICK: Ingredient = &[Item::STICK];
 const LAPIS_BLOCK: Ingredient = &[b(Block::LAPIS_BLOCK)];
 const OBSIDIAN: Ingredient = &[b(Block::OBSIDIAN)];
 const IRON_BLOCK: Ingredient = &[b(Block::IRON_BLOCK)];
+const RAW_IRON_BLOCK: Ingredient = &[b(Block::RAW_IRON_BLOCK)];
+const RAW_GOLD_BLOCK: Ingredient = &[b(Block::RAW_GOLD_BLOCK)];
+const RAW_COPPER_BLOCK: Ingredient = &[b(Block::RAW_COPPER_BLOCK)];
+const COPPER_BLOCK: Ingredient = &[b(Block::COPPER_BLOCK)];
+const EMERALD_BLOCK: Ingredient = &[b(Block::EMERALD_BLOCK)];
 const IRON: Ingredient = &[Item::IRON_INGOT];
 const GOLD: Ingredient = &[Item::GOLD_INGOT];
 const NETHERRACK: Ingredient = &[b(Block::NETHERRACK)];
@@ -214,6 +219,16 @@ pub fn recipes() -> &'static [Recipe] {
             shapeless(&[LAPIS_BLOCK], Item::LAPIS_LAZULI, 9),
             shaped(&["###", "###", "###"], &[('#', IRON)], b(Block::IRON_BLOCK), 1),
             shapeless(&[IRON_BLOCK], Item::IRON_INGOT, 9),
+            shaped(&["###", "###", "###"], &[('#', &[Item::RAW_IRON])], b(Block::RAW_IRON_BLOCK), 1),
+            shapeless(&[RAW_IRON_BLOCK], Item::RAW_IRON, 9),
+            shaped(&["###", "###", "###"], &[('#', &[Item::RAW_GOLD])], b(Block::RAW_GOLD_BLOCK), 1),
+            shapeless(&[RAW_GOLD_BLOCK], Item::RAW_GOLD, 9),
+            shaped(&["###", "###", "###"], &[('#', &[Item::RAW_COPPER])], b(Block::RAW_COPPER_BLOCK), 1),
+            shapeless(&[RAW_COPPER_BLOCK], Item::RAW_COPPER, 9),
+            shaped(&["###", "###", "###"], &[('#', &[Item::COPPER_INGOT])], b(Block::COPPER_BLOCK), 1),
+            shapeless(&[COPPER_BLOCK], Item::COPPER_INGOT, 9),
+            shaped(&["###", "###", "###"], &[('#', &[Item::EMERALD])], b(Block::EMERALD_BLOCK), 1),
+            shapeless(&[EMERALD_BLOCK], Item::EMERALD, 9),
             shapeless(
                 &[NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD, NETHERITE_SCRAP, GOLD],
                 Item::NETHERITE_INGOT,
@@ -533,5 +548,22 @@ mod tests {
         let mut restored = Inventory::deserialize(&saved).unwrap();
         assert_eq!(restored.get(0), Some(Stack::new(Block::PLANKS, 4)));
         assert_eq!(restored.take_spill(), vec![Stack::new(Block::LOG, 63)]);
+    }
+
+    #[test]
+    fn raw_metal_and_gems_pack_into_blocks() {
+        let pack = |item: Item, block: Block| {
+            let mut g = Grid::new(3);
+            g.cells = [Some(Stack::new(item, 1)); 9];
+            assert_eq!(g.result(), Some(Stack::new(block, 1)));
+            let mut back = Grid::new(2);
+            back.cells[0] = Some(Stack::new(block, 1));
+            assert_eq!(back.result(), Some(Stack::new(item, 9)));
+        };
+        pack(Item::RAW_IRON, Block::RAW_IRON_BLOCK);
+        pack(Item::RAW_GOLD, Block::RAW_GOLD_BLOCK);
+        pack(Item::RAW_COPPER, Block::RAW_COPPER_BLOCK);
+        pack(Item::COPPER_INGOT, Block::COPPER_BLOCK);
+        pack(Item::EMERALD, Block::EMERALD_BLOCK);
     }
 }
