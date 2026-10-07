@@ -287,11 +287,13 @@ full performance display instead of duplicating the compact counter.
   long), aqua affinity, thorns (15% a level to hit back for 1-4), depth
   strider, sharpness (+0.5 a level + 0.5), smite and bane of arthropods
   (+2.5 a level against undead / spiders and silverfish), knockback, fire
-  aspect (4 s of fire a level), looting (up to one more of each drop a
-  level), sweeping edge (sword hits on the ground sweep mobs next to the
-  target for 1 + level / (level + 1) of the damage), efficiency (level² +
-  1 mining speed), silk touch (the block itself, no experience), fortune
-  (Java's ore, crop, glowstone, melon, gravel and leaf bonuses),
+  aspect (4 s of fire a level; burning animals drop cooked meat, and fire
+  kills within five seconds of a player hit award XP), looting (up to one
+  more of each drop a level), sweeping edge (sword hits on the ground sweep
+  mobs next to the target for 1 + level / (level + 1) of the damage),
+  efficiency (level² + 1 mining speed), silk touch (the block itself, no
+  ore experience; spawners still award XP), fortune (Java's ore, crop,
+  glowstone, melon, gravel and leaf bonuses),
   unbreaking, power, punch, flame, infinity, mending (picked-up
   experience repairs held or worn gear, two durability a point), and the
   curses of binding (worn armor stays on outside creative) and vanishing

@@ -79,8 +79,6 @@ pub(super) struct Body {
     attack_held: bool,
     attack_cooldown: f64,
     container: Container,
-    /// The open enchanting table's or anvil's input slots.
-    work: super::enchanting::WorkSlots,
 }
 
 impl Default for Body {
@@ -94,7 +92,6 @@ impl Default for Body {
             attack_held: false,
             attack_cooldown: 0.0,
             container: Container::Inventory,
-            work: [None; 2],
         }
     }
 }
@@ -594,19 +591,19 @@ impl Game {
         // With the bodies: bed occupancy pairs `sleeping` with `player`.
         swap(&mut self.sleeping, &mut bot.agent.sleeping);
         swap(&mut self.container, &mut body.container);
-        swap(&mut self.work, &mut body.work);
+        swap(&mut self.work, &mut bot.agent.work);
         true
     }
 
     /// Controller player `name`'s enchanting table or anvil input slots.
     pub(super) fn pad_work(&self, name: &str) -> super::enchanting::WorkSlots {
-        self.pads.seats.iter().find(|s| s.name == name).map_or([None; 2], |s| s.body.work)
+        self.agents.players.get(name).map_or([None; 2], |b| b.agent.work)
     }
 
     /// Empties controller player `name`'s enchanting table or anvil slots.
     pub(super) fn take_pad_work(&mut self, name: &str) -> Vec<crate::inventory::Stack> {
-        let Some(seat) = self.pads.seats.iter_mut().find(|s| s.name == name) else { return Vec::new() };
-        seat.body.work.iter_mut().filter_map(Option::take).collect()
+        let Some(bot) = self.agents.players.get_mut(name) else { return Vec::new() };
+        bot.agent.work.iter_mut().filter_map(Option::take).collect()
     }
 
     /// Runs host interaction code as controller player `i`. While `f` runs,

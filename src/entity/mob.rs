@@ -363,6 +363,8 @@ pub struct Mob {
     attack_cooldown: f32,
     burn_timer: f32,
     fire_left: f32,
+    /// Java credits environmental deaths for five seconds after a player hit.
+    player_hit_left: f32,
     light_timer: f32,
     /// Blocked horizontally on the last physics step.
     blocked: bool,
@@ -421,6 +423,7 @@ impl Mob {
             attack_cooldown: 0.0,
             burn_timer: 0.0,
             fire_left: 0.0,
+            player_hit_left: 0.0,
             light_timer: 0.0,
             fuse: 0.0,
             provoked: 0.0,
@@ -491,7 +494,12 @@ impl Mob {
     pub fn ignite(&mut self, secs: f32) {
         if !self.kind.fire_immune() && !self.in_water {
             self.fire_left = self.fire_left.max(secs);
+            self.burning = self.alive() && self.fire_left > 0.0;
         }
+    }
+
+    pub(super) fn player_hit(&mut self) {
+        self.player_hit_left = 5.0;
     }
 
     /// Advances the mob by `dt` seconds.
@@ -518,6 +526,7 @@ impl Mob {
         self.hurt = (self.hurt - dtf).max(0.0);
         self.provoked = (self.provoked - dtf).max(0.0);
         self.attack_cooldown -= dtf;
+        self.player_hit_left = (self.player_hit_left - dtf).max(0.0);
         self.attack_anim = (self.attack_anim - dtf).max(0.0);
 
         self.light_timer -= dtf;
@@ -574,7 +583,17 @@ impl Mob {
         self.head_pitch += (self.head_target.1 - self.head_pitch) * k;
 
         let (health, provoked) = (self.health, self.provoked);
+        let alive = self.alive();
         self.burn(dtf, world, ctx, rng);
+        if alive && !self.alive() {
+            let player_kill = self.player_hit_left > 0.0;
+            events.push(EntityEvent::MobKilled {
+                kind: self.kind,
+                pos: self.pos,
+                burning: self.fire_left > 0.0,
+                player_kill,
+            });
+        }
         // Endermen hurt by anything but a mob or player usually teleport,
         // and only get angry at attackers.
         if self.kind == MobKind::Enderman {
@@ -665,8 +684,14 @@ impl Mob {
                             for level in target.thorns.into_iter().filter(|&l| l > 0) {
                                 if rng.chance(0.15 * level as f32) {
                                     let back = 1.0 + (rng.next_f32() * 4.0).floor().min(3.0);
+                                    self.player_hit();
                                     if self.damage(back, Some(-knockback * 0.5 + DVec3::Y * 3.0), rng) {
-                                        events.push(EntityEvent::ThornsKill { kind: self.kind, pos: self.pos });
+                                        events.push(EntityEvent::MobKilled {
+                                            kind: self.kind,
+                                            pos: self.pos,
+                                            burning: self.burning,
+                                            player_kill: true,
+                                        });
                                     }
                                 }
                             }

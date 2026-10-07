@@ -118,6 +118,12 @@ pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {
     lo + ((rng.next_f32() * (hi - lo + 1) as f32) as u32).min(hi - lo)
 }
 
+/// Silk Touch suppresses XP only when it actually harvests the block
+/// itself. Spawners cannot be collected, and still award XP with it.
+pub fn mined_xp(block: Block, tool: Enchants, rng: &mut crate::entity::Rng) -> u32 {
+    if tool.has(Enchantment::SilkTouch) && silk_drop(block).is_some() { 0 } else { ore_xp(block, rng) }
+}
+
 /// Whether a block mined with silk touch drops itself (Java's
 /// silk-touchable blocks among ours).
 pub fn silk_drop(block: Block) -> Option<Item> {
@@ -132,6 +138,7 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::QUARTZ_ORE
             | Block::LAPIS_ORE
             | Block::GLASS
+            | Block::GRAVEL
             | Block::GLOWSTONE
             | Block::ICE
             | Block::BOOKSHELF
@@ -181,6 +188,15 @@ mod tests {
         assert!(break_time(Block::LOG, tool(ToolKind::Axe, Tier::Stone)) < break_time(Block::LOG, None));
         assert_eq!(break_time(Block::TORCH, None), 0.0);
         assert!(break_time(Block::BEDROCK, tool(ToolKind::Pickaxe, Tier::Diamond)).is_infinite());
+    }
+
+    #[test]
+    fn silk_touch_keeps_spawner_xp_but_suppresses_ore_xp() {
+        let silk = Enchants::NONE.with(Enchantment::SilkTouch, 1);
+        let mut rng = crate::entity::Rng::new(1);
+        assert_eq!(mined_xp(Block::DIAMOND_ORE, silk, &mut rng), 0);
+        assert!((3..=7).contains(&mined_xp(Block::DIAMOND_ORE, Enchants::NONE, &mut rng)));
+        assert!((15..=43).contains(&mined_xp(Block::SPAWNER, silk, &mut rng)));
     }
 
     #[test]

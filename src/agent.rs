@@ -277,6 +277,9 @@ pub struct Agent {
     pub player: Player,
     pub previous_pos: DVec3,
     pub inventory: Inventory,
+    /// Transient enchanting table / anvil inputs for a controller player.
+    /// Saved as returned inventory and dropped on death with the other gear.
+    pub work: [Option<Stack>; 2],
     pub vitals: Vitals,
     /// The host's stable ID for this player (owner of its thrown pearls).
     pub id: crate::entity::PlayerId,
@@ -308,6 +311,7 @@ impl Agent {
             player: Player::new(pos),
             previous_pos: pos,
             inventory: Inventory::default(),
+            work: [None; 2],
             vitals: Vitals::default(),
             id: crate::entity::PlayerId::default(),
             creative: false,
@@ -735,9 +739,7 @@ impl Agent {
                     if mining::can_harvest(block, held) {
                         let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
                         world.spill_mined(pos, block, tool);
-                        if !tool.has(crate::enchant::Enchantment::SilkTouch) {
-                            entities.drop_block_xp(block, pos);
-                        }
+                        entities.drop_mined_xp(block, pos, tool);
                     }
                     if let Some(held) = held {
                         self.inventory.wear(self.selected, mining::wear(held, false));
@@ -791,7 +793,8 @@ impl Agent {
     /// A dead survival agent's inventory and some of its experience spill
     /// where it died.
     fn drop_everything(&mut self, entities: &mut Entities) {
-        for stack in self.inventory.take_all() {
+        let stacks = self.inventory.take_all().into_iter().chain(self.work.iter_mut().filter_map(Option::take));
+        for stack in stacks.filter(|s| !s.active_enchants().has(crate::enchant::Enchantment::VanishingCurse)) {
             entities.scatter(stack, self.player.pos);
         }
         let xp = self.vitals.xp.die();
@@ -886,16 +889,18 @@ impl Agent {
         }
         let mut inv = self.inventory.clone();
         inv.take_one(self.selected);
+        if !self.creative {
+            for _ in 0..=i {
+                let slot = inv.find(Item::LAPIS_LAZULI).ok_or("no lapis")?;
+                inv.take_one(slot);
+            }
+        }
         if inv.slots[self.selected].is_none() {
             inv.slots[self.selected] = Some(out);
         } else if inv.add_stack(out) > 0 {
             return Err("inventory full".into());
         }
         if !self.creative {
-            for _ in 0..=i {
-                let slot = inv.find(Item::LAPIS_LAZULI).ok_or("no lapis")?;
-                inv.take_one(slot);
-            }
             self.vitals.xp.add_levels(-(i as i64 + 1));
         }
         self.inventory = inv;
@@ -1221,6 +1226,40 @@ mod tests {
         assert_eq!(a.remaining, 0);
         assert_eq!(b.player.pos.x, 4.5);
     }
+    #[test]
+    fn death_drops_work_inputs_and_destroys_vanishing_gear() {
+        let mut a = Agent::new(DVec3::ZERO);
+        let sword = Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Iron);
+        a.work[0] = Some(Stack {
+            enchants: crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::VanishingCurse, 1),
+            ..Stack::new(sword, 1)
+        });
+        a.work[1] = Some(Stack::new(Item::DIAMOND, 2));
+        let mut entities = Entities::new(1);
+        a.hurt(30.0, "was slain by a zombie", DVec3::ZERO, &mut entities);
+        assert!(a.vitals.is_dead());
+        assert_eq!(a.work, [None; 2]);
+        assert_eq!(entities.items.len(), 1);
+        assert_eq!(entities.items[0].stack, Stack::new(Item::DIAMOND, 2));
+    }
+
+    #[test]
+    fn enchanting_can_use_the_slot_freed_by_lapis() {
+        let mut world = world();
+        world.set_block(IVec3::new(4, 151, 1), Block::ENCHANTING_TABLE);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.slots.fill(Some(Stack::new(Item::STICK, 64)));
+        a.inventory.slots[0] = Some(Stack::new(Item::BOOK, 2));
+        a.inventory.slots[1] = Some(Stack::new(Item::LAPIS_LAZULI, 1));
+        a.vitals.xp.add_levels(30);
+        a.enchant_at_table(0, &world).unwrap();
+        assert_eq!(a.inventory.get(0), Some(Stack::new(Item::BOOK, 1)));
+        let book = a.inventory.get(1).unwrap();
+        assert_eq!(book.item, Item::ENCHANTED_BOOK);
+        assert!(!book.enchants.is_empty());
+        assert_eq!(a.vitals.xp.level, 29);
+    }
+
     #[test]
     fn agents_enchant_at_a_table_for_levels_and_lapis() {
         let mut world = world();

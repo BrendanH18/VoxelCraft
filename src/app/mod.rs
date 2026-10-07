@@ -1304,9 +1304,7 @@ impl Game {
         // Stone, ores and the like only drop with a good enough pickaxe.
         if crate::mining::can_harvest(block, held) {
             self.world.spill_mined(pos, block, tool);
-            if !tool.has(crate::enchant::Enchantment::SilkTouch) {
-                self.mobs.entities.drop_block_xp(block, pos);
-            }
+            self.mobs.entities.drop_mined_xp(block, pos, tool);
         }
         if block.is_bed() {
             self.break_bed_partner(pos, block);

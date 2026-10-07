@@ -489,8 +489,12 @@ fn select(rng: &mut JavaRandom, item: Item, cost: u32) -> Vec<(Enchantment, u8)>
 /// Java's `getEnchantmentList`: what offer `slot` will apply, seeded by the
 /// player's enchantment seed. A book loses one of several at random.
 pub fn offer_enchants(seed: i32, item: Item, slot: usize, cost: u32) -> Vec<(Enchantment, u8)> {
-    let mut rng = JavaRandom::new(seed as i64 + slot as i64);
-    let mut list = select(&mut rng, item, cost);
+    let mut rng = JavaRandom::new(seed.wrapping_add(slot as i32) as i64);
+    offer_list(&mut rng, item, cost)
+}
+
+fn offer_list(rng: &mut JavaRandom, item: Item, cost: u32) -> Vec<(Enchantment, u8)> {
+    let mut list = select(rng, item, cost);
     if item == Item::BOOK && list.len() > 1 {
         list.remove(rng.next_bounded(list.len() as i32) as usize);
     }
@@ -518,7 +522,10 @@ pub fn offers(seed: i32, item: Item, bookshelves: u32) -> [Offer; 3] {
     }
     for (slot, o) in out.iter_mut().enumerate() {
         if o.cost > 0 {
-            let list = offer_enchants(seed, item, slot, o.cost);
+            // Java reseeds this same source for the roll, then draws the
+            // clue from its remaining state (not the cost-generation state).
+            let mut rng = JavaRandom::new(seed.wrapping_add(slot as i32) as i64);
+            let list = offer_list(&mut rng, item, o.cost);
             if !list.is_empty() {
                 o.clue = Some(list[rng.next_bounded(list.len() as i32) as usize]);
             }
@@ -588,7 +595,7 @@ pub fn anvil_any_cost(left: Stack, right: Option<Stack>, creative: bool) -> Opti
         for (e, level) in right.enchants.iter() {
             let have = out.enchants.level(e);
             let mut new = if have == level { level + 1 } else { have.max(level) };
-            let mut fits = e.fits(left.item) || creative || left.item == Item::ENCHANTED_BOOK;
+            let mut fits = e.def().supported.accepts(left.item) || creative || left.item == Item::ENCHANTED_BOOK;
             for (other, _) in out.enchants.iter() {
                 if other != e && !e.compatible(other) {
                     fits = false;
@@ -823,6 +830,23 @@ mod tests {
     }
 
     #[test]
+    fn clues_continue_the_offer_roll_and_seeds_wrap_as_java_ints() {
+        use Enchantment as E;
+        let pick = Item::tool(ToolKind::Pickaxe, Tier::Iron);
+        // EnchantmentMenu reseeds for each roll and uses its next random
+        // draw for the clue, after selection has consumed its draws.
+        assert_eq!(
+            offers(0, pick, 15),
+            [
+                Offer { cost: 8, clue: Some((E::Unbreaking, 2)) },
+                Offer { cost: 13, clue: Some((E::Unbreaking, 2)) },
+                Offer { cost: 30, clue: Some((E::Efficiency, 4)) },
+            ]
+        );
+        assert_eq!(offer_enchants(i32::MAX, pick, 1, 30), offer_enchants(i32::MIN, pick, 0, 30));
+    }
+
+    #[test]
     fn table_offers_follow_java_costs() {
         let pick = Item::tool(ToolKind::Pickaxe, Tier::Iron);
         for seed in 0..200 {
@@ -874,6 +898,12 @@ mod tests {
             Stack { enchants: Enchants::NONE.with(Enchantment::Looting, 3), ..Stack::new(Item::ENCHANTED_BOOK, 1) };
         let r = anvil(Stack::new(sword(), 1), Some(book), false).unwrap();
         assert_eq!((r.output.enchants.level(Enchantment::Looting), r.cost), (3, 6));
+        assert_eq!(
+            anvil(Stack::new(Item::BOOK, 1), Some(book), false),
+            None,
+            "plain books do not store enchantments on an anvil"
+        );
+        assert!(anvil(Stack::new(Item::ENCHANTED_BOOK, 1), Some(book), false).is_some());
 
         // Conflicts cost one each and add nothing.
         let smite =

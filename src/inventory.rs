@@ -145,7 +145,7 @@ impl Inventory {
     /// Mending: experience `points` picked up repair a random damaged
     /// mending item held in `selected` or worn, two durability per point.
     /// Returns the points left for the experience bar (Java 1.21).
-    pub fn mend(&mut self, points: u32, selected: usize) -> u32 {
+    pub fn mend(&mut self, mut points: u32, selected: usize) -> u32 {
         let mendable = |s: &Option<Stack>| {
             s.is_some_and(|s| {
                 s.damage > 0 && s.enchants.has(enchant::Enchantment::Mending) && s.item != Item::ENCHANTED_BOOK
@@ -155,15 +155,16 @@ impl Inventory {
         if mendable(&self.slots[selected]) {
             cells.push(&mut self.slots[selected]);
         }
-        if cells.is_empty() || points == 0 {
-            return points;
+        while !cells.is_empty() && points > 0 {
+            let pick = ((enchant::roll() * cells.len() as f32) as usize).min(cells.len() - 1);
+            let Some(stack) = cells.swap_remove(pick) else { continue };
+            let repair = points.saturating_mul(2).min(stack.damage as u32);
+            stack.damage -= repair as u16;
+            // An odd durability point costs no XP after integer rounding.
+            // Continue with other pieces even if the XP count stayed the same.
+            points -= repair / 2;
         }
-        let pick = ((enchant::roll() * cells.len() as f32) as usize).min(cells.len() - 1);
-        let Some(stack) = cells.swap_remove(pick) else { return points };
-        let repair = (points * 2).min(stack.damage as u32);
-        stack.damage -= repair as u16;
-        let left = points - repair * points / (points * 2);
-        if left > 0 && left < points { self.mend(left, selected) } else { left }
+        points
     }
 
     /// Total armor points worn (0..=20).
@@ -557,6 +558,21 @@ mod tests {
         assert_eq!(slots.map(|s| s.map_or(0, |s| s.count)), [0, 64, 6, 64]);
         let left = move_into(Stack::new(Block::DIRT, 64), &mut slots, &[1, 3]);
         assert_eq!(left, Some(Stack::new(Block::DIRT, 64)), "nowhere to go");
+    }
+
+    #[test]
+    fn mending_uses_leftover_xp_after_repairing_one_damage() {
+        use crate::enchant::Enchantment;
+        let mut inv = Inventory::default();
+        let enchants = Enchants::NONE.with(Enchantment::Mending, 1);
+        let helmet = Item::armor(ArmorPiece::Helmet, crate::item::ArmorMaterial::Iron);
+        inv.armor[0] = Some(Stack { damage: 1, enchants, ..Stack::new(helmet, 1) });
+        inv.slots[0] = Some(Stack { damage: 1, enchants, ..Stack::new(helmet, 1) });
+        assert_eq!(inv.mend(1, 0), 1, "each odd point rounds down to zero XP used");
+        assert_eq!(inv.armor[0].unwrap().damage, 0);
+        assert_eq!(inv.get(0).unwrap().damage, 0, "the same orb repairs both pieces");
+        inv.slots[0].as_mut().unwrap().damage = 5;
+        assert_eq!(inv.mend(u32::MAX, 0), u32::MAX - 2, "large XP awards cannot overflow");
     }
 
     #[test]

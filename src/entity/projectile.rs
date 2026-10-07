@@ -162,8 +162,14 @@ impl Arrow {
                         if self.enchants.has(Enchantment::Flame) {
                             mob.ignite(5.0);
                         }
+                        mob.player_hit();
                         let killed = mob.damage(damage, Some(push), rng);
-                        events.push(EntityEvent::MobShot { kind: mob.kind, pos: mob.pos, killed });
+                        events.push(EntityEvent::MobShot {
+                            kind: mob.kind,
+                            pos: mob.pos,
+                            killed,
+                            burning: mob.burning,
+                        });
                         return false;
                     }
                 }

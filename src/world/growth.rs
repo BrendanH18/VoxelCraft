@@ -422,6 +422,16 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
+    fn silk_touch_gravel_never_drops_flint() {
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        let silk = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::SilkTouch, 1);
+        for _ in 0..100 {
+            world.spill_mined(IVec3::ZERO, Block::GRAVEL, silk);
+        }
+        assert_eq!(world.drops, vec![(IVec3::ZERO, Stack::new(Block::GRAVEL, 1)); 100]);
+    }
+
+    #[test]
     fn random_ticks_include_distant_agents_without_accelerating_overlaps() {
         fn world(centers: &[IVec3]) -> World {
             let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);

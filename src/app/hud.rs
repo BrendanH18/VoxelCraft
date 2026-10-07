@@ -674,7 +674,7 @@ impl Game {
             (Container::Chest(_), _) => "Chest",
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
-            (Container::Anvil(_), _) => "Repair & Disenchant",
+            (Container::Anvil(_), _) => "Anvil",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
         };
