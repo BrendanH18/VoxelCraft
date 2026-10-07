@@ -1953,7 +1953,7 @@ impl Game {
             crack: self
                 .actions
                 .breaking
-                .map(|(p, progress)| (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u8)),
+                .map(|(p, progress)| (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u16)),
             block_models: self.block_models(alpha),
             hand: (self.show_hud && !self.vitals.is_dead() && self.sleeping.is_none()).then(|| {
                 let eye = self.player.eye();

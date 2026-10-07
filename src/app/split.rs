@@ -181,7 +181,7 @@ impl Game {
             let crack = pad
                 .map_or_else(|| a.breaking(&self.world), |p| p.0)
                 .filter(|&(_, f)| f > 0.0)
-                .map(|(p, f)| (p, crate::world::block::tex::CRACK_0 + (f * 10.0).min(9.0) as u8));
+                .map(|(p, f)| (p, crate::world::block::tex::CRACK_0 + (f * 10.0).min(9.0) as u16));
             let ui = if self.show_hud || a.vitals.is_dead() {
                 self.follower_ui(name, bot, (vp.width, vp.height), scene.now)
             } else {

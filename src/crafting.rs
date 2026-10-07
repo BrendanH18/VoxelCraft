@@ -292,8 +292,8 @@ pub fn recipes() -> &'static [Recipe] {
         const SLABS: [Ingredient; 6] =
             [&[b(Block::STONE)], COBBLESTONE, PLANKS, SAND_STONE, &[b(Block::BRICKS)], &[b(Block::NETHER_BRICKS)]];
         for (i, base) in SLABS.into_iter().enumerate() {
-            r.push(shaped(&["###"], &[('#', base)], b(Block(Block::STONE_SLAB.0 + i as u8)), 6));
-            r.push(shaped(&["#  ", "## ", "###"], &[('#', base)], b(Block(Block::STONE_STAIRS.0 + i as u8 * 4)), 4));
+            r.push(shaped(&["###"], &[('#', base)], b(Block(Block::STONE_SLAB.0 + i as u16)), 6));
+            r.push(shaped(&["#  ", "## ", "###"], &[('#', base)], b(Block(Block::STONE_STAIRS.0 + i as u16 * 4)), 4));
         }
         r.push(shaped(&["#s#", "#s#"], &[('#', PLANKS), ('s', STICK)], b(Block::OAK_FENCE), 3));
         r.push(shaped(&["s#s", "s#s"], &[('#', PLANKS), ('s', STICK)], b(Block::FENCE_GATE), 1));

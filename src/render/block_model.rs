@@ -82,8 +82,8 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
         if m.block.kind() == RenderKind::Cross {
             // Both diagonal planes run 0 -> 1 in z, so z works as u.
             let v = |x: f32, y: f32, z: f32| Vec3::new(x, y, z);
-            quad([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], tex[0].into(), 0.9, 0);
-            quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0].into(), 0.9, 0);
+            quad([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], tex[0], 0.9, 0);
+            quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0], 0.9, 0);
             continue;
         }
         let mut boxes = shape::item_shape(m.block);
@@ -109,7 +109,7 @@ pub fn vertices(models: &[BlockModel], camera: DVec3) -> Vec<BlockVertex> {
                 } else {
                     [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
                 };
-                quad(c, layer.into(), shade, d);
+                quad(c, layer, shade, d);
             }
         }
     }
@@ -129,10 +129,15 @@ pub(super) struct BlockModelPass {
 }
 
 impl BlockModelPass {
-    pub(super) fn new(device: &wgpu::Device, layout: &wgpu::PipelineLayout, format: wgpu::TextureFormat) -> Self {
+    pub(super) fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::PipelineLayout,
+        format: wgpu::TextureFormat,
+        paged_blocks: bool,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("block model shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/block_model.wgsl").into()),
+            source: super::block_shader(include_str!("shaders/block_model.wgsl"), paged_blocks),
         });
         let pipeline = |label, entry_point| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

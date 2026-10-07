@@ -3,7 +3,8 @@
 //! Ids below 256 are the block with the same id, so a `Block` converts to an
 //! `Item` for free and old saves (which stored block ids) still load. Ids from
 //! [`FIRST_ITEM`] up are tools, materials and food, described by a static
-//! table like the block registry.
+//! table like the block registry. Extended block items use `BLOCK_ITEM_BASE +
+//! state_id`, keeping the established materials/tools/potions IDs intact.
 
 use crate::world::block::{Block, RenderKind, tex};
 
@@ -13,6 +14,9 @@ pub struct Item(pub u16);
 
 /// First id that isn't a block.
 pub const FIRST_ITEM: u16 = 256;
+/// Extended block items occupy a disjoint range, preserving every existing item ID.
+pub const BLOCK_ITEM_BASE: u16 = 0x8000;
+const _: () = assert!(BLOCK_ITEM_BASE as usize + crate::world::block::STATE_CAPACITY <= u16::MAX as usize + 1);
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ToolKind {
@@ -383,7 +387,7 @@ impl Item {
     }
 
     pub const fn from_block(block: Block) -> Item {
-        Item(block.0 as u16)
+        Item(if block.0 < FIRST_ITEM { block.0 } else { BLOCK_ITEM_BASE + block.0 })
     }
 
     /// The block placing this item puts down: the block itself, or what a
@@ -398,8 +402,15 @@ impl Item {
 
     /// The block this item is, if any.
     pub fn block(self) -> Option<Block> {
-        if self.0 < FIRST_ITEM {
-            let b = Block(self.0 as u8);
+        let id = if self.0 < FIRST_ITEM {
+            Some(self.0)
+        } else {
+            self.0
+                .checked_sub(BLOCK_ITEM_BASE)
+                .filter(|&id| id >= FIRST_ITEM && (id as usize) < crate::world::block::STATE_CAPACITY)
+        };
+        if let Some(id) = id {
+            let b = Block(id);
             (b.kind() != RenderKind::Invisible).then_some(b)
         } else {
             None
@@ -599,6 +610,21 @@ fn armor_name(piece: ArmorPiece, material: ArmorMaterial) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extended_block_items_do_not_collide_with_saved_item_ids() {
+        for block in [Block::NETHERITE_BLOCK, Block(4093), Block(4094), Block(4095)] {
+            let item = Item::from_block(block);
+            assert_eq!(item.block(), Some(block));
+            assert_eq!(Item::from_name(item.name()), Some(item));
+        }
+        assert_eq!(Item::from_block(Block::NETHERITE_BLOCK).0, 222);
+        assert_eq!(Item::from_block(Block(256)).0, BLOCK_ITEM_BASE + 256);
+        assert_eq!(Item(BLOCK_ITEM_BASE + 255).block(), None);
+        assert_eq!(Item(BLOCK_ITEM_BASE + 4096).block(), None);
+        assert_eq!(Item::STICK.0, FIRST_ITEM);
+        assert_eq!(Item::STICK.block(), None);
+    }
 
     #[test]
     fn armor_has_names_defense_and_durability() {
