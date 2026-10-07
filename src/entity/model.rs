@@ -43,6 +43,14 @@ pub(super) const fn cube(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) ->
     Cuboid { min, max, color, noise }
 }
 
+const MAGMA_BODY: &[Cuboid] = &[cube([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [50, 28, 25], 80)];
+const MAGMA_GLOW: &[Cuboid] = &[
+    cube([-4.1, 1.8, -4.1], [4.1, 2.1, 4.1], [245, 99, 16], 0),
+    cube([-4.1, 3.8, -4.1], [4.1, 4.1, 4.1], [245, 99, 16], 0),
+    cube([-4.1, 5.8, -4.1], [4.1, 6.1, 4.1], [245, 99, 16], 0),
+    cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [255, 205, 55], 0),
+    cube([1.1, 4.5, 4.1], [2.6, 6.0, 4.15], [255, 205, 55], 0),
+];
 const SLIME_BODY: &[Cuboid] = &[
     cube([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [105, 180, 78], 55),
     cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [29, 60, 24], 0),
@@ -392,6 +400,9 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             part(CREEPER_LEG, [2.0, 6.0, -4.0], rx(swing)),
             part(CREEPER_HEAD, [0.0, 18.0, 0.0], head),
         ],
+        MobKind::MagmaCube => {
+            vec![part(MAGMA_BODY, [0.0; 3], Quat::IDENTITY), part(MAGMA_GLOW, [0.0; 3], Quat::IDENTITY)]
+        }
         MobKind::Slime => vec![part(SLIME_BODY, [0.0; 3], Quat::IDENTITY)],
         MobKind::Spider | MobKind::CaveSpider => {
             // Four legs a side, fanned out and drooping onto the ground; the
@@ -533,7 +544,7 @@ pub fn build(
         let scale = (1.0 + fuse * 0.18)
             * if m.kind == MobKind::CaveSpider {
                 0.55
-            } else if m.kind == MobKind::Slime {
+            } else if m.kind.is_cube() {
                 m.size as f32
             } else {
                 1.0
@@ -552,7 +563,8 @@ pub fn build(
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
             // Endermen eyes and blazes glow at full brightness.
-            let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES) || m.kind == MobKind::Blaze;
+            let glow =
+                std::ptr::eq(p.boxes, ENDERMAN_EYES) || std::ptr::eq(p.boxes, MAGMA_GLOW) || m.kind == MobKind::Blaze;
             let light = if glow { [light[0], 0, light[2], 255] } else { light };
             for (ci, c) in p.boxes.iter().enumerate() {
                 push_cuboid(out, c, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);

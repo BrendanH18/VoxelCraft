@@ -30,3 +30,18 @@ opaque because the current entity pass has no translucency.
 
 Sources: [Slime](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/Slime.java),
 [WorldgenRandom](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/levelgen/WorldgenRandom.java).
+
+## Magma cube and fire resistance
+
+Nether magma cubes share slime sizes and splitting. Damage is size + 2 (including
+tiny cubes); armor is 3 × size, jumps are higher and delayed four times longer,
+fire/lava immunity, flame bursts on landing, dark segmented model and squish voice.
+Only sizes 2/4 drop magma cream using Java's -2..1 roll plus Looting (item 641).
+Slimeball + blaze powder crafts cream; awkward + cream brews 3:00 fire resistance;
+redstone extends eligible potions, including fire resistance to 8:00. Water plus
+either ingredient becomes mundane. Natural attempts use nether-wastes weight 2
+(chance 0.02) in groups of 4; fortress pieces use Java's weight 3, group 4.
+There is no basalt-deltas biome, so that weight-100 pool is absent.
+
+Sources: [MagmaCube](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/MagmaCube.java),
+[loot table](https://raw.githubusercontent.com/misode/mcmeta/1.21.5-data/data/minecraft/loot_table/entities/magma_cube.json).

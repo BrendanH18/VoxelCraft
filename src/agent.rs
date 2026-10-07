@@ -147,21 +147,6 @@ const COMMAND_NAMES: &[&str] = &[
     "catalog",
 ];
 
-const MOB_COMMAND_NAMES: &[&str] = &[
-    "pig",
-    "cow",
-    "sheep",
-    "chicken",
-    "zombie",
-    "skeleton",
-    "creeper",
-    "spider",
-    "zombified_piglin",
-    "enderman",
-    "blaze",
-    "silverfish",
-];
-
 /// One Java command coordinate: absolute, or relative to the executor.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Coordinate {
@@ -351,7 +336,11 @@ pub fn tab_complete(input: &str) -> Option<String> {
             Some(RuleValue::Int(_)) => return None,
             None => return None,
         },
-        "summon" if stem.len() <= 1 => complete_options(MOB_COMMAND_NAMES, partial)?,
+        "summon" if stem.len() <= 1 => {
+            let names: Vec<String> = crate::entity::MobKind::ALL.iter().map(|k| k.name().replace(' ', "_")).collect();
+            let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+            complete_options(&refs, partial)?
+        }
         "effect" if stem.len() <= 1 => complete_options(&["give", "clear"], partial)?,
         "xp" | "experience" if stem.len() <= 1 => complete_options(&["add", "set", "query"], partial)?,
         _ if stem.is_empty() => complete_options(COMMAND_NAMES, partial)?,

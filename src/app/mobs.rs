@@ -391,7 +391,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Enderman => Voice::Enderman,
         MobKind::Blaze => Voice::Blaze,
         MobKind::Silverfish => Voice::Spider,
-        MobKind::Slime => Voice::Slime,
+        MobKind::Slime | MobKind::MagmaCube => Voice::Slime,
     }
 }
 

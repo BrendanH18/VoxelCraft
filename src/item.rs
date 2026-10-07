@@ -354,7 +354,8 @@ static EXTRA_ITEMS: [ItemInfo; 6] = [
     item("emerald", Sprite::Gem([22, 186, 82])),
 ];
 
-static MOB_ITEMS: [ItemInfo; 1] = [item("slimeball", Sprite::Lump([100, 185, 72]))];
+static MOB_ITEMS: [ItemInfo; 2] =
+    [item("slimeball", Sprite::Lump([100, 185, 72])), item("magma cream", Sprite::Lump([230, 125, 35]))];
 const MOB_ITEM: u16 = 640;
 
 /// Uses before a bow breaks.
@@ -455,6 +456,7 @@ impl Item {
     pub const REDSTONE: Item = Item(365);
     pub const EMERALD: Item = Item(366);
     pub const SLIMEBALL: Item = Item(640);
+    pub const MAGMA_CREAM: Item = Item(641);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         match tier {

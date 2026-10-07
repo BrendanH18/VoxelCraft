@@ -45,6 +45,9 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
         ("awkward", Item::GLISTERING_MELON_SLICE) => to("healing"),
         ("awkward", Item::SPIDER_EYE) => to("poison"),
         ("awkward", Item::BLAZE_POWDER) => to("strength"),
+        ("awkward", Item::MAGMA_CREAM) => to("fire_resistance"),
+        ("water", Item::MAGMA_CREAM | Item::REDSTONE) => to("mundane"),
+        (id, Item::REDSTONE) if to(&format!("long_{id}")).is_some() => to(&format!("long_{id}")),
         // Glowstone strengthens to level II.
         (id, i) if i == glowstone && to(&format!("strong_{id}")).is_some() => to(&format!("strong_{id}")),
         _ => None,
@@ -217,6 +220,16 @@ mod tests {
 
     fn run(stand: &mut BrewingStand, secs: f32) -> usize {
         (0..(secs * 20.0).round() as usize).filter(|_| stand.tick(0.05)).count()
+    }
+
+    #[test]
+    fn magma_cream_and_redstone_unlock_fire_resistance() {
+        let fire = Potion::from_id("fire_resistance").unwrap();
+        assert_eq!(brew(Potion::AWKWARD, Item::MAGMA_CREAM), Some(fire));
+        assert_eq!(brew(fire, Item::REDSTONE), Potion::from_id("long_fire_resistance"));
+        assert_eq!(brew(fire, Item::GLOWSTONE_DUST), None);
+        assert_eq!(brew(Potion::WATER, Item::MAGMA_CREAM), Some(Potion::MUNDANE));
+        assert!(is_ingredient(Item::REDSTONE));
     }
 
     #[test]

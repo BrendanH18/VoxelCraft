@@ -48,8 +48,13 @@ pub use projectile::Arrow;
 pub const SPAWN_MIN_DIST: f64 = 24.0;
 pub const SPAWN_MAX_DIST: f64 = 64.0;
 /// Java's Nether fortress spawns: (mob, weight, smallest and largest group).
-const FORTRESS_SPAWNS: [(MobKind, u32, u32, u32); 3] =
-    [(MobKind::Blaze, 10, 2, 3), (MobKind::ZombifiedPiglin, 5, 4, 4), (MobKind::Skeleton, 2, 5, 5)];
+/// Wither skeletons are added with that mob.
+const FORTRESS_SPAWNS: [(MobKind, u32, u32, u32); 4] = [
+    (MobKind::Blaze, 10, 2, 3),
+    (MobKind::ZombifiedPiglin, 5, 4, 4),
+    (MobKind::MagmaCube, 3, 4, 4),
+    (MobKind::Skeleton, 2, 5, 5),
+];
 /// Mobs farther than this are removed.
 pub const DESPAWN_DIST: f64 = 96.0;
 /// Hostile mobs only spawn when it's darker than this.
@@ -463,7 +468,9 @@ impl Entities {
             mob.armor = armor;
             mob.armor_glint = glint;
         }
-        if kind == MobKind::Slime {
+        if kind.is_cube() {
+            // Java's 1 << random(0..3): sizes 1, 2 and 4. Difficulty's bias
+            // toward larger cubes is not applied.
             mob.set_size(1 << (self.rng.next_f32() * 3.0) as u8);
         }
         self.mobs.push(mob);
@@ -522,7 +529,7 @@ impl Entities {
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
                 let dead = self.mobs.swap_remove(i);
-                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME) && dead.kind == MobKind::Slime && dead.size > 1 {
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME) && dead.kind.is_cube() && dead.size > 1 {
                     let count = 2 + (self.rng.next_f32() * 3.0) as usize;
                     for n in 0..count {
                         let offset =
@@ -534,8 +541,15 @@ impl Entities {
                 }
                 continue;
             }
+            let grounded = self.mobs[i].on_ground;
             self.mobs[i].difficulty = difficulty;
             self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);
+            let m = &self.mobs[i];
+            if m.kind == MobKind::MagmaCube && !grounded && m.on_ground && m.alive() {
+                let mut b = crate::particles::Burst::new(crate::particles::Kind::Flame, m.pos, m.size as u16 * 8);
+                b.spread = DVec3::new(m.shape().half_width, 0.0, m.shape().half_width);
+                self.particles.push(crate::particles::Request::Burst(b));
+            }
             i += 1;
         }
         self.separate(dt);
@@ -636,10 +650,11 @@ impl Entities {
             .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
             .map_or(1, |m| m.size);
         if player_kill {
-            let xp = if kind == MobKind::Slime { size as u32 } else { kind.xp(&mut self.rng) };
+            let xp = if kind.is_cube() { size as u32 } else { kind.xp(&mut self.rng) };
             self.spawn_xp(pos, xp);
         }
-        if kind == MobKind::Slime && size > 1 {
+        // Large slimes only split. Tiny magma cubes drop nothing; sizes 2 and 4 drop cream.
+        if (kind == MobKind::Slime && size > 1) || (kind == MobKind::MagmaCube && size == 1) {
             return;
         }
         for (item, count) in kind.drops(&mut self.rng, looting) {
@@ -783,7 +798,8 @@ impl Entities {
                 // Animals come in small herds, zombified piglins and End
                 // endermen in packs.
                 if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
-                    let extra = (self.rng.next_f32() * 3.0) as i32;
+                    // Nether wastes magma cubes spawn in groups of exactly 4.
+                    let extra = if kind == MobKind::MagmaCube { 3 } else { (self.rng.next_f32() * 3.0) as i32 };
                     for _ in 0..extra {
                         let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
                         let spot = if ctx.dimension.has_sky() {
@@ -825,8 +841,8 @@ impl Entities {
     }
 
     /// Java's fortress spawn list, used for spots inside fortress pieces:
-    /// blazes, zombified piglins and skeletons in groups. Light doesn't
-    /// matter. (Wither skeletons and magma cubes don't exist yet.)
+    /// blazes, zombified piglins, magma cubes and skeletons in groups.
+    /// Light doesn't matter. (Wither skeletons are not in the roster yet.)
     fn fortress_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, center: DVec3) {
         let total: u32 = FORTRESS_SPAWNS.iter().map(|s| s.1).sum();
         let mut r = (self.rng.next_f32() * total as f32) as u32;
@@ -1341,6 +1357,34 @@ mod tests {
         e.update(0.05, &world, &c);
         assert!((2..=4).contains(&e.mobs.len()));
         assert!(e.mobs.iter().all(|m| m.size == 2 && m.health == 4.0));
+    }
+
+    #[test]
+    fn magma_cubes_hurt_when_tiny_and_only_larger_cubes_drop_cream() {
+        let world = Grid::flat(10);
+        let mut c = ctx(DVec3::new(1.0, 10.0, 0.5));
+        c.players[0].targetable = true;
+        c.daylight = 0.0;
+        let mut e = Entities::new(7);
+        e.spawn(MobKind::MagmaCube, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].set_size(1);
+        let events = e.update(0.05, &world, &c);
+        assert!(events.iter().any(|e| matches!(e, EntityEvent::PlayerHit { damage: 3.0, .. })));
+        e.attack(0, DVec3::ZERO, 100.0);
+        e.drop_loot(MobKind::MagmaCube, e.mobs[0].pos);
+        assert!(e.items.is_empty());
+        assert!(MobKind::MagmaCube.fire_immune());
+        assert!(!MobKind::MagmaCube.spawns_in(Dimension::Overworld));
+        assert_eq!(MobKind::MagmaCube.spawn_chance(Dimension::Nether), 0.02);
+        assert_eq!(MobKind::MagmaCube.loot(), &[(crate::item::Item::MAGMA_CREAM, -2, 1)]);
+        let mut seen = [false; 5];
+        for _ in 0..48 {
+            e.spawn(MobKind::MagmaCube, DVec3::ZERO);
+            let m = e.mobs.last().unwrap();
+            seen[m.size as usize] = true;
+            assert_eq!(m.health, (m.size as f32).powi(2));
+        }
+        assert!(seen[1] && seen[2] && seen[4], "sizes 1, 2 and 4: {seen:?}");
     }
 
     /// Runs one mob for `secs` at 60 Hz, forcing it to walk along +X.
@@ -2331,7 +2375,11 @@ mod tests {
             e.update(0.05, &world, &c);
         }
         assert!(e.count(MobKind::ZombifiedPiglin) > 0);
-        assert!(e.mobs.iter().all(|m| matches!(m.kind, MobKind::ZombifiedPiglin | MobKind::Enderman)));
+        assert!(
+            e.mobs
+                .iter()
+                .all(|m| { matches!(m.kind, MobKind::ZombifiedPiglin | MobKind::Enderman | MobKind::MagmaCube) })
+        );
     }
 
     /// A Nether cavern where everything with x > 20 is fortress.

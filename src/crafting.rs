@@ -317,6 +317,7 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["###", "###", "###"], &[('#', &[Item::GOLD_NUGGET])], Item::GOLD_INGOT, 1),
             shapeless(&[&[Item::GOLD_INGOT]], Item::GOLD_NUGGET, 9),
             shapeless(&[&[Item::BLAZE_ROD]], Item::BLAZE_POWDER, 2),
+            shapeless(&[&[Item::SLIMEBALL], &[Item::BLAZE_POWDER]], Item::MAGMA_CREAM, 1),
             shaped(
                 &["#I#", "#I#"],
                 &[('#', NETHER_BRICKS), ('I', &[Item::NETHER_BRICK])],

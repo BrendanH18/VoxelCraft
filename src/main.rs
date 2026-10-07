@@ -136,9 +136,8 @@ voxelcraft [options]
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
   --spawn kind,x,y,z[,material[,glint]]
-                    spawn a mob once loaded (repeatable; pig, cow, sheep,
-                    chicken, zombie, skeleton, creeper, spider,
-                    zombified_piglin, enderman, blaze or silverfish; y may be ~
+                    spawn a mob once loaded (repeatable; any mob name, such as
+                    zombie or magma_cube; y may be ~
                     for the terrain surface, e.g. zombie,4,~,10). material
                     (leather, chainmail, iron, gold, diamond, netherite) and
                     glint equip a zombie or skeleton

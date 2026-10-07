@@ -86,10 +86,14 @@ pub enum MobKind {
     Silverfish,
     CaveSpider,
     Slime,
+    MagmaCube,
 }
 
 impl MobKind {
-    pub const ALL: [MobKind; 14] = [
+    pub fn is_cube(self) -> bool {
+        matches!(self, Self::Slime | Self::MagmaCube)
+    }
+    pub const ALL: [MobKind; 15] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -104,6 +108,7 @@ impl MobKind {
         MobKind::Silverfish,
         MobKind::CaveSpider,
         MobKind::Slime,
+        MobKind::MagmaCube,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -123,6 +128,7 @@ impl MobKind {
             MobKind::Silverfish => "silverfish",
             MobKind::CaveSpider => "cave spider",
             MobKind::Slime => "slime",
+            MobKind::MagmaCube => "magma cube",
         }
     }
 
@@ -144,7 +150,7 @@ impl MobKind {
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
             MobKind::CaveSpider => Shape::new(0.35, 0.5),
-            MobKind::Slime => Shape::new(0.255, 0.51),
+            MobKind::Slime | MobKind::MagmaCube => Shape::new(0.255, 0.51),
             MobKind::Enderman => Shape::new(0.3, 2.9),
             MobKind::Blaze => Shape::new(0.3, 1.8),
             MobKind::Silverfish => Shape::new(0.2, 0.3),
@@ -160,7 +166,7 @@ impl MobKind {
             MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::ZombifiedPiglin | MobKind::Blaze => 20.0,
             MobKind::Spider => 16.0,
             MobKind::CaveSpider => 12.0,
-            MobKind::Slime => 1.0,
+            MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Enderman => 40.0,
         }
     }
@@ -179,12 +185,13 @@ impl MobKind {
                 | MobKind::Silverfish
                 | MobKind::CaveSpider
                 | MobKind::Slime
+                | MobKind::MagmaCube
         )
     }
 
     /// Unharmed by fire and lava.
     pub fn fire_immune(self) -> bool {
-        matches!(self, MobKind::ZombifiedPiglin | MobKind::Blaze)
+        matches!(self, MobKind::ZombifiedPiglin | MobKind::Blaze | MobKind::MagmaCube)
     }
 
     /// Hurt by water and rain, like Java's endermen and blazes.
@@ -200,7 +207,7 @@ impl MobKind {
             MobKind::Blaze => false,
             // Only from stronghold spawners (and infested blocks, later).
             MobKind::Silverfish | MobKind::CaveSpider => false,
-            MobKind::ZombifiedPiglin => dimension == Dimension::Nether,
+            MobKind::MagmaCube | MobKind::ZombifiedPiglin => dimension == Dimension::Nether,
             _ => dimension == Dimension::Overworld,
         }
     }
@@ -211,6 +218,10 @@ impl MobKind {
         match (self, dimension) {
             (MobKind::Enderman, Dimension::Overworld) => 0.1,
             (MobKind::Enderman, Dimension::Nether) => 0.02,
+            // Nether wastes weight 2 against zombified piglins at 100.
+            // Basalt deltas (weight 100) are not a biome here; fortresses
+            // use the separate weighted list.
+            (MobKind::MagmaCube, Dimension::Nether) => 0.02,
             _ => 1.0,
         }
     }
@@ -246,7 +257,7 @@ impl MobKind {
             MobKind::Pig => 1.3,
             MobKind::Cow | MobKind::Zombie | MobKind::Creeper | MobKind::ZombifiedPiglin => 1.1,
             MobKind::Sheep | MobKind::Skeleton | MobKind::Blaze => 1.2,
-            MobKind::Chicken | MobKind::Slime => 1.0,
+            MobKind::Chicken | MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Enderman | MobKind::Silverfish => 1.4,
         }
     }
@@ -293,6 +304,7 @@ impl MobKind {
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
             MobKind::Silverfish => &[],
             MobKind::Slime => &[(Item::SLIMEBALL, 0, 2)],
+            MobKind::MagmaCube => &[(Item::MAGMA_CREAM, -2, 1)],
         }
     }
 
@@ -479,7 +491,7 @@ impl Mob {
     }
 
     pub fn shape(&self) -> Shape {
-        if self.kind == MobKind::Slime {
+        if self.kind.is_cube() {
             Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
         } else {
             self.kind.shape()
@@ -516,6 +528,11 @@ impl Mob {
         if !self.alive() {
             return false;
         }
+        let amount = if self.kind == MobKind::MagmaCube {
+            crate::simulation::survival::armor_reduce(amount, self.size as u32 * 3, 0.0)
+        } else {
+            amount
+        };
         self.health -= amount;
         self.hurt = HURT_TIME;
         if let Some(kb) = knockback {
@@ -562,7 +579,7 @@ impl Mob {
     ) {
         let dtf = dt as f32;
         self.hop_left -= dtf;
-        if self.kind == MobKind::Slime && self.on_ground && self.hop_left <= 0.0 {
+        if self.kind.is_cube() && self.on_ground && self.hop_left <= 0.0 {
             self.hop_delay = rng.range(0.5, 1.5);
         }
         if let Some(sound) = self.cry.take() {
@@ -682,7 +699,7 @@ impl Mob {
             };
             let (range, height) = match self.kind {
                 MobKind::Blaze => (BLAZE_RANGE, 24.0),
-                MobKind::CaveSpider | MobKind::Slime => (16.0, 4.0),
+                MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => (16.0, 4.0),
                 _ => (CHASE_RANGE, 12.0),
             };
             let chasing = aggressive && target.is_some() && hdist < range && to_player.y.abs() < height;
@@ -726,14 +743,21 @@ impl Mob {
                         }
                     }
                     _ => {
-                        let reach = if self.kind == MobKind::Slime { 0.6 * self.size as f64 } else { ATTACK_RANGE };
+                        let reach = if self.kind.is_cube() { 0.6 * self.size as f64 } else { ATTACK_RANGE };
                         let can_hurt = self.kind != MobKind::Slime || self.size > 1;
                         if can_hurt && hdist <= reach && to_player.y.abs() < 1.6 && self.attack_cooldown <= 0.0 {
                             self.attack_cooldown = ATTACK_COOLDOWN;
                             self.attack_anim = 0.35;
                             let knockback = dir * 6.0 + DVec3::Y * 5.0;
-                            let (damage, cause) = if self.kind == MobKind::Slime {
-                                (self.size as f32, "was slain by a slime")
+                            let (damage, cause) = if self.kind.is_cube() {
+                                (
+                                    self.size as f32 + if self.kind == MobKind::MagmaCube { 2.0 } else { 0.0 },
+                                    if self.kind == MobKind::MagmaCube {
+                                        "was slain by a magma cube"
+                                    } else {
+                                        "was slain by a slime"
+                                    },
+                                )
                             } else {
                                 self.kind.melee()
                             };
@@ -1082,12 +1106,15 @@ impl Mob {
     fn physics_step<W: BlockSource + ?Sized>(&mut self, dt: f64, world: &W, wish: Option<DVec3>, speed: f64) {
         let shape = self.shape();
         self.in_water = physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
-        let hopping = self.kind == MobKind::Slime;
+        let hopping = self.kind.is_cube();
         let speed = if hopping { (0.2 + 0.1 * self.size as f64) * 10.0 } else { speed };
         let wish = if hopping && self.on_ground && self.hop_left > 0.0 { None } else { wish };
         if hopping && self.on_ground && self.alive() && self.hop_left <= 0.0 {
-            self.vel.y = 8.4;
+            self.vel.y = 8.4 + if self.kind == MobKind::MagmaCube { 2.0 * self.size as f64 } else { 0.0 };
             self.hop_left = self.hop_delay;
+            if self.kind == MobKind::MagmaCube {
+                self.hop_left *= 4.0;
+            }
             if self.ai == Ai::Chase {
                 self.hop_left /= 3.0;
             }
