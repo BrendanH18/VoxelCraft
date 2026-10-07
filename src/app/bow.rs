@@ -30,6 +30,8 @@ impl Game {
                 || crate::world::furnace::is_furnace(b)
                 || crate::world::chest::is_chest(b)
                 || b == Block::BREWING_STAND
+                || b == Block::ENCHANTING_TABLE
+                || b.is_anvil()
         })
     }
 
@@ -63,15 +65,21 @@ impl Game {
             return;
         }
         let survival = self.mode == GameMode::Survival;
+        let enchants = self.inventory.get(self.actions.selected).map_or(Default::default(), |s| s.enchants);
+        // Infinity needs one arrow but never uses it up (the shot can't be
+        // picked up, like creative's).
+        let infinite = enchants.has(crate::enchant::Enchantment::Infinity);
         if survival {
             let Some(slot) = self.inventory.find(Item::ARROW) else { return };
-            self.inventory.take_one(slot);
+            if !infinite {
+                self.inventory.take_one(slot);
+            }
             if self.inventory.wear(self.actions.selected, 1) {
                 self.show_popup("Bow broke");
             }
         }
         let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
-        self.mobs.entities.shoot_arrow(eye, dir, power, survival);
+        self.mobs.entities.shoot_enchanted(eye, dir, power, survival && !infinite, enchants);
         self.audio.play(Sound::Bow, Some(eye), 0.8, (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power)));
         if survival {
             self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);

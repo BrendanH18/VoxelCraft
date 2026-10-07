@@ -46,7 +46,7 @@ fn main() {
         world.raining = weather.raining;
         // Creative avoids damage; this smoke run exercises movement, world
         // systems and entity AI without duplicating the client's event handling.
-        simulation::tick_player(&mut player, &world, &mut vitals, MoveInput::default(), true);
+        simulation::tick_player(&mut player, &world, &mut vitals, &[None; 4], MoveInput::default(), true);
         simulation::tick_world(&mut world, player.pos);
         let ctx = Ctx {
             players: vec![Target::new(PlayerId::HOST, player.pos, false)],

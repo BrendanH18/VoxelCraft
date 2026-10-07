@@ -281,6 +281,57 @@ full performance display instead of duplicating the compact counter.
   thick and awkward bases to long (extended) and strong (level II)
   variants with Java's durations; tooltips show the effect, level and
   time.
+- Enchantments, with Java 1.21's levels, costs and effects: protection,
+  fire/blast/projectile protection and feather falling (protection
+  factors, capped at 80%), respiration (air lasts level + 1 times as
+  long), aqua affinity, thorns (15% a level to hit back for 1-5 damage,
+  using mainhand Looting), depth strider (half the bonus off the ground),
+  sharpness (+0.5 a level + 0.5), smite and bane of arthropods
+  (+2.5 a level against undead / spiders and silverfish), knockback, fire
+  aspect (4 s of fire a level; melee kills cook meat even in water, and fire
+  kills within five seconds of a player hit award XP), looting (up to one
+  more of each eligible drop a level; sheep still drop one wool), sweeping
+  edge (sword hits on the ground sweep mobs next to the target within three
+  blocks of the player for 1 + level / (level + 1) times base damage, plus
+  each mob's enchantment bonus; Fire Aspect also applies to sweeps),
+  efficiency (level² + 1 mining speed), silk touch (the block itself, no
+  ore experience; spawners still award XP), fortune (Java's ore, crop,
+  glowstone, melon, gravel and leaf bonuses),
+  unbreaking, power, punch, flame, infinity, mending (picked-up
+  experience repairs held or worn gear, two durability a point), and the
+  curses of binding (worn armor stays on outside creative) and vanishing
+  (gone on death). Digging is five times slower with your eyes underwater
+  (unless aqua affinity) and again off the ground, like Java. Enchanted
+  items shimmer purple; tooltips list enchantments (curses in red).
+  `/enchant <enchantment> [level]` enchants the held item (a book becomes
+  an enchanted book).
+- Enchanting tables: a book over two diamonds and four obsidian. Right
+  click for Java's screen: put in an unenchanted tool, weapon, armor
+  piece, bow or book and lapis lazuli for three offers. Each shows Java's
+  rune words, its lapis price (1-3) and level cost; hovering shows one of
+  the enchantments it will give. Costs follow Java's formula from the
+  bookshelves two blocks out at the table's height or one up (up to 15,
+  with air or plants between), so a full ring reaches 30 levels, and the
+  enchantments are rolled with Java's algorithm and random generator from
+  your enchantment seed, which changes each time you enchant. Taking
+  offer n costs n levels and n lapis (creative is free); a book becomes an
+  enchanted book. The table glows (light 7). Controller players have an
+  enchanting tab, and agents `enchanting 1..3`.
+- Anvils: three blocks of iron over an ingot over three ingots (a block
+  of iron is nine ingots). They fall like sand and are placed broadside
+  to you. Right click for Java's screen (without renaming): repair a tool
+  or armor piece with its material (a quarter of its durability per
+  item), merge two of the same item (both remainders plus 12%, and their
+  enchantments: equal levels go up one, conflicting ones cost a level
+  each and are dropped), or apply an enchanted book (half the price).
+  Costs are Java's: each enchantment's anvil cost per level, plus the
+  prior-work penalty both items carry, which doubles plus one with each
+  use; at 40 levels survival says "Too Expensive!". Each survival use
+  has a 12% chance to chip the anvil (chipped, damaged, then it breaks).
+  Controller players have an anvil tab, and agents `anvil 1..9`.
+- Lapis lazuli ore below y 32 (stone pickaxe or better) drops 4-9 lapis
+  (with fortune's ore bonus) and 2-5 experience; nine make a block of
+  lapis lazuli and back.
 - Strongholds: 128 per world on Java's concentric rings (the first three
   1280-2816 blocks from the origin), sunk below sea level and built from
   Java's stronghold pieces: a spiral staircase, corridors, turns,

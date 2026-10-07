@@ -410,14 +410,13 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             shaded(&sheet, x, y, [236, 234, 222], 0.03)
                 .map(|p| if y % 3 == 0 && (5..=11).contains(&x) { tint([p[0], p[1], p[2]], 0.85) } else { p })
         }
-        Sprite::Book => {
-            // A brown leather cover with pale page edges on the right.
+        Sprite::Book(colour) => {
+            // A leather cover with pale page edges on the right.
             let cover = |x: i32, y: i32| (3..=12).contains(&x) && (2..=13).contains(&y);
             if (11..=12).contains(&x) && (3..=12).contains(&y) {
                 Some(tint([232, 226, 206], if y % 2 == 0 { 1.0 } else { 0.9 }))
             } else {
-                shaded(&cover, x, y, [120, 66, 40], 0.06)
-                    .map(|p| if x == 4 { tint([p[0], p[1], p[2]], 0.75) } else { p })
+                shaded(&cover, x, y, colour, 0.06).map(|p| if x == 4 { tint([p[0], p[1], p[2]], 0.75) } else { p })
             }
         }
         Sprite::EnderEye => {

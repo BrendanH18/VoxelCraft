@@ -591,7 +591,19 @@ impl Game {
         // With the bodies: bed occupancy pairs `sleeping` with `player`.
         swap(&mut self.sleeping, &mut bot.agent.sleeping);
         swap(&mut self.container, &mut body.container);
+        swap(&mut self.work, &mut bot.agent.work);
         true
+    }
+
+    /// Controller player `name`'s enchanting table or anvil input slots.
+    pub(super) fn pad_work(&self, name: &str) -> super::enchanting::WorkSlots {
+        self.agents.players.get(name).map_or([None; 2], |b| b.agent.work)
+    }
+
+    /// Empties controller player `name`'s enchanting table or anvil slots.
+    pub(super) fn take_pad_work(&mut self, name: &str) -> Vec<crate::inventory::Stack> {
+        let Some(bot) = self.agents.players.get_mut(name) else { return Vec::new() };
+        bot.agent.work.iter_mut().filter_map(Option::take).collect()
     }
 
     /// Runs host interaction code as controller player `i`. While `f` runs,
@@ -641,13 +653,16 @@ impl Game {
                 // Screens close on death, and containers when they're gone or out of reach.
                 let eye = agent.player.eye();
                 let gone = match menu {
-                    Menu::Items { tab: Tab::Chest(pos) | Tab::Furnace(pos) | Tab::Brewing(pos), .. } => {
-                        let still = |b: Block| {
-                            crate::world::chest::is_chest(b)
-                                || crate::world::furnace::is_furnace(b)
-                                || b == Block::BREWING_STAND
-                        };
-                        !self.world.get_block(pos).is_some_and(still)
+                    Menu::Items {
+                        tab:
+                            tab @ (Tab::Chest(pos)
+                            | Tab::Furnace(pos)
+                            | Tab::Brewing(pos)
+                            | Tab::Enchanting(pos)
+                            | Tab::Anvil(pos)),
+                        ..
+                    } => {
+                        !self.world.get_block(pos).is_some_and(|b| tab.matches_block(b))
                             || eye.distance(pos.as_dvec3() + 0.5) > super::REACH + 1.0
                             || agent.vitals.is_dead()
                     }
@@ -725,6 +740,10 @@ impl Game {
             seat.open(Menu::items(Tab::Furnace(pos)));
         } else if block == Block::BREWING_STAND {
             seat.open(Menu::items(Tab::Brewing(pos)));
+        } else if block == Block::ENCHANTING_TABLE {
+            seat.open(Menu::items(Tab::Enchanting(pos)));
+        } else if block.is_anvil() {
+            seat.open(Menu::items(Tab::Anvil(pos)));
         } else if block.is_bed() {
             self.pad_sleep(i, pos);
         }

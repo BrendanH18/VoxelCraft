@@ -108,7 +108,22 @@ impl Game {
                     }
                 }
             }
+            SlotRef::EnchantItem | SlotRef::EnchantLapis => {
+                let i = (slot == SlotRef::EnchantLapis) as usize;
+                let Some(stack) = self.work[i].take() else { return };
+                self.work[i] = self.move_to_player(stack);
+            }
+            SlotRef::EnchantOffer(i) => self.take_offer(i),
+            SlotRef::AnvilLeft | SlotRef::AnvilRight => {
+                let i = (slot == SlotRef::AnvilRight) as usize;
+                let Some(stack) = self.work[i].take() else { return };
+                self.work[i] = self.move_to_player(stack);
+            }
+            SlotRef::AnvilResult => self.quick_take_anvil(),
             SlotRef::Armor(piece) => {
+                if !self.inventory.can_unequip(piece, self.mode == GameMode::Creative) {
+                    return;
+                }
                 let Some(stack) = self.inventory.armor[piece as usize].take() else { return };
                 self.inventory.armor[piece as usize] = self.move_to_player(stack);
             }
@@ -175,6 +190,18 @@ impl Game {
                     if left != Some(stack) {
                         return left;
                     }
+                }
+            }
+            Container::Enchanting(_) => {
+                let left = self.move_to_table(stack);
+                if left != Some(stack) {
+                    return left;
+                }
+            }
+            Container::Anvil(_) => {
+                let left = self.move_to_anvil(stack);
+                if left != Some(stack) {
+                    return left;
                 }
             }
             Container::Inventory if self.mode == GameMode::Survival => {

@@ -1,6 +1,8 @@
 //! What the held item does to blocks and mobs: mining speed, whether a
 //! block drops anything, tool wear and melee damage. Minecraft's rules.
 
+use crate::enchant::{self, Enchantment, Enchants};
+use crate::inventory::Stack;
 use crate::item::{Item, Tier, ToolKind};
 use crate::world::block::Block;
 
@@ -15,14 +17,49 @@ pub fn can_harvest(block: Block, held: Option<Item>) -> bool {
 
 /// Seconds to mine `block` holding `held` (infinite if unbreakable).
 pub fn break_time(block: Block, held: Option<Item>) -> f32 {
-    let speed = match held.and_then(Item::as_tool) {
+    block.hardness() * harvest_factor(block, held) / tool_speed(block, held)
+}
+
+/// How fast the held item digs `block` (1 for a hand or the wrong tool).
+fn tool_speed(block: Block, held: Option<Item>) -> f32 {
+    match held.and_then(Item::as_tool) {
         // Swords cut cobwebs fifteen times as fast (Java).
         Some((ToolKind::Sword, _)) if block == Block::COBWEB => 15.0,
         Some((kind, tier)) if Some(kind) == block.best_tool() => tier.speed(),
         _ => 1.0,
-    };
-    let factor = if can_harvest(block, held) { 1.5 } else { 5.0 };
-    block.hardness() * factor / speed
+    }
+}
+
+fn harvest_factor(block: Block, held: Option<Item>) -> f32 {
+    if can_harvest(block, held) { 1.5 } else { 5.0 }
+}
+
+/// Where the miner is, for Java's digging penalties.
+#[derive(Clone, Copy, Debug)]
+pub struct Digger {
+    pub held: Option<Stack>,
+    /// The worn helmet's enchantments (aqua affinity).
+    pub helmet: Enchants,
+    pub eyes_in_water: bool,
+    pub on_ground: bool,
+}
+
+/// [`break_time`] with Java's modifiers: efficiency speeds up the right
+/// tool; eyes underwater (without aqua affinity) and leaving the ground
+/// each make digging five times slower.
+pub fn dig_time(block: Block, digger: Digger) -> f32 {
+    let held = digger.held.map(|s| s.item);
+    let mut speed = tool_speed(block, held);
+    if speed > 1.0 {
+        speed += enchant::efficiency_bonus(digger.held.map_or(Enchants::NONE, |s| s.active_enchants()));
+    }
+    if digger.eyes_in_water && !digger.helmet.has(Enchantment::AquaAffinity) {
+        speed /= 5.0;
+    }
+    if !digger.on_ground {
+        speed /= 5.0;
+    }
+    block.hardness() * harvest_factor(block, held) / speed
 }
 
 /// Durability a tool loses for breaking a block (swords wear faster, as
@@ -34,6 +71,19 @@ pub fn wear(held: Item, hitting_mob: bool) -> u16 {
         (Some(_), _) => 1,
         (None, _) => 0,
     }
+}
+
+/// Java's melee knockback and fire from the held weapon: extra knockback
+/// levels and seconds of fire (fire aspect sets 4 s per level).
+pub fn weapon_extras(held: Option<Stack>) -> (u8, f32) {
+    let e = held.map_or(Enchants::NONE, |s| s.active_enchants());
+    (e.level(Enchantment::Knockback), 4.0 * e.level(Enchantment::FireAspect) as f32)
+}
+
+/// Melee damage of a hit with `held` on `target`, enchantments included.
+pub fn hit_damage(held: Option<Stack>, target: enchant::Creature) -> f32 {
+    let enchants = held.map_or(Enchants::NONE, |s| s.active_enchants());
+    attack_damage(held.map(|s| s.item)) + enchant::damage_bonus(enchants, target)
 }
 
 /// Melee damage of a hit with `held` (a fist does 1).
@@ -55,17 +105,47 @@ pub fn attack_damage(held: Option<Item>) -> f32 {
     base + bonus
 }
 
-/// Experience a harvested block drops (Java's ore ranges; silk touch will
-/// skip this once enchantments exist).
+/// Experience a harvested block drops (Java's ore ranges; silk touch
+/// skips it: see [`mined_xp`]).
 pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {
     let (lo, hi) = match block {
         Block::COAL_ORE => (0, 2),
         Block::DIAMOND_ORE => (3, 7),
-        Block::QUARTZ_ORE => (2, 5),
+        Block::QUARTZ_ORE | Block::LAPIS_ORE => (2, 5),
         Block::SPAWNER => (15, 43),
         _ => return 0,
     };
     lo + ((rng.next_f32() * (hi - lo + 1) as f32) as u32).min(hi - lo)
+}
+
+/// Silk Touch suppresses XP only when it actually harvests the block
+/// itself. Spawners cannot be collected, and still award XP with it.
+pub fn mined_xp(block: Block, tool: Enchants, rng: &mut crate::entity::Rng) -> u32 {
+    if tool.has(Enchantment::SilkTouch) && silk_drop(block).is_some() { 0 } else { ore_xp(block, rng) }
+}
+
+/// Whether a block mined with silk touch drops itself (Java's
+/// silk-touchable blocks among ours).
+pub fn silk_drop(block: Block) -> Option<Item> {
+    let b = if block.base() == Block::SNOWY_GRASS { Block::GRASS } else { block.base() };
+    let silky = matches!(
+        b,
+        Block::STONE
+            | Block::GRASS
+            | Block::COAL_ORE
+            | Block::DIAMOND_ORE
+            | Block::QUARTZ_ORE
+            | Block::LAPIS_ORE
+            | Block::GLASS
+            | Block::GRAVEL
+            | Block::GLOWSTONE
+            | Block::ICE
+            | Block::BOOKSHELF
+            | Block::CLAY
+            | Block::MELON
+            | Block::COBWEB
+    ) || b.is_leaves();
+    (silky && Item::from(b).is_valid()).then(|| Item::from(b))
 }
 
 #[cfg(test)]
@@ -107,6 +187,42 @@ mod tests {
         assert!(break_time(Block::LOG, tool(ToolKind::Axe, Tier::Stone)) < break_time(Block::LOG, None));
         assert_eq!(break_time(Block::TORCH, None), 0.0);
         assert!(break_time(Block::BEDROCK, tool(ToolKind::Pickaxe, Tier::Diamond)).is_infinite());
+    }
+
+    #[test]
+    fn silk_touch_keeps_spawner_xp_but_suppresses_ore_xp() {
+        let silk = Enchants::NONE.with(Enchantment::SilkTouch, 1);
+        let mut rng = crate::entity::Rng::new(1);
+        assert_eq!(mined_xp(Block::DIAMOND_ORE, silk, &mut rng), 0);
+        assert!((3..=7).contains(&mined_xp(Block::DIAMOND_ORE, Enchants::NONE, &mut rng)));
+        assert!((15..=43).contains(&mined_xp(Block::SPAWNER, silk, &mut rng)));
+    }
+
+    #[test]
+    fn efficiency_aqua_affinity_and_footing() {
+        use crate::enchant::Enchantment;
+        let pick = Item::tool(ToolKind::Pickaxe, Tier::Diamond);
+        let dig = |enchants: Enchants, helmet: Enchants, eyes_in_water: bool, on_ground: bool| {
+            let held = Some(Stack { enchants, ..Stack::new(pick, 1) });
+            dig_time(Block::STONE, Digger { held, helmet, eyes_in_water, on_ground })
+        };
+        let none = Enchants::NONE;
+        assert_eq!(dig(none, none, false, true), break_time(Block::STONE, Some(pick)));
+        // Efficiency V adds 26 to a diamond pickaxe's 8.
+        let eff = none.with(Enchantment::Efficiency, 5);
+        assert!((dig(eff, none, false, true) - 1.5 * 1.5 / 34.0).abs() < 1e-6);
+        let base = dig(none, none, false, true);
+        assert!((dig(none, none, true, true) - base * 5.0).abs() < 1e-5, "underwater");
+        assert!((dig(none, none, false, false) - base * 5.0).abs() < 1e-5, "airborne");
+        let aqua = none.with(Enchantment::AquaAffinity, 1);
+        assert!((dig(none, aqua, true, true) - base).abs() < 1e-6);
+        // Efficiency doesn't help the wrong tool.
+        let held = Some(Stack { enchants: eff, ..Stack::new(pick, 1) });
+        let d = Digger { held, helmet: none, eyes_in_water: false, on_ground: true };
+        assert_eq!(dig_time(Block::LOG, d), break_time(Block::LOG, None));
+        assert_eq!(silk_drop(Block::DIAMOND_ORE), Some(Item::from(Block::DIAMOND_ORE)));
+        assert_eq!(silk_drop(Block::SNOWY_GRASS), Some(Item::from(Block::GRASS)));
+        assert_eq!(silk_drop(Block::DIRT), None);
     }
 
     #[test]

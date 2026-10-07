@@ -33,6 +33,14 @@ pub(super) enum SlotRef {
     BrewBottle(usize),
     BrewIngredient,
     BrewFuel,
+    /// The enchanting table's item and lapis slots, and its three offers.
+    EnchantItem,
+    EnchantLapis,
+    EnchantOffer(usize),
+    /// The anvil's two inputs and its result.
+    AnvilLeft,
+    AnvilRight,
+    AnvilResult,
     /// Worn armor (survival inventory).
     Armor(ArmorPiece),
 }
@@ -327,6 +335,25 @@ fn brewing_ui(ui: &mut Ui, b: &crate::world::brewing::BrewingStand, px: f32, py:
     }
 }
 
+/// `text` cut to fit `width` UI pixels.
+fn clip_text(text: &str, width: f32) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        out.push(c);
+        if Ui::text_width(&out) > width {
+            out.pop();
+            break;
+        }
+    }
+    out
+}
+
+/// Where enchanting offer `i`'s button sits (x, y, width, height) on a
+/// panel whose top section starts at `(px, py)`.
+pub(super) fn enchant_offer_rect(px: f32, py: f32, i: usize) -> (f32, f32, f32, f32) {
+    (px + 60.0, py + 13.0 + 19.0 * i as f32, 108.0, 19.0)
+}
+
 /// Java's status effect icons in the top right corner: beneficial ones in
 /// the first row, harmful ones below, blinking in their last 10 seconds.
 fn effects_ui(ui: &mut Ui, effects: &Effects) {
@@ -400,7 +427,12 @@ fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
 pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
     match (stack.item.block(), stack.item.icon_layer()) {
         (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
-        (None, Some(layer)) => ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE),
+        (None, Some(layer)) => {
+            ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE);
+            if !stack.enchants.is_empty() {
+                glint(ui, x + 1.0, y + 1.0, 16.0, layer);
+            }
+        }
         (None, None) => {}
     }
     if let Some(wear) = stack.wear() {
@@ -413,6 +445,20 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
     if counts && stack.count > 1 {
         let n = stack.count.to_string();
         ui.text(x + 17.0 - Ui::text_width(&n), y + 9.0, &n, WHITE);
+    }
+}
+
+/// The enchantment glint: a faint purple sheen over the icon's shape with
+/// a brighter band sweeping down it.
+fn glint(ui: &mut Ui, x: f32, y: f32, size: f32, layer: u16) {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    let t = START.get_or_init(Instant::now).elapsed().as_secs_f32();
+    ui.icon_shape(x, y, size, layer, [0.0, 0.0, 1.0, 1.0], [0.55, 0.25, 1.0, 0.3]);
+    let band = 0.3;
+    let top = (t * 0.6).fract() * (1.0 + band) - band;
+    let (v0, v1) = (top.max(0.0), (top + band).min(1.0));
+    if v1 > v0 {
+        ui.icon_shape(x, y, size, layer, [0.0, v0, 1.0, v1], [0.8, 0.6, 1.0, 0.35]);
     }
 }
 
@@ -449,7 +495,11 @@ impl Game {
     }
 
     pub(super) fn shows_recipes(&self) -> bool {
-        self.has_top_section() && !matches!(self.container, Container::Furnace(_) | Container::Chest(_))
+        self.has_top_section()
+            && !matches!(
+                self.container,
+                Container::Furnace(_) | Container::Chest(_) | Container::Enchanting(_) | Container::Anvil(_)
+            )
     }
 
     /// Top-left corner and height of the inventory panel.
@@ -502,6 +552,18 @@ impl Game {
             out.push((SlotRef::FurnaceInput, x, py + 18.0));
             out.push((SlotRef::FurnaceFuel, x, py + 18.0 + 2.0 * SLOT));
             out.push((SlotRef::FurnaceOutput, px + 7.0 + 6.0 * SLOT, py + 18.0 + SLOT));
+            CRAFT_H
+        } else if let Container::Enchanting(_) = self.container {
+            // Java's layout: item and lapis bottom left, offers to the right
+            // (drawn as buttons; see `enchant_offer_rect`).
+            out.push((SlotRef::EnchantItem, px + 14.0, py + 44.0));
+            out.push((SlotRef::EnchantLapis, px + 34.0, py + 44.0));
+            CRAFT_H
+        } else if let Container::Anvil(_) = self.container {
+            // Java's layout: input + input -> result.
+            out.push((SlotRef::AnvilLeft, px + 26.0, py + 36.0));
+            out.push((SlotRef::AnvilRight, px + 75.0, py + 36.0));
+            out.push((SlotRef::AnvilResult, px + 133.0, py + 36.0));
             CRAFT_H
         } else if let Container::Brewing(_) = self.container {
             // Java's layout: fuel top left, the ingredient over three
@@ -579,6 +641,15 @@ impl Game {
         {
             return None;
         }
+        if let Container::Enchanting(_) = self.container {
+            let (px, py, _) = self.panel((w as f32 / scale, h as f32 / scale));
+            for i in 0..3 {
+                let (x, y, bw, bh) = enchant_offer_rect(px, py + super::search::HEIGHT, i);
+                if mx >= x && mx < x + bw && my >= y && my < y + bh {
+                    return Some(SlotRef::EnchantOffer(i));
+                }
+            }
+        }
         self.inventory_slots((w as f32 / scale, h as f32 / scale))
             .into_iter()
             .find(|&(_, x, y)| mx >= x && mx < x + SLOT && my >= y && my < y + SLOT)
@@ -602,6 +673,8 @@ impl Game {
             (Container::Furnace(_), _) => "Furnace",
             (Container::Chest(_), _) => "Chest",
             (Container::Brewing(_), _) => "Brewing Stand",
+            (Container::Enchanting(_), _) => "Enchant",
+            (Container::Anvil(_), _) => "Anvil",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
         };
@@ -614,6 +687,10 @@ impl Game {
             && let Some(b) = self.world.brewing_stand(p)
         {
             brewing_ui(ui, b, px, py, (self.started.elapsed().as_secs_f32() * 8.0) as u32);
+        } else if let Container::Enchanting(_) = self.container {
+            self.enchanting_ui(ui, px, py);
+        } else if let Container::Anvil(_) = self.container {
+            self.anvil_ui(ui, px, py);
         } else if self.has_top_section() && !matches!(self.container, Container::Chest(_)) {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
@@ -672,9 +749,13 @@ impl Game {
                 SlotRef::Armor(p) => self.inventory.armor[p as usize],
                 f => self.container_slot(f),
             };
-            if let (SlotRef::Armor(p), None) = (r, stack) {
-                // Faint outline of the piece that goes here.
-                let layer = Item::armor(p, ArmorMaterial::Iron).icon_layer().unwrap_or(0);
+            // Faint outline of what goes in an empty armor or lapis slot.
+            let outline = match (r, stack) {
+                (SlotRef::Armor(p), None) => Item::armor(p, ArmorMaterial::Iron).icon_layer(),
+                (SlotRef::EnchantLapis, None) => Item::LAPIS_LAZULI.icon_layer(),
+                _ => None,
+            };
+            if let Some(layer) = outline {
                 ui.icon(x + 1.0, y + 1.0, 16.0, layer, [0.0, 0.0, 0.0, 0.25]);
             }
             if let Some(stack) = stack {
@@ -694,22 +775,25 @@ impl Game {
                 ui.rect(x + 1.0, y + 1.0, SLOT - 2.0, SLOT - 2.0, [1.0, 1.0, 1.0, 0.35]);
             }
         }
-        let hovered_item = match hovered {
-            Some(SlotRef::Inventory(i)) => self.inventory.get(i).map(|s| s.item),
-            Some(SlotRef::Palette(item)) => Some(item),
-            Some(SlotRef::Craft(i)) => self.craft.cells[i].map(|s| s.item),
-            Some(SlotRef::CraftResult) => self.craft.result().map(|s| s.item),
-            Some(SlotRef::Armor(p)) => self.inventory.armor[p as usize].map(|s| s.item),
-            Some(f) => self.container_slot(f).map(|s| s.item),
+        let hovered_stack = match hovered {
+            Some(SlotRef::Inventory(i)) => self.inventory.get(i),
+            Some(SlotRef::Palette(item)) => Some(Stack::new(item, 1)),
+            Some(SlotRef::Craft(i)) => self.craft.cells[i],
+            Some(SlotRef::CraftResult) => self.craft.result(),
+            Some(SlotRef::Armor(p)) => self.inventory.armor[p as usize],
+            Some(f) => self.container_slot(f),
             None => None,
         };
         let recipe_hint = if self.recipe_book.open && self.shows_recipes() { self.recipe_book_ui(ui) } else { None };
         if let Some(hint) = recipe_hint {
             self.tooltip(ui, &hint);
-        } else if let Some(item) = hovered_item {
-            match item.as_potion() {
-                Some(potion) => self.potion_tooltip(ui, item.name(), potion),
-                None => self.tooltip(ui, item.name()),
+        } else if let Some(SlotRef::EnchantOffer(i)) = hovered {
+            self.offer_tooltip(ui, i);
+        } else if let Some(stack) = hovered_stack {
+            match stack.item.as_potion() {
+                Some(potion) => self.potion_tooltip(ui, stack.item.name(), potion),
+                None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
+                None => self.tooltip(ui, stack.item.name()),
             }
         }
         // The held stack follows the mouse.
@@ -791,6 +875,13 @@ impl Game {
         if let (Container::Chest(p), SlotRef::Chest(i)) = (self.container, slot) {
             return self.world.chest(p)?.slots[i];
         }
+        match slot {
+            SlotRef::EnchantItem => return self.work[0],
+            SlotRef::EnchantLapis | SlotRef::AnvilRight => return self.work[1],
+            SlotRef::AnvilLeft => return self.work[0],
+            SlotRef::AnvilResult => return self.anvil_preview().map(|(r, _)| r.output),
+            _ => {}
+        }
         if let Container::Brewing(p) = self.container {
             let b = self.world.brewing_stand(p)?;
             return match slot {
@@ -817,6 +908,122 @@ impl Game {
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - 11.0).max(3.0));
         ui.rect(x - 3.0, y - 3.0, Ui::text_width(&text) + 6.0, 14.0, [0.08, 0.02, 0.12, 0.92]);
         ui.text(x, y, &text, WHITE);
+    }
+
+    /// The enchanting table's offers: rune words, a lapis count badge and
+    /// the level cost (green if affordable); greyed out when it can't be
+    /// taken. Hovering one shows its clue and price.
+    fn enchanting_ui(&self, ui: &mut Ui, px: f32, py: f32) {
+        let offers = self.enchant_offers();
+        let hovered = self.slot_under_cursor();
+        for (i, offer) in offers.into_iter().enumerate() {
+            let (x, y, w, h) = enchant_offer_rect(px, py, i);
+            let usable = self.can_take_offer(i, offer);
+            let lit = usable && hovered == Some(SlotRef::EnchantOffer(i));
+            let face = match (offer.cost > 0, usable, lit) {
+                (false, _, _) => [0.55, 0.5, 0.5, 1.0],
+                (true, false, _) => [0.6, 0.55, 0.5, 1.0],
+                (true, true, false) => [0.72, 0.66, 0.55, 1.0],
+                (true, true, true) => [0.82, 0.76, 0.6, 1.0],
+            };
+            ui.rect(x, y, w, h, [0.3, 0.3, 0.3, 1.0]);
+            ui.rect(x + 1.0, y + 1.0, w - 2.0, h - 2.0, face);
+            if offer.cost == 0 {
+                continue;
+            }
+            // The lapis price: a dark badge with 1-3 pips.
+            ui.rect(x + 2.0, y + 2.0, 15.0, 15.0, if usable { [0.16, 0.3, 0.7, 1.0] } else { [0.3, 0.3, 0.35, 1.0] });
+            for p in 0..=i {
+                ui.rect(x + 4.0 + 4.0 * p as f32, y + 8.0, 3.0, 3.0, [0.85, 0.9, 1.0, 1.0]);
+            }
+            let words = super::enchanting::rune_words(self.vitals.xp.seed, i);
+            let ink = if usable { [0.42, 0.36, 0.25, 1.0] } else { [0.4, 0.37, 0.33, 1.0] };
+            ui.text_flat(x + 20.0, y + 6.0, &clip_text(&words, w - 44.0), ink);
+            let cost = offer.cost.to_string();
+            let colour = if usable { [0.5, 1.0, 0.13, 1.0] } else { [0.25, 0.4, 0.13, 1.0] };
+            ui.text(x + w - 3.0 - Ui::text_width(&cost), y + 9.0, &cost, colour);
+        }
+    }
+
+    /// The anvil's plus and arrow, and Java's cost line: green "Enchantment
+    /// Cost: n" (red if short of levels) or "Too Expensive!".
+    fn anvil_ui(&self, ui: &mut Ui, px: f32, py: f32) {
+        let dark = [0.45, 0.45, 0.45, 1.0];
+        // A plus between the inputs and an arrow to the result.
+        ui.rect(px + 55.0, py + 44.0, 13.0, 3.0, dark);
+        ui.rect(px + 60.0, py + 39.0, 3.0, 13.0, dark);
+        ui.rect(px + 102.0, py + 44.0, 18.0, 3.0, dark);
+        for i in 0..5 {
+            ui.rect(px + 120.0 + i as f32, py + 41.0 + i as f32, 1.0, 9.0 - 2.0 * i as f32, dark);
+        }
+        let Some((result, too_expensive)) = self.anvil_preview() else {
+            if self.work[0].is_some() && self.work[1].is_some() {
+                // Inputs that can't combine: Java crosses out the arrow.
+                ui.rect(px + 104.0, py + 38.0, 14.0, 2.0, [0.75, 0.2, 0.2, 1.0]);
+            }
+            return;
+        };
+        let (text, colour) = if too_expensive {
+            ("Too Expensive!".to_string(), [1.0, 0.38, 0.38, 1.0])
+        } else if self.mode == GameMode::Survival && self.vitals.xp.level < result.cost {
+            (format!("Enchantment Cost: {}", result.cost), [1.0, 0.38, 0.38, 1.0])
+        } else {
+            (format!("Enchantment Cost: {}", result.cost), [0.5, 1.0, 0.13, 1.0])
+        };
+        let w = Ui::text_width(&text);
+        let x = px + PANEL_W - 8.0 - w;
+        ui.rect(x - 2.0, py + 58.0, w + 4.0, 11.0, [0.25, 0.25, 0.25, 0.7]);
+        ui.text(x, py + 60.0, &text, colour);
+    }
+
+    /// Java's offer tooltip: the clue enchantment with "...?", then the
+    /// lapis and levels it costs (red when short).
+    pub(super) fn offer_tooltip(&self, ui: &mut Ui, i: usize) {
+        let offer = self.enchant_offers()[i];
+        let Some((e, level)) = offer.clue else { return };
+        let creative = self.mode == GameMode::Creative;
+        let mut lines = vec![(format!("{} . . . ?", e.describe(level)), WHITE)];
+        if !creative {
+            let lapis = self.work[1].map_or(0, |s| s.count) as usize;
+            let red = [1.0, 0.33, 0.33, 1.0];
+            let grey = [0.67, 0.67, 0.67, 1.0];
+            if self.vitals.xp.level < offer.cost {
+                lines.push((format!("Enchantment Level Requirement: {}", offer.cost), red));
+            } else {
+                let n = i + 1;
+                let plural = |s: &str| if n == 1 { s.to_string() } else { format!("{s}s") };
+                lines.push((format!("{n} {}", plural("Lapis Lazuli")), if lapis > i { grey } else { red }));
+                lines.push((format!("{n} {}", plural("Enchantment Level")), grey));
+            }
+        }
+        let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(0.0, f32::max);
+        let h = 3.0 + 11.0 * lines.len() as f32;
+        let (sw, sh) = ui.size();
+        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h).max(3.0));
+        ui.rect(x - 3.0, y - 3.0, w + 6.0, h + 3.0, [0.08, 0.02, 0.12, 0.92]);
+        for (n, (line, colour)) in lines.iter().enumerate() {
+            ui.text(x, y + 11.0 * n as f32, line, *colour);
+        }
+    }
+
+    /// An enchanted item's name (aqua; an enchanted book's yellow) with a
+    /// grey line per enchantment, curses in red, like Java.
+    pub(super) fn enchant_tooltip(&self, ui: &mut Ui, stack: Stack) {
+        let title = capitalize(stack.item.name());
+        let lines = stack.enchants.lines();
+        let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
+        let h = 14.0 + 11.0 * lines.len() as f32;
+        let (sw, sh) = ui.size();
+        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
+        ui.rect(x - 3.0, y - 3.0, w + 6.0, h, [0.08, 0.02, 0.12, 0.92]);
+        let colour = if stack.item == Item::ENCHANTED_BOOK { [1.0, 1.0, 0.33, 1.0] } else { [0.33, 1.0, 1.0, 1.0] };
+        ui.text(x, y, &title, colour);
+        for (i, (line, curse)) in lines.iter().enumerate() {
+            let c = if *curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] };
+            ui.text(x, y + 11.0 * (i + 1) as f32, line, c);
+        }
     }
 
     /// A potion's name with Java's effect line under it: blue for good

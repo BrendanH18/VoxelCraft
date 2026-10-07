@@ -57,6 +57,8 @@ impl Agents {
         self.players.values().filter(|b| b.active).map(|b| Target {
             alive: !b.agent.vitals.is_dead(),
             look: b.agent.player.forward().as_dvec3(),
+            thorns: Target::thorns_of(&b.agent.inventory.armor),
+            held_enchants: b.agent.inventory.get(b.agent.selected).map_or(Default::default(), |s| s.active_enchants()),
             ..Target::new(b.id, b.agent.player.pos, b.agent.targetable())
         })
     }
@@ -68,7 +70,11 @@ impl Agents {
     }
     /// Saves named player profiles, progression and inventory in this dimension.
     pub fn serialize(&self, dimension: &str) -> String {
-        let profiles: Vec<_>=self.players.iter().map(|(name,b)|json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"effects":b.agent.vitals.effects.serialize(),"inventory":b.agent.inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})).collect();
+        let profiles: Vec<_> = self.players.iter().map(|(name, b)| {
+            let mut inventory = b.agent.inventory.clone();
+            inventory.return_stacks(b.agent.work.into_iter().flatten());
+            json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"effects":b.agent.vitals.effects.serialize(),"inventory":inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})
+        }).collect();
         json!(profiles).to_string()
     }
     /// Restores valid profiles, moving players from other dimensions to `spawn`.
@@ -286,6 +292,25 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn saving_returns_work_inputs_without_mutating_live_slots() {
+        use crate::inventory::{SLOTS, Stack};
+        use crate::item::Item;
+        let mut agents = Agents::default();
+        let mut agent = Agent::new(DVec3::ZERO);
+        agent.inventory.slots.fill(Some(Stack::new(Item::STICK, 64)));
+        agent.work = [Some(Stack::new(Item::ENCHANTED_BOOK, 1)), Some(Stack::new(Item::LAPIS_LAZULI, 3))];
+        agents.insert("Player2".into(), agent);
+        let text = agents.serialize("overworld");
+        let mut restored = Agents::default();
+        restored.restore(&text, "overworld", DVec3::ZERO);
+        let inv = &mut restored.players.get_mut("Player2").unwrap().agent.inventory;
+        assert_eq!(inv.slots.iter().flatten().count(), SLOTS);
+        assert_eq!(inv.take_spill(), agents.players["Player2"].agent.work.into_iter().flatten().collect::<Vec<_>>());
+        assert_eq!(restored.players["Player2"].agent.work, [None; 2]);
+        assert!(agents.players["Player2"].agent.work.iter().all(Option::is_some));
+    }
+
     #[test]
     fn profiles_restore_without_reactivating_or_losing_inventory() {
         let spawn = DVec3::new(1.0, 150.0, 2.0);

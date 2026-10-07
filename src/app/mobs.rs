@@ -71,19 +71,28 @@ impl Game {
             // A hit while falling is a critical one, like Minecraft.
             let p = &self.player;
             let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
-            let base = crate::mining::attack_damage(self.held_item()) + self.vitals.effects.attack_bonus();
-            let damage = base.max(0.0) * if critical { 1.5 } else { 1.0 };
-            let killed = self.mobs.entities.attack(i, self.player.forward().as_dvec3(), damage);
+            // Controller input belongs to the puppet's agent, not the host's keys.
+            let sprint = if self.puppet {
+                self.agents
+                    .players
+                    .values()
+                    .find(|b| b.id == self.actor)
+                    .is_some_and(|b| b.agent.movement_input().sprint)
+                    && (self.mode == GameMode::Creative || self.vitals.hunger.can_sprint())
+            } else {
+                self.movement_input(self.arrival.is_some()).sprint
+            };
+            let sweep = (p.on_ground && !critical && !sprint).then_some(p.pos);
+            let held = self.inventory.get(self.actions.selected);
+            let bonus = self.vitals.effects.attack_bonus();
+            let dir = self.player.forward().as_dvec3();
+            self.mobs.entities.melee(i, dir, held, bonus, critical, sweep);
             let at = self.mobs.entities.mobs[i].pos + DVec3::Y * 0.5;
             let pitch = if critical { (1.25, 1.4) } else { (0.9, 1.1) };
             self.audio.play(Sound::Hit, Some(at), 0.8, pitch);
             self.wear_held(true);
             if self.mode == GameMode::Survival {
                 self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
-            }
-            if let Some(kind) = killed {
-                let pos = self.mobs.entities.mobs[i].pos;
-                self.mobs.entities.drop_loot(kind, pos);
             }
         }
         true
@@ -110,7 +119,10 @@ impl Game {
             let p = &self.player;
             let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
             let base = crate::mining::attack_damage(self.held_item()) + self.vitals.effects.attack_bonus();
-            let damage = base.max(0.0) * if critical { 1.5 } else { 1.0 };
+            let sharpness =
+                self.inventory.get(self.actions.selected).map_or(Default::default(), |s| s.active_enchants());
+            let damage = base.max(0.0) * if critical { 1.5 } else { 1.0 }
+                + crate::enchant::damage_bonus(sharpness, crate::enchant::Creature::Other);
             let by = self.actor;
             if self.mobs.entities.strike(hit, damage, by) {
                 self.audio.play(
@@ -157,6 +169,11 @@ impl Game {
         let mut players = vec![Target {
             alive: !self.vitals.is_dead(),
             look: self.player.forward().as_dvec3(),
+            thorns: Target::thorns_of(&self.inventory.armor),
+            held_enchants: self
+                .inventory
+                .get(self.actions.selected)
+                .map_or(Default::default(), |s| s.active_enchants()),
             ..Target::new(PlayerId::HOST, self.player.pos, self.mode == GameMode::Survival && !self.vitals.is_dead())
         }];
         // Agents keep source-dimension positions until arrival relocates them.
@@ -235,7 +252,7 @@ impl Game {
                 EntityEvent::MobShot { pos, .. } => {
                     self.audio.play(Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
-                EntityEvent::Shoot { .. } | EntityEvent::DragonXp { .. } => {}
+                EntityEvent::Shoot { .. } | EntityEvent::DragonXp { .. } | EntityEvent::MobKilled { .. } => {}
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
                     if self.mode == GameMode::Survival && !self.vitals.is_dead() {

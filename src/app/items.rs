@@ -42,6 +42,11 @@ impl Game {
             Container::Furnace(pos) => self.world.furnace(pos).is_none(),
             Container::Chest(pos) => self.world.chest(pos).is_none(),
             Container::Brewing(pos) => self.world.brewing_stand(pos).is_none(),
+            Container::Enchanting(pos) => {
+                self.world.get_block(pos) != Some(crate::world::block::Block::ENCHANTING_TABLE)
+            }
+            // An anvil can break in use, or fall away.
+            Container::Anvil(pos) => !self.world.get_block(pos).is_some_and(|b| b.is_anvil()),
             _ => false,
         };
         if gone && self.inventory_open {
@@ -72,7 +77,13 @@ impl Game {
         if picked {
             self.audio.play(Sound::Pop, None, 0.35, (0.8, 1.8));
         }
-        if let Some(chime) = crate::entity::orb::absorb(&mut self.mobs.entities.orbs, player, &mut self.vitals.xp) {
+        if let Some(chime) = crate::entity::orb::absorb(
+            &mut self.mobs.entities.orbs,
+            player,
+            &mut self.vitals.xp,
+            &mut self.inventory,
+            self.actions.selected,
+        ) {
             xp_sounds(&mut self.audio, None, chime);
         }
     }
@@ -199,6 +210,8 @@ impl Game {
     pub(super) fn drop_everything(&mut self) {
         let mut stacks = self.inventory.take_all();
         stacks.extend(self.craft.take_all());
+        stacks.extend(self.take_work());
+        stacks.retain(|s| !s.active_enchants().has(crate::enchant::Enchantment::VanishingCurse));
         for stack in stacks {
             self.mobs.entities.scatter(stack, self.player.pos);
         }

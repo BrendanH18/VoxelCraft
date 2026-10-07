@@ -141,9 +141,17 @@ pub fn merge(orbs: &mut Vec<XpOrb>) {
 }
 
 /// A player at `feet` absorbs one touching orb if their pickup cooldown
-/// allows. Returns `Some(chime)` when one was absorbed, where `chime` is
-/// the level-up sound volume if it reached a multiple of five levels.
-pub fn absorb(orbs: &mut Vec<XpOrb>, feet: DVec3, xp: &mut Experience) -> Option<Option<f32>> {
+/// allows; mending gear in `inventory` (held in `selected` or worn) takes
+/// its share first. Returns `Some(chime)` when one was absorbed, where
+/// `chime` is the level-up sound volume if it reached a multiple of five
+/// levels.
+pub fn absorb(
+    orbs: &mut Vec<XpOrb>,
+    feet: DVec3,
+    xp: &mut Experience,
+    inventory: &mut crate::inventory::Inventory,
+    selected: usize,
+) -> Option<Option<f32>> {
     if xp.pickup_cooldown > 0.0 {
         return None;
     }
@@ -154,6 +162,7 @@ pub fn absorb(orbs: &mut Vec<XpOrb>, feet: DVec3, xp: &mut Experience) -> Option
         orbs.swap_remove(i);
     }
     xp.pickup_cooldown = experience::PICKUP_INTERVAL;
+    let value = inventory.mend(value, selected);
     Some(xp.add_points(value as i64))
 }
 
@@ -249,17 +258,17 @@ mod tests {
         orbs.retain(|o| o.pos.x < 1.0);
         let mut xp = Experience::default();
         let feet = DVec3::new(0.0, 10.0, 0.0);
-        assert!(absorb(&mut orbs, feet, &mut xp).is_some());
-        assert!(absorb(&mut orbs, feet, &mut xp).is_none(), "cooling down");
+        assert!(absorb(&mut orbs, feet, &mut xp, &mut Default::default(), 0).is_some());
+        assert!(absorb(&mut orbs, feet, &mut xp, &mut Default::default(), 0).is_none(), "cooling down");
         let mut ticks = 1;
         while !orbs.is_empty() {
             xp.tick(0.05);
-            absorb(&mut orbs, feet, &mut xp);
+            absorb(&mut orbs, feet, &mut xp, &mut Default::default(), 0);
             ticks += 1;
         }
         assert_eq!(xp.total, 13);
         assert_eq!(ticks, 5, "three orbs, one every two ticks");
-        assert!(absorb(&mut orbs, feet, &mut xp).is_none());
+        assert!(absorb(&mut orbs, feet, &mut xp, &mut Default::default(), 0).is_none());
     }
 
     #[test]

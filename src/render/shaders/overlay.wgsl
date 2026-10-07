@@ -74,7 +74,18 @@ fn vs_ui(
 @fragment
 fn fs_ui(in: UiOut) -> @location(0) vec4<f32> {
     // layer -2: font glyph, -1: flat colour, >= 0: tinted block texture,
-    // >= 256: tinted item icon.
+    // >= 256: tinted item icon. A negative alpha fills the texture's shape
+    // with the colour instead (the enchantment glint).
+    if in.layer >= 0.0 && in.color.a < 0.0 {
+        let layer = i32(in.layer + 0.5);
+        var a = 0.0;
+        if layer >= 256 {
+            a = textureSampleLevel(items, blocks_sampler, in.uv, layer - 256, 0.0).a;
+        } else {
+            a = textureSampleLevel(blocks, blocks_sampler, in.uv, layer, 0.0).a;
+        }
+        return vec4<f32>(in.color.rgb, -in.color.a * a);
+    }
     if in.layer < -1.5 {
         let coverage = textureSampleLevel(font, blocks_sampler, in.uv, 0.0).r;
         return vec4<f32>(in.color.rgb, in.color.a * coverage);

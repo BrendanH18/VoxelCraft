@@ -2,6 +2,7 @@
 //! armor slots, plus the stack held on the mouse cursor while the inventory
 //! screen is open.
 
+use crate::enchant::{self, Enchants};
 use crate::item::{ArmorPiece, Item};
 
 pub const HOTBAR_SLOTS: usize = 9;
@@ -13,16 +14,30 @@ pub struct Stack {
     pub count: u8,
     /// Uses taken off a tool's durability (0 for everything else).
     pub damage: u16,
+    /// Enchantments (an enchanted book's are the ones it stores).
+    pub enchants: Enchants,
+    /// Java's anvil prior-work penalty: levels added to the next anvil use.
+    pub repair_cost: u16,
 }
 
 impl Stack {
     pub fn new(item: impl Into<Item>, count: u8) -> Self {
-        Self { item: item.into(), count, damage: 0 }
+        Self { item: item.into(), count, damage: 0, enchants: Enchants::NONE, repair_cost: 0 }
     }
 
-    /// Whether `other` can merge into this stack (same item, same wear).
+    /// Whether `other` can merge into this stack (same item, wear and
+    /// enchantments).
     pub fn stacks_with(&self, other: &Stack) -> bool {
-        self.item == other.item && self.damage == other.damage
+        self.item == other.item
+            && self.damage == other.damage
+            && self.enchants == other.enchants
+            && self.repair_cost == other.repair_cost
+    }
+
+    /// The enchantments that take effect when held or worn: a book's are
+    /// only stored.
+    pub fn active_enchants(&self) -> Enchants {
+        if self.item == Item::ENCHANTED_BOOK { Enchants::NONE } else { self.enchants }
     }
 
     pub fn max(&self) -> u8 {
@@ -112,11 +127,13 @@ impl Inventory {
         Some(s.item)
     }
 
-    /// Wears the tool in `slot` by `uses`; returns `true` if that broke it
-    /// (the slot is then empty). Non-tools are untouched.
+    /// Wears the tool in `slot` by `uses` (unbreaking skips some); returns
+    /// `true` if that broke it (the slot is then empty). Non-tools are
+    /// untouched.
     pub fn wear(&mut self, slot: usize, uses: u16) -> bool {
         let Some(s) = &mut self.slots[slot] else { return false };
         let Some(max) = s.item.durability() else { return false };
+        let uses = (0..uses).filter(|_| enchant::wears(s.enchants, false, enchant::roll())).count() as u16;
         s.damage = s.damage.saturating_add(uses);
         if s.damage >= max {
             self.slots[slot] = None;
@@ -125,36 +142,74 @@ impl Inventory {
         false
     }
 
+    /// Mending: experience `points` picked up repair a random damaged
+    /// mending item held in `selected` or worn, two durability per point.
+    /// Returns the points left for the experience bar (Java 1.21).
+    pub fn mend(&mut self, mut points: u32, selected: usize) -> u32 {
+        let mendable = |s: &Option<Stack>| {
+            s.is_some_and(|s| {
+                s.damage > 0 && s.enchants.has(enchant::Enchantment::Mending) && s.item != Item::ENCHANTED_BOOK
+            })
+        };
+        let mut cells: Vec<&mut Option<Stack>> = self.armor.iter_mut().filter(|s| mendable(s)).collect();
+        if mendable(&self.slots[selected]) {
+            cells.push(&mut self.slots[selected]);
+        }
+        while !cells.is_empty() && points > 0 {
+            let pick = ((enchant::roll() * cells.len() as f32) as usize).min(cells.len() - 1);
+            let Some(stack) = cells.swap_remove(pick) else { continue };
+            let repair = points.saturating_mul(2).min(stack.damage as u32);
+            stack.damage -= repair as u16;
+            // An odd durability point costs no XP after integer rounding.
+            // Continue with other pieces even if the XP count stayed the same.
+            points -= repair / 2;
+        }
+        points
+    }
+
     /// Total armor points worn (0..=20).
     pub fn armor_points(&self) -> u32 {
         self.armor.iter().flatten().filter_map(|s| s.item.as_armor()).map(|(p, m)| m.defense(p) as u32).sum()
     }
 
     /// Puts on the armor in `slot`, swapping out whatever piece was worn
-    /// there. Returns `false` if the slot holds no armor.
+    /// there. Returns `false` if the slot holds no armor, or the worn piece
+    /// is bound.
     pub fn equip(&mut self, slot: usize) -> bool {
         let Some((piece, _)) = self.slots[slot].and_then(|s| s.item.as_armor()) else { return false };
+        if !self.can_unequip(piece, false) {
+            return false;
+        }
         std::mem::swap(&mut self.slots[slot], &mut self.armor[piece as usize]);
         true
     }
 
-    /// Clicks an armor slot: only the matching piece goes in.
-    pub fn click_armor(&mut self, piece: ArmorPiece, right: bool) {
+    /// Whether the worn piece can come off: curse of binding keeps it on
+    /// outside creative.
+    pub fn can_unequip(&self, piece: ArmorPiece, creative: bool) -> bool {
+        creative || self.armor[piece as usize].is_none_or(|s| !s.enchants.has(enchant::Enchantment::BindingCurse))
+    }
+
+    /// Clicks an armor slot: only the matching piece goes in, and a bound
+    /// piece stays on.
+    pub fn click_armor(&mut self, piece: ArmorPiece, right: bool, creative: bool) {
         let fits = self.cursor.is_none_or(|c| c.item.as_armor().is_some_and(|(p, _)| p == piece));
-        if fits {
+        if fits && self.can_unequip(piece, creative) {
             click_slot(&mut self.armor[piece as usize], &mut self.cursor, right);
         }
     }
 
     /// Wears every armor piece for a hit of `damage` half hearts (a quarter
-    /// of it, at least one use). Returns the pieces that broke.
+    /// of it, at least one use; unbreaking skips some). Returns the pieces
+    /// that broke.
     pub fn wear_armor(&mut self, damage: f32) -> Vec<Item> {
         let uses = ((damage / 4.0) as u16).max(1);
         let mut broken = Vec::new();
         for slot in &mut self.armor {
             let Some(s) = slot else { continue };
             let Some(max) = s.item.durability() else { continue };
-            s.damage = s.damage.saturating_add(uses);
+            let worn = (0..uses).filter(|_| enchant::wears(s.enchants, true, enchant::roll())).count() as u16;
+            s.damage = s.damage.saturating_add(worn);
             if s.damage >= max {
                 broken.push(s.item);
                 *slot = None;
@@ -192,10 +247,12 @@ impl Inventory {
     }
 
     /// Empties every slot and the cursor (a dying player drops it all).
+    /// Items with curse of vanishing are destroyed instead.
     pub fn take_all(&mut self) -> Vec<Stack> {
         let mut all: Vec<Stack> = self.slots.iter_mut().chain(&mut self.armor).filter_map(Option::take).collect();
         all.extend(self.cursor.take());
         all.append(&mut self.spill);
+        all.retain(|s| !s.active_enchants().has(enchant::Enchantment::VanishingCurse));
         all
     }
 
@@ -239,10 +296,15 @@ impl Inventory {
     }
 }
 
-/// `id:count` (or `id:count:damage` for worn tools), or `-` for nothing.
+/// `id:count` (or `id:count:damage` for worn tools, and
+/// `id:count:damage:enchantments:repair cost` for enchanted or anvil-worked
+/// ones, enchantments in hex), or `-` for nothing.
 pub fn stack_to_string(stack: Option<Stack>) -> String {
     match stack {
         None => "-".to_string(),
+        Some(s) if !s.enchants.is_empty() || s.repair_cost > 0 => {
+            format!("{}:{}:{}:{}:{}", s.item.0, s.count, s.damage, s.enchants.to_hex(), s.repair_cost)
+        }
         Some(s) if s.damage > 0 => format!("{}:{}:{}", s.item.0, s.count, s.damage),
         Some(s) => format!("{}:{}", s.item.0, s.count),
     }
@@ -258,8 +320,16 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
     let id: u16 = fields.next()?.parse().ok()?;
     let count: u8 = fields.next()?.parse().ok()?;
     let damage: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
+    let enchants = fields.next().map_or(Some(Enchants::NONE), Enchants::from_hex)?;
+    let repair_cost: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
     let item = Item(id);
-    Some((count > 0 && item.is_valid()).then(|| Stack { item, count: count.min(item.max_stack()), damage }))
+    Some((count > 0 && item.is_valid()).then(|| Stack {
+        item,
+        count: count.min(item.max_stack()),
+        damage,
+        enchants,
+        repair_cost,
+    }))
 }
 
 /// Moves as much of `stack` as fits into `slots`, visiting them in
@@ -378,6 +448,9 @@ mod tests {
         inv.slots[20] = Some(Stack::new(Block::GLASS, 3));
         inv.slots[21] = Some(Stack::new(Item::COAL, 12));
         inv.slots[22] = Some(Stack { damage: 17, ..Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Iron), 1) });
+        let enchants = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::Efficiency, 5);
+        inv.slots[23] =
+            Some(Stack { enchants, repair_cost: 3, ..Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Diamond), 1) });
         assert_eq!(Inventory::deserialize(&inv.serialize()), Some(inv));
     }
 
@@ -393,7 +466,7 @@ mod tests {
 
         // Only the matching piece fits a slot.
         inv.cursor = Some(Stack::new(Item::STICK, 1));
-        inv.click_armor(ArmorPiece::Chestplate, false);
+        inv.click_armor(ArmorPiece::Chestplate, false, false);
         assert_eq!(inv.armor[1], None);
         inv.cursor = None;
 
@@ -485,6 +558,52 @@ mod tests {
         assert_eq!(slots.map(|s| s.map_or(0, |s| s.count)), [0, 64, 6, 64]);
         let left = move_into(Stack::new(Block::DIRT, 64), &mut slots, &[1, 3]);
         assert_eq!(left, Some(Stack::new(Block::DIRT, 64)), "nowhere to go");
+    }
+
+    #[test]
+    fn mending_uses_leftover_xp_after_repairing_one_damage() {
+        use crate::enchant::Enchantment;
+        let mut inv = Inventory::default();
+        let enchants = Enchants::NONE.with(Enchantment::Mending, 1);
+        let helmet = Item::armor(ArmorPiece::Helmet, crate::item::ArmorMaterial::Iron);
+        inv.armor[0] = Some(Stack { damage: 1, enchants, ..Stack::new(helmet, 1) });
+        inv.slots[0] = Some(Stack { damage: 1, enchants, ..Stack::new(helmet, 1) });
+        assert_eq!(inv.mend(1, 0), 1, "each odd point rounds down to zero XP used");
+        assert_eq!(inv.armor[0].unwrap().damage, 0);
+        assert_eq!(inv.get(0).unwrap().damage, 0, "the same orb repairs both pieces");
+        inv.slots[0].as_mut().unwrap().damage = 5;
+        assert_eq!(inv.mend(u32::MAX, 0), u32::MAX - 2, "large XP awards cannot overflow");
+    }
+
+    #[test]
+    fn mending_vanishing_and_binding() {
+        use crate::enchant::{Enchantment, Enchants};
+        use crate::item::ArmorMaterial;
+        let mending = Enchants::NONE.with(Enchantment::Mending, 1);
+        let sword = Item::tool(ToolKind::Sword, Tier::Iron);
+        let mut inv = Inventory::default();
+        inv.slots[0] = Some(Stack { damage: 5, enchants: mending, ..Stack::new(sword, 1) });
+        // 3 points repair 5 damage (two per point) and leave 1 point over.
+        assert_eq!(inv.mend(3, 0), 1);
+        assert_eq!(inv.get(0).unwrap().damage, 0);
+        assert_eq!(inv.mend(3, 0), 3, "nothing left to mend");
+        assert_eq!(inv.mend(3, 1), 3, "only the held slot counts");
+
+        let helmet = Item::armor(ArmorPiece::Helmet, ArmorMaterial::Iron);
+        let bound = Stack { enchants: Enchants::NONE.with(Enchantment::BindingCurse, 1), ..Stack::new(helmet, 1) };
+        inv.armor[0] = Some(bound);
+        inv.click_armor(ArmorPiece::Helmet, false, false);
+        assert_eq!((inv.cursor, inv.armor[0]), (None, Some(bound)), "bound armor stays on");
+        inv.slots[1] = Some(Stack::new(helmet, 1));
+        assert!(!inv.equip(1));
+        inv.click_armor(ArmorPiece::Helmet, false, true);
+        assert_eq!(inv.cursor, Some(bound), "creative takes it off");
+
+        inv.slots[2] =
+            Some(Stack { enchants: Enchants::NONE.with(Enchantment::VanishingCurse, 1), ..Stack::new(sword, 1) });
+        let dropped = inv.take_all();
+        assert!(dropped.iter().all(|s| !s.enchants.has(Enchantment::VanishingCurse)));
+        assert_eq!(dropped.len(), 3, "the vanishing sword is gone");
     }
 
     #[test]

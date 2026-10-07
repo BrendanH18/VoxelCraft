@@ -19,7 +19,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,6 +72,13 @@ pub enum Command {
     XpQuery,
     /// Java's `/effect`.
     Effect(EffectChange),
+    /// Java's `/enchant`: enchants the held item.
+    Enchant(crate::enchant::Enchantment, u8),
+    /// Takes offer 0..3 of the targeted enchanting table for the held item,
+    /// paying levels and lapis from the inventory.
+    Enchanting(usize),
+    /// Combines the held stack with hotbar slot 0..9 on the targeted anvil.
+    Anvil(usize),
 }
 
 /// `/effect give` (with seconds and amplifier) or `/effect clear`.
@@ -235,6 +242,15 @@ impl Command {
                 let amp = rest.get(1).map_or(Ok(0), |n| n.parse::<u8>().map_err(|_| bad()))?;
                 Self::Effect(EffectChange::Give(effect, secs, amp))
             }
+            ["anvil", n] => Self::Anvil(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
+            ["enchanting", n] => {
+                Self::Enchanting(n.parse::<usize>().ok().filter(|n| (1..=3).contains(n)).ok_or_else(bad)? - 1)
+            }
+            ["enchant", name, rest @ ..] if rest.len() <= 1 => {
+                let e = crate::enchant::Enchantment::from_name(name).ok_or_else(bad)?;
+                let level = rest.first().map_or(Ok(1), |n| n.parse::<u8>().ok().filter(|&n| n > 0).ok_or_else(bad))?;
+                Self::Enchant(e, level)
+            }
             _ => return Err(bad()),
         })
     }
@@ -252,6 +268,7 @@ impl Command {
                 | Self::Dimension(..)
                 | Self::Xp(..)
                 | Self::Effect(..)
+                | Self::Enchant(..)
         )
     }
 }
@@ -260,6 +277,9 @@ pub struct Agent {
     pub player: Player,
     pub previous_pos: DVec3,
     pub inventory: Inventory,
+    /// Transient enchanting table / anvil inputs for a controller player.
+    /// Saved as returned inventory and dropped on death with the other gear.
+    pub work: [Option<Stack>; 2],
     pub vitals: Vitals,
     /// The host's stable ID for this player (owner of its thrown pearls).
     pub id: crate::entity::PlayerId,
@@ -280,7 +300,8 @@ pub struct Agent {
     /// Holding "use" eats held food; `bite` counts the ticks chewed.
     eating: bool,
     bite: u32,
-    breaking: Option<(IVec3, f64)>,
+    /// Accumulated fraction broken, using the speed at each tick.
+    breaking: Option<(IVec3, Block, f64)>,
     cooldown: f64,
 }
 
@@ -291,6 +312,7 @@ impl Agent {
             player: Player::new(pos),
             previous_pos: pos,
             inventory: Inventory::default(),
+            work: [None; 2],
             vitals: Vitals::default(),
             id: crate::entity::PlayerId::default(),
             creative: false,
@@ -384,6 +406,10 @@ impl Agent {
                 self.player.flying = on;
                 self.player.vel = DVec3::ZERO;
             }
+            Command::Enchant(e, level) => {
+                let slot = &mut self.inventory.slots[self.selected];
+                *slot = Some(crate::enchant::command(*slot, e, level)?);
+            }
             Command::Give(item, count) => {
                 let mut inv = self.inventory.clone();
                 if inv.add(item, count) > 0 {
@@ -398,7 +424,7 @@ impl Agent {
             }
             Command::Effect(change) => {
                 let (damage, _) = change.apply(&mut self.vitals);
-                self.vitals.damage(damage, survival::CAUSE_MAGIC, self.creative);
+                self.damage(damage, survival::CAUSE_MAGIC);
             }
             Command::Mode(creative) => {
                 self.creative = creative;
@@ -499,15 +525,19 @@ impl Agent {
                     .target(world)
                     .map_or(6.0, |(p, _)| self.player.eye().distance(p.as_dvec3() + DVec3::splat(0.5)).min(6.0));
                 let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
-                let held = self.inventory.get(self.selected).map(|s| s.item);
-                let damage = (mining::attack_damage(held) + self.vitals.effects.attack_bonus()).max(0.0);
+                let stack = self.inventory.get(self.selected);
+                let held = stack.map(|s| s.item);
+                let bonus = self.vitals.effects.attack_bonus();
                 if let Some((hit, _)) = entities.fight_raycast(eye, dir, distance) {
+                    let enchants = stack.map_or(Default::default(), |s| s.active_enchants());
+                    let damage = (mining::attack_damage(held) + bonus).max(0.0)
+                        + crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
                     entities.strike(hit, damage, self.id);
                 } else {
                     let (i, _) = entities.raycast(eye, dir, distance).ok_or("no mob within reach")?;
-                    if let Some(kind) = entities.attack(i, dir, damage) {
-                        entities.drop_loot(kind, entities.mobs[i].pos);
-                    }
+                    let sprint = self.movement_input().sprint && (self.creative || self.vitals.hunger.can_sprint());
+                    let sweep = (self.player.on_ground && !sprint).then_some(self.player.pos);
+                    entities.melee(i, dir, stack, bonus, false, sweep);
                 }
                 if !self.creative
                     && let Some(held) = held
@@ -543,6 +573,34 @@ impl Agent {
                     *dest = Some(Stack { count: dest.map_or(0, |s| s.count) + n, ..stack });
                     self.inventory.slots[self.selected] =
                         (stack.count > n).then_some(Stack { count: stack.count - n, ..stack });
+                }
+            }
+            Command::Enchanting(i) => self.enchant_at_table(i, world)?,
+            Command::Anvil(slot) => {
+                let (pos, _) = self.target(world).ok_or("no anvil within reach")?;
+                if !world.get_block(pos).is_some_and(Block::is_anvil) {
+                    return Err("target is not an anvil".into());
+                }
+                if slot == self.selected {
+                    return Err("pick a different slot for the second item".into());
+                }
+                let left = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+                let right = self.inventory.get(slot);
+                let r = crate::enchant::anvil_any_cost(left, right, self.creative).ok_or("those don't combine")?;
+                if !self.creative && r.cost >= crate::enchant::TOO_EXPENSIVE {
+                    return Err("too expensive".into());
+                }
+                if !self.creative && self.vitals.xp.level < r.cost {
+                    return Err(format!("needs level {}", r.cost));
+                }
+                self.inventory.slots[self.selected] = Some(r.output);
+                self.inventory.slots[slot] = match (r.uses, right) {
+                    (Some(n), Some(s)) if s.count > n => Some(Stack { count: s.count - n, ..s }),
+                    _ => None,
+                };
+                if !self.creative {
+                    self.vitals.xp.add_levels(-(r.cost as i64));
+                    crate::enchant::wear_anvil(world, pos);
                 }
             }
             Command::Drop => {
@@ -634,9 +692,17 @@ impl Agent {
             self.sleeping = None;
             return;
         }
-        let mut input = if self.remaining > 0 { self.input } else { MoveInput::default() };
+        let mut input = self.movement_input();
         input.sprint &= self.creative || self.vitals.hunger.can_sprint();
-        let hurts = simulation::tick_player(&mut self.player, world, &mut self.vitals, input, self.creative).hurts;
+        let hurts = simulation::tick_player(
+            &mut self.player,
+            world,
+            &mut self.vitals,
+            &self.inventory.armor,
+            input,
+            self.creative,
+        )
+        .hurts;
         for (damage, cause) in [
             (hurts.fall, "hit the ground too hard"),
             (hurts.drown, "drowned"),
@@ -644,7 +710,7 @@ impl Agent {
             (hurts.fire + hurts.burn, "burned to death"),
             (hurts.starve, "starved to death"),
         ] {
-            if damage > 0.0 && self.vitals.damage(damage, cause, self.creative) > 0.0 {
+            if damage > 0.0 && self.damage(damage, cause) > 0.0 {
                 self.sleeping = None;
             }
         }
@@ -660,20 +726,19 @@ impl Agent {
             && let Some(block) = world.get_block(pos)
         {
             let held = self.inventory.get(self.selected).map(|s| s.item);
-            let progress = self.breaking.filter(|(p, _)| *p == pos).map_or(0.0, |(_, n)| n) + TICK_SECONDS;
-            self.breaking = Some((pos, progress));
+            let digger = self.digger(world);
+            let progress = self.breaking.filter(|(p, b, _)| *p == pos && *b == block).map_or(0.0, |(_, _, n)| n)
+                + TICK_SECONDS / mining::dig_time(block, digger).max(1e-3) as f64;
+            self.breaking = Some((pos, block, progress));
             self.swings += 1;
-            if block != Block::BEDROCK
-                && !block.is_door()
-                && !block.is_bed()
-                && (self.creative || progress >= mining::break_time(block, held) as f64)
-            {
+            if block != Block::BEDROCK && !block.is_door() && !block.is_bed() && (self.creative || progress >= 1.0) {
                 world.set_block(pos, Block::AIR);
                 self.emit(Event::Broke(pos, block));
                 if !self.creative {
                     if mining::can_harvest(block, held) {
-                        world.spill_block(pos, block);
-                        entities.drop_block_xp(block, pos);
+                        let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
+                        world.spill_mined(pos, block, tool);
+                        entities.drop_mined_xp(block, pos, tool);
                     }
                     if let Some(held) = held {
                         self.inventory.wear(self.selected, mining::wear(held, false));
@@ -695,7 +760,13 @@ impl Agent {
             item.stack.count = self.inventory.add_stack(item.stack);
             item.stack.count > 0
         });
-        if let Some(chime) = crate::entity::orb::absorb(&mut entities.orbs, self.player.pos, &mut self.vitals.xp) {
+        if let Some(chime) = crate::entity::orb::absorb(
+            &mut entities.orbs,
+            self.player.pos,
+            &mut self.vitals.xp,
+            &mut self.inventory,
+            self.selected,
+        ) {
             self.emit(Event::Xp(chime));
         }
     }
@@ -710,7 +781,7 @@ impl Agent {
         self.previous_pos = pos;
         self.player.vel = DVec3::ZERO;
         self.vitals.reset_fall();
-        self.vitals.damage(crate::entity::pearl::DAMAGE, "fell from a high place", self.creative);
+        self.damage(crate::entity::pearl::DAMAGE, "fell from a high place");
         if self.vitals.is_dead() {
             self.drop_everything(entities);
             self.remaining = 0;
@@ -721,7 +792,8 @@ impl Agent {
     /// A dead survival agent's inventory and some of its experience spill
     /// where it died.
     fn drop_everything(&mut self, entities: &mut Entities) {
-        for stack in self.inventory.take_all() {
+        let stacks = self.inventory.take_all().into_iter().chain(self.work.iter_mut().filter_map(Option::take));
+        for stack in stacks.filter(|s| !s.active_enchants().has(crate::enchant::Enchantment::VanishingCurse)) {
             entities.scatter(stack, self.player.pos);
         }
         let xp = self.vitals.xp.die();
@@ -747,7 +819,7 @@ impl Agent {
             self.bite = 0;
             if let Some(potion) = potion {
                 let damage = potion.drink(&mut self.vitals);
-                self.vitals.damage(damage, survival::CAUSE_MAGIC, self.creative);
+                self.damage(damage, survival::CAUSE_MAGIC);
                 if !self.creative {
                     self.inventory.slots[self.selected] = Some(Stack::new(Item::GLASS_BOTTLE, 1));
                 }
@@ -776,12 +848,77 @@ impl Agent {
         self.bite as f32 / EAT_TICKS as f32
     }
 
+    /// The targeted enchanting table and its offers for the held item.
+    fn table_offers(&self, world: &World) -> Option<(IVec3, [crate::enchant::Offer; 3])> {
+        let (pos, _) = self.target(world)?;
+        let held = self.inventory.get(self.selected)?;
+        (world.get_block(pos) == Some(Block::ENCHANTING_TABLE) && crate::enchant::table_accepts(held)).then(|| {
+            (pos, crate::enchant::offers(self.vitals.xp.seed, held.item, crate::enchant::bookshelves(world, pos)))
+        })
+    }
+
+    /// Java's enchanting table for an agent: one of the held item gets
+    /// offer `i`, for `i + 1` levels and lapis (none in creative).
+    fn enchant_at_table(&mut self, i: usize, world: &World) -> Result<(), String> {
+        let (_, offers) =
+            self.table_offers(world).ok_or("not aiming at an enchanting table with an enchantable item")?;
+        let offer = offers[i];
+        let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+        let lapis = self
+            .inventory
+            .slots
+            .iter()
+            .flatten()
+            .filter(|s| s.item == Item::LAPIS_LAZULI)
+            .map(|s| s.count as usize)
+            .sum::<usize>();
+        let level = self.vitals.xp.level;
+        if offer.cost == 0 {
+            return Err("no offer in that slot".into());
+        }
+        if !self.creative && (lapis <= i || level < offer.cost || level <= i as u32) {
+            return Err(format!("needs {} lapis and level {}", i + 1, offer.cost));
+        }
+        let mut out = Stack { count: 1, ..held };
+        if out.item == Item::BOOK {
+            out.item = Item::ENCHANTED_BOOK;
+        }
+        for (e, l) in crate::enchant::offer_enchants(self.vitals.xp.seed, held.item, i, offer.cost) {
+            out.enchants.set(e, l);
+        }
+        let mut inv = self.inventory.clone();
+        inv.take_one(self.selected);
+        if !self.creative {
+            for _ in 0..=i {
+                let slot = inv.find(Item::LAPIS_LAZULI).ok_or("no lapis")?;
+                inv.take_one(slot);
+            }
+        }
+        if inv.slots[self.selected].is_none() {
+            inv.slots[self.selected] = Some(out);
+        } else if inv.add_stack(out) > 0 {
+            return Err("inventory full".into());
+        }
+        if !self.creative {
+            self.vitals.xp.add_levels(-(i as i64 + 1));
+        }
+        self.inventory = inv;
+        self.vitals.xp.seed = (crate::enchant::roll() * u32::MAX as f32) as u32 as i32;
+        Ok(())
+    }
+
+    /// Damage through protection enchantments (armor points aside).
+    fn damage(&mut self, amount: f32, cause: &str) -> f32 {
+        let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
+        self.vitals.damage(amount, cause, self.creative)
+    }
+
     /// Armored damage from a mob, arrow or explosion. Knockback only lands
     /// with damage (hurt immunity also stops repeated shoves), and a survival
     /// agent killed this way drops everything. Returns the damage taken.
     pub fn hurt(&mut self, amount: f32, cause: &str, knockback: DVec3, entities: &mut Entities) -> f32 {
         let reduced = simulation::survival::armor_reduce(amount, self.inventory.armor_points());
-        let taken = self.vitals.damage(reduced, cause, self.creative);
+        let taken = self.damage(reduced, cause);
         if taken <= 0.0 {
             return 0.0;
         }
@@ -806,10 +943,26 @@ impl Agent {
 
     /// The block being mined and the fraction broken (for crack overlays).
     pub fn breaking(&self, world: &World) -> Option<(IVec3, f32)> {
-        let (pos, seconds) = self.breaking?;
-        let block = world.get_block(pos)?;
-        let held = self.inventory.get(self.selected).map(|s| s.item);
-        Some((pos, (seconds as f32 / mining::break_time(block, held).max(1e-3)).min(1.0)))
+        let (pos, block, progress) = self.breaking?;
+        if world.get_block(pos)? != block {
+            return None;
+        }
+        Some((pos, (progress as f32).min(1.0)))
+    }
+
+    /// Held movement for the current command or controller tick.
+    pub fn movement_input(&self) -> MoveInput {
+        if self.remaining > 0 { self.input } else { MoveInput::default() }
+    }
+
+    /// What this agent mines with, and where it stands (Java's penalties).
+    fn digger(&self, world: &World) -> mining::Digger {
+        mining::Digger {
+            held: self.inventory.get(self.selected),
+            helmet: self.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
+            eyes_in_water: self.player.head_in_water(world),
+            on_ground: self.player.on_ground || self.player.flying,
+        }
     }
 
     /// Whether hostile mobs may attack this agent.
@@ -837,12 +990,18 @@ impl Agent {
             .iter()
             .enumerate()
             .filter_map(|(slot, s)| {
-                s.map(|s| json!({"slot":slot+1,"item":s.item.name(),"count":s.count,"damage":s.damage}))
+                s.map(|s| {
+                    let enchants: Vec<String> = s.enchants.lines().into_iter().map(|(l, _)| l).collect();
+                    json!({"slot":slot+1,"item":s.item.name(),"count":s.count,"damage":s.damage,"enchantments":enchants})
+                })
             })
             .collect();
-        let target = self.target(world).map(
-            |(p, n)| json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name())}),
-        );
+        let offers = self
+            .table_offers(world)
+            .map(|(_, o)| o.map(|o| json!({"cost":o.cost,"clue":o.clue.map(|(e, l)| e.describe(l))})).to_vec());
+        let target = self.target(world).map(|(p, n)| {
+            json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers})
+        });
         json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"level":self.vitals.xp.level,"xp_progress":self.vitals.xp.progress(),"dead":self.vitals.is_dead(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"spawn_bed":self.spawn_bed.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
 }
@@ -865,6 +1024,91 @@ mod tests {
         }
         panic!("world failed to load");
     }
+    #[test]
+    fn replacing_a_targeted_block_resets_mining_progress() {
+        let mut world = world();
+        let at = IVec3::new(3, 151, 1);
+        world.set_block(IVec3::new(1, 149, 1), Block::STONE);
+        world.set_block(at, Block::STONE);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.breaking = Some((at, Block::DIRT, 0.99));
+        assert!(a.breaking(&world).is_none(), "old cracks disappear as soon as the block changes");
+        a.hold(MoveInput::default(), true, false);
+        a.tick(&mut world, &mut Entities::new(1));
+        assert_eq!(world.get_block(at), Some(Block::STONE));
+        let expected = (TICK_SECONDS / mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
+        assert_eq!(a.breaking(&world), Some((at, expected)));
+    }
+
+    #[test]
+    fn sprint_attacks_do_not_sweep_nearby_mobs() {
+        let mut world = world();
+        for sprint in [false, true] {
+            let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+            a.player.on_ground = true;
+            a.inventory.slots[0] =
+                Some(Stack::new(Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Wood), 1));
+            a.hold(MoveInput { forward: 1.0, sprint, ..Default::default() }, false, false);
+            let mut e = Entities::new(1);
+            e.spawn(crate::entity::MobKind::Zombie, DVec3::new(3.0, 150.0, 1.5));
+            e.spawn(crate::entity::MobKind::Zombie, DVec3::new(3.0, 150.0, 2.3));
+            a.execute(Command::Attack, &mut world, &mut e, &[]).unwrap();
+            assert!(e.mobs[0].health < crate::entity::MobKind::Zombie.max_health());
+            assert_eq!(e.mobs[1].health, crate::entity::MobKind::Zombie.max_health() - if sprint { 0.0 } else { 1.0 });
+        }
+    }
+
+    #[test]
+    fn mining_speed_changes_only_affect_future_progress() {
+        use crate::enchant::Enchantment;
+        let mut world = world();
+        for x in 0..5 {
+            for z in 0..3 {
+                world.set_block(IVec3::new(x, 149, z), Block::STONE);
+            }
+        }
+        let at = IVec3::new(3, 151, 1);
+        world.set_block(at, Block::STONE);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.slots[0] = Some(Stack::new(Item::tool(crate::item::ToolKind::Pickaxe, crate::item::Tier::Wood), 1));
+        let mut entities = Entities::new(1);
+        for _ in 0..3 {
+            a.hold(MoveInput::default(), true, false);
+            a.tick(&mut world, &mut entities);
+        }
+        let before = a.breaking(&world).unwrap();
+        assert_eq!(before.0, at);
+        a.inventory.slots[0].as_mut().unwrap().enchants =
+            crate::enchant::Enchants::NONE.with(Enchantment::Efficiency, 5);
+        assert_eq!(a.breaking(&world).unwrap(), before, "changing tools cannot change existing progress");
+        a.hold(MoveInput::default(), true, false);
+        a.tick(&mut world, &mut entities);
+        let after = a.breaking(&world).unwrap();
+        let expected = before.1 + (TICK_SECONDS / mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
+        assert!((after.1 - expected).abs() < 1e-6);
+        assert_eq!(world.get_block(at), Some(Block::STONE), "a faster tool does not retroactively finish the dig");
+    }
+
+    #[test]
+    fn depth_strider_bonus_is_halved_off_the_ground() {
+        let mut world = world();
+        world.set_block(IVec3::new(1, 149, 1), Block::STONE);
+        world.set_block(IVec3::new(1, 150, 1), Block::WATER);
+        let speed = |world: &World, grounded, level| {
+            let mut p = Player::new(DVec3::new(1.5, 150.0, 1.5));
+            p.on_ground = grounded;
+            p.wear_boots(level);
+            p.update(1.0 / 120.0, MoveInput { forward: 1.0, ..Default::default() }, world);
+            p.vel.x
+        };
+        let grounded_bonus = speed(&world, true, 3) - speed(&world, true, 0);
+        let airborne_bonus = speed(&world, false, 3) - speed(&world, false, 0);
+        assert!(grounded_bonus > 0.0);
+        assert!((airborne_bonus * 2.0 - grounded_bonus).abs() < 1e-9);
+        world.set_block(IVec3::new(1, 150, 1), Block::LAVA);
+        assert_eq!(speed(&world, true, 3), speed(&world, true, 0));
+    }
+
     #[test]
     fn hurt_applies_armor_knockback_immunity_and_death_drops() {
         let mut entities = Entities::new(1);
@@ -1026,6 +1270,11 @@ mod tests {
         EffectChange::Give(Effect::InstantHealth, 1, 1).apply(&mut vitals);
         assert_eq!(vitals.health, 18.0);
         assert!(matches!(Command::parse("/give dirt 64").unwrap(), Command::Give(_, 64)));
+        assert!(matches!(
+            Command::parse("/enchant silk_touch").unwrap(),
+            Command::Enchant(crate::enchant::Enchantment::SilkTouch, 1)
+        ));
+        assert!(Command::parse("/enchant sharpness 0").is_err() && Command::parse("/enchant speed").is_err());
         let xp = |text: &str| match Command::parse(text) {
             Ok(Command::Xp(c)) => Some((c.set, c.amount, c.levels)),
             _ => None,
@@ -1068,6 +1317,86 @@ mod tests {
         assert_eq!(a.remaining, 0);
         assert_eq!(b.player.pos.x, 4.5);
     }
+    #[test]
+    fn death_drops_work_inputs_and_destroys_vanishing_gear() {
+        let mut a = Agent::new(DVec3::ZERO);
+        let sword = Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Iron);
+        a.work[0] = Some(Stack {
+            enchants: crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::VanishingCurse, 1),
+            ..Stack::new(sword, 1)
+        });
+        a.work[1] = Some(Stack::new(Item::DIAMOND, 2));
+        let mut entities = Entities::new(1);
+        a.hurt(30.0, "was slain by a zombie", DVec3::ZERO, &mut entities);
+        assert!(a.vitals.is_dead());
+        assert_eq!(a.work, [None; 2]);
+        assert_eq!(entities.items.len(), 1);
+        assert_eq!(entities.items[0].stack, Stack::new(Item::DIAMOND, 2));
+    }
+
+    #[test]
+    fn enchanting_can_use_the_slot_freed_by_lapis() {
+        let mut world = world();
+        world.set_block(IVec3::new(4, 151, 1), Block::ENCHANTING_TABLE);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.slots.fill(Some(Stack::new(Item::STICK, 64)));
+        a.inventory.slots[0] = Some(Stack::new(Item::BOOK, 2));
+        a.inventory.slots[1] = Some(Stack::new(Item::LAPIS_LAZULI, 1));
+        a.vitals.xp.add_levels(30);
+        a.enchant_at_table(0, &world).unwrap();
+        assert_eq!(a.inventory.get(0), Some(Stack::new(Item::BOOK, 1)));
+        let book = a.inventory.get(1).unwrap();
+        assert_eq!(book.item, Item::ENCHANTED_BOOK);
+        assert!(!book.enchants.is_empty());
+        assert_eq!(a.vitals.xp.level, 29);
+    }
+
+    #[test]
+    fn agents_enchant_at_a_table_for_levels_and_lapis() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let pos = IVec3::new(4, 151, 1);
+        world.set_block(pos, Block::ENCHANTING_TABLE);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let pick = Item::tool(crate::item::ToolKind::Pickaxe, crate::item::Tier::Iron);
+        a.inventory.slots[0] = Some(Stack::new(pick, 1));
+        a.inventory.slots[1] = Some(Stack::new(Item::LAPIS_LAZULI, 2));
+        let offers = a.observe(&world, 0)["target"]["enchanting_offers"].clone();
+        assert_eq!(offers.as_array().map(Vec::len), Some(3), "{offers}");
+        let cost = offers[1]["cost"].as_u64().unwrap() as u32;
+        assert!(a.execute(Command::Enchanting(1), &mut world, &mut entities, &[]).is_err(), "no levels yet");
+        a.vitals.xp.add_levels(cost as i64);
+        let seed = a.vitals.xp.seed;
+        a.execute(Command::Enchanting(1), &mut world, &mut entities, &[]).unwrap();
+        let held = a.inventory.get(0).unwrap();
+        assert!(!held.enchants.is_empty());
+        assert_eq!(a.vitals.xp.level, cost - 2, "the second offer costs two levels");
+        assert_eq!(a.inventory.get(1), None, "and two lapis");
+        assert_ne!(a.vitals.xp.seed, seed, "a new seed rolls new offers");
+        assert!(a.execute(Command::Enchanting(0), &mut world, &mut entities, &[]).is_err(), "already enchanted");
+    }
+
+    #[test]
+    fn agents_combine_on_an_anvil() {
+        use crate::enchant::{Enchantment, Enchants};
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        world.set_block(IVec3::new(4, 150, 1), Block::STONE);
+        world.set_block(IVec3::new(4, 151, 1), Block::ANVIL);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let sword = Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Iron);
+        let book = Enchants::NONE.with(Enchantment::Sharpness, 2);
+        a.inventory.slots[0] = Some(Stack::new(sword, 1));
+        a.inventory.slots[1] = Some(Stack { enchants: book, ..Stack::new(Item::ENCHANTED_BOOK, 1) });
+        let short = a.execute(Command::Anvil(1), &mut world, &mut entities, &[]);
+        assert_eq!(short, Err("needs level 2".to_string()));
+        a.vitals.xp.add_levels(3);
+        a.execute(Command::Anvil(1), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.inventory.get(0).unwrap().enchants.level(Enchantment::Sharpness), 2);
+        assert_eq!(a.inventory.get(1), None, "the book is used up");
+        assert_eq!(a.vitals.xp.level, 1);
+    }
+
     #[test]
     fn shared_chest_transfer_cannot_duplicate_items() {
         let mut world = world();

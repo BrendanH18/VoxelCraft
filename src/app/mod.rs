@@ -2,6 +2,7 @@
 
 mod actions;
 mod agents;
+mod anvil;
 mod bed;
 mod bow;
 mod bucket;
@@ -9,6 +10,7 @@ mod console;
 mod containers;
 mod dimension;
 mod doors;
+mod enchanting;
 mod farming;
 mod gamepad;
 mod hand;
@@ -99,6 +101,8 @@ pub(crate) enum Container {
     Furnace(IVec3),
     Chest(IVec3),
     Brewing(IVec3),
+    Enchanting(IVec3),
+    Anvil(IVec3),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -152,6 +156,9 @@ struct Game {
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
     /// crafting table. Emptied back into the inventory when it closes.
     craft: crate::crafting::Grid,
+    /// The open enchanting table's item and lapis slots, or the anvil's two
+    /// inputs; emptied back into the inventory when the screen closes.
+    work: enchanting::WorkSlots,
     container: Container,
     recipe_book: recipe_book::RecipeBook,
     /// First visible row of the creative palette.
@@ -574,6 +581,12 @@ impl Game {
                 inventory.armor[piece as usize] = Some(Stack::new(item, 1));
             }
         }
+        for &(e, level) in &args.enchants {
+            match crate::enchant::command(inventory.slots[0], e, level) {
+                Ok(stack) => inventory.slots[0] = Some(stack),
+                Err(err) => log::warn!("--enchant: {err}"),
+            }
+        }
 
         let prop = |k: &str| existing.as_ref().and_then(|l| l.props.get(k));
         let mut vitals = Vitals::restore(
@@ -692,6 +705,7 @@ impl Game {
             inventory,
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
+            work: [None; 2],
             container: Container::Inventory,
             recipe_book: recipe_book::RecipeBook::default(),
             creative_scroll: 0,
@@ -912,12 +926,14 @@ impl Game {
     }
 
     /// The single entry point for hurting the player (falls, drowning,
-    /// mobs, ...). `amount` is in half hearts; `cause` completes the death
+    /// mobs, ...), through protection enchantments. `amount` is in half
+    /// hearts; `cause` completes the death
     /// message "Player <cause>", e.g. "drowned" or "was slain by a zombie".
     /// Returns the damage actually taken: zero in creative, while dead, or
     /// when absorbed by the 0.5 s hurt immunity that follows each hit (a
     /// stronger hit within it only deals the difference).
     pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
+        let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
         let taken = self.vitals.damage(amount, cause, self.mode == GameMode::Creative);
         if taken > 0.0 {
             self.sleeping = None;
@@ -1006,7 +1022,8 @@ impl Game {
             if let Container::Chest(pos) = self.container {
                 self.chest_sound(pos, 0.8);
             }
-            self.inventory.return_stacks(self.craft.take_all());
+            let table = self.take_work();
+            self.inventory.return_stacks(self.craft.take_all().into_iter().chain(table));
             self.craft = crate::crafting::Grid::new(2);
             self.container = Container::Inventory;
             self.set_grab(true);
@@ -1166,7 +1183,9 @@ impl Game {
                 crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
             }
             Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
-            Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right),
+            Some(hud::SlotRef::Armor(piece)) => {
+                self.inventory.click_armor(piece, right, self.mode == GameMode::Creative)
+            }
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Chest(pos) = self.container
                     && let Some(chest) = self.world.chest_mut(pos)
@@ -1183,6 +1202,12 @@ impl Game {
                 if let Container::Brewing(pos) = self.container {
                     self.brewing_click(pos, s, right);
                 }
+            }
+            Some(s @ (hud::SlotRef::EnchantItem | hud::SlotRef::EnchantLapis | hud::SlotRef::EnchantOffer(_))) => {
+                self.table_click(s, right)
+            }
+            Some(s @ (hud::SlotRef::AnvilLeft | hud::SlotRef::AnvilRight | hud::SlotRef::AnvilResult)) => {
+                self.anvil_click(s, right)
             }
             Some(hud::SlotRef::Palette(item)) => {
                 // Creative palette: take a full stack, or trash the held one.
@@ -1254,23 +1279,32 @@ impl Game {
             return;
         }
         let held = self.held_item();
-        let progress = self.actions.mine(pos, block, held, dt);
+        let digger = crate::mining::Digger {
+            held: self.inventory.get(self.actions.selected),
+            helmet: self.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
+            eyes_in_water: self.player.head_in_water(&self.world),
+            on_ground: self.player.on_ground || self.player.flying,
+        };
+        let progress = self.actions.mine(pos, block, crate::mining::dig_time(block, digger), dt);
         if progress < 1.0 {
             self.audio.block_hit(block, pos, dt);
             return;
         }
         self.actions.breaking = None;
         self.action_cooldown = BREAK_DELAY;
-        // Broken ice melts into water, unless it was floating over nothing.
+        // Broken ice melts into water, unless it was floating over nothing
+        // or silk touch keeps it whole.
+        let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
         let melts = block == Block::ICE
+            && !tool.has(crate::enchant::Enchantment::SilkTouch)
             && self.dimension.has_sky()
             && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
         self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         self.audio.block_break(block, pos);
         // Stone, ores and the like only drop with a good enough pickaxe.
         if crate::mining::can_harvest(block, held) {
-            self.world.spill_block(pos, block);
-            self.mobs.entities.drop_block_xp(block, pos);
+            self.world.spill_mined(pos, block, tool);
+            self.mobs.entities.drop_mined_xp(block, pos, tool);
         }
         if block.is_bed() {
             self.break_bed_partner(pos, block);
@@ -1377,6 +1411,8 @@ impl Game {
                 if self.puppet
                     && (b == Block::CRAFTING_TABLE
                         || b == Block::BREWING_STAND
+                        || b == Block::ENCHANTING_TABLE
+                        || b.is_anvil()
                         || b.is_bed()
                         || crate::world::furnace::is_furnace(b)
                         || crate::world::chest::is_chest(b)) =>
@@ -1388,6 +1424,8 @@ impl Game {
             Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
             Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
             Some(Block::BREWING_STAND) => return self.open_brewing(pos),
+            Some(Block::ENCHANTING_TABLE) => return self.open_enchanting(pos),
+            Some(b) if b.is_anvil() => return self.open_anvil(pos),
             Some(Block::DRAGON_EGG) => return self.teleport_egg(pos),
             Some(b) if b.is_bed() => return self.use_bed(pos),
             Some(b) if b.is_door() || b.is_gate() => {
@@ -1504,6 +1542,8 @@ impl Game {
                 Some(b) if crate::world::furnace::is_furnace(b) => self.open_furnace(p),
                 Some(b) if crate::world::chest::is_chest(b) => self.open_chest(p),
                 Some(Block::BREWING_STAND) => self.open_brewing(p),
+                Some(Block::ENCHANTING_TABLE) => self.open_enchanting(p),
+                Some(b) if b.is_anvil() => self.open_anvil(p),
                 _ => log::warn!("--open-block {p}: no container there"),
             }
         }
@@ -1599,7 +1639,7 @@ impl Game {
         props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
-        inventory.return_stacks(self.craft.cells.iter().flatten().copied());
+        inventory.return_stacks(self.craft.cells.iter().chain(&self.work).flatten().copied());
         props.insert("inventory".to_string(), inventory.serialize());
         props.insert("health".to_string(), self.vitals.health.to_string());
         props.insert("air".to_string(), format!("{:.2}", self.vitals.air));
@@ -1751,6 +1791,8 @@ impl Game {
         let before = self.player.pos;
         if !arriving {
             self.player.apply_effects(&self.vitals.effects);
+            let armor = &self.inventory.armor;
+            self.player.wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
             self.player.update(dt, input, &self.world);
             self.update_portal(dt);
         }
@@ -1758,7 +1800,10 @@ impl Game {
         self.weather.update(dt);
         self.update_sleep(dt);
         self.world.raining = self.weather.raining && self.dimension.has_sky();
-        let env = crate::simulation::player_environment(&self.player, &self.world, input, moved);
+        let env = crate::simulation::survival::Env {
+            respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
+            ..crate::simulation::player_environment(&self.player, &self.world, input, moved)
+        };
         let hurts = if arriving || self.arrival.is_some() {
             Default::default()
         } else {

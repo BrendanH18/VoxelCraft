@@ -61,6 +61,9 @@ pub struct Experience {
     pub pickup_cooldown: f32,
     /// Seconds since the last level-up chime.
     since_chime: f32,
+    /// Java's enchantment seed: fixes the enchanting table's offers until
+    /// the player enchants something.
+    pub seed: i32,
 }
 
 impl Experience {
@@ -130,20 +133,25 @@ impl Experience {
     /// The total stays as the death screen's score until respawning.
     pub fn die(&mut self) -> u32 {
         let drop = self.death_drop();
-        *self = Self { total: self.total, ..Self::default() };
+        *self = Self { total: self.total, seed: self.seed, ..Self::default() };
         drop
     }
 
-    /// `level,points,total` for saves.
+    /// `level,points,total,seed` for saves.
     pub fn serialize(&self) -> String {
-        format!("{},{},{}", self.level, self.points, self.total)
+        format!("{},{},{},{}", self.level, self.points, self.total, self.seed)
     }
 
-    /// Reads what [`Experience::serialize`] wrote.
+    /// Reads what [`Experience::serialize`] wrote (older saves have no seed).
     pub fn parse(text: &str) -> Option<Self> {
-        let n: Vec<u32> = text.split(',').map(|v| v.trim().parse().ok()).collect::<Option<_>>()?;
-        let [level, points, total] = n[..] else { return None };
-        Some(Self::restore(level, points, total))
+        let mut fields = text.split(',').map(str::trim);
+        let mut next = || fields.next().map(|v| v.parse::<u32>().ok());
+        let (level, points, total) = (next()??, next()??, next()??);
+        let seed = match fields.next() {
+            Some(v) => v.parse::<i32>().ok()?,
+            None => 0,
+        };
+        fields.next().is_none().then_some(Self { seed, ..Self::restore(level, points, total) })
     }
 }
 

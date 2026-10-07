@@ -215,6 +215,16 @@ impl MobKind {
         }
     }
 
+    /// What smite and bane of arthropods count it as.
+    pub fn creature(self) -> crate::enchant::Creature {
+        use crate::enchant::Creature;
+        match self {
+            MobKind::Zombie | MobKind::Skeleton | MobKind::ZombifiedPiglin => Creature::Undead,
+            MobKind::Spider | MobKind::Silverfish => Creature::Arthropod,
+            _ => Creature::Other,
+        }
+    }
+
     fn burns_in_sun(self) -> bool {
         matches!(self, MobKind::Zombie | MobKind::Skeleton)
     }
@@ -272,13 +282,24 @@ impl MobKind {
         }
     }
 
-    /// Rolls the drops for killing one of these.
-    pub fn drops(self, rng: &mut Rng) -> Vec<(Item, u8)> {
+    /// Rolls the drops for killing one of these; `looting` adds
+    /// `round(looting * uniform(0, 1))` to each (Java's
+    /// `enchanted_count_increase`).
+    pub fn drops(self, rng: &mut Rng, looting: u8) -> Vec<(Item, u8)> {
         self.loot()
             .iter()
             .map(|&(item, lo, hi)| {
                 let span = hi as i32 - lo as i32 + 1;
-                (item, (lo as i32 + (rng.next_f32() * span as f32) as i32).max(0) as u8)
+                // Java adds this even to a zero roll (looting raises the
+                // maximum, so a 0-1 drop becomes 0-2 with Looting I).
+                // Sheep's wool pool has no enchanted_count_increase.
+                let extra = if looting > 0 && item != Item::from(Block::WOOL) {
+                    (looting as f32 * rng.next_f32()).round() as i32
+                } else {
+                    0
+                };
+                let base = lo as i32 + (rng.next_f32() * span as f32) as i32;
+                (item, (base.max(0) + extra).clamp(0, u8::MAX as i32) as u8)
             })
             .filter(|&(_, n)| n > 0)
             .collect()
@@ -347,6 +368,8 @@ pub struct Mob {
     attack_cooldown: f32,
     burn_timer: f32,
     fire_left: f32,
+    /// Java credits environmental deaths for five seconds after a player hit.
+    player_hit_left: f32,
     light_timer: f32,
     /// Blocked horizontally on the last physics step.
     blocked: bool,
@@ -405,6 +428,7 @@ impl Mob {
             attack_cooldown: 0.0,
             burn_timer: 0.0,
             fire_left: 0.0,
+            player_hit_left: 0.0,
             light_timer: 0.0,
             fuse: 0.0,
             provoked: 0.0,
@@ -471,6 +495,18 @@ impl Mob {
         false
     }
 
+    /// Sets it alight for at least `secs` (fire aspect, flame arrows).
+    pub fn ignite(&mut self, secs: f32) {
+        if !self.kind.fire_immune() && !self.in_water {
+            self.fire_left = self.fire_left.max(secs);
+            self.burning = self.alive() && self.fire_left > 0.0;
+        }
+    }
+
+    pub(super) fn player_hit(&mut self) {
+        self.player_hit_left = 5.0;
+    }
+
     /// Advances the mob by `dt` seconds.
     pub fn update<W: MobWorld + ?Sized>(
         &mut self,
@@ -495,6 +531,7 @@ impl Mob {
         self.hurt = (self.hurt - dtf).max(0.0);
         self.provoked = (self.provoked - dtf).max(0.0);
         self.attack_cooldown -= dtf;
+        self.player_hit_left = (self.player_hit_left - dtf).max(0.0);
         self.attack_anim = (self.attack_anim - dtf).max(0.0);
 
         self.light_timer -= dtf;
@@ -551,7 +588,18 @@ impl Mob {
         self.head_pitch += (self.head_target.1 - self.head_pitch) * k;
 
         let (health, provoked) = (self.health, self.provoked);
+        let alive = self.alive();
         self.burn(dtf, world, ctx, rng);
+        if alive && !self.alive() {
+            let player_kill = self.player_hit_left > 0.0;
+            events.push(EntityEvent::MobKilled {
+                kind: self.kind,
+                pos: self.pos,
+                burning: self.fire_left > 0.0,
+                player_kill,
+                looting: 0, // Environmental damage has no attacking entity.
+            });
+        }
         // Endermen hurt by anything but a mob or player usually teleport,
         // and only get angry at attackers.
         if self.kind == MobKind::Enderman {
@@ -637,6 +685,24 @@ impl Mob {
                                 knockback: knockback.as_vec3(),
                                 cause,
                             });
+                            // Thorns: each piece has a 15% chance per level
+                            // to hit back for a uniform 1.0-5.0 damage.
+                            for level in target.thorns.into_iter().filter(|&l| l > 0) {
+                                if rng.chance(0.15 * level as f32) {
+                                    let back = rng.range(1.0, 5.0);
+                                    self.player_hit();
+                                    if self.damage(back, Some(-knockback * 0.5 + DVec3::Y * 3.0), rng) {
+                                        events.push(EntityEvent::MobKilled {
+                                            kind: self.kind,
+                                            pos: self.pos,
+                                            burning: self.burning
+                                                || target.held_enchants.has(crate::enchant::Enchantment::FireAspect),
+                                            player_kill: true,
+                                            looting: target.held_enchants.level(crate::enchant::Enchantment::Looting),
+                                        });
+                                    }
+                                }
+                            }
                         }
                     }
                 }
