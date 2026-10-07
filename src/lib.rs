@@ -10,6 +10,7 @@ pub mod inventory;
 pub mod item;
 pub mod mesh;
 pub mod mining;
+pub mod particles;
 pub mod physics;
 pub mod player;
 pub mod potion;

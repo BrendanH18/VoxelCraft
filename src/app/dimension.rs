@@ -158,6 +158,7 @@ impl Game {
         self.world = World::new(Arc::new(Generator::for_dimension(seed, to)), chunks, self.settings.render_distance);
         self.mobs.entities = crate::entity::Entities::new(seed);
         self.renderer.clear_world();
+        self.particles.clear();
         self.dimension = to;
         self.restore_dimension(&props);
         self.arrival = Some(arrival);

@@ -6,7 +6,9 @@ mod bench;
 mod data;
 mod render;
 
-use voxelcraft::{crafting, enchant, entity, inventory, item, mesh, mining, physics, player, simulation, world};
+use voxelcraft::{
+    crafting, enchant, entity, inventory, item, mesh, mining, particles, physics, player, simulation, world,
+};
 
 use winit::event_loop::{ControlFlow, EventLoop};
 

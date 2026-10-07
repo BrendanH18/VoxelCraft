@@ -209,6 +209,7 @@ struct Game {
     frame_started: Option<Instant>,
     audio: crate::audio::Audio,
     mobs: mobs::Mobs,
+    particles: crate::particles::Pool,
     /// Open menu screen, if any (the game is paused while one is up).
     menu: Option<menu::Screen>,
     /// Slider being dragged.
@@ -759,6 +760,7 @@ impl Game {
             frame_started: None,
             audio,
             mobs: mobs::Mobs::new(seed, args.spawn.clone(), args.wait),
+            particles: Default::default(),
             menu: match args.open_menu.as_deref() {
                 Some("pause") => Some(menu::Screen::Pause),
                 Some("options") => Some(menu::Screen::Options),
@@ -1836,6 +1838,7 @@ impl Game {
         crate::simulation::tick_world(&mut self.world, self.player.pos);
         self.update_mobs(dt);
         self.update_items();
+        self.particles.tick(&self.world);
         self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
     }
 
@@ -1927,6 +1930,7 @@ impl Game {
         let verts = self.mobs.entities.mesh(camera, self.player.forward(), fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         self.renderer.set_entities(verts);
+        self.renderer.set_particles(&self.particles, &self.world, camera, self.player.forward(), alpha);
         weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
         let viewports = self.viewports();

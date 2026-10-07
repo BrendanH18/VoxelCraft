@@ -227,6 +227,7 @@ impl Game {
                 night_vision: a.vitals.effects.night_vision(scene.time),
                 ui,
             };
+            self.renderer.set_particles(&self.particles, &self.world, camera, forward, scene.alpha);
             self.renderer.draw_view(frame, &params, vp);
         }
     }

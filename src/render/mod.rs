@@ -14,6 +14,7 @@ pub mod block_model;
 pub mod entity;
 pub mod hand;
 mod item_sprites;
+pub mod particles;
 pub mod textures;
 pub mod ui;
 pub mod weather;
@@ -254,6 +255,7 @@ pub struct Renderer {
     cloud_pipeline: wgpu::RenderPipeline,
     ui_pipeline: wgpu::RenderPipeline,
     entities: entity::EntityPass,
+    particles: particles::ParticlePass,
     block_models: block_model::BlockModelPass,
     weather: weather::WeatherPass,
     quad_indices: wgpu::Buffer,
@@ -675,6 +677,7 @@ impl Renderer {
             cache: None,
         });
 
+        let particles = particles::ParticlePass::new(&device, &queue, &globals_layout, &blocks_layout, format);
         let entities = entity::EntityPass::new(&device, &layout, format);
         let block_models = block_model::BlockModelPass::new(&device, &layout, format);
         let weather = weather::WeatherPass::new(&device, &layout, format);
@@ -720,6 +723,7 @@ impl Renderer {
             cloud_pipeline,
             ui_pipeline,
             entities,
+            particles,
             block_models,
             weather,
             quad_indices,
@@ -1219,6 +1223,7 @@ impl Renderer {
             draw_range(&mut pass, &self.cross_pipeline, CROSS, false);
             self.entities.draw(&mut pass);
             self.block_models.draw(&mut pass);
+            let particle_draws = self.particles.draw(&mut pass);
 
             // Sky after terrain so early-z skips covered pixels.
             pass.set_pipeline(&self.sky_pipeline);
@@ -1241,6 +1246,7 @@ impl Renderer {
 
             pass.set_vertex_buffer(0, self.instances.slice(..));
             draw_range(&mut pass, &self.translucent_pipeline, TRANSLUCENT, true);
+            stats.draw_calls += particle_draws;
             self.weather.draw(&mut pass);
 
             if !hud.is_empty() {
@@ -1288,6 +1294,7 @@ mod tests {
             ("chunk", include_str!("shaders/chunk.wgsl")),
             ("block_model", include_str!("shaders/block_model.wgsl")),
             ("entity", include_str!("shaders/entity.wgsl")),
+            ("particles", include_str!("shaders/particles.wgsl")),
             ("overlay", include_str!("shaders/overlay.wgsl")),
             ("sky", include_str!("shaders/sky.wgsl")),
             ("weather", include_str!("shaders/weather.wgsl")),
