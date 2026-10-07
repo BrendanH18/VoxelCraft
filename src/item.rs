@@ -193,6 +193,8 @@ pub enum Sprite {
     Wheat,
     MelonSlice,
     Bed,
+    ColoredBed([u8; 3]),
+    Shears,
     Bow,
     FlintAndSteel,
     Nugget([u8; 3]),
@@ -354,11 +356,7 @@ static EXTRA_ITEMS: [ItemInfo; 6] = [
     item("emerald", Sprite::Gem([22, 186, 82])),
 ];
 
-static MOB_ITEMS: [ItemInfo; 3] = [
-    item("slimeball", Sprite::Lump([100, 185, 72])),
-    item("magma cream", Sprite::Lump([230, 125, 35])),
-    item("ghast tear", Sprite::Lump([214, 236, 220])),
-];
+static MOB_ITEMS: [ItemInfo; 1] = [item("ghast tear", Sprite::Lump([214, 236, 220]))];
 const MOB_ITEM: u16 = 640;
 
 /// Uses before a bow breaks.
@@ -422,6 +420,9 @@ impl Item {
     pub const NETHER_BRICK: Item = Item(288);
     pub const GLOWSTONE_DUST: Item = Item(289);
     pub const GOLD_NUGGET: Item = Item(290);
+    pub const MAGMA_CREAM: Item = Item(608);
+    pub const IRON_NUGGET: Item = Item(609);
+    pub const SLIME_BALL: Item = Item(610);
     pub const BUCKET: Item = Item(291);
     pub const WATER_BUCKET: Item = Item(292);
     pub const LAVA_BUCKET: Item = Item(293);
@@ -458,9 +459,8 @@ impl Item {
     pub const COPPER_INGOT: Item = Item(364);
     pub const REDSTONE: Item = Item(365);
     pub const EMERALD: Item = Item(366);
-    pub const SLIMEBALL: Item = Item(640);
-    pub const MAGMA_CREAM: Item = Item(641);
-    pub const GHAST_TEAR: Item = Item(642);
+    pub const SHEARS: Item = Item(607);
+    pub const GHAST_TEAR: Item = Item(640);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         match tier {
@@ -517,7 +517,42 @@ impl Item {
         }
     }
 
+    pub fn dye_color(self) -> Option<crate::color::DyeColor> {
+        self.0.checked_sub(576).filter(|&i| i < 16).map(|i| crate::color::DyeColor::ALL[i as usize])
+    }
+
+    pub fn bed_color(self) -> Option<crate::color::DyeColor> {
+        if self == Self::BED {
+            Some(crate::color::DyeColor::Red)
+        } else {
+            self.0
+                .checked_sub(592)
+                .filter(|&i| i < 15)
+                .map(|i| crate::color::DyeColor::ALL[if i == 14 { 15 } else { i } as usize])
+        }
+    }
+
     pub fn info(self) -> ItemInfo {
+        match self {
+            Self::MAGMA_CREAM => return item("magma cream", Sprite::Lump([242, 115, 30])),
+            Self::IRON_NUGGET => return item("iron nugget", Sprite::Nugget([202, 206, 212])),
+            Self::SLIME_BALL => return item("slimeball", Sprite::Lump([104, 180, 83])),
+            _ => {}
+        }
+        if let Some(c) = self.bed_color() {
+            return ItemInfo {
+                name: if self == Self::BED { "bed" } else { c.bed_name() },
+                kind: ItemKind::Material,
+                max_stack: 1,
+                sprite: Sprite::ColoredBed(c.rgb()),
+            };
+        }
+        if self == Self::SHEARS {
+            return ItemInfo { name: "shears", kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Shears };
+        }
+        if let Some(c) = self.dye_color() {
+            return item(c.dye_name(), Sprite::Powder(c.rgb()));
+        }
         if let Some(b) = self.block() {
             return ItemInfo { name: b.name(), kind: ItemKind::Block(b), max_stack: 64, sprite: Sprite::Stick };
         }
@@ -597,6 +632,9 @@ impl Item {
 
     /// Uses before breaking, for tools and armor.
     pub fn durability(self) -> Option<u16> {
+        if self == Self::SHEARS {
+            return Some(238);
+        }
         match self.info().kind {
             ItemKind::Tool(_, tier) => Some(tier.durability()),
             ItemKind::Armor(piece, material) => Some(material.durability(piece)),
@@ -635,11 +673,15 @@ impl Item {
     }
 
     pub fn from_name(name: &str) -> Option<Item> {
+        if name.replace('_', " ") == "red bed" {
+            return Some(Item::BED);
+        }
         if let Some(b) = Block::from_name(name) {
             // Doors and nether wart are placed by an item, not as a block.
             return Some(match b {
                 b if (149..=164).contains(&b.0) => Item::OAK_DOOR,
                 b if b.wart_age().is_some() => Item::NETHER_WART,
+                b if let Some(c) = b.bed_color() => c.bed(),
                 b => Item::from_block(b),
             });
         }
@@ -657,6 +699,7 @@ impl Item {
             .chain(tools)
             .chain(potions)
             .chain(extra)
+            .chain((576..611).map(Item))
             .chain((0..MOB_ITEMS.len() as u16).map(|i| Item(MOB_ITEM + i)))
     }
 
@@ -682,8 +725,12 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if (EXTRA_ITEM..EXTRA_ITEM + EXTRA_ITEMS.len() as u16).contains(&i) => {
             Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + i - EXTRA_ITEM)
         }
+        // Dyes and colour items (576..=607), then the bastion/mob materials (608..=610), in id order.
+        576..=610 => {
+            Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + EXTRA_ITEMS.len() as u16 + item.0 - 576)
+        }
         i if (MOB_ITEM..MOB_ITEM + MOB_ITEMS.len() as u16).contains(&i) => {
-            Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + EXTRA_ITEMS.len() as u16 + i - MOB_ITEM)
+            Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + EXTRA_ITEMS.len() as u16 + 35 + i - MOB_ITEM)
         }
         _ => None,
     }
@@ -694,6 +741,7 @@ pub const fn icon_count() -> u32 {
     ITEMS.len() as u32
         + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32
         + EXTRA_ITEMS.len() as u32
+        + 35
         + MOB_ITEMS.len() as u32
 }
 

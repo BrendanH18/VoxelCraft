@@ -10,6 +10,8 @@ covers the rendering and simulation choices behind the game.
 | Technique | Why |
 |---|---|
 | 32³ chunks; uniform, byte-ID and palette storage | Uniform chunks store one u16; ordinary dense chunks stay 32 KiB, and chunks with up to 256 extended states use 32 KiB + a 512-byte palette |
+| Bounded immutable surface-column cache | Reuses height and biome noise across vertical chunks; at most 512 columns (about 4 MiB plus cache headers), with noise calculated outside the worker lock |
+| State-indexed light emission | A single byte lookup avoids orientation decoding in each lighting cell |
 | Greedy meshing | Merges coplanar faces with identical texture/AO/light into one quad |
 | Detail quads for shaped blocks | Stairs, fences and doors use the same 12-byte quad record, flagged to cover part of a cell in 1/16 steps, so they share the chunk passes and face culling |
 | Face-direction culling | Quads are grouped by facing per chunk; groups facing away from the camera are skipped (~45% fewer quads drawn) |
@@ -33,9 +35,9 @@ the GPU after every frame; they include CPU and GPU work.
 
 ```text
 $ voxelcraft --bench --rd 8
-generate (1 thread): 0.218 ms/chunk
-light+mesh (1 thread): 0.824 ms per dense chunk
-stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.21 s
+generate (1 thread): 0.226 ms/chunk
+light+mesh (1 thread): 0.725 ms per dense chunk, 149146 quads (27117 bytes/chunk GPU)
+stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.19 s
 
 $ voxelcraft --bench-render --rd 8     # 1600x900, GPU-synchronised each frame
 avg 1.10 ms (~900 fps) — 661 draw calls, 0.42M quads drawn
@@ -43,6 +45,10 @@ avg 1.10 ms (~900 fps) — 661 draw calls, 0.42M quads drawn
 $ voxelcraft --bench-render --rd 16    # 512-block view distance
 avg 2.05 ms (~490 fps) — 1708 draw calls, 0.89M quads drawn, 52 MB of quad data
 ```
+
+The headless figures above were remeasured on 2026-10-07 (seed 12345, seven-run medians).
+See [the regression investigation](performance-2026-10-07.md) for commit attribution,
+phase timings and output verification. The render figures were recorded separately.
 
 Render distance is measured in 32-block chunks, so `--rd 8` is 256 blocks
 (Minecraft's 16) and `--rd 16` is 512 blocks (Minecraft's 32).

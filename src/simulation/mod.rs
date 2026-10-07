@@ -98,6 +98,7 @@ pub fn tick_player(
     let moved = (player.pos - before).with_y(0.0).length();
     let env = Env {
         respiration: crate::enchant::armor_level(armor, crate::enchant::Enchantment::Respiration),
+        frost_walker: crate::enchant::armor_level(armor, crate::enchant::Enchantment::FrostWalker) > 0,
         ..player_environment(player, world, input, moved)
     };
     PlayerStep { moved, hurts: vitals.tick(TICK_SECONDS as f32, &env, creative) }
@@ -114,6 +115,11 @@ pub fn player_environment(player: &Player, world: &World, input: MoveInput, move
         head_in_water: player.head_in_water(world),
         in_lava: player.in_lava(world),
         in_fire: player.in_fire(world),
+        on_magma: player.on_ground
+            && !player.sneaking
+            && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3())
+                == Some(crate::world::block::Block::MAGMA),
+        frost_walker: false,
         wet: world.rains_on(player.eye().floor().as_ivec3()),
         moved: if player.flying { 0.0 } else { moved },
         sprinting: input.sprint && moved > 0.0,

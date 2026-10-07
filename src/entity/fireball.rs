@@ -191,12 +191,7 @@ mod tests {
         while f.update(0.05, &world, &ctx(vec![]), &[], &mut events) {}
         assert!(events.iter().any(|e| matches!(
             e,
-            EntityEvent::Explosion {
-                credit_player: true,
-                power: GHAST_POWER,
-                cause: "was fireballed by a ghast",
-                ..
-            }
+            EntityEvent::Explosion { credit_player: true, power: GHAST_POWER, cause: "was fireballed by a ghast", .. }
         )));
         assert!(!events.iter().any(|e| matches!(e, EntityEvent::IgniteBlock { .. } | EntityEvent::PlayerHit { .. })));
     }

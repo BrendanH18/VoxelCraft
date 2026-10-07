@@ -31,6 +31,7 @@ pub struct EntityVertex {
 
 pub(super) type Rgb = [u8; 3];
 
+#[derive(Clone, Copy)]
 pub(super) struct Cuboid {
     min: [f32; 3],
     max: [f32; 3],
@@ -417,11 +418,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             for i in 0..8 {
                 let a = i as f32 * FRAC_PI_2 * 0.5;
                 let twist = (time * 1.4 + i as f32 * 0.7).sin() * 0.45;
-                parts.push(part(
-                    GHAST_TENTACLE,
-                    [a.cos() * 12.0, 24.0, a.sin() * 12.0],
-                    Quat::from_rotation_y(twist),
-                ));
+                parts.push(part(GHAST_TENTACLE, [a.cos() * 12.0, 24.0, a.sin() * 12.0], Quat::from_rotation_y(twist)));
             }
             parts
         }
@@ -591,7 +588,14 @@ pub fn build(
                 std::ptr::eq(p.boxes, ENDERMAN_EYES) || std::ptr::eq(p.boxes, MAGMA_GLOW) || m.kind == MobKind::Blaze;
             let light = if glow { [light[0], 0, light[2], 255] } else { light };
             for (ci, c) in p.boxes.iter().enumerate() {
-                push_cuboid(out, c, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
+                let mut cuboid = *c;
+                if m.kind == MobKind::Sheep && c.color == WOOL {
+                    cuboid.color = if m.sheared { SHEEP_SKIN } else { m.wool_color.sheep_rgb() };
+                    if m.sheared {
+                        cuboid.noise = 14;
+                    }
+                }
+                push_cuboid(out, &cuboid, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
             }
         }
         if matches!(m.kind, MobKind::Zombie | MobKind::Skeleton) {

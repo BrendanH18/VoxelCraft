@@ -8,6 +8,7 @@ mod bow;
 mod bucket;
 mod console;
 mod containers;
+mod credits;
 mod dimension;
 mod doors;
 mod enchanting;
@@ -178,6 +179,10 @@ struct Game {
     sleeping: Option<f32>,
     /// Foot of the bed the player respawns at.
     spawn_bed: Option<glam::IVec3>,
+    /// Whether this player has already seen the end credits.
+    credits_seen: bool,
+    /// Seconds into the credits while they play.
+    credits: Option<f32>,
     /// Exact Overworld point set by `/spawnpoint`, replacing a bed spawn.
     spawn_point: Option<glam::IVec3>,
     /// Shared Overworld spawn changed by `/setworldspawn`.
@@ -394,6 +399,12 @@ impl ApplicationHandler for App {
             WindowEvent::MouseInput { state, button, .. } => {
                 let pressed = state == ElementState::Pressed;
                 if game.console.open {
+                    return;
+                }
+                if game.credits.is_some() {
+                    if pressed {
+                        game.skip_credits();
+                    }
                     return;
                 }
                 if game.menu.is_some() {
@@ -753,6 +764,8 @@ impl Game {
                 .unwrap_or(0.08),
             day_count: root_props.get("day_count").and_then(|value| value.parse().ok()).unwrap_or(0),
             sleeping: None,
+            credits_seen: root_props.get("credits_seen").is_some_and(|v| v == "1"),
+            credits: None,
             spawn_bed: existing.as_ref().and_then(|l| l.props.get("bed")).and_then(|t| {
                 let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
                 (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
@@ -859,6 +872,12 @@ impl Game {
 
     /// Dispatch a key press through menu/death guards and retain gameplay taps for the next tick.
     fn on_key(&mut self, code: KeyCode) {
+        if self.credits.is_some() {
+            if matches!(code, KeyCode::Escape | KeyCode::Space | KeyCode::Enter) {
+                self.skip_credits();
+            }
+            return;
+        }
         if self.menu.is_some() {
             if code == KeyCode::Escape {
                 self.menu_back();
@@ -1476,6 +1495,9 @@ impl Game {
         if !self.mode.can_interact() {
             return;
         }
+        if self.use_sheep() {
+            return;
+        }
         if !self.aiming_at_usable() && (self.use_bucket() || self.throw_pearl() || self.throw_eye()) {
             return;
         }
@@ -1528,7 +1550,7 @@ impl Game {
             return;
         }
         let placed = match self.held_item() {
-            Some(Item::BED) => Some(self.place_bed(at)),
+            Some(i) if i.bed_color().is_some() => Some(self.place_bed(at, i.bed_color().unwrap())),
             Some(i)
                 if i == Item::OAK_DOOR
                     || i.block().is_some_and(|b| {
@@ -1563,7 +1585,8 @@ impl Game {
             return;
         }
         // Furnaces and chests face whoever places them.
-        let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
+        let block = crate::world::nether_blocks::placed(block, normal)
+            .with_facing(crate::world::block::Facing::toward(self.player.forward()));
         if block.is_water() && self.dimension == Dimension::Nether {
             // Water boils away in the Nether.
             self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
@@ -1754,6 +1777,9 @@ impl Game {
         props.insert("time".to_string(), format!("{:.5}", self.day_time));
         props.insert("day_count".to_string(), self.day_count.to_string());
         props.insert("weather".to_string(), self.weather.serialize());
+        if self.credits_seen {
+            props.insert("credits_seen".to_string(), "1".to_string());
+        }
         if let Some(b) = self.spawn_bed {
             props.insert("bed".to_string(), format!("{},{},{}", b.x, b.y, b.z));
         }
@@ -1916,6 +1942,8 @@ impl Game {
         self.world.raining = self.weather.raining && self.dimension.has_sky();
         let env = crate::simulation::survival::Env {
             respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
+            frost_walker: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker)
+                > 0,
             ..crate::simulation::player_environment(&self.player, &self.world, input, moved)
         };
         let hurts = if arriving || self.arrival.is_some() {
@@ -1976,11 +2004,12 @@ impl Game {
     fn frame(&mut self) {
         let now = Instant::now();
         self.poll_agents();
-        let paused = (self.menu.is_some() || self.console.open) && self.agents.host.is_none();
+        let paused = (self.menu.is_some() || self.console.open || self.credits.is_some()) && self.agents.host.is_none();
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
         let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
+        self.update_credits(elapsed.as_secs_f32().min(0.25));
         self.poll_pads(dt as f32, paused);
 
         // Streaming and GPU uploads continue during offline pause.
@@ -2010,7 +2039,13 @@ impl Game {
             .map(|b| (&b.agent.player, weather::rain_at(&self.world, &self.weather, b.agent.player.pos)))
             .collect();
         let dragon_music = self.mobs.entities.fight.as_ref().is_some_and(|f| f.boss_bar(self.player.pos).is_some());
-        self.audio.update_music(&self.player, &self.world, self.mode == GameMode::Creative, dragon_music);
+        self.audio.update_music(
+            &self.player,
+            &self.world,
+            self.mode == GameMode::Creative,
+            dragon_music,
+            self.credits.is_some(),
+        );
         self.audio.update(&self.player, &self.world, rain_here, &others, dt);
         self.agent_sounds();
         let alpha = if paused { 1.0 } else { self.clock.alpha() };
@@ -2127,7 +2162,12 @@ impl Game {
                 }),
             rain: scene.rain,
             night_vision: self.vitals.effects.night_vision(scene.time),
-            ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() || self.console.open {
+            ui: if self.show_hud
+                || self.vitals.is_dead()
+                || self.menu.is_some()
+                || self.console.open
+                || self.credits.is_some()
+            {
                 self.build_ui(now)
             } else {
                 Vec::new()

@@ -262,7 +262,27 @@ pub mod tex {
     pub const RAIL_SW: u16 = RAIL + 3;
     pub const RAIL_NW: u16 = RAIL + 4;
     pub const RAIL_NE: u16 = RAIL + 5;
-    pub const COUNT: u32 = RAIL_NE as u32 + 1;
+    pub const BLACKSTONE: u16 = RAIL_NE + 1;
+    pub const POLISHED_BLACKSTONE: u16 = BLACKSTONE + 1;
+    pub const POLISHED_BLACKSTONE_BRICKS: u16 = POLISHED_BLACKSTONE + 1;
+    pub const CRACKED_POLISHED_BLACKSTONE_BRICKS: u16 = POLISHED_BLACKSTONE_BRICKS + 1;
+    pub const CHISELED_POLISHED_BLACKSTONE: u16 = CRACKED_POLISHED_BLACKSTONE_BRICKS + 1;
+    pub const GILDED_BLACKSTONE: u16 = CHISELED_POLISHED_BLACKSTONE + 1;
+    pub const BASALT_SIDE: u16 = GILDED_BLACKSTONE + 1;
+    pub const BASALT_TOP: u16 = BASALT_SIDE + 1;
+    pub const POLISHED_BASALT_SIDE: u16 = BASALT_TOP + 1;
+    pub const POLISHED_BASALT_TOP: u16 = POLISHED_BASALT_SIDE + 1;
+    pub const MAGMA: u16 = POLISHED_BASALT_TOP + 1;
+    pub const GOLD_BLOCK: u16 = MAGMA + 1;
+    pub const CHAIN: u16 = GOLD_BLOCK + 1;
+    pub const COLORED_WOOL: u16 = CHAIN + 1;
+    pub const COLORED_BED: u16 = COLORED_WOOL + 16;
+    pub const STAINED_GLASS: u16 = COLORED_BED + 64;
+    pub const STAINED_TERRACOTTA: u16 = STAINED_GLASS + 16;
+    pub const CONCRETE_POWDER: u16 = STAINED_TERRACOTTA + 10;
+    pub const CONCRETE: u16 = CONCRETE_POWDER + 16;
+    pub const GLAZED: u16 = CONCRETE + 16;
+    pub const COUNT: u32 = GLAZED as u32 + 64;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -529,6 +549,17 @@ impl Block {
     /// ascending east/west/north/south, then south_east, south_west,
     /// north_west, north_east. All render flat (no slope mesh).
     pub const RAIL: Block = Block(500);
+    pub const BLACKSTONE: Block = Block(800);
+    pub const POLISHED_BLACKSTONE: Block = Block(801);
+    pub const POLISHED_BLACKSTONE_BRICKS: Block = Block(802);
+    pub const CRACKED_POLISHED_BLACKSTONE_BRICKS: Block = Block(803);
+    pub const CHISELED_POLISHED_BLACKSTONE: Block = Block(804);
+    pub const GILDED_BLACKSTONE: Block = Block(805);
+    pub const BASALT: Block = Block(806);
+    pub const POLISHED_BASALT: Block = Block(809);
+    pub const MAGMA: Block = Block(812);
+    pub const GOLD_BLOCK: Block = Block(813);
+    pub const CHAIN: Block = Block(814);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age as u16 })
@@ -546,10 +577,13 @@ impl Block {
     /// Minecraft's (encouragement, consumption) fire odds. Wooden doors,
     /// ladders and containers can kindle lava fires but aren't consumed.
     pub fn fire_odds(self) -> (u8, u8) {
+        if self.carpet_color().is_some() {
+            return (60, 20);
+        }
         match self.material() {
             b if b.is_log() => (5, 5),
             b if b.is_planks() => (5, 20),
-            b if b.is_leaves() || b == Block::WOOL => (30, 60),
+            b if b.is_leaves() || b.wool_color().is_some() => (30, 60),
             Block::TNT => (15, 100),
             Block::TALL_GRASS
             | Block::FERN
@@ -616,11 +650,17 @@ impl Block {
 
     /// The stairs cut from `base` (one of [`Block::SLAB_BASES`]), facing south.
     pub fn stairs_of(base: Block) -> Option<Block> {
+        if let Some(b) = super::nether_blocks::shape_of(base, 0) {
+            return Some(b);
+        }
         Self::SLAB_BASES.iter().position(|&b| b == base).map(stairs_id)
     }
 
     /// The full block stairs were cut from.
     pub fn stairs_base(self) -> Option<Block> {
+        if let Some((i, 0..=3)) = super::nether_blocks::form(self.0) {
+            return Some(super::nether_blocks::SHAPE_BASES[i]);
+        }
         if let Some(super::forms::StoneForm::Stairs { index, .. }) = super::forms::stone_form(self.0) {
             return Some(super::forms::stone_base(index));
         }
@@ -632,6 +672,9 @@ impl Block {
 
     /// The full block a wall was built from.
     pub fn wall_base(self) -> Option<Block> {
+        if let Some((i, 5)) = super::nether_blocks::form(self.0) {
+            return Some(super::nether_blocks::SHAPE_BASES[i]);
+        }
         match super::forms::stone_form(self.0) {
             Some(super::forms::StoneForm::Wall { index }) => Some(super::forms::wall_material(index)),
             _ => None,
@@ -640,6 +683,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if let Some(s) = super::nether_blocks::shaped(self.0) {
+            return Some(s);
+        }
         if let Some(shaped) = super::forms::as_shaped(self.0) {
             return Some(shaped);
         }
@@ -650,7 +696,7 @@ impl Block {
             112..=135 | 189..=192 => Shaped::Stairs(f(stairs_index(self.0).unwrap().1)),
             136 | 182 => Shaped::Fence,
             188 => Shaped::BrewingStand,
-            197 => Shaped::Pane,
+            197 | 640..=656 => Shaped::Pane,
             200..=207 => Shaped::Frame { facing: f(self.0 - 200), eye: self.0 >= 204 },
             208 => Shaped::EndPortal,
             209 => Shaped::DragonEgg,
@@ -793,6 +839,10 @@ impl Block {
             137..=140 => Some((Block::LADDER, f(self.0 - 137))),
             141..=148 => Some((Block::FENCE_GATE, f((self.0 - 141) % 4))),
             149..=164 => Some((Block::OAK_DOOR, f((self.0 - 149) % 4))),
+            699..=762 => {
+                let i = self.0 - 699;
+                Some((Block(699 + i / 4 * 4), f(i % 4)))
+            }
             215..=220 => {
                 let along_x = (self.0 - 215) % 2 == 1;
                 Some((Block(self.0 - along_x as u16), if along_x { Facing::East } else { Facing::South }))
@@ -803,6 +853,9 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(b) = super::nether_blocks::base(self.0) {
+            return b;
+        }
         if self.is_rail() { Block::RAIL } else { self.oriented().map_or(self, |(b, _)| b) }
     }
 
@@ -823,6 +876,7 @@ impl Block {
             Block::FENCE_GATE => Block::gate(facing, false),
             b if let Some(index) = super::forms::gate_index(b) => super::forms::wood_id(index, 6 + i),
             b if b.stairs_base().is_some() => Block(b.0 + i),
+            b if b.glazed_color().is_some() => Block(b.0 + i),
             _ => self,
         }
     }
@@ -922,11 +976,17 @@ impl Block {
 
     /// The slab cut from `base`, if there is one.
     pub fn slab_of(base: Block) -> Option<Block> {
+        if let Some(b) = super::nether_blocks::shape_of(base, 4) {
+            return Some(b);
+        }
         Self::SLAB_BASES.iter().position(|&b| b == base).map(slab_id)
     }
 
     /// The full block a slab was cut from (two stacked slabs make it).
     pub fn slab_base(self) -> Option<Block> {
+        if let Some((i, 4)) = super::nether_blocks::form(self.0) {
+            return Some(super::nether_blocks::SHAPE_BASES[i]);
+        }
         if let Some(super::forms::StoneForm::Slab { index }) = super::forms::stone_form(self.0) {
             return Some(super::forms::stone_base(index));
         }
@@ -957,7 +1017,7 @@ impl Block {
     }
 
     pub fn is_bed(self) -> bool {
-        matches!(self, Block::BED_FOOT | Block::BED_HEAD)
+        self.bed_color().is_some()
     }
 
     /// How far (in 1/16 block) the top of this block sits below the top of
@@ -965,6 +1025,7 @@ impl Block {
     pub fn top_drop(self) -> u8 {
         match self {
             b if b.is_bed() => 7,
+            b if b.carpet_color().is_some() => 15,
             b if b.is_slab() => 8,
             _ => 0,
         }
@@ -979,6 +1040,12 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some(c) = self.bed_color() {
+            return (!self.is_bed_head()).then_some(c.bed());
+        }
+        if self.glazed_color().is_some() {
+            return Some(self.base().into());
+        }
         match self.base().as_stone_ore() {
             Block::STONE => Some(Block::COBBLESTONE.into()),
             Block::DEEPSLATE => Some(Block::COBBLED_DEEPSLATE.into()),
@@ -1015,6 +1082,7 @@ impl Block {
             // Bookshelves drop three books (see `World::spill_block`).
             Block::BOOKSHELF | Block::END_PORTAL_FRAME | Block::END_PORTAL | Block::END_GATEWAY => None,
             b if b.is_leaves() => None,
+            b if b.stained_glass_color().is_some() || b.is_glass_pane() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
             b if b.is_fluid() || b.is_fire() || b == Block::AIR => None,
             b => Some(b.into()),
@@ -1025,6 +1093,40 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if super::nether_blocks::registry(self.material().0).is_some() {
+            return match self.material() {
+                Block::CHAIN => 5.0,
+                Block::GOLD_BLOCK => 3.0,
+                Block::MAGMA => 0.5,
+                Block::POLISHED_BLACKSTONE => 2.0,
+                Block::BASALT | Block::POLISHED_BASALT => 1.25,
+                _ => 1.5,
+            };
+        }
+        if self.wool_color().is_some() {
+            return 0.8;
+        }
+        if self.carpet_color().is_some() {
+            return 0.1;
+        }
+        if self.is_bed() {
+            return 0.2;
+        }
+        if self.stained_glass_color().is_some() || self.is_glass_pane() {
+            return 0.3;
+        }
+        if self.stained_terracotta_color().is_some() {
+            return 1.25;
+        }
+        if self.concrete_powder_color().is_some() {
+            return 0.5;
+        }
+        if self.concrete_color().is_some() {
+            return 1.8;
+        }
+        if self.glazed_color().is_some() {
+            return 1.4;
+        }
         if self.is_door() {
             return 3.0;
         }
@@ -1100,6 +1202,16 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if super::nether_blocks::registry(self.material().0).is_some() {
+            return Some(ToolKind::Pickaxe);
+        }
+        if self.stained_terracotta_color().is_some() || self.concrete_color().is_some() || self.glazed_color().is_some()
+        {
+            return Some(ToolKind::Pickaxe);
+        }
+        if self.concrete_powder_color().is_some() {
+            return Some(ToolKind::Shovel);
+        }
         match self.material() {
             Block::STONE
             | Block::COBBLESTONE
@@ -1184,6 +1296,13 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if super::nether_blocks::registry(self.material().0).is_some() {
+            return Some(if self.material() == Block::GOLD_BLOCK { 2 } else { 0 });
+        }
+        if self.stained_terracotta_color().is_some() || self.concrete_color().is_some() || self.glazed_color().is_some()
+        {
+            return Some(0);
+        }
         match self.material().as_stone_ore() {
             Block::STONE
             | Block::COBBLESTONE
@@ -1256,6 +1375,8 @@ impl Block {
             ])
             .chain(225..=252)
             .chain(super::forms::palette_ids())
+            .chain(super::nether_blocks::palette_ids())
+            .chain(super::colors::palette_ids())
             .map(Block)
     }
 
@@ -1282,19 +1403,23 @@ impl Block {
 
     /// Sand, gravel and the dragon egg fall when nothing holds them up.
     pub fn has_gravity(self) -> bool {
-        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG) || self.is_anvil()
+        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG)
+            || self.is_anvil()
+            || self.concrete_powder_color().is_some()
     }
 
     /// Whether this block can rest on `below`. Plants need soil and torches
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
         match self {
+            b if b.carpet_color().is_some() => below.is_solid(),
             Block::TALL_GRASS | Block::DANDELION | Block::POPPY | Block::FERN | Block::BLUE_ORCHID => {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS)
             }
             Block::DEAD_BUSH => {
                 matches!(below, Block::SAND | Block::RED_SAND | Block::DIRT | Block::GRASS)
                     || below.terracotta_colour().is_some()
+                    || below.stained_terracotta_color().is_some()
             }
             // Sugar cane also needs water next to its lowest block; see
             // `World::cane_has_water`.
@@ -1331,6 +1456,9 @@ impl Block {
     /// Looks a block up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<Block> {
         let name = name.replace('_', " ");
+        if name == "white wool" {
+            return Some(Block::WOOL);
+        }
         (0..STATE_CAPACITY as u16)
             .map(Block)
             .find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
@@ -1356,19 +1484,9 @@ impl Block {
     /// Light level emitted by this block.
     #[inline(always)]
     pub fn emission(self) -> u8 {
-        match self.base() {
-            Block::GLOWSTONE => 15,
-            Block::TORCH => 14,
-            Block::LIT_FURNACE => 13,
-            Block::NETHER_PORTAL => 11,
-            Block::END_PORTAL | Block::END_GATEWAY => 15,
-            // Java: all frame states glow faintly, with or without an eye.
-            Block::END_PORTAL_FRAME | Block::DRAGON_EGG => 1,
-            Block::ENCHANTING_TABLE => 7,
-            b if b.is_lava() => 15,
-            b if b.is_fire() => 15,
-            _ => 0,
-        }
+        // SAFETY: same bound as `info`. Like Java's BlockStateBase, light
+        // emission is precomputed per state, including lit furnace facings.
+        unsafe { *EMISSION.get_unchecked(self.slot()) }
     }
 }
 
@@ -1544,6 +1662,7 @@ pub enum Shaped {
     /// A 12/16-high table.
     EnchantingTable,
     /// Java's anvil: a base, a neck and a top running along x or z.
+    Chain(u8),
     Anvil {
         along_x: bool,
     },
@@ -1655,6 +1774,11 @@ const fn fronted(front: u16, side: u16, top: u16, facing: Facing) -> [u16; 6] {
 const fn make(id: u16) -> BlockInfo {
     use RenderKind::*;
     let (name, kind, tex) = match id {
+        800..=834 => match super::nether_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
+        id if super::colors::definition(id).is_some() => super::colors::definition(id).unwrap(),
         #[cfg(test)]
         4095 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]
@@ -1905,8 +2029,9 @@ const fn make(id: u16) -> BlockInfo {
     };
     // Ice is see-through like water but solid underfoot; End portals are
     // a surface to fall through.
-    let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97) && id != 208 && id != 210;
-    BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104), tex }
+    let stained_glass = matches!(id, 624..=639);
+    let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97 || stained_glass) && id != 208 && id != 210;
+    BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104) || stained_glass, tex }
 }
 
 pub static INFO: [BlockInfo; STATE_CAPACITY] = {
@@ -1922,6 +2047,9 @@ pub static INFO: [BlockInfo; STATE_CAPACITY] = {
 /// Slabs and stairs keep light out the way the original seven do. Walls,
 /// fences, gates and doors stay open.
 const fn shape_blocks_light(id: u16) -> bool {
+    if let Some((_, 0..=4)) = super::nether_blocks::form(id) {
+        return true;
+    }
     if matches!(id, 106..=135 | 189..=193) {
         return true;
     }
@@ -1936,6 +2064,28 @@ const fn shape_blocks_light(id: u16) -> bool {
     )
 }
 
+/// Emission has no positional dependency; avoid decoding orientation/forms
+/// for every cell of the lighting region. The exhaustive test below keeps
+/// this table equivalent to the original base-state lookup.
+static EMISSION: [u8; STATE_CAPACITY] = {
+    let mut arr = [0; STATE_CAPACITY];
+    let mut i = 0;
+    while i < STATE_CAPACITY {
+        arr[i] = match i {
+            22 | 37..=41 | 165..=180 | 208 | 210 => 15, // glowstone, lava, fire, portals
+            36 => 14,                                   // torch
+            46 | 50..=52 => 13,                         // lit furnace, every facing
+            104 => 11,                                  // Nether portal
+            200..=207 | 209 => 1,                       // portal frames and dragon egg
+            213 => 7,                                   // enchanting table
+            812 => 3,                                   // magma
+            _ => 0,
+        };
+        i += 1;
+    }
+    arr
+};
+
 static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
     let mut arr = [15u8; STATE_CAPACITY];
     let mut i = 0;
@@ -1949,8 +2099,8 @@ static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
             #[cfg(test)]
             _ if i == 4094 => 15,
             RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
-            _ if matches!(i, 10 | 98 | 99) => 0, // glass, beds
-            _ => 1,                              // leaves, water: attenuate skylight too
+            _ if matches!(i, 10 | 98 | 99 | 576..=623 | 624..=639) => 0, // glass, beds, stained glass
+            _ => 1,                                                      // leaves, water: attenuate skylight too
         };
         i += 1;
     }
@@ -1980,6 +2130,29 @@ static OPAQUE: [bool; STATE_CAPACITY] = {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn emission_table_matches_base_state_lookup_for_every_state() {
+        fn reference(block: Block) -> u8 {
+            match block.base() {
+                Block::MAGMA => 3,
+                Block::GLOWSTONE => 15,
+                Block::TORCH => 14,
+                Block::LIT_FURNACE => 13,
+                Block::NETHER_PORTAL => 11,
+                Block::END_PORTAL | Block::END_GATEWAY => 15,
+                // Java: all frame states glow faintly, with or without an eye.
+                Block::END_PORTAL_FRAME | Block::DRAGON_EGG => 1,
+                Block::ENCHANTING_TABLE => 7,
+                b if b.is_lava() => 15,
+                b if b.is_fire() => 15,
+                _ => 0,
+            }
+        }
+        for id in 0..STATE_CAPACITY as u16 {
+            assert_eq!(Block(id).emission(), reference(Block(id)), "state {id}");
+        }
+    }
 
     #[test]
     fn stronghold_blocks_follow_java_rules() {

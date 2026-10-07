@@ -320,7 +320,7 @@ impl MobKind {
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
             MobKind::Silverfish => &[],
-            MobKind::Slime => &[(Item::SLIMEBALL, 0, 2)],
+            MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
             MobKind::MagmaCube => &[(Item::MAGMA_CREAM, -2, 1)],
             MobKind::Ghast => &[(Item::GUNPOWDER, 0, 2), (Item::GHAST_TEAR, 0, 1)],
         }
@@ -375,6 +375,8 @@ pub struct Mob {
     pub kind: MobKind,
     /// Java slime size (1, 2 or 4).
     pub size: u8,
+    pub wool_color: crate::color::DyeColor,
+    pub sheared: bool,
     hop_left: f32,
     hop_delay: f32,
     pub(super) difficulty: crate::simulation::difficulty::Difficulty,
@@ -457,6 +459,8 @@ impl Mob {
         Self {
             kind,
             size: 1,
+            wool_color: crate::color::DyeColor::White,
+            sheared: false,
             hop_left: 0.0,
             hop_delay: 1.0,
             difficulty: Default::default(),

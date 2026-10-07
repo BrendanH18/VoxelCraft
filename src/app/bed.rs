@@ -4,7 +4,6 @@
 use glam::{DVec3, IVec3};
 
 use crate::audio::sounds::{Material, Sound};
-use crate::world::World;
 use crate::world::block::Block;
 
 use super::Game;
@@ -16,14 +15,6 @@ const MONSTER_RANGE: f64 = 8.0;
 /// Time of day to wake up at (just after sunrise).
 const WAKE_TIME: f64 = 0.02;
 
-const SIDES: [IVec3; 4] = [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z];
-
-/// The other half of the bed at `pos`, if it's still there.
-fn partner(world: &World, pos: IVec3, half: Block) -> Option<IVec3> {
-    let other = if half == Block::BED_FOOT { Block::BED_HEAD } else { Block::BED_FOOT };
-    SIDES.iter().map(|&s| pos + s).find(|&p| world.get_block(p) == Some(other))
-}
-
 /// Whether the night (or the rain) can be slept through at `day_time`.
 pub(super) fn can_sleep(day_time: f64, raining: bool) -> bool {
     raining || super::sky_state(day_time).daylight <= 0.35
@@ -32,7 +23,7 @@ pub(super) fn can_sleep(day_time: f64, raining: bool) -> bool {
 impl Game {
     /// Places a bed with its foot at `at` and its head one block further
     /// along the way the player faces. Returns whether it went down.
-    pub(super) fn place_bed(&mut self, at: IVec3) -> bool {
+    pub(super) fn place_bed(&mut self, at: IVec3, color: crate::color::DyeColor) -> bool {
         let f = self.player.forward();
         let dir = if f.x.abs() > f.z.abs() {
             IVec3::new(f.x.signum() as i32, 0, 0)
@@ -48,8 +39,9 @@ impl Game {
         if !fits(at) || !fits(head) {
             return false;
         }
-        self.world.set_block(at, Block::BED_FOOT);
-        self.world.set_block(head, Block::BED_HEAD);
+        if !self.world.place_colored_bed(at, dir, color) {
+            return false;
+        }
         self.audio.block_place(Block::WOOL, at);
         true
     }
@@ -57,11 +49,7 @@ impl Game {
     /// After one half of a bed at `pos` broke, removes the other half. Only
     /// the foot drops the bed, so breaking the head spills the foot's drop.
     pub(super) fn break_bed_partner(&mut self, pos: IVec3, half: Block) {
-        let Some(other) = partner(&self.world, pos, half) else { return };
-        self.world.set_block(other, Block::AIR);
-        if half == Block::BED_HEAD && self.mode.is_survival() && self.gamerules.bool("doTileDrops") {
-            self.world.spill_block(other, Block::BED_FOOT);
-        }
+        self.world.break_bed_partner(pos, half, self.mode.is_survival() && self.gamerules.bool("doTileDrops"));
     }
 
     /// Right-click on a bed: sets the respawn point and, at night or in the
@@ -98,7 +86,7 @@ impl Game {
     /// The foot of the bed at `pos`, and where to lie down in it or why not.
     fn bed_rules(&self, pos: IVec3) -> Option<(IVec3, Result<DVec3, &'static str>)> {
         let half = self.world.get_block(pos)?;
-        let foot = if half == Block::BED_FOOT { Some(pos) } else { partner(&self.world, pos, half) }?;
+        let foot = if !half.is_bed_head() { Some(pos) } else { self.world.bed_partner(pos, half) }?;
         let centre = foot.as_dvec3() + DVec3::splat(0.5);
         let at = DVec3::new(centre.x, foot.y as f64 + Block::BED_FOOT.height(), centre.z);
         let monsters =
@@ -190,7 +178,7 @@ impl Game {
     /// otherwise the world spawn.
     pub(super) fn respawn_point(&mut self) -> DVec3 {
         if let Some(foot) = self.spawn_bed {
-            if self.world.get_block(foot) == Some(Block::BED_FOOT) {
+            if self.world.get_block(foot).is_some_and(|b| b.is_bed() && !b.is_bed_head()) {
                 let top = foot.y as f64 + Block::BED_FOOT.height();
                 return DVec3::new(foot.x as f64 + 0.5, top, foot.z as f64 + 0.5);
             }

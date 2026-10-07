@@ -320,7 +320,7 @@ pub fn tab_complete(input: &str) -> Option<String> {
         "time" if stem.len() == 2 && stem[1] == "query" => complete_options(&["daytime", "day", "gametime"], partial)?,
         "locate" if stem.len() <= 1 => complete_options(&["structure", "biome"], partial)?,
         "locate" if stem.len() == 2 && stem[1] == "structure" => complete_options(
-            &["stronghold", "fortress", "nether_fortress", "mineshaft", "abandoned_mineshaft"],
+            &["stronghold", "fortress", "nether_fortress", "bastion_remnant", "mineshaft", "abandoned_mineshaft"],
             partial,
         )?,
         "locate" if stem.len() == 2 && stem[1] == "biome" => {
@@ -825,6 +825,66 @@ impl Agent {
                     self.inventory.take_one(self.selected);
                 }
             }
+            Command::Place
+                if self
+                    .inventory
+                    .get(self.selected)
+                    .is_some_and(|s| s.item.dye_color().is_some() || s.item == Item::SHEARS) =>
+            {
+                if !self.mode.can_interact() {
+                    return Err("spectators cannot use items".into());
+                }
+                if self.cooldown > 0.0 {
+                    return Err("action cooling down".into());
+                }
+                let eye = self.player.eye();
+                let dir = self.player.forward().as_dvec3();
+                let distance = world.raycast(eye, dir, 6.0).map_or(6.0, |(p, _)| {
+                    crate::physics::ray_aabb(eye, dir, p.as_dvec3(), p.as_dvec3() + DVec3::ONE).unwrap_or(6.0)
+                });
+                let (index, _) = entities.raycast(eye, dir, distance).ok_or("no sheep within reach")?;
+                let item = self.inventory.get(self.selected).unwrap().item;
+                let shears = entities.use_on_sheep(index, item).ok_or("sheep cannot use this item")?;
+                if !self.creative {
+                    if shears {
+                        self.inventory.wear(self.selected, 1);
+                    } else {
+                        self.inventory.take_one(self.selected);
+                    }
+                }
+                self.cooldown = 0.22;
+                self.swings += 1;
+            }
+            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item.bed_color().is_some()) => {
+                if !self.mode.can_build() {
+                    return Err("this game mode cannot place beds".into());
+                }
+                if self.cooldown > 0.0 {
+                    return Err("action cooling down".into());
+                }
+                let (pos, normal) = self.target(world).ok_or("no block within reach")?;
+                let at = if world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
+                let direction = crate::world::block::Facing::toward(self.player.forward()).opposite().offset();
+                let head = at + direction;
+                if self.player.intersects_block(at)
+                    || self.player.intersects_block(head)
+                    || others.iter().any(|&p| {
+                        crate::player::Player::new(p).intersects_block(at)
+                            || crate::player::Player::new(p).intersects_block(head)
+                    })
+                {
+                    return Err("bed intersects a player".into());
+                }
+                let color = self.inventory.get(self.selected).unwrap().item.bed_color().unwrap();
+                if !world.place_colored_bed(at, direction, color) {
+                    return Err("bed does not fit".into());
+                }
+                if !self.creative {
+                    self.inventory.take_one(self.selected);
+                }
+                self.cooldown = 0.22;
+                self.swings += 1;
+            }
             Command::Place => {
                 if !self.mode.can_build() {
                     return Err("this game mode cannot place blocks".into());
@@ -844,6 +904,7 @@ impl Agent {
                 {
                     return Err("this block requires the desktop placement action".into());
                 }
+                let block = crate::world::nether_blocks::placed(block, normal);
                 let at = pos + normal;
                 if !world.get_block(at).is_some_and(|b| b == Block::AIR || b.is_water() || b.is_lava()) {
                     return Err("destination occupied or unloaded".into());
@@ -981,7 +1042,9 @@ impl Agent {
                     return Err("player is alive".into());
                 }
                 let overworld = world.generator.dimension == Dimension::Overworld;
-                let bed = self.spawn_bed.filter(|&b| overworld && world.get_block(b) == Some(Block::BED_FOOT));
+                let bed = self
+                    .spawn_bed
+                    .filter(|&b| overworld && world.get_block(b).is_some_and(|b| b.is_bed() && !b.is_bed_head()));
                 if overworld && bed.is_none() {
                     self.spawn_bed = None; // broken: forget it
                 }
@@ -1097,6 +1160,8 @@ impl Agent {
         let moved = (self.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
             respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
+            frost_walker: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker)
+                > 0,
             ..simulation::player_environment(&self.player, world, input, moved)
         };
         let hurts = self.vitals.tick_rules(
@@ -1139,7 +1204,10 @@ impl Agent {
                 world.particles.push(crate::particles::Request::Hit { cell: pos, block, face });
             }
             self.swings += 1;
-            if block != Block::BEDROCK && !block.is_door() && !block.is_bed() && (self.creative || progress >= 1.0) {
+            if block != Block::BEDROCK && !block.is_door() && (self.creative || progress >= 1.0) {
+                if block.is_bed() {
+                    world.break_bed_partner(pos, block, !self.creative && rules.bool("doTileDrops"));
+                }
                 world.set_block(pos, Block::AIR);
                 self.emit(Event::Broke(pos, block));
                 if !self.creative {
