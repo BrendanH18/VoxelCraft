@@ -1235,6 +1235,15 @@ mod tests {
     }
 
     #[test]
+    fn huge_looting_saturates_drop_counts() {
+        // Before the clamp, 255 levels overflowed the u8 count.
+        let mut rng = Rng::new(3);
+        for _ in 0..200 {
+            assert!(MobKind::Zombie.drops(&mut rng, u8::MAX).iter().all(|&(_, n)| n > 0));
+        }
+    }
+
+    #[test]
     fn thorns_kills_drop_loot_and_experience() {
         let world = Grid::flat(10);
         let mut e = Entities::new(5);

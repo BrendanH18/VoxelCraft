@@ -290,8 +290,11 @@ impl MobKind {
             .iter()
             .map(|&(item, lo, hi)| {
                 let span = hi as i32 - lo as i32 + 1;
+                // Java adds this even to a zero roll (looting raises the
+                // maximum, so a 0-1 drop becomes 0-2 with Looting I).
                 let extra = if looting > 0 { (looting as f32 * rng.next_f32()).round() as i32 } else { 0 };
-                (item, (lo as i32 + (rng.next_f32() * span as f32) as i32).max(0) as u8 + extra as u8)
+                let base = lo as i32 + (rng.next_f32() * span as f32) as i32;
+                (item, (base.max(0) + extra).clamp(0, u8::MAX as i32) as u8)
             })
             .filter(|&(_, n)| n > 0)
             .collect()
