@@ -139,6 +139,7 @@ struct Game {
     renderer: Renderer,
     world: World,
     player: Player,
+    camera: voxelcraft::camera::CameraMode,
     storage: Storage,
     keys: FxHashSet<KeyCode>,
     /// Shift / Ctrl state (shift-click, Ctrl+Q, sneak-placing).
@@ -713,6 +714,7 @@ impl Game {
             actions: actions::Actions::default(),
             show_hud: true,
             hand: Default::default(),
+            camera: args.camera,
             last_space: now - Duration::from_secs(1),
             last_frame: now,
             clock: Default::default(),
@@ -867,6 +869,7 @@ impl Game {
             }
             KeyCode::F1 => self.show_hud = !self.show_hud,
             KeyCode::F3 => self.show_debug = !self.show_debug,
+            KeyCode::F5 => self.camera.cycle(),
             KeyCode::F11 => {
                 let w = &self.renderer.window;
                 w.set_fullscreen(match w.fullscreen() {
@@ -1880,10 +1883,11 @@ impl Game {
         self.audio.update(&self.player, &self.world, rain_here, &others, dt);
         self.agent_sounds();
         let alpha = if paused { 1.0 } else { self.clock.alpha() };
-        let camera = crate::simulation::interpolated_eye(self.previous_eye, self.player.eye(), alpha);
-        let distance = (camera - self.rendered_eye).with_y(0.0).length();
+        let eye = crate::simulation::interpolated_eye(self.previous_eye, self.player.eye(), alpha);
+        let distance = (eye - self.rendered_eye).with_y(0.0).length();
         let walked = if paused || self.player.flying || distance > 4.0 { 0.0 } else { distance as f32 };
-        self.rendered_eye = camera;
+        self.rendered_eye = eye;
+        let (camera, forward) = self.camera.view(&self.world, eye, self.player.forward());
         self.hand.update(dt as f32, self.held_item(), walked, self.player.on_ground);
         self.animate_hands(dt as f32, alpha, paused);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
@@ -1915,8 +1919,7 @@ impl Game {
             alpha,
             now,
         };
-        let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } =
-            self.fog(&scene, &self.player);
+        let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } = self.fog(&scene, camera);
         let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance)> = self
             .agents
             .players
@@ -1930,15 +1933,29 @@ impl Game {
                 )
             })
             .collect();
-        let verts = self.mobs.entities.mesh(camera, self.player.forward(), fog_end, scene.time, alpha);
+        let verts = self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
+        if !self.camera.first_person() {
+            crate::entity::model::build_player(
+                &self.player,
+                eye - (self.player.eye() - self.player.pos),
+                camera,
+                (
+                    crate::entity::sky_light(&self.world, eye),
+                    self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
+                ),
+                scene.time,
+                self.hand.appearance(&self.vitals, (self.actions.eat_timer / EAT_TIME) as f32, alpha),
+                verts,
+            );
+        }
         self.renderer.set_entities(verts);
         weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
         let viewports = self.viewports();
         let params = FrameParams {
             camera,
-            forward: self.player.forward(),
+            forward,
             fov_y: self.settings.fov.to_radians()
                 * if input.sprint && input.forward > 0.0 { 1.08 } else { 1.0 }
                 * (1.0 - 0.15 * self.bow_power().unwrap_or(0.0)),
@@ -1961,11 +1978,12 @@ impl Game {
                 .breaking
                 .map(|(p, progress)| (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u8)),
             block_models: self.block_models(alpha),
-            hand: (self.show_hud && !self.vitals.is_dead() && self.sleeping.is_none()).then(|| {
-                let eye = self.player.eye();
-                let eating = (self.actions.eat_timer / EAT_TIME) as f32;
-                self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye))
-            }),
+            hand: (self.camera.first_person() && self.show_hud && !self.vitals.is_dead() && self.sleeping.is_none())
+                .then(|| {
+                    let eye = self.player.eye();
+                    let eating = (self.actions.eat_timer / EAT_TIME) as f32;
+                    self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye))
+                }),
             rain: scene.rain,
             night_vision: self.vitals.effects.night_vision(scene.time),
             ui: if self.show_hud || self.vitals.is_dead() || self.menu.is_some() || self.console.open {

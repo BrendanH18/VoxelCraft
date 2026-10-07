@@ -2,6 +2,7 @@
 //! to exclude desktop window, GPU and audio dependencies.
 
 pub mod agent;
+pub mod camera;
 pub mod control;
 pub mod crafting;
 pub mod enchant;

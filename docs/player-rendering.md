@@ -41,3 +41,25 @@ stable across the modern Java humanoid renderer):
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/WalkAnimationState.java
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/client/renderer/entity/player/PlayerRenderer.java
 - https://minecraft.wiki/w/Third-person_view (direct retrieval blocked by robots.txt)
+
+## Third-person views
+
+F5 cycles first/back/front. Each Bot stores its own session-only camera
+mode; controller X cycles only that Bot's view (X keeps its menu behavior
+inside screens). `--camera first|third|front` controls the host at startup.
+The host's own model and each follower's own model are drawn in third
+person; first-person hands are suppressed. Picking remains at the player's
+eye and look direction, independent of the camera. Fog checks camera
+fluid occupancy, not the player's displaced eye.
+
+Camera offsets match Camera.setup: four blocks backward from interpolated
+eyes, with front yaw +180 degrees and pitch negated. Eight probes start
+at every +/-0.1 XYZ corner, ignoring fluids and clipping block shapes.
+DDA traversal and fixed-size probe state need no allocations. The camera
+also stops at unloaded terrain. A conservative ray-distance bound and
+0.0001-block separation supplement Java's Euclidean hit-to-eye distance,
+which can otherwise let a corner cross a wall at a shallow angle. Camera
+collision uses the engine's existing visual/collision shape definitions;
+shape differences from Java remain an engine-wide parity issue.
+
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/client/Camera.java

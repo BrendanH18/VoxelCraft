@@ -7,7 +7,7 @@
 //! tap to fly in creative), RT mines and attacks, LT uses (place, eat, draw a
 //! bow, buckets, doors, beds and containers), LB/RB cycle the hotbar, B drops
 //! one item (hold for the stack), left stick click sprints, right stick click
-//! toggles sneaking. Start opens a pause menu and Y the inventory (see
+//! toggles sneaking. X cycles camera perspective. Start opens a pause menu and Y the inventory (see
 //! `pad_menu`); the world keeps running while a player is in a menu.
 //!
 //! Hands use the host's own interaction code: [`Game::puppet`] swaps the
@@ -58,6 +58,7 @@ enum Press {
     DropStack,
     Sprint,
     Sneak,
+    Camera,
 }
 
 /// Held controls, sampled every frame.
@@ -329,6 +330,7 @@ fn press_for(button: Button) -> Option<Press> {
         Button::East => Press::DropOne,
         Button::LeftThumb => Press::Sprint,
         Button::RightThumb => Press::Sneak,
+        Button::West => Press::Camera,
         _ => return None,
     })
 }
@@ -696,6 +698,7 @@ impl Game {
             let mut presses = Vec::new();
             for action in tick.actions {
                 match action {
+                    Press::Camera => bot.camera.cycle(),
                     Press::Next => agent.selected = (agent.selected + 1) % 9,
                     Press::Previous => agent.selected = (agent.selected + 8) % 9,
                     other => presses.push(other),

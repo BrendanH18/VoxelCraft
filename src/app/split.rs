@@ -105,9 +105,15 @@ impl Game {
     }
 
     /// Fog seen by `player`, in the frame's sky.
-    pub(super) fn fog(&self, scene: &Scene, player: &crate::player::Player) -> Fog {
-        let in_lava = player.head_in_lava(&self.world);
-        let underwater = in_lava || player.head_in_water(&self.world);
+    pub(super) fn fog(&self, scene: &Scene, camera: DVec3) -> Fog {
+        let cell = camera.floor().as_ivec3();
+        let fluid = self.world.get_block(cell).filter(|b| b.is_water() || b.is_lava()).filter(|b| {
+            let above = self.world.get_block(cell + glam::IVec3::Y);
+            let covered = above.is_some_and(|a| if b.is_water() { a.is_water() } else { a.is_lava() });
+            camera.y - camera.y.floor() < 1.0 - if covered { 0.0 } else { b.fluid_drop() as f64 / 16.0 }
+        });
+        let in_lava = fluid.is_some_and(|b| b.is_lava());
+        let underwater = fluid.is_some();
         let view_dist = (self.world.render_distance() * 32) as f32;
         let horizon = scene.sky.horizon;
         let (color, start, end) = if in_lava {
@@ -169,9 +175,9 @@ impl Game {
             let bot = &self.agents.players[name];
             let a = &bot.agent;
             let feet = a.previous_pos.lerp(a.player.pos, scene.alpha);
-            let camera = feet + (a.player.eye() - a.player.pos);
-            let forward = a.player.forward();
-            let fog = self.fog(scene, &a.player);
+            let eye = feet + (a.player.eye() - a.player.pos);
+            let (camera, forward) = bot.camera.view(&self.world, eye, a.player.forward());
+            let fog = self.fog(scene, camera);
             let models = self.block_models(scene.alpha);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
@@ -207,6 +213,20 @@ impl Game {
             }
             let verts = self.mobs.entities.mesh(camera, forward, fog.end, scene.time, scene.alpha);
             super::push_avatars(&self.world, &others, camera, fog.end, scene.time, verts);
+            if !bot.camera.first_person() {
+                crate::entity::model::build_player(
+                    &a.player,
+                    feet,
+                    camera,
+                    (
+                        crate::entity::sky_light(&self.world, eye),
+                        self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
+                    ),
+                    scene.time,
+                    bot.hand.appearance(&a.vitals, pad.map_or(a.eating(), |p| p.1), scene.alpha),
+                    verts,
+                );
+            }
             self.renderer.set_entities(verts);
             super::weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
             self.renderer.set_weather(&self.weather_verts);
@@ -227,7 +247,7 @@ impl Game {
                 highlight,
                 crack,
                 block_models: models,
-                hand: (self.show_hud && !a.vitals.is_dead()).then(|| {
+                hand: (bot.camera.first_person() && self.show_hud && !a.vitals.is_dead()).then(|| {
                     let eating = pad.map_or(a.eating(), |p| p.1);
                     bot.hand.view(eating, crate::entity::sky_light(&self.world, camera), self.torch_light(camera))
                 }),

@@ -30,6 +30,8 @@ pub struct Args {
     pub new_world: bool,
     pub bench: bool,
     pub screenshot: Option<String>,
+    /// Session-only perspective for screenshot inspection.
+    pub camera: voxelcraft::camera::CameraMode,
     pub bench_render: bool,
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
@@ -139,6 +141,7 @@ voxelcraft [options]
   --dimension <d>   start in overworld, nether or end (arriving through a
                     portal unless --pose is given)
   --screenshot <f>  wait for the world to load, save a PNG and exit
+  --camera <first|third|front>  starting camera perspective (F5 cycles in game)
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
   --mute            start with sound muted (M toggles in game)
   --volume <0..1>   master volume (default: 1, or the saved option)
@@ -161,6 +164,7 @@ fn parse_args() -> Result<Args, String> {
         new_world: false,
         bench: false,
         screenshot: None,
+        camera: Default::default(),
         bench_render: false,
         debug_overlay: false,
         mode: None,
@@ -339,6 +343,14 @@ fn parse_args() -> Result<Args, String> {
                 let v = value("--wear")?;
                 let item = item::Item::from_name(v.trim()).filter(|i| i.as_armor().is_some());
                 args.wear.push(item.ok_or(format!("--wear: not armor: {v}"))?);
+            }
+            "--camera" => {
+                args.camera = match value("--camera")?.as_str() {
+                    "first" => voxelcraft::camera::CameraMode::First,
+                    "third" => voxelcraft::camera::CameraMode::Third,
+                    "front" => voxelcraft::camera::CameraMode::Front,
+                    _ => return Err("--camera must be first, third or front".into()),
+                }
             }
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--pose" => {

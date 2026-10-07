@@ -15,6 +15,7 @@ pub(super) struct Bot {
     pub id: PlayerId,
     pub agent: Agent,
     pub active: bool,
+    pub camera: voxelcraft::camera::CameraMode,
     reply: Option<Sender<Value>>,
     /// First-person hand for split-screen views, with the swings it has shown
     /// and where the feet were drawn last frame (for the walking bob).
@@ -30,7 +31,17 @@ impl Bot {
     fn new(id: PlayerId, mut agent: Agent) -> Self {
         agent.id = id;
         let (seen_swings, drawn_feet) = (agent.swings, agent.player.pos);
-        Self { id, agent, active: false, reply: None, hand: Default::default(), seen_swings, drawn_feet, stride: 0.0 }
+        Self {
+            id,
+            agent,
+            active: false,
+            camera: Default::default(),
+            reply: None,
+            hand: Default::default(),
+            seen_swings,
+            drawn_feet,
+            stride: 0.0,
+        }
     }
 }
 #[derive(Default)]
