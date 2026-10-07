@@ -266,7 +266,10 @@ pub mod tex {
     pub const COLORED_BED: u16 = COLORED_WOOL + 16;
     pub const STAINED_GLASS: u16 = COLORED_BED + 64;
     pub const STAINED_TERRACOTTA: u16 = STAINED_GLASS + 16;
-    pub const COUNT: u32 = STAINED_TERRACOTTA as u32 + 10;
+    pub const CONCRETE_POWDER: u16 = STAINED_TERRACOTTA + 10;
+    pub const CONCRETE: u16 = CONCRETE_POWDER + 16;
+    pub const GLAZED: u16 = CONCRETE + 16;
+    pub const COUNT: u32 = GLAZED as u32 + 64;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -800,6 +803,10 @@ impl Block {
             137..=140 => Some((Block::LADDER, f(self.0 - 137))),
             141..=148 => Some((Block::FENCE_GATE, f((self.0 - 141) % 4))),
             149..=164 => Some((Block::OAK_DOOR, f((self.0 - 149) % 4))),
+            699..=762 => {
+                let i = self.0 - 699;
+                Some((Block(699 + i / 4 * 4), f(i % 4)))
+            }
             215..=220 => {
                 let along_x = (self.0 - 215) % 2 == 1;
                 Some((Block(self.0 - along_x as u16), if along_x { Facing::East } else { Facing::South }))
@@ -830,6 +837,7 @@ impl Block {
             Block::FENCE_GATE => Block::gate(facing, false),
             b if let Some(index) = super::forms::gate_index(b) => super::forms::wood_id(index, 6 + i),
             b if b.stairs_base().is_some() => Block(b.0 + i),
+            b if b.glazed_color().is_some() => Block(b.0 + i),
             _ => self,
         }
     }
@@ -990,6 +998,9 @@ impl Block {
         if let Some(c) = self.bed_color() {
             return (!self.is_bed_head()).then_some(c.bed());
         }
+        if self.glazed_color().is_some() {
+            return Some(self.base().into());
+        }
         match self.base().as_stone_ore() {
             Block::STONE => Some(Block::COBBLESTONE.into()),
             Block::DEEPSLATE => Some(Block::COBBLED_DEEPSLATE.into()),
@@ -1051,6 +1062,15 @@ impl Block {
         }
         if self.stained_terracotta_color().is_some() {
             return 1.25;
+        }
+        if self.concrete_powder_color().is_some() {
+            return 0.5;
+        }
+        if self.concrete_color().is_some() {
+            return 1.8;
+        }
+        if self.glazed_color().is_some() {
+            return 1.4;
         }
         if self.is_door() {
             return 3.0;
@@ -1127,8 +1147,12 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
-        if self.stained_terracotta_color().is_some() {
+        if self.stained_terracotta_color().is_some() || self.concrete_color().is_some() || self.glazed_color().is_some()
+        {
             return Some(ToolKind::Pickaxe);
+        }
+        if self.concrete_powder_color().is_some() {
+            return Some(ToolKind::Shovel);
         }
         match self.material() {
             Block::STONE
@@ -1214,7 +1238,8 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
-        if self.stained_terracotta_color().is_some() {
+        if self.stained_terracotta_color().is_some() || self.concrete_color().is_some() || self.glazed_color().is_some()
+        {
             return Some(0);
         }
         match self.material().as_stone_ore() {
@@ -1316,7 +1341,9 @@ impl Block {
 
     /// Sand, gravel and the dragon egg fall when nothing holds them up.
     pub fn has_gravity(self) -> bool {
-        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG) || self.is_anvil()
+        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG)
+            || self.is_anvil()
+            || self.concrete_powder_color().is_some()
     }
 
     /// Whether this block can rest on `below`. Plants need soil and torches

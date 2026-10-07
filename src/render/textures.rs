@@ -25,6 +25,36 @@ fn noisy(layer: u16, x: usize, y: usize, c: [u8; 3], amount: f32) -> Rgba {
     shade(c, 1.0 - amount + rnd(layer, x, y, 0) * amount * 2.0)
 }
 
+fn glazed_pixel(color: usize, rot: u16, x: usize, y: usize) -> Rgba {
+    let (x, y) = match rot {
+        1 => (y, SIZE - 1 - x),
+        2 => (SIZE - 1 - x, SIZE - 1 - y),
+        3 => (SIZE - 1 - y, x),
+        _ => (x, y),
+    };
+    let rgb = crate::color::DyeColor::ALL[color].rgb();
+    let (cx, cy) = (x as i32 - 8, y as i32 - 8);
+    let mark = match color {
+        0 => (cx + cy).unsigned_abs().is_multiple_of(6),
+        1 => (cx.abs() + cy.abs()).unsigned_abs().is_multiple_of(5),
+        2 => (x / 4 + y / 4).is_multiple_of(2),
+        3 => cx.abs() <= 1 || cy.abs() <= 1,
+        4 => (cx * cx + cy * cy) % 18 < 8,
+        5 => (x + 2 * y).is_multiple_of(5),
+        6 => (cx.abs() - cy.abs()).unsigned_abs() < 2,
+        7 => (x.max(y) - x.min(y) < 3) && (x + y).is_multiple_of(2),
+        8 => (x % 5 < 2) != (y % 5 < 2),
+        9 => (cx * 3 + cy * 2).unsigned_abs().is_multiple_of(7),
+        10 => cx.abs() == cy.abs() || cx == 0 || cy == 0,
+        11 => (x / 2).is_multiple_of(2) != (y / 3).is_multiple_of(2),
+        12 => (cx + 2 * cy).unsigned_abs() % 8 < 3,
+        13 => (x as i32 - y as i32).unsigned_abs().is_multiple_of(4),
+        14 => (cx.abs() + 2 * cy.abs()) % 6 < 3,
+        _ => (x + y * 3).is_multiple_of(7) || x == 8 || y == 8,
+    };
+    shade(rgb, if mark { 1.02 } else { 0.7 })
+}
+
 /// Wrapping distance to the nearest two of a set of points (tileable Voronoi).
 fn voronoi(x: usize, y: usize, pts: &[(f32, f32)]) -> (f32, f32, usize) {
     let (mut d1, mut d2, mut idx) = (f32::MAX, f32::MAX, 0);
@@ -87,6 +117,18 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             (rgb[2] as u16 / 2 + clay[2] as u16 / 2) as u8,
         ];
         return noisy(layer, x, y, mixed, 0.05);
+    }
+    if (tex::CONCRETE_POWDER..tex::CONCRETE_POWDER + 16).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL[(layer - tex::CONCRETE_POWDER) as usize].rgb();
+        return noisy(layer, x, y, rgb, 0.12);
+    }
+    if (tex::CONCRETE..tex::CONCRETE + 16).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL[(layer - tex::CONCRETE) as usize].rgb();
+        return noisy(layer, x, y, rgb, 0.04);
+    }
+    if (tex::GLAZED..tex::GLAZED + 64).contains(&layer) {
+        let i = layer - tex::GLAZED;
+        return glazed_pixel((i / 4) as usize, i % 4, x, y);
     }
     if (tex::COLORED_BED..tex::COLORED_BED + 64).contains(&layer) {
         let color = crate::color::DyeColor::ALL[((layer - tex::COLORED_BED) / 4) as usize];

@@ -35,3 +35,11 @@ iron bars, including to glass. Java's six badlands terracotta colours keep IDs
 Generated terracotta bands can wait for further badlands work. Stained glass
 and panes drop only with silk touch. Panes use the glass textures rather than
 extra layers.
+
+Concrete powder is a falling block that turns into concrete on contact with
+water, including while falling. Glazed terracotta smelts from stained
+terracotta (0.1 XP) and stores Java's four horizontal facings; each colour
+has its own pattern, rotated in the texture layers.
+
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ConcretePowderBlock.java
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/GlazedTerracottaBlock.java

@@ -1,4 +1,4 @@
-//! Append-only colour states (560..=666). Legacy white wool, red beds and
+//! Append-only colour states (560..=762). Legacy white wool, red beds and
 //! badlands terracotta keep their original IDs.
 use super::block::{Block, RenderKind, tex};
 use crate::color::DyeColor;
@@ -28,6 +28,15 @@ impl Block {
     pub const fn stained_terracotta(c: DyeColor) -> Self {
         const IDS: [u16; 16] = [89, 85, 657, 658, 86, 659, 660, 661, 90, 662, 663, 664, 88, 665, 87, 666];
         Self(IDS[c as usize])
+    }
+    pub const fn concrete_powder(c: DyeColor) -> Self {
+        Self(667 + c as u16)
+    }
+    pub const fn concrete(c: DyeColor) -> Self {
+        Self(683 + c as u16)
+    }
+    pub const fn glazed(c: DyeColor) -> Self {
+        Self(699 + c as u16 * 4)
     }
     pub fn wool_color(self) -> Option<DyeColor> {
         if self == Self::WOOL {
@@ -61,12 +70,21 @@ impl Block {
     pub fn stained_terracotta_color(self) -> Option<DyeColor> {
         DyeColor::ALL.into_iter().find(|&c| Self::stained_terracotta(c) == self)
     }
+    pub fn concrete_powder_color(self) -> Option<DyeColor> {
+        self.0.checked_sub(667).filter(|&i| i < 16).map(|i| DyeColor::ALL[i as usize])
+    }
+    pub fn concrete_color(self) -> Option<DyeColor> {
+        self.0.checked_sub(683).filter(|&i| i < 16).map(|i| DyeColor::ALL[i as usize])
+    }
+    pub fn glazed_color(self) -> Option<DyeColor> {
+        self.0.checked_sub(699).filter(|&i| i < 64).map(|i| DyeColor::ALL[(i / 4) as usize])
+    }
 }
 
 pub(super) fn palette_ids() -> impl Iterator<Item = u16> {
     // Wool (white stays Block::WOOL) and carpets. Beds are items, not block halves.
     // 624..=666: stained glass, panes, remaining terracotta.
-    (561..592).chain(624..667)
+    (561..592).chain(624..699).chain((699..763).step_by(4))
 }
 
 pub(super) const fn definition(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
@@ -172,6 +190,60 @@ pub(super) const fn definition(id: u16) -> Option<(&'static str, RenderKind, [u1
         "green terracotta",
         "black terracotta",
     ];
+    const POWDER: [&str; 16] = [
+        "white concrete powder",
+        "orange concrete powder",
+        "magenta concrete powder",
+        "light blue concrete powder",
+        "yellow concrete powder",
+        "lime concrete powder",
+        "pink concrete powder",
+        "gray concrete powder",
+        "light gray concrete powder",
+        "cyan concrete powder",
+        "purple concrete powder",
+        "blue concrete powder",
+        "brown concrete powder",
+        "green concrete powder",
+        "red concrete powder",
+        "black concrete powder",
+    ];
+    const CONCRETE: [&str; 16] = [
+        "white concrete",
+        "orange concrete",
+        "magenta concrete",
+        "light blue concrete",
+        "yellow concrete",
+        "lime concrete",
+        "pink concrete",
+        "gray concrete",
+        "light gray concrete",
+        "cyan concrete",
+        "purple concrete",
+        "blue concrete",
+        "brown concrete",
+        "green concrete",
+        "red concrete",
+        "black concrete",
+    ];
+    const GLAZED: [&str; 16] = [
+        "white glazed terracotta",
+        "orange glazed terracotta",
+        "magenta glazed terracotta",
+        "light blue glazed terracotta",
+        "yellow glazed terracotta",
+        "lime glazed terracotta",
+        "pink glazed terracotta",
+        "gray glazed terracotta",
+        "light gray glazed terracotta",
+        "cyan glazed terracotta",
+        "purple glazed terracotta",
+        "blue glazed terracotta",
+        "brown glazed terracotta",
+        "green glazed terracotta",
+        "red glazed terracotta",
+        "black glazed terracotta",
+    ];
     match id {
         561..=575 => Some((WOOL[(id - 560) as usize], RenderKind::Opaque, [tex::COLORED_WOOL + id - 560; 6])),
         576..=591 => Some((CARPET[(id - 576) as usize], RenderKind::Cutout, [tex::COLORED_WOOL + id - 576; 6])),
@@ -188,6 +260,9 @@ pub(super) const fn definition(id: u16) -> Option<(&'static str, RenderKind, [u1
         657..=666 => {
             Some((EXTRA_TERRACOTTA[(id - 657) as usize], RenderKind::Opaque, [tex::STAINED_TERRACOTTA + id - 657; 6]))
         }
+        667..=682 => Some((POWDER[(id - 667) as usize], RenderKind::Opaque, [tex::CONCRETE_POWDER + id - 667; 6])),
+        683..=698 => Some((CONCRETE[(id - 683) as usize], RenderKind::Opaque, [tex::CONCRETE + id - 683; 6])),
+        699..=762 => Some((GLAZED[((id - 699) / 4) as usize], RenderKind::Opaque, [tex::GLAZED + id - 699; 6])),
         _ => None,
     }
 }
@@ -283,6 +358,31 @@ mod tests {
             for b in [glass, pane, terracotta, Block::GLASS_PANE] {
                 assert!(Item::creative_palette().any(|p| p == Item::from_block(b)), "{}", b.name());
             }
+        }
+    }
+
+    #[test]
+    fn concrete_and_glazed_terracotta_face_and_name() {
+        for c in DyeColor::ALL {
+            let powder = Block::concrete_powder(c);
+            assert!(powder.has_gravity());
+            assert_eq!(powder.hardness(), 0.5);
+            assert_eq!(Block::concrete(c).hardness(), 1.8);
+            let south = Block::glazed(c);
+            let east = south.with_facing(Facing::East);
+            assert_eq!(east.glazed_color(), Some(c));
+            assert_eq!(east.base(), south);
+            assert_eq!(east.drop(), Some(Item::from_block(south)));
+            assert_eq!(Block::from_name(&format!("{} concrete powder", c.adjective())), Some(powder));
+            assert_eq!(Block::from_name(&format!("{} concrete", c.adjective())), Some(Block::concrete(c)));
+            assert_eq!(Block::from_name(&format!("{} glazed terracotta", c.adjective())), Some(south));
+            for b in [powder, Block::concrete(c), south] {
+                assert!(Item::creative_palette().any(|p| p == Item::from_block(b)), "{}", b.name());
+            }
+            assert_eq!(
+                crate::world::furnace::smelt(Item::from_block(Block::stained_terracotta(c))),
+                Some(Item::from_block(south))
+            );
         }
     }
 }

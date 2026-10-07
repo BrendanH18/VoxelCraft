@@ -755,6 +755,7 @@ fn add_glass_terracotta_recipes(r: &mut Vec<Recipe>) {
     static GLASSES: [[Item; 1]; 16] = color_ingredients(4);
     const TERRACOTTA: Ingredient = &[b(Block::TERRACOTTA)];
     const PANE: Ingredient = &[b(Block::GLASS_PANE)];
+    const GRAVEL: Ingredient = &[b(Block::GRAVEL)];
     r.push(shaped(&["###", "###"], &[('#', GLASS)], b(Block::GLASS_PANE), 16));
     for (i, c) in DyeColor::ALL.into_iter().enumerate() {
         r.push(shaped(&["###", "#D#", "###"], &[('#', GLASS), ('D', &DYES[i])], b(Block::stained_glass(c)), 8));
@@ -764,6 +765,11 @@ fn add_glass_terracotta_recipes(r: &mut Vec<Recipe>) {
             &["###", "#D#", "###"],
             &[('#', TERRACOTTA), ('D', &DYES[i])],
             b(Block::stained_terracotta(c)),
+            8,
+        ));
+        r.push(shapeless(
+            &[&DYES[i], SAND, SAND, SAND, SAND, GRAVEL, GRAVEL, GRAVEL, GRAVEL],
+            b(Block::concrete_powder(c)),
             8,
         ));
     }
@@ -867,5 +873,14 @@ mod glass_terracotta_recipe_tests {
         }
         g.cells[4] = Some(Stack::new(DyeColor::Black.dye(), 1));
         assert_eq!(g.result(), Some(Stack::new(Block::stained_terracotta(DyeColor::Black), 8)));
+        g.cells = [None; 9];
+        g.cells[0] = Some(Stack::new(DyeColor::White.dye(), 1));
+        for i in 1..5 {
+            g.cells[i] = Some(Stack::new(Block::SAND, 1));
+        }
+        for i in 5..9 {
+            g.cells[i] = Some(Stack::new(Block::GRAVEL, 1));
+        }
+        assert_eq!(g.result(), Some(Stack::new(Block::concrete_powder(DyeColor::White), 8)));
     }
 }
