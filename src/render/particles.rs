@@ -183,14 +183,19 @@ impl Renderer {
                     Kind::Portal => 1.0 - (1.0 - t).powi(2),
                     Kind::Flame => 1.0 - t * t * 0.5,
                     Kind::Lava => 1.0 - t * t,
-                    Kind::Smoke | Kind::Crit | Kind::MagicCrit | Kind::Heart | Kind::Angry | Kind::DragonBreath => {
-                        (t * 32.0).clamp(0.0, 1.0)
-                    }
+                    Kind::Smoke
+                    | Kind::LargeSmoke
+                    | Kind::Crit
+                    | Kind::MagicCrit
+                    | Kind::Heart
+                    | Kind::Angry
+                    | Kind::DragonBreath => (t * 32.0).clamp(0.0, 1.0),
                     _ => 1.0,
                 }
             };
-            let sky = crate::entity::sky_light(world, pos)
-                .max(if p.motion == Motion::Portal || p.motion == Motion::Glyph { t.powi(4) } else { 0.0 });
+            let sky = (crate::entity::sky_light(world, pos)
+                + if p.motion == Motion::Portal || p.motion == Motion::Glyph { t.powi(4) } else { 0.0 })
+            .min(1.0);
             pass.staging.push(Instance {
                 center: (pos - camera).as_vec3().to_array(),
                 size: p.size * scale,
@@ -201,11 +206,9 @@ impl Renderer {
                     if p.emissive {
                         1.0
                     } else {
-                        (world.block_light(pos.floor().as_ivec3()) as f32 / 15.0).max(if p.style == Kind::Flame {
-                            t
-                        } else {
-                            0.0
-                        })
+                        (world.block_light(pos.floor().as_ivec3()) as f32 / 15.0
+                            + if p.style == Kind::Flame { t } else { 0.0 })
+                        .min(1.0)
                     },
                     layer,
                     terrain + if p.emissive { 2.0 } else { 0.0 },

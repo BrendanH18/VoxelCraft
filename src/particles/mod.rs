@@ -9,6 +9,7 @@ use glam::{DVec3, IVec3};
 use crate::physics::{self, BlockSource, Shape};
 use crate::world::block::Block;
 
+mod ambient;
 mod types;
 pub use types::{Burst, Kind, System};
 
@@ -57,6 +58,7 @@ pub enum Motion {
     Portal,
     Glyph,
     Stationary,
+    DripHang,
 }
 
 /// A single particle request. Sizes are billboard half-widths, not collision sizes.
@@ -80,7 +82,11 @@ pub struct Particle {
     pub emissive: bool,
     pub motion: Motion,
     pub style: Kind,
+    pub successor_lifetime: u16,
+    pub landing_lifetime: u16,
     stopped: bool,
+    on_ground: bool,
+    random_state: u64,
 }
 
 impl Particle {
@@ -103,19 +109,36 @@ impl Particle {
             emissive: false,
             motion: Motion::Normal,
             style: Kind::Smoke,
+            successor_lifetime: 64,
+            landing_lifetime: 20,
             stopped: false,
+            on_ground: false,
+            random_state: pos.x.to_bits() ^ pos.z.to_bits() ^ 0x5350_4c41_5348,
         }
     }
 
     fn tick<W: BlockSource + ?Sized>(&mut self, world: &W) -> bool {
         self.previous = self.pos;
         if self.age >= self.lifetime {
-            return false;
+            if self.motion == Motion::DripHang {
+                self.motion = Motion::Normal;
+                self.age = 0;
+                self.lifetime = self.successor_lifetime;
+                self.gravity = 1.5;
+                self.friction = 0.98;
+                self.color = [1.0, 0.2857143, 0.083333336, 1.0];
+            } else {
+                return false;
+            }
         }
         self.age += 1;
         let t = self.age as f64 / self.lifetime.max(1) as f64;
         match self.motion {
             Motion::Stationary => return true,
+            Motion::DripHang => {
+                self.color = [1.0, 16.0 / (self.age as f32 + 16.0), 4.0 / (self.age as f32 + 8.0), 1.0];
+                self.velocity.y -= 0.0012;
+            }
             Motion::Portal => {
                 self.pos = self.origin + self.velocity * (1.0 + t - 2.0 * t * t) + DVec3::Y * (1.0 - t);
                 return true;
@@ -127,6 +150,12 @@ impl Particle {
             Motion::Bubble => self.velocity.y += 0.002,
             Motion::Splash => self.velocity.y -= self.gravity,
             Motion::Normal => self.velocity.y -= 0.04 * self.gravity,
+        }
+        if self.motion == Motion::Splash && self.on_ground {
+            self.random_state = self.random_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            if self.random_state >> 63 == 0 {
+                return false;
+            }
         }
         if !self.stopped {
             let delta = self.velocity;
@@ -145,10 +174,20 @@ impl Particle {
                         self.stopped = true;
                     }
                     if hit.on_ground {
+                        self.on_ground = true;
                         self.velocity.x *= 0.7;
                         self.velocity.z *= 0.7;
+                        if self.style == Kind::LavaDrip && self.motion == Motion::Normal {
+                            self.motion = Motion::Stationary;
+                            self.age = 0;
+                            self.lifetime = self.landing_lifetime;
+                        }
                         if self.motion == Motion::Splash {
-                            return false;
+                            self.random_state =
+                                self.random_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                            if self.random_state >> 63 == 0 {
+                                return false;
+                            }
                         }
                     }
                     if self.stopped {
@@ -163,11 +202,26 @@ impl Particle {
             self.color[1] *= 0.96;
             self.color[2] *= 0.9;
         }
-        if matches!(self.texture, Texture::Sprite(_)) && self.style == Kind::Smoke && self.pos.y == self.previous.y {
+        if matches!(self.texture, Texture::Sprite(_))
+            && matches!(self.style, Kind::Smoke | Kind::LargeSmoke)
+            && self.pos.y == self.previous.y
+        {
             self.velocity.x *= 1.1;
             self.velocity.z *= 1.1;
         }
-        self.velocity *= self.friction;
+        if self.style == Kind::DragonBreath {
+            if self.pos.y == self.previous.y {
+                self.velocity.x *= 1.1;
+                self.velocity.z *= 1.1;
+            }
+            self.velocity.x *= self.friction;
+            self.velocity.z *= self.friction;
+        } else {
+            self.velocity *= self.friction;
+        }
+        if self.style == Kind::LavaDrip && world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_lava) {
+            return false;
+        }
         if self.motion == Motion::Bubble && !world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_water) {
             return false;
         }
@@ -188,9 +242,23 @@ pub enum Request {
     Particle(Particle),
     Burst(Burst),
     Tracking(Burst),
-    Explosion { pos: DVec3, large: bool },
-    Break { cell: IVec3, block: Block },
-    Hit { cell: IVec3, block: Block, face: IVec3 },
+    Explosion {
+        pos: DVec3,
+        large: bool,
+    },
+    Break {
+        cell: IVec3,
+        block: Block,
+    },
+    Hit {
+        cell: IVec3,
+        block: Block,
+        face: IVec3,
+    },
+    /// Java level event 2003: the portal ring when an eye of ender shatters.
+    EyeBreak {
+        pos: DVec3,
+    },
 }
 
 /// A bounded request mailbox; oldest requests are evicted if the client isn't polling.
@@ -252,6 +320,32 @@ impl Pool {
     }
 }
 
+/// Shared player movement feedback; both the host and headless agents call
+/// this after movement. Lava never produces water particles.
+pub fn water_entry(player: &crate::player::Player, previous: DVec3, world: &mut crate::world::World) {
+    let wet = |pos: DVec3| world.get_block((pos + DVec3::Y * 0.3).floor().as_ivec3()).is_some_and(Block::is_water);
+    if !wet(player.pos) || wet(previous) {
+        return;
+    }
+    let cell = (player.pos + DVec3::Y * 0.3).floor().as_ivec3();
+    let block = world.get_block(cell).unwrap_or(Block::WATER);
+    // Java counts `1 + width * 20` and spreads across the width. The surface
+    // is the fluid top (floor(feet)+1 for a source). Bubbles sit just under
+    // that plane so an exact integer top is still inside the water block.
+    let count = (1.0 + crate::player::HALF_WIDTH * 40.0) as u16;
+    let pos = player.pos.with_y(cell.y as f64 + 1.0 - block.fluid_drop() as f64 / 16.0);
+    for kind in [Kind::Bubble, Kind::Splash] {
+        let mut b = Burst::new(kind, pos, count);
+        b.spread = DVec3::new(crate::player::HALF_WIDTH * 2.0, 0.0, crate::player::HALF_WIDTH * 2.0);
+        b.velocity = player.vel / 20.0;
+        if kind == Kind::Bubble {
+            b.pos.y -= 0.1;
+            b.velocity.y -= 0.1;
+        }
+        world.particles.push(Request::Burst(b));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,6 +401,42 @@ mod tests {
         }
         assert_eq!(requests.drain().count(), REQUEST_CAPACITY);
         assert_eq!(requests.drain().count(), 0);
+    }
+
+    #[test]
+    fn walls_clip_horizontal_motion() {
+        struct Wall;
+        impl BlockSource for Wall {
+            fn block(&self, p: IVec3) -> Option<Block> {
+                Some(if p.x >= 1 { Block::STONE } else { Block::AIR })
+            }
+        }
+        let mut p = Particle::new(DVec3::new(0.5, 2.0, 0.5), Texture::Sprite(0));
+        p.velocity.x = 0.6;
+        assert!(p.tick(&Wall));
+        assert!(p.pos.x <= 0.9 && p.pos.x > 0.89);
+        assert_eq!(p.velocity.x, 0.0);
+    }
+
+    #[test]
+    fn lava_drip_hangs_then_falls_and_lands() {
+        let mut p = Particle::new(DVec3::new(0.5, 2.0, 0.5), Texture::Sprite(12));
+        p.style = Kind::LavaDrip;
+        p.motion = Motion::DripHang;
+        p.lifetime = 40;
+        p.friction = 0.0196;
+        p.collision_size = 0.01;
+        for _ in 0..40 {
+            assert!(p.tick(&Floor));
+        }
+        assert!(p.pos.y > 1.9);
+        assert!(p.tick(&Floor));
+        assert_eq!(p.motion, Motion::Normal);
+        for _ in 0..12 {
+            assert!(p.tick(&Floor));
+        }
+        assert_eq!(p.motion, Motion::Stationary);
+        assert!(p.pos.y < 0.001);
     }
 
     #[test]

@@ -449,6 +449,7 @@ impl Entities {
                     );
                     burst.spread = DVec3::new(m.shape().half_width, m.shape().height * 0.5, m.shape().half_width);
                     burst.forced = true;
+                    burst.velocity_spread = DVec3::splat(0.02);
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
                 self.mobs.swap_remove(i);
@@ -753,7 +754,9 @@ impl Entities {
     /// Java's spawner logic: a spawner with a player within 16 blocks waits
     /// out its delay, then tries four spots up to 4 blocks away (and a block
     /// up or down) with room for its mob, unless six are already around.
-    /// Light and ground don't matter. Active cages give off flames.
+    /// Light and ground don't matter. Nearby cages give off smoke and flame
+    /// on the existing visual roll (about six times a second) so this tick
+    /// does not change the spawner RNG stream.
     fn run_spawners<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx) {
         let spawners = world.spawners();
         self.spawner_delays.retain(|p, _| spawners.iter().any(|(q, _)| q == p));
@@ -764,7 +767,9 @@ impl Entities {
             }
             if self.rng.chance(dt * 6.0) {
                 let p = centre + DVec3::new(self.rng.range(-0.4, 0.4) as f64, self.rng.range(-0.4, 0.4) as f64, 0.0);
-                self.puffs.push(Puff { pos: p, previous_pos: p, vel: DVec3::Y * 0.5, age: 0.0, life: 0.6, size: 0.15 });
+                for kind in [crate::particles::Kind::Smoke, crate::particles::Kind::Flame] {
+                    self.particles.push(crate::particles::Request::Burst(crate::particles::Burst::new(kind, p, 1)));
+                }
             }
             let delay = self.spawner_delays.entry(cell).or_insert(1.0);
             *delay -= dt;
@@ -926,16 +931,14 @@ impl Entities {
                 let stack = crate::inventory::Stack::new(crate::item::Item::EYE_OF_ENDER, 1);
                 self.items.push(ItemEntity::new(stack, e.pos, DVec3::ZERO, item::PICKUP_DELAY, &mut self.rng));
             } else {
+                // The old shatter puffs drew eight random scatters. Keep those
+                // rolls so a broken eye does not shift later mob randomness.
                 for _ in 0..8 {
-                    let dir = DVec3::new(
-                        self.rng.range(-1.0, 1.0) as f64,
-                        self.rng.range(0.0, 1.0) as f64,
-                        self.rng.range(-1.0, 1.0) as f64,
-                    );
-                    let pos = e.pos + dir * 0.1;
-                    let vel = dir * 1.5;
-                    self.puffs.push(Puff { pos, previous_pos: pos, vel, age: 0.0, life: 0.5, size: 0.12 });
+                    self.rng.range(-1.0, 1.0);
+                    self.rng.range(0.0, 1.0);
+                    self.rng.range(-1.0, 1.0);
                 }
+                self.particles.push(crate::particles::Request::EyeBreak { pos: e.pos });
             }
         }
     }

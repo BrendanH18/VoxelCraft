@@ -9,6 +9,8 @@ use std::collections::VecDeque;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Smoke,
+    LargeSmoke,
+    Rain,
     Flame,
     Crit,
     MagicCrit,
@@ -29,11 +31,11 @@ pub enum Kind {
 impl Kind {
     pub fn sprite(self) -> u16 {
         match self {
-            Self::Smoke | Self::Poof => 0,
+            Self::Smoke | Self::LargeSmoke | Self::Poof => 0,
             Self::Flame | Self::Lava => 1,
             Self::Crit | Self::MagicCrit => 2,
             Self::Bubble => 3,
-            Self::Splash => 4,
+            Self::Splash | Self::Rain => 4,
             Self::Portal => 5,
             Self::Glyph => 6,
             Self::Heart => 7,
@@ -54,6 +56,8 @@ pub struct Burst {
     pub pos: DVec3,
     pub velocity: DVec3,
     pub spread: DVec3,
+    /// Standard deviation for Gaussian per-particle velocity offsets.
+    pub velocity_spread: DVec3,
     pub count: u16,
     pub color: Option<[f32; 4]>,
     pub forced: bool,
@@ -67,6 +71,7 @@ impl Burst {
             pos,
             velocity: DVec3::ZERO,
             spread: DVec3::ZERO,
+            velocity_spread: DVec3::ZERO,
             count,
             color: None,
             forced: false,
@@ -87,7 +92,7 @@ struct Emitter {
 
 pub struct System {
     pub pool: Pool,
-    rng: Rng,
+    pub(super) rng: Rng,
     explosions: VecDeque<Emitter>,
     tracking: VecDeque<Tracking>,
 }
@@ -145,6 +150,20 @@ impl System {
                     b.forced = true;
                     self.burst(b, setting);
                 }
+            }
+            Request::EyeBreak { pos } => self.eye_break(pos, setting),
+        }
+    }
+
+    /// Forty angles, two inward speeds: the ring from level event 2003.
+    fn eye_break(&mut self, pos: DVec3, setting: Setting) {
+        for i in 0..40 {
+            let angle = i as f64 * std::f64::consts::PI / 20.0;
+            let (c, s) = (angle.cos(), angle.sin());
+            for speed in [5.0, 7.0] {
+                let mut b = Burst::new(Kind::Portal, DVec3::new(pos.x + c * 5.0, pos.y - 0.4, pos.z + s * 5.0), 1);
+                b.velocity = DVec3::new(-c * speed, 0.0, -s * speed);
+                self.burst(b, setting);
             }
         }
     }
@@ -213,7 +232,14 @@ impl System {
                 continue;
             }
             let pos = b.pos + (random_vec(&mut self.rng) * 2.0 - DVec3::ONE) * b.spread;
-            let mut p = self.make(b.kind, pos, b.velocity);
+            let velocity = if b.velocity_spread == DVec3::ZERO {
+                b.velocity
+            } else {
+                b.velocity
+                    + DVec3::new(gaussian(&mut self.rng), gaussian(&mut self.rng), gaussian(&mut self.rng))
+                        * b.velocity_spread
+            };
+            let mut p = self.make(b.kind, pos, velocity);
             if let Some(color) = b.color {
                 p.color = color;
             }
@@ -221,7 +247,7 @@ impl System {
         }
     }
 
-    fn make(&mut self, kind: Kind, pos: DVec3, velocity: DVec3) -> Particle {
+    pub(super) fn make(&mut self, kind: Kind, pos: DVec3, velocity: DVec3) -> Particle {
         let rng = &mut self.rng;
         let mut p = Particle::new(pos, Texture::Sprite(kind.sprite()));
         let base_size = 0.1 * rng.range(1.0, 2.0);
@@ -244,14 +270,17 @@ impl System {
                 p.size *= 0.75;
                 p.lifetime = (6.0 / rng.range(0.6, 1.4)) as u16;
             }
-            Kind::Smoke => {
+            Kind::Smoke | Kind::LargeSmoke => {
                 p.friction = 0.96;
                 p.gravity = -0.1;
                 p.velocity = p.velocity * 0.1 + velocity;
                 let c = rng.range(0.0, 0.3);
                 p.color = [c, c, c, 1.0];
                 p.size *= 0.75;
-                p.lifetime = (8.0 / rng.range(0.2, 1.0)) as u16;
+                p.lifetime = (8.0 / rng.range(0.2, 1.0) * if kind == Kind::LargeSmoke { 2.5 } else { 1.0 }) as u16;
+                if kind == Kind::LargeSmoke {
+                    p.size *= 2.5;
+                }
             }
             Kind::Poof => {
                 p.friction = 0.9;
@@ -266,6 +295,8 @@ impl System {
                 p.physics = false;
                 p.friction = 0.96;
                 p.velocity = p.velocity * 0.01 + velocity;
+                p.pos += (random_vec(rng) - random_vec(rng)) * 0.05;
+                p.previous = p.pos;
                 p.lifetime = (8.0 / rng.range(0.2, 1.0)) as u16 + 4;
             }
             Kind::Lava => {
@@ -278,17 +309,21 @@ impl System {
                 p.lifetime = (16.0 / rng.range(0.2, 1.0)) as u16;
             }
             Kind::LavaDrip => {
-                p.gravity = 1.5;
-                p.size = 0.01;
-                p.emissive = true;
+                // Hang for 40 ticks (gravity 0.06 * 0.02, then *0.02 friction),
+                // fall with gravity 0.06, and sit as the landing particle.
+                p.motion = Motion::DripHang;
                 p.velocity = DVec3::ZERO;
+                p.friction = 0.0196;
                 p.lifetime = 40;
-                p.color = [1.0, 0.3, 0.02, 1.0];
+                p.successor_lifetime = (64.0 / rng.range(0.2, 1.0)) as u16;
+                p.landing_lifetime = (16.0 / rng.range(0.2, 1.0)) as u16;
+                p.color = [1.0, 1.0, 0.5, 1.0];
+                p.size = 0.05;
                 p.collision_size = 0.01;
             }
-            Kind::Splash => {
+            Kind::Splash | Kind::Rain => {
                 p.motion = Motion::Splash;
-                p.gravity = 0.04;
+                p.gravity = if kind == Kind::Rain { 0.06 } else { 0.04 };
                 p.collision_size = 0.01;
                 p.velocity *= 0.3;
                 p.velocity.y = rng.range(0.1, 0.3) as f64;
@@ -455,6 +490,11 @@ fn java_velocity(rng: &mut Rng, supplied: DVec3) -> DVec3 {
     v.normalize_or(DVec3::Y) * speed + DVec3::Y * 0.1
 }
 
+fn gaussian(rng: &mut Rng) -> f64 {
+    let radius = (-2.0 * (1.0 - rng.next_f32() as f64).ln()).sqrt();
+    radius * (std::f64::consts::TAU * rng.next_f32() as f64).cos()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -524,5 +564,18 @@ mod tests {
         let glyph = system.make(Kind::Glyph, DVec3::ZERO, DVec3::X * 2.0);
         assert!((30..=39).contains(&glyph.lifetime));
         assert_eq!(glyph.pos, DVec3::X * 2.0);
+    }
+
+    #[test]
+    fn shattered_eye_draws_eighty_portal_particles() {
+        let mut system = System::new(9);
+        let world = world();
+        let pos = DVec3::new(10.0, 80.0, 10.0);
+        system.request(Request::EyeBreak { pos }, Setting::Minimal, &world);
+        assert_eq!(system.pool.iter().count(), 0);
+        system.request(Request::EyeBreak { pos }, Setting::All, &world);
+        let particles: Vec<_> = system.pool.iter().filter(|p| p.style == Kind::Portal).collect();
+        assert_eq!(particles.len(), 80);
+        assert!(particles.iter().any(|p| (p.pos - pos).with_y(0.0).length() > 4.5));
     }
 }

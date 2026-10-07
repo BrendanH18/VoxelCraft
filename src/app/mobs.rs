@@ -125,6 +125,19 @@ impl Game {
                 + crate::enchant::damage_bonus(sharpness, crate::enchant::Creature::Other);
             let by = self.actor;
             if self.mobs.entities.strike(hit, damage, by) {
+                let impact = self.player.eye() + self.player.forward().as_dvec3() * 2.0;
+                for kind in [
+                    critical.then_some(crate::particles::Kind::Crit),
+                    (crate::enchant::damage_bonus(sharpness, crate::enchant::Creature::Other) > 0.0)
+                        .then_some(crate::particles::Kind::MagicCrit),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    let mut b = crate::particles::Burst::new(kind, impact, 16);
+                    b.spread = DVec3::splat(0.4);
+                    self.world.particles.push(crate::particles::Request::Tracking(b));
+                }
                 self.audio.play(
                     Sound::Hit,
                     Some(self.player.eye() + self.player.forward().as_dvec3() * 2.0),
@@ -208,7 +221,13 @@ impl Game {
                     }
                 }
                 EntityEvent::Explosion { center, power, cause } => self.explode(center, power, cause),
-                EntityEvent::PearlLanded { owner, pos } => self.pearl_landed(owner, pos),
+                EntityEvent::PearlLanded { owner, pos } => {
+                    let mut burst = crate::particles::Burst::new(crate::particles::Kind::Portal, pos + DVec3::Y, 32);
+                    burst.spread = DVec3::Y;
+                    burst.velocity_spread = DVec3::new(1.0, 0.0, 1.0);
+                    self.world.particles.push(crate::particles::Request::Burst(burst));
+                    self.pearl_landed(owner, pos);
+                }
                 EntityEvent::Ignite { player: PlayerId::HOST, secs } => {
                     if self.mode == GameMode::Survival {
                         self.vitals.ignite(secs);

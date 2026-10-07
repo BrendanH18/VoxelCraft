@@ -528,11 +528,16 @@ impl Agent {
                 let stack = self.inventory.get(self.selected);
                 let held = stack.map(|s| s.item);
                 let bonus = self.vitals.effects.attack_bonus();
-                if let Some((hit, _)) = entities.fight_raycast(eye, dir, distance) {
+                if let Some((hit, t)) = entities.fight_raycast(eye, dir, distance) {
                     let enchants = stack.map_or(Default::default(), |s| s.active_enchants());
-                    let damage = (mining::attack_damage(held) + bonus).max(0.0)
-                        + crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
-                    entities.strike(hit, damage, self.id);
+                    let enchant = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
+                    let damage = (mining::attack_damage(held) + bonus).max(0.0) + enchant;
+                    if entities.strike(hit, damage, self.id) && enchant > 0.0 {
+                        let mut burst =
+                            crate::particles::Burst::new(crate::particles::Kind::MagicCrit, eye + dir * t.min(4.0), 16);
+                        burst.spread = DVec3::splat(0.4);
+                        entities.particles.push(crate::particles::Request::Tracking(burst));
+                    }
                 } else {
                     let (i, _) = entities.raycast(eye, dir, distance).ok_or("no mob within reach")?;
                     let sprint = self.movement_input().sprint && (self.creative || self.vitals.hunger.can_sprint());
@@ -703,6 +708,7 @@ impl Agent {
             self.creative,
         )
         .hurts;
+        crate::particles::water_entry(&self.player, self.previous_pos, world);
         for (damage, cause) in [
             (hurts.fall, "hit the ground too hard"),
             (hurts.drown, "drowned"),

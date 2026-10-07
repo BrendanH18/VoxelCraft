@@ -19,6 +19,7 @@ mod items;
 mod menu;
 mod mobs;
 mod pad_menu;
+mod particles;
 mod recipe_book;
 mod search;
 mod settings;
@@ -1800,6 +1801,7 @@ impl Game {
             let armor = &self.inventory.armor;
             self.player.wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
             self.player.update(dt, input, &self.world);
+            crate::particles::water_entry(&self.player, before, &mut self.world);
             self.update_portal(dt);
         }
         let moved = (self.player.pos - before).with_y(0.0).length();
@@ -1842,13 +1844,7 @@ impl Game {
         crate::simulation::tick_world(&mut self.world, self.player.pos);
         self.update_mobs(dt);
         self.update_items();
-        self.particles.tick(&self.world, self.settings.particles);
-        while let Some(request) = self.world.particles.pop() {
-            self.particles.request(request, self.settings.particles, &self.world);
-        }
-        while let Some(request) = self.mobs.entities.particles.pop() {
-            self.particles.request(request, self.settings.particles, &self.world);
-        }
+        self.tick_particles();
         self.day_time = (self.day_time + dt / DAY_LENGTH).fract();
     }
 
