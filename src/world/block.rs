@@ -1356,19 +1356,9 @@ impl Block {
     /// Light level emitted by this block.
     #[inline(always)]
     pub fn emission(self) -> u8 {
-        match self.base() {
-            Block::GLOWSTONE => 15,
-            Block::TORCH => 14,
-            Block::LIT_FURNACE => 13,
-            Block::NETHER_PORTAL => 11,
-            Block::END_PORTAL | Block::END_GATEWAY => 15,
-            // Java: all frame states glow faintly, with or without an eye.
-            Block::END_PORTAL_FRAME | Block::DRAGON_EGG => 1,
-            Block::ENCHANTING_TABLE => 7,
-            b if b.is_lava() => 15,
-            b if b.is_fire() => 15,
-            _ => 0,
-        }
+        // SAFETY: same bound as `info`. Like Java's BlockStateBase, light
+        // emission is precomputed per state, including lit furnace facings.
+        unsafe { *EMISSION.get_unchecked(self.slot()) }
     }
 }
 
@@ -1936,6 +1926,27 @@ const fn shape_blocks_light(id: u16) -> bool {
     )
 }
 
+/// Emission has no positional dependency; avoid decoding orientation/forms
+/// for every cell of the lighting region. The exhaustive test below keeps
+/// this table equivalent to the original base-state lookup.
+static EMISSION: [u8; STATE_CAPACITY] = {
+    let mut arr = [0; STATE_CAPACITY];
+    let mut i = 0;
+    while i < STATE_CAPACITY {
+        arr[i] = match i {
+            22 | 37..=41 | 165..=180 | 208 | 210 => 15, // glowstone, lava, fire, portals
+            36 => 14,                                   // torch
+            46 | 50..=52 => 13,                         // lit furnace, every facing
+            104 => 11,                                  // Nether portal
+            200..=207 | 209 => 1,                       // portal frames and dragon egg
+            213 => 7,                                   // enchanting table
+            _ => 0,
+        };
+        i += 1;
+    }
+    arr
+};
+
 static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
     let mut arr = [15u8; STATE_CAPACITY];
     let mut i = 0;
@@ -1980,6 +1991,28 @@ static OPAQUE: [bool; STATE_CAPACITY] = {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn emission_table_matches_base_state_lookup_for_every_state() {
+        fn reference(block: Block) -> u8 {
+            match block.base() {
+                Block::GLOWSTONE => 15,
+                Block::TORCH => 14,
+                Block::LIT_FURNACE => 13,
+                Block::NETHER_PORTAL => 11,
+                Block::END_PORTAL | Block::END_GATEWAY => 15,
+                // Java: all frame states glow faintly, with or without an eye.
+                Block::END_PORTAL_FRAME | Block::DRAGON_EGG => 1,
+                Block::ENCHANTING_TABLE => 7,
+                b if b.is_lava() => 15,
+                b if b.is_fire() => 15,
+                _ => 0,
+            }
+        }
+        for id in 0..STATE_CAPACITY as u16 {
+            assert_eq!(Block(id).emission(), reference(Block(id)), "state {id}");
+        }
+    }
 
     #[test]
     fn stronghold_blocks_follow_java_rules() {
