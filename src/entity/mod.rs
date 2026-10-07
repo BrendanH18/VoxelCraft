@@ -23,6 +23,7 @@ pub mod model;
 pub mod orb;
 pub mod pearl;
 pub mod player_model;
+mod player_pose;
 mod projectile;
 pub mod tnt;
 
@@ -286,12 +287,23 @@ pub struct Target {
     pub thorns: [u8; 4],
     /// Mainhand enchantments apply to kills caused by this player's Thorns.
     pub held_enchants: crate::enchant::Enchants,
+    /// Current collision box (pose-dependent).
+    pub shape: crate::physics::Shape,
 }
 
 impl Target {
     /// A living player; set [`Target::alive`] for one waiting to respawn.
     pub fn new(id: PlayerId, pos: DVec3, targetable: bool) -> Self {
-        Self { id, pos, targetable, alive: true, look: DVec3::ZERO, thorns: [0; 4], held_enchants: Default::default() }
+        Self {
+            id,
+            pos,
+            targetable,
+            alive: true,
+            look: DVec3::ZERO,
+            thorns: [0; 4],
+            held_enchants: Default::default(),
+            shape: crate::player::SHAPE,
+        }
     }
 
     /// Thorns levels from worn armor.
@@ -299,12 +311,12 @@ impl Target {
         armor.map(|s| s.map_or(0, |s| s.enchants.level(crate::enchant::Enchantment::Thorns)))
     }
 
-    /// Whether `p` is inside this player's 0.6 x 1.8 box.
+    /// Whether `p` is inside this player's collision box.
     pub fn contains(&self, p: DVec3) -> bool {
         let d = p - self.pos;
-        d.x.abs() < crate::player::HALF_WIDTH
-            && d.z.abs() < crate::player::HALF_WIDTH
-            && (0.0..crate::player::HEIGHT).contains(&d.y)
+        d.x.abs() < self.shape.half_width
+            && d.z.abs() < self.shape.half_width
+            && (0.0..self.shape.height).contains(&d.y)
     }
 }
 
