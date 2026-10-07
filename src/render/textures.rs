@@ -1373,10 +1373,30 @@ fn crack(stage: u8, x: usize, y: usize) -> Rgba {
 pub fn texel(layer: u16, x: usize, y: usize) -> Rgba {
     use crate::simulation::effects::Effect;
     let icons = crate::item::icon_count() as u16;
+    let clock = icons + crate::item::COMPASS_FRAMES;
+    let effects = clock + crate::item::CLOCK_FRAMES;
     match tex::item_index(layer) {
-        Some(index) if index >= icons => Effect::ALL
-            .get((index - icons) as usize)
+        Some(index) if index >= effects => Effect::ALL
+            .get((index - effects) as usize)
             .map_or([0, 0, 0, 0], |&e| super::item_sprites::effect_pixel(e, x, y)),
+        Some(index) if index >= clock => super::item_sprites::compass_face(
+            index - clock,
+            crate::item::CLOCK_FRAMES,
+            x as i32,
+            y as i32,
+            [236, 214, 150],
+            [250, 196, 48],
+        )
+        .unwrap_or([0, 0, 0, 0]),
+        Some(index) if index >= icons => super::item_sprites::compass_face(
+            index - icons,
+            crate::item::COMPASS_FRAMES,
+            x as i32,
+            y as i32,
+            [62, 86, 112],
+            [176, 40, 36],
+        )
+        .unwrap_or([0, 0, 0, 0]),
         Some(index) => {
             crate::item::sprite_for_layer(index).map_or([0, 0, 0, 0], |s| super::item_sprites::pixel(s, x, y))
         }
@@ -1390,10 +1410,10 @@ pub fn generate_mips() -> Vec<Vec<u8>> {
     mips_of(tex::COUNT as usize, |l, x, y| pixel(l as u16, x, y))
 }
 
-/// Layers of the item icon array: every item's icon, then the status
-/// effect icons.
+/// Layers of the item icon array: every item's icon, the compass and clock
+/// frames, then the status effect icons.
 pub fn item_layers() -> u32 {
-    crate::item::icon_count() + crate::simulation::effects::Effect::ALL.len() as u32
+    crate::item::icon_count() + crate::item::animated_icons() + crate::simulation::effects::Effect::ALL.len() as u32
 }
 
 /// Mip levels of the item icon array (see [`generate_mips`]).

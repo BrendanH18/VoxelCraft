@@ -180,6 +180,10 @@ pub enum Sprite {
     Bowl(Option<[u8; 3]>),
     /// A white egg.
     Egg,
+    /// A compass face; the needle direction is a separate texture frame.
+    Compass,
+    /// A clock face; the sun's position is a separate texture frame.
+    Clock,
     Lump([u8; 3]),
     Ingot([u8; 3]),
     Gem([u8; 3]),
@@ -391,6 +395,8 @@ const SURVIVAL_ITEMS: &[ItemInfo] = &[
         sprite: Sprite::Pearl([245, 245, 250], [255, 255, 255]),
     },
     ItemInfo { name: "egg", kind: ItemKind::Material, max_stack: 16, sprite: Sprite::Egg },
+    ItemInfo { name: "compass", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Compass },
+    ItemInfo { name: "clock", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Clock },
 ];
 
 const TOOL_KINDS: [ToolKind; 5] = [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword];
@@ -416,6 +422,8 @@ impl Item {
     pub const MUSHROOM_STEW: Item = Item(515);
     pub const SNOWBALL: Item = Item(516);
     pub const EGG: Item = Item(517);
+    pub const COMPASS: Item = Item(518);
+    pub const CLOCK: Item = Item(519);
     pub const SHEARS: Item = Item(512);
 
     pub const STICK: Item = Item(256);
@@ -738,10 +746,76 @@ pub const fn icon_count() -> u32 {
         + SURVIVAL_ITEMS.len() as u32
 }
 
+/// Compass needle frames, after the item icons. Frame 0 points up.
+pub const COMPASS_FRAMES: u16 = 32;
+/// Clock frames, after the compass. Frame 0 is noon.
+pub const CLOCK_FRAMES: u16 = 64;
+
+/// Extra icon layers for the compass and clock animations.
+pub const fn animated_icons() -> u32 {
+    COMPASS_FRAMES as u32 + CLOCK_FRAMES as u32
+}
+
+/// Where the player is facing, where the world spawn is, and what time it is.
+/// Inventory and hand icons read this when they draw a compass or clock.
+#[derive(Clone, Copy, Debug)]
+pub struct Dial {
+    pub yaw: f32,
+    pub x: f64,
+    pub z: f64,
+    pub spawn_x: f64,
+    pub spawn_z: f64,
+    pub overworld: bool,
+    /// 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
+    pub day_time: f32,
+    /// Seconds since the view started, so a lost compass can spin.
+    pub spin: f32,
+}
+
+impl Dial {
+    /// Java's compass angle, as one of 32 frames. Outside the overworld it spins.
+    pub fn compass_frame(self) -> u16 {
+        if !self.overworld {
+            return (self.spin * 8.0).rem_euclid(COMPASS_FRAMES as f32) as u16 % COMPASS_FRAMES;
+        }
+        let bearing = (self.spawn_z - self.z).atan2(self.spawn_x - self.x) as f32;
+        let relative = (self.yaw - bearing).rem_euclid(std::f32::consts::TAU);
+        ((relative / std::f32::consts::TAU) * COMPASS_FRAMES as f32).round() as u16 % COMPASS_FRAMES
+    }
+
+    /// Java's celestial angle: frame 0 is noon. Outside the overworld it spins.
+    pub fn clock_frame(self) -> u16 {
+        if !self.overworld {
+            return (self.spin * 8.0).rem_euclid(CLOCK_FRAMES as f32) as u16 % CLOCK_FRAMES;
+        }
+        let celestial = (self.day_time - 0.25).rem_euclid(1.0);
+        (celestial * CLOCK_FRAMES as f32).round() as u16 % CLOCK_FRAMES
+    }
+
+    /// Same world and time, from another player's eyes.
+    pub fn at(self, yaw: f32, x: f64, z: f64) -> Self {
+        Self { yaw, x, z, ..self }
+    }
+}
+
+impl Item {
+    /// The animated layer for a compass or clock. Other items keep [`icon_layer`].
+    pub fn dial_layer(self, dial: Dial) -> Option<u16> {
+        let base = icon_count() as u16;
+        if self == Self::COMPASS {
+            Some(tex::item_layer(base + dial.compass_frame()))
+        } else if self == Self::CLOCK {
+            Some(tex::item_layer(base + COMPASS_FRAMES + dial.clock_frame()))
+        } else {
+            None
+        }
+    }
+}
+
 /// Layer of a status effect's icon: in the item icon array, after every
-/// item's.
+/// item and the compass and clock frames.
 pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
-    tex::item_layer(icon_count() as u16 + effect as u16)
+    tex::item_layer(icon_count() as u16 + animated_icons() as u16 + effect as u16)
 }
 
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).
@@ -910,7 +984,7 @@ mod tests {
             assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
         }
         // Icons stay addressable by the UI's and models' 16-bit layers.
-        assert!(tex::ITEM_BASE as u32 + icon_count() <= u16::MAX as u32);
+        assert!(tex::ITEM_BASE as u32 + icon_count() + animated_icons() + 32 <= u16::MAX as u32);
         assert_eq!(Item::from(Block::STONE).icon_layer(), None);
     }
 
@@ -918,5 +992,23 @@ mod tests {
     fn food_values() {
         assert_eq!(Item::COOKED_PORKCHOP.food(), Some((8, 12.8)));
         assert_eq!(Item::STICK.food(), None);
+    }
+
+    #[test]
+    fn compass_points_at_spawn_and_clock_reads_noon() {
+        let looking =
+            Dial { yaw: 0.0, x: 0.0, z: 0.0, spawn_x: 10.0, spawn_z: 0.0, overworld: true, day_time: 0.25, spin: 0.0 };
+        assert_eq!(looking.compass_frame(), 0, "yaw 0 looks +X, where the spawn is");
+        assert_eq!(Item::COMPASS.dial_layer(looking), Some(tex::item_layer(icon_count() as u16)));
+        let right = Dial { spawn_z: -10.0, spawn_x: 0.0, ..looking };
+        assert_eq!(right.compass_frame(), 8, "spawn on the right is a quarter turn");
+        let lost = Dial { overworld: false, spin: 1.0, ..looking };
+        assert_ne!(lost.compass_frame(), looking.compass_frame());
+        assert_eq!(looking.clock_frame(), 0, "noon is frame 0");
+        let sunrise = Dial { day_time: 0.0, ..looking };
+        assert_eq!(sunrise.clock_frame(), 48);
+        assert_eq!(Item::from_name("compass"), Some(Item::COMPASS));
+        assert_eq!(Item::from_name("clock"), Some(Item::CLOCK));
+        assert_eq!(Item::COMPASS.max_stack(), 64);
     }
 }

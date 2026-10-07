@@ -566,6 +566,8 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&pail, x, y, [200, 200, 205], 0.03)
             }
         }
+        Sprite::Compass => compass_face(0, 32, x, y, [62, 86, 112], [176, 40, 36]),
+        Sprite::Clock => compass_face(0, 64, x, y, [236, 214, 150], [250, 196, 48]),
         Sprite::Arrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);
@@ -581,6 +583,29 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     out.unwrap_or(CLEAR)
+}
+
+/// One compass or clock frame. `frame` 0 points the marker up; later frames turn clockwise.
+pub fn compass_face(frame: u16, frames: u16, x: i32, y: i32, face: [u8; 3], marker: [u8; 3]) -> Option<Rgba> {
+    let (px, py) = centre(x, y);
+    let (dx, dy) = (px - 8.0, py - 8.0);
+    let radius = dx.hypot(dy);
+    if !(2.2..7.2).contains(&radius) {
+        return None;
+    }
+    let angle = frame as f32 / frames as f32 * std::f32::consts::TAU;
+    let (nx, ny) = (angle.sin(), -angle.cos());
+    let along = dx * nx + dy * ny;
+    let side = (dx * ny - dy * nx).abs();
+    if along > 0.4 && along < 4.8 && side < 0.7 {
+        Some(tint(marker, 1.0))
+    } else if along < -0.4 && along > -3.2 && side < 0.55 {
+        Some(tint([230, 230, 226], 1.0))
+    } else if radius > 5.4 {
+        Some(tint([168, 132, 62], 0.85 + (7.2 - radius) * 0.08))
+    } else {
+        Some(tint(face, 0.92 + noise(x, y, 6) * 0.12))
+    }
 }
 
 /// 8x8 glyphs of the status effect icons, drawn at double size.

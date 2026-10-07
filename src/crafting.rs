@@ -317,6 +317,8 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["# #", " # "], &[('#', PLANKS)], Item::BOWL, 4),
             shapeless(&[BROWN_MUSHROOM, RED_MUSHROOM, BOWL], Item::MUSHROOM_STEW, 1),
             shaped(&["##", "##"], &[('#', SNOWBALL)], b(Block::SNOW), 1),
+            shaped(&[" # ", "#X#", " # "], &[('#', IRON), ('X', &[Item::REDSTONE])], Item::COMPASS, 1),
+            shaped(&[" # ", "#X#", " # "], &[('#', GOLD), ('X', &[Item::REDSTONE])], Item::CLOCK, 1),
             shaped(&[" #", "# "], &[('#', &[Item::IRON_INGOT])], Item::SHEARS, 1),
             shaped(&["# #", " # "], &[('#', GLASS)], Item::GLASS_BOTTLE, 3),
             shaped(&["X#X", "#X#", "X#X"], &[('X', &[Item::GUNPOWDER]), ('#', SAND)], b(Block::TNT), 1),
@@ -529,6 +531,32 @@ mod tests {
 
     const P: Item = b(Block::PLANKS);
     const C: Item = b(Block::COBBLESTONE);
+
+    #[test]
+    fn compass_and_clock_use_redstone() {
+        let compass = grid(
+            3,
+            &[
+                (1, 0, Item::IRON_INGOT),
+                (0, 1, Item::IRON_INGOT),
+                (1, 1, Item::REDSTONE),
+                (2, 1, Item::IRON_INGOT),
+                (1, 2, Item::IRON_INGOT),
+            ],
+        );
+        assert_eq!(compass.result(), Some(Stack::new(Item::COMPASS, 1)));
+        let clock = grid(
+            3,
+            &[
+                (1, 0, Item::GOLD_INGOT),
+                (0, 1, Item::GOLD_INGOT),
+                (1, 1, Item::REDSTONE),
+                (2, 1, Item::GOLD_INGOT),
+                (1, 2, Item::GOLD_INGOT),
+            ],
+        );
+        assert_eq!(clock.result(), Some(Stack::new(Item::CLOCK, 1)));
+    }
 
     #[test]
     fn four_snowballs_craft_a_snow_block() {

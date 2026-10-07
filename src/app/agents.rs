@@ -180,7 +180,22 @@ impl Agents {
 
 impl Game {
     fn agent_response(&self, agent: &Agent, radius: i32) -> Value {
-        json!({"ok":true,"version":VERSION,"tick":self.clock.ticks(),"time":self.day_time,"raining":self.weather.raining,"state":agent.observe(&self.world,radius)})
+        let mut state = agent.observe(&self.world, radius);
+        let overworld = self.dimension == crate::world::terrain::Dimension::Overworld;
+        if let Some(stack) = agent.inventory.get(agent.selected) {
+            if stack.item == crate::item::Item::COMPASS {
+                state["compass"] = if overworld {
+                    json!({"spawn":[self.world_spawn.x, self.world_spawn.y, self.world_spawn.z],"spinning":false})
+                } else {
+                    json!({"spinning":true})
+                };
+            }
+            if stack.item == crate::item::Item::CLOCK {
+                state["clock"] =
+                    if overworld { json!({"time":self.day_time,"spinning":false}) } else { json!({"spinning":true}) };
+            }
+        }
+        json!({"ok":true,"version":VERSION,"tick":self.clock.ticks(),"time":self.day_time,"raining":self.weather.raining,"state":state})
     }
     /// Process a bounded batch each frame. Timed commands reply once their final tick completes.
     pub(super) fn poll_agents(&mut self) {

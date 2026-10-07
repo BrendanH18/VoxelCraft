@@ -69,6 +69,8 @@ pub struct PlayerAppearance {
     pub alpha: f32,
     /// Helmet, chest, leggings, boots.
     pub armor: [Option<super::armor::Worn>; 4],
+    /// Animated compass or clock layer, when `held` is one of those.
+    pub held_icon: Option<u16>,
 }
 
 const PLAYER_SCALE: f32 = 0.9375;
@@ -313,9 +315,10 @@ pub fn build_player(
         } else {
             // The default thirdperson_righthand display for handheld items.
             held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());
-            let layer = item
-                .block()
-                .map_or_else(|| item.icon_layer().unwrap_or(crate::world::block::tex::ITEM_BASE), |b| b.info().tex[0]);
+            let layer = item.block().map_or_else(
+                || appearance.held_icon.or_else(|| item.icon_layer()).unwrap_or(crate::world::block::tex::ITEM_BASE),
+                |b| b.info().tex[0],
+            );
             textured_box(out, &held, 0.0, origin, body, light, 2, layer, PLAYER_SCALE, UNTINTED);
         }
     }

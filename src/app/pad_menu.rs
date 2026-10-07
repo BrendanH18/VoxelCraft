@@ -337,6 +337,16 @@ impl Game {
         ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.45]);
         let Some(bot) = self.agents.players.get(name) else { return };
         let inv = &bot.agent.inventory;
+        let dial = crate::item::Dial {
+            yaw: bot.agent.player.yaw,
+            x: bot.agent.player.pos.x,
+            z: bot.agent.player.pos.z,
+            spawn_x: self.world_spawn.x as f64 + 0.5,
+            spawn_z: self.world_spawn.z as f64 + 0.5,
+            overworld: self.dimension == crate::world::terrain::Dimension::Overworld,
+            day_time: self.day_time as f32,
+            spin: self.started.elapsed().as_secs_f32(),
+        };
         let (tab, col, row) = match menu {
             Menu::Pause { choice } => {
                 let title = format!("{name}: paused");
@@ -459,7 +469,7 @@ impl Game {
                     Slot::Palette(i) => items.get(i).map(|&item| Stack::new(item, 1)),
                 };
                 if let Some(stack) = stack {
-                    draw_stack(ui, x - 0.5, y - 0.5, stack, true);
+                    draw_stack(ui, x - 0.5, y - 0.5, stack, true, dial);
                 }
                 if let Slot::Ref(SlotRef::EnchantOffer(i)) = slot(tab, c, r)
                     && offers[i].cost > 0
@@ -496,7 +506,7 @@ impl Game {
         }
         if let Some((stack, x, y)) = hovered {
             if let Some(held) = inv.cursor {
-                draw_stack(ui, x + 6.0, y + 6.0, held, true);
+                draw_stack(ui, x + 6.0, y + 6.0, held, true, dial);
             } else if let Some((e, level)) = clue {
                 let text = format!("{} . . . ?", e.describe(level));
                 let tx = (x + 9.0 - Ui::text_width(&text) / 2.0).clamp(0.0, (sw - Ui::text_width(&text)).max(0.0));

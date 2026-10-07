@@ -2085,16 +2085,21 @@ impl Game {
             now,
         };
         let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } = self.fog(&scene, camera);
+        let dial = self.dial_of(&self.player);
         let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance)> = self
             .agents
             .players
             .values()
             .filter(|b| b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0))
             .map(|b| {
+                let pose = dial.at(b.agent.player.yaw, b.agent.player.pos.x, b.agent.player.pos.z);
                 (
                     &b.agent.player,
                     b.agent.previous_pos.lerp(b.agent.player.pos, alpha),
-                    b.hand.appearance(&b.agent.vitals, b.agent.eating(), alpha, b.agent.inventory.armor),
+                    Self::stamp_look(
+                        pose,
+                        b.hand.appearance(&b.agent.vitals, b.agent.eating(), alpha, b.agent.inventory.armor),
+                    ),
                 )
             })
             .collect();
@@ -2110,11 +2115,14 @@ impl Game {
                     self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
                 ),
                 scene.time,
-                self.hand.appearance(
-                    &self.vitals,
-                    (self.actions.eat_timer / EAT_TIME) as f32,
-                    alpha,
-                    self.inventory.armor,
+                Self::stamp_look(
+                    dial,
+                    self.hand.appearance(
+                        &self.vitals,
+                        (self.actions.eat_timer / EAT_TIME) as f32,
+                        alpha,
+                        self.inventory.armor,
+                    ),
                 ),
                 verts,
             );
@@ -2159,7 +2167,10 @@ impl Game {
                 .then(|| {
                     let eye = self.player.eye();
                     let eating = (self.actions.eat_timer / EAT_TIME) as f32;
-                    self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye))
+                    Self::stamp_hand(
+                        dial,
+                        self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye)),
+                    )
                 }),
             rain: scene.rain,
             night_vision: self.vitals.effects.night_vision(scene.time),

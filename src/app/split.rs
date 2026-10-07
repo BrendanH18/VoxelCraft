@@ -171,6 +171,7 @@ impl Game {
     pub(super) fn draw_followers(&mut self, frame: &mut Frame, scene: &Scene, viewports: &[Viewport]) {
         let names: Vec<String> = self.followed().map(|(n, _)| n.clone()).collect();
         let host_feet = self.rendered_eye - (self.player.eye() - self.player.pos);
+        let host_dial = self.dial_of(&self.player);
         for (name, &vp) in names.iter().zip(&viewports[1..]) {
             let bot = &self.agents.players[name];
             let a = &bot.agent;
@@ -199,11 +200,14 @@ impl Game {
                 others.push((
                     &self.player,
                     host_feet,
-                    self.hand.appearance(
-                        &self.vitals,
-                        (self.actions.eat_timer / super::EAT_TIME) as f32,
-                        scene.alpha,
-                        self.inventory.armor,
+                    Self::stamp_look(
+                        host_dial,
+                        self.hand.appearance(
+                            &self.vitals,
+                            (self.actions.eat_timer / super::EAT_TIME) as f32,
+                            scene.alpha,
+                            self.inventory.armor,
+                        ),
                     ),
                 ));
             }
@@ -212,7 +216,10 @@ impl Game {
                     others.push((
                         &b.agent.player,
                         b.agent.previous_pos.lerp(b.agent.player.pos, scene.alpha),
-                        b.hand.appearance(&b.agent.vitals, b.agent.eating(), scene.alpha, b.agent.inventory.armor),
+                        Self::stamp_look(
+                            host_dial.at(b.agent.player.yaw, b.agent.player.pos.x, b.agent.player.pos.z),
+                            b.hand.appearance(&b.agent.vitals, b.agent.eating(), scene.alpha, b.agent.inventory.armor),
+                        ),
                     ));
                 }
             }
@@ -228,7 +235,10 @@ impl Game {
                         self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
                     ),
                     scene.time,
-                    bot.hand.appearance(&a.vitals, pad.map_or(a.eating(), |p| p.1), scene.alpha, a.inventory.armor),
+                    Self::stamp_look(
+                        host_dial.at(a.player.yaw, a.player.pos.x, a.player.pos.z),
+                        bot.hand.appearance(&a.vitals, pad.map_or(a.eating(), |p| p.1), scene.alpha, a.inventory.armor),
+                    ),
                     verts,
                 );
             }
@@ -260,7 +270,10 @@ impl Game {
                 block_models: models,
                 hand: (bot.camera.first_person() && self.show_hud && !a.vitals.is_dead()).then(|| {
                     let eating = pad.map_or(a.eating(), |p| p.1);
-                    bot.hand.view(eating, crate::entity::sky_light(&self.world, camera), self.torch_light(camera))
+                    Self::stamp_hand(
+                        host_dial.at(a.player.yaw, a.player.pos.x, a.player.pos.z),
+                        bot.hand.view(eating, crate::entity::sky_light(&self.world, camera), self.torch_light(camera)),
+                    )
                 }),
                 rain: scene.rain,
                 night_vision: a.vitals.effects.night_vision(scene.time),
@@ -311,6 +324,7 @@ impl Game {
             selected: a.selected,
             survival: !a.creative,
             underwater,
+            dial: self.dial_of(&a.player),
         };
         // Screens cover the hotbar, as Minecraft's do.
         let pad = self.pad_view(name).unwrap_or_default();

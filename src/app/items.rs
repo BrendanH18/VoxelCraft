@@ -250,7 +250,13 @@ impl Game {
             let block = item.stack.item.block().filter(|b| !b.flat_icon());
             let icon = match block {
                 Some(_) => None,
-                None => item.stack.item.block().map(|b| b.info().tex[0]).or(item.stack.item.icon_layer()),
+                None => item
+                    .stack
+                    .item
+                    .block()
+                    .map(|b| b.info().tex[0])
+                    .or_else(|| item.stack.item.dial_layer(self.dial_of(&self.player)))
+                    .or_else(|| item.stack.item.icon_layer()),
             };
             let size = if block.is_some() { 0.25 } else { 0.5 };
             let spin = item.age + item.phase;

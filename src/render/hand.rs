@@ -31,6 +31,8 @@ pub struct Hand {
     pub eating: f32,
     pub sky_light: f32,
     pub block_light: f32,
+    /// Compass or clock frame. Absent for every other item.
+    pub icon: Option<u16>,
 }
 
 /// Minecraft draws the hand with this field of view, whatever the setting.
@@ -257,7 +259,7 @@ pub(super) fn vertices(
             // Flat items: Minecraft's first-person "handheld" transform.
             let layer = match item.block() {
                 Some(block) => block.info().tex[0],
-                None => item.icon_layer().unwrap_or(tex::ITEM_BASE),
+                None => hand.icon.or_else(|| item.icon_layer()).unwrap_or(tex::ITEM_BASE),
             };
             // Mirrored front to back, so the icon's right (a sword's tip)
             // points away from the eye and the handle sits in the hand.

@@ -40,3 +40,12 @@ every 6000–12000 ticks. Host, pad and CLI players throw through the shared use
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/projectile/Snowball.java
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/projectile/ThrownEgg.java
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/animal/Chicken.java
+
+A compass points at world spawn: 32 icon frames, needle up when the holder
+looks toward it, and a steady spin in the Nether and End (Java wobbles at
+random). A clock uses 64 frames with noon as frame 0, matching Java's
+celestial angle, and spins outside the Overworld. Both animate in the
+inventory, the first-person hand and the third-person grip. An agent holding
+one gets `compass` or `clock` on its observation.
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/CompassItem.java
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/ClockItem.java
