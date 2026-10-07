@@ -13,9 +13,9 @@ use crate::item::Item;
 use super::hud::SlotRef;
 use super::{Container, Game};
 
-/// A crafting station's two input slots: the enchanting table's item and
-/// lapis, or the anvil's left and right inputs.
-pub(super) type WorkSlots = [Option<Stack>; 2];
+/// Shared transient inputs. Enchanting and anvils use the first two;
+/// smithing uses template, base and addition.
+pub(super) type WorkSlots = [Option<Stack>; 3];
 
 impl Game {
     /// Right-click on an enchanting table.

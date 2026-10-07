@@ -12,6 +12,7 @@
 //! into terraced plateaus. Temperature and humidity then pick the biome.
 
 use glam::{IVec2, IVec3};
+use rustc_hash::FxHashMap;
 
 use super::block::{Block, Wood};
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
@@ -155,6 +156,8 @@ pub struct Generator {
     end: Option<super::end::EndGen>,
     /// The overworld's strongholds.
     pub strongholds: super::stronghold::Strongholds,
+    /// Monster rooms are terrain features and can cross chunk boundaries.
+    pub dungeons: super::dungeon::Dungeons,
     continent: Perlin,
     erosion: Perlin,
     ridge: Perlin,
@@ -197,6 +200,7 @@ impl Generator {
             nether: (dimension == Dimension::Nether).then(|| super::nether::NetherGen::new(seed)),
             end: (dimension == Dimension::End).then(|| super::end::EndGen::new(seed)),
             strongholds: super::stronghold::Strongholds::new(seed),
+            dungeons: super::dungeon::Dungeons::new(seed),
             continent: p(1),
             erosion: p(2),
             ridge: p(3),
@@ -454,7 +458,11 @@ impl Generator {
     pub fn structure_features(&self, cpos: IVec3) -> Vec<(IVec3, super::fortress::Feature)> {
         match (&self.nether, self.dimension) {
             (Some(n), _) => n.fortresses.features(cpos),
-            (None, Dimension::Overworld) => self.strongholds.features(cpos),
+            (None, Dimension::Overworld) => {
+                let mut features = self.strongholds.features(cpos);
+                features.extend(self.dungeons.features(self, cpos));
+                features
+            }
             _ => Vec::new(),
         }
     }
@@ -539,7 +547,64 @@ impl Generator {
         if base.y < SEA_LEVEL {
             self.strongholds.paint(&mut blocks, base);
         }
+        self.dungeons.paint(self, &mut blocks, base);
         ChunkData::from_dense(blocks)
+    }
+
+    /// Unmodified terrain at one point, used to validate a monster room
+    /// without depending on which adjacent chunks were generated first.
+    /// The caches make the repeated cave and height samples cheap.
+    pub(super) fn natural_block(
+        &self,
+        p: IVec3,
+        columns: &mut FxHashMap<IVec2, Column>,
+        nodes: &mut FxHashMap<IVec3, [f32; 3]>,
+    ) -> Block {
+        if p.y < 0 || p.y >= 256 {
+            return Block::AIR;
+        }
+        let col = *columns.entry(IVec2::new(p.x, p.z)).or_insert_with(|| self.column(p.x, p.z));
+        if p.y > col.height {
+            return if p.y <= SEA_LEVEL {
+                if p.y == SEA_LEVEL && col.frozen { Block::ICE } else { Block::WATER }
+            } else {
+                Block::AIR
+            };
+        }
+        if p.y <= 4 {
+            return Block::STONE;
+        }
+        let carve_limit = if col.height < SEA_LEVEL + 2 { col.height - 6 } else { col.height };
+        if p.y > carve_limit {
+            return Block::STONE;
+        }
+        let lo = IVec3::new(p.x.div_euclid(4) * 4, p.y.div_euclid(4) * 4, p.z.div_euclid(4) * 4);
+        let t = (p - lo).as_vec3() / 4.0;
+        let mut v = [0.0f32; 3];
+        for dy in 0..=1 {
+            for dz in 0..=1 {
+                for dx in 0..=1 {
+                    let q = lo + IVec3::new(dx * 4, dy * 4, dz * 4);
+                    let at = *nodes.entry(q).or_insert_with(|| {
+                        let (x, y, z) = (q.x as f32, q.y as f32, q.z as f32);
+                        [
+                            self.cave_a.noise3(x / 48.0, y / 32.0, z / 48.0),
+                            self.cave_b.noise3(x / 48.0, y / 32.0, z / 48.0),
+                            self.cavern.noise3(x / 90.0, y / 45.0, z / 90.0),
+                        ]
+                    });
+                    let w = (if dx == 0 { 1.0 - t.x } else { t.x })
+                        * (if dy == 0 { 1.0 - t.y } else { t.y })
+                        * (if dz == 0 { 1.0 - t.z } else { t.z });
+                    for i in 0..3 {
+                        v[i] += at[i] * w;
+                    }
+                }
+            }
+        }
+        let tunnel = v[0] * v[0] + v[1] * v[1] < 0.0045;
+        let cavern = p.y < 48 && v[2] > 0.42 - (48 - p.y) as f32 * 0.002;
+        if tunnel || cavern { if p.y <= LAVA_LEVEL { Block::LAVA } else { Block::AIR } } else { Block::STONE }
     }
 
     fn ore_or_stone(&self, x: i32, y: i32, z: i32) -> Block {

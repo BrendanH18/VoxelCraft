@@ -26,6 +26,7 @@ pub(super) enum Widget {
     Fov,
     Sensitivity,
     Volume,
+    MusicVolume,
     Vsync,
     Graphics,
     Fps,
@@ -47,7 +48,10 @@ const HANDLE_W: f32 = 8.0;
 
 impl Widget {
     fn is_slider(self) -> bool {
-        matches!(self, Widget::RenderDistance | Widget::Fov | Widget::Sensitivity | Widget::Volume)
+        matches!(
+            self,
+            Widget::RenderDistance | Widget::Fov | Widget::Sensitivity | Widget::Volume | Widget::MusicVolume
+        )
     }
 
     fn label(self, s: &Settings, difficulty: Difficulty, hardcore: bool) -> String {
@@ -61,6 +65,10 @@ impl Widget {
             Widget::Volume => match (s.volume * 100.0).round() as i32 {
                 0 => "Volume: Off".into(),
                 v => format!("Volume: {v}%"),
+            },
+            Widget::MusicVolume => match (s.music_volume * 100.0).round() as i32 {
+                0 => "Music: Off".into(),
+                v => format!("Music: {v}%"),
             },
             Widget::Vsync => format!("VSync: {}", if s.vsync { "On" } else { "Off" }),
             Widget::Graphics => format!("Graphics: {}", if s.enhanced_graphics { "Enhanced" } else { "Classic" }),
@@ -80,6 +88,7 @@ impl Widget {
             Widget::Fov => frac(s.fov, FOV),
             Widget::Sensitivity => frac(s.sensitivity, SENSITIVITY),
             Widget::Volume => s.volume,
+            Widget::MusicVolume => s.music_volume,
             _ => 0.0,
         }
     }
@@ -95,6 +104,7 @@ impl Widget {
             Widget::Fov => s.fov = lerp(FOV).round(),
             // Steps of 5%.
             Widget::Sensitivity => s.sensitivity = (lerp(SENSITIVITY) * 20.0).round() / 20.0,
+            Widget::MusicVolume => s.music_volume = (t * 100.0).round() / 100.0,
             Widget::Volume => s.volume = (t * 100.0).round() / 100.0,
             _ => {}
         }
@@ -110,6 +120,7 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
             Widget::Fov,
             Widget::Sensitivity,
             Widget::Volume,
+            Widget::MusicVolume,
             Widget::Vsync,
             Widget::Graphics,
             Widget::Fps,
@@ -265,6 +276,7 @@ impl Game {
             self.renderer.set_vsync(s.vsync);
         }
         self.audio.set_volume(s.volume);
+        self.audio.set_music_volume(s.music_volume);
     }
 
     pub(super) fn save_settings(&self) {
@@ -331,7 +343,7 @@ mod tests {
     #[test]
     fn sliders_map_both_ways_across_their_range() {
         let mut s = Settings::default();
-        for w in [Widget::RenderDistance, Widget::Fov, Widget::Sensitivity, Widget::Volume] {
+        for w in [Widget::RenderDistance, Widget::Fov, Widget::Sensitivity, Widget::Volume, Widget::MusicVolume] {
             w.set_value(0.0, &mut s);
             assert!(w.value(&s).abs() < 1e-4, "{w:?} at min");
             w.set_value(1.0, &mut s);
@@ -349,6 +361,7 @@ mod tests {
             Widget::Fov,
             Widget::Sensitivity,
             Widget::Volume,
+            Widget::MusicVolume,
             Widget::Vsync,
             Widget::Graphics,
             Widget::Fps,
@@ -359,6 +372,7 @@ mod tests {
                 fov: 110.0,
                 sensitivity: 3.0,
                 volume: 1.0,
+                music_volume: 1.0,
                 vsync: false,
                 enhanced_graphics: true,
                 show_fps: true,

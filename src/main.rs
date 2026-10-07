@@ -6,7 +6,9 @@ mod bench;
 mod data;
 mod render;
 
-use voxelcraft::{crafting, enchant, entity, inventory, item, mesh, mining, physics, player, simulation, world};
+use voxelcraft::{
+    crafting, enchant, entity, inventory, item, mesh, mining, physics, player, simulation, smithing, world,
+};
 
 use winit::event_loop::{ControlFlow, EventLoop};
 
@@ -77,6 +79,7 @@ pub struct Args {
     pub mute: bool,
     pub volume: Option<f32>,
     pub export_sounds: bool,
+    pub export_music: bool,
 }
 
 const USAGE: &str = "\
@@ -111,7 +114,7 @@ voxelcraft [options]
                     (screenshots)
   --open-menu <m>   start with a menu open: pause, options, title or create (screenshots)
   --open-block x,y,z  open the furnace, chest, brewing stand, enchanting
-                    table or anvil there once loaded (screenshots)
+                    table, anvil or smithing table once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water; b may be a raw block id)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
@@ -142,7 +145,7 @@ voxelcraft [options]
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
   --mute            start with sound muted (M toggles in game)
   --volume <0..1>   master volume (default: 1, or the saved option)
-  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit";
+  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
@@ -189,6 +192,7 @@ fn parse_args() -> Result<Args, String> {
         mute: false,
         volume: None,
         export_sounds: false,
+        export_music: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -349,6 +353,7 @@ fn parse_args() -> Result<Args, String> {
             "--volume" => {
                 args.volume = Some(value("--volume")?.parse::<f32>().map_err(|_| "bad --volume")?.clamp(0.0, 1.0))
             }
+            "--export-music" => args.export_music = true,
             "--export-sounds" => args.export_sounds = true,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n\n{USAGE}")),
@@ -413,6 +418,13 @@ fn main() {
             std::process::exit(2);
         }
     };
+    if args.export_music {
+        if let Err(e) = audio::export_music("target/music", args.seed.unwrap_or(42)) {
+            eprintln!("music export failed: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if args.export_sounds {
         if let Err(e) = audio::export_sounds("target/sounds") {
             eprintln!("export failed: {e}");

@@ -120,6 +120,16 @@ impl Game {
                 self.work[i] = self.move_to_player(stack);
             }
             SlotRef::AnvilResult => self.quick_take_anvil(),
+            SlotRef::SmithTemplate | SlotRef::SmithBase | SlotRef::SmithAddition => {
+                let i = match slot {
+                    SlotRef::SmithTemplate => 0,
+                    SlotRef::SmithBase => 1,
+                    _ => 2,
+                };
+                let Some(stack) = self.work[i].take() else { return };
+                self.work[i] = self.move_to_player(stack);
+            }
+            SlotRef::SmithResult => self.quick_take_smithing(),
             SlotRef::Armor(piece) => {
                 if !self.inventory.can_unequip(piece, self.mode.is_creative()) {
                     return;
@@ -200,6 +210,12 @@ impl Game {
             }
             Container::Anvil(_) => {
                 let left = self.move_to_anvil(stack);
+                if left != Some(stack) {
+                    return left;
+                }
+            }
+            Container::Smithing(_) => {
+                let left = self.move_to_smithing(stack);
                 if left != Some(stack) {
                     return left;
                 }

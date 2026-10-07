@@ -47,6 +47,7 @@ impl Game {
             }
             // An anvil can break in use, or fall away.
             Container::Anvil(pos) => !self.world.get_block(pos).is_some_and(|b| b.is_anvil()),
+            Container::Smithing(pos) => self.world.get_block(pos) != Some(Block::SMITHING_TABLE),
             _ => false,
         };
         if gone && self.inventory_open {

@@ -67,7 +67,7 @@ impl Game {
         let Some(i) = self.mob_target() else { return false };
         self.mobs.attack_held = true;
         if self.mobs.attack_cooldown <= 0.0 {
-            self.mobs.attack_cooldown = entity::ATTACK_COOLDOWN;
+            self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
             // A hit while falling is a critical one, like Minecraft.
             let p = &self.player;
             let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
@@ -115,7 +115,7 @@ impl Game {
         let Some(hit) = self.fight_target() else { return false };
         self.mobs.attack_held = true;
         if self.mobs.attack_cooldown <= 0.0 {
-            self.mobs.attack_cooldown = entity::ATTACK_COOLDOWN;
+            self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
             let p = &self.player;
             let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
             let base = crate::mining::attack_damage(self.held_item()) + self.vitals.effects.attack_bonus();
@@ -204,7 +204,9 @@ impl Game {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
                     if self.damage_player_armored(self.difficulty.mob_damage(damage), cause) > 0.0 {
-                        self.player.vel += knockback.as_dvec3();
+                        let resistance = self.inventory.knockback_resistance();
+                        self.player.vel +=
+                            crate::simulation::survival::knockback_taken(knockback.as_dvec3(), resistance);
                     }
                 }
                 EntityEvent::PlayerHit { player, damage, knockback, cause } => {
@@ -268,14 +270,22 @@ impl Game {
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
                     if self.mode.is_survival() && !self.vitals.is_dead() {
-                        shove(&mut self.player.vel, velocity.as_dvec3());
+                        let push = crate::simulation::survival::knockback_taken(
+                            velocity.as_dvec3(),
+                            self.inventory.knockback_resistance(),
+                        );
+                        shove(&mut self.player.vel, push);
                     }
                 }
                 EntityEvent::Shove { player, velocity } => {
                     if let Some(bot) = self.agents.by_id_mut(player)
                         && !bot.agent.creative
                     {
-                        shove(&mut bot.agent.player.vel, velocity.as_dvec3());
+                        let push = crate::simulation::survival::knockback_taken(
+                            velocity.as_dvec3(),
+                            bot.agent.inventory.knockback_resistance(),
+                        );
+                        shove(&mut bot.agent.player.vel, push);
                     }
                 }
                 EntityEvent::BuildGateway { pos } => self.world.build_gateway(pos),
@@ -357,7 +367,9 @@ impl Game {
             && self.damage_player_armored(damage, cause) > 0.0
         {
             let away = (mid - center).normalize_or(DVec3::Y);
-            self.player.vel += away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
+            let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
+            self.player.vel +=
+                crate::simulation::survival::knockback_taken(push, self.inventory.knockback_resistance());
         }
         if self.arrival.is_some() {
             return;

@@ -335,8 +335,25 @@ full performance display instead of duplicating the compact counter.
   any arrangement on a crafting table make one Netherite ingot; nine
   ingots make a block of Netherite, which crafts back into nine ingots.
   Debris and Netherite blocks resist explosions, and their dropped items,
-  scrap and ingots survive fire and float in lava. Netherite equipment and
-  smithing upgrades are not implemented yet.
+  scrap and ingots survive fire and float in lava.
+- Netherite tools and armor (Java's stats): tools last 2031 uses, dig at
+  speed 9 and harvest everything diamond can. Sword/shovel/pickaxe/axe/hoe
+  attacks do 8/6.5/6/10/1 damage at 1.6/1/1.2/1/4 attacks per second.
+  Armor pieces last 407/592/555/481 hits and give
+  diamond's armor points plus 3 toughness each (big hits get through less)
+  and 0.1 knockback resistance each. Enchantability 15, repaired with
+  Netherite ingots on an anvil, and dropped Netherite gear survives fire
+  and lava. They can't be crafted: diamond gear is upgraded with a
+  Netherite upgrade smithing template and an ingot at a smithing table
+  (two iron over four planks; axe; 1.5 furnace operations). Smithing uses
+  one of each input and keeps the base's damage, enchantments, prior-work
+  penalty and plain custom name. It works in the host, controller and
+  agent (`smithing`) interfaces. Seven diamonds around a template over
+  netherrack copy it (two templates). Templates are reserved for bastion
+  loot: guaranteed in treasure chests and 10% in bridge, hoglin-stable and
+  generic chests, but bastions do not generate yet, so use Creative or
+  `give netherite_upgrade_smithing_template`. Diamond armor now also has
+  its toughness of 2 per piece.
 - Lapis lazuli ore below y 32 (stone pickaxe or better) drops 4-9 lapis
   (with fortune's ore bonus) and 2-5 experience; nine make a block of
   lapis lazuli and back.
