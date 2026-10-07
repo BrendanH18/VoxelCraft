@@ -37,6 +37,8 @@ pub struct MoveInput {
 }
 
 pub struct Player {
+    /// Distance-driven render animation, shared by host, controllers and CLI players.
+    pub animation: crate::entity::player_model::WalkAnimation,
     /// Feet position (bottom centre of the bounding box).
     pub pos: DVec3,
     pub vel: DVec3,
@@ -46,6 +48,8 @@ pub struct Player {
     pub flying: bool,
     /// Creative mode: flight allowed.
     pub can_fly: bool,
+    /// Spectator mode: movement ignores block collision.
+    pub noclip: bool,
     pub in_water: bool,
     /// Jumped off the ground during the last `update` (hunger).
     pub jumped: bool,
@@ -82,6 +86,7 @@ impl Default for Modifiers {
 impl Player {
     pub fn new(pos: DVec3) -> Self {
         Self {
+            animation: Default::default(),
             pos,
             vel: DVec3::ZERO,
             yaw: 0.0,
@@ -89,6 +94,7 @@ impl Player {
             on_ground: false,
             flying: false,
             can_fly: false,
+            noclip: false,
             in_water: false,
             jumped: false,
             climbing: false,
@@ -113,6 +119,13 @@ impl Player {
     pub fn look(&mut self, dx: f32, dy: f32) {
         self.yaw = (self.yaw + dx).rem_euclid(std::f32::consts::TAU);
         self.pitch = (self.pitch - dy).clamp(-1.5533, 1.5533); // ±89°
+    }
+
+    /// Track the source of damage for Java's directional camera tilt.
+    pub fn hurt_from(&mut self, push: DVec3) {
+        if push.with_y(0.0).length_squared() > 1e-8 {
+            self.animation.hurt_direction = (-push.z).atan2(-push.x) as f32 - self.yaw + std::f32::consts::FRAC_PI_2;
+        }
     }
 
     pub fn head_in_water(&self, world: &World) -> bool {
@@ -196,12 +209,20 @@ impl Player {
         if !world.is_loaded(self.pos.floor().as_ivec3()) {
             return;
         }
+        let before = self.pos;
         let steps = (dt / MAX_STEP).ceil().max(1.0) as u32;
         let h = dt / steps as f64;
         self.jumped = false;
         for _ in 0..steps {
             self.step(h, input, world);
         }
+        self.animation.update(
+            (self.pos - before).with_y(0.0).length() as f32,
+            dt as f32,
+            self.yaw,
+            self.flying,
+            self.on_ground,
+        );
     }
 
     fn step(&mut self, dt: f64, input: MoveInput, world: &World) {
@@ -295,6 +316,12 @@ impl Player {
         }
         if self.sneaking && self.on_ground {
             self.hold_edges(world, &mut delta);
+        }
+        if self.noclip {
+            self.pos += delta;
+            self.on_ground = false;
+            self.pushing_wall = false;
+            return;
         }
         let hit = if self.on_ground && !self.flying {
             physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, SHAPE, STEP_HEIGHT)

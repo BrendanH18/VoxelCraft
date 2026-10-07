@@ -7,7 +7,7 @@ mod data;
 mod render;
 
 use voxelcraft::{
-    crafting, enchant, entity, inventory, item, mesh, mining, particles, physics, player, simulation, world,
+    crafting, enchant, entity, inventory, item, mesh, mining, particles, physics, player, simulation, smithing, world,
 };
 
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -32,6 +32,8 @@ pub struct Args {
     pub new_world: bool,
     pub bench: bool,
     pub screenshot: Option<String>,
+    /// Session-only perspective for screenshot inspection.
+    pub camera: voxelcraft::camera::CameraMode,
     pub bench_render: bool,
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
@@ -52,7 +54,8 @@ pub struct Args {
     /// Opens the container at this block once loaded (screenshots).
     pub open_block: Option<glam::IVec3>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
-    pub spawn: Vec<(entity::MobKind, glam::IVec3)>,
+    /// The optional armor material forces a full set on a zombie or skeleton.
+    pub spawn: Vec<(entity::MobKind, glam::IVec3, Option<entity::armor::Equipped>)>,
     /// Seconds to keep running after loading before `--screenshot`.
     pub wait: f64,
     /// x,y,z,yaw_deg,pitch_deg
@@ -79,6 +82,7 @@ pub struct Args {
     pub mute: bool,
     pub volume: Option<f32>,
     pub export_sounds: bool,
+    pub export_music: bool,
 }
 
 const USAGE: &str = "\
@@ -111,9 +115,9 @@ voxelcraft [options]
                     inventory, with play, pause, inventory, crafting or
                     palette (creative) open
                     (screenshots)
-  --open-menu <m>   start with a menu open: pause, options or title (screenshots)
+  --open-menu <m>   start with a menu open: pause, options, title or create (screenshots)
   --open-block x,y,z  open the furnace, chest, brewing stand, enchanting
-                    table or anvil there once loaded (screenshots)
+                    table, anvil or smithing table once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water; b may be a raw block id)
   --health <0..20>  starting health in half hearts (0 opens the death screen)
@@ -131,20 +135,24 @@ voxelcraft [options]
   --wear item       put on a piece of armor at startup (repeatable)
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
-  --spawn kind,x,y,z  spawn a mob once loaded (repeatable; pig, cow, sheep,
+  --spawn kind,x,y,z[,material[,glint]]
+                    spawn a mob once loaded (repeatable; pig, cow, sheep,
                     chicken, zombie, skeleton, creeper, spider,
                     zombified_piglin, enderman, blaze or silverfish; y may be ~
-                    for the terrain surface, e.g. zombie,4,~,10)
+                    for the terrain surface, e.g. zombie,4,~,10). material
+                    (leather, chainmail, iron, gold, diamond, netherite) and
+                    glint equip a zombie or skeleton
   --wait <secs>     with --screenshot: keep simulating this long first
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies or rain (clear, rain)
   --dimension <d>   start in overworld, nether or end (arriving through a
                     portal unless --pose is given)
   --screenshot <f>  wait for the world to load, save a PNG and exit
+  --camera <first|third|front>  starting camera perspective (F5 cycles in game)
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
   --mute            start with sound muted (M toggles in game)
   --volume <0..1>   master volume (default: 1, or the saved option)
-  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit";
+  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
@@ -163,6 +171,7 @@ fn parse_args() -> Result<Args, String> {
         new_world: false,
         bench: false,
         screenshot: None,
+        camera: Default::default(),
         bench_render: false,
         debug_overlay: false,
         mode: None,
@@ -191,6 +200,7 @@ fn parse_args() -> Result<Args, String> {
         mute: false,
         volume: None,
         export_sounds: false,
+        export_music: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -244,8 +254,8 @@ fn parse_args() -> Result<Args, String> {
             }
             "--open-menu" => {
                 let m = value("--open-menu")?;
-                if !matches!(m.as_str(), "pause" | "options" | "title") {
-                    return Err(format!("--open-menu: expected pause, options or title, got {m}"));
+                if !matches!(m.as_str(), "pause" | "options" | "title" | "create") {
+                    return Err(format!("--open-menu: expected pause, options, title or create, got {m}"));
                 }
                 args.open_menu = Some(m);
             }
@@ -274,25 +284,47 @@ fn parse_args() -> Result<Args, String> {
                     .collect::<Result<_, _>>()?;
                 // A block name, or a raw id for oriented states (stairs facing east...).
                 let name = parts[3].trim();
-                let block = (name.parse::<u8>().ok().map(world::block::Block))
-                    .filter(|b| *b == world::block::Block::AIR || b.kind() != world::block::RenderKind::Invisible)
-                    .or_else(|| world::block::Block::from_name(name))
-                    .ok_or_else(bad)?;
+                let block = (name
+                    .parse::<u16>()
+                    .ok()
+                    .filter(|&id| (id as usize) < world::block::STATE_CAPACITY)
+                    .map(world::block::Block))
+                .filter(|b| *b == world::block::Block::AIR || b.kind() != world::block::RenderKind::Invisible)
+                .or_else(|| world::block::Block::from_name(name))
+                .ok_or_else(bad)?;
                 args.place.push((glam::IVec3::new(n[0], n[1], n[2]), block));
             }
             "--spawn" => {
                 let v = value("--spawn")?;
                 let parts: Vec<&str> = v.split(',').map(str::trim).collect();
                 let bad = || format!("--spawn needs kind,x,y,z (got {v})");
-                if parts.len() != 4 {
+                if !(4..=6).contains(&parts.len()) {
                     return Err(bad());
                 }
                 let kind = entity::MobKind::from_name(parts[0]).ok_or_else(bad)?;
-                let n: Vec<i32> = parts[1..]
+                let n: Vec<i32> = parts[1..4]
                     .iter()
                     .map(|s| if *s == "~" { Ok(i32::MIN) } else { s.parse().map_err(|_| bad()) })
                     .collect::<Result<_, _>>()?;
-                args.spawn.push((kind, glam::IVec3::new(n[0], n[1], n[2])));
+                let armor = if parts.len() >= 5 {
+                    if !matches!(kind, entity::MobKind::Zombie | entity::MobKind::Skeleton) {
+                        return Err("--spawn armor is only for zombies and skeletons".into());
+                    }
+                    let material = entity::armor::ArmorKind::from_name(parts[4])
+                        .ok_or_else(|| format!("--spawn: unknown armor {}", parts[4]))?;
+                    let glint = if parts.len() == 6 {
+                        if parts[5] != "glint" {
+                            return Err("--spawn: expected glint after the armor material".into());
+                        }
+                        true
+                    } else {
+                        false
+                    };
+                    Some(entity::armor::Equipped { kind: material, glint })
+                } else {
+                    None
+                };
+                args.spawn.push((kind, glam::IVec3::new(n[0], n[1], n[2]), armor));
             }
             "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
@@ -342,6 +374,14 @@ fn parse_args() -> Result<Args, String> {
                 let item = item::Item::from_name(v.trim()).filter(|i| i.as_armor().is_some());
                 args.wear.push(item.ok_or(format!("--wear: not armor: {v}"))?);
             }
+            "--camera" => {
+                args.camera = match value("--camera")?.as_str() {
+                    "first" => voxelcraft::camera::CameraMode::First,
+                    "third" => voxelcraft::camera::CameraMode::Third,
+                    "front" => voxelcraft::camera::CameraMode::Front,
+                    _ => return Err("--camera must be first, third or front".into()),
+                }
+            }
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--pose" => {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();
@@ -351,6 +391,7 @@ fn parse_args() -> Result<Args, String> {
             "--volume" => {
                 args.volume = Some(value("--volume")?.parse::<f32>().map_err(|_| "bad --volume")?.clamp(0.0, 1.0))
             }
+            "--export-music" => args.export_music = true,
             "--export-sounds" => args.export_sounds = true,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n\n{USAGE}")),
@@ -415,6 +456,13 @@ fn main() {
             std::process::exit(2);
         }
     };
+    if args.export_music {
+        if let Err(e) = audio::export_music("target/music", args.seed.unwrap_or(42)) {
+            eprintln!("music export failed: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if args.export_sounds {
         if let Err(e) = audio::export_sounds("target/sounds") {
             eprintln!("export failed: {e}");

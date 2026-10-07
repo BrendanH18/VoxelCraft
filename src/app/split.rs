@@ -105,9 +105,15 @@ impl Game {
     }
 
     /// Fog seen by `player`, in the frame's sky.
-    pub(super) fn fog(&self, scene: &Scene, player: &crate::player::Player) -> Fog {
-        let in_lava = player.head_in_lava(&self.world);
-        let underwater = in_lava || player.head_in_water(&self.world);
+    pub(super) fn fog(&self, scene: &Scene, camera: DVec3) -> Fog {
+        let cell = camera.floor().as_ivec3();
+        let fluid = self.world.get_block(cell).filter(|b| b.is_water() || b.is_lava()).filter(|b| {
+            let above = self.world.get_block(cell + glam::IVec3::Y);
+            let covered = above.is_some_and(|a| if b.is_water() { a.is_water() } else { a.is_lava() });
+            camera.y - camera.y.floor() < 1.0 - if covered { 0.0 } else { b.fluid_drop() as f64 / 16.0 }
+        });
+        let in_lava = fluid.is_some_and(|b| b.is_lava());
+        let underwater = fluid.is_some();
         let view_dist = (self.world.render_distance() * 32) as f32;
         let horizon = scene.sky.horizon;
         let (color, start, end) = if in_lava {
@@ -157,7 +163,7 @@ impl Game {
                 bot.seen_swings = a.swings;
                 bot.hand.swing();
             }
-            bot.hand.update(dt, a.inventory.get(a.selected).map(|s| s.item), walked, a.player.on_ground);
+            bot.hand.update(dt, a.inventory.get(a.selected).map(|s| s.item));
         }
     }
 
@@ -169,9 +175,9 @@ impl Game {
             let bot = &self.agents.players[name];
             let a = &bot.agent;
             let feet = a.previous_pos.lerp(a.player.pos, scene.alpha);
-            let camera = feet + (a.player.eye() - a.player.pos);
-            let forward = a.player.forward();
-            let fog = self.fog(scene, &a.player);
+            let eye = feet + (a.player.eye() - a.player.pos);
+            let (camera, forward) = bot.camera.view(&self.world, eye, a.player.forward());
+            let fog = self.fog(scene, camera);
             let models = self.block_models(scene.alpha);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
@@ -181,30 +187,63 @@ impl Game {
             let crack = pad
                 .map_or_else(|| a.breaking(&self.world), |p| p.0)
                 .filter(|&(_, f)| f > 0.0)
-                .map(|(p, f)| (p, crate::world::block::tex::CRACK_0 + (f * 10.0).min(9.0) as u8));
+                .map(|(p, f)| (p, crate::world::block::tex::CRACK_0 + (f * 10.0).min(9.0) as u16));
             let ui = if self.show_hud || a.vitals.is_dead() {
                 self.follower_ui(name, bot, (vp.width, vp.height), scene.now)
             } else {
                 Vec::new()
             };
             // Everyone else is visible from this view, the host included.
-            let mut others: Vec<(&crate::player::Player, DVec3)> = Vec::new();
-            if !self.vitals.is_dead() {
-                others.push((&self.player, host_feet));
+            let mut others: Vec<(&crate::player::Player, DVec3, crate::entity::model::PlayerAppearance)> = Vec::new();
+            if !self.vitals.is_dead() || self.vitals.since_damage() < 1.0 {
+                others.push((
+                    &self.player,
+                    host_feet,
+                    self.hand.appearance(
+                        &self.vitals,
+                        (self.actions.eat_timer / super::EAT_TIME) as f32,
+                        scene.alpha,
+                        self.inventory.armor,
+                    ),
+                ));
             }
             for (other, b) in &self.agents.players {
-                if other != name && b.active && !b.agent.vitals.is_dead() {
-                    others.push((&b.agent.player, b.agent.previous_pos.lerp(b.agent.player.pos, scene.alpha)));
+                if other != name && b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0) {
+                    others.push((
+                        &b.agent.player,
+                        b.agent.previous_pos.lerp(b.agent.player.pos, scene.alpha),
+                        b.hand.appearance(&b.agent.vitals, b.agent.eating(), scene.alpha, b.agent.inventory.armor),
+                    ));
                 }
             }
             let verts = self.mobs.entities.mesh(camera, forward, fog.end, scene.time, scene.alpha);
             super::push_avatars(&self.world, &others, camera, fog.end, scene.time, verts);
+            if !bot.camera.first_person() {
+                crate::entity::model::build_player(
+                    &a.player,
+                    feet,
+                    camera,
+                    (
+                        crate::entity::sky_light(&self.world, eye),
+                        self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
+                    ),
+                    scene.time,
+                    bot.hand.appearance(&a.vitals, pad.map_or(a.eating(), |p| p.1), scene.alpha, a.inventory.armor),
+                    verts,
+                );
+            }
             self.renderer.set_entities(verts);
             super::weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
             self.renderer.set_weather(&self.weather_verts);
             let params = FrameParams {
                 camera,
                 forward,
+                view_effect: voxelcraft::camera::view_effect(
+                    &a.player,
+                    &a.vitals,
+                    scene.alpha as f32,
+                    self.settings.view_bobbing,
+                ),
                 fov_y: self.settings.fov.to_radians(),
                 sky_color: fog.color.map(|c| c as f64),
                 fog_color: fog.color,
@@ -219,7 +258,7 @@ impl Game {
                 highlight,
                 crack,
                 block_models: models,
-                hand: (self.show_hud && !a.vitals.is_dead()).then(|| {
+                hand: (bot.camera.first_person() && self.show_hud && !a.vitals.is_dead()).then(|| {
                     let eating = pad.map_or(a.eating(), |p| p.1);
                     bot.hand.view(eating, crate::entity::sky_light(&self.world, camera), self.torch_light(camera))
                 }),

@@ -21,7 +21,7 @@ use crate::world::chunk::ChunkData;
 use crate::world::storage::Storage;
 use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 
-use super::{Game, GameMode};
+use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
 pub(super) const DIMENSION_KEYS: [&str; 7] = ["furnaces", "chests", "items", "orbs", "spawners", "brewing", "dragon"];
@@ -259,7 +259,7 @@ impl Game {
         };
         self.relocate_agents();
         self.player.vel = DVec3::ZERO;
-        self.player.flying = self.player.flying && self.mode == GameMode::Creative;
+        self.player.flying = self.player.flying && self.mode.can_fly();
         self.vitals.reset_fall();
         self.arrival = None;
         let sound = Sound::Place(Material::Glass);
@@ -350,7 +350,7 @@ impl Game {
     }
 
     pub(super) fn portal_needed(&self) -> f32 {
-        if self.mode == GameMode::Creative { CREATIVE_PORTAL_TIME } else { PORTAL_TIME }
+        if self.mode.is_creative() { CREATIVE_PORTAL_TIME } else { PORTAL_TIME }
     }
 
     /// Right-click with flint and steel: primes TNT or lights a portal/fire
@@ -363,7 +363,7 @@ impl Game {
             self.world.set_block(pos, Block::AIR);
             self.mobs.entities.prime_tnt(pos, false);
             self.audio.play(Sound::Fuse, Some(pos.as_dvec3()), 1.0, (0.95, 1.05));
-            if self.mode == GameMode::Survival && self.inventory.wear(self.actions.selected, 1) {
+            if self.mode.is_survival() && self.inventory.wear(self.actions.selected, 1) {
                 self.show_popup("Flint and steel broke");
             }
             return true;
@@ -373,7 +373,7 @@ impl Game {
             return true;
         }
         self.audio.play(Sound::Place(Material::Stone), Some(pos.as_dvec3()), 0.7, (1.6, 1.9));
-        if self.mode == GameMode::Survival && self.inventory.wear(self.actions.selected, 1) {
+        if self.mode.is_survival() && self.inventory.wear(self.actions.selected, 1) {
             self.show_popup("Flint and steel broke");
         }
         if self.world.get_block(at) == Some(Block::NETHER_PORTAL) {

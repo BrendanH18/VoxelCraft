@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn netherite_materials_survive_fire_and_lava_but_still_expire() {
+    fn netherite_items_survive_fire_and_lava_but_still_expire() {
         let mut world = Grid::flat(0);
         let mut rng = Rng::new(31);
         for hazard in [Block::LAVA, Block::FIRE] {
@@ -186,11 +186,15 @@ mod tests {
                 Item::NETHERITE_SCRAP,
                 Item::NETHERITE_INGOT,
                 Block::NETHERITE_BLOCK.into(),
+                Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Netherite),
+                Item::armor(crate::item::ArmorPiece::Helmet, crate::item::ArmorMaterial::Netherite),
+                Item::NETHERITE_UPGRADE,
                 Item::GOLD_INGOT,
             ] {
                 let mut item = ItemEntity::new(Stack::new(material, 1), DVec3::splat(0.5), DVec3::ZERO, 0.0, &mut rng);
-                assert_eq!(item.update(0.05, &world), material != Item::GOLD_INGOT);
-                if material != Item::GOLD_INGOT {
+                let resistant = !matches!(material, Item::GOLD_INGOT | Item::NETHERITE_UPGRADE);
+                assert_eq!(item.update(0.05, &world), resistant);
+                if resistant {
                     item.age = LIFETIME;
                     assert!(!item.update(0.05, &world), "fire resistance does not prevent despawning");
                 }
@@ -199,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn netherite_materials_float_to_the_lava_surface() {
+    fn netherite_items_float_to_the_lava_surface() {
         let mut world = Grid::flat(0);
         for x in -2..=2 {
             for z in -2..=2 {
@@ -209,9 +213,14 @@ mod tests {
             }
         }
         let mut rng = Rng::new(4);
-        for material in
-            [Block::ANCIENT_DEBRIS.into(), Item::NETHERITE_SCRAP, Item::NETHERITE_INGOT, Block::NETHERITE_BLOCK.into()]
-        {
+        for material in [
+            Block::ANCIENT_DEBRIS.into(),
+            Item::NETHERITE_SCRAP,
+            Item::NETHERITE_INGOT,
+            Block::NETHERITE_BLOCK.into(),
+            Item::tool(crate::item::ToolKind::Pickaxe, crate::item::Tier::Netherite),
+            Item::armor(crate::item::ArmorPiece::Boots, crate::item::ArmorMaterial::Netherite),
+        ] {
             let mut item =
                 ItemEntity::new(Stack::new(material, 1), DVec3::new(0.5, 1.0, 0.5), DVec3::ZERO, 0.0, &mut rng);
             assert!(settle(&mut item, &world, 5.0));

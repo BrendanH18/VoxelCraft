@@ -6,6 +6,7 @@
 //! hit-testing use, like the inventory screen.
 
 use crate::render::ui::{Color, Ui, WHITE};
+use crate::simulation::difficulty::Difficulty;
 
 use super::Game;
 use super::settings::{FOV, RENDER_DISTANCE, SENSITIVITY, Settings};
@@ -25,9 +26,12 @@ pub(super) enum Widget {
     Fov,
     Sensitivity,
     Volume,
+    MusicVolume,
     Vsync,
     Graphics,
     Fps,
+    ViewBobbing,
+    Difficulty,
     Particles,
     Done,
 }
@@ -46,10 +50,13 @@ const HANDLE_W: f32 = 8.0;
 
 impl Widget {
     fn is_slider(self) -> bool {
-        matches!(self, Widget::RenderDistance | Widget::Fov | Widget::Sensitivity | Widget::Volume)
+        matches!(
+            self,
+            Widget::RenderDistance | Widget::Fov | Widget::Sensitivity | Widget::Volume | Widget::MusicVolume
+        )
     }
 
-    fn label(self, s: &Settings) -> String {
+    fn label(self, s: &Settings, difficulty: Difficulty, hardcore: bool) -> String {
         match self {
             Widget::Resume => "Back to Game".into(),
             Widget::Options => "Options...".into(),
@@ -61,9 +68,15 @@ impl Widget {
                 0 => "Volume: Off".into(),
                 v => format!("Volume: {v}%"),
             },
+            Widget::MusicVolume => match (s.music_volume * 100.0).round() as i32 {
+                0 => "Music: Off".into(),
+                v => format!("Music: {v}%"),
+            },
             Widget::Vsync => format!("VSync: {}", if s.vsync { "On" } else { "Off" }),
             Widget::Graphics => format!("Graphics: {}", if s.enhanced_graphics { "Enhanced" } else { "Classic" }),
             Widget::Fps => format!("FPS Counter: {}", if s.show_fps { "On" } else { "Off" }),
+            Widget::ViewBobbing => format!("View Bobbing: {}", if s.view_bobbing { "On" } else { "Off" }),
+            Widget::Difficulty => format!("Difficulty: {difficulty}{}", if hardcore { " Locked" } else { "" }),
             Widget::Particles => format!("Particles: {}", s.particles.name()),
             Widget::Done => "Done".into(),
         }
@@ -79,6 +92,7 @@ impl Widget {
             Widget::Fov => frac(s.fov, FOV),
             Widget::Sensitivity => frac(s.sensitivity, SENSITIVITY),
             Widget::Volume => s.volume,
+            Widget::MusicVolume => s.music_volume,
             _ => 0.0,
         }
     }
@@ -94,6 +108,7 @@ impl Widget {
             Widget::Fov => s.fov = lerp(FOV).round(),
             // Steps of 5%.
             Widget::Sensitivity => s.sensitivity = (lerp(SENSITIVITY) * 20.0).round() / 20.0,
+            Widget::MusicVolume => s.music_volume = (t * 100.0).round() / 100.0,
             Widget::Volume => s.volume = (t * 100.0).round() / 100.0,
             _ => {}
         }
@@ -109,25 +124,30 @@ fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
             Widget::Fov,
             Widget::Sensitivity,
             Widget::Volume,
+            Widget::MusicVolume,
             Widget::Vsync,
             Widget::Graphics,
             Widget::Fps,
+            Widget::ViewBobbing,
+            Widget::Difficulty,
             Widget::Particles,
             Widget::Done,
         ],
     };
-    let total = widgets.len() as f32 * (BUTTON_H + GAP) + GAP * 2.0;
+    // The added camera option also fits the shorter split-screen HUD.
+    let gap = GAP.min(((sh - widgets.len() as f32 * BUTTON_H - 24.0) / (widgets.len() as f32 + 1.0)).max(1.0));
+    let total = widgets.len() as f32 * BUTTON_H + (widgets.len() as f32 + 1.0) * gap + 20.0;
     let x = ((sw - BUTTON_W) / 2.0).floor();
-    let mut y = ((sh - total) / 2.0).floor() + 12.0;
+    let mut y = ((sh - total) / 2.0).floor() + 20.0;
     widgets
         .iter()
         .map(|&w| {
             // "Done" and "Save and Quit" sit a little apart from the rest.
             if matches!(w, Widget::Done | Widget::SaveAndQuit) {
-                y += GAP * 2.0;
+                y += gap * 2.0;
             }
             let r = [x, y, BUTTON_W, BUTTON_H];
-            y += BUTTON_H + GAP;
+            y += BUTTON_H + gap;
             (w, r)
         })
         .collect()
@@ -220,6 +240,19 @@ impl Game {
                 self.settings.show_fps = !self.settings.show_fps;
                 self.apply_settings();
             }
+            Widget::ViewBobbing => {
+                self.settings.view_bobbing = !self.settings.view_bobbing;
+                self.apply_settings();
+            }
+            Widget::Difficulty => {
+                if !self.hardcore {
+                    self.difficulty = self.difficulty.next();
+                    if self.difficulty == Difficulty::Peaceful {
+                        self.mobs.entities.despawn_hostiles();
+                    }
+                    self.show_popup(&format!("Difficulty: {}", self.difficulty));
+                }
+            }
             Widget::Particles => self.settings.particles = self.settings.particles.next(),
             Widget::SaveAndQuit => return Some(MenuAction::Quit),
             _ => {}
@@ -256,6 +289,7 @@ impl Game {
             self.renderer.set_vsync(s.vsync);
         }
         self.audio.set_volume(s.volume);
+        self.audio.set_music_volume(s.music_volume);
     }
 
     pub(super) fn save_settings(&self) {
@@ -282,7 +316,7 @@ impl Game {
         let hovered = self.widget_under_cursor().map(|(w, _)| w);
         for (widget, [x, y, w, h]) in widgets {
             let hot = hovered == Some(widget) || self.menu_drag == Some(widget);
-            let label = widget.label(&self.settings);
+            let label = widget.label(&self.settings, self.difficulty, self.hardcore);
             if widget.is_slider() {
                 // Minecraft-style: a dark track with a button-like handle.
                 bevel(ui, [x, y, w, h], [0.16, 0.16, 0.16, 1.0], false);
@@ -322,7 +356,7 @@ mod tests {
     #[test]
     fn sliders_map_both_ways_across_their_range() {
         let mut s = Settings::default();
-        for w in [Widget::RenderDistance, Widget::Fov, Widget::Sensitivity, Widget::Volume] {
+        for w in [Widget::RenderDistance, Widget::Fov, Widget::Sensitivity, Widget::Volume, Widget::MusicVolume] {
             w.set_value(0.0, &mut s);
             assert!(w.value(&s).abs() < 1e-4, "{w:?} at min");
             w.set_value(1.0, &mut s);
@@ -333,16 +367,19 @@ mod tests {
         assert_eq!(s.clamped(), s, "slider values are always valid settings");
         Widget::RenderDistance.set_value(0.2, &mut s);
         assert_eq!(s.render_distance, 8);
-        assert_eq!(Widget::RenderDistance.label(&s), "Render Distance: 8 chunks");
+        assert_eq!(Widget::RenderDistance.label(&s, Difficulty::Normal, false), "Render Distance: 8 chunks");
         // Every label fits inside its button.
         for w in [
             Widget::RenderDistance,
             Widget::Fov,
             Widget::Sensitivity,
             Widget::Volume,
+            Widget::MusicVolume,
             Widget::Vsync,
             Widget::Graphics,
             Widget::Fps,
+            Widget::ViewBobbing,
+            Widget::Difficulty,
             Widget::Particles,
         ] {
             let longest = Settings {
@@ -350,12 +387,17 @@ mod tests {
                 fov: 110.0,
                 sensitivity: 3.0,
                 volume: 1.0,
+                music_volume: 1.0,
                 vsync: false,
                 enhanced_graphics: true,
                 show_fps: true,
+                view_bobbing: true,
                 particles: crate::particles::Setting::Decreased,
             };
-            assert!(Ui::text_width(&w.label(&longest)) < BUTTON_W - 8.0, "{w:?} label too wide");
+            assert!(
+                Ui::text_width(&w.label(&longest, Difficulty::Hard, false)) < BUTTON_W - 8.0,
+                "{w:?} label too wide"
+            );
         }
     }
 

@@ -56,6 +56,9 @@ impl World {
     /// `tool`: silk touch drops the block itself, fortune adds to ore and
     /// crop drops (Java's loot tables).
     pub fn spill_mined(&mut self, p: IVec3, block: Block, tool: crate::enchant::Enchants) {
+        if !self.tile_drops {
+            return;
+        }
         use crate::enchant::Enchantment;
         if tool.has(Enchantment::SilkTouch)
             && let Some(item) = crate::mining::silk_drop(block)
@@ -134,7 +137,18 @@ impl World {
 
     /// Runs random block ticks in the chunks around `player`.
     pub fn tick_random(&mut self, dt: f64, player: DVec3) {
-        self.random_ticks += dt * TICKS_PER_CHUNK;
+        self.tick_random_speed(dt, player, 3);
+    }
+
+    /// Random ticks at Java's `randomTickSpeed` (three by default).
+    pub fn tick_random_speed(&mut self, dt: f64, player: DVec3, speed: u32) {
+        self.tick_random_rules(dt, player, speed, true);
+    }
+
+    /// Random block ticks with Java's `doFireTick` controlling fire and lava
+    /// ignition while crops and other blocks continue ticking.
+    pub fn tick_random_rules(&mut self, dt: f64, player: DVec3, speed: u32, fire_tick: bool) {
+        self.random_ticks += dt * TICKS_PER_CHUNK * speed as f64 / 3.0;
         let n = self.random_ticks as u32;
         self.random_ticks -= n as f64;
         if n == 0 {
@@ -165,16 +179,20 @@ impl World {
             for _ in 0..n {
                 let r = self.roll();
                 let l = IVec3::new((r & 31) as i32, (r >> 5 & 31) as i32, (r >> 10 & 31) as i32);
-                self.random_tick(cpos * CHUNK_SIZE_I + l);
+                self.random_tick_rules(cpos * CHUNK_SIZE_I + l, fire_tick);
             }
         }
     }
 
     pub(super) fn random_tick(&mut self, p: IVec3) {
+        self.random_tick_rules(p, true);
+    }
+
+    fn random_tick_rules(&mut self, p: IVec3, fire_tick: bool) {
         let Some(b) = self.get_block(p) else { return };
         match b {
-            b if b.is_fire() => self.tick_fire_block(p, b.fire_age().unwrap()),
-            b if b.is_lava() => self.tick_lava_fire(p),
+            b if fire_tick && b.is_fire() => self.tick_fire_block(p, b.fire_age().unwrap()),
+            b if fire_tick && b.is_lava() => self.tick_lava_fire(p),
             Block::GRASS => self.tick_grass(p),
             Block::FARMLAND | Block::WET_FARMLAND => self.tick_farmland(p, b),
             b if b.is_sapling() => {
@@ -429,6 +447,14 @@ mod tests {
             world.spill_mined(IVec3::ZERO, Block::GRAVEL, silk);
         }
         assert_eq!(world.drops, vec![(IVec3::ZERO, Stack::new(Block::GRAVEL, 1)); 100]);
+    }
+
+    #[test]
+    fn disabled_tile_drops_suppresses_block_loot() {
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        world.set_tile_drops(false);
+        world.spill_block(IVec3::ZERO, Block::STONE);
+        assert!(world.drops.is_empty());
     }
 
     #[test]

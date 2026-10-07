@@ -28,6 +28,33 @@ fn night_vision(lit: vec3<f32>) -> vec3<f32> {
 }
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var blocks_sampler: sampler;
+@group(1) @binding(3) var blocks_1: texture_2d_array<f32>;
+@group(1) @binding(4) var blocks_2: texture_2d_array<f32>;
+@group(1) @binding(5) var blocks_3: texture_2d_array<f32>;
+@group(1) @binding(6) var blocks_4: texture_2d_array<f32>;
+@group(1) @binding(7) var blocks_5: texture_2d_array<f32>;
+@group(1) @binding(8) var blocks_6: texture_2d_array<f32>;
+@group(1) @binding(9) var blocks_7: texture_2d_array<f32>;
+// Specialized at startup: one array when supported, portable pages otherwise.
+const BLOCK_PAGING: bool = false;
+fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
+    if !BLOCK_PAGING { return textureSample(blocks, blocks_sampler, uv, layer); }
+    let dx = dpdx(uv);
+    let dy = dpdy(uv);
+    let local = layer & 255u;
+    switch layer >> 8u {
+        case 1u: { return textureSampleGrad(blocks_1, blocks_sampler, uv, local, dx, dy); }
+        case 2u: { return textureSampleGrad(blocks_2, blocks_sampler, uv, local, dx, dy); }
+        case 3u: { return textureSampleGrad(blocks_3, blocks_sampler, uv, local, dx, dy); }
+        case 4u: { return textureSampleGrad(blocks_4, blocks_sampler, uv, local, dx, dy); }
+        case 5u: { return textureSampleGrad(blocks_5, blocks_sampler, uv, local, dx, dy); }
+        case 6u: { return textureSampleGrad(blocks_6, blocks_sampler, uv, local, dx, dy); }
+        case 7u: { return textureSampleGrad(blocks_7, blocks_sampler, uv, local, dx, dy); }
+        default: { return textureSampleGrad(blocks, blocks_sampler, uv, local, dx, dy); }
+    }
+}
+
+
 @group(2) @binding(0) var<storage, read> quads: array<u32>;
 
 struct VsOut {
@@ -61,7 +88,9 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
     let c = order[((vi & 3u) + (w0 >> 31u)) & 3u];
     let ao = (w1 >> (8u + 2u * c)) & 3u;
     let light = (w2 >> (8u * c)) & 255u;
-    let base = vec3<u32>(w0 & 63u, (w0 >> 6u) & 63u, (w0 >> 12u) & 63u);
+    let detail = (w1 & 0x80000000u) != 0u;
+    let coord_mask = select(63u, 31u, detail);
+    let base = vec3<u32>(w0 & coord_mask, (w0 >> 6u) & coord_mask, (w0 >> 12u) & coord_mask);
 
     var local: vec3<f32>;
     var uv: vec2<f32>;
@@ -127,7 +156,9 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
     var out: VsOut;
     out.clip = g.view_proj * vec4<f32>(rel, 1.0);
     out.uv = uv;
-    out.layer = w1 & 255u;
+    let layer_high = select((w1 >> 21u) & 7u,
+        ((w0 >> 5u) & 1u) | (((w0 >> 11u) & 1u) << 1u) | (((w0 >> 17u) & 1u) << 2u), detail);
+    out.layer = (w1 & 255u) | (layer_high << 8u);
     out.shade = face_shade[face] * ao_curve[ao];
     out.dist = length(rel);
     out.rel = rel;
@@ -176,7 +207,7 @@ fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fs_opaque(in: VsOut) -> @location(0) vec4<f32> {
-    let tex = textureSample(blocks, blocks_sampler, in.uv, in.layer);
+    let tex = sample_block(in.uv, in.layer);
     return vec4<f32>(apply_fog(tex.rgb * lighting(in), in.dist), 1.0);
 }
 
@@ -185,7 +216,7 @@ fn fs_cutout(in: VsOut) -> @location(0) vec4<f32> {
     // Fire occupies layers 89..95 and animates entirely on the GPU.
     let fire = in.layer == 89u;
     let layer = select(in.layer, 89u + u32(g.sun.w * 10.0) % 7u, fire);
-    let tex = textureSample(blocks, blocks_sampler, in.uv, layer);
+    let tex = sample_block(in.uv, layer);
     if tex.a < 0.5 {
         discard;
     }
@@ -194,7 +225,7 @@ fn fs_cutout(in: VsOut) -> @location(0) vec4<f32> {
 
 @fragment
 fn fs_translucent(in: VsOut) -> @location(0) vec4<f32> {
-    let tex = textureSample(blocks, blocks_sampler, in.uv, in.layer);
+    let tex = sample_block(in.uv, in.layer);
     var color = tex.rgb * lighting(in);
     var alpha = tex.a;
     if g.environment.y > 0.5 && in.layer == 5u && in.normal.y > 0.5 && in.rel.y < 0.0 {

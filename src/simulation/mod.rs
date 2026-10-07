@@ -1,6 +1,7 @@
 //! Fixed game time and device-independent gameplay steps shared by clients
 //! and headless callers. Input and presentation stay with the caller.
 
+pub mod difficulty;
 pub mod effects;
 pub mod experience;
 pub mod survival;
@@ -57,13 +58,20 @@ impl FixedClock {
 /// Run the world systems once, in the same order for graphical and headless
 /// sessions. Streaming is independent and may be polled between ticks.
 pub fn tick_world(world: &mut World, player: DVec3) {
+    tick_world_rules(world, player, true, 3);
+}
+
+/// [`tick_world`] with the gamerules that govern world block ticks.
+pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, random_tick_speed: u32) {
     world.tick_fluids(TICK_SECONDS);
     world.tick_falling(TICK_SECONDS);
     world.tick_furnaces(TICK_SECONDS);
     world.tick_brewing(TICK_SECONDS);
-    world.tick_fire(TICK_SECONDS, player);
+    if fire_tick {
+        world.tick_fire(TICK_SECONDS, player);
+    }
     world.update_block_light();
-    world.tick_random(TICK_SECONDS, player);
+    world.tick_random_rules(TICK_SECONDS, player, random_tick_speed, fire_tick);
     world.tick_leaf_decay(TICK_SECONDS);
     world.update_block_light();
 }

@@ -47,6 +47,7 @@ pub(super) enum Tab {
     Brewing(IVec3),
     Enchanting(IVec3),
     Anvil(IVec3),
+    Smithing(IVec3),
 }
 
 impl Tab {
@@ -58,6 +59,7 @@ impl Tab {
             Tab::Brewing(_) => block == Block::BREWING_STAND,
             Tab::Enchanting(_) => block == Block::ENCHANTING_TABLE,
             Tab::Anvil(_) => block.is_anvil(),
+            Tab::Smithing(_) => block == Block::SMITHING_TABLE,
             _ => false,
         }
     }
@@ -70,6 +72,7 @@ impl Tab {
             Tab::Brewing(p) => Container::Brewing(p),
             Tab::Enchanting(p) => Container::Enchanting(p),
             Tab::Anvil(p) => Container::Anvil(p),
+            Tab::Smithing(p) => Container::Smithing(p),
             _ => Container::Inventory,
         }
     }
@@ -121,6 +124,8 @@ const ENCHANTING: [SlotRef; 5] = [
     SlotRef::EnchantOffer(2),
 ];
 const ANVIL: [SlotRef; 3] = [SlotRef::AnvilLeft, SlotRef::AnvilRight, SlotRef::AnvilResult];
+const SMITHING: [SlotRef; 4] =
+    [SlotRef::SmithTemplate, SlotRef::SmithBase, SlotRef::SmithAddition, SlotRef::SmithResult];
 const BREWING: [SlotRef; 5] = [
     SlotRef::BrewFuel,
     SlotRef::BrewIngredient,
@@ -202,7 +207,7 @@ impl Menu {
 /// player's. Lists: nine to a row.
 fn rows(tab: Tab, lists: Lists) -> usize {
     match tab {
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) => 5,
+        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) | Tab::Smithing(_) => 5,
         Tab::Chest(_) => 7,
         Tab::Crafting => lists.crafts.div_ceil(COLS),
         Tab::Palette => lists.palette.div_ceil(COLS),
@@ -216,6 +221,7 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
         Tab::Brewing(_) if row == 0 => return BREWING.len(),
         Tab::Enchanting(_) if row == 0 => return ENCHANTING.len(),
         Tab::Anvil(_) if row == 0 => return ANVIL.len(),
+        Tab::Smithing(_) if row == 0 => return SMITHING.len(),
         Tab::Crafting => lists.crafts,
         Tab::Palette => lists.palette,
         _ => return COLS,
@@ -231,8 +237,13 @@ fn slot(tab: Tab, col: usize, row: usize) -> Slot {
         Tab::Brewing(_) if row == 0 => Slot::Ref(BREWING[col]),
         Tab::Enchanting(_) if row == 0 => Slot::Ref(ENCHANTING[col]),
         Tab::Anvil(_) if row == 0 => Slot::Ref(ANVIL[col]),
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) if row == 4 => inv(col),
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) => {
+        Tab::Smithing(_) if row == 0 => Slot::Ref(SMITHING[col]),
+        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) | Tab::Smithing(_)
+            if row == 4 =>
+        {
+            inv(col)
+        }
+        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) | Tab::Smithing(_) => {
             inv(COLS * row + col)
         }
         Tab::Chest(_) if row < 3 => Slot::Ref(SlotRef::Chest(COLS * row + col)),
@@ -351,9 +362,12 @@ impl Game {
         let shown = n.min(visible);
         // The hotbar and the row above the main grid sit a little apart.
         let gap = |r: usize| match tab {
-            Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) => {
-                4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32
-            }
+            Tab::Inventory
+            | Tab::Furnace(_)
+            | Tab::Brewing(_)
+            | Tab::Enchanting(_)
+            | Tab::Anvil(_)
+            | Tab::Smithing(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
             Tab::Chest(_) => 4.0 * ((r >= 3) as u8 + (r >= 6) as u8) as f32,
             Tab::Crafting | Tab::Palette => 0.0,
         };
@@ -372,6 +386,7 @@ impl Game {
             Tab::Brewing(_) => "Brewing Stand  (fuel, ingredient, bottles)",
             Tab::Enchanting(_) => "Enchant  (item, lapis, offers)",
             Tab::Anvil(_) => "Anvil  (item, material or book, result)",
+            Tab::Smithing(_) => "Smithing  (template, diamond gear, ingot, result)",
         };
         ui.text(px + 6.0, py + 5.0, title, WHITE);
         let chest = match tab {
@@ -398,6 +413,12 @@ impl Game {
         };
         let anvil = match (tab, work[0]) {
             (Tab::Anvil(_), Some(left)) => crate::enchant::anvil_any_cost(left, work[1], bot.agent.creative),
+            _ => None,
+        };
+        let smithing = match (tab, work[0], work[1], work[2]) {
+            (Tab::Smithing(_), Some(template), Some(base), Some(addition)) => {
+                crate::smithing::upgrade(template, base, addition)
+            }
             _ => None,
         };
         if let Some(r) = anvil {
@@ -429,6 +450,10 @@ impl Game {
                     Slot::Ref(SlotRef::EnchantItem | SlotRef::AnvilLeft) => work[0],
                     Slot::Ref(SlotRef::EnchantLapis | SlotRef::AnvilRight) => work[1],
                     Slot::Ref(SlotRef::AnvilResult) => anvil.map(|r| r.output),
+                    Slot::Ref(SlotRef::SmithTemplate) => work[0],
+                    Slot::Ref(SlotRef::SmithBase) => work[1],
+                    Slot::Ref(SlotRef::SmithAddition) => work[2],
+                    Slot::Ref(SlotRef::SmithResult) => smithing,
                     Slot::Ref(_) => None,
                     Slot::Recipe(i) => crafts.get(i).copied(),
                     Slot::Palette(i) => items.get(i).map(|&item| Stack::new(item, 1)),
@@ -479,7 +504,7 @@ impl Game {
                 ui.rect(tx - 2.0, ty - 1.0, Ui::text_width(&text) + 4.0, 10.0, [0.0, 0.0, 0.0, 0.8]);
                 ui.text(tx, ty, &text, WHITE);
             } else if let Some(stack) = stack {
-                let name = stack.item.name();
+                let name = stack.display_name();
                 let tx = (x + 9.0 - Ui::text_width(name) / 2.0).clamp(0.0, (sw - Ui::text_width(name)).max(0.0));
                 let ty = (py + ph + 2.0).min(sh - 10.0);
                 ui.rect(tx - 2.0, ty - 1.0, Ui::text_width(name) + 4.0, 10.0, [0.0, 0.0, 0.0, 0.8]);
@@ -506,6 +531,7 @@ mod tests {
             (Tab::Brewing(IVec3::ZERO), Block::BREWING_STAND),
             (Tab::Enchanting(IVec3::ZERO), Block::ENCHANTING_TABLE),
             (Tab::Anvil(IVec3::ZERO), Block::ANVIL),
+            (Tab::Smithing(IVec3::ZERO), Block::SMITHING_TABLE),
         ];
         for (tab, expected) in cases {
             for (_, block) in cases {
@@ -553,6 +579,16 @@ mod tests {
         assert_eq!(f.slot(NONE), Some(Slot::Ref(SlotRef::FurnaceOutput)), "clamped to three slots");
         f.press(Nav::Down, NONE);
         assert_eq!(f.slot(NONE), inv(9 + 2));
+
+        let mut s = Menu::items(Tab::Smithing(pos));
+        s.press(Nav::Down, NONE);
+        assert_eq!(s.slot(NONE), Some(Slot::Ref(SlotRef::SmithTemplate)));
+        s.press(Nav::Right, NONE);
+        assert_eq!(s.slot(NONE), Some(Slot::Ref(SlotRef::SmithBase)));
+        s.press(Nav::Right, NONE);
+        assert_eq!(s.slot(NONE), Some(Slot::Ref(SlotRef::SmithAddition)));
+        s.press(Nav::Right, NONE);
+        assert_eq!(s.slot(NONE), Some(Slot::Ref(SlotRef::SmithResult)));
     }
 
     #[test]

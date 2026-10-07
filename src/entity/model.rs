@@ -530,7 +530,8 @@ pub fn build(
         } else {
             (FIRE, 0.0)
         };
-        for (pi, p) in pose(m, time).iter().enumerate() {
+        let posed = pose(m, time);
+        for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
             // Endermen eyes and blazes glow at full brightness.
@@ -539,6 +540,11 @@ pub fn build(
             for (ci, c) in p.boxes.iter().enumerate() {
                 push_cuboid(out, c, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
             }
+        }
+        if matches!(m.kind, MobKind::Zombie | MobKind::Skeleton) {
+            let limbs = humanoid_armor(&posed);
+            let worn = super::armor::worn_pieces(m.armor, m.armor_glint);
+            super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));
         }
         if m.burning {
             flames(out, m, rel, time);
@@ -694,6 +700,28 @@ pub fn build_orbs(orbs: &[XpOrb], camera: DVec3, max_dist: f32, time: f32, alpha
 
 const FIRE: [f32; 3] = [255.0, 120.0, 30.0];
 
+/// Standard humanoid boxes on this mob's pivots, so armor follows the pose
+/// and inflates like HumanoidArmorLayer rather than the thin bone mesh.
+fn humanoid_armor(parts: &[Part]) -> [super::player_model::Limb; 6] {
+    let box_at = |p: &Part, min: [f32; 3], max: [f32; 3], uv: [f32; 2]| super::player_model::Limb {
+        pivot: p.pivot,
+        rot: p.rot,
+        min,
+        max,
+        uv,
+    };
+    let arm = |p: &Part, uv: [f32; 2]| box_at(p, [-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], uv);
+    let leg = |p: &Part, uv: [f32; 2]| box_at(p, [-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], uv);
+    [
+        box_at(&parts[5], [-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [0.0, 0.0]),
+        box_at(&parts[0], [-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], [16.0, 16.0]),
+        arm(&parts[3], [40.0, 16.0]),
+        arm(&parts[4], [32.0, 48.0]),
+        leg(&parts[1], [0.0, 16.0]),
+        leg(&parts[2], [16.0, 48.0]),
+    ]
+}
+
 /// Appends one cuboid; `tint` blends its colour toward a colour by an amount.
 pub(super) fn push_cuboid(
     out: &mut Vec<EntityVertex>,
@@ -742,50 +770,7 @@ pub(super) fn push_cuboid(
     }
 }
 
-/// Visible hosted player avatar, using the same box model pass and lighting as mobs.
-pub fn build_player(
-    player: &crate::player::Player,
-    position: DVec3,
-    camera: DVec3,
-    sky: f32,
-    torch: f32,
-    time: f32,
-    out: &mut Vec<EntityVertex>,
-) {
-    const HEAD: &[Cuboid] = &[
-        cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [186, 132, 94], 18),
-        cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], [50, 60, 90], 0),
-        cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], [50, 60, 90], 0),
-    ];
-    const BODY: &[Cuboid] = &[cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], [28, 154, 176], 26)];
-    const ARM: &[Cuboid] = &[cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], [186, 132, 94], 18)];
-    const LEG: &[Cuboid] = &[cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], [48, 57, 120], 26)];
-    let swing = (time * 9.0).sin() * (player.vel.with_y(0.0).length() as f32 / 5.0).min(1.0) * 0.6;
-    let parts = [
-        part(BODY, [0.0; 3], Quat::IDENTITY),
-        part(HEAD, [0.0, 24.0, 0.0], Quat::from_rotation_x(-player.pitch)),
-        part(ARM, [-6.0, 22.0, 0.0], Quat::from_rotation_x(swing)),
-        part(ARM, [6.0, 22.0, 0.0], Quat::from_rotation_x(-swing)),
-        part(LEG, [-2.0, 12.0, 0.0], Quat::from_rotation_x(-swing)),
-        part(LEG, [2.0, 12.0, 0.0], Quat::from_rotation_x(swing)),
-    ];
-    let origin = (position - camera).as_vec3();
-    let body = Quat::from_rotation_y(FRAC_PI_2 - player.yaw);
-    let light = [(sky.clamp(0.0, 1.0) * 255.0) as u8, 0, 0, 0];
-    for (i, p) in parts.iter().enumerate() {
-        for c in p.boxes {
-            push_cuboid(
-                out,
-                c,
-                &|v| origin + body * (p.pivot + p.rot * v) / 16.0,
-                body * p.rot,
-                (light, (torch.clamp(0.0, 1.0) * 255.0) as u8),
-                (FIRE, 0.0),
-                i as f32,
-            );
-        }
-    }
-}
+pub use super::player_model::{PlayerAppearance, build_player};
 
 #[cfg(test)]
 mod tests {
@@ -808,6 +793,20 @@ mod tests {
         }
         assert_eq!(mob.pos, DVec3::new(12.0, 64.0, 0.0));
         assert_eq!(mob.previous_pos, DVec3::new(10.0, 64.0, 0.0));
+    }
+
+    #[test]
+    fn zombies_and_skeletons_wear_inflated_armor() {
+        let mut zombie = Mob::new(MobKind::Zombie, DVec3::new(3.0, 0.0, 0.0), 0.0);
+        zombie.armor = [Some(crate::entity::armor::ArmorKind::Chain); 4];
+        let mut out = Vec::new();
+        build(std::slice::from_ref(&zombie), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
+        assert!(out.iter().any(|v| v.torch[1] == 3));
+        let mut pig = Mob::new(MobKind::Pig, DVec3::new(3.0, 0.0, 0.0), 0.0);
+        pig.armor = zombie.armor;
+        out.clear();
+        build(std::slice::from_ref(&pig), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
+        assert!(out.iter().all(|v| v.torch[1] == 0));
     }
 
     #[test]

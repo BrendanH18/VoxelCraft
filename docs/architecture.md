@@ -9,7 +9,7 @@ covers the rendering and simulation choices behind the game.
 
 | Technique | Why |
 |---|---|
-| 32³ chunks; uniform chunks stored as a single block | Most sky and deep-rock chunks cost 1 byte instead of 32 KiB |
+| 32³ chunks; uniform, byte-ID and palette storage | Uniform chunks store one u16; ordinary dense chunks stay 32 KiB, and chunks with up to 256 extended states use 32 KiB + a 512-byte palette |
 | Greedy meshing | Merges coplanar faces with identical texture/AO/light into one quad |
 | Detail quads for shaped blocks | Stairs, fences and doors use the same 12-byte quad record, flagged to cover part of a cell in 1/16 steps, so they share the chunk passes and face culling |
 | Face-direction culling | Quads are grouped by facing per chunk; groups facing away from the camera are skipped (~45% fewer quads drawn) |
@@ -46,6 +46,42 @@ avg 2.05 ms (~490 fps) — 1708 draw calls, 0.89M quads drawn, 52 MB of quad dat
 
 Render distance is measured in 32-block chunks, so `--rd 8` is 256 blocks
 (Minecraft's 16) and `--rd 16` is 512 blocks (Minecraft's 32).
+
+## Block and texture IDs
+
+`Block(pub u16)` indexes 4096 static property entries directly. State IDs are
+append-only and must be below `world::block::STATE_CAPACITY`; unregistered
+entries remain invisible, including the unused IDs in legacy saves. Constants
+and `Block(n)` construction retain their existing shape. Generation builds a
+u16 scratch chunk, then chooses uniform storage, direct bytes for IDs below
+256, byte palette indices for at most 256 distinct states, or direct u16 IDs.
+Mesh jobs still take immutable `Arc<ChunkData>` snapshots; edits copy on write.
+Palettes are expanded by row into meshing scratch storage, outside the lighting
+and greedy-meshing loops. Repeated edits reuse palette entries; a full palette
+is rebuilt to discard removed states before promoting to direct storage.
+
+Chunk files now have a `VXC2` header and RLE records of `(u16 run length,
+u16 state ID)`, both little-endian. The reader also accepts `VXC1` records
+with byte state IDs and preserves their numeric values. Existing inventory,
+container, entity and level IDs keep their meanings: block items below 256
+retain their IDs; higher block states use `item::BLOCK_ITEM_BASE + state_id`
+(currently `0x8000 + state_id`). Always convert with `Item::from_block` or
+`Item::from`, rather than casting a block ID to an item ID.
+
+Block texture constants and `BlockInfo::tex` are u16. Quads still occupy
+12 bytes, with 11 layer bits (2048 layers): the low byte remains in word 1;
+normal/cross quads use word 1 bits 21..23 for the high bits. Shaped quads use
+word 0 bits 5, 11 and 17, since their cell coordinates need only five bits.
+AO, lighting, bounds and normal-face corner coordinates retain full precision.
+The GPU requests enough array layers for the registered textures when the
+adapter supports them. Otherwise it binds eight 256-layer pages, so adapters
+supporting only wgpu's default array-layer limit still work. Empty pages share
+the first texture; explicit gradients preserve mip selection across page
+branches. Shaders specialize away paging on adapters using a single array.
+Item icons retain their own texture array, addressed from `tex::ITEM_BASE`
+(2048), not a hard-coded 256. Append block layers and update `tex::COUNT`; paging is automatic
+up to `tex::CAPACITY`. New block states also need their registry properties,
+base/orientation/material rules, recipes and creative-palette entries as usual.
 
 ## Simulation boundary
 
@@ -101,6 +137,8 @@ src/
     items.rs         dropped items: spawning, pickup, throwing, death drops
     containers.rs    chest screens and shift-click quick moves
     enchanting.rs    enchanting table screen: item and lapis slots, offers
+    anvil.rs         anvil input/result rules, level payment and wear
+    smithing.rs      smithing table input/result screen and consumption
     farming.rs       hoe tilling, bone meal, trampling farmland
     doors.rs         doors, ladders and gates: placing, opening, breaking
     hand.rs          first-person hand animation: swings, item switches, bob
@@ -110,6 +148,7 @@ src/
   item.rs            item registry: blocks, materials, food and tools
   enchant.rs         enchantments: Java's definitions, effects, table offers,
                      anvil rules, java.util.Random port
+  smithing.rs        diamond-to-Netherite metadata-preserving transforms
   player.rs          player movement
   physics.rs         shared AABB-vs-block collision, ray-vs-box test
   entity/
@@ -142,6 +181,7 @@ src/
     terrain.rs       world generation
     nether.rs        Nether caverns
     fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
+    bastion.rs       reserved bastion-remnant loot data
     stronghold.rs    stronghold rings and layouts (Java's pieces), painted per chunk
     structure.rs     shared structure-piece frames, chunk painting and chest loot
     brewing.rs       brewing stand contents and Java's brewing mixes

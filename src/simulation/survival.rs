@@ -2,6 +2,8 @@
 //! regeneration and death. Pure logic with no world or rendering access, so it is unit
 //! tested below; `Game` feeds it the player's surroundings every frame.
 
+use super::difficulty::Difficulty;
+
 /// 10 hearts, in half-heart units.
 pub const MAX_HEALTH: f32 = 20.0;
 /// Seconds of air (Minecraft's 300 ticks).
@@ -49,12 +51,19 @@ pub const CAUSE_FIRE: &str = "burned to death";
 pub const CAUSE_STARVE: &str = "starved to death";
 pub const CAUSE_MAGIC: &str = "was killed by magic";
 
-/// Damage left after armor worth `points` (Minecraft's formula without
-/// toughness): each point blocks 4%, up to 80%, though big hits punch
-/// through some of it.
-pub fn armor_reduce(amount: f32, points: u32) -> f32 {
-    let defense = (points as f32 - amount / 2.0).max(points as f32 / 5.0).min(20.0);
+/// Damage left after armor worth `points` with `toughness` (Java's
+/// `CombatRules.getDamageAfterAbsorb`): each point blocks 4%, up to 80%,
+/// though big hits punch through some of it, less so through tough armor.
+pub fn armor_reduce(amount: f32, points: u32, toughness: f32) -> f32 {
+    let points = points as f32;
+    let defense = (points - amount / (2.0 + toughness / 4.0)).max(points / 5.0).min(20.0);
     amount * (1.0 - defense / 25.0)
+}
+
+/// Knockback left after Java's knockback resistance (0.1 per Netherite
+/// piece; 1 or more cancels it).
+pub fn knockback_taken(knockback: glam::DVec3, resistance: f32) -> glam::DVec3 {
+    knockback * (1.0 - resistance as f64).max(0.0)
 }
 
 /// Damage for landing after falling `distance` blocks.
@@ -174,9 +183,9 @@ impl Hunger {
 
     /// Advances regeneration and starvation; returns (health healed,
     /// starvation damage).
-    fn tick(&mut self, dt: f32, health: f32) -> (f32, f32) {
+    fn tick(&mut self, dt: f32, health: f32, difficulty: Difficulty, natural_regeneration: bool) -> (f32, f32) {
         let hurt = health < MAX_HEALTH;
-        if self.food >= MAX_FOOD && self.saturation > 0.0 && hurt {
+        if natural_regeneration && self.food >= MAX_FOOD && self.saturation > 0.0 && hurt {
             // Full and saturated: heal fast, paying in saturation.
             self.timer += dt;
             if self.timer >= FAST_FOOD_TICK {
@@ -185,7 +194,7 @@ impl Hunger {
                 self.exhaust(spend);
                 return (spend / 6.0, 0.0);
             }
-        } else if self.food >= REGEN_FOOD && hurt {
+        } else if natural_regeneration && self.food >= REGEN_FOOD && hurt {
             self.timer += dt;
             if self.timer >= FOOD_TICK {
                 self.timer = 0.0;
@@ -196,8 +205,7 @@ impl Hunger {
             self.timer += dt;
             if self.timer >= FOOD_TICK {
                 self.timer = 0.0;
-                // Normal difficulty: starving stops at half a heart.
-                return (0.0, if health > 1.0 { 1.0 } else { 0.0 });
+                return (0.0, if health > difficulty.starvation_floor() { 1.0 } else { 0.0 });
             }
         } else {
             self.timer = 0.0;
@@ -231,6 +239,7 @@ pub struct Vitals {
     fall_peak: Option<f64>,
     /// Set while dead: what killed the player.
     pub death: Option<String>,
+    peaceful_timer: f32,
 }
 
 impl Default for Vitals {
@@ -249,6 +258,7 @@ impl Default for Vitals {
             last_damage: 0.0,
             fall_peak: None,
             death: None,
+            peaceful_timer: 0.0,
         }
     }
 }
@@ -321,6 +331,23 @@ impl Vitals {
     /// and returns fall/drowning/lava/starvation damage for the caller to
     /// apply.
     pub fn tick(&mut self, dt: f32, env: &Env, creative: bool) -> Hurts {
+        self.tick_difficulty(dt, env, creative, Difficulty::Normal)
+    }
+
+    /// [`Vitals::tick`] under this world's difficulty.
+    pub fn tick_difficulty(&mut self, dt: f32, env: &Env, creative: bool, difficulty: Difficulty) -> Hurts {
+        self.tick_rules(dt, env, creative, difficulty, true)
+    }
+
+    /// [`Vitals::tick_difficulty`] with natural health regeneration toggled.
+    pub fn tick_rules(
+        &mut self,
+        dt: f32,
+        env: &Env,
+        creative: bool,
+        difficulty: Difficulty,
+        natural_regeneration: bool,
+    ) -> Hurts {
         let mut hurts = Hurts::default();
         self.since_damage = (self.since_damage + dt).min(1e3);
         self.xp.tick(dt);
@@ -406,8 +433,20 @@ impl Vitals {
             (hurts.lava, hurts.fire, hurts.burn) = (0.0, 0.0, 0.0);
         }
 
-        // Hunger: activity wears it down; it drives regeneration and starvation.
-        if !creative {
+        // Peaceful restores one health point per second and replenishes a
+        // depleted food bar quickly. Activity can add exhaustion, but it
+        // cannot consume food on Peaceful.
+        if !creative && difficulty == Difficulty::Peaceful {
+            self.peaceful_timer += dt;
+            while self.peaceful_timer >= 1.0 {
+                self.peaceful_timer -= 1.0;
+                if natural_regeneration {
+                    self.health = (self.health + 1.0).min(MAX_HEALTH);
+                }
+                self.hunger.food = (self.hunger.food + 2.0).min(MAX_FOOD);
+            }
+        } else if !creative {
+            self.peaceful_timer = 0.0;
             let h = &mut self.hunger;
             let per_block = if env.in_water {
                 EXHAUST_SWIM_PER_BLOCK
@@ -420,7 +459,7 @@ impl Vitals {
             if env.jumped {
                 h.exhaust(if env.sprinting { EXHAUST_SPRINT_JUMP } else { EXHAUST_JUMP });
             }
-            let (heal, starve) = h.tick(dt, self.health);
+            let (heal, starve) = h.tick(dt, self.health, difficulty, natural_regeneration);
             self.health = (self.health + heal).min(MAX_HEALTH);
             hurts.starve = starve;
         }
@@ -485,6 +524,21 @@ mod tests {
         assert!(!v.burning());
     }
 
+    #[test]
+    fn natural_regeneration_rule_stops_hunger_and_peaceful_healing() {
+        let mut v = Vitals { health: 10.0, ..Default::default() };
+        for _ in 0..20 {
+            v.tick_rules(1.0, &Env::default(), false, Difficulty::Normal, false);
+        }
+        assert_eq!(v.health, 10.0);
+
+        for _ in 0..5 {
+            v.tick_rules(1.0, &Env::default(), false, Difficulty::Peaceful, false);
+        }
+        assert_eq!(v.health, 10.0);
+        assert_eq!(v.hunger.food, MAX_FOOD);
+    }
+
     fn ground(y: f64) -> Env {
         Env { y, on_ground: true, ..Env::default() }
     }
@@ -505,11 +559,19 @@ mod tests {
 
     #[test]
     fn armor_blocks_most_of_small_hits() {
-        assert_eq!(armor_reduce(4.0, 0), 4.0);
-        assert!((armor_reduce(4.0, 20) - 4.0 * 7.0 / 25.0).abs() < 1e-5, "full diamond blocks 72%");
-        assert!((armor_reduce(4.0, 7) - 4.0 * (1.0 - 5.0 / 25.0)).abs() < 1e-5);
+        assert_eq!(armor_reduce(4.0, 0, 0.0), 4.0);
+        assert!((armor_reduce(4.0, 20, 0.0) - 4.0 * 7.0 / 25.0).abs() < 1e-5, "20 points block 72%");
+        assert!((armor_reduce(4.0, 7, 0.0) - 4.0 * (1.0 - 5.0 / 25.0)).abs() < 1e-5);
         // A huge blast gets through more of it.
-        assert!(armor_reduce(40.0, 20) / 40.0 > 0.2);
+        assert!(armor_reduce(40.0, 20, 0.0) / 40.0 > 0.2);
+        // Java: 20 armor leaves 12 of a 20-damage hit with no toughness, 8
+        // with full diamond's 8 toughness and 7.2 with Netherite's 12.
+        assert!((armor_reduce(20.0, 20, 0.0) - 20.0 * (1.0 - 10.0 / 25.0)).abs() < 1e-4);
+        assert!((armor_reduce(20.0, 20, 8.0) - 20.0 * (1.0 - 15.0 / 25.0)).abs() < 1e-4);
+        assert!((armor_reduce(20.0, 20, 12.0) - 20.0 * (1.0 - (20.0 - 20.0 / 5.0) / 25.0)).abs() < 1e-4);
+        let kb = glam::DVec3::new(6.0, 5.0, 0.0);
+        assert!((knockback_taken(kb, 0.4) - kb * 0.6).length() < 1e-6);
+        assert_eq!(knockback_taken(kb, 1.2), glam::DVec3::ZERO);
     }
 
     #[test]
@@ -694,6 +756,31 @@ mod tests {
             v.tick(DT, &sprint, true);
         }
         assert_eq!(v.hunger, Hunger::default());
+    }
+
+    #[test]
+    fn starvation_floors_follow_java_difficulty() {
+        for (difficulty, floor, dead) in
+            [(Difficulty::Easy, 10.0, false), (Difficulty::Normal, 1.0, false), (Difficulty::Hard, 0.0, true)]
+        {
+            let mut v = Vitals { hunger: Hunger::restore(0.0, 0.0, 0.0), ..Vitals::default() };
+            for _ in 0..(200.0 / DT) as usize {
+                let h = v.tick_difficulty(DT, &ground(0.0), false, difficulty);
+                v.damage(h.starve, CAUSE_STARVE, false);
+            }
+            assert_eq!(v.health, floor);
+            assert_eq!(v.is_dead(), dead);
+        }
+    }
+
+    #[test]
+    fn peaceful_restores_health_and_food_without_starving() {
+        let mut v = Vitals { health: 10.0, hunger: Hunger::restore(10.0, 0.0, 0.0), ..Vitals::default() };
+        for _ in 0..20 {
+            let h = v.tick_difficulty(0.05, &ground(0.0), false, Difficulty::Peaceful);
+            assert_eq!(h.starve, 0.0);
+        }
+        assert_eq!((v.health, v.hunger.food), (11.0, 12.0));
     }
 
     #[test]
