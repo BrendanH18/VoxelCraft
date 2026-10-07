@@ -275,7 +275,14 @@ pub mod tex {
     pub const MAGMA: u16 = POLISHED_BASALT_TOP + 1;
     pub const GOLD_BLOCK: u16 = MAGMA + 1;
     pub const CHAIN: u16 = GOLD_BLOCK + 1;
-    pub const COUNT: u32 = CHAIN as u32 + 1;
+    pub const COLORED_WOOL: u16 = CHAIN + 1;
+    pub const COLORED_BED: u16 = COLORED_WOOL + 16;
+    pub const STAINED_GLASS: u16 = COLORED_BED + 64;
+    pub const STAINED_TERRACOTTA: u16 = STAINED_GLASS + 16;
+    pub const CONCRETE_POWDER: u16 = STAINED_TERRACOTTA + 10;
+    pub const CONCRETE: u16 = CONCRETE_POWDER + 16;
+    pub const GLAZED: u16 = CONCRETE + 16;
+    pub const COUNT: u32 = GLAZED as u32 + 64;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -570,10 +577,13 @@ impl Block {
     /// Minecraft's (encouragement, consumption) fire odds. Wooden doors,
     /// ladders and containers can kindle lava fires but aren't consumed.
     pub fn fire_odds(self) -> (u8, u8) {
+        if self.carpet_color().is_some() {
+            return (60, 20);
+        }
         match self.material() {
             b if b.is_log() => (5, 5),
             b if b.is_planks() => (5, 20),
-            b if b.is_leaves() || b == Block::WOOL => (30, 60),
+            b if b.is_leaves() || b.wool_color().is_some() => (30, 60),
             Block::TNT => (15, 100),
             Block::TALL_GRASS
             | Block::FERN
@@ -686,7 +696,7 @@ impl Block {
             112..=135 | 189..=192 => Shaped::Stairs(f(stairs_index(self.0).unwrap().1)),
             136 | 182 => Shaped::Fence,
             188 => Shaped::BrewingStand,
-            197 => Shaped::Pane,
+            197 | 640..=656 => Shaped::Pane,
             200..=207 => Shaped::Frame { facing: f(self.0 - 200), eye: self.0 >= 204 },
             208 => Shaped::EndPortal,
             209 => Shaped::DragonEgg,
@@ -829,6 +839,10 @@ impl Block {
             137..=140 => Some((Block::LADDER, f(self.0 - 137))),
             141..=148 => Some((Block::FENCE_GATE, f((self.0 - 141) % 4))),
             149..=164 => Some((Block::OAK_DOOR, f((self.0 - 149) % 4))),
+            699..=762 => {
+                let i = self.0 - 699;
+                Some((Block(699 + i / 4 * 4), f(i % 4)))
+            }
             215..=220 => {
                 let along_x = (self.0 - 215) % 2 == 1;
                 Some((Block(self.0 - along_x as u16), if along_x { Facing::East } else { Facing::South }))
@@ -862,6 +876,7 @@ impl Block {
             Block::FENCE_GATE => Block::gate(facing, false),
             b if let Some(index) = super::forms::gate_index(b) => super::forms::wood_id(index, 6 + i),
             b if b.stairs_base().is_some() => Block(b.0 + i),
+            b if b.glazed_color().is_some() => Block(b.0 + i),
             _ => self,
         }
     }
@@ -1002,7 +1017,7 @@ impl Block {
     }
 
     pub fn is_bed(self) -> bool {
-        matches!(self, Block::BED_FOOT | Block::BED_HEAD)
+        self.bed_color().is_some()
     }
 
     /// How far (in 1/16 block) the top of this block sits below the top of
@@ -1010,6 +1025,7 @@ impl Block {
     pub fn top_drop(self) -> u8 {
         match self {
             b if b.is_bed() => 7,
+            b if b.carpet_color().is_some() => 15,
             b if b.is_slab() => 8,
             _ => 0,
         }
@@ -1024,6 +1040,12 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some(c) = self.bed_color() {
+            return (!self.is_bed_head()).then_some(c.bed());
+        }
+        if self.glazed_color().is_some() {
+            return Some(self.base().into());
+        }
         match self.base().as_stone_ore() {
             Block::STONE => Some(Block::COBBLESTONE.into()),
             Block::DEEPSLATE => Some(Block::COBBLED_DEEPSLATE.into()),
@@ -1060,6 +1082,7 @@ impl Block {
             // Bookshelves drop three books (see `World::spill_block`).
             Block::BOOKSHELF | Block::END_PORTAL_FRAME | Block::END_PORTAL | Block::END_GATEWAY => None,
             b if b.is_leaves() => None,
+            b if b.stained_glass_color().is_some() || b.is_glass_pane() => None,
             Block::GLASS | Block::BEDROCK | Block::TALL_GRASS | Block::FERN | Block::ICE => None,
             b if b.is_fluid() || b.is_fire() || b == Block::AIR => None,
             b => Some(b.into()),
@@ -1079,6 +1102,30 @@ impl Block {
                 Block::BASALT | Block::POLISHED_BASALT => 1.25,
                 _ => 1.5,
             };
+        }
+        if self.wool_color().is_some() {
+            return 0.8;
+        }
+        if self.carpet_color().is_some() {
+            return 0.1;
+        }
+        if self.is_bed() {
+            return 0.2;
+        }
+        if self.stained_glass_color().is_some() || self.is_glass_pane() {
+            return 0.3;
+        }
+        if self.stained_terracotta_color().is_some() {
+            return 1.25;
+        }
+        if self.concrete_powder_color().is_some() {
+            return 0.5;
+        }
+        if self.concrete_color().is_some() {
+            return 1.8;
+        }
+        if self.glazed_color().is_some() {
+            return 1.4;
         }
         if self.is_door() {
             return 3.0;
@@ -1157,6 +1204,13 @@ impl Block {
     pub fn best_tool(self) -> Option<ToolKind> {
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(ToolKind::Pickaxe);
+        }
+        if self.stained_terracotta_color().is_some() || self.concrete_color().is_some() || self.glazed_color().is_some()
+        {
+            return Some(ToolKind::Pickaxe);
+        }
+        if self.concrete_powder_color().is_some() {
+            return Some(ToolKind::Shovel);
         }
         match self.material() {
             Block::STONE
@@ -1245,6 +1299,10 @@ impl Block {
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(if self.material() == Block::GOLD_BLOCK { 2 } else { 0 });
         }
+        if self.stained_terracotta_color().is_some() || self.concrete_color().is_some() || self.glazed_color().is_some()
+        {
+            return Some(0);
+        }
         match self.material().as_stone_ore() {
             Block::STONE
             | Block::COBBLESTONE
@@ -1318,6 +1376,7 @@ impl Block {
             .chain(225..=252)
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
+            .chain(super::colors::palette_ids())
             .map(Block)
     }
 
@@ -1344,19 +1403,23 @@ impl Block {
 
     /// Sand, gravel and the dragon egg fall when nothing holds them up.
     pub fn has_gravity(self) -> bool {
-        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG) || self.is_anvil()
+        matches!(self, Block::SAND | Block::RED_SAND | Block::GRAVEL | Block::DRAGON_EGG)
+            || self.is_anvil()
+            || self.concrete_powder_color().is_some()
     }
 
     /// Whether this block can rest on `below`. Plants need soil and torches
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
         match self {
+            b if b.carpet_color().is_some() => below.is_solid(),
             Block::TALL_GRASS | Block::DANDELION | Block::POPPY | Block::FERN | Block::BLUE_ORCHID => {
                 matches!(below, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS)
             }
             Block::DEAD_BUSH => {
                 matches!(below, Block::SAND | Block::RED_SAND | Block::DIRT | Block::GRASS)
                     || below.terracotta_colour().is_some()
+                    || below.stained_terracotta_color().is_some()
             }
             // Sugar cane also needs water next to its lowest block; see
             // `World::cane_has_water`.
@@ -1393,6 +1456,9 @@ impl Block {
     /// Looks a block up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<Block> {
         let name = name.replace('_', " ");
+        if name == "white wool" {
+            return Some(Block::WOOL);
+        }
         (0..STATE_CAPACITY as u16)
             .map(Block)
             .find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
@@ -1712,6 +1778,7 @@ const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
+        id if super::colors::definition(id).is_some() => super::colors::definition(id).unwrap(),
         #[cfg(test)]
         4095 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]
@@ -1962,8 +2029,9 @@ const fn make(id: u16) -> BlockInfo {
     };
     // Ice is see-through like water but solid underfoot; End portals are
     // a surface to fall through.
-    let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97) && id != 208 && id != 210;
-    BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104), tex }
+    let stained_glass = matches!(id, 624..=639);
+    let solid = (matches!(kind, Opaque | Cutout | Shaped) || id == 97 || stained_glass) && id != 208 && id != 210;
+    BlockInfo { name, kind, solid, self_cull: matches!(id, 5 | 10 | 97 | 104) || stained_glass, tex }
 }
 
 pub static INFO: [BlockInfo; STATE_CAPACITY] = {
@@ -2031,8 +2099,8 @@ static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
             #[cfg(test)]
             _ if i == 4094 => 15,
             RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
-            _ if matches!(i, 10 | 98 | 99) => 0, // glass, beds
-            _ => 1,                              // leaves, water: attenuate skylight too
+            _ if matches!(i, 10 | 98 | 99 | 576..=623 | 624..=639) => 0, // glass, beds, stained glass
+            _ => 1,                                                      // leaves, water: attenuate skylight too
         };
         i += 1;
     }

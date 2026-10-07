@@ -51,11 +51,13 @@ pub fn smelt(item: Item) -> Option<Item> {
         i if i == b(Block::STONE) => b(Block::SMOOTH_STONE),
         i if i == b(Block::COBBLED_DEEPSLATE) => b(Block::DEEPSLATE),
         i if i == b(Block::ANCIENT_DEBRIS) => Item::NETHERITE_SCRAP,
+        i if i == b(Block::CACTUS) => crate::color::DyeColor::Green.dye(),
         i if i == b(Block::SAND) => b(Block::GLASS),
         i if i == b(Block::COBBLESTONE) => b(Block::STONE),
         i if i.block().is_some_and(Block::is_log) => Item::CHARCOAL,
         Item::CLAY_BALL => Item::BRICK,
         i if i == b(Block::CLAY) => b(Block::TERRACOTTA),
+        i if let Some(c) = i.block().and_then(Block::stained_terracotta_color) => b(Block::glazed(c)),
         i if i == b(Block::NETHERRACK) => Item::NETHER_BRICK,
         i if i == b(Block::QUARTZ_ORE) => Item::NETHER_QUARTZ,
         Item::RAW_PORKCHOP => Item::COOKED_PORKCHOP,
@@ -70,6 +72,7 @@ pub fn smelt_xp(out: Item) -> f32 {
     let b = Item::from_block;
     match out {
         Item::GOLD_INGOT | Item::DIAMOND => 1.0,
+        i if i == crate::color::DyeColor::Green.dye() => 1.0,
         Item::IRON_INGOT | Item::COPPER_INGOT => 0.7,
         Item::NETHERITE_SCRAP => 2.0,
         Item::COOKED_PORKCHOP | Item::STEAK | Item::COOKED_CHICKEN => 0.35,

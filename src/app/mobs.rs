@@ -58,6 +58,21 @@ impl Game {
         self.mobs.entities.raycast(eye, dir, block_dist.min(REACH)).map(|(i, _)| i)
     }
 
+    /// Right-click a sheep with dye or shears, shared with gamepad players.
+    pub(super) fn use_sheep(&mut self) -> bool {
+        let Some(index) = self.mob_target() else { return false };
+        let Some(item) = self.held_item() else { return false };
+        let Some(shears) = self.mobs.entities.use_on_sheep(index, item) else { return false };
+        if self.mode.is_survival() {
+            if shears {
+                self.inventory.wear(self.actions.selected, 1);
+            } else {
+                self.inventory.take_one(self.actions.selected);
+            }
+        }
+        true
+    }
+
     /// Left-button press: hits the mob under the crosshair. Returns `true`
     /// if a mob was targeted, in which case no block should be broken.
     pub(super) fn attack(&mut self) -> bool {

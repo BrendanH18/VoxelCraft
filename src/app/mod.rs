@@ -1495,6 +1495,9 @@ impl Game {
         if !self.mode.can_interact() {
             return;
         }
+        if self.use_sheep() {
+            return;
+        }
         if !self.aiming_at_usable() && (self.use_bucket() || self.throw_pearl() || self.throw_eye()) {
             return;
         }
@@ -1547,7 +1550,7 @@ impl Game {
             return;
         }
         let placed = match self.held_item() {
-            Some(Item::BED) => Some(self.place_bed(at)),
+            Some(i) if i.bed_color().is_some() => Some(self.place_bed(at, i.bed_color().unwrap())),
             Some(i)
                 if i == Item::OAK_DOOR
                     || i.block().is_some_and(|b| {

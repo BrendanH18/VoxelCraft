@@ -25,6 +25,36 @@ fn noisy(layer: u16, x: usize, y: usize, c: [u8; 3], amount: f32) -> Rgba {
     shade(c, 1.0 - amount + rnd(layer, x, y, 0) * amount * 2.0)
 }
 
+fn glazed_pixel(color: usize, rot: u16, x: usize, y: usize) -> Rgba {
+    let (x, y) = match rot {
+        1 => (y, SIZE - 1 - x),
+        2 => (SIZE - 1 - x, SIZE - 1 - y),
+        3 => (SIZE - 1 - y, x),
+        _ => (x, y),
+    };
+    let rgb = crate::color::DyeColor::ALL[color].rgb();
+    let (cx, cy) = (x as i32 - 8, y as i32 - 8);
+    let mark = match color {
+        0 => (cx + cy).unsigned_abs().is_multiple_of(6),
+        1 => (cx.abs() + cy.abs()).unsigned_abs().is_multiple_of(5),
+        2 => (x / 4 + y / 4).is_multiple_of(2),
+        3 => cx.abs() <= 1 || cy.abs() <= 1,
+        4 => (cx * cx + cy * cy) % 18 < 8,
+        5 => (x + 2 * y).is_multiple_of(5),
+        6 => (cx.abs() - cy.abs()).unsigned_abs() < 2,
+        7 => (x.max(y) - x.min(y) < 3) && (x + y).is_multiple_of(2),
+        8 => (x % 5 < 2) != (y % 5 < 2),
+        9 => (cx * 3 + cy * 2).unsigned_abs().is_multiple_of(7),
+        10 => cx.abs() == cy.abs() || cx == 0 || cy == 0,
+        11 => (x / 2).is_multiple_of(2) != (y / 3).is_multiple_of(2),
+        12 => (cx + 2 * cy).unsigned_abs() % 8 < 3,
+        13 => (x as i32 - y as i32).unsigned_abs().is_multiple_of(4),
+        14 => (cx.abs() + 2 * cy.abs()) % 6 < 3,
+        _ => (x + y * 3).is_multiple_of(7) || x == 8 || y == 8,
+    };
+    shade(rgb, if mark { 1.02 } else { 0.7 })
+}
+
 /// Wrapping distance to the nearest two of a set of points (tileable Voronoi).
 fn voronoi(x: usize, y: usize, pts: &[(f32, f32)]) -> (f32, f32, usize) {
     let (mut d1, mut d2, mut idx) = (f32::MAX, f32::MAX, 0);
@@ -53,6 +83,65 @@ const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
+    if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
+        let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };
+        let rgb = crate::color::DyeColor::ALL[color].rgb();
+        let weave = (x + y).is_multiple_of(3);
+        return shade(
+            rgb,
+            if weave { 0.85 + rnd(tex::WOOL, x, y, 0) * 0.08 } else { 0.93 + rnd(tex::WOOL, x, y, 0) * 0.07 },
+        );
+    }
+    if (tex::STAINED_GLASS..tex::STAINED_GLASS + 16).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL[(layer - tex::STAINED_GLASS) as usize].rgb();
+        let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+        let pane = x == 1 || y == 1 || x == SIZE - 2 || y == SIZE - 2;
+        if border {
+            return shade(rgb, 0.45 + r * 0.1);
+        }
+        if pane {
+            return shade(rgb, 0.7);
+        }
+        let mut p = shade(rgb, 0.85 + r * 0.08);
+        p[3] = 150;
+        return p;
+    }
+    if (tex::STAINED_TERRACOTTA..tex::STAINED_TERRACOTTA + 10).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL
+            [[2, 3, 5, 6, 7, 9, 10, 11, 13, 15][(layer - tex::STAINED_TERRACOTTA) as usize]]
+            .rgb();
+        let clay = [152u8, 94, 67];
+        let mixed = [
+            (rgb[0] as u16 / 2 + clay[0] as u16 / 2) as u8,
+            (rgb[1] as u16 / 2 + clay[1] as u16 / 2) as u8,
+            (rgb[2] as u16 / 2 + clay[2] as u16 / 2) as u8,
+        ];
+        return noisy(layer, x, y, mixed, 0.05);
+    }
+    if (tex::CONCRETE_POWDER..tex::CONCRETE_POWDER + 16).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL[(layer - tex::CONCRETE_POWDER) as usize].rgb();
+        return noisy(layer, x, y, rgb, 0.12);
+    }
+    if (tex::CONCRETE..tex::CONCRETE + 16).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL[(layer - tex::CONCRETE) as usize].rgb();
+        return noisy(layer, x, y, rgb, 0.04);
+    }
+    if (tex::GLAZED..tex::GLAZED + 64).contains(&layer) {
+        let i = layer - tex::GLAZED;
+        return glazed_pixel((i / 4) as usize, i % 4, x, y);
+    }
+    if (tex::COLORED_BED..tex::COLORED_BED + 64).contains(&layer) {
+        let color = crate::color::DyeColor::ALL[((layer - tex::COLORED_BED) / 4) as usize];
+        let part = (layer - tex::COLORED_BED) % 4;
+        let base = [tex::BED_TOP_FOOT, tex::BED_TOP_HEAD, tex::BED_SIDE_FOOT, tex::BED_SIDE_HEAD][part as usize];
+        let mut p = pixel(base, x, y);
+        // Recolour only the blanket, retaining the pillow and wooden frame.
+        if p[0] / 2 > p[1] && p[0] / 2 > p[2] {
+            let rgb = color.rgb();
+            p = shade(rgb, p[0] as f32 / 178.0);
+        }
+        return p;
+    }
     match layer {
         tex::STONE => {
             let streak = rnd(layer, x / 3, y, 5) < 0.12;
@@ -471,11 +560,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let heat = edge * 0.7 + r * 0.3;
             let c = [255, (90.0 + heat * 140.0) as u8, (20.0 + heat * 40.0) as u8];
             shade(c, 0.75 + heat * 0.3)
-        }
-        tex::WOOL => {
-            // Soft weave: alternating diagonal ridges.
-            let ridge = (x + y) % 4 < 2;
-            shade([234, 234, 228], if ridge { 0.96 + r * 0.06 } else { 0.86 + r * 0.06 })
         }
         tex::BED_TOP_FOOT => {
             // Red blanket with a lighter hem around the edge.

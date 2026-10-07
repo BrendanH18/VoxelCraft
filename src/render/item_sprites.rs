@@ -303,7 +303,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 })
             })
         }
-        Sprite::Bed => {
+        Sprite::Bed | Sprite::ColoredBed(_) => {
             // Side view: pillow on the left, red blanket, wooden frame, legs.
             let bed = |x: i32, y: i32| {
                 ((5..=11).contains(&y) && (1..=14).contains(&x))
@@ -312,9 +312,22 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let c = match (x, y) {
                 (_, 10..) => [137, 103, 39],
                 (1..=4, _) => [236, 236, 230],
-                _ => [178, 34, 34],
+                _ => {
+                    if let Sprite::ColoredBed(c) = sprite {
+                        c
+                    } else {
+                        [178, 34, 34]
+                    }
+                }
             };
             shaded(&bed, x, y, c, 0.05)
+        }
+        Sprite::Shears => {
+            let shape = |x: i32, y: i32| {
+                ((x - y).abs() <= 1 || (x + y - 15).abs() <= 1) && (2..=12).contains(&y)
+                    || ((10..=14).contains(&y) && ((2..=5).contains(&x) || (10..=13).contains(&x)))
+            };
+            shaded(&shape, x, y, if y >= 10 { [76, 70, 65] } else { [205, 209, 210] }, 0.06)
         }
         Sprite::MelonSlice => {
             // A half-disc wedge: green rind on the curve, red flesh with seeds.

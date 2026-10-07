@@ -32,6 +32,7 @@ impl World {
     /// rested on it, all the way up.
     pub(super) fn settle(&mut self, mut p: IVec3) {
         self.drop_unhung_ladders(p);
+        self.solidify_nearby_powder(p);
         loop {
             self.wake_fluids(p);
             let Some(b) = self.get_block(p) else { return };
@@ -50,6 +51,31 @@ impl World {
                 }
                 Some(a) if a.has_gravity() && can_fall_into(b) => p = above,
                 _ => return,
+            }
+        }
+    }
+
+    fn touches_water(&self, p: IVec3) -> bool {
+        [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z]
+            .into_iter()
+            .any(|d| self.get_block(p + d).is_some_and(Block::is_water))
+    }
+
+    fn solidify_powder(&self, p: IVec3, block: Block) -> Block {
+        match block.concrete_powder_color() {
+            Some(c) if self.get_block(p).is_some_and(Block::is_water) || self.touches_water(p) => Block::concrete(c),
+            _ => block,
+        }
+    }
+
+    fn solidify_nearby_powder(&mut self, p: IVec3) {
+        for d in [IVec3::ZERO, IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z] {
+            let at = p + d;
+            if let Some(c) = self.get_block(at).and_then(Block::concrete_powder_color)
+                && self.touches_water(at)
+                && !self.get_block(at - IVec3::Y).is_some_and(can_fall_into)
+            {
+                self.edit(at, Block::concrete(c), true);
             }
         }
     }
@@ -92,7 +118,13 @@ impl World {
             let mut y = cell.y;
             while y as f64 + 1.0 > target {
                 match self.get_block(IVec3::new(cell.x, y, cell.z)) {
-                    Some(b) if can_fall_into(b) && y >= 0 => y -= 1,
+                    Some(b) if can_fall_into(b) && y >= 0 => {
+                        if f.block.concrete_powder_color().is_some() && b.is_water() {
+                            landed.push((IVec3::new(cell.x, y, cell.z), f.block));
+                            return false;
+                        }
+                        y -= 1;
+                    }
                     // Unloaded below: wait for the chunk rather than vanish.
                     None => return true,
                     Some(_) => {
@@ -108,7 +140,7 @@ impl World {
         for (p, block) in landed {
             // Something may have been built in the way since; then it's lost.
             if self.get_block(p).is_some_and(can_fall_into) {
-                self.edit(p, block, true);
+                self.edit(p, self.solidify_powder(p, block), true);
                 self.settle(p);
             }
         }

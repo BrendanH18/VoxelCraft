@@ -31,6 +31,7 @@ pub struct EntityVertex {
 
 pub(super) type Rgb = [u8; 3];
 
+#[derive(Clone, Copy)]
 pub(super) struct Cuboid {
     min: [f32; 3],
     max: [f32; 3],
@@ -538,7 +539,14 @@ pub fn build(
             let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES) || m.kind == MobKind::Blaze;
             let light = if glow { [light[0], 0, light[2], 255] } else { light };
             for (ci, c) in p.boxes.iter().enumerate() {
-                push_cuboid(out, c, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
+                let mut cuboid = *c;
+                if m.kind == MobKind::Sheep && c.color == WOOL {
+                    cuboid.color = if m.sheared { SHEEP_SKIN } else { m.wool_color.sheep_rgb() };
+                    if m.sheared {
+                        cuboid.noise = 14;
+                    }
+                }
+                push_cuboid(out, &cuboid, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
             }
         }
         if matches!(m.kind, MobKind::Zombie | MobKind::Skeleton) {

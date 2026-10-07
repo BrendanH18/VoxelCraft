@@ -64,6 +64,7 @@ pub(super) fn picked_item(block: Block) -> Item {
         b if b.crop_stage().is_some() => Item::WHEAT_SEEDS,
         b if b.wart_age().is_some() => Item::NETHER_WART,
         Block::OAK_DOOR => Item::OAK_DOOR,
+        b if let Some(c) = b.bed_color() => c.bed(),
         b => b.into(),
     }
 }
