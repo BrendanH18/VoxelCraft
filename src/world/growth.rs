@@ -124,6 +124,7 @@ impl World {
                 out.push(Stack::new(Item::LAPIS_LAZULI, n as u8));
             }
             Block::CLAY => out.push(Stack::new(Item::CLAY_BALL, 3)),
+            Block::SNOW => out.push(Stack::new(Item::SNOWBALL, 4)),
             Block::BOOKSHELF => out.push(Stack::new(Item::BOOK, 3)),
             // 2-4 dust, plus 0..fortune, at most 4.
             Block::GLOWSTONE => {
@@ -463,6 +464,17 @@ mod tests {
     use crate::world::chunk::ChunkData;
     use crate::world::terrain::Generator;
     use std::sync::Arc;
+
+    #[test]
+    fn snow_drops_four_snowballs_unless_silk_touched() {
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        world.spill_block(IVec3::ZERO, Block::SNOW);
+        assert_eq!(world.drops, vec![(IVec3::ZERO, Stack::new(Item::SNOWBALL, 4))]);
+        world.drops.clear();
+        let silk = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::SilkTouch, 1);
+        world.spill_mined(IVec3::ZERO, Block::SNOW, silk);
+        assert_eq!(world.drops, vec![(IVec3::ZERO, Stack::new(Block::SNOW, 1))]);
+    }
 
     #[test]
     fn silk_touch_gravel_never_drops_flint() {

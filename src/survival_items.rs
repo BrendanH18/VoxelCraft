@@ -1,5 +1,11 @@
 //! Shared everyday item actions for desktop, controller and device-free players.
-use crate::{entity::Entities, inventory::Inventory, item::Item, player::Player, world::World};
+use crate::{
+    entity::{Entities, PlayerId},
+    inventory::Inventory,
+    item::Item,
+    player::Player,
+    world::World,
+};
 
 pub fn use_mob(
     player: &Player,
@@ -25,6 +31,27 @@ pub fn use_mob(
         return true;
     }
     false
+}
+
+/// Throws one snowball or egg. Returns whether the held item was one of those.
+pub fn throw_held(
+    player: &Player,
+    inventory: &mut Inventory,
+    slot: usize,
+    creative: bool,
+    owner: PlayerId,
+    entities: &mut Entities,
+) -> bool {
+    let Some(held) = inventory.get(slot) else { return false };
+    if held.item != Item::SNOWBALL && held.item != Item::EGG {
+        return false;
+    }
+    let carry = if player.on_ground { player.vel.with_y(0.0) } else { player.vel };
+    entities.throw_projectile(held.item, owner, player.eye(), player.forward().as_dvec3(), carry);
+    if !creative {
+        inventory.take_one(slot);
+    }
+    true
 }
 
 /// Java's `ItemUtils.createFilledResult`: creative keeps the original and gains
@@ -93,5 +120,15 @@ mod tests {
         let milk = inventory.slots.iter().flatten().filter(|stack| stack.item == Item::MILK_BUCKET).count();
         super::exchange(&mut inventory, 0, Item::MILK_BUCKET, true, &mut entities, &player);
         assert_eq!(inventory.slots.iter().flatten().filter(|stack| stack.item == Item::MILK_BUCKET).count(), milk);
+    }
+
+    #[test]
+    fn snowballs_and_eggs_stack_to_sixteen_and_have_names() {
+        assert_eq!(Item::from_name("snowball"), Some(Item::SNOWBALL));
+        assert_eq!(Item::from_name("egg"), Some(Item::EGG));
+        assert_eq!(Item::SNOWBALL.max_stack(), 16);
+        assert_eq!(Item::EGG.max_stack(), 16);
+        assert!(Item::creative_palette().any(|item| item == Item::SNOWBALL));
+        assert!(Item::creative_palette().any(|item| item == Item::EGG));
     }
 }

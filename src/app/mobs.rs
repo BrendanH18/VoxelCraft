@@ -293,7 +293,11 @@ impl Game {
                 EntityEvent::MobShot { pos, .. } => {
                     self.audio.play(Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
-                EntityEvent::Shoot { .. } | EntityEvent::DragonXp { .. } | EntityEvent::MobKilled { .. } => {}
+                EntityEvent::Shoot { .. }
+                | EntityEvent::DragonXp { .. }
+                | EntityEvent::MobKilled { .. }
+                | EntityEvent::LaidEgg { .. }
+                | EntityEvent::Hatched { .. } => {}
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
                     if self.mode.is_survival() && !self.vitals.is_dead() {

@@ -1021,6 +1021,8 @@ impl Block {
             // Glowstone breaks into dust (see `World::spill_block`).
             Block::GLOWSTONE | Block::NETHER_PORTAL | Block::SPAWNER => None,
             Block::COBWEB => Some(Item::STRING),
+            // The full snow block stands in for snow layers and yields four snowballs.
+            Block::SNOW => None,
             // Bookshelves drop three books (see `World::spill_block`).
             Block::BOOKSHELF | Block::END_PORTAL_FRAME | Block::END_PORTAL | Block::END_GATEWAY => None,
             b if b.is_leaves() => None,

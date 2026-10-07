@@ -25,6 +25,7 @@ pub mod pearl;
 pub mod player_model;
 mod player_pose;
 mod projectile;
+mod thrown;
 pub mod tnt;
 
 use std::f32::consts::TAU;
@@ -161,6 +162,15 @@ pub enum EntityEvent {
     /// The Ender Dragon flew through this block: remove it, without drops.
     BreakBlock {
         cell: IVec3,
+    },
+    /// A chicken laid an egg at its feet.
+    LaidEgg {
+        pos: DVec3,
+    },
+    /// A thrown egg hatched `count` chicks (one or four) at `pos`.
+    Hatched {
+        pos: DVec3,
+        count: u8,
     },
     /// The dragon's death is over: open the exit portal, and on the `first`
     /// kill put the egg on top.
@@ -379,6 +389,7 @@ pub struct Entities {
     pub particles: crate::particles::Requests,
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
+    pub thrown: Vec<thrown::Thrown>,
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
     pub puffs: Vec<Puff>,
@@ -411,6 +422,7 @@ impl Entities {
             particles: Default::default(),
             arrows: Vec::new(),
             pearls: Vec::new(),
+            thrown: Vec::new(),
             eyes: Vec::new(),
             fireballs: Vec::new(),
             puffs: Vec::new(),
@@ -528,9 +540,12 @@ impl Entities {
         }
         events.retain(|e| !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. }));
         self.fireballs.retain_mut(|f| f.update(dt, world, ctx, &mut events));
-        let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
-        self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
-        self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
+        {
+            let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
+            self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
+            self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
+            self.thrown.retain_mut(|t| t.update(dt, world, mobs, rng, &mut events));
+        }
         self.update_eyes(dt, &mut events);
         for e in &events {
             match *e {
@@ -550,10 +565,29 @@ impl Entities {
                 EntityEvent::MobKilled { kind, pos, burning, player_kill, looting } => {
                     self.drop_loot_with_fire(kind, pos, looting, burning, player_kill);
                 }
+                EntityEvent::LaidEgg { pos } => {
+                    self.drop_from_block(
+                        crate::inventory::Stack::new(crate::item::Item::EGG, 1),
+                        pos.floor().as_ivec3(),
+                    );
+                }
+                EntityEvent::Hatched { pos, count } => {
+                    for _ in 0..count {
+                        self.spawn_baby(MobKind::Chicken, pos);
+                    }
+                }
                 _ => {}
             }
         }
-        events.retain(|e| !matches!(e, EntityEvent::DragonXp { .. } | EntityEvent::MobKilled { .. }));
+        events.retain(|e| {
+            !matches!(
+                e,
+                EntityEvent::DragonXp { .. }
+                    | EntityEvent::MobKilled { .. }
+                    | EntityEvent::LaidEgg { .. }
+                    | EntityEvent::Hatched { .. }
+            )
+        });
         self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
         self.orbs.retain_mut(|orb| !world.loaded(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
@@ -890,6 +924,9 @@ impl Entities {
         for p in &mut self.pearls {
             p.previous_pos = p.pos;
         }
+        for t in &mut self.thrown {
+            t.previous_pos = t.pos;
+        }
         for e in &mut self.eyes {
             e.previous_pos = e.pos;
         }
@@ -923,6 +960,7 @@ impl Entities {
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
+        model::build_thrown(&self.thrown, camera, alpha, &mut self.verts);
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
@@ -974,6 +1012,20 @@ impl Entities {
     /// their velocity `carry`.
     pub fn throw_pearl(&mut self, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3) {
         self.pearls.push(pearl::Pearl::thrown(owner, eye, dir, carry, &mut self.rng));
+    }
+
+    /// Throws a snowball or egg from `eye` along `dir`.
+    pub fn throw_projectile(&mut self, item: crate::item::Item, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3) {
+        let Some(kind) = thrown::Kind::from_item(item) else { return };
+        self.thrown.push(thrown::Thrown::launch(kind, owner, eye, dir, carry, &mut self.rng));
+    }
+
+    /// Spawns a baby that grows up after Java's 24000 ticks.
+    pub fn spawn_baby(&mut self, kind: MobKind, pos: DVec3) {
+        let yaw = self.rng.range(0.0, TAU);
+        let mut mob = Mob::new(kind, pos, yaw);
+        mob.age = -24000;
+        self.mobs.push(mob);
     }
 
     /// An eye of ender released at `pos` to fly toward the stronghold at
@@ -1635,6 +1687,20 @@ mod tests {
         };
         let hit = (0..60 * 10).any(|_| e.update(1.0 / 60.0, &world, &c).iter().any(is_hit));
         assert!(hit, "zombie stuck at {:?}", e.mobs[0].pos);
+    }
+
+    #[test]
+    fn chickens_lay_eggs_and_hatch_half_size_chicks() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Chicken, DVec3::new(0.5, 10.0, 0.5));
+        let grown = e.mobs[0].shape().height;
+        e.mobs[0].egg_timer = 0.01;
+        e.update(0.05, &world, &ctx(DVec3::new(40.0, 10.0, 0.0)));
+        assert!(e.items.iter().any(|item| item.stack.item == crate::item::Item::EGG));
+        e.spawn_baby(MobKind::Chicken, DVec3::new(2.5, 10.0, 0.5));
+        let chick = e.mobs.iter().find(|m| m.age < 0).unwrap();
+        assert!((chick.shape().height - grown * 0.5).abs() < 1e-4);
     }
 
     #[test]

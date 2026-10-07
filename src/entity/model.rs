@@ -525,7 +525,7 @@ pub fn build(
         let torch = (m.block_light.clamp(0.0, 1.0) * 255.0) as u8;
         // A lit creeper swells and flashes white; burning mobs glow orange.
         let fuse = m.fuse / FUSE_TIME;
-        let scale = 1.0 + fuse * 0.18;
+        let scale = (1.0 + fuse * 0.18) * if m.age < 0 { 0.5 } else { 1.0 };
         let tint = if m.fuse > 0.0 {
             ([255.0; 3], ((m.fuse * (8.0 + 16.0 * fuse)).sin() * 0.5 + 0.5) * 0.7)
         } else if m.burning {
@@ -593,6 +593,19 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<E
         for (i, c) in ARROW.iter().enumerate() {
             push_cuboid(out, c, &|v: Vec3| origin + rot * v / 16.0, rot, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
         }
+    }
+}
+
+/// Thrown snowballs and eggs: small cubes that tumble with no facing.
+pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for t in thrown {
+        let rel = (t.previous_pos.lerp(t.pos, alpha) - camera).as_vec3();
+        let (color, size) = match t.kind {
+            super::thrown::Kind::Snowball => ([245, 245, 250], 2.0),
+            super::thrown::Kind::Egg => ([236, 224, 196], 2.2),
+        };
+        let c = cube([-size, -size, -size], [size, size, size], color, 16);
+        push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);
     }
 }
 

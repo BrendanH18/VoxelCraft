@@ -1509,7 +1509,9 @@ impl Game {
         ) {
             return;
         }
-        if !self.aiming_at_usable() && (self.use_bucket() || self.throw_pearl() || self.throw_eye()) {
+        if !self.aiming_at_usable()
+            && (self.use_bucket() || self.throw_pearl() || self.throw_eye() || self.throw_projectile())
+        {
             return;
         }
         let Some((pos, normal)) = self.target() else { return };
@@ -1907,7 +1909,7 @@ impl Game {
             && (self.left_held || self.right_held)
             && self.actions.bow_draw.is_none()
             // Buckets act once per click.
-            && !(self.right_held && !self.left_held && self.holding_bucket())
+            && !(self.right_held && !self.left_held && (self.holding_bucket() || self.holding_throwable()))
         {
             if self.left_held {
                 self.break_block();

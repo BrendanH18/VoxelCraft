@@ -330,6 +330,10 @@ pub(super) enum Ai {
 pub struct Mob {
     pub kind: MobKind,
     pub sheared: bool,
+    /// Negative while a baby. Java's chicks start at -24000 and grow one tick at a time.
+    pub age: i32,
+    /// Seconds until a grown chicken lays an egg (Java's 6000–12000 ticks).
+    pub(crate) egg_timer: f32,
     /// Feet position (bottom centre of the box).
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
@@ -409,6 +413,8 @@ impl Mob {
         Self {
             kind,
             sheared: false,
+            age: 0,
+            egg_timer: if kind == MobKind::Chicken { 300.0 + yaw.rem_euclid(TAU) / TAU * 300.0 } else { f32::MAX },
             pos,
             previous_pos: pos,
             vel: DVec3::ZERO,
@@ -458,7 +464,8 @@ impl Mob {
     }
 
     pub fn shape(&self) -> Shape {
-        self.kind.shape()
+        let shape = self.kind.shape();
+        if self.age < 0 { Shape::new(shape.half_width * 0.5, shape.height * 0.5) } else { shape }
     }
 
     pub fn aabb(&self) -> (DVec3, DVec3) {
@@ -614,6 +621,18 @@ impl Mob {
             self.provoked = provoked;
             if self.health < health && rng.chance(0.9) {
                 self.teleport_pending = true;
+            }
+        }
+        if self.alive() && self.kind == MobKind::Chicken {
+            let ticks = ((dt * 20.0).round() as i32).max(1);
+            if self.age < 0 {
+                self.age = (self.age + ticks).min(0);
+            } else {
+                self.egg_timer -= dtf;
+                if self.egg_timer <= 0.0 {
+                    self.egg_timer = rng.range(300.0, 600.0);
+                    events.push(EntityEvent::LaidEgg { pos: self.pos });
+                }
             }
         }
     }

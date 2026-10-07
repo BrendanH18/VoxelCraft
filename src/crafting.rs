@@ -224,6 +224,7 @@ const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
 const BROWN_MUSHROOM: Ingredient = &[b(Block::BROWN_MUSHROOM)];
 const RED_MUSHROOM: Ingredient = &[b(Block::RED_MUSHROOM)];
 const BOWL: Ingredient = &[Item::BOWL];
+const SNOWBALL: Ingredient = &[Item::SNOWBALL];
 
 fn shaped(rows: &'static [&'static str], key: &[(char, Ingredient)], result: Item, count: u8) -> Recipe {
     Recipe { shape: Shape::Shaped(rows, key.to_vec()), result: Stack::new(result, count) }
@@ -315,6 +316,7 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["# #", " # "], &[('#', &[Item::IRON_INGOT])], Item::BUCKET, 1),
             shaped(&["# #", " # "], &[('#', PLANKS)], Item::BOWL, 4),
             shapeless(&[BROWN_MUSHROOM, RED_MUSHROOM, BOWL], Item::MUSHROOM_STEW, 1),
+            shaped(&["##", "##"], &[('#', SNOWBALL)], b(Block::SNOW), 1),
             shaped(&[" #", "# "], &[('#', &[Item::IRON_INGOT])], Item::SHEARS, 1),
             shaped(&["# #", " # "], &[('#', GLASS)], Item::GLASS_BOTTLE, 3),
             shaped(&["X#X", "#X#", "X#X"], &[('X', &[Item::GUNPOWDER]), ('#', SAND)], b(Block::TNT), 1),
@@ -527,6 +529,13 @@ mod tests {
 
     const P: Item = b(Block::PLANKS);
     const C: Item = b(Block::COBBLESTONE);
+
+    #[test]
+    fn four_snowballs_craft_a_snow_block() {
+        let g =
+            grid(2, &[(0, 0, Item::SNOWBALL), (1, 0, Item::SNOWBALL), (0, 1, Item::SNOWBALL), (1, 1, Item::SNOWBALL)]);
+        assert_eq!(g.result(), Some(Stack::new(Block::SNOW, 1)));
+    }
 
     #[test]
     fn shaped_recipes_match_anywhere_and_mirrored() {

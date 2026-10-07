@@ -108,6 +108,24 @@ impl Game {
         true
     }
 
+    /// Right-click with a snowball or egg throws one (Java's stack of 16).
+    pub(super) fn throw_projectile(&mut self) -> bool {
+        let slot = self.actions.selected;
+        let thrown = voxelcraft::survival_items::throw_held(
+            &self.player,
+            &mut self.inventory,
+            slot,
+            self.mode.is_creative(),
+            self.actor,
+            &mut self.mobs.entities,
+        );
+        if thrown {
+            let p = &self.player;
+            self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
+        }
+        thrown
+    }
+
     /// Right-click with an eye of ender in the overworld releases it toward
     /// the nearest stronghold (not while aiming at a portal frame).
     pub(super) fn throw_eye(&mut self) -> bool {

@@ -190,6 +190,7 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::BOOKSHELF
             | Block::CLAY
             | Block::MELON
+            | Block::SNOW
             | Block::COBWEB
             | Block::DEEPSLATE
     ) || b.is_leaves()

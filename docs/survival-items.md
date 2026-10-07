@@ -29,3 +29,14 @@ exposure approximation, so outdoor shade is conservative and exposed swamp
 mushrooms disappear. Huge mushrooms/mycelium/podzol are deferred.
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/MilkBucketItem.java
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/MushroomBlock.java
+
+Snowballs stack to 16. The full snow block stands in for snow layers and drops
+four snowballs; silk touch keeps the block, and four snowballs craft it back.
+Thrown snowballs and eggs use Java's 1.5 blocks/tick, 0.03 gravity and a small
+inaccuracy. They knock mobs back. A snowball deals 3 damage only to blazes.
+Eggs hatch with Java's 1/8 chance, and 1/32 of those hatch four chicks. Chicks
+are half-size babies that grow up after 24000 ticks. Grown chickens lay one egg
+every 6000–12000 ticks. Host, pad and CLI players throw through the shared use path.
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/projectile/Snowball.java
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/projectile/ThrownEgg.java
+- https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/animal/Chicken.java

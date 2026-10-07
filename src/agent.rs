@@ -790,6 +790,29 @@ impl Agent {
                     return Err("block is unchanged or unloaded".into());
                 }
             }
+            Command::Place
+                if self
+                    .inventory
+                    .get(self.selected)
+                    .is_some_and(|s| s.item == Item::SNOWBALL || s.item == Item::EGG) =>
+            {
+                if !self.mode.can_interact() {
+                    return Err("spectators cannot use items".into());
+                }
+                if self.cooldown > 0.0 {
+                    return Err("action cooling down".into());
+                }
+                crate::survival_items::throw_held(
+                    &self.player,
+                    &mut self.inventory,
+                    self.selected,
+                    self.creative,
+                    self.id,
+                    entities,
+                );
+                self.cooldown = 0.22;
+                self.swings += 1;
+            }
             Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::ENDER_PEARL) => {
                 if !self.mode.can_interact() {
                     return Err("spectators cannot use items".into());

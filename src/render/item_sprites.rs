@@ -167,6 +167,19 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     let out = match sprite {
+        Sprite::Egg => {
+            let egg = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let nx = (px - 8.0) / 3.2;
+                let ny = (py - 8.2) / 4.4;
+                nx * nx + ny * ny <= 1.0
+            };
+            shaded(&egg, x, y, [244, 236, 214], 0.04).map(
+                |p| {
+                    if (x + y) % 5 == 0 { tint([214, 168, 92], 0.9) } else { p }
+                },
+            )
+        }
         Sprite::Bowl(soup) => {
             let bowl = |x: i32, y: i32| (3..=12).contains(&x) && (8..=13).contains(&y) && y < 17 - (x - 7).abs();
             if (4..=11).contains(&x)

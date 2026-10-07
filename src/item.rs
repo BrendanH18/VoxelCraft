@@ -178,6 +178,8 @@ pub enum Sprite {
     Stick,
     Shears,
     Bowl(Option<[u8; 3]>),
+    /// A white egg.
+    Egg,
     Lump([u8; 3]),
     Ingot([u8; 3]),
     Gem([u8; 3]),
@@ -382,6 +384,13 @@ const SURVIVAL_ITEMS: &[ItemInfo] = &[
         max_stack: 1,
         sprite: Sprite::Bowl(Some([155, 113, 66])),
     },
+    ItemInfo {
+        name: "snowball",
+        kind: ItemKind::Material,
+        max_stack: 16,
+        sprite: Sprite::Pearl([245, 245, 250], [255, 255, 255]),
+    },
+    ItemInfo { name: "egg", kind: ItemKind::Material, max_stack: 16, sprite: Sprite::Egg },
 ];
 
 const TOOL_KINDS: [ToolKind; 5] = [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword];
@@ -405,6 +414,8 @@ impl Item {
     pub const MILK_BUCKET: Item = Item(513);
     pub const BOWL: Item = Item(514);
     pub const MUSHROOM_STEW: Item = Item(515);
+    pub const SNOWBALL: Item = Item(516);
+    pub const EGG: Item = Item(517);
     pub const SHEARS: Item = Item(512);
 
     pub const STICK: Item = Item(256);
