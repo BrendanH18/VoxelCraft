@@ -35,15 +35,15 @@ the GPU after every frame; they include CPU and GPU work.
 
 ```text
 $ voxelcraft --bench --rd 8
-generate (1 thread): 0.226 ms/chunk
-light+mesh (1 thread): 0.725 ms per dense chunk, 149146 quads (27117 bytes/chunk GPU)
-stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.19 s
+generate (1 thread): 0.205 ms/chunk
+light+mesh (1 thread): 0.655 ms per dense chunk, 149146 quads (27117 bytes/chunk GPU)
+stream rd=8 on 9 workers: 2344 chunks loaded, 1576 meshed in 0.17 s
 
 $ voxelcraft --bench-render --rd 8     # 1600x900, GPU-synchronised each frame
-avg 1.10 ms (~900 fps) — 661 draw calls, 0.42M quads drawn
+avg 1.17 ms (~855 fps) — 813 draw calls, 0.29M quads drawn
 
 $ voxelcraft --bench-render --rd 16    # 512-block view distance
-avg 2.05 ms (~490 fps) — 1708 draw calls, 0.89M quads drawn, 52 MB of quad data
+avg 2.40 ms (~417 fps) — 2652 draw calls, 0.76M quads drawn, 57 MB of quad data
 ```
 
 The headless figures above were remeasured on 2026-10-07 (seed 12345, seven-run medians).
