@@ -727,6 +727,60 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 shade([8, 12, 18], 0.8 + r * 0.4)
             }
         }
+        tex::BLACKSTONE
+        | tex::POLISHED_BLACKSTONE
+        | tex::POLISHED_BLACKSTONE_BRICKS
+        | tex::CRACKED_POLISHED_BLACKSTONE_BRICKS
+        | tex::CHISELED_POLISHED_BLACKSTONE
+        | tex::GILDED_BLACKSTONE => {
+            let brick = matches!(layer, tex::POLISHED_BLACKSTONE_BRICKS | tex::CRACKED_POLISHED_BLACKSTONE_BRICKS);
+            let mortar = brick && (y.is_multiple_of(8) || (x + if y < 8 { 0 } else { 8 }).is_multiple_of(16));
+            let crack = layer == tex::CRACKED_POLISHED_BLACKSTONE_BRICKS && (x + y * 3).is_multiple_of(13);
+            let carving = layer == tex::CHISELED_POLISHED_BLACKSTONE
+                && ((x == 3 || x == 12) && (3..13).contains(&y)
+                    || (y == 3 || y == 12) && (3..13).contains(&x)
+                    || (y == 7 || y == 9) && (6..10).contains(&x));
+            let gold = layer == tex::GILDED_BLACKSTONE && rnd(layer, x / 2, y / 2, 5) > 0.82;
+            let smooth = layer == tex::POLISHED_BLACKSTONE;
+            if gold {
+                noisy(layer, x, y, [204, 158, 40], 0.25)
+            } else {
+                noisy(
+                    layer,
+                    x,
+                    y,
+                    if mortar || crack || carving {
+                        [22, 20, 26]
+                    } else if smooth {
+                        [56, 51, 61]
+                    } else {
+                        [48, 43, 52]
+                    },
+                    if smooth { 0.12 } else { 0.28 },
+                )
+            }
+        }
+        tex::BASALT_SIDE | tex::POLISHED_BASALT_SIDE => {
+            let streak = rnd(layer, x, 0, 5);
+            let polished = layer == tex::POLISHED_BASALT_SIDE;
+            shade([91, 88, 94], 0.55 + streak * 0.6 + r * if polished { 0.12 } else { 0.25 })
+        }
+        tex::BASALT_TOP | tex::POLISHED_BASALT_TOP => {
+            let ring = x.abs_diff(7).max(y.abs_diff(7));
+            shade([91, 88, 94], if ring.is_multiple_of(3) { 0.6 } else { 0.85 + r * 0.25 })
+        }
+        tex::MAGMA => {
+            let (d1, d2, _) = voronoi(x, y, &[(2.0, 3.0), (10.0, 2.0), (6.0, 10.0), (14.0, 12.0)]);
+            noisy(layer, x, y, if d2 - d1 < 1.1 { [236, 111, 24] } else { [72, 32, 27] }, 0.25)
+        }
+        tex::GOLD_BLOCK => {
+            let rim = x == 0 || y == 0 || x == 15 || y == 15;
+            shade([246, 207, 56], if rim { 0.75 } else { 0.93 + r * 0.12 })
+        }
+        tex::CHAIN => {
+            // Box geometry provides the three-block axis; dark slots suggest linked iron.
+            noisy(layer, x, y, if y % 8 == 3 || y % 8 == 4 { [40, 44, 53] } else { [112, 119, 133] }, 0.12)
+        }
         tex::LAPIS_BLOCK => {
             // Deep blue with lighter flecks and a darker rim.
             let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;

@@ -262,7 +262,20 @@ pub mod tex {
     pub const RAIL_SW: u16 = RAIL + 3;
     pub const RAIL_NW: u16 = RAIL + 4;
     pub const RAIL_NE: u16 = RAIL + 5;
-    pub const COUNT: u32 = RAIL_NE as u32 + 1;
+    pub const BLACKSTONE: u16 = RAIL_NE + 1;
+    pub const POLISHED_BLACKSTONE: u16 = BLACKSTONE + 1;
+    pub const POLISHED_BLACKSTONE_BRICKS: u16 = POLISHED_BLACKSTONE + 1;
+    pub const CRACKED_POLISHED_BLACKSTONE_BRICKS: u16 = POLISHED_BLACKSTONE_BRICKS + 1;
+    pub const CHISELED_POLISHED_BLACKSTONE: u16 = CRACKED_POLISHED_BLACKSTONE_BRICKS + 1;
+    pub const GILDED_BLACKSTONE: u16 = CHISELED_POLISHED_BLACKSTONE + 1;
+    pub const BASALT_SIDE: u16 = GILDED_BLACKSTONE + 1;
+    pub const BASALT_TOP: u16 = BASALT_SIDE + 1;
+    pub const POLISHED_BASALT_SIDE: u16 = BASALT_TOP + 1;
+    pub const POLISHED_BASALT_TOP: u16 = POLISHED_BASALT_SIDE + 1;
+    pub const MAGMA: u16 = POLISHED_BASALT_TOP + 1;
+    pub const GOLD_BLOCK: u16 = MAGMA + 1;
+    pub const CHAIN: u16 = GOLD_BLOCK + 1;
+    pub const COUNT: u32 = CHAIN as u32 + 1;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -529,6 +542,17 @@ impl Block {
     /// ascending east/west/north/south, then south_east, south_west,
     /// north_west, north_east. All render flat (no slope mesh).
     pub const RAIL: Block = Block(500);
+    pub const BLACKSTONE: Block = Block(800);
+    pub const POLISHED_BLACKSTONE: Block = Block(801);
+    pub const POLISHED_BLACKSTONE_BRICKS: Block = Block(802);
+    pub const CRACKED_POLISHED_BLACKSTONE_BRICKS: Block = Block(803);
+    pub const CHISELED_POLISHED_BLACKSTONE: Block = Block(804);
+    pub const GILDED_BLACKSTONE: Block = Block(805);
+    pub const BASALT: Block = Block(806);
+    pub const POLISHED_BASALT: Block = Block(809);
+    pub const MAGMA: Block = Block(812);
+    pub const GOLD_BLOCK: Block = Block(813);
+    pub const CHAIN: Block = Block(814);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age as u16 })
@@ -616,11 +640,17 @@ impl Block {
 
     /// The stairs cut from `base` (one of [`Block::SLAB_BASES`]), facing south.
     pub fn stairs_of(base: Block) -> Option<Block> {
+        if let Some(b) = super::nether_blocks::shape_of(base, 0) {
+            return Some(b);
+        }
         Self::SLAB_BASES.iter().position(|&b| b == base).map(stairs_id)
     }
 
     /// The full block stairs were cut from.
     pub fn stairs_base(self) -> Option<Block> {
+        if let Some((i, 0..=3)) = super::nether_blocks::form(self.0) {
+            return Some(super::nether_blocks::SHAPE_BASES[i]);
+        }
         if let Some(super::forms::StoneForm::Stairs { index, .. }) = super::forms::stone_form(self.0) {
             return Some(super::forms::stone_base(index));
         }
@@ -632,6 +662,9 @@ impl Block {
 
     /// The full block a wall was built from.
     pub fn wall_base(self) -> Option<Block> {
+        if let Some((i, 5)) = super::nether_blocks::form(self.0) {
+            return Some(super::nether_blocks::SHAPE_BASES[i]);
+        }
         match super::forms::stone_form(self.0) {
             Some(super::forms::StoneForm::Wall { index }) => Some(super::forms::wall_material(index)),
             _ => None,
@@ -640,6 +673,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if let Some(s) = super::nether_blocks::shaped(self.0) {
+            return Some(s);
+        }
         if let Some(shaped) = super::forms::as_shaped(self.0) {
             return Some(shaped);
         }
@@ -803,6 +839,9 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(b) = super::nether_blocks::base(self.0) {
+            return b;
+        }
         if self.is_rail() { Block::RAIL } else { self.oriented().map_or(self, |(b, _)| b) }
     }
 
@@ -922,11 +961,17 @@ impl Block {
 
     /// The slab cut from `base`, if there is one.
     pub fn slab_of(base: Block) -> Option<Block> {
+        if let Some(b) = super::nether_blocks::shape_of(base, 4) {
+            return Some(b);
+        }
         Self::SLAB_BASES.iter().position(|&b| b == base).map(slab_id)
     }
 
     /// The full block a slab was cut from (two stacked slabs make it).
     pub fn slab_base(self) -> Option<Block> {
+        if let Some((i, 4)) = super::nether_blocks::form(self.0) {
+            return Some(super::nether_blocks::SHAPE_BASES[i]);
+        }
         if let Some(super::forms::StoneForm::Slab { index }) = super::forms::stone_form(self.0) {
             return Some(super::forms::stone_base(index));
         }
@@ -1025,6 +1070,16 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if super::nether_blocks::registry(self.material().0).is_some() {
+            return match self.material() {
+                Block::CHAIN => 5.0,
+                Block::GOLD_BLOCK => 3.0,
+                Block::MAGMA => 0.5,
+                Block::POLISHED_BLACKSTONE => 2.0,
+                Block::BASALT | Block::POLISHED_BASALT => 1.25,
+                _ => 1.5,
+            };
+        }
         if self.is_door() {
             return 3.0;
         }
@@ -1100,6 +1155,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if super::nether_blocks::registry(self.material().0).is_some() {
+            return Some(ToolKind::Pickaxe);
+        }
         match self.material() {
             Block::STONE
             | Block::COBBLESTONE
@@ -1184,6 +1242,9 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if super::nether_blocks::registry(self.material().0).is_some() {
+            return Some(if self.material() == Block::GOLD_BLOCK { 2 } else { 0 });
+        }
         match self.material().as_stone_ore() {
             Block::STONE
             | Block::COBBLESTONE
@@ -1256,6 +1317,7 @@ impl Block {
             ])
             .chain(225..=252)
             .chain(super::forms::palette_ids())
+            .chain(super::nether_blocks::palette_ids())
             .map(Block)
     }
 
@@ -1357,6 +1419,7 @@ impl Block {
     #[inline(always)]
     pub fn emission(self) -> u8 {
         match self.base() {
+            Block::MAGMA => 3,
             Block::GLOWSTONE => 15,
             Block::TORCH => 14,
             Block::LIT_FURNACE => 13,
@@ -1544,6 +1607,7 @@ pub enum Shaped {
     /// A 12/16-high table.
     EnchantingTable,
     /// Java's anvil: a base, a neck and a top running along x or z.
+    Chain(u8),
     Anvil {
         along_x: bool,
     },
@@ -1655,6 +1719,10 @@ const fn fronted(front: u16, side: u16, top: u16, facing: Facing) -> [u16; 6] {
 const fn make(id: u16) -> BlockInfo {
     use RenderKind::*;
     let (name, kind, tex) = match id {
+        800..=834 => match super::nether_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         #[cfg(test)]
         4095 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]
@@ -1922,6 +1990,9 @@ pub static INFO: [BlockInfo; STATE_CAPACITY] = {
 /// Slabs and stairs keep light out the way the original seven do. Walls,
 /// fences, gates and doors stay open.
 const fn shape_blocks_light(id: u16) -> bool {
+    if let Some((_, 0..=4)) = super::nether_blocks::form(id) {
+        return true;
+    }
     if matches!(id, 106..=135 | 189..=193) {
         return true;
     }

@@ -178,6 +178,7 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::MELON
             | Block::COBWEB
             | Block::DEEPSLATE
+            | Block::GILDED_BLACKSTONE
     ) || b.is_leaves()
         || b.is_deepslate_ore();
     (silky && Item::from(b).is_valid()).then(|| Item::from(b))

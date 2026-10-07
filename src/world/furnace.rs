@@ -47,6 +47,7 @@ pub fn smelt(item: Item) -> Option<Item> {
         i if ore_of(i) == Some(Block::COAL_ORE) => Item::COAL,
         i if ore_of(i) == Some(Block::DIAMOND_ORE) => Item::DIAMOND,
         i if ore_of(i) == Some(Block::LAPIS_ORE) => Item::LAPIS_LAZULI,
+        i if i == b(Block::POLISHED_BLACKSTONE_BRICKS) => b(Block::CRACKED_POLISHED_BLACKSTONE_BRICKS),
         i if i == b(Block::STONE) => b(Block::SMOOTH_STONE),
         i if i == b(Block::COBBLED_DEEPSLATE) => b(Block::DEEPSLATE),
         i if i == b(Block::ANCIENT_DEBRIS) => Item::NETHERITE_SCRAP,

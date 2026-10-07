@@ -92,6 +92,8 @@ pub struct Env {
     /// Body touching lava: burns.
     pub in_lava: bool,
     pub in_fire: bool,
+    pub on_magma: bool,
+    pub frost_walker: bool,
     /// Exposed to rain: extinguishes the player like body water does.
     pub wet: bool,
     /// Horizontal distance moved this frame, and whether sprinting /
@@ -429,6 +431,9 @@ impl Vitals {
         } else {
             self.fire_timer = 0.0;
         }
+        if env.on_magma && !env.frost_walker && !creative {
+            hurts.fire = hurts.fire.max(1.0);
+        }
         if fire_proof {
             (hurts.lava, hurts.fire, hurts.burn) = (0.0, 0.0, 0.0);
         }
@@ -493,6 +498,16 @@ mod tests {
     use super::*;
 
     const DT: f32 = 1.0 / 60.0;
+
+    #[test]
+    fn magma_hurts_without_igniting_and_frost_walker_protects() {
+        let mut v = Vitals::default();
+        let magma = Env { on_magma: true, ..Env::default() };
+        assert_eq!(v.tick(0.05, &magma, false).fire, 1.0);
+        assert_eq!(v.tick(1.0, &Env::default(), false).burn, 0.0);
+        assert_eq!(v.tick(0.05, &Env { frost_walker: true, ..magma }, false).fire, 0.0);
+        assert_eq!(v.tick(0.05, &magma, true).fire, 0.0);
+    }
 
     #[test]
     fn fire_keeps_burning_then_water_rain_and_creative_extinguish_it() {

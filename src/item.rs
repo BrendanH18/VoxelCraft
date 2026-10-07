@@ -415,6 +415,9 @@ impl Item {
     pub const NETHER_BRICK: Item = Item(288);
     pub const GLOWSTONE_DUST: Item = Item(289);
     pub const GOLD_NUGGET: Item = Item(290);
+    pub const MAGMA_CREAM: Item = Item(608);
+    pub const IRON_NUGGET: Item = Item(609);
+    pub const SLIME_BALL: Item = Item(610);
     pub const BUCKET: Item = Item(291);
     pub const WATER_BUCKET: Item = Item(292);
     pub const LAVA_BUCKET: Item = Item(293);
@@ -508,6 +511,12 @@ impl Item {
     }
 
     pub fn info(self) -> ItemInfo {
+        match self {
+            Self::MAGMA_CREAM => return item("magma cream", Sprite::Lump([242, 115, 30])),
+            Self::IRON_NUGGET => return item("iron nugget", Sprite::Nugget([202, 206, 212])),
+            Self::SLIME_BALL => return item("slimeball", Sprite::Lump([104, 180, 83])),
+            _ => {}
+        }
         if let Some(b) = self.block() {
             return ItemInfo { name: b.name(), kind: ItemKind::Block(b), max_stack: 64, sprite: Sprite::Stick };
         }
@@ -640,7 +649,11 @@ impl Item {
         let tools = (0..TOOL_COUNT + ARMOR_COUNT).map(|i| Item(FIRST_TOOL + i));
         let potions = (0..POTION_COUNT).map(|i| Item(FIRST_POTION + i));
         let extra = (0..EXTRA_ITEMS.len() as u16).map(|i| Item(EXTRA_ITEM + i));
-        materials.chain(tools).chain(potions).chain(extra)
+        materials.chain(tools).chain(potions).chain(extra).chain([
+            Item::MAGMA_CREAM,
+            Item::IRON_NUGGET,
+            Item::SLIME_BALL,
+        ])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -659,6 +672,7 @@ impl From<Block> for Item {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
+        608..=610 => Some(icon_count() as u16 - 3 + item.0 - 608),
         i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some(i - FIRST_ITEM),
         i if item.as_tool().is_some() || item.as_armor().is_some() => Some(materials + i - FIRST_TOOL),
         i if item.as_potion().is_some() => Some(materials + TOOL_COUNT + ARMOR_COUNT + i - FIRST_POTION),
@@ -671,7 +685,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32 + EXTRA_ITEMS.len() as u32
+    ITEMS.len() as u32 + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32 + EXTRA_ITEMS.len() as u32 + 3
 }
 
 /// Layer of a status effect's icon: in the item icon array, after every

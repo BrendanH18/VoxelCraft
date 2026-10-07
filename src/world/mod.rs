@@ -31,6 +31,7 @@ mod height;
 pub(crate) mod lighting;
 pub mod mineshaft;
 pub mod nether;
+pub mod nether_blocks;
 pub mod noise;
 pub mod ore;
 mod portal;

@@ -855,6 +855,7 @@ impl Agent {
                 {
                     return Err("this block requires the desktop placement action".into());
                 }
+                let block = crate::world::nether_blocks::placed(block, normal);
                 let at = pos + normal;
                 if !world.get_block(at).is_some_and(|b| b == Block::AIR || b.is_water() || b.is_lava()) {
                     return Err("destination occupied or unloaded".into());
@@ -1106,6 +1107,8 @@ impl Agent {
         let moved = (self.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
             respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
+            frost_walker: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker)
+                > 0,
             ..simulation::player_environment(&self.player, world, input, moved)
         };
         let hurts = self.vitals.tick_rules(

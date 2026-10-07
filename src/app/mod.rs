@@ -1563,7 +1563,8 @@ impl Game {
             return;
         }
         // Furnaces and chests face whoever places them.
-        let block = block.with_facing(crate::world::block::Facing::toward(self.player.forward()));
+        let block = crate::world::nether_blocks::placed(block, normal)
+            .with_facing(crate::world::block::Facing::toward(self.player.forward()));
         if block.is_water() && self.dimension == Dimension::Nether {
             // Water boils away in the Nether.
             self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
@@ -1916,6 +1917,8 @@ impl Game {
         self.world.raining = self.weather.raining && self.dimension.has_sky();
         let env = crate::simulation::survival::Env {
             respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
+            frost_walker: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker)
+                > 0,
             ..crate::simulation::player_environment(&self.player, &self.world, input, moved)
         };
         let hurts = if arriving || self.arrival.is_some() {

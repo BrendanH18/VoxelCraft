@@ -179,6 +179,7 @@ const GLASS: Ingredient = &[b(Block::GLASS)];
 const STONE: Ingredient = &[b(Block::STONE)];
 const SUGAR_CANE: Ingredient = &[b(Block::SUGAR_CANE)];
 const COBBLESTONE: Ingredient = &[b(Block::COBBLESTONE)];
+const STONE_CRAFTING: Ingredient = &[b(Block::COBBLESTONE), b(Block::BLACKSTONE), b(Block::COBBLED_DEEPSLATE)];
 const GRANITE: Ingredient = &[b(Block::GRANITE)];
 const DIORITE: Ingredient = &[b(Block::DIORITE)];
 const ANDESITE: Ingredient = &[b(Block::ANDESITE)];
@@ -299,7 +300,7 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["#", "#"], &[('#', PLANKS)], Item::STICK, 4),
             shaped(&["##", "##"], &[('#', PLANKS)], b(Block::CRAFTING_TABLE), 1),
             shaped(&["@@", "##", "##"], &[('@', IRON), ('#', PLANKS)], b(Block::SMITHING_TABLE), 1),
-            shaped(&["###", "# #", "###"], &[('#', COBBLESTONE)], b(Block::FURNACE), 1),
+            shaped(&["###", "# #", "###"], &[('#', STONE_CRAFTING)], b(Block::FURNACE), 1),
             shaped(&[" r ", "###"], &[('r', &[Item::BLAZE_ROD]), ('#', COBBLESTONE)], b(Block::BREWING_STAND), 1),
             shaped(&["###", "# #", "###"], &[('#', PLANKS)], b(Block::CHEST), 1),
             shaped(&["###"], &[('#', &[Item::WHEAT])], Item::BREAD, 1),
@@ -333,13 +334,35 @@ pub fn recipes() -> &'static [Recipe] {
             (&[b(Block::JUNGLE_LOG)], Block::JUNGLE_PLANKS),
             (&[b(Block::ACACIA_LOG)], Block::ACACIA_PLANKS),
         ];
+        const BLACK: Ingredient = &[b(Block::BLACKSTONE)];
+        const POLISHED: Ingredient = &[b(Block::POLISHED_BLACKSTONE)];
+        const BLACK_BRICKS: Ingredient = &[b(Block::POLISHED_BLACKSTONE_BRICKS)];
+        const POLISHED_SLAB: Ingredient = &[b(crate::world::nether_blocks::shape_id(1, 4))];
+        const GOLD_BLOCK: Ingredient = &[b(Block::GOLD_BLOCK)];
+        const BASALT: Ingredient = &[b(Block::BASALT)];
+        r.push(shaped(&["##", "##"], &[('#', BLACK)], b(Block::POLISHED_BLACKSTONE), 4));
+        r.push(shaped(&["##", "##"], &[('#', POLISHED)], b(Block::POLISHED_BLACKSTONE_BRICKS), 4));
+        r.push(shaped(&["#", "#"], &[('#', POLISHED_SLAB)], b(Block::CHISELED_POLISHED_BLACKSTONE), 1));
+        r.push(shaped(&["##", "##"], &[('#', BASALT)], b(Block::POLISHED_BASALT), 4));
+        r.push(shaped(&["##", "##"], &[('#', &[Item::MAGMA_CREAM])], b(Block::MAGMA), 1));
+        r.push(shapeless(&[&[Item::SLIME_BALL], &[Item::BLAZE_POWDER]], Item::MAGMA_CREAM, 1));
+        r.push(shaped(&["N", "I", "N"], &[('N', &[Item::IRON_NUGGET]), ('I', IRON)], b(Block::CHAIN), 1));
+        r.push(shaped(&["###", "###", "###"], &[('#', GOLD)], b(Block::GOLD_BLOCK), 1));
+        r.push(shapeless(&[GOLD_BLOCK], Item::GOLD_INGOT, 9));
+        r.push(shaped(&["###", "###", "###"], &[('#', &[Item::IRON_NUGGET])], Item::IRON_INGOT, 1));
+        r.push(shapeless(&[IRON], Item::IRON_NUGGET, 9));
+        for (i, mat) in [BLACK, POLISHED, BLACK_BRICKS].into_iter().enumerate() {
+            r.push(shaped(&["#  ", "## ", "###"], &[('#', mat)], b(crate::world::nether_blocks::shape_id(i, 0)), 4));
+            r.push(shaped(&["###"], &[('#', mat)], b(crate::world::nether_blocks::shape_id(i, 4)), 6));
+            r.push(shaped(&["###", "###"], &[('#', mat)], b(crate::world::nether_blocks::shape_id(i, 5)), 6));
+        }
         // Planks first: the recipe guide lists them before everything else.
         for (i, (log, planks)) in LOGS.into_iter().enumerate() {
             r.insert(i, shapeless(&[log], b(planks), 4));
         }
         const MATERIALS: [(Tier, Ingredient); 5] = [
             (Tier::Wood, PLANKS),
-            (Tier::Stone, COBBLESTONE),
+            (Tier::Stone, STONE_CRAFTING),
             (Tier::Iron, &[Item::IRON_INGOT]),
             (Tier::Gold, &[Item::GOLD_INGOT]),
             (Tier::Diamond, &[Item::DIAMOND]),

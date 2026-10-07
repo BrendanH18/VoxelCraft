@@ -264,6 +264,14 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
         Some(Shaped::Gate { facing, open }) => {
             out.push_turned(if open { &GATE_OPEN[..] } else { &GATE_CLOSED[..] }, facing)
         }
+        Some(Shaped::Chain(axis)) => {
+            let (min, max) = match axis {
+                1 => ([0, 6, 6], [16, 9, 9]),
+                2 => ([6, 6, 0], [9, 9, 16]),
+                _ => ([6, 0, 6], [9, 16, 9]),
+            };
+            out.push(b(min, max));
+        }
         Some(Shaped::Rail) => out.push(RAIL),
         Some(Shaped::Fence) => {
             out.push(FENCE_POST);
