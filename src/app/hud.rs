@@ -186,7 +186,7 @@ impl Game {
             inventory: &self.inventory,
             vitals: &self.vitals,
             selected: self.actions.selected,
-            survival: self.mode == GameMode::Survival,
+            survival: self.mode.is_survival(),
             underwater: self.player.head_in_water(&self.world),
         };
         let y0 = self.bar_ui(ui, &hud, now);
@@ -299,7 +299,7 @@ impl Game {
 
     /// Item icon, durability bar and stack count in an 18x18 slot at (x, y).
     fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
-        draw_stack(ui, x, y, stack, self.mode == GameMode::Survival);
+        draw_stack(ui, x, y, stack, self.mode.is_survival());
     }
 }
 
@@ -466,13 +466,13 @@ impl Game {
     /// Whether the screen has a top section (crafting grid or furnace)
     /// above the inventory; only the creative inventory doesn't.
     fn has_top_section(&self) -> bool {
-        self.mode == GameMode::Survival || self.container != Container::Inventory
+        self.mode.is_survival() || self.container != Container::Inventory
     }
 
     /// Whether the middle grid shows the creative palette instead of the
     /// main inventory.
     fn shows_armor(&self) -> bool {
-        self.mode == GameMode::Survival && self.container == Container::Inventory
+        self.mode.is_survival() && self.container == Container::Inventory
     }
 
     /// Height of the top section: room for the four armor slots in the
@@ -491,7 +491,7 @@ impl Game {
     }
 
     fn shows_palette(&self) -> bool {
-        self.mode == GameMode::Creative && self.container == Container::Inventory
+        self.mode.is_creative() && self.container == Container::Inventory
     }
 
     pub(super) fn shows_recipes(&self) -> bool {
@@ -677,6 +677,8 @@ impl Game {
             (Container::Anvil(_), _) => "Anvil",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
+            (Container::Inventory, GameMode::Adventure) => "Adventure Inventory",
+            (Container::Inventory, GameMode::Spectator) => "Spectator",
         };
         ui.text_flat(px + 8.0, py + 6.0, title, [0.25, 0.25, 0.25, 1.0]);
         if self.shows_recipes() {
@@ -965,7 +967,7 @@ impl Game {
         };
         let (text, colour) = if too_expensive {
             ("Too Expensive!".to_string(), [1.0, 0.38, 0.38, 1.0])
-        } else if self.mode == GameMode::Survival && self.vitals.xp.level < result.cost {
+        } else if self.mode.is_survival() && self.vitals.xp.level < result.cost {
             (format!("Enchantment Cost: {}", result.cost), [1.0, 0.38, 0.38, 1.0])
         } else {
             (format!("Enchantment Cost: {}", result.cost), [0.5, 1.0, 0.13, 1.0])
@@ -981,7 +983,7 @@ impl Game {
     pub(super) fn offer_tooltip(&self, ui: &mut Ui, i: usize) {
         let offer = self.enchant_offers()[i];
         let Some((e, level)) = offer.clue else { return };
-        let creative = self.mode == GameMode::Creative;
+        let creative = self.mode.is_creative();
         let mut lines = vec![(format!("{} . . . ?", e.describe(level)), WHITE)];
         if !creative {
             let lapis = self.work[1].map_or(0, |s| s.count) as usize;

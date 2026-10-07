@@ -1,5 +1,5 @@
 //! In-game slash command entry, scrollback and shared host command dispatch.
-use super::{Game, GameMode};
+use super::Game;
 use crate::render::ui::{Ui, WHITE};
 use std::collections::VecDeque;
 use voxelcraft::agent::{Command, HELP};
@@ -143,7 +143,7 @@ impl Game {
                 let left = self.inventory.add(item, count);
                 return Ok(format!("Gave {} {}", count - left, item.name()));
             }
-            Command::Mode(creative) => self.set_mode(if creative { GameMode::Creative } else { GameMode::Survival }),
+            Command::Mode(mode) => self.set_mode(mode),
             Command::Teleport(pos) => {
                 self.player.pos = pos;
                 self.player.vel = glam::DVec3::ZERO;

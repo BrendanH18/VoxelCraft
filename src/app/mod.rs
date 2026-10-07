@@ -24,6 +24,7 @@ mod search;
 mod settings;
 mod split;
 pub use crate::simulation::survival;
+pub use voxelcraft::rules::GameMode;
 mod title;
 mod weather;
 
@@ -106,21 +107,6 @@ pub(crate) enum Container {
     Anvil(IVec3),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GameMode {
-    Survival,
-    Creative,
-}
-
-impl GameMode {
-    fn name(self) -> &'static str {
-        match self {
-            GameMode::Survival => "survival",
-            GameMode::Creative => "creative",
-        }
-    }
-}
-
 struct Game {
     agents: agents::Agents,
     split: split::Split,
@@ -154,6 +140,8 @@ struct Game {
     mode: GameMode,
     /// Shared world difficulty (old saves default to Normal).
     difficulty: Difficulty,
+    /// World-wide one-life flag; locks difficulty to Hard.
+    hardcore: bool,
     inventory: Inventory,
     inventory_open: bool,
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
@@ -313,12 +301,15 @@ impl ApplicationHandler for App {
         let audio = crate::audio::Audio::new(self.args.mute, settings.volume);
         let shell = Shell { renderer, audio, settings, settings_path };
         // A named world, a fresh one or a scripted run skips the title screen.
-        let to_title = self.args.open_menu.as_deref() == Some("title");
+        let to_title = matches!(self.args.open_menu.as_deref(), Some("title" | "create"));
         match self.args.world.clone() {
             Some(world) if !to_title => self.play(shell, &world, None),
             None if !to_title && (self.args.new_world || scripted) => self.play(shell, "world", None),
             _ => {
                 let mut title = title::Title::new(shell, &self.saves_dir);
+                if self.args.open_menu.as_deref() == Some("create") {
+                    title.show_create();
+                }
                 title.screenshot = self.args.screenshot.take();
                 self.title = Some(title);
             }
@@ -560,24 +551,29 @@ impl Game {
         };
         log::info!("world '{world_dir}' seed {seed}, {} modified chunks in the {}", saved.len(), dimension.name());
 
-        let mode =
-            match (new.as_ref().map(|n| n.mode).or(args.mode), existing.as_ref().and_then(|l| l.props.get("mode"))) {
-                (Some(m), _) => m,
-                (None, Some(m)) if m == "creative" => GameMode::Creative,
-                _ => GameMode::Survival,
-            };
-        let difficulty = new
+        let mode = new
             .as_ref()
-            .map(|n| n.difficulty)
-            .or_else(|| root_props.get("difficulty").and_then(|d| Difficulty::from_name(d)))
+            .map(|n| n.mode)
+            .or(args.mode)
+            .or_else(|| existing.as_ref().and_then(|l| l.props.get("mode")).and_then(|m| GameMode::from_name(m)))
             .unwrap_or_default();
+        let hardcore = new.as_ref().is_some_and(|n| n.hardcore)
+            || root_props.get("hardcore").is_some_and(|v| v == "true" || v == "1");
+        let difficulty = if hardcore {
+            Difficulty::Hard
+        } else {
+            new.as_ref()
+                .map(|n| n.difficulty)
+                .or_else(|| root_props.get("difficulty").and_then(|d| Difficulty::from_name(d)))
+                .unwrap_or_default()
+        };
         let inventory = existing
             .as_ref()
             .and_then(|l| l.props.get("inventory"))
             .and_then(|s| Inventory::deserialize(s))
             .unwrap_or_else(|| match mode {
                 GameMode::Creative => Inventory::with_hotbar(&CREATIVE_HOTBAR),
-                GameMode::Survival => Inventory::default(),
+                GameMode::Survival | GameMode::Adventure | GameMode::Spectator => Inventory::default(),
             });
 
         let mut inventory = inventory;
@@ -625,7 +621,7 @@ impl Game {
         }
         for &(effect, secs, amp) in &args.effects {
             let damage = vitals.apply_effect(effect, amp, secs.saturating_mul(20).max(1));
-            vitals.damage(damage, survival::CAUSE_MAGIC, mode == GameMode::Creative);
+            vitals.damage(damage, survival::CAUSE_MAGIC, mode.invulnerable());
         }
         if let Some(level) = args.xp {
             let total = (0..level.min(1000)).map(crate::simulation::experience::points_to_next).sum();
@@ -655,7 +651,9 @@ impl Game {
             player.pitch = (pitch as f32).to_radians();
             player.flying = true;
         }
-        player.can_fly = mode == GameMode::Creative;
+        player.can_fly = mode.can_fly();
+        player.noclip = mode == GameMode::Spectator;
+        player.flying = mode == GameMode::Spectator;
         let world = World::new(generator, saved, settings.render_distance);
         log::info!("{} worker threads", world.worker_threads());
 
@@ -711,6 +709,7 @@ impl Game {
             action_cooldown: 0.0,
             mode,
             difficulty,
+            hardcore,
             inventory,
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
@@ -845,7 +844,7 @@ impl Game {
             KeyCode::KeyG => {
                 let mode = match self.mode {
                     GameMode::Survival => GameMode::Creative,
-                    GameMode::Creative => GameMode::Survival,
+                    GameMode::Creative | GameMode::Adventure | GameMode::Spectator => GameMode::Survival,
                 };
                 self.set_mode(mode);
             }
@@ -943,7 +942,7 @@ impl Game {
     /// stronger hit within it only deals the difference).
     pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
         let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
-        let taken = self.vitals.damage(amount, cause, self.mode == GameMode::Creative);
+        let taken = self.vitals.damage(amount, cause, self.mode.invulnerable());
         if taken > 0.0 {
             self.sleeping = None;
             self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
@@ -959,7 +958,7 @@ impl Game {
     pub(crate) fn damage_player_armored(&mut self, amount: f32, cause: &str) -> f32 {
         let reduced = survival::armor_reduce(amount, self.inventory.armor_points());
         let taken = self.damage_player(reduced, cause);
-        if taken > 0.0 && self.mode == GameMode::Survival {
+        if taken > 0.0 && self.mode.is_survival() {
             for item in self.inventory.wear_armor(amount) {
                 self.show_popup(&format!("{} broke", capitalize(item.name())));
                 let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
@@ -977,8 +976,13 @@ impl Game {
         if self.inventory_open {
             self.toggle_inventory();
         }
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.drop_everything();
+        }
+        if self.hardcore {
+            self.vitals.respawn();
+            self.set_mode(GameMode::Spectator);
+            self.show_popup("Game over - Spectator mode");
         }
         self.set_grab(false);
         self.keys.clear();
@@ -1006,7 +1010,11 @@ impl Game {
 
     fn set_mode(&mut self, mode: GameMode) {
         self.mode = mode;
-        self.player.can_fly = mode == GameMode::Creative;
+        self.player.can_fly = mode.can_fly();
+        self.player.noclip = mode == GameMode::Spectator;
+        if mode == GameMode::Spectator {
+            self.player.flying = true;
+        }
         if !self.player.can_fly {
             self.player.flying = false;
         }
@@ -1016,6 +1024,9 @@ impl Game {
 
     /// Open or close the inventory, clearing queued input on entry and returning crafting stacks on exit.
     fn toggle_inventory(&mut self) {
+        if !self.inventory_open && !self.mode.can_interact() {
+            return;
+        }
         self.inventory_open = !self.inventory_open;
         if self.inventory_open {
             self.search.focused = self.mode == GameMode::Creative && self.container == Container::Inventory;
@@ -1192,9 +1203,7 @@ impl Game {
                 crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
             }
             Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
-            Some(hud::SlotRef::Armor(piece)) => {
-                self.inventory.click_armor(piece, right, self.mode == GameMode::Creative)
-            }
+            Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right, self.mode.is_creative()),
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Chest(pos) = self.container
                     && let Some(chest) = self.world.chest_mut(pos)
@@ -1231,7 +1240,7 @@ impl Game {
 
     /// Scrolls the creative palette by whole rows.
     fn scroll_palette(&mut self, rows: i32) {
-        if self.mode == GameMode::Creative {
+        if self.mode.is_creative() {
             let max = hud::palette_rows(&self.search.query).saturating_sub(hud::PALETTE_ROWS);
             self.creative_scroll = self.creative_scroll.saturating_add_signed(rows as isize).min(max);
         }
@@ -1243,7 +1252,7 @@ impl Game {
 
     /// Instant break (creative).
     fn break_block(&mut self) {
-        if self.attacking() {
+        if !self.mode.can_build() || self.attacking() {
             return;
         }
         if let Some((pos, _)) = self.target()
@@ -1271,7 +1280,7 @@ impl Game {
     /// Timed break with drops (survival). Called every frame while the
     /// button is held.
     fn continue_breaking(&mut self, dt: f64) {
-        if self.attacking() {
+        if !self.mode.can_build() || self.attacking() {
             self.actions.breaking = None;
             return;
         }
@@ -1333,7 +1342,7 @@ impl Game {
     fn eat(&mut self, acting: bool, dt: f64) {
         let potion = self.held_item().and_then(|i| i.as_potion());
         let food = self.held_item().and_then(|i| i.food());
-        let hungry = self.mode == GameMode::Survival && self.vitals.hunger.can_eat();
+        let hungry = self.mode.is_survival() && self.vitals.hunger.can_eat();
         let using = acting && self.right_held && (potion.is_some() || (food.is_some() && hungry));
         if !using {
             self.actions.eat_timer = 0.0;
@@ -1351,7 +1360,7 @@ impl Game {
         }
         if let Some(potion) = potion {
             // Creative keeps the potion; survival is left with the bottle.
-            if self.mode == GameMode::Survival {
+            if self.mode.is_survival() {
                 self.inventory.slots[self.actions.selected] = Some(crate::inventory::Stack::new(Item::GLASS_BOTTLE, 1));
             }
             let damage = potion.drink(&mut self.vitals);
@@ -1369,7 +1378,7 @@ impl Game {
     /// Right-click with armor in hand puts it on (swapping out the worn
     /// piece), unless aimed at a container. Returns whether it did.
     fn equip_held(&mut self) -> bool {
-        if self.mode != GameMode::Survival || self.aiming_at_usable() || !self.inventory.equip(self.actions.selected) {
+        if !self.mode.is_survival() || self.aiming_at_usable() || !self.inventory.equip(self.actions.selected) {
             return false;
         }
         let sound = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Wood);
@@ -1391,8 +1400,7 @@ impl Game {
     /// Wears the held tool for a block broken or a mob hit (survival).
     pub(super) fn wear_held(&mut self, hitting_mob: bool) {
         let Some(held) = self.held_item() else { return };
-        if self.mode == GameMode::Survival
-            && self.inventory.wear(self.actions.selected, crate::mining::wear(held, hitting_mob))
+        if self.mode.is_survival() && self.inventory.wear(self.actions.selected, crate::mining::wear(held, hitting_mob))
         {
             self.show_popup(&format!("{} broke", capitalize(held.name())));
             self.audio.play(
@@ -1405,6 +1413,9 @@ impl Game {
     }
 
     fn place_block(&mut self) {
+        if !self.mode.can_interact() {
+            return;
+        }
         if !self.aiming_at_usable() && (self.use_bucket() || self.throw_pearl() || self.throw_eye()) {
             return;
         }
@@ -1443,6 +1454,9 @@ impl Game {
             }
             _ => {}
         }
+        if !self.mode.can_build() {
+            return;
+        }
         if self.strike_flint(pos, normal) || self.use_item_on(pos, normal) {
             return;
         }
@@ -1458,7 +1472,7 @@ impl Game {
             _ => None,
         };
         if let Some(placed) = placed {
-            if placed && self.mode == GameMode::Survival {
+            if placed && self.mode.is_survival() {
                 self.inventory.take_one(self.actions.selected);
             }
             return;
@@ -1473,7 +1487,7 @@ impl Game {
             if !self.player.intersects_block(pos) {
                 self.world.set_block(pos, full);
                 self.audio.block_place(full, pos);
-                if self.mode == GameMode::Survival {
+                if self.mode.is_survival() {
                     self.inventory.take_one(self.actions.selected);
                 }
             }
@@ -1496,7 +1510,7 @@ impl Game {
             && self.world.set_block(at, block)
         {
             self.audio.block_place(block, at);
-            if self.mode == GameMode::Survival {
+            if self.mode.is_survival() {
                 self.inventory.take_one(self.actions.selected);
             }
         }
@@ -1646,6 +1660,7 @@ impl Game {
         props.insert("pads".into(), self.pads.serialize());
         props.insert("mode".to_string(), self.mode.name().to_string());
         props.insert("difficulty".to_string(), self.difficulty.name().to_string());
+        props.insert("hardcore".to_string(), self.hardcore.to_string());
         props.insert("name".to_string(), self.world_name.clone());
         // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
@@ -1715,7 +1730,7 @@ impl Game {
                 descend: held(KeyCode::ShiftLeft),
                 // Too hungry to sprint at 6 food or less (survival).
                 sprint: (held(KeyCode::ControlLeft) || held(KeyCode::KeyR))
-                    && (self.mode == GameMode::Creative || self.vitals.hunger.can_sprint()),
+                    && (self.mode.invulnerable() || self.vitals.hunger.can_sprint()),
             }
         } else {
             MoveInput::default()
@@ -1724,6 +1739,9 @@ impl Game {
 
     /// Attack/mine button (left click, or a controller's RT) pressed or released.
     fn attack_button(&mut self, pressed: bool) {
+        if !self.mode.can_interact() {
+            return;
+        }
         self.left_held = pressed;
         if pressed {
             self.hand.swing();
@@ -1743,6 +1761,9 @@ impl Game {
 
     /// Use button (right click, or a controller's LT) pressed or released.
     fn use_button(&mut self, pressed: bool) {
+        if !self.mode.can_interact() {
+            return;
+        }
         self.right_held = pressed;
         if pressed && !self.equip_held() && !self.start_draw() {
             if self.held_item().is_none_or(|i| i.food().is_none()) {
@@ -1761,7 +1782,7 @@ impl Game {
     fn act(&mut self, acting: bool, dt: f64) {
         let mine_pressed = std::mem::take(&mut self.mine_pressed);
         self.action_cooldown -= dt;
-        if acting && (self.left_held || mine_pressed) && self.mode == GameMode::Survival {
+        if acting && (self.left_held || mine_pressed) && self.mode.is_survival() {
             if self.action_cooldown <= 0.0 {
                 self.continue_breaking(dt);
             }
@@ -1817,7 +1838,7 @@ impl Game {
         let hurts = if arriving || self.arrival.is_some() {
             Default::default()
         } else {
-            self.vitals.tick_difficulty(dt as f32, &env, self.mode == GameMode::Creative, self.difficulty)
+            self.vitals.tick_difficulty(dt as f32, &env, self.mode.invulnerable(), self.difficulty)
         };
         self.trample(hurts.landed);
         if hurts.fall > 0.0 {

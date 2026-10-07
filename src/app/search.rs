@@ -1,5 +1,5 @@
 //! Inventory search input shared by creative filtering and survival/container highlighting.
-use super::{Container, Game, GameMode};
+use super::{Container, Game};
 use crate::render::ui::{Ui, WHITE};
 use winit::event::KeyEvent;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -85,7 +85,7 @@ impl Game {
         }
         let room = w - 6.0;
         let text = if self.search.query.is_empty() && !self.search.focused {
-            let hints: &[&str] = if self.mode == GameMode::Creative && self.container == Container::Inventory {
+            let hints: &[&str] = if self.mode.is_creative() && self.container == Container::Inventory {
                 &["Search items..."]
             } else {
                 &["Find items (Ctrl+F)...", "Find items..."]

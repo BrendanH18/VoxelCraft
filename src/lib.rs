@@ -13,6 +13,7 @@ pub mod mining;
 pub mod physics;
 pub mod player;
 pub mod potion;
+pub mod rules;
 pub mod simulation;
 mod workers;
 pub mod world;

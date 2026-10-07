@@ -109,7 +109,7 @@ voxelcraft [options]
                     inventory, with play, pause, inventory, crafting or
                     palette (creative) open
                     (screenshots)
-  --open-menu <m>   start with a menu open: pause, options or title (screenshots)
+  --open-menu <m>   start with a menu open: pause, options, title or create (screenshots)
   --open-block x,y,z  open the furnace, chest, brewing stand, enchanting
                     table or anvil there once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
@@ -242,8 +242,8 @@ fn parse_args() -> Result<Args, String> {
             }
             "--open-menu" => {
                 let m = value("--open-menu")?;
-                if !matches!(m.as_str(), "pause" | "options" | "title") {
-                    return Err(format!("--open-menu: expected pause, options or title, got {m}"));
+                if !matches!(m.as_str(), "pause" | "options" | "title" | "create") {
+                    return Err(format!("--open-menu: expected pause, options, title or create, got {m}"));
                 }
                 args.open_menu = Some(m);
             }

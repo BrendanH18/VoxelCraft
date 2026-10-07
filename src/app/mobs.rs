@@ -9,7 +9,7 @@ use crate::audio::sounds::{Call, Sound, Voice};
 use crate::entity::{self, Entities, EntityEvent, MobKind, MobSound, PlayerId, Target};
 use crate::physics;
 
-use super::{Game, GameMode, REACH};
+use super::{Game, REACH};
 
 pub(super) struct Mobs {
     pub entities: Entities,
@@ -78,7 +78,7 @@ impl Game {
                     .values()
                     .find(|b| b.id == self.actor)
                     .is_some_and(|b| b.agent.movement_input().sprint)
-                    && (self.mode == GameMode::Creative || self.vitals.hunger.can_sprint())
+                    && (self.mode.invulnerable() || self.vitals.hunger.can_sprint())
             } else {
                 self.movement_input(self.arrival.is_some()).sprint
             };
@@ -91,7 +91,7 @@ impl Game {
             let pitch = if critical { (1.25, 1.4) } else { (0.9, 1.1) };
             self.audio.play(Sound::Hit, Some(at), 0.8, pitch);
             self.wear_held(true);
-            if self.mode == GameMode::Survival {
+            if self.mode.is_survival() {
                 self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
             }
         }
@@ -133,7 +133,7 @@ impl Game {
                 );
                 self.wear_held(true);
             }
-            if self.mode == GameMode::Survival {
+            if self.mode.is_survival() {
                 self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
             }
         }
@@ -177,7 +177,7 @@ impl Game {
                 .inventory
                 .get(self.actions.selected)
                 .map_or(Default::default(), |s| s.active_enchants()),
-            ..Target::new(PlayerId::HOST, self.player.pos, self.mode == GameMode::Survival && !self.vitals.is_dead())
+            ..Target::new(PlayerId::HOST, self.player.pos, self.mode.targetable() && !self.vitals.is_dead())
         }];
         // Agents keep source-dimension positions until arrival relocates them.
         if self.arrival.is_none() {
@@ -218,7 +218,7 @@ impl Game {
                 EntityEvent::Explosion { center, power, cause } => self.explode(center, power, cause),
                 EntityEvent::PearlLanded { owner, pos } => self.pearl_landed(owner, pos),
                 EntityEvent::Ignite { player: PlayerId::HOST, secs } => {
-                    if self.mode == GameMode::Survival {
+                    if self.mode.is_survival() {
                         self.vitals.ignite(secs);
                     }
                 }
@@ -263,7 +263,7 @@ impl Game {
                 EntityEvent::Shoot { .. } | EntityEvent::DragonXp { .. } | EntityEvent::MobKilled { .. } => {}
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
-                    if self.mode == GameMode::Survival && !self.vitals.is_dead() {
+                    if self.mode.is_survival() && !self.vitals.is_dead() {
                         shove(&mut self.player.vel, velocity.as_dvec3());
                     }
                 }

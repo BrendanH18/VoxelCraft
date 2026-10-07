@@ -4,7 +4,7 @@ use crate::audio::sounds::Sound;
 use crate::item::Item;
 use crate::world::block::Block;
 
-use super::{Game, GameMode};
+use super::Game;
 
 /// Seconds to draw the bow fully (Minecraft's 20 ticks).
 pub(super) const FULL_DRAW: f64 = 1.0;
@@ -38,7 +38,7 @@ impl Game {
     /// Right-click with a bow: starts drawing it if there's an arrow to
     /// shoot (creative needs none). Returns whether it did.
     pub(super) fn start_draw(&mut self) -> bool {
-        let has_arrow = self.mode == GameMode::Creative || self.inventory.find(Item::ARROW).is_some();
+        let has_arrow = self.mode.is_creative() || self.inventory.find(Item::ARROW).is_some();
         if self.held_item() != Some(Item::BOW) || !has_arrow || self.aiming_at_usable() {
             return false;
         }
@@ -64,7 +64,7 @@ impl Game {
         if power < MIN_POWER || self.held_item() != Some(Item::BOW) {
             return;
         }
-        let survival = self.mode == GameMode::Survival;
+        let survival = self.mode.is_survival();
         let enchants = self.inventory.get(self.actions.selected).map_or(Default::default(), |s| s.enchants);
         // Infinity needs one arrow but never uses it up (the shot can't be
         // picked up, like creative's).

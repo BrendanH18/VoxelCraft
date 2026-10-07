@@ -23,7 +23,7 @@ use glam::{DVec3, IVec3, Vec2};
 
 use super::actions::Actions;
 use super::pad_menu::{Action, Menu, Nav, Tab};
-use super::{Container, Game, GameMode};
+use super::{Container, Game};
 use crate::player::MoveInput;
 use crate::world::block::Block;
 use voxelcraft::agent::{Agent, Command};
@@ -470,8 +470,7 @@ impl Game {
         if !self.agents.players.contains_key(&name) {
             let mut agent = Agent::new(self.beside_host());
             agent.player.yaw = self.player.yaw;
-            agent.creative = self.mode == GameMode::Creative;
-            agent.player.can_fly = agent.creative;
+            agent.set_mode(self.mode);
             self.agents.insert(name.clone(), agent);
         }
         self.agents.players.get_mut(&name).unwrap().active = true;
@@ -614,13 +613,13 @@ impl Game {
     pub(super) fn puppet<R>(&mut self, i: usize, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
         let seat = &mut self.pads.seats[i];
         let bot = self.agents.players.get(&seat.name)?;
-        let (selected, creative, id) = (bot.agent.selected, bot.agent.creative, bot.id);
+        let (selected, player_mode, id) = (bot.agent.selected, bot.agent.mode, bot.id);
         // Switching slots interrupts mining, eating and drawing, as it does for the host.
         seat.body.actions.select(selected);
         if !self.swap_puppet(i) {
             return None;
         }
-        let mode = std::mem::replace(&mut self.mode, if creative { GameMode::Creative } else { GameMode::Survival });
+        let mode = std::mem::replace(&mut self.mode, player_mode);
         self.puppet = true;
         self.actor = id;
         let result = f(self);

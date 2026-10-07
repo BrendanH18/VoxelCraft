@@ -7,7 +7,7 @@ use crate::audio::sounds::{Material, Sound};
 use crate::world::World;
 use crate::world::block::Block;
 
-use super::{Game, GameMode};
+use super::Game;
 
 /// Seconds the screen takes to fade out before the night is skipped.
 pub(super) const SLEEP_TIME: f32 = 2.5;
@@ -59,7 +59,7 @@ impl Game {
     pub(super) fn break_bed_partner(&mut self, pos: IVec3, half: Block) {
         let Some(other) = partner(&self.world, pos, half) else { return };
         self.world.set_block(other, Block::AIR);
-        if half == Block::BED_HEAD && self.mode == GameMode::Survival {
+        if half == Block::BED_HEAD && self.mode.is_survival() {
             self.world.spill_block(other, Block::BED_FOOT);
         }
     }

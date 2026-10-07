@@ -11,7 +11,7 @@ use crate::inventory::{Stack, move_into};
 use crate::item::Item;
 
 use super::hud::SlotRef;
-use super::{Container, Game, GameMode};
+use super::{Container, Game};
 
 /// A crafting station's two input slots: the enchanting table's item and
 /// lapis, or the anvil's left and right inputs.
@@ -41,7 +41,7 @@ impl Game {
     /// Whether offer `i` can be taken now: enough levels for its cost and
     /// lapis for its number (creative needs neither).
     pub(super) fn can_take_offer(&self, i: usize, offer: Offer) -> bool {
-        let creative = self.mode == GameMode::Creative;
+        let creative = self.mode.is_creative();
         let lapis = self.work[1].map_or(0, |s| s.count) as usize;
         let level = self.vitals.xp.level;
         offer.cost > 0 && (creative || (lapis > i && level >= offer.cost && level > i as u32))
@@ -98,7 +98,7 @@ impl Game {
             stack.enchants.set(e, level);
         }
         self.work[0] = Some(stack);
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.vitals.xp.add_levels(-(i as i64 + 1));
             if let Some(lapis) = &mut self.work[1] {
                 lapis.count -= i as u8 + 1;

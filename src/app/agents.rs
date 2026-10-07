@@ -73,7 +73,8 @@ impl Agents {
         let profiles: Vec<_> = self.players.iter().map(|(name, b)| {
             let mut inventory = b.agent.inventory.clone();
             inventory.return_stacks(b.agent.work.into_iter().flatten());
-            json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"effects":b.agent.vitals.effects.serialize(),"inventory":inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})
+            let mode = if b.agent.creative { voxelcraft::rules::GameMode::Creative } else { b.agent.mode };
+            json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"effects":b.agent.vitals.effects.serialize(),"inventory":inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"dimension":dimension})
         }).collect();
         json!(profiles).to_string()
     }
@@ -96,9 +97,16 @@ impl Agents {
             let mut agent = Agent::new(if p["dimension"] == dimension { pos } else { spawn });
             agent.inventory =
                 p["inventory"].as_str().and_then(crate::inventory::Inventory::deserialize).unwrap_or_default();
-            agent.creative = p["creative"] == true;
-            agent.player.can_fly = agent.creative;
-            agent.player.flying = agent.creative && p["flying"] == true;
+            let mode = p["mode"].as_str().and_then(voxelcraft::rules::GameMode::from_name).unwrap_or(
+                if p["creative"] == true {
+                    voxelcraft::rules::GameMode::Creative
+                } else {
+                    voxelcraft::rules::GameMode::Survival
+                },
+            );
+            agent.set_mode(mode);
+            agent.player.flying =
+                (mode.can_fly() && p["flying"] == true) || mode == voxelcraft::rules::GameMode::Spectator;
             agent.spawn_bed = p["bed"]
                 .as_array()
                 .filter(|v| v.len() == 3)
@@ -265,6 +273,9 @@ impl Game {
         let mut players = std::mem::take(&mut self.agents.players);
         for bot in players.values_mut().filter(|b| b.active) {
             bot.agent.tick_difficulty(&mut self.world, &mut self.mobs.entities, self.difficulty);
+            if self.hardcore {
+                bot.agent.hardcore_spectate();
+            }
             if bot.agent.remaining == 0
                 && let Some(reply) = bot.reply.take()
             {

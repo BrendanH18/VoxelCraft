@@ -10,7 +10,7 @@ use crate::inventory::Stack;
 use crate::render::BlockModel;
 use crate::world::block::Block;
 
-use super::{Container, Game, GameMode, survival};
+use super::{Container, Game, survival};
 use crate::entity::PlayerId;
 
 /// Dropped items farther away than this aren't drawn.
@@ -101,7 +101,7 @@ impl Game {
         self.mobs.entities.throw_pearl(self.actor, p.eye(), p.forward().as_dvec3(), carry);
         // Java's throw is the bow sound, pitched well down.
         self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.inventory.take_one(self.actions.selected);
         }
         true
@@ -123,7 +123,7 @@ impl Game {
         let Some(target) = self.world.generator.strongholds.nearest(from.floor().as_ivec3()) else { return false };
         self.mobs.entities.release_eye(from, target.as_dvec3());
         eye_thrown_sound(&mut self.audio, from);
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.inventory.take_one(self.actions.selected);
         }
         true
@@ -137,7 +137,7 @@ impl Game {
         }
         let Some(opened) = self.world.insert_eye(pos) else { return false };
         frame_filled_sounds(&mut self.audio, pos, opened);
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.inventory.take_one(self.actions.selected);
         }
         true

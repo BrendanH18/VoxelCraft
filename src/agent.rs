@@ -10,6 +10,7 @@ use crate::inventory::{Inventory, Stack};
 use crate::item::Item;
 use crate::mining;
 use crate::player::{MoveInput, Player};
+use crate::rules::GameMode;
 use crate::simulation::effects::Effect;
 use crate::simulation::survival::{self, Vitals};
 use crate::simulation::{self, TICK_SECONDS};
@@ -19,7 +20,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | drop | respawn | leave. Cheats: give item [count], gamemode survival/creative/adventure/spectator, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -61,7 +62,7 @@ pub enum Command {
     Respawn,
     Leave,
     Give(Item, u8),
-    Mode(bool),
+    Mode(GameMode),
     Teleport(DVec3),
     SetBlock(IVec3, Block),
     Time(f64),
@@ -203,8 +204,7 @@ impl Command {
             ["leave"] => Self::Leave,
             ["give", name] => Self::Give(item(name)?, 1),
             ["give", name, n] => Self::Give(item(name)?, n.parse::<u8>().ok().filter(|n| *n > 0).ok_or_else(bad)?),
-            ["gamemode", "creative"] => Self::Mode(true),
-            ["gamemode", "survival"] => Self::Mode(false),
+            ["gamemode", name] => Self::Mode(GameMode::from_name(name).ok_or_else(bad)?),
             ["tp", x, y, z] => Self::Teleport(xyz(x, y, z)?),
             ["setblock", x, y, z, name] => {
                 Self::SetBlock(xyz(x, y, z)?.floor().as_ivec3(), Block::from_name(name).ok_or_else(bad)?)
@@ -283,6 +283,9 @@ pub struct Agent {
     pub vitals: Vitals,
     /// The host's stable ID for this player (owner of its thrown pearls).
     pub id: crate::entity::PlayerId,
+    /// Per-player Java game mode. `creative` remains as a compatibility
+    /// mirror for old saves and controller code.
+    pub mode: GameMode,
     pub creative: bool,
     pub selected: usize,
     pub remaining: u32,
@@ -315,6 +318,7 @@ impl Agent {
             work: [None; 2],
             vitals: Vitals::default(),
             id: crate::entity::PlayerId::default(),
+            mode: GameMode::Survival,
             creative: false,
             selected: 0,
             remaining: 0,
@@ -335,6 +339,29 @@ impl Agent {
         world.raycast(self.player.eye(), self.player.forward().as_dvec3(), 6.0)
     }
 
+    /// Changes abilities together so command, host and controller paths agree.
+    pub fn set_mode(&mut self, mode: GameMode) {
+        self.mode = mode;
+        self.creative = mode.is_creative();
+        self.player.can_fly = mode.can_fly();
+        self.player.noclip = mode == GameMode::Spectator;
+        self.player.flying = mode == GameMode::Spectator || (self.player.flying && self.player.can_fly);
+        if !self.player.can_fly {
+            self.player.flying = false;
+        }
+    }
+
+    /// Hardcore death has already dropped inventory and experience; revive
+    /// only as a non-interacting spectator.
+    pub fn hardcore_spectate(&mut self) {
+        if self.vitals.is_dead() {
+            self.vitals.respawn();
+            self.set_mode(GameMode::Spectator);
+            self.remaining = 0;
+            self.sleeping = None;
+        }
+    }
+
     /// Execute immediate actions on the authority; timed inputs complete after real game ticks.
     /// Container transfers and crafting validate capacity before committing either side.
     pub fn execute(
@@ -346,6 +373,23 @@ impl Agent {
     ) -> Result<(), String> {
         if self.vitals.is_dead() && !matches!(command, Command::Respawn | Command::Observe(_) | Command::Help) {
             return Err("player is dead; respawn first".into());
+        }
+        if self.mode == GameMode::Spectator
+            && !matches!(
+                command,
+                Command::Help
+                    | Command::Observe(_)
+                    | Command::Players
+                    | Command::Catalog(_)
+                    | Command::Look(..)
+                    | Command::Run(..)
+                    | Command::Fly(..)
+                    | Command::Mode(..)
+                    | Command::Teleport(..)
+                    | Command::Leave
+            )
+        {
+            return Err("spectators cannot interact".into());
         }
         let resting = match &command {
             Command::Observe(_)
@@ -362,6 +406,9 @@ impl Agent {
         }
         match command {
             Command::Run(input, n, mine) => {
+                if mine && !self.mode.can_build() {
+                    return Err("this game mode cannot break blocks".into());
+                }
                 if mine
                     && self
                         .target(world)
@@ -400,8 +447,8 @@ impl Agent {
                 self.bite = 0;
             }
             Command::Fly(on) => {
-                if on && !self.creative {
-                    return Err("flight requires creative mode".into());
+                if on && !self.mode.can_fly() {
+                    return Err("flight requires Creative or Spectator mode".into());
                 }
                 self.player.flying = on;
                 self.player.vel = DVec3::ZERO;
@@ -426,13 +473,7 @@ impl Agent {
                 let (damage, _) = change.apply(&mut self.vitals);
                 self.damage(damage, survival::CAUSE_MAGIC);
             }
-            Command::Mode(creative) => {
-                self.creative = creative;
-                self.player.can_fly = creative;
-                if !creative {
-                    self.player.flying = false;
-                }
-            }
+            Command::Mode(mode) => self.set_mode(mode),
             Command::Teleport(pos) => {
                 self.player.pos = pos;
                 self.previous_pos = pos;
@@ -445,6 +486,9 @@ impl Agent {
                 }
             }
             Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::ENDER_PEARL) => {
+                if !self.mode.can_interact() {
+                    return Err("spectators cannot use items".into());
+                }
                 if self.vitals.pearl_cooldown > 0.0 {
                     return Err("ender pearl cooling down".into());
                 }
@@ -458,6 +502,9 @@ impl Agent {
                 }
             }
             Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::EYE_OF_ENDER) => {
+                if !self.mode.can_interact() {
+                    return Err("spectators cannot use items".into());
+                }
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
@@ -485,6 +532,9 @@ impl Agent {
                 }
             }
             Command::Place => {
+                if !self.mode.can_build() {
+                    return Err("this game mode cannot place blocks".into());
+                }
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
@@ -621,7 +671,8 @@ impl Agent {
                     None => world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5),
                 };
                 self.player = Player::new(at);
-                self.player.can_fly = self.creative;
+                self.player.can_fly = self.creative || self.mode.can_fly();
+                self.player.noclip = self.mode == GameMode::Spectator;
                 self.vitals = Vitals::default();
             }
             Command::Observe(_) | Command::Help | Command::XpQuery => {}
@@ -703,7 +754,7 @@ impl Agent {
             return;
         }
         let mut input = self.movement_input();
-        input.sprint &= self.creative || self.vitals.hunger.can_sprint();
+        input.sprint &= self.creative || self.mode.invulnerable() || self.vitals.hunger.can_sprint();
         let before = self.player.pos;
         self.player.apply_effects(&self.vitals.effects);
         self.player
@@ -714,7 +765,12 @@ impl Agent {
             respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
             ..simulation::player_environment(&self.player, world, input, moved)
         };
-        let hurts = self.vitals.tick_difficulty(TICK_SECONDS as f32, &env, self.creative, difficulty);
+        let hurts = self.vitals.tick_difficulty(
+            TICK_SECONDS as f32,
+            &env,
+            self.creative || self.mode.invulnerable(),
+            difficulty,
+        );
         for (damage, cause) in [
             (hurts.fall, "hit the ground too hard"),
             (hurts.drown, "drowned"),
@@ -922,7 +978,7 @@ impl Agent {
     /// Damage through protection enchantments (armor points aside).
     fn damage(&mut self, amount: f32, cause: &str) -> f32 {
         let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
-        self.vitals.damage(amount, cause, self.creative)
+        self.vitals.damage(amount, cause, self.creative || self.mode.invulnerable())
     }
 
     /// Armored damage from a mob, arrow or explosion. Knockback only lands
@@ -979,7 +1035,7 @@ impl Agent {
 
     /// Whether hostile mobs may attack this agent.
     pub fn targetable(&self) -> bool {
-        !self.creative && !self.vitals.is_dead()
+        !self.creative && self.mode.targetable() && !self.vitals.is_dead()
     }
 
     /// Structured observation includes loaded status, target, inventory and optional nearby cells.
@@ -1014,7 +1070,7 @@ impl Agent {
         let target = self.target(world).map(|(p, n)| {
             json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers})
         });
-        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"level":self.vitals.xp.level,"xp_progress":self.vitals.xp.progress(),"dead":self.vitals.is_dead(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"spawn_bed":self.spawn_bed.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
+        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"level":self.vitals.xp.level,"xp_progress":self.vitals.xp.progress(),"dead":self.vitals.is_dead(),"mode":self.mode.name(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"spawn_bed":self.spawn_bed.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
 }
 
@@ -1298,6 +1354,31 @@ mod tests {
         assert!(matches!(Command::parse("xp query"), Ok(Command::XpQuery)));
         assert!(Command::parse("xp add 1").unwrap().cheat());
     }
+
+    #[test]
+    fn adventure_and_spectator_enforce_player_abilities() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.execute(Command::Mode(GameMode::Adventure), &mut world, &mut entities, &[]).unwrap();
+        assert!(a.execute(Command::parse("mine 1").unwrap(), &mut world, &mut entities, &[]).is_err());
+        assert!(a.targetable());
+
+        a.execute(Command::Mode(GameMode::Spectator), &mut world, &mut entities, &[]).unwrap();
+        assert!(a.player.flying && a.player.noclip && !a.targetable());
+        assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err());
+        assert_eq!(a.hurt(20.0, "test", DVec3::ZERO, &mut entities), 0.0);
+    }
+
+    #[test]
+    fn hardcore_death_becomes_spectator() {
+        let mut a = Agent::new(DVec3::ZERO);
+        a.vitals.damage(100.0, "test", false);
+        a.hardcore_spectate();
+        assert!(!a.vitals.is_dead());
+        assert_eq!(a.mode, GameMode::Spectator);
+    }
+
     #[test]
     fn independent_players_and_atomic_crafting() {
         let mut world = world();
@@ -1319,7 +1400,7 @@ mod tests {
         );
         assert_eq!(a.inventory, before);
         assert!(b.inventory.get(0).is_none());
-        a.execute(Command::Mode(true), &mut world, &mut entities, &[]).unwrap();
+        a.execute(Command::Mode(GameMode::Creative), &mut world, &mut entities, &[]).unwrap();
         a.execute(Command::Fly(true), &mut world, &mut entities, &[]).unwrap();
         a.execute(Command::parse("move 1 0 20").unwrap(), &mut world, &mut entities, &[]).unwrap();
         for _ in 0..20 {
