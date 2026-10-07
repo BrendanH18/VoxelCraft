@@ -216,6 +216,30 @@ const BONE: Rgb = [214, 214, 208];
 const RIBS: Rgb = [176, 176, 170];
 const BOW: Rgb = [112, 80, 42];
 
+const WITHER_BONE: Rgb = [58, 58, 60];
+const WITHER_RIBS: Rgb = [44, 44, 46];
+const STONE_BLADE: Rgb = [128, 128, 128];
+const WITHER_BODY: &[Cuboid] = &[
+    cube([-1.0, 12.0, -1.0], [1.0, 24.0, 1.0], WITHER_RIBS, 20),
+    cube([-4.0, 21.0, -1.5], [4.0, 23.0, 1.5], WITHER_BONE, 24),
+    cube([-3.5, 18.0, -1.5], [3.5, 19.5, 1.5], WITHER_BONE, 24),
+    cube([-3.0, 15.0, -1.5], [3.0, 16.5, 1.5], WITHER_BONE, 24),
+    cube([-4.0, 12.0, -1.5], [4.0, 13.5, 1.5], WITHER_BONE, 24),
+];
+const WITHER_LIMB: &[Cuboid] = &[cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], WITHER_BONE, 24)];
+/// The sword arm holds a stone sword out in front.
+const WITHER_SWORD_ARM: &[Cuboid] = &[
+    cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], WITHER_BONE, 24),
+    cube([-0.5, -13.0, -1.0], [0.5, -12.0, 4.0], BOW, 16),
+    cube([-0.5, -13.0, 4.0], [0.5, -9.0, 5.0], STONE_BLADE, 8),
+];
+const WITHER_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], WITHER_BONE, 24),
+    cube([-3.0, 3.0, 4.0], [-1.0, 5.0, 4.1], DARK, 0),
+    cube([1.0, 3.0, 4.0], [3.0, 5.0, 4.1], DARK, 0),
+    cube([-0.5, 2.0, 4.0], [0.5, 3.0, 4.1], DARK, 0),
+    cube([-3.0, 1.0, 4.0], [3.0, 1.5, 4.05], DARK, 0),
+];
 const SKELETON_BODY: &[Cuboid] = &[
     cube([-1.0, 12.0, -1.0], [1.0, 24.0, 1.0], RIBS, 20),
     cube([-4.0, 21.0, -1.5], [4.0, 23.0, 1.5], BONE, 24),
@@ -400,6 +424,19 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
                 part(SKELETON_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
+        MobKind::WitherSkeleton => {
+            // Sword raised toward the target while hunting.
+            let striking = m.ai == Ai::Chase;
+            let arm = |s: f32| if striking { rx(-FRAC_PI_2 * 0.9 + m.attack_anim * 1.2) } else { rx(-swing * s * 0.6) };
+            vec![
+                part(WITHER_BODY, [0.0; 3], Quat::IDENTITY),
+                part(WITHER_LIMB, [-2.0, 12.0, 0.0], rx(swing)),
+                part(WITHER_LIMB, [2.0, 12.0, 0.0], rx(-swing)),
+                part(WITHER_LIMB, [-5.0, 22.0, 0.0], arm(1.0)),
+                part(WITHER_SWORD_ARM, [5.0, 22.0, 0.0], arm(-1.0)),
+                part(WITHER_HEAD, [0.0, 24.0, 0.0], head),
+            ]
+        }
         MobKind::Creeper => vec![
             part(CREEPER_BODY, [0.0; 3], Quat::IDENTITY),
             part(CREEPER_LEG, [-2.0, 6.0, 4.0], rx(swing)),
@@ -565,6 +602,8 @@ pub fn build(
                 0.55
             } else if m.kind.is_cube() {
                 m.size as f32
+            } else if m.kind == MobKind::WitherSkeleton {
+                1.2
             } else {
                 1.0
             };

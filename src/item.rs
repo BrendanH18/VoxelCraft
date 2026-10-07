@@ -356,7 +356,10 @@ static EXTRA_ITEMS: [ItemInfo; 6] = [
     item("emerald", Sprite::Gem([22, 186, 82])),
 ];
 
-static MOB_ITEMS: [ItemInfo; 1] = [item("ghast tear", Sprite::Lump([214, 236, 220]))];
+static MOB_ITEMS: [ItemInfo; 2] = [
+    item("ghast tear", Sprite::Lump([214, 236, 220])),
+    item("wither skeleton skull", Sprite::Pearl([34, 34, 38], [118, 118, 124])),
+];
 const MOB_ITEM: u16 = 640;
 
 /// Uses before a bow breaks.
@@ -461,6 +464,7 @@ impl Item {
     pub const EMERALD: Item = Item(366);
     pub const SHEARS: Item = Item(607);
     pub const GHAST_TEAR: Item = Item(640);
+    pub const WITHER_SKULL: Item = Item(641);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         match tier {

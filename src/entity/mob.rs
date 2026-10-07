@@ -95,13 +95,15 @@ pub enum MobKind {
     MagmaCube,
     /// Nether flyer: charges, then shoots a fireball a player can punch back.
     Ghast,
+    /// Fortress skeleton: tall, melee, withers what it hits.
+    WitherSkeleton,
 }
 
 impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 16] = [
+    pub const ALL: [MobKind; 17] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -118,6 +120,7 @@ impl MobKind {
         MobKind::Slime,
         MobKind::MagmaCube,
         MobKind::Ghast,
+        MobKind::WitherSkeleton,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -139,6 +142,7 @@ impl MobKind {
             MobKind::Slime => "slime",
             MobKind::MagmaCube => "magma cube",
             MobKind::Ghast => "ghast",
+            MobKind::WitherSkeleton => "wither skeleton",
         }
     }
 
@@ -164,6 +168,7 @@ impl MobKind {
             MobKind::Enderman => Shape::new(0.3, 2.9),
             MobKind::Blaze => Shape::new(0.3, 1.8),
             MobKind::Ghast => Shape::new(2.0, 4.0),
+            MobKind::WitherSkeleton => Shape::new(0.35, 2.4),
             MobKind::Silverfish => Shape::new(0.2, 0.3),
         }
     }
@@ -174,7 +179,12 @@ impl MobKind {
             MobKind::Pig | MobKind::Cow => 10.0,
             MobKind::Sheep | MobKind::Silverfish => 8.0,
             MobKind::Chicken => 4.0,
-            MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::ZombifiedPiglin | MobKind::Blaze => 20.0,
+            MobKind::Zombie
+            | MobKind::Skeleton
+            | MobKind::WitherSkeleton
+            | MobKind::Creeper
+            | MobKind::ZombifiedPiglin
+            | MobKind::Blaze => 20.0,
             MobKind::Spider => 16.0,
             MobKind::CaveSpider => 12.0,
             MobKind::Slime | MobKind::MagmaCube => 1.0,
@@ -199,12 +209,16 @@ impl MobKind {
                 | MobKind::Slime
                 | MobKind::MagmaCube
                 | MobKind::Ghast
+                | MobKind::WitherSkeleton
         )
     }
 
     /// Unharmed by fire and lava.
     pub fn fire_immune(self) -> bool {
-        matches!(self, MobKind::ZombifiedPiglin | MobKind::Blaze | MobKind::MagmaCube | MobKind::Ghast)
+        matches!(
+            self,
+            MobKind::ZombifiedPiglin | MobKind::Blaze | MobKind::MagmaCube | MobKind::Ghast | MobKind::WitherSkeleton
+        )
     }
 
     /// Hurt by water and rain, like Java's endermen and blazes.
@@ -217,7 +231,7 @@ impl MobKind {
         match self {
             MobKind::Enderman => true,
             // Only from spawners and inside fortresses (`fortress_spawn`).
-            MobKind::Blaze => false,
+            MobKind::Blaze | MobKind::WitherSkeleton => false,
             // Only from stronghold spawners (and infested blocks, later).
             MobKind::Silverfish | MobKind::CaveSpider => false,
             MobKind::MagmaCube | MobKind::ZombifiedPiglin | MobKind::Ghast => dimension == Dimension::Nether,
@@ -258,7 +272,9 @@ impl MobKind {
     pub fn creature(self) -> crate::enchant::Creature {
         use crate::enchant::Creature;
         match self {
-            MobKind::Zombie | MobKind::Skeleton | MobKind::ZombifiedPiglin => Creature::Undead,
+            MobKind::Zombie | MobKind::Skeleton | MobKind::WitherSkeleton | MobKind::ZombifiedPiglin => {
+                Creature::Undead
+            }
             MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish => Creature::Arthropod,
             _ => Creature::Other,
         }
@@ -272,7 +288,7 @@ impl MobKind {
         match self {
             MobKind::Pig => 1.3,
             MobKind::Cow | MobKind::Zombie | MobKind::Creeper | MobKind::ZombifiedPiglin => 1.1,
-            MobKind::Sheep | MobKind::Skeleton | MobKind::Blaze => 1.2,
+            MobKind::Sheep | MobKind::Skeleton | MobKind::WitherSkeleton | MobKind::Blaze => 1.2,
             MobKind::Chicken | MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Ghast => 4.0,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Enderman | MobKind::Silverfish => 1.4,
@@ -284,6 +300,7 @@ impl MobKind {
             MobKind::Enderman => 4.5,
             MobKind::Spider | MobKind::CaveSpider => 3.0,
             MobKind::ZombifiedPiglin | MobKind::Silverfish => 2.8,
+            MobKind::WitherSkeleton => 2.4,
             MobKind::Skeleton => 2.2,
             MobKind::Creeper => 2.0,
             _ => 2.4,
@@ -298,6 +315,7 @@ impl MobKind {
             MobKind::ZombifiedPiglin => (5.0, "was slain by a zombified piglin"),
             MobKind::Enderman => (7.0, "was slain by an enderman"),
             MobKind::Blaze => (6.0, "was slain by a blaze"),
+            MobKind::WitherSkeleton => (8.0, "was slain by a wither skeleton"),
             MobKind::Silverfish => (1.0, "was slain by a silverfish"),
             _ => (3.0, "was slain by a zombie"),
         }
@@ -323,6 +341,8 @@ impl MobKind {
             MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
             MobKind::MagmaCube => &[(Item::MAGMA_CREAM, -2, 1)],
             MobKind::Ghast => &[(Item::GUNPOWDER, 0, 2), (Item::GHAST_TEAR, 0, 1)],
+            // The skull is rolled in `drops`.
+            MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
         }
     }
 
@@ -330,7 +350,8 @@ impl MobKind {
     /// `round(looting * uniform(0, 1))` to each (Java's
     /// `enchanted_count_increase`).
     pub fn drops(self, rng: &mut Rng, looting: u8) -> Vec<(Item, u8)> {
-        self.loot()
+        let mut drops: Vec<(Item, u8)> = self
+            .loot()
             .iter()
             .map(|&(item, lo, hi)| {
                 let span = hi as i32 - lo as i32 + 1;
@@ -346,7 +367,11 @@ impl MobKind {
                 (item, (base.max(0) + extra).clamp(0, u8::MAX as i32) as u8)
             })
             .filter(|&(_, n)| n > 0)
-            .collect()
+            .collect();
+        if self == MobKind::WitherSkeleton && rng.chance(0.025 + 0.01 * looting as f32) {
+            drops.push((Item::WITHER_SKULL, 1));
+        }
+        drops
     }
 
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
@@ -793,6 +818,14 @@ impl Mob {
                                 knockback: knockback.as_vec3(),
                                 cause,
                             });
+                            if self.kind == MobKind::WitherSkeleton {
+                                events.push(EntityEvent::PlayerEffect {
+                                    player: target.id,
+                                    effect: crate::simulation::effects::Effect::Wither,
+                                    amplifier: 0,
+                                    ticks: 200,
+                                });
+                            }
                             if self.kind == MobKind::CaveSpider {
                                 let ticks = match self.difficulty {
                                     crate::simulation::difficulty::Difficulty::Normal => 140,

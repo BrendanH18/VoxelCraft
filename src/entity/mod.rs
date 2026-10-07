@@ -48,9 +48,9 @@ pub use projectile::Arrow;
 pub const SPAWN_MIN_DIST: f64 = 24.0;
 pub const SPAWN_MAX_DIST: f64 = 64.0;
 /// Java's Nether fortress spawns: (mob, weight, smallest and largest group).
-/// Wither skeletons are added with that mob.
-const FORTRESS_SPAWNS: [(MobKind, u32, u32, u32); 4] = [
+const FORTRESS_SPAWNS: [(MobKind, u32, u32, u32); 5] = [
     (MobKind::Blaze, 10, 2, 3),
+    (MobKind::WitherSkeleton, 8, 5, 5),
     (MobKind::ZombifiedPiglin, 5, 4, 4),
     (MobKind::MagmaCube, 3, 4, 4),
     (MobKind::Skeleton, 2, 5, 5),
@@ -755,7 +755,10 @@ impl Entities {
             if !player_kill
                 && matches!(
                     item,
-                    crate::item::Item::SPIDER_EYE | crate::item::Item::BLAZE_ROD | crate::item::Item::GHAST_TEAR
+                    crate::item::Item::SPIDER_EYE
+                        | crate::item::Item::BLAZE_ROD
+                        | crate::item::Item::GHAST_TEAR
+                        | crate::item::Item::WITHER_SKULL
                 )
             {
                 continue;
@@ -944,8 +947,8 @@ impl Entities {
     }
 
     /// Java's fortress spawn list, used for spots inside fortress pieces:
-    /// blazes, zombified piglins, magma cubes and skeletons in groups.
-    /// Light doesn't matter. (Wither skeletons are not in the roster yet.)
+    /// blazes, wither skeletons, zombified piglins, magma cubes and skeletons in groups.
+    /// Light doesn't matter.
     fn fortress_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, center: DVec3) {
         let total: u32 = FORTRESS_SPAWNS.iter().map(|s| s.1).sum();
         let mut r = (self.rng.next_f32() * total as f32) as u32;
@@ -1476,6 +1479,38 @@ mod tests {
             assert_eq!(e.mobs[0].health, 12.0);
         }
         assert!(!MobKind::CaveSpider.spawns_in(Dimension::Overworld));
+    }
+
+    #[test]
+    fn wither_skeleton_hits_wither_and_drops_coal_bones_and_rare_skulls() {
+        use crate::simulation::effects::Effect;
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::WitherSkeleton, DVec3::new(0.5, 10.0, 0.5));
+        let mut c = ctx(DVec3::new(1.0, 10.0, 0.5));
+        c.players[0].targetable = true;
+        c.daylight = 0.0;
+        let events = e.update(0.05, &Grid::flat(10), &c);
+        assert!(
+            events.iter().any(|ev| matches!(ev, EntityEvent::PlayerEffect { effect: Effect::Wither, ticks: 200, .. }))
+        );
+        assert!(events.iter().any(|ev| matches!(ev, EntityEvent::PlayerHit { damage, .. } if *damage == 8.0)));
+        assert!(!MobKind::WitherSkeleton.spawns_in(Dimension::Nether), "fortress only");
+        assert!(MobKind::WitherSkeleton.fire_immune());
+        assert_eq!(MobKind::WitherSkeleton.shape().height, 2.4);
+        let mut rng = Rng::new(9);
+        let skulls = (0..4000)
+            .filter(|_| {
+                MobKind::WitherSkeleton.drops(&mut rng, 0).iter().any(|d| d.0 == crate::item::Item::WITHER_SKULL)
+            })
+            .count();
+        assert!((60..140).contains(&skulls), "about 2.5%: {skulls}");
+        let looted = (0..4000)
+            .filter(|_| {
+                MobKind::WitherSkeleton.drops(&mut rng, 3).iter().any(|d| d.0 == crate::item::Item::WITHER_SKULL)
+            })
+            .count();
+        assert!(looted > skulls * 3 / 2, "looting adds 1% per level: {looted}");
+        assert!(FORTRESS_SPAWNS.iter().any(|s| s.0 == MobKind::WitherSkeleton && s.1 == 8));
     }
 
     #[test]
@@ -2656,7 +2691,8 @@ mod tests {
         for kind in MobKind::ALL.into_iter().filter(|k| !k.loot().is_empty()) {
             let mut seen_any = false;
             for _ in 0..200 {
-                for (item, n) in kind.drops(&mut rng, 0) {
+                for (item, n) in kind.drops(&mut rng, 0).into_iter().filter(|d| d.0 != crate::item::Item::WITHER_SKULL)
+                {
                     let &(_, lo, hi) = kind.loot().iter().find(|l| l.0 == item).unwrap();
                     assert!((lo.max(1) as u8..=hi).contains(&n), "{kind:?} dropped {n} of {}", item.name());
                     seen_any = true;

@@ -22,10 +22,12 @@ pub enum Effect {
     WaterBreathing,
     JumpBoost,
     SlowFalling,
+    Wither,
+    Hunger,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 13] = [
+    pub const ALL: [Effect; 15] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -39,6 +41,8 @@ impl Effect {
         Effect::WaterBreathing,
         Effect::JumpBoost,
         Effect::SlowFalling,
+        Effect::Wither,
+        Effect::Hunger,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -57,6 +61,8 @@ impl Effect {
             Effect::WaterBreathing => "water_breathing",
             Effect::JumpBoost => "jump_boost",
             Effect::SlowFalling => "slow_falling",
+            Effect::Wither => "wither",
+            Effect::Hunger => "hunger",
         }
     }
 
@@ -81,6 +87,8 @@ impl Effect {
             Effect::WaterBreathing => "Water Breathing",
             Effect::JumpBoost => "Jump Boost",
             Effect::SlowFalling => "Slow Falling",
+            Effect::Wither => "Wither",
+            Effect::Hunger => "Hunger",
         }
     }
 
@@ -100,6 +108,8 @@ impl Effect {
             Effect::WaterBreathing => 0x98DAC0,
             Effect::JumpBoost => 0xFDFF84,
             Effect::SlowFalling => 0xF3CFB9,
+            Effect::Wither => 0x352A27,
+            Effect::Hunger => 0x587653,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
@@ -111,7 +121,15 @@ impl Effect {
 
     /// Harmful effects show red in tooltips.
     pub fn is_harmful(self) -> bool {
-        matches!(self, Effect::Slowness | Effect::Weakness | Effect::InstantDamage | Effect::Poison)
+        matches!(
+            self,
+            Effect::Slowness
+                | Effect::Weakness
+                | Effect::InstantDamage
+                | Effect::Poison
+                | Effect::Wither
+                | Effect::Hunger
+        )
     }
 }
 
@@ -144,6 +162,10 @@ pub struct Outcome {
     pub damage: f32,
     /// Poison damage: bypasses armor and never kills.
     pub poison: f32,
+    /// Wither damage: bypasses armor and can kill.
+    pub wither: f32,
+    /// Hunger exhaustion (0.005 per level per tick).
+    pub exhaustion: f32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -211,8 +233,8 @@ impl Effects {
     }
 
     /// Advances `dt` seconds: regeneration heals 1 every 50 >> level ticks
-    /// and poison hurts 1 every 25 >> level ticks (Java's interval, from
-    /// the ticks left), then effects run out.
+    /// poison hurts 1 every 25 >> level ticks and wither 1 every 40 >> level
+    /// (Java's intervals, from the ticks left), then effects run out.
     pub fn tick(&mut self, dt: f32) -> Outcome {
         let mut out = Outcome::default();
         self.carry += dt * TPS;
@@ -223,11 +245,17 @@ impl Effects {
                 let every = match a.effect {
                     Effect::Regeneration => 50u32 >> a.amplifier.min(31),
                     Effect::Poison => 25u32 >> a.amplifier.min(31),
+                    Effect::Wither => 40u32 >> a.amplifier.min(31),
+                    Effect::Hunger => {
+                        out.exhaustion += 0.005 * (a.amplifier as f32 + 1.0);
+                        continue;
+                    }
                     _ => continue,
                 };
                 if every == 0 || a.ticks.is_multiple_of(every) {
                     match a.effect {
                         Effect::Regeneration => out.heal += 1.0,
+                        Effect::Wither => out.wither += 1.0,
                         _ => out.poison += 1.0,
                     }
                 }

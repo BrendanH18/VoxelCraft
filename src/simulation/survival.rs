@@ -365,6 +365,12 @@ impl Vitals {
             self.health = (self.health - effect.poison).max(1.0);
             self.since_damage = 0.0;
         }
+        if effect.exhaustion > 0.0 {
+            self.hunger.exhaust(effect.exhaustion);
+        }
+        if effect.wither > 0.0 {
+            self.damage(effect.wither, "withered away", creative);
+        }
         let fire_proof = self.effects.has(Effect::FireResistance);
         // Slow falling cancels falls; jump boost forgives a block per level.
         if self.effects.has(Effect::SlowFalling) && !env.on_ground {
