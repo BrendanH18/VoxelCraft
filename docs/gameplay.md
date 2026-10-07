@@ -300,6 +300,21 @@ full performance display instead of duplicating the compact counter.
   items shimmer purple; tooltips list enchantments (curses in red).
   `/enchant <enchantment> [level]` enchants the held item (a book becomes
   an enchanted book).
+- Enchanting tables: a book over two diamonds and four obsidian. Right
+  click for Java's screen: put in an unenchanted tool, weapon, armor
+  piece, bow or book and lapis lazuli for three offers. Each shows Java's
+  rune words, its lapis price (1-3) and level cost; hovering shows one of
+  the enchantments it will give. Costs follow Java's formula from the
+  bookshelves two blocks out at the table's height or one up (up to 15,
+  with air or plants between), so a full ring reaches 30 levels, and the
+  enchantments are rolled with Java's algorithm and random generator from
+  your enchantment seed, which changes each time you enchant. Taking
+  offer n costs n levels and n lapis (creative is free); a book becomes an
+  enchanted book. The table glows (light 7). Controller players have an
+  enchanting tab, and agents `enchanting 1..3`.
+- Lapis lazuli ore below y 32 (stone pickaxe or better) drops 4-9 lapis
+  (with fortune's ore bonus) and 2-5 experience; nine make a block of
+  lapis lazuli and back.
 - Strongholds: 128 per world on Java's concentric rings (the first three
   1280-2816 blocks from the origin), sunk below sea level and built from
   Java's stronghold pieces: a spiral staircase, corridors, turns,

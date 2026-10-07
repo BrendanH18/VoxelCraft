@@ -7,6 +7,7 @@
 
 use crate::inventory::Stack;
 use crate::item::{ArmorPiece, Item, ItemKind, ToolKind};
+use crate::world::block::Block;
 
 /// Every enchantment, in the order of their save bits. Append only.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -379,6 +380,28 @@ pub fn enchantability(item: Item) -> u32 {
     }
 }
 
+/// Java's `EnchantingTableBlock.isValidBookShelf`: bookshelves on the ring
+/// two blocks out, at the table's level or one up, with nothing solid in
+/// between (at the same height). At most 15 count.
+pub fn bookshelves(world: &crate::world::World, table: glam::IVec3) -> u32 {
+    let mut n = 0;
+    for y in 0..=1 {
+        for z in -2..=2i32 {
+            for x in -2..=2i32 {
+                if x.abs() != 2 && z.abs() != 2 {
+                    continue;
+                }
+                let shelf = world.get_block(table + glam::IVec3::new(x, y, z)) == Some(Block::BOOKSHELF);
+                let between = world.get_block(table + glam::IVec3::new(x / 2, y, z / 2));
+                if shelf && between.is_some_and(Block::is_replaceable) {
+                    n += 1;
+                }
+            }
+        }
+    }
+    n.min(15)
+}
+
 /// Whether the enchanting table takes this stack (one unenchanted item).
 pub fn table_accepts(stack: Stack) -> bool {
     enchantability(stack.item) > 0 && stack.enchants.is_empty()
@@ -599,7 +622,6 @@ pub fn anvil(left: Stack, right: Option<Stack>, creative: bool) -> Option<AnvilR
 /// Whether `material` repairs `item` on an anvil (Java's repair tags).
 pub fn repairs(item: Item, material: Item) -> bool {
     use crate::item::{ArmorMaterial, Tier};
-    use crate::world::block::Block;
     match item.info().kind {
         ItemKind::Tool(_, tier) => match tier {
             Tier::Wood => material.block().is_some_and(|b| b.is_planks()),

@@ -90,6 +90,12 @@ impl World {
                 let n = 1 + self.up_to(2 * fortune);
                 out.push(Stack::new(Item::WHEAT_SEEDS, n as u8))
             }
+            // Lapis: 4-9, times Java's ore bonus with fortune.
+            Block::LAPIS_ORE => {
+                let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1);
+                let n = ((4 + self.roll() % 6) * times).min(64);
+                out.push(Stack::new(Item::LAPIS_LAZULI, n as u8));
+            }
             Block::CLAY => out.push(Stack::new(Item::CLAY_BALL, 3)),
             Block::BOOKSHELF => out.push(Stack::new(Item::BOOK, 3)),
             // 2-4 dust, plus 0..fortune, at most 4.

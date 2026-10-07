@@ -30,6 +30,7 @@ impl Game {
                 || crate::world::furnace::is_furnace(b)
                 || crate::world::chest::is_chest(b)
                 || b == Block::BREWING_STAND
+                || b == Block::ENCHANTING_TABLE
         })
     }
 

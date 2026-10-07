@@ -41,6 +41,7 @@ pub fn smelt(item: Item) -> Option<Item> {
         i if i == b(Block::GOLD_ORE) => Item::GOLD_INGOT,
         i if i == b(Block::COAL_ORE) => Item::COAL,
         i if i == b(Block::DIAMOND_ORE) => Item::DIAMOND,
+        i if i == b(Block::LAPIS_ORE) => Item::LAPIS_LAZULI,
         i if i == b(Block::SAND) => b(Block::GLASS),
         i if i == b(Block::COBBLESTONE) => b(Block::STONE),
         i if i.block().is_some_and(Block::is_log) => Item::CHARCOAL,
@@ -64,7 +65,7 @@ pub fn smelt_xp(out: Item) -> f32 {
         Item::COOKED_PORKCHOP | Item::STEAK | Item::COOKED_CHICKEN => 0.35,
         i if i == b(Block::TERRACOTTA) => 0.35,
         Item::BRICK => 0.3,
-        Item::NETHER_QUARTZ => 0.2,
+        Item::NETHER_QUARTZ | Item::LAPIS_LAZULI => 0.2,
         Item::CHARCOAL => 0.15,
         _ => 0.1,
     }

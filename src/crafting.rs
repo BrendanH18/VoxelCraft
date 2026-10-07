@@ -177,6 +177,8 @@ const SUGAR_CANE: Ingredient = &[b(Block::SUGAR_CANE)];
 const COBBLESTONE: Ingredient = &[b(Block::COBBLESTONE)];
 const NETHER_BRICKS: Ingredient = &[b(Block::NETHER_BRICKS)];
 const STICK: Ingredient = &[Item::STICK];
+const LAPIS_BLOCK: Ingredient = &[b(Block::LAPIS_BLOCK)];
+const OBSIDIAN: Ingredient = &[b(Block::OBSIDIAN)];
 const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
 
 fn shaped(rows: &'static [&'static str], key: &[(char, Ingredient)], result: Item, count: u8) -> Recipe {
@@ -201,6 +203,14 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["###", "bbb", "###"], &[('#', PLANKS), ('b', &[Item::BOOK])], b(Block::BOOKSHELF), 1),
             shapeless(&[&[Item::ENDER_PEARL], &[Item::BLAZE_POWDER]], Item::EYE_OF_ENDER, 1),
             shaped(&["###", "###"], &[('#', &[Item::IRON_INGOT])], b(Block::IRON_BARS), 16),
+            shaped(&["###", "###", "###"], &[('#', &[Item::LAPIS_LAZULI])], b(Block::LAPIS_BLOCK), 1),
+            shapeless(&[LAPIS_BLOCK], Item::LAPIS_LAZULI, 9),
+            shaped(
+                &[" b ", "d#d", "###"],
+                &[('b', &[Item::BOOK]), ('d', &[Item::DIAMOND]), ('#', OBSIDIAN)],
+                b(Block::ENCHANTING_TABLE),
+                1,
+            ),
             shaped(&["##", "##"], &[('#', STONE)], b(Block::STONE_BRICKS), 4),
             shaped(
                 &["###", "#m#", "###"],

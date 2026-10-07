@@ -294,11 +294,12 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             shade(c, 0.7 + r * 0.45)
         }
         tex::SNOW => noisy(layer, x, y, [240, 245, 252], 0.03),
-        tex::COAL_ORE | tex::IRON_ORE | tex::GOLD_ORE | tex::DIAMOND_ORE => {
+        tex::COAL_ORE | tex::IRON_ORE | tex::GOLD_ORE | tex::DIAMOND_ORE | tex::LAPIS_ORE => {
             let ore = match layer {
                 tex::COAL_ORE => [40, 40, 40],
                 tex::IRON_ORE => [216, 175, 147],
                 tex::GOLD_ORE => [250, 220, 70],
+                tex::LAPIS_ORE => [30, 70, 185],
                 _ => [95, 230, 225],
             };
             let pts = points(layer, 5);
@@ -636,6 +637,35 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 shade([40, 90, 110], 0.9 + r * 0.3)
             } else {
                 shade([8, 12, 18], 0.8 + r * 0.4)
+            }
+        }
+        tex::LAPIS_BLOCK => {
+            // Deep blue with lighter flecks and a darker rim.
+            let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+            let fleck = rnd(layer, x, y, 17) > 0.86;
+            shade(if fleck { [70, 110, 215] } else { [30, 64, 160] }, if rim { 0.8 } else { 0.92 + r * 0.14 })
+        }
+        tex::ENCHANT_TOP => {
+            // Red cloth on an obsidian rim, with a diamond at each corner.
+            let edge = x.min(y).min(SIZE - 1 - x).min(SIZE - 1 - y);
+            let corner = (x <= 2 || x >= SIZE - 3) && (y <= 2 || y >= SIZE - 3);
+            if corner && (x == 1 || x == SIZE - 2) && (y == 1 || y == SIZE - 2) {
+                shade([95, 230, 225], 0.9 + r * 0.2)
+            } else if edge < 2 || corner {
+                pixel(tex::OBSIDIAN, x, y)
+            } else {
+                let weave = if (x + y).is_multiple_of(2) { 0.95 } else { 0.85 };
+                shade([170, 32, 36], weave * (0.9 + r * 0.15))
+            }
+        }
+        tex::ENCHANT_SIDE => {
+            // The cloth hangs over the top of the side (rows 4-6, a gold
+            // hem at 7), obsidian below; rows 0-3 sit above the table.
+            match y {
+                0..=3 => [0, 0, 0, 0],
+                4..=6 => shade([170, 32, 36], 0.85 + r * 0.15),
+                7 => shade([230, 190, 60], 0.9 + r * 0.15),
+                _ => pixel(tex::OBSIDIAN, x, y),
             }
         }
         tex::DRAGON_EGG => {

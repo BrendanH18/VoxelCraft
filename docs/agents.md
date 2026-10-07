@@ -66,6 +66,7 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `place`, `attack`, `drop` | Place selected block, hit a targeted mob, or drop selected stack |
 | `craft item` | Craft once with available recipe alternatives; larger recipes require targeting a crafting table |
 | `chest take/put slot` | Transfer a stack using chest slot 0–26; put uses selected hotbar slot |
+| `enchanting 1..3` | Take that offer of the targeted enchanting table for one of the selected item, paying 1–3 levels and lapis from the inventory; `observe` lists the offers (cost and clue) under `target.enchanting_offers` |
 | `respawn`, `leave` | Respawn a dead agent or deactivate the named profile |
 
 Agents stay active between CLI invocations until `leave` or host shutdown.

@@ -44,6 +44,7 @@ pub(super) enum Tab {
     Chest(IVec3),
     Furnace(IVec3),
     Brewing(IVec3),
+    Enchanting(IVec3),
 }
 
 impl Tab {
@@ -53,6 +54,7 @@ impl Tab {
             Tab::Chest(p) => Container::Chest(p),
             Tab::Furnace(p) => Container::Furnace(p),
             Tab::Brewing(p) => Container::Brewing(p),
+            Tab::Enchanting(p) => Container::Enchanting(p),
             _ => Container::Inventory,
         }
     }
@@ -96,6 +98,13 @@ pub(super) struct Lists {
 const PAUSE_CHOICES: [&str; 2] = ["Resume", "Leave game"];
 const COLS: usize = 9;
 const FURNACE: [SlotRef; 3] = [SlotRef::FurnaceInput, SlotRef::FurnaceFuel, SlotRef::FurnaceOutput];
+const ENCHANTING: [SlotRef; 5] = [
+    SlotRef::EnchantItem,
+    SlotRef::EnchantLapis,
+    SlotRef::EnchantOffer(0),
+    SlotRef::EnchantOffer(1),
+    SlotRef::EnchantOffer(2),
+];
 const BREWING: [SlotRef; 5] = [
     SlotRef::BrewFuel,
     SlotRef::BrewIngredient,
@@ -177,7 +186,7 @@ impl Menu {
 /// player's. Lists: nine to a row.
 fn rows(tab: Tab, lists: Lists) -> usize {
     match tab {
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) => 5,
+        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) => 5,
         Tab::Chest(_) => 7,
         Tab::Crafting => lists.crafts.div_ceil(COLS),
         Tab::Palette => lists.palette.div_ceil(COLS),
@@ -189,6 +198,7 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
         Tab::Inventory if row == 0 => return ArmorPiece::ALL.len(),
         Tab::Furnace(_) if row == 0 => return FURNACE.len(),
         Tab::Brewing(_) if row == 0 => return BREWING.len(),
+        Tab::Enchanting(_) if row == 0 => return ENCHANTING.len(),
         Tab::Crafting => lists.crafts,
         Tab::Palette => lists.palette,
         _ => return COLS,
@@ -202,8 +212,9 @@ fn slot(tab: Tab, col: usize, row: usize) -> Slot {
         Tab::Inventory if row == 0 => Slot::Ref(SlotRef::Armor(ArmorPiece::ALL[col])),
         Tab::Furnace(_) if row == 0 => Slot::Ref(FURNACE[col]),
         Tab::Brewing(_) if row == 0 => Slot::Ref(BREWING[col]),
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) if row == 4 => inv(col),
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) => inv(COLS * row + col),
+        Tab::Enchanting(_) if row == 0 => Slot::Ref(ENCHANTING[col]),
+        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) if row == 4 => inv(col),
+        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) => inv(COLS * row + col),
         Tab::Chest(_) if row < 3 => Slot::Ref(SlotRef::Chest(COLS * row + col)),
         Tab::Chest(_) if row == 6 => inv(col),
         Tab::Chest(_) => inv(COLS * (row - 2) + col),
@@ -279,11 +290,11 @@ impl Game {
     /// Closing a screen returns the stack on the cursor to the inventory,
     /// throwing whatever doesn't fit.
     pub(super) fn close_pad_menu(&mut self, name: &str) {
+        let table = self.take_pad_table(name);
         let Some(bot) = self.agents.players.get_mut(name) else { return };
         let agent = &mut bot.agent;
-        if let Some(stack) = agent.inventory.cursor.take() {
-            agent.inventory.return_stacks([stack]);
-        }
+        let cursor = agent.inventory.cursor.take();
+        agent.inventory.return_stacks(cursor.into_iter().chain(table));
         for stack in agent.inventory.take_spill() {
             self.mobs.entities.throw(stack, agent.player.eye(), agent.player.forward().as_dvec3());
         }
@@ -320,7 +331,9 @@ impl Game {
         let shown = n.min(visible);
         // The hotbar and the row above the main grid sit a little apart.
         let gap = |r: usize| match tab {
-            Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
+            Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) => {
+                4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32
+            }
             Tab::Chest(_) => 4.0 * ((r >= 3) as u8 + (r >= 6) as u8) as f32,
             Tab::Crafting | Tab::Palette => 0.0,
         };
@@ -337,6 +350,7 @@ impl Game {
             Tab::Chest(_) => "Chest",
             Tab::Furnace(_) => "Furnace",
             Tab::Brewing(_) => "Brewing Stand  (fuel, ingredient, bottles)",
+            Tab::Enchanting(_) => "Enchant  (item, lapis, offers)",
         };
         ui.text(px + 6.0, py + 5.0, title, WHITE);
         let chest = match tab {
@@ -351,7 +365,18 @@ impl Game {
             Tab::Brewing(pos) => self.world.brewing_stand(pos),
             _ => None,
         };
+        // The table's slots and offers, as this player sees them.
+        let table = self.pad_table(name);
+        let offers = match (tab, table[0]) {
+            (Tab::Enchanting(pos), Some(item)) if crate::enchant::table_accepts(item) => crate::enchant::offers(
+                bot.agent.vitals.xp.seed,
+                item.item,
+                crate::enchant::bookshelves(&self.world, pos),
+            ),
+            _ => Default::default(),
+        };
         let mut hovered = None;
+        let mut clue = None;
         for r in first..first + shown {
             for c in 0..row_len(tab, r, lists) {
                 let (x, y) = (px + 6.0 + 18.0 * c as f32, py + 18.0 + 18.0 * (r - first) as f32 + gap(r));
@@ -366,12 +391,28 @@ impl Game {
                     Slot::Ref(SlotRef::BrewBottle(i)) => brewing.and_then(|b| b.bottles[i]),
                     Slot::Ref(SlotRef::BrewIngredient) => brewing.and_then(|b| b.ingredient),
                     Slot::Ref(SlotRef::BrewFuel) => brewing.and_then(|b| b.fuel),
+                    Slot::Ref(SlotRef::EnchantItem) => table[0],
+                    Slot::Ref(SlotRef::EnchantLapis) => table[1],
                     Slot::Ref(_) => None,
                     Slot::Recipe(i) => crafts.get(i).copied(),
                     Slot::Palette(i) => items.get(i).map(|&item| Stack::new(item, 1)),
                 };
                 if let Some(stack) = stack {
                     draw_stack(ui, x - 0.5, y - 0.5, stack, true);
+                }
+                if let Slot::Ref(SlotRef::EnchantOffer(i)) = slot(tab, c, r)
+                    && offers[i].cost > 0
+                {
+                    // The level cost, green when this player can pay it.
+                    let a = &bot.agent;
+                    let lapis = table[1].map_or(0, |s| s.count) as usize;
+                    let paid = a.creative || (lapis > i && a.vitals.xp.level >= offers[i].cost);
+                    let cost = offers[i].cost.to_string();
+                    let colour = if paid { [0.5, 1.0, 0.13, 1.0] } else { [0.6, 0.35, 0.35, 1.0] };
+                    ui.text(x + 9.0 - Ui::text_width(&cost) / 2.0, y + 5.0, &cost, colour);
+                    if (c, r) == (col, row) {
+                        clue = offers[i].clue;
+                    }
                 }
                 if (c, r) == (col, row) {
                     ui.rect(x, y, 17.0, 17.0, [1.0, 1.0, 1.0, 0.35]);
@@ -395,6 +436,12 @@ impl Game {
         if let Some((stack, x, y)) = hovered {
             if let Some(held) = inv.cursor {
                 draw_stack(ui, x + 6.0, y + 6.0, held, true);
+            } else if let Some((e, level)) = clue {
+                let text = format!("{} . . . ?", e.describe(level));
+                let tx = (x + 9.0 - Ui::text_width(&text) / 2.0).clamp(0.0, (sw - Ui::text_width(&text)).max(0.0));
+                let ty = (py + ph + 2.0).min(sh - 10.0);
+                ui.rect(tx - 2.0, ty - 1.0, Ui::text_width(&text) + 4.0, 10.0, [0.0, 0.0, 0.0, 0.8]);
+                ui.text(tx, ty, &text, WHITE);
             } else if let Some(stack) = stack {
                 let name = stack.item.name();
                 let tx = (x + 9.0 - Ui::text_width(name) / 2.0).clamp(0.0, (sw - Ui::text_width(name)).max(0.0));

@@ -211,7 +211,7 @@ const COOKED_FAT: [u8; 3] = [215, 180, 130];
 
 /// Non-block items, in id order from [`FIRST_ITEM`]. Append only: ids are
 /// stored in saves.
-static ITEMS: [ItemInfo; 51] = [
+static ITEMS: [ItemInfo; 52] = [
     item("stick", Sprite::Stick),
     item("coal", Sprite::Lump([45, 45, 48])),
     item("charcoal", Sprite::Lump([70, 58, 44])),
@@ -278,6 +278,7 @@ static ITEMS: [ItemInfo; 51] = [
     item("book", Sprite::Book([120, 66, 40])),
     ItemInfo { name: "eye of ender", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::EnderEye },
     ItemInfo { name: "enchanted book", kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Book([112, 44, 110]) },
+    item("lapis lazuli", Sprite::Gem([38, 76, 190])),
 ];
 
 /// Uses before a bow breaks.
@@ -356,6 +357,8 @@ impl Item {
     pub const EYE_OF_ENDER: Item = Item(305);
     /// Stores enchantments for an anvil to put on gear.
     pub const ENCHANTED_BOOK: Item = Item(306);
+    /// Pays for enchanting (one to three per enchantment).
+    pub const LAPIS_LAZULI: Item = Item(307);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         Item(FIRST_TOOL + tier as u16 * 5 + kind as u16)

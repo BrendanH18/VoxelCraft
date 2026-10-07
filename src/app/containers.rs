@@ -108,6 +108,12 @@ impl Game {
                     }
                 }
             }
+            SlotRef::EnchantItem | SlotRef::EnchantLapis => {
+                let i = (slot == SlotRef::EnchantLapis) as usize;
+                let Some(stack) = self.table[i].take() else { return };
+                self.table[i] = self.move_to_player(stack);
+            }
+            SlotRef::EnchantOffer(i) => self.take_offer(i),
             SlotRef::Armor(piece) => {
                 if !self.inventory.can_unequip(piece, self.mode == GameMode::Creative) {
                     return;
@@ -178,6 +184,12 @@ impl Game {
                     if left != Some(stack) {
                         return left;
                     }
+                }
+            }
+            Container::Enchanting(_) => {
+                let left = self.move_to_table(stack);
+                if left != Some(stack) {
+                    return left;
                 }
             }
             Container::Inventory if self.mode == GameMode::Survival => {

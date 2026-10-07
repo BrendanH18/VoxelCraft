@@ -476,6 +476,7 @@ impl Generator {
             12..=18 if y < 64 => Block::IRON_ORE,
             19..=21 if y < 32 => Block::GOLD_ORE,
             22..=23 if y < 16 => Block::DIAMOND_ORE,
+            24..=25 if y < 32 => Block::LAPIS_ORE,
             _ => return Block::STONE,
         };
         if !hash3(x, y, z, self.seed ^ 0x0E6).is_multiple_of(3) { ore } else { Block::STONE }

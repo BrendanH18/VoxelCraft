@@ -161,6 +161,7 @@ const DRAGON_EGG: [Box16; 8] = [
     b([6, 15, 6], [10, 16, 10]),
 ];
 const DRAGON_EGG_COLLISION: Box16 = b([1, 0, 1], [15, 16, 15]);
+const ENCHANTING_TABLE: Box16 = b([0, 0, 0], [16, 12, 16]);
 const FENCE_POST: Box16 = b([6, 0, 6], [10, 16, 10]);
 /// The two rails reaching out to a neighbour on the south side.
 const FENCE_RAILS: [Box16; 2] = [b([7, 6, 10], [9, 9, 16]), b([7, 12, 10], [9, 15, 16])];
@@ -213,6 +214,7 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block) -> Boxes {
         }
         Some(Shaped::EndPortal) => out.push(END_PORTAL),
         Some(Shaped::DragonEgg) => DRAGON_EGG.iter().for_each(|&e| out.push(e)),
+        Some(Shaped::EnchantingTable) => out.push(ENCHANTING_TABLE),
         Some(Shaped::Door { facing, open, .. }) => {
             out.push_turned(&DOOR, if open { open_door_side(facing) } else { facing })
         }

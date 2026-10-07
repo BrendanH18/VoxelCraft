@@ -100,6 +100,7 @@ src/
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
     items.rs         dropped items: spawning, pickup, throwing, death drops
     containers.rs    chest screens and shift-click quick moves
+    enchanting.rs    enchanting table screen: item and lapis slots, offers
     farming.rs       hoe tilling, bone meal, trampling farmland
     doors.rs         doors, ladders and gates: placing, opening, breaking
     hand.rs          first-person hand animation: swings, item switches, bob
@@ -107,6 +108,8 @@ src/
   crafting.rs        crafting grids and recipes
   mining.rs          mining speed, harvest rules, tool wear, melee damage
   item.rs            item registry: blocks, materials, food and tools
+  enchant.rs         enchantments: Java's definitions, effects, table offers,
+                     anvil rules, java.util.Random port
   player.rs          player movement
   physics.rs         shared AABB-vs-block collision, ray-vs-box test
   entity/

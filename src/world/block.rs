@@ -182,7 +182,13 @@ pub mod tex {
     pub const FRAME_EYE_SIDE: u8 = FRAME_TOP + 3;
     pub const END_PORTAL: u8 = FRAME_TOP + 4;
     pub const DRAGON_EGG: u8 = END_PORTAL + 1;
-    pub const COUNT: u32 = DRAGON_EGG as u32 + 1;
+    pub const LAPIS_ORE: u8 = DRAGON_EGG + 1;
+    pub const LAPIS_BLOCK: u8 = LAPIS_ORE + 1;
+    /// The enchanting table's red cloth top and its 12-high sides (shaped
+    /// boxes sample rows 4..16 of a side).
+    pub const ENCHANT_TOP: u8 = LAPIS_BLOCK + 1;
+    pub const ENCHANT_SIDE: u8 = ENCHANT_TOP + 1;
+    pub const COUNT: u32 = ENCHANT_SIDE as u32 + 1;
     // Layers are stored in a byte.
     const _: () = assert!(COUNT <= 256);
 
@@ -366,6 +372,11 @@ impl Block {
     /// Spawned around the central island for each dragon killed; it leads
     /// out to the outer islands and back.
     pub const END_GATEWAY: Block = Block(210);
+    pub const LAPIS_ORE: Block = Block(211);
+    pub const LAPIS_BLOCK: Block = Block(212);
+    /// Enchants gear for levels and lapis (see `crate::enchant`); nearby
+    /// bookshelves raise its offers.
+    pub const ENCHANTING_TABLE: Block = Block(213);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age })
@@ -469,6 +480,7 @@ impl Block {
             200..=207 => Shaped::Frame { facing: f(self.0 - 200), eye: self.0 >= 204 },
             208 => Shaped::EndPortal,
             209 => Shaped::DragonEgg,
+            213 => Shaped::EnchantingTable,
             137..=140 => Shaped::Ladder(f(self.0 - 137)),
             141..=148 => Shaped::Gate { facing: f(self.0 - 141), open: self.0 >= 145 },
             149..=164 => {
@@ -723,6 +735,8 @@ impl Block {
             Block::GRASS | Block::SNOWY_GRASS => Some(Block::DIRT.into()),
             Block::COAL_ORE => Some(Item::COAL),
             Block::DIAMOND_ORE => Some(Item::DIAMOND),
+            // Lapis ore drops 4-9 (see `World::spill_mined`).
+            Block::LAPIS_ORE => None,
             Block::DEAD_BUSH => Some(Item::STICK),
             Block::LIT_FURNACE => Some(Block::FURNACE.into()),
             Block::FARMLAND | Block::WET_FARMLAND => Some(Block::DIRT.into()),
@@ -769,7 +783,8 @@ impl Block {
             Block::BOOKSHELF => 1.5,
             Block::END_PORTAL_FRAME | Block::END_PORTAL | Block::END_GATEWAY => f32::INFINITY,
             Block::DRAGON_EGG => 3.0,
-            Block::QUARTZ_ORE | Block::END_STONE => 3.0,
+            Block::QUARTZ_ORE | Block::END_STONE | Block::LAPIS_ORE | Block::LAPIS_BLOCK => 3.0,
+            Block::ENCHANTING_TABLE => 5.0,
             Block::NETHER_PORTAL => f32::INFINITY,
             Block::DIRT | Block::SAND | Block::RED_SAND | Block::ICE => 0.5,
             Block::GRASS | Block::SNOWY_GRASS | Block::GRAVEL | Block::FARMLAND | Block::WET_FARMLAND | Block::CLAY => {
@@ -819,6 +834,9 @@ impl Block {
             | Block::MOSSY_STONE_BRICKS
             | Block::CRACKED_STONE_BRICKS
             | Block::IRON_BARS
+            | Block::LAPIS_ORE
+            | Block::LAPIS_BLOCK
+            | Block::ENCHANTING_TABLE
             | Block::ICE => Some(ToolKind::Pickaxe),
             Block::COBWEB => Some(ToolKind::Sword),
             Block::BOOKSHELF => Some(ToolKind::Axe),
@@ -863,9 +881,10 @@ impl Block {
             | Block::CRACKED_STONE_BRICKS
             | Block::IRON_BARS
             | Block::COBWEB
+            | Block::ENCHANTING_TABLE
             | Block::NETHER_BRICKS => Some(0),
             b if b.terracotta_colour().is_some() => Some(0),
-            Block::IRON_ORE => Some(1),
+            Block::IRON_ORE | Block::LAPIS_ORE | Block::LAPIS_BLOCK => Some(1),
             Block::GOLD_ORE | Block::DIAMOND_ORE => Some(2),
             Block::OBSIDIAN => Some(3),
             _ => None,
@@ -882,7 +901,7 @@ impl Block {
             .chain(100..=103)
             .chain(105..=111)
             .chain((112..=132).step_by(4))
-            .chain([136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209])
+            .chain([136, 137, 141, 182, 188, 189, 193, 194, 195, 196, 197, 198, 199, 200, 209, 211, 212, 213])
             .map(Block)
     }
 
@@ -988,6 +1007,7 @@ impl Block {
             Block::END_PORTAL | Block::END_GATEWAY => 15,
             // Java: all frame states glow faintly, with or without an eye.
             Block::END_PORTAL_FRAME | Block::DRAGON_EGG => 1,
+            Block::ENCHANTING_TABLE => 7,
             b if b.is_lava() => 15,
             b if b.is_fire() => 15,
             _ => 0,
@@ -1164,6 +1184,8 @@ pub enum Shaped {
     EndPortal,
     /// Stacked boxes rounding to a point.
     DragonEgg,
+    /// A 12/16-high table.
+    EnchantingTable,
     Fence,
     /// Faces away from the wall it hangs on.
     Ladder(Facing),
@@ -1390,6 +1412,9 @@ const fn make(id: u8) -> BlockInfo {
         208 => ("end portal", Shaped, all(tex::END_PORTAL)),
         209 => ("dragon egg", Shaped, all(tex::DRAGON_EGG)),
         210 => ("end gateway", Cutout, all(tex::END_PORTAL)),
+        211 => ("lapis lazuli ore", Opaque, all(tex::LAPIS_ORE)),
+        212 => ("block of lapis lazuli", Opaque, all(tex::LAPIS_BLOCK)),
+        213 => ("enchanting table", Shaped, column(tex::ENCHANT_SIDE, tex::ENCHANT_TOP, tex::OBSIDIAN)),
         _ => ("unknown", Invisible, all(0)),
     };
     // Ice is see-through like water but solid underfoot; End portals are

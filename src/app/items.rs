@@ -205,6 +205,7 @@ impl Game {
     pub(super) fn drop_everything(&mut self) {
         let mut stacks = self.inventory.take_all();
         stacks.extend(self.craft.take_all());
+        stacks.extend(self.take_table());
         for stack in stacks {
             self.mobs.entities.scatter(stack, self.player.pos);
         }

@@ -19,7 +19,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | drop | respawn | leave. Cheats: give item [count], gamemode creative/survival, tp x y z, setblock x y z block, time day/noon/night/0..1, weather clear/rain, xp add/set n [points/levels], xp query, effect give effect [seconds] [amplifier], effect clear [effect], enchant name [level], dimension overworld/nether/end (host console only).";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -74,6 +74,9 @@ pub enum Command {
     Effect(EffectChange),
     /// Java's `/enchant`: enchants the held item.
     Enchant(crate::enchant::Enchantment, u8),
+    /// Takes offer 0..3 of the targeted enchanting table for the held item,
+    /// paying levels and lapis from the inventory.
+    Enchanting(usize),
 }
 
 /// `/effect give` (with seconds and amplifier) or `/effect clear`.
@@ -236,6 +239,9 @@ impl Command {
                 })?;
                 let amp = rest.get(1).map_or(Ok(0), |n| n.parse::<u8>().map_err(|_| bad()))?;
                 Self::Effect(EffectChange::Give(effect, secs, amp))
+            }
+            ["enchanting", n] => {
+                Self::Enchanting(n.parse::<usize>().ok().filter(|n| (1..=3).contains(n)).ok_or_else(bad)? - 1)
             }
             ["enchant", name, rest @ ..] if rest.len() <= 1 => {
                 let e = crate::enchant::Enchantment::from_name(name).ok_or_else(bad)?;
@@ -560,6 +566,7 @@ impl Agent {
                         (stack.count > n).then_some(Stack { count: stack.count - n, ..stack });
                 }
             }
+            Command::Enchanting(i) => self.enchant_at_table(i, world)?,
             Command::Drop => {
                 let stack = self.inventory.slots[self.selected].take().ok_or("selected slot empty")?;
                 entities.throw(stack, self.player.eye(), self.player.forward().as_dvec3());
@@ -809,6 +816,63 @@ impl Agent {
         self.bite as f32 / EAT_TICKS as f32
     }
 
+    /// The targeted enchanting table and its offers for the held item.
+    fn table_offers(&self, world: &World) -> Option<(IVec3, [crate::enchant::Offer; 3])> {
+        let (pos, _) = self.target(world)?;
+        let held = self.inventory.get(self.selected)?;
+        (world.get_block(pos) == Some(Block::ENCHANTING_TABLE) && crate::enchant::table_accepts(held)).then(|| {
+            (pos, crate::enchant::offers(self.vitals.xp.seed, held.item, crate::enchant::bookshelves(world, pos)))
+        })
+    }
+
+    /// Java's enchanting table for an agent: one of the held item gets
+    /// offer `i`, for `i + 1` levels and lapis (none in creative).
+    fn enchant_at_table(&mut self, i: usize, world: &World) -> Result<(), String> {
+        let (_, offers) =
+            self.table_offers(world).ok_or("not aiming at an enchanting table with an enchantable item")?;
+        let offer = offers[i];
+        let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+        let lapis = self
+            .inventory
+            .slots
+            .iter()
+            .flatten()
+            .filter(|s| s.item == Item::LAPIS_LAZULI)
+            .map(|s| s.count as usize)
+            .sum::<usize>();
+        let level = self.vitals.xp.level;
+        if offer.cost == 0 {
+            return Err("no offer in that slot".into());
+        }
+        if !self.creative && (lapis <= i || level < offer.cost || level <= i as u32) {
+            return Err(format!("needs {} lapis and level {}", i + 1, offer.cost));
+        }
+        let mut out = Stack { count: 1, ..held };
+        if out.item == Item::BOOK {
+            out.item = Item::ENCHANTED_BOOK;
+        }
+        for (e, l) in crate::enchant::offer_enchants(self.vitals.xp.seed, held.item, i, offer.cost) {
+            out.enchants.set(e, l);
+        }
+        let mut inv = self.inventory.clone();
+        inv.take_one(self.selected);
+        if inv.slots[self.selected].is_none() {
+            inv.slots[self.selected] = Some(out);
+        } else if inv.add_stack(out) > 0 {
+            return Err("inventory full".into());
+        }
+        if !self.creative {
+            for _ in 0..=i {
+                let slot = inv.find(Item::LAPIS_LAZULI).ok_or("no lapis")?;
+                inv.take_one(slot);
+            }
+            self.vitals.xp.add_levels(-(i as i64 + 1));
+        }
+        self.inventory = inv;
+        self.vitals.xp.seed = (crate::enchant::roll() * u32::MAX as f32) as u32 as i32;
+        Ok(())
+    }
+
     /// Damage through protection enchantments (armor points aside).
     fn damage(&mut self, amount: f32, cause: &str) -> f32 {
         let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
@@ -891,9 +955,12 @@ impl Agent {
                 })
             })
             .collect();
-        let target = self.target(world).map(
-            |(p, n)| json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name())}),
-        );
+        let offers = self
+            .table_offers(world)
+            .map(|(_, o)| o.map(|o| json!({"cost":o.cost,"clue":o.clue.map(|(e, l)| e.describe(l))})).to_vec());
+        let target = self.target(world).map(|(p, n)| {
+            json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers})
+        });
         json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"level":self.vitals.xp.level,"xp_progress":self.vitals.xp.progress(),"dead":self.vitals.is_dead(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"spawn_bed":self.spawn_bed.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
 }
@@ -1124,6 +1191,31 @@ mod tests {
         assert_eq!(a.remaining, 0);
         assert_eq!(b.player.pos.x, 4.5);
     }
+    #[test]
+    fn agents_enchant_at_a_table_for_levels_and_lapis() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let pos = IVec3::new(4, 151, 1);
+        world.set_block(pos, Block::ENCHANTING_TABLE);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let pick = Item::tool(crate::item::ToolKind::Pickaxe, crate::item::Tier::Iron);
+        a.inventory.slots[0] = Some(Stack::new(pick, 1));
+        a.inventory.slots[1] = Some(Stack::new(Item::LAPIS_LAZULI, 2));
+        let offers = a.observe(&world, 0)["target"]["enchanting_offers"].clone();
+        assert_eq!(offers.as_array().map(Vec::len), Some(3), "{offers}");
+        let cost = offers[1]["cost"].as_u64().unwrap() as u32;
+        assert!(a.execute(Command::Enchanting(1), &mut world, &mut entities, &[]).is_err(), "no levels yet");
+        a.vitals.xp.add_levels(cost as i64);
+        let seed = a.vitals.xp.seed;
+        a.execute(Command::Enchanting(1), &mut world, &mut entities, &[]).unwrap();
+        let held = a.inventory.get(0).unwrap();
+        assert!(!held.enchants.is_empty());
+        assert_eq!(a.vitals.xp.level, cost - 2, "the second offer costs two levels");
+        assert_eq!(a.inventory.get(1), None, "and two lapis");
+        assert_ne!(a.vitals.xp.seed, seed, "a new seed rolls new offers");
+        assert!(a.execute(Command::Enchanting(0), &mut world, &mut entities, &[]).is_err(), "already enchanted");
+    }
+
     #[test]
     fn shared_chest_transfer_cannot_duplicate_items() {
         let mut world = world();
