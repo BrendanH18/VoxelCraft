@@ -617,6 +617,9 @@ impl Entities {
         }
         if kind.is_zombie() && self.rng.chance(0.05) {
             mob.baby = true;
+            if kind == MobKind::ZombieVillager {
+                mob.age = -24000;
+            }
         }
         if kind.is_zombie() || kind == MobKind::Skeleton {
             let (armor, glint) = armor::roll_monster_armor(&mut self.rng);

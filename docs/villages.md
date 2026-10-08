@@ -163,9 +163,11 @@ a 5% zombie-villager roll. Weakness plus a regular golden apple starts a
 3600–6000-tick cure, removes Weakness and keeps the zombie persistent. Trades,
 profession, XP, age, armor, weakness/conversion timers and golem health/build
 state survive saves. Baby zombies remain babies until curing, then grow as
-villagers. Cures give a capped permanent trade discount; per-player gossip,
-conversion Strength, bed/bar acceleration and equipment-drop handling are
-still to be completed. Summoning and combat use reused spatial buckets rather
+villagers. Conversion grants Strength I, and the Java one-percent special-block scan
+accelerates curing with up to fourteen nearby beds/iron bars. Fractional ticks
+survive saves. Natural armor is discarded at completion; picked-up equipment
+and binding-curse handling await support for equipped item stacks. Cures
+grant per-player gossip discounts, described below. Summoning and combat use reused spatial buckets rather
 than per-mob full entity scans; collision broad phase shares that index.
 
 ## Breeding

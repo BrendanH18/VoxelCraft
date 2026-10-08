@@ -639,6 +639,7 @@ pub struct Mob {
     pub(super) weakness_left: f32,
     /// Seconds until a weakened zombie villager becomes a villager again. Zero means not curing.
     pub(super) convert_left: f32,
+    pub(super) convert_tick: f32,
     pub trader: Option<Box<super::wandering_trader::Trader>>,
     pub(super) trader_night: bool,
     pub(super) convert_by: Option<super::PlayerId>,
@@ -716,6 +717,7 @@ impl Mob {
             built: false,
             weakness_left: 0.0,
             convert_left: 0.0,
+            convert_tick: 0.0,
             trader_night: false,
             convert_by: None,
             angry_player: None,
@@ -724,18 +726,30 @@ impl Mob {
         }
     }
 
+    pub(super) fn melee_attack(&self) -> (f32, &'static str) {
+        let (base, cause) = self.kind.melee();
+        let strength = if self.convert_left > 0.0 { 3.0 } else { 0.0 };
+        let weakness = if self.weakness_left > 0.0 { 4.0 } else { 0.0 };
+        ((base + strength - weakness).max(0.0), cause)
+    }
+
     /// A player hit this iron golem recently, so it may hit back.
     pub(super) fn angry_at_player(&self) -> bool {
         self.kind == MobKind::IronGolem && !self.built && self.player_hit_left > 0.0
     }
 
     /// The cure finished: a villager again, with Java's major_positive discount.
-    fn finish_cure(&mut self) {
+    pub(super) fn finish_cure(&mut self) {
         self.kind = MobKind::Villager;
         self.health = MobKind::Villager.max_health();
         self.baby = self.age < 0;
         self.weakness_left = 0.0;
         self.convert_left = 0.0;
+        self.convert_tick = 0.0;
+        // Naturally generated equipment is discarded by Java's conversion.
+        // Picked-up equipment and binding curses are not represented on mobs.
+        self.armor = [None; 4];
+        self.armor_glint = 0;
         if let Some(v) = &mut self.villager {
             v.reputation = 0;
             if let Some(owner) = self.convert_by
@@ -871,12 +885,7 @@ impl Mob {
         self.attack_cooldown -= dtf;
         self.player_hit_left = (self.player_hit_left - dtf).max(0.0);
         self.weakness_left = (self.weakness_left - dtf).max(0.0);
-        if self.convert_left > 0.0 && self.dying.is_none() && self.kind == MobKind::ZombieVillager {
-            self.convert_left = (self.convert_left - dtf).max(0.0);
-            if self.convert_left == 0.0 {
-                self.finish_cure();
-            }
-        }
+        self.advance_cure(dtf, world, rng);
         if let Some(v) = &mut self.villager {
             v.bell_hide = (v.bell_hide - dtf).max(0.0);
         }
@@ -1135,7 +1144,7 @@ impl Mob {
                                     },
                                 )
                             } else {
-                                self.kind.melee()
+                                self.melee_attack()
                             };
                             events.push(EntityEvent::PlayerHit {
                                 player: target.id,
