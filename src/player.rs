@@ -386,7 +386,10 @@ impl Player {
 
         // Ladders: walking into one (or jumping) climbs, sneaking holds on,
         // and a fall slows to a slide.
-        self.climbing = !self.flying && world.get_block(self.pos.floor().as_ivec3()).is_some_and(|b| b.is_ladder());
+        self.climbing = !self.flying
+            && world
+                .get_block(self.pos.floor().as_ivec3())
+                .is_some_and(|b| b.is_ladder() || crate::world::nether_biome_blocks::climbable(b));
         if self.climbing {
             self.vel.y = self.vel.y.max(-LADDER_SLIDE);
             if input.descend {

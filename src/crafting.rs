@@ -170,6 +170,8 @@ const PLANKS: Ingredient = &[
     b(Block::DARK_OAK_PLANKS),
     b(Block::MANGROVE_PLANKS),
     b(Block::CHERRY_PLANKS),
+    b(crate::world::nether_biome_blocks::CRIMSON_PLANKS),
+    b(crate::world::nether_biome_blocks::WARPED_PLANKS),
 ];
 const HAY: Ingredient = &[b(Block::HAY_BALE)];
 const WOOD_SLAB: Ingredient = &[
@@ -181,6 +183,8 @@ const WOOD_SLAB: Ingredient = &[
     b(crate::world::forms::wood_id(4, 4)),
     b(crate::world::forms::wood_id(5, 4)),
     b(crate::world::forms::wood_id(6, 4)),
+    b(crate::world::forms::wood_id(7, 4)),
+    b(crate::world::forms::wood_id(8, 4)),
 ];
 const FURNACE: Ingredient = &[b(Block::FURNACE)];
 const STONE_SLAB: Ingredient = &[b(Block::STONE_SLAB)];
@@ -516,6 +520,7 @@ pub fn recipes() -> &'static [Recipe] {
         add_dye_recipes(&mut r);
         add_wool_recipes(&mut r);
         add_glass_terracotta_recipes(&mut r);
+        add_nether_biome_recipes(&mut r);
         r
     })
 }
@@ -914,6 +919,53 @@ mod dye_tests {
     }
 }
 
+/// Crimson and warped wood (Java's `#crimson_stems` / `#warped_stems`),
+/// nether wart blocks, soul torches and bone blocks.
+fn add_nether_biome_recipes(r: &mut Vec<Recipe>) {
+    use crate::world::nether_biome_blocks::{self as nb, NetherWood};
+    const CRIMSON_STEMS: Ingredient =
+        &[b(nb::CRIMSON_STEM), b(nb::STRIPPED_CRIMSON_STEM), b(nb::CRIMSON_HYPHAE), b(nb::STRIPPED_CRIMSON_HYPHAE)];
+    const WARPED_STEMS: Ingredient =
+        &[b(nb::WARPED_STEM), b(nb::STRIPPED_WARPED_STEM), b(nb::WARPED_HYPHAE), b(nb::STRIPPED_WARPED_HYPHAE)];
+    const WOODS: [(NetherWood, Ingredient, Ingredient, Ingredient, Ingredient); 2] = [
+        (
+            NetherWood::Crimson,
+            CRIMSON_STEMS,
+            &[b(nb::CRIMSON_PLANKS)],
+            &[b(nb::CRIMSON_STEM)],
+            &[b(nb::STRIPPED_CRIMSON_STEM)],
+        ),
+        (
+            NetherWood::Warped,
+            WARPED_STEMS,
+            &[b(nb::WARPED_PLANKS)],
+            &[b(nb::WARPED_STEM)],
+            &[b(nb::STRIPPED_WARPED_STEM)],
+        ),
+    ];
+    for (wood, stems, planks, stem, stripped) in WOODS {
+        let form = |local| b(crate::world::forms::wood_id(wood.form_index(), local));
+        r.push(shapeless(&[stems], b(wood.planks()), 4));
+        r.push(shaped(&["##", "##"], &[('#', stem)], b(wood.hyphae()), 3));
+        r.push(shaped(&["##", "##"], &[('#', stripped)], b(wood.stripped_hyphae()), 3));
+        r.push(shaped(&["#  ", "## ", "###"], &[('#', planks)], form(0), 4));
+        r.push(shaped(&["###"], &[('#', planks)], form(4), 6));
+        r.push(shaped(&["#s#", "#s#"], &[('#', planks), ('s', STICK)], form(5), 3));
+        r.push(shaped(&["s#s", "s#s"], &[('#', planks), ('s', STICK)], form(6), 1));
+        r.push(shaped(&["##", "##", "##"], &[('#', planks)], form(14), 3));
+        r.push(shaped(&["###", "###"], &[('#', planks)], b(wood.trapdoor()), 2));
+        r.push(shapeless(&[planks], b(wood.button()), 1));
+        r.push(shaped(&["##"], &[('#', planks)], b(wood.pressure_plate()), 1));
+    }
+    r.push(shaped(&["###", "###", "###"], &[('#', &[Item::NETHER_WART])], b(nb::NETHER_WART_BLOCK), 1));
+    const SOUL_BASE: Ingredient = &[b(Block::SOUL_SAND), b(nb::SOUL_SOIL)];
+    const BONE_BLOCK: Ingredient = &[b(nb::BONE_BLOCK)];
+    const FUEL: Ingredient = &[Item::COAL, Item::CHARCOAL];
+    r.push(shaped(&["c", "s", "S"], &[('c', FUEL), ('s', STICK), ('S', SOUL_BASE)], b(nb::SOUL_TORCH), 4));
+    r.push(shaped(&["###", "###", "###"], &[('#', &[Item::BONE_MEAL])], b(nb::BONE_BLOCK), 1));
+    r.push(shapeless(&[BONE_BLOCK], Item::BONE_MEAL, 9));
+}
+
 fn add_wool_recipes(r: &mut Vec<Recipe>) {
     use crate::color::DyeColor;
     static DYES: [[Item; 1]; 16] = color_ingredients(0);
@@ -1159,5 +1211,63 @@ mod redstone_recipe_tests {
             let grid = recipe.preview();
             assert_eq!(grid.result().map(|s| s.item), Some(item));
         }
+    }
+}
+
+#[cfg(test)]
+mod nether_biome_tests {
+    use super::*;
+    use crate::world::nether_biome_blocks::{self as nb, NetherWood};
+
+    fn craft(size: usize, cells: &[(usize, usize, Item)]) -> Option<Stack> {
+        let mut g = Grid::new(size);
+        for &(x, y, item) in cells {
+            g.cells[y * size + x] = Some(Stack::new(item, 1));
+        }
+        g.result()
+    }
+
+    fn filled(item: Item, w: usize, h: usize) -> Vec<(usize, usize, Item)> {
+        (0..h).flat_map(|y| (0..w).map(move |x| (x, y, item))).collect()
+    }
+
+    #[test]
+    fn nether_woods_craft_their_own_shapes_and_count_as_planks() {
+        for w in NetherWood::ALL {
+            let planks = b(w.planks());
+            for stem in [w.stem(), w.stripped_stem(), w.hyphae(), w.stripped_hyphae()] {
+                assert_eq!(craft(2, &[(0, 0, b(stem))]), Some(Stack::new(w.planks(), 4)), "{}", stem.name());
+            }
+            assert_eq!(craft(2, &filled(b(w.stem()), 2, 2)), Some(Stack::new(w.hyphae(), 3)));
+            assert_eq!(craft(2, &filled(b(w.stripped_stem()), 2, 2)), Some(Stack::new(w.stripped_hyphae(), 3)));
+            let form = |local| crate::world::forms::wood_id(w.form_index(), local);
+            assert_eq!(craft(3, &filled(planks, 3, 1)), Some(Stack::new(form(4), 6)));
+            assert_eq!(craft(3, &filled(planks, 2, 3)), Some(Stack::new(form(14), 3)));
+            assert_eq!(craft(3, &filled(planks, 3, 2)), Some(Stack::new(w.trapdoor(), 2)));
+            assert_eq!(craft(2, &[(1, 1, planks)]), Some(Stack::new(w.button(), 1)));
+            assert_eq!(craft(2, &filled(planks, 2, 1)), Some(Stack::new(w.pressure_plate(), 1)));
+            let stairs =
+                [(0, 0, planks), (0, 1, planks), (1, 1, planks), (0, 2, planks), (1, 2, planks), (2, 2, planks)];
+            assert_eq!(craft(3, &stairs), Some(Stack::new(form(0), 4)));
+            let fence = [(0, 0, planks), (1, 0, Item::STICK), (2, 0, planks), (0, 1, planks), (1, 1, Item::STICK)];
+            assert_eq!(craft(3, &[fence.as_slice(), &[(2, 1, planks)]].concat()), Some(Stack::new(form(5), 3)));
+            // Generic plank recipes accept Nether planks, like Java's #planks tag.
+            assert_eq!(craft(2, &filled(planks, 2, 2)), Some(Stack::new(Block::CRAFTING_TABLE, 1)));
+            assert_eq!(craft(2, &[(0, 0, planks), (0, 1, planks)]), Some(Stack::new(Item::STICK, 4)));
+        }
+    }
+
+    #[test]
+    fn wart_blocks_soul_torches_and_bone_blocks() {
+        assert_eq!(craft(3, &filled(Item::NETHER_WART, 3, 3)), Some(Stack::new(nb::NETHER_WART_BLOCK, 1)));
+        for soul in [Block::SOUL_SAND, nb::SOUL_SOIL] {
+            for fuel in [Item::COAL, Item::CHARCOAL] {
+                let torch = [(0, 0, fuel), (0, 1, Item::STICK), (0, 2, b(soul))];
+                assert_eq!(craft(3, &torch), Some(Stack::new(nb::SOUL_TORCH, 4)));
+            }
+        }
+        assert_eq!(craft(3, &filled(Item::BONE_MEAL, 3, 3)), Some(Stack::new(nb::BONE_BLOCK, 1)));
+        assert_eq!(craft(2, &[(0, 0, b(nb::BONE_BLOCK))]), Some(Stack::new(Item::BONE_MEAL, 9)));
+        assert_eq!(craft(3, &filled(b(nb::WARPED_WART_BLOCK), 3, 3)), None, "warped wart blocks are found, not made");
     }
 }

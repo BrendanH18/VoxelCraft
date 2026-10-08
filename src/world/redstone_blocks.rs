@@ -124,6 +124,10 @@ pub fn hopper_direction(facing: u8) -> glam::IVec3 {
 }
 
 pub const fn component(b: Block) -> Option<Component> {
+    // Crimson and warped trapdoors, buttons and plates act as their oak twins.
+    if let Some((oak, _)) = super::nether_biome_blocks::switch_oak(b.0) {
+        return component(oak);
+    }
     let id = b.0;
     Some(match id {
         1100..=1115 => Component::Wire((id - 1100) as u8),
@@ -177,6 +181,12 @@ pub const fn component(b: Block) -> Option<Component> {
 }
 
 pub const fn base(b: Block) -> Option<Block> {
+    if let Some((oak, wood)) = super::nether_biome_blocks::switch_oak(b.0) {
+        return match base(oak) {
+            Some(oak) => Some(super::nether_biome_blocks::switch_reskin(oak, wood)),
+            None => None,
+        };
+    }
     Some(match component(b) {
         Some(Component::Wire(_)) => WIRE,
         Some(Component::Lever { .. }) => LEVER,
@@ -238,6 +248,9 @@ pub fn support(mount: u8) -> glam::IVec3 {
 
 pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     use RenderKind::*;
+    if super::nether_biome_blocks::switch_oak(id).is_some() {
+        return super::nether_biome_blocks::switch_registry(id);
+    }
     let (name, kind, layer) = match component(Block(id)) {
         Some(Component::Wire(p)) => ("redstone wire", Shaped, 1100 + p as u16),
         Some(Component::Lever { .. }) => ("lever", Shaped, 1129),
@@ -368,6 +381,10 @@ pub fn connections(neighbour: impl Fn(glam::IVec3) -> Block) -> [u8; 4] {
 /// Orient mounted components toward the clicked face. Diodes face away from
 /// the placer (the existing Facing::toward helper faces toward the player).
 pub fn placed(b: Block, normal: glam::IVec3, toward: Facing) -> Block {
+    super::nether_biome_blocks::keep_wood(b, placed_oak(b, normal, toward))
+}
+
+fn placed_oak(b: Block, normal: glam::IVec3, toward: Facing) -> Block {
     let mount = if normal == glam::IVec3::Y {
         0
     } else if normal == glam::IVec3::NEG_Y {

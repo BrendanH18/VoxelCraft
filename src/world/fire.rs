@@ -40,9 +40,10 @@ impl World {
     }
 
     pub(super) fn track_fire(&mut self, p: IVec3, old: Block, new: Block) {
-        if new.is_fire() {
+        // Only aging fire is scheduled; soul fire never changes on its own.
+        if new.fire_age().is_some() {
             self.schedule_fire(p);
-        } else if old.is_fire() {
+        } else if old.fire_age().is_some() {
             self.fire.pending.remove(&p);
         }
     }
@@ -50,12 +51,12 @@ impl World {
     /// Generated terrain contains no fire. Scan saved chunks once on load
     /// to resume their fires, preserving ages stored in the block ids.
     pub(super) fn load_fires(&mut self, cpos: IVec3, data: &ChunkData) {
-        if data.uniform().is_some_and(|b| !b.is_fire()) {
+        if data.uniform().is_some_and(|b| b.fire_age().is_none()) {
             return;
         }
         let mut i = 0;
         data.for_each_block(|b| {
-            if b.is_fire() {
+            if b.fire_age().is_some() {
                 let l =
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
                 self.schedule_fire(cpos * CHUNK_SIZE_I + l);
@@ -86,7 +87,7 @@ impl World {
                 continue;
             }
             self.fire.pending.remove(&p);
-            if !self.get_block(p).is_some_and(|b| b.is_fire()) {
+            if !self.get_block(p).is_some_and(|b| b.fire_age().is_some()) {
                 continue;
             }
             let distance = (chunk_of(p) - center).abs();
@@ -98,7 +99,7 @@ impl World {
             {
                 self.random_tick(p);
             }
-            if self.get_block(p).is_some_and(|b| b.is_fire()) {
+            if self.get_block(p).is_some_and(|b| b.fire_age().is_some()) {
                 self.schedule_fire(p);
             }
         }
@@ -112,16 +113,34 @@ impl World {
         self.get_block(p - IVec3::Y).is_some_and(|b| b.supports_fire()) || self.fire_fuel(p) > 0
     }
 
+    /// Java's `BaseFireBlock.getState`: soul fire over soul sand and soul
+    /// soil, ordinary fire of `age` anywhere else.
+    fn fire_state(&self, p: IVec3, age: u8) -> Block {
+        if self.get_block(p - IVec3::Y).is_some_and(super::nether_biome_blocks::soul_fire_base) {
+            super::nether_biome_blocks::SOUL_FIRE
+        } else {
+            Block::fire(age)
+        }
+    }
+
+    /// Soul fire only survives on its soul base; it never spreads or ages.
+    fn soul_fire_supported(&self, p: IVec3) -> bool {
+        self.get_block(p - IVec3::Y).is_some_and(super::nether_biome_blocks::soul_fire_base)
+    }
+
     fn rain_near_fire(&self, p: IVec3) -> bool {
         self.rains_on(p) || HORIZONTAL.iter().any(|&d| self.rains_on(p + d))
     }
 
     pub(super) fn extinguish_unsupported_fire(&mut self, p: IVec3) {
         for q in std::iter::once(p).chain(SIDES.map(|d| p + d)) {
-            if self.get_block(q).is_some_and(|b| b.is_fire())
-                && SIDES.iter().all(|&d| self.get_block(q + d).is_some())
-                && !self.fire_supported(q)
-            {
+            let Some(fire) = self.get_block(q).filter(|b| b.is_fire()) else { continue };
+            let supported = if fire == super::nether_biome_blocks::SOUL_FIRE {
+                self.soul_fire_supported(q)
+            } else {
+                self.fire_supported(q)
+            };
+            if SIDES.iter().all(|&d| self.get_block(q + d).is_some()) && !supported {
                 self.edit(q, Block::AIR, false);
             }
         }
@@ -134,7 +153,9 @@ impl World {
             return false;
         }
         self.light_portal(p)
-            || (self.get_block(p) == Some(Block::AIR) && self.fire_supported(p) && self.set_block(p, Block::FIRE))
+            || (self.get_block(p) == Some(Block::AIR)
+                && self.fire_supported(p)
+                && self.set_block(p, self.fire_state(p, 0)))
     }
 
     pub(super) fn tick_fire_block(&mut self, p: IVec3, age: u8) {
@@ -181,7 +202,8 @@ impl World {
                 continue;
             }
             let new = if b != Block::TNT && self.roll() % (age as u64 + 10) < 5 && !self.rains_on(q) {
-                Block::fire((age + (self.roll() % 5 / 4) as u8).min(15))
+                let age = (age + (self.roll() % 5 / 4) as u8).min(15);
+                self.fire_state(q, age)
             } else {
                 Block::AIR
             };
@@ -212,7 +234,7 @@ impl World {
                     if odds > 0 && self.roll() % bound <= odds && !self.rain_near_fire(q) {
                         let age = (age + (self.roll() % 5 / 4) as u8).min(15);
                         if !self.light_portal(q) {
-                            self.edit(q, Block::fire(age), false);
+                            self.edit(q, self.fire_state(q, age), false);
                         }
                     }
                 }
@@ -233,7 +255,7 @@ impl World {
                     Some(Block::AIR) if q.y < WORLD_HEIGHT => {
                         if SIDES.iter().any(|&d| self.get_block(q + d).is_some_and(|b| b.ignited_by_lava())) {
                             if !self.light_portal(q) {
-                                self.edit(q, Block::FIRE, false);
+                                self.edit(q, self.fire_state(q, 0), false);
                             }
                             return;
                         }
@@ -252,7 +274,7 @@ impl World {
                     && self.get_block(above) == Some(Block::AIR)
                     && !self.light_portal(above)
                 {
-                    self.edit(above, Block::FIRE, false);
+                    self.edit(above, self.fire_state(above, 0), false);
                 }
             }
         }

@@ -10,6 +10,9 @@
 //! door. The upper door does not store facing or open; its shape reads the
 //! lower half. Spruce, birch, jungle and acacia already have logs and planks,
 //! so only their shapes are new.
+//!
+//! Crimson and warped (woods 7 and 8) use the same 23-id layout from
+//! `nether_biome_blocks::WOOD_ORIGIN` (1688..=1733).
 
 use super::block::tex;
 use super::block::{Block, Facing, Shaped};
@@ -22,7 +25,10 @@ pub const BRICK_WALL: u16 = 332;
 pub const LOG_ORIGIN: u16 = 333;
 pub const WOOD_ORIGIN: u16 = 339;
 pub const WOOD_STRIDE: u16 = 23;
-const WOODS: u16 = 7;
+/// Woods laid out from [`WOOD_ORIGIN`]; the rest start at `NETHER_WOOD_ORIGIN`.
+const OVERWORLD_WOODS: u16 = 7;
+const WOODS: u16 = 9;
+const NETHER_WOOD_ORIGIN: u16 = super::nether_biome_blocks::WOOD_ORIGIN;
 
 const STONE_BASES: [Block; 13] = [
     Block::MOSSY_COBBLESTONE,
@@ -90,7 +96,7 @@ const WALL_NAMES: [&str; 15] = [
     "stone brick wall",
 ];
 
-const WOOD_STAIRS: [&str; 7] = [
+const WOOD_STAIRS: [&str; 9] = [
     "dark oak stairs",
     "spruce stairs",
     "birch stairs",
@@ -98,12 +104,32 @@ const WOOD_STAIRS: [&str; 7] = [
     "acacia stairs",
     "mangrove stairs",
     "cherry stairs",
+    "crimson stairs",
+    "warped stairs",
 ];
-const WOOD_SLABS: [&str; 7] =
-    ["dark oak slab", "spruce slab", "birch slab", "jungle slab", "acacia slab", "mangrove slab", "cherry slab"];
-const WOOD_FENCES: [&str; 7] =
-    ["dark oak fence", "spruce fence", "birch fence", "jungle fence", "acacia fence", "mangrove fence", "cherry fence"];
-const WOOD_GATES: [&str; 7] = [
+const WOOD_SLABS: [&str; 9] = [
+    "dark oak slab",
+    "spruce slab",
+    "birch slab",
+    "jungle slab",
+    "acacia slab",
+    "mangrove slab",
+    "cherry slab",
+    "crimson slab",
+    "warped slab",
+];
+const WOOD_FENCES: [&str; 9] = [
+    "dark oak fence",
+    "spruce fence",
+    "birch fence",
+    "jungle fence",
+    "acacia fence",
+    "mangrove fence",
+    "cherry fence",
+    "crimson fence",
+    "warped fence",
+];
+const WOOD_GATES: [&str; 9] = [
     "dark oak fence gate",
     "spruce fence gate",
     "birch fence gate",
@@ -111,11 +137,22 @@ const WOOD_GATES: [&str; 7] = [
     "acacia fence gate",
     "mangrove fence gate",
     "cherry fence gate",
+    "crimson fence gate",
+    "warped fence gate",
 ];
-const WOOD_DOORS: [&str; 7] =
-    ["dark oak door", "spruce door", "birch door", "jungle door", "acacia door", "mangrove door", "cherry door"];
+const WOOD_DOORS: [&str; 9] = [
+    "dark oak door",
+    "spruce door",
+    "birch door",
+    "jungle door",
+    "acacia door",
+    "mangrove door",
+    "cherry door",
+    "crimson door",
+    "warped door",
+];
 
-const DOOR_TEX: [(u16, u16); 7] = [
+const DOOR_TEX: [(u16, u16); 9] = [
     (tex::DARK_OAK_DOOR_BOTTOM, tex::DARK_OAK_DOOR_TOP),
     (tex::SPRUCE_DOOR_BOTTOM, tex::SPRUCE_DOOR_TOP),
     (tex::BIRCH_DOOR_BOTTOM, tex::BIRCH_DOOR_TOP),
@@ -123,6 +160,8 @@ const DOOR_TEX: [(u16, u16); 7] = [
     (tex::ACACIA_DOOR_BOTTOM, tex::ACACIA_DOOR_TOP),
     (tex::MANGROVE_DOOR_BOTTOM, tex::MANGROVE_DOOR_TOP),
     (tex::CHERRY_DOOR_BOTTOM, tex::CHERRY_DOOR_TOP),
+    (tex::NETHER_DOORS, tex::NETHER_DOORS + 1),
+    (tex::NETHER_DOORS + 2, tex::NETHER_DOORS + 3),
 ];
 
 #[derive(Clone, Copy)]
@@ -154,7 +193,11 @@ pub const fn stone_id(index: u16, local: u16) -> Block {
 }
 
 pub const fn wood_id(index: u16, local: u16) -> Block {
-    Block(WOOD_ORIGIN + index * WOOD_STRIDE + local)
+    if index < OVERWORLD_WOODS {
+        Block(WOOD_ORIGIN + index * WOOD_STRIDE + local)
+    } else {
+        Block(NETHER_WOOD_ORIGIN + (index - OVERWORLD_WOODS) * WOOD_STRIDE + local)
+    }
 }
 
 pub const fn stone_base(index: u16) -> Block {
@@ -177,7 +220,9 @@ pub const fn wood_planks(index: u16) -> Block {
         3 => Block::JUNGLE_PLANKS,
         4 => Block::ACACIA_PLANKS,
         5 => Block::MANGROVE_PLANKS,
-        _ => Block::CHERRY_PLANKS,
+        6 => Block::CHERRY_PLANKS,
+        7 => super::nether_biome_blocks::CRIMSON_PLANKS,
+        _ => super::nether_biome_blocks::WARPED_PLANKS,
     }
 }
 
@@ -204,11 +249,14 @@ pub const fn stone_form(id: u16) -> Option<StoneForm> {
 }
 
 pub const fn wood_form(id: u16) -> Option<WoodForm> {
-    if id < WOOD_ORIGIN || id > WOOD_ORIGIN + WOODS * WOOD_STRIDE - 1 {
+    let (i, first) = if id >= WOOD_ORIGIN && id < WOOD_ORIGIN + OVERWORLD_WOODS * WOOD_STRIDE {
+        (id - WOOD_ORIGIN, 0)
+    } else if id >= NETHER_WOOD_ORIGIN && id < NETHER_WOOD_ORIGIN + (WOODS - OVERWORLD_WOODS) * WOOD_STRIDE {
+        (id - NETHER_WOOD_ORIGIN, OVERWORLD_WOODS)
+    } else {
         return None;
-    }
-    let i = id - WOOD_ORIGIN;
-    let index = i / WOOD_STRIDE;
+    };
+    let index = first + i / WOOD_STRIDE;
     let local = i % WOOD_STRIDE;
     Some(match local {
         0..=3 => WoodForm::Stairs { index, facing: facing_at(local) },
@@ -284,7 +332,7 @@ pub fn palette_ids() -> impl Iterator<Item = u16> {
         })
         .chain([COBBLE_WALL, BRICK_WALL])
         .chain(LOG_ORIGIN..WOOD_ORIGIN)
-        .chain((0..WOODS).flat_map(|i| {
+        .chain((0..OVERWORLD_WOODS).flat_map(|i| {
             let b = WOOD_ORIGIN + i * WOOD_STRIDE;
             // South stairs, slab, fence, closed south gate, closed south door.
             [b, b + 4, b + 5, b + 6, b + 14]

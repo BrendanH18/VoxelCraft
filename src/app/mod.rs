@@ -1796,6 +1796,8 @@ impl Game {
         let block = crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal)
             .with_facing(crate::world::block::Facing::toward(self.player.forward()));
         let block = voxelcraft::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
+        let roll = crate::world::noise::hash3(at.x, at.y, at.z, self.started.elapsed().subsec_nanos() as u64);
+        let block = crate::world::nether_biome_blocks::placed_vine(block, roll);
         if block.is_water() && self.dimension == Dimension::Nether {
             // Water boils away in the Nether.
             self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));

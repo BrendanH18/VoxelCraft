@@ -38,6 +38,7 @@ pub(crate) mod lighting;
 pub mod mineshaft;
 pub mod nether;
 pub mod nether_biome;
+pub mod nether_biome_blocks;
 pub mod nether_blocks;
 pub mod nether_complexes;
 pub mod noise;
@@ -411,7 +412,7 @@ impl World {
         slot.modified = true;
         // Fire ages are saved state, but all ages have identical geometry
         // and lighting: don't invalidate meshes or copy light snapshots.
-        if old.is_fire() && block.is_fire() {
+        if old.fire_age().is_some() && block.fire_age().is_some() {
             return true;
         }
         self.light_block_changed(p, old, block, old_light);

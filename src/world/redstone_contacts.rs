@@ -110,7 +110,8 @@ impl World {
                 Some(Component::Plate { kind, power: 0 }) => {
                     let power = plate_power(kind, *c);
                     if power > 0 {
-                        self.edit(p, r::plate(kind, power), false);
+                        let b = self.get_block(p).unwrap_or_default();
+                        self.edit(p, super::nether_biome_blocks::keep_wood(b, r::plate(kind, power)), false);
                         self.schedule_redstone(p, if kind < 2 { 20 } else { 10 }, 0);
                     }
                 }

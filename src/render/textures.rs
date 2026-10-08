@@ -5,6 +5,9 @@
 use crate::world::block::tex;
 use crate::world::noise::hash_f;
 
+#[path = "nether_textures.rs"]
+mod nether;
+
 pub const SIZE: usize = 16;
 pub const MIP_LEVELS: u32 = 5; // 16, 8, 4, 2, 1
 
@@ -91,6 +94,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (1139..1155).contains(&layer) {
         return special_rail_pixel(layer, x, y);
+    }
+    if (tex::SOUL_FIRE_0..=1399).contains(&layer) {
+        return nether::pixel(layer, x, y);
     }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
         let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };

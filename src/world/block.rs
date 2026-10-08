@@ -296,8 +296,40 @@ pub mod tex {
     pub const COMPOST: u16 = JACK_O_LANTERN + 1;
     pub const COMPOST_READY: u16 = COMPOST + 1;
     // Redstone reserves layers 1100..=1138, rails 1139..=1150, notes/tripwire/substrates 1151..=1154.
-    pub const COUNT: u32 = 1155;
     const _: () = assert!((COMPOST_READY as u32) < 1100);
+    // Nether biome blocks reserve layers 1300..=1399 (see `world::nether_biome_blocks`).
+    /// Seven soul fire animation frames, like [`FIRE_0`].
+    pub const SOUL_FIRE_0: u16 = 1300;
+    pub const CRIMSON_NYLIUM_TOP: u16 = SOUL_FIRE_0 + FIRE_FRAMES as u16;
+    pub const CRIMSON_NYLIUM_SIDE: u16 = CRIMSON_NYLIUM_TOP + 1;
+    pub const WARPED_NYLIUM_TOP: u16 = CRIMSON_NYLIUM_TOP + 2;
+    pub const WARPED_NYLIUM_SIDE: u16 = CRIMSON_NYLIUM_TOP + 3;
+    /// Stem sides then tops: crimson, warped, stripped crimson, stripped warped.
+    pub const NETHER_STEM_SIDE: u16 = CRIMSON_NYLIUM_TOP + 4;
+    pub const NETHER_STEM_TOP: u16 = NETHER_STEM_SIDE + 4;
+    pub const CRIMSON_PLANKS: u16 = NETHER_STEM_TOP + 4;
+    pub const WARPED_PLANKS: u16 = CRIMSON_PLANKS + 1;
+    pub const NETHER_WART_BLOCK: u16 = CRIMSON_PLANKS + 2;
+    pub const WARPED_WART_BLOCK: u16 = CRIMSON_PLANKS + 3;
+    pub const SHROOMLIGHT: u16 = CRIMSON_PLANKS + 4;
+    pub const CRIMSON_FUNGUS: u16 = SHROOMLIGHT + 1;
+    pub const WARPED_FUNGUS: u16 = SHROOMLIGHT + 2;
+    pub const CRIMSON_ROOTS: u16 = SHROOMLIGHT + 3;
+    pub const WARPED_ROOTS: u16 = SHROOMLIGHT + 4;
+    pub const NETHER_SPROUTS: u16 = SHROOMLIGHT + 5;
+    /// Weeping vines head and plant, then twisting vines head and plant.
+    pub const NETHER_VINES: u16 = SHROOMLIGHT + 6;
+    pub const SOUL_SOIL: u16 = NETHER_VINES + 4;
+    pub const SOUL_TORCH: u16 = SOUL_SOIL + 1;
+    pub const BONE_BLOCK_SIDE: u16 = SOUL_SOIL + 2;
+    pub const BONE_BLOCK_TOP: u16 = SOUL_SOIL + 3;
+    /// Door bottom and top for crimson, then warped.
+    pub const NETHER_DOORS: u16 = BONE_BLOCK_TOP + 1;
+    /// Crimson then warped trapdoor.
+    pub const NETHER_TRAPDOORS: u16 = NETHER_DOORS + 4;
+    pub const NETHER_BIOME_LAST: u16 = NETHER_TRAPDOORS + 1;
+    const _: () = assert!(NETHER_BIOME_LAST <= 1399);
+    pub const COUNT: u32 = 1400;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -610,9 +642,10 @@ impl Block {
         (165..=180).contains(&self.0).then(|| (self.0 - 165) as u8)
     }
 
+    /// Fire of any age, or soul fire (which never ages; see `fire_age`).
     #[inline]
     pub fn is_fire(self) -> bool {
-        (165..=180).contains(&self.0)
+        (165..=180).contains(&self.0) || self == super::nether_biome_blocks::SOUL_FIRE
     }
 
     /// Minecraft's (encouragement, consumption) fire odds. Wooden doors,
@@ -967,6 +1000,9 @@ impl Block {
         if let Some(b) = super::gadgets::base(self) {
             return b;
         }
+        if let Some(b) = super::nether_biome_blocks::base(self.0) {
+            return b;
+        }
         if self.is_rail() { Block::RAIL } else { self.oriented().map_or(self, |(b, _)| b) }
     }
 
@@ -1187,6 +1223,9 @@ impl Block {
         if let Some(c) = self.bed_color() {
             return (!self.is_bed_head()).then_some(c.bed());
         }
+        if let Some(drop) = super::nether_biome_blocks::drop(self) {
+            return drop;
+        }
         if self.glazed_color().is_some() {
             return Some(self.base().into());
         }
@@ -1284,6 +1323,9 @@ impl Block {
                 Source => 5.0,
                 _ => 0.5,
             };
+        }
+        if let Some((hardness, ..)) = super::nether_biome_blocks::mining(self.material()) {
+            return if self.is_door() { 3.0 } else { hardness };
         }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return match self.material() {
@@ -1422,6 +1464,9 @@ impl Block {
             };
         }
 
+        if let Some((_, tool, _)) = super::nether_biome_blocks::mining(self.material()) {
+            return tool;
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(ToolKind::Pickaxe);
         }
@@ -1551,6 +1596,9 @@ impl Block {
             return Some(0);
         }
 
+        if let Some((.., level)) = super::nether_biome_blocks::mining(self.material()) {
+            return level;
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(if self.material() == Block::GOLD_BLOCK { 2 } else { 0 });
         }
@@ -1638,6 +1686,7 @@ impl Block {
             .chain(super::redstone_blocks::palette_ids())
             .chain(super::rails::palette_ids())
             .chain(super::gadgets::palette_ids())
+            .chain(super::nether_biome_blocks::palette_ids())
             .map(Block)
     }
 
@@ -1649,6 +1698,7 @@ impl Block {
             || self == Block::TALL_GRASS
             || self == Block::DEAD_BUSH
             || self == Block::FERN
+            || super::nether_biome_blocks::replaceable(self)
     }
 
     /// Colour index of a terracotta block (see [`Block::terracotta`]).
@@ -1680,6 +1730,9 @@ impl Block {
         ) = super::redstone_blocks::component(self)
         {
             return below.is_opaque() || below == Block::GLASS || below.stained_glass_color().is_some();
+        }
+        if let Some(ok) = super::nether_biome_blocks::can_stay_on(self, below) {
+            return ok;
         }
         match self {
             b if b.is_mushroom() => below.is_opaque(),
@@ -2088,6 +2141,10 @@ const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         id if super::colors::definition(id).is_some() => super::colors::definition(id).unwrap(),
+        1600..=1687 => match super::nether_biome_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         #[cfg(test)]
         4095 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]
@@ -2400,6 +2457,7 @@ static EMISSION: [u8; STATE_CAPACITY] = {
             1211 => 15,                                 // lit redstone lamp
             957..=960 => 15,                            // jack o'lanterns
             812 => 3,                                   // magma
+            1600..=1687 => super::nether_biome_blocks::emission(i as u16),
             _ => 0,
         };
         i += 1;
@@ -2460,6 +2518,14 @@ mod tests {
                 Some(super::super::redstone_blocks::Component::Lamp(on)) => return if on { 15 } else { 0 },
                 Some(super::super::redstone_blocks::Component::GlowingOre(_)) => return 9,
                 _ => {}
+            }
+            {
+                use super::super::nether_biome_blocks as nb;
+                match block {
+                    nb::SHROOMLIGHT => return 15,
+                    nb::SOUL_FIRE | nb::SOUL_TORCH => return 10,
+                    _ => {}
+                }
             }
             match block.base() {
                 Block::MAGMA => 3,
