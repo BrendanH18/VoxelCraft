@@ -50,6 +50,7 @@ impl World {
     }
 
     pub fn chest_mut(&mut self, p: IVec3) -> Option<&mut Chest> {
+        self.redstone_changed(p);
         self.chests.get_mut(&p)
     }
 

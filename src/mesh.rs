@@ -475,7 +475,18 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                                     blocks[(i as isize + o.x as isize + o.z as isize * D as isize) as usize]
                                 };
                                 let below = i.checked_sub(D * D).map(|j| blocks[j]).unwrap_or(Block::AIR);
-                                shaped_cells.push((i, shape::shape(b, neighbour, below)));
+                                let boxes = if matches!(b.shaped(), Some(crate::world::block::Shaped::Redstone)) {
+                                    shape::redstone_shape(b, |d| {
+                                        blocks[(i as isize
+                                            + d.x as isize
+                                            + d.y as isize * (D * D) as isize
+                                            + d.z as isize * D as isize)
+                                            as usize]
+                                    })
+                                } else {
+                                    shape::shape(b, neighbour, below)
+                                };
+                                shaped_cells.push((i, boxes));
                                 false
                             }
                             _ => false,

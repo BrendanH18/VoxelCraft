@@ -143,6 +143,51 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         return p;
     }
     match layer {
+        1100..=1115 => {
+            let p = (layer - 1100) as f32 / 15.0;
+            noisy(
+                layer,
+                x,
+                y,
+                [
+                    (if p == 0.0 { 0.3 } else { p * 0.6 + 0.4 } * 255.0) as u8,
+                    ((p * p * 0.7 - 0.5).max(0.0) * 255.0) as u8,
+                    ((p * p * 0.6 - 0.7).max(0.0) * 255.0) as u8,
+                ],
+                0.1,
+            )
+        }
+        1116..=1117 => {
+            if y < 6 {
+                noisy(layer, x, y, if layer == 1116 { [255, 48, 20] } else { [90, 20, 12] }, 0.1)
+            } else {
+                noisy(layer, x, y, [125, 90, 45], 0.2)
+            }
+        }
+        1118..=1119 => {
+            if x == 7 || x == 8 {
+                noisy(layer, x, y, if layer == 1119 { [240, 35, 15] } else { [105, 20, 12] }, 0.1)
+            } else {
+                noisy(layer, x, y, [170, 165, 155], 0.1)
+            }
+        }
+        1120..=1121 => {
+            let grid = x == 0 || y == 0 || x == 15 || y == 15 || x == y || x + y == 15;
+            noisy(
+                layer,
+                x,
+                y,
+                if grid {
+                    [62, 38, 24]
+                } else if layer == 1121 {
+                    [255, 205, 115]
+                } else {
+                    [110, 65, 30]
+                },
+                0.12,
+            )
+        }
+        1122 => noisy(layer, x, y, [180, 25, 15], 0.15),
         tex::BROWN_MUSHROOM | tex::RED_MUSHROOM => {
             // Java's small mushroom occupies six pixels of the crossed 16x16 plane.
             if (7..=8).contains(&x) && (12..=15).contains(&y) {

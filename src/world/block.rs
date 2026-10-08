@@ -289,7 +289,8 @@ pub mod tex {
     pub const CAKE_TOP: u16 = POTATO_0 + 8;
     pub const CAKE_SIDE: u16 = CAKE_TOP + 1;
     pub const CAKE_BOTTOM: u16 = CAKE_SIDE + 1;
-    pub const COUNT: u32 = CAKE_BOTTOM as u32 + 1;
+    // Redstone reserves a texture band independent of compact legacy layers.
+    pub const COUNT: u32 = 1123;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -725,6 +726,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if super::redstone_blocks::component(self).is_some() && !self.is_opaque() {
+            return Some(Shaped::Redstone);
+        }
         if let Some(s) = super::nether_blocks::shaped(self.0) {
             return Some(s);
         }
@@ -896,6 +900,9 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(b) = super::redstone_blocks::base(self) {
+            return b;
+        }
         if let Some(b) = super::nether_blocks::base(self.0) {
             return b;
         }
@@ -904,6 +911,12 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
+        use super::redstone_blocks::{self as r, Component};
+        match r::component(self) {
+            Some(Component::Repeater { delay, on, .. }) => return r::repeater(facing, delay, on),
+            Some(Component::Comparator { subtract, on, .. }) => return r::comparator(facing, subtract, on),
+            _ => {}
+        }
         let i = facing as u16;
         match self.base() {
             // Frames keep their eye.
@@ -1083,6 +1096,9 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if let Some(b) = super::redstone_blocks::base(self) {
+            return Some(if b == super::redstone_blocks::WIRE { Item::REDSTONE } else { b.into() });
+        }
         if let Some(c) = self.bed_color() {
             return (!self.is_bed_head()).then_some(c.bed());
         }
@@ -1140,6 +1156,15 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if let Some(c) = super::redstone_blocks::component(self) {
+            use super::redstone_blocks::Component::*;
+            return match c {
+                Wire(_) | Torch { .. } | Repeater { .. } | Comparator { .. } => 0.0,
+                Lamp(_) => 0.3,
+                Source => 5.0,
+                _ => 0.5,
+            };
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return match self.material() {
                 Block::CHAIN => 5.0,
@@ -1426,6 +1451,7 @@ impl Block {
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
             .chain(super::colors::palette_ids())
+            .chain(super::redstone_blocks::palette_ids())
             .map(Block)
     }
 
@@ -1705,6 +1731,8 @@ pub enum Crop {
 pub enum Shaped {
     /// The low step faces this way; the tall half is behind it.
     Stairs(Facing),
+    /// Redstone components derive their small boxes from state and neighbours.
+    Redstone,
     /// Three stone plates and a rod.
     BrewingStand,
     /// Iron bars: a post with arms out to what they join.
@@ -1837,6 +1865,7 @@ const fn fronted(front: u16, side: u16, top: u16, facing: Facing) -> [u16; 6] {
 const fn make(id: u16) -> BlockInfo {
     use RenderKind::*;
     let (name, kind, tex) = match id {
+        id if super::redstone_blocks::registry(id).is_some() => super::redstone_blocks::registry(id).unwrap(),
         800..=834 => match super::nether_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -2146,6 +2175,8 @@ static EMISSION: [u8; STATE_CAPACITY] = {
             104 => 11,                                  // Nether portal
             200..=207 | 209 => 1,                       // portal frames and dragon egg
             213 => 7,                                   // enchanting table
+            1152 | 1154 | 1156 | 1158 | 1160 => 7,      // lit redstone torches
+            1211 => 15,                                 // lit redstone lamp
             812 => 3,                                   // magma
             _ => 0,
         };
@@ -2202,6 +2233,11 @@ mod tests {
     #[test]
     fn emission_table_matches_base_state_lookup_for_every_state() {
         fn reference(block: Block) -> u8 {
+            match super::super::redstone_blocks::component(block) {
+                Some(super::super::redstone_blocks::Component::Torch { lit, .. }) => return if lit { 7 } else { 0 },
+                Some(super::super::redstone_blocks::Component::Lamp(on)) => return if on { 15 } else { 0 },
+                _ => {}
+            }
             match block.base() {
                 Block::MAGMA => 3,
                 Block::GLOWSTONE => 15,

@@ -245,6 +245,7 @@ impl World {
     }
 
     pub fn furnace_mut(&mut self, p: IVec3) -> Option<&mut Furnace> {
+        self.redstone_changed(p);
         self.furnaces.get_mut(&p)
     }
 

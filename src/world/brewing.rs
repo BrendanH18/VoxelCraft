@@ -175,6 +175,7 @@ impl World {
     }
 
     pub fn brewing_stand_mut(&mut self, p: IVec3) -> Option<&mut BrewingStand> {
+        self.redstone_changed(p);
         self.brewing_stands.get_mut(&p)
     }
 

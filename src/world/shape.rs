@@ -217,6 +217,12 @@ fn open_door_side(facing: Facing) -> Facing {
 pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) -> Boxes {
     let mut out = Boxes::new();
     match block.shaped() {
+        Some(Shaped::Redstone) => {
+            return redstone_shape(
+                block,
+                |d| if let Some(f) = Facing::from_offset(d) { neighbour(f) } else { Block::AIR },
+            );
+        }
         Some(Shaped::Stairs(f)) => out.push_turned(&STAIRS, f),
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND, Facing::South),
@@ -289,6 +295,59 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
         None => {}
     }
     out
+}
+
+/// Redstone dust includes diagonal/vertical neighbours while ordinary shapes
+/// need only the four horizontal blocks. Meshing supplies the full lookup.
+pub fn redstone_shape(block: Block, neighbour: impl Fn(glam::IVec3) -> Block) -> Boxes {
+    use super::redstone_blocks::{self as r, Component};
+    let mut out = Boxes::new();
+    match r::component(block) {
+        Some(Component::Wire(_)) => {
+            let connections = r::connections(&neighbour);
+            out.push(b([6, 0, 6], [10, 1, 10]));
+            for f in Facing::ALL {
+                if connections[f as usize] != 0 {
+                    out.push(b([6, 0, 8], [10, 1, 16]).turned(f));
+                }
+                if connections[f as usize] == 2 {
+                    out.push(b([6, 0, 15], [10, 16, 16]).turned(f));
+                }
+            }
+        }
+        Some(Component::Lever { mount, on }) => {
+            let handle = if on { b([6, 3, 8], [10, 10, 12]) } else { b([6, 3, 4], [10, 10, 8]) };
+            for bx in [b([4, 0, 5], [12, 3, 11]), handle] {
+                out.push(mounted(bx, mount));
+            }
+        }
+        Some(Component::Button { mount, on, .. }) => {
+            out.push(mounted(b([5, 0, 6], [11, if on { 1 } else { 2 }, 10]), mount))
+        }
+        Some(Component::Torch { mount, .. }) => out.push(mounted(b([7, 0, 7], [9, 10, 9]), mount)),
+        Some(Component::Repeater { facing, delay, .. }) => {
+            out.push(b([0, 0, 0], [16, 2, 16]));
+            out.push(b([7, 2, 11], [9, 8, 13]).turned(facing));
+            out.push(b([7, 2, 1 + delay * 2], [9, 8, 3 + delay * 2]).turned(facing));
+        }
+        Some(Component::Comparator { facing, .. }) => {
+            out.push(b([0, 0, 0], [16, 2, 16]));
+            for bx in [b([3, 2, 3], [5, 8, 5]), b([11, 2, 3], [13, 8, 5]), b([7, 2, 11], [9, 8, 13])] {
+                out.push(bx.turned(facing));
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+fn mounted(bx: Box16, mount: u8) -> Box16 {
+    match mount {
+        0 => bx,
+        5 => b([bx.min[0], 16 - bx.max[1], bx.min[2]], [bx.max[0], 16 - bx.min[1], bx.max[2]]),
+        _ => b([bx.min[0], bx.min[2], bx.min[1]], [bx.max[0], bx.max[2], bx.max[1]])
+            .turned(Facing::ALL[(mount - 1) as usize]),
+    }
 }
 
 /// What `block` collides with: like [`shape`], but ladders are thicker, open

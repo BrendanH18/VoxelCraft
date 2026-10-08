@@ -38,6 +38,8 @@ pub mod nether_complexes;
 pub mod noise;
 pub mod ore;
 mod portal;
+pub mod redstone;
+pub mod redstone_blocks;
 pub mod shape;
 mod spawner;
 pub mod storage;
@@ -99,6 +101,7 @@ pub struct World {
     light_updates: lighting::LightUpdates,
     fluids: fluid::FluidState,
     fire: fire::FireState,
+    redstone: redstone::RedstoneState,
     falling: Vec<falling::FallingBlock>,
     /// Furnace contents by position (see [`furnace`]).
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
@@ -182,6 +185,7 @@ impl World {
             light_updates: Default::default(),
             fluids: Default::default(),
             fire: Default::default(),
+            redstone: Default::default(),
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
@@ -385,6 +389,7 @@ impl World {
         }
         self.light_block_changed(p, old, block, old_light);
         self.track_fire(p, old, block);
+        self.track_redstone(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
         self.track_brewing_stand(p, old, block);
@@ -626,6 +631,7 @@ impl World {
             ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false, block_light: None },
         );
         self.load_block_light(pos);
+        self.load_redstone_chunk(pos);
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
