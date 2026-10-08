@@ -397,8 +397,14 @@ impl NetherGen {
             bits: Default::default(),
         });
         let mut cache = self.columns.lock().unwrap();
-        if cache.len() >= COLUMN_CACHE_LIMIT {
-            cache.clear();
+        // Another worker may have filled this column while we sampled it.
+        if let Some(found) = cache.get(&g) {
+            return Arc::clone(found);
+        }
+        if cache.len() >= COLUMN_CACHE_LIMIT
+            && let Some(key) = cache.keys().next().copied()
+        {
+            cache.remove(&key);
         }
         Arc::clone(cache.entry(g).or_insert(column))
     }
@@ -599,6 +605,25 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn grid_column_cache_keeps_warm_columns_when_full() {
+        let g = NetherGen::new(12345);
+        let warm: Vec<_> = (0..COLUMN_CACHE_LIMIT).map(|x| g.grid_column(IVec2::new(x as i32, 0))).collect();
+        assert_eq!(g.columns.lock().unwrap().len(), COLUMN_CACHE_LIMIT);
+        // A hit at capacity must reuse the sampled column without evicting.
+        assert!(Arc::ptr_eq(&warm[0], &g.grid_column(IVec2::ZERO)));
+        let added = g.grid_column(IVec2::new(-1, 0));
+        let cache = g.columns.lock().unwrap();
+        assert_eq!(cache.len(), COLUMN_CACHE_LIMIT);
+        assert!(Arc::ptr_eq(&added, cache.get(&IVec2::new(-1, 0)).unwrap()));
+        let retained = warm
+            .iter()
+            .enumerate()
+            .filter(|(x, column)| cache.get(&IVec2::new(*x as i32, 0)).is_some_and(|c| Arc::ptr_eq(c, column)))
+            .count();
+        assert_eq!(retained, COLUMN_CACHE_LIMIT - 1, "only one warm column is evicted");
     }
 
     #[test]
