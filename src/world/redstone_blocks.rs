@@ -320,9 +320,9 @@ pub fn connections(neighbour: impl Fn(glam::IVec3) -> Block) -> [u8; 4] {
         let d = f.offset();
         let n = neighbour(d);
         let connects = match component(n) {
-            Some(Component::Repeater { facing, .. } | Component::Comparator { facing, .. }) => {
-                f.along_x() == facing.along_x()
-            }
+            // Java restricts only repeaters to their axis; comparators are signal sources on every side.
+            Some(Component::Repeater { facing, .. }) => f.along_x() == facing.along_x(),
+            Some(Component::Comparator { .. }) => true,
             Some(Component::Observer { facing, .. }) => direction(opposite(facing)) == -d,
             Some(
                 Component::Piston { .. }
@@ -411,5 +411,28 @@ pub fn placed_with_look(b: Block, normal: glam::IVec3, look: glam::Vec3) -> Bloc
         Some(Component::Observer { .. }) => observer(opposite(toward), false),
         Some(Component::Dispenser { dropper, .. }) => dispenser(toward, dropper),
         _ => placed,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wire_connects_to_comparators_on_every_side_but_repeaters_only_on_their_axis() {
+        for f in Facing::ALL {
+            let across = Facing::ALL.into_iter().find(|g| g.along_x() != f.along_x()).unwrap();
+            // Another wire across the comparator's axis turns this wire away from the part beside it.
+            let beside = |part: Block| {
+                move |d: glam::IVec3| match d {
+                    d if d == f.offset() => part,
+                    d if d == across.offset() => wire(0),
+                    _ => Block::AIR,
+                }
+            };
+            assert_ne!(connections(beside(comparator(across, false, false)))[f as usize], 0, "comparator side {f:?}");
+            assert_eq!(connections(beside(repeater(across, 1, false)))[f as usize], 0, "repeater side {f:?}");
+            assert_ne!(connections(beside(repeater(f, 1, false)))[f as usize], 0, "repeater axis {f:?}");
+        }
     }
 }

@@ -811,11 +811,11 @@ fn ding(out: &mut [f32], start: usize, freq: f32, amp: f32, tau: f32) {
     }
 }
 
-/// Synthesizes the bright chime played when an experience orb is collected.
+/// Synthesizes a village bell strike at a steady pitch.
 fn bell() -> Vec<f32> {
     let mut out = vec![0.0; samples(2.5)];
     for (freq, amp, tau) in [(580.0, 0.22, 0.8), (1160.0, 0.13, 0.6), (1612.0, 0.09, 0.4), (2380.0, 0.06, 0.25)] {
-        add_mode(&mut out, 0, Mode { freq, amp, tau, glide: 0.0, glide_tau: 1.0 });
+        add_mode(&mut out, 0, Mode { freq, amp, tau, glide: 1.0, glide_tau: 1.0 });
     }
     dsp::finish(out, 0.5)
 }

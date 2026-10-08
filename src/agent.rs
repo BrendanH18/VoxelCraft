@@ -971,7 +971,7 @@ impl Agent {
                     return Err("this game mode cannot interact".into());
                 }
                 if self.player.vehicle.is_some() {
-                    return Ok(());
+                    return Err("cannot place while riding".into());
                 }
                 let reach = crate::entity::minecart::interaction_reach(world, eye, dir, 5.0);
                 if let Some(id) = entities.mount_cart(eye, dir, reach, self.id) {
@@ -986,7 +986,7 @@ impl Agent {
                 {
                     let cell = if world.get_block(pos).is_some_and(|b| b.is_rail()) { pos } else { pos + normal };
                     if entities.place_cart(&*world, kind, cell).is_none() {
-                        return Ok(());
+                        return Err("minecarts need an empty rail".into());
                     }
                     if !self.creative {
                         self.inventory.take_one(self.selected);
@@ -2291,6 +2291,20 @@ mod tests {
         assert_eq!(world.get_block(IVec3::new(3, 151, 1)), Some(Block::STONE));
         assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err());
         assert_eq!(a.inventory.get(0).unwrap().count, 1);
+    }
+
+    #[test]
+    fn cart_placement_off_rails_or_while_riding_reports_an_error() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.add(crate::item::Item::MINECART, 1);
+        world.set_block(IVec3::new(4, 151, 1), Block::STONE);
+        assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err(), "no rail");
+        a.player.vehicle = Some(1);
+        assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err(), "riding");
+        assert_eq!(a.inventory.get(0).unwrap().count, 1);
+        assert_eq!(a.swings, 0);
     }
 }
 

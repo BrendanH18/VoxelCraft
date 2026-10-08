@@ -21,13 +21,15 @@ impl World {
         {
             return;
         }
-        let base = cpos * CHUNK_SIZE_I;
-        for y in 0..CHUNK_SIZE_I {
-            for z in 0..CHUNK_SIZE_I {
-                for x in 0..CHUNK_SIZE_I {
-                    let b = data.get(x as usize, y as usize, z as usize);
-                    if is_poi(b) {
-                        self.village_pois.insert(base + IVec3::new(x, y, z), b);
+        if may_hold_poi(data) {
+            let base = cpos * CHUNK_SIZE_I;
+            for y in 0..CHUNK_SIZE_I {
+                for z in 0..CHUNK_SIZE_I {
+                    for x in 0..CHUNK_SIZE_I {
+                        let b = data.get(x as usize, y as usize, z as usize);
+                        if is_poi(b) {
+                            self.village_pois.insert(base + IVec3::new(x, y, z), b);
+                        }
                     }
                 }
             }
@@ -54,5 +56,42 @@ impl World {
                 visit(p, spawn)
             }
         }
+    }
+}
+
+/// Whether a chunk's distinct states include a POI, so most chunks skip the
+/// per-block scan. Paletted chunks check their palette and byte chunks the
+/// set of bytes present; dense chunks are always scanned.
+fn may_hold_poi(data: &ChunkData) -> bool {
+    match data {
+        ChunkData::Uniform(b) => is_poi(*b),
+        ChunkData::Paletted { palette, len, .. } => palette[..*len as usize].iter().any(|&b| is_poi(b)),
+        ChunkData::Bytes(bytes) => {
+            let mut present = [false; 256];
+            for &v in bytes.iter() {
+                present[v as usize] = true;
+            }
+            present.iter().enumerate().any(|(id, &p)| p && is_poi(Block(id as u16)))
+        }
+        ChunkData::Dense(_) => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn poi_precheck_skips_only_chunks_without_poi_states() {
+        assert!(!may_hold_poi(&ChunkData::Uniform(Block::STONE)));
+        let mut blocks = ChunkData::new_dense(Block::STONE);
+        blocks[7] = Block::DIRT;
+        let plain = ChunkData::from_dense(blocks.clone());
+        assert!(!may_hold_poi(&plain));
+        blocks[9] = Block::BELL;
+        let village = ChunkData::from_dense(blocks.clone());
+        assert!(may_hold_poi(&village));
+        blocks[9] = Block::BED_HEAD;
+        assert!(may_hold_poi(&ChunkData::from_dense(blocks)));
     }
 }

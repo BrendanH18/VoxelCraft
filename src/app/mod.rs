@@ -1430,18 +1430,6 @@ impl Game {
             eyes_in_water: self.player.head_in_water(&self.world),
             on_ground: self.player.on_ground || self.player.flying,
         };
-        if !self.sneak_building()
-            && voxelcraft::survival_items::use_composter(
-                &mut self.world,
-                &mut self.mobs.entities,
-                pos,
-                &mut self.inventory,
-                self.actions.selected,
-                self.mode.is_creative(),
-            )
-        {
-            return;
-        }
         self.world.touch_redstone_ore(pos);
         let progress = self.actions.mine(
             pos,
@@ -1497,7 +1485,14 @@ impl Game {
         let potion = held.and_then(|i| i.as_potion());
         let food = self.held_item().and_then(|i| i.food());
         let hungry = self.mode.is_survival() && self.vitals.hunger.can_eat();
-        let using = acting && self.right_held && (milk || potion.is_some() || (food.is_some() && hungry));
+        // Right-clicking a composter fills it instead, as in Java.
+        let composting = !self.sneak_building()
+            && self
+                .target()
+                .and_then(|(pos, _)| self.world.get_block(pos))
+                .is_some_and(|b| crate::world::composter::level(b).is_some());
+        let using =
+            acting && self.right_held && (milk || potion.is_some() || (food.is_some() && hungry && !composting));
         if !using {
             self.actions.eat_timer = 0.0;
             return;
@@ -1635,8 +1630,13 @@ impl Game {
         let dir = self.player.forward().as_dvec3();
         let reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
         if let Some((id, _)) = self.mobs.entities.cart_container(eye, dir, reach) {
-            self.container = Container::Minecart(id);
-            self.toggle_inventory();
+            // Controller menus have no cart tab yet; the host's screen must not open for them.
+            if self.puppet {
+                self.show_popup("Minecart storage needs the keyboard player for now");
+            } else if !self.inventory_open {
+                self.container = Container::Minecart(id);
+                self.toggle_inventory();
+            }
             return;
         }
         if let Some(id) = self.mobs.entities.mount_cart(eye, dir, reach, self.actor) {
@@ -1691,6 +1691,19 @@ impl Game {
             return;
         }
         self.world.touch_redstone_ore(pos);
+        if !self.sneak_building()
+            && self.mode.can_build()
+            && voxelcraft::survival_items::use_composter(
+                &mut self.world,
+                &mut self.mobs.entities,
+                pos,
+                &mut self.inventory,
+                self.actions.selected,
+                self.mode.is_creative(),
+            )
+        {
+            return;
+        }
         // Containers open on right-click; holding Shift builds against them.
         match self.world.get_block(pos) {
             _ if self.sneak_building() => {}
