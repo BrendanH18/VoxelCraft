@@ -1,10 +1,7 @@
 //! Village life beyond residents: golem patterns, summons, and who they hit.
 //!
-//! Iron-golem summoning is a documented simplification of Java's spawn
-//! behavior: a panicking adult with 3 villagers and 3 beds within 16 blocks,
-//! and no iron golem already there, summons one. Once a minute a cluster of
-//! 5 villagers and 5 beds has a 10% chance to summon without a panic. A
-//! summon then waits 30 seconds.
+//! Summoning needs recent sleep, three panicking or five gossiping villagers,
+//! no recently detected golem, and a supported unobstructed spawn position.
 //!
 //! Player-built golems use Java's patterns (the pumpkin is placed last).
 //! Iron: a T of iron blocks under the pumpkin, arms on either horizontal
@@ -12,7 +9,8 @@
 use glam::{DVec3, IVec3};
 
 use super::thrown::{self, Thrown};
-use super::villager::{self, Profession};
+#[cfg(test)]
+use super::villager::Profession;
 use super::{Ctx, Entities, EntityEvent, MobKind, MobWorld, PlayerId};
 use crate::simulation::difficulty::Difficulty;
 use crate::world::block::{Block, Facing};
@@ -44,7 +42,10 @@ pub fn pattern_at(world: &impl crate::physics::BlockSource, pos: IVec3) -> Optio
     let hip = neck - IVec3::Y;
     if world.block(neck) == Some(Block::IRON_BLOCK) && world.block(hip) == Some(Block::IRON_BLOCK) {
         for (a, b) in [(IVec3::X, IVec3::NEG_X), (IVec3::Z, IVec3::NEG_Z)] {
-            if world.block(neck + a) == Some(Block::IRON_BLOCK) && world.block(neck + b) == Some(Block::IRON_BLOCK) {
+            if world.block(neck + a) == Some(Block::IRON_BLOCK)
+                && world.block(neck + b) == Some(Block::IRON_BLOCK)
+                && [pos + a, pos + b, hip + a, hip + b].into_iter().all(|p| world.block(p) == Some(Block::AIR))
+            {
                 return Some(Pattern::Iron { yaw, cells: [pos, neck, hip, neck + a, neck + b] });
             }
         }
@@ -63,20 +64,21 @@ pub fn spawn_feet(pattern: &Pattern) -> (MobKind, f32, DVec3) {
     }
 }
 
-/// Java's listed attack strength: 7.5 / 15 / 22.5. Peaceful players take none.
-pub fn iron_damage(difficulty: Difficulty, player: bool) -> f32 {
-    if player && difficulty == Difficulty::Peaceful {
-        return 0.0;
+/// Java rolls 7.5–21.5 damage. Difficulty scaling applies only to players.
+pub fn iron_damage(difficulty: Difficulty, player: bool, rng: &mut super::Rng) -> f32 {
+    let damage = 7.5 + rng.next_int(15) as f32;
+    if !player {
+        return damage;
     }
     match difficulty {
-        Difficulty::Easy | Difficulty::Peaceful => 7.5,
-        Difficulty::Normal => 15.0,
-        Difficulty::Hard => 22.5,
+        Difficulty::Peaceful => 0.0,
+        Difficulty::Easy => (damage * 0.5 + 1.0).min(damage),
+        Difficulty::Normal => damage,
+        Difficulty::Hard => damage * 1.5,
     }
 }
 
 const GOLEM_RANGE: f64 = 16.0;
-const DEFEND_RANGE: f64 = 32.0;
 
 /// Remove a finished pumpkin pattern and spawn the golem that was built.
 pub fn finish_golems(world: &mut crate::world::World, entities: &mut Entities) {
@@ -102,78 +104,36 @@ impl Entities {
     /// Point iron golems at monsters near villagers, or at a player who hit them.
     /// Creepers step away from a nearby golem.
     pub(super) fn assign_hunts(&mut self, ctx: &Ctx) {
-        let n = self.mobs.len();
-        for i in 0..n {
-            self.mobs[i].hunt = None;
+        self.mob_index.rebuild(&self.mobs);
+        for i in 0..self.mobs.len() {
+            let m = &self.mobs[i];
+            let pos = m.pos;
+            let hunt = if !m.alive() {
+                None
+            } else {
+                match m.kind {
+                    MobKind::IronGolem if m.angry_at_player() => ctx
+                        .nearest_target(pos)
+                        .filter(|p| p.pos.distance_squared(pos) < GOLEM_RANGE * GOLEM_RANGE)
+                        .map(|p| p.pos),
+                    MobKind::IronGolem => self
+                        .mob_index
+                        .nearest(&self.mobs, pos, GOLEM_RANGE, |o| o.kind.is_hostile() && o.kind != MobKind::Creeper)
+                        .map(|j| self.mobs[j].pos),
+                    MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => self
+                        .mob_index
+                        .nearest(&self.mobs, pos, GOLEM_RANGE, |o| o.kind == MobKind::Villager)
+                        .filter(|&j| {
+                            !ctx.nearest_target(pos)
+                                .is_some_and(|p| p.pos.distance_squared(pos) < self.mobs[j].pos.distance_squared(pos))
+                        })
+                        .map(|j| self.mobs[j].pos),
+                    // Java creepers do not flee golems (they flee cats/ocelots).
+                    _ => None,
+                }
+            };
+            self.mobs[i].hunt = hunt;
             self.mobs[i].strike = false;
-            if !self.mobs[i].alive() {
-                continue;
-            }
-            let pos = self.mobs[i].pos;
-            match self.mobs[i].kind {
-                MobKind::IronGolem if self.mobs[i].angry_at_player() => {
-                    if let Some(player) = ctx.nearest_target(pos)
-                        && player.pos.distance_squared(pos) < GOLEM_RANGE * GOLEM_RANGE
-                    {
-                        self.mobs[i].hunt = Some(player.pos);
-                    }
-                }
-                MobKind::IronGolem => {
-                    let village = (0..n).any(|j| {
-                        let o = &self.mobs[j];
-                        o.alive()
-                            && o.kind == MobKind::Villager
-                            && o.pos.distance_squared(pos) < DEFEND_RANGE * DEFEND_RANGE
-                    });
-                    if !village {
-                        continue;
-                    }
-                    let mut best: Option<(f64, DVec3)> = None;
-                    for o in &self.mobs {
-                        if o.alive() && o.kind.is_hostile() && o.kind != MobKind::Creeper {
-                            let d = o.pos.distance_squared(pos);
-                            if d < GOLEM_RANGE * GOLEM_RANGE && best.is_none_or(|(bd, _)| d < bd) {
-                                best = Some((d, o.pos));
-                            }
-                        }
-                    }
-                    self.mobs[i].hunt = best.map(|(_, p)| p);
-                }
-                MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => {
-                    let mut best: Option<(f64, DVec3)> = None;
-                    for o in &self.mobs {
-                        if o.alive() && o.kind == MobKind::Villager {
-                            let d = o.pos.distance_squared(pos);
-                            if d < GOLEM_RANGE * GOLEM_RANGE && best.is_none_or(|(bd, _)| d < bd) {
-                                best = Some((d, o.pos));
-                            }
-                        }
-                    }
-                    if let Some((d, at)) = best {
-                        let player_closer = ctx.nearest_target(pos).is_some_and(|t| {
-                            let pd = t.pos.distance_squared(pos);
-                            pd < d && pd < 24.0 * 24.0
-                        });
-                        if !player_closer {
-                            self.mobs[i].hunt = Some(at);
-                        }
-                    }
-                }
-                MobKind::Creeper => {
-                    let mut away: Option<(f64, DVec3)> = None;
-                    for o in &self.mobs {
-                        if o.alive() && o.kind == MobKind::IronGolem {
-                            let d = o.pos.distance_squared(pos);
-                            if d < 36.0 && d > 1e-4 && away.is_none_or(|(bd, _)| d < bd) {
-                                let flat = (pos - o.pos) * DVec3::new(1.0, 0.0, 1.0);
-                                away = Some((d, pos + flat.normalize_or_zero() * 6.0));
-                            }
-                        }
-                    }
-                    self.mobs[i].hunt = away.map(|(_, p)| p);
-                }
-                _ => {}
-            }
         }
     }
 
@@ -196,108 +156,27 @@ impl Entities {
                 let dir = (player.pos - pos).normalize_or_zero();
                 events.push(EntityEvent::PlayerHit {
                     player: player.id,
-                    damage: iron_damage(difficulty, true),
+                    damage: iron_damage(difficulty, true, &mut self.rng),
                     knockback: (dir * 6.0 + DVec3::Y * 8.0).as_vec3(),
                     cause: "was slain by an iron golem",
                 });
                 continue;
             }
             if kind.is_zombie() {
-                let mut bitten: Option<usize> = None;
-                let mut nearest = 2.25f64;
-                for j in 0..n {
-                    if i != j && self.mobs[j].alive() && self.mobs[j].kind == MobKind::Villager {
-                        let d = self.mobs[j].pos.distance_squared(pos);
-                        if d < nearest {
-                            nearest = d;
-                            bitten = Some(j);
-                        }
-                    }
-                }
+                let bitten = self.mob_index.nearest(&self.mobs, pos, 1.5, |m| m.kind == MobKind::Villager);
                 if let Some(j) = bitten {
                     self.infect_or_hit(i, j, events);
                 }
                 continue;
             }
-            let mut victim: Option<usize> = None;
-            let mut best = f64::MAX;
-            for j in 0..n {
-                if i == j || !self.mobs[j].alive() || kind != MobKind::IronGolem {
-                    continue;
-                }
-                if self.mobs[j].kind.is_hostile() && self.mobs[j].kind != MobKind::Creeper {
-                    let d = self.mobs[j].pos.distance_squared(pos);
-                    if d < 9.0 && d < best {
-                        best = d;
-                        victim = Some(j);
-                    }
-                }
-            }
+            let victim = (kind == MobKind::IronGolem)
+                .then(|| {
+                    self.mob_index.nearest(&self.mobs, pos, 3.0, |m| m.kind.is_hostile() && m.kind != MobKind::Creeper)
+                })
+                .flatten();
             let Some(j) = victim else { continue };
-            self.hit_mob(i, j, iron_damage(difficulty, false), 8.0, events);
-        }
-    }
-
-    /// A killing blow from a zombie converts the villager on Normal (50%) and Hard (100%).
-    fn infect_or_hit(&mut self, attacker: usize, victim: usize, events: &mut Vec<EntityEvent>) {
-        let (damage, _) = self.mobs[attacker].kind.melee();
-        let chance = match self.mobs[attacker].difficulty {
-            Difficulty::Peaceful | Difficulty::Easy => 0.0,
-            Difficulty::Normal => 0.5,
-            Difficulty::Hard => 1.0,
-        };
-        let killing = self.mobs[victim].health <= damage && self.mobs[victim].kind == MobKind::Villager;
-        if killing && self.rng.chance(chance) {
-            let mob = &mut self.mobs[victim];
-            mob.kind = MobKind::ZombieVillager;
-            mob.health = MobKind::ZombieVillager.max_health();
-            mob.dying = None;
-            mob.baby = mob.age < 0;
-            mob.hurt = 0.3;
-            if let Some(v) = &mut mob.villager {
-                v.sleeping = false;
-                v.trading = false;
-                v.fleeing = false;
-                v.goal = None;
-            }
-            return;
-        }
-        self.hit_mob(attacker, victim, damage, 5.0, events);
-    }
-
-    /// A golden apple starts the 3–5 minute cure while Weakness is still active.
-    pub fn try_cure(&mut self, index: usize) -> bool {
-        let mob = &mut self.mobs[index];
-        if mob.kind != MobKind::ZombieVillager || mob.weakness_left <= 0.0 || mob.convert_left > 0.0 {
-            return false;
-        }
-        mob.convert_left = self.rng.range(180.0, 300.0);
-        true
-    }
-
-    /// Natural zombies beside a villager have Java's 5% chance to be zombie villagers.
-    pub(super) fn note_village_zombie(&mut self, kind: MobKind) {
-        if kind != MobKind::Zombie {
-            return;
-        }
-        let Some(pos) = self.mobs.last().map(|m| m.pos) else { return };
-        let near = self
-            .mobs
-            .iter()
-            .any(|o| o.alive() && o.kind == MobKind::Villager && o.pos.distance_squared(pos) < 64.0 * 64.0);
-        if near && self.rng.chance(0.05) {
-            let id = self.next_villager_id;
-            self.next_villager_id = self.next_villager_id.saturating_add(1);
-            let seed = self.rng.next_int(u32::MAX) as u64;
-            let prof = Profession::ALL[1 + self.rng.next_int(14) as usize];
-            let mob = self.mobs.last_mut().unwrap();
-            if mob.baby {
-                mob.age = -24000;
-            }
-            mob.kind = MobKind::ZombieVillager;
-            let mut v = villager::Villager::new(id, seed);
-            v.set_profession(prof);
-            mob.villager = Some(Box::new(v));
+            let damage = iron_damage(difficulty, false, &mut self.rng);
+            self.hit_mob(i, j, damage, 8.0, events);
         }
     }
 
@@ -326,6 +205,7 @@ impl Entities {
 
     /// Once a second: summon village golems and let snow golems throw.
     pub(super) fn life_tick<W: MobWorld + ?Sized>(&mut self, world: &W) {
+        self.mob_index.rebuild(&self.mobs);
         self.golem_calm = (self.golem_calm - 1.0).max(0.0);
         self.gossip_timer = (self.gossip_timer - 1.0).max(0.0);
         self.summon_golems(world);
@@ -351,38 +231,48 @@ impl Entities {
                 continue;
             }
             let pos = m.pos;
-            let mut villagers = 0u32;
+
             let mut golems = 0u32;
-            for o in &self.mobs {
-                if !o.alive() {
-                    continue;
-                }
-                let d = o.pos.distance_squared(pos);
-                if d >= GOLEM_RANGE * GOLEM_RANGE {
-                    continue;
-                }
-                if o.kind == MobKind::Villager && o.age >= 0 {
-                    villagers += 1;
-                } else if o.kind == MobKind::IronGolem {
+            self.mob_index.visit(pos, GOLEM_RANGE, |j| {
+                let o = &self.mobs[j];
+                if o.alive() && o.pos.distance_squared(pos) < GOLEM_RANGE * GOLEM_RANGE && o.kind == MobKind::IronGolem
+                {
                     golems += 1;
                 }
-            }
+            });
             if golems > 0 {
                 continue;
             }
-            let mut beds = 0u32;
-            world.village_pois(&mut |p, b| {
-                if b.is_bed_head()
-                    && pos.distance_squared(p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)) < GOLEM_RANGE * GOLEM_RANGE
+            let now = self.village_day * 24000 + (self.village_time * 24000.0) as i64;
+            let mut eligible = 0;
+            self.mob_index.visit(pos, 10.0, |j| {
+                let o = &self.mobs[j];
+                if o.kind == MobKind::Villager
+                    && o.age >= 0
+                    && o.pos.distance_squared(pos) <= 100.0
+                    && o.villager.as_ref().is_some_and(|v| v.last_slept.is_some_and(|t| now - t < 24000))
                 {
-                    beds += 1;
+                    eligible += 1;
                 }
             });
-            let panic = fleeing && villagers >= 3 && beds >= 3;
-            let chat = gossip && !fleeing && villagers >= 5 && beds >= 5 && self.rng.chance(0.1);
+            let panic = fleeing && eligible >= 3;
+            let chat = gossip && !fleeing && eligible >= 5;
             if panic || chat {
-                self.spawn(MobKind::IronGolem, pos);
-                self.golem_calm = 30.0;
+                for _ in 0..10 {
+                    let x = pos.x.floor() as i32 + self.rng.next_int(17) as i32 - 8;
+                    let z = pos.z.floor() as i32 + self.rng.next_int(17) as i32 - 8;
+                    for y in ((pos.y.floor() as i32 - 6)..=(pos.y.floor() as i32 + 6)).rev() {
+                        let feet = DVec3::new(x as f64 + 0.5, y as f64, z as f64 + 0.5);
+                        if world.loaded(feet.floor().as_ivec3())
+                            && world.block(IVec3::new(x, y - 1, z)).is_some_and(|b| b.is_opaque())
+                            && !crate::physics::overlaps_solid(world, feet, MobKind::IronGolem.shape())
+                        {
+                            self.spawn(MobKind::IronGolem, feet);
+                            self.golem_calm = 30.0;
+                            return;
+                        }
+                    }
+                }
                 return;
             }
         }
@@ -405,17 +295,10 @@ impl Entities {
                     continue;
                 }
             }
-            let mut target: Option<DVec3> = None;
-            let mut best = 100.0f64;
-            for o in &self.mobs {
-                if o.alive() && o.kind.is_hostile() {
-                    let d = o.pos.distance_squared(pos);
-                    if d < best {
-                        best = d;
-                        target = Some(o.pos + DVec3::Y);
-                    }
-                }
-            }
+            let target = self
+                .mob_index
+                .nearest(&self.mobs, pos, 10.0, |m| m.kind.is_hostile())
+                .map(|j| self.mobs[j].pos + DVec3::Y);
             let Some(at) = target else { continue };
             let eye = pos + DVec3::Y * 1.2;
             let snow =
@@ -518,10 +401,11 @@ mod tests {
             }
         }
         assert!(iron && poppy);
-        assert_eq!(iron_damage(Difficulty::Normal, true), 15.0);
-        assert_eq!(iron_damage(Difficulty::Easy, false), 7.5);
-        assert_eq!(iron_damage(Difficulty::Peaceful, true), 0.0);
-        assert_eq!(iron_damage(Difficulty::Hard, false), 22.5);
+        for _ in 0..100 {
+            let damage = iron_damage(Difficulty::Normal, false, &mut rng);
+            assert!((7.5..=21.5).contains(&damage));
+            assert_eq!(iron_damage(Difficulty::Peaceful, true, &mut rng), 0.0);
+        }
     }
 
     #[test]
@@ -545,7 +429,9 @@ mod tests {
         for _ in 0..40 {
             angry.extend(e.update(0.05, &world, &player));
         }
-        assert!(angry.iter().any(|ev| matches!(ev, EntityEvent::PlayerHit { damage, .. } if *damage == 15.0)));
+        assert!(
+            angry.iter().any(|ev| matches!(ev, EntityEvent::PlayerHit { damage, .. } if (7.5..=21.5).contains(damage)))
+        );
     }
 
     #[test]
@@ -556,6 +442,7 @@ mod tests {
         for x in 0..3 {
             e.spawn(MobKind::Villager, DVec3::new(x as f64 + 0.5, 1.0, 0.5));
             e.mobs[x].villager.as_mut().unwrap().fleeing = true;
+            e.mobs[x].villager.as_mut().unwrap().last_slept = Some(0);
         }
         e.life_tick(&world);
         assert_eq!(e.count(MobKind::IronGolem), 1);
@@ -593,6 +480,7 @@ mod tests {
         e.mobs[1].health = 1.0;
         e.mobs[0].strike = true;
         let mut events = Vec::new();
+        e.mob_index.rebuild(&e.mobs);
         e.resolve_strikes(&ctx(DVec3::new(40.0, 1.0, 0.5), false), &mut events);
         assert_eq!(e.mobs[1].kind, MobKind::ZombieVillager);
         assert_eq!(e.mobs[1].health, MobKind::ZombieVillager.max_health());
@@ -605,6 +493,7 @@ mod tests {
         e.mobs[0].difficulty = Difficulty::Easy;
         e.mobs[0].strike = true;
         events.clear();
+        e.mob_index.rebuild(&e.mobs);
         e.resolve_strikes(&ctx(DVec3::new(40.0, 1.0, 0.5), false), &mut events);
         assert_eq!(e.mobs[1].kind, MobKind::Villager);
         assert!(events.iter().any(|ev| matches!(ev, EntityEvent::MobKilled { .. })));
@@ -640,7 +529,7 @@ mod tests {
         let mut converted = 0;
         for _ in 0..200 {
             e.spawn(MobKind::Zombie, DVec3::new(2.0, 1.0, 0.5));
-            e.note_village_zombie(MobKind::Zombie);
+            e.note_zombie_villager(MobKind::Zombie);
             let mob = e.mobs.last().unwrap();
             if mob.kind == MobKind::ZombieVillager {
                 converted += 1;
@@ -650,7 +539,7 @@ mod tests {
         }
         assert!((2..40).contains(&converted), "{converted}");
         e.spawn(MobKind::Zombie, DVec3::new(200.0, 1.0, 0.5));
-        e.note_village_zombie(MobKind::Zombie);
-        assert_eq!(e.mobs.last().unwrap().kind, MobKind::Zombie);
+        e.note_zombie_villager(MobKind::Zombie);
+        // Natural variants are also allowed far from villages.
     }
 }

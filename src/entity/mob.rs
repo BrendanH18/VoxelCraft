@@ -583,7 +583,7 @@ pub struct Mob {
     burn_timer: f32,
     fire_left: f32,
     /// Java credits environmental deaths for five seconds after a player hit.
-    player_hit_left: f32,
+    pub(super) player_hit_left: f32,
     light_timer: f32,
     /// Blocked horizontally on the last physics step.
     blocked: bool,
@@ -631,7 +631,8 @@ impl Mob {
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,
-            villager: (kind == MobKind::Villager).then(|| Box::new(super::villager::Villager::new(0, 0))),
+            villager: matches!(kind, MobKind::Villager | MobKind::ZombieVillager)
+                .then(|| Box::new(super::villager::Villager::new(0, 0))),
             size: 1,
             baby: false,
             wool_color: crate::color::DyeColor::White,
@@ -701,14 +702,14 @@ impl Mob {
 
     /// A player hit this iron golem recently, so it may hit back.
     pub(super) fn angry_at_player(&self) -> bool {
-        self.kind == MobKind::IronGolem && self.player_hit_left > 0.0
+        self.kind == MobKind::IronGolem && !self.built && self.player_hit_left > 0.0
     }
 
     /// The cure finished: a villager again, with Java's major_positive discount.
     fn finish_cure(&mut self) {
         self.kind = MobKind::Villager;
         self.health = MobKind::Villager.max_health();
-        self.baby = false;
+        self.baby = self.age < 0;
         self.weakness_left = 0.0;
         self.convert_left = 0.0;
         if let Some(v) = &mut self.villager {
@@ -780,7 +781,7 @@ impl Mob {
             self.ai_timer = rng.range(3.0, 5.0);
             self.move_yaw = rng.range(0.0, TAU);
         }
-        if self.kind == MobKind::IronGolem && self.player_hit_left > 0.0 {
+        if self.kind == MobKind::IronGolem && !self.built && self.player_hit_left > 0.0 {
             self.player_hit_left = self.player_hit_left.max(15.0);
         }
         self.provoked =
@@ -929,12 +930,13 @@ impl Mob {
                 self.teleport_pending = true;
             }
         }
-        if self.alive() && matches!(self.kind, MobKind::Villager | MobKind::ZombieVillager) && self.age < 0 {
+        if self.alive() && self.kind == MobKind::Villager && self.age != 0 {
             let v = self.villager.as_mut().unwrap();
             v.growth += dt as f32 * 20.0;
             let ticks = v.growth.floor() as i32;
             v.growth -= ticks as f32;
-            self.age = (self.age + ticks).min(0);
+            self.age = if self.age < 0 { (self.age + ticks).min(0) } else { (self.age - ticks).max(0) };
+            self.baby = self.age < 0;
         }
         if self.alive() && self.kind == MobKind::Chicken {
             let ticks = ((dt * 20.0).round() as i32).max(1);
@@ -959,7 +961,9 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
-        if let Some(v) = &self.villager {
+        if self.kind == MobKind::Villager
+            && let Some(v) = &self.villager
+        {
             if v.sleeping || v.trading && !v.fleeing {
                 return (None, 0.0);
             }

@@ -32,6 +32,16 @@ pub fn use_mob(
         }
         return true;
     }
+    if held.item == Item::IRON_INGOT
+        && entities.mobs[index].kind == crate::entity::MobKind::IronGolem
+        && entities.mobs[index].health < 100.0
+    {
+        entities.mobs[index].health = (entities.mobs[index].health + 25.0).min(100.0);
+        if !creative {
+            inventory.take_one(slot);
+        }
+        return true;
+    }
     if held.item == Item::GOLDEN_APPLE && entities.try_cure(index) {
         if !creative {
             inventory.take_one(slot);

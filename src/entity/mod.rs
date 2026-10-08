@@ -18,8 +18,10 @@ pub mod dragon;
 mod dragon_model;
 pub mod eye;
 pub mod fireball;
+pub mod golem;
 pub mod item;
 mod mob;
+mod mob_index;
 pub mod model;
 pub mod orb;
 pub mod pearl;
@@ -30,8 +32,8 @@ mod projectile;
 mod slime;
 mod thrown;
 pub mod tnt;
-pub mod village_round;
 pub mod villager;
+mod zombie_villager;
 
 use std::f32::consts::TAU;
 
@@ -495,6 +497,7 @@ pub struct Entities {
     next_villager_id: u64,
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
+    mob_index: mob_index::MobIndex,
     /// Seconds until another iron golem may be summoned.
     golem_calm: f32,
     /// Seconds until the next gossip summon roll.
@@ -535,6 +538,7 @@ impl Entities {
             next_villager_id: 1,
             villager_births: Default::default(),
             village_timer: 0.0,
+            mob_index: Default::default(),
             golem_calm: 0.0,
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
@@ -577,7 +581,7 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        if kind == MobKind::Villager {
+        if matches!(kind, MobKind::Villager | MobKind::ZombieVillager) {
             **mob.villager.as_mut().unwrap() =
                 villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
             self.next_villager_id = self.next_villager_id.saturating_add(1);
@@ -642,7 +646,10 @@ impl Entities {
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
-            let resident = m.kind == MobKind::Villager || m.built;
+            let resident = matches!(m.kind, MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem)
+                || m.built
+                || m.convert_left > 0.0
+                || m.villager.as_ref().is_some_and(|v| v.xp > 0);
             let gone = m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                 || !resident
                     && (ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
@@ -698,6 +705,7 @@ impl Entities {
             }
             i += 1;
         }
+        self.mob_index.rebuild(&self.mobs);
         self.resolve_strikes(ctx, &mut events);
         self.separate(dt);
         if let Some(fight) = &mut self.fight {
@@ -1003,9 +1011,12 @@ impl Entities {
             if self.mobs[i].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
                 continue;
             }
-            for j in i + 1..n {
+            self.mob_index.visit(self.mobs[i].pos, 4.0, |j| {
+                if j <= i {
+                    return;
+                }
                 if self.mobs[j].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
-                    continue;
+                    return;
                 }
                 let (a, b) = (&self.mobs[i], &self.mobs[j]);
                 let d = DVec3::new(b.pos.x - a.pos.x, 0.0, b.pos.z - a.pos.z);
@@ -1013,13 +1024,13 @@ impl Entities {
                 let overlap_y = a.pos.y < b.pos.y + b.shape().height && b.pos.y < a.pos.y + a.shape().height;
                 let dist = d.length();
                 if !overlap_y || dist >= min {
-                    continue;
+                    return;
                 }
                 let dir = if dist > 1e-4 { d / dist } else { DVec3::X };
                 let push = dir * ((min - dist) * 8.0 * dt).min(0.2) / dt.max(1e-3);
                 self.mobs[i].vel -= push * 0.5;
                 self.mobs[j].vel += push * 0.5;
-            }
+            });
         }
     }
 
@@ -1056,7 +1067,7 @@ impl Entities {
                     continue;
                 }
                 self.spawn(kind, pos);
-                self.note_village_zombie(kind);
+                self.note_zombie_villager(kind);
                 // Animals come in small herds, zombified piglins and End
                 // endermen in packs.
                 if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
@@ -1078,7 +1089,7 @@ impl Entities {
                             && clear_of_players(ctx, p)
                         {
                             self.spawn(kind, p);
-                            self.note_village_zombie(kind);
+                            self.note_zombie_villager(kind);
                         }
                     }
                 }

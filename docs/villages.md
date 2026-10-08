@@ -136,3 +136,32 @@ Additional Java references:
 - [Villager schedules](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/schedule/Schedule.java)
 - [POI acquisition](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/ai/behavior/AcquirePoi.java)
 - [Merchant stock and demand](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/trading/MerchantOffer.java)
+
+## Round 2 review: golems and zombie villagers
+
+Player builds require a carved pumpkin or jack o'lantern placed last, two
+snow blocks or the four-block iron T, including the iron pattern's empty
+corners. Golems persist across unloading/saves. Iron golems have 100 health,
+random 7.5–21.5 monster damage, player difficulty scaling, upward knockback,
+crack stages and 25-health ingot repairs. Player-built golems never attack
+players; other golems retaliate. They target nearby hostiles except creepers.
+Creepers do not flee golems in Java. Snow golems throw snowballs, suffer water
+and desert damage. Snow-layer trails await a snow-layer block implementation.
+
+Village summoning requires recent sleep, three eligible villagers panicking
+or five on a gossip check, no nearby golem, and a supported unobstructed spawn
+position. Remaining simplifications: a cluster-wide 30-second cooldown,
+spherical sensors and minute gossip checks rather than the complete Java
+brain memory/sensor scheduling. Snow golems' heat damage currently uses the
+desert biome rather than the complete biome temperature system.
+
+Zombies/husks/drowned attack villagers. Fatal attacks infect on Normal (50%)
+and Hard (100%); Easy/Peaceful never infect. Natural zombies everywhere have
+a 5% zombie-villager roll. Weakness plus a regular golden apple starts a
+3600–6000-tick cure, removes Weakness and keeps the zombie persistent. Trades,
+profession, XP, age, armor, weakness/conversion timers and golem health/build
+state survive saves. Baby zombies remain babies until curing, then grow as
+villagers. Cures give a capped permanent trade discount; per-player gossip,
+conversion Strength, bed/bar acceleration and equipment-drop handling are
+still to be completed. Summoning and combat use reused spatial buckets rather
+than per-mob full entity scans; collision broad phase shares that index.

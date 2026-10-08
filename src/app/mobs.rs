@@ -231,7 +231,7 @@ impl Game {
             self.mobs.entities.prime_tnt(cell, short_fuse);
             self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
-        crate::entity::village_round::finish_golems(&mut self.world, &mut self.mobs.entities);
+        crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
         self.mobs.attack_cooldown -= dt;
         let mut players = vec![Target {
             alive: !self.vitals.is_dead(),
