@@ -154,7 +154,7 @@ impl Octaves {
     fn sample(&self, x: f64, y: f64, z: f64) -> f64 {
         // Our lattice repeats every 256 units, so wrapping keeps f32 precision
         // far from the origin without changing the value.
-        let wrap = |v: f64| v.rem_euclid(256.0) as f32;
+        let wrap = |v: f64| (v - (v * (1.0 / 256.0)).floor() * 256.0) as f32;
         self.levels
             .iter()
             .map(|(noise, o, input, weight)| {

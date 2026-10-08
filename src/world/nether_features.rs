@@ -414,6 +414,17 @@ fn delta_clear(level: &impl Level, p: IVec3) -> bool {
     DIRECTIONS.iter().all(|&d| (level.block(p + d) == Block::AIR) == (d == IVec3::Y))
 }
 
+/// Offsets in a 15×15 square, nearest (Manhattan) first like Java's
+/// `BlockPos.withinManhattan`.
+fn manhattan_order() -> &'static [IVec3] {
+    static ORDER: std::sync::OnceLock<Vec<IVec3>> = std::sync::OnceLock::new();
+    ORDER.get_or_init(|| {
+        let mut cells: Vec<IVec3> = (-7..=7).flat_map(|dx| (-7..=7).map(move |dz| IVec3::new(dx, 0, dz))).collect();
+        cells.sort_by_key(|d| d.x.abs() + d.z.abs());
+        cells
+    })
+}
+
 /// `DeltaFeature`: a shallow lava pool set into the floor, rimmed with
 /// magma (size 3..=7, rim 0..=2). `origin` is the floor's top block.
 pub fn delta(level: &mut impl Level, rng: &mut Rng, origin: IVec3) -> bool {
@@ -423,18 +434,13 @@ pub fn delta(level: &mut impl Level, rng: &mut Rng, origin: IVec3) -> bool {
     let rim = rimmed && rx != 0 && rz != 0;
     let (sx, sz) = (between(rng, 3, 7), between(rng, 3, 7));
     let reach = sx.max(sz);
-    let mut cells: Vec<IVec3> = Vec::with_capacity(((2 * sx + 1) * (2 * sz + 1)) as usize);
-    for dx in -sx..=sx {
-        for dz in -sz..=sz {
-            cells.push(IVec3::new(dx, 0, dz));
-        }
-    }
-    // Java's `withinManhattan`: nearest first.
-    cells.sort_by_key(|d| d.x.abs() + d.z.abs());
     let mut placed = false;
-    for d in cells {
+    for &d in manhattan_order() {
         if d.x.abs() + d.z.abs() > reach {
             break;
+        }
+        if d.x.abs() > sx || d.z.abs() > sz {
+            continue;
         }
         let p = origin + d;
         if delta_clear(level, p) {

@@ -1130,13 +1130,15 @@ mod tests {
     /// Golden block IDs captured at 25c4c8a before the performance changes;
     /// the Overworld values were re-captured when ore veins got per-try
     /// random streams (seam fix) and mineshafts gained cave spider spawners.
+    /// The Nether value was re-captured when Nether biomes added surface
+    /// rules and features.
     /// Cover the benchmark volume and distant columns in every dimension.
     #[test]
     fn generated_chunk_hashes_stay_identical() {
         for (dimension, seed, expected) in [
             (Dimension::Overworld, 12345, 0x5620_c834_cc73_b8eau64),
             (Dimension::Overworld, 99, 0x69e1_f991_22ee_2f6au64),
-            (Dimension::Nether, 12345, 0x17a0_1163_881c_778du64),
+            (Dimension::Nether, 12345, 0x3f2a_749d_96a7_86fdu64),
             (Dimension::End, 12345, 0xc5aa_2549_4a63_5b2bu64),
         ] {
             let g = Generator::for_dimension(seed, dimension);

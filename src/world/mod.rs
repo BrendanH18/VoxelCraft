@@ -41,6 +41,7 @@ pub mod nether_biome;
 pub mod nether_biome_blocks;
 pub mod nether_blocks;
 pub mod nether_complexes;
+mod nether_decoration;
 pub mod nether_features;
 mod nether_flora;
 pub mod noise;
