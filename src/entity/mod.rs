@@ -3197,6 +3197,43 @@ mod tests {
         }
         assert!(deltas.count(MobKind::MagmaCube) > 0, "basalt deltas swarm with magma cubes");
         assert!(deltas.mobs.iter().all(|m| matches!(m.kind, MobKind::MagmaCube | MobKind::Ghast)));
+        let mut crimson = Entities::new(33);
+        let world = Biomed(cavern(), NetherBiome::CrimsonForest);
+        for _ in 0..1500 {
+            crimson.update(0.05, &world, &c);
+        }
+        assert!(crimson.count(MobKind::Hoglin) > 0, "crimson forests spawn hoglins");
+        assert!(
+            crimson.mobs.iter().all(|m| matches!(m.kind, MobKind::Hoglin | MobKind::Piglin | MobKind::ZombifiedPiglin)),
+            "crimson forest list only"
+        );
+        let mut warped = Entities::new(34);
+        let world = Biomed(cavern(), NetherBiome::WarpedForest);
+        for _ in 0..1500 {
+            warped.update(0.05, &world, &c);
+        }
+        assert!(warped.mobs.iter().all(|m| m.kind == MobKind::Enderman), "warped forests spawn only endermen");
+    }
+
+    #[test]
+    fn striders_spawn_on_lava_seas_in_every_nether_biome() {
+        use crate::world::nether_biome::NetherBiome;
+        let sea = crate::world::nether::LAVA_SEA;
+        let mut grid = Grid::flat(sea - 4);
+        for x in -80..=80 {
+            for z in -80..=80 {
+                for y in sea - 4..=sea {
+                    grid.set(IVec3::new(x, y, z), Block::LAVA);
+                }
+            }
+        }
+        let world = Biomed(grid, NetherBiome::WarpedForest);
+        let c = Ctx { spawning: true, dimension: Dimension::Nether, ..night(DVec3::new(0.0, sea as f64 + 1.0, 0.0)) };
+        let mut e = Entities::new(35);
+        for _ in 0..1500 {
+            e.update(0.05, &world, &c);
+        }
+        assert!(e.count(MobKind::Strider) > 0, "no striders on the lava");
     }
 
     /// A Nether cavern where everything with x > 20 is fortress.
