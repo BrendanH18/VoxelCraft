@@ -628,4 +628,31 @@ mod tests {
         }
         std::fs::remove_dir_all(dir).unwrap();
     }
+
+    #[test]
+    fn nether_doors_and_gates_open_turn_and_drop_like_other_woods() {
+        use crate::world::block::Shaped;
+        use crate::world::forms::wood_id;
+        for w in NetherWood::ALL {
+            let i = w.form_index();
+            let gate = wood_id(i, 6);
+            let east = gate.with_facing(Facing::East);
+            assert_eq!(east.shaped(), Some(Shaped::Gate { facing: Facing::East, open: false }));
+            let open = east.toggled(Facing::West);
+            assert_eq!(open.shaped(), Some(Shaped::Gate { facing: Facing::West, open: true }));
+            assert_eq!((open.drop(), open.base()), (Some(gate.into()), gate));
+            let door = wood_id(i, 14).with_facing(Facing::North);
+            let opened = door.toggled(Facing::North);
+            assert_eq!(opened.shaped(), Some(Shaped::Door { facing: Facing::North, open: true, upper: false }));
+            assert_eq!(opened.drop(), Some(wood_id(i, 14).into()));
+            assert_eq!(wood_id(i, 22).drop(), None, "only the lower half drops");
+            assert_eq!(wood_id(i, 4).slab_base(), Some(w.planks()));
+            assert_eq!(wood_id(i, 2).stairs_base(), Some(w.planks()));
+            assert!(wood_id(i, 4).borrows_light() && wood_id(i, 0).borrows_light());
+            assert_eq!(wood_id(i, 5).shaped(), Some(Shaped::Fence));
+            assert!(!crate::world::shape::item_shape(wood_id(i, 14)).is_empty());
+        }
+        // chunk.wgsl animates soul fire from this layer.
+        assert_eq!(tex::SOUL_FIRE_0, 1300);
+    }
 }
