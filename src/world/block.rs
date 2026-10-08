@@ -290,7 +290,7 @@ pub mod tex {
     pub const CAKE_SIDE: u16 = CAKE_TOP + 1;
     pub const CAKE_BOTTOM: u16 = CAKE_SIDE + 1;
     // Redstone reserves a texture band independent of compact legacy layers.
-    pub const COUNT: u32 = 1130;
+    pub const COUNT: u32 = 1136;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -1109,6 +1109,12 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if matches!(
+            super::redstone_blocks::component(self),
+            Some(super::redstone_blocks::Component::PistonHead { .. } | super::redstone_blocks::Component::Moving)
+        ) {
+            return None;
+        }
         if let Some(b) = super::redstone_blocks::base(self)
             && !matches!(
                 super::redstone_blocks::component(self),
@@ -1182,6 +1188,9 @@ impl Block {
             return match c {
                 Wire(_) | Torch { .. } | Repeater { .. } | Comparator { .. } => 0.0,
                 Lamp(_) => 0.3,
+                Piston { .. } | PistonHead { .. } => 1.5,
+                Observer { .. } => 3.0,
+                Moving => f32::INFINITY,
                 IronDoor { .. } | Trapdoor { iron: true, .. } => 5.0,
                 Trapdoor { .. } => 3.0,
                 Plate { .. } => 0.5,
@@ -1597,6 +1606,9 @@ impl Block {
 
     #[inline(always)]
     pub fn is_solid(self) -> bool {
+        if self == super::redstone_blocks::MOVING {
+            return true;
+        }
         self.info().solid
     }
 

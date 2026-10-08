@@ -2324,6 +2324,15 @@ impl Game {
                     icon: None,
                 }
             }))
+            .chain(self.world.moving_piston_blocks(alpha).map(|(block, min)| crate::render::BlockModel {
+                min,
+                size: 1.0,
+                block,
+                sky_light: crate::entity::sky_light(&self.world, min + glam::DVec3::splat(0.5)),
+                block_light: self.torch_light(min + glam::DVec3::splat(0.5)),
+                yaw: 0.0,
+                icon: None,
+            }))
             .chain(self.item_models(alpha))
             .collect()
     }

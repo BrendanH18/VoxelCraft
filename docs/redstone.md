@@ -106,3 +106,30 @@ Additional sources: [ButtonBlock](https://raw.githubusercontent.com/mahtomedi/mi
 [WeightedPressurePlateBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/WeightedPressurePlateBlock.java),
 [TargetBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/TargetBlock.java),
 [DaylightDetectorBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DaylightDetectorBlock.java).
+
+## Pistons and observers
+
+Pistons and sticky pistons support six directions, enforce the twelve-block
+push limit before editing, and reject unloaded destinations, world boundaries,
+unbreakable blocks, obsidian, netherite blocks, portals, spawners, all containers,
+and extended/moving pistons. Fragile controls/plants break and drop normally.
+Sticky retraction pulls one eligible block; normal retraction leaves it behind.
+Power excludes the front and includes Java quasi-connectivity above the base.
+Block events share the scheduled queue after neighbour propagation.
+
+Motion lasts two game ticks. A saved `automation` dimension property records
+moving states and their age; chunk meshes omit moving placeholders and the
+existing free-block renderer interpolates them without a new frame collection.
+Collision currently uses the destination block's full cell while moving. Java
+entity displacement, slime/honey assemblies, short-pulse sticky block spitting,
+and exact piston block-event arbitration are not implemented. Controls use the
+same host/pad/CLI placement path; vertical facings can be placed by raw state ID.
+
+Observers watch state changes on their front face, delay two game ticks, then
+emit strength 15 from their rear for two ticks. Repeated changes during a
+pending/on pulse do not retrigger it. Container-only mutations do not count as
+block state changes.
+
+Sources: [PistonStructureResolver](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/piston/PistonStructureResolver.java),
+[PistonBaseBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java),
+[ObserverBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ObserverBlock.java).

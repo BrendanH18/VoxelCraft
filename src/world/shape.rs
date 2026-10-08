@@ -303,6 +303,14 @@ pub fn redstone_shape(block: Block, neighbour: impl Fn(glam::IVec3) -> Block) ->
     use super::redstone_blocks::{self as r, Component};
     let mut out = Boxes::new();
     match r::component(block) {
+        Some(Component::Piston { facing, extended: true, .. }) => {
+            out.push(directional_box(b([0, 0, 0], [16, 16, 12]), facing))
+        }
+        Some(Component::PistonHead { facing, .. }) => {
+            out.push(directional_box(b([0, 0, 12], [16, 16, 16]), facing));
+            out.push(directional_box(b([6, 6, 0], [10, 10, 12]), facing));
+        }
+        Some(Component::Moving) => out.push(b([0, 0, 0], [16, 16, 16])),
         Some(Component::Wire(_)) => {
             let connections = r::connections(&neighbour);
             out.push(b([6, 0, 6], [10, 1, 10]));
@@ -359,6 +367,14 @@ pub fn redstone_shape(block: Block, neighbour: impl Fn(glam::IVec3) -> Block) ->
         _ => {}
     }
     out
+}
+
+fn directional_box(bx: Box16, facing: u8) -> Box16 {
+    match facing {
+        4 => b([bx.min[0], bx.min[2], bx.min[1]], [bx.max[0], bx.max[2], bx.max[1]]),
+        5 => b([bx.min[0], 16 - bx.max[2], bx.min[1]], [bx.max[0], 16 - bx.min[2], bx.max[1]]),
+        _ => bx.turned(Facing::ALL[facing as usize]),
+    }
 }
 
 fn mounted(bx: Box16, mount: u8) -> Box16 {

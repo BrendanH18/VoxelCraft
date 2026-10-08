@@ -24,8 +24,8 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 8] =
-    ["furnaces", "chests", "items", "orbs", "spawners", "brewing", "dragon", "redstone"];
+pub(super) const DIMENSION_KEYS: [&str; 9] =
+    ["furnaces", "chests", "items", "orbs", "spawners", "brewing", "dragon", "redstone", "automation"];
 /// Seconds of standing in a portal before it takes you (creative: almost
 /// at once).
 const PORTAL_TIME: f32 = 4.0;
@@ -105,6 +105,7 @@ impl Game {
     pub(super) fn dimension_props(&self) -> BTreeMap<String, String> {
         let mut props = BTreeMap::new();
         props.insert("redstone".to_string(), self.world.redstone_to_string());
+        props.insert("automation".to_string(), self.world.automation_to_string());
         props.insert("furnaces".to_string(), self.world.furnaces_to_string());
         props.insert("brewing".to_string(), self.world.brewing_stands_to_string());
         props.insert("chests".to_string(), self.world.chests_to_string());
@@ -121,6 +122,9 @@ impl Game {
     pub(super) fn restore_dimension(&mut self, props: &BTreeMap<String, String>) {
         if let Some(r) = props.get("redstone") {
             self.world.load_redstone(r);
+        }
+        if let Some(a) = props.get("automation") {
+            self.world.load_automation(a);
         }
         if let Some(b) = props.get("brewing") {
             self.world.load_brewing_stands(b);

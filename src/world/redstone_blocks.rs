@@ -20,6 +20,10 @@ pub const IRON_TRAPDOOR: Block = Block(1265);
 pub const DAYLIGHT: Block = Block(1281);
 pub const TARGET: Block = Block(1313);
 pub const WOOD_TRAPDOOR: Block = Block(1437);
+pub const PISTON: Block = Block(1329);
+pub const STICKY_PISTON: Block = Block(1341);
+pub const OBSERVER: Block = Block(1365);
+pub const MOVING: Block = Block(1470);
 pub const HAY: Block = Block(1469);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,6 +43,10 @@ pub enum Component {
     Target(u8),
     GlowingOre(bool),
     Hay,
+    Piston { facing: u8, sticky: bool, extended: bool },
+    PistonHead { facing: u8, sticky: bool },
+    Observer { facing: u8, on: bool },
+    Moving,
 }
 
 pub const fn wire(power: u8) -> Block {
@@ -83,6 +91,24 @@ pub const fn dot(power: u8) -> Block {
     Block(1453 + power as u16)
 }
 
+/// Six directions share the existing horizontal Facing order, then up/down.
+pub fn direction(facing: u8) -> glam::IVec3 {
+    match facing {
+        4 => glam::IVec3::Y,
+        5 => glam::IVec3::NEG_Y,
+        _ => Facing::ALL[facing as usize].offset(),
+    }
+}
+pub const fn piston(facing: u8, sticky: bool, extended: bool) -> Block {
+    Block(1329 + sticky as u16 * 12 + extended as u16 * 6 + facing as u16)
+}
+pub const fn piston_head(facing: u8, sticky: bool) -> Block {
+    Block(1353 + sticky as u16 * 6 + facing as u16)
+}
+pub const fn observer(facing: u8, on: bool) -> Block {
+    Block(1365 + on as u16 * 6 + facing as u16)
+}
+
 pub const fn component(b: Block) -> Option<Component> {
     let id = b.0;
     Some(match id {
@@ -123,6 +149,12 @@ pub const fn component(b: Block) -> Option<Component> {
         }
         1281..=1312 => Component::Daylight { power: ((id - 1281) % 16) as u8, inverted: id >= 1297 },
         1313..=1328 => Component::Target((id - 1313) as u8),
+        1329..=1352 => {
+            Component::Piston { facing: ((id - 1329) % 6) as u8, sticky: id >= 1341, extended: (id - 1329) % 12 >= 6 }
+        }
+        1353..=1364 => Component::PistonHead { facing: ((id - 1353) % 6) as u8, sticky: id >= 1359 },
+        1365..=1376 => Component::Observer { facing: ((id - 1365) % 6) as u8, on: id >= 1371 },
+        1470 => Component::Moving,
         1435..=1436 => Component::GlowingOre(id == 1436),
         1469 => Component::Hay,
         _ => return None,
@@ -152,6 +184,16 @@ pub const fn base(b: Block) -> Option<Block> {
         Some(Component::Daylight { .. }) => DAYLIGHT,
         Some(Component::Target(_)) => TARGET,
         Some(Component::Hay) => HAY,
+        Some(Component::Piston { sticky, .. }) => {
+            if sticky {
+                STICKY_PISTON
+            } else {
+                PISTON
+            }
+        }
+        Some(Component::PistonHead { sticky, .. }) => piston_head(0, sticky),
+        Some(Component::Observer { .. }) => OBSERVER,
+        Some(Component::Moving) => MOVING,
         Some(Component::GlowingOre(deep)) => {
             if deep {
                 Block::DEEPSLATE_REDSTONE_ORE
@@ -206,15 +248,39 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
             Opaque,
             if deep { tex::DEEPSLATE_REDSTONE_ORE } else { tex::REDSTONE_ORE },
         ),
+        Some(Component::Piston { sticky, extended, .. }) => {
+            (if sticky { "sticky piston" } else { "piston" }, if extended { Shaped } else { Opaque }, 1130)
+        }
+        Some(Component::PistonHead { .. }) => ("piston head", Shaped, 1130),
+        Some(Component::Observer { .. }) => ("observer", Opaque, tex::STONE),
+        Some(Component::Moving) => ("moving piston", Invisible, 1130),
         None => return None,
     };
-    Some((name, kind, [layer; 6]))
+    let mut textures = [layer; 6];
+    match component(Block(id)) {
+        Some(Component::Piston { facing, sticky, .. } | Component::PistonHead { facing, sticky }) => {
+            textures[texture_face(facing)] = if sticky { 1132 } else { 1131 };
+        }
+        Some(Component::Observer { facing, on }) => {
+            textures[texture_face(facing)] = 1133;
+            textures[texture_face(opposite(facing))] = if on { 1135 } else { 1134 };
+        }
+        _ => {}
+    }
+    Some((name, kind, textures))
+}
+
+const fn texture_face(f: u8) -> usize {
+    [4, 5, 0, 1, 2, 3][f as usize]
+}
+pub const fn opposite(f: u8) -> u8 {
+    [1, 0, 3, 2, 5, 4][f as usize]
 }
 
 pub fn palette_ids() -> impl Iterator<Item = u16> {
     [1100, 1116, 1128, 1140, 1152, 1162, 1194, 1210, 1212, 1213, 1215, 1217, 1233, 1249, 1265, 1281, 1313, 1437]
         .into_iter()
-        .chain([1469])
+        .chain([1329, 1341, 1365, 1469])
 }
 
 /// Java wire sides: 0 none, 1 side, 2 up. Isolated default wire is a cross.
@@ -229,8 +295,12 @@ pub fn connections(neighbour: impl Fn(glam::IVec3) -> Block) -> [u8; 4] {
             Some(Component::Repeater { facing, .. } | Component::Comparator { facing, .. }) => {
                 f.along_x() == facing.along_x()
             }
+            Some(Component::Observer { facing, .. }) => direction(opposite(facing)) == -d,
             Some(
-                Component::Lamp(_)
+                Component::Piston { .. }
+                | Component::PistonHead { .. }
+                | Component::Moving
+                | Component::Lamp(_)
                 | Component::IronDoor { .. }
                 | Component::Trapdoor { .. }
                 | Component::GlowingOre(_)
@@ -282,6 +352,8 @@ pub fn placed(b: Block, normal: glam::IVec3, toward: Facing) -> Block {
         Some(Component::Torch { .. }) => torch(if mount == 5 { 0 } else { mount }, true),
         Some(Component::Repeater { .. }) => repeater(toward.opposite(), 1, false),
         Some(Component::Comparator { .. }) => comparator(toward.opposite(), false, false),
+        Some(Component::Piston { sticky, .. }) => piston(toward as u8, sticky, false),
+        Some(Component::Observer { .. }) => observer(toward.opposite() as u8, false),
         Some(Component::IronDoor { .. }) => iron_door(toward, false, false),
         Some(Component::Trapdoor { iron, .. }) => {
             trapdoor(Facing::from_offset(normal).unwrap_or(toward), false, normal == glam::IVec3::NEG_Y, iron)

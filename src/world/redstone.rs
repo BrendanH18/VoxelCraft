@@ -20,7 +20,7 @@ type ScheduledTick = Reverse<(u64, i8, u64, [i32; 3], u16)>;
 #[derive(Default)]
 pub(super) struct RedstoneState {
     pub(super) contacts: FxHashMap<IVec3, super::redstone_contacts::Contacts>,
-    tick: u64,
+    pub(super) tick: u64,
     sequence: u64,
     updates: VecDeque<IVec3>,
     queued: FxHashSet<IVec3>,
@@ -147,6 +147,13 @@ impl World {
                     0
                 }
             }
+            Some(Component::Observer { facing, on }) => {
+                if on && direction == -r::direction(facing) {
+                    15
+                } else {
+                    0
+                }
+            }
             Some(Component::Repeater { facing, on, .. }) => {
                 if on && direction == facing.offset() {
                     15
@@ -161,7 +168,7 @@ impl World {
         }
     }
 
-    fn signal_from(&self, p: IVec3, toward: IVec3, wires: bool) -> u8 {
+    pub(super) fn signal_from(&self, p: IVec3, toward: IVec3, wires: bool) -> u8 {
         let direct = self.emitted_signal(p, toward, false, wires);
         if !self.get_block(p).is_some_and(conductor) {
             return direct;
@@ -299,6 +306,7 @@ impl World {
             return;
         }
         match r::component(b) {
+            Some(Component::Piston { .. } | Component::Observer { .. }) => self.automation_update(p, b),
             Some(Component::Wire(power)) => {
                 if self.get_block(p - IVec3::Y).is_some_and(|b| !b.is_solid()) {
                     self.spill_block(p, b);
@@ -389,6 +397,7 @@ impl World {
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
         match r::component(b) {
+            Some(Component::Piston { .. } | Component::Observer { .. }) => self.automation_tick(p, b),
             Some(Component::Torch { mount, lit }) => {
                 let powered = self.signal_from(p + r::support(mount), -r::support(mount), true) > 0;
                 let burned = self.redstone.burnout.get(&p).is_some_and(|&end| end > self.redstone.tick);
@@ -468,6 +477,7 @@ impl World {
     /// No scanning of loaded blocks or allocation on an idle tick.
     pub fn tick_redstone(&mut self) {
         self.redstone.tick += 1;
+        self.finish_piston_moves();
         self.redstone.last_updates = 0;
         self.drain_redstone_updates();
         while self.redstone.last_updates < MAX_UPDATES {

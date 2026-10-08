@@ -12,6 +12,7 @@
 //! discarded. Each chunk column also keeps a heightmap of its highest
 //! light-blocking block, which seeds skylight in mesh jobs.
 
+mod automation;
 pub mod bastion;
 pub mod block;
 pub mod brewing;
@@ -103,6 +104,7 @@ pub struct World {
     fluids: fluid::FluidState,
     fire: fire::FireState,
     redstone: redstone::RedstoneState,
+    automation: automation::AutomationState,
     falling: Vec<falling::FallingBlock>,
     /// Furnace contents by position (see [`furnace`]).
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
@@ -187,6 +189,7 @@ impl World {
             fluids: Default::default(),
             fire: Default::default(),
             redstone: Default::default(),
+            automation: Default::default(),
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
@@ -391,6 +394,7 @@ impl World {
         self.light_block_changed(p, old, block, old_light);
         self.track_fire(p, old, block);
         self.track_redstone(p, old, block);
+        self.track_automation(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
         self.track_brewing_stand(p, old, block);
