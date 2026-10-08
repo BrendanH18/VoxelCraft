@@ -50,7 +50,9 @@ impl Game {
         // Java titles the screen "<Profession> - <Level>".
         let ink = [0.25, 0.25, 0.25, 1.0];
         let mut x = px + 8.0;
-        for part in [v.profession.name(), " - ", v.level_name()] {
+        for part in
+            if v.wandering { ["Wandering Trader", "", ""] } else { [v.profession.name(), " - ", v.level_name()] }
+        {
             ui.text_flat(x, py + 6.0, part, ink);
             x += Ui::text_width(part);
         }
@@ -69,6 +71,9 @@ impl Game {
                 if o.stocked() { [0.15, 0.4, 0.12, 1.0] } else { [0.7, 0.1, 0.1, 1.0] },
             );
         }
+        if v.wandering {
+            return;
+        }
         let (lo, hi) = match v.level {
             1 => (0, 10),
             2 => (10, 70),
@@ -82,8 +87,10 @@ impl Game {
     }
     pub(super) fn pad_trade_details(&self, ui: &mut Ui, id: u64, index: usize, x: f32, y: f32) {
         let Some(v) = self.mobs.entities.merchant(id).and_then(|m| m.villager.as_ref()) else { return };
-        ui.text(x, y, v.profession.name(), WHITE);
-        ui.text(x + 100.0, y, v.level_name(), WHITE);
+        ui.text(x, y, if v.wandering { "Wandering Trader" } else { v.profession.name() }, WHITE);
+        if !v.wandering {
+            ui.text(x + 100.0, y, v.level_name(), WHITE);
+        }
         if let Some(o) = v.offers.get(index).copied().flatten() {
             let dial = self.dial_of(&self.player);
             draw_stack(ui, x, y + 12.0, v.priced(o), true, dial);

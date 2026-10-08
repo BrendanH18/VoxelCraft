@@ -5,6 +5,9 @@
 //! +Y up and +Z forward. Each part has a pivot (in model space) that it
 //! rotates around; its cuboids are given relative to that pivot.
 
+#[path = "trader_model.rs"]
+mod trader_model;
+
 use std::f32::consts::{FRAC_PI_2, PI};
 
 use glam::{DVec3, Quat, Vec3};
@@ -597,15 +600,22 @@ fn pose(m: &Mob, time: f32) -> Parts {
                 part(WITHER_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
-        MobKind::Villager => {
+        MobKind::Villager | MobKind::WanderingTrader => {
             let profession = m.villager.as_ref().map_or(super::villager::Profession::None, |v| v.profession);
             let mut parts = parts![
-                part(VILLAGER_BODY, [0.0; 3], Quat::IDENTITY),
+                part(
+                    if m.kind == MobKind::WanderingTrader { trader_model::BODY } else { VILLAGER_BODY },
+                    [0.0; 3],
+                    Quat::IDENTITY
+                ),
                 part(VILLAGER_LEG, [-2.0, 8.0, 0.0], rx(swing)),
                 part(VILLAGER_LEG, [2.0, 8.0, 0.0], rx(-swing)),
                 part(VILLAGER_HEAD, [0.0, 24.0, 0.0], head),
                 part(&VILLAGER_APRONS[profession as usize], [0.0; 3], Quat::IDENTITY)
             ];
+            if m.kind == MobKind::WanderingTrader {
+                parts.push(part(trader_model::HOOD, [0.0, 24.0, 0.0], head));
+            }
             if profession == super::villager::Profession::Farmer {
                 parts.push(part(FARMER_HAT, [0.0, 24.0, 0.0], head));
             }
@@ -626,6 +636,14 @@ fn pose(m: &Mob, time: f32) -> Parts {
             }
             parts
         }
+        MobKind::TraderLlama => parts![
+            part(trader_model::LLAMA_BODY, [0.0; 3], Quat::IDENTITY),
+            part(trader_model::LLAMA_HEAD, [0.0, 20.0 * trader_model::LLAMA_Y, 5.0], head),
+            part(trader_model::LLAMA_LEG, [-3.0, 14.0 * trader_model::LLAMA_Y, 5.0], rx(swing)),
+            part(trader_model::LLAMA_LEG, [3.0, 14.0 * trader_model::LLAMA_Y, 5.0], rx(-swing)),
+            part(trader_model::LLAMA_LEG, [-3.0, 14.0 * trader_model::LLAMA_Y, -5.0], rx(-swing)),
+            part(trader_model::LLAMA_LEG, [3.0, 14.0 * trader_model::LLAMA_Y, -5.0], rx(swing))
+        ],
         MobKind::IronGolem => {
             // Cracks at Java's 75 / 50 / 25 percent health.
             let cracks = if m.health > 75.0 {
@@ -811,6 +829,9 @@ pub fn build(
 ) -> usize {
     let mut drawn = 0;
     for m in mobs {
+        if m.trader.as_ref().is_some_and(|t| t.invisible) {
+            continue;
+        }
         let rel = (m.previous_pos.lerp(m.pos, alpha) - camera).as_vec3();
         let center = rel + Vec3::Y * m.shape().height as f32 * 0.5;
         let radius = 1.5;

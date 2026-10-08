@@ -35,6 +35,7 @@ mod thrown;
 pub mod tnt;
 pub mod villager;
 mod villager_breeding;
+pub mod wandering_trader;
 mod zombie_villager;
 
 use std::f32::consts::TAU;
@@ -504,6 +505,9 @@ pub struct Entities {
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
     claimed_jobs: rustc_hash::FxHashSet<IVec3>,
     pending_sounds: Vec<EntityEvent>,
+    trader_spawner: wandering_trader::Spawner,
+    trader_leaders: rustc_hash::FxHashMap<u64, (DVec3, f32, bool)>,
+    pub trader_spawning: bool,
     /// Seconds until another iron golem may be summoned.
     golem_calm: f32,
     /// Seconds until the next gossip summon roll.
@@ -548,6 +552,9 @@ impl Entities {
             claimed_beds: Default::default(),
             claimed_jobs: Default::default(),
             pending_sounds: Vec::new(),
+            trader_spawner: Default::default(),
+            trader_leaders: Default::default(),
+            trader_spawning: true,
             golem_calm: 0.0,
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
@@ -590,10 +597,16 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
-        if matches!(kind, MobKind::Villager | MobKind::ZombieVillager) {
+        if matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader) {
             **mob.villager.as_mut().unwrap() =
                 villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
             self.next_villager_id = self.next_villager_id.saturating_add(1);
+        }
+        if kind == MobKind::WanderingTrader {
+            mob.villager.as_mut().unwrap().trader_stock(&mut self.rng);
+        }
+        if kind == MobKind::TraderLlama {
+            mob.health = (15 + self.rng.next_int(16)) as f32;
         }
         if kind == MobKind::Sheep {
             let roll = self.rng.next_int(100);
@@ -651,16 +664,25 @@ impl Entities {
             self.run_spawners(dt as f32, world, ctx);
         }
 
+        self.trader_tick(dt as f32, world, ctx);
         self.village_upkeep(dt as f32, world);
         self.assign_hunts(ctx);
+        self.trader_upkeep();
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
-            let resident = matches!(m.kind, MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem)
-                || m.built
+            let resident = matches!(
+                m.kind,
+                MobKind::Villager
+                    | MobKind::IronGolem
+                    | MobKind::SnowGolem
+                    | MobKind::WanderingTrader
+                    | MobKind::TraderLlama
+            ) || m.built
                 || m.convert_left > 0.0
                 || m.villager.as_ref().is_some_and(|v| v.xp > 0);
-            let gone = m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+            let gone = m.trader.as_ref().is_some_and(|t| t.despawn <= 0.0)
+                || m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                 || !resident
                     && (ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
                         || !world.loaded(m.pos.floor().as_ivec3()));
@@ -706,6 +728,7 @@ impl Entities {
             }
             let grounded = self.mobs[i].on_ground;
             self.mobs[i].difficulty = difficulty;
+            self.mobs[i].trader_night = (0.5..0.96).contains(&self.village_time);
             self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);
             let m = &self.mobs[i];
             if m.kind == MobKind::MagmaCube && !grounded && m.on_ground && m.alive() {

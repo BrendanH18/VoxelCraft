@@ -243,6 +243,7 @@ pub struct Villager {
     pub(super) food_level: u8,
     pub(super) courtship: u16,
     pub(crate) bell_hide: f32,
+    pub wandering: bool,
     seed: u64,
     restock_day: i64,
     restocks: u8,
@@ -271,6 +272,7 @@ impl Villager {
             food_level: 0,
             courtship: 0,
             bell_hide: 0.0,
+            wandering: false,
             restock_day: -1,
             restocks: 0,
             last_restock: 0,
@@ -288,6 +290,9 @@ impl Villager {
     }
     /// `price` after the cure discount: `floor(reputation * multiplier)`, never below one.
     pub fn priced(&self, offer: Offer) -> Stack {
+        if self.wandering {
+            return offer.price();
+        }
         let base = offer.price();
         let cut = (self.reputation as f32 * offer.multiplier).floor() as i32;
         Stack { count: (base.count as i32 - cut).clamp(1, offer.cost.item.max_stack() as i32) as u8, ..base }
@@ -389,6 +394,9 @@ impl Villager {
         }
         inv.slots = slots;
         self.offers[index].as_mut().unwrap().uses += 1;
+        if self.wandering {
+            return Ok(3 + (hash(self.seed ^ self.offers[index].unwrap().uses as u64) % 4) as u32);
+        }
         self.xp = self.xp.saturating_add(offer.xp);
         let promoted = self.level < 5 && self.xp >= [0, 10, 70, 150, 250][self.level as usize];
         if promoted {
@@ -406,7 +414,7 @@ impl Entities {
     }
     pub fn merchant_in_reach(&self, id: u64, eye: DVec3) -> bool {
         self.merchant(id).is_some_and(|m| {
-            m.kind == MobKind::Villager
+            matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader)
                 && eye.distance(m.pos + DVec3::Y) < 6.0
                 && m.age >= 0
                 && !m.villager.as_ref().unwrap().sleeping
@@ -418,7 +426,10 @@ impl Entities {
             .iter_mut()
             .find(|m| m.alive() && m.villager.as_ref().is_some_and(|v| v.id == id))
             .ok_or("villager gone")?;
-        if m.kind != MobKind::Villager || m.age < 0 || m.villager.as_ref().unwrap().sleeping {
+        if !matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader)
+            || m.age < 0
+            || m.villager.as_ref().unwrap().sleeping
+        {
             return Err("villager cannot trade now");
         }
         m.villager.as_mut().unwrap().trade(index, inv)
@@ -438,7 +449,7 @@ impl Entities {
         }
         let m = &self.mobs[i];
         let v = m.villager.as_ref()?;
-        (m.kind == MobKind::Villager && m.age >= 0 && !v.sleeping).then_some(v.id)
+        (matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader) && m.age >= 0 && !v.sleeping).then_some(v.id)
     }
     pub(super) fn village_upkeep<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W) {
         self.village_timer -= dt;
@@ -586,13 +597,13 @@ impl Entities {
             .iter()
             .filter(|m| m.alive())
             .filter_map(|m| match m.kind {
-                MobKind::IronGolem | MobKind::SnowGolem => Some(json!({
+                MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => Some(json!({
                     "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
-                    "health": m.health, "built": m.built, "anger": m.player_hit_left,
+                    "health": m.health, "built": m.built, "anger": m.player_hit_left, "trader": m.trader.as_ref().map(|t|t.save()),
                 })),
-                MobKind::Villager | MobKind::ZombieVillager => {
+                MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
                     let v = m.villager.as_ref()?;
-                    Some(json!({"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
+                    Some(json!({"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
                     "health":m.health,"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
@@ -601,10 +612,12 @@ impl Entities {
                 _ => None,
             })
             .collect();
-        json!({"next":self.next_villager_id,"mobs":mobs,"births":self.villager_births.iter().map(|p|p.to_array()).collect::<Vec<_>>()}).to_string()
+        json!({"trader_spawner":[self.trader_spawner.delay,self.trader_spawner.chance],"next":self.next_villager_id,"mobs":mobs,"births":self.villager_births.iter().map(|p|p.to_array()).collect::<Vec<_>>()}).to_string()
     }
     pub fn load_villagers(&mut self, text: &str) {
         let Ok(root) = serde_json::from_str::<Value>(text) else { return };
+        self.trader_spawner.delay = root["trader_spawner"][0].as_f64().unwrap_or(1200.0).clamp(0.0, 1200.0) as f32;
+        self.trader_spawner.chance = root["trader_spawner"][1].as_u64().unwrap_or(25).clamp(25, 75) as u8;
         self.next_villager_id = self.next_villager_id.max(root["next"].as_u64().unwrap_or(1));
         fn pos(v: &Value) -> Option<IVec3> {
             let a = v.as_array()?;
@@ -630,7 +643,12 @@ impl Entities {
                 let kind = MobKind::from_name(a["kind"].as_str().unwrap_or("villager"))?;
                 if !matches!(
                     kind,
-                    MobKind::Villager | MobKind::ZombieVillager | MobKind::IronGolem | MobKind::SnowGolem
+                    MobKind::Villager
+                        | MobKind::ZombieVillager
+                        | MobKind::IronGolem
+                        | MobKind::SnowGolem
+                        | MobKind::WanderingTrader
+                        | MobKind::TraderLlama
                 ) {
                     return None;
                 }
@@ -647,11 +665,14 @@ impl Entities {
                 if !yaw.is_finite() || !health.is_finite() || health <= 0.0 {
                     return None;
                 }
-                if matches!(kind, MobKind::IronGolem | MobKind::SnowGolem) {
+                if matches!(kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama) {
                     if self.mobs.iter().any(|m| m.kind == kind && m.pos.distance_squared(p) < 0.01) {
                         return None;
                     }
                     let mut m = Mob::new(kind, p, yaw);
+                    if kind == MobKind::TraderLlama {
+                        m.trader = Some(Box::new(super::wandering_trader::Trader::load(&a["trader"], p)?));
+                    }
                     m.health = health.min(kind.max_health());
                     m.built = a["built"].as_bool().unwrap_or(false);
                     m.player_hit_left = a["anger"].as_f64().unwrap_or(0.0).clamp(0.0, 60.0) as f32;
@@ -662,6 +683,7 @@ impl Entities {
                     return None;
                 }
                 let mut v = Villager::new(id, a["seed"].as_u64()?);
+                v.wandering = kind == MobKind::WanderingTrader;
                 v.profession = *Profession::ALL.get(a["profession"].as_u64()? as usize)?;
                 v.level = u8::try_from(a["level"].as_u64()?).ok()?;
                 if !(1..=5).contains(&v.level) {
@@ -703,6 +725,9 @@ impl Entities {
                     }
                 }
                 m.armor_glint = a["glint"].as_u64().unwrap_or(0).min(15) as u8;
+                if kind == MobKind::WanderingTrader {
+                    m.trader = Some(Box::new(super::wandering_trader::Trader::load(&a["trader"], p)?));
+                }
                 m.villager = Some(Box::new(v));
                 Some(m)
             };

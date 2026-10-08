@@ -212,6 +212,8 @@ impl Game {
     pub(super) fn update_mobs(&mut self, dt: f64) {
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
+        self.mobs.entities.trader_spawning =
+            self.gamerules.bool("doTraderSpawning") && self.gamerules.bool("doMobSpawning");
         self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
         self.mobs.entities.village_time = self.day_time;
         self.mobs.entities.village_day = self.day_count;
@@ -485,7 +487,8 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Slime | MobKind::MagmaCube => Voice::Slime,
         MobKind::Ghast => Voice::Ghast,
         MobKind::Witch => Voice::Witch,
-        MobKind::Villager => Voice::Villager,
+        MobKind::Villager | MobKind::WanderingTrader => Voice::Villager,
+        MobKind::TraderLlama => Voice::Cow,
         MobKind::IronGolem => Voice::Cow,
         MobKind::SnowGolem => Voice::Slime,
     }

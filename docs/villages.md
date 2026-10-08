@@ -202,3 +202,28 @@ work/trading and walk to their claimed beds to hide for fifteen seconds.
 Hiding time survives saves. Bells are meeting POIs for trader spawning.
 Raid detection/glow is deferred with raids, and the fixed bell geometry does
 not yet swing. The existing floor-mounted model/orientation is retained.
+
+## Wandering traders
+
+Overworld traders attempt every 24000 ticks with a 25/50/75 percent roll
+and a further one-in-ten roll (2.5/5/7.5 percent effective chance), resetting
+on success. Attempts choose a player and prefer a bell within 48 blocks;
+ten candidate ground locations within 48 blocks need clear spawn space.
+Two trader llamas attempt nearby spawns, follow their merchant through a
+reused ID index, and share its despawn lifetime. Trader event spawning is
+independent of difficulty, gated by doMobSpawning and doTraderSpawning.
+
+Traders offer five distinct common and one rare supported Java 1.21 offer,
+with exact quantities/prices/stock caps, no leveling or restocking, through
+the shared merchant UI/controller/CLI transaction. They disappear after
+48000 loaded ticks (paused while trading), drink for 32 ticks to become
+invisible at night, and drink milk to reappear by day. Offers, remaining
+lifetime, destination, potion state, llama links and attempt progression
+survive saves. Models and robes are original procedural geometry.
+
+Remaining simplifications: trade pools filter absent items, shared resident
+navigation, llama following without physical/rendered leads, no llama
+spitting/taming/riding, and no held potion/milk model or drinking sound.
+Biome exclusions await the unsupported void/deep-dark biome tags. A trader
+can remain frozen in a loaded chunk beyond the common 128-block activation
+radius, as other persistent village entities currently do.
