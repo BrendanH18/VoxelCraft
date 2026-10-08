@@ -972,8 +972,35 @@ impl Agent {
                     return Err("action cooling down".into());
                 }
                 let (pos, normal) = self.target(world).ok_or("no block within reach")?;
+                if world.use_redstone(pos) {
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    return Ok(());
+                }
+                world.touch_redstone_ore(pos);
                 let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
                 let block = held.item.places().ok_or("selected item cannot be placed")?;
+                if block == crate::world::redstone_blocks::IRON_DOOR {
+                    let at = pos + normal;
+                    if self.player.intersects_block(at)
+                        || self.player.intersects_block(at + IVec3::Y)
+                        || others.iter().any(|&p| {
+                            Player::new(p).intersects_block(at) || Player::new(p).intersects_block(at + IVec3::Y)
+                        })
+                    {
+                        return Err("placement intersects a player".into());
+                    }
+                    if !world.place_iron_door(at, crate::world::block::Facing::toward(self.player.forward())) {
+                        return Err("placement failed".into());
+                    }
+                    if !self.creative {
+                        self.inventory.take_one(self.selected);
+                    }
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    self.emit(Event::Placed(at, block));
+                    return Ok(());
+                }
                 // Complex multi-cell placements use client gameplay until the shared action boundary is extracted.
                 if block.is_door()
                     || block.is_bed()
@@ -985,11 +1012,13 @@ impl Agent {
                 }
                 let block =
                     crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal);
+                let block = crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
                 let at = pos + normal;
                 if !world.get_block(at).is_some_and(|b| b == Block::AIR || b.is_water() || b.is_lava()) {
                     return Err("destination occupied or unloaded".into());
                 }
-                if !world.get_block(at - IVec3::Y).is_some_and(|below| block.can_stay_on(below))
+                if !world.redstone_supported(at, block)
+                    || !world.get_block(at - IVec3::Y).is_some_and(|below| block.can_stay_on(below))
                     || (block.is_mushroom() && !world.mushroom_survives(at))
                 {
                     return Err("block cannot survive here".into());
@@ -1049,6 +1078,9 @@ impl Agent {
             Command::Craft(item) => self.craft(item, world)?,
             Command::Chest(take, slot) => {
                 let (pos, _) = self.target(world).ok_or("no chest within reach")?;
+                if slot >= world.container_slots(pos) {
+                    return Err("container slot out of range".into());
+                }
                 let chest = world.chest_mut(pos).ok_or("target is not a chest")?;
                 if take {
                     let stack = chest.slots[slot].ok_or("chest slot empty")?;
@@ -1319,6 +1351,8 @@ impl Agent {
             && let Some(block) = world.get_block(pos)
         {
             let held = self.inventory.get(self.selected).map(|s| s.item);
+            world.touch_redstone_ore(pos);
+            let block = world.get_block(pos).unwrap_or(block);
             let digger = self.digger(world);
             let progress = self.breaking.filter(|(p, b, _)| *p == pos && *b == block).map_or(0.0, |(_, _, n)| n)
                 + TICK_SECONDS / mining::dig_time(block, digger).max(1e-3) as f64;

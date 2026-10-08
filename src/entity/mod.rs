@@ -109,6 +109,13 @@ pub enum MobSound {
 /// Something an entity did that the game needs to react to.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EntityEvent {
+    /// Shared block impact for target blocks and touched redstone ore.
+    ProjectileBlockHit {
+        cell: IVec3,
+        pos: DVec3,
+        normal: IVec3,
+        arrow: bool,
+    },
     /// A mob or arrow hit `player`: apply `damage` and add `knockback` to
     /// their velocity; `cause` is the death message.
     PlayerHit {
@@ -182,12 +189,13 @@ pub enum EntityEvent {
         owner: PlayerId,
         pos: DVec3,
     },
-    /// One of the player's arrows hit a mob (loot is dropped internally).
+    /// An arrow or player potion hit a mob (loot is dropped internally).
     MobShot {
         kind: MobKind,
         pos: DVec3,
         killed: bool,
         burning: bool,
+        player_kill: bool,
     },
     /// Thorns or the environment killed a mob (loot is dropped internally).
     MobKilled {
@@ -732,9 +740,9 @@ impl Entities {
         self.update_eyes(dt, &mut events);
         for e in &events {
             match *e {
-                EntityEvent::MobShot { kind, pos, killed, burning } => {
+                EntityEvent::MobShot { kind, pos, killed, burning, player_kill } => {
                     if killed && self.mob_loot {
-                        self.drop_loot_with_fire(kind, pos, 0, burning, true);
+                        self.drop_loot_with_fire(kind, pos, 0, burning, player_kill);
                     }
                     if kind == MobKind::ZombifiedPiglin {
                         self.anger_piglins(pos);

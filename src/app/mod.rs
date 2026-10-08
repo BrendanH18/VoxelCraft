@@ -1295,6 +1295,7 @@ impl Game {
             Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right, self.mode.is_creative()),
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Chest(pos) = self.container
+                    && i < self.world.container_slots(pos)
                     && let Some(chest) = self.world.chest_mut(pos)
                 {
                     crate::inventory::click_slot(&mut chest.slots[i], &mut self.inventory.cursor, right);
@@ -1398,7 +1399,13 @@ impl Game {
             eyes_in_water: self.player.head_in_water(&self.world),
             on_ground: self.player.on_ground || self.player.flying,
         };
-        let progress = self.actions.mine(pos, block, crate::mining::dig_time(block, digger), dt);
+        self.world.touch_redstone_ore(pos);
+        let progress = self.actions.mine(
+            pos,
+            self.world.get_block(pos).unwrap_or(block),
+            crate::mining::dig_time(block, digger),
+            dt,
+        );
         if progress < 1.0 {
             self.audio.block_hit(block, pos, dt);
             self.world.particles.push(crate::particles::Request::Hit { cell: pos, block, face });
@@ -1568,6 +1575,10 @@ impl Game {
         if self.insert_eye(pos) {
             return;
         }
+        if !self.sneak_building() && self.mode.can_build() && self.world.use_redstone(pos) {
+            return;
+        }
+        self.world.touch_redstone_ore(pos);
         // Containers open on right-click; holding Shift builds against them.
         match self.world.get_block(pos) {
             _ if self.sneak_building() => {}
@@ -1619,6 +1630,9 @@ impl Game {
             return;
         }
         let placed = match self.held_item() {
+            Some(i) if i.block() == Some(voxelcraft::world::redstone_blocks::IRON_DOOR) => {
+                Some(self.world.place_iron_door(at, crate::world::block::Facing::toward(self.player.forward())))
+            }
             Some(i) if i.bed_color().is_some() => Some(self.place_bed(at, i.bed_color().unwrap())),
             Some(i)
                 if i == Item::OAK_DOOR
@@ -1656,6 +1670,7 @@ impl Game {
         // Furnaces and chests face whoever places them.
         let block = crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal)
             .with_facing(crate::world::block::Facing::toward(self.player.forward()));
+        let block = voxelcraft::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
         if block.is_water() && self.dimension == Dimension::Nether {
             // Water boils away in the Nether.
             self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
@@ -1668,6 +1683,7 @@ impl Game {
             && (!block.is_mushroom() || self.world.mushroom_survives(at));
         if free
             && supported
+            && self.world.redstone_supported(at, block)
             && !(block.is_solid() && self.player.intersects_block(at))
             && self.world.set_block(at, block)
         {
@@ -2073,12 +2089,27 @@ impl Game {
         self.act(acting, dt);
         self.drive_pads(dt);
         self.tick_agents();
+        let sky_darken = ((1.0 - ((self.day_time - 0.25) * std::f64::consts::TAU).cos()).clamp(0.0, 1.0) * 11.0
+            + self.weather.strength as f64 * 4.0)
+            .round() as u8;
+        self.world.set_redstone_daylight(self.day_time, sky_darken);
+        let players = std::iter::once((self.player.pos, self.player.collision_shape()))
+            .filter(|_| self.mode != GameMode::Spectator && self.vitals.health > 0.0)
+            .chain(
+                self.agents
+                    .players
+                    .values()
+                    .filter(|b| b.active && b.agent.mode != GameMode::Spectator && b.agent.vitals.health > 0.0)
+                    .map(|b| (b.agent.player.pos, b.agent.player.collision_shape())),
+            );
+        self.world.redstone_contacts(players, &self.mobs.entities);
         crate::simulation::tick_world_rules(
             &mut self.world,
             self.player.pos,
             self.gamerules.bool("doFireTick"),
             self.gamerules.int("randomTickSpeed") as u32,
         );
+        self.world.tick_automation_entities(&mut self.mobs.entities);
         self.update_mobs(dt);
         self.update_items();
         self.tick_particles();
@@ -2325,6 +2356,15 @@ impl Game {
                     yaw: 0.0,
                     icon: None,
                 }
+            }))
+            .chain(self.world.moving_piston_blocks(alpha).map(|(block, min)| crate::render::BlockModel {
+                min,
+                size: 1.0,
+                block,
+                sky_light: crate::entity::sky_light(&self.world, min + glam::DVec3::splat(0.5)),
+                block_light: self.torch_light(min + glam::DVec3::splat(0.5)),
+                yaw: 0.0,
+                icon: None,
             }))
             .chain(self.item_models(alpha))
             .collect()

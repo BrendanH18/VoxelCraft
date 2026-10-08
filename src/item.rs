@@ -543,6 +543,7 @@ impl Item {
     pub const GOLD_NUGGET: Item = Item(290);
     pub const MAGMA_CREAM: Item = Item(608);
     pub const IRON_NUGGET: Item = Item(609);
+    pub const FIRE_CHARGE: Item = Item(760);
     pub const SLIME_BALL: Item = Item(610);
     pub const BUCKET: Item = Item(291);
     pub const WATER_BUCKET: Item = Item(292);
@@ -625,6 +626,7 @@ impl Item {
     /// non-block item plants (seeds sow wheat).
     pub fn places(self) -> Option<Block> {
         match self {
+            Item::REDSTONE => Some(crate::world::redstone_blocks::WIRE),
             Item::WHEAT_SEEDS => Some(Block::wheat(0)),
             Item::CARROT => Some(Block::crop(crate::world::block::Crop::Carrot, 0)),
             Item::POTATO => Some(Block::crop(crate::world::block::Crop::Potato, 0)),
@@ -668,6 +670,7 @@ impl Item {
 
     pub fn info(self) -> ItemInfo {
         match self {
+            Self::FIRE_CHARGE => return item("fire charge", Sprite::Lump([241, 126, 27])),
             Self::MAGMA_CREAM => return item("magma cream", Sprite::Lump([242, 115, 30])),
             Self::IRON_NUGGET => return item("iron nugget", Sprite::Nugget([202, 206, 212])),
             Self::SLIME_BALL => return item("slimeball", Sprite::Lump([104, 180, 83])),
@@ -876,6 +879,7 @@ impl Item {
             .chain((608..611).map(Item))
             .chain((0..MOB_ITEMS.len() as u16).map(|i| Item(MOB_ITEM + i)))
             .chain((0..POTION_COUNT).map(|i| Item(SPLASH_POTION + i)))
+            .chain([Self::FIRE_CHARGE])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -951,6 +955,7 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + i
                 - SPLASH_POTION,
         ),
+        760 => Some(icon_count() as u16 - 1),
         _ => None,
     }
 }
@@ -964,6 +969,7 @@ pub const fn icon_count() -> u32 {
         + 34
         + MOB_ITEMS.len() as u32
         + POTION_COUNT as u32
+        + 1
 }
 
 /// Compass needle frames, after the item icons. Frame 0 points up.

@@ -67,6 +67,12 @@ impl Game {
 /// The item pick-block (middle click) looks for: crops give seeds, and
 /// farmland and lit furnaces their plain blocks.
 pub(super) fn picked_item(block: Block) -> Item {
+    if matches!(
+        voxelcraft::world::redstone_blocks::component(block),
+        Some(voxelcraft::world::redstone_blocks::Component::Wire(_))
+    ) {
+        return Item::REDSTONE;
+    }
     match block.base() {
         Block::LIT_FURNACE => Block::FURNACE.into(),
         Block::LIT_SMOKER => Block::SMOKER.into(),

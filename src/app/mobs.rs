@@ -263,6 +263,10 @@ impl Game {
         let mut smashed = Vec::new();
         for event in self.mobs.entities.update_difficulty(dt, &self.world, &ctx, self.difficulty) {
             match event {
+                EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow } => {
+                    self.world.hit_redstone_target(cell, pos, normal, arrow);
+                    self.world.touch_redstone_ore(cell);
+                }
                 EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, cause } => {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.

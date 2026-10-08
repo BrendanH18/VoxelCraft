@@ -350,6 +350,21 @@ impl Game {
 /// The brewing stand's gauges: blaze fuel left under the fuel slot, the
 /// brew's progress as an arrow down beside the ingredient and rising
 /// bubbles on its other side while it brews.
+/// Java's screen title for a slot container block.
+pub(super) fn container_title(block: Option<crate::world::block::Block>) -> &'static str {
+    use crate::world::redstone_blocks::{self as r, Component};
+    match block {
+        Some(b) if b.base() == crate::world::block::Block::BARREL => "Barrel",
+        Some(b) => match r::component(b) {
+            Some(Component::Hopper { .. }) => "Item Hopper",
+            Some(Component::Dispenser { dropper: true, .. }) => "Dropper",
+            Some(Component::Dispenser { .. }) => "Dispenser",
+            _ => "Chest",
+        },
+        None => "Chest",
+    }
+}
+
 fn brewing_ui(ui: &mut Ui, b: &crate::world::brewing::BrewingStand, px: f32, py: f32, frame: u32) {
     use crate::world::brewing::{BREW_TIME, FUEL_USES};
     let dark = [0.45, 0.45, 0.45, 1.0];
@@ -537,6 +552,11 @@ impl Game {
                 .and_then(|m| m.villager.as_ref())
                 .map_or(46.0, |v| 26.0 + v.level as f32 * 20.0);
         }
+        if let Container::Chest(p) = self.container
+            && self.world.container_slots(p) == 5
+        {
+            return SLOT + 14.0;
+        }
         match (self.has_top_section(), self.shows_armor()) {
             (false, _) => 0.0,
             (true, true) => CRAFT_H + SLOT,
@@ -619,11 +639,24 @@ impl Game {
                 }
             }
             self.top_h()
-        } else if let Container::Chest(_) = self.container {
-            for i in 0..crate::world::chest::SLOTS {
-                out.push((SlotRef::Chest(i), px + 7.0 + (i % 9) as f32 * SLOT, py + 18.0 + (i / 9) as f32 * SLOT));
+        } else if let Container::Chest(p) = self.container {
+            let count = self.world.container_slots(p);
+            let cols = if count == 9 { 3 } else { 9 };
+            let offset = if count == 9 {
+                3.0 * SLOT
+            } else if count == 5 {
+                2.0 * SLOT
+            } else {
+                0.0
+            };
+            for i in 0..count {
+                out.push((
+                    SlotRef::Chest(i),
+                    px + 7.0 + offset + (i % cols) as f32 * SLOT,
+                    py + 18.0 + (i / cols) as f32 * SLOT,
+                ));
             }
-            CRAFT_H
+            self.top_h()
         } else if let Container::Furnace(_) = self.container {
             // Input over fuel (with the flame between), the output past the arrow.
             let x = px + 7.0 + 3.0 * SLOT;
@@ -756,7 +789,7 @@ impl Game {
         let title = match (self.container, self.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
-            (Container::Chest(_), _) => "Chest",
+            (Container::Chest(p), _) => container_title(self.world.get_block(p)),
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
             (Container::Anvil(_), _) => "Anvil",

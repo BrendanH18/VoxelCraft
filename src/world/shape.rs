@@ -246,6 +246,12 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
             ),
             _ => {}
         },
+        Some(Shaped::Redstone) => {
+            return redstone_shape(
+                block,
+                |d| if let Some(f) = Facing::from_offset(d) { neighbour(f) } else { Block::AIR },
+            );
+        }
         Some(Shaped::Stairs(f)) => out.push_turned(&STAIRS, f),
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND, Facing::South),
@@ -320,12 +326,128 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
     out
 }
 
+/// Redstone dust includes diagonal/vertical neighbours while ordinary shapes
+/// need only the four horizontal blocks. Meshing supplies the full lookup.
+pub fn redstone_shape(block: Block, neighbour: impl Fn(glam::IVec3) -> Block) -> Boxes {
+    use super::redstone_blocks::{self as r, Component};
+    let mut out = Boxes::new();
+    match r::component(block) {
+        Some(Component::Piston { facing, extended: true, .. }) => {
+            out.push(directional_box(b([0, 0, 0], [16, 16, 12]), facing))
+        }
+        Some(Component::PistonHead { facing, .. }) => {
+            out.push(directional_box(b([0, 0, 12], [16, 16, 16]), facing));
+            out.push(directional_box(b([6, 6, 0], [10, 10, 12]), facing));
+        }
+        Some(Component::Moving) => out.push(b([0, 0, 0], [16, 16, 16])),
+        Some(Component::Hopper { facing, .. }) => {
+            for bx in [
+                b([0, 10, 0], [16, 16, 2]),
+                b([0, 10, 14], [16, 16, 16]),
+                b([0, 10, 2], [2, 16, 14]),
+                b([14, 10, 2], [16, 16, 14]),
+                b([4, 4, 4], [12, 10, 12]),
+            ] {
+                out.push(bx);
+            }
+            out.push(if facing == 4 {
+                b([6, 0, 6], [10, 4, 10])
+            } else {
+                b([6, 4, 8], [10, 8, 16]).turned(Facing::ALL[facing as usize])
+            });
+        }
+        Some(Component::Wire(_)) => {
+            let connections = r::connections(&neighbour);
+            out.push(b([6, 0, 6], [10, 1, 10]));
+            for f in Facing::ALL {
+                if connections[f as usize] != 0 {
+                    out.push(b([6, 0, 8], [10, 1, 16]).turned(f));
+                }
+                if connections[f as usize] == 2 {
+                    out.push(b([6, 0, 15], [10, 16, 16]).turned(f));
+                }
+            }
+        }
+        Some(Component::Lever { mount, on }) => {
+            let handle = if on { b([6, 3, 8], [10, 10, 12]) } else { b([6, 3, 4], [10, 10, 8]) };
+            for bx in [b([4, 0, 5], [12, 3, 11]), handle] {
+                out.push(mounted(bx, mount));
+            }
+        }
+        Some(Component::Button { mount, on, .. }) => {
+            out.push(mounted(b([5, 0, 6], [11, if on { 1 } else { 2 }, 10]), mount))
+        }
+        Some(Component::Torch { mount, .. }) => {
+            if mount == 0 {
+                out.push(b([7, 0, 7], [9, 8, 9]));
+                out.push(b([6, 7, 6], [10, 10, 10]));
+            } else {
+                let facing = Facing::ALL[(mount - 1) as usize];
+                out.push(b([7, 3, 1], [9, 11, 3]).turned(facing));
+                out.push(b([6, 10, 0], [10, 13, 4]).turned(facing));
+            }
+        }
+        Some(Component::Repeater { facing, delay, .. }) => {
+            out.push(b([0, 0, 0], [16, 2, 16]));
+            out.push(b([7, 2, 11], [9, 8, 13]).turned(facing));
+            out.push(b([7, 2, 1 + delay * 2], [9, 8, 3 + delay * 2]).turned(facing));
+        }
+        Some(Component::Comparator { facing, .. }) => {
+            out.push(b([0, 0, 0], [16, 2, 16]));
+            for bx in [b([3, 2, 3], [5, 8, 5]), b([11, 2, 3], [13, 8, 5]), b([7, 2, 11], [9, 8, 13])] {
+                out.push(bx.turned(facing));
+            }
+        }
+        Some(Component::Plate { power, .. }) => out.push(b([1, 0, 1], [15, if power > 0 { 1 } else { 2 }, 15])),
+        Some(Component::Daylight { .. }) => out.push(b([0, 0, 0], [16, 6, 16])),
+        Some(Component::Trapdoor { facing, open, top, .. }) => {
+            out.push(if open {
+                b([0, 0, 0], [16, 16, 3]).turned(facing)
+            } else if top {
+                b([0, 13, 0], [16, 16, 16])
+            } else {
+                b([0, 0, 0], [16, 3, 16])
+            });
+        }
+        _ => {}
+    }
+    out
+}
+
+fn directional_box(bx: Box16, facing: u8) -> Box16 {
+    match facing {
+        4 => b([bx.min[0], bx.min[2], bx.min[1]], [bx.max[0], bx.max[2], bx.max[1]]),
+        5 => b([bx.min[0], 16 - bx.max[2], bx.min[1]], [bx.max[0], 16 - bx.min[2], bx.max[1]]),
+        _ => bx.turned(Facing::ALL[facing as usize]),
+    }
+}
+
+fn mounted(bx: Box16, mount: u8) -> Box16 {
+    match mount {
+        0 => bx,
+        5 => b([bx.min[0], 16 - bx.max[1], bx.min[2]], [bx.max[0], 16 - bx.min[1], bx.max[2]]),
+        _ => b([bx.min[0], bx.min[2], bx.min[1]], [bx.max[0], bx.max[2], bx.max[1]])
+            .turned(Facing::ALL[(mount - 1) as usize]),
+    }
+}
+
 /// What `block` collides with: like [`shape`], but ladders are thicker, open
 /// gates let you through, and fences and closed gates are 1.5 blocks tall
 /// so nothing can jump them.
 pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) -> Boxes {
     let mut out = Boxes::new();
     match block.shaped() {
+        Some(Shaped::Redstone)
+            if matches!(
+                super::redstone_blocks::component(block),
+                Some(
+                    super::redstone_blocks::Component::Wire(_)
+                        | super::redstone_blocks::Component::Lever { .. }
+                        | super::redstone_blocks::Component::Button { .. }
+                        | super::redstone_blocks::Component::Torch { .. }
+                        | super::redstone_blocks::Component::Plate { .. }
+                )
+            ) => {}
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER_COLLISION, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND_COLLISION, Facing::South),
         Some(Shaped::EndPortal) => {}

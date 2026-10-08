@@ -332,6 +332,7 @@ impl World {
     }
 
     pub fn furnace_mut(&mut self, p: IVec3) -> Option<&mut Furnace> {
+        self.redstone_changed(p);
         self.furnaces.get_mut(&p)
     }
 
@@ -370,10 +371,14 @@ impl World {
             }) {
                 f.kind = FurnaceKind::of(b);
             }
+            let before = [f.input, f.fuel, f.output];
             f.tick(dt as f32);
-            relight.push((p, f.is_lit()));
+            relight.push((p, f.is_lit(), before != [f.input, f.fuel, f.output]));
         }
-        for (p, lit) in relight {
+        for (p, lit, changed) in relight {
+            if changed {
+                self.redstone_changed(p);
+            }
             let Some((_, facing)) = self.get_block(p).filter(|&b| is_furnace(b)).and_then(Block::oriented) else {
                 continue;
             };

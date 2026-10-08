@@ -146,6 +146,127 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         return p;
     }
     match layer {
+        1100..=1115 => {
+            let p = (layer - 1100) as f32 / 15.0;
+            noisy(
+                layer,
+                x,
+                y,
+                [
+                    (if p == 0.0 { 0.3 } else { p * 0.6 + 0.4 } * 255.0) as u8,
+                    ((p * p * 0.7 - 0.5).max(0.0) * 255.0) as u8,
+                    ((p * p * 0.6 - 0.7).max(0.0) * 255.0) as u8,
+                ],
+                0.1,
+            )
+        }
+        1116..=1117 => {
+            if y < 9 {
+                noisy(layer, x, y, if layer == 1116 { [255, 48, 20] } else { [90, 20, 12] }, 0.1)
+            } else {
+                noisy(layer, x, y, [125, 90, 45], 0.2)
+            }
+        }
+        1118..=1119 => {
+            if x == 7 || x == 8 {
+                noisy(layer, x, y, if layer == 1119 { [240, 35, 15] } else { [105, 20, 12] }, 0.1)
+            } else {
+                noisy(layer, x, y, [170, 165, 155], 0.1)
+            }
+        }
+        1120..=1121 => {
+            let grid = x == 0 || y == 0 || x == 15 || y == 15 || x == y || x + y == 15;
+            noisy(
+                layer,
+                x,
+                y,
+                if grid {
+                    [62, 38, 24]
+                } else if layer == 1121 {
+                    [255, 205, 115]
+                } else {
+                    [110, 65, 30]
+                },
+                0.12,
+            )
+        }
+        1122 => noisy(layer, x, y, [180, 25, 15], 0.15),
+        1123..=1124 => {
+            let panel = (3..=6).contains(&x) || (9..=12).contains(&x);
+            if panel && (3..=6).contains(&y) {
+                [0, 0, 0, 0]
+            } else {
+                noisy(layer, x, y, if layer == 1123 { [180, 185, 183] } else { [130, 95, 50] }, 0.12)
+            }
+        }
+        1125..=1126 => noisy(
+            layer,
+            x,
+            y,
+            if x.is_multiple_of(4) || y.is_multiple_of(4) {
+                [92, 66, 38]
+            } else if layer == 1125 {
+                [218, 211, 176]
+            } else {
+                [98, 121, 153]
+            },
+            0.08,
+        ),
+        1130 => noisy(layer, x, y, if !(3..=12).contains(&x) { [96, 98, 95] } else { [167, 128, 73] }, 0.2),
+        1131 | 1132 => noisy(
+            layer,
+            x,
+            y,
+            if x == 0 || x == 15 || y == 0 || y == 15 {
+                [101, 100, 95]
+            } else if layer == 1132 {
+                [112, 167, 72]
+            } else {
+                [180, 147, 95]
+            },
+            0.16,
+        ),
+        1133 => noisy(
+            layer,
+            x,
+            y,
+            if ((4..7).contains(&x) || (10..13).contains(&x)) && (4..7).contains(&y) || (4..13).contains(&x) && y == 11
+            {
+                [36, 37, 36]
+            } else {
+                [154, 157, 151]
+            },
+            0.1,
+        ),
+        1134 | 1135 => noisy(
+            layer,
+            x,
+            y,
+            if (5..11).contains(&x) && (5..11).contains(&y) {
+                if layer == 1135 { [240, 42, 18] } else { [92, 15, 13] }
+            } else {
+                [92, 94, 89]
+            },
+            0.1,
+        ),
+        1136 | 1137 => noisy(
+            layer,
+            x,
+            y,
+            if (4..12).contains(&x) && (4..12).contains(&y) && (layer == 1136 || x > 7 || y > 7) {
+                [23, 24, 23]
+            } else {
+                [126, 128, 122]
+            },
+            0.18,
+        ),
+        1138 => noisy(layer, x, y, [64, 67, 68], 0.12),
+        1129 => noisy(layer, x, y, if y < 13 { [128, 94, 46] } else { [92, 94, 90] }, 0.2),
+        1128 => noisy(layer, x, y, if y == 3 || y == 12 { [162, 67, 29] } else { [203, 171, 58] }, 0.2),
+        1127 => {
+            let d = x.abs_diff(7).max(y.abs_diff(7));
+            noisy(layer, x, y, if matches!(d,0..=1|4..=5) { [180, 32, 26] } else { [235, 224, 194] }, 0.06)
+        }
         tex::BROWN_MUSHROOM | tex::RED_MUSHROOM => {
             // Java's small mushroom occupies six pixels of the crossed 16x16 plane.
             if (7..=8).contains(&x) && (12..=15).contains(&y) {
