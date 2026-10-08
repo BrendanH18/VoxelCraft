@@ -42,8 +42,9 @@ fn conductor(b: Block) -> bool {
 
 impl World {
     fn queue_redstone(&mut self, p: IVec3) {
-        if self.get_block(p).is_some_and(|b| r::component(b).is_some() || b.is_door() || b.is_gate() || b == Block::TNT)
-            && self.redstone.queued.insert(p)
+        if self.get_block(p).is_some_and(|b| {
+            r::component(b).is_some() || b.is_door() || b.is_gate() || b == Block::TNT || b.base() == Block::BELL
+        }) && self.redstone.queued.insert(p)
         {
             self.redstone.updates.push_back(p);
         }
@@ -85,7 +86,7 @@ impl World {
         let data = slot.data.clone();
         let mut i = 0;
         data.for_each_block(|b| {
-            if r::component(b).is_some() || b.is_door() || b.is_gate() {
+            if r::component(b).is_some() || b.is_door() || b.is_gate() || b.base() == Block::BELL {
                 let local =
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
                 self.redstone_changed(c * CHUNK_SIZE_I + local);
@@ -300,6 +301,19 @@ impl World {
 
     fn redstone_update(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if b.base() == Block::BELL {
+            let powered = self.redstone_power(p) > 0;
+            let was = self.redstone.powered.contains(&p);
+            if powered {
+                self.redstone.powered.insert(p);
+            } else {
+                self.redstone.powered.remove(&p);
+            }
+            if powered && !was {
+                self.ring_bell(p);
+            }
+            return;
+        }
         let support = match r::component(b) {
             Some(Component::Lever { mount, .. } | Component::Button { mount, .. } | Component::Torch { mount, .. }) => {
                 Some(r::support(mount))
@@ -651,6 +665,9 @@ impl World {
     /// Device-independent right click; callers handle reach and build permission.
     pub fn use_redstone(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
+        if b.base() == Block::BELL {
+            return self.ring_bell(p);
+        }
         let next = match r::component(b) {
             Some(Component::Wire(power)) => {
                 if self.wire_connections(p) == [1; 4] || self.wire_connections(p) == [0; 4] {

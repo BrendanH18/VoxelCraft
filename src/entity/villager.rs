@@ -89,6 +89,7 @@ impl Profession {
 }
 pub fn is_poi(b: Block) -> bool {
     b.is_bed_head()
+        || b.base() == Block::BELL
         || (b == Block::BREWING_STAND
             || b == Block::SMITHING_TABLE
             || ((904..=948).contains(&b.0) || crate::world::composter::level(b).is_some()))
@@ -241,6 +242,7 @@ pub struct Villager {
     pub(super) food: [Option<Stack>; 8],
     pub(super) food_level: u8,
     pub(super) courtship: u16,
+    pub(crate) bell_hide: f32,
     seed: u64,
     restock_day: i64,
     restocks: u8,
@@ -268,6 +270,7 @@ impl Villager {
             food: [None; 8],
             food_level: 0,
             courtship: 0,
+            bell_hide: 0.0,
             restock_day: -1,
             restocks: 0,
             last_restock: 0,
@@ -546,6 +549,8 @@ impl Entities {
             v.goal = if let Some(z) = threat {
                 let d = (m.pos - z) * DVec3::new(1.0, 0.0, 1.0);
                 Some(m.pos + d.normalize_or_zero() * 10.0)
+            } else if v.bell_hide > 0.0 {
+                v.home.map(|p| p.as_dvec3() + DVec3::new(0.5, 0.6, 0.5))
             } else if v.trading {
                 None
             } else if tick >= 12000 {
@@ -557,6 +562,7 @@ impl Entities {
             };
             if tick >= 12000
                 && !v.fleeing
+                && v.bell_hide <= 0.0
                 && !v.trading
                 && let Some(p) = v.home
             {
@@ -590,7 +596,7 @@ impl Entities {
                     "health":m.health,"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
-                    "last":v.last_restock,"slept":v.last_slept,"food":v.food.map(stack_to_string),"food_level":v.food_level,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left}))
+                    "last":v.last_restock,"slept":v.last_slept,"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left}))
                 }
                 _ => None,
             })
@@ -681,6 +687,7 @@ impl Entities {
                     }
                 }
                 v.food_level = a["food_level"].as_u64().unwrap_or(0).min(15) as u8;
+                v.bell_hide = a["bell_hide"].as_f64().unwrap_or(0.0).clamp(0.0, 15.0) as f32;
                 v.last_slept = a["slept"].as_i64();
                 v.reputation = i16::try_from(a["reputation"].as_i64().unwrap_or(0)).unwrap_or(0);
                 let mut m = Mob::new(kind, p, yaw);

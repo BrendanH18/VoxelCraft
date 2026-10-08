@@ -14,6 +14,7 @@
 
 mod automation;
 pub mod bastion;
+pub mod bell;
 pub mod block;
 pub mod brewing;
 pub mod chest;
@@ -146,6 +147,7 @@ pub struct World {
     /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
     pub golem_heads: Vec<IVec3>,
     compost_sequence: u64,
+    bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -218,6 +220,7 @@ impl World {
             primed_tnt: Vec::new(),
             golem_heads: Vec::new(),
             compost_sequence: 0,
+            bell_rings: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),

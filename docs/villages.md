@@ -193,3 +193,12 @@ Top hoppers insert compostables; bottom hoppers extract ready bone meal;
 side insertion/extraction fails. All filled states remain farmer job sites.
 Desktop, controller and CLI players share the composter action. Recipes and
 workstation acquisition retain their existing Java behavior.
+
+## Bells
+
+Use rings a bell, as does a rising redstone edge; held power does not repeat.
+An original metallic chime plays, and villagers within 32 blocks interrupt
+work/trading and walk to their claimed beds to hide for fifteen seconds.
+Hiding time survives saves. Bells are meeting POIs for trader spawning.
+Raid detection/glow is deferred with raids, and the fixed bell geometry does
+not yet swing. The existing floor-mounted model/orientation is retained.

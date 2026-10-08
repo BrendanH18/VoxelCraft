@@ -65,9 +65,9 @@ impl Entities {
             m.alive()
                 && m.kind == MobKind::Villager
                 && m.age == 0
-                && m.villager
-                    .as_ref()
-                    .is_some_and(|v| v.active && !v.sleeping && !v.trading && !v.fleeing && v.food_points() >= 12)
+                && m.villager.as_ref().is_some_and(|v| {
+                    v.active && !v.sleeping && !v.trading && !v.fleeing && v.bell_hide <= 0.0 && v.food_points() >= 12
+                })
         };
         let n = self.mobs.len();
         for i in 0..n {

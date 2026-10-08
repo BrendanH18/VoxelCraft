@@ -13,6 +13,7 @@
 //! box-model vertices.
 
 pub mod armor;
+mod bell;
 mod bobber;
 pub mod dragon;
 mod dragon_model;
@@ -85,6 +86,7 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 /// Sounds entities make (the game maps them to audio).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
+    Bell,
     /// A creeper lit its fuse.
     Fuse,
     /// A skeleton loosed an arrow.
@@ -501,6 +503,7 @@ pub struct Entities {
     mob_index: mob_index::MobIndex,
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
     claimed_jobs: rustc_hash::FxHashSet<IVec3>,
+    pending_sounds: Vec<EntityEvent>,
     /// Seconds until another iron golem may be summoned.
     golem_calm: f32,
     /// Seconds until the next gossip summon roll.
@@ -544,6 +547,7 @@ impl Entities {
             mob_index: Default::default(),
             claimed_beds: Default::default(),
             claimed_jobs: Default::default(),
+            pending_sounds: Vec::new(),
             golem_calm: 0.0,
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
@@ -633,6 +637,7 @@ impl Entities {
     ) -> Vec<EntityEvent> {
         self.snapshot_positions();
         let mut events = Vec::new();
+        events.append(&mut self.pending_sounds);
         if difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.despawn_hostiles();
         } else if ctx.spawning {

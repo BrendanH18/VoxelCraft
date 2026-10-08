@@ -680,6 +680,12 @@ impl World {
     /// Consume entity work after shared world rules and before entity physics.
     /// Headless callers use this same method with their Entities collection.
     pub fn tick_automation_entities(&mut self, entities: &mut crate::entity::Entities) {
+        let mut rings = std::mem::take(&mut self.bell_rings);
+        for &pos in &rings {
+            entities.ring_bell(pos);
+        }
+        rings.clear();
+        self.bell_rings = rings;
         let mut output = std::mem::take(&mut self.automation.output);
         for &(p, facing, arrow, stack) in &output {
             let d = r::direction(facing).as_dvec3();

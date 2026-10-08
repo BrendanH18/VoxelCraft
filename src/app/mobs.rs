@@ -367,6 +367,7 @@ impl Game {
                 EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. } => {}
                 EntityEvent::Sound { sound, pos } => {
                     let (sound, gain) = match sound {
+                        MobSound::Bell => (Sound::Bell, 1.0),
                         MobSound::Fuse => (Sound::Fuse, 1.0),
                         MobSound::Bow => (Sound::Bow, 1.0),
                         MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7),

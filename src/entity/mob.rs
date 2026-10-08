@@ -843,6 +843,9 @@ impl Mob {
                 self.finish_cure();
             }
         }
+        if let Some(v) = &mut self.villager {
+            v.bell_hide = (v.bell_hide - dtf).max(0.0);
+        }
         self.attack_anim = (self.attack_anim - dtf).max(0.0);
 
         self.light_timer -= dtf;
