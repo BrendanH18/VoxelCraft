@@ -187,7 +187,7 @@ impl Game {
             .target_merchant(&self.world, agent.player.eye(), agent.player.forward().as_dvec3(), super::REACH)
             .and_then(|id| self.mobs.entities.merchant(id))
             .and_then(|m| m.villager.as_ref())
-            .map_or(Value::Null, |v| v.observation());
+            .map_or(Value::Null, |v| v.observation_for(agent.id));
         let overworld = self.dimension == crate::world::terrain::Dimension::Overworld;
         if let Some(stack) = agent.inventory.get(agent.selected) {
             if stack.item == crate::item::Item::COMPASS {

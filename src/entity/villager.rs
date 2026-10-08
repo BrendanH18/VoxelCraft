@@ -71,7 +71,7 @@ impl Profession {
     }
     pub fn of(b: Block) -> Option<Self> {
         Some(match b.base() {
-            Block::COMPOSTER => Self::Farmer,
+            b if crate::world::composter::level(b).is_some() => Self::Farmer,
             Block::BARREL => Self::Fisherman,
             Block::LOOM => Self::Shepherd,
             Block::FLETCHING_TABLE => Self::Fletcher,
@@ -89,7 +89,10 @@ impl Profession {
 }
 pub fn is_poi(b: Block) -> bool {
     b.is_bed_head()
-        || (b == Block::BREWING_STAND || b == Block::SMITHING_TABLE || (904..=948).contains(&b.0))
+        || b.base() == Block::BELL
+        || (b == Block::BREWING_STAND
+            || b == Block::SMITHING_TABLE
+            || ((904..=948).contains(&b.0) || crate::world::composter::level(b).is_some()))
             && Profession::of(b).is_some()
 }
 
@@ -233,6 +236,16 @@ pub struct Villager {
     pub fleeing: bool,
     pub(crate) growth: f32,
     pub(crate) active: bool,
+    /// Host-only discount retained for compatibility with old saves.
+    pub reputation: i16,
+    pub(super) last_slept: Option<i64>,
+    pub(super) golem_seen: f32,
+    pub(super) food: [Option<Stack>; 8],
+    pub(super) food_level: u8,
+    pub(super) courtship: u16,
+    pub(crate) bell_hide: f32,
+    pub wandering: bool,
+    pub(super) gossip: super::villager_gossip::Gossip,
     seed: u64,
     restock_day: i64,
     restocks: u8,
@@ -255,20 +268,46 @@ impl Villager {
             seed,
             growth: 0.0,
             active: true,
+            reputation: 0,
+            last_slept: None,
+            golem_seen: 0.0,
+            food: [None; 8],
+            food_level: 0,
+            courtship: 0,
+            bell_hide: 0.0,
+            wandering: false,
+            gossip: Default::default(),
             restock_day: -1,
             restocks: 0,
             last_restock: 0,
         }
     }
     pub fn observation(&self) -> Value {
+        self.observation_for(super::PlayerId::HOST)
+    }
+    pub fn observation_for(&self, owner: super::PlayerId) -> Value {
         json!({"id":self.id,"profession":self.profession.name(),"level":self.level,"rank":self.level_name(),"xp":self.xp,
             "job":self.job.map(|p|p.to_array()),"home":self.home.map(|p|p.to_array()),
             "offers":self.offers.iter().enumerate().filter_map(|(i,o)|o.map(|o|json!({"offer":i+1,
-                "cost":{"item":o.cost.item.name(),"count":o.price().count},"second":o.second.map(|s|json!({"item":s.item.name(),"count":s.count})),"result":{"item":o.output.item.name(),"count":o.output.count,"stack":stack_to_string(Some(o.output))},
+                "cost":{"item":o.cost.item.name(),"count":self.priced_for(o,owner).count},"second":o.second.map(|s|json!({"item":s.item.name(),"count":s.count})),"result":{"item":o.output.item.name(),"count":o.output.count,"stack":stack_to_string(Some(o.output))},
                 "uses":o.uses,"max_uses":o.max_uses,"stocked":o.stocked(),"villager_xp":o.xp}))).collect::<Vec<_>>()})
     }
     pub fn level_name(&self) -> &'static str {
         ["Novice", "Apprentice", "Journeyman", "Expert", "Master"][(self.level - 1) as usize]
+    }
+    /// `price` after the cure discount: `floor(reputation * multiplier)`, never below one.
+    pub fn priced(&self, offer: Offer) -> Stack {
+        self.priced_for(offer, super::PlayerId::HOST)
+    }
+    pub fn priced_for(&self, offer: Offer, owner: super::PlayerId) -> Stack {
+        if self.wandering {
+            return offer.price();
+        }
+        let base = offer.price();
+        let reputation =
+            self.gossip.reputation(owner) + if owner == super::PlayerId::HOST { self.reputation } else { 0 };
+        let cut = (reputation as f32 * offer.multiplier).floor() as i32;
+        Stack { count: (base.count as i32 - cut).clamp(1, offer.cost.item.max_stack() as i32) as u8, ..base }
     }
     pub fn set_profession(&mut self, p: Profession) {
         if self.profession != p {
@@ -325,12 +364,20 @@ impl Villager {
     }
     /// All costs and the result must fit on a scratch inventory before any state changes.
     pub fn trade(&mut self, index: usize, inv: &mut Inventory) -> Result<u32, &'static str> {
+        self.trade_for(index, inv, super::PlayerId::HOST)
+    }
+    pub fn trade_for(
+        &mut self,
+        index: usize,
+        inv: &mut Inventory,
+        owner: super::PlayerId,
+    ) -> Result<u32, &'static str> {
         let offer = self.offers.get(index).copied().flatten().ok_or("no such offer")?;
         if !offer.stocked() {
             return Err("offer out of stock");
         }
         let mut slots = inv.slots;
-        for cost in [Some(offer.price()), offer.second].into_iter().flatten() {
+        for cost in [Some(self.priced_for(offer, owner)), offer.second].into_iter().flatten() {
             let mut left = cost.count;
             for s in &mut slots {
                 if let Some(stack) = s
@@ -367,6 +414,10 @@ impl Villager {
         }
         inv.slots = slots;
         self.offers[index].as_mut().unwrap().uses += 1;
+        if self.wandering {
+            return Ok(3 + (hash(self.seed ^ self.offers[index].unwrap().uses as u64) % 4) as u32);
+        }
+        self.gossip.add(owner, 4, 2);
         self.xp = self.xp.saturating_add(offer.xp);
         let promoted = self.level < 5 && self.xp >= [0, 10, 70, 150, 250][self.level as usize];
         if promoted {
@@ -384,19 +435,34 @@ impl Entities {
     }
     pub fn merchant_in_reach(&self, id: u64, eye: DVec3) -> bool {
         self.merchant(id).is_some_and(|m| {
-            eye.distance(m.pos + DVec3::Y) < 6.0 && m.age >= 0 && !m.villager.as_ref().unwrap().sleeping
+            matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader)
+                && eye.distance(m.pos + DVec3::Y) < 6.0
+                && m.age >= 0
+                && !m.villager.as_ref().unwrap().sleeping
         })
     }
     pub fn trade(&mut self, id: u64, index: usize, inv: &mut Inventory) -> Result<u32, &'static str> {
+        self.trade_for(id, index, inv, super::PlayerId::HOST)
+    }
+    pub fn trade_for(
+        &mut self,
+        id: u64,
+        index: usize,
+        inv: &mut Inventory,
+        owner: super::PlayerId,
+    ) -> Result<u32, &'static str> {
         let m = self
             .mobs
             .iter_mut()
             .find(|m| m.alive() && m.villager.as_ref().is_some_and(|v| v.id == id))
             .ok_or("villager gone")?;
-        if m.age < 0 || m.villager.as_ref().unwrap().sleeping {
+        if !matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader)
+            || m.age < 0
+            || m.villager.as_ref().unwrap().sleeping
+        {
             return Err("villager cannot trade now");
         }
-        m.villager.as_mut().unwrap().trade(index, inv)
+        m.villager.as_mut().unwrap().trade_for(index, inv, owner)
     }
     pub fn target_merchant(&self, world: &crate::world::World, eye: DVec3, dir: DVec3, reach: f64) -> Option<u64> {
         let (i, t) = self.raycast(eye, dir, reach)?;
@@ -413,7 +479,7 @@ impl Entities {
         }
         let m = &self.mobs[i];
         let v = m.villager.as_ref()?;
-        (m.age >= 0 && !v.sleeping).then_some(v.id)
+        (matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader) && m.age >= 0 && !v.sleeping).then_some(v.id)
     }
     pub(super) fn village_upkeep<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W) {
         self.village_timer -= dt;
@@ -431,19 +497,43 @@ impl Entities {
                 }
             }
         });
+        self.mob_index.rebuild(&self.mobs);
+        self.claimed_beds.clear();
+        self.claimed_jobs.clear();
+        for m in &self.mobs {
+            if m.alive()
+                && m.kind == MobKind::Villager
+                && let Some(v) = &m.villager
+            {
+                if let Some(p) = v.home {
+                    self.claimed_beds.insert(p);
+                }
+                if let Some(p) = v.job {
+                    self.claimed_jobs.insert(p);
+                }
+            }
+        }
         let tick = (self.village_time.rem_euclid(1.0) * 24000.0) as u32;
         for i in 0..self.mobs.len() {
-            let (before, rest) = self.mobs.split_at_mut(i);
-            let (m, after) = rest.split_first_mut().unwrap();
+            let threat = self
+                .mob_index
+                .nearest(&self.mobs, self.mobs[i].pos, 8.0, |o| o.kind.is_zombie())
+                .map(|j| self.mobs[j].pos);
+            let m = &mut self.mobs[i];
             if !m.alive() || !world.loaded(m.pos.floor().as_ivec3()) {
                 continue;
             }
             let Some(v) = &mut m.villager else { continue };
-            let others = || before.iter().chain(after.iter()).filter(|o| o.alive()).filter_map(|o| o.villager.as_ref());
+            v.gossip.decay(self.village_day);
+            if m.kind != MobKind::Villager {
+                continue;
+            }
+
             if let Some(p) = v.job
                 && world.loaded(p)
                 && world.block(p).and_then(Profession::of) != Some(v.profession)
             {
+                self.claimed_jobs.remove(&p);
                 v.job = None;
                 if v.xp == 0 {
                     v.set_profession(Profession::None)
@@ -453,6 +543,7 @@ impl Entities {
                 && world.loaded(p)
                 && world.block(p).is_none_or(|b| !b.is_bed_head())
             {
+                self.claimed_beds.remove(&p);
                 v.home = None;
             }
             if v.home.is_none() || v.job.is_none() && m.age >= 0 && v.profession != Profession::Nitwit {
@@ -465,7 +556,7 @@ impl Entities {
                     let prof = Profession::of(b);
                     if b.is_bed_head()
                         && (dist < hd || dist == hd && home.is_some_and(|h: IVec3| p.to_array() < h.to_array()))
-                        && !others().any(|o| o.home == Some(p))
+                        && !self.claimed_beds.contains(&p)
                     {
                         hd = dist;
                         home = Some(p);
@@ -473,7 +564,7 @@ impl Entities {
                         && (v.xp == 0 || prof == Some(v.profession))
                         && (dist < jd
                             || dist == jd && job.is_some_and(|j: (IVec3, Profession)| p.to_array() < j.0.to_array()))
-                        && !others().any(|o| o.job == Some(p))
+                        && !self.claimed_jobs.contains(&p)
                     {
                         jd = dist;
                         job = Some((p, prof.unwrap()));
@@ -481,6 +572,9 @@ impl Entities {
                 });
                 if v.home.is_none() {
                     v.home = home;
+                    if let Some(p) = home {
+                        self.claimed_beds.insert(p);
+                    }
                 }
                 if v.job.is_none()
                     && m.age >= 0
@@ -488,20 +582,17 @@ impl Entities {
                     && let Some((p, prof)) = job
                 {
                     v.job = Some(p);
+                    self.claimed_jobs.insert(p);
                     v.set_profession(prof);
                 }
             }
-            let threat = before
-                .iter()
-                .chain(after.iter())
-                .filter(|o| o.alive() && o.kind.is_zombie() && o.pos.distance_squared(m.pos) < 64.0)
-                .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)))
-                .map(|z| z.pos);
             v.fleeing = threat.is_some();
             v.sleeping = false;
             v.goal = if let Some(z) = threat {
                 let d = (m.pos - z) * DVec3::new(1.0, 0.0, 1.0);
                 Some(m.pos + d.normalize_or_zero() * 10.0)
+            } else if v.bell_hide > 0.0 {
+                v.home.map(|p| p.as_dvec3() + DVec3::new(0.5, 0.6, 0.5))
             } else if v.trading {
                 None
             } else if tick >= 12000 {
@@ -513,10 +604,14 @@ impl Entities {
             };
             if tick >= 12000
                 && !v.fleeing
+                && v.bell_hide <= 0.0
                 && !v.trading
                 && let Some(p) = v.home
             {
                 v.sleeping = m.pos.distance_squared(p.as_dvec3() + DVec3::new(0.5, 0.6, 0.5)) < 2.25;
+            }
+            if v.sleeping {
+                v.last_slept = Some(self.village_day * 24000 + tick as i64);
             }
             v.restock(
                 self.village_day,
@@ -524,24 +619,36 @@ impl Entities {
                 !v.fleeing && !v.sleeping && v.job.is_some_and(|p| m.pos.distance_squared(p.as_dvec3() + 0.5) < 4.0),
             );
         }
+        self.breed_villagers(world);
+        self.life_tick(world);
     }
     pub fn villagers_to_string(&self) -> String {
         let mobs: Vec<Value> = self
             .mobs
             .iter()
             .filter(|m| m.alive())
-            .filter_map(|m| {
-                let v = m.villager.as_ref()?;
-                Some(json!({"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,"health":m.health,"age":m.age,
-                "profession":v.profession as u8,"level":v.level,"xp":v.xp,"job":v.job.map(|p|p.to_array()),
-                "home":v.home.map(|p|p.to_array()),"offers":v.offers.map(|o|o.map(Offer::save)),
-                "day":v.restock_day,"restocks":v.restocks,"last":v.last_restock}))
+            .filter_map(|m| match m.kind {
+                MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => Some(json!({
+                    "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
+                    "health": m.health, "built": m.built, "anger": m.player_hit_left, "anger_player":m.angry_player.map(|p|p.0), "trader": m.trader.as_ref().map(|t|t.save()),
+                })),
+                MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
+                    let v = m.villager.as_ref()?;
+                    Some(json!({"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
+                    "health":m.health,"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
+                    "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
+                    "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
+                    "last":v.last_restock,"slept":v.last_slept,"golem_seen":v.golem_seen,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_tick":m.convert_tick,"convert_by":m.convert_by.map(|p|p.0)}))
+                }
+                _ => None,
             })
             .collect();
-        json!({"next":self.next_villager_id,"mobs":mobs,"births":self.villager_births.iter().map(|p|p.to_array()).collect::<Vec<_>>()}).to_string()
+        json!({"trader_spawner":[self.trader_spawner.delay,self.trader_spawner.chance],"next":self.next_villager_id,"mobs":mobs,"births":self.villager_births.iter().map(|p|p.to_array()).collect::<Vec<_>>()}).to_string()
     }
     pub fn load_villagers(&mut self, text: &str) {
         let Ok(root) = serde_json::from_str::<Value>(text) else { return };
+        self.trader_spawner.delay = root["trader_spawner"][0].as_f64().unwrap_or(1200.0).clamp(0.0, 1200.0) as f32;
+        self.trader_spawner.chance = root["trader_spawner"][1].as_u64().unwrap_or(25).clamp(25, 75) as u8;
         self.next_villager_id = self.next_villager_id.max(root["next"].as_u64().unwrap_or(1));
         fn pos(v: &Value) -> Option<IVec3> {
             let a = v.as_array()?;
@@ -564,8 +671,16 @@ impl Entities {
         let Some(mobs) = root["mobs"].as_array() else { return };
         for a in mobs {
             let load = || -> Option<Mob> {
-                let id = a["id"].as_u64()?;
-                if id == 0 || self.merchant(id).is_some() {
+                let kind = MobKind::from_name(a["kind"].as_str().unwrap_or("villager"))?;
+                if !matches!(
+                    kind,
+                    MobKind::Villager
+                        | MobKind::ZombieVillager
+                        | MobKind::IronGolem
+                        | MobKind::SnowGolem
+                        | MobKind::WanderingTrader
+                        | MobKind::TraderLlama
+                ) {
                     return None;
                 }
                 let p = a["p"].as_array()?;
@@ -581,7 +696,27 @@ impl Entities {
                 if !yaw.is_finite() || !health.is_finite() || health <= 0.0 {
                     return None;
                 }
+                if matches!(kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama) {
+                    if self.mobs.iter().any(|m| m.kind == kind && m.pos.distance_squared(p) < 0.01) {
+                        return None;
+                    }
+                    let mut m = Mob::new(kind, p, yaw);
+                    if kind == MobKind::TraderLlama {
+                        m.trader = Some(Box::new(super::wandering_trader::Trader::load(&a["trader"], p)?));
+                    }
+                    m.health = health.min(kind.max_health());
+                    m.built = a["built"].as_bool().unwrap_or(false);
+                    m.angry_player =
+                        a["anger_player"].as_u64().and_then(|p| u32::try_from(p).ok()).map(super::PlayerId);
+                    m.player_hit_left = a["anger"].as_f64().unwrap_or(0.0).clamp(0.0, 60.0) as f32;
+                    return Some(m);
+                }
+                let id = a["id"].as_u64()?;
+                if id == 0 || self.merchant(id).is_some() {
+                    return None;
+                }
                 let mut v = Villager::new(id, a["seed"].as_u64()?);
+                v.wandering = kind == MobKind::WanderingTrader;
                 v.profession = *Profession::ALL.get(a["profession"].as_u64()? as usize)?;
                 v.level = u8::try_from(a["level"].as_u64()?).ok()?;
                 if !(1..=5).contains(&v.level) {
@@ -598,14 +733,49 @@ impl Entities {
                 v.restock_day = a["day"].as_i64()?;
                 v.restocks = (a["restocks"].as_u64()?.min(2)) as u8;
                 v.last_restock = a["last"].as_u64()?.min(23999) as u32;
-                let mut m = Mob::new(MobKind::Villager, p, yaw);
-                m.health = health.min(20.0);
-                m.age = i32::try_from(a["age"].as_i64()?).ok()?.clamp(-24000, 0);
+                if let Some(food) = a["food"].as_array() {
+                    for (slot, s) in v.food.iter_mut().zip(food) {
+                        *slot = s
+                            .as_str()
+                            .and_then(|s| stack_from_str(s).flatten())
+                            .filter(|s| super::villager_breeding::food_points(s.item) > 0);
+                    }
+                }
+                v.food_level = a["food_level"].as_u64().unwrap_or(0).min(15) as u8;
+                v.bell_hide = a["bell_hide"].as_f64().unwrap_or(0.0).clamp(0.0, 15.0) as f32;
+                v.last_slept = a["slept"].as_i64();
+                v.golem_seen = a["golem_seen"].as_f64().unwrap_or(0.0).clamp(0.0, 30.0) as f32;
+                v.gossip = super::villager_gossip::Gossip::load(&a["gossip"]);
+                v.reputation = i16::try_from(a["reputation"].as_i64().unwrap_or(0)).unwrap_or(0);
+                let mut m = Mob::new(kind, p, yaw);
+                m.health = health.min(kind.max_health());
+                m.age = i32::try_from(a["age"].as_i64()?).ok()?.clamp(-24000, 6000);
+                m.baby = m.age < 0;
+                m.built = a["built"].as_bool().unwrap_or(false);
+                m.weakness_left = a["weakness"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0) as f32;
+                m.convert_left = a["convert"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0) as f32;
+                m.convert_tick = a["convert_tick"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0) as f32;
+                m.convert_by = a["convert_by"]
+                    .as_u64()
+                    .and_then(|p| u32::try_from(p).ok())
+                    .map(super::PlayerId)
+                    .or_else(|| (m.convert_left > 0.0).then_some(super::PlayerId::HOST));
+                if let Some(armor) = a["armor"].as_array() {
+                    for (slot, value) in m.armor.iter_mut().zip(armor) {
+                        *slot = value.as_u64().and_then(|i| super::armor::ArmorKind::ALL.get(i as usize).copied());
+                    }
+                }
+                m.armor_glint = a["glint"].as_u64().unwrap_or(0).min(15) as u8;
+                if kind == MobKind::WanderingTrader {
+                    m.trader = Some(Box::new(super::wandering_trader::Trader::load(&a["trader"], p)?));
+                }
                 m.villager = Some(Box::new(v));
                 Some(m)
             };
             if let Some(m) = load() {
-                self.next_villager_id = self.next_villager_id.max(m.villager.as_ref().unwrap().id.saturating_add(1));
+                if let Some(v) = m.villager.as_ref() {
+                    self.next_villager_id = self.next_villager_id.max(v.id.saturating_add(1));
+                }
                 self.mobs.push(m);
             }
         }
@@ -723,6 +893,8 @@ mod tests {
         assert!(!v.restock(0, 2000, false));
         assert!(v.restock(0, 2000, true));
         assert_eq!(v.offers[0].unwrap().price().count, 36);
+        v.reputation = 100;
+        assert_eq!(v.priced(v.offers[0].unwrap()).count, 31);
         v.offers[0].as_mut().unwrap().uses = 16;
         assert!(!v.restock(0, 3000, true));
         assert!(v.restock(0, 4400, true));
@@ -859,5 +1031,176 @@ mod tests {
         let enchanted = TradeDef::gear("diamond pickaxe", 13, 3, 30, 0.2).offer(4).unwrap();
         assert!(!enchanted.output.enchants.is_empty());
         assert!((18..=32).contains(&enchanted.cost.count));
+    }
+    #[test]
+    fn round_two_mobs_save_conversion_age_and_golem_health() {
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Villager, DVec3::ZERO);
+        e.mobs[0].kind = MobKind::ZombieVillager;
+        e.mobs[0].age = -12345;
+        e.mobs[0].baby = true;
+        e.mobs[0].built = true;
+        e.mobs[0].convert_left = 202.5;
+        e.mobs[0].villager.as_mut().unwrap().set_profession(Profession::Farmer);
+        e.spawn(MobKind::IronGolem, DVec3::X * 2.0);
+        e.mobs[1].built = true;
+        e.mobs[1].health = 42.0;
+        let mut restored = Entities::new(5);
+        restored.load_villagers(&e.villagers_to_string());
+        assert_eq!(restored.mobs[0].kind, MobKind::ZombieVillager);
+        assert_eq!(restored.mobs[0].age, -12345);
+        assert!(restored.mobs[0].baby && restored.mobs[0].built);
+        assert_eq!(restored.mobs[0].convert_left, 202.5);
+        assert_eq!(restored.mobs[0].villager.as_ref().unwrap().offers, e.mobs[0].villager.as_ref().unwrap().offers);
+        assert_eq!(restored.mobs[1].health, 42.0);
+        assert!(restored.mobs[1].built);
+        let mut w = grid();
+        w.loaded = false;
+        restored.update(
+            1.0,
+            &w,
+            &Ctx {
+                players: vec![Target::new(PlayerId::HOST, DVec3::ZERO, false)],
+                daylight: 1.0,
+                spawning: false,
+                raining: false,
+                dimension: crate::world::terrain::Dimension::Overworld,
+            },
+        );
+        assert_eq!(restored.mobs.len(), 2);
+        assert_eq!(restored.mobs[0].convert_left, 202.5);
+    }
+    #[test]
+    fn breeding_consumes_twelve_food_points_claims_bed_and_saves() {
+        let mut w = grid();
+        for x in 0..3 {
+            w.blocks.insert(IVec3::new(x * 3, 0, 0), Block::BED_HEAD);
+        }
+        let mut e = Entities::new(11);
+        e.spawn(MobKind::Villager, DVec3::ZERO);
+        e.spawn(MobKind::Villager, DVec3::X);
+        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::BREAD, 3));
+        e.mobs[1].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::BEETROOT, 12));
+        for _ in 0..18 {
+            step(&mut e, &w);
+        }
+        assert_eq!(e.count(MobKind::Villager), 3);
+        assert_eq!(e.mobs[0].age, 6000);
+        assert_eq!(e.mobs[1].age, 6000);
+        assert_eq!(e.mobs[2].age, -24000);
+        assert!(e.mobs[2].baby);
+        assert_eq!(e.mobs[0].villager.as_ref().unwrap().food_points(), 0);
+        let baby_home = e.mobs[2].villager.as_ref().unwrap().home.unwrap();
+        assert!(e.mobs[..2].iter().all(|m| m.villager.as_ref().unwrap().home != Some(baby_home)));
+        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::CARROT, 23));
+        let mut restored = Entities::new(12);
+        restored.load_villagers(&e.villagers_to_string());
+        assert_eq!(restored.mobs[0].age, 6000);
+        assert_eq!(restored.mobs[0].villager.as_ref().unwrap().food_points(), 23);
+        assert_eq!(restored.mobs[2].age, -24000);
+        assert_eq!(restored.mobs[2].villager.as_ref().unwrap().home, Some(baby_home));
+        let mut rng = super::super::Rng::new(1);
+        let mut events = Vec::new();
+        restored.mobs[2].age = -1;
+        restored.mobs[2].update(
+            0.05,
+            &w,
+            &Ctx {
+                players: vec![],
+                daylight: 1.0,
+                spawning: false,
+                raining: false,
+                dimension: crate::world::terrain::Dimension::Overworld,
+            },
+            &mut rng,
+            &mut events,
+        );
+        assert_eq!(restored.mobs[2].age, 0);
+        assert!(!restored.mobs[2].baby);
+    }
+    #[test]
+    fn villagers_share_excess_and_obey_pickup_gamerule() {
+        let w = grid();
+        let mut e = Entities::new(8);
+        e.spawn(MobKind::Villager, DVec3::ZERO);
+        e.spawn(MobKind::Villager, DVec3::X);
+        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::BREAD, 6));
+        e.breed_villagers(&w);
+        assert_eq!(e.mobs[1].villager.as_ref().unwrap().food_points(), 0, "small stacks are not shared");
+        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::CARROT, 36));
+        e.breed_villagers(&w);
+        assert_eq!(e.mobs[0].villager.as_ref().unwrap().food_points(), 18);
+        assert_eq!(e.mobs[1].villager.as_ref().unwrap().food_points(), 18);
+        e.mobs[0].villager.as_mut().unwrap().food = [None; 8];
+        e.mobs[1].villager.as_mut().unwrap().food = [None; 8];
+        e.drop_from_block(Stack::new(Item::POTATO, 12), IVec3::ZERO);
+        e.items[0].pickup_delay = 0.0;
+        e.villager_griefing = false;
+        e.breed_villagers(&w);
+        assert_eq!(e.items[0].stack.count, 12);
+        e.villager_griefing = true;
+        e.breed_villagers(&w);
+        assert!(e.items.is_empty());
+        assert_eq!(e.mobs.iter().map(|m| m.villager.as_ref().unwrap().food_points()).sum::<u16>(), 12);
+    }
+    #[test]
+    fn breeding_requires_food_free_bed_and_two_blocks_headroom() {
+        for obstruction in [false, true] {
+            let mut w = grid();
+            for x in 0..2 {
+                w.blocks.insert(IVec3::new(x * 3, 0, 0), Block::BED_HEAD);
+            }
+            if obstruction {
+                w.blocks.insert(IVec3::new(6, 0, 0), Block::BED_HEAD);
+                w.blocks.insert(IVec3::new(6, 2, 0), Block::STONE);
+            }
+            let mut e = Entities::new(3);
+            for x in 0..2 {
+                e.spawn(MobKind::Villager, DVec3::X * x as f64);
+                e.mobs[x].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::POTATO, 12));
+            }
+            for _ in 0..18 {
+                step(&mut e, &w);
+            }
+            assert_eq!(e.count(MobKind::Villager), 2);
+        }
+        let mut v = Villager::new(1, 1);
+        v.food[0] = Some(Stack::new(Item::BREAD, 2));
+        v.food[1] = Some(Stack::new(Item::CARROT, 4));
+        assert_eq!(v.food_points(), 12);
+        v.eat_for_breeding();
+        assert_eq!(v.food_points(), 0);
+    }
+    #[test]
+    fn curing_discounts_only_the_curing_player_and_saves_identity() {
+        let mut e = Entities::new(5);
+        let w = grid();
+        let owner = super::super::PlayerId(7);
+        e.spawn(MobKind::ZombieVillager, DVec3::ZERO);
+        *e.mobs[0].villager.as_mut().unwrap().as_mut() = fixed();
+        e.mobs[0].weakness_left = 30.0;
+        assert!(e.try_cure_for(0, owner));
+        let mut restored = Entities::new(8);
+        restored.load_villagers(&e.villagers_to_string());
+        assert_eq!(restored.mobs[0].convert_by, Some(owner));
+        restored.mobs[0].convert_left = 0.05;
+        restored.update(
+            0.05,
+            &w,
+            &Ctx {
+                players: vec![Target::new(owner, DVec3::ZERO, false)],
+                daylight: 1.0,
+                spawning: false,
+                raining: false,
+                dimension: crate::world::terrain::Dimension::Overworld,
+            },
+        );
+        let v = restored.mobs[0].villager.as_ref().unwrap();
+        let o = v.offers[0].unwrap();
+        assert_eq!(v.priced_for(o, owner).count, 14);
+        assert_eq!(v.priced_for(o, super::super::PlayerId::HOST).count, 20);
+        let mut saved = Entities::new(9);
+        saved.load_villagers(&restored.villagers_to_string());
+        assert_eq!(saved.mobs[0].villager.as_ref().unwrap().priced_for(o, owner).count, 14);
     }
 }

@@ -14,6 +14,7 @@ pub fn use_mob(
     creative: bool,
     world: &World,
     entities: &mut Entities,
+    owner: PlayerId,
 ) -> bool {
     let Some(held) = inventory.get(slot) else { return false };
     let eye = player.eye();
@@ -29,6 +30,22 @@ pub fn use_mob(
             } else {
                 inventory.take_one(slot);
             }
+        }
+        return true;
+    }
+    if held.item == Item::IRON_INGOT
+        && entities.mobs[index].kind == crate::entity::MobKind::IronGolem
+        && entities.mobs[index].health < 100.0
+    {
+        entities.mobs[index].health = (entities.mobs[index].health + 25.0).min(100.0);
+        if !creative {
+            inventory.take_one(slot);
+        }
+        return true;
+    }
+    if held.item == Item::GOLDEN_APPLE && entities.try_cure_for(index, owner) {
+        if !creative {
+            inventory.take_one(slot);
         }
         return true;
     }
@@ -125,6 +142,35 @@ pub fn exchange(
     } else if inventory.add(result, 1) != 0 {
         entities.throw(crate::inventory::Stack::new(result, 1), player.eye(), player.forward().as_dvec3());
     }
+}
+
+/// Shared composter action for every player input, including empty-hand collection.
+pub fn use_composter(
+    world: &mut World,
+    entities: &mut Entities,
+    pos: glam::IVec3,
+    inventory: &mut Inventory,
+    slot: usize,
+    creative: bool,
+) -> bool {
+    let Some(level) = world.get_block(pos).and_then(crate::world::composter::level) else {
+        return false;
+    };
+    if level == 8 {
+        if let Some(stack) = world.take_compost(pos) {
+            entities.drop_from_block(stack, pos + glam::IVec3::Y);
+        }
+        return true;
+    }
+    if let Some(held) = inventory.get(slot)
+        && crate::world::composter::chance(held.item) > 0.0
+    {
+        if world.compost(pos, held.item) && !creative {
+            inventory.take_one(slot);
+        }
+        return true;
+    }
+    false
 }
 
 #[cfg(test)]

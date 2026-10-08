@@ -12,10 +12,15 @@ use super::chunk::CHUNK_SIZE_I;
 use super::rails;
 use super::redstone_blocks::{self as r, Component};
 
-fn family(b: Block) -> Option<Block> {
-    r::base(b).or_else(|| rails::family(b)).or_else(|| {
-        (super::gadgets::is_hook(b) || super::gadgets::is_tripwire(b)).then(|| super::gadgets::base(b)).flatten()
-    })
+/// The block a scheduled tick is keyed by: the redstone, rail or gadget
+/// family, or the plain base block (bells, composters).
+fn family(b: Block) -> Block {
+    r::base(b)
+        .or_else(|| rails::family(b))
+        .or_else(|| {
+            (super::gadgets::is_hook(b) || super::gadgets::is_tripwire(b)).then(|| super::gadgets::base(b)).flatten()
+        })
+        .unwrap_or(b.base())
 }
 
 const SIDES: [IVec3; 6] = [IVec3::Y, IVec3::NEG_Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
@@ -59,6 +64,7 @@ impl World {
                 || b.is_rail()
                 || super::gadgets::participates(b)
                 || b == Block::TNT
+                || b.base() == Block::BELL
         }) && self.redstone.queued.insert(p)
         {
             self.redstone.updates.push_back(p);
@@ -102,11 +108,21 @@ impl World {
         let data = slot.data.clone();
         let mut i = 0;
         data.for_each_block(|b| {
-            if r::component(b).is_some() || b.is_door() || b.is_gate() || b.is_rail() || super::gadgets::participates(b)
+            if r::component(b).is_some()
+                || b.is_door()
+                || b.is_gate()
+                || b.is_rail()
+                || super::gadgets::participates(b)
+                || b.base() == Block::BELL
             {
                 let local =
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
                 self.redstone_changed(c * CHUNK_SIZE_I + local);
+            }
+            if super::composter::level(b) == Some(7) {
+                let local =
+                    IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
+                self.schedule_redstone(c * CHUNK_SIZE_I + local, 20, 0);
             }
             i += 1;
         });
@@ -116,7 +132,7 @@ impl World {
         if self.redstone.pending.contains_key(&p) {
             return;
         }
-        let Some(b) = self.get_block(p).and_then(family) else { return };
+        let Some(b) = self.get_block(p).map(family) else { return };
         self.redstone.sequence += 1;
         let sequence = self.redstone.sequence;
         let due = self.redstone.tick + delay;
@@ -321,6 +337,9 @@ impl World {
                 0
             });
         }
+        if let Some(level) = self.get_block(p).and_then(super::composter::level) {
+            return Some(level);
+        }
         fn strength(slots: impl Iterator<Item = Option<crate::inventory::Stack>>, count: usize) -> u8 {
             let mut fullness = 0.0f64;
             let mut nonempty = false;
@@ -362,6 +381,19 @@ impl World {
             return self.connect_hook(p);
         }
         if super::gadgets::is_tripwire(b) {
+            return;
+        }
+        if b.base() == Block::BELL {
+            let powered = self.redstone_power(p) > 0;
+            let was = self.redstone.powered.contains(&p);
+            if powered {
+                self.redstone.powered.insert(p);
+            } else {
+                self.redstone.powered.remove(&p);
+            }
+            if powered && !was {
+                self.ring_bell(p);
+            }
             return;
         }
         let support = match r::component(b) {
@@ -483,6 +515,10 @@ impl World {
         if rails::family(b).is_some() {
             return self.detector_tick(p, b);
         }
+        if super::composter::level(b).is_some() {
+            self.finish_compost(p);
+            return;
+        }
         match r::component(b) {
             Some(
                 Component::Piston { .. }
@@ -587,7 +623,7 @@ impl World {
                 let next = self.redstone.tick + 1;
                 self.redstone.pending.insert(p, (next, family, sequence));
                 self.redstone.scheduled.push(Reverse((next, priority, sequence, xyz, family)));
-            } else if self.get_block(p).and_then(self::family) == Some(Block(family)) {
+            } else if self.get_block(p).map(self::family) == Some(Block(family)) {
                 self.redstone.last_updates += 1;
                 self.redstone_scheduled_tick(p);
                 self.drain_redstone_updates();
@@ -727,6 +763,9 @@ impl World {
             self.cycle_note(p, b);
             return true;
         }
+        if b.base() == Block::BELL {
+            return self.ring_bell(p);
+        }
         let next = match r::component(b) {
             Some(Component::Wire(power)) => {
                 if self.wire_connections(p) == [1; 4] || self.wire_connections(p) == [0; 4] {
@@ -829,7 +868,7 @@ impl World {
                 ("t", &[delay, priority, seq, family])
                     if delay >= 0
                         && seq >= 0
-                        && ((1100..=1599).contains(&family) || matches!(family, 226 | 249))
+                        && ((1100..=1599).contains(&family) || matches!(family, 226 | 249 | 904))
                         && (-3..=0).contains(&priority) =>
                 {
                     let due = tick.saturating_add(delay as u64);

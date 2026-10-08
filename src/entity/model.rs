@@ -5,6 +5,9 @@
 //! +Y up and +Z forward. Each part has a pivot (in model space) that it
 //! rotates around; its cuboids are given relative to that pivot.
 
+#[path = "trader_model.rs"]
+mod trader_model;
+
 use std::f32::consts::{FRAC_PI_2, PI};
 
 use glam::{DVec3, Quat, Vec3};
@@ -177,6 +180,34 @@ const VILLAGER_HEAD: &[Cuboid] = &[
     cube([-3.0, 5.5, 4.0], [3.0, 6.5, 4.1], [62, 43, 28], 0),
 ];
 const VILLAGER_LEG: &[Cuboid] = &[cube([-2.0, -8.0, -2.0], [2.0, 0.0, 2.0], [68, 49, 36], 28)];
+const ZOMBIE_VILLAGER_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [92, 148, 78], 24),
+    cube([-1.0, 1.0, 4.0], [1.0, 5.0, 6.0], [70, 120, 58], 22),
+    cube([-3.0, 4.0, 4.0], [-1.0, 5.0, 4.1], [160, 40, 36], 0),
+    cube([1.0, 4.0, 4.0], [3.0, 5.0, 4.1], [160, 40, 36], 0),
+    cube([-3.0, 5.5, 4.0], [3.0, 6.5, 4.1], [40, 28, 22], 0),
+];
+const IRON_BODY: &[Cuboid] = &[
+    cube([-9.0, 0.0, -6.0], [9.0, 18.0, 6.0], [188, 188, 192], 18),
+    cube([-4.0, 16.0, 6.0], [4.0, 20.0, 8.0], [160, 160, 164], 12),
+];
+const IRON_LEG: &[Cuboid] = &[cube([-3.0, -12.0, -3.0], [3.0, 0.0, 3.0], [168, 168, 172], 16)];
+const IRON_ARM: &[Cuboid] = &[cube([-3.0, -16.0, -3.0], [3.0, 2.0, 3.0], [176, 176, 180], 16)];
+const IRON_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 10.0, 4.0], [200, 200, 204], 14),
+    cube([-1.0, 2.0, 4.0], [1.0, 6.0, 8.0], [150, 150, 154], 10),
+    cube([-2.0, 6.0, 4.0], [-0.5, 7.0, 4.2], [120, 36, 32], 0),
+    cube([0.5, 6.0, 4.0], [2.0, 7.0, 4.2], [120, 36, 32], 0),
+];
+const IRON_CRACK: &[Cuboid] = &[cube([-7.0, 4.0, 6.05], [6.0, 5.0, 6.2], [70, 70, 74], 0)];
+const SNOW_BALL: &[Cuboid] = &[cube([-5.0, -8.0, -5.0], [5.0, 2.0, 5.0], [244, 248, 252], 12)];
+const SNOW_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [226, 140, 28], 20),
+    cube([-1.0, 2.0, 4.0], [1.0, 5.0, 7.0], [90, 50, 16], 8),
+    cube([-2.0, 5.0, 4.0], [-0.6, 6.2, 4.2], [40, 24, 12], 0),
+    cube([0.6, 5.0, 4.0], [2.0, 6.2, 4.2], [40, 24, 12], 0),
+];
+const SNOW_STICK: &[Cuboid] = &[cube([-0.5, -8.0, -0.5], [0.5, 2.0, 0.5], [120, 78, 42], 16)];
 const FARMER_HAT: &[Cuboid] = &[
     cube([-6.0, 7.0, -6.0], [6.0, 8.0, 6.0], [213, 177, 88], 25),
     cube([-4.0, 8.0, -4.0], [4.0, 10.0, 4.0], [199, 159, 72], 25),
@@ -569,20 +600,82 @@ fn pose(m: &Mob, time: f32) -> Parts {
                 part(WITHER_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
-        MobKind::Villager => {
+        MobKind::Villager | MobKind::WanderingTrader => {
             let profession = m.villager.as_ref().map_or(super::villager::Profession::None, |v| v.profession);
             let mut parts = parts![
-                part(VILLAGER_BODY, [0.0; 3], Quat::IDENTITY),
+                part(
+                    if m.kind == MobKind::WanderingTrader { trader_model::BODY } else { VILLAGER_BODY },
+                    [0.0; 3],
+                    Quat::IDENTITY
+                ),
                 part(VILLAGER_LEG, [-2.0, 8.0, 0.0], rx(swing)),
                 part(VILLAGER_LEG, [2.0, 8.0, 0.0], rx(-swing)),
                 part(VILLAGER_HEAD, [0.0, 24.0, 0.0], head),
                 part(&VILLAGER_APRONS[profession as usize], [0.0; 3], Quat::IDENTITY)
             ];
+            if m.kind == MobKind::WanderingTrader {
+                parts.push(part(trader_model::HOOD, [0.0, 24.0, 0.0], head));
+            }
             if profession == super::villager::Profession::Farmer {
                 parts.push(part(FARMER_HAT, [0.0, 24.0, 0.0], head));
             }
             parts
         }
+        MobKind::ZombieVillager => {
+            let profession = m.villager.as_ref().map_or(super::villager::Profession::None, |v| v.profession);
+            let shake = if m.convert_left > 0.0 { (time * 18.0).sin() * 1.5 } else { 0.0 };
+            let mut parts = parts![
+                part(VILLAGER_BODY, [shake, 0.0, 0.0], Quat::IDENTITY),
+                part(VILLAGER_LEG, [-2.0 + shake, 8.0, 0.0], rx(swing)),
+                part(VILLAGER_LEG, [2.0 + shake, 8.0, 0.0], rx(-swing)),
+                part(ZOMBIE_VILLAGER_HEAD, [shake, 24.0, 0.0], head),
+                part(&VILLAGER_APRONS[profession as usize], [shake, 0.0, 0.0], Quat::IDENTITY)
+            ];
+            if profession == super::villager::Profession::Farmer {
+                parts.push(part(FARMER_HAT, [shake, 24.0, 0.0], head));
+            }
+            parts
+        }
+        MobKind::TraderLlama => parts![
+            part(trader_model::LLAMA_BODY, [0.0; 3], Quat::IDENTITY),
+            part(trader_model::LLAMA_HEAD, [0.0, 20.0 * trader_model::LLAMA_Y, 5.0], head),
+            part(trader_model::LLAMA_LEG, [-3.0, 14.0 * trader_model::LLAMA_Y, 5.0], rx(swing)),
+            part(trader_model::LLAMA_LEG, [3.0, 14.0 * trader_model::LLAMA_Y, 5.0], rx(-swing)),
+            part(trader_model::LLAMA_LEG, [-3.0, 14.0 * trader_model::LLAMA_Y, -5.0], rx(-swing)),
+            part(trader_model::LLAMA_LEG, [3.0, 14.0 * trader_model::LLAMA_Y, -5.0], rx(swing))
+        ],
+        MobKind::IronGolem => {
+            // Cracks at Java's 75 / 50 / 25 percent health.
+            let cracks = if m.health > 75.0 {
+                0
+            } else if m.health > 50.0 {
+                1
+            } else if m.health > 25.0 {
+                2
+            } else {
+                3
+            };
+            let mut parts = parts![
+                part(IRON_BODY, [0.0, 12.0, 0.0], Quat::IDENTITY),
+                part(IRON_LEG, [-4.0, 12.0, 0.0], rx(swing)),
+                part(IRON_LEG, [4.0, 12.0, 0.0], rx(-swing)),
+                part(IRON_ARM, [-11.0, 28.0, 0.0], rx(0.4 + swing * 0.3)),
+                part(IRON_ARM, [11.0, 28.0, 0.0], rx(0.4 - swing * 0.3)),
+                part(IRON_HEAD, [0.0, 32.0, 2.0], head),
+            ];
+            for i in 0..cracks {
+                let y = 16.0 - i as f32 * 4.0;
+                parts.push(part(IRON_CRACK, [0.0, y, 0.0], Quat::IDENTITY));
+            }
+            parts
+        }
+        MobKind::SnowGolem => parts![
+            part(SNOW_BALL, [0.0, 8.0, 0.0], Quat::IDENTITY),
+            part(SNOW_BALL, [0.0, 16.0, 0.0], Quat::IDENTITY),
+            part(SNOW_HEAD, [0.0, 22.0, 0.0], head),
+            part(SNOW_STICK, [-6.0, 16.0, 0.0], rx(0.6)),
+            part(SNOW_STICK, [6.0, 16.0, 0.0], rx(0.6)),
+        ],
         MobKind::Witch => parts![
             part(WITCH_BODY, [0.0; 3], Quat::IDENTITY),
             part(WITCH_LEG, [-2.0, 8.0, 0.0], rx(swing)),
@@ -736,6 +829,9 @@ pub fn build(
 ) -> usize {
     let mut drawn = 0;
     for m in mobs {
+        if m.trader.as_ref().is_some_and(|t| t.invisible) {
+            continue;
+        }
         let rel = (m.previous_pos.lerp(m.pos, alpha) - camera).as_vec3();
         let center = rel + Vec3::Y * m.shape().height as f32 * 0.5;
         let radius = 1.5;
@@ -797,7 +893,8 @@ pub fn build(
                 push_cuboid(out, &cuboid, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
             }
         }
-        if m.kind.is_zombie() || m.kind == MobKind::Skeleton {
+        // Zombie villagers use the villager mesh, which is not the six-limb armor rig.
+        if (m.kind.is_zombie() && m.kind != MobKind::ZombieVillager) || m.kind == MobKind::Skeleton {
             let limbs = humanoid_armor(&posed);
             let worn = super::armor::worn_pieces(m.armor, m.armor_glint);
             super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));

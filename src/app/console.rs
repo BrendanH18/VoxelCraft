@@ -289,7 +289,7 @@ impl Game {
                     .target_merchant(&self.world, self.player.eye(), self.player.forward().as_dvec3(), super::REACH)
                     .ok_or("no villager within reach")?;
                 if let Some(i) = index {
-                    let xp = self.mobs.entities.trade(id, i, &mut self.inventory)?;
+                    let xp = self.mobs.entities.trade_for(id, i, &mut self.inventory, self.actor)?;
                     self.mobs.entities.spawn_xp(self.player.pos, xp);
                 } else {
                     self.container = super::Container::Trading(id);

@@ -290,9 +290,14 @@ pub mod tex {
     pub const CAKE_SIDE: u16 = CAKE_TOP + 1;
     pub const CAKE_BOTTOM: u16 = CAKE_SIDE + 1;
     pub const VILLAGE: u16 = CAKE_BOTTOM + 1;
+    /// Faces of carved pumpkins and jack o'lanterns, after the workstation layers.
+    pub const CARVED_PUMPKIN: u16 = VILLAGE + 45;
+    pub const JACK_O_LANTERN: u16 = CARVED_PUMPKIN + 1;
+    pub const COMPOST: u16 = JACK_O_LANTERN + 1;
+    pub const COMPOST_READY: u16 = COMPOST + 1;
     // Redstone reserves layers 1100..=1138, rails 1139..=1150, notes/tripwire/substrates 1151..=1154.
     pub const COUNT: u32 = 1155;
-    const _: () = assert!(VILLAGE as u32 + 45 <= 1100);
+    const _: () = assert!((COMPOST_READY as u32) < 1100);
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -594,6 +599,8 @@ impl Block {
     pub const LOOM: Block = Block(941);
     pub const STONECUTTER: Block = Block(945);
     pub const BELL: Block = Block(949);
+    pub const CARVED_PUMPKIN: Block = Block(953);
+    pub const JACK_O_LANTERN: Block = Block(957);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age as u16 })
@@ -895,7 +902,7 @@ impl Block {
     /// The block items, recipes and rules use for an oriented block (a
     /// furnace or chest facing any way), and the way it faces.
     pub fn oriented(self) -> Option<(Block, Facing)> {
-        if let Some(s) = super::village_blocks::oriented(self.0) {
+        if let Some(s) = super::village_blocks::oriented(self.0).or_else(|| super::pumpkin_blocks::oriented(self.0)) {
             return Some(s);
         }
         if let Some(super::forms::StoneForm::Stairs { index, facing }) = super::forms::stone_form(self.0) {
@@ -945,6 +952,9 @@ impl Block {
         if let Some(b) = super::village_blocks::base(self.0) {
             return b;
         }
+        if let Some((b, _)) = super::pumpkin_blocks::oriented(self.0) {
+            return b;
+        }
         if let Some(b) = super::redstone_blocks::base(self) {
             return b;
         }
@@ -970,7 +980,9 @@ impl Block {
         }
         let i = facing as u16;
         match self.base() {
-            b if super::village_blocks::oriented(b.0).is_some() => Block(b.0 + i),
+            b if super::village_blocks::oriented(b.0).is_some() || super::pumpkin_blocks::oriented(b.0).is_some() => {
+                Block(b.0 + i)
+            }
             // Frames keep their eye.
             Block::END_PORTAL_FRAME => Block(200 + i + if self.0 >= 204 { 4 } else { 0 }),
             // Anvils turn broadside to whoever places them (Java's facing
@@ -1345,7 +1357,7 @@ impl Block {
             Block::BED_FOOT | Block::BED_HEAD => 0.2,
             Block::LADDER => 0.4,
             Block::OAK_DOOR => 3.0,
-            Block::PUMPKIN | Block::MELON => 1.0,
+            Block::PUMPKIN | Block::MELON | Block::CARVED_PUMPKIN | Block::JACK_O_LANTERN => 1.0,
             b if b.terracotta_colour().is_some() => 1.25,
             Block::STONE => 1.5,
             b if b.is_log() || b.is_planks() => 2.0,
@@ -1493,6 +1505,8 @@ impl Block {
             Block::CRAFTING_TABLE
             | Block::CHEST
             | Block::PUMPKIN
+            | Block::CARVED_PUMPKIN
+            | Block::JACK_O_LANTERN
             | Block::MELON
             | Block::LADDER
             | Block::OAK_DOOR
@@ -1619,6 +1633,7 @@ impl Block {
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
             .chain(super::village_blocks::palette_ids())
+            .chain(super::pumpkin_blocks::palette_ids())
             .chain(super::colors::palette_ids())
             .chain(super::redstone_blocks::palette_ids())
             .chain(super::rails::palette_ids())
@@ -2057,7 +2072,11 @@ const fn fronted(front: u16, side: u16, top: u16, facing: Facing) -> [u16; 6] {
 const fn make(id: u16) -> BlockInfo {
     use RenderKind::*;
     let (name, kind, tex) = match id {
-        900..=952 => match super::village_blocks::registry(id) {
+        953..=960 => match super::pumpkin_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
+        900..=952 | 961..=968 => match super::village_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
@@ -2379,6 +2398,7 @@ static EMISSION: [u8; STATE_CAPACITY] = {
             1152 | 1154 | 1156 | 1158 | 1160 => 7,      // lit redstone torches
             1435..=1436 => 9,                           // glowing redstone ores
             1211 => 15,                                 // lit redstone lamp
+            957..=960 => 15,                            // jack o'lanterns
             812 => 3,                                   // magma
             _ => 0,
         };
@@ -2446,6 +2466,7 @@ mod tests {
                 Block::GLOWSTONE => 15,
                 Block::TORCH => 14,
                 Block::LIT_FURNACE | Block::LIT_SMOKER | Block::LIT_BLAST_FURNACE => 13,
+                Block::JACK_O_LANTERN => 15,
                 Block::NETHER_PORTAL => 11,
                 Block::END_PORTAL | Block::END_GATEWAY => 15,
                 // Java: all frame states glow faintly, with or without an eye.

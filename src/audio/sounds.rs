@@ -155,18 +155,20 @@ pub enum Sound {
     DragonGrowl,
     /// The Ender Dragon's long dying roar.
     DragonDeath,
+    Bell,
 }
 
 const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16;
+    pub const COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16 + 1;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
         match self {
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
+            Sound::Bell => Self::COUNT - 1,
             Sound::Break(m) => m as usize,
             Sound::Place(m) => M + m as usize,
             Sound::Step(m) => 2 * M + m as usize,
@@ -235,6 +237,7 @@ impl Sound {
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
             .chain(Instrument::ALL.map(Sound::Note))
+            .chain([Sound::Bell])
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -244,6 +247,7 @@ impl Sound {
             Sound::Break(m) => format!("break_{}", m.name()),
             Sound::Place(m) => format!("place_{}", m.name()),
             Sound::Step(m) => format!("step_{}", m.name()),
+            Sound::Bell => "bell".into(),
             Sound::Land => "land".into(),
             Sound::Splash => "splash".into(),
             Sound::Swim => "swim".into(),
@@ -289,7 +293,8 @@ impl Sound {
             }
             Sound::Mob(_, Call::Death) => 1,
             Sound::Mob(..) => 2,
-            Sound::Click
+            Sound::Bell
+            | Sound::Click
             | Sound::Wind
             | Sound::Cave
             | Sound::Fuse
@@ -328,6 +333,7 @@ impl Sound {
             Sound::Hit => super::voices::hit(&mut rng),
             Sound::Rain => rain(&mut rng),
             Sound::Door(open) => door(&mut rng, open),
+            Sound::Bell => bell(),
             Sound::Orb => orb(),
             Sound::LevelUp => level_up(),
             Sound::Teleport => teleport(&mut rng),
@@ -806,6 +812,14 @@ fn ding(out: &mut [f32], start: usize, freq: f32, amp: f32, tau: f32) {
 }
 
 /// Synthesizes the bright chime played when an experience orb is collected.
+fn bell() -> Vec<f32> {
+    let mut out = vec![0.0; samples(2.5)];
+    for (freq, amp, tau) in [(580.0, 0.22, 0.8), (1160.0, 0.13, 0.6), (1612.0, 0.09, 0.4), (2380.0, 0.06, 0.25)] {
+        add_mode(&mut out, 0, Mode { freq, amp, tau, glide: 0.0, glide_tau: 1.0 });
+    }
+    dsp::finish(out, 0.5)
+}
+
 fn orb() -> Vec<f32> {
     // Java's pickup is a short bright ding; playback varies the pitch.
     let mut out = vec![0.0; samples(0.7)];

@@ -83,6 +83,9 @@ const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
+    if layer == tex::COMPOST || layer == tex::COMPOST_READY {
+        return noisy(layer, x, y, if layer == tex::COMPOST_READY { [139, 119, 90] } else { [99, 72, 42] }, 0.22);
+    }
     if (tex::VILLAGE..tex::VILLAGE + 45).contains(&layer) {
         return village_pixel(layer, x, y);
     }
@@ -471,6 +474,22 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let c = if crack { [230, 240, 255] } else { [150, 186, 246] };
             let s = shade(c, 0.95 + r * 0.08);
             [s[0], s[1], s[2], if crack { 220 } else { 160 }]
+        }
+        tex::CARVED_PUMPKIN | tex::JACK_O_LANTERN => {
+            // The ribbed skin with triangular eyes and a jagged grin cut out of it.
+            let (fx, fy) = (x as i32, y as i32);
+            let eye = |cx: i32| (4..7).contains(&fy) && (fx - cx).abs() <= fy - 3 && (fx - cx).abs() <= 2;
+            let mouth = (9..13).contains(&fy) && (3..13).contains(&fx) && ((fx + fy) % 4 != 0 || fy == 10 || fy == 11);
+            if eye(4) || eye(11) || mouth {
+                if layer == tex::JACK_O_LANTERN {
+                    shade([255, 214, 90], 0.92 + r * 0.12)
+                } else {
+                    shade([64, 38, 14], 0.85 + r * 0.2)
+                }
+            } else {
+                let rib = x.is_multiple_of(4);
+                shade(if rib { [190, 110, 20] } else { [226, 140, 28] }, 0.92 + r * 0.12)
+            }
         }
         tex::PUMPKIN_SIDE | tex::MELON_SIDE => {
             // Vertical ribs (pumpkin) or stripes (melon).

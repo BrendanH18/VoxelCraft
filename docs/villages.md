@@ -1,6 +1,6 @@
 # Villages and villagers
 
-Village content uses append-only block states 900–952. All workstation
+Village content uses append-only block states 900–968. All workstation
 blocks have original procedural textures. Barrels use the saved 27-slot
 chest inventory, shared by host, controller players and CLI agents.
 Smokers cook food and blast furnaces smelt ores/raw metals/ancient debris
@@ -20,9 +20,9 @@ Craftable: job sites, hay bales and fast furnaces. Bells are village loot /
 creative only, as in Java. A shovel makes dirt paths; paths are 15/16 high
 and drop dirt. Hay bales support three placement axes.
 
-Current simplifications: composter processing, lectern books, loom banners,
-cartography maps, stonecutter UI, wall/ceiling grindstones, vertical barrel
-facings, bell ringing and hay-bale fall cushioning are not implemented.
+Current simplifications: lectern books, loom banners, cartography maps,
+stonecutter UI, wall/ceiling grindstones, vertical barrel facings and
+hay-bale fall cushioning are not implemented.
 Blast-furnace equipment recycling is not yet implemented.
 
 ## Java references
@@ -126,9 +126,9 @@ restock interval is a fixed day-time interval. Item families absent from the
 engine are filtered from trade pools, so some tiers offer fewer than two trades
 (or none): fish/buckets, campfires, maps, banners, item frames, suspicious stew,
 glazed terracotta, tipped arrows, and unavailable foods/stone variants. The
-leatherworker has no cauldron job site yet. Villager breeding/food inventories,
-gossip, reputation/curing discounts, raids, zombie attacks on villagers, iron
-golems, zombie villagers/curing and wandering traders remain gaps. Profession
+leatherworker has no cauldron job site yet. Raids and farmer harvesting remain
+gaps; round 2 implements breeding, gossip, reputation, golems, zombie
+villagers and wandering traders below. Profession
 aprons share an original base model across biomes; level badges are in the UI.
 
 Additional Java references:
@@ -136,3 +136,126 @@ Additional Java references:
 - [Villager schedules](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/schedule/Schedule.java)
 - [POI acquisition](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/ai/behavior/AcquirePoi.java)
 - [Merchant stock and demand](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/trading/MerchantOffer.java)
+
+## Round 2 review: golems and zombie villagers
+
+Player builds require a carved pumpkin or jack o'lantern placed last, two
+snow blocks or the four-block iron T, including the iron pattern's empty
+corners. Golems persist across unloading/saves. Iron golems have 100 health,
+random 7.5–21.5 monster damage, player difficulty scaling, upward knockback,
+crack stages and 25-health ingot repairs. Player-built golems never attack
+players; other golems retaliate. They target nearby hostiles except creepers.
+Creepers do not flee golems in Java. Snow golems throw snowballs that leave
+their source correctly and do not award player-kill loot/XP; they suffer water
+and desert damage. Snow-layer trails await a snow-layer block implementation.
+
+Village summoning requires recent sleep, three eligible villagers panicking
+or five on a gossip check, no nearby golem, and a supported unobstructed spawn
+position. Each resident remembers detecting a golem for 30 seconds; the
+memory survives saves and distant villages summon independently. Remaining
+simplifications: spherical sensors and minute gossip checks rather than the complete Java
+brain memory/sensor scheduling. Snow golems' heat damage currently uses the
+desert biome rather than the complete biome temperature system.
+
+Zombies/husks/drowned attack villagers. Fatal attacks infect on Normal (50%)
+and Hard (100%); Easy/Peaceful never infect. Natural zombies everywhere have
+a 5% zombie-villager roll. Weakness plus a regular golden apple starts a
+3600–6000-tick cure, removes Weakness and keeps the zombie persistent. Trades,
+profession, XP, age, armor, weakness/conversion timers and golem health/build
+state survive saves. Baby zombies remain babies until curing, then grow as
+villagers. Conversion grants Strength I, and the Java one-percent special-block scan
+accelerates curing with up to fourteen nearby beds/iron bars. Fractional ticks
+survive saves. Natural armor is discarded at completion; picked-up equipment
+and binding-curse handling await support for equipped item stacks. Cures
+grant per-player gossip discounts, described below. Summoning and combat use reused spatial buckets rather
+than per-mob full entity scans; collision broad phase shares that index.
+
+## Breeding
+
+Residents pick up dropped bread, carrots, potatoes and beetroot into eight
+persistent slots. Bread is worth four food points, the vegetables one; both
+parents need twelve. Awake, safe adults approach each other and court for
+275–324 ticks with hearts. A free bed within 48 blocks and two empty blocks
+above its head is required. Parents consume twelve points, receive a 6000-tick
+cooldown on success, and the child claims the bed at age -24000. Babies grow
+in loaded simulation time; food and parent cooldowns survive saves. Failed
+bed checks produce angry particles. Beetroot is available as a food item;
+beetroot crops and farmer harvesting are not implemented yet. Food pickup
+obeys mobGriefing. Residents share excess stacks using Java's above-32 half
+stack / above-24 excess rule, directly into a nearby hungry resident's
+inventory instead of throwing an item entity.
+Navigation uses the existing resident obstacle sidesteps; a complete Java
+path-reachability test for beds is still absent.
+
+## Composters
+
+Composters have saved block levels 0–8 (filled states 961–968). Eligible
+items use Java's 30/50/65/85/100 percent chances; the first level always
+succeeds. One input is consumed even on a failed roll. Level 7 waits twenty
+ticks before becoming ready (8), then use releases one bone meal and resets
+it. Readiness ticks survive saves and unloaded chunks wait to process them.
+The hollow collision/render shape fills with compost, with original compost
+and ready textures in the village band. Comparators read the level directly.
+Top hoppers insert compostables; bottom hoppers extract ready bone meal;
+side insertion/extraction fails. All filled states remain farmer job sites.
+Desktop, controller and CLI players share the composter action. Recipes and
+workstation acquisition retain their existing Java behavior.
+
+## Bells
+
+Use rings a bell, as does a rising redstone edge; held power does not repeat.
+An original metallic chime plays, and villagers within 32 blocks interrupt
+work/trading and walk to their claimed beds to hide for fifteen seconds.
+Hiding time survives saves. Bells are meeting POIs for trader spawning.
+Raid detection/glow is deferred with raids, and the fixed bell geometry does
+not yet swing. The existing floor-mounted model/orientation is retained.
+
+## Wandering traders
+
+Overworld traders attempt every 24000 ticks with a 25/50/75 percent roll
+and a further one-in-ten roll (2.5/5/7.5 percent effective chance), resetting
+on success. Attempts choose a player and prefer a bell within 48 blocks;
+ten candidate ground locations within 48 blocks need clear spawn space.
+Two trader llamas attempt nearby spawns, follow their merchant through a
+reused ID index, and share its despawn lifetime. Trader event spawning is
+independent of difficulty, gated by doMobSpawning and doTraderSpawning.
+
+Traders offer five distinct common and one rare supported Java 1.21 offer,
+with exact quantities/prices/stock caps, no leveling or restocking, through
+the shared merchant UI/controller/CLI transaction. They disappear after
+48000 loaded ticks (paused while trading), drink for 32 ticks to become
+invisible at night, and drink milk to reappear by day. Offers, remaining
+lifetime, destination, potion state, llama links and attempt progression
+survive saves. Models and robes are original procedural geometry.
+
+Remaining simplifications: trade pools filter absent items, shared resident
+navigation, llama following without physical/rendered leads, no llama
+spitting/taming/riding, and no held potion/milk model or drinking sound.
+Biome exclusions await the unsupported void/deep-dark biome tags. A trader
+can remain frozen in a loaded chunk beyond the common 128-block activation
+radius, as other persistent village entities currently do.
+
+## Reputation
+
+Gossip is stored per player with Java's five weighted types and caps. Curing
+records the initiating player, grants major-positive 20 and minor-positive 25
+(125 initial reputation, 100 after the temporary bonus decays), and repeat
+cures do not stack. Successful trades add trading gossip; melee harm and
+nearby witnessed kills add negative gossip. Daily decay and nearby minute
+sharing preserve type-specific rules, including non-transferable permanent
+cure gossip. Host, controller and CLI prices/payments use the same player's
+reputation, and gossip/cure identity survive saves. Older single-number
+reputation migrates as a host-only legacy discount. Sharing currently visits
+the closest resident and transfers all eligible entries rather than Java's
+weighted selection of ten. Golem reputation-based hostility and gossip from
+projectile/magic damage are still absent.
+
+Round 2 Java references:
+- [Breeding behavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java)
+- [Food sharing](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java)
+- [Zombie conversion](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/ZombieVillager.java)
+- [Trader event spawner](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/npc/WanderingTraderSpawner.java)
+- [Trader potion and despawn behavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/npc/WanderingTrader.java)
+- [Trader llama lifetime](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/animal/horse/TraderLlama.java)
+- [Composter probabilities and hopper containers](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ComposterBlock.java)
+- [Bell behavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/entity/BellBlockEntity.java)

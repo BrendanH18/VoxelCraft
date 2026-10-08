@@ -115,7 +115,7 @@ const fn integer(name: &'static str, default: i32, min: i32, max: i32) -> RuleDe
 }
 
 /// Rules the current engine can enforce, with Java names and defaults.
-pub const GAME_RULES: [RuleDef; 16] = [
+pub const GAME_RULES: [RuleDef; 17] = [
     boolean("keepInventory", false),
     boolean("doDaylightCycle", true),
     boolean("doWeatherCycle", true),
@@ -132,6 +132,7 @@ pub const GAME_RULES: [RuleDef; 16] = [
     boolean("fireDamage", true),
     boolean("drowningDamage", true),
     integer("playersSleepingPercentage", 100, 0, i32::MAX),
+    boolean("doTraderSpawning", true),
 ];
 
 /// Typed, saved gamerule state. Private storage keeps all mutation going

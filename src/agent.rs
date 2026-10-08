@@ -918,6 +918,7 @@ impl Agent {
                     self.creative,
                     world,
                     entities,
+                    self.id,
                 ) =>
             {
                 self.cooldown = 0.22;
@@ -1002,6 +1003,18 @@ impl Agent {
                 }
                 let (pos, normal) = self.target(world).ok_or("no block within reach")?;
                 if world.use_redstone(pos) {
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    return Ok(());
+                }
+                if crate::survival_items::use_composter(
+                    world,
+                    entities,
+                    pos,
+                    &mut self.inventory,
+                    self.selected,
+                    self.creative,
+                ) {
                     self.cooldown = 0.22;
                     self.swings += 1;
                     return Ok(());
@@ -1100,7 +1113,7 @@ impl Agent {
                     let (i, _) = entities.raycast(eye, dir, distance).ok_or("no mob within reach")?;
                     let sprint = self.movement_input().sprint && (self.creative || self.vitals.hunger.can_sprint());
                     let sweep = (self.player.on_ground && !sprint).then_some(self.player.pos);
-                    entities.melee(i, dir, stack, bonus, false, sweep);
+                    entities.melee_for(i, dir, stack, bonus, false, sweep, self.id);
                 }
                 if !self.creative
                     && let Some(held) = held
@@ -1174,7 +1187,7 @@ impl Agent {
                     .target_merchant(world, self.player.eye(), self.player.forward().as_dvec3(), 6.0)
                     .ok_or("no villager within reach")?;
                 if let Some(i) = index {
-                    let xp = entities.trade(id, i, &mut self.inventory)?;
+                    let xp = entities.trade_for(id, i, &mut self.inventory, self.id)?;
                     entities.spawn_xp(self.player.pos, xp);
                 }
             }

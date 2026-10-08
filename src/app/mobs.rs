@@ -127,7 +127,7 @@ impl Game {
             let held = self.inventory.get(self.actions.selected);
             let bonus = self.vitals.effects.attack_bonus();
             let dir = self.player.forward().as_dvec3();
-            self.mobs.entities.melee(i, dir, held, bonus, critical, sweep);
+            self.mobs.entities.melee_for(i, dir, held, bonus, critical, sweep, self.actor);
             let at = self.mobs.entities.mobs[i].pos + DVec3::Y * 0.5;
             let pitch = if critical { (1.25, 1.4) } else { (0.9, 1.1) };
             self.audio.play(Sound::Hit, Some(at), 0.8, pitch);
@@ -223,6 +223,9 @@ impl Game {
     pub(super) fn update_mobs(&mut self, dt: f64) {
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
+        self.mobs.entities.trader_spawning =
+            self.gamerules.bool("doTraderSpawning") && self.gamerules.bool("doMobSpawning");
+        self.mobs.entities.villager_griefing = self.gamerules.bool("mobGriefing");
         self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
         self.mobs.entities.village_time = self.day_time;
         self.mobs.entities.village_day = self.day_count;
@@ -242,6 +245,7 @@ impl Game {
             self.mobs.entities.prime_tnt(cell, short_fuse);
             self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
+        crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
         self.mobs.attack_cooldown -= dt;
         let mut players = vec![Target {
             alive: !self.vitals.is_dead(),
@@ -377,6 +381,7 @@ impl Game {
                 EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. } => {}
                 EntityEvent::Sound { sound, pos } => {
                     let (sound, gain) = match sound {
+                        MobSound::Bell => (Sound::Bell, 1.0),
                         MobSound::Fuse => (Sound::Fuse, 1.0),
                         MobSound::Bow => (Sound::Bow, 1.0),
                         MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7),
@@ -483,7 +488,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Cow => Voice::Cow,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
-        MobKind::Zombie | MobKind::Husk | MobKind::Drowned => Voice::Zombie,
+        MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,
         MobKind::Skeleton | MobKind::WitherSkeleton => Voice::Skeleton,
         MobKind::Creeper => Voice::Creeper,
         MobKind::Spider | MobKind::CaveSpider => Voice::Spider,
@@ -494,7 +499,10 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Slime | MobKind::MagmaCube => Voice::Slime,
         MobKind::Ghast => Voice::Ghast,
         MobKind::Witch => Voice::Witch,
-        MobKind::Villager => Voice::Villager,
+        MobKind::Villager | MobKind::WanderingTrader => Voice::Villager,
+        MobKind::TraderLlama => Voice::Cow,
+        MobKind::IronGolem => Voice::Cow,
+        MobKind::SnowGolem => Voice::Slime,
     }
 }
 

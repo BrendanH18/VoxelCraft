@@ -550,7 +550,7 @@ impl Game {
                 .entities
                 .merchant(id)
                 .and_then(|m| m.villager.as_ref())
-                .map_or(46.0, |v| 26.0 + v.level as f32 * 20.0);
+                .map_or(46.0, |v| 26.0 + if v.wandering { 60.0 } else { v.level as f32 * 20.0 });
         }
         if self.open_container_count() == 5 {
             return SLOT + 14.0;

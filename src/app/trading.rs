@@ -37,7 +37,7 @@ impl Game {
         if !self.mobs.entities.merchant_in_reach(id, self.player.eye()) {
             return;
         }
-        match self.mobs.entities.trade(id, index, &mut self.inventory) {
+        match self.mobs.entities.trade_for(id, index, &mut self.inventory, self.actor) {
             Ok(xp) => {
                 self.mobs.entities.spawn_xp(self.player.pos, xp);
                 self.audio.ui_click();
@@ -50,7 +50,9 @@ impl Game {
         // Java titles the screen "<Profession> - <Level>".
         let ink = [0.25, 0.25, 0.25, 1.0];
         let mut x = px + 8.0;
-        for part in [v.profession.name(), " - ", v.level_name()] {
+        for part in
+            if v.wandering { ["Wandering Trader", "", ""] } else { [v.profession.name(), " - ", v.level_name()] }
+        {
             ui.text_flat(x, py + 6.0, part, ink);
             x += Ui::text_width(part);
         }
@@ -58,7 +60,7 @@ impl Game {
             let Some(o) = o else { continue };
             let x = px + 8.0 + (i % 2) as f32 * 80.0;
             let y = py + 22.0 + (i / 2) as f32 * 20.0;
-            draw_stack(ui, x, y, o.price(), true, self.dial_of(&self.player));
+            draw_stack(ui, x, y, v.priced_for(*o, self.actor), true, self.dial_of(&self.player));
             if let Some(s) = o.second {
                 draw_stack(ui, x + 20.0, y, s, true, self.dial_of(&self.player));
             }
@@ -68,6 +70,9 @@ impl Game {
                 if o.stocked() { ">" } else { "X" },
                 if o.stocked() { [0.15, 0.4, 0.12, 1.0] } else { [0.7, 0.1, 0.1, 1.0] },
             );
+        }
+        if v.wandering {
+            return;
         }
         let (lo, hi) = match v.level {
             1 => (0, 10),
@@ -82,11 +87,13 @@ impl Game {
     }
     pub(super) fn pad_trade_details(&self, ui: &mut Ui, id: u64, index: usize, x: f32, y: f32) {
         let Some(v) = self.mobs.entities.merchant(id).and_then(|m| m.villager.as_ref()) else { return };
-        ui.text(x, y, v.profession.name(), WHITE);
-        ui.text(x + 100.0, y, v.level_name(), WHITE);
+        ui.text(x, y, if v.wandering { "Wandering Trader" } else { v.profession.name() }, WHITE);
+        if !v.wandering {
+            ui.text(x + 100.0, y, v.level_name(), WHITE);
+        }
         if let Some(o) = v.offers.get(index).copied().flatten() {
             let dial = self.dial_of(&self.player);
-            draw_stack(ui, x, y + 12.0, o.price(), true, dial);
+            draw_stack(ui, x, y + 12.0, v.priced_for(o, self.actor), true, dial);
             ui.text(x + 22.0, y + 16.0, o.cost.item.name(), WHITE);
             let sx = x + 22.0 + Ui::text_width(o.cost.item.name()) + 10.0;
             if let Some(s) = o.second {
@@ -96,7 +103,13 @@ impl Game {
             ui.text(
                 x,
                 y + 36.0,
-                if o.stocked() { "A/X/Y: trade to inventory" } else { "Out of stock - needs to work" },
+                if o.stocked() {
+                    "A/X/Y: trade to inventory"
+                } else if v.wandering {
+                    "Out of stock"
+                } else {
+                    "Out of stock - needs to work"
+                },
                 WHITE,
             );
         }

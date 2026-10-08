@@ -14,11 +14,13 @@
 
 mod automation;
 pub mod bastion;
+pub mod bell;
 pub mod block;
 pub mod brewing;
 pub mod chest;
 pub mod chunk;
 pub mod colors;
+pub mod composter;
 pub mod dungeon;
 pub mod end;
 pub mod end_portal;
@@ -40,6 +42,7 @@ pub mod nether_complexes;
 pub mod noise;
 pub mod ore;
 mod portal;
+pub mod pumpkin_blocks;
 pub mod rails;
 pub mod redstone;
 pub mod redstone_blocks;
@@ -145,6 +148,10 @@ pub struct World {
     pub primed_tnt: Vec<(IVec3, bool)>,
     /// Note blocks that played this tick: position, pitch 0..=24, instrument.
     pub notes: Vec<(IVec3, u8, u8)>,
+    /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
+    pub golem_heads: Vec<IVec3>,
+    compost_sequence: u64,
+    bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -216,6 +223,9 @@ impl World {
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
             notes: Vec::new(),
+            golem_heads: Vec::new(),
+            compost_sequence: 0,
+            bell_rings: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -412,6 +422,12 @@ impl World {
         self.track_brewing_stand(p, old, block);
         self.track_spawner(p, old, block);
         self.track_village_poi(p, block);
+        if composter::level(block) == Some(7) {
+            self.schedule_redstone(p, 20, 0);
+        }
+        if pumpkin_blocks::is_head(block) {
+            self.golem_heads.push(p);
+        }
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }
