@@ -16,10 +16,11 @@ use std::sync::{Arc, Mutex};
 use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
-use super::block::{Block, Wood};
+use super::block::Block;
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
 use super::height;
 use super::noise::{Perlin, hash_f, hash3};
+use super::trees::*;
 
 pub const SEA_LEVEL: i32 = 62;
 /// Caves carved at or below this height fill with lava. Java's aquifer is
@@ -150,6 +151,38 @@ impl Dimension {
     /// a day/night cycle).
     pub fn has_sky(self) -> bool {
         self == Dimension::Overworld
+    }
+
+    /// Lowest block y. Java's Overworld runs from -64; the Nether and the
+    /// End start at 0.
+    pub const fn min_y(self) -> i32 {
+        match self {
+            Dimension::Overworld => super::chunk::WORLD_MIN_Y,
+            Dimension::Nether | Dimension::End => 0,
+        }
+    }
+
+    /// One past the highest block y: 320 in the Overworld, 256 elsewhere.
+    pub const fn max_y(self) -> i32 {
+        match self {
+            Dimension::Overworld => super::chunk::WORLD_MAX_Y,
+            Dimension::Nether | Dimension::End => 256,
+        }
+    }
+
+    /// Chunk rows of a column, bottom to top.
+    pub const fn chunk_rows(self) -> std::ops::Range<i32> {
+        (self.min_y() >> super::chunk::CHUNK_BITS)..(self.max_y() >> super::chunk::CHUNK_BITS)
+    }
+
+    /// How many chunks a column holds.
+    pub const fn column_chunks(self) -> i32 {
+        (self.max_y() - self.min_y()) >> super::chunk::CHUNK_BITS
+    }
+
+    /// Whether block height `y` is inside the world.
+    pub const fn contains_y(self, y: i32) -> bool {
+        y >= self.min_y() && y < self.max_y()
     }
 }
 
@@ -930,204 +963,6 @@ impl Generator {
     }
 }
 
-type Put<'a> = &'a mut dyn FnMut(IVec3, Block);
-
-const DIRS: [IVec3; 4] = [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z];
-
-/// A tree of `wood` grown from a sapling: blocks handed to `put`, leaves
-/// before logs. `v` picks the variant.
-pub fn tree(wood: Wood, ground: IVec3, v: u32, put: Put) {
-    match wood {
-        Wood::Oak => oak(ground, v, put),
-        Wood::Spruce => spruce(ground, v, put),
-        Wood::Birch => birch(ground, v, put),
-        Wood::Jungle => jungle(ground, v, put),
-        Wood::Acacia => acacia(ground, v, put),
-    }
-}
-
-/// The classic round-topped tree: a trunk of `height` with two wide
-/// leaf layers (radius `wide`) under two narrow ones.
-fn round_tree(ground: IVec3, height: i32, wood: Wood, wide: i32, v: u32, put: Put) {
-    let top = ground.y + height;
-    for dy in -2..=1 {
-        let r: i32 = if dy >= 0 { 1 } else { wide };
-        for dz in -r..=r {
-            for dx in -r..=r {
-                // Trim corners randomly for a less boxy canopy.
-                let corner = dx.abs() == r && dz.abs() == r;
-                if corner && (dy == 1 || r > 2 || (v >> ((dx + dz * 3 + dy * 7) & 15)) & 1 == 0) {
-                    continue;
-                }
-                put(IVec3::new(ground.x + dx, top + dy, ground.z + dz), wood.leaves());
-            }
-        }
-    }
-    for y in ground.y + 1..top {
-        put(IVec3::new(ground.x, y, ground.z), wood.log());
-    }
-}
-
-pub fn oak(ground: IVec3, v: u32, put: Put) {
-    round_tree(ground, 4 + (v % 3) as i32, Wood::Oak, 2, v, put);
-}
-
-/// Taller and slimmer than an oak, with white bark.
-fn birch(ground: IVec3, v: u32, put: Put) {
-    round_tree(ground, 5 + (v % 3) as i32, Wood::Birch, 2, v, put);
-}
-
-/// A squat oak with a broad, drooping canopy.
-fn swamp_oak(ground: IVec3, v: u32, put: Put) {
-    round_tree(ground, 5 + (v % 3) as i32, Wood::Oak, 3, v, put);
-}
-
-/// A tall, thin jungle tree (what a single jungle sapling grows into).
-fn jungle(ground: IVec3, v: u32, put: Put) {
-    round_tree(ground, 7 + (v % 5) as i32, Wood::Jungle, 2, v, put);
-}
-
-/// A jungle floor shrub: one log under a mound of oak leaves.
-fn jungle_bush(ground: IVec3, v: u32, put: Put) {
-    for dy in 1..=2i32 {
-        let r = 3 - dy;
-        for dz in -r..=r {
-            for dx in -r..=r {
-                if dx.abs() == r && dz.abs() == r && (v >> ((dx + dz * 5) & 15)) & 1 == 0 {
-                    continue;
-                }
-                put(ground + IVec3::new(dx, dy, dz), Block::LEAVES);
-            }
-        }
-    }
-    put(ground + IVec3::Y, Block::JUNGLE_LOG);
-}
-
-/// A giant jungle tree: a 2x2 trunk up to 28 blocks tall under a wide
-/// dome, with a couple of leafy side branches.
-fn mega_jungle(ground: IVec3, v: u32, put: Put) {
-    let height = 18 + (v % 10) as i32;
-    let top = ground.y + height;
-    let leaves = Wood::Jungle.leaves();
-    for (dy, r) in [(-2, 4.5f32), (-1, 4.2), (0, 3.4), (1, 2.3)] {
-        for dz in -4..=5 {
-            for dx in -4..=5 {
-                let (cx, cz) = (dx as f32 - 0.5, dz as f32 - 0.5);
-                if cx * cx + cz * cz <= r * r {
-                    put(IVec3::new(ground.x + dx, top + dy, ground.z + dz), leaves);
-                }
-            }
-        }
-    }
-    let mut logs = Vec::new();
-    for i in 0..2u32 {
-        let y = top - 6 - i as i32 * 5 - ((v >> (4 + i * 2)) & 3) as i32;
-        let dir = DIRS[((v >> (10 + i * 2)) & 3) as usize];
-        // Start from the trunk block on that side.
-        let start = IVec3::new(ground.x + (dir.x > 0) as i32, y, ground.z + (dir.z > 0) as i32);
-        let end = start + dir * 2 + IVec3::Y;
-        logs.extend([start + dir, start + dir * 2, end]);
-        for dz in -1..=1 {
-            for dx in -1..=1 {
-                for dy in 0..=1 {
-                    if dy == 1 && dx != 0 && dz != 0 {
-                        continue;
-                    }
-                    put(end + IVec3::new(dx, dy, dz), leaves);
-                }
-            }
-        }
-    }
-    for y in ground.y - 1..top {
-        for (dx, dz) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-            put(IVec3::new(ground.x + dx, y, ground.z + dz), Wood::Jungle.log());
-        }
-    }
-    for p in logs {
-        put(p, Wood::Jungle.log());
-    }
-}
-
-/// A savanna acacia: a trunk that leans off to one side and ends in a
-/// flat, umbrella-like canopy, sometimes with a second smaller branch.
-fn acacia(ground: IVec3, v: u32, put: Put) {
-    let (log, leaves) = (Wood::Acacia.log(), Wood::Acacia.leaves());
-    let rise = 2 + (v % 3) as i32;
-    let dir = DIRS[((v >> 3) & 3) as usize];
-    let lean = 1 + ((v >> 5) & 1) as i32;
-    let mut logs = Vec::new();
-    let mut p = ground;
-    for _ in 0..rise {
-        p += IVec3::Y;
-        logs.push(p);
-    }
-    let fork = p;
-    for _ in 0..lean {
-        p += dir + IVec3::Y;
-        logs.push(p);
-    }
-    let canopy = |c: IVec3, wide: i32, put: Put| {
-        for dz in -wide..=wide {
-            for dx in -wide..=wide {
-                if dx.abs() + dz.abs() <= wide + 1 && !(dx.abs() == wide && dz.abs() == wide) {
-                    put(c + IVec3::new(dx, 1, dz), leaves);
-                }
-                if dx.abs() <= 1 && dz.abs() <= 1 && wide > 2 {
-                    put(c + IVec3::new(dx, 2, dz), leaves);
-                }
-            }
-        }
-    };
-    canopy(p, 3, put);
-    if (v >> 7) & 1 == 1 {
-        // A second branch the other way, with its own small canopy.
-        let other = -dir;
-        let mut q = fork - IVec3::Y;
-        for _ in 0..2 {
-            q += other + IVec3::Y;
-            logs.push(q);
-        }
-        canopy(q, 2, put);
-    }
-    for p in logs {
-        put(p, log);
-    }
-}
-
-/// A spruce standing on `ground`: a cone of alternating wide and narrow
-/// leaf rings.
-pub fn spruce(ground: IVec3, v: u32, put: Put) {
-    let height = 6 + (v % 4) as i32;
-    let top = ground.y + height;
-    let leaves = Wood::Spruce.leaves();
-    put(IVec3::new(ground.x, top + 1, ground.z), leaves);
-    for i in 0..height - 2 {
-        let y = top - i;
-        let r = match i {
-            0 => 0,
-            _ if i % 2 == 1 => 1,
-            _ => (i / 2).min(3) - (i / 6),
-        };
-        for dz in -r..=r {
-            for dx in -r..=r {
-                if r > 1 && dx.abs() == r && dz.abs() == r {
-                    continue;
-                }
-                put(IVec3::new(ground.x + dx, y, ground.z + dz), leaves);
-            }
-        }
-    }
-    for y in ground.y + 1..top {
-        put(IVec3::new(ground.x, y, ground.z), Wood::Spruce.log());
-    }
-}
-
-fn cactus(ground: IVec3, v: u32, put: Put) {
-    for y in 1..=1 + (v % 3) as i32 {
-        put(ground + IVec3::new(0, y, 0), Block::CACTUS);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1234,32 +1069,6 @@ mod tests {
         }
         assert!(bands.iter().filter(|b| b.terracotta_colour().is_some()).count() >= 5, "{bands:?}");
         assert!(!river_depths.is_empty() && river_depths.iter().all(|&h| h < SEA_LEVEL));
-    }
-
-    #[test]
-    fn every_tree_has_a_trunk_of_its_wood_under_its_leaves() {
-        for wood in Wood::ALL {
-            for v in 0..20u32 {
-                let mut blocks = Vec::new();
-                tree(wood, IVec3::ZERO, v.wrapping_mul(0x9E37_79B9), &mut |p, b| blocks.push((p, b)));
-                assert!(blocks.contains(&(IVec3::Y, wood.log())), "{wood:?} trunk starts on the ground");
-                assert!(blocks.iter().any(|&(_, b)| b == wood.leaves()), "{wood:?} has leaves");
-                for &(p, _) in &blocks {
-                    assert!(p.x.abs() <= TREE_REACH && p.z.abs() <= TREE_REACH && p.y <= TREE_TOP, "{wood:?} {p}");
-                }
-            }
-        }
-        // Worldgen-only trees also stay within reach.
-        for v in 0..50u32 {
-            let v = v.wrapping_mul(0x9E37_79B9);
-            for grow in [mega_jungle, jungle_bush, swamp_oak, acacia] {
-                let mut blocks = Vec::new();
-                grow(IVec3::ZERO, v, &mut |p, b| blocks.push((p, b)));
-                assert!(
-                    blocks.iter().all(|&(p, _)| p.x.abs() <= TREE_REACH && p.z.abs() <= TREE_REACH && p.y <= TREE_TOP)
-                );
-            }
-        }
     }
 
     #[test]

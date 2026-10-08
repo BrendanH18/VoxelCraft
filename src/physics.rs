@@ -194,7 +194,7 @@ pub fn move_box_stepping<W: BlockSource + ?Sized>(
 
 /// Whether the cell containing `p` holds water or lava.
 pub fn is_fluid_at<W: BlockSource + ?Sized>(world: &W, p: DVec3) -> bool {
-    world.block(p.floor().as_ivec3()).is_some_and(|b| b.is_fluid())
+    world.block(p.floor().as_ivec3()).is_some_and(|b| b.is_fluid() || b.is_waterlogged())
 }
 
 /// Whether any part of an entity's box touches a block matching `test`.

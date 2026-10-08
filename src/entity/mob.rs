@@ -1608,7 +1608,7 @@ impl Mob {
             };
             let to = DVec3::new(x as f64 + 0.5, ground as f64 + 1.0, z as f64 + 0.5);
             let loaded = world.loaded(to.floor().as_ivec3());
-            let dry = !physics::touches_block(world, to, shape, |b| b.is_water() || b.is_lava());
+            let dry = !physics::touches_block(world, to, shape, |b| b.holds_water() || b.is_lava());
             if loaded && dry && !physics::overlaps_solid(world, to, shape) {
                 events.push(EntityEvent::Sound { sound: MobSound::Teleport, pos: self.pos + DVec3::Y });
                 events.push(EntityEvent::Sound { sound: MobSound::Teleport, pos: to + DVec3::Y });
@@ -1879,7 +1879,7 @@ impl Mob {
         } else {
             self.fire_left = (self.fire_left - dt).max(0.0);
         }
-        let wet = physics::touches_block(world, self.pos, self.shape(), Block::is_water) || world.rains_on(head);
+        let wet = physics::touches_block(world, self.pos, self.shape(), Block::holds_water) || world.rains_on(head);
         if self.kind.hurt_by_water() && wet && self.hurt <= 0.0 {
             // Water hurts endermen and blazes (Java's 1 damage, spaced by hurt time).
             self.damage(1.0, None, rng);
@@ -1923,7 +1923,7 @@ pub fn is_cliff<W: BlockSource + ?Sized>(world: &W, pos: DVec3, dir: DVec3, shap
     for dy in 0..=MAX_SAFE_DROP + 1 {
         match world.block(IVec3::new(x, y - dy, z)) {
             None => return true,
-            Some(b) if b.is_solid() || b.is_water() => return false,
+            Some(b) if b.is_solid() || b.holds_water() => return false,
             Some(_) => {}
         }
     }

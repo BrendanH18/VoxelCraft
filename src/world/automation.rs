@@ -149,7 +149,7 @@ impl World {
     }
 
     fn piston_reaction(&self, p: IVec3, b: Block) -> Reaction {
-        if p.y < 0 || p.y >= super::WORLD_HEIGHT {
+        if !self.contains_y(p.y) {
             return Reaction::Block;
         }
         if b == Block::AIR || b.is_fluid() {

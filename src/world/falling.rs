@@ -34,6 +34,7 @@ impl World {
         self.drop_unhung_ladders(p);
         self.solidify_nearby_powder(p);
         self.update_nether_vines(p);
+        self.update_overworld_plants(p);
         loop {
             self.wake_fluids(p);
             let Some(b) = self.get_block(p) else { return };
@@ -45,8 +46,9 @@ impl World {
             let above = p + IVec3::Y;
             match self.get_block(above) {
                 Some(a) if !a.can_stay_on(b) => {
-                    // A plant or torch that just lost its support pops off.
-                    self.edit(above, Block::AIR, true);
+                    // A plant or torch that just lost its support pops off;
+                    // kelp and seagrass leave their water behind.
+                    self.edit(above, if a.is_waterlogged() { Block::WATER } else { Block::AIR }, true);
                     self.spill_block(above, a);
                     p = above;
                 }
@@ -59,7 +61,7 @@ impl World {
     fn touches_water(&self, p: IVec3) -> bool {
         [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z]
             .into_iter()
-            .any(|d| self.get_block(p + d).is_some_and(Block::is_water))
+            .any(|d| self.get_block(p + d).is_some_and(Block::holds_water))
     }
 
     fn solidify_powder(&self, p: IVec3, block: Block) -> Block {
@@ -119,7 +121,7 @@ impl World {
             let mut y = cell.y;
             while y as f64 + 1.0 > target {
                 match self.get_block(IVec3::new(cell.x, y, cell.z)) {
-                    Some(b) if can_fall_into(b) && y >= 0 => {
+                    Some(b) if can_fall_into(b) && y >= self.min_y() => {
                         if f.block.concrete_powder_color().is_some() && b.is_water() {
                             landed.push((IVec3::new(cell.x, y, cell.z), f.block));
                             return false;

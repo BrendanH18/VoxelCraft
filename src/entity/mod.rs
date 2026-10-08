@@ -1238,10 +1238,10 @@ impl Entities {
         }
         let top = (SEA_LEVEL - 8..=SEA_LEVEL + 1)
             .rev()
-            .find(|&y| world.block(IVec3::new(x, y, z)).is_some_and(Block::is_water))?;
+            .find(|&y| world.block(IVec3::new(x, y, z)).is_some_and(Block::holds_water))?;
         let y = if river { top } else { top - 5 - (self.rng.next_f32() * 6.0) as i32 };
         let dark = daylight < HOSTILE_SPAWN_DAYLIGHT || top - y >= 4;
-        let wet = |dy: i32| world.block(IVec3::new(x, y + dy, z)).is_some_and(Block::is_water);
+        let wet = |dy: i32| world.block(IVec3::new(x, y + dy, z)).is_some_and(Block::holds_water);
         (dark && wet(0) && wet(1)).then(|| DVec3::new(x as f64 + 0.5, y as f64, z as f64 + 0.5))
     }
 

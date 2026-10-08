@@ -102,7 +102,7 @@ impl Bobber {
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             let cell = next.floor().as_ivec3();
-            if world.block(cell).is_some_and(|b| b.is_water()) {
+            if world.block(cell).is_some_and(|b| b.holds_water()) {
                 self.vel.x *= 0.3;
                 self.vel.y *= 0.2;
                 self.vel.z *= 0.3;
@@ -123,7 +123,7 @@ impl Bobber {
     fn bob<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, rng: &mut Rng) {
         let ticks = dt * 20.0;
         let cell = self.pos.floor().as_ivec3();
-        let in_water = world.block(cell).is_some_and(|b| b.is_water());
+        let in_water = world.block(cell).is_some_and(|b| b.holds_water());
         if in_water {
             self.out_of_water = (self.out_of_water - 1).max(0);
             let surface = cell.y as f64 + 0.85;

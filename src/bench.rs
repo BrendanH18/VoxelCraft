@@ -8,7 +8,7 @@ use glam::{DVec3, IVec3};
 
 use crate::mesh::{self, D, MARGIN, MeshInput, NO_HEIGHT, Neighborhood, Region};
 use crate::world::World;
-use crate::world::chunk::{CHUNK_VOLUME, ChunkData, WORLD_HEIGHT_CHUNKS};
+use crate::world::chunk::{CHUNK_VOLUME, ChunkData};
 use crate::world::terrain::Generator;
 
 pub fn run(seed: u64, rd: i32) {
@@ -16,9 +16,9 @@ pub fn run(seed: u64, rd: i32) {
 
     // Single-threaded throughput on a fixed column set.
     let r = 3;
-    let positions: Vec<IVec3> = (-r..=r)
-        .flat_map(|x| (-r..=r).flat_map(move |z| (0..WORLD_HEIGHT_CHUNKS).map(move |y| IVec3::new(x, y, z))))
-        .collect();
+    let (lo, hi) = (generator.dimension.min_y() >> 5, generator.dimension.max_y() >> 5);
+    let positions: Vec<IVec3> =
+        (-r..=r).flat_map(|x| (-r..=r).flat_map(move |z| (lo..hi).map(move |y| IVec3::new(x, y, z)))).collect();
     let t = Instant::now();
     let chunks: rustc_hash::FxHashMap<IVec3, Arc<ChunkData>> =
         positions.iter().map(|&p| (p, Arc::new(generator.generate(p)))).collect();
@@ -37,7 +37,7 @@ pub fn run(seed: u64, rd: i32) {
     let nether = Generator::for_dimension(seed, crate::world::terrain::Dimension::Nether);
     let t = Instant::now();
     let mut nether_chunks = 0;
-    for &p in positions.iter().filter(|p| p.y < 4) {
+    for &p in positions.iter().filter(|p| (0..4).contains(&p.y)) {
         std::hint::black_box(nether.generate(p));
         nether_chunks += 1;
     }
@@ -102,7 +102,10 @@ pub fn run(seed: u64, rd: i32) {
             }
         }
         let foliage = foliage[&(p.x, p.z)].clone();
-        let m = mesh::build(&MeshInput { neighbors: n, heights: hm, base_y: p.y * 32, foliage }, &mut region);
+        let m = mesh::build(
+            &MeshInput { neighbors: n, heights: hm, base_y: p.y * 32, min_y: generator.dimension.min_y(), foliage },
+            &mut region,
+        );
         quads += m.quads.len() as u64;
         meshed += 1;
     }

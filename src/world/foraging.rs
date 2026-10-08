@@ -87,13 +87,12 @@ impl World {
 mod tests {
     use super::*;
     use crate::item::Item;
-    use crate::world::chunk::WORLD_HEIGHT_CHUNKS;
     use crate::world::terrain::Generator;
     use std::sync::Arc;
 
     fn flat() -> World {
         let mut world = World::new_headless(Arc::new(Generator::new(3)), Default::default(), 2);
-        for y in 0..WORLD_HEIGHT_CHUNKS {
+        for y in world.generator.dimension.chunk_rows() {
             world.insert_chunk(IVec3::new(0, y, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
         }
         world

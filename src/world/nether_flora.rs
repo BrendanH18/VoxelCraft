@@ -199,13 +199,13 @@ mod tests {
 
     /// Loaded empty chunks around [`AT`]; no terrain generation needed.
     fn world() -> World {
-        use crate::world::chunk::{ChunkData, WORLD_HEIGHT_CHUNKS};
+        use crate::world::chunk::ChunkData;
         use std::sync::Arc;
         let generator = Arc::new(crate::world::terrain::Generator::new(42));
         let mut w = World::new_headless(generator, Default::default(), 2);
         for x in -1..=1 {
             for z in -1..=1 {
-                for y in 0..WORLD_HEIGHT_CHUNKS {
+                for y in w.generator.dimension.chunk_rows() {
                     w.insert_chunk(IVec3::new(x, y, z), Arc::new(ChunkData::Uniform(Block::AIR)), false);
                 }
             }

@@ -340,7 +340,7 @@ impl System {
                 continue;
             }
             let velocity = eye.pos - eye.previous_pos;
-            let water = world.get_block(eye.pos.floor().as_ivec3()).is_some_and(Block::is_water);
+            let water = world.get_block(eye.pos.floor().as_ivec3()).is_some_and(Block::holds_water);
             let mut b = Burst::new(
                 if water { Kind::Bubble } else { Kind::Portal },
                 eye.pos - velocity * 0.25,

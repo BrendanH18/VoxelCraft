@@ -1746,6 +1746,15 @@ impl Game {
                 return;
             }
             Some(b) if b.is_bed() => return self.use_bed(pos),
+            Some(_) if self.held_item() != Some(Item::BONE_MEAL) && self.world.harvest(pos) => {
+                self.audio.play(
+                    crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Grass),
+                    Some(pos.as_dvec3() + glam::DVec3::splat(0.5)),
+                    0.8,
+                    (1.0, 1.2),
+                );
+                return;
+            }
             Some(b) if b.is_door() || b.is_gate() => {
                 self.toggle_door(pos, self.player.forward());
                 return;
@@ -1802,6 +1811,7 @@ impl Game {
             return;
         }
         // Furnaces and chests face whoever places them.
+        let block = crate::world::overworld_blocks::placed(block, normal).unwrap_or(block);
         let block = crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal)
             .with_facing(crate::world::block::Facing::toward(self.player.forward()));
         let block = voxelcraft::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
@@ -1814,14 +1824,20 @@ impl Game {
         }
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
         let below = self.world.get_block(at - glam::IVec3::Y);
-        let supported = below.is_some_and(|below| block.can_stay_on(below))
+        let supported = self
+            .world
+            .overworld_placement_ok(at, block)
+            .unwrap_or_else(|| below.is_some_and(|below| block.can_stay_on(below)))
             && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || self.world.cane_has_water(at))
             && (!block.is_mushroom() || self.world.mushroom_survives(at));
         if free
             && supported
             && self.world.redstone_supported(at, block)
             && !(block.is_solid() && self.player.intersects_block(at))
-            && self.world.set_block(at, block)
+            && {
+                self.world.before_overworld_place(at, block);
+                self.world.set_block(at, block)
+            }
         {
             self.audio.block_place(block, at);
             if self.mode.is_survival() {

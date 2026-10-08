@@ -13,7 +13,7 @@ use rustc_hash::FxHashMap;
 
 use super::World;
 use super::block::Block;
-use super::chunk::{CHUNK_SIZE_I, ChunkData, WORLD_HEIGHT, chunk_of};
+use super::chunk::{CHUNK_SIZE_I, ChunkData, chunk_of};
 
 const SIDES: [IVec3; 6] = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z];
 const HORIZONTAL: [IVec3; 4] = [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z];
@@ -149,7 +149,7 @@ impl World {
     /// Flint and steel lights a portal first, otherwise a supported empty
     /// cell. Failed uses neither place fire nor spend tool durability.
     pub fn ignite(&mut self, p: IVec3) -> bool {
-        if !(0..WORLD_HEIGHT).contains(&p.y) {
+        if !self.contains_y(p.y) {
             return false;
         }
         self.light_portal(p)
@@ -222,7 +222,7 @@ impl World {
             for dz in -1..=1 {
                 for dx in -1..=1 {
                     let q = p + IVec3::new(dx, dy, dz);
-                    if q == p || self.get_block(q) != Some(Block::AIR) || !(0..WORLD_HEIGHT).contains(&q.y) {
+                    if q == p || self.get_block(q) != Some(Block::AIR) || !self.contains_y(q.y) {
                         continue;
                     }
                     let fuel = self.fire_fuel(q);
@@ -252,7 +252,7 @@ impl World {
             for _ in 0..steps {
                 q += IVec3::new((self.roll() % 3) as i32 - 1, 1, (self.roll() % 3) as i32 - 1);
                 match self.get_block(q) {
-                    Some(Block::AIR) if q.y < WORLD_HEIGHT => {
+                    Some(Block::AIR) if q.y < self.max_y() => {
                         if SIDES.iter().any(|&d| self.get_block(q + d).is_some_and(|b| b.ignited_by_lava())) {
                             if !self.light_portal(q) {
                                 self.edit(q, self.fire_state(q, 0), false);
@@ -269,7 +269,7 @@ impl World {
             for _ in 0..3 {
                 let q = p + IVec3::new((self.roll() % 3) as i32 - 1, 0, (self.roll() % 3) as i32 - 1);
                 let above = q + IVec3::Y;
-                if above.y < WORLD_HEIGHT
+                if above.y < self.max_y()
                     && self.get_block(q).is_some_and(|b| b.ignited_by_lava())
                     && self.get_block(above) == Some(Block::AIR)
                     && !self.light_portal(above)
@@ -288,7 +288,7 @@ mod tests {
     use glam::IVec2;
 
     use super::*;
-    use crate::world::chunk::{CHUNK_SIZE, WORLD_HEIGHT_CHUNKS};
+    use crate::world::chunk::CHUNK_SIZE;
     use crate::world::terrain::Generator;
 
     const AT: IVec3 = IVec3::new(8, 145, 8);
@@ -297,7 +297,7 @@ mod tests {
     /// or mesh jobs are needed to exercise the simulation.
     fn world() -> World {
         let mut world = World::new(Arc::new(Generator::new(7)), Default::default(), 2);
-        for y in 0..WORLD_HEIGHT_CHUNKS {
+        for y in world.generator.dimension.chunk_rows() {
             world.insert_chunk(IVec3::new(0, y, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
         }
         world.columns.get_mut(&IVec2::ZERO).unwrap().foliage = Some(Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
@@ -318,8 +318,8 @@ mod tests {
         assert_eq!(w.fire.pending.len(), 1);
         assert!(!w.ignite(AT), "already lit");
         assert!(!w.ignite(AT - IVec3::Y), "occupied");
-        assert!(!w.ignite(IVec3::new(8, WORLD_HEIGHT, 8)));
-        assert!(!w.ignite(IVec3::new(8, -1, 8)));
+        assert!(!w.ignite(IVec3::new(8, w.max_y(), 8)));
+        assert!(!w.ignite(IVec3::new(8, w.min_y() - 1, 8)));
         assert!(!w.ignite(AT + IVec3::X * CHUNK_SIZE_I), "unloaded chunk");
         w.set_block(AT - IVec3::Y, Block::AIR);
         assert_eq!(w.get_block(AT), Some(Block::AIR), "support updates extinguish immediately");

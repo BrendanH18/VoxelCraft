@@ -150,8 +150,8 @@ impl Player {
         world.get_block(eye.floor().as_ivec3()).is_some_and(|b| {
             let above = world.get_block(eye.floor().as_ivec3() + IVec3::Y);
             // Respect the lowered surface of the top water block.
-            let drop = if above.is_some_and(|a| a.is_water()) { 0.0 } else { b.fluid_drop() as f64 / 16.0 };
-            b.is_water() && eye.y - eye.y.floor() < 1.0 - drop
+            let drop = if above.is_some_and(|a| a.holds_water()) { 0.0 } else { b.fluid_drop() as f64 / 16.0 };
+            b.holds_water() && eye.y - eye.y.floor() < 1.0 - drop
         })
     }
 
@@ -260,7 +260,7 @@ impl Player {
             self.swimming = false;
             return;
         }
-        let feet_water = world.get_block(self.pos.floor().as_ivec3()).is_some_and(|b| b.is_water());
+        let feet_water = world.get_block(self.pos.floor().as_ivec3()).is_some_and(|b| b.holds_water());
         if self.swimming {
             self.swimming = input.sprint && self.in_water;
         } else {
@@ -300,7 +300,7 @@ impl Player {
         let feet = self.pos + DVec3::new(0.0, 0.3, 0.0);
         // Lava swims like (slow) water.
         let fluid = world.get_block(feet.floor().as_ivec3());
-        self.in_water = fluid.is_some_and(|b| b.is_fluid());
+        self.in_water = fluid.is_some_and(|b| b.is_fluid() || b.is_waterlogged());
         self.update_swimming(input, world);
         self.sneaking = input.descend && !self.flying && !self.in_water;
         let shift = input.descend && !self.flying;
@@ -317,7 +317,7 @@ impl Player {
             self.vel = self.vel.lerp(target, (dt * 12.0).min(1.0));
         } else if self.in_water {
             let land = if input.sprint { SPRINT_SPEED } else { WALK_SPEED };
-            let efficiency = if fluid.is_some_and(|b| b.is_water()) {
+            let efficiency = if fluid.is_some_and(|b| b.holds_water()) {
                 self.modifiers.depth_strider as f64 / 3.0 * if self.on_ground { 1.0 } else { 0.5 }
             } else {
                 0.0 // Depth Strider does not affect lava.
@@ -340,7 +340,7 @@ impl Player {
                 let look_y = self.forward().y as f64;
                 let steer = if look_y < -0.2 { 0.085 } else { 0.06 };
                 let head_cell = (self.pos + DVec3::new(0.0, 1.0 - 0.1, 0.0)).floor().as_ivec3();
-                let fluid_above = world.get_block(head_cell).is_some_and(|b| b.is_fluid());
+                let fluid_above = world.get_block(head_cell).is_some_and(|b| b.is_fluid() || b.is_waterlogged());
                 if look_y <= 0.0 || input.jump || fluid_above {
                     self.vel.y += (look_y - self.vel.y) * steer;
                 }
@@ -393,9 +393,11 @@ impl Player {
         // Ladders: walking into one (or jumping) climbs, sneaking holds on,
         // and a fall slows to a slide.
         self.climbing = !self.flying
-            && world
-                .get_block(self.pos.floor().as_ivec3())
-                .is_some_and(|b| b.is_ladder() || crate::world::nether_biome_blocks::climbable(b));
+            && world.get_block(self.pos.floor().as_ivec3()).is_some_and(|b| {
+                b.is_ladder()
+                    || crate::world::nether_biome_blocks::climbable(b)
+                    || crate::world::overworld_blocks::climbable(b)
+            });
         if self.climbing {
             self.vel.y = self.vel.y.max(-LADDER_SLIDE);
             if input.descend {

@@ -8,7 +8,7 @@ use glam::{DVec3, IVec3};
 
 use super::World;
 use super::block::Block;
-use super::chunk::{CHUNK_SIZE_I, WORLD_HEIGHT_CHUNKS, chunk_of};
+use super::chunk::{CHUNK_SIZE_I, chunk_of};
 use super::noise::splitmix64;
 use crate::inventory::Stack;
 use crate::item::Item;
@@ -36,7 +36,7 @@ impl World {
     }
 
     /// Uniform in `0..=n`, without a roll for 0 (fortune bonuses).
-    fn up_to(&mut self, n: u64) -> u64 {
+    pub(super) fn up_to(&mut self, n: u64) -> u64 {
         if n == 0 { 0 } else { self.roll() % (n + 1) }
     }
 
@@ -60,9 +60,12 @@ impl World {
             && held.is_some_and(|s| s.item == Item::SHEARS)
             && (block.is_leaves()
                 || block == Block::COBWEB
-                || super::nether_biome_blocks::sheared_drop(block).is_some())
+                || super::nether_biome_blocks::sheared_drop(block).is_some()
+                || super::overworld_blocks::sheared_drop(block).is_some())
         {
-            let item = super::nether_biome_blocks::sheared_drop(block).unwrap_or(block.base().into());
+            let item = super::nether_biome_blocks::sheared_drop(block)
+                .or_else(|| super::overworld_blocks::sheared_drop(block))
+                .unwrap_or(block.base().into());
             self.drops.push((p, Stack::new(item, 1)));
         } else {
             self.spill_mined(p, block, held.map_or(Default::default(), |s| s.active_enchants()));
@@ -83,6 +86,9 @@ impl World {
         let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
         out.extend(block.drop().map(|item| Stack::new(item, 1)));
+        if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0) {
+            self.overworld_drops(block, fortune, &mut out);
+        }
         match block.as_stone_ore() {
             // Java's ore bonus: the drop times 1 + max(0, rand(fortune + 2) - 1).
             Block::COAL_ORE | Block::IRON_ORE | Block::GOLD_ORE | Block::DIAMOND_ORE | Block::EMERALD_ORE
@@ -211,7 +217,7 @@ impl World {
         for c in centers {
             for dz in -TICK_RADIUS..=TICK_RADIUS {
                 for dx in -TICK_RADIUS..=TICK_RADIUS {
-                    for y in 0..WORLD_HEIGHT_CHUNKS {
+                    for y in self.generator.dimension.chunk_rows() {
                         let p = IVec3::new(c.x + dx, y, c.z + dz);
                         if self.chunks.contains_key(&p) {
                             chunks.push(p);
@@ -257,6 +263,9 @@ impl World {
             Block::SUGAR_CANE => self.tick_cane(p),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
+            b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.0) => {
+                self.tick_overworld_flora(p, b);
+            }
             b if b.crop_stage().is_some_and(|s| s < 7) => {
                 let wet = self.get_block(p - IVec3::Y) == Some(Block::WET_FARMLAND);
                 if self.grows_here(p) && self.one_in(if wet { CROP_GROWTH } else { 2 * CROP_GROWTH }) {
@@ -306,7 +315,7 @@ impl World {
         let wet = self.rains_on(p + IVec3::Y)
             || (-4..=4).any(|dx| {
                 (-4..=4).any(|dz| {
-                    (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.is_water()))
+                    (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.holds_water()))
                 })
             });
         let crop = above.is_some_and(|a| a.crop_stage().is_some());
@@ -332,7 +341,7 @@ impl World {
         let mut blocks = Vec::new();
         let ground = p - IVec3::Y;
         let Some(wood) = sapling.wood().filter(|_| sapling.is_sapling()) else { return false };
-        super::terrain::tree(wood, ground, v, &mut |q, b| blocks.push((q, b)));
+        super::trees::tree(wood, ground, v, &mut |q, b| blocks.push((q, b)));
         let room = blocks.iter().filter(|(_, b)| b.is_log()).all(|&(q, _)| {
             q == p || self.get_block(q).is_some_and(|b| b == Block::AIR || b.is_replaceable() || b.is_leaves())
         });
@@ -357,6 +366,9 @@ impl World {
     pub fn apply_bone_meal(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
         if let Some(used) = self.nether_bone_meal(p, b) {
+            return used;
+        }
+        if let Some(used) = self.overworld_bone_meal(p, b) {
             return used;
         }
         match b {
@@ -489,7 +501,7 @@ impl World {
         let soil = p - IVec3::Y;
         [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
             .iter()
-            .any(|&d| self.get_block(soil + d).is_some_and(|b| b.is_water() || b == Block::ICE))
+            .any(|&d| self.get_block(soil + d).is_some_and(|b| b.holds_water() || b == Block::ICE))
     }
 }
 
@@ -590,7 +602,7 @@ mod tests {
     #[test]
     fn covered_crops_need_nine_block_light_and_saplings_sample_above() {
         let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
-        for y in 0..WORLD_HEIGHT_CHUNKS {
+        for y in world.generator.dimension.chunk_rows() {
             world.insert_chunk(IVec3::new(0, y, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
         }
         let crop = IVec3::new(15, 150, 16);

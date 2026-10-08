@@ -59,7 +59,7 @@ fn strength(b: Block) -> u8 {
 
 /// Plants and torches: water flows into them and destroys them.
 fn washes_away(b: Block) -> bool {
-    b.kind() == super::block::RenderKind::Cross
+    b.kind() == super::block::RenderKind::Cross && !b.is_waterlogged()
 }
 
 /// Flowing (not source, not falling) fluid of the given kind.
@@ -148,9 +148,14 @@ impl World {
             .or_insert(b);
     }
 
-    /// Unloaded cells read as solid so fluid never flows into them.
+    /// Unloaded cells read as solid so fluid never flows into them, and
+    /// waterlogged plants as the water source they hold.
     fn cell(&self, p: IVec3) -> Block {
-        self.get_block(p).unwrap_or(Block::STONE)
+        match self.get_block(p) {
+            Some(b) if b.is_waterlogged() => Block::WATER,
+            Some(b) => b,
+            None => Block::STONE,
+        }
     }
 
     /// Fluid can fall from `p` if the cell below is air, a plant, or weaker

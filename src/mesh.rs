@@ -46,7 +46,7 @@
 use std::sync::Arc;
 
 use crate::world::block::{Block, Facing, RenderKind, tex};
-use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_HEIGHT};
+use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_MAX_Y, WORLD_MIN_Y};
 use crate::world::shape::{self, Boxes};
 
 /// Margin around the chunk that lighting needs to be exact.
@@ -57,7 +57,7 @@ pub const REGION_VOLUME: usize = D * D * D;
 const MAX_LIGHT: u8 = 15;
 /// Height value for a column with no light-blocking blocks.
 pub const NO_HEIGHT: i16 = i16::MIN;
-const _: () = assert!(WORLD_HEIGHT < i16::MAX as i32);
+const _: () = assert!(WORLD_MAX_Y < i16::MAX as i32 && WORLD_MIN_Y > NO_HEIGHT as i32);
 
 /// Chunk plus its 26 neighbours. Index = (dx+1) + (dz+1)*3 + (dy+1)*9.
 pub type Neighborhood = [Option<Arc<ChunkData>>; 27];
@@ -70,6 +70,8 @@ pub struct MeshInput {
     pub heights: Box<[i16; D * D]>,
     /// World Y of the chunk's lowest block.
     pub base_y: i32,
+    /// The dimension's lowest block y: missing chunks below it are bedrock.
+    pub min_y: i32,
     /// Foliage colour group of each of the chunk's columns, indexed
     /// `x + z * CHUNK_SIZE` (see `block::tex::tinted`).
     pub foliage: Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>,
@@ -149,8 +151,8 @@ fn pack_q(x: usize, y: usize, z: usize) -> u32 {
 
 impl Region {
     /// Copies blocks from the neighbourhood. Missing neighbours are air
-    /// above the world and bedrock below it.
-    fn fill(&mut self, n: &Neighborhood, base_y: i32) {
+    /// above the world and bedrock below `min_y`.
+    fn fill(&mut self, n: &Neighborhood, base_y: i32, min_y: i32) {
         // Per axis: (neighbour offset index, first local coord, first region coord, len).
         let spans = [
             (0usize, CHUNK_SIZE - MARGIN, 0usize, MARGIN),
@@ -172,7 +174,7 @@ impl Region {
                                 }
                                 None => {
                                     let wy = base_y + (ry0 + y) as i32 - MARGIN as i32;
-                                    dst.fill(if wy < 0 { Block::BEDROCK } else { Block::AIR });
+                                    dst.fill(if wy < min_y { Block::BEDROCK } else { Block::AIR });
                                 }
                             }
                         }
@@ -398,9 +400,15 @@ const PRESENT: u64 = 1 << 31;
 /// Top drop of a low block (see `Block::top_drop`), in 1/16 block.
 const DROP_SHIFT: u64 = 11;
 
+/// What face culling and water surfaces see: waterlogged blocks are water.
+#[inline(always)]
+fn water_view(b: Block) -> Block {
+    if b.is_waterlogged() { Block::WATER } else { b }
+}
+
 /// Lights and meshes one chunk.
 pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
-    region.fill(&input.neighbors, input.base_y);
+    region.fill(&input.neighbors, input.base_y, input.min_y);
     region.light(&input.heights, input.base_y);
     let mesh = mesh_region(region, &input.foliage);
     #[cfg(test)]
@@ -441,15 +449,25 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 p[v] = vv + MARGIN;
                 let mut i = ridx(p[0], p[1], p[2]) as isize;
                 for uu in 0..CHUNK_SIZE {
-                    let b = blocks[i as usize];
+                    let raw = blocks[i as usize];
+                    // Waterlogged plants mesh as water here; their cross is
+                    // added with the other cross-shaped blocks.
+                    if face == 0 && raw.is_waterlogged() {
+                        cross_cells.push(i as usize);
+                    }
+                    let b = water_view(raw);
                     let ni = i + sd;
-                    let n = blocks[ni as usize];
+                    let n = water_view(blocks[ni as usize]);
                     let mut key = 0;
                     // Fluid surfaces sit lower than a full block unless more
                     // of the same fluid is stacked on top.
                     let drop_at = |idx: isize| -> u64 {
-                        let f = blocks[idx as usize];
-                        if blocks[(idx + strides[1]) as usize].fluid() == f.fluid() { 0 } else { f.fluid_drop() as u64 }
+                        let f = water_view(blocks[idx as usize]);
+                        if water_view(blocks[(idx + strides[1]) as usize]).fluid() == f.fluid() {
+                            0
+                        } else {
+                            f.fluid_drop() as u64
+                        }
                     };
                     let visible = if let Some(fluid) = b.fluid() {
                         if n.fluid() == Some(fluid) {
@@ -790,7 +808,7 @@ mod tests {
             }
         }
         let foliage = Box::new([0; CHUNK_SIZE * CHUNK_SIZE]);
-        build(&MeshInput { neighbors: n, heights, base_y: 64, foliage }, &mut Region::default())
+        build(&MeshInput { neighbors: n, heights, base_y: 64, min_y: 0, foliage }, &mut Region::default())
     }
 
     #[test]

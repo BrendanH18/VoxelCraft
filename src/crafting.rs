@@ -172,6 +172,8 @@ const PLANKS: Ingredient = &[
     b(Block::CHERRY_PLANKS),
     b(crate::world::nether_biome_blocks::CRIMSON_PLANKS),
     b(crate::world::nether_biome_blocks::WARPED_PLANKS),
+    b(crate::world::overworld_blocks::PALE_OAK_PLANKS),
+    b(crate::world::overworld_blocks::BAMBOO_PLANKS),
 ];
 const HAY: Ingredient = &[b(Block::HAY_BALE)];
 const WOOD_SLAB: Ingredient = &[
@@ -198,6 +200,7 @@ const ANY_LOG: Ingredient = &[
     b(Block::DARK_OAK_LOG),
     b(Block::MANGROVE_LOG),
     b(Block::CHERRY_LOG),
+    b(crate::world::overworld_blocks::PALE_OAK_LOG),
 ];
 const OAK_PLANKS: Ingredient = &[b(Block::PLANKS)];
 const MELON: Ingredient = &[b(Block::MELON)];
@@ -521,6 +524,7 @@ pub fn recipes() -> &'static [Recipe] {
         add_wool_recipes(&mut r);
         add_glass_terracotta_recipes(&mut r);
         add_nether_biome_recipes(&mut r);
+        add_overworld_recipes(&mut r);
         r
     })
 }
@@ -921,6 +925,101 @@ mod dye_tests {
 
 /// Crimson and warped wood (Java's `#crimson_stems` / `#warped_stems`),
 /// nether wart blocks, soul torches and bone blocks.
+/// v0.6 cave, ocean, plant and wood recipes (Java's vanilla recipes).
+fn add_overworld_recipes(r: &mut Vec<Recipe>) {
+    use crate::color::DyeColor;
+    use crate::world::overworld_blocks as ob;
+    const fn one(block: Block) -> Item {
+        b(block)
+    }
+    r.push(shapeless(&[ingredient(one(ob::PALE_OAK_LOG))], one(ob::PALE_OAK_PLANKS), 4));
+    r.push(shapeless(&[ingredient(one(ob::BAMBOO_BLOCK))], one(ob::BAMBOO_PLANKS), 2));
+    r.push(shaped(&["###", "###", "###"], &[('#', ingredient(one(ob::BAMBOO)))], one(ob::BAMBOO_BLOCK), 1));
+    r.push(shaped(&["#", "#"], &[('#', ingredient(one(ob::BAMBOO)))], Item::STICK, 1));
+    r.push(shapeless(&[ingredient(one(ob::MUD)), &[Item::WHEAT]], one(ob::PACKED_MUD), 1));
+    r.push(shaped(&["##", "##"], &[('#', ingredient(one(ob::PACKED_MUD)))], one(ob::MUD_BRICKS), 4));
+    r.push(shaped(&["##"], &[('#', ingredient(one(ob::MOSS_BLOCK)))], one(ob::MOSS_CARPET), 3));
+    r.push(shaped(&["##"], &[('#', ingredient(one(ob::PALE_MOSS_BLOCK)))], one(ob::PALE_MOSS_CARPET), 3));
+    r.push(shaped(&["###"], &[('#', ingredient(one(Block::SNOW)))], one(ob::SNOW_LAYER), 6));
+    r.push(shaped(&["###", "###", "###"], &[('#', &[Item::DRIED_KELP])], one(ob::DRIED_KELP_BLOCK), 1));
+    r.push(shapeless(&[ingredient(one(ob::DRIED_KELP_BLOCK))], Item::DRIED_KELP, 9));
+    r.push(shaped(&["##", "##"], &[('#', &[Item::PRISMARINE_SHARD])], one(ob::PRISMARINE), 1));
+    r.push(shaped(&["###", "###", "###"], &[('#', &[Item::PRISMARINE_SHARD])], one(ob::PRISMARINE_BRICKS), 1));
+    r.push(shaped(
+        &["###", "#d#", "###"],
+        &[('#', &[Item::PRISMARINE_SHARD]), ('d', ingredient(DyeColor::Black.dye()))],
+        one(ob::DARK_PRISMARINE),
+        1,
+    ));
+    r.push(shaped(
+        &["#c#", "ccc", "#c#"],
+        &[('#', &[Item::PRISMARINE_SHARD]), ('c', &[Item::PRISMARINE_CRYSTALS])],
+        one(ob::SEA_LANTERN),
+        1,
+    ));
+    r.push(shaped(&["##", "##"], &[('#', &[Item::AMETHYST_SHARD])], one(ob::AMETHYST_BLOCK), 1));
+    r.push(shaped(
+        &["###", "###", "###"],
+        &[('#', ingredient(one(Block::ICE)))],
+        one(crate::world::gadgets::PACKED_ICE),
+        1,
+    ));
+    r.push(shaped(
+        &["###", "###", "###"],
+        &[('#', ingredient(one(crate::world::gadgets::PACKED_ICE)))],
+        one(ob::BLUE_ICE),
+        1,
+    ));
+    r.push(shapeless(
+        &[ingredient(one(Block::COBBLESTONE)), ingredient(one(ob::vine(crate::world::block::Facing::South)))],
+        one(Block::MOSSY_COBBLESTONE),
+        1,
+    ));
+    r.push(shapeless(
+        &[ingredient(one(Block::COBBLESTONE)), ingredient(one(ob::MOSS_BLOCK))],
+        one(Block::MOSSY_COBBLESTONE),
+        1,
+    ));
+    r.push(shapeless(
+        &[ingredient(one(Block::STONE_BRICKS)), ingredient(one(ob::vine(crate::world::block::Facing::South)))],
+        one(Block::MOSSY_STONE_BRICKS),
+        1,
+    ));
+    r.push(shapeless(
+        &[ingredient(one(Block::STONE_BRICKS)), ingredient(one(ob::MOSS_BLOCK))],
+        one(Block::MOSSY_STONE_BRICKS),
+        1,
+    ));
+    // Dyes from cocoa, ink and the new flowers.
+    let dyes: [(Item, DyeColor, u8); 16] = [
+        (Item::COCOA_BEANS, DyeColor::Brown, 1),
+        (Item::INK_SAC, DyeColor::Black, 1),
+        (one(ob::CORNFLOWER), DyeColor::Blue, 1),
+        (one(ob::LILY_OF_THE_VALLEY), DyeColor::White, 1),
+        (one(ob::OXEYE_DAISY), DyeColor::LightGray, 1),
+        (one(ob::AZURE_BLUET), DyeColor::LightGray, 1),
+        (one(ob::ALLIUM), DyeColor::Magenta, 1),
+        (one(ob::RED_TULIP), DyeColor::Red, 1),
+        (one(ob::ORANGE_TULIP), DyeColor::Orange, 1),
+        (one(ob::WHITE_TULIP), DyeColor::LightGray, 1),
+        (one(ob::PINK_TULIP), DyeColor::Pink, 1),
+        (one(ob::SUNFLOWER), DyeColor::Yellow, 2),
+        (one(ob::LILAC), DyeColor::Magenta, 2),
+        (one(ob::ROSE_BUSH), DyeColor::Red, 2),
+        (one(ob::PEONY), DyeColor::Pink, 2),
+        (one(ob::PINK_PETALS), DyeColor::Pink, 1),
+    ];
+    for (source, colour, count) in dyes {
+        r.push(Recipe { shape: Shape::Shapeless(vec![ingredient(source)]), result: Stack::new(colour.dye(), count) });
+    }
+}
+
+/// A single-item ingredient, leaked once per recipe build (recipes live for
+/// the whole program).
+fn ingredient(item: Item) -> Ingredient {
+    Box::leak(Box::new([item]))
+}
+
 fn add_nether_biome_recipes(r: &mut Vec<Recipe>) {
     use crate::world::nether_biome_blocks::{self as nb, NetherWood};
     const CRIMSON_STEMS: Ingredient =
