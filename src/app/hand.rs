@@ -8,8 +8,6 @@ use crate::render::hand::Hand;
 const SWING_TIME: f32 = 0.3;
 /// Lowering (or raising) the hand on an item switch takes this long.
 const EQUIP_TIME: f32 = 0.15;
-/// Distance walked per bob stride (left to right).
-const STRIDE: f32 = 1.7;
 
 #[derive(Default)]
 pub(super) struct HandAnim {
@@ -19,8 +17,6 @@ pub(super) struct HandAnim {
     equip: f32,
     /// The item drawn in the hand: it only changes while lowered.
     shown: Option<Item>,
-    bob_phase: f32,
-    bob: f32,
 }
 
 impl HandAnim {
@@ -32,9 +28,8 @@ impl HandAnim {
         }
     }
 
-    /// Advances by `dt` with `held` in hand, having walked `walked` blocks
-    /// on the ground.
-    pub(super) fn update(&mut self, dt: f32, held: Option<Item>, walked: f32, on_ground: bool) {
+    /// Advances equip/swing animation. Walking bob is shared with the camera.
+    pub(super) fn update(&mut self, dt: f32, held: Option<Item>) {
         if let Some(t) = &mut self.swing {
             *t += dt;
             if *t >= SWING_TIME {
@@ -50,9 +45,25 @@ impl HandAnim {
         } else {
             self.equip = (self.equip - dt / EQUIP_TIME).max(0.0);
         }
-        self.bob_phase = (self.bob_phase + walked / STRIDE) % 2.0;
-        let target = if on_ground { (walked / dt.max(1e-4) / 4.3).min(1.0) } else { 0.0 };
-        self.bob += (target - self.bob) * (dt * 10.0).min(1.0);
+    }
+
+    pub(super) fn appearance(
+        &self,
+        vitals: &crate::simulation::survival::Vitals,
+        eating: f32,
+        alpha: f64,
+        worn: [Option<crate::inventory::Stack>; 4],
+    ) -> crate::entity::model::PlayerAppearance {
+        crate::entity::model::PlayerAppearance {
+            held: self.shown,
+            swing: self.swing.map_or(0.0, |t| t / SWING_TIME),
+            using: eating,
+            hurt: vitals.since_damage() < 0.5,
+            death: vitals.is_dead().then(|| vitals.since_damage()),
+            alpha: alpha as f32,
+            armor: crate::entity::armor::from_stacks(&worn),
+            held_icon: None,
+        }
     }
 
     /// The hand to draw; `eating` is chewing progress 0..1.
@@ -61,11 +72,10 @@ impl HandAnim {
             item: self.shown,
             swing: self.swing.map_or(0.0, |t| t / SWING_TIME),
             equip: self.equip,
-            bob_phase: self.bob_phase,
-            bob: self.bob,
             eating,
             sky_light,
             block_light,
+            icon: None,
         }
     }
 }
@@ -78,19 +88,19 @@ mod tests {
     fn switching_items_lowers_then_raises_the_hand() {
         let mut h = HandAnim::default();
         let stick = Some(Item::STICK);
-        h.update(0.1, stick, 0.0, true);
+        h.update(0.1, stick);
         assert_eq!(h.view(0.0, 1.0, 0.0).item, None, "still lowering the empty hand");
-        h.update(0.1, stick, 0.0, true);
+        h.update(0.1, stick);
         assert_eq!((h.shown, h.equip), (stick, 1.0));
         for _ in 0..10 {
-            h.update(0.05, stick, 0.0, true);
+            h.update(0.05, stick);
         }
         assert_eq!(h.equip, 0.0);
         h.swing();
         assert!(h.view(0.0, 1.0, 0.0).swing == 0.0);
-        h.update(0.15, stick, 0.0, true);
+        h.update(0.15, stick);
         assert!((h.view(0.0, 1.0, 0.0).swing - 0.5).abs() < 1e-5);
-        h.update(0.2, stick, 0.0, true);
+        h.update(0.2, stick);
         assert_eq!(h.view(0.0, 1.0, 0.0).swing, 0.0, "done");
     }
 }

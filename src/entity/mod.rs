@@ -12,6 +12,8 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod armor;
+mod bobber;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
@@ -21,7 +23,12 @@ mod mob;
 pub mod model;
 pub mod orb;
 pub mod pearl;
+pub mod player_model;
+mod player_pose;
+pub mod potion;
 mod projectile;
+mod slime;
+mod thrown;
 pub mod tnt;
 
 use std::f32::consts::TAU;
@@ -44,8 +51,13 @@ pub use projectile::Arrow;
 pub const SPAWN_MIN_DIST: f64 = 24.0;
 pub const SPAWN_MAX_DIST: f64 = 64.0;
 /// Java's Nether fortress spawns: (mob, weight, smallest and largest group).
-const FORTRESS_SPAWNS: [(MobKind, u32, u32, u32); 3] =
-    [(MobKind::Blaze, 10, 2, 3), (MobKind::ZombifiedPiglin, 5, 4, 4), (MobKind::Skeleton, 2, 5, 5)];
+const FORTRESS_SPAWNS: [(MobKind, u32, u32, u32); 5] = [
+    (MobKind::Blaze, 10, 2, 3),
+    (MobKind::WitherSkeleton, 8, 5, 5),
+    (MobKind::ZombifiedPiglin, 5, 4, 4),
+    (MobKind::MagmaCube, 3, 4, 4),
+    (MobKind::Skeleton, 2, 5, 5),
+];
 /// Mobs farther than this are removed.
 pub const DESPAWN_DIST: f64 = 96.0;
 /// Hostile mobs only spawn when it's darker than this.
@@ -104,13 +116,40 @@ pub enum EntityEvent {
         knockback: Vec3,
         cause: &'static str,
     },
-    /// A creeper or TNT exploded: break blocks and hurt everything nearby
-    /// (see [`explosion_damage`]). [`Entities::explode`] handles the mobs;
-    /// `cause` is the death message.
+    /// A mob or splash potion applied a status effect to this player.
+    PlayerEffect {
+        player: PlayerId,
+        effect: crate::simulation::effects::Effect,
+        amplifier: u8,
+        ticks: u32,
+    },
+    /// A witch threw a splash potion with this velocity (turned into a
+    /// projectile internally).
+    ThrowPotion {
+        from: DVec3,
+        vel: DVec3,
+        potion: crate::potion::Potion,
+    },
+    /// A splash potion shattered: glass sound and coloured particles.
+    PotionSplashed {
+        pos: DVec3,
+        colour: [u8; 3],
+    },
+    /// Magic damage (positive) or healing (negative) a splash potion dealt
+    /// to this player, after distance falloff.
+    PlayerMagic {
+        player: PlayerId,
+        amount: f32,
+    },
+    /// A creeper, ghast fireball or TNT exploded: break blocks and hurt
+    /// everything nearby (see [`explosion_damage`]). [`Entities::explode`]
+    /// handles the mobs; `cause` is the death message. `credit_player` marks
+    /// a deflected ghast fireball so the mobs it kills drop loot.
     Explosion {
         center: DVec3,
         power: f32,
         cause: &'static str,
+        credit_player: bool,
     },
     Sound {
         sound: MobSound,
@@ -121,10 +160,12 @@ pub enum EntityEvent {
         from: DVec3,
         target: DVec3,
     },
-    /// A blaze shot a fireball (turned into a projectile internally).
+    /// A blaze or ghast shot a fireball (turned into a projectile internally).
+    /// `large` is a ghast fireball: slower, explosive, and punchable.
     Fireball {
         from: DVec3,
         dir: DVec3,
+        large: bool,
     },
     /// A fireball set `player` alight for `secs`.
     Ignite {
@@ -158,6 +199,15 @@ pub enum EntityEvent {
     /// The Ender Dragon flew through this block: remove it, without drops.
     BreakBlock {
         cell: IVec3,
+    },
+    /// A chicken laid an egg at its feet.
+    LaidEgg {
+        pos: DVec3,
+    },
+    /// A thrown egg hatched `count` chicks (one or four) at `pos`.
+    Hatched {
+        pos: DVec3,
+        count: u8,
     },
     /// The dragon's death is over: open the exit portal, and on the `first`
     /// kill put the egg on top.
@@ -229,6 +279,13 @@ pub trait MobWorld: BlockSource {
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         Vec::new()
     }
+    fn seed(&self) -> u64 {
+        0
+    }
+    fn biome(&self, _x: i32, _z: i32) -> crate::world::terrain::Biome {
+        crate::world::terrain::Biome::Plains
+    }
+    /// Java moon brightness; clients set this from their saved day count.
     /// Inside a Nether fortress piece, where fortress mobs spawn.
     fn in_fortress(&self, _p: IVec3) -> bool {
         false
@@ -236,6 +293,12 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn seed(&self) -> u64 {
+        self.generator.seed
+    }
+    fn biome(&self, x: i32, z: i32) -> crate::world::terrain::Biome {
+        self.generator.column(x, z).biome
+    }
     fn rains_on(&self, p: IVec3) -> bool {
         World::rains_on(self, p)
     }
@@ -284,12 +347,23 @@ pub struct Target {
     pub thorns: [u8; 4],
     /// Mainhand enchantments apply to kills caused by this player's Thorns.
     pub held_enchants: crate::enchant::Enchants,
+    /// Current collision box (pose-dependent).
+    pub shape: crate::physics::Shape,
 }
 
 impl Target {
     /// A living player; set [`Target::alive`] for one waiting to respawn.
     pub fn new(id: PlayerId, pos: DVec3, targetable: bool) -> Self {
-        Self { id, pos, targetable, alive: true, look: DVec3::ZERO, thorns: [0; 4], held_enchants: Default::default() }
+        Self {
+            id,
+            pos,
+            targetable,
+            alive: true,
+            look: DVec3::ZERO,
+            thorns: [0; 4],
+            held_enchants: Default::default(),
+            shape: crate::player::SHAPE,
+        }
     }
 
     /// Thorns levels from worn armor.
@@ -297,12 +371,12 @@ impl Target {
         armor.map(|s| s.map_or(0, |s| s.enchants.level(crate::enchant::Enchantment::Thorns)))
     }
 
-    /// Whether `p` is inside this player's 0.6 x 1.8 box.
+    /// Whether `p` is inside this player's collision box.
     pub fn contains(&self, p: DVec3) -> bool {
         let d = p - self.pos;
-        d.x.abs() < crate::player::HALF_WIDTH
-            && d.z.abs() < crate::player::HALF_WIDTH
-            && (0.0..crate::player::HEIGHT).contains(&d.y)
+        d.x.abs() < self.shape.half_width
+            && d.z.abs() < self.shape.half_width
+            && (0.0..self.shape.height).contains(&d.y)
     }
 }
 
@@ -346,6 +420,18 @@ impl Rng {
         Self(seed)
     }
 
+    /// Unbiased bounded integer draw for Java-style spawn/drop rolls.
+    pub fn next_int(&mut self, bound: u32) -> u32 {
+        assert!(bound > 0);
+        let threshold = bound.wrapping_neg() % bound;
+        loop {
+            let n = splitmix64(&mut self.0) as u32;
+            if n >= threshold {
+                return n % bound;
+            }
+        }
+    }
+
     pub fn next_f32(&mut self) -> f32 {
         (splitmix64(&mut self.0) >> 40) as f32 / (1u64 << 24) as f32
     }
@@ -361,8 +447,13 @@ impl Rng {
 
 pub struct Entities {
     pub mobs: Vec<Mob>,
+    /// Visual requests shared by local, controller and agent combat.
+    pub particles: crate::particles::Requests,
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
+    pub potions: Vec<potion::ThrownPotion>,
+    pub thrown: Vec<thrown::Thrown>,
+    pub bobbers: Vec<bobber::Bobber>,
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
     pub puffs: Vec<Puff>,
@@ -374,6 +465,9 @@ pub struct Entities {
     pub orbs: Vec<XpOrb>,
     /// The dragon fight, in the End.
     pub fight: Option<dragon::Fight>,
+    /// Java `doMobLoot`; set by the world before each update.
+    pub mob_loot: bool,
+    pub moon_brightness: f32,
     rng: Rng,
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
@@ -390,8 +484,12 @@ impl Entities {
     pub fn new(seed: u64) -> Self {
         Self {
             mobs: Vec::new(),
+            particles: Default::default(),
             arrows: Vec::new(),
             pearls: Vec::new(),
+            potions: Vec::new(),
+            thrown: Vec::new(),
+            bobbers: Vec::new(),
             eyes: Vec::new(),
             fireballs: Vec::new(),
             puffs: Vec::new(),
@@ -399,6 +497,8 @@ impl Entities {
             items: Vec::new(),
             orbs: Vec::new(),
             fight: None,
+            mob_loot: true,
+            moon_brightness: 1.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
@@ -408,28 +508,91 @@ impl Entities {
         }
     }
 
+    /// Shared host, gamepad and CLI sheep action. `true`: shears, `false`: dye.
+    pub fn use_on_sheep(&mut self, index: usize, item: crate::item::Item) -> Option<bool> {
+        let mob = self.mobs.get_mut(index)?;
+        if mob.kind != MobKind::Sheep || !mob.alive() {
+            return None;
+        }
+        if let Some(color) = item.dye_color() {
+            if mob.wool_color == color {
+                return None;
+            }
+            mob.wool_color = color;
+            return Some(false);
+        }
+        if item != crate::item::Item::SHEARS || mob.sheared {
+            return None;
+        }
+        mob.sheared = true;
+        let color = mob.wool_color;
+        let pos = mob.pos;
+        let count = 1 + self.rng.next_int(3) as u8;
+        self.scatter(crate::inventory::Stack::new(Block::wool(color), count), pos);
+        Some(true)
+    }
+
     pub fn count(&self, kind: MobKind) -> usize {
         self.mobs.iter().filter(|m| m.kind == kind && m.alive()).count()
     }
 
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
-        self.mobs.push(Mob::new(kind, pos, yaw));
+        let mut mob = Mob::new(kind, pos, yaw);
+        if kind == MobKind::Sheep {
+            let roll = self.rng.next_int(100);
+            let rare = if roll >= 18 { self.rng.next_int(500) } else { 1 };
+            mob.wool_color = crate::color::DyeColor::natural_sheep(roll, rare);
+        }
+        if kind.is_zombie() && self.rng.chance(0.05) {
+            mob.baby = true;
+        }
+        if kind.is_zombie() || kind == MobKind::Skeleton {
+            let (armor, glint) = armor::roll_monster_armor(&mut self.rng);
+            mob.armor = armor;
+            mob.armor_glint = glint;
+        }
+        if kind.is_cube() {
+            // Java's 1 << random(0..3): sizes 1, 2 and 4. Difficulty's bias
+            // toward larger cubes is not applied.
+            mob.set_size(1 << (self.rng.next_f32() * 3.0) as u8);
+        }
+        self.mobs.push(mob);
     }
 
-    /// Snapshot positions and advance entity simulation by `dt` game seconds.
+    /// Removes monsters which Java does not allow to exist on Peaceful.
+    pub fn despawn_hostiles(&mut self) {
+        self.mobs.retain(|mob| !mob.kind.is_hostile());
+    }
+
+    /// Snapshot positions and advance entity simulation on Normal difficulty.
     /// Return events for the caller to apply world edits, damage, loot and sounds.
     pub fn update<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, ctx: &Ctx) -> Vec<EntityEvent> {
+        self.update_difficulty(dt, world, ctx, crate::simulation::difficulty::Difficulty::Normal)
+    }
+
+    /// [`Entities::update`] under this world's difficulty.
+    pub fn update_difficulty<W: MobWorld + ?Sized>(
+        &mut self,
+        dt: f64,
+        world: &W,
+        ctx: &Ctx,
+        difficulty: crate::simulation::difficulty::Difficulty,
+    ) -> Vec<EntityEvent> {
         self.snapshot_positions();
         let mut events = Vec::new();
-        if ctx.spawning {
+        if difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
+            self.despawn_hostiles();
+        } else if ctx.spawning {
             self.spawn_timer -= dt as f32;
             if self.spawn_timer <= 0.0 {
                 self.spawn_timer = SPAWN_INTERVAL;
                 self.natural_spawn(world, ctx);
             }
         }
-        self.run_spawners(dt as f32, world, ctx);
+        if difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
+            self.run_spawners(dt as f32, world, ctx);
+        }
 
         let mut i = 0;
         while i < self.mobs.len() {
@@ -438,10 +601,39 @@ impl Entities {
                 || ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
                 || !world.loaded(m.pos.floor().as_ivec3());
             if gone {
-                self.mobs.swap_remove(i);
+                if m.dying.is_some_and(|t| t >= mob::DEATH_TIME) {
+                    let mut burst = crate::particles::Burst::new(
+                        crate::particles::Kind::Poof,
+                        m.pos + DVec3::Y * m.shape().height * 0.5,
+                        20,
+                    );
+                    burst.spread = DVec3::new(m.shape().half_width, m.shape().height * 0.5, m.shape().half_width);
+                    burst.forced = true;
+                    burst.velocity_spread = DVec3::splat(0.02);
+                    self.particles.push(crate::particles::Request::Burst(burst));
+                }
+                let dead = self.mobs.swap_remove(i);
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME) && dead.kind.is_cube() && dead.size > 1 {
+                    let count = 2 + (self.rng.next_f32() * 3.0) as usize;
+                    for n in 0..count {
+                        let offset =
+                            DVec3::new((n % 2) as f64 - 0.5, 0.5, (n / 2) as f64 - 0.5) * dead.size as f64 * 0.25;
+                        let mut child = Mob::new(dead.kind, dead.pos + offset, self.rng.range(0.0, TAU));
+                        child.set_size(dead.size / 2);
+                        self.mobs.push(child);
+                    }
+                }
                 continue;
             }
+            let grounded = self.mobs[i].on_ground;
+            self.mobs[i].difficulty = difficulty;
             self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);
+            let m = &self.mobs[i];
+            if m.kind == MobKind::MagmaCube && !grounded && m.on_ground && m.alive() {
+                let mut b = crate::particles::Burst::new(crate::particles::Kind::Flame, m.pos, m.size as u16 * 8);
+                b.spread = DVec3::new(m.shape().half_width, 0.0, m.shape().half_width);
+                self.particles.push(crate::particles::Request::Burst(b));
+            }
             i += 1;
         }
         self.separate(dt);
@@ -453,34 +645,89 @@ impl Entities {
         for e in &events {
             match *e {
                 EntityEvent::Shoot { from, target } => self.arrows.push(Arrow::aimed(from, target, &mut self.rng)),
-                EntityEvent::Fireball { from, dir } => self.fireballs.push(fireball::Fireball::new(from, dir)),
+                EntityEvent::ThrowPotion { from, vel, potion } => {
+                    self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
+                }
+                EntityEvent::Fireball { from, dir, large } => {
+                    let ball =
+                        if large { fireball::Fireball::large(from, dir) } else { fireball::Fireball::new(from, dir) };
+                    if large {
+                        let mut burst = crate::particles::Burst::new(crate::particles::Kind::LargeSmoke, from, 6);
+                        burst.spread = DVec3::splat(0.4);
+                        self.particles.push(crate::particles::Request::Burst(burst));
+                    }
+                    self.fireballs.push(ball);
+                }
                 _ => {}
             }
         }
-        events.retain(|e| !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. }));
-        self.fireballs.retain_mut(|f| f.update(dt, world, ctx, &mut events));
-        let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
-        self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
-        self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
+        events.retain(|e| {
+            !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. })
+        });
+        {
+            let mobs = &self.mobs;
+            self.fireballs.retain_mut(|f| f.update(dt, world, ctx, mobs, &mut events));
+        }
+        {
+            let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
+            self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
+            self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
+            self.potions.retain_mut(|p| p.update(dt, world, ctx, mobs, rng, &mut events));
+            self.thrown.retain_mut(|t| t.update(dt, world, mobs, rng, &mut events));
+        }
+        {
+            let rng = &mut self.rng;
+            let mut i = 0;
+            while i < self.bobbers.len() {
+                if self.bobbers[i].update(dt, world, rng, ctx) {
+                    i += 1;
+                } else {
+                    self.bobbers.swap_remove(i);
+                }
+            }
+        }
         self.update_eyes(dt, &mut events);
         for e in &events {
             match *e {
                 EntityEvent::MobShot { kind, pos, killed, burning } => {
-                    if killed {
+                    if killed && self.mob_loot {
                         self.drop_loot_with_fire(kind, pos, 0, burning, true);
                     }
                     if kind == MobKind::ZombifiedPiglin {
                         self.anger_piglins(pos);
                     }
                 }
-                EntityEvent::DragonXp { pos, points } => self.spawn_xp(pos, points),
+                EntityEvent::DragonXp { pos, points } => {
+                    if self.mob_loot {
+                        self.spawn_xp(pos, points);
+                    }
+                }
                 EntityEvent::MobKilled { kind, pos, burning, player_kill, looting } => {
-                    self.drop_loot_with_fire(kind, pos, looting, burning, player_kill)
+                    self.drop_loot_with_fire(kind, pos, looting, burning, player_kill);
+                }
+                EntityEvent::LaidEgg { pos } => {
+                    self.drop_from_block(
+                        crate::inventory::Stack::new(crate::item::Item::EGG, 1),
+                        pos.floor().as_ivec3(),
+                    );
+                }
+                EntityEvent::Hatched { pos, count } => {
+                    for _ in 0..count {
+                        self.spawn_baby(MobKind::Chicken, pos);
+                    }
                 }
                 _ => {}
             }
         }
-        events.retain(|e| !matches!(e, EntityEvent::DragonXp { .. } | EntityEvent::MobKilled { .. }));
+        events.retain(|e| {
+            !matches!(
+                e,
+                EntityEvent::DragonXp { .. }
+                    | EntityEvent::MobKilled { .. }
+                    | EntityEvent::LaidEgg { .. }
+                    | EntityEvent::Hatched { .. }
+            )
+        });
         self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
         self.orbs.retain_mut(|orb| !world.loaded(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
@@ -504,29 +751,34 @@ impl Entities {
 
     /// Hurts and flings mobs caught in an explosion, and puffs smoke.
     pub fn explode(&mut self, center: DVec3, power: f32) {
+        self.blast(center, power, false);
+    }
+
+    /// As [`Entities::explode`], but mobs it kills count as the player's
+    /// (a ghast fireball punched back).
+    pub fn explode_credited(&mut self, center: DVec3, power: f32) {
+        self.blast(center, power, true);
+    }
+
+    fn blast(&mut self, center: DVec3, power: f32, credit_player: bool) {
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
+        let mut killed = Vec::new();
         for m in &mut self.mobs {
             let mid = m.pos + DVec3::Y * (m.shape().height * 0.5);
             let Some((damage, impact)) = explosion_damage(power, mid.distance(center)) else { continue };
             let away = (mid - center).normalize_or(DVec3::Y);
-            m.damage(damage, Some(away * (impact as f64 * 14.0) + DVec3::Y * 6.0), &mut self.rng);
+            if credit_player {
+                m.player_hit();
+            }
+            if m.damage(damage, Some(away * (impact as f64 * 14.0) + DVec3::Y * 6.0), &mut self.rng) && credit_player {
+                killed.push((m.kind, m.pos, m.burning));
+            }
         }
-        for _ in 0..28 {
-            let dir = DVec3::new(
-                self.rng.range(-1.0, 1.0) as f64,
-                self.rng.range(-0.4, 1.0) as f64,
-                self.rng.range(-1.0, 1.0) as f64,
-            );
-            self.puffs.push(Puff {
-                pos: center + dir * 0.6,
-                previous_pos: center + dir * 0.6,
-                vel: dir * self.rng.range(3.0, 8.0) as f64,
-                age: 0.0,
-                life: self.rng.range(0.6, 1.3),
-                size: self.rng.range(0.4, 1.0),
-            });
+        self.particles.push(crate::particles::Request::Explosion { pos: center, large: power >= 2.0 });
+        for (kind, pos, burning) in killed {
+            self.drop_loot_with_fire(kind, pos, 0, burning, true);
         }
     }
 
@@ -543,12 +795,58 @@ impl Entities {
     }
 
     fn drop_loot_with_fire(&mut self, kind: MobKind, pos: DVec3, looting: u8, burning: bool, player_kill: bool) {
+        if !self.mob_loot {
+            return;
+        }
+        let size = self
+            .mobs
+            .iter()
+            .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
+            .map_or((1, false), |m| (m.size, m.baby));
+        let (size, baby) = size;
         if player_kill {
-            let xp = kind.xp(&mut self.rng);
+            let xp = if kind.is_cube() {
+                size as u32
+            } else if baby {
+                // Java gives baby zombies 2.5 times the base experience.
+                12
+            } else {
+                kind.xp(&mut self.rng)
+            };
             self.spawn_xp(pos, xp);
         }
+        // Large slimes only split. Tiny magma cubes drop nothing; sizes 2 and 4 drop cream.
+        if (kind == MobKind::Slime && size > 1) || (kind == MobKind::MagmaCube && size == 1) {
+            return;
+        }
+        let sheep = (kind == MobKind::Sheep).then(|| {
+            self.mobs
+                .iter()
+                .find(|m| m.kind == kind && m.pos == pos && !m.alive())
+                .map_or((crate::color::DyeColor::White, false), |m| (m.wool_color, m.sheared))
+        });
         for (item, count) in kind.drops(&mut self.rng, looting) {
-            if !player_kill && matches!(item, crate::item::Item::SPIDER_EYE | crate::item::Item::BLAZE_ROD) {
+            let item = if let Some((color, sheared)) = sheep {
+                if item == crate::item::Item::from(Block::WOOL) {
+                    if sheared {
+                        continue;
+                    }
+                    crate::item::Item::from(Block::wool(color))
+                } else {
+                    item
+                }
+            } else {
+                item
+            };
+            if !player_kill
+                && matches!(
+                    item,
+                    crate::item::Item::SPIDER_EYE
+                        | crate::item::Item::BLAZE_ROD
+                        | crate::item::Item::GHAST_TEAR
+                        | crate::item::Item::WITHER_SKULL
+                )
+            {
                 continue;
             }
             let item = if burning {
@@ -674,7 +972,12 @@ impl Entities {
                 let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
                 let x = (center.x + angle.cos() * dist).floor() as i32;
                 let z = (center.z + angle.sin() * dist).floor() as i32;
+                if ctx.dimension == Dimension::Overworld && !self.rng.chance(kind.biome_chance(world.biome(x, z))) {
+                    continue;
+                }
                 let spot = match ctx.dimension {
+                    Dimension::Overworld if kind == MobKind::Drowned => self.drowned_spot(world, x, z, ctx.daylight),
+                    Dimension::Overworld if kind == MobKind::Slime => self.slime_spot(world, x, z, ctx.daylight),
                     Dimension::Overworld => spawn_spot(world, kind, x, z, ctx.daylight),
                     Dimension::Nether => cavern_spot(world, kind, x, z, self.rng.range(40.0, 118.0) as i32),
                     Dimension::End => cavern_spot(world, kind, x, z, self.rng.range(30.0, 90.0) as i32),
@@ -687,7 +990,12 @@ impl Entities {
                 // Animals come in small herds, zombified piglins and End
                 // endermen in packs.
                 if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
-                    let extra = (self.rng.next_f32() * 3.0) as i32;
+                    // Nether wastes ghasts and magma cubes spawn in groups of exactly 4.
+                    let extra = if matches!(kind, MobKind::MagmaCube | MobKind::Ghast) {
+                        3
+                    } else {
+                        (self.rng.next_f32() * 3.0) as i32
+                    };
                     for _ in 0..extra {
                         let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
                         let spot = if ctx.dimension.has_sky() {
@@ -710,9 +1018,45 @@ impl Entities {
         }
     }
 
+    /// Java's drowned rules: in water, in rivers one attempt in 15, in oceans
+    /// one in 40 and only deeper than five blocks below sea level. Deep water
+    /// is dark enough in daylight; shallow water needs night.
+    fn drowned_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
+        use crate::world::terrain::{Biome, SEA_LEVEL};
+        let river = world.biome(x, z) == Biome::River;
+        if !self.rng.chance(if river { 1.0 / 15.0 } else { 1.0 / 40.0 }) {
+            return None;
+        }
+        let top = (SEA_LEVEL - 8..=SEA_LEVEL + 1)
+            .rev()
+            .find(|&y| world.block(IVec3::new(x, y, z)).is_some_and(Block::is_water))?;
+        let y = if river { top } else { top - 5 - (self.rng.next_f32() * 6.0) as i32 };
+        let dark = daylight < HOSTILE_SPAWN_DAYLIGHT || top - y >= 4;
+        let wet = |dy: i32| world.block(IVec3::new(x, y + dy, z)).is_some_and(Block::is_water);
+        (dark && wet(0) && wet(1)).then(|| DVec3::new(x as f64 + 0.5, y as f64, z as f64 + 0.5))
+    }
+
+    fn slime_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
+        use crate::world::{height::java_y, terrain::Biome};
+        if world.biome(x, z) == Biome::Swamp && self.rng.chance(0.5 * self.moon_brightness) {
+            let pos = spawn_spot(world, MobKind::Slime, x, z, 0.0)?;
+            let y = pos.y as i32;
+            let raw = (daylight * 15.0) as u8;
+            let light = world.block_light(pos.floor().as_ivec3()).max(raw);
+            if y > java_y(50) && y < java_y(70) && light <= (self.rng.next_f32() * 8.0) as u8 {
+                return Some(pos);
+            }
+        }
+        if slime::slime_chunk(world.seed(), x.div_euclid(16), z.div_euclid(16)) && self.rng.chance(0.1) {
+            cavern_spot(world, MobKind::Slime, x, z, java_y(39)).filter(|p| p.y < java_y(40) as f64)
+        } else {
+            None
+        }
+    }
+
     /// Java's fortress spawn list, used for spots inside fortress pieces:
-    /// blazes, zombified piglins and skeletons in groups. Light doesn't
-    /// matter. (Wither skeletons and magma cubes don't exist yet.)
+    /// blazes, wither skeletons, zombified piglins, magma cubes and skeletons in groups.
+    /// Light doesn't matter.
     fn fortress_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, center: DVec3) {
         let total: u32 = FORTRESS_SPAWNS.iter().map(|s| s.1).sum();
         let mut r = (self.rng.next_f32() * total as f32) as u32;
@@ -754,7 +1098,9 @@ impl Entities {
     /// Java's spawner logic: a spawner with a player within 16 blocks waits
     /// out its delay, then tries four spots up to 4 blocks away (and a block
     /// up or down) with room for its mob, unless six are already around.
-    /// Light and ground don't matter. Active cages give off flames.
+    /// Light and ground don't matter. Nearby cages give off smoke and flame
+    /// on the existing visual roll (about six times a second) so this tick
+    /// does not change the spawner RNG stream.
     fn run_spawners<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx) {
         let spawners = world.spawners();
         self.spawner_delays.retain(|p, _| spawners.iter().any(|(q, _)| q == p));
@@ -765,7 +1111,9 @@ impl Entities {
             }
             if self.rng.chance(dt * 6.0) {
                 let p = centre + DVec3::new(self.rng.range(-0.4, 0.4) as f64, self.rng.range(-0.4, 0.4) as f64, 0.0);
-                self.puffs.push(Puff { pos: p, previous_pos: p, vel: DVec3::Y * 0.5, age: 0.0, life: 0.6, size: 0.15 });
+                for kind in [crate::particles::Kind::Smoke, crate::particles::Kind::Flame] {
+                    self.particles.push(crate::particles::Request::Burst(crate::particles::Burst::new(kind, p, 1)));
+                }
             }
             let delay = self.spawner_delays.entry(cell).or_insert(1.0);
             *delay -= dt;
@@ -820,6 +1168,15 @@ impl Entities {
         for p in &mut self.pearls {
             p.previous_pos = p.pos;
         }
+        for p in &mut self.potions {
+            p.previous_pos = p.pos;
+        }
+        for t in &mut self.thrown {
+            t.previous_pos = t.pos;
+        }
+        for b in &mut self.bobbers {
+            b.previous_pos = b.pos;
+        }
         for e in &mut self.eyes {
             e.previous_pos = e.pos;
         }
@@ -853,6 +1210,9 @@ impl Entities {
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.verts);
         model::build_arrows(&self.arrows, camera, alpha, &mut self.verts);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.verts);
+        model::build_potions(&self.potions, camera, alpha, &mut self.verts);
+        model::build_thrown(&self.thrown, camera, alpha, &mut self.verts);
+        model::build_bobbers(&self.bobbers, camera, alpha, &mut self.verts);
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.verts);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
@@ -876,6 +1236,46 @@ impl Entities {
             })
             .filter(|&(_, t)| t <= max_dist)
             .min_by(|a, b| a.1.total_cmp(&b.1))
+    }
+
+    /// Index of a ghast fireball along the look ray, when it is closer than
+    /// any mob or End-fight target.
+    pub fn large_fireball(&self, eye: DVec3, dir: DVec3, max_dist: f64) -> Option<usize> {
+        let dir = dir.normalize_or_zero();
+        if dir == DVec3::ZERO {
+            return None;
+        }
+        let mut best: Option<(usize, f64)> = None;
+        for (i, f) in self.fireballs.iter().enumerate() {
+            if !f.is_large() {
+                continue;
+            }
+            let t = (f.pos - eye).dot(dir);
+            if !(0.0..=max_dist).contains(&t) {
+                continue;
+            }
+            if (eye + dir * t - f.pos).length_squared() > 1.0 {
+                continue;
+            }
+            if best.is_none_or(|(_, bt)| t < bt) {
+                best = Some((i, t));
+            }
+        }
+        let (i, t) = best?;
+        if self.raycast(eye, dir, max_dist).is_some_and(|(_, mt)| mt < t) {
+            return None;
+        }
+        if self.fight.as_ref().and_then(|f| f.raycast(eye, dir, max_dist)).is_some_and(|(_, ft)| ft < t) {
+            return None;
+        }
+        Some(i)
+    }
+
+    /// Punches the ghast fireball under the crosshair back along `dir`.
+    pub fn punch_fireball(&mut self, eye: DVec3, dir: DVec3, max_dist: f64) -> bool {
+        let Some(i) = self.large_fireball(eye, dir, max_dist) else { return false };
+        self.fireballs[i].deflect(dir);
+        true
     }
 
     /// The End crystal or dragon part a ray hits within `max_dist`, if it's
@@ -902,8 +1302,65 @@ impl Entities {
 
     /// Player `owner` throws an ender pearl from `eye` along `dir`, carrying
     /// their velocity `carry`.
+    /// A player throws a splash potion from `eye` along `dir`.
+    pub fn throw_potion(
+        &mut self,
+        owner: PlayerId,
+        potion: crate::potion::Potion,
+        eye: DVec3,
+        dir: DVec3,
+        carry: DVec3,
+    ) {
+        self.potions.push(potion::ThrownPotion::thrown(potion, owner, eye, dir, carry));
+    }
+
     pub fn throw_pearl(&mut self, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3) {
         self.pearls.push(pearl::Pearl::thrown(owner, eye, dir, carry, &mut self.rng));
+    }
+
+    /// Casts this player's bobber. A bobber they already had is replaced.
+    pub fn cast_bobber(&mut self, owner: PlayerId, eye: DVec3, dir: DVec3, lure: u8, luck: u8) {
+        self.bobbers.retain(|b| b.owner != owner);
+        self.bobbers.push(bobber::Bobber::cast(owner, eye, dir, lure, luck, &mut self.rng));
+    }
+
+    /// Reels this player's bobber, spawning the catch and its experience.
+    /// The number is how many uses the rod spends.
+    pub fn reel(&mut self, owner: PlayerId, player_pos: DVec3) -> Option<u16> {
+        let index = self.bobbers.iter().position(|b| b.owner == owner)?;
+        let bobber = self.bobbers.swap_remove(index);
+        let got = bobber.retrieve(&mut self.rng);
+        if let Some(stack) = got.catch {
+            let delta = player_pos - bobber.pos;
+            let lift = delta.length().sqrt() * 0.08;
+            let vel = DVec3::new(delta.x * 0.1, delta.y * 0.1 + lift, delta.z * 0.1);
+            self.items.push(item::ItemEntity::new(stack, bobber.pos, vel, 0.1, &mut self.rng));
+            self.spawn_xp(player_pos + DVec3::Y * 0.5, got.xp);
+        }
+        Some(got.wear)
+    }
+
+    /// Forgets this player's bobber (they put the rod away, or died).
+    pub fn drop_bobber(&mut self, owner: PlayerId) {
+        self.bobbers.retain(|b| b.owner != owner);
+    }
+
+    pub fn has_bobber(&self, owner: PlayerId) -> bool {
+        self.bobbers.iter().any(|b| b.owner == owner)
+    }
+
+    /// Throws a snowball or egg from `eye` along `dir`.
+    pub fn throw_projectile(&mut self, item: crate::item::Item, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3) {
+        let Some(kind) = thrown::Kind::from_item(item) else { return };
+        self.thrown.push(thrown::Thrown::launch(kind, owner, eye, dir, carry, &mut self.rng));
+    }
+
+    /// Spawns a baby that grows up after Java's 24000 ticks.
+    pub fn spawn_baby(&mut self, kind: MobKind, pos: DVec3) {
+        let yaw = self.rng.range(0.0, TAU);
+        let mut mob = Mob::new(kind, pos, yaw);
+        mob.age = -24000;
+        self.mobs.push(mob);
     }
 
     /// An eye of ender released at `pos` to fly toward the stronghold at
@@ -927,16 +1384,14 @@ impl Entities {
                 let stack = crate::inventory::Stack::new(crate::item::Item::EYE_OF_ENDER, 1);
                 self.items.push(ItemEntity::new(stack, e.pos, DVec3::ZERO, item::PICKUP_DELAY, &mut self.rng));
             } else {
+                // The old shatter puffs drew eight random scatters. Keep those
+                // rolls so a broken eye does not shift later mob randomness.
                 for _ in 0..8 {
-                    let dir = DVec3::new(
-                        self.rng.range(-1.0, 1.0) as f64,
-                        self.rng.range(0.0, 1.0) as f64,
-                        self.rng.range(-1.0, 1.0) as f64,
-                    );
-                    let pos = e.pos + dir * 0.1;
-                    let vel = dir * 1.5;
-                    self.puffs.push(Puff { pos, previous_pos: pos, vel, age: 0.0, life: 0.5, size: 0.12 });
+                    self.rng.range(-1.0, 1.0);
+                    self.rng.range(0.0, 1.0);
+                    self.rng.range(-1.0, 1.0);
                 }
+                self.particles.push(crate::particles::Request::EyeBreak { pos: e.pos });
             }
         }
     }
@@ -1024,7 +1479,23 @@ impl Entities {
         if fire > 0.0 {
             self.mobs[index].ignite(fire);
         }
+        let old_health = self.mobs[index].health;
         let killed = self.knock(index, dir, damage, knockback);
+        if self.mobs[index].health < old_health {
+            for effect in [
+                critical.then_some(crate::particles::Kind::Crit),
+                (crate::enchant::damage_bonus(enchants, kind.creature()) > 0.0)
+                    .then_some(crate::particles::Kind::MagicCrit),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let mut burst = crate::particles::Burst::new(effect, pos + DVec3::Y * shape.height * 0.5, 32);
+                burst.spread = DVec3::new(shape.half_width * 0.5, shape.height * 0.25, shape.half_width * 0.5);
+                burst.velocity = self.mobs[index].vel / 20.0;
+                self.particles.push(crate::particles::Request::Tracking(burst));
+            }
+        }
         if let Some(kind) = killed {
             self.drop_loot_with_fire(
                 kind,
@@ -1152,6 +1623,14 @@ mod tests {
         }
     }
 
+    /// Hostile kinds that fill their cap on the flat plains test grid.
+    fn plains_spawner(kind: MobKind) -> bool {
+        kind.is_hostile()
+            && kind.spawns_in(Dimension::Overworld)
+            && kind != MobKind::Slime
+            && kind.biome_chance(crate::world::terrain::Biome::Plains) >= 1.0
+    }
+
     fn ctx(player: DVec3) -> Ctx {
         Ctx {
             players: vec![Target::new(PlayerId::HOST, player, false)],
@@ -1160,6 +1639,227 @@ mod tests {
             raining: false,
             dimension: Dimension::Overworld,
         }
+    }
+
+    #[test]
+    fn cave_spider_poison_matches_difficulty_and_target_id() {
+        use crate::simulation::{difficulty::Difficulty, effects::Effect};
+        for (difficulty, ticks) in [(Difficulty::Easy, 0), (Difficulty::Normal, 140), (Difficulty::Hard, 300)] {
+            let mut e = Entities::new(1);
+            e.spawn(MobKind::CaveSpider, DVec3::new(0.5, 10.0, 0.5));
+            let mut c = ctx(DVec3::new(100.0, 10.0, 0.5));
+            c.daylight = 0.0;
+            c.players.push(Target::new(PlayerId(2), DVec3::new(1.0, 10.0, 0.5), true));
+            let events = e.update_difficulty(0.05, &Grid::flat(10), &c, difficulty);
+            let poison = events.iter().find(|e| matches!(e, EntityEvent::PlayerEffect { .. }));
+            assert_eq!(
+                poison.copied(),
+                (ticks > 0).then_some(EntityEvent::PlayerEffect {
+                    player: PlayerId(2),
+                    effect: Effect::Poison,
+                    amplifier: 0,
+                    ticks
+                })
+            );
+            assert_eq!(e.mobs[0].health, 12.0);
+        }
+        assert!(!MobKind::CaveSpider.spawns_in(Dimension::Overworld));
+    }
+
+    #[test]
+    fn husks_inflict_hunger_and_zombie_variants_follow_biome_rules() {
+        use crate::simulation::{difficulty::Difficulty, effects::Effect};
+        use crate::world::terrain::Biome;
+        for (difficulty, ticks) in [(Difficulty::Easy, 140), (Difficulty::Normal, 280), (Difficulty::Hard, 420)] {
+            let mut e = Entities::new(1);
+            e.spawn(MobKind::Husk, DVec3::new(0.5, 10.0, 0.5));
+            let mut c = ctx(DVec3::new(100.0, 10.0, 0.5));
+            c.players.push(Target::new(PlayerId(2), DVec3::new(1.0, 10.0, 0.5), true));
+            let events = e.update_difficulty(0.05, &Grid::flat(10), &c, difficulty);
+            assert!(events.iter().any(|ev| matches!(ev,
+                EntityEvent::PlayerEffect { player: PlayerId(2), effect: Effect::Hunger, ticks: t, .. } if *t == ticks)));
+        }
+        assert!(!MobKind::Husk.burns_in_sun() && MobKind::Drowned.burns_in_sun());
+        assert_eq!(MobKind::Husk.biome_chance(Biome::Desert), 1.0);
+        assert_eq!(MobKind::Husk.biome_chance(Biome::Plains), 0.0);
+        assert_eq!(MobKind::Drowned.biome_chance(Biome::River), 1.0);
+        assert_eq!(MobKind::Drowned.biome_chance(Biome::Desert), 0.0);
+        assert!(MobKind::Zombie.biome_chance(Biome::Desert) < 0.5);
+        // About one in twenty zombies is a baby: half size, 50% faster.
+        let mut e = Entities::new(5);
+        for _ in 0..2000 {
+            e.spawn(MobKind::Zombie, DVec3::ZERO);
+        }
+        let babies = e.mobs.iter().filter(|m| m.baby).count();
+        assert!((60..140).contains(&babies), "{babies}");
+        let baby = e.mobs.iter().find(|m| m.baby).unwrap();
+        assert_eq!(baby.shape().height, MobKind::Zombie.shape().height * 0.5);
+    }
+
+    #[test]
+    fn witches_throw_splash_potions_drink_when_hurt_and_resist_magic() {
+        let world = Grid::flat(10);
+        let mut c = ctx(DVec3::new(7.5, 10.0, 0.5));
+        c.daylight = 0.0;
+        c.players[0].targetable = true;
+        let mut e = Entities::new(2);
+        e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+        assert_eq!(MobKind::Witch.max_health(), 26.0);
+        let mut hits = Vec::new();
+        for _ in 0..400 {
+            for ev in e.update(0.05, &world, &c) {
+                if let EntityEvent::PlayerMagic { amount, .. } | EntityEvent::PlayerHit { damage: amount, .. } = ev {
+                    hits.push(amount);
+                }
+            }
+        }
+        assert!(e.mobs[0].aabb().0.x < 2.0, "witches stand off at range");
+        assert!(!e.potions.is_empty() || !hits.is_empty(), "a potion was thrown");
+        // Hurt witches drink healing.
+        let mut e = Entities::new(2);
+        e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].health = 10.0;
+        let far = ctx(DVec3::new(50.0, 10.0, 0.5));
+        for _ in 0..120 {
+            e.update(0.05, &world, &far);
+        }
+        assert!(e.mobs[0].health > 10.0, "{}", e.mobs[0].health);
+        assert!(
+            MobKind::Witch.biome_chance(crate::world::terrain::Biome::Swamp)
+                > MobKind::Witch.biome_chance(crate::world::terrain::Biome::Plains)
+        );
+        let drops: Vec<_> = (0..50).flat_map(|_| MobKind::Witch.drops(&mut Rng::new(4), 0)).collect();
+        assert!(drops.iter().any(|d| d.0 == crate::item::Item::GLASS_BOTTLE || d.0 == crate::item::Item::SUGAR));
+    }
+
+    #[test]
+    fn wither_skeleton_hits_wither_and_drops_coal_bones_and_rare_skulls() {
+        use crate::simulation::effects::Effect;
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::WitherSkeleton, DVec3::new(0.5, 10.0, 0.5));
+        let mut c = ctx(DVec3::new(1.0, 10.0, 0.5));
+        c.players[0].targetable = true;
+        c.daylight = 0.0;
+        let events = e.update(0.05, &Grid::flat(10), &c);
+        assert!(
+            events.iter().any(|ev| matches!(ev, EntityEvent::PlayerEffect { effect: Effect::Wither, ticks: 200, .. }))
+        );
+        assert!(events.iter().any(|ev| matches!(ev, EntityEvent::PlayerHit { damage, .. } if *damage == 8.0)));
+        assert!(!MobKind::WitherSkeleton.spawns_in(Dimension::Nether), "fortress only");
+        assert!(MobKind::WitherSkeleton.fire_immune());
+        assert_eq!(MobKind::WitherSkeleton.shape().height, 2.4);
+        let mut rng = Rng::new(9);
+        let skulls = (0..4000)
+            .filter(|_| {
+                MobKind::WitherSkeleton.drops(&mut rng, 0).iter().any(|d| d.0 == crate::item::Item::WITHER_SKULL)
+            })
+            .count();
+        assert!((60..140).contains(&skulls), "about 2.5%: {skulls}");
+        let looted = (0..4000)
+            .filter(|_| {
+                MobKind::WitherSkeleton.drops(&mut rng, 3).iter().any(|d| d.0 == crate::item::Item::WITHER_SKULL)
+            })
+            .count();
+        assert!(looted > skulls * 3 / 2, "looting adds 1% per level: {looted}");
+        assert!(FORTRESS_SPAWNS.iter().any(|s| s.0 == MobKind::WitherSkeleton && s.1 == 8));
+    }
+
+    #[test]
+    fn slime_sizes_split_without_loot_and_tiny_slimes_cannot_hurt() {
+        let world = Grid::flat(10);
+        let mut c = ctx(DVec3::new(1.0, 10.0, 0.5));
+        c.players[0].targetable = true;
+        c.daylight = 0.0;
+        let mut e = Entities::new(7);
+        e.spawn(MobKind::Slime, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].set_size(1);
+        assert_eq!(e.mobs[0].shape().height, 0.51);
+        assert!(!e.update(0.05, &world, &c).iter().any(|e| matches!(e, EntityEvent::PlayerHit { .. })));
+        e.mobs[0].set_size(4);
+        assert_eq!(e.mobs[0].health, 16.0);
+        assert_eq!(e.mobs[0].shape().height, 2.04);
+        assert!(e.attack(0, DVec3::ZERO, 100.0).is_some());
+        e.drop_loot(MobKind::Slime, e.mobs[0].pos);
+        assert!(e.items.is_empty(), "large slimes do not drop slimeballs");
+        e.mob_loot = false;
+        e.mobs[0].dying = Some(mob::DEATH_TIME);
+        e.update(0.05, &world, &c);
+        assert!((2..=4).contains(&e.mobs.len()));
+        assert!(e.mobs.iter().all(|m| m.size == 2 && m.health == 4.0));
+    }
+
+    #[test]
+    fn magma_cubes_hurt_when_tiny_and_only_larger_cubes_drop_cream() {
+        let world = Grid::flat(10);
+        let mut c = ctx(DVec3::new(1.0, 10.0, 0.5));
+        c.players[0].targetable = true;
+        c.daylight = 0.0;
+        let mut e = Entities::new(7);
+        e.spawn(MobKind::MagmaCube, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].set_size(1);
+        let events = e.update(0.05, &world, &c);
+        assert!(events.iter().any(|e| matches!(e, EntityEvent::PlayerHit { damage: 3.0, .. })));
+        e.attack(0, DVec3::ZERO, 100.0);
+        e.drop_loot(MobKind::MagmaCube, e.mobs[0].pos);
+        assert!(e.items.is_empty());
+        assert!(MobKind::MagmaCube.fire_immune());
+        assert!(!MobKind::MagmaCube.spawns_in(Dimension::Overworld));
+        assert_eq!(MobKind::MagmaCube.spawn_chance(Dimension::Nether), 0.02);
+        assert_eq!(MobKind::MagmaCube.loot(), &[(crate::item::Item::MAGMA_CREAM, -2, 1)]);
+        let mut seen = [false; 5];
+        for _ in 0..48 {
+            e.spawn(MobKind::MagmaCube, DVec3::ZERO);
+            let m = e.mobs.last().unwrap();
+            seen[m.size as usize] = true;
+            assert_eq!(m.health, (m.size as f32).powi(2));
+        }
+        assert!(seen[1] && seen[2] && seen[4], "sizes 1, 2 and 4: {seen:?}");
+    }
+
+    #[test]
+    fn ghasts_hover_shoot_and_credit_a_deflected_blast() {
+        let world = Grid::flat(0);
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Ghast, DVec3::new(0.5, 40.0, 0.5));
+        assert_eq!(e.mobs[0].health, 10.0);
+        assert!(MobKind::Ghast.fire_immune());
+        assert!(!MobKind::Ghast.spawns_in(Dimension::Overworld));
+        assert!(MobKind::Ghast.spawns_in(Dimension::Nether));
+        assert_eq!(MobKind::Ghast.spawn_chance(Dimension::Nether), 0.5);
+        assert_eq!(MobKind::Ghast.spawn_cap(Dimension::Nether), 4);
+        assert_eq!(
+            MobKind::Ghast.loot(),
+            &[(crate::item::Item::GUNPOWDER, 0, 2), (crate::item::Item::GHAST_TEAR, 0, 1)]
+        );
+        let hover =
+            Ctx { players: vec![Target::new(PlayerId::HOST, DVec3::new(0.5, 40.0, 0.5), false)], ..night(DVec3::ZERO) };
+        for _ in 0..120 {
+            e.update(1.0 / 60.0, &world, &hover);
+        }
+        assert!((e.mobs[0].pos.y - 40.0).abs() < 1.5, "flew without falling: {}", e.mobs[0].pos.y);
+
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Ghast, DVec3::new(0.5, 40.0, 0.5));
+        let hunt = night(DVec3::new(32.5, 40.0, 0.5));
+        for _ in 0..90 {
+            e.update(1.0 / 60.0, &world, &hunt);
+        }
+        assert!(e.fireballs.iter().any(|f| f.is_large()), "charged and shot");
+        let ball = e.fireballs[0].pos;
+        let heading = e.fireballs[0].heading().as_dvec3();
+        let eye = ball + heading * 3.0;
+        assert!(e.punch_fireball(eye, -heading, 6.0));
+        assert!(e.fireballs[0].heading().dot((-heading).as_vec3()) > 0.9);
+
+        let mut e = Entities::new(6);
+        e.spawn(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].health = 1.0;
+        e.explode(DVec3::new(0.5, 10.9, 0.5), 3.0);
+        assert!(e.items.is_empty(), "an uncredited blast drops nothing");
+        e.spawn(MobKind::Pig, DVec3::new(4.5, 10.0, 0.5));
+        e.mobs.last_mut().unwrap().health = 1.0;
+        e.explode_credited(DVec3::new(4.5, 10.9, 0.5), 3.0);
+        assert!(!e.items.is_empty(), "a deflected blast drops the victim's loot");
     }
 
     /// Runs one mob for `secs` at 60 Hz, forcing it to walk along +X.
@@ -1296,8 +1996,17 @@ mod tests {
             let extra = (u8::MAX as f32 * expected_rng.next_f32()).round() as u32;
             let base = (expected_rng.next_f32() * 3.0) as u32;
             let drops = MobKind::Zombie.drops(&mut rng, u8::MAX);
+            // Looting 255 makes the separate carrot and potato rolls certain.
+            let _ = (expected_rng.next_f32(), expected_rng.next_f32());
             assert!(!drops.is_empty(), "maximum looting produces a drop for these rolls");
-            assert_eq!(drops, vec![(crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8)]);
+            assert_eq!(
+                drops,
+                vec![
+                    (crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8),
+                    (crate::item::Item::CARROT, 1),
+                    (crate::item::Item::POTATO, 1),
+                ]
+            );
         }
     }
 
@@ -1554,6 +2263,20 @@ mod tests {
     }
 
     #[test]
+    fn chickens_lay_eggs_and_hatch_half_size_chicks() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Chicken, DVec3::new(0.5, 10.0, 0.5));
+        let grown = e.mobs[0].shape().height;
+        e.mobs[0].egg_timer = 0.01;
+        e.update(0.05, &world, &ctx(DVec3::new(40.0, 10.0, 0.0)));
+        assert!(e.items.iter().any(|item| item.stack.item == crate::item::Item::EGG));
+        e.spawn_baby(MobKind::Chicken, DVec3::new(2.5, 10.0, 0.5));
+        let chick = e.mobs.iter().find(|m| m.age < 0).unwrap();
+        assert!((chick.shape().height - grown * 0.5).abs() < 1e-4);
+    }
+
+    #[test]
     fn zombies_burn_in_daylight() {
         let world = Grid::flat(10);
         let mut e = Entities::new(5);
@@ -1652,8 +2375,12 @@ mod tests {
         // The grid is stone, so only hostile mobs spawn, each up to its cap.
         for kind in MobKind::ALL {
             let o = Dimension::Overworld;
-            let expected = if kind.is_hostile() && kind.spawns_in(o) { kind.spawn_cap(o) } else { 0 };
-            assert_eq!(e.count(kind), expected, "{kind:?}");
+            let expected = if plains_spawner(kind) { kind.spawn_cap(o) } else { 0 };
+            if kind.biome_chance(crate::world::terrain::Biome::Plains).clamp(0.0, 1.0) % 1.0 > 0.0 {
+                assert!(e.count(kind) <= kind.spawn_cap(o), "{kind:?}");
+            } else {
+                assert_eq!(e.count(kind), expected, "{kind:?}");
+            }
         }
     }
 
@@ -1742,7 +2469,7 @@ mod tests {
             }
         }
         let o = Dimension::Overworld;
-        for kind in MobKind::ALL.into_iter().filter(|k| k.is_hostile() && k.spawns_in(o)) {
+        for kind in MobKind::ALL.into_iter().filter(|k| plains_spawner(*k)) {
             for center in [a, b] {
                 assert_eq!(e.count_near(kind, center), kind.spawn_cap(o), "{kind:?} near {center}");
             }
@@ -2058,6 +2785,22 @@ mod tests {
     }
 
     #[test]
+    fn peaceful_removes_monsters_and_suppresses_spawners() {
+        let cell = IVec3::new(0, 11, 0);
+        let world = Caged(Grid::flat(10), vec![(cell, MobKind::Blaze)]);
+        let mut e = Entities::new(17);
+        e.spawn(MobKind::Zombie, DVec3::new(2.5, 11.0, 0.5));
+        e.spawn(MobKind::Cow, DVec3::new(3.5, 11.0, 0.5));
+        let c = ctx(DVec3::new(10.5, 10.0, 0.5));
+        for _ in 0..40 {
+            e.update_difficulty(0.05, &world, &c, crate::simulation::difficulty::Difficulty::Peaceful);
+        }
+        assert_eq!(e.count(MobKind::Cow), 1);
+        assert!(e.mobs.iter().all(|mob| !mob.kind.is_hostile()));
+        assert!(e.spawner_delays.is_empty());
+    }
+
+    #[test]
     fn spawners_work_near_players_up_to_six_mobs() {
         // A closed room around the cage, so nothing wanders off.
         let mut room = Grid::flat(10);
@@ -2133,7 +2876,9 @@ mod tests {
             e.update(0.05, &world, &c);
         }
         assert!(e.count(MobKind::ZombifiedPiglin) > 0);
-        assert!(e.mobs.iter().all(|m| matches!(m.kind, MobKind::ZombifiedPiglin | MobKind::Enderman)));
+        assert!(e.mobs.iter().all(|m| {
+            matches!(m.kind, MobKind::ZombifiedPiglin | MobKind::Enderman | MobKind::MagmaCube | MobKind::Ghast)
+        }));
     }
 
     /// A Nether cavern where everything with x > 20 is fortress.
@@ -2214,7 +2959,7 @@ mod tests {
         e.explode(DVec3::new(0.0, 10.5, 0.0), 3.0);
         assert!(!e.mobs[0].alive() && e.mobs[0].vel.x > 0.0);
         assert!(e.mobs[1].alive());
-        assert!(!e.puffs.is_empty());
+        assert!(e.particles.drain().any(|p| matches!(p, crate::particles::Request::Explosion { large: true, .. })));
     }
 
     #[test]
@@ -2224,12 +2969,44 @@ mod tests {
             let mut seen_any = false;
             for _ in 0..200 {
                 for (item, n) in kind.drops(&mut rng, 0) {
-                    let &(_, lo, hi) = kind.loot().iter().find(|l| l.0 == item).unwrap();
+                    let Some(&(_, lo, hi)) = kind.loot().iter().find(|l| l.0 == item) else {
+                        assert_eq!(n, 1, "{kind:?} rare drop {}", item.name());
+                        continue;
+                    };
                     assert!((lo.max(1) as u8..=hi).contains(&n), "{kind:?} dropped {n} of {}", item.name());
                     seen_any = true;
                 }
             }
             assert!(seen_any, "{kind:?} never dropped anything");
         }
+    }
+}
+
+#[cfg(test)]
+mod colored_sheep_tests {
+    use super::*;
+    use crate::{color::DyeColor, item::Item};
+    #[test]
+    fn dye_shear_and_death_keep_the_sheeps_color() {
+        let mut e = Entities::new(7);
+        e.spawn(MobKind::Sheep, DVec3::ZERO);
+        for color in DyeColor::ALL {
+            e.mobs[0].sheared = false;
+            e.mobs[0].wool_color = if color == DyeColor::White { DyeColor::Black } else { DyeColor::White };
+            assert_eq!(e.use_on_sheep(0, color.dye()), Some(false));
+            assert_eq!(e.use_on_sheep(0, color.dye()), None);
+            assert_eq!(e.use_on_sheep(0, Item::SHEARS), Some(true));
+            assert_eq!(e.use_on_sheep(0, Item::SHEARS), None);
+            assert_eq!(e.items.last().unwrap().stack.item, Item::from(Block::wool(color)));
+            assert!((1..=3).contains(&e.items.last().unwrap().stack.count));
+        }
+        e.items.clear();
+        e.mobs[0].dying = Some(0.0);
+        e.drop_loot(MobKind::Sheep, DVec3::ZERO);
+        assert!(e.items.is_empty(), "sheared sheep drop no wool");
+        e.mobs[0].sheared = false;
+        e.drop_loot(MobKind::Sheep, DVec3::ZERO);
+        assert_eq!(e.items[0].stack.item, Item::from(Block::wool(DyeColor::Black)));
+        assert_eq!(e.items[0].stack.count, 1);
     }
 }

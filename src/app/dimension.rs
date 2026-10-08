@@ -21,7 +21,7 @@ use crate::world::chunk::ChunkData;
 use crate::world::storage::Storage;
 use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 
-use super::{Game, GameMode};
+use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
 pub(super) const DIMENSION_KEYS: [&str; 7] = ["furnaces", "chests", "items", "orbs", "spawners", "brewing", "dragon"];
@@ -158,6 +158,7 @@ impl Game {
         self.world = World::new(Arc::new(Generator::for_dimension(seed, to)), chunks, self.settings.render_distance);
         self.mobs.entities = crate::entity::Entities::new(seed);
         self.renderer.clear_world();
+        self.particles.clear();
         self.dimension = to;
         self.restore_dimension(&props);
         self.arrival = Some(arrival);
@@ -193,9 +194,10 @@ impl Game {
             Arrival::Portal(p) => p,
             Arrival::EndSpawn => crate::world::end::SPAWN,
             Arrival::Gateway { exit, .. } => exit,
-            Arrival::Respawn => {
-                self.spawn_bed.unwrap_or_else(|| self.world.generator.find_spawn() + IVec3::Y * (SEARCH_RADIUS + 8))
-            }
+            // Load where `respawn_point` will put the player: the bed (checked
+            // once its chunk is in), else the set spawn point or the
+            // `spawnRadius` spot around the world spawn.
+            Arrival::Respawn => self.spawn_bed.unwrap_or_else(|| self.respawn_point().floor().as_ivec3()),
         };
         let r = match arrival {
             Arrival::Portal(_) => SEARCH_RADIUS,
@@ -210,6 +212,15 @@ impl Game {
             self.player.pos = target.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
             self.player.vel = DVec3::ZERO;
             return true;
+        }
+        // The bed's chunk is in, so `respawn_point` can now check the bed. If
+        // it's gone, the bed is forgotten and the fallback spot may be in an
+        // unloaded chunk: keep waiting, now targeting that spot.
+        if matches!(arrival, Arrival::Respawn) && self.spawn_bed.is_some() {
+            self.respawn_point();
+            if self.spawn_bed.is_none() {
+                return true;
+            }
         }
         self.player.pos = match arrival {
             Arrival::Portal(p) => {
@@ -258,7 +269,7 @@ impl Game {
         };
         self.relocate_agents();
         self.player.vel = DVec3::ZERO;
-        self.player.flying = self.player.flying && self.mode == GameMode::Creative;
+        self.player.flying = self.player.flying && self.mode.can_fly();
         self.vitals.reset_fall();
         self.arrival = None;
         let sound = Sound::Place(Material::Glass);
@@ -268,7 +279,7 @@ impl Game {
 
     /// A cell of `block` the player overlaps.
     fn touched(&self, block: Block) -> Option<IVec3> {
-        let (min, max) = crate::player::SHAPE.aabb(self.player.pos);
+        let (min, max) = self.player.collision_shape().aabb(self.player.pos);
         let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
         (lo.y..=hi.y)
             .flat_map(|y| (lo.z..=hi.z).flat_map(move |z| (lo.x..=hi.x).map(move |x| IVec3::new(x, y, z))))
@@ -296,7 +307,7 @@ impl Game {
     /// Whether the player overlaps a `portal` block's slice from `bottom`
     /// to `top` of the way up its cell.
     fn in_portal(&self, portal: Block, (bottom, top): (f64, f64)) -> bool {
-        let (min, max) = crate::player::SHAPE.aabb(self.player.pos);
+        let (min, max) = self.player.collision_shape().aabb(self.player.pos);
         let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
         (lo.y..=hi.y).any(|y| {
             min.y < y as f64 + top
@@ -310,6 +321,9 @@ impl Game {
     /// dimension. Falling into an End portal takes you at once: to the End's
     /// obsidian platform, or out of the End to your spawn point.
     pub(super) fn update_portal(&mut self, dt: f64) {
+        if self.credits.is_some() {
+            return;
+        }
         if self.dimension == Dimension::End
             && !self.vitals.is_dead()
             && let Some(cell) = self.touched(Block::END_GATEWAY)
@@ -320,6 +334,9 @@ impl Game {
         // Java's End portal block spans 6..12 sixteenths: coming up from
         // below takes you only once you reach it.
         if !self.vitals.is_dead() && self.in_portal(Block::END_PORTAL, (6.0 / 16.0, 0.75)) {
+            if self.dimension == Dimension::End && self.begin_credits() {
+                return;
+            }
             let (to, arrival) = match self.dimension {
                 Dimension::End => (Dimension::Overworld, Arrival::Respawn),
                 _ => (Dimension::End, Arrival::EndSpawn),
@@ -349,7 +366,7 @@ impl Game {
     }
 
     pub(super) fn portal_needed(&self) -> f32 {
-        if self.mode == GameMode::Creative { CREATIVE_PORTAL_TIME } else { PORTAL_TIME }
+        if self.mode.is_creative() { CREATIVE_PORTAL_TIME } else { PORTAL_TIME }
     }
 
     /// Right-click with flint and steel: primes TNT or lights a portal/fire
@@ -362,7 +379,7 @@ impl Game {
             self.world.set_block(pos, Block::AIR);
             self.mobs.entities.prime_tnt(pos, false);
             self.audio.play(Sound::Fuse, Some(pos.as_dvec3()), 1.0, (0.95, 1.05));
-            if self.mode == GameMode::Survival && self.inventory.wear(self.actions.selected, 1) {
+            if self.mode.is_survival() && self.inventory.wear(self.actions.selected, 1) {
                 self.show_popup("Flint and steel broke");
             }
             return true;
@@ -372,7 +389,7 @@ impl Game {
             return true;
         }
         self.audio.play(Sound::Place(Material::Stone), Some(pos.as_dvec3()), 0.7, (1.6, 1.9));
-        if self.mode == GameMode::Survival && self.inventory.wear(self.actions.selected, 1) {
+        if self.mode.is_survival() && self.inventory.wear(self.actions.selected, 1) {
             self.show_popup("Flint and steel broke");
         }
         if self.world.get_block(at) == Some(Block::NETHER_PORTAL) {
@@ -389,7 +406,7 @@ impl Game {
         let half = self.world.get_block(pos).unwrap_or(Block::AIR);
         self.world.set_block(pos, Block::AIR);
         self.break_bed_partner(pos, half);
-        self.explode(pos.as_dvec3() + DVec3::splat(0.5), 5.0, "was killed by [Intentional Game Design]");
+        self.explode(pos.as_dvec3() + DVec3::splat(0.5), 5.0, "was killed by [Intentional Game Design]", false);
         true
     }
 }

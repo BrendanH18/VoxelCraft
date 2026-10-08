@@ -31,6 +31,7 @@ pub struct EntityVertex {
 
 pub(super) type Rgb = [u8; 3];
 
+#[derive(Clone, Copy)]
 pub(super) struct Cuboid {
     min: [f32; 3],
     max: [f32; 3],
@@ -42,6 +43,28 @@ pub(super) struct Cuboid {
 pub(super) const fn cube(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
     Cuboid { min, max, color, noise }
 }
+
+const MAGMA_BODY: &[Cuboid] = &[cube([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [50, 28, 25], 80)];
+const MAGMA_GLOW: &[Cuboid] = &[
+    cube([-4.1, 1.8, -4.1], [4.1, 2.1, 4.1], [245, 99, 16], 0),
+    cube([-4.1, 3.8, -4.1], [4.1, 4.1, 4.1], [245, 99, 16], 0),
+    cube([-4.1, 5.8, -4.1], [4.1, 6.1, 4.1], [245, 99, 16], 0),
+    cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [255, 205, 55], 0),
+    cube([1.1, 4.5, 4.1], [2.6, 6.0, 4.15], [255, 205, 55], 0),
+];
+const GHAST_BODY: &[Cuboid] = &[
+    cube([-18.0, 24.0, -18.0], [18.0, 64.0, 18.0], [236, 236, 236], 16),
+    cube([-7.0, 42.0, 18.0], [-2.0, 48.0, 18.5], [176, 32, 32], 0),
+    cube([2.0, 42.0, 18.0], [7.0, 48.0, 18.5], [176, 32, 32], 0),
+    cube([-3.5, 34.0, 18.0], [3.5, 38.0, 18.4], [120, 36, 40], 0),
+];
+const GHAST_TENTACLE: &[Cuboid] = &[cube([-2.0, -24.0, -2.0], [2.0, 0.0, 2.0], [214, 214, 214], 12)];
+const SLIME_BODY: &[Cuboid] = &[
+    cube([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [105, 180, 78], 55),
+    cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [29, 60, 24], 0),
+    cube([1.1, 4.5, 4.1], [2.6, 6.0, 4.15], [29, 60, 24], 0),
+    cube([-1.1, 2.4, 4.1], [1.1, 3.4, 4.15], [29, 60, 24], 0),
+];
 
 // ---------------------------------------------------------------- pig
 
@@ -86,6 +109,57 @@ const ZOMBIE_HEAD: &[Cuboid] = &[
     cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], ZOMBIE_EYES, 0),
     cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], ZOMBIE_EYES, 0),
     cube([-2.0, 1.0, 4.0], [2.0, 1.6, 4.05], ZOMBIE_EYES, 10),
+];
+
+/// Zombie-shaped boxes in another palette.
+macro_rules! zombie_boxes {
+    ($body:ident, $leg:ident, $arm:ident, $head:ident, $skin:expr, $shirt:expr, $pants:expr) => {
+        const $body: &[Cuboid] = &[cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], $shirt, 40)];
+        const $leg: &[Cuboid] = &[
+            cube([-2.0, -10.0, -2.0], [2.0, 0.0, 2.0], $pants, 40),
+            cube([-2.0, -12.0, -2.0], [2.0, -10.0, 2.0], ZOMBIE_SHOES, 30),
+        ];
+        const $arm: &[Cuboid] = &[
+            cube([-2.0, -4.0, -2.0], [2.0, 2.0, 2.0], $shirt, 40),
+            cube([-2.0, -10.0, -2.0], [2.0, -4.0, 2.0], $skin, 36),
+        ];
+        const $head: &[Cuboid] = &[
+            cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], $skin, 36),
+            cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], ZOMBIE_EYES, 0),
+            cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], ZOMBIE_EYES, 0),
+            cube([-2.0, 1.0, 4.0], [2.0, 1.6, 4.05], ZOMBIE_EYES, 10),
+        ];
+    };
+}
+zombie_boxes!(HUSK_BODY, HUSK_LEG, HUSK_ARM, HUSK_HEAD, [150, 128, 92], [118, 100, 70], [86, 72, 50]);
+zombie_boxes!(DROWNED_BODY, DROWNED_LEG, DROWNED_ARM, DROWNED_HEAD, [104, 164, 152], [62, 118, 124], [48, 82, 120]);
+
+// ---------------------------------------------------------------- witch
+
+const WITCH_SKIN: Rgb = [142, 168, 118];
+const WITCH_ROBE: Rgb = [84, 44, 118];
+const WITCH_HAT: Rgb = [38, 28, 52];
+const WITCH_NOSE: Rgb = [118, 96, 78];
+
+const WITCH_BODY: &[Cuboid] = &[
+    cube([-4.0, 8.0, -3.0], [4.0, 19.0, 3.0], WITCH_ROBE, 36),
+    cube([-4.5, 5.0, -3.5], [4.5, 10.0, 3.5], WITCH_ROBE, 36),
+    // Crossed arms.
+    cube([-7.0, 11.0, 3.0], [7.0, 15.0, 6.0], WITCH_ROBE, 30),
+    cube([-1.5, 11.0, 5.5], [1.5, 14.0, 6.5], WITCH_SKIN, 30),
+];
+const WITCH_LEG: &[Cuboid] = &[cube([-2.0, -8.0, -2.0], [2.0, 0.0, 2.0], WITCH_ROBE, 36)];
+const WITCH_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], WITCH_SKIN, 36),
+    cube([-1.0, 1.5, 4.0], [1.0, 4.5, 6.0], WITCH_NOSE, 30),
+    cube([0.2, 2.0, 5.5], [1.2, 3.0, 6.4], [90, 130, 80], 0),
+    cube([-3.0, 4.5, 4.0], [-1.0, 6.0, 4.1], [30, 40, 24], 0),
+    cube([1.0, 4.5, 4.0], [3.0, 6.0, 4.1], [30, 40, 24], 0),
+    // The pointed hat.
+    cube([-5.0, 8.0, -5.0], [5.0, 9.0, 5.0], WITCH_HAT, 24),
+    cube([-3.5, 9.0, -3.5], [3.5, 10.5, 3.5], WITCH_HAT, 24),
+    cube([-2.5, 10.5, -2.5], [2.5, 11.5, 2.5], WITCH_HAT, 24),
+    cube([-1.5, 11.5, -1.5], [1.5, 12.0, 1.5], WITCH_HAT, 24),
 ];
 
 // ---------------------------------------------------------------- zombified piglin
@@ -155,6 +229,9 @@ const COW_HEAD: &[Cuboid] = &[
 const WOOL: Rgb = [232, 232, 226];
 const SHEEP_SKIN: Rgb = [214, 190, 170];
 
+const SHEARED_BODY: &[Cuboid] = &[cube([-4.0, 11.0, -7.0], [4.0, 18.0, 7.0], SHEEP_SKIN, 14)];
+const SHEARED_HEAD: &[Cuboid] = &[cube([-3.0, -3.0, 0.0], [3.0, 3.0, 7.0], SHEEP_SKIN, 14)];
+const SHEARED_LEG: &[Cuboid] = &[cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], SHEEP_SKIN, 14)];
 const SHEEP_BODY: &[Cuboid] = &[cube([-5.0, 10.0, -8.0], [5.0, 19.0, 8.0], WOOL, 34)];
 const SHEEP_LEG: &[Cuboid] =
     &[cube([-2.5, -5.0, -2.5], [2.5, 0.0, 2.5], WOOL, 34), cube([-2.0, -12.0, -2.0], [2.0, -5.0, 2.0], SHEEP_SKIN, 14)];
@@ -193,6 +270,30 @@ const BONE: Rgb = [214, 214, 208];
 const RIBS: Rgb = [176, 176, 170];
 const BOW: Rgb = [112, 80, 42];
 
+const WITHER_BONE: Rgb = [58, 58, 60];
+const WITHER_RIBS: Rgb = [44, 44, 46];
+const STONE_BLADE: Rgb = [128, 128, 128];
+const WITHER_BODY: &[Cuboid] = &[
+    cube([-1.0, 12.0, -1.0], [1.0, 24.0, 1.0], WITHER_RIBS, 20),
+    cube([-4.0, 21.0, -1.5], [4.0, 23.0, 1.5], WITHER_BONE, 24),
+    cube([-3.5, 18.0, -1.5], [3.5, 19.5, 1.5], WITHER_BONE, 24),
+    cube([-3.0, 15.0, -1.5], [3.0, 16.5, 1.5], WITHER_BONE, 24),
+    cube([-4.0, 12.0, -1.5], [4.0, 13.5, 1.5], WITHER_BONE, 24),
+];
+const WITHER_LIMB: &[Cuboid] = &[cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], WITHER_BONE, 24)];
+/// The sword arm holds a stone sword out in front.
+const WITHER_SWORD_ARM: &[Cuboid] = &[
+    cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], WITHER_BONE, 24),
+    cube([-0.5, -13.0, -1.0], [0.5, -12.0, 4.0], BOW, 16),
+    cube([-0.5, -13.0, 4.0], [0.5, -9.0, 5.0], STONE_BLADE, 8),
+];
+const WITHER_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], WITHER_BONE, 24),
+    cube([-3.0, 3.0, 4.0], [-1.0, 5.0, 4.1], DARK, 0),
+    cube([1.0, 3.0, 4.0], [3.0, 5.0, 4.1], DARK, 0),
+    cube([-0.5, 2.0, 4.0], [0.5, 3.0, 4.1], DARK, 0),
+    cube([-3.0, 1.0, 4.0], [3.0, 1.5, 4.05], DARK, 0),
+];
 const SKELETON_BODY: &[Cuboid] = &[
     cube([-1.0, 12.0, -1.0], [1.0, 24.0, 1.0], RIBS, 20),
     cube([-4.0, 21.0, -1.5], [4.0, 23.0, 1.5], BONE, 24),
@@ -344,12 +445,12 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             part(COW_HEAD, [0.0, 18.0, 9.0], head),
         ],
         MobKind::Sheep => vec![
-            part(SHEEP_BODY, [0.0; 3], Quat::IDENTITY),
-            part(SHEEP_LEG, [-3.0, 12.0, 5.0], rx(swing)),
-            part(SHEEP_LEG, [3.0, 12.0, 5.0], rx(-swing)),
-            part(SHEEP_LEG, [-3.0, 12.0, -5.0], rx(-swing)),
-            part(SHEEP_LEG, [3.0, 12.0, -5.0], rx(swing)),
-            part(SHEEP_HEAD, [0.0, 16.0, 7.0], head),
+            part(if m.sheared { SHEARED_BODY } else { SHEEP_BODY }, [0.0; 3], Quat::IDENTITY),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, 5.0], rx(swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, 5.0], rx(-swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, -5.0], rx(-swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, -5.0], rx(swing)),
+            part(if m.sheared { SHEARED_HEAD } else { SHEEP_HEAD }, [0.0, 16.0, 7.0], head),
         ],
         MobKind::Chicken => {
             // Wings flap while airborne.
@@ -377,6 +478,25 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
                 part(SKELETON_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
+        MobKind::WitherSkeleton => {
+            // Sword raised toward the target while hunting.
+            let striking = m.ai == Ai::Chase;
+            let arm = |s: f32| if striking { rx(-FRAC_PI_2 * 0.9 + m.attack_anim * 1.2) } else { rx(-swing * s * 0.6) };
+            vec![
+                part(WITHER_BODY, [0.0; 3], Quat::IDENTITY),
+                part(WITHER_LIMB, [-2.0, 12.0, 0.0], rx(swing)),
+                part(WITHER_LIMB, [2.0, 12.0, 0.0], rx(-swing)),
+                part(WITHER_LIMB, [-5.0, 22.0, 0.0], arm(1.0)),
+                part(WITHER_SWORD_ARM, [5.0, 22.0, 0.0], arm(-1.0)),
+                part(WITHER_HEAD, [0.0, 24.0, 0.0], head),
+            ]
+        }
+        MobKind::Witch => vec![
+            part(WITCH_BODY, [0.0; 3], Quat::IDENTITY),
+            part(WITCH_LEG, [-2.0, 8.0, 0.0], rx(swing)),
+            part(WITCH_LEG, [2.0, 8.0, 0.0], rx(-swing)),
+            part(WITCH_HEAD, [0.0, 19.0, 0.0], head),
+        ],
         MobKind::Creeper => vec![
             part(CREEPER_BODY, [0.0; 3], Quat::IDENTITY),
             part(CREEPER_LEG, [-2.0, 6.0, 4.0], rx(swing)),
@@ -385,7 +505,22 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             part(CREEPER_LEG, [2.0, 6.0, -4.0], rx(swing)),
             part(CREEPER_HEAD, [0.0, 18.0, 0.0], head),
         ],
-        MobKind::Spider => {
+        MobKind::MagmaCube => {
+            vec![part(MAGMA_BODY, [0.0; 3], Quat::IDENTITY), part(MAGMA_GLOW, [0.0; 3], Quat::IDENTITY)]
+        }
+        MobKind::Ghast => {
+            // Nine-tenths of the body is the cube; eight tentacles hang to
+            // the feet and twist around their own axis so they stay on the ground.
+            let mut parts = vec![part(GHAST_BODY, [0.0; 3], Quat::IDENTITY)];
+            for i in 0..8 {
+                let a = i as f32 * FRAC_PI_2 * 0.5;
+                let twist = (time * 1.4 + i as f32 * 0.7).sin() * 0.45;
+                parts.push(part(GHAST_TENTACLE, [a.cos() * 12.0, 24.0, a.sin() * 12.0], Quat::from_rotation_y(twist)));
+            }
+            parts
+        }
+        MobKind::Slime => vec![part(SLIME_BODY, [0.0; 3], Quat::IDENTITY)],
+        MobKind::Spider | MobKind::CaveSpider => {
             // Four legs a side, fanned out and drooping onto the ground; the
             // pivot height puts each tip exactly at the feet.
             let pivot_y = SPIDER_LEG_LEN * SPIDER_LEG_DROOP.sin() + SPIDER_LEG_DROOP.cos();
@@ -474,18 +609,23 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             }
             parts
         }
-        MobKind::Zombie => {
+        MobKind::Zombie | MobKind::Husk | MobKind::Drowned => {
+            let (body, leg, arm_box, head_box) = match m.kind {
+                MobKind::Husk => (HUSK_BODY, HUSK_LEG, HUSK_ARM, HUSK_HEAD),
+                MobKind::Drowned => (DROWNED_BODY, DROWNED_LEG, DROWNED_ARM, DROWNED_HEAD),
+                _ => (ZOMBIE_BODY, ZOMBIE_LEG, ZOMBIE_ARM, ZOMBIE_HEAD),
+            };
             // Arms held forward, bobbing a little, chopping down on attack.
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.7 } else { 0.0 };
             let bob = (time * 1.6).sin() * 0.05;
             let arm = |s: f32| rx(-FRAC_PI_2 + bob * s + swing * 0.25 * s + chop);
             vec![
-                part(ZOMBIE_BODY, [0.0; 3], Quat::IDENTITY),
-                part(ZOMBIE_LEG, [-2.0, 12.0, 0.0], rx(swing)),
-                part(ZOMBIE_LEG, [2.0, 12.0, 0.0], rx(-swing)),
-                part(ZOMBIE_ARM, [-6.0, 22.0, 0.0], arm(1.0)),
-                part(ZOMBIE_ARM, [6.0, 22.0, 0.0], arm(-1.0)),
-                part(ZOMBIE_HEAD, [0.0, 24.0, 0.0], head),
+                part(body, [0.0; 3], Quat::IDENTITY),
+                part(leg, [-2.0, 12.0, 0.0], rx(swing)),
+                part(leg, [2.0, 12.0, 0.0], rx(-swing)),
+                part(arm_box, [-6.0, 22.0, 0.0], arm(1.0)),
+                part(arm_box, [6.0, 22.0, 0.0], arm(-1.0)),
+                part(head_box, [0.0, 24.0, 0.0], head),
             ]
         }
     }
@@ -522,23 +662,52 @@ pub fn build(
         let torch = (m.block_light.clamp(0.0, 1.0) * 255.0) as u8;
         // A lit creeper swells and flashes white; burning mobs glow orange.
         let fuse = m.fuse / FUSE_TIME;
-        let scale = 1.0 + fuse * 0.18;
+        let scale = (1.0 + fuse * 0.18)
+            * if m.kind == MobKind::CaveSpider {
+                0.55
+            } else if m.kind.is_cube() {
+                m.size as f32
+            } else if m.kind == MobKind::WitherSkeleton {
+                1.2
+            } else if m.baby || m.age < 0 {
+                0.5
+            } else {
+                1.0
+            };
         let tint = if m.fuse > 0.0 {
             ([255.0; 3], ((m.fuse * (8.0 + 16.0 * fuse)).sin() * 0.5 + 0.5) * 0.7)
+        } else if m.kind == MobKind::CaveSpider {
+            ([40.0, 80.0, 95.0], 0.65)
+        } else if m.kind == MobKind::Ghast && m.charged {
+            ([210.0, 48.0, 36.0], 0.55)
         } else if m.burning {
             (FIRE, 0.3)
         } else {
             (FIRE, 0.0)
         };
-        for (pi, p) in pose(m, time).iter().enumerate() {
+        let posed = pose(m, time);
+        for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
             // Endermen eyes and blazes glow at full brightness.
-            let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES) || m.kind == MobKind::Blaze;
+            let glow =
+                std::ptr::eq(p.boxes, ENDERMAN_EYES) || std::ptr::eq(p.boxes, MAGMA_GLOW) || m.kind == MobKind::Blaze;
             let light = if glow { [light[0], 0, light[2], 255] } else { light };
             for (ci, c) in p.boxes.iter().enumerate() {
-                push_cuboid(out, c, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
+                let mut cuboid = *c;
+                if m.kind == MobKind::Sheep && c.color == WOOL {
+                    cuboid.color = if m.sheared { SHEEP_SKIN } else { m.wool_color.sheep_rgb() };
+                    if m.sheared {
+                        cuboid.noise = 14;
+                    }
+                }
+                push_cuboid(out, &cuboid, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
             }
+        }
+        if m.kind.is_zombie() || m.kind == MobKind::Skeleton {
+            let limbs = humanoid_armor(&posed);
+            let worn = super::armor::worn_pieces(m.armor, m.armor_glint);
+            super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));
         }
         if m.burning {
             flames(out, m, rel, time);
@@ -587,6 +756,34 @@ pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut Vec<E
     }
 }
 
+/// Thrown snowballs and eggs: small cubes that tumble with no facing.
+pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for t in thrown {
+        let rel = (t.previous_pos.lerp(t.pos, alpha) - camera).as_vec3();
+        let (color, size) = match t.kind {
+            super::thrown::Kind::Snowball => ([245, 245, 250], 2.0),
+            super::thrown::Kind::Egg => ([236, 224, 196], 2.2),
+        };
+        let c = cube([-size, -size, -size], [size, size, size], color, 16);
+        push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);
+    }
+}
+
+/// A fishing bobber: a white float with a red tip. It dips while a fish bites.
+pub fn build_bobbers(bobbers: &[super::bobber::Bobber], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for b in bobbers {
+        let mut rel = (b.previous_pos.lerp(b.pos, alpha) - camera).as_vec3();
+        if b.biting {
+            rel.y -= 0.25;
+        }
+        let body = cube([-1.2, -1.2, -1.2], [1.2, 0.4, 1.2], [236, 236, 232], 12);
+        let tip = cube([-0.7, 0.4, -0.7], [0.7, 1.5, 0.7], [176, 40, 36], 8);
+        for (i, c) in [&body, &tip].into_iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
 /// Thrown ender pearls: small dark teal cubes with a pale glint.
 pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
     const PEARL: &[Cuboid] = &[
@@ -597,6 +794,23 @@ pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, o
         let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
         for (i, c) in PEARL.iter().enumerate() {
             push_cuboid(out, c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
+/// Thrown splash potions: a small tumbling flask tinted like its liquid.
+pub fn build_potions(potions: &[super::potion::ThrownPotion], camera: DVec3, alpha: f64, out: &mut Vec<EntityVertex>) {
+    for p in potions {
+        let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
+        let colour = p.potion.colour();
+        let flask = [
+            cube([-2.0, -2.0, -2.0], [2.0, 2.0, 2.0], colour, 16),
+            cube([-1.0, 2.0, -1.0], [1.0, 3.5, 1.0], [150, 150, 158], 8),
+            cube([-0.8, 3.5, -0.8], [0.8, 4.3, 0.8], [140, 98, 58], 8),
+        ];
+        let spin = Quat::from_rotation_z(p.pos.x as f32 * 2.0) * Quat::from_rotation_x(p.pos.z as f32 * 2.0);
+        for (i, c) in flask.iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + spin * v / 16.0, spin, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
         }
     }
 }
@@ -633,8 +847,17 @@ pub fn build_fireballs(
         let rel = (f.previous_pos.lerp(f.pos, alpha) - camera).as_vec3();
         let rot = Quat::from_rotation_arc(Vec3::X, f.heading().normalize_or(Vec3::X))
             * Quat::from_rotation_x(time * 9.0 + i as f32);
+        let scale = if f.is_large() { 3.0 } else { 1.0 };
         for (j, c) in BALL.iter().enumerate() {
-            push_cuboid(out, c, &|v: Vec3| rel + rot * v / 16.0, rot, ([255, 255, 0, 255], 0), (FIRE, 0.0), j as f32);
+            push_cuboid(
+                out,
+                c,
+                &|v: Vec3| rel + rot * v * scale / 16.0,
+                rot,
+                ([255, 255, 0, 255], 0),
+                (FIRE, 0.0),
+                j as f32,
+            );
         }
     }
 }
@@ -694,6 +917,28 @@ pub fn build_orbs(orbs: &[XpOrb], camera: DVec3, max_dist: f32, time: f32, alpha
 
 const FIRE: [f32; 3] = [255.0, 120.0, 30.0];
 
+/// Standard humanoid boxes on this mob's pivots, so armor follows the pose
+/// and inflates like HumanoidArmorLayer rather than the thin bone mesh.
+fn humanoid_armor(parts: &[Part]) -> [super::player_model::Limb; 6] {
+    let box_at = |p: &Part, min: [f32; 3], max: [f32; 3], uv: [f32; 2]| super::player_model::Limb {
+        pivot: p.pivot,
+        rot: p.rot,
+        min,
+        max,
+        uv,
+    };
+    let arm = |p: &Part, uv: [f32; 2]| box_at(p, [-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], uv);
+    let leg = |p: &Part, uv: [f32; 2]| box_at(p, [-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], uv);
+    [
+        box_at(&parts[5], [-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [0.0, 0.0]),
+        box_at(&parts[0], [-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], [16.0, 16.0]),
+        arm(&parts[3], [40.0, 16.0]),
+        arm(&parts[4], [32.0, 48.0]),
+        leg(&parts[1], [0.0, 16.0]),
+        leg(&parts[2], [16.0, 48.0]),
+    ]
+}
+
 /// Appends one cuboid; `tint` blends its colour toward a colour by an amount.
 pub(super) fn push_cuboid(
     out: &mut Vec<EntityVertex>,
@@ -742,50 +987,8 @@ pub(super) fn push_cuboid(
     }
 }
 
-/// Visible hosted player avatar, using the same box model pass and lighting as mobs.
-pub fn build_player(
-    player: &crate::player::Player,
-    position: DVec3,
-    camera: DVec3,
-    sky: f32,
-    torch: f32,
-    time: f32,
-    out: &mut Vec<EntityVertex>,
-) {
-    const HEAD: &[Cuboid] = &[
-        cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [186, 132, 94], 18),
-        cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], [50, 60, 90], 0),
-        cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], [50, 60, 90], 0),
-    ];
-    const BODY: &[Cuboid] = &[cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], [28, 154, 176], 26)];
-    const ARM: &[Cuboid] = &[cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], [186, 132, 94], 18)];
-    const LEG: &[Cuboid] = &[cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], [48, 57, 120], 26)];
-    let swing = (time * 9.0).sin() * (player.vel.with_y(0.0).length() as f32 / 5.0).min(1.0) * 0.6;
-    let parts = [
-        part(BODY, [0.0; 3], Quat::IDENTITY),
-        part(HEAD, [0.0, 24.0, 0.0], Quat::from_rotation_x(-player.pitch)),
-        part(ARM, [-6.0, 22.0, 0.0], Quat::from_rotation_x(swing)),
-        part(ARM, [6.0, 22.0, 0.0], Quat::from_rotation_x(-swing)),
-        part(LEG, [-2.0, 12.0, 0.0], Quat::from_rotation_x(-swing)),
-        part(LEG, [2.0, 12.0, 0.0], Quat::from_rotation_x(swing)),
-    ];
-    let origin = (position - camera).as_vec3();
-    let body = Quat::from_rotation_y(FRAC_PI_2 - player.yaw);
-    let light = [(sky.clamp(0.0, 1.0) * 255.0) as u8, 0, 0, 0];
-    for (i, p) in parts.iter().enumerate() {
-        for c in p.boxes {
-            push_cuboid(
-                out,
-                c,
-                &|v| origin + body * (p.pivot + p.rot * v) / 16.0,
-                body * p.rot,
-                (light, (torch.clamp(0.0, 1.0) * 255.0) as u8),
-                (FIRE, 0.0),
-                i as f32,
-            );
-        }
-    }
-}
+pub use super::player_model::{PlayerAppearance, build_player};
+pub use super::player_pose::{PlayerPose, fits_at, resolve_pose};
 
 #[cfg(test)]
 mod tests {
@@ -808,6 +1011,20 @@ mod tests {
         }
         assert_eq!(mob.pos, DVec3::new(12.0, 64.0, 0.0));
         assert_eq!(mob.previous_pos, DVec3::new(10.0, 64.0, 0.0));
+    }
+
+    #[test]
+    fn zombies_and_skeletons_wear_inflated_armor() {
+        let mut zombie = Mob::new(MobKind::Zombie, DVec3::new(3.0, 0.0, 0.0), 0.0);
+        zombie.armor = [Some(crate::entity::armor::ArmorKind::Chain); 4];
+        let mut out = Vec::new();
+        build(std::slice::from_ref(&zombie), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
+        assert!(out.iter().any(|v| v.torch[1] == 3));
+        let mut pig = Mob::new(MobKind::Pig, DVec3::new(3.0, 0.0, 0.0), 0.0);
+        pig.armor = zombie.armor;
+        out.clear();
+        build(std::slice::from_ref(&pig), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
+        assert!(out.iter().all(|v| v.torch[1] == 0));
     }
 
     #[test]

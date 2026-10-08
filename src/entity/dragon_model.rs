@@ -1,6 +1,6 @@
 //! Drawing the End fight: the Ender Dragon's box model (after Java's
 //! `DragonModel`, with a neck and tail that trail its recent turns and
-//! climbs), End crystals, their healing beams, dragon fireballs and clouds
+//! climbs), End crystals, their healing beams, dragon fireballs
 //! of breath.
 
 use std::f32::consts::PI;
@@ -80,9 +80,6 @@ pub fn build_fight(fight: &Fight, camera: DVec3, time: f32, alpha: f64, out: &mu
             push_cuboid(out, c, &|v: Vec3| rel + rot * v / 16.0, rot, glow, ([0.0; 3], 0.0), j as f32);
         }
     }
-    for (ci, cloud) in fight.clouds.iter().enumerate() {
-        breath(out, cloud, (cloud.pos - camera).as_vec3(), time, ci);
-    }
 }
 
 fn crystal_center(c: &super::dragon::Crystal, alpha: f64) -> DVec3 {
@@ -143,23 +140,6 @@ fn beam(out: &mut Vec<EntityVertex>, from: Vec3, to: Vec3, time: f32) {
     let rot = Quat::from_rotation_arc(Vec3::Z, d.normalize_or(Vec3::Z)) * Quat::from_rotation_z(time * 2.0);
     let c = cube([-0.7, -0.7, 0.0], [0.7, 0.7, len], [250, 210, 255], 90);
     push_cuboid(out, &c, &|v: Vec3| from + rot * v / 16.0, rot, ([230, 0, 0, 255], 0), ([0.0; 3], 0.0), time);
-}
-
-/// Purple motes drifting up over the cloud's disc.
-fn breath(out: &mut Vec<EntityVertex>, cloud: &super::dragon::BreathCloud, rel: Vec3, time: f32, seed: usize) {
-    let fade = (1.0 - cloud.age as f32 / cloud.duration as f32).clamp(0.2, 1.0);
-    let n = (cloud.radius * cloud.radius * 4.0) as usize;
-    for i in 0..n.min(220) {
-        let h = hash(i as u32, seed as u32);
-        let angle = (h & 0xFFFF) as f32 / 65535.0 * std::f32::consts::TAU;
-        let r = (((h >> 16) & 0xFFFF) as f32 / 65535.0).sqrt() * cloud.radius;
-        let phase = (time * 0.6 + (h % 97) as f32 / 97.0).fract();
-        let at = Vec3::new(angle.cos() * r, phase * 1.4, angle.sin() * r) * 16.0;
-        let size = 1.6 * (1.0 - phase) * fade + 0.3;
-        let color = if h & 1 == 0 { [200, 70, 240] } else { [150, 40, 200] };
-        let c = cube((at - Vec3::splat(size)).to_array(), (at + Vec3::splat(size)).to_array(), color, 0);
-        push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 255, 0, 220], 0), ([0.0; 3], 0.0), 0.0);
-    }
 }
 
 fn hash(a: u32, b: u32) -> u32 {

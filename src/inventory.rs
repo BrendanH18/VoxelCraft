@@ -7,6 +7,69 @@ use crate::item::{ArmorPiece, Item};
 
 pub const HOTBAR_SLOTS: usize = 9;
 pub const SLOTS: usize = 36;
+/// Plain UTF-8 bytes kept inline so [`Stack`] remains cheap to copy.
+pub const STACK_NAME_MAX: usize = 64;
+
+/// A stack's custom display name. Java stores a rich text component; this
+/// compact clone keeps up to 64 UTF-8 bytes and preserves them through saves
+/// and item transforms.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct StackName {
+    len: u8,
+    bytes: [u8; STACK_NAME_MAX],
+}
+
+impl Default for StackName {
+    fn default() -> Self {
+        Self { len: 0, bytes: [0; STACK_NAME_MAX] }
+    }
+}
+
+impl StackName {
+    pub fn new(text: &str) -> Option<Self> {
+        if text.is_empty() {
+            return Some(Self::default());
+        }
+        if text.len() > STACK_NAME_MAX {
+            return None;
+        }
+        let mut name = Self { len: text.len() as u8, ..Self::default() };
+        name.bytes[..text.len()].copy_from_slice(text.as_bytes());
+        Some(name)
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        (self.len > 0).then(|| std::str::from_utf8(&self.bytes[..self.len as usize]).expect("StackName is valid UTF-8"))
+    }
+
+    fn to_hex(self) -> String {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut out = String::with_capacity(self.len as usize * 2);
+        for &byte in &self.bytes[..self.len as usize] {
+            out.push(HEX[(byte >> 4) as usize] as char);
+            out.push(HEX[(byte & 15) as usize] as char);
+        }
+        out
+    }
+
+    fn from_hex(text: &str) -> Option<Self> {
+        if !text.len().is_multiple_of(2) || text.len() / 2 > STACK_NAME_MAX {
+            return None;
+        }
+        let nibble = |b: u8| match b {
+            b'0'..=b'9' => Some(b - b'0'),
+            b'a'..=b'f' => Some(b - b'a' + 10),
+            b'A'..=b'F' => Some(b - b'A' + 10),
+            _ => None,
+        };
+        let mut name = Self { len: (text.len() / 2) as u8, ..Self::default() };
+        for i in 0..name.len as usize {
+            name.bytes[i] = nibble(text.as_bytes()[i * 2])? << 4 | nibble(text.as_bytes()[i * 2 + 1])?;
+        }
+        std::str::from_utf8(&name.bytes[..name.len as usize]).ok()?;
+        Some(name)
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Stack {
@@ -18,20 +81,30 @@ pub struct Stack {
     pub enchants: Enchants,
     /// Java's anvil prior-work penalty: levels added to the next anvil use.
     pub repair_cost: u16,
+    /// A plain custom display name (Java uses a styled text component).
+    pub name: StackName,
 }
 
 impl Stack {
     pub fn new(item: impl Into<Item>, count: u8) -> Self {
-        Self { item: item.into(), count, damage: 0, enchants: Enchants::NONE, repair_cost: 0 }
+        Self {
+            item: item.into(),
+            count,
+            damage: 0,
+            enchants: Enchants::NONE,
+            repair_cost: 0,
+            name: StackName::default(),
+        }
     }
 
-    /// Whether `other` can merge into this stack (same item, wear and
-    /// enchantments).
+    /// Whether `other` can merge into this stack (same item, wear,
+    /// enchantments and custom name, like Java's component check).
     pub fn stacks_with(&self, other: &Stack) -> bool {
         self.item == other.item
             && self.damage == other.damage
             && self.enchants == other.enchants
             && self.repair_cost == other.repair_cost
+            && self.name == other.name
     }
 
     /// The enchantments that take effect when held or worn: a book's are
@@ -42,6 +115,15 @@ impl Stack {
 
     pub fn max(&self) -> u8 {
         self.item.max_stack()
+    }
+
+    pub fn with_name(mut self, name: &str) -> Option<Self> {
+        self.name = StackName::new(name)?;
+        Some(self)
+    }
+
+    pub fn display_name(&self) -> &str {
+        self.name.as_str().unwrap_or_else(|| self.item.name())
     }
 
     /// Remaining durability as a fraction, for tools that have been used.
@@ -172,6 +254,16 @@ impl Inventory {
         self.armor.iter().flatten().filter_map(|s| s.item.as_armor()).map(|(p, m)| m.defense(p) as u32).sum()
     }
 
+    /// Total armor toughness worn (2 per diamond piece, 3 per Netherite).
+    pub fn armor_toughness(&self) -> f32 {
+        self.armor.iter().flatten().filter_map(|s| s.item.as_armor()).map(|(_, m)| m.toughness()).sum()
+    }
+
+    /// Share of knockback the worn armor cancels (0.1 per Netherite piece).
+    pub fn knockback_resistance(&self) -> f32 {
+        self.armor.iter().flatten().filter_map(|s| s.item.as_armor()).map(|(_, m)| m.knockback_resistance()).sum()
+    }
+
     /// Puts on the armor in `slot`, swapping out whatever piece was worn
     /// there. Returns `false` if the slot holds no armor, or the worn piece
     /// is bound.
@@ -297,13 +389,22 @@ impl Inventory {
 }
 
 /// `id:count` (or `id:count:damage` for worn tools, and
-/// `id:count:damage:enchantments:repair cost` for enchanted or anvil-worked
-/// ones, enchantments in hex), or `-` for nothing.
+/// `id:count:damage:enchantments:repair cost:name` for enchanted,
+/// anvil-worked or named ones; enchantments and UTF-8 name bytes are hex),
+/// or `-` for nothing.
 pub fn stack_to_string(stack: Option<Stack>) -> String {
     match stack {
         None => "-".to_string(),
-        Some(s) if !s.enchants.is_empty() || s.repair_cost > 0 => {
-            format!("{}:{}:{}:{}:{}", s.item.0, s.count, s.damage, s.enchants.to_hex(), s.repair_cost)
+        Some(s) if !s.enchants.is_empty() || s.repair_cost > 0 || s.name.as_str().is_some() => {
+            format!(
+                "{}:{}:{}:{}:{}:{}",
+                s.item.0,
+                s.count,
+                s.damage,
+                s.enchants.to_hex(),
+                s.repair_cost,
+                s.name.to_hex()
+            )
         }
         Some(s) if s.damage > 0 => format!("{}:{}:{}", s.item.0, s.count, s.damage),
         Some(s) => format!("{}:{}", s.item.0, s.count),
@@ -322,6 +423,10 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
     let damage: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
     let enchants = fields.next().map_or(Some(Enchants::NONE), Enchants::from_hex)?;
     let repair_cost: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
+    let name = fields.next().map_or(Some(StackName::default()), StackName::from_hex)?;
+    if fields.next().is_some() {
+        return None;
+    }
     let item = Item(id);
     Some((count > 0 && item.is_valid()).then(|| Stack {
         item,
@@ -329,6 +434,7 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
         damage,
         enchants,
         repair_cost,
+        name,
     }))
 }
 
@@ -451,7 +557,10 @@ mod tests {
         let enchants = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::Efficiency, 5);
         inv.slots[23] =
             Some(Stack { enchants, repair_cost: 3, ..Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Diamond), 1) });
+        inv.slots[24] = Stack::new(Item::DIAMOND, 1).with_name("Miner's \u{2728}");
+        assert_eq!(inv.slots[24].unwrap().display_name(), "Miner's \u{2728}");
         assert_eq!(Inventory::deserialize(&inv.serialize()), Some(inv));
+        assert!(Stack::new(Item::DIAMOND, 1).with_name(&"x".repeat(STACK_NAME_MAX + 1)).is_none());
     }
 
     #[test]

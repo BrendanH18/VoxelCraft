@@ -41,6 +41,11 @@ pub(super) enum SlotRef {
     AnvilLeft,
     AnvilRight,
     AnvilResult,
+    /// Smithing template, base, addition and transform result.
+    SmithTemplate,
+    SmithBase,
+    SmithAddition,
+    SmithResult,
     /// Worn armor (survival inventory).
     Armor(ArmorPiece),
 }
@@ -71,6 +76,7 @@ pub(super) struct HudPlayer<'a> {
     pub selected: usize,
     pub survival: bool,
     pub underwater: bool,
+    pub dial: crate::item::Dial,
 }
 
 impl Game {
@@ -95,6 +101,10 @@ impl Game {
             }
         }
 
+        if let Some(t) = self.credits {
+            self.credits_ui(&mut ui, t);
+            return ui.verts;
+        }
         if self.portal_time > 0.0 {
             // The portal's purple swims in as it takes hold.
             let k = (self.portal_time / self.portal_needed()).min(1.0);
@@ -186,8 +196,9 @@ impl Game {
             inventory: &self.inventory,
             vitals: &self.vitals,
             selected: self.actions.selected,
-            survival: self.mode == GameMode::Survival,
+            survival: self.mode.is_survival(),
             underwater: self.player.head_in_water(&self.world),
+            dial: self.dial_of(&self.player),
         };
         let y0 = self.bar_ui(ui, &hud, now);
         let survival = hud.survival;
@@ -223,7 +234,7 @@ impl Game {
                 }
             }
             if let Some(stack) = hud.inventory.get(i) {
-                draw_stack(ui, sx + 1.0, y0 + 2.0, stack, hud.survival);
+                draw_stack(ui, sx + 1.0, y0 + 2.0, stack, hud.survival, hud.dial);
                 // Java's item cooldown: a pale veil that drains downward.
                 let cooling = hud.vitals.pearl_cooldown / crate::entity::pearl::COOLDOWN;
                 if stack.item == Item::ENDER_PEARL && cooling > 0.0 {
@@ -297,9 +308,39 @@ impl Game {
         }
     }
 
+    /// Facing, spawn and time for compass and clock icons.
+    pub(super) fn dial_of(&self, player: &crate::player::Player) -> crate::item::Dial {
+        crate::item::Dial {
+            yaw: player.yaw,
+            x: player.pos.x,
+            z: player.pos.z,
+            spawn_x: self.world_spawn.x as f64 + 0.5,
+            spawn_z: self.world_spawn.z as f64 + 0.5,
+            overworld: self.dimension == crate::world::terrain::Dimension::Overworld,
+            day_time: self.day_time as f32,
+            spin: self.started.elapsed().as_secs_f32(),
+        }
+    }
+
+    pub(super) fn stamp_hand(
+        dial: crate::item::Dial,
+        mut hand: crate::render::hand::Hand,
+    ) -> crate::render::hand::Hand {
+        hand.icon = hand.item.and_then(|item| item.dial_layer(dial));
+        hand
+    }
+
+    pub(super) fn stamp_look(
+        dial: crate::item::Dial,
+        mut look: crate::entity::model::PlayerAppearance,
+    ) -> crate::entity::model::PlayerAppearance {
+        look.held_icon = look.held.and_then(|item| item.dial_layer(dial));
+        look
+    }
+
     /// Item icon, durability bar and stack count in an 18x18 slot at (x, y).
     fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
-        draw_stack(ui, x, y, stack, self.mode == GameMode::Survival);
+        draw_stack(ui, x, y, stack, self.mode.is_survival(), self.dial_of(&self.player));
     }
 }
 
@@ -424,8 +465,9 @@ fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
 
 /// Item icon, durability bar and (when `counts`) stack size in an 18x18
 /// slot at (x, y).
-pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
-    match (stack.item.block(), stack.item.icon_layer()) {
+pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool, dial: crate::item::Dial) {
+    let layer = stack.item.dial_layer(dial).or_else(|| stack.item.icon_layer());
+    match (stack.item.block(), layer) {
         (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
         (None, Some(layer)) => {
             ui.icon(x + 1.0, y + 1.0, 16.0, layer, WHITE);
@@ -466,13 +508,13 @@ impl Game {
     /// Whether the screen has a top section (crafting grid or furnace)
     /// above the inventory; only the creative inventory doesn't.
     fn has_top_section(&self) -> bool {
-        self.mode == GameMode::Survival || self.container != Container::Inventory
+        self.mode.is_survival() || self.container != Container::Inventory
     }
 
     /// Whether the middle grid shows the creative palette instead of the
     /// main inventory.
     fn shows_armor(&self) -> bool {
-        self.mode == GameMode::Survival && self.container == Container::Inventory
+        self.mode.is_survival() && self.container == Container::Inventory
     }
 
     /// Height of the top section: room for the four armor slots in the
@@ -491,14 +533,18 @@ impl Game {
     }
 
     fn shows_palette(&self) -> bool {
-        self.mode == GameMode::Creative && self.container == Container::Inventory
+        self.mode.is_creative() && self.container == Container::Inventory
     }
 
     pub(super) fn shows_recipes(&self) -> bool {
         self.has_top_section()
             && !matches!(
                 self.container,
-                Container::Furnace(_) | Container::Chest(_) | Container::Enchanting(_) | Container::Anvil(_)
+                Container::Furnace(_)
+                    | Container::Chest(_)
+                    | Container::Enchanting(_)
+                    | Container::Anvil(_)
+                    | Container::Smithing(_)
             )
     }
 
@@ -564,6 +610,13 @@ impl Game {
             out.push((SlotRef::AnvilLeft, px + 26.0, py + 36.0));
             out.push((SlotRef::AnvilRight, px + 75.0, py + 36.0));
             out.push((SlotRef::AnvilResult, px + 133.0, py + 36.0));
+            CRAFT_H
+        } else if let Container::Smithing(_) = self.container {
+            // Java 1.21: template, base, addition -> result.
+            out.push((SlotRef::SmithTemplate, px + 15.0, py + 48.0));
+            out.push((SlotRef::SmithBase, px + 33.0, py + 48.0));
+            out.push((SlotRef::SmithAddition, px + 51.0, py + 48.0));
+            out.push((SlotRef::SmithResult, px + 105.0, py + 48.0));
             CRAFT_H
         } else if let Container::Brewing(_) = self.container {
             // Java's layout: fuel top left, the ingredient over three
@@ -675,8 +728,11 @@ impl Game {
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
             (Container::Anvil(_), _) => "Anvil",
+            (Container::Smithing(_), _) => "Upgrade Gear",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
+            (Container::Inventory, GameMode::Adventure) => "Adventure Inventory",
+            (Container::Inventory, GameMode::Spectator) => "Spectator",
         };
         ui.text_flat(px + 8.0, py + 6.0, title, [0.25, 0.25, 0.25, 1.0]);
         if self.shows_recipes() {
@@ -691,6 +747,8 @@ impl Game {
             self.enchanting_ui(ui, px, py);
         } else if let Container::Anvil(_) = self.container {
             self.anvil_ui(ui, px, py);
+        } else if let Container::Smithing(_) = self.container {
+            self.smithing_ui(ui, px, py);
         } else if self.has_top_section() && !matches!(self.container, Container::Chest(_)) {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
@@ -753,6 +811,9 @@ impl Game {
             let outline = match (r, stack) {
                 (SlotRef::Armor(p), None) => Item::armor(p, ArmorMaterial::Iron).icon_layer(),
                 (SlotRef::EnchantLapis, None) => Item::LAPIS_LAZULI.icon_layer(),
+                (SlotRef::SmithTemplate, None) => Item::NETHERITE_UPGRADE.icon_layer(),
+                (SlotRef::SmithBase, None) => Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Diamond).icon_layer(),
+                (SlotRef::SmithAddition, None) => Item::NETHERITE_INGOT.icon_layer(),
                 _ => None,
             };
             if let Some(layer) = outline {
@@ -790,10 +851,10 @@ impl Game {
         } else if let Some(SlotRef::EnchantOffer(i)) = hovered {
             self.offer_tooltip(ui, i);
         } else if let Some(stack) = hovered_stack {
-            match stack.item.as_potion() {
-                Some(potion) => self.potion_tooltip(ui, stack.item.name(), potion),
+            match stack.item.as_potion().or(stack.item.as_splash_potion()) {
+                Some(potion) => self.potion_tooltip(ui, stack.display_name(), potion),
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
-                None => self.tooltip(ui, stack.item.name()),
+                None => self.tooltip(ui, stack.display_name()),
             }
         }
         // The held stack follows the mouse.
@@ -880,6 +941,10 @@ impl Game {
             SlotRef::EnchantLapis | SlotRef::AnvilRight => return self.work[1],
             SlotRef::AnvilLeft => return self.work[0],
             SlotRef::AnvilResult => return self.anvil_preview().map(|(r, _)| r.output),
+            SlotRef::SmithTemplate => return self.work[0],
+            SlotRef::SmithBase => return self.work[1],
+            SlotRef::SmithAddition => return self.work[2],
+            SlotRef::SmithResult => return self.smithing_result(),
             _ => {}
         }
         if let Container::Brewing(p) = self.container {
@@ -965,7 +1030,7 @@ impl Game {
         };
         let (text, colour) = if too_expensive {
             ("Too Expensive!".to_string(), [1.0, 0.38, 0.38, 1.0])
-        } else if self.mode == GameMode::Survival && self.vitals.xp.level < result.cost {
+        } else if self.mode.is_survival() && self.vitals.xp.level < result.cost {
             (format!("Enchantment Cost: {}", result.cost), [1.0, 0.38, 0.38, 1.0])
         } else {
             (format!("Enchantment Cost: {}", result.cost), [0.5, 1.0, 0.13, 1.0])
@@ -976,12 +1041,25 @@ impl Game {
         ui.text(x, py + 60.0, &text, colour);
     }
 
+    /// Smithing's arrow and invalid-recipe cross. Slot outlines explain the
+    /// template/base/addition order without reproducing Java's full artwork.
+    fn smithing_ui(&self, ui: &mut Ui, px: f32, py: f32) {
+        let dark = [0.45, 0.45, 0.45, 1.0];
+        ui.rect(px + 76.0, py + 56.0, 18.0, 3.0, dark);
+        for i in 0..5 {
+            ui.rect(px + 94.0 + i as f32, py + 53.0 + i as f32, 1.0, 9.0 - 2.0 * i as f32, dark);
+        }
+        if self.work.iter().all(Option::is_some) && self.smithing_result().is_none() {
+            ui.rect(px + 79.0, py + 49.0, 14.0, 2.0, [0.75, 0.2, 0.2, 1.0]);
+        }
+    }
+
     /// Java's offer tooltip: the clue enchantment with "...?", then the
     /// lapis and levels it costs (red when short).
     pub(super) fn offer_tooltip(&self, ui: &mut Ui, i: usize) {
         let offer = self.enchant_offers()[i];
         let Some((e, level)) = offer.clue else { return };
-        let creative = self.mode == GameMode::Creative;
+        let creative = self.mode.is_creative();
         let mut lines = vec![(format!("{} . . . ?", e.describe(level)), WHITE)];
         if !creative {
             let lapis = self.work[1].map_or(0, |s| s.count) as usize;
@@ -1010,7 +1088,7 @@ impl Game {
     /// An enchanted item's name (aqua; an enchanted book's yellow) with a
     /// grey line per enchantment, curses in red, like Java.
     pub(super) fn enchant_tooltip(&self, ui: &mut Ui, stack: Stack) {
-        let title = capitalize(stack.item.name());
+        let title = capitalize(stack.display_name());
         let lines = stack.enchants.lines();
         let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
         let h = 14.0 + 11.0 * lines.len() as f32;

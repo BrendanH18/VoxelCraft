@@ -17,6 +17,7 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
   <a href="#screenshots">Screenshots</a> ·
   <a href="docs/gameplay.md">Gameplay guide</a> ·
   <a href="#multiplayer">Multiplayer</a> ·
+  <a href="#documentation">Docs</a> ·
   <a href="docs/architecture.md">Inside the engine</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
@@ -35,31 +36,43 @@ Explore, build, and survive in a procedurally generated sandbox powered by wgpu.
 - **Three dimensions.** Light an obsidian portal with flint and steel to
   cross into the Nether: lava seas, netherrack caverns, soul sand and
   glowstone under a bedrock roof, eight overworld blocks to every one, and
-  fortresses of bridges, blaze spawners, loot chests and nether wart. The
-  End's floating islands and obsidian pillars can be visited from the console.
+  fortresses and bastion remnants full of loot. Find a stronghold with eyes
+  of ender, enter the End, defeat the Ender Dragon and watch the credits.
 - **Two ways to play.** Build freely in creative, or play survival with timed
   mining, block drops, a stackable inventory, health, hunger, experience
-  orbs and levels, and respawning.
+  orbs and levels, and respawning. Choose a difficulty, or play Adventure,
+  Spectator or Hardcore.
 - **Craft, fight, cook and store.** Make tools and swords in five tiers,
   armor in four, and bows and arrows, craft torches and building blocks, smelt ores
   and cook food in furnaces, and keep your haul in chests. Tools wear out;
   food restores hunger and supports natural healing. Sleep in a bed to skip
   the night and set your respawn point.
+- **Brew, enchant and upgrade.** Brew potions (and splash them) from nether
+  wart, enchant gear at a table, repair and rename at an anvil, and upgrade
+  diamond to Netherite at a smithing table.
 - **Build in shape.** Stairs, slabs, fences, fence gates, ladders and doors
   that open, plus sneaking to build safely at the edge of a drop.
+- **Colours and materials.** Sixteen dye colours for wool, carpets, beds,
+  stained glass, terracotta and concrete, plus granite, deepslate, blackstone,
+  copper, emerald, every wood type with stairs, slabs and walls, and
+  procedurally generated mineshafts and monster rooms.
+- **See yourself.** Press **F5** for third-person views of an animated player
+  model that wears your armor, with view bobbing, swimming and crawling.
 - **Many worlds.** A title screen lists your saved worlds; create new ones
   with a name, a seed and a game mode, or delete old ones.
 - **Farm and grow.** Till soil with a hoe, sow seeds found in tall grass and
   harvest wheat for bread. Saplings grow into trees, leaves fall from felled
   trees, and grass creeps back over bare dirt.
 - **A world that moves.** Flowing water and lava, falling sand, a day/night
-  cycle, rain and snow, drifting clouds, herds of animals, and zombies, skeletons, creepers
-  and spiders that come out at night. Fire spreads and burns out, lava sets
+  cycle, rain and snow, drifting clouds, herds of animals, and zombies, skeletons, creepers,
+  spiders, Endermen, blazes, witches, slimes and ghasts. Fire spreads and burns out, lava sets
   things alight, and TNT blows holes in the landscape.
 - **Play together.** Host your world for up to eight command-line players,
   such as AI agents or scripts, each with their own inventory and health.
   Plug in up to three gamepads and press Start to play split-screen on one
   computer, or watch command-line players in split-screen beside your view.
+- **Music and particles from code.** Situational music is synthesized as you
+  play, and a particle system adds smoke, flames, splashes and debris.
 - **Light and sound from code.** Smooth sky and block lighting, ambient
   occlusion, directional sunlight, reflective animated water (or the Classic
   look), material-specific footsteps, positional audio, and underwater effects.
@@ -175,11 +188,14 @@ bar appears below the crosshair while you hold right-click with food.
 | Q / Ctrl+Q | Drop one item / the whole stack |
 | Shift + click | Move a stack between a container and the inventory, or craft as many as fit |
 | F or double-tap Space | Toggle flight in creative |
+| F5 | Cycle first person, third person (back) and third person (front) |
+| Sprint in water | Swim; you crawl automatically through one-block-high gaps |
 | Space / Left Shift | Fly up / down |
 | Left Shift | Sneak (you won't walk off edges) |
 | `[` / `]` | Decrease / increase view distance |
-| /, T or backtick | Command console: `/give`, `/tp`, `/time`, `/weather`, `/splitscreen`, `/help` and more |
-| F1 / F3 / F11 | Hide HUD / debug overlay / fullscreen |
+| /, T or backtick | Command console with **Tab** completion: `/give`, `/tp`, `/time`, `/weather`, `/gamemode`, `/difficulty`, `/gamerule`, `/effect`, `/locate`, `/splitscreen`, `/help` and more |
+| F1 / F3 | Hide HUD / debug overlay |
+| F11 | Toggle fullscreen (Options → Fullscreen picks Borderless or Exclusive at native resolution; remembered) |
 | Esc | Pause menu: back to game, options (render distance, FOV, sensitivity, volume, vsync), save and quit |
 
 See the [gameplay guide](docs/gameplay.md) for all controls, survival rules, and mob behavior.
@@ -206,6 +222,14 @@ See the [gameplay guide](docs/gameplay.md) for all controls, survival rules, and
   <tr>
     <td width="50%"><img src="docs/images/farming.jpg" alt="Rows of wheat at every growth stage on wet and dry farmland, with oak and spruce saplings behind"><br><strong>Sow and reap</strong><br>Wheat ripens from green shoots to golden ears on tilled soil.</td>
     <td width="50%"><img src="docs/images/chest.jpg" alt="Chest screen with diamonds, logs, iron ingots and steak above the player's inventory"><br><strong>Stash it</strong><br>Chests hold 27 stacks; shift-click to move whole stacks.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/bastion.jpg" alt="Blackstone walls of a Nether bastion remnant beside a lava sea"><br><strong>Raid a bastion</strong><br>Blackstone ruins in the Nether hide loot and Netherite upgrade templates.</td>
+    <td width="50%"><img src="docs/images/third-person-armor.jpg" alt="Third-person view of the player wearing a full set of diamond armor"><br><strong>Suit up</strong><br>Press F5 to see your player and the armor you wear.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/dye-palette.jpg" alt="Sixteen colours of wool, concrete, terracotta and stained glass in rows"><br><strong>Sixteen colours</strong><br>Dye wool, glass, terracotta and concrete in Java's palette.</td>
+    <td width="50%"></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/images/split-screen.jpg" alt="Side-by-side split-screen: the host holding a diamond sword sees an agent player, and the agent's view shows the host"><br><strong>Side by side</strong><br>Each view has its own hotbar, health and hunger.</td>
@@ -237,14 +261,29 @@ Recorded development benchmarks on an **Apple M5**, in a **release build** at
 
 | View distance | Average frame time | Approx. frame rate |
 | --- | --- | --- |
-| 256 blocks (`--rd 8`) | 1.10 ms | 900 fps |
-| 512 blocks (`--rd 16`) | 2.05 ms | 490 fps |
+| 256 blocks (`--rd 8`) | 1.17 ms | 855 fps |
+| 512 blocks (`--rd 16`) | 2.40 ms | 417 fps |
 
 These measurements include CPU and GPU work and vary with hardware and scene.
 Read the [architecture notes](docs/architecture.md) for the full results,
 rendering design, code layout, and sound synthesis. The
 [development guide](docs/development.md) shows how to run benchmarks, script
 scenes, capture screenshots, and export sounds.
+
+## Documentation
+
+- [Gameplay guide](docs/gameplay.md): controls, survival rules, mobs and recipes
+- [Bastions and Nether materials](docs/bastions.md)
+- [Colours and dyes](docs/colors.md)
+- [Mob parity](docs/mob-parity.md): ghasts, slimes, witches, zombie variants and more
+- [Music](docs/music.md): the procedural music system
+- [Particles](docs/particles.md)
+- [Player rendering](docs/player-rendering.md): the player model, armor and cameras
+- [Survival items](docs/survival-items.md): shears, compass, clock, crops and fishing
+- [Performance investigation, 2026-10-07](docs/performance-2026-10-07.md)
+- [Hosted agents and commands](docs/agents.md)
+- [Architecture](docs/architecture.md), [development guide](docs/development.md)
+  and [release guide](docs/releases.md)
 
 ## Contributing
 

@@ -75,6 +75,15 @@ impl World {
                 Feature::StrongholdChest(seed) if is_chest(block) => {
                     self.chests.entry(p).or_insert_with(|| super::stronghold::loot(seed));
                 }
+                Feature::DungeonChest(seed) if is_chest(block) => {
+                    self.chests.entry(p).or_insert_with(|| super::dungeon::loot(seed));
+                }
+                Feature::BastionChest(seed, kind) if is_chest(block) => {
+                    self.chests.entry(p).or_insert_with(|| super::bastion::loot(seed, kind));
+                }
+                Feature::MineshaftChest(seed) if is_chest(block) => {
+                    self.chests.entry(p).or_insert_with(|| super::mineshaft::loot(seed));
+                }
                 _ => {}
             }
         }

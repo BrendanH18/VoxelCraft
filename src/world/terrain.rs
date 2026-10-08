@@ -11,14 +11,20 @@
 //! down to sea level, swamps flatten into shallow pools and badlands rise
 //! into terraced plateaus. Temperature and humidity then pick the biome.
 
-use glam::IVec3;
+use std::sync::{Arc, Mutex};
+
+use glam::{IVec2, IVec3};
+use rustc_hash::FxHashMap;
 
 use super::block::{Block, Wood};
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
+use super::height;
 use super::noise::{Perlin, hash_f, hash3};
 
 pub const SEA_LEVEL: i32 = 62;
-/// Caves carved at or below this height fill with lava.
+/// Caves carved at or below this height fill with lava. Java's aquifer is
+/// y = -54, which [`height::java_y`] maps to 4, inside the bedrock caves
+/// leave alone (`wy > 4`). The sheet stays at 10 so those caves still flood.
 pub const LAVA_LEVEL: i32 = 10;
 const TREE_CELL: i32 = 5;
 /// How far a tree's leaves can extend from its trunk (mega jungle trees).
@@ -47,6 +53,47 @@ pub enum Biome {
 }
 
 impl Biome {
+    pub const ALL: [Biome; 14] = [
+        Biome::Ocean,
+        Biome::Beach,
+        Biome::River,
+        Biome::Plains,
+        Biome::Forest,
+        Biome::BirchForest,
+        Biome::Swamp,
+        Biome::Desert,
+        Biome::Badlands,
+        Biome::Savanna,
+        Biome::Jungle,
+        Biome::Mountains,
+        Biome::Snowy,
+        Biome::Taiga,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Biome::Ocean => "ocean",
+            Biome::Beach => "beach",
+            Biome::River => "river",
+            Biome::Plains => "plains",
+            Biome::Forest => "forest",
+            Biome::BirchForest => "birch_forest",
+            Biome::Swamp => "swamp",
+            Biome::Desert => "desert",
+            Biome::Badlands => "badlands",
+            Biome::Savanna => "savanna",
+            Biome::Jungle => "jungle",
+            Biome::Mountains => "mountains",
+            Biome::Snowy => "snowy",
+            Biome::Taiga => "taiga",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        let name = name.strip_prefix("minecraft:").unwrap_or(name);
+        Self::ALL.into_iter().find(|biome| biome.name() == name)
+    }
+
     /// Which colour grass and leaves take on here (see `block::tex::tinted`):
     /// 0 temperate green, 1 murky swamp, 2 dry and yellow, 3 lush jungle,
     /// 4 cold and blue.
@@ -106,6 +153,16 @@ impl Dimension {
     }
 }
 
+/// Surface noise is independent of chunk Y. Keep a bounded set of column
+/// snapshots shared by generation workers, rather than resampling all eight
+/// vertical chunks. Values are immutable and eviction never changes output.
+const COLUMN_CACHE_LIMIT: usize = 512;
+struct ChunkColumns {
+    cols: [[Column; CHUNK_SIZE]; CHUNK_SIZE],
+    max_h: i32,
+    min_h: i32,
+}
+
 pub struct Generator {
     pub seed: u64,
     pub dimension: Dimension,
@@ -114,6 +171,11 @@ pub struct Generator {
     end: Option<super::end::EndGen>,
     /// The overworld's strongholds.
     pub strongholds: super::stronghold::Strongholds,
+    /// Monster rooms are terrain features and can cross chunk boundaries.
+    pub dungeons: super::dungeon::Dungeons,
+    /// Abandoned mineshafts, placed per Java 16×16 chunk.
+    pub mineshafts: super::mineshaft::Mineshafts,
+    columns: Mutex<FxHashMap<IVec2, Arc<ChunkColumns>>>,
     continent: Perlin,
     erosion: Perlin,
     ridge: Perlin,
@@ -156,6 +218,9 @@ impl Generator {
             nether: (dimension == Dimension::Nether).then(|| super::nether::NetherGen::new(seed)),
             end: (dimension == Dimension::End).then(|| super::end::EndGen::new(seed)),
             strongholds: super::stronghold::Strongholds::new(seed),
+            dungeons: super::dungeon::Dungeons::new(seed),
+            mineshafts: super::mineshaft::Mineshafts::new(seed),
+            columns: Mutex::new(FxHashMap::default()),
             continent: p(1),
             erosion: p(2),
             ridge: p(3),
@@ -173,6 +238,39 @@ impl Generator {
     /// The End's layout (pillars, exit portal), in the End only.
     pub fn end(&self) -> Option<&super::end::EndGen> {
         self.end.as_ref()
+    }
+
+    /// Nearest Nether fortress, when this is a Nether generator.
+    pub fn nearest_fortress(&self, p: glam::IVec2) -> Option<IVec3> {
+        self.nether.as_ref()?.fortresses.nearest(p)
+    }
+
+    /// Nearest column of `target`, searching outward from `origin` in 32-block
+    /// steps (Java `/locate biome` uses a similar spiral; capped for speed).
+    pub fn nearest_biome(&self, origin: IVec2, target: Biome, max_blocks: i32) -> Option<IVec3> {
+        if self.dimension != Dimension::Overworld {
+            return None;
+        }
+        let here = |x, z| self.column(x, z).biome == target;
+        if here(origin.x, origin.y) {
+            return Some(IVec3::new(origin.x, self.column(origin.x, origin.y).height + 1, origin.y));
+        }
+        let steps = (max_blocks / 32).max(1);
+        for ring in 1..=steps {
+            for dx in -ring..=ring {
+                for dz in -ring..=ring {
+                    if dx.abs() != ring && dz.abs() != ring {
+                        continue;
+                    }
+                    let x = origin.x + dx * 32;
+                    let z = origin.y + dz * 32;
+                    if here(x, z) {
+                        return Some(IVec3::new(x, self.column(x, z).height + 1, z));
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Surface height and biome of a world column.
@@ -380,7 +478,12 @@ impl Generator {
     pub fn structure_features(&self, cpos: IVec3) -> Vec<(IVec3, super::fortress::Feature)> {
         match (&self.nether, self.dimension) {
             (Some(n), _) => n.fortresses.features(cpos),
-            (None, Dimension::Overworld) => self.strongholds.features(cpos),
+            (None, Dimension::Overworld) => {
+                let mut features = self.strongholds.features(cpos);
+                features.extend(self.dungeons.features(self, cpos));
+                features.extend(self.mineshafts.features(cpos));
+                features
+            }
             _ => Vec::new(),
         }
     }
@@ -391,14 +494,12 @@ impl Generator {
         self.nether.as_ref().is_some_and(|n| n.fortresses.inside(p))
     }
 
-    pub fn generate(&self, cpos: IVec3) -> ChunkData {
-        if let Some(end) = &self.end {
-            return end.generate(cpos);
+    fn chunk_columns(&self, pos: IVec2) -> Arc<ChunkColumns> {
+        if let Some(found) = self.columns.lock().unwrap().get(&pos) {
+            return Arc::clone(found);
         }
-        if let Some(nether) = &self.nether {
-            return nether.generate(cpos);
-        }
-        let base = cpos * CHUNK_SIZE_I;
+        // Do noise work outside the lock, so unrelated columns run in parallel.
+        let base = IVec3::new(pos.x * CHUNK_SIZE_I, 0, pos.y * CHUNK_SIZE_I);
         let mut cols = [[Column { height: 0, biome: Biome::Plains, frozen: false }; CHUNK_SIZE]; CHUNK_SIZE];
         let mut max_h = i32::MIN;
         let mut min_h = i32::MAX;
@@ -409,6 +510,28 @@ impl Generator {
                 min_h = min_h.min(c.height);
             }
         }
+
+        let found = Arc::new(ChunkColumns { cols, max_h, min_h });
+        let mut cache = self.columns.lock().unwrap();
+        if cache.len() >= COLUMN_CACHE_LIMIT
+            && let Some(key) = cache.keys().next().copied()
+        {
+            cache.remove(&key);
+        }
+        Arc::clone(cache.entry(pos).or_insert(found))
+    }
+
+    pub fn generate(&self, cpos: IVec3) -> ChunkData {
+        if let Some(end) = &self.end {
+            return end.generate(cpos);
+        }
+        if let Some(nether) = &self.nether {
+            return nether.generate(cpos);
+        }
+        let base = cpos * CHUNK_SIZE_I;
+        let columns = self.chunk_columns(IVec2::new(cpos.x, cpos.z));
+        let ChunkColumns { cols, max_h, min_h } = &*columns;
+        let (max_h, min_h) = (*max_h, *min_h);
 
         let top = base.y + CHUNK_SIZE_I - 1;
         // Open sky: nothing (not even tree canopies) reaches this chunk.
@@ -431,7 +554,7 @@ impl Generator {
                     let mut b = if wy == 0 || (wy < 4 && hash_f(wx, wy, wz, self.seed) < (4 - wy) as f32 / 4.0) {
                         Block::BEDROCK
                     } else if wy < col.height - depth {
-                        self.ore_or_stone(wx, wy, wz)
+                        Block::STONE
                     } else if wy < col.height {
                         self.filler_block(col, wy)
                     } else if wy == col.height {
@@ -458,28 +581,111 @@ impl Generator {
             }
         }
 
+        if base.y < max_h {
+            let biome_at = |x: i32, z: i32| {
+                let lx = (x - base.x).clamp(0, CHUNK_SIZE_I - 1) as usize;
+                let lz = (z - base.z).clamp(0, CHUNK_SIZE_I - 1) as usize;
+                cols[lz][lx].biome
+            };
+            if base.y <= height::DEEPSLATE_BLEND_TOP {
+                self.paint_deepslate(blocks.as_mut(), base);
+            }
+            super::ore::paint(self.seed, blocks.as_mut(), base, biome_at);
+        }
         if base.y <= max_h + TREE_TOP && top >= min_h {
             self.place_trees(&mut blocks, base);
-            self.place_plants(&mut blocks, base, &cols);
+            self.place_plants(&mut blocks, base, cols);
         }
         if base.y < SEA_LEVEL {
             self.strongholds.paint(&mut blocks, base);
         }
+        self.dungeons.paint(self, &mut blocks, base);
+        self.mineshafts.paint(&mut blocks, base);
         ChunkData::from_dense(blocks)
     }
 
-    fn ore_or_stone(&self, x: i32, y: i32, z: i32) -> Block {
-        // Ores form small clusters: pick a 2x2x2 cell, then thin it out.
-        let cell = hash3(x >> 1, y >> 1, z >> 1, self.seed ^ 0x0E5) % 1000;
-        let ore = match cell {
-            0..=11 if y < 128 => Block::COAL_ORE,
-            12..=18 if y < 64 => Block::IRON_ORE,
-            19..=21 if y < 32 => Block::GOLD_ORE,
-            22..=23 if y < 16 => Block::DIAMOND_ORE,
-            24..=25 if y < 32 => Block::LAPIS_ORE,
-            _ => return Block::STONE,
-        };
-        if !hash3(x, y, z, self.seed ^ 0x0E6).is_multiple_of(3) { ore } else { Block::STONE }
+    /// Stone below Java's deepslate line becomes deepslate. The line and the
+    /// fade above it both go through [`height::java_y`], so the transition
+    /// sits near y = 31 instead of above the sea.
+    fn paint_deepslate(&self, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
+        let top = (height::DEEPSLATE_BLEND_TOP - base.y).min(CHUNK_SIZE_I - 1);
+        if top < 0 {
+            return;
+        }
+        for z in 0..CHUNK_SIZE {
+            for y in 0..=top as usize {
+                let wy = base.y + y as i32;
+                let chance = height::deepslate_chance(wy);
+                if chance <= 0.0 {
+                    continue;
+                }
+                for x in 0..CHUNK_SIZE {
+                    let i = index(x, y, z);
+                    if blocks[i] != Block::STONE {
+                        continue;
+                    }
+                    if chance >= 1.0 || hash_f(base.x + x as i32, wy, base.z + z as i32, self.seed) < chance {
+                        blocks[i] = Block::DEEPSLATE;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Unmodified terrain at one point, used to validate a monster room
+    /// without depending on which adjacent chunks were generated first.
+    /// The caches make the repeated cave and height samples cheap.
+    pub(super) fn natural_block(
+        &self,
+        p: IVec3,
+        columns: &mut FxHashMap<IVec2, Column>,
+        nodes: &mut FxHashMap<IVec3, [f32; 3]>,
+    ) -> Block {
+        if p.y < 0 || p.y >= 256 {
+            return Block::AIR;
+        }
+        let col = *columns.entry(IVec2::new(p.x, p.z)).or_insert_with(|| self.column(p.x, p.z));
+        if p.y > col.height {
+            return if p.y <= SEA_LEVEL {
+                if p.y == SEA_LEVEL && col.frozen { Block::ICE } else { Block::WATER }
+            } else {
+                Block::AIR
+            };
+        }
+        if p.y <= 4 {
+            return Block::STONE;
+        }
+        let carve_limit = if col.height < SEA_LEVEL + 2 { col.height - 6 } else { col.height };
+        if p.y > carve_limit {
+            return Block::STONE;
+        }
+        let lo = IVec3::new(p.x.div_euclid(4) * 4, p.y.div_euclid(4) * 4, p.z.div_euclid(4) * 4);
+        let t = (p - lo).as_vec3() / 4.0;
+        let mut v = [0.0f32; 3];
+        for dy in 0..=1 {
+            for dz in 0..=1 {
+                for dx in 0..=1 {
+                    let q = lo + IVec3::new(dx * 4, dy * 4, dz * 4);
+                    let at = *nodes.entry(q).or_insert_with(|| {
+                        let (x, y, z) = (q.x as f32, q.y as f32, q.z as f32);
+                        [
+                            self.cave_a.noise3(x / 48.0, y / 32.0, z / 48.0),
+                            self.cave_b.noise3(x / 48.0, y / 32.0, z / 48.0),
+                            self.cavern.noise3(x / 90.0, y / 45.0, z / 90.0),
+                        ]
+                    });
+                    let w = (if dx == 0 { 1.0 - t.x } else { t.x })
+                        * (if dy == 0 { 1.0 - t.y } else { t.y })
+                        * (if dz == 0 { 1.0 - t.z } else { t.z });
+                    for i in 0..3 {
+                        v[i] += at[i] * w;
+                    }
+                }
+            }
+        }
+        let tunnel = v[0] * v[0] + v[1] * v[1] < 0.0045;
+        let cavern = p.y < 48 && v[2] > 0.42 - (48 - p.y) as f32 * 0.002;
+        if tunnel || cavern { if p.y <= LAVA_LEVEL { Block::LAVA } else { Block::AIR } } else { Block::STONE }
     }
 
     /// Samples the cave noises on a coarse grid; per-block values are
@@ -902,6 +1108,34 @@ fn cactus(ground: IVec3, v: u32, put: Put) {
 mod tests {
     use super::*;
 
+    /// Golden block IDs captured at 25c4c8a before the performance changes;
+    /// the Overworld values were re-captured when ore veins got per-try
+    /// random streams (seam fix) and mineshafts gained cave spider spawners.
+    /// Cover the benchmark volume and distant columns in every dimension.
+    #[test]
+    fn generated_chunk_hashes_stay_identical() {
+        for (dimension, seed, expected) in [
+            (Dimension::Overworld, 12345, 0x5620_c834_cc73_b8eau64),
+            (Dimension::Overworld, 99, 0x69e1_f991_22ee_2f6au64),
+            (Dimension::Nether, 12345, 0x17a0_1163_881c_778du64),
+            (Dimension::End, 12345, 0xc5aa_2549_4a63_5b2bu64),
+        ] {
+            let g = Generator::for_dimension(seed, dimension);
+            let mut hash = 0xcbf2_9ce4_8422_2325u64;
+            let mut positions: Vec<_> =
+                (-3..=3).flat_map(|x| (-3..=3).flat_map(move |z| (0..8).map(move |y| IVec3::new(x, y, z)))).collect();
+            positions.extend([IVec3::new(-31, 0, 17), IVec3::new(17, 1, -23), IVec3::new(4, 4, 39)]);
+            for p in positions {
+                g.generate(p).for_each_block(|block| {
+                    for byte in block.0.to_le_bytes() {
+                        hash = (hash ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3);
+                    }
+                });
+            }
+            assert_eq!(hash, expected, "{dimension:?} seed {seed}");
+        }
+    }
+
     #[test]
     fn generation_is_deterministic() {
         let g = Generator::new(1234);
@@ -1002,6 +1236,15 @@ mod tests {
     }
 
     #[test]
+    fn nearest_biome_finds_a_matching_column() {
+        let g = Generator::new(42);
+        let origin = IVec2::new(0, 0);
+        let here = g.column(origin.x, origin.y).biome;
+        assert_eq!(g.nearest_biome(origin, here, 256).map(|p| IVec2::new(p.x, p.z)), Some(origin));
+        assert!(g.nearest_biome(origin, Biome::Ocean, 12_800).is_some());
+    }
+
+    #[test]
     fn foliage_follows_the_biomes() {
         let g = Generator::new(99);
         // A jungle column well inside the biome (see the biome map).
@@ -1010,6 +1253,11 @@ mod tests {
         let lush = f.iter().filter(|&&group| group == Biome::Jungle.foliage()).count();
         assert!(lush > f.len() / 2, "{lush} of {} columns lush", f.len());
         assert_eq!(*g.foliage(cx, cz), *f, "deterministic");
+    }
+
+    #[test]
+    fn sea_level_is_javas_mapped_sea() {
+        assert_eq!(height::java_y(63), SEA_LEVEL);
     }
 
     #[test]

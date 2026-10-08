@@ -21,6 +21,9 @@ pub enum Voice {
     Spider,
     Enderman,
     Blaze,
+    Slime,
+    Ghast,
+    Witch,
 }
 
 /// What kind of sound a voice makes.
@@ -33,7 +36,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 10] = [
+    pub const ALL: [Voice; 13] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -44,6 +47,9 @@ impl Voice {
         Voice::Spider,
         Voice::Enderman,
         Voice::Blaze,
+        Voice::Slime,
+        Voice::Ghast,
+        Voice::Witch,
     ];
 
     pub fn name(self) -> &'static str {
@@ -58,6 +64,9 @@ impl Voice {
             Voice::Spider => "spider",
             Voice::Enderman => "enderman",
             Voice::Blaze => "blaze",
+            Voice::Slime => "slime",
+            Voice::Ghast => "ghast",
+            Voice::Witch => "witch",
         }
     }
 }
@@ -148,6 +157,9 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Spider => spider(call, rng),
         Voice::Enderman => enderman(call, rng),
         Voice::Blaze => blaze(call, rng),
+        Voice::Slime => slime(call, rng),
+        Voice::Ghast => ghast(call, rng),
+        Voice::Witch => witch(call, rng),
     }
 }
 
@@ -297,6 +309,31 @@ fn chicken(call: Call, rng: &mut Rng) -> Vec<f32> {
             dsp::finish(out, 0.45)
         }
     }
+}
+
+/// A nasal cackle: a high voice with a fast vibrato, "heh-heh-heh".
+fn witch(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, base, fall, jitter) = match call {
+        Call::Ambient => (rng.range(0.9, 1.3), rng.range(300.0, 340.0), 0.9, 0.25),
+        Call::Hurt => (0.35, rng.range(360.0, 400.0), 0.7, 0.3),
+        Call::Death => (1.1, rng.range(330.0, 360.0), 0.45, 0.3),
+    };
+    let rate = rng.range(7.0, 9.0);
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * lerp(1.0, fall, t / secs) * (1.0 + 0.12 * (rate * std::f32::consts::TAU * t).sin()),
+            env: &|t| {
+                swell(t, secs * 0.1, secs * 0.5, secs) * (0.55 + 0.45 * (rate * std::f32::consts::TAU * t).sin().abs())
+            },
+            formants: [(650.0, 4.0, 1.0), (1700.0, 5.0, 0.7), (2600.0, 6.0, 0.3)],
+            shift: &|_| 1.0,
+            jitter,
+            breath: 0.5,
+        },
+    );
+    dsp::finish(out, 0.6)
 }
 
 fn zombie(call: Call, rng: &mut Rng) -> Vec<f32> {
@@ -498,4 +535,38 @@ pub fn hit(rng: &mut Rng) -> Vec<f32> {
     Biquad::bandpass(2400.0, 1.0).run(&mut slap);
     mix_into(&mut out, &slap, 0.4, 0);
     dsp::finish(out, 0.6)
+}
+
+fn ghast(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => 1.4,
+        Call::Hurt => 0.5,
+        Call::Death => 1.2,
+    };
+    let base = match call {
+        Call::Ambient => 108.0,
+        Call::Hurt => 150.0,
+        Call::Death => 86.0,
+    };
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * lerp(1.2, 0.62, t / secs),
+            env: &|t| swell(t, 0.15, 0.4, secs),
+            formants: [(260.0, 2.5, 1.0), (820.0, 4.0, 0.4), (2100.0, 5.0, 0.12)],
+            shift: FLAT,
+            jitter: 0.09,
+            breath: 0.9,
+        },
+    );
+    dsp::finish(out, 0.55)
+}
+
+fn slime(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = if call == Call::Death { 0.45 } else { 0.2 };
+    let mut buf = noise(rng, samples(secs), |t| dsp::ad(t, 0.01, 0.07));
+    Biquad::lowpass(650.0, 1.5).run(&mut buf);
+    add_mode(&mut buf, 0, Mode { freq: 140.0, amp: 0.6, tau: 0.08, glide: 0.5, glide_tau: 0.03 });
+    dsp::finish(buf, 0.5)
 }

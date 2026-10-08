@@ -9,7 +9,7 @@ use crate::item::Item;
 use crate::world::{brewing, chest, furnace};
 
 use super::hud::SlotRef;
-use super::{Container, Game, GameMode};
+use super::{Container, Game};
 
 /// Where stacks leaving a container land in the inventory: the hotbar from
 /// the right, then the main grid from the bottom right, like Minecraft.
@@ -120,15 +120,25 @@ impl Game {
                 self.work[i] = self.move_to_player(stack);
             }
             SlotRef::AnvilResult => self.quick_take_anvil(),
+            SlotRef::SmithTemplate | SlotRef::SmithBase | SlotRef::SmithAddition => {
+                let i = match slot {
+                    SlotRef::SmithTemplate => 0,
+                    SlotRef::SmithBase => 1,
+                    _ => 2,
+                };
+                let Some(stack) = self.work[i].take() else { return };
+                self.work[i] = self.move_to_player(stack);
+            }
+            SlotRef::SmithResult => self.quick_take_smithing(),
             SlotRef::Armor(piece) => {
-                if !self.inventory.can_unequip(piece, self.mode == GameMode::Creative) {
+                if !self.inventory.can_unequip(piece, self.mode.is_creative()) {
                     return;
                 }
                 let Some(stack) = self.inventory.armor[piece as usize].take() else { return };
                 self.inventory.armor[piece as usize] = self.move_to_player(stack);
             }
             SlotRef::Palette(item) => {
-                if self.mode == GameMode::Creative {
+                if self.mode.is_creative() {
                     self.inventory.add(item, item.max_stack());
                 }
             }
@@ -204,7 +214,13 @@ impl Game {
                     return left;
                 }
             }
-            Container::Inventory if self.mode == GameMode::Survival => {
+            Container::Smithing(_) => {
+                let left = self.move_to_smithing(stack);
+                if left != Some(stack) {
+                    return left;
+                }
+            }
+            Container::Inventory if self.mode.is_survival() => {
                 // Armor goes on, if that slot is free.
                 if let Some((piece, _)) = stack.item.as_armor()
                     && self.inventory.armor[piece as usize].is_none()

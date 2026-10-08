@@ -8,6 +8,9 @@ use crate::world::block::Block;
 
 /// Whether mining `block` with `held` yields its drop.
 pub fn can_harvest(block: Block, held: Option<Item>) -> bool {
+    if held == Some(Item::SHEARS) && block == Block::COBWEB {
+        return true;
+    }
     let Some(level) = block.harvest_level() else { return true };
     match held.and_then(Item::as_tool) {
         Some((kind, tier)) => Some(kind) == block.best_tool() && tier.level() >= level,
@@ -22,6 +25,14 @@ pub fn break_time(block: Block, held: Option<Item>) -> f32 {
 
 /// How fast the held item digs `block` (1 for a hand or the wrong tool).
 fn tool_speed(block: Block, held: Option<Item>) -> f32 {
+    if held == Some(Item::SHEARS) {
+        if block.wool_color().is_some() {
+            return 5.0;
+        }
+        if block.is_leaves() || block == Block::COBWEB {
+            return 15.0;
+        }
+    }
     match held.and_then(Item::as_tool) {
         // Swords cut cobwebs fifteen times as fast (Java).
         Some((ToolKind::Sword, _)) if block == Block::COBWEB => 15.0,
@@ -65,6 +76,9 @@ pub fn dig_time(block: Block, digger: Digger) -> f32 {
 /// Durability a tool loses for breaking a block (swords wear faster, as
 /// they're not meant for it) or for hitting a mob (the reverse).
 pub fn wear(held: Item, hitting_mob: bool) -> u16 {
+    if held == Item::SHEARS {
+        return (!hitting_mob) as u16;
+    }
     match (held.as_tool(), hitting_mob) {
         (Some((ToolKind::Sword, _)), false)
         | (Some((ToolKind::Pickaxe | ToolKind::Shovel | ToolKind::Axe, _)), true) => 2,
@@ -89,11 +103,21 @@ pub fn hit_damage(held: Option<Stack>, target: enchant::Creature) -> f32 {
 /// Melee damage of a hit with `held` (a fist does 1).
 pub fn attack_damage(held: Option<Item>) -> f32 {
     let Some((kind, tier)) = held.and_then(Item::as_tool) else { return 1.0 };
+    if tier == Tier::Netherite {
+        return match kind {
+            ToolKind::Sword => 8.0,
+            ToolKind::Shovel => 6.5,
+            ToolKind::Pickaxe => 6.0,
+            ToolKind::Axe => 10.0,
+            ToolKind::Hoe => 1.0,
+        };
+    }
     let bonus = match tier {
         Tier::Wood | Tier::Gold => 0.0,
         Tier::Stone => 1.0,
         Tier::Iron => 2.0,
         Tier::Diamond => 3.0,
+        Tier::Netherite => unreachable!(),
     };
     let base = match kind {
         ToolKind::Sword => 4.0,
@@ -105,12 +129,30 @@ pub fn attack_damage(held: Option<Item>) -> f32 {
     base + bonus
 }
 
+/// Fully charged attacks per second. Existing tiers retain VoxelCraft's
+/// two-per-second combat until their broader Java stat pass; Netherite
+/// implements Java's per-tool attributes.
+pub fn attack_speed(held: Option<Item>) -> f64 {
+    match held.and_then(Item::as_tool) {
+        Some((ToolKind::Sword, Tier::Netherite)) => 1.6,
+        Some((ToolKind::Shovel | ToolKind::Axe, Tier::Netherite)) => 1.0,
+        Some((ToolKind::Pickaxe, Tier::Netherite)) => 1.2,
+        Some((ToolKind::Hoe, Tier::Netherite)) => 4.0,
+        _ => 2.0,
+    }
+}
+
+pub fn attack_cooldown(held: Option<Item>) -> f64 {
+    1.0 / attack_speed(held)
+}
+
 /// Experience a harvested block drops (Java's ore ranges; silk touch
 /// skips it: see [`mined_xp`]).
 pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {
-    let (lo, hi) = match block {
+    let (lo, hi) = match block.as_stone_ore() {
         Block::COAL_ORE => (0, 2),
-        Block::DIAMOND_ORE => (3, 7),
+        Block::DIAMOND_ORE | Block::EMERALD_ORE => (3, 7),
+        Block::REDSTONE_ORE => (1, 5),
         Block::QUARTZ_ORE | Block::LAPIS_ORE => (2, 5),
         Block::SPAWNER => (15, 43),
         _ => return 0,
@@ -133,18 +175,30 @@ pub fn silk_drop(block: Block) -> Option<Item> {
         Block::STONE
             | Block::GRASS
             | Block::COAL_ORE
+            | Block::IRON_ORE
+            | Block::GOLD_ORE
             | Block::DIAMOND_ORE
+            | Block::COPPER_ORE
+            | Block::REDSTONE_ORE
+            | Block::EMERALD_ORE
             | Block::QUARTZ_ORE
             | Block::LAPIS_ORE
             | Block::GLASS
+            | Block::GLASS_PANE
             | Block::GRAVEL
             | Block::GLOWSTONE
             | Block::ICE
             | Block::BOOKSHELF
             | Block::CLAY
             | Block::MELON
+            | Block::SNOW
             | Block::COBWEB
-    ) || b.is_leaves();
+            | Block::DEEPSLATE
+            | Block::GILDED_BLACKSTONE
+    ) || b.is_leaves()
+        || b.is_deepslate_ore()
+        || b.stained_glass_color().is_some()
+        || b.stained_pane_color().is_some();
     (silky && Item::from(b).is_valid()).then(|| Item::from(b))
 }
 
@@ -182,6 +236,22 @@ mod tests {
             assert_eq!(block.drop(), Some(block.into()));
         }
         assert_eq!(break_time(Block::ANCIENT_DEBRIS, tool(ToolKind::Pickaxe, Tier::Diamond)), 5.625);
+        // Netherite harvests everything diamond does, a little faster.
+        let netherite = tool(ToolKind::Pickaxe, Tier::Netherite);
+        for block in [Block::OBSIDIAN, Block::ANCIENT_DEBRIS, Block::NETHERITE_BLOCK, Block::DIAMOND_ORE] {
+            assert!(can_harvest(block, netherite), "{block:?}");
+        }
+        assert_eq!(break_time(Block::OBSIDIAN, netherite), 50.0 * 1.5 / 9.0);
+        assert_eq!(attack_damage(tool(ToolKind::Sword, Tier::Netherite)), 8.0);
+        assert_eq!(attack_damage(tool(ToolKind::Shovel, Tier::Netherite)), 6.5);
+        assert_eq!(attack_damage(tool(ToolKind::Pickaxe, Tier::Netherite)), 6.0);
+        assert_eq!(attack_damage(tool(ToolKind::Axe, Tier::Netherite)), 10.0);
+        assert_eq!(attack_damage(tool(ToolKind::Hoe, Tier::Netherite)), 1.0);
+        assert_eq!(attack_speed(tool(ToolKind::Sword, Tier::Netherite)), 1.6);
+        assert_eq!(attack_speed(tool(ToolKind::Shovel, Tier::Netherite)), 1.0);
+        assert_eq!(attack_speed(tool(ToolKind::Pickaxe, Tier::Netherite)), 1.2);
+        assert_eq!(attack_speed(tool(ToolKind::Axe, Tier::Netherite)), 1.0);
+        assert_eq!(attack_speed(tool(ToolKind::Hoe, Tier::Netherite)), 4.0);
         assert_eq!(break_time(Block::NETHERITE_BLOCK, tool(ToolKind::Pickaxe, Tier::Diamond)), 9.375);
         let mut rng = crate::entity::Rng::new(17);
         assert_eq!(ore_xp(Block::ANCIENT_DEBRIS, &mut rng), 0);

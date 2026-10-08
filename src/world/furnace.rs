@@ -33,26 +33,39 @@ pub struct Furnace {
     pub xp: f32,
 }
 
+fn ore_of(item: Item) -> Option<Block> {
+    item.block().map(Block::as_stone_ore)
+}
+
 /// What smelting `item` produces.
 pub fn smelt(item: Item) -> Option<Item> {
     let b = Item::from_block;
     Some(match item {
-        i if i == b(Block::IRON_ORE) => Item::IRON_INGOT,
-        i if i == b(Block::GOLD_ORE) => Item::GOLD_INGOT,
-        i if i == b(Block::COAL_ORE) => Item::COAL,
-        i if i == b(Block::DIAMOND_ORE) => Item::DIAMOND,
-        i if i == b(Block::LAPIS_ORE) => Item::LAPIS_LAZULI,
+        i if ore_of(i) == Some(Block::IRON_ORE) || i == Item::RAW_IRON => Item::IRON_INGOT,
+        i if ore_of(i) == Some(Block::GOLD_ORE) || i == Item::RAW_GOLD => Item::GOLD_INGOT,
+        i if ore_of(i) == Some(Block::COPPER_ORE) || i == Item::RAW_COPPER => Item::COPPER_INGOT,
+        i if ore_of(i) == Some(Block::COAL_ORE) => Item::COAL,
+        i if ore_of(i) == Some(Block::DIAMOND_ORE) => Item::DIAMOND,
+        i if ore_of(i) == Some(Block::LAPIS_ORE) => Item::LAPIS_LAZULI,
+        i if i == b(Block::POLISHED_BLACKSTONE_BRICKS) => b(Block::CRACKED_POLISHED_BLACKSTONE_BRICKS),
+        i if i == b(Block::STONE) => b(Block::SMOOTH_STONE),
+        i if i == b(Block::COBBLED_DEEPSLATE) => b(Block::DEEPSLATE),
         i if i == b(Block::ANCIENT_DEBRIS) => Item::NETHERITE_SCRAP,
+        i if i == b(Block::CACTUS) => crate::color::DyeColor::Green.dye(),
         i if i == b(Block::SAND) => b(Block::GLASS),
         i if i == b(Block::COBBLESTONE) => b(Block::STONE),
         i if i.block().is_some_and(Block::is_log) => Item::CHARCOAL,
         Item::CLAY_BALL => Item::BRICK,
         i if i == b(Block::CLAY) => b(Block::TERRACOTTA),
+        i if let Some(c) = i.block().and_then(Block::stained_terracotta_color) => b(Block::glazed(c)),
         i if i == b(Block::NETHERRACK) => Item::NETHER_BRICK,
         i if i == b(Block::QUARTZ_ORE) => Item::NETHER_QUARTZ,
         Item::RAW_PORKCHOP => Item::COOKED_PORKCHOP,
         Item::RAW_BEEF => Item::STEAK,
         Item::RAW_CHICKEN => Item::COOKED_CHICKEN,
+        Item::POTATO => Item::BAKED_POTATO,
+        Item::COD => Item::COOKED_COD,
+        Item::SALMON => Item::COOKED_SALMON,
         _ => return None,
     })
 }
@@ -62,9 +75,15 @@ pub fn smelt_xp(out: Item) -> f32 {
     let b = Item::from_block;
     match out {
         Item::GOLD_INGOT | Item::DIAMOND => 1.0,
-        Item::IRON_INGOT => 0.7,
+        i if i == crate::color::DyeColor::Green.dye() => 1.0,
+        Item::IRON_INGOT | Item::COPPER_INGOT => 0.7,
         Item::NETHERITE_SCRAP => 2.0,
-        Item::COOKED_PORKCHOP | Item::STEAK | Item::COOKED_CHICKEN => 0.35,
+        Item::COOKED_PORKCHOP
+        | Item::STEAK
+        | Item::COOKED_CHICKEN
+        | Item::BAKED_POTATO
+        | Item::COOKED_COD
+        | Item::COOKED_SALMON => 0.35,
         i if i == b(Block::TERRACOTTA) => 0.35,
         Item::BRICK => 0.3,
         Item::NETHER_QUARTZ | Item::LAPIS_LAZULI => 0.2,
@@ -80,7 +99,7 @@ pub fn burn_time(item: Item) -> Option<f32> {
         Item::LAVA_BUCKET => Some(1000.0),
         Item::COAL | Item::CHARCOAL => Some(80.0),
         i if i.block().is_some_and(|b| b.is_log() || b.is_planks()) => Some(15.0),
-        i if [Block::CRAFTING_TABLE, Block::CHEST].map(b).contains(&i) => Some(15.0),
+        i if [Block::CRAFTING_TABLE, Block::CHEST, Block::SMITHING_TABLE].map(b).contains(&i) => Some(15.0),
         Item::STICK => Some(5.0),
         i if i.as_tool().is_some_and(|(_, tier)| tier == Tier::Wood) => Some(10.0),
         _ => None,
@@ -232,7 +251,9 @@ impl World {
     /// Keeps the furnace table in step with a block change at `p`.
     pub(super) fn track_furnace(&mut self, p: IVec3, old: Block, new: Block) {
         if is_furnace(old) && !is_furnace(new) {
-            if let Some(mut f) = self.furnaces.remove(&p) {
+            if let Some(mut f) = self.furnaces.remove(&p)
+                && self.tile_drops
+            {
                 self.drops.extend(f.take_all().into_iter().map(|s| (p, s)));
                 let roll = (self.roll() >> 40) as f32 / (1u64 << 24) as f32;
                 let xp = f.take_xp(roll);
@@ -364,6 +385,7 @@ mod tests {
         assert!(!f.is_lit());
         assert_eq!(smelt(Item::RAW_BEEF), Some(Item::STEAK));
         assert!(burn_time(Item::IRON_INGOT).is_none());
+        assert_eq!(burn_time(Item::from(Block::SMITHING_TABLE)), Some(15.0));
     }
 
     #[test]

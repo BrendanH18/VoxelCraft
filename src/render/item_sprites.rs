@@ -55,6 +55,7 @@ fn tier_colour(tier: Tier) -> [u8; 3] {
         Tier::Iron => [212, 212, 212],
         Tier::Gold => [246, 208, 62],
         Tier::Diamond => [70, 222, 210],
+        Tier::Netherite => [104, 94, 102],
     }
 }
 
@@ -129,6 +130,7 @@ fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
         ArmorMaterial::Iron => [206, 206, 206],
         ArmorMaterial::Gold => [246, 208, 62],
         ArmorMaterial::Diamond => [70, 222, 210],
+        ArmorMaterial::Netherite => [96, 88, 94],
     }
 }
 
@@ -165,6 +167,39 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     let out = match sprite {
+        Sprite::Egg => {
+            let egg = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let nx = (px - 8.0) / 3.2;
+                let ny = (py - 8.2) / 4.4;
+                nx * nx + ny * ny <= 1.0
+            };
+            shaded(&egg, x, y, [244, 236, 214], 0.04).map(
+                |p| {
+                    if (x + y) % 5 == 0 { tint([214, 168, 92], 0.9) } else { p }
+                },
+            )
+        }
+        Sprite::Bowl(soup) => {
+            let bowl = |x: i32, y: i32| (3..=12).contains(&x) && (8..=13).contains(&y) && y < 17 - (x - 7).abs();
+            if (4..=11).contains(&x)
+                && (8..=9).contains(&y)
+                && let Some(c) = soup
+            {
+                Some(tint(c, 0.9 + noise(x, y, 41) * 0.2))
+            } else {
+                shaded(&bowl, x, y, [137, 94, 51], 0.04)
+            }
+        }
+        Sprite::Shears => {
+            let blade = |x: i32, y: i32| (3..=10).contains(&y) && ((x - y).abs() <= 1 || (x + y - 15).abs() <= 1);
+            let ring = |x: i32, y: i32| {
+                let a = (x - 4).pow(2) + (y - 12).pow(2);
+                let b = (x - 11).pow(2) + (y - 12).pow(2);
+                (2..=9).contains(&a) || (2..=9).contains(&b)
+            };
+            shaded(&blade, x, y, [210, 215, 217], 0.02).or_else(|| shaded(&ring, x, y, [106, 110, 116], 0.03))
+        }
         Sprite::Stick => handle(x, y, 2, 13),
         Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
         Sprite::Armor(piece, material) => armor(piece, material, x, y),
@@ -301,7 +336,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 })
             })
         }
-        Sprite::Bed => {
+        Sprite::Bed | Sprite::ColoredBed(_) => {
             // Side view: pillow on the left, red blanket, wooden frame, legs.
             let bed = |x: i32, y: i32| {
                 ((5..=11).contains(&y) && (1..=14).contains(&x))
@@ -310,7 +345,13 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let c = match (x, y) {
                 (_, 10..) => [137, 103, 39],
                 (1..=4, _) => [236, 236, 230],
-                _ => [178, 34, 34],
+                _ => {
+                    if let Sprite::ColoredBed(c) = sprite {
+                        c
+                    } else {
+                        [178, 34, 34]
+                    }
+                }
             };
             shaded(&bed, x, y, c, 0.05)
         }
@@ -419,6 +460,27 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&cover, x, y, colour, 0.06).map(|p| if x == 4 { tint([p[0], p[1], p[2]], 0.75) } else { p })
             }
         }
+        Sprite::Template => {
+            // Java's upgrade template: a chipped red-brown tablet, darker
+            // at the rim, with a diamond-blue gem set in the middle.
+            let tablet = |x: i32, y: i32| match y {
+                1 | 13 => (4..=12).contains(&x),
+                2..=12 => (3..=13).contains(&x),
+                14 => (5..=9).contains(&x),
+                _ => false,
+            };
+            let gem = |x: i32, y: i32| (x as f32 - 7.5).abs() + (y as f32 - 7.5).abs() <= 2.6;
+            if gem(x, y) {
+                let lit = if x + y <= 15 { 1.2 } else { 0.85 };
+                Some(tint([75, 201, 201], lit * (0.95 + noise(x, y, 41) * 0.1)))
+            } else if gem(x - 1, y) || gem(x + 1, y) || gem(x, y - 1) || gem(x, y + 1) {
+                Some(tint([81, 21, 21], 1.0))
+            } else {
+                let rim = !tablet(x - 1, y) || !tablet(x + 1, y) || !tablet(x, y - 1) || !tablet(x, y + 1);
+                let body = || tint([120, 54, 54], 0.9 + noise(x, y, 42) * 0.22);
+                tablet(x, y).then(|| if rim { tint([52, 14, 14], 1.0) } else { body() })
+            }
+        }
         Sprite::EnderEye => {
             // A green pearl with a dark slit pupil.
             let ball = disc(8.0, 8.5, 5.6);
@@ -484,6 +546,30 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 None
             }
         }
+        Sprite::SplashBottle(liquid) => {
+            // A wider flask than the drinkable bottle, with a short neck and
+            // a grey rim for the gunpowder.
+            let (px, py) = centre(x, y);
+            let d = (px - 8.0).powi(2) + (py - 10.0).powi(2);
+            let body = d <= 38.0;
+            let neck = (6..=9).contains(&x) && (3..=4).contains(&y);
+            let cork = (6..=9).contains(&x) && (1..=2).contains(&y);
+            let rim = body && d > 28.0;
+            let glint = (4..=5).contains(&x) && (8..=10).contains(&y);
+            if cork {
+                Some(tint([150, 104, 60], if x == 6 { 1.15 } else { 0.95 }))
+            } else if neck {
+                Some(tint([150, 150, 156], 1.0))
+            } else if rim {
+                Some(tint([142, 142, 150], if x + y < 14 { 1.2 } else { 0.8 }))
+            } else if body && glint {
+                Some([245, 250, 255, 255])
+            } else if body {
+                Some(tint(liquid, 1.15 - (py - 7.0) / 14.0))
+            } else {
+                None
+            }
+        }
         Sprite::Door => {
             // The door's own two textures, squeezed to half width.
             let (layer, ty) = if y < 8 { (tex::DOOR_TOP, y * 2) } else { (tex::DOOR_BOTTOM, (y - 8) * 2) };
@@ -510,6 +596,58 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 shaded(&pail, x, y, [200, 200, 205], 0.03)
             }
         }
+        Sprite::Carrot => {
+            let body = |x: i32, y: i32| (4..=12).contains(&y) && (x - 8).abs() <= (14 - y) / 3;
+            shaded(&body, x, y, [214, 112, 28], 0.05).map(|p| if y <= 5 { tint([70, 150, 40], 1.0) } else { p })
+        }
+        Sprite::Potato { baked, poison } => {
+            let colour = if poison {
+                [120, 150, 60]
+            } else if baked {
+                [150, 96, 42]
+            } else {
+                [196, 164, 92]
+            };
+            let lump = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                (px - 8.0).powi(2) / 18.0 + (py - 8.5).powi(2) / 14.0 <= 1.0
+            };
+            shaded(&lump, x, y, colour, 0.08)
+        }
+        Sprite::Pie => {
+            let wedge = |x: i32, y: i32| (3..=13).contains(&y) && (x - 8).abs() <= (y - 2) / 2;
+            shaded(&wedge, x, y, [214, 126, 42], 0.05).map(|p| if y <= 5 { tint([232, 176, 72], 1.0) } else { p })
+        }
+        Sprite::Cake => {
+            let slice = |x: i32, y: i32| (4..=13).contains(&y) && (3..=12).contains(&x);
+            shaded(&slice, x, y, [150, 96, 52], 0.04).map(|p| if y <= 7 { tint([248, 248, 244], 1.0) } else { p })
+        }
+        Sprite::FishingRod => {
+            let stick = (x + y).abs_diff(16) <= 1 && (2..=13).contains(&x);
+            let line = (x - 4).abs() + (y - 4).abs() <= 3 && y < 7 && x < 8;
+            if stick {
+                Some(tint([150, 104, 60], 1.0))
+            } else if line {
+                Some(tint([220, 220, 216], 1.0))
+            } else {
+                None
+            }
+        }
+        Sprite::Fish { salmon, cooked } => {
+            let body = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                (px - 8.0).powi(2) / 22.0 + (py - 8.0).powi(2) / 10.0 <= 1.0
+            };
+            let colour = match (salmon, cooked) {
+                (false, false) => [150, 160, 130],
+                (false, true) => [196, 168, 110],
+                (true, false) => [214, 112, 92],
+                (true, true) => [176, 82, 64],
+            };
+            shaded(&body, x, y, colour, 0.06)
+        }
+        Sprite::Compass => compass_face(0, 32, x, y, [62, 86, 112], [176, 40, 36]),
+        Sprite::Clock => compass_face(0, 64, x, y, [236, 214, 150], [250, 196, 48]),
         Sprite::Arrow => {
             let head = |x: i32, y: i32| {
                 let (u, v) = (x + y, x - y);
@@ -525,6 +663,29 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         }
     };
     out.unwrap_or(CLEAR)
+}
+
+/// One compass or clock frame. `frame` 0 points the marker up; later frames turn clockwise.
+pub fn compass_face(frame: u16, frames: u16, x: i32, y: i32, face: [u8; 3], marker: [u8; 3]) -> Option<Rgba> {
+    let (px, py) = centre(x, y);
+    let (dx, dy) = (px - 8.0, py - 8.0);
+    let radius = dx.hypot(dy);
+    if !(2.2..7.2).contains(&radius) {
+        return None;
+    }
+    let angle = frame as f32 / frames as f32 * std::f32::consts::TAU;
+    let (nx, ny) = (angle.sin(), -angle.cos());
+    let along = dx * nx + dy * ny;
+    let side = (dx * ny - dy * nx).abs();
+    if along > 0.4 && along < 4.8 && side < 0.7 {
+        Some(tint(marker, 1.0))
+    } else if along < -0.4 && along > -3.2 && side < 0.55 {
+        Some(tint([230, 230, 226], 1.0))
+    } else if radius > 5.4 {
+        Some(tint([168, 132, 62], 0.85 + (7.2 - radius) * 0.08))
+    } else {
+        Some(tint(face, 0.92 + noise(x, y, 6) * 0.12))
+    }
 }
 
 /// 8x8 glyphs of the status effect icons, drawn at double size.
@@ -565,6 +726,12 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         }
         Effect::JumpBoost => {
             ["...##...", "..####..", ".##..##.", "##....##", "...##...", "..####..", ".##..##.", "##....##"]
+        }
+        Effect::Wither => {
+            ["..####..", ".######.", "##.##.##", "########", ".######.", "..#..#..", "..####..", "...##..."]
+        }
+        Effect::Hunger => {
+            ["........", "..###...", ".#####..", "..###.#.", "...#.##.", "..#.##..", ".#.##...", "##......"]
         }
         Effect::SlowFalling => {
             ["......##", ".....###", "....###.", "...###..", "..###...", ".###....", "##......", "#......."]

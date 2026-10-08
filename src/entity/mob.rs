@@ -33,6 +33,9 @@ const PROVOKED_TIME: f32 = 12.0;
 pub const PIGLIN_ANGER_TIME: f32 = 30.0;
 /// Skeletons shoot from up to this far, and keep between these distances.
 const SHOOT_RANGE: f64 = 16.0;
+/// Witches throw from up to this far (Java's attack radius).
+const WITCH_RANGE: f64 = 10.0;
+const WITCH_SPEED: f64 = crate::entity::potion::WITCH_SPEED;
 const SKELETON_NEAR: f64 = 5.0;
 const SKELETON_FAR: f64 = 10.0;
 /// Creepers light their fuse this close and keep it lit within `FUSE_KEEP`.
@@ -61,6 +64,12 @@ const BLAZE_MELEE: f64 = 2.0;
 const BLAZE_CHARGE: f32 = 3.0;
 const BLAZE_VOLLEY: f32 = 0.3;
 const BLAZE_REST: f32 = 5.0;
+/// Ghasts notice players this far (Java's follow range), charge for a
+/// second, then rest two seconds. Flying speed is 0.7 blocks a tick.
+const GHAST_RANGE: f64 = 100.0;
+const GHAST_CHARGE: f32 = 1.0;
+const GHAST_REST: f32 = 2.0;
+const GHAST_SPEED: f64 = 14.0;
 /// Enderman eye height (Java's 2.55).
 const ENDERMAN_EYE: f64 = 2.55;
 /// Falls deeper than this are avoided (blocks).
@@ -84,10 +93,30 @@ pub enum MobKind {
     Blaze,
     /// Stronghold spawner mob: small, fast, nibbles for 1.
     Silverfish,
+    CaveSpider,
+    Slime,
+    MagmaCube,
+    /// Nether flyer: charges, then shoots a fireball a player can punch back.
+    Ghast,
+    /// Fortress skeleton: tall, melee, withers what it hits.
+    WitherSkeleton,
+    /// Desert zombie that doesn't burn and inflicts Hunger.
+    Husk,
+    /// River and ocean zombie that swims.
+    Drowned,
+    /// Throws splash potions, and drinks its own.
+    Witch,
 }
 
 impl MobKind {
-    pub const ALL: [MobKind; 12] = [
+    /// Zombie, husk or drowned: shares the zombie's walk, armor and baby rolls.
+    pub fn is_zombie(self) -> bool {
+        matches!(self, Self::Zombie | Self::Husk | Self::Drowned)
+    }
+    pub fn is_cube(self) -> bool {
+        matches!(self, Self::Slime | Self::MagmaCube)
+    }
+    pub const ALL: [MobKind; 20] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -100,6 +129,14 @@ impl MobKind {
         MobKind::Enderman,
         MobKind::Blaze,
         MobKind::Silverfish,
+        MobKind::CaveSpider,
+        MobKind::Slime,
+        MobKind::MagmaCube,
+        MobKind::Ghast,
+        MobKind::WitherSkeleton,
+        MobKind::Husk,
+        MobKind::Drowned,
+        MobKind::Witch,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -117,6 +154,14 @@ impl MobKind {
             MobKind::Enderman => "enderman",
             MobKind::Blaze => "blaze",
             MobKind::Silverfish => "silverfish",
+            MobKind::CaveSpider => "cave spider",
+            MobKind::Slime => "slime",
+            MobKind::MagmaCube => "magma cube",
+            MobKind::Ghast => "ghast",
+            MobKind::WitherSkeleton => "wither skeleton",
+            MobKind::Husk => "husk",
+            MobKind::Drowned => "drowned",
+            MobKind::Witch => "witch",
         }
     }
 
@@ -133,12 +178,18 @@ impl MobKind {
             MobKind::Cow => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
             MobKind::Chicken => Shape::new(0.2, 0.7),
-            MobKind::Zombie | MobKind::ZombifiedPiglin => Shape::new(0.3, 1.95),
+            MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombifiedPiglin | MobKind::Witch => {
+                Shape::new(0.3, 1.95)
+            }
             MobKind::Skeleton => Shape::new(0.3, 1.99),
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
+            MobKind::CaveSpider => Shape::new(0.35, 0.5),
+            MobKind::Slime | MobKind::MagmaCube => Shape::new(0.255, 0.51),
             MobKind::Enderman => Shape::new(0.3, 2.9),
             MobKind::Blaze => Shape::new(0.3, 1.8),
+            MobKind::Ghast => Shape::new(2.0, 4.0),
+            MobKind::WitherSkeleton => Shape::new(0.35, 2.4),
             MobKind::Silverfish => Shape::new(0.2, 0.3),
         }
     }
@@ -149,8 +200,19 @@ impl MobKind {
             MobKind::Pig | MobKind::Cow => 10.0,
             MobKind::Sheep | MobKind::Silverfish => 8.0,
             MobKind::Chicken => 4.0,
-            MobKind::Zombie | MobKind::Skeleton | MobKind::Creeper | MobKind::ZombifiedPiglin | MobKind::Blaze => 20.0,
+            MobKind::Zombie
+            | MobKind::Husk
+            | MobKind::Drowned
+            | MobKind::Skeleton
+            | MobKind::WitherSkeleton
+            | MobKind::Creeper
+            | MobKind::ZombifiedPiglin
+            | MobKind::Blaze => 20.0,
             MobKind::Spider => 16.0,
+            MobKind::CaveSpider => 12.0,
+            MobKind::Witch => 26.0,
+            MobKind::Slime | MobKind::MagmaCube => 1.0,
+            MobKind::Ghast => 10.0,
             MobKind::Enderman => 40.0,
         }
     }
@@ -160,6 +222,8 @@ impl MobKind {
         matches!(
             self,
             MobKind::Zombie
+                | MobKind::Husk
+                | MobKind::Drowned
                 | MobKind::Skeleton
                 | MobKind::Creeper
                 | MobKind::Spider
@@ -167,12 +231,21 @@ impl MobKind {
                 | MobKind::Enderman
                 | MobKind::Blaze
                 | MobKind::Silverfish
+                | MobKind::CaveSpider
+                | MobKind::Slime
+                | MobKind::MagmaCube
+                | MobKind::Ghast
+                | MobKind::WitherSkeleton
+                | MobKind::Witch
         )
     }
 
     /// Unharmed by fire and lava.
     pub fn fire_immune(self) -> bool {
-        matches!(self, MobKind::ZombifiedPiglin | MobKind::Blaze)
+        matches!(
+            self,
+            MobKind::ZombifiedPiglin | MobKind::Blaze | MobKind::MagmaCube | MobKind::Ghast | MobKind::WitherSkeleton
+        )
     }
 
     /// Hurt by water and rain, like Java's endermen and blazes.
@@ -185,10 +258,10 @@ impl MobKind {
         match self {
             MobKind::Enderman => true,
             // Only from spawners and inside fortresses (`fortress_spawn`).
-            MobKind::Blaze => false,
+            MobKind::Blaze | MobKind::WitherSkeleton => false,
             // Only from stronghold spawners (and infested blocks, later).
-            MobKind::Silverfish => false,
-            MobKind::ZombifiedPiglin => dimension == Dimension::Nether,
+            MobKind::Silverfish | MobKind::CaveSpider => false,
+            MobKind::MagmaCube | MobKind::ZombifiedPiglin | MobKind::Ghast => dimension == Dimension::Nether,
             _ => dimension == Dimension::Overworld,
         }
     }
@@ -199,6 +272,32 @@ impl MobKind {
         match (self, dimension) {
             (MobKind::Enderman, Dimension::Overworld) => 0.1,
             (MobKind::Enderman, Dimension::Nether) => 0.02,
+            // Nether wastes weight 2 against zombified piglins at 100.
+            // Basalt deltas (weight 100) are not a biome here; fortresses
+            // use the separate weighted list.
+            (MobKind::MagmaCube, Dimension::Nether) => 0.02,
+            // Nether wastes weight 50 against zombified piglins at 100.
+            (MobKind::Ghast, Dimension::Nether) => 0.5,
+            _ => 1.0,
+        }
+    }
+
+    /// Chance a surface spawn attempt for this kind goes ahead in `biome`
+    /// (Java's biome spawn lists: deserts spawn husks in place of most zombies,
+    /// drowned only in rivers and oceans, and witches mostly in swamps).
+    pub fn biome_chance(self, biome: crate::world::terrain::Biome) -> f32 {
+        use crate::world::terrain::Biome;
+        match (self, biome) {
+            (MobKind::Husk, Biome::Desert) => 1.0,
+            (MobKind::Husk, _) => 0.0,
+            (MobKind::Zombie, Biome::Desert) => 0.2,
+            (MobKind::Zombie, Biome::River | Biome::Ocean) => 0.2,
+            (MobKind::Drowned, Biome::River | Biome::Ocean) => 1.0,
+            (MobKind::Drowned, _) => 0.0,
+            // Java's weight 5 against 100 for most monsters; swamp huts keep
+            // swamps full of them.
+            (MobKind::Witch, Biome::Swamp) => 0.25,
+            (MobKind::Witch, _) => 0.05,
             _ => 1.0,
         }
     }
@@ -207,6 +306,8 @@ impl MobKind {
     pub fn spawn_cap(self, dimension: Dimension) -> usize {
         match self {
             MobKind::Zombie => 4,
+            MobKind::Witch => 1,
+            MobKind::Ghast => 4,
             MobKind::ZombifiedPiglin => 8,
             MobKind::Enderman if dimension == Dimension::End => 12,
             MobKind::Enderman => 1,
@@ -219,31 +320,44 @@ impl MobKind {
     pub fn creature(self) -> crate::enchant::Creature {
         use crate::enchant::Creature;
         match self {
-            MobKind::Zombie | MobKind::Skeleton | MobKind::ZombifiedPiglin => Creature::Undead,
-            MobKind::Spider | MobKind::Silverfish => Creature::Arthropod,
+            MobKind::Zombie
+            | MobKind::Husk
+            | MobKind::Drowned
+            | MobKind::Skeleton
+            | MobKind::WitherSkeleton
+            | MobKind::ZombifiedPiglin => Creature::Undead,
+            MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish => Creature::Arthropod,
             _ => Creature::Other,
         }
     }
 
-    fn burns_in_sun(self) -> bool {
-        matches!(self, MobKind::Zombie | MobKind::Skeleton)
+    pub(super) fn burns_in_sun(self) -> bool {
+        matches!(self, MobKind::Zombie | MobKind::Drowned | MobKind::Skeleton)
     }
 
     fn wander_speed(self) -> f64 {
         match self {
             MobKind::Pig => 1.3,
-            MobKind::Cow | MobKind::Zombie | MobKind::Creeper | MobKind::ZombifiedPiglin => 1.1,
-            MobKind::Sheep | MobKind::Skeleton | MobKind::Blaze => 1.2,
-            MobKind::Chicken => 1.0,
-            MobKind::Spider | MobKind::Enderman | MobKind::Silverfish => 1.4,
+            MobKind::Cow
+            | MobKind::Witch
+            | MobKind::Zombie
+            | MobKind::Husk
+            | MobKind::Drowned
+            | MobKind::Creeper
+            | MobKind::ZombifiedPiglin => 1.1,
+            MobKind::Sheep | MobKind::Skeleton | MobKind::WitherSkeleton | MobKind::Blaze => 1.2,
+            MobKind::Chicken | MobKind::Slime | MobKind::MagmaCube => 1.0,
+            MobKind::Ghast => 4.0,
+            MobKind::Spider | MobKind::CaveSpider | MobKind::Enderman | MobKind::Silverfish => 1.4,
         }
     }
 
     fn chase_speed(self) -> f64 {
         match self {
             MobKind::Enderman => 4.5,
-            MobKind::Spider => 3.0,
+            MobKind::Spider | MobKind::CaveSpider => 3.0,
             MobKind::ZombifiedPiglin | MobKind::Silverfish => 2.8,
+            MobKind::WitherSkeleton => 2.4,
             MobKind::Skeleton => 2.2,
             MobKind::Creeper => 2.0,
             _ => 2.4,
@@ -253,10 +367,14 @@ impl MobKind {
     /// Melee damage and the death message it gives.
     fn melee(self) -> (f32, &'static str) {
         match self {
+            MobKind::CaveSpider => (2.0, "was slain by a cave spider"),
             MobKind::Spider => (2.0, "was slain by a spider"),
             MobKind::ZombifiedPiglin => (5.0, "was slain by a zombified piglin"),
             MobKind::Enderman => (7.0, "was slain by an enderman"),
             MobKind::Blaze => (6.0, "was slain by a blaze"),
+            MobKind::WitherSkeleton => (8.0, "was slain by a wither skeleton"),
+            MobKind::Husk => (3.0, "was slain by a husk"),
+            MobKind::Drowned => (3.0, "was slain by a drowned"),
             MobKind::Silverfish => (1.0, "was slain by a silverfish"),
             _ => (3.0, "was slain by a zombie"),
         }
@@ -271,14 +389,29 @@ impl MobKind {
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
             MobKind::Sheep => &[(WOOL, 1, 1)],
             MobKind::Chicken => &[(Item::RAW_CHICKEN, 1, 1), (Item::FEATHER, 0, 2)],
-            MobKind::Zombie => &[(Item::ROTTEN_FLESH, 0, 2)],
+            MobKind::Zombie | MobKind::Husk | MobKind::Drowned => &[(Item::ROTTEN_FLESH, 0, 2)],
             MobKind::Skeleton => &[(Item::BONE, 0, 2), (Item::ARROW, 0, 2)],
             MobKind::Creeper => &[(Item::GUNPOWDER, 0, 2)],
-            MobKind::Spider => &[(Item::STRING, 0, 2), (Item::SPIDER_EYE, -1, 1)],
+            MobKind::Spider | MobKind::CaveSpider => &[(Item::STRING, 0, 2), (Item::SPIDER_EYE, -1, 1)],
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
             MobKind::Silverfish => &[],
+            MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
+            MobKind::MagmaCube => &[(Item::MAGMA_CREAM, -2, 1)],
+            MobKind::Ghast => &[(Item::GUNPOWDER, 0, 2), (Item::GHAST_TEAR, 0, 1)],
+            // The skull is rolled in `drops`.
+            MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
+            // Java rolls a few of these; each is rolled on its own here.
+            MobKind::Witch => &[
+                (Item::GLASS_BOTTLE, 0, 2),
+                (Item::GLOWSTONE_DUST, 0, 2),
+                (Item::GUNPOWDER, 0, 2),
+                (Item::REDSTONE, 0, 2),
+                (Item::SPIDER_EYE, 0, 2),
+                (Item::SUGAR, 0, 2),
+                (Item::STICK, 0, 2),
+            ],
         }
     }
 
@@ -286,7 +419,8 @@ impl MobKind {
     /// `round(looting * uniform(0, 1))` to each (Java's
     /// `enchanted_count_increase`).
     pub fn drops(self, rng: &mut Rng, looting: u8) -> Vec<(Item, u8)> {
-        self.loot()
+        let mut out: Vec<(Item, u8)> = self
+            .loot()
             .iter()
             .map(|&(item, lo, hi)| {
                 let span = hi as i32 - lo as i32 + 1;
@@ -302,7 +436,21 @@ impl MobKind {
                 (item, (base.max(0) + extra).clamp(0, u8::MAX as i32) as u8)
             })
             .filter(|&(_, n)| n > 0)
-            .collect()
+            .collect();
+        if self == MobKind::Zombie {
+            // Java: 2.5% plus 1% per looting level, rolled separately.
+            let chance = 0.025 + 0.01 * looting as f32;
+            if rng.next_f32() < chance {
+                out.push((Item::CARROT, 1));
+            }
+            if rng.next_f32() < chance {
+                out.push((Item::POTATO, 1));
+            }
+        }
+        if self == MobKind::WitherSkeleton && rng.chance(0.025 + 0.01 * looting as f32) {
+            out.push((Item::WITHER_SKULL, 1));
+        }
+        out
     }
 
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
@@ -329,6 +477,26 @@ pub(super) enum Ai {
 
 pub struct Mob {
     pub kind: MobKind,
+    /// Java slime size (1, 2 or 4).
+    pub size: u8,
+    /// A baby zombie: half size and 50% faster.
+    pub baby: bool,
+    pub wool_color: crate::color::DyeColor,
+    pub sheared: bool,
+    /// Witch: seconds left drinking, whether it's swiftness, swiftness left,
+    /// and seconds before it may throw slowness or poison again.
+    drink_left: f32,
+    drinking_swift: bool,
+    swift_left: f32,
+    slow_cd: f32,
+    poison_cd: f32,
+    /// Negative while a baby. Java's chicks start at -24000 and grow one tick at a time.
+    pub age: i32,
+    /// Seconds until a grown chicken lays an egg (Java's 6000–12000 ticks).
+    pub(crate) egg_timer: f32,
+    hop_left: f32,
+    hop_delay: f32,
+    pub(super) difficulty: crate::simulation::difficulty::Difficulty,
     /// Feet position (bottom centre of the box).
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
@@ -379,6 +547,10 @@ pub struct Mob {
     detour_side: f64,
     /// Seconds until the next idle call.
     ambient_timer: f32,
+    /// Helmet, chest, leggings, boots. Zombies and skeletons roll these.
+    pub armor: [Option<super::armor::ArmorKind>; 4],
+    /// Bit per armor slot: enchantment glint.
+    pub armor_glint: u8,
     /// A hurt or death cry waiting to be reported by the next update.
     cry: Option<MobSound>,
     /// Endermen: teleport away at the next update (an arrow, water, fire).
@@ -403,6 +575,20 @@ impl Mob {
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,
+            size: 1,
+            baby: false,
+            wool_color: crate::color::DyeColor::White,
+            sheared: false,
+            drink_left: 0.0,
+            drinking_swift: false,
+            swift_left: 0.0,
+            slow_cd: 0.0,
+            poison_cd: 0.0,
+            age: 0,
+            egg_timer: if kind == MobKind::Chicken { 300.0 + yaw.rem_euclid(TAU) / TAU * 300.0 } else { f32::MAX },
+            hop_left: 0.0,
+            hop_delay: 1.0,
+            difficulty: Default::default(),
             pos,
             previous_pos: pos,
             vel: DVec3::ZERO,
@@ -436,6 +622,8 @@ impl Mob {
             detour: 0.0,
             detour_side: 1.0,
             ambient_timer: 2.0 + (yaw * 1000.0).rem_euclid(10.0),
+            armor: [None; 4],
+            armor_glint: 0,
             cry: None,
             teleport_pending: false,
             stare: 0.0,
@@ -450,7 +638,25 @@ impl Mob {
     }
 
     pub fn shape(&self) -> Shape {
-        self.kind.shape()
+        if self.kind.is_cube() {
+            Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
+        } else if self.baby || self.age < 0 {
+            let s = self.kind.shape();
+            Shape::new(s.half_width * 0.5, s.height * 0.5)
+        } else {
+            self.kind.shape()
+        }
+    }
+
+    pub fn set_size(&mut self, size: u8) {
+        self.size = if size >= 4 {
+            4
+        } else if size >= 2 {
+            2
+        } else {
+            1
+        };
+        self.health = (self.size as f32).powi(2);
     }
 
     pub fn aabb(&self) -> (DVec3, DVec3) {
@@ -472,6 +678,11 @@ impl Mob {
         if !self.alive() {
             return false;
         }
+        let amount = if self.kind == MobKind::MagmaCube {
+            crate::simulation::survival::armor_reduce(amount, self.size as u32 * 3, 0.0)
+        } else {
+            amount
+        };
         self.health -= amount;
         self.hurt = HURT_TIME;
         if let Some(kb) = knockback {
@@ -517,6 +728,10 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) {
         let dtf = dt as f32;
+        self.hop_left -= dtf;
+        if self.kind.is_cube() && self.on_ground && self.hop_left <= 0.0 {
+            self.hop_delay = rng.range(0.5, 1.5);
+        }
         if let Some(sound) = self.cry.take() {
             events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
         }
@@ -608,6 +823,18 @@ impl Mob {
                 self.teleport_pending = true;
             }
         }
+        if self.alive() && self.kind == MobKind::Chicken {
+            let ticks = ((dt * 20.0).round() as i32).max(1);
+            if self.age < 0 {
+                self.age = (self.age + ticks).min(0);
+            } else {
+                self.egg_timer -= dtf;
+                if self.egg_timer <= 0.0 {
+                    self.egg_timer = rng.range(300.0, 600.0);
+                    events.push(EntityEvent::LaidEgg { pos: self.pos });
+                }
+            }
+        }
     }
 
     /// Picks a movement direction and speed for this tick.
@@ -619,6 +846,9 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        if self.kind == MobKind::Witch && self.witch_upkeep(dt, rng) {
+            return (None, 0.0);
+        }
         self.ai_timer -= dt;
         let target = ctx.nearest_target(self.pos);
         let to_player = target.map_or(DVec3::ZERO, |t| t.pos - self.pos);
@@ -627,12 +857,17 @@ impl Mob {
 
         if self.kind.is_hostile() {
             let aggressive = match self.kind {
-                MobKind::Spider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
+                MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
                 MobKind::Enderman => self.enderman_anger(dt, world, ctx, rng, events),
                 _ => true,
             };
-            let (range, height) = if self.kind == MobKind::Blaze { (BLAZE_RANGE, 24.0) } else { (CHASE_RANGE, 12.0) };
+            let (range, height) = match self.kind {
+                MobKind::Blaze => (BLAZE_RANGE, 24.0),
+                MobKind::Ghast => (GHAST_RANGE, GHAST_RANGE),
+                MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => (16.0, 4.0),
+                _ => (CHASE_RANGE, 12.0),
+            };
             let chasing = aggressive && target.is_some() && hdist < range && to_player.y.abs() < height;
             if chasing {
                 self.ai = Ai::Chase;
@@ -668,23 +903,80 @@ impl Mob {
                             return stop;
                         }
                     }
+                    MobKind::Witch => return self.witch_tactics(world, target.pos, dir, hdist, rng, events),
+                    MobKind::Ghast => {
+                        return self.ghast_tactics(world, target.pos, dir, hdist, events);
+                    }
                     MobKind::Creeper => {
                         if let Some(stop) = self.creeper_fuse(dt, hdist, events) {
                             return stop;
                         }
                     }
                     _ => {
-                        if hdist <= ATTACK_RANGE && to_player.y.abs() < 1.6 && self.attack_cooldown <= 0.0 {
+                        let reach = if self.kind.is_cube() { 0.6 * self.size as f64 } else { ATTACK_RANGE };
+                        let can_hurt = self.kind != MobKind::Slime || self.size > 1;
+                        if can_hurt && hdist <= reach && to_player.y.abs() < 1.6 && self.attack_cooldown <= 0.0 {
                             self.attack_cooldown = ATTACK_COOLDOWN;
                             self.attack_anim = 0.35;
                             let knockback = dir * 6.0 + DVec3::Y * 5.0;
-                            let (damage, cause) = self.kind.melee();
+                            let (damage, cause) = if self.kind.is_cube() {
+                                (
+                                    self.size as f32 + if self.kind == MobKind::MagmaCube { 2.0 } else { 0.0 },
+                                    if self.kind == MobKind::MagmaCube {
+                                        "was slain by a magma cube"
+                                    } else {
+                                        "was slain by a slime"
+                                    },
+                                )
+                            } else {
+                                self.kind.melee()
+                            };
                             events.push(EntityEvent::PlayerHit {
                                 player: target.id,
                                 damage,
                                 knockback: knockback.as_vec3(),
                                 cause,
                             });
+                            if self.kind == MobKind::Husk {
+                                // Java: 140 ticks times the local difficulty (about 1, 2, 3).
+                                let scale = match self.difficulty {
+                                    crate::simulation::difficulty::Difficulty::Peaceful => 0,
+                                    crate::simulation::difficulty::Difficulty::Easy => 1,
+                                    crate::simulation::difficulty::Difficulty::Normal => 2,
+                                    crate::simulation::difficulty::Difficulty::Hard => 3,
+                                };
+                                if scale > 0 {
+                                    events.push(EntityEvent::PlayerEffect {
+                                        player: target.id,
+                                        effect: crate::simulation::effects::Effect::Hunger,
+                                        amplifier: 0,
+                                        ticks: 140 * scale,
+                                    });
+                                }
+                            }
+                            if self.kind == MobKind::WitherSkeleton {
+                                events.push(EntityEvent::PlayerEffect {
+                                    player: target.id,
+                                    effect: crate::simulation::effects::Effect::Wither,
+                                    amplifier: 0,
+                                    ticks: 200,
+                                });
+                            }
+                            if self.kind == MobKind::CaveSpider {
+                                let ticks = match self.difficulty {
+                                    crate::simulation::difficulty::Difficulty::Normal => 140,
+                                    crate::simulation::difficulty::Difficulty::Hard => 300,
+                                    _ => 0,
+                                };
+                                if ticks > 0 {
+                                    events.push(EntityEvent::PlayerEffect {
+                                        player: target.id,
+                                        effect: crate::simulation::effects::Effect::Poison,
+                                        amplifier: 0,
+                                        ticks,
+                                    });
+                                }
+                            }
                             // Thorns: each piece has a 15% chance per level
                             // to hit back for a uniform 1.0-5.0 damage.
                             for level in target.thorns.into_iter().filter(|&l| l > 0) {
@@ -723,7 +1015,7 @@ impl Mob {
                 } else {
                     dir
                 };
-                (Some(dir), self.kind.chase_speed())
+                (Some(dir), self.kind.chase_speed() * if self.baby { 1.5 } else { 1.0 })
             }
             Ai::Panic => {
                 if self.ai_timer <= 0.0 {
@@ -814,7 +1106,7 @@ impl Mob {
                     let spread = dist.sqrt() * 0.5 * 0.1;
                     let mut r = || rng.range(-1.0, 1.0) as f64 * spread;
                     let dir = (to / dist + DVec3::new(r(), 0.0, r())).normalize();
-                    events.push(EntityEvent::Fireball { from: eye + dir * 0.5, dir });
+                    events.push(EntityEvent::Fireball { from: eye + dir * 0.5, dir, large: false });
                     events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: eye });
                 }
                 _ => {
@@ -825,6 +1117,51 @@ impl Mob {
             }
         }
         Some((None, 0.0))
+    }
+
+    /// Java's ghast: hover out of reach, charge for a second while it can
+    /// see the target, then shoot one explosive fireball.
+    fn ghast_tactics<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        player: DVec3,
+        dir: DVec3,
+        hdist: f64,
+        events: &mut Vec<EntityEvent>,
+    ) -> (Option<DVec3>, f64) {
+        let eye = self.pos + DVec3::Y * (self.shape().height * 0.5);
+        let target_eye = player + DVec3::Y * crate::player::EYE_HEIGHT;
+        let to = target_eye - eye;
+        let dist = to.length().max(1e-6);
+        let see = dist < GHAST_RANGE && line_of_sight(world, eye, target_eye);
+        let flat = if hdist > 28.0 {
+            dir
+        } else if hdist < 14.0 {
+            -dir
+        } else {
+            DVec3::new(-dir.z, 0.0, dir.x)
+        };
+        let dy = (target_eye.y + 3.0 - eye.y).clamp(-8.0, 8.0);
+        let wish = (flat * 8.0 + DVec3::Y * dy).normalize_or(DVec3::Y);
+        if see {
+            if self.attack_cooldown <= 0.0 {
+                if !self.charged {
+                    self.charged = true;
+                    self.attack_cooldown = GHAST_CHARGE;
+                    events.push(EntityEvent::Sound { sound: MobSound::Ambient(MobKind::Ghast), pos: eye });
+                } else {
+                    self.charged = false;
+                    self.attack_cooldown = GHAST_REST;
+                    let shot = to / dist;
+                    let from = eye + shot * (self.shape().half_width.max(self.shape().height * 0.5) * 2.2);
+                    events.push(EntityEvent::Fireball { from, dir: shot, large: true });
+                    events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: eye });
+                }
+            }
+        } else {
+            self.charged = false;
+        }
+        (Some(wish), GHAST_SPEED)
     }
 
     /// Where an enderman's eyes are.
@@ -984,6 +1321,78 @@ impl Mob {
         }
     }
 
+    /// Java's witch: drinks healing when hurt (1.6 s, standing still), and
+    /// returns whether it is mid-drink. Cooldowns tick here too.
+    fn witch_upkeep(&mut self, dt: f32, rng: &mut Rng) -> bool {
+        self.slow_cd = (self.slow_cd - dt).max(0.0);
+        self.poison_cd = (self.poison_cd - dt).max(0.0);
+        self.swift_left = (self.swift_left - dt).max(0.0);
+        if self.drink_left > 0.0 {
+            self.drink_left -= dt;
+            if self.drink_left <= 0.0 {
+                if self.drinking_swift {
+                    // Swiftness: 3 minutes of +20% speed.
+                    self.swift_left = 180.0;
+                } else {
+                    self.health = (self.health + 4.0).min(self.kind.max_health());
+                }
+            }
+            return self.drink_left > 0.0;
+        }
+        if self.health < self.kind.max_health() && rng.chance(dt) {
+            self.drink_left = 1.6;
+            self.drinking_swift = false;
+            return true;
+        }
+        false
+    }
+
+    /// Java's witch: lobs a splash potion every three seconds from up to ten
+    /// blocks away (slowness from afar, poison, otherwise harming), standing
+    /// still while it has a clear throw, and drinks swiftness to close a
+    /// long gap. The potion isn't chosen from the target's health or effects.
+    fn witch_tactics<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        player: DVec3,
+        dir: DVec3,
+        hdist: f64,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) -> (Option<DVec3>, f64) {
+        let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
+        let target = player + DVec3::Y * 1.2;
+        let boost = if self.swift_left > 0.0 { 1.2 } else { 1.0 };
+        let sees = line_of_sight(world, eye, target);
+        if self.swift_left <= 0.0 && hdist > 11.0 && rng.chance(0.01) {
+            self.drink_left = 1.6;
+            self.drinking_swift = true;
+            return (None, 0.0);
+        }
+        if hdist <= WITCH_RANGE && sees {
+            if self.attack_cooldown <= 0.0 {
+                let id = if hdist >= 8.0 && self.slow_cd <= 0.0 {
+                    self.slow_cd = 30.0;
+                    "slowness"
+                } else if self.poison_cd <= 0.0 {
+                    self.poison_cd = 45.0;
+                    "poison"
+                } else {
+                    "harming"
+                };
+                let flat = DVec3::new(target.x - eye.x, 0.0, target.z - eye.z);
+                let aim = DVec3::new(flat.x, target.y - 1.1 - eye.y + flat.length() * 0.2, flat.z).normalize_or(dir);
+                if let Some(potion) = crate::potion::Potion::from_id(id) {
+                    events.push(EntityEvent::ThrowPotion { from: eye + dir * 0.4, vel: aim * WITCH_SPEED, potion });
+                }
+                self.attack_cooldown = 3.0;
+                self.attack_anim = 0.35;
+            }
+            return (None, 0.0);
+        }
+        (Some(dir), self.kind.chase_speed() * boost)
+    }
+
     /// Creepers stop and hiss when close; returns the movement to use
     /// while fusing (or `None` to keep approaching).
     fn creeper_fuse(&mut self, dt: f32, hdist: f64, events: &mut Vec<EntityEvent>) -> Option<(Option<DVec3>, f64)> {
@@ -998,7 +1407,12 @@ impl Mob {
         self.fuse += dt;
         if self.fuse >= FUSE_TIME {
             let center = self.pos + DVec3::Y * (self.shape().height * 0.5);
-            events.push(EntityEvent::Explosion { center, power: CREEPER_POWER, cause: "was blown up by a creeper" });
+            events.push(EntityEvent::Explosion {
+                center,
+                power: CREEPER_POWER,
+                cause: "was blown up by a creeper",
+                credit_player: false,
+            });
             // Gone in the blast: no death animation, no loot.
             self.health = 0.0;
             self.dying = Some(DEATH_TIME);
@@ -1009,9 +1423,26 @@ impl Mob {
     fn physics_step<W: BlockSource + ?Sized>(&mut self, dt: f64, world: &W, wish: Option<DVec3>, speed: f64) {
         let shape = self.shape();
         self.in_water = physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
+        let hopping = self.kind.is_cube();
+        let speed = if hopping { (0.2 + 0.1 * self.size as f64) * 10.0 } else { speed };
+        let wish = if hopping && self.on_ground && self.hop_left > 0.0 { None } else { wish };
+        if hopping && self.on_ground && self.alive() && self.hop_left <= 0.0 {
+            self.vel.y = 8.4 + if self.kind == MobKind::MagmaCube { 2.0 * self.size as f64 } else { 0.0 };
+            self.hop_left = self.hop_delay;
+            if self.kind == MobKind::MagmaCube {
+                self.hop_left *= 4.0;
+            }
+            if self.ai == Ai::Chase {
+                self.hop_left /= 3.0;
+            }
+        }
         let target = wish.map_or(DVec3::ZERO, |d| d * speed);
 
-        if self.in_water {
+        if self.kind == MobKind::Ghast && self.alive() {
+            // Java ghasts fly: no gravity, and they steer in three dimensions.
+            let k = (dt * 1.6).min(1.0);
+            self.vel += (target - self.vel) * k;
+        } else if self.in_water {
             let k = (dt * 4.0).min(1.0);
             self.vel.x += (target.x * 0.6 - self.vel.x) * k;
             self.vel.z += (target.z * 0.6 - self.vel.z) * k;
@@ -1044,7 +1475,11 @@ impl Mob {
                     self.vel.y += (6.0 - self.vel.y) * (1.0 - 0.7f64.powf(dt * 20.0));
                 }
             }
-            if self.kind == MobKind::Spider && self.blocked && wish.is_some() && self.alive() {
+            if matches!(self.kind, MobKind::Spider | MobKind::CaveSpider)
+                && self.blocked
+                && wish.is_some()
+                && self.alive()
+            {
                 self.vel.y = self.vel.y.max(3.0); // climbs walls
             } else if let Some(dir) = wish
                 && self.on_ground

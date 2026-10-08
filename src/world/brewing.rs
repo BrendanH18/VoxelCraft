@@ -45,6 +45,10 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
         ("awkward", Item::GLISTERING_MELON_SLICE) => to("healing"),
         ("awkward", Item::SPIDER_EYE) => to("poison"),
         ("awkward", Item::BLAZE_POWDER) => to("strength"),
+        ("awkward", Item::MAGMA_CREAM) => to("fire_resistance"),
+        ("awkward", Item::GHAST_TEAR) => to("regeneration"),
+        ("water", Item::MAGMA_CREAM | Item::REDSTONE | Item::GHAST_TEAR) => to("mundane"),
+        (id, Item::REDSTONE) if to(&format!("long_{id}")).is_some() => to(&format!("long_{id}")),
         // Glowstone strengthens to level II.
         (id, i) if i == glowstone && to(&format!("strong_{id}")).is_some() => to(&format!("strong_{id}")),
         _ => None,
@@ -54,19 +58,31 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
 /// Whether `item` is used by any brewing mix (the ingredient slot takes
 /// only these).
 pub fn is_ingredient(item: Item) -> bool {
-    Potion::all().any(|p| brew(p, item).is_some())
+    item == Item::GUNPOWDER || Potion::all().any(|p| brew(p, item).is_some())
+}
+
+/// What `ingredient` turns the bottle `item` into: gunpowder makes a potion
+/// splash, and the other mixes keep a splash potion splash.
+pub fn brew_item(item: Item, ingredient: Item) -> Option<Item> {
+    if ingredient == Item::GUNPOWDER {
+        return item.as_potion().map(Item::splash_potion);
+    }
+    if let Some(p) = item.as_splash_potion() {
+        return brew(p, ingredient).map(Item::splash_potion);
+    }
+    item.as_potion().and_then(|p| brew(p, ingredient)).map(Item::potion)
 }
 
 /// The bottle slots hold potions (and water bottles) and glass bottles.
 pub fn fits_bottle_slot(item: Item) -> bool {
-    item.as_potion().is_some() || item == Item::GLASS_BOTTLE
+    item.as_potion().is_some() || item.as_splash_potion().is_some() || item == Item::GLASS_BOTTLE
 }
 
 impl BrewingStand {
     /// Whether the ingredient would change at least one bottle.
     fn can_brew(&self) -> bool {
         let Some(ingredient) = self.ingredient else { return false };
-        self.bottles.iter().flatten().any(|b| b.item.as_potion().is_some_and(|p| brew(p, ingredient.item).is_some()))
+        self.bottles.iter().flatten().any(|b| brew_item(b.item, ingredient.item).is_some())
     }
 
     pub fn is_brewing(&self) -> bool {
@@ -105,8 +121,8 @@ impl BrewingStand {
     fn finish(&mut self) {
         let Some(ingredient) = self.ingredient else { return };
         for bottle in self.bottles.iter_mut().flatten() {
-            if let Some(out) = bottle.item.as_potion().and_then(|p| brew(p, ingredient.item)) {
-                *bottle = Stack::new(Item::potion(out), 1);
+            if let Some(out) = brew_item(bottle.item, ingredient.item) {
+                *bottle = Stack::new(out, 1);
             }
         }
         self.ingredient = take_one(self.ingredient);
@@ -165,7 +181,9 @@ impl World {
     /// Keeps the brewing stand table in step with a block change at `p`.
     pub(super) fn track_brewing_stand(&mut self, p: IVec3, old: Block, new: Block) {
         if old == Block::BREWING_STAND && new != Block::BREWING_STAND {
-            if let Some(mut stand) = self.brewing_stands.remove(&p) {
+            if let Some(mut stand) = self.brewing_stands.remove(&p)
+                && self.tile_drops
+            {
                 self.drops.extend(stand.take_all().into_iter().map(|s| (p, s)));
             }
         } else if new == Block::BREWING_STAND {
@@ -207,6 +225,22 @@ impl World {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn gunpowder_makes_splash_potions_that_keep_brewing() {
+        use super::*;
+        let poison = Potion::from_id("poison").unwrap();
+        let splash = brew_item(Item::potion(poison), Item::GUNPOWDER).unwrap();
+        assert_eq!(splash.as_splash_potion(), Some(poison));
+        assert_eq!(splash.name(), "splash potion of poison");
+        assert_eq!(
+            brew_item(splash, Item::REDSTONE),
+            Some(Item::splash_potion(Potion::from_id("long_poison").unwrap()))
+        );
+        assert_eq!(brew_item(splash, Item::GUNPOWDER), None, "already splash");
+        assert_eq!(brew_item(Item::potion(Potion::WATER), Item::GUNPOWDER), Some(Item::splash_potion(Potion::WATER)));
+        assert!(is_ingredient(Item::GUNPOWDER) && fits_bottle_slot(splash));
+    }
+
     use super::*;
 
     fn potion(id: &str) -> Option<Stack> {
@@ -215,6 +249,26 @@ mod tests {
 
     fn run(stand: &mut BrewingStand, secs: f32) -> usize {
         (0..(secs * 20.0).round() as usize).filter(|_| stand.tick(0.05)).count()
+    }
+
+    #[test]
+    fn magma_cream_and_redstone_unlock_fire_resistance() {
+        let fire = Potion::from_id("fire_resistance").unwrap();
+        assert_eq!(brew(Potion::AWKWARD, Item::MAGMA_CREAM), Some(fire));
+        assert_eq!(brew(fire, Item::REDSTONE), Potion::from_id("long_fire_resistance"));
+        assert_eq!(brew(fire, Item::GLOWSTONE_DUST), None);
+        assert_eq!(brew(Potion::WATER, Item::MAGMA_CREAM), Some(Potion::MUNDANE));
+        assert!(is_ingredient(Item::REDSTONE));
+    }
+
+    #[test]
+    fn ghast_tear_brews_regeneration() {
+        let regen = Potion::from_id("regeneration").unwrap();
+        assert_eq!(brew(Potion::AWKWARD, Item::GHAST_TEAR), Some(regen));
+        assert_eq!(brew(regen, Item::REDSTONE), Potion::from_id("long_regeneration"));
+        assert_eq!(brew(regen, Item::GLOWSTONE_DUST), Potion::from_id("strong_regeneration"));
+        assert_eq!(brew(Potion::WATER, Item::GHAST_TEAR), Some(Potion::MUNDANE));
+        assert!(is_ingredient(Item::GHAST_TEAR));
     }
 
     #[test]

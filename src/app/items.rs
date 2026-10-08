@@ -10,7 +10,7 @@ use crate::inventory::Stack;
 use crate::render::BlockModel;
 use crate::world::block::Block;
 
-use super::{Container, Game, GameMode, survival};
+use super::{Container, Game, survival};
 use crate::entity::PlayerId;
 
 /// Dropped items farther away than this aren't drawn.
@@ -47,6 +47,7 @@ impl Game {
             }
             // An anvil can break in use, or fall away.
             Container::Anvil(pos) => !self.world.get_block(pos).is_some_and(|b| b.is_anvil()),
+            Container::Smithing(pos) => self.world.get_block(pos) != Some(Block::SMITHING_TABLE),
             _ => false,
         };
         if gone && self.inventory_open {
@@ -101,7 +102,66 @@ impl Game {
         self.mobs.entities.throw_pearl(self.actor, p.eye(), p.forward().as_dvec3(), carry);
         // Java's throw is the bow sound, pitched well down.
         self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
+            self.inventory.take_one(self.actions.selected);
+        }
+        true
+    }
+
+    /// Right-click with a fishing rod casts its bobber, or reels it in.
+    pub(super) fn use_rod(&mut self) -> bool {
+        let slot = self.actions.selected;
+        let Some(broke) = voxelcraft::survival_items::use_rod(
+            &self.player,
+            &mut self.inventory,
+            slot,
+            self.mode.is_creative(),
+            self.actor,
+            &mut self.mobs.entities,
+        ) else {
+            return false;
+        };
+        if broke {
+            self.show_popup("Fishing rod broke");
+            self.audio.play(
+                Sound::Break(crate::audio::sounds::Material::Wood),
+                Some(self.player.eye()),
+                0.8,
+                (1.3, 1.5),
+            );
+        } else {
+            self.audio.play(Sound::Bow, Some(self.player.eye()), 0.5, (0.42, 0.62));
+        }
+        true
+    }
+
+    /// Right-click with a snowball or egg throws one (Java's stack of 16).
+    pub(super) fn throw_projectile(&mut self) -> bool {
+        let slot = self.actions.selected;
+        let thrown = voxelcraft::survival_items::throw_held(
+            &self.player,
+            &mut self.inventory,
+            slot,
+            self.mode.is_creative(),
+            self.actor,
+            &mut self.mobs.entities,
+        );
+        if thrown {
+            let p = &self.player;
+            self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
+        }
+        thrown
+    }
+
+    /// Right-click with a splash potion throws it (Java has no cooldown).
+    /// Returns whether one was thrown.
+    pub(super) fn throw_splash_potion(&mut self) -> bool {
+        let Some(potion) = self.held_item().and_then(crate::item::Item::as_splash_potion) else { return false };
+        let p = &self.player;
+        let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
+        self.mobs.entities.throw_potion(self.actor, potion, p.eye(), p.forward().as_dvec3(), carry);
+        self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
+        if self.mode.is_survival() {
             self.inventory.take_one(self.actions.selected);
         }
         true
@@ -123,7 +183,7 @@ impl Game {
         let Some(target) = self.world.generator.strongholds.nearest(from.floor().as_ivec3()) else { return false };
         self.mobs.entities.release_eye(from, target.as_dvec3());
         eye_thrown_sound(&mut self.audio, from);
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.inventory.take_one(self.actions.selected);
         }
         true
@@ -137,7 +197,7 @@ impl Game {
         }
         let Some(opened) = self.world.insert_eye(pos) else { return false };
         frame_filled_sounds(&mut self.audio, pos, opened);
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.inventory.take_one(self.actions.selected);
         }
         true
@@ -231,7 +291,13 @@ impl Game {
             let block = item.stack.item.block().filter(|b| !b.flat_icon());
             let icon = match block {
                 Some(_) => None,
-                None => item.stack.item.block().map(|b| b.info().tex[0].into()).or(item.stack.item.icon_layer()),
+                None => item
+                    .stack
+                    .item
+                    .block()
+                    .map(|b| b.info().tex[0])
+                    .or_else(|| item.stack.item.dial_layer(self.dial_of(&self.player)))
+                    .or_else(|| item.stack.item.icon_layer()),
             };
             let size = if block.is_some() { 0.25 } else { 0.5 };
             let spin = item.age + item.phase;

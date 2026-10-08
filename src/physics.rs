@@ -67,7 +67,8 @@ fn cell_boxes<W: BlockSource + ?Sized>(world: &W, p: IVec3, mut f: impl FnMut(DV
         Some(b) if !b.is_solid() => {}
         Some(b) if b.kind() == RenderKind::Shaped => {
             let neighbour = |side: Facing| world.block(p + side.offset()).unwrap_or(Block::AIR);
-            for bx in shape::collision(b, neighbour).as_slice() {
+            let below = world.block(p - IVec3::Y).unwrap_or(Block::AIR);
+            for bx in shape::collision(b, neighbour, below).as_slice() {
                 let v = |c: [u8; 3]| DVec3::new(c[0] as f64, c[1] as f64, c[2] as f64) / 16.0;
                 f(lo + v(bx.min), lo + v(bx.max));
             }
@@ -251,7 +252,8 @@ pub fn ray_shape<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DVec3,
     let neighbour = |side: Facing| world.block(cell + side.offset()).unwrap_or(Block::AIR);
     let lo = cell.as_dvec3();
     let v = |c: [u8; 3]| DVec3::new(c[0] as f64, c[1] as f64, c[2] as f64) / 16.0;
-    shape::shape(b, neighbour)
+    let below = world.block(cell - IVec3::Y).unwrap_or(Block::AIR);
+    shape::shape(b, neighbour, below)
         .as_slice()
         .iter()
         .filter_map(|bx| ray_aabb_face(origin, dir, lo + v(bx.min), lo + v(bx.max)))

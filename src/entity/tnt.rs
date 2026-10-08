@@ -43,6 +43,7 @@ impl PrimedTnt {
                 center: self.pos + DVec3::Y * SHAPE.height / 2.0,
                 power: POWER,
                 cause: "was blown up by TNT",
+                credit_player: false,
             });
             return false;
         }

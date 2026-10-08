@@ -40,6 +40,9 @@ pub enum Enchantment {
     Mending,
     BindingCurse,
     VanishingCurse,
+    FrostWalker,
+    Lure,
+    LuckOfTheSea,
 }
 
 /// Which items an enchantment goes on (Java's item tags).
@@ -55,6 +58,7 @@ enum Fits {
     /// Pickaxes, shovels, axes and hoes.
     Mining,
     Bow,
+    FishingRod,
     /// Anything that wears out.
     Durable,
 }
@@ -70,6 +74,7 @@ impl Fits {
             (Fits::Weapon, ItemKind::Tool(k, _)) => matches!(k, ToolKind::Sword | ToolKind::Axe),
             (Fits::Mining, ItemKind::Tool(k, _)) => k != ToolKind::Sword,
             (Fits::Bow, ItemKind::Bow) => true,
+            (Fits::FishingRod, ItemKind::FishingRod) => true,
             (Fits::Durable, _) => item.durability().is_some(),
             _ => false,
         }
@@ -176,10 +181,13 @@ static DEFS: [Def; Enchantment::COUNT] = [
     in_group(treasure(def("mending", 1, 2, (25, 25), (75, 25), 4, Fits::Durable)), Group::Bow),
     curse(def("curse of binding", 1, 1, (25, 0), (50, 0), 8, Fits::Armor)),
     curse(def("curse of vanishing", 1, 1, (25, 0), (50, 0), 8, Fits::Durable)),
+    treasure(def("frost walker", 2, 2, (10, 10), (25, 10), 4, Fits::Feet)),
+    def("lure", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
+    def("luck of the sea", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
 ];
 
 impl Enchantment {
-    pub const COUNT: usize = 27;
+    pub const COUNT: usize = 30;
     pub const ALL: [Enchantment; Enchantment::COUNT] = {
         let mut all = [Enchantment::Protection; Enchantment::COUNT];
         let mut i = 0;
@@ -213,6 +221,9 @@ impl Enchantment {
 
     /// Whether `self` and `other` may share an item.
     pub fn compatible(self, other: Enchantment) -> bool {
+        if matches!((self, other), (Self::FrostWalker, Self::DepthStrider) | (Self::DepthStrider, Self::FrostWalker)) {
+            return false;
+        }
         let (a, b) = (self.def().group, other.def().group);
         self != other && (a == Group::None || a != b)
     }
@@ -367,14 +378,16 @@ pub fn enchantability(item: Item) -> u32 {
             Tier::Iron => 14,
             Tier::Gold => 22,
             Tier::Diamond => 10,
+            Tier::Netherite => 15,
         },
         ItemKind::Armor(_, material) => match material {
             ArmorMaterial::Leather => 15,
             ArmorMaterial::Iron => 9,
             ArmorMaterial::Gold => 25,
             ArmorMaterial::Diamond => 10,
+            ArmorMaterial::Netherite => 15,
         },
-        ItemKind::Bow => 1,
+        ItemKind::Bow | ItemKind::FishingRod => 1,
         _ if item == Item::BOOK => 1,
         _ => 0,
     }
@@ -650,12 +663,14 @@ pub fn repairs(item: Item, material: Item) -> bool {
             Tier::Iron => material == Item::IRON_INGOT,
             Tier::Gold => material == Item::GOLD_INGOT,
             Tier::Diamond => material == Item::DIAMOND,
+            Tier::Netherite => material == Item::NETHERITE_INGOT,
         },
         ItemKind::Armor(_, m) => match m {
             ArmorMaterial::Leather => material == Item::LEATHER,
             ArmorMaterial::Iron => material == Item::IRON_INGOT,
             ArmorMaterial::Gold => material == Item::GOLD_INGOT,
             ArmorMaterial::Diamond => material == Item::DIAMOND,
+            ArmorMaterial::Netherite => material == Item::NETHERITE_INGOT,
         },
         _ => false,
     }
@@ -929,6 +944,15 @@ mod tests {
         // Unrelated items don't combine.
         let boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Iron), 1);
         assert_eq!(anvil(boots, Some(Stack::new(sword(), 1)), false), None);
+
+        // Netherite gear repairs with Netherite ingots, not diamonds, and
+        // has Java's enchantability 15.
+        let chest = Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Netherite);
+        let worn = Stack { damage: 300, ..Stack::new(chest, 1) };
+        let r = anvil(worn, Some(Stack::new(Item::NETHERITE_INGOT, 4)), false).unwrap();
+        assert_eq!((r.output.damage, r.uses), (0, Some(3)), "148 per ingot");
+        assert_eq!(anvil(worn, Some(Stack::new(Item::DIAMOND, 4)), false), None);
+        assert_eq!((enchantability(chest), enchantability(Item::tool(ToolKind::Axe, Tier::Netherite))), (15, 15));
     }
 
     #[test]

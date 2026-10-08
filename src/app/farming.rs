@@ -7,7 +7,7 @@ use crate::audio::sounds::{Material, Sound};
 use crate::item::{Item, ToolKind};
 use crate::world::block::Block;
 
-use super::{Game, GameMode};
+use super::Game;
 
 impl Game {
     /// Right-click with a hoe on grass or dirt tills it into farmland;
@@ -30,7 +30,7 @@ impl Game {
         }
         if item == Item::BONE_MEAL && self.world.apply_bone_meal(pos) {
             self.audio.play(Sound::Place(Material::Grass), Some(at), 0.8, (1.2, 1.4));
-            if self.mode == GameMode::Survival {
+            if self.mode.is_survival() {
                 self.inventory.take_one(self.actions.selected);
             }
             return true;
@@ -61,9 +61,12 @@ pub(super) fn picked_item(block: Block) -> Item {
     match block.base() {
         Block::LIT_FURNACE => Block::FURNACE.into(),
         Block::FARMLAND | Block::WET_FARMLAND => Block::DIRT.into(),
-        b if b.crop_stage().is_some() => Item::WHEAT_SEEDS,
+        b if matches!(b.as_crop(), Some((crate::world::block::Crop::Wheat, _))) => Item::WHEAT_SEEDS,
+        b if matches!(b.as_crop(), Some((crate::world::block::Crop::Carrot, _))) => Item::CARROT,
+        b if matches!(b.as_crop(), Some((crate::world::block::Crop::Potato, _))) => Item::POTATO,
         b if b.wart_age().is_some() => Item::NETHER_WART,
         Block::OAK_DOOR => Item::OAK_DOOR,
+        b if let Some(c) = b.bed_color() => c.bed(),
         b => b.into(),
     }
 }

@@ -1,8 +1,10 @@
 //! In-game slash command entry, scrollback and shared host command dispatch.
-use super::{Game, GameMode};
+use super::Game;
 use crate::render::ui::{Ui, WHITE};
+use crate::world::terrain::Dimension;
+use glam::{DVec3, IVec2, IVec3};
 use std::collections::VecDeque;
-use voxelcraft::agent::{Command, HELP};
+use voxelcraft::agent::{Command, HELP, TimeQuery, WeatherKind};
 use voxelcraft::simulation::survival;
 use winit::event::KeyEvent;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -91,26 +93,8 @@ impl Game {
                 }
             }
             KeyCode::Tab => {
-                let names = [
-                    "help",
-                    "give",
-                    "gamemode",
-                    "tp",
-                    "time",
-                    "weather",
-                    "setblock",
-                    "dimension",
-                    "xp",
-                    "effect",
-                    "enchant",
-                    "players",
-                    "observe",
-                    "splitscreen",
-                ];
-                let prefix = self.console.input.trim_start_matches('/');
-                let matches: Vec<_> = names.iter().filter(|n| n.starts_with(prefix)).collect();
-                if matches.len() == 1 {
-                    self.console.input = format!("/{} ", matches[0]);
+                if let Some(completed) = voxelcraft::agent::tab_complete(&self.console.input) {
+                    self.console.input = completed;
                 }
             }
             _ => {
@@ -143,15 +127,110 @@ impl Game {
                 let left = self.inventory.add(item, count);
                 return Ok(format!("Gave {} {}", count - left, item.name()));
             }
-            Command::Mode(creative) => self.set_mode(if creative { GameMode::Creative } else { GameMode::Survival }),
+            Command::Clear => {
+                let count: u32 = self.inventory.take_all().into_iter().map(|stack| stack.count as u32).sum();
+                self.work.fill(None);
+                self.craft.cells.fill(None);
+                return Ok(format!("Removed {count} items"));
+            }
+            Command::Kill => {
+                let was_dead = self.vitals.is_dead();
+                self.vitals.damage(f32::MAX, "was killed", false);
+                if !was_dead && self.vitals.is_dead() {
+                    self.on_death();
+                }
+            }
+            Command::Summon(kind, pos) => {
+                let at = pos.resolve(self.player.pos)?;
+                self.mobs.entities.spawn(kind, at);
+                return Ok(format!("Summoned {} at {:.1} {:.1} {:.1}", kind.name(), at.x, at.y, at.z));
+            }
+            Command::Mode(mode) => self.set_mode(mode),
             Command::Teleport(pos) => {
+                let pos = pos.resolve(self.player.pos)?;
                 self.player.pos = pos;
                 self.player.vel = glam::DVec3::ZERO;
                 self.vitals.reset_fall();
                 self.previous_eye = self.player.eye();
             }
-            Command::Time(time) => self.day_time = time,
-            Command::Weather(raining) => self.weather.set(raining, true),
+            Command::SpawnPoint(pos) => {
+                let p = pos.resolve(self.player.pos)?.floor().as_ivec3();
+                self.spawn_bed = None;
+                self.spawn_point = Some(p);
+                return Ok(format!("Set spawn point to {} {} {}", p.x, p.y, p.z));
+            }
+            Command::Time(time) => {
+                self.day_time = time.rem_euclid(1.0);
+                return Ok(format!("Set time to {}", (self.day_time * 24_000.0).round() as i64));
+            }
+            Command::TimeAdd(ticks) => {
+                self.add_time_ticks(ticks);
+                return Ok(format!("Added {ticks} ticks"));
+            }
+            Command::TimeQuery(query) => {
+                return Ok(match query {
+                    TimeQuery::Daytime => ((self.day_time * 24_000.0).round() as i64).to_string(),
+                    TimeQuery::Day => self.day_count.to_string(),
+                    TimeQuery::Gametime => {
+                        (self.day_count.saturating_mul(24_000) + (self.day_time * 24_000.0).round() as i64).to_string()
+                    }
+                });
+            }
+            Command::Weather(kind) => {
+                self.apply_weather(kind);
+            }
+            Command::Difficulty(difficulty) => {
+                if self.hardcore {
+                    return Err("Hardcore locks difficulty to Hard".into());
+                }
+                self.difficulty = difficulty;
+                return Ok(format!("Set difficulty to {difficulty}"));
+            }
+            Command::GameRule { name, value: None } => {
+                let value = self.gamerules.get(&name).ok_or_else(|| format!("unknown gamerule: {name}"))?;
+                return Ok(format!("{name} = {value}"));
+            }
+            Command::GameRule { name, value: Some(text) } => {
+                let value = self.gamerules.set(&name, &text)?;
+                self.world.set_tile_drops(self.gamerules.bool("doTileDrops"));
+                return Ok(format!("Set {name} to {value}"));
+            }
+            Command::Seed => return Ok(format!("Seed: [{}]", self.world.generator.seed)),
+            Command::SetWorldSpawn(pos) => {
+                let p = pos.resolve(self.player.pos)?.floor().as_ivec3();
+                self.world_spawn = p;
+                return Ok(format!("Set the world spawn point to {} {} {}", p.x, p.y, p.z));
+            }
+            Command::LocateStructure(name) => {
+                let key = name.strip_prefix("minecraft:").unwrap_or(&name);
+                let at = match key {
+                    "stronghold" => self.world.generator.strongholds.nearest(self.player.pos.floor().as_ivec3()),
+                    "fortress" | "nether_fortress" => self.world.generator.nearest_fortress(IVec2::new(
+                        self.player.pos.x.floor() as i32,
+                        self.player.pos.z.floor() as i32,
+                    )),
+                    "bastion_remnant" | "bastion" if self.dimension == Dimension::Nether => {
+                        crate::world::bastion::Bastions::new(self.world.generator.seed)
+                            .nearest(IVec2::new(self.player.pos.x.floor() as i32, self.player.pos.z.floor() as i32))
+                    }
+                    "bastion_remnant" | "bastion" => None,
+                    "mineshaft" | "abandoned_mineshaft" => {
+                        self.world.generator.mineshafts.nearest(self.player.pos.floor().as_ivec3())
+                    }
+                    _ => return Err(format!("unknown structure: {name}")),
+                }
+                .ok_or("Could not find that structure nearby")?;
+                return Ok(self.locate_message(at, key));
+            }
+            Command::LocateBiome(biome) => {
+                let origin = IVec2::new(self.player.pos.x.floor() as i32, self.player.pos.z.floor() as i32);
+                let at = self
+                    .world
+                    .generator
+                    .nearest_biome(origin, biome, 12_800)
+                    .ok_or("Could not find that biome nearby")?;
+                return Ok(self.locate_message(at, biome.name()));
+            }
             Command::SetBlock(pos, block) => {
                 if !self.world.set_block(pos, block) {
                     return Err("block unchanged or unloaded".into());
@@ -209,9 +288,40 @@ impl Game {
                     self.player.pos.z
                 ));
             }
+            Command::Say(message) => {
+                log::info!("[Host] {message}");
+                return Ok(format!("[Host] {message}"));
+            }
             _ => return Err("use the agent CLI for movement and interaction commands".into()),
         }
         Ok("Done".into())
+    }
+
+    pub(super) fn add_time_ticks(&mut self, ticks: i64) {
+        if ticks == 0 {
+            return;
+        }
+        // Whole days and the remainder in constant time: huge `/time add`
+        // values must not loop once per day.
+        let now = (self.day_time * 24_000.0).round() as i64;
+        let total = now.saturating_add(ticks);
+        let days = total.div_euclid(24_000);
+        self.day_time = total.rem_euclid(24_000) as f64 / 24_000.0;
+        self.day_count = self.day_count.saturating_add(days);
+    }
+
+    pub(super) fn apply_weather(&mut self, kind: WeatherKind) {
+        match kind {
+            WeatherKind::Clear => self.weather.set(false, true),
+            WeatherKind::Rain => self.weather.set(true, true),
+            WeatherKind::Thunder => self.weather.set_thunder(true),
+        }
+    }
+
+    fn locate_message(&self, at: IVec3, label: &str) -> String {
+        let there = at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+        let blocks = (there - self.player.pos).length().round() as i32;
+        format!("The nearest {label} is at {} {} {} ({blocks} blocks away)", at.x, at.y, at.z)
     }
 
     /// Formats the host's level and progress toward the next level.

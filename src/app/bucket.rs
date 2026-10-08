@@ -6,11 +6,16 @@ use crate::inventory::Stack;
 use crate::item::Item;
 use crate::world::block::Block;
 
-use super::{Game, GameMode, REACH};
+use super::{Game, REACH};
 
 impl Game {
     pub(super) fn holding_bucket(&self) -> bool {
         matches!(self.held_item(), Some(Item::BUCKET | Item::WATER_BUCKET | Item::LAVA_BUCKET))
+    }
+
+    /// Snowballs, eggs and the fishing rod act once per click, like buckets.
+    pub(super) fn holding_throwable(&self) -> bool {
+        matches!(self.held_item(), Some(Item::SNOWBALL | Item::EGG | Item::FISHING_ROD))
     }
 
     /// Right-click with a bucket. Returns whether the bucket was used.
@@ -34,10 +39,10 @@ impl Game {
         self.audio.play(Sound::Swim, Some(pos.as_dvec3()), 0.6, (1.3, 1.5));
         let water = Item::potion(voxelcraft::potion::Potion::WATER);
         let slot = self.actions.selected;
-        if self.mode == GameMode::Survival && self.inventory.slots[slot].is_some_and(|s| s.count == 1) {
+        if self.mode.is_survival() && self.inventory.slots[slot].is_some_and(|s| s.count == 1) {
             self.inventory.slots[slot] = Some(Stack::new(water, 1));
         } else {
-            if self.mode == GameMode::Survival {
+            if self.mode.is_survival() {
                 self.inventory.take_one(slot);
             }
             let left = self.inventory.add(water, 1);
@@ -62,7 +67,7 @@ impl Game {
         let sound = if filled == Item::WATER_BUCKET { Sound::Swim } else { Sound::Place(Material::Stone) };
         self.audio.play(sound, Some(pos.as_dvec3()), 0.8, (0.8, 0.9));
         // Creative keeps its empty bucket.
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             let slot = self.actions.selected;
             if self.inventory.slots[slot].is_some_and(|s| s.count == 1) {
                 self.inventory.slots[slot] = Some(Stack::new(filled, 1));
@@ -94,7 +99,7 @@ impl Game {
             let sound = if fluid == Block::WATER { Sound::Splash } else { Sound::Place(Material::Stone) };
             self.audio.play(sound, Some(at.as_dvec3()), 0.6, (0.9, 1.0));
         }
-        if self.mode == GameMode::Survival {
+        if self.mode.is_survival() {
             self.inventory.slots[self.actions.selected] = Some(Stack::new(Item::BUCKET, 1));
         }
         true

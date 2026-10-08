@@ -18,9 +18,10 @@
 //! | 0    | 21-25 | width - 1 (along the face's u axis)                |
 //! | 0    | 26-30 | height - 1 (along v)                               |
 //! | 0    | 31    | flip: triangulate along the other diagonal         |
-//! | 1    | 0-7   | texture array layer                                |
+//! | 1    | 0-7   | texture layer, low 8 bits                          |
 //! | 1    | 8-15  | ambient occlusion per corner, 2 bits (0 dark .. 3) |
 //! | 1    | 16-20 | water surface drop of the upper edge, 1/16 block   |
+//! | 1    | 21-23 | texture layer, high 3 bits (normal and cross quads) |
 //! | 2    | 0-31  | per corner: sky light (low 4 bits), block light    |
 //!
 //! For a face on axis `d` the u and v axes are `(d + 1) % 3` and
@@ -33,7 +34,9 @@
 //! Word 0 then holds the cell (not a corner) and, in place of the size,
 //! the face's lower u and v bounds (bits 21-25 and 26-30); word 1 holds the
 //! upper u and v bounds (bits 16-20 and 21-25) and the plane's offset along
-//! the face axis (bits 26-30), all in 0..=16.
+//! the face axis (bits 26-30), all in 0..=16. Detail cells are 0..31,
+//! so their three unused coordinate bits in word 0 (5, 11, 17) store the
+//! layer's high 3 bits instead. All passes address 2048 texture layers.
 //!
 //! Faces 6 and 7 are the two diagonal planes of a cross-shaped block
 //! (plants, torches) at the cell `(x, y, z)`: face 6 runs from (0, 0) to
@@ -163,11 +166,10 @@ impl Region {
                             let row = ridx(rx0, ry0 + y, rz0 + z);
                             let dst = &mut self.blocks[row..row + hx];
                             match chunk.as_deref() {
-                                Some(ChunkData::Dense(b)) => {
+                                Some(data) => {
                                     let src = crate::world::chunk::index(lx0, ly0 + y, lz0 + z);
-                                    dst.copy_from_slice(&b[src..src + hx]);
+                                    data.copy_row(src, dst);
                                 }
-                                Some(ChunkData::Uniform(b)) => dst.fill(*b),
                                 None => {
                                     let wy = base_y + (ry0 + y) as i32 - MARGIN as i32;
                                     dst.fill(if wy < 0 { Block::BEDROCK } else { Block::AIR });
@@ -394,7 +396,7 @@ const AO_SHIFT: u64 = 16;
 const LIGHT_SHIFT: u64 = 32;
 const PRESENT: u64 = 1 << 31;
 /// Top drop of a low block (see `Block::top_drop`), in 1/16 block.
-const DROP_SHIFT: u64 = 8;
+const DROP_SHIFT: u64 = 11;
 
 /// Lights and meshes one chunk.
 pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
@@ -472,7 +474,8 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                                     let o = f.offset();
                                     blocks[(i as isize + o.x as isize + o.z as isize * D as isize) as usize]
                                 };
-                                shaped_cells.push((i, shape::shape(b, neighbour)));
+                                let below = i.checked_sub(D * D).map(|j| blocks[j]).unwrap_or(Block::AIR);
+                                shaped_cells.push((i, shape::shape(b, neighbour, below)));
                                 false
                             }
                             _ => false,
@@ -538,7 +541,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                     // (For water the AO bits hold the surface drop.)
                     let flip = flip_diagonal(((key >> AO_SHIFT) & 0xFF) as u32, (key >> LIGHT_SHIFT) as u32);
                     let kind = ((key >> KIND_SHIFT) & 3) as usize;
-                    let layer = (key & 0xFF) as u32;
+                    let layer = (key & 0x7FF) as u32;
                     // Water has no AO; its upper edge is lowered instead.
                     let (corner_ao, drop) = if kind == 2 {
                         (0xFF, ((key >> AO_SHIFT) & 31) as u32)
@@ -557,7 +560,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                             | (w as u32 - 1) << 21
                             | (h as u32 - 1) << 26
                             | flip << 31,
-                        layer | corner_ao << 8 | drop << 16,
+                        (layer & 255) | corner_ao << 8 | drop << 16 | (layer >> 8) << 21,
                         (key >> LIGHT_SHIFT) as u32,
                     ]);
                     uu += w;
@@ -572,6 +575,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
             // See-through textures need the alpha test.
             let see_through = b.is_ladder()
                 || b.is_door()
+                || b.is_rail()
                 || matches!(b, Block::IRON_BARS | Block::BREWING_STAND)
                 || matches!(b.shaped(), Some(crate::world::block::Shaped::Frame { .. }));
             let pass = if see_through { CUTOUT } else { OPAQUE };
@@ -590,11 +594,14 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 let r = r.map(u32::from);
                 out[pass].push([
                     (x | y << 6 | z << 12) as u32
+                        | (layer >> 8 & 1) << 5
+                        | (layer >> 9 & 1) << 11
+                        | (layer >> 10 & 1) << 17
                         | (face as u32) << 18
                         | r[0] << 21
                         | r[2] << 26
                         | flip_diagonal(ao, light) << 31,
-                    layer | ao << 8 | r[1] << 16 | r[3] << 21 | (depth as u32) << 26 | DETAIL,
+                    (layer & 255) | ao << 8 | r[1] << 16 | r[3] << 21 | (depth as u32) << 26 | DETAIL,
                     light,
                 ]);
             }
@@ -610,7 +617,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
         let pos = (x | y << 6 | z << 12) as u32;
         let layer = tex::tinted(b.info().tex[0], foliage[x + z * CHUNK_SIZE]) as u32;
         for face in [6u32, 7] {
-            cross.push([pos | face << 18, layer | 0xFF << 8, l * 0x0101_0101]);
+            cross.push([pos | face << 18, (layer & 255) | 0xFF << 8 | (layer >> 8) << 21, l * 0x0101_0101]);
         }
     }
     // Every cross quad belongs to face group 0.
@@ -632,24 +639,30 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
 /// World Y of the highest light-blocking block in each column of a chunk,
 /// indexed `x + z * 32`; `i16::MIN` where the column is clear.
 pub fn chunk_heights(data: &ChunkData, base_y: i32) -> [i16; CHUNK_SIZE * CHUNK_SIZE] {
-    let mut out = [NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE];
-    match data {
-        ChunkData::Uniform(b) => {
-            if b.light_opacity() > 0 {
-                out.fill((base_y + CHUNK_SIZE_I - 1) as i16);
-            }
-        }
-        ChunkData::Dense(_) => {
-            for z in 0..CHUNK_SIZE {
-                for x in 0..CHUNK_SIZE {
-                    if let Some(y) = (0..CHUNK_SIZE).rev().find(|&y| data.get(x, y, z).light_opacity() > 0) {
-                        out[x + z * CHUNK_SIZE] = (base_y + y as i32) as i16;
-                    }
+    // Select storage once per chunk, rather than dispatching on the enum for
+    // every candidate cell of each heightmap column during streaming.
+    fn scan(base_y: i32, at: impl Fn(usize) -> Block) -> [i16; CHUNK_SIZE * CHUNK_SIZE] {
+        let mut out = [NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE];
+        for z in 0..CHUNK_SIZE {
+            for x in 0..CHUNK_SIZE {
+                if let Some(y) =
+                    (0..CHUNK_SIZE).rev().find(|&y| at(crate::world::chunk::index(x, y, z)).light_opacity() > 0)
+                {
+                    out[x + z * CHUNK_SIZE] = (base_y + y as i32) as i16;
                 }
             }
         }
+        out
     }
-    out
+    match data {
+        ChunkData::Uniform(b) => {
+            let height = if b.light_opacity() > 0 { (base_y + CHUNK_SIZE_I - 1) as i16 } else { NO_HEIGHT };
+            [height; CHUNK_SIZE * CHUNK_SIZE]
+        }
+        ChunkData::Bytes(blocks) => scan(base_y, |i| Block(blocks[i] as u16)),
+        ChunkData::Dense(blocks) => scan(base_y, |i| blocks[i]),
+        ChunkData::Paletted { indices, palette, .. } => scan(base_y, |i| palette[indices[i] as usize]),
+    }
 }
 
 #[cfg(test)]
@@ -678,7 +691,8 @@ mod tests {
             let j = (k as u32 + flip) & 3;
             let c = if face.is_multiple_of(2) { j } else { (4 - j) & 3 };
             let light = q[2] >> (c * 8) & 0xFF;
-            let base = [q[0] & 63, q[0] >> 6 & 63, q[0] >> 12 & 63].map(|x| x as f32);
+            let coord_mask = if detail { 31 } else { 63 };
+            let base = [q[0] & coord_mask, q[0] >> 6 & coord_mask, q[0] >> 12 & coord_mask].map(|x| x as f32);
             let pos = if detail {
                 let sixteenths = |shift: u32, word: u32| (word >> shift & 31) as f32 / 16.0;
                 let mut p = base;
@@ -738,6 +752,56 @@ mod tests {
         }
         let foliage = Box::new([0; CHUNK_SIZE * CHUNK_SIZE]);
         build(&MeshInput { neighbors: n, heights, base_y: 64, foliage }, &mut Region::default())
+    }
+
+    #[test]
+    fn heightmaps_agree_across_storage_representations() {
+        let mut blocks = ChunkData::new_dense(Block::AIR);
+        blocks[crate::world::chunk::index(1, 4, 3)] = Block::STONE;
+        blocks[crate::world::chunk::index(31, 31, 31)] = Block::STONE;
+        let indices = blocks.iter().map(|b| b.0 as u8).collect::<Vec<_>>().into_boxed_slice().try_into().unwrap();
+        let mut palette = Box::new([Block::AIR; 256]);
+        palette[1] = Block::STONE;
+        let paletted = ChunkData::Paletted { indices, palette, len: 2 };
+        let compact = ChunkData::from_dense(blocks.clone());
+        let direct = ChunkData::Dense(blocks);
+        let heights = chunk_heights(&direct, 64);
+        assert_eq!(heights[1 + 3 * CHUNK_SIZE], 68);
+        assert_eq!(heights[31 + 31 * CHUNK_SIZE], 95);
+        assert_eq!(heights[0], NO_HEIGHT);
+        assert_eq!(chunk_heights(&compact, 64), heights);
+        assert_eq!(chunk_heights(&paletted, 64), heights);
+    }
+
+    #[test]
+    fn high_layers_render_cube_detail_and_cross_without_corrupting_geometry() {
+        // Test-only registry entries mirror the render paths at the registry/layer limits.
+        for (high, low, layer, pass) in [
+            (Block(4095), Block::STONE, 2047, OPAQUE),
+            (Block(4094), Block::STONE_STAIRS, 1536, OPAQUE),
+            (Block(4093), Block::TALL_GRASS, 1024, CROSS),
+        ] {
+            let high = mesh_blocks(&[([31, 31, 31], high)]).quads_of(pass);
+            let low = mesh_blocks(&[([31, 31, 31], low)]).quads_of(pass);
+            assert_eq!(high.quads.len(), low.quads.len());
+            for (high, low) in high.quads.iter().zip(&low.quads) {
+                let detail = high[1] & DETAIL != 0;
+                let high_bits = if detail {
+                    (high[0] >> 5 & 1) | (high[0] >> 11 & 1) << 1 | (high[0] >> 17 & 1) << 2
+                } else {
+                    high[1] >> 21 & 7
+                };
+                assert_eq!((high[1] & 255) | high_bits << 8, layer);
+                let coord_extras = if detail { (1 << 5) | (1 << 11) | (1 << 17) } else { 0 };
+                assert_eq!(high[0] & !coord_extras, low[0] & !coord_extras);
+                let layer_bits = 255 | if detail { 0 } else { 7 << 21 };
+                assert_eq!(high[1] & !layer_bits, low[1] & !layer_bits);
+                assert_eq!(high[2], low[2]);
+                if pass != CROSS {
+                    assert_eq!(corners(*high), corners(*low));
+                }
+            }
+        }
     }
 
     #[test]

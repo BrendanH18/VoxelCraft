@@ -12,21 +12,31 @@
 //! discarded. Each chunk column also keeps a heightmap of its highest
 //! light-blocking block, which seeds skylight in mesh jobs.
 
+pub mod bastion;
 pub mod block;
 pub mod brewing;
 pub mod chest;
 pub mod chunk;
+pub mod colors;
+pub mod dungeon;
 pub mod end;
 pub mod end_portal;
 pub mod falling;
 mod fire;
 mod fluid;
+mod foraging;
+pub mod forms;
 pub mod fortress;
 pub mod furnace;
 mod growth;
+pub(crate) mod height;
 pub(crate) mod lighting;
+pub mod mineshaft;
 pub mod nether;
+pub mod nether_blocks;
+pub mod nether_complexes;
 pub mod noise;
+pub mod ore;
 mod portal;
 pub mod shape;
 mod spawner;
@@ -104,10 +114,14 @@ pub struct World {
     random_ticks: f64,
     /// Random state for growth and chance drops.
     rng: u64,
+    /// Java `doTileDrops`; block and block-entity removal still occurs when false.
+    tile_drops: bool,
     /// Items the world let go of (mined blocks, container contents, plants
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
+    /// Bounded client visual requests, also emitted by headless player actions.
+    pub particles: crate::particles::Requests,
     /// Experience released at a block (a broken furnace's store); the game
     /// turns it into orbs.
     pub xp_drops: Vec<(IVec3, u32)>,
@@ -176,7 +190,9 @@ impl World {
             leaf_decay: FxHashMap::default(),
             random_ticks: 0.0,
             rng,
+            tile_drops: true,
             drops: Vec::new(),
+            particles: Default::default(),
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
@@ -188,6 +204,10 @@ impl World {
 
     pub fn render_distance(&self) -> i32 {
         self.render_distance
+    }
+
+    pub fn set_tile_drops(&mut self, enabled: bool) {
+        self.tile_drops = enabled;
     }
 
     pub fn set_render_distance(&mut self, rd: i32) {
@@ -328,7 +348,14 @@ impl World {
     /// remeshed on the workers. Nearby fluid is woken up to flow, and
     /// unsupported sand, gravel and plants fall or pop off.
     pub fn set_block(&mut self, p: IVec3, block: Block) -> bool {
+        let old = self.get_block(p);
         let changed = self.edit(p, block, true);
+        if changed
+            && block == Block::AIR
+            && let Some(old) = old.filter(|b| *b != Block::AIR && !b.is_fluid())
+        {
+            self.particles.push(crate::particles::Request::Break { cell: p, block: old });
+        }
         if changed {
             self.settle(p);
             self.break_unsupported_portals(p);
@@ -571,7 +598,10 @@ impl World {
 
     /// Install chunk data, seed gameplay light and update column state.
     /// Queue render work when in mesh range; saved chunks also restore scheduled fire.
-    fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
+    fn insert_chunk(&mut self, pos: IVec3, mut data: Arc<ChunkData>, modified: bool) {
+        if !modified {
+            foraging::decorate(&self.generator, pos, Arc::make_mut(&mut data));
+        }
         if modified {
             self.load_fires(pos, &data);
         } else {
@@ -755,7 +785,8 @@ impl World {
         let Some(b) = self.get_block(p) else { return ([0.0; 3], [1.0; 3]) };
         if b.kind() == RenderKind::Shaped {
             let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
-            if let Some(bx) = shape::shape(b, neighbour).bounds() {
+            let below = self.get_block(p - IVec3::Y).unwrap_or(block::Block::AIR);
+            if let Some(bx) = shape::shape(b, neighbour, below).bounds() {
                 return (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
             }
         }
@@ -882,7 +913,8 @@ mod tests {
     #[test]
     fn fortress_chunks_register_loot_chests_and_blaze_spawners() {
         use super::fortress::{Fortresses, Kind};
-        let fortress = Fortresses::new(1).get(IVec2::ZERO).unwrap();
+        let layouts = Fortresses::new(1);
+        let fortress = (-2..=2).find_map(|x| layouts.get(IVec2::new(x, 0))).unwrap();
         let generator = Arc::new(Generator::for_dimension(1, super::terrain::Dimension::Nether));
         let mut found = (None, None);
         for piece in &fortress.pieces {
@@ -1048,7 +1080,7 @@ mod tests {
             if sneak {
                 // Leaning out over the edge, but no further than the box allows.
                 assert!(player.pos.x > pillar.x as f64 + 1.0 && player.pos.x < pillar.x as f64 + 1.3 + 1e-6);
-                assert!(player.eye().y < player.pos.y + crate::player::EYE_HEIGHT - 0.2);
+                assert!(player.eye().y < player.pos.y + crate::entity::model::PlayerPose::STANDING_EYE - 0.2);
             }
         }
     }
@@ -1223,6 +1255,28 @@ mod tests {
         fall(&mut world);
         assert_eq!([at(&world, 1, y + 1), at(&world, 1, y + 2), at(&world, 1, y + 3)], column[1..4]);
         assert_eq!(at(&world, 1, y + 4), Block::AIR);
+    }
+
+    #[test]
+    fn concrete_powder_solidifies_in_and_beside_water() {
+        use crate::color::DyeColor;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let y = 200;
+        for x in -2..=2 {
+            for z in -2..=2 {
+                world.edit(IVec3::new(x, y, z), Block::STONE, false);
+            }
+        }
+        world.set_block(IVec3::new(0, y + 1, 0), Block::WATER);
+        world.set_block(IVec3::new(1, y + 1, 0), Block::concrete_powder(DyeColor::Red));
+        assert_eq!(world.get_block(IVec3::new(1, y + 1, 0)), Some(Block::concrete(DyeColor::Red)));
+        world.set_block(IVec3::new(2, y + 1, 0), Block::WATER);
+        world.set_block(IVec3::new(2, y + 4, 0), Block::concrete_powder(DyeColor::Blue));
+        for _ in 0..180 {
+            world.tick_falling(1.0 / 60.0);
+        }
+        assert_eq!(world.get_block(IVec3::new(2, y + 1, 0)), Some(Block::concrete(DyeColor::Blue)));
+        assert!(world.falling_blocks().is_empty());
     }
 
     #[test]

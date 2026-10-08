@@ -12,7 +12,7 @@ type Rgba = [u8; 4];
 
 /// Deterministic texture noise; `variation` selects a pattern within the layer.
 /// This is a procedural graphics helper with no cryptographic purpose.
-fn rnd(layer: u8, x: usize, y: usize, variation: i32) -> f32 {
+fn rnd(layer: u16, x: usize, y: usize, variation: i32) -> f32 {
     hash_f(x as i32, y as i32, variation, 0xB10C ^ layer as u64)
 }
 
@@ -21,8 +21,38 @@ fn shade(c: [u8; 3], f: f32) -> Rgba {
     [s(c[0]), s(c[1]), s(c[2]), 255]
 }
 
-fn noisy(layer: u8, x: usize, y: usize, c: [u8; 3], amount: f32) -> Rgba {
+fn noisy(layer: u16, x: usize, y: usize, c: [u8; 3], amount: f32) -> Rgba {
     shade(c, 1.0 - amount + rnd(layer, x, y, 0) * amount * 2.0)
+}
+
+fn glazed_pixel(color: usize, rot: u16, x: usize, y: usize) -> Rgba {
+    let (x, y) = match rot {
+        1 => (y, SIZE - 1 - x),
+        2 => (SIZE - 1 - x, SIZE - 1 - y),
+        3 => (SIZE - 1 - y, x),
+        _ => (x, y),
+    };
+    let rgb = crate::color::DyeColor::ALL[color].rgb();
+    let (cx, cy) = (x as i32 - 8, y as i32 - 8);
+    let mark = match color {
+        0 => (cx + cy).unsigned_abs().is_multiple_of(6),
+        1 => (cx.abs() + cy.abs()).unsigned_abs().is_multiple_of(5),
+        2 => (x / 4 + y / 4).is_multiple_of(2),
+        3 => cx.abs() <= 1 || cy.abs() <= 1,
+        4 => (cx * cx + cy * cy) % 18 < 8,
+        5 => (x + 2 * y).is_multiple_of(5),
+        6 => (cx.abs() - cy.abs()).unsigned_abs() < 2,
+        7 => (x.max(y) - x.min(y) < 3) && (x + y).is_multiple_of(2),
+        8 => (x % 5 < 2) != (y % 5 < 2),
+        9 => (cx * 3 + cy * 2).unsigned_abs().is_multiple_of(7),
+        10 => cx.abs() == cy.abs() || cx == 0 || cy == 0,
+        11 => (x / 2).is_multiple_of(2) != (y / 3).is_multiple_of(2),
+        12 => (cx + 2 * cy).unsigned_abs() % 8 < 3,
+        13 => (x as i32 - y as i32).unsigned_abs().is_multiple_of(4),
+        14 => (cx.abs() + 2 * cy.abs()) % 6 < 3,
+        _ => (x + y * 3).is_multiple_of(7) || x == 8 || y == 8,
+    };
+    shade(rgb, if mark { 1.02 } else { 0.7 })
 }
 
 /// Wrapping distance to the nearest two of a set of points (tileable Voronoi).
@@ -43,7 +73,7 @@ fn voronoi(x: usize, y: usize, pts: &[(f32, f32)]) -> (f32, f32, usize) {
     (d1, d2, idx)
 }
 
-fn points(layer: u8, n: usize) -> Vec<(f32, f32)> {
+fn points(layer: u16, n: usize) -> Vec<(f32, f32)> {
     (0..n).map(|i| (rnd(layer, i, 0, 99) * SIZE as f32, rnd(layer, i, 1, 99) * SIZE as f32)).collect()
 }
 
@@ -51,9 +81,82 @@ const STONE: [u8; 3] = [125, 125, 125];
 const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
-pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
+pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
+    if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
+        let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };
+        let rgb = crate::color::DyeColor::ALL[color].rgb();
+        let weave = (x + y).is_multiple_of(3);
+        return shade(
+            rgb,
+            if weave { 0.85 + rnd(tex::WOOL, x, y, 0) * 0.08 } else { 0.93 + rnd(tex::WOOL, x, y, 0) * 0.07 },
+        );
+    }
+    if (tex::STAINED_GLASS..tex::STAINED_GLASS + 16).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL[(layer - tex::STAINED_GLASS) as usize].rgb();
+        let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+        let pane = x == 1 || y == 1 || x == SIZE - 2 || y == SIZE - 2;
+        if border {
+            return shade(rgb, 0.45 + r * 0.1);
+        }
+        if pane {
+            return shade(rgb, 0.7);
+        }
+        let mut p = shade(rgb, 0.85 + r * 0.08);
+        p[3] = 150;
+        return p;
+    }
+    if (tex::STAINED_TERRACOTTA..tex::STAINED_TERRACOTTA + 10).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL
+            [[2, 3, 5, 6, 7, 9, 10, 11, 13, 15][(layer - tex::STAINED_TERRACOTTA) as usize]]
+            .rgb();
+        let clay = [152u8, 94, 67];
+        let mixed = [
+            (rgb[0] as u16 / 2 + clay[0] as u16 / 2) as u8,
+            (rgb[1] as u16 / 2 + clay[1] as u16 / 2) as u8,
+            (rgb[2] as u16 / 2 + clay[2] as u16 / 2) as u8,
+        ];
+        return noisy(layer, x, y, mixed, 0.05);
+    }
+    if (tex::CONCRETE_POWDER..tex::CONCRETE_POWDER + 16).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL[(layer - tex::CONCRETE_POWDER) as usize].rgb();
+        return noisy(layer, x, y, rgb, 0.12);
+    }
+    if (tex::CONCRETE..tex::CONCRETE + 16).contains(&layer) {
+        let rgb = crate::color::DyeColor::ALL[(layer - tex::CONCRETE) as usize].rgb();
+        return noisy(layer, x, y, rgb, 0.04);
+    }
+    if (tex::GLAZED..tex::GLAZED + 64).contains(&layer) {
+        let i = layer - tex::GLAZED;
+        return glazed_pixel((i / 4) as usize, i % 4, x, y);
+    }
+    if (tex::COLORED_BED..tex::COLORED_BED + 64).contains(&layer) {
+        let color = crate::color::DyeColor::ALL[((layer - tex::COLORED_BED) / 4) as usize];
+        let part = (layer - tex::COLORED_BED) % 4;
+        let base = [tex::BED_TOP_FOOT, tex::BED_TOP_HEAD, tex::BED_SIDE_FOOT, tex::BED_SIDE_HEAD][part as usize];
+        let mut p = pixel(base, x, y);
+        // Recolour only the blanket, retaining the pillow and wooden frame.
+        if p[0] / 2 > p[1] && p[0] / 2 > p[2] {
+            let rgb = color.rgb();
+            p = shade(rgb, p[0] as f32 / 178.0);
+        }
+        return p;
+    }
     match layer {
+        tex::BROWN_MUSHROOM | tex::RED_MUSHROOM => {
+            // Java's small mushroom occupies six pixels of the crossed 16x16 plane.
+            if (7..=8).contains(&x) && (12..=15).contains(&y) {
+                shade([212, 190, 153], 0.9 + r * 0.15)
+            } else if (5..=10).contains(&x) && (10..=12).contains(&y) {
+                if layer == tex::RED_MUSHROOM {
+                    shade(if r < 0.25 { [238, 220, 192] } else { [183, 43, 32] }, 0.9 + r * 0.15)
+                } else {
+                    shade([150, 108, 72], 0.8 + r * 0.3)
+                }
+            } else {
+                [0; 4]
+            }
+        }
         tex::STONE => {
             let streak = rnd(layer, x / 3, y, 5) < 0.12;
             shade(STONE, if streak { 0.82 } else { 0.9 + r * 0.18 })
@@ -77,11 +180,20 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let c = noisy(layer, x, y, [44, 90, 200], 0.08);
             [c[0], c[1], c[2], 170]
         }
-        tex::LOG_SIDE | tex::SPRUCE_LOG_SIDE | tex::JUNGLE_LOG_SIDE | tex::ACACIA_LOG_SIDE => {
+        tex::LOG_SIDE
+        | tex::SPRUCE_LOG_SIDE
+        | tex::JUNGLE_LOG_SIDE
+        | tex::ACACIA_LOG_SIDE
+        | tex::DARK_OAK_LOG_SIDE
+        | tex::MANGROVE_LOG_SIDE
+        | tex::CHERRY_LOG_SIDE => {
             let bark = match layer {
                 tex::LOG_SIDE => [104, 82, 51],
                 tex::SPRUCE_LOG_SIDE => [70, 50, 30],
                 tex::JUNGLE_LOG_SIDE => [88, 70, 32],
+                tex::DARK_OAK_LOG_SIDE => [58, 40, 22],
+                tex::MANGROVE_LOG_SIDE => [118, 54, 49],
+                tex::CHERRY_LOG_SIDE => [54, 32, 40],
                 _ => [104, 96, 88],
             };
             let stripe = (x + (rnd(layer, 0, y / 4, 3) * 2.0) as usize).is_multiple_of(4);
@@ -96,12 +208,22 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let mark = rnd(layer, x / 3, y, 4) < 0.16 && rnd(layer, x, y, 5) < 0.85;
             if mark { shade([50, 46, 40], 0.8 + r * 0.3) } else { shade([216, 214, 204], 0.9 + r * 0.12) }
         }
-        tex::LOG_TOP | tex::SPRUCE_LOG_TOP | tex::BIRCH_LOG_TOP | tex::JUNGLE_LOG_TOP | tex::ACACIA_LOG_TOP => {
+        tex::LOG_TOP
+        | tex::SPRUCE_LOG_TOP
+        | tex::BIRCH_LOG_TOP
+        | tex::JUNGLE_LOG_TOP
+        | tex::ACACIA_LOG_TOP
+        | tex::DARK_OAK_LOG_TOP
+        | tex::MANGROVE_LOG_TOP
+        | tex::CHERRY_LOG_TOP => {
             let (bark, light, dark) = match layer {
                 tex::LOG_TOP => ([104, 82, 51], [176, 142, 88], [150, 118, 70]),
                 tex::SPRUCE_LOG_TOP => ([70, 50, 30], [128, 96, 58], [106, 78, 46]),
                 tex::BIRCH_LOG_TOP => ([216, 214, 204], [200, 182, 128], [178, 160, 108]),
                 tex::JUNGLE_LOG_TOP => ([88, 70, 32], [170, 124, 86], [146, 104, 70]),
+                tex::DARK_OAK_LOG_TOP => ([58, 40, 22], [96, 70, 42], [72, 50, 28]),
+                tex::MANGROVE_LOG_TOP => ([118, 54, 49], [150, 90, 74], [120, 68, 58]),
+                tex::CHERRY_LOG_TOP => ([54, 32, 40], [214, 170, 164], [186, 140, 138]),
                 _ => ([104, 96, 88], [176, 96, 54], [150, 80, 44]),
             };
             let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
@@ -123,12 +245,22 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             };
             if rnd(layer, x, y, 11) < holes { [0, 0, 0, 0] } else { shade(base, 0.7 + r * 0.45) }
         }
-        tex::PLANKS | tex::SPRUCE_PLANKS | tex::BIRCH_PLANKS | tex::JUNGLE_PLANKS | tex::ACACIA_PLANKS => {
+        tex::PLANKS
+        | tex::SPRUCE_PLANKS
+        | tex::BIRCH_PLANKS
+        | tex::JUNGLE_PLANKS
+        | tex::ACACIA_PLANKS
+        | tex::DARK_OAK_PLANKS
+        | tex::MANGROVE_PLANKS
+        | tex::CHERRY_PLANKS => {
             let colour = match layer {
                 tex::PLANKS => [162, 130, 78],
                 tex::SPRUCE_PLANKS => [114, 84, 50],
                 tex::BIRCH_PLANKS => [196, 180, 124],
                 tex::JUNGLE_PLANKS => [160, 114, 80],
+                tex::DARK_OAK_PLANKS => [66, 43, 20],
+                tex::MANGROVE_PLANKS => [117, 54, 48],
+                tex::CHERRY_PLANKS => [226, 178, 172],
                 _ => [170, 92, 50],
             };
             let board = y / 4;
@@ -137,7 +269,7 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             shade(colour, if seam { 0.68 } else { 0.92 + rnd(layer, x, board, 2) * 0.12 })
         }
         tex::SKIN => noisy(layer, x, y, [196, 141, 110], 0.05),
-        l if (tex::FIRE_0..tex::FIRE_0 + tex::FIRE_FRAMES).contains(&l) => {
+        l if (tex::FIRE_0..tex::FIRE_0 + tex::FIRE_FRAMES as u16).contains(&l) => {
             // Pixel flames rise from a solid base into separate tongues.
             // Each frame changes the tips and hot inner cores.
             let frame = (l - tex::FIRE_0) as usize;
@@ -163,26 +295,28 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             }
         }
         tex::DOOR_TOP | tex::DOOR_BOTTOM => {
-            // A frame of vertical boards around raised panels; the upper
-            // half has two windows.
-            let frame =
-                x <= 1 || x >= 14 || (layer == tex::DOOR_TOP && y <= 1) || (layer == tex::DOOR_BOTTOM && y >= 14);
-            let window = layer == tex::DOOR_TOP && (3..=6).contains(&y) && matches!(x, 3..=6 | 9..=12);
-            let rail = y == 8 || y == 9;
-            let inset = matches!(x, 3 | 12) || (layer == tex::DOOR_BOTTOM && matches!(y, 2 | 12));
-            if window {
-                [0, 0, 0, 0]
-            } else {
-                let board = 0.92 + rnd(layer, x / 3, 0, 5) * 0.12 + r * 0.05;
-                let f = if frame || rail {
-                    0.8
-                } else if inset {
-                    0.7
-                } else {
-                    board
-                };
-                shade([150, 116, 68], f)
-            }
+            wooden_door(layer, x, y, r, [150, 116, 68], tex::DOOR_TOP, tex::DOOR_BOTTOM)
+        }
+        tex::DARK_OAK_DOOR_TOP | tex::DARK_OAK_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [66, 43, 20], tex::DARK_OAK_DOOR_TOP, tex::DARK_OAK_DOOR_BOTTOM)
+        }
+        tex::SPRUCE_DOOR_TOP | tex::SPRUCE_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [114, 84, 50], tex::SPRUCE_DOOR_TOP, tex::SPRUCE_DOOR_BOTTOM)
+        }
+        tex::BIRCH_DOOR_TOP | tex::BIRCH_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [196, 180, 124], tex::BIRCH_DOOR_TOP, tex::BIRCH_DOOR_BOTTOM)
+        }
+        tex::JUNGLE_DOOR_TOP | tex::JUNGLE_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [160, 114, 80], tex::JUNGLE_DOOR_TOP, tex::JUNGLE_DOOR_BOTTOM)
+        }
+        tex::ACACIA_DOOR_TOP | tex::ACACIA_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [170, 92, 50], tex::ACACIA_DOOR_TOP, tex::ACACIA_DOOR_BOTTOM)
+        }
+        tex::MANGROVE_DOOR_TOP | tex::MANGROVE_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [117, 54, 48], tex::MANGROVE_DOOR_TOP, tex::MANGROVE_DOOR_BOTTOM)
+        }
+        tex::CHERRY_DOOR_TOP | tex::CHERRY_DOOR_BOTTOM => {
+            wooden_door(layer, x, y, r, [226, 178, 172], tex::CHERRY_DOOR_TOP, tex::CHERRY_DOOR_BOTTOM)
         }
         tex::RED_SAND => noisy(layer, x, y, [190, 102, 36], 0.07),
         l if (tex::TERRACOTTA..tex::TERRACOTTA + 7).contains(&l) => {
@@ -277,6 +411,11 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let (d1, d2, i) = voronoi(x, y, &pts);
             if d2 - d1 < 1.1 { shade(STONE, 0.55) } else { shade(STONE, 0.8 + rnd(layer, i, 0, 4) * 0.35 - d1 * 0.03) }
         }
+        tex::MOSSY_COBBLESTONE => {
+            let stone = pixel(tex::COBBLESTONE, x, y);
+            let moss = rnd(layer, x / 2, y / 2, 1) * 0.7 + rnd(layer, x, y, 2) * 0.3;
+            if moss > 0.47 && y > 2 { shade([65, 105, 45], 0.75 + r * 0.35) } else { stone }
+        }
         tex::GLASS => {
             let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
             let streak = (x + y == 9 || x + y == 10) && (3..8).contains(&x);
@@ -294,18 +433,65 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             shade(c, 0.7 + r * 0.45)
         }
         tex::SNOW => noisy(layer, x, y, [240, 245, 252], 0.03),
-        tex::COAL_ORE | tex::IRON_ORE | tex::GOLD_ORE | tex::DIAMOND_ORE | tex::LAPIS_ORE => {
+        tex::COAL_ORE
+        | tex::IRON_ORE
+        | tex::GOLD_ORE
+        | tex::DIAMOND_ORE
+        | tex::LAPIS_ORE
+        | tex::COPPER_ORE
+        | tex::REDSTONE_ORE
+        | tex::EMERALD_ORE
+        | tex::DEEPSLATE_COAL_ORE
+        | tex::DEEPSLATE_IRON_ORE
+        | tex::DEEPSLATE_COPPER_ORE
+        | tex::DEEPSLATE_GOLD_ORE
+        | tex::DEEPSLATE_REDSTONE_ORE
+        | tex::DEEPSLATE_EMERALD_ORE
+        | tex::DEEPSLATE_LAPIS_ORE
+        | tex::DEEPSLATE_DIAMOND_ORE => {
             let ore = match layer {
-                tex::COAL_ORE => [40, 40, 40],
-                tex::IRON_ORE => [216, 175, 147],
-                tex::GOLD_ORE => [250, 220, 70],
-                tex::LAPIS_ORE => [30, 70, 185],
+                tex::COAL_ORE | tex::DEEPSLATE_COAL_ORE => [40, 40, 40],
+                tex::IRON_ORE | tex::DEEPSLATE_IRON_ORE => [216, 175, 147],
+                tex::GOLD_ORE | tex::DEEPSLATE_GOLD_ORE => [250, 220, 70],
+                tex::LAPIS_ORE | tex::DEEPSLATE_LAPIS_ORE => [30, 70, 185],
+                tex::COPPER_ORE | tex::DEEPSLATE_COPPER_ORE => [184, 99, 62],
+                tex::REDSTONE_ORE | tex::DEEPSLATE_REDSTONE_ORE => [176, 16, 16],
+                tex::EMERALD_ORE | tex::DEEPSLATE_EMERALD_ORE => [20, 168, 72],
                 _ => [95, 230, 225],
             };
+            let deep = matches!(
+                layer,
+                tex::DEEPSLATE_COAL_ORE
+                    | tex::DEEPSLATE_IRON_ORE
+                    | tex::DEEPSLATE_COPPER_ORE
+                    | tex::DEEPSLATE_GOLD_ORE
+                    | tex::DEEPSLATE_REDSTONE_ORE
+                    | tex::DEEPSLATE_EMERALD_ORE
+                    | tex::DEEPSLATE_LAPIS_ORE
+                    | tex::DEEPSLATE_DIAMOND_ORE
+            );
             let pts = points(layer, 5);
             let (d1, _, _) = voronoi(x, y, &pts);
-            if d1 < 1.5 { shade(ore, 0.85 + r * 0.25) } else { pixel(tex::STONE, x, y) }
+            if d1 < 1.5 {
+                shade(ore, 0.85 + r * 0.25)
+            } else if deep {
+                pixel(tex::DEEPSLATE, x, y)
+            } else {
+                pixel(tex::STONE, x, y)
+            }
         }
+        tex::GRANITE
+        | tex::POLISHED_GRANITE
+        | tex::DIORITE
+        | tex::POLISHED_DIORITE
+        | tex::ANDESITE
+        | tex::POLISHED_ANDESITE
+        | tex::TUFF
+        | tex::CALCITE
+        | tex::SMOOTH_STONE
+        | tex::DEEPSLATE
+        | tex::COBBLED_DEEPSLATE
+        | tex::POLISHED_DEEPSLATE => rock(layer, x, y, r),
         tex::CACTUS_SIDE => {
             let line = x % 4 == 1;
             let spike = rnd(layer, x, y, 8) < 0.05;
@@ -388,11 +574,6 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             let heat = edge * 0.7 + r * 0.3;
             let c = [255, (90.0 + heat * 140.0) as u8, (20.0 + heat * 40.0) as u8];
             shade(c, 0.75 + heat * 0.3)
-        }
-        tex::WOOL => {
-            // Soft weave: alternating diagonal ridges.
-            let ridge = (x + y) % 4 < 2;
-            shade([234, 234, 228], if ridge { 0.96 + r * 0.06 } else { 0.86 + r * 0.06 })
         }
         tex::BED_TOP_FOOT => {
             // Red blanket with a lighter hem around the edge.
@@ -506,8 +687,33 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             };
             shade([134, 96, 64], furrow * wet)
         }
-        l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat(l - tex::WHEAT_0, x, y),
-        l if (tex::NETHER_WART_0..tex::NETHER_WART_0 + 3).contains(&l) => nether_wart(l - tex::NETHER_WART_0, x, y),
+        l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat((l - tex::WHEAT_0) as u8, x, y),
+        l if (tex::CARROT_0..tex::CARROT_0 + 8).contains(&l) => {
+            crop_cross((l - tex::CARROT_0) as u8, x, y, [72, 150, 40], [214, 112, 28])
+        }
+        l if (tex::POTATO_0..tex::POTATO_0 + 8).contains(&l) => {
+            crop_cross((l - tex::POTATO_0) as u8, x, y, [64, 140, 36], [168, 124, 64])
+        }
+        tex::CAKE_TOP => {
+            if !(1..15).contains(&x) || !(1..15).contains(&y) {
+                [0, 0, 0, 0]
+            } else if (x + y).is_multiple_of(6) {
+                shade([196, 48, 42], 1.0)
+            } else {
+                shade([248, 248, 244], 0.95 + r * 0.08)
+            }
+        }
+        tex::CAKE_SIDE => {
+            if y < 7 {
+                shade([244, 244, 240], 1.0)
+            } else {
+                shade([156, 96, 52], 0.9 + r * 0.1)
+            }
+        }
+        tex::CAKE_BOTTOM => shade([140, 84, 44], 0.9 + r * 0.1),
+        l if (tex::NETHER_WART_0..tex::NETHER_WART_0 + 3).contains(&l) => {
+            nether_wart((l - tex::NETHER_WART_0) as u8, x, y)
+        }
         tex::OAK_SAPLING | tex::SPRUCE_SAPLING | tex::BIRCH_SAPLING | tex::JUNGLE_SAPLING | tex::ACACIA_SAPLING => {
             let (px, py) = (x as f32 - 7.5, y as f32);
             let stem = (x == 7 || x == 8) && y >= 10;
@@ -568,6 +774,9 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
             }
         }
         tex::STONE_BRICKS | tex::MOSSY_STONE_BRICKS | tex::CRACKED_STONE_BRICKS => stone_bricks(layer, x, y, r),
+        tex::RAIL | tex::RAIL_EW | tex::RAIL_SE | tex::RAIL_SW | tex::RAIL_NW | tex::RAIL_NE => {
+            rail_pixel(layer, x, y, r)
+        }
         tex::IRON_BARS => {
             // Vertical bars with a cross rail top and bottom, see-through
             // in between.
@@ -639,6 +848,60 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 shade([8, 12, 18], 0.8 + r * 0.4)
             }
         }
+        tex::BLACKSTONE
+        | tex::POLISHED_BLACKSTONE
+        | tex::POLISHED_BLACKSTONE_BRICKS
+        | tex::CRACKED_POLISHED_BLACKSTONE_BRICKS
+        | tex::CHISELED_POLISHED_BLACKSTONE
+        | tex::GILDED_BLACKSTONE => {
+            let brick = matches!(layer, tex::POLISHED_BLACKSTONE_BRICKS | tex::CRACKED_POLISHED_BLACKSTONE_BRICKS);
+            let mortar = brick && (y.is_multiple_of(8) || (x + if y < 8 { 0 } else { 8 }).is_multiple_of(16));
+            let crack = layer == tex::CRACKED_POLISHED_BLACKSTONE_BRICKS && (x + y * 3).is_multiple_of(13);
+            let carving = layer == tex::CHISELED_POLISHED_BLACKSTONE
+                && ((x == 3 || x == 12) && (3..13).contains(&y)
+                    || (y == 3 || y == 12) && (3..13).contains(&x)
+                    || (y == 7 || y == 9) && (6..10).contains(&x));
+            let gold = layer == tex::GILDED_BLACKSTONE && rnd(layer, x / 2, y / 2, 5) > 0.82;
+            let smooth = layer == tex::POLISHED_BLACKSTONE;
+            if gold {
+                noisy(layer, x, y, [204, 158, 40], 0.25)
+            } else {
+                noisy(
+                    layer,
+                    x,
+                    y,
+                    if mortar || crack || carving {
+                        [22, 20, 26]
+                    } else if smooth {
+                        [56, 51, 61]
+                    } else {
+                        [48, 43, 52]
+                    },
+                    if smooth { 0.12 } else { 0.28 },
+                )
+            }
+        }
+        tex::BASALT_SIDE | tex::POLISHED_BASALT_SIDE => {
+            let streak = rnd(layer, x, 0, 5);
+            let polished = layer == tex::POLISHED_BASALT_SIDE;
+            shade([91, 88, 94], 0.55 + streak * 0.6 + r * if polished { 0.12 } else { 0.25 })
+        }
+        tex::BASALT_TOP | tex::POLISHED_BASALT_TOP => {
+            let ring = x.abs_diff(7).max(y.abs_diff(7));
+            shade([91, 88, 94], if ring.is_multiple_of(3) { 0.6 } else { 0.85 + r * 0.25 })
+        }
+        tex::MAGMA => {
+            let (d1, d2, _) = voronoi(x, y, &[(2.0, 3.0), (10.0, 2.0), (6.0, 10.0), (14.0, 12.0)]);
+            noisy(layer, x, y, if d2 - d1 < 1.1 { [236, 111, 24] } else { [72, 32, 27] }, 0.25)
+        }
+        tex::GOLD_BLOCK => {
+            let rim = x == 0 || y == 0 || x == 15 || y == 15;
+            shade([246, 207, 56], if rim { 0.75 } else { 0.93 + r * 0.12 })
+        }
+        tex::CHAIN => {
+            // Box geometry provides the three-block axis; dark slots suggest linked iron.
+            noisy(layer, x, y, if y % 8 == 3 || y % 8 == 4 { [40, 44, 53] } else { [112, 119, 133] }, 0.12)
+        }
         tex::LAPIS_BLOCK => {
             // Deep blue with lighter flecks and a darker rim.
             let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
@@ -674,6 +937,50 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                     1.35
                 } else {
                     0.92 + r * 0.16
+                },
+            )
+        }
+        tex::SMITHING_TOP => {
+            // Java's dark slate-blue iron plate: a lighter rim, a darker
+            // ring inside it and a mottled, scuffed middle.
+            let edge = x.min(y).min(SIZE - 1 - x).min(SIZE - 1 - y);
+            match edge {
+                0 => noisy(layer, x, y, [72, 74, 93], 0.1),
+                1 if rnd(layer, x, y, 31) < 0.6 => shade([57, 59, 72], 0.95 + r * 0.1),
+                _ if rnd(layer, x, y, 32) < 0.12 => shade([38, 39, 45], 1.0),
+                _ => {
+                    shade(if rnd(layer, x / 2, y / 2, 33) < 0.5 { [54, 55, 63] } else { [47, 48, 55] }, 0.94 + r * 0.12)
+                }
+            }
+        }
+        tex::SMITHING_FRONT | tex::SMITHING_SIDE | tex::SMITHING_BOTTOM => smithing_wood(layer, x, y, r),
+        tex::RAW_IRON_BLOCK | tex::RAW_GOLD_BLOCK | tex::RAW_COPPER_BLOCK => {
+            // Chunks of raw metal, darker in the cracks between them.
+            let colour = match layer {
+                tex::RAW_GOLD_BLOCK => [232, 188, 62],
+                tex::RAW_COPPER_BLOCK => [176, 98, 64],
+                _ => [198, 148, 118],
+            };
+            let pts = points(layer, 8);
+            let (d1, d2, i) = voronoi(x, y, &pts);
+            let crack = d2 - d1 < 1.0;
+            shade(colour, if crack { 0.62 } else { 0.86 + rnd(layer, i, 0, 4) * 0.22 + r * 0.06 })
+        }
+        tex::COPPER_BLOCK => {
+            let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+            shade([196, 112, 76], if rim { 0.75 } else { 0.94 + r * 0.08 })
+        }
+        tex::EMERALD_BLOCK => {
+            let rim = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
+            let facet = (x / 4 + y / 4).is_multiple_of(2);
+            shade(
+                [24, 176, 78],
+                if rim {
+                    0.7
+                } else if facet {
+                    1.02 + r * 0.06
+                } else {
+                    0.88 + r * 0.06
                 },
             )
         }
@@ -824,12 +1131,184 @@ pub(super) fn pixel(layer: u8, x: usize, y: usize) -> Rgba {
                 [0, 0, 0, 0]
             }
         }
-        l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES).contains(&l) => crack(l - tex::CRACK_0, x, y),
+        l if (tex::CRACK_0..tex::CRACK_0 + tex::CRACK_STAGES as u16).contains(&l) => {
+            crack((l - tex::CRACK_0) as u8, x, y)
+        }
         l if let Some((base, group)) = tex::untinted(l) => tint_foliage(pixel(base, x, y), group),
         _ => {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
         }
+    }
+}
+
+fn wooden_door(layer: u16, x: usize, y: usize, r: f32, colour: [u8; 3], top: u16, bottom: u16) -> Rgba {
+    let frame = x <= 1 || x >= 14 || (layer == top && y <= 1) || (layer == bottom && y >= 14);
+    let window = layer == top && (3..=6).contains(&y) && matches!(x, 3..=6 | 9..=12);
+    let rail = y == 8 || y == 9;
+    let inset = matches!(x, 3 | 12) || (layer == bottom && matches!(y, 2 | 12));
+    if window {
+        [0, 0, 0, 0]
+    } else {
+        let board = 0.92 + rnd(layer, x / 3, 0, 5) * 0.12 + r * 0.05;
+        let f = if frame || rail {
+            0.8
+        } else if inset {
+            0.7
+        } else {
+            board
+        };
+        shade(colour, f)
+    }
+}
+
+/// Stone variants in the same noisy style as [`pixel`]'s stone and cobble.
+fn rock(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
+    match layer {
+        tex::GRANITE => {
+            let c = if rnd(layer, x, y, 2) < 0.22 {
+                [112, 68, 58]
+            } else if rnd(layer, x / 2, y / 2, 3) < 0.35 {
+                [176, 128, 108]
+            } else {
+                [149, 103, 86]
+            };
+            shade(c, 0.9 + r * 0.16)
+        }
+        tex::POLISHED_GRANITE => {
+            let blot = rnd(layer, x / 4, y / 4, 4);
+            shade([168, 114, 98], 0.9 + blot * 0.12 + r * 0.04)
+        }
+        tex::DIORITE => {
+            let c = if rnd(layer, x, y, 2) < 0.08 {
+                [60, 60, 64]
+            } else if rnd(layer, x, y, 3) < 0.15 {
+                [170, 170, 174]
+            } else {
+                [224, 224, 226]
+            };
+            shade(c, 0.94 + r * 0.08)
+        }
+        tex::POLISHED_DIORITE => shade([232, 232, 234], 0.94 + rnd(layer, x / 4, y / 4, 4) * 0.08),
+        tex::ANDESITE => {
+            let c = if rnd(layer, x, y, 2) < 0.2 { [96, 96, 98] } else { [136, 136, 137] };
+            shade(c, 0.88 + r * 0.18)
+        }
+        tex::POLISHED_ANDESITE => shade([148, 148, 150], 0.92 + rnd(layer, x / 4, y / 4, 4) * 0.1),
+        tex::TUFF => {
+            let pit = rnd(layer, x, y, 5) < 0.12;
+            shade(if pit { [72, 74, 66] } else { [108, 109, 102] }, if pit { 0.7 } else { 0.9 + r * 0.16 })
+        }
+        tex::CALCITE => {
+            let crack = (x + y).is_multiple_of(7) && rnd(layer, x, y, 6) < 0.5;
+            shade(if crack { [186, 186, 180] } else { [223, 224, 216] }, 0.94 + r * 0.08)
+        }
+        tex::SMOOTH_STONE => shade([158, 158, 158], 0.96 + r * 0.06),
+        tex::DEEPSLATE => {
+            let band = y.is_multiple_of(4);
+            let c = if band { [58, 58, 64] } else { [80, 80, 86] };
+            shade(c, 0.88 + r * 0.16)
+        }
+        tex::COBBLED_DEEPSLATE => {
+            let pts = points(layer, 7);
+            let (d1, d2, i) = voronoi(x, y, &pts);
+            let c = [72, 72, 78];
+            if d2 - d1 < 1.1 { shade(c, 0.45) } else { shade(c, 0.75 + rnd(layer, i, 0, 4) * 0.3) }
+        }
+        _ => {
+            // Polished deepslate: dark tiles.
+            let edge = x.is_multiple_of(8) || y.is_multiple_of(4);
+            shade([64, 64, 70], if edge { 0.7 } else { 0.95 + r * 0.08 })
+        }
+    }
+}
+
+fn rail_pixel(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
+    let iron = |lit: bool| shade([148, 148, 156], if lit { 1.18 } else { 0.78 } * (0.92 + r * 0.12));
+    let wood = shade([110, 78, 46], 0.88 + r * 0.18);
+    let ns = |x: usize, y: usize| {
+        let bar = x == 4 || x == 5 || x == 10 || x == 11;
+        let sleeper = y % 4 <= 1 && (3..=12).contains(&x);
+        (bar, sleeper, x == 4 || x == 10)
+    };
+    let ew = |x: usize, y: usize| {
+        let bar = y == 4 || y == 5 || y == 10 || y == 11;
+        let sleeper = x % 4 <= 1 && (3..=12).contains(&y);
+        (bar, sleeper, y == 4 || y == 10)
+    };
+    let (bar, sleeper, lit) = match layer {
+        tex::RAIL => ns(x, y),
+        tex::RAIL_EW => ew(x, y),
+        tex::RAIL_SE => {
+            let n = ns(x, y);
+            let e = ew(x, y);
+            ((n.0 && y >= 7) || (e.0 && x >= 7), (n.1 && y >= 7) || (e.1 && x >= 7), n.2 || e.2)
+        }
+        tex::RAIL_SW => {
+            let n = ns(x, y);
+            let e = ew(x, y);
+            ((n.0 && y >= 7) || (e.0 && x <= 8), (n.1 && y >= 7) || (e.1 && x <= 8), n.2 || e.2)
+        }
+        tex::RAIL_NW => {
+            let n = ns(x, y);
+            let e = ew(x, y);
+            ((n.0 && y <= 8) || (e.0 && x <= 8), (n.1 && y <= 8) || (e.1 && x <= 8), n.2 || e.2)
+        }
+        _ => {
+            let n = ns(x, y);
+            let e = ew(x, y);
+            ((n.0 && y <= 8) || (e.0 && x >= 7), (n.1 && y <= 8) || (e.1 && x >= 7), n.2 || e.2)
+        }
+    };
+    if bar {
+        iron(lit)
+    } else if sleeper {
+        wood
+    } else {
+        [0, 0, 0, 0]
+    }
+}
+
+/// The smithing table's dark wood: Java's deep red planks (a lit row and a
+/// dark seam every four pixels). The front and sides sit under a three-row
+/// iron band and between near-black legs, the front showing tongs and the
+/// sides a hammer; the bottom is planks with black corners.
+fn smithing_wood(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
+    const IRON: [u8; 3] = [47, 48, 55];
+    const HANDLE: [u8; 3] = [140, 86, 60];
+    let plank = |y: usize| match y % 4 {
+        2 => shade([95, 39, 33], 0.92 + r * 0.14),
+        3 => shade([47, 20, 17], 0.9 + r * 0.15),
+        _ => shade(if rnd(layer, x / 3, y, 34) < 0.5 { [74, 31, 26] } else { [66, 28, 23] }, 0.95 + r * 0.1),
+    };
+    if layer == tex::SMITHING_BOTTOM {
+        let corner = !(2..=SIZE - 3).contains(&x) && !(2..=SIZE - 3).contains(&y);
+        let edge = x.min(y).min(SIZE - 1 - x).min(SIZE - 1 - y);
+        return if corner {
+            shade([26, 27, 30], 1.0)
+        } else if edge == 1 {
+            shade([47, 20, 17], 0.95 + r * 0.1)
+        } else if edge == 2 {
+            shade([82, 34, 29], 0.92 + r * 0.14)
+        } else {
+            shade([66, 28, 23], 0.95 + r * 0.08)
+        };
+    }
+    match (x, y) {
+        (_, 0..=2) => {
+            let c = if rnd(layer, x, y, 35) < 0.3 { [38, 39, 45] } else { IRON };
+            shade(c, 0.95 + r * 0.2)
+        }
+        (_, 3) => shade([17, 18, 19], 1.0),
+        (0 | 15, _) => shade([40, 41, 50], 0.85 + r * 0.25),
+        (1 | 14, _) => shade([24, 25, 28], 0.9 + r * 0.15),
+        // Tongs: two light handles meeting at an iron jaw.
+        (3 | 5, 8..=11) if layer == tex::SMITHING_FRONT => shade(HANDLE, 0.9 + r * 0.2),
+        (3..=5, 7) if layer == tex::SMITHING_FRONT => shade([73, 75, 95], 1.0),
+        // Hammer: an iron head over a wooden handle.
+        (3..=7, 8) if layer == tex::SMITHING_SIDE => shade([35, 37, 51], 0.95 + r * 0.15),
+        (5, 9..=13) if layer == tex::SMITHING_SIDE => shade(HANDLE, 0.9 + r * 0.2),
+        _ => plank(y),
     }
 }
 
@@ -872,12 +1351,21 @@ fn wheat(stage: u8, x: usize, y: usize) -> Rgba {
         let notch = (x + y).is_multiple_of(2);
         return shade([224, 190, 84], if notch { 0.82 } else { 1.05 });
     }
-    shade(c, 0.85 + rnd(tex::WHEAT_0 + stage, x, y, 9) * 0.25)
+    shade(c, 0.85 + rnd(tex::WHEAT_0 + stage as u16, x, y, 9) * 0.25)
+}
+
+/// A wheat-shaped crop with a coloured top once it is nearly ripe.
+fn crop_cross(stage: u8, x: usize, y: usize, leaf: [u8; 3], fruit: [u8; 3]) -> Rgba {
+    let grown = wheat(stage, x, y);
+    if grown[3] == 0 {
+        return grown;
+    }
+    if stage >= 4 && y + (stage as usize) < 12 { shade(fruit, 1.0) } else { shade(leaf, 0.95) }
 }
 
 /// Stone bricks, two courses with staggered joints and bevelled edges;
 /// mossy ones are overgrown in patches and cracked ones split.
-fn stone_bricks(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
+fn stone_bricks(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
     let course = y / 8;
     let joint = if course == 0 { 0 } else { 8 };
     let (lx, ly) = ((x + 16 - joint) % 16, y % 8);
@@ -918,7 +1406,7 @@ fn end_eye(x: usize, y: usize, r: f32) -> Rgba {
 /// once ripe, carry knobbly bulbs.
 fn nether_wart(stage: u8, x: usize, y: usize) -> Rgba {
     const STALKS: [usize; 4] = [2, 6, 10, 13];
-    let r = rnd(tex::NETHER_WART_0 + stage, x, y, 11);
+    let r = rnd(tex::NETHER_WART_0 + stage as u16, x, y, 11);
     let width = if stage == 0 { 1 } else { 2 };
     // Ripe bulbs swell a pixel past the stalk on either side.
     let reach = if stage == 2 { 1 } else { 0 };
@@ -939,7 +1427,7 @@ fn nether_wart(stage: u8, x: usize, y: usize) -> Rgba {
     if tip { shade([164, 30, 38], 0.85 + r * 0.35) } else { shade([108, 18, 28], 0.8 + r * 0.3) }
 }
 
-fn flower(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
+fn flower(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
     let (dx, dy) = (x as f32 - 7.5, y as f32 - 5.0);
     let d = (dx * dx + dy * dy * 1.3).sqrt();
     let (petal, centre) =
@@ -959,7 +1447,7 @@ fn flower(layer: u8, x: usize, y: usize, r: f32) -> Rgba {
 
 /// Hunger icon: a drumstick (meat upper left, bone lower right); full,
 /// half (left side) or an empty outline.
-fn drumstick(layer: u8, x: usize, y: usize) -> Rgba {
+fn drumstick(layer: u16, x: usize, y: usize) -> Rgba {
     let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
     let meat = |px: f32, py: f32| (px - 6.5).powi(2) + (py - 6.5).powi(2) * 1.2 < 22.0;
     let bone = |px: f32, py: f32| {
@@ -991,7 +1479,7 @@ fn drumstick(layer: u8, x: usize, y: usize) -> Rgba {
 }
 
 /// Heart icon: full, half (left side filled) or empty outline.
-fn heart(layer: u8, x: usize, y: usize) -> Rgba {
+fn heart(layer: u16, x: usize, y: usize) -> Rgba {
     // Implicit heart curve (x²+y²-1)³ - x²y³ <= 0, mapped onto the tile.
     let inside = |px: f32, py: f32| {
         let (hx, hy) = ((px - 7.5) / 6.2, (8.0 - py) / 6.2);
@@ -1055,27 +1543,47 @@ fn crack(stage: u8, x: usize, y: usize) -> Rgba {
 pub fn texel(layer: u16, x: usize, y: usize) -> Rgba {
     use crate::simulation::effects::Effect;
     let icons = crate::item::icon_count() as u16;
+    let clock = icons + crate::item::COMPASS_FRAMES;
+    let effects = clock + crate::item::CLOCK_FRAMES;
     match tex::item_index(layer) {
-        Some(index) if index >= icons => Effect::ALL
-            .get((index - icons) as usize)
+        Some(index) if index >= effects => Effect::ALL
+            .get((index - effects) as usize)
             .map_or([0, 0, 0, 0], |&e| super::item_sprites::effect_pixel(e, x, y)),
+        Some(index) if index >= clock => super::item_sprites::compass_face(
+            index - clock,
+            crate::item::CLOCK_FRAMES,
+            x as i32,
+            y as i32,
+            [236, 214, 150],
+            [250, 196, 48],
+        )
+        .unwrap_or([0, 0, 0, 0]),
+        Some(index) if index >= icons => super::item_sprites::compass_face(
+            index - icons,
+            crate::item::COMPASS_FRAMES,
+            x as i32,
+            y as i32,
+            [62, 86, 112],
+            [176, 40, 36],
+        )
+        .unwrap_or([0, 0, 0, 0]),
         Some(index) => {
             crate::item::sprite_for_layer(index).map_or([0, 0, 0, 0], |s| super::item_sprites::pixel(s, x, y))
         }
-        None => pixel(layer as u8, x, y),
+        None => pixel(layer, x, y),
     }
 }
 
 /// RGBA8 data for every mip level of the block texture array; each level
 /// contains all layers back to back, ready for `write_texture`.
 pub fn generate_mips() -> Vec<Vec<u8>> {
-    mips_of(tex::COUNT as usize, |l, x, y| pixel(l as u8, x, y))
+    mips_of(tex::COUNT as usize, |l, x, y| pixel(l as u16, x, y))
 }
 
-/// Layers of the item icon array: every item's icon, then the status
-/// effect icons.
+/// Layers of the item icon array: every item's icon, the compass and clock
+/// frames, then the status effect icons.
 pub fn item_layers() -> u32 {
-    crate::item::icon_count() + crate::simulation::effects::Effect::ALL.len() as u32
+    crate::item::icon_count() + crate::item::animated_icons() + crate::simulation::effects::Effect::ALL.len() as u32
 }
 
 /// Mip levels of the item icon array (see [`generate_mips`]).
