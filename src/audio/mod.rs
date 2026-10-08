@@ -197,8 +197,11 @@ impl Audio {
             creative,
             underwater: player.head_in_water(world),
             biome: column.biome,
+            nether: world
+                .generator
+                .nether_biome(player.pos.x.floor() as i32, player.pos.z.floor() as i32)
+                .map_or(voxelcraft::music::Situation::NetherWastes, voxelcraft::music::Situation::nether),
             dragon,
-            ..Context::default()
         });
     }
 

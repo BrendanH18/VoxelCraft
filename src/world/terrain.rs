@@ -242,6 +242,21 @@ impl Generator {
         self.end.as_ref()
     }
 
+    /// The Nether biome of column `(x, z)`, when this is a Nether generator.
+    pub fn nether_biome(&self, x: i32, z: i32) -> Option<super::nether_biome::NetherBiome> {
+        Some(self.nether.as_ref()?.biomes.biome(x, z))
+    }
+
+    /// Nearest column of a Nether biome (`/locate biome` in the Nether).
+    pub fn nearest_nether_biome(
+        &self,
+        origin: IVec3,
+        target: super::nether_biome::NetherBiome,
+        max_blocks: i32,
+    ) -> Option<IVec3> {
+        self.nether.as_ref()?.biomes.nearest(origin, target, max_blocks)
+    }
+
     /// Nearest Nether fortress, when this is a Nether generator.
     pub fn nearest_fortress(&self, p: glam::IVec2) -> Option<IVec3> {
         self.nether.as_ref()?.fortresses.nearest(p)

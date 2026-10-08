@@ -82,6 +82,7 @@ pub enum Command {
     },
     LocateStructure(String),
     LocateBiome(Biome),
+    LocateNetherBiome(crate::world::nether_biome::NetherBiome),
     Seed,
     SetWorldSpawn(PositionSpec),
     Dimension(Dimension),
@@ -336,7 +337,8 @@ pub fn tab_complete(input: &str) -> Option<String> {
             partial,
         )?,
         "locate" if stem.len() == 2 && stem[1] == "biome" => {
-            let names: Vec<&str> = Biome::ALL.iter().map(|b| b.name()).collect();
+            let nether = crate::world::nether_biome::NetherBiome::ALL.map(|b| b.name());
+            let names: Vec<&str> = Biome::ALL.iter().map(|b| b.name()).chain(nether).collect();
             complete_options(&names, partial)?
         }
         "gamerule" if stem.len() <= 1 => {
@@ -488,7 +490,10 @@ impl Command {
             ["gamerule", name, value] => Self::GameRule { name: name.to_string(), value: Some(value.to_string()) },
             ["locate", "village"] => Self::LocateStructure("village".into()),
             ["locate", "structure", name] => Self::LocateStructure(name.to_string()),
-            ["locate", "biome", name] => Self::LocateBiome(Biome::from_name(name).ok_or_else(bad)?),
+            ["locate", "biome", name] => match crate::world::nether_biome::NetherBiome::from_name(name) {
+                Some(nether) => Self::LocateNetherBiome(nether),
+                None => Self::LocateBiome(Biome::from_name(name).ok_or_else(bad)?),
+            },
             ["seed"] => Self::Seed,
             ["dimension", name] => Self::Dimension(Dimension::from_name(name).ok_or_else(bad)?),
             ["xp" | "experience", "query"] => Self::XpQuery,
@@ -2083,6 +2088,10 @@ mod tests {
         assert!(matches!(Command::parse("time query daytime").unwrap(), Command::TimeQuery(TimeQuery::Daytime)));
         assert!(matches!(Command::parse("weather thunder").unwrap(), Command::Weather(WeatherKind::Thunder)));
         assert!(matches!(Command::parse("locate biome plains").unwrap(), Command::LocateBiome(Biome::Plains)));
+        assert!(matches!(
+            Command::parse("locate biome minecraft:crimson_forest").unwrap(),
+            Command::LocateNetherBiome(crate::world::nether_biome::NetherBiome::CrimsonForest)
+        ));
         assert!(tab_complete("/gamemode surv").unwrap().starts_with("/gamemode survival"));
     }
 

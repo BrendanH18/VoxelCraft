@@ -69,10 +69,9 @@ returns to menu music. No extra stream is created for additional players.
 The credits screen (`src/app/credits.rs`), shown on the first trip through the
 End exit portal, passes `credits` to `Audio::update_music`, which selects
 `Situation::Credits` on the shared stream and returns to normal selection when
-the screen closes. The Nether generator has no biome identity API yet, so
-Nether Wastes is the active Nether palette; Crimson Forest, Warped Forest, Soul
-Sand Valley and Basalt Deltas are implemented and tested selections awaiting
-that API. Silent biomes can call `set_info(MusicInfo { music: None, volume: 0.0 })`.
+the screen closes. In the Nether, `Generator::nether_biome` at the player's column picks the
+Nether Wastes, Crimson Forest, Warped Forest, Soul Sand Valley or Basalt
+Deltas palette. Silent biomes can call `set_info(MusicInfo { music: None, volume: 0.0 })`.
 
 ## Verification
 

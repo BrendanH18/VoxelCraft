@@ -114,6 +114,18 @@ impl Situation {
         )
     }
 
+    /// Java's `NetherBiomes` background music for each Nether biome.
+    pub fn nether(biome: crate::world::nether_biome::NetherBiome) -> Self {
+        use crate::world::nether_biome::NetherBiome;
+        match biome {
+            NetherBiome::NetherWastes => Self::NetherWastes,
+            NetherBiome::CrimsonForest => Self::CrimsonForest,
+            NetherBiome::WarpedForest => Self::WarpedForest,
+            NetherBiome::SoulSandValley => Self::SoulSandValley,
+            NetherBiome::BasaltDeltas => Self::BasaltDeltas,
+        }
+    }
+
     fn from_id(id: u8) -> Self {
         Self::ALL.get(id as usize).copied().unwrap_or(Self::Menu)
     }

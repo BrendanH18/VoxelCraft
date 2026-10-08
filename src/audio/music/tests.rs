@@ -73,6 +73,9 @@ fn situational_priority_and_underwater_latching() {
         c.nether = s;
         assert_eq!(c.select(Some(Situation::Underwater)), s);
     }
+    for b in crate::world::nether_biome::NetherBiome::ALL {
+        assert_eq!(Situation::nether(b).name(), b.name(), "each Nether biome has its own palette");
+    }
     c.dimension = Dimension::End;
     assert_eq!(c.select(None), Situation::End);
     c.dragon = true;

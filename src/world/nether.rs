@@ -15,6 +15,7 @@ use rustc_hash::FxHashMap;
 use super::block::Block;
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
 use super::fortress::Fortresses;
+use super::nether_biome::NetherBiomeSource;
 use super::noise::{Perlin, hash_f, hash3};
 use super::structure::Rng;
 
@@ -46,6 +47,8 @@ pub struct NetherGen {
     patches: Perlin,
     glow: Perlin,
     pub fortresses: Fortresses,
+    /// Java's multi-noise Nether biomes (see `world::nether_biome`).
+    pub biomes: NetherBiomeSource,
 }
 
 #[inline]
@@ -77,6 +80,7 @@ impl NetherGen {
             patches: p(23),
             glow: p(24),
             fortresses: Fortresses::new(seed),
+            biomes: NetherBiomeSource::new(seed),
         }
     }
 
