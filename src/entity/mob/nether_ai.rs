@@ -138,11 +138,18 @@ impl Mob {
             let sees = hdist <= CROSSBOW_RANGE && line_of_sight(world, eye, aim);
             let n = self.nether.as_mut().unwrap();
             if sees {
+                if n.charge == 0.0 {
+                    n.aim_at = CROSSBOW_CHARGE + rng.range(CROSSBOW_AIM.0, CROSSBOW_AIM.1);
+                }
                 n.charge += dt;
-                if n.charge >= CROSSBOW_CHARGE + rng.range(CROSSBOW_AIM.0, CROSSBOW_AIM.1) {
+                if n.charge >= n.aim_at {
                     n.charge = 0.0;
                     self.attack_anim = 0.35;
-                    events.push(EntityEvent::Shoot { from: eye + dir * 0.5, target: aim });
+                    events.push(EntityEvent::Shoot {
+                        from: eye + dir * 0.5,
+                        target: aim,
+                        cause: "was shot by a piglin",
+                    });
                     events.push(EntityEvent::Sound { sound: MobSound::Bow, pos: eye });
                 }
             } else {
@@ -292,5 +299,62 @@ impl Mob {
             self.vel.y = super::JUMP_VELOCITY;
         }
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::{PlayerId, Target};
+    use crate::physics::test_util::Grid;
+
+    #[test]
+    fn crossbow_samples_one_aim_delay_per_shot_and_keeps_it_when_sight_is_lost() {
+        let mut world = Grid::flat(10);
+        let at = DVec3::new(6.5, 10.0, 0.5);
+        let ctx = Ctx {
+            players: vec![Target::new(PlayerId::HOST, at, true)],
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Nether,
+        };
+        let mut mob = Mob::new(MobKind::Piglin, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        mob.nether.as_mut().unwrap().weapon = Weapon::Crossbow;
+        let mut rng = Rng::new(42);
+        let mut expected = Rng::new(42);
+        let mut events = Vec::new();
+        let delay = CROSSBOW_CHARGE + expected.range(CROSSBOW_AIM.0, CROSSBOW_AIM.1);
+        let dt = 0.05;
+        for _ in 0..30 {
+            mob.nether_attack(Foe::Player(PlayerId::HOST), at, 2.0, dt, &world, &ctx, &mut rng, &mut events);
+        }
+        assert!(events.is_empty(), "still aiming");
+        assert_eq!(mob.nether.as_ref().unwrap().aim_at, delay);
+        assert_eq!(rng.next_f32(), expected.next_f32(), "aiming only draws once");
+
+        let wall = glam::IVec3::new(3, 11, 0);
+        world.set(wall, crate::world::block::Block::STONE);
+        mob.nether_attack(Foe::Player(PlayerId::HOST), at, 2.0, dt, &world, &ctx, &mut rng, &mut events);
+        assert_eq!(mob.nether.as_ref().unwrap().charge, CROSSBOW_CHARGE);
+        assert_eq!(mob.nether.as_ref().unwrap().aim_at, delay, "losing sight keeps this shot's delay");
+        world.set(wall, crate::world::block::Block::AIR);
+        let mut elapsed = CROSSBOW_CHARGE;
+        while events.is_empty() {
+            mob.nether_attack(Foe::Player(PlayerId::HOST), at, 2.0, dt, &world, &ctx, &mut rng, &mut events);
+            elapsed += dt;
+            assert!(elapsed < delay + dt * 2.0, "the shot fires at its sampled threshold");
+        }
+        assert!(elapsed >= delay && elapsed < delay + dt);
+        assert!(matches!(events[0], EntityEvent::Shoot { cause: "was shot by a piglin", .. }));
+        assert_eq!(mob.nether.as_ref().unwrap().charge, 0.0);
+
+        // Movement while sight was lost may use RNG; compare from this point.
+        let mut expected = Rng(rng.0);
+        let next = CROSSBOW_CHARGE + expected.range(CROSSBOW_AIM.0, CROSSBOW_AIM.1);
+        events.clear();
+        mob.nether_attack(Foe::Player(PlayerId::HOST), at, 2.0, dt, &world, &ctx, &mut rng, &mut events);
+        assert_eq!(mob.nether.as_ref().unwrap().aim_at, next, "the next load draws a new delay");
+        assert_eq!(rng.next_f32(), expected.next_f32());
     }
 }

@@ -173,10 +173,11 @@ pub enum EntityEvent {
         sound: MobSound,
         pos: DVec3,
     },
-    /// A skeleton shot at `target` (turned into an arrow internally).
+    /// A mob shot at `target` (turned into an arrow internally).
     Shoot {
         from: DVec3,
         target: DVec3,
+        cause: &'static str,
     },
     /// A blaze or ghast shot a fireball (turned into a projectile internally).
     /// `large` is a ghast fireball: slower, explosive, and punchable.
@@ -206,6 +207,7 @@ pub enum EntityEvent {
         killed: bool,
         burning: bool,
         player_kill: bool,
+        owner: Option<PlayerId>,
     },
     /// Thorns or the environment killed a mob (loot is dropped internally).
     MobKilled {
@@ -804,10 +806,12 @@ impl Entities {
             fight.update(dt, world, ctx, &mut self.rng, &mut events);
         }
 
-        // Skeleton shots become arrows, blaze shots fireballs.
+        // Mob bow/crossbow shots become arrows, blaze shots fireballs.
         for e in &events {
             match *e {
-                EntityEvent::Shoot { from, target } => self.arrows.push(Arrow::aimed(from, target, &mut self.rng)),
+                EntityEvent::Shoot { from, target, cause } => {
+                    self.arrows.push(Arrow::aimed(from, target, cause, &mut self.rng));
+                }
                 EntityEvent::ThrowPotion { from, vel, potion } => {
                     self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
                 }
@@ -852,18 +856,18 @@ impl Entities {
         self.update_eyes(dt, &mut events);
         for e in &events {
             match *e {
-                EntityEvent::MobShot { kind, pos, killed, burning, player_kill } => {
+                EntityEvent::MobShot { kind, pos, killed, burning, player_kill, owner } => {
                     if killed && self.mob_loot {
                         self.drop_loot_with_fire(kind, pos, 0, burning, player_kill);
                     }
                     if kind == MobKind::ZombifiedPiglin {
                         self.anger_piglins(pos);
                     }
-                    if player_kill
+                    if let Some(owner) = owner
                         && let Some(i) =
                             self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.nether.is_some())
                     {
-                        self.nether_hurt_by_player(i);
+                        self.nether_hurt(i, nether::Foe::Player(owner));
                     }
                 }
                 EntityEvent::DragonXp { pos, points } => {
@@ -1615,8 +1619,22 @@ impl Entities {
         pickup: bool,
         enchants: crate::enchant::Enchants,
     ) {
+        self.shoot_enchanted_for(eye, dir, power, pickup, enchants, PlayerId::HOST);
+    }
+
+    /// A bow or crossbow shot retaining the actual player's identity.
+    pub fn shoot_enchanted_for(
+        &mut self,
+        eye: DVec3,
+        dir: DVec3,
+        power: f32,
+        pickup: bool,
+        enchants: crate::enchant::Enchants,
+        owner: PlayerId,
+    ) {
         let mut arrow = Arrow::shot(eye, dir, power, pickup);
         arrow.enchants = enchants;
+        arrow.owner = Some(owner);
         self.arrows.push(arrow);
     }
 
@@ -1637,12 +1655,12 @@ impl Entities {
     /// Player melee hit for `damage` on mob `index`, pushed along `dir`.
     /// Returns the kind of mob if this killed it.
     pub fn attack(&mut self, index: usize, dir: DVec3, damage: f32) -> Option<MobKind> {
-        self.knock(index, dir, damage, 0)
+        self.knock(index, dir, damage, 0, PlayerId::HOST)
     }
 
     /// Hits mob `index` for `damage`, pushing it along `dir` harder for
     /// each `extra` knockback level (Java: 0.4 + 0.5 per level).
-    fn knock(&mut self, index: usize, dir: DVec3, damage: f32, extra: u8) -> Option<MobKind> {
+    fn knock(&mut self, index: usize, dir: DVec3, damage: f32, extra: u8, owner: PlayerId) -> Option<MobKind> {
         let flat = DVec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
         let knockback = flat * 6.0 * (1.0 + 1.25 * extra as f64) + DVec3::Y * 5.0;
         let mob = self.mobs.get_mut(index)?;
@@ -1655,7 +1673,7 @@ impl Entities {
         if kind == MobKind::ZombifiedPiglin {
             self.anger_piglins(pos);
         }
-        self.nether_hurt_by_player(index);
+        self.nether_hurt(index, nether::Foe::Player(owner));
         killed.then_some(kind)
     }
 
@@ -1702,7 +1720,7 @@ impl Entities {
             self.mobs[index].ignite(fire);
         }
         let old_health = self.mobs[index].health;
-        let killed = self.knock(index, dir, damage, knockback);
+        let killed = self.knock(index, dir, damage, knockback, owner);
         if self.mobs[index].health < old_health {
             self.note_villager_hurt(index, owner, killed.is_some());
             if kind == MobKind::IronGolem && !self.mobs[index].built {
@@ -1762,7 +1780,7 @@ impl Entities {
                 if fire > 0.0 {
                     self.mobs[i].ignite(fire);
                 }
-                let killed = self.knock(i, away, damage, 0);
+                let killed = self.knock(i, away, damage, 0, owner);
                 if let Some(kind) = killed {
                     let at = self.mobs[i].pos;
                     self.drop_loot_with_fire(
@@ -2849,7 +2867,12 @@ mod tests {
         assert!(events.iter().any(shot), "{events:?}");
 
         // Arrows that miss stick in the ground.
-        let mut arrow = Arrow::aimed(DVec3::new(0.5, 12.0, 0.5), DVec3::new(6.0, 10.0, 0.5), &mut Rng::new(1));
+        let mut arrow = Arrow::aimed(
+            DVec3::new(0.5, 12.0, 0.5),
+            DVec3::new(6.0, 10.0, 0.5),
+            "was shot by a skeleton",
+            &mut Rng::new(1),
+        );
         let c = ctx(DVec3::new(50.0, 10.0, 0.0));
         for _ in 0..120 {
             arrow.update(1.0 / 60.0, &world, &c, &mut [], None, &mut Rng::new(1), &mut Vec::new());

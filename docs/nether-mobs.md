@@ -46,7 +46,8 @@ zombified piglins' 100 (cap 4 per player). Java's `finalizeSpawn` rolls apply:
 **Hostility.** An adult attacks the nearest visible, targetable player within 16
 blocks who wears no golden armor. One golden piece is enough, as in `isWearingGold`.
 - Swords swing once a second (Java's 20-tick cooldown).
-- Crossbow piglins load for 25 ticks, then wait 1–2 s. They shoot when they can see
+- Crossbow piglins load for 25 ticks, then wait a pause of 1–2 s drawn once per shot.
+  They shoot when they can see
   the target within 8 blocks and back away inside 5 (`BackUpIfTooClose(5, 0.75)`).
 
 **Anger** lasts 600 ticks (30 s) and is not lifted by putting gold armor on.
@@ -56,8 +57,9 @@ blocks who wears no golden armor. One golden piece is enough, as in `isWearingGo
   unseen. The tagged blocks that exist are: chests, barrels, gold blocks, gilded
   blackstone, gold ore, deepslate gold ore and raw gold blocks.
 - Idle means not admiring, fighting or fleeing.
-- A hit adult fights back. It and the target are broadcast to adult piglins and
-  brutes within 16 blocks (`broadcastAngerTarget`).
+- A hit adult fights back against the actual attacker, including melee, bow,
+  crossbow and splash-potion hits. It and the target are broadcast to adult piglins
+  and brutes within 16 blocks (`broadcastAngerTarget`).
 - A hit baby runs for 100 ticks and alerts the adults.
 - A player's hit stops admiring and puts the piglin off gold for 400 ticks.
 - Piglins never retaliate against other piglins.
@@ -274,14 +276,11 @@ different pitches.
   - No celebrating dance after a kill.
   - Crossbow piglins melee mobs instead of shooting them, because mob arrows only
     hit players.
-  - Piglin arrows use the skeleton's arrow and death message.
   - Piglins don't pick up and equip better weapons or armor, or golden axes for
     brutes.
   - Their pocket holds 8 stacks.
   - Zombification retains armor but replaces the main-hand weapon with the existing
     zombified piglin sword model; crossbows and brute axes are not retained.
-  - Melee hits are credited to the nearest player, since the melee path doesn't
-    name the attacker.
 - **Zoglins** only pick mob targets within 4 blocks of height, so they don't chase
   ghasts they could never reach.
 - **Peaceful**: Java keeps piglins and hoglins on Peaceful; here every hostile mob

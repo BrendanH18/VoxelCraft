@@ -80,7 +80,7 @@ impl Game {
         let slot = self.actions.selected;
         let survival = self.mode.is_survival();
         let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
-        self.mobs.entities.shoot_enchanted(eye, dir, CROSSBOW_POWER, survival, Default::default());
+        self.mobs.entities.shoot_enchanted_for(eye, dir, CROSSBOW_POWER, survival, Default::default(), self.actor);
         self.audio.play(Sound::Bow, Some(eye), 0.9, (1.25, 1.35));
         if let Some(stack) = &mut self.inventory.slots[slot] {
             stack.item = Item::CROSSBOW;
@@ -128,7 +128,7 @@ impl Game {
             }
         }
         let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
-        self.mobs.entities.shoot_enchanted(eye, dir, power, survival && !infinite, enchants);
+        self.mobs.entities.shoot_enchanted_for(eye, dir, power, survival && !infinite, enchants, self.actor);
         self.audio.play(Sound::Bow, Some(eye), 0.8, (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power)));
         if survival {
             self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);

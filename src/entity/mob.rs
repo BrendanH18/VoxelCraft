@@ -1639,7 +1639,7 @@ impl Mob {
         if self.attack_cooldown <= 0.0 && hdist < SHOOT_RANGE && line_of_sight(world, eye, target) {
             self.attack_cooldown = rng.range(1.6, 2.4);
             self.attack_anim = 0.35;
-            events.push(EntityEvent::Shoot { from: eye + dir * 0.5, target });
+            events.push(EntityEvent::Shoot { from: eye + dir * 0.5, target, cause: "was shot by a skeleton" });
             events.push(EntityEvent::Sound { sound: MobSound::Bow, pos: eye });
         }
         if rng.chance(dt * 0.4) {

@@ -199,7 +199,7 @@ pub(super) fn splash(
             let (kind, burning, at) = (mob.kind, mob.burning, mob.pos);
             let killed = mob.damage(amount, None, rng);
             if owner.is_some() {
-                events.push(EntityEvent::MobShot { kind, pos: at, killed, burning, player_kill: true });
+                events.push(EntityEvent::MobShot { kind, pos: at, killed, burning, player_kill: true, owner });
             }
         } else {
             mob.health = (mob.health + amount).min(mob.kind.max_health());

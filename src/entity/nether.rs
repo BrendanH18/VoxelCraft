@@ -168,6 +168,8 @@ pub struct NetherMob {
     pub(super) cold: bool,
     /// Seconds spent loading the crossbow toward the next shot.
     pub(super) charge: f32,
+    /// Loading plus the once-per-shot random aiming delay, in seconds.
+    pub(super) aim_at: f32,
     /// Admiring is over: barter (or keep the item) at the next upkeep.
     pub(super) barter: bool,
     /// Zombified: becomes its zombie form at the next upkeep.
@@ -204,6 +206,7 @@ impl NetherMob {
                     scan_timer: 0.0,
                     cold: false,
                     charge: 0.0,
+                    aim_at: 0.0,
                     barter: false,
                     convert: false,
                     loot_dropped: false,
@@ -717,21 +720,6 @@ impl Entities {
                 n.sense_timer = 0.0;
             }
         }
-    }
-
-    /// Hurt by a player's hit or shot. Melee doesn't name the player, so the
-    /// attacker is the one nearest the mob at the last update.
-    pub(super) fn nether_hurt_by_player(&mut self, index: usize) {
-        let Some(m) = self.mobs.get(index) else { return };
-        if m.nether.is_none() {
-            return;
-        }
-        let nearest = self
-            .player_spots
-            .iter()
-            .min_by(|a, b| a.1.distance_squared(m.pos).total_cmp(&b.1.distance_squared(m.pos)))
-            .map_or(PlayerId::HOST, |p| p.0);
-        self.nether_hurt(index, Foe::Player(nearest));
     }
 
     /// Admiring is over. Adults barter gold ingots away; other loved items
@@ -1419,6 +1407,79 @@ mod tests {
 
     fn player(at: DVec3) -> Target {
         Target::new(PlayerId::HOST, at, true)
+    }
+
+    #[test]
+    fn melee_and_sweep_anger_piglins_at_the_attacker_not_a_closer_player() {
+        let mut e = Entities::new(9);
+        let hitter = PlayerId(2);
+        e.player_spots = vec![(PlayerId::HOST, DVec3::new(0.5, 10.0, 0.5)), (hitter, DVec3::new(2.5, 10.0, 0.5))];
+        let target = swordsman(&mut e);
+        for x in [1.0, 5.0] {
+            let i = swordsman(&mut e);
+            e.mobs[i].pos.x = x;
+        }
+        e.nether_sense(0.0, &Grid::flat(10), &nether(vec![]));
+        let sword = Stack::new(Item::tool(crate::item::ToolKind::Sword, Tier::Wood), 1);
+        e.melee_for(target, DVec3::Z, Some(sword), 0.0, false, Some(DVec3::new(2.5, 10.0, 0.5)), hitter);
+        for m in &e.mobs {
+            assert_eq!(m.nether.as_ref().unwrap().foe, Some(Foe::Player(hitter)));
+        }
+        assert!(e.mobs[1].health < MobKind::Piglin.max_health(), "the sweep also hit a piglin");
+        assert_eq!(e.mobs[2].health, MobKind::Piglin.max_health(), "the broadcast reached an unharmed piglin");
+    }
+
+    #[test]
+    fn player_projectiles_anger_piglins_at_their_owner() {
+        let world = Grid::flat(10);
+        let hitter = PlayerId(2);
+        for potion in [false, true] {
+            let mut e = Entities::new(9);
+            let target = swordsman(&mut e);
+            e.mobs[target].pos.x = 3.5;
+            let ally = swordsman(&mut e);
+            e.mobs[ally].pos.x = 6.5;
+            let mut bystander = player(DVec3::new(3.5, 10.0, 2.5));
+            bystander.gold_armor = true;
+            let mut attacker = Target::new(hitter, DVec3::new(0.5, 10.0, 0.5), true);
+            attacker.gold_armor = true;
+            let ctx = nether(vec![bystander, attacker]);
+            if potion {
+                e.potions.push(crate::entity::potion::ThrownPotion::new(
+                    crate::potion::Potion::from_id("harming").unwrap(),
+                    Some(hitter),
+                    e.mobs[target].pos + DVec3::Y,
+                    DVec3::ZERO,
+                ));
+            } else {
+                // Creative/Infinity arrows still have an owner despite being unrecoverable.
+                e.shoot_enchanted_for(DVec3::new(0.5, 11.0, 0.5), DVec3::X, 0.5, false, Default::default(), hitter);
+            }
+            let events = run(&mut e, &world, &ctx, 0.3);
+            assert!(events.iter().any(|e| matches!(e, EntityEvent::MobShot { owner: Some(id), .. } if *id == hitter)));
+            for m in &e.mobs {
+                assert_eq!(m.nether.as_ref().unwrap().foe, Some(Foe::Player(hitter)));
+            }
+        }
+    }
+
+    #[test]
+    fn piglin_crossbow_hits_keep_the_piglin_death_message() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(9);
+        let i = swordsman(&mut e);
+        e.mobs[i].nether.as_mut().unwrap().weapon = Weapon::Crossbow;
+        let ctx = nether(vec![player(DVec3::new(6.5, 10.0, 0.5))]);
+        let events = run(&mut e, &world, &ctx, 10.0);
+        let causes: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                EntityEvent::PlayerHit { cause, .. } => Some(*cause),
+                _ => None,
+            })
+            .collect();
+        assert!(!causes.is_empty(), "the crossbow hit the player");
+        assert!(causes.iter().all(|&c| c == "was shot by a piglin"), "{causes:?}");
     }
 
     /// One adult piglin with a golden sword at the origin of a flat floor.
