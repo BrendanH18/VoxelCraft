@@ -236,7 +236,7 @@ pub struct Villager {
     pub fleeing: bool,
     pub(crate) growth: f32,
     pub(crate) active: bool,
-    /// Gossip simplified to one number. A cure sets Java's major_positive (20 × 5).
+    /// Host-only discount retained for compatibility with old saves.
     pub reputation: i16,
     pub(super) last_slept: Option<i64>,
     pub(super) food: [Option<Stack>; 8],
@@ -1113,6 +1113,31 @@ mod tests {
         );
         assert_eq!(restored.mobs[2].age, 0);
         assert!(!restored.mobs[2].baby);
+    }
+    #[test]
+    fn villagers_share_excess_and_obey_pickup_gamerule() {
+        let w = grid();
+        let mut e = Entities::new(8);
+        e.spawn(MobKind::Villager, DVec3::ZERO);
+        e.spawn(MobKind::Villager, DVec3::X);
+        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::BREAD, 6));
+        e.breed_villagers(&w);
+        assert_eq!(e.mobs[1].villager.as_ref().unwrap().food_points(), 0, "small stacks are not shared");
+        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::CARROT, 36));
+        e.breed_villagers(&w);
+        assert_eq!(e.mobs[0].villager.as_ref().unwrap().food_points(), 18);
+        assert_eq!(e.mobs[1].villager.as_ref().unwrap().food_points(), 18);
+        e.mobs[0].villager.as_mut().unwrap().food = [None; 8];
+        e.mobs[1].villager.as_mut().unwrap().food = [None; 8];
+        e.drop_from_block(Stack::new(Item::POTATO, 12), IVec3::ZERO);
+        e.items[0].pickup_delay = 0.0;
+        e.villager_griefing = false;
+        e.breed_villagers(&w);
+        assert_eq!(e.items[0].stack.count, 12);
+        e.villager_griefing = true;
+        e.breed_villagers(&w);
+        assert!(e.items.is_empty());
+        assert_eq!(e.mobs.iter().map(|m| m.villager.as_ref().unwrap().food_points()).sum::<u16>(), 12);
     }
     #[test]
     fn breeding_requires_food_free_bed_and_two_blocks_headroom() {

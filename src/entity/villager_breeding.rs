@@ -30,11 +30,45 @@ impl Villager {
         }
         self.food_level = self.food_level.saturating_sub(12);
     }
+    fn can_accept_food(&self, stack: Stack) -> bool {
+        self.food.iter().any(|slot| slot.is_none_or(|s| s.item == stack.item && s.count < s.max()))
+    }
     pub(super) fn accept_food(&mut self, stack: Stack) -> Option<Stack> {
         move_into(stack, &mut self.food, &[0, 1, 2, 3, 4, 5, 6, 7])
     }
 }
 impl Entities {
+    /// Java shares half a stack above 32 items, or the excess above 24.
+    /// Transfer directly into the nearby resident's inventory, retaining any
+    /// overflow in the donor instead of making an uncollectable item entity.
+    fn share_food(&mut self) {
+        for i in 0..self.mobs.len() {
+            let donor = &self.mobs[i];
+            if donor.kind != MobKind::Villager
+                || donor.villager.as_ref().is_none_or(|v| !v.active || v.sleeping || v.food_points() < 24)
+            {
+                continue;
+            }
+            let Some(j) = self.mob_index.nearest(&self.mobs, donor.pos, 5.0f64.sqrt(), |m| {
+                m.kind == MobKind::Villager
+                    && m.villager.as_ref().is_some_and(|v| {
+                        v.id != donor.villager.as_ref().unwrap().id && v.active && !v.sleeping && v.food_points() < 12
+                    })
+            }) else {
+                continue;
+            };
+            let Some((slot, stack)) = donor.villager.as_ref().unwrap().food.iter().enumerate().find_map(|(k, s)| {
+                let s = (*s)?;
+                (s.count > 24).then_some((k, s))
+            }) else {
+                continue;
+            };
+            let count = if stack.count > stack.max() / 2 { stack.count / 2 } else { stack.count - 24 };
+            let left = self.mobs[j].villager.as_mut().unwrap().accept_food(Stack { count, ..stack });
+            let remaining = stack.count - count + left.map_or(0, |s| s.count);
+            self.mobs[i].villager.as_mut().unwrap().food[slot] = Some(Stack { count: remaining, ..stack });
+        }
+    }
     pub(super) fn breed_villagers<W: MobWorld + ?Sized>(&mut self, world: &W) {
         self.mob_index.rebuild(&self.mobs);
         self.claimed_beds.clear();
@@ -47,20 +81,25 @@ impl Entities {
             }
         }
         for item in &mut self.items {
-            if item.pickup_delay > 0.0
+            if !self.villager_griefing
+                || item.pickup_delay > 0.0
                 || food_points(item.stack.item) == 0
                 || !world.loaded(item.pos.floor().as_ivec3())
             {
                 continue;
             }
             if let Some(i) = self.mob_index.nearest(&self.mobs, item.pos, 1.75, |m| {
-                m.kind == MobKind::Villager && m.villager.as_ref().is_some_and(|v| v.active && !v.sleeping)
+                m.kind == MobKind::Villager
+                    && m.villager.as_ref().is_some_and(|v| v.active && !v.sleeping && v.can_accept_food(item.stack))
             }) {
                 let left = self.mobs[i].villager.as_mut().unwrap().accept_food(item.stack);
                 item.stack.count = left.map_or(0, |s| s.count);
             }
         }
         self.items.retain(|i| i.stack.count > 0);
+        if self.villager_griefing {
+            self.share_food();
+        }
         let ready = |m: &super::Mob| {
             m.alive()
                 && m.kind == MobKind::Villager

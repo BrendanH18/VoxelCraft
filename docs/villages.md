@@ -176,7 +176,10 @@ above its head is required. Parents consume twelve points, receive a 6000-tick
 cooldown on success, and the child claims the bed at age -24000. Babies grow
 in loaded simulation time; food and parent cooldowns survive saves. Failed
 bed checks produce angry particles. Beetroot is available as a food item;
-beetroot crops and farmer harvesting/food sharing are not implemented yet.
+beetroot crops and farmer harvesting are not implemented yet. Food pickup
+obeys mobGriefing. Residents share excess stacks using Java's above-32 half
+stack / above-24 excess rule, directly into a nearby hungry resident's
+inventory instead of throwing an item entity.
 Navigation uses the existing resident obstacle sidesteps; a complete Java
 path-reachability test for beds is still absent.
 

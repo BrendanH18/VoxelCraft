@@ -509,6 +509,7 @@ pub struct Entities {
     trader_spawner: wandering_trader::Spawner,
     trader_leaders: rustc_hash::FxHashMap<u64, (DVec3, f32, bool)>,
     pub trader_spawning: bool,
+    pub villager_griefing: bool,
     /// Seconds until another iron golem may be summoned.
     golem_calm: f32,
     /// Seconds until the next gossip summon roll.
@@ -556,6 +557,7 @@ impl Entities {
             trader_spawner: Default::default(),
             trader_leaders: Default::default(),
             trader_spawning: true,
+            villager_griefing: true,
             golem_calm: 0.0,
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),

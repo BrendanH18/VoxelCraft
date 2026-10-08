@@ -214,6 +214,7 @@ impl Game {
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
         self.mobs.entities.trader_spawning =
             self.gamerules.bool("doTraderSpawning") && self.gamerules.bool("doMobSpawning");
+        self.mobs.entities.villager_griefing = self.gamerules.bool("mobGriefing");
         self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
         self.mobs.entities.village_time = self.day_time;
         self.mobs.entities.village_day = self.day_count;
