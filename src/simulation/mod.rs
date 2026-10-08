@@ -116,6 +116,7 @@ pub fn player_environment(player: &Player, world: &World, input: MoveInput, move
         head_in_water: player.head_in_water(world),
         in_lava: player.in_lava(world),
         in_fire: player.in_fire(world),
+        in_soul_fire: player.in_soul_fire(world),
         on_magma: player.on_ground
             && !player.sneaking
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3())

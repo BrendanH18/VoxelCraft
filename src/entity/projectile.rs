@@ -3,7 +3,7 @@
 
 use glam::{DVec3, Vec3};
 
-use super::{Ctx, EntityEvent, Mob, Rng};
+use super::{Ctx, EntityEvent, Mob, PlayerId, Rng};
 use crate::physics::BlockSource;
 
 const SPEED: f64 = 22.0;
@@ -30,6 +30,10 @@ pub struct Arrow {
     stuck: bool,
     /// Shot by the player: hits mobs instead of the player.
     pub from_player: bool,
+    /// The actual player who fired this arrow, independent of pickup rights.
+    pub owner: Option<PlayerId>,
+    /// Death message for players hit by this projectile.
+    cause: &'static str,
     /// The player can collect it once stuck (not arrows shot in creative).
     pub pickup: bool,
     /// A fully drawn shot: deals a random bonus on hit.
@@ -40,7 +44,7 @@ pub struct Arrow {
 
 impl Arrow {
     /// An arrow from `from` aimed to arc onto `target`, with a little spread.
-    pub fn aimed(from: DVec3, target: DVec3, rng: &mut Rng) -> Self {
+    pub fn aimed(from: DVec3, target: DVec3, cause: &'static str, rng: &mut Rng) -> Self {
         let d = target - from;
         // Lead the drop: over flight time t the arrow sinks g t² / 2.
         let t = d.length() / SPEED;
@@ -55,6 +59,8 @@ impl Arrow {
             age: 0.0,
             stuck: false,
             from_player: false,
+            owner: None,
+            cause,
             pickup: false,
             critical: false,
             enchants: Default::default(),
@@ -74,6 +80,8 @@ impl Arrow {
             age: 0.0,
             stuck: false,
             from_player: true,
+            owner: Some(PlayerId::HOST),
+            cause: "was shot by an arrow",
             pickup,
             critical: power >= 1.0,
             enchants: Default::default(),
@@ -85,6 +93,7 @@ impl Arrow {
     pub fn dispensed(pos: DVec3, dir: DVec3) -> Self {
         let mut arrow = Self::shot(pos - dir * 0.3, dir, (22.0 / BOW_SPEED) as f32, true);
         arrow.from_player = false;
+        arrow.owner = None;
         arrow
     }
 
@@ -180,6 +189,7 @@ impl Arrow {
                             killed,
                             burning: mob.burning,
                             player_kill: self.from_player,
+                            owner: self.owner,
                         });
                         return false;
                     }
@@ -226,7 +236,7 @@ impl Arrow {
                     player: hit.id,
                     damage,
                     knockback: push.as_vec3(),
-                    cause: if self.pickup { "was shot by an arrow" } else { "was shot by a skeleton" },
+                    cause: self.cause,
                 });
                 return false;
             }

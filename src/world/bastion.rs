@@ -187,14 +187,25 @@ impl Bastion {
 pub struct Bastions {
     seed: u64,
     cache: Mutex<FxHashMap<IVec2, Arc<Bastion>>>,
+    /// Java only starts bastions in biomes tagged `has_structure/bastion_remnant`.
+    biomes: super::nether_biome::NetherBiomeSource,
 }
 impl Bastions {
     pub fn new(seed: u64) -> Self {
-        Self { seed, cache: Mutex::new(FxHashMap::default()) }
+        Self {
+            seed,
+            cache: Mutex::new(FxHashMap::default()),
+            biomes: super::nether_biome::NetherBiomeSource::new(seed),
+        }
+    }
+    /// Java tests the biome at the centre of the start chunk (`start` is its
+    /// corner + 2); basalt deltas reject the bastion and leave the region empty.
+    fn biome_allows(&self, start: IVec2) -> bool {
+        self.biomes.biome(start.x + 6, start.y + 6).has_bastions()
     }
     pub fn get(&self, region: IVec2) -> Option<Arc<Bastion>> {
         let (start, selected) = nether_complexes::placement(self.seed, region);
-        if selected != Complex::Bastion {
+        if selected != Complex::Bastion || !self.biome_allows(start) {
             return None;
         }
         if let Some(b) = self.cache.lock().unwrap().get(&region) {
@@ -218,7 +229,11 @@ impl Bastions {
             for x in lo.x..=hi.x {
                 let region = IVec2::new(x, z);
                 let (p, k) = nether_complexes::placement(self.seed, region);
-                if k != Complex::Bastion || (p - 65).cmpgt(max).any() || (p + 65).cmplt(min).any() {
+                if k != Complex::Bastion
+                    || (p - 65).cmpgt(max).any()
+                    || (p + 65).cmplt(min).any()
+                    || !self.biome_allows(p)
+                {
                     continue;
                 }
                 if let Some(b) = self.get(region)
@@ -232,6 +247,11 @@ impl Bastions {
             }
         }
         out
+    }
+    /// Bastions whose bounds come within `r` blocks of column `p`, for
+    /// placing their resident mobs.
+    pub fn around(&self, p: IVec2, r: i32) -> Vec<Arc<Bastion>> {
+        self.near(p - r, p + r)
     }
     pub fn nearest(&self, p: IVec2) -> Option<IVec3> {
         let r = p.div_euclid(IVec2::splat(REGION));
@@ -554,7 +574,14 @@ const TREASURE_1: &[Loot] = &[
     Loot { item: Some(Item::from_block(Block::IRON_BLOCK)), weight: 1, lo: 2, hi: 5, enchanted: false, damage: None }, // iron_block
     Loot { item: Some(Item::GOLD_INGOT), weight: 1, lo: 3, hi: 9, enchanted: false, damage: None }, // gold_ingot
     Loot { item: Some(Item::IRON_INGOT), weight: 1, lo: 3, hi: 9, enchanted: false, damage: None }, // iron_ingot
-    Loot { item: None, weight: 1, lo: 3, hi: 5, enchanted: false, damage: None },                   // crying_obsidian
+    Loot {
+        item: Some(Item::from_block(Block::CRYING_OBSIDIAN)),
+        weight: 1,
+        lo: 3,
+        hi: 5,
+        enchanted: false,
+        damage: None,
+    }, // crying_obsidian
     Loot { item: Some(Item::NETHER_QUARTZ), weight: 1, lo: 8, hi: 23, enchanted: false, damage: None }, // quartz
     Loot {
         item: Some(Item::from_block(Block::GILDED_BLACKSTONE)),
@@ -570,8 +597,8 @@ const BRIDGE_0: &[Loot] = &[
     Loot { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // lodestone
 ];
 const BRIDGE_1: &[Loot] = &[
-    Loot { item: None, weight: 1, lo: 1, hi: 1, enchanted: true, damage: Some((0.10, 0.50)) }, // crossbow
-    Loot { item: None, weight: 1, lo: 10, hi: 28, enchanted: false, damage: None },            // spectral_arrow
+    Loot { item: Some(Item::CROSSBOW), weight: 1, lo: 1, hi: 1, enchanted: true, damage: Some((0.10, 0.50)) }, // crossbow
+    Loot { item: None, weight: 1, lo: 10, hi: 28, enchanted: false, damage: None }, // spectral_arrow
     Loot {
         item: Some(Item::from_block(Block::GILDED_BLACKSTONE)),
         weight: 1,
@@ -580,7 +607,14 @@ const BRIDGE_1: &[Loot] = &[
         enchanted: false,
         damage: None,
     }, // gilded_blackstone
-    Loot { item: None, weight: 1, lo: 3, hi: 8, enchanted: false, damage: None },              // crying_obsidian
+    Loot {
+        item: Some(Item::from_block(Block::CRYING_OBSIDIAN)),
+        weight: 1,
+        lo: 3,
+        hi: 8,
+        enchanted: false,
+        damage: None,
+    }, // crying_obsidian
     Loot { item: Some(Item::from_block(Block::GOLD_BLOCK)), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // gold_block
     Loot { item: Some(Item::GOLD_INGOT), weight: 1, lo: 4, hi: 9, enchanted: false, damage: None }, // gold_ingot
     Loot { item: Some(Item::IRON_INGOT), weight: 1, lo: 4, hi: 9, enchanted: false, damage: None }, // iron_ingot
@@ -674,7 +708,14 @@ const HOGLIN_STABLE_0: &[Loot] = &[
 ];
 const HOGLIN_STABLE_1: &[Loot] = &[
     Loot { item: Some(Item::tool(ToolKind::Axe, Tier::Gold)), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_axe
-    Loot { item: None, weight: 1, lo: 1, hi: 5, enchanted: false, damage: None }, // crying_obsidian
+    Loot {
+        item: Some(Item::from_block(Block::CRYING_OBSIDIAN)),
+        weight: 1,
+        lo: 1,
+        hi: 5,
+        enchanted: false,
+        damage: None,
+    }, // crying_obsidian
     Loot { item: Some(Item::from_block(Block::GLOWSTONE)), weight: 1, lo: 3, hi: 6, enchanted: false, damage: None }, // glowstone
     Loot {
         item: Some(Item::from_block(Block::GILDED_BLACKSTONE)),
@@ -712,7 +753,7 @@ const OTHER_0: &[Loot] = &[
         enchanted: false,
         damage: None,
     }, // diamond_shovel
-    Loot { item: None, weight: 6, lo: 1, hi: 1, enchanted: true, damage: Some((0.10, 0.90)) }, // crossbow
+    Loot { item: Some(Item::CROSSBOW), weight: 6, lo: 1, hi: 1, enchanted: true, damage: Some((0.10, 0.90)) }, // crossbow
     Loot {
         item: Some(Item::from_block(Block::ANCIENT_DEBRIS)),
         weight: 12,
@@ -749,7 +790,7 @@ const OTHER_1: &[Loot] = &[
     }, // golden_boots
     Loot { item: Some(Item::tool(ToolKind::Axe, Tier::Gold)), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_axe
     Loot { item: Some(Item::from_block(Block::GOLD_BLOCK)), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // gold_block
-    Loot { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // crossbow
+    Loot { item: Some(Item::CROSSBOW), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // crossbow
     Loot { item: Some(Item::GOLD_INGOT), weight: 2, lo: 1, hi: 6, enchanted: false, damage: None }, // gold_ingot
     Loot { item: Some(Item::IRON_INGOT), weight: 2, lo: 1, hi: 6, enchanted: false, damage: None }, // iron_ingot
     Loot {
@@ -792,7 +833,14 @@ const OTHER_1: &[Loot] = &[
         enchanted: false,
         damage: None,
     }, // golden_boots
-    Loot { item: None, weight: 2, lo: 1, hi: 5, enchanted: false, damage: None }, // crying_obsidian
+    Loot {
+        item: Some(Item::from_block(Block::CRYING_OBSIDIAN)),
+        weight: 2,
+        lo: 1,
+        hi: 5,
+        enchanted: false,
+        damage: None,
+    }, // crying_obsidian
 ];
 const OTHER_2: &[Loot] = &[
     Loot {
@@ -903,9 +951,29 @@ mod generation_tests {
         for x in -8..8 {
             for z in -8..8 {
                 let r = IVec2::new(x, z);
-                assert_ne!(f.get(r).is_some(), f.bastions.get(r).is_some());
+                assert!(!(f.get(r).is_some() && f.bastions.get(r).is_some()));
             }
         }
+    }
+    #[test]
+    fn bastions_skip_basalt_deltas_like_java() {
+        use crate::world::nether_biome::{NetherBiome, NetherBiomeSource};
+        let (seed, biomes) = (99, NetherBiomeSource::new(99));
+        let bastions = Bastions::new(seed);
+        let (mut kept, mut rejected) = (0, 0);
+        for x in -40..40 {
+            for z in -40..40 {
+                let r = IVec2::new(x, z);
+                let (start, kind) = nether_complexes::placement(seed, r);
+                if kind != Complex::Bastion {
+                    continue;
+                }
+                let deltas = biomes.biome(start.x + 6, start.y + 6) == NetherBiome::BasaltDeltas;
+                assert_eq!(bastions.get(r).is_none(), deltas, "region {r}");
+                if deltas { rejected += 1 } else { kept += 1 }
+            }
+        }
+        assert!(kept > 100 && rejected > 10, "kept {kept}, rejected {rejected}");
     }
     #[test]
     fn all_four_variants_rotate_and_paint_columns_without_seams() {

@@ -1,20 +1,32 @@
 //! Nether terrain: netherrack caverns between a bedrock floor and roof,
-//! a lava sea below y = 31, soul sand and gravel shores, quartz ore,
-//! ancient debris (Java `scattered_ore`), and glowstone hanging from the ceilings.
+//! a lava sea below y = 31, quartz ore, ancient debris (Java
+//! `scattered_ore`), and glowstone hanging from the ceilings. Each 4×4
+//! quart column has a Nether biome (`world::nether_biome`) whose surface
+//! rules (Java's `SurfaceRuleData.nether`) dress floors and ceilings:
+//! nylium and wart blocks in the forests, soul sand and soul soil in soul
+//! sand valleys, basalt and blackstone in basalt deltas, and the old soul
+//! sand and gravel shores in the wastes. Biome features follow
+//! (`world::nether_decoration`).
 //!
 //! Like the overworld, every chunk is a pure function of the seed. Solidity
 //! comes from two octaves of 3D noise, biased solid towards the floor and the
 //! roof, sampled on a coarse grid and interpolated (like overworld caves).
+//! Full-height grid columns (density and biome) are shared between chunks
+//! in a bounded cache, so the four chunks of a column and the features that
+//! reach across chunk borders sample each one once.
 //! Fortresses (see `world::fortress`) are painted over the terrain.
 
 use std::cell::RefCell;
+use std::sync::{Arc, Mutex, OnceLock};
 
-use glam::IVec3;
+use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
 use super::block::Block;
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, index};
 use super::fortress::Fortresses;
+use super::nether_biome::{NetherBiome, NetherBiomeSource};
+use super::nether_biome_blocks as nb;
 use super::noise::{Perlin, hash_f, hash3};
 use super::structure::Rng;
 
@@ -24,14 +36,99 @@ pub const ROOF: i32 = 127;
 pub const LAVA_SEA: i32 = 31;
 const STEP: usize = 4;
 const GRID: usize = CHUNK_SIZE / STEP + 1;
-/// Extra samples above the chunk so ceilings just above it are known.
-const GRID_Y: usize = GRID + 1;
 /// Java horizontal decoration cell (`in_square` placement).
 const JAVA_CELL: i32 = 16;
 /// Maximum offset for our size-3 scattered feature (candidate index 2).
 const DEBRIS_SPREAD: i32 = 2;
 const SALT_DEBRIS_LARGE: u64 = 0xDE_B1_01;
 const SALT_DEBRIS_SMALL: u64 = 0xDE_B1_02;
+const SALT_BLOB: u64 = 0xB1_0B;
+const SALT_SURFACE: u64 = 0x5E_EF;
+/// Grid levels y = 0, 4, ..., 132 (the top one is above the roof, so
+/// interpolation in the top cell has a level above it).
+const LEVELS: usize = (ROOF as usize + 1) / STEP + 2;
+/// Shared grid columns kept between chunks (about 700 bytes each).
+const COLUMN_CACHE_LIMIT: usize = 8_192;
+/// Below this density magnitude the fast column scan evaluates every block
+/// exactly, so it always agrees with [`interpolate`].
+const EXACT_BAND: f32 = 1e-3;
+
+/// One 4×4 quart column: densities at every grid level, the hashed
+/// basalt-delta blob values there, the quart's biome, and the solidity of
+/// its 16 block columns once someone needs them.
+pub(super) struct GridColumn {
+    density: [f32; LEVELS],
+    blob: [u8; LEVELS],
+    pub(super) biome: NetherBiome,
+    bits: [OnceLock<u128>; STEP * STEP],
+}
+
+/// The four grid columns around a block column and its position between them.
+pub(super) struct Corners<'a> {
+    pub(super) c: [&'a GridColumn; 4],
+    pub(super) t: [f32; 2],
+}
+
+impl Corners<'_> {
+    /// [`Corners::solid_bits`], computed once per block column and shared.
+    pub(super) fn cached_bits(&self) -> u128 {
+        let [x, z] = self.t.map(|t| (t * STEP as f32) as usize);
+        *self.c[0].bits[z * STEP + x].get_or_init(|| self.solid_bits())
+    }
+
+    /// Which of the column's blocks (bit y, 0..=127) are solid rock, from
+    /// the same trilinear interpolation as [`interpolate`]. Between grid
+    /// levels the interpolation is linear in y, so only levels whose ends
+    /// straddle zero need every block evaluated.
+    pub(super) fn solid_bits(&self) -> u128 {
+        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+        let [c00, c10, c01, c11] = self.c;
+        let [tx, tz] = self.t;
+        let a: [f32; LEVELS] = std::array::from_fn(|k| lerp(c00.density[k], c10.density[k], tx));
+        let b: [f32; LEVELS] = std::array::from_fn(|k| lerp(c01.density[k], c11.density[k], tx));
+        let mut bits = 0u128;
+        for k in 0..(ROOF as usize).div_ceil(STEP) {
+            let (lo, hi) = (lerp(a[k], b[k], tz), lerp(a[k + 1], b[k + 1], tz));
+            let level = (k * STEP) as u32;
+            if lo > EXACT_BAND && hi > EXACT_BAND {
+                bits |= ((1u128 << STEP) - 1) << level;
+            } else if lo < -EXACT_BAND && hi < -EXACT_BAND {
+                continue;
+            } else {
+                for i in 0..STEP {
+                    let ty = i as f32 / STEP as f32;
+                    if lerp(lerp(a[k], a[k + 1], ty), lerp(b[k], b[k + 1], ty), tz) > 0.0 {
+                        bits |= 1 << (level + i as u32);
+                    }
+                }
+            }
+        }
+        // The floor and roof layers are always rock (bedrock or not).
+        bits | 1 | 1 << ROOF
+    }
+
+    /// Hashed blob value at height `y`, trilinear between grid levels.
+    fn blob(&self, y: i32) -> f32 {
+        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+        let (k, ty) = ((y / STEP as i32) as usize, (y % STEP as i32) as f32 / STEP as f32);
+        let [c00, c10, c01, c11] = self.c;
+        let level = |k: usize| {
+            let v = |c: &GridColumn| c.blob[k] as f32 / 255.0;
+            lerp(lerp(v(c00), v(c10), self.t[0]), lerp(v(c01), v(c11), self.t[0]), self.t[1])
+        };
+        lerp(level(k), level(k + 1), ty)
+    }
+}
+
+/// Number of solid blocks from `y` upward (`up`) or downward before an open
+/// one, at most 8: 1 means `y` is the top of a floor (or bottom of a ceiling).
+pub(super) fn solid_run(bits: u128, y: i32, up: bool) -> u32 {
+    if !(0..128).contains(&y) || bits >> y & 1 == 0 {
+        return 0;
+    }
+    let run = if up { (bits >> y).trailing_ones() } else { (bits << (127 - y)).leading_ones() };
+    run.min(8)
+}
 
 #[derive(Default)]
 struct ExposureCache {
@@ -46,6 +143,9 @@ pub struct NetherGen {
     patches: Perlin,
     glow: Perlin,
     pub fortresses: Fortresses,
+    /// Java's multi-noise Nether biomes (see `world::nether_biome`).
+    pub biomes: NetherBiomeSource,
+    columns: Mutex<FxHashMap<IVec2, Arc<GridColumn>>>,
 }
 
 #[inline]
@@ -77,11 +177,18 @@ impl NetherGen {
             patches: p(23),
             glow: p(24),
             fortresses: Fortresses::new(seed),
+            biomes: NetherBiomeSource::new(seed),
+            columns: Mutex::new(FxHashMap::default()),
         }
     }
 
+    /// The salted seed every Nether feature and placement hashes from.
+    pub(super) fn seed(&self) -> u64 {
+        self.seed
+    }
+
     /// Bedrock floor and roof, thinning out over the four layers next to them.
-    fn bedrock(&self, x: i32, y: i32, z: i32) -> bool {
+    pub(super) fn bedrock(&self, x: i32, y: i32, z: i32) -> bool {
         let h = |salt: u64| hash_f(x, y, z, self.seed ^ salt);
         y == 0
             || y == ROOF
@@ -275,76 +382,147 @@ impl NetherGen {
         }
     }
 
+    /// The shared grid column at grid position `g` (multiples of 4 blocks).
+    pub(super) fn grid_column(&self, g: IVec2) -> Arc<GridColumn> {
+        if let Some(c) = self.columns.lock().unwrap().get(&g) {
+            return Arc::clone(c);
+        }
+        // Sample outside the lock so workers fill different columns in parallel.
+        let s = STEP as i32;
+        let (x, z) = (g.x * s, g.y * s);
+        let column = Arc::new(GridColumn {
+            density: std::array::from_fn(|k| self.density(x, k as i32 * s, z)),
+            blob: std::array::from_fn(|k| (hash3(x, k as i32, z, self.seed ^ SALT_BLOB) >> 56) as u8),
+            biome: self.biomes.quart(g.x, g.y),
+            bits: Default::default(),
+        });
+        let mut cache = self.columns.lock().unwrap();
+        // Another worker may have filled this column while we sampled it.
+        if let Some(found) = cache.get(&g) {
+            return Arc::clone(found);
+        }
+        if cache.len() >= COLUMN_CACHE_LIMIT
+            && let Some(key) = cache.keys().next().copied()
+        {
+            cache.remove(&key);
+        }
+        Arc::clone(cache.entry(g).or_insert(column))
+    }
+
+    /// What the terrain and its biome's surface rules put at height `wy`
+    /// of block column `(wx, wz)`, before structures and features.
+    pub(super) fn classify(&self, wx: i32, wy: i32, wz: i32, bits: u128, corners: &Corners) -> Block {
+        if self.bedrock(wx, wy, wz) {
+            return Block::BEDROCK;
+        }
+        let solid = |y: i32| (0..128).contains(&y) && bits >> y & 1 == 1;
+        if !solid(wy) {
+            return if wy <= LAVA_SEA {
+                Block::LAVA
+            } else if wy > 60
+                && (1..=3).any(|k| solid(wy + k))
+                && self.glow.noise3(wx as f32 / 6.0, wy as f32 / 6.0, wz as f32 / 6.0) > 0.5
+            {
+                Block::GLOWSTONE
+            } else {
+                Block::AIR
+            };
+        }
+        let biome = corners.c[0].biome;
+        let floor = solid_run(bits, wy, true);
+        let ceiling = solid_run(bits, wy, false);
+        // Java's surface depth: a few blocks, varying by column.
+        let depth = || 3 + (hash3(wx, 0, wz, self.seed ^ SALT_SURFACE) % 3) as u32;
+        // The five layers under the roof are always netherrack.
+        if wy < ROOF - 5 {
+            let selector = || self.patches.noise2(wx as f32 / 16.0 + 31.7, wz as f32 / 16.0 - 47.3) > 0.0;
+            match biome {
+                NetherBiome::BasaltDeltas => {
+                    if ceiling <= depth() {
+                        return Block::BASALT;
+                    }
+                    if floor <= depth() {
+                        return if selector() { Block::BLACKSTONE } else { Block::BASALT };
+                    }
+                    // Java's basalt and blackstone blobs through the rock.
+                    let blob = corners.blob(wy);
+                    if blob > 0.62 {
+                        return Block::BASALT;
+                    }
+                    if blob < 0.3 {
+                        return Block::BLACKSTONE;
+                    }
+                }
+                NetherBiome::SoulSandValley if ceiling.min(floor) <= depth() => {
+                    return if selector() { Block::SOUL_SAND } else { nb::SOUL_SOIL };
+                }
+                NetherBiome::CrimsonForest | NetherBiome::WarpedForest if floor == 1 && wy > LAVA_SEA => {
+                    let bare = self.glow.noise2(wx as f32 / 8.0 + 13.1, wz as f32 / 8.0 + 71.9) > 0.42;
+                    if !bare {
+                        let wart = self.patches.noise2(wx as f32 / 8.0 - 91.3, wz as f32 / 8.0 + 5.7) > 0.5;
+                        let wood = if biome == NetherBiome::CrimsonForest {
+                            nb::NetherWood::Crimson
+                        } else {
+                            nb::NetherWood::Warped
+                        };
+                        return if wart { wood.wart() } else { wood.nylium() };
+                    }
+                }
+                NetherBiome::NetherWastes if floor <= 3 => {
+                    if wy < 90 && self.patches.noise2(wx as f32 / 22.0, wz as f32 / 22.0) > 0.32 {
+                        return Block::SOUL_SAND;
+                    }
+                    if floor <= 2
+                        && (LAVA_SEA - 4..LAVA_SEA + 6).contains(&wy)
+                        && self.patches.noise2(wz as f32 / 15.0 + 50.0, wx as f32 / 15.0) > 0.3
+                    {
+                        return Block::GRAVEL;
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Basalt deltas carry twice the quartz (Java's ore_quartz_deltas).
+        let h = |salt: u64| hash_f(wx, wy, wz, self.seed ^ salt);
+        let quartz = |salt: u64| hash_f(wx >> 1, wy >> 1, wz >> 1, self.seed ^ salt) < 0.035;
+        if (quartz(3) || (biome == NetherBiome::BasaltDeltas && quartz(5))) && h(4) < 0.55 {
+            Block::QUARTZ_ORE
+        } else {
+            Block::NETHERRACK
+        }
+    }
+
     pub fn generate(&self, cpos: IVec3) -> ChunkData {
         let base = cpos * CHUNK_SIZE_I;
         if base.y > ROOF || base.y + CHUNK_SIZE_I <= 0 {
             return ChunkData::Uniform(Block::AIR);
         }
-        // Density on a coarse grid, trilinearly interpolated per cell.
-        let mut grid = [[[0f32; GRID]; GRID_Y]; GRID];
-        for (gx, plane) in grid.iter_mut().enumerate() {
-            for (gy, row) in plane.iter_mut().enumerate() {
-                for (gz, d) in row.iter_mut().enumerate() {
-                    let p = base + IVec3::new(gx as i32, gy as i32, gz as i32) * STEP as i32;
-                    *d = self.density(p.x, p.y, p.z);
-                }
-            }
-        }
-        let solid = |x: usize, y: usize, z: usize| -> bool {
-            let wy = base.y + y as i32;
-            if wy <= 0 || wy >= ROOF {
-                return true;
-            }
-            let (gx, gy, gz) = (x / STEP, y / STEP, z / STEP);
-            let t = [(x % STEP) as f32 / STEP as f32, (y % STEP) as f32 / STEP as f32, (z % STEP) as f32 / STEP as f32];
-            let at = |dx: usize, dy: usize, dz: usize| grid[gx + dx][(gy + dy).min(GRID_Y - 1)][gz + dz];
-            let c = [
-                [[at(0, 0, 0), at(0, 0, 1)], [at(0, 1, 0), at(0, 1, 1)]],
-                [[at(1, 0, 0), at(1, 0, 1)], [at(1, 1, 0), at(1, 1, 1)]],
-            ];
-            interpolate(c, t) > 0.0
-        };
-
+        let g0 = IVec2::new(base.x, base.z) / STEP as i32;
+        let grid: [[Arc<GridColumn>; GRID]; GRID] =
+            std::array::from_fn(|gz| std::array::from_fn(|gx| self.grid_column(g0 + IVec2::new(gx as i32, gz as i32))));
         let mut blocks = ChunkData::new_dense(Block::AIR);
         for z in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
                 let (wx, wz) = (base.x + x as i32, base.z + z as i32);
-                let patch = self.patches.noise2(wx as f32 / 22.0, wz as f32 / 22.0);
-                let gravel = self.patches.noise2(wz as f32 / 15.0 + 50.0, wx as f32 / 15.0);
+                let (gx, gz) = (x / STEP, z / STEP);
+                let corners = Corners {
+                    c: [&grid[gz][gx], &grid[gz][gx + 1], &grid[gz + 1][gx], &grid[gz + 1][gx + 1]],
+                    t: [(x % STEP) as f32 / STEP as f32, (z % STEP) as f32 / STEP as f32],
+                };
+                let bits = corners.cached_bits();
                 for y in 0..CHUNK_SIZE {
                     let wy = base.y + y as i32;
                     if wy > ROOF {
                         break;
                     }
-                    let h = |salt: u64| hash_f(wx, wy, wz, self.seed ^ salt);
-                    let block = if self.bedrock(wx, wy, wz) {
-                        Block::BEDROCK
-                    } else if solid(x, y, z) {
-                        // Depth below the nearest open space above (up to 4).
-                        let depth = (1..=4).find(|&k| y + k <= CHUNK_SIZE + STEP && !solid(x, y + k, z)).unwrap_or(5);
-                        if depth <= 3 && wy < 90 && patch > 0.32 {
-                            Block::SOUL_SAND
-                        } else if depth <= 2 && (LAVA_SEA - 4..LAVA_SEA + 6).contains(&wy) && gravel > 0.3 {
-                            Block::GRAVEL
-                        } else if hash_f(wx >> 1, wy >> 1, wz >> 1, self.seed ^ 3) < 0.035 && h(4) < 0.55 {
-                            Block::QUARTZ_ORE
-                        } else {
-                            Block::NETHERRACK
-                        }
-                    } else if wy <= LAVA_SEA {
-                        Block::LAVA
-                    } else if wy > 60
-                        && (1..=3).any(|k| solid(x, y + k, z))
-                        && self.glow.noise3(wx as f32 / 6.0, wy as f32 / 6.0, wz as f32 / 6.0) > 0.5
-                    {
-                        Block::GLOWSTONE
-                    } else {
-                        continue;
-                    };
-                    blocks[index(x, y, z)] = block;
+                    let block = self.classify(wx, wy, wz, bits, &corners);
+                    if block != Block::AIR {
+                        blocks[index(x, y, z)] = block;
+                    }
                 }
             }
         }
+        super::nether_decoration::decorate(self, &mut blocks, base);
         let cache = RefCell::new(FxHashMap::default());
         let open = |x, z, top, bottom| self.column_open(x, z, top, bottom, &mut cache.borrow_mut());
         self.fortresses.paint(&mut blocks, base, &open);
@@ -374,9 +552,11 @@ mod tests {
                     for z in (0..CHUNK_SIZE).step_by(3) {
                         let col = column(&chunks, x, z);
                         assert_eq!((col[0], col[ROOF as usize]), (Block::BEDROCK, Block::BEDROCK));
+                        let (wx, wz) = (cx * CHUNK_SIZE_I + x as i32, cz * CHUNK_SIZE_I + z as i32);
+                        let deltas = g.biomes.biome(wx, wz) == NetherBiome::BasaltDeltas;
                         for (y, &b) in col.iter().enumerate() {
                             *counts.entry(b).or_insert(0) += 1;
-                            if b == Block::LAVA {
+                            if b == Block::LAVA && !deltas {
                                 assert!(y as i32 <= LAVA_SEA, "lava above the sea at {y}");
                             }
                             if b == Block::AIR {
@@ -391,7 +571,9 @@ mod tests {
         let total: usize = counts.values().sum();
         assert!(n(Block::NETHERRACK) > total / 4, "{counts:?}");
         assert!(n(Block::AIR) > total / 6, "open caverns: {counts:?}");
-        for b in [Block::LAVA, Block::SOUL_SAND, Block::QUARTZ_ORE, Block::GLOWSTONE] {
+        let surfaces = [Block::SOUL_SAND, Block::BASALT, nb::SOUL_SOIL, nb::CRIMSON_NYLIUM, nb::WARPED_NYLIUM];
+        assert!(surfaces.iter().any(|&b| n(b) > 0), "a biome surface in {counts:?}");
+        for b in [Block::LAVA, Block::QUARTZ_ORE, Block::GLOWSTONE] {
             assert!(n(b) > 0, "no {} in {counts:?}", b.name());
         }
     }
@@ -423,6 +605,25 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn grid_column_cache_keeps_warm_columns_when_full() {
+        let g = NetherGen::new(12345);
+        let warm: Vec<_> = (0..COLUMN_CACHE_LIMIT).map(|x| g.grid_column(IVec2::new(x as i32, 0))).collect();
+        assert_eq!(g.columns.lock().unwrap().len(), COLUMN_CACHE_LIMIT);
+        // A hit at capacity must reuse the sampled column without evicting.
+        assert!(Arc::ptr_eq(&warm[0], &g.grid_column(IVec2::ZERO)));
+        let added = g.grid_column(IVec2::new(-1, 0));
+        let cache = g.columns.lock().unwrap();
+        assert_eq!(cache.len(), COLUMN_CACHE_LIMIT);
+        assert!(Arc::ptr_eq(&added, cache.get(&IVec2::new(-1, 0)).unwrap()));
+        let retained = warm
+            .iter()
+            .enumerate()
+            .filter(|(x, column)| cache.get(&IVec2::new(*x as i32, 0)).is_some_and(|c| Arc::ptr_eq(c, column)))
+            .count();
+        assert_eq!(retained, COLUMN_CACHE_LIMIT - 1, "only one warm column is evicted");
     }
 
     #[test]
@@ -585,14 +786,20 @@ mod tests {
             for y in (min.y..=max.y).step_by(2) {
                 for z in (min.z..=max.z).step_by(2) {
                     for x in (min.x..=max.x).step_by(2) {
-                        let expected = world_block(&g, &mut chunks, x, y, z) == Block::AIR;
+                        let generated = world_block(&g, &mut chunks, x, y, z);
+                        let expected = generated == Block::AIR;
                         // Force the neighbour-sampling path rather than reading the chunk.
                         let base = IVec3::new(x + CHUNK_SIZE_I, y, z);
-                        assert_eq!(
-                            g.air_for_exposure(IVec3::new(x, y, z), base, &blocks, &mut cache),
-                            expected,
-                            "point sample at ({x},{y},{z})"
-                        );
+                        let sampled = g.air_for_exposure(IVec3::new(x, y, z), base, &blocks, &mut cache);
+                        // Biome features only ever fill air, so the undecorated
+                        // sample may see air where a plant or vine now stands.
+                        let feature = nb::NetherWood::of(generated).is_some()
+                            || nb::Vine::of(generated).is_some()
+                            || generated == nb::SHROOMLIGHT
+                            || generated == Block::BASALT
+                            || generated == nb::BONE_BLOCK
+                            || generated == nb::SOUL_FIRE;
+                        assert!(sampled == expected || (sampled && feature), "point sample at ({x},{y},{z})");
                         if expected {
                             found_air += 1;
                         } else {

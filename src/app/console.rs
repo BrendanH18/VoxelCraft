@@ -234,6 +234,14 @@ impl Game {
                     .ok_or("Could not find that biome nearby")?;
                 return Ok(self.locate_message(at, biome.name()));
             }
+            Command::LocateNetherBiome(biome) => {
+                let at = self
+                    .world
+                    .generator
+                    .nearest_nether_biome(self.player.pos.floor().as_ivec3(), biome, 12_800)
+                    .ok_or("Could not find that biome nearby")?;
+                return Ok(self.locate_message(at, biome.name()));
+            }
             Command::SetBlock(pos, block) => {
                 if !self.world.set_block(pos, block) {
                     return Err("block unchanged or unloaded".into());

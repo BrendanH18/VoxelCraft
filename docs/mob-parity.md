@@ -87,4 +87,23 @@ throw them at 10 b/s aimed 20° high. A splash affects entities within 4 × 2 ×
 `1 - distance / 4` intensity, 75% duration, and Java's instant damage/heal amounts (the
 undead are inverted). Mobs only react to instant effects; water splashes do nothing.
 
-Piglins and hoglins in bastions were skipped.
+## Piglins, brutes, hoglins, zoglins and striders
+
+Piglins (16 health) barter for gold with Java 1.21's table: 459 weight, about 6 s
+of admiring. They attack players without golden armor and are angered by chests
+and broken gold. Hit piglins alert the adults nearby, and piglins zombify after 15 s
+outside the Nether. Brutes (50 health, golden axe for 13) guard bastions, which now
+get persistent residents.
+
+Hoglins (40 health) charge and toss players, avoid portals and outnumbering piglins,
+and become zoglins outside the Nether. Zoglins attack everything but creepers and
+other zoglins. Piglins hunt baby hoglins.
+
+Striders walk on lava, shiver on land and drop string. A crossbow item (840/841)
+arms piglins and the player.
+
+The Nether spawn table is keyed by biome for the biome work. Persistent mobs and
+populated bastions are saved under `nether_mobs`. Crying obsidian (block 1800) now
+exists for bartering and bastion loot. Riding, breeding, spectral arrows and Soul
+Speed are gaps. Details, the bartering table and sources
+are in [Nether mobs](nether-mobs.md).

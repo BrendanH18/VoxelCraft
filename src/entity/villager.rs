@@ -1033,6 +1033,21 @@ mod tests {
         assert!((18..=32).contains(&enchanted.cost.count));
     }
     #[test]
+    fn master_fletcher_crossbows_have_their_enchantment() {
+        let def = tables::TRADES
+            .iter()
+            .find(|(p, l, d)| *p == Profession::Fletcher && *l == 5 && d.output == "crossbow")
+            .unwrap()
+            .2;
+        for seed in 0..100 {
+            let offer = def.offer(seed).unwrap();
+            assert_eq!(offer.output.item, Item::CROSSBOW);
+            assert!(offer.output.enchants.has(Enchantment::Unbreaking));
+            assert!(offer.output.enchants.iter().all(|(e, _)| e == Enchantment::Unbreaking));
+        }
+    }
+
+    #[test]
     fn round_two_mobs_save_conversion_age_and_golem_health() {
         let mut e = Entities::new(4);
         e.spawn(MobKind::Villager, DVec3::ZERO);

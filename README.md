@@ -59,8 +59,8 @@ a stronghold, and watch the credits roll after the Ender Dragon falls.
       <img src="docs/images/night-mobs.jpg" alt="Zombies and pigs in a voxel landscape at night"><br>
       <h3>🌙 Company after dark</h3>
       Herds of animals wander by day. At night come zombies, skeletons,
-      creepers, spiders and Endermen, and the Nether adds blazes, ghasts
-      and more.
+      creepers, spiders and Endermen. The Nether adds blazes, ghasts,
+      piglins to barter with, hoglins and lava-walking striders.
     </td>
   </tr>
   <tr>
@@ -309,10 +309,11 @@ how to run benchmarks, script scenes and capture screenshots.
 | --- | --- |
 | [Gameplay guide](docs/gameplay.md): controls, survival, mobs, recipes | [Architecture](docs/architecture.md) |
 | [Survival items](docs/survival-items.md): shears, compass, crops, fishing | [Development guide](docs/development.md) |
-| [Bastions and Nether materials](docs/bastions.md) | [Release guide](docs/releases.md) |
+| [Bastions and Nether materials](docs/bastions.md), [Nether biomes](docs/nether-biomes.md) | [Release guide](docs/releases.md) |
 | [Colours and dyes](docs/colors.md) | [Hosted agents and commands](docs/agents.md) |
 | [Mob parity](docs/mob-parity.md) | [Performance investigation](docs/performance-2026-10-07.md) |
 | [Player rendering](docs/player-rendering.md) | [Music](docs/music.md) and [particles](docs/particles.md) |
+| [Nether mobs](docs/nether-mobs.md): piglins, bartering, hoglins, striders | |
 
 ## 🤝 Contributing
 

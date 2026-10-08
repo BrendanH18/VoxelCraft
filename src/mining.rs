@@ -200,6 +200,9 @@ pub fn silk_drop(block: Block) -> Option<Item> {
         || b.is_deepslate_ore()
         || b.stained_glass_color().is_some()
         || b.stained_pane_color().is_some();
+    if let Some(item) = crate::world::nether_biome_blocks::silk_drop(block) {
+        return Some(item);
+    }
     (silky && Item::from(b).is_valid()).then(|| Item::from(b))
 }
 

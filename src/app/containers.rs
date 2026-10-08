@@ -34,6 +34,16 @@ impl Game {
         self.container = Container::Chest(pos);
         self.toggle_inventory();
         self.chest_sound(pos, 0.65);
+        if self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
+            self.piglins_notice(true);
+        }
+    }
+
+    /// Java's `angerNearbyPiglins`: piglins around the player turn on them
+    /// for opening a chest (only the ones that see it) or breaking gold.
+    pub(super) fn piglins_notice(&mut self, only_if_seen: bool) {
+        let (actor, at) = (self.actor, self.player.pos);
+        self.mobs.entities.piglins_notice(actor, at, only_if_seen, &self.world);
     }
 
     pub(super) fn chest_sound(&mut self, pos: IVec3, pitch: f32) {

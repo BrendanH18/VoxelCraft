@@ -12,7 +12,7 @@ use crate::world::{
     block::{Block, tex},
 };
 
-const SPRITES: usize = 13;
+const SPRITES: usize = 15;
 const FRAMES: usize = 8;
 
 #[repr(C)]
@@ -182,7 +182,7 @@ impl Renderer {
             } else {
                 match p.style {
                     Kind::Portal => 1.0 - (1.0 - t).powi(2),
-                    Kind::Flame => 1.0 - t * t * 0.5,
+                    Kind::Flame | Kind::SoulFlame => 1.0 - t * t * 0.5,
                     Kind::Lava => 1.0 - t * t,
                     Kind::Smoke | Kind::LargeSmoke => 1.0 - t,
                     Kind::Crit | Kind::MagicCrit | Kind::Heart | Kind::Angry | Kind::DragonBreath => {
@@ -205,7 +205,7 @@ impl Renderer {
                         1.0
                     } else {
                         (world.block_light(pos.floor().as_ivec3()) as f32 / 15.0
-                            + if p.style == Kind::Flame { t } else { 0.0 })
+                            + if matches!(p.style, Kind::Flame | Kind::SoulFlame) { t } else { 0.0 })
                         .min(1.0)
                     },
                     layer,
@@ -237,7 +237,9 @@ fn sprites() -> Vec<u8> {
                         // not a filled disc (those read as black blobs).
                         0 => r < 4.2 - frame as f32 * 0.35 && noise > 1.5 + frame as f32 * 0.7,
                         10 | 11 => r < 7.0 - frame as f32 * 0.45 + noise * 0.13 && noise > frame as f32 * 0.65,
-                        1 => dy > -6.0 && dy < 6.0 && dx.abs() < (dy + 8.0) * 0.38 && noise > 1.0,
+                        1 | 14 => dy > -6.0 && dy < 6.0 && dx.abs() < (dy + 8.0) * 0.38 && noise > 1.0,
+                        // Spores and ash: a speck of a few pixels.
+                        13 => r < 1.9,
                         2 => (dx.abs() < 1.5 || dy.abs() < 1.5 || (dx.abs() - dy.abs()).abs() < 1.0) && r < 6.0,
                         3 => (4.0..6.0).contains(&r) || (dx < -1.0 && dy < -1.0 && r < 4.5),
                         4 => dy.abs() < 1.5 && dx.abs() < 7.0 || dx.abs() < 2.0 && (dy + 3.0).abs() < 2.0,
@@ -260,6 +262,8 @@ fn sprites() -> Vec<u8> {
                     }
                     let color = if kind == 1 {
                         [255, (170.0 + dy * 10.0).clamp(70.0, 250.0) as u8, 35, 255]
+                    } else if kind == 14 {
+                        [60, (190.0 + dy * 8.0).clamp(120.0, 255.0) as u8, 255, 255]
                     } else {
                         let c = (220.0 + noise * 3.0).min(255.0) as u8;
                         [c, c, c, 255]

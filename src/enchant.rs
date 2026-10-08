@@ -392,6 +392,7 @@ pub fn enchantability(item: Item) -> u32 {
             ArmorMaterial::Netherite => 15,
         },
         ItemKind::Bow | ItemKind::FishingRod => 1,
+        _ if matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW) => 1,
         _ if item == Item::BOOK => 1,
         _ => 0,
     }
@@ -662,7 +663,14 @@ pub fn repairs(item: Item, material: Item) -> bool {
     use crate::item::{ArmorMaterial, Tier};
     match item.info().kind {
         ItemKind::Tool(_, tier) => match tier {
-            Tier::Wood => material.block().is_some_and(|b| b.is_planks()),
+            Tier::Wood => material.block().is_some_and(|b| {
+                b.is_planks()
+                    || matches!(
+                        b,
+                        crate::world::nether_biome_blocks::CRIMSON_PLANKS
+                            | crate::world::nether_biome_blocks::WARPED_PLANKS
+                    )
+            }),
             Tier::Stone => material == Item::from(Block::COBBLESTONE),
             Tier::Iron => material == Item::IRON_INGOT,
             Tier::Gold => material == Item::GOLD_INGOT,
@@ -892,6 +900,33 @@ mod tests {
     }
 
     #[test]
+    fn crossbows_enchant_as_durable_gear_without_bow_enchantments() {
+        for item in [Item::CROSSBOW, Item::CHARGED_CROSSBOW] {
+            assert!(table_accepts(Stack::new(item, 1)));
+            assert!(!table_accepts(Stack {
+                enchants: Enchants::NONE.with(Enchantment::Unbreaking, 1),
+                ..Stack::new(item, 1)
+            }));
+            let mut saw_unbreaking = false;
+            for seed in 0..100 {
+                for (slot, offer) in offers(seed, item, 15).into_iter().enumerate() {
+                    if let Some((clue, _)) = offer.clue {
+                        assert_eq!(clue, Enchantment::Unbreaking);
+                        let list = offer_enchants(seed, item, slot, offer.cost);
+                        assert!(!list.is_empty());
+                        assert!(list.iter().all(|(e, _)| *e == Enchantment::Unbreaking));
+                        saw_unbreaking = true;
+                    }
+                }
+            }
+            assert!(saw_unbreaking);
+            for e in [Enchantment::Power, Enchantment::Punch, Enchantment::Flame, Enchantment::Infinity] {
+                assert!(!e.fits(item));
+            }
+        }
+    }
+
+    #[test]
     fn level_thirty_books_can_roll_high_levels() {
         let mut best = 0;
         for seed in 0..400 {
@@ -957,6 +992,22 @@ mod tests {
         assert_eq!((r.output.damage, r.uses), (0, Some(3)), "148 per ingot");
         assert_eq!(anvil(worn, Some(Stack::new(Item::DIAMOND, 4)), false), None);
         assert_eq!((enchantability(chest), enchantability(Item::tool(ToolKind::Axe, Tier::Netherite))), (15, 15));
+    }
+
+    #[test]
+    fn nether_planks_repair_wooden_tools_without_becoming_fuel() {
+        use crate::item::Tier;
+        use crate::world::nether_biome_blocks as nb;
+        for planks in [nb::CRIMSON_PLANKS, nb::WARPED_PLANKS] {
+            for kind in [ToolKind::Sword, ToolKind::Pickaxe, ToolKind::Axe, ToolKind::Shovel, ToolKind::Hoe] {
+                let tool = Item::tool(kind, Tier::Wood);
+                let worn = Stack { damage: 20, ..Stack::new(tool, 1) };
+                let result = anvil(worn, Some(Stack::new(planks, 1)), false).unwrap();
+                assert_eq!((result.output.damage, result.cost, result.uses), (6, 1, Some(1)));
+            }
+            assert_eq!(crate::world::furnace::burn_time(planks.into()), None);
+            assert_eq!(planks.fire_odds(), (0, 0));
+        }
     }
 
     #[test]

@@ -9,6 +9,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::World;
 use super::block::{Block, Facing, Shaped};
 use super::chunk::CHUNK_SIZE_I;
+use super::nether_biome_blocks::keep_wood;
 use super::rails;
 use super::redstone_blocks::{self as r, Component};
 
@@ -565,7 +566,7 @@ impl World {
                 if wood && self.redstone.contacts.get(&p).is_some_and(|c| c.arrows) {
                     self.schedule_redstone(p, 30, 0);
                 } else {
-                    self.edit(p, r::button(mount, false, wood), false);
+                    self.edit(p, keep_wood(b, r::button(mount, false, wood)), false);
                 }
             }
             Some(Component::Plate { kind, .. }) => {
@@ -573,8 +574,8 @@ impl World {
                     kind,
                     self.redstone.contacts.get(&p).copied().unwrap_or_default(),
                 );
-                if b != r::plate(kind, power) {
-                    self.edit(p, r::plate(kind, power), false);
+                if b != keep_wood(b, r::plate(kind, power)) {
+                    self.edit(p, keep_wood(b, r::plate(kind, power)), false);
                 }
                 if power > 0 {
                     self.schedule_redstone(p, if kind < 2 { 20 } else { 10 }, 0);
@@ -671,7 +672,7 @@ impl World {
                     self.redstone.powered.remove(&p);
                 }
                 if (iron || was != on) && open != on {
-                    self.edit(p, r::trapdoor(facing, on, top, iron), false);
+                    self.edit(p, keep_wood(b, r::trapdoor(facing, on, top, iron)), false);
                 }
             }
             _ => {}
@@ -726,6 +727,13 @@ impl World {
                 | Component::Comparator { .. }
                 | Component::Plate { .. },
             ) => IVec3::NEG_Y,
+            _ if matches!(
+                super::nether_biome_blocks::Vine::of(b),
+                Some((super::nether_biome_blocks::Vine::Weeping, _))
+            ) =>
+            {
+                return self.get_block(p + IVec3::Y).is_some_and(super::nether_biome_blocks::hangs_from);
+            }
             _ => return true,
         };
         self.get_block(p + support)
@@ -774,13 +782,15 @@ impl World {
                     return false;
                 }
             }
-            Some(Component::Trapdoor { facing, open, top, iron: false }) => r::trapdoor(facing, !open, top, false),
+            Some(Component::Trapdoor { facing, open, top, iron: false }) => {
+                keep_wood(b, r::trapdoor(facing, !open, top, false))
+            }
             Some(Component::Trapdoor { iron: true, .. } | Component::IronDoor { .. }) => return true,
             Some(Component::Daylight { power, inverted }) => r::daylight(power, !inverted),
             Some(Component::Lever { mount, on }) => r::lever(mount, !on),
             Some(Component::Button { mount, on: false, wood }) => {
                 self.schedule_redstone(p, if wood { 30 } else { 20 }, 0);
-                r::button(mount, true, wood)
+                keep_wood(b, r::button(mount, true, wood))
             }
             Some(Component::Button { on: true, .. }) => return true,
             Some(Component::Repeater { facing, delay, on }) => r::repeater(facing, delay % 4 + 1, on),

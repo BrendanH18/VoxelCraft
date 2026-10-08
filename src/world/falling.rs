@@ -33,6 +33,7 @@ impl World {
     pub(super) fn settle(&mut self, mut p: IVec3) {
         self.drop_unhung_ladders(p);
         self.solidify_nearby_powder(p);
+        self.update_nether_vines(p);
         loop {
             self.wake_fluids(p);
             let Some(b) = self.get_block(p) else { return };
@@ -175,7 +176,12 @@ impl World {
                     let Some(b) = self.get_block(p) else { continue };
                     let resists = matches!(
                         b,
-                        Block::AIR | Block::BEDROCK | Block::OBSIDIAN | Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK
+                        Block::AIR
+                            | Block::BEDROCK
+                            | Block::OBSIDIAN
+                            | Block::CRYING_OBSIDIAN
+                            | Block::ANCIENT_DEBRIS
+                            | Block::NETHERITE_BLOCK
                     ) || b.is_fluid();
                     if !resists && self.edit(p, Block::AIR, false) {
                         removed.push(p);

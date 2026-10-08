@@ -25,6 +25,9 @@ pub enum Voice {
     Ghast,
     Witch,
     Villager,
+    Piglin,
+    Hoglin,
+    Strider,
 }
 
 /// What kind of sound a voice makes.
@@ -37,7 +40,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 14] = [
+    pub const ALL: [Voice; 17] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -52,6 +55,9 @@ impl Voice {
         Voice::Ghast,
         Voice::Witch,
         Voice::Villager,
+        Voice::Piglin,
+        Voice::Hoglin,
+        Voice::Strider,
     ];
 
     pub fn name(self) -> &'static str {
@@ -70,6 +76,9 @@ impl Voice {
             Voice::Ghast => "ghast",
             Voice::Witch => "witch",
             Voice::Villager => "villager",
+            Voice::Piglin => "piglin",
+            Voice::Hoglin => "hoglin",
+            Voice::Strider => "strider",
         }
     }
 }
@@ -164,6 +173,9 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Ghast => ghast(call, rng),
         Voice::Witch => witch(call, rng),
         Voice::Villager => villager(call, rng),
+        Voice::Piglin => piglin(call, rng),
+        Voice::Hoglin => hoglin(call, rng),
+        Voice::Strider => strider(call, rng),
     }
 }
 
@@ -338,6 +350,110 @@ fn witch(call: Call, rng: &mut Rng) -> Vec<f32> {
         },
     );
     dsp::finish(out, 0.6)
+}
+
+/// Piglins snort like a pig an octave down, with a gruff, growly voice:
+/// "hrmph" grunts at rest, a squealing snarl when hurt.
+fn piglin(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let gruff = [(460.0, 4.0, 1.0), (1250.0, 5.0, 0.55), (2500.0, 7.0, 0.2)];
+    match call {
+        Call::Ambient => {
+            let mut out = vec![0.0; samples(0.9)];
+            let grunts = 2 + rng.next_u32() % 2;
+            for g in 0..grunts {
+                let base = rng.range(85.0, 115.0);
+                let len = rng.range(0.14, 0.22);
+                let grunt = utter(
+                    rng,
+                    &Utterance {
+                        secs: len,
+                        f0: &|t| base * (1.15 - t * 1.2),
+                        env: &|t| swell(t, 0.02, len * 0.5, len),
+                        formants: gruff,
+                        shift: &|t| lerp(0.8, 1.05, t / len),
+                        jitter: 0.2,
+                        breath: 0.7,
+                    },
+                );
+                mix_into(&mut out, &grunt, 1.0, samples(g as f32 * 0.24 + rng.range(0.0, 0.04)));
+            }
+            dsp::finish(out, 0.55)
+        }
+        Call::Hurt | Call::Death => {
+            let (secs, top) = if call == Call::Hurt { (0.35, 260.0) } else { (0.9, 230.0) };
+            let start = rng.range(150.0, 175.0);
+            let out = utter(
+                rng,
+                &Utterance {
+                    secs,
+                    f0: &|t| {
+                        let x = t / secs;
+                        if x < 0.25 { lerp(start, top, x / 0.25) } else { lerp(top, start * 0.55, (x - 0.25) / 0.75) }
+                    },
+                    env: &|t| swell(t, 0.02, secs * 0.45, secs),
+                    formants: [(700.0, 4.0, 1.0), (1600.0, 5.0, 0.6), (2700.0, 6.0, 0.25)],
+                    shift: FLAT,
+                    jitter: 0.12,
+                    breath: 0.45,
+                },
+            );
+            dsp::finish(out, 0.55)
+        }
+    }
+}
+
+/// Hoglins: a deep, wet snort over a rumbling growl; hurt, a hoarse squeal.
+fn hoglin(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, base, fall, breath) = match call {
+        Call::Ambient => (rng.range(0.7, 0.95), rng.range(62.0, 75.0), 0.8, 1.1),
+        Call::Hurt => (0.4, rng.range(150.0, 175.0), 0.6, 0.8),
+        Call::Death => (1.1, rng.range(120.0, 140.0), 0.35, 0.9),
+    };
+    let rate = rng.range(9.0, 13.0);
+    let mut out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * lerp(1.0, fall, t / secs) * (1.0 + 0.08 * (rate * std::f32::consts::TAU * t).sin()),
+            env: &|t| swell(t, 0.03, secs * 0.5, secs),
+            formants: [(380.0, 3.0, 1.0), (880.0, 4.0, 0.55), (2100.0, 5.0, 0.2)],
+            shift: &|t| lerp(0.75, 1.0, t / secs),
+            jitter: 0.22,
+            breath,
+        },
+    );
+    if call == Call::Ambient {
+        // The snort: a short burst of nasal noise up front.
+        let mut snort = noise(rng, samples(0.12), |t| swell(t, 0.01, 0.08, 0.12));
+        Biquad::bandpass(1100.0, 1.5).run(&mut snort);
+        mix_into(&mut out, &snort, 0.8, 0);
+    }
+    dsp::finish(out, 0.6)
+}
+
+/// Striders warble: a throaty trill with a fast flutter, squeaking when hurt.
+fn strider(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (secs, base, fall, flutter) = match call {
+        Call::Ambient => (rng.range(0.5, 0.8), rng.range(230.0, 290.0), 0.85, rng.range(22.0, 28.0)),
+        Call::Hurt => (0.3, rng.range(420.0, 480.0), 0.7, 30.0),
+        Call::Death => (0.9, rng.range(330.0, 370.0), 0.4, 18.0),
+    };
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * lerp(1.0, fall, t / secs) * (1.0 + 0.1 * (flutter * std::f32::consts::TAU * t).sin()),
+            env: &|t| {
+                let gate = 0.6 + 0.4 * (flutter * 0.5 * std::f32::consts::TAU * t).sin().abs();
+                swell(t, 0.02, secs * 0.4, secs) * gate
+            },
+            formants: [(820.0, 5.0, 1.0), (1500.0, 6.0, 0.5), (2600.0, 7.0, 0.2)],
+            shift: FLAT,
+            jitter: 0.06,
+            breath: 0.3,
+        },
+    );
+    dsp::finish(out, 0.5)
 }
 
 fn zombie(call: Call, rng: &mut Rng) -> Vec<f32> {

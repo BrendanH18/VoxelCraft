@@ -242,6 +242,21 @@ impl Generator {
         self.end.as_ref()
     }
 
+    /// The Nether biome of column `(x, z)`, when this is a Nether generator.
+    pub fn nether_biome(&self, x: i32, z: i32) -> Option<super::nether_biome::NetherBiome> {
+        Some(self.nether.as_ref()?.biomes.biome(x, z))
+    }
+
+    /// Nearest column of a Nether biome (`/locate biome` in the Nether).
+    pub fn nearest_nether_biome(
+        &self,
+        origin: IVec3,
+        target: super::nether_biome::NetherBiome,
+        max_blocks: i32,
+    ) -> Option<IVec3> {
+        self.nether.as_ref()?.biomes.nearest(origin, target, max_blocks)
+    }
+
     /// Nearest Nether fortress, when this is a Nether generator.
     pub fn nearest_fortress(&self, p: glam::IVec2) -> Option<IVec3> {
         self.nether.as_ref()?.fortresses.nearest(p)
@@ -495,6 +510,11 @@ impl Generator {
     /// spawn (Nether fortresses).
     pub fn in_fortress(&self, p: IVec3) -> bool {
         self.nether.as_ref().is_some_and(|n| n.fortresses.inside(p))
+    }
+
+    /// Bastion remnants within `r` blocks of `p` (none outside the Nether).
+    pub fn bastions_near(&self, p: IVec3, r: i32) -> Vec<Arc<super::bastion::Bastion>> {
+        self.nether.as_ref().map_or(Vec::new(), |n| n.fortresses.bastions.around(IVec2::new(p.x, p.z), r))
     }
 
     fn chunk_columns(&self, pos: IVec2) -> Arc<ChunkColumns> {
@@ -1115,13 +1135,16 @@ mod tests {
     /// Golden block IDs captured at 25c4c8a before the performance changes;
     /// the Overworld values were re-captured when ore veins got per-try
     /// random streams (seam fix) and mineshafts gained cave spider spawners.
+    /// The Nether value was re-captured when Nether biomes added surface
+    /// rules and features, then after fixing delta overwrites and twisting
+    /// vine ground searches and vertical chunk bounds.
     /// Cover the benchmark volume and distant columns in every dimension.
     #[test]
     fn generated_chunk_hashes_stay_identical() {
         for (dimension, seed, expected) in [
             (Dimension::Overworld, 12345, 0x5620_c834_cc73_b8eau64),
             (Dimension::Overworld, 99, 0x69e1_f991_22ee_2f6au64),
-            (Dimension::Nether, 12345, 0x17a0_1163_881c_778du64),
+            (Dimension::Nether, 12345, 0xb0c9_36c6_81b7_bfd5u64),
             (Dimension::End, 12345, 0xc5aa_2549_4a63_5b2bu64),
         ] {
             let g = Generator::for_dimension(seed, dimension);

@@ -427,7 +427,11 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
     if fields.next().is_some() {
         return None;
     }
-    let item = Item(id);
+    let mut item = Item(id);
+    // v0.4.0's axis-less bone block item is the axis bone block now.
+    if item.block() == Some(crate::world::gadgets::LEGACY_BONE_BLOCK) {
+        item = Item::from_block(crate::world::gadgets::BONE_BLOCK);
+    }
     Some((count > 0 && item.is_valid()).then(|| Stack {
         item,
         count: count.min(item.max_stack()),
@@ -500,6 +504,14 @@ pub fn click_slot(slot: &mut Option<Stack>, cursor: &mut Option<Stack>, right: b
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v0_4_bone_block_items_load_as_the_axis_bone_block() {
+        let legacy = Item::from_block(crate::world::gadgets::LEGACY_BONE_BLOCK);
+        let stack = stack_from_str(&format!("{}:12", legacy.0)).unwrap().unwrap();
+        assert_eq!(stack.item, Item::from_block(crate::world::gadgets::BONE_BLOCK));
+        assert_eq!(stack.count, 12);
+    }
     use crate::item::{Tier, ToolKind};
     use crate::world::block::Block;
 

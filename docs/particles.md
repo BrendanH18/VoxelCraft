@@ -56,6 +56,14 @@ breath are sampled from entities without touching mob RNG. Status effects
 blend Java's potion colour into one swirl. A shattered eye plays the
 80-particle portal ring from level event 2003.
 
+In the Nether each sampled non-full cell also tries its biome's ambient
+particle with Java's `AmbientParticleSettings` probability: crimson spores
+(0.025, `SuspendedParticle`, pink, hanging), warped spores (0.01428,
+dark blue, sinking), ash in soul sand valleys (0.00625, `AshParticle`)
+and white ash in basalt deltas (0.118, `WhiteAshParticle`). Biomes come
+from a 19×19 quart window around the camera, refreshed when it changes
+quart. Soul torches emit smoke and the blue soul fire flame.
+
 Spawners still emit smoke and flame on the existing near-player roll
 (about six times a second) so their RNG stream stays stable. Java's client
 tick emits both every tick.

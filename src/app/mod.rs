@@ -177,6 +177,8 @@ struct Game {
     clock: crate::simulation::FixedClock,
     previous_eye: DVec3,
     rendered_eye: DVec3,
+    /// Biome-blended Nether fog colour (Java's cubic Gaussian sampler).
+    nether_fog: crate::world::nether_biome::FogSampler,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     day_time: f64,
     /// Completed daylight cycles for `/time query day`.
@@ -787,6 +789,7 @@ impl Game {
             clock: Default::default(),
             previous_eye,
             rendered_eye: previous_eye,
+            nether_fog: Default::default(),
             day_time: args
                 .time
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
@@ -1388,6 +1391,9 @@ impl Game {
             }
             self.world.set_block(pos, Block::AIR);
             self.audio.block_break(block, pos);
+            if crate::entity::nether::guarded_by_piglins(block) {
+                self.piglins_notice(false);
+            }
             if block.is_bed() {
                 self.break_bed_partner(pos, block);
             }
@@ -1459,6 +1465,9 @@ impl Game {
             self.world.particles.push(crate::particles::Request::Break { cell: pos, block });
         }
         self.audio.block_break(block, pos);
+        if crate::entity::nether::guarded_by_piglins(block) {
+            self.piglins_notice(false);
+        }
         // Stone, ores and the like only drop with a good enough pickaxe.
         if self.gamerules.bool("doTileDrops") && crate::mining::can_harvest(block, held) {
             self.world.spill_with_item(pos, block, digger.held);
@@ -1796,6 +1805,8 @@ impl Game {
         let block = crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal)
             .with_facing(crate::world::block::Facing::toward(self.player.forward()));
         let block = voxelcraft::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
+        let roll = crate::world::noise::hash3(at.x, at.y, at.z, self.started.elapsed().subsec_nanos() as u64);
+        let block = crate::world::nether_biome_blocks::placed_vine(block, roll);
         if block.is_water() && self.dimension == Dimension::Nether {
             // Water boils away in the Nether.
             self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
@@ -2348,8 +2359,19 @@ impl Game {
         if nether {
             // No sun, no weather: a steady dim glow in a red haze.
             sky.daylight = if self.dimension == Dimension::End { 0.65 } else { dimension::NETHER_LIGHT };
-            sky.horizon = if self.dimension == Dimension::End { [0.045, 0.025, 0.065] } else { dimension::NETHER_FOG };
-            sky.zenith = if self.dimension == Dimension::End { [0.018, 0.009, 0.03] } else { dimension::NETHER_FOG };
+            let fog = match self.world.generator.dimension {
+                Dimension::Nether => {
+                    let generator = &self.world.generator;
+                    self.nether_fog.sample(camera, |qx, qz| {
+                        generator
+                            .nether_biome(qx * 4, qz * 4)
+                            .unwrap_or(crate::world::nether_biome::NetherBiome::NetherWastes)
+                    })
+                }
+                _ => dimension::NETHER_FOG,
+            };
+            sky.horizon = if self.dimension == Dimension::End { [0.045, 0.025, 0.065] } else { fog };
+            sky.zenith = if self.dimension == Dimension::End { [0.018, 0.009, 0.03] } else { fog };
         }
         let scene = split::Scene {
             sky,

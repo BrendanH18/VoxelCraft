@@ -25,6 +25,7 @@ pub mod minecart;
 mod mob;
 mod mob_index;
 pub mod model;
+pub mod nether;
 pub mod orb;
 pub mod pearl;
 pub mod player_model;
@@ -172,10 +173,11 @@ pub enum EntityEvent {
         sound: MobSound,
         pos: DVec3,
     },
-    /// A skeleton shot at `target` (turned into an arrow internally).
+    /// A mob shot at `target` (turned into an arrow internally).
     Shoot {
         from: DVec3,
         target: DVec3,
+        cause: &'static str,
     },
     /// A blaze or ghast shot a fireball (turned into a projectile internally).
     /// `large` is a ghast fireball: slower, explosive, and punchable.
@@ -205,6 +207,7 @@ pub enum EntityEvent {
         killed: bool,
         burning: bool,
         player_kill: bool,
+        owner: Option<PlayerId>,
     },
     /// Thorns or the environment killed a mob (loot is dropped internally).
     MobKilled {
@@ -258,6 +261,13 @@ pub enum EntityEvent {
         pos: DVec3,
         points: u32,
     },
+    /// A mob struck the mob with uid `target` (handled internally).
+    MobHit {
+        target: u32,
+        attacker: u32,
+        damage: f32,
+        knockback: DVec3,
+    },
 }
 
 /// Damage and knockback strength (0..1) of an explosion of `power` at
@@ -309,10 +319,19 @@ pub trait MobWorld: BlockSource {
     fn biome(&self, _x: i32, _z: i32) -> crate::world::terrain::Biome {
         crate::world::terrain::Biome::Plains
     }
+    /// The Nether biome of a column (`None` outside the Nether, read as
+    /// nether wastes by Nether spawning).
+    fn nether_biome(&self, _x: i32, _z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
+        None
+    }
     /// Java moon brightness; clients set this from their saved day count.
     /// Inside a Nether fortress piece, where fortress mobs spawn.
     fn in_fortress(&self, _p: IVec3) -> bool {
         false
+    }
+    /// Bastion remnants near `p`, whose residents spawn once.
+    fn bastions_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::bastion::Bastion>> {
+        Vec::new()
     }
 }
 
@@ -328,6 +347,9 @@ impl MobWorld for World {
     }
     fn biome(&self, x: i32, z: i32) -> crate::world::terrain::Biome {
         self.generator.column(x, z).biome
+    }
+    fn nether_biome(&self, x: i32, z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
+        self.generator.nether_biome(x, z)
     }
     fn rains_on(&self, p: IVec3) -> bool {
         World::rains_on(self, p)
@@ -349,6 +371,9 @@ impl MobWorld for World {
     }
     fn in_fortress(&self, p: IVec3) -> bool {
         self.generator.in_fortress(p)
+    }
+    fn bastions_near(&self, p: IVec3, r: i32) -> Vec<std::sync::Arc<crate::world::bastion::Bastion>> {
+        self.generator.bastions_near(p, r)
     }
 }
 
@@ -379,6 +404,8 @@ pub struct Target {
     pub held_enchants: crate::enchant::Enchants,
     /// Current collision box (pose-dependent).
     pub shape: crate::physics::Shape,
+    /// Wears a piece of golden armor, which keeps piglins calm.
+    pub gold_armor: bool,
 }
 
 impl Target {
@@ -393,6 +420,7 @@ impl Target {
             thorns: [0; 4],
             held_enchants: Default::default(),
             shape: crate::player::SHAPE,
+            gold_armor: false,
         }
     }
 
@@ -512,6 +540,7 @@ pub struct Entities {
     trader_spawner: wandering_trader::Spawner,
     trader_leaders: rustc_hash::FxHashMap<u64, (DVec3, f32, bool)>,
     pub trader_spawning: bool,
+    /// The mobGriefing gamerule, shared by villager and piglin item pickup.
     pub villager_griefing: bool,
     /// Seconds until another iron golem may be summoned.
     /// Seconds until the next gossip summon roll.
@@ -522,6 +551,16 @@ pub struct Entities {
     spawner_delays: rustc_hash::FxHashMap<IVec3, f32>,
     spawn_timer: f32,
     merge_timer: f32,
+    /// Next [`Mob::uid`] to hand out.
+    next_uid: u32,
+    /// Living mobs as nether mobs saw them this update (reused buffer).
+    nether_view: Vec<nether::Seen>,
+    /// Players at the last update, to credit melee hits on nether mobs.
+    player_spots: Vec<(PlayerId, DVec3)>,
+    /// Bastion remnants (by their bounds' low corner) whose residents have
+    /// spawned; saved with the nether mobs.
+    bastions_populated: rustc_hash::FxHashSet<IVec3>,
+    bastion_timer: f32,
     /// Mobs drawn last frame (F3).
     pub rendered: usize,
     verts: Vec<EntityVertex>,
@@ -567,6 +606,11 @@ impl Entities {
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
             merge_timer: 0.0,
+            next_uid: 1,
+            nether_view: Vec::new(),
+            player_spots: Vec::new(),
+            bastions_populated: Default::default(),
+            bastion_timer: 0.0,
             rendered: 0,
             verts: Vec::new(),
         }
@@ -636,6 +680,7 @@ impl Entities {
             // toward larger cubes is not applied.
             mob.set_size(1 << (self.rng.next_f32() * 3.0) as u8);
         }
+        nether::on_spawn(&mut mob, &mut self.rng);
         self.mobs.push(mob);
     }
 
@@ -672,12 +717,16 @@ impl Entities {
         }
         if difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
             self.run_spawners(dt as f32, world, ctx);
+            self.populate_bastions(dt as f32, world, ctx);
         }
 
         self.trader_tick(dt as f32, world, ctx);
         self.village_upkeep(dt as f32, world);
         self.assign_hunts(ctx);
         self.trader_upkeep();
+        self.player_spots.clear();
+        self.player_spots.extend(ctx.players.iter().map(|t| (t.id, t.pos)));
+        self.nether_sense(dt as f32, world, ctx);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -688,7 +737,8 @@ impl Entities {
                     | MobKind::SnowGolem
                     | MobKind::WanderingTrader
                     | MobKind::TraderLlama
-            ) || m.built
+            ) || m.persistent
+                || m.built
                 || m.convert_left > 0.0
                 || m.villager.as_ref().is_some_and(|v| v.xp > 0);
             let gone = m.trader.as_ref().is_some_and(|t| t.despawn <= 0.0)
@@ -751,14 +801,17 @@ impl Entities {
         self.mob_index.rebuild(&self.mobs);
         self.resolve_strikes(ctx, &mut events);
         self.separate(dt);
+        self.nether_upkeep(ctx, &mut events);
         if let Some(fight) = &mut self.fight {
             fight.update(dt, world, ctx, &mut self.rng, &mut events);
         }
 
-        // Skeleton shots become arrows, blaze shots fireballs.
+        // Mob bow/crossbow shots become arrows, blaze shots fireballs.
         for e in &events {
             match *e {
-                EntityEvent::Shoot { from, target } => self.arrows.push(Arrow::aimed(from, target, &mut self.rng)),
+                EntityEvent::Shoot { from, target, cause } => {
+                    self.arrows.push(Arrow::aimed(from, target, cause, &mut self.rng));
+                }
                 EntityEvent::ThrowPotion { from, vel, potion } => {
                     self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
                 }
@@ -803,12 +856,18 @@ impl Entities {
         self.update_eyes(dt, &mut events);
         for e in &events {
             match *e {
-                EntityEvent::MobShot { kind, pos, killed, burning, player_kill } => {
+                EntityEvent::MobShot { kind, pos, killed, burning, player_kill, owner } => {
                     if killed && self.mob_loot {
                         self.drop_loot_with_fire(kind, pos, 0, burning, player_kill);
                     }
                     if kind == MobKind::ZombifiedPiglin {
                         self.anger_piglins(pos);
+                    }
+                    if let Some(owner) = owner
+                        && let Some(i) =
+                            self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.nether.is_some())
+                    {
+                        self.nether_hurt(i, nether::Foe::Player(owner));
                     }
                 }
                 EntityEvent::DragonXp { pos, points } => {
@@ -922,6 +981,8 @@ impl Entities {
         if player_kill {
             let xp = if kind.is_cube() {
                 size as u32
+            } else if let Some(xp) = nether::xp(kind, baby) {
+                xp
             } else if baby {
                 // Java gives baby zombies 2.5 times the base experience.
                 12
@@ -929,6 +990,10 @@ impl Entities {
                 kind.xp(&mut self.rng)
             };
             self.spawn_xp(pos, xp);
+        }
+        self.equipment_drops(kind, pos, looting, player_kill);
+        if baby && nether::babies_drop_nothing(kind) {
+            return;
         }
         // Large slimes only split. Tiny magma cubes drop nothing; sizes 2 and 4 drop cream.
         if (kind == MobKind::Slime && size > 1) || (kind == MobKind::MagmaCube && size == 1) {
@@ -1086,9 +1151,12 @@ impl Entities {
         for center in ctx.players.iter().map(|t| t.pos) {
             for kind in MobKind::ALL {
                 let cap = kind.spawn_cap(ctx.dimension);
+                // The Nether picks by its biomes' spawn lists below.
+                let nether = ctx.dimension == Dimension::Nether;
                 if self.count_near(kind, center) >= cap
-                    || !kind.spawns_in(ctx.dimension)
-                    || !self.rng.chance(kind.spawn_chance(ctx.dimension))
+                    || (nether && nether_mob(kind).is_none())
+                    || (!nether
+                        && (!kind.spawns_in(ctx.dimension) || !self.rng.chance(kind.spawn_chance(ctx.dimension))))
                 {
                     continue;
                 }
@@ -1099,10 +1167,19 @@ impl Entities {
                 if ctx.dimension == Dimension::Overworld && !self.rng.chance(kind.biome_chance(world.biome(x, z))) {
                     continue;
                 }
+                let mut group = None;
+                if nether {
+                    let Some((spawn, chance)) = nether_spawn(world, kind, x, z) else { continue };
+                    if !self.rng.chance(chance) {
+                        continue;
+                    }
+                    group = Some(spawn.group);
+                }
                 let spot = match ctx.dimension {
                     Dimension::Overworld if kind == MobKind::Drowned => self.drowned_spot(world, x, z, ctx.daylight),
                     Dimension::Overworld if kind == MobKind::Slime => self.slime_spot(world, x, z, ctx.daylight),
                     Dimension::Overworld => spawn_spot(world, kind, x, z, ctx.daylight),
+                    Dimension::Nether if kind == MobKind::Strider => nether::lava_spot(world, x, z),
                     Dimension::Nether => cavern_spot(world, kind, x, z, self.rng.range(40.0, 118.0) as i32),
                     Dimension::End => cavern_spot(world, kind, x, z, self.rng.range(30.0, 90.0) as i32),
                 };
@@ -1115,15 +1192,21 @@ impl Entities {
                 // Animals come in small herds, zombified piglins and End
                 // endermen in packs.
                 if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
-                    // Nether wastes ghasts and magma cubes spawn in groups of exactly 4.
-                    let extra = if matches!(kind, MobKind::MagmaCube | MobKind::Ghast) {
-                        3
-                    } else {
-                        (self.rng.next_f32() * 3.0) as i32
+                    // Nether groups follow their biome's spawn list (wastes ghasts and
+                    // magma cubes come in fours, delta ghasts alone).
+                    let extra = match group {
+                        Some((lo, hi)) => lo as i32 - 1 + (self.rng.next_f32() * (hi - lo + 1) as f32) as i32,
+                        None => (self.rng.next_f32() * 3.0) as i32,
                     };
                     for _ in 0..extra {
                         let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
-                        let spot = if ctx.dimension.has_sky() {
+                        // A group straddling a biome edge stays within its spawn list.
+                        if nether && nether_spawn(world, kind, x + dx, z + dz).is_none() {
+                            continue;
+                        }
+                        let spot = if kind == MobKind::Strider {
+                            nether::lava_spot(world, x + dx, z + dz)
+                        } else if ctx.dimension.has_sky() {
                             spawn_spot(world, kind, x + dx, z + dz, ctx.daylight)
                         } else {
                             cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 2)
@@ -1540,8 +1623,22 @@ impl Entities {
         pickup: bool,
         enchants: crate::enchant::Enchants,
     ) {
+        self.shoot_enchanted_for(eye, dir, power, pickup, enchants, PlayerId::HOST);
+    }
+
+    /// A bow or crossbow shot retaining the actual player's identity.
+    pub fn shoot_enchanted_for(
+        &mut self,
+        eye: DVec3,
+        dir: DVec3,
+        power: f32,
+        pickup: bool,
+        enchants: crate::enchant::Enchants,
+        owner: PlayerId,
+    ) {
         let mut arrow = Arrow::shot(eye, dir, power, pickup);
         arrow.enchants = enchants;
+        arrow.owner = Some(owner);
         self.arrows.push(arrow);
     }
 
@@ -1562,12 +1659,12 @@ impl Entities {
     /// Player melee hit for `damage` on mob `index`, pushed along `dir`.
     /// Returns the kind of mob if this killed it.
     pub fn attack(&mut self, index: usize, dir: DVec3, damage: f32) -> Option<MobKind> {
-        self.knock(index, dir, damage, 0)
+        self.knock(index, dir, damage, 0, PlayerId::HOST)
     }
 
     /// Hits mob `index` for `damage`, pushing it along `dir` harder for
     /// each `extra` knockback level (Java: 0.4 + 0.5 per level).
-    fn knock(&mut self, index: usize, dir: DVec3, damage: f32, extra: u8) -> Option<MobKind> {
+    fn knock(&mut self, index: usize, dir: DVec3, damage: f32, extra: u8, owner: PlayerId) -> Option<MobKind> {
         let flat = DVec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
         let knockback = flat * 6.0 * (1.0 + 1.25 * extra as f64) + DVec3::Y * 5.0;
         let mob = self.mobs.get_mut(index)?;
@@ -1580,6 +1677,7 @@ impl Entities {
         if kind == MobKind::ZombifiedPiglin {
             self.anger_piglins(pos);
         }
+        self.nether_hurt(index, nether::Foe::Player(owner));
         killed.then_some(kind)
     }
 
@@ -1626,7 +1724,7 @@ impl Entities {
             self.mobs[index].ignite(fire);
         }
         let old_health = self.mobs[index].health;
-        let killed = self.knock(index, dir, damage, knockback);
+        let killed = self.knock(index, dir, damage, knockback, owner);
         if self.mobs[index].health < old_health {
             self.note_villager_hurt(index, owner, killed.is_some());
             if kind == MobKind::IronGolem && !self.mobs[index].built {
@@ -1686,7 +1784,7 @@ impl Entities {
                 if fire > 0.0 {
                     self.mobs[i].ignite(fire);
                 }
-                let killed = self.knock(i, away, damage, 0);
+                let killed = self.knock(i, away, damage, 0, owner);
                 if let Some(kind) = killed {
                     let at = self.mobs[i].pos;
                     self.drop_loot_with_fire(
@@ -1747,6 +1845,40 @@ fn spawn_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, da
 
 /// Feet position on the first floor at or below `top` in column (x, z)
 /// with room to stand (for cavern dimensions with no sky).
+/// The Nether spawn list entry for a kind VoxelCraft has.
+fn nether_mob(kind: MobKind) -> Option<crate::world::nether_biome::NetherMob> {
+    use crate::world::nether_biome::NetherMob;
+    Some(match kind {
+        MobKind::ZombifiedPiglin => NetherMob::ZombifiedPiglin,
+        MobKind::Ghast => NetherMob::Ghast,
+        MobKind::MagmaCube => NetherMob::MagmaCube,
+        MobKind::Enderman => NetherMob::Enderman,
+        MobKind::Skeleton => NetherMob::Skeleton,
+        MobKind::Piglin => NetherMob::Piglin,
+        MobKind::Hoglin => NetherMob::Hoglin,
+        MobKind::Strider => NetherMob::Strider,
+        _ => return None,
+    })
+}
+
+/// `kind`'s entry in the spawn list of the Nether biome at `(x, z)` and the
+/// chance an attempt goes ahead. Striders, the only Nether creature, keep
+/// their weight of 60 against zombified piglins' 100.
+fn nether_spawn<W: MobWorld + ?Sized>(
+    world: &W,
+    kind: MobKind,
+    x: i32,
+    z: i32,
+) -> Option<(crate::world::nether_biome::Spawn, f32)> {
+    use crate::world::nether_biome::NetherBiome;
+    let biome = world.nether_biome(x, z).unwrap_or(NetherBiome::NetherWastes);
+    let mob = nether_mob(kind)?;
+    if let Some(s) = biome.creatures().iter().find(|s| s.mob == mob) {
+        return Some((*s, s.weight as f32 / 100.0));
+    }
+    biome.monster_spawn(mob)
+}
+
 fn cavern_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, top: i32) -> Option<DVec3> {
     let floor = (top - 24..=top).rev().find(|&y| {
         world.block(IVec3::new(x, y, z)).is_some_and(|b| b.is_solid() && b.is_opaque())
@@ -2739,7 +2871,12 @@ mod tests {
         assert!(events.iter().any(shot), "{events:?}");
 
         // Arrows that miss stick in the ground.
-        let mut arrow = Arrow::aimed(DVec3::new(0.5, 12.0, 0.5), DVec3::new(6.0, 10.0, 0.5), &mut Rng::new(1));
+        let mut arrow = Arrow::aimed(
+            DVec3::new(0.5, 12.0, 0.5),
+            DVec3::new(6.0, 10.0, 0.5),
+            "was shot by a skeleton",
+            &mut Rng::new(1),
+        );
         let c = ctx(DVec3::new(50.0, 10.0, 0.0));
         for _ in 0..120 {
             arrow.update(1.0 / 60.0, &world, &c, &mut [], None, &mut Rng::new(1), &mut Vec::new());
@@ -3029,8 +3166,102 @@ mod tests {
         }
         assert!(e.count(MobKind::ZombifiedPiglin) > 0);
         assert!(e.mobs.iter().all(|m| {
-            matches!(m.kind, MobKind::ZombifiedPiglin | MobKind::Enderman | MobKind::MagmaCube | MobKind::Ghast)
+            matches!(
+                m.kind,
+                MobKind::ZombifiedPiglin | MobKind::Enderman | MobKind::MagmaCube | MobKind::Ghast | MobKind::Piglin
+            )
         }));
+    }
+
+    /// A Nether cavern in one biome.
+    struct Biomed(Grid, crate::world::nether_biome::NetherBiome);
+
+    impl BlockSource for Biomed {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            self.0.block(p)
+        }
+    }
+
+    impl MobWorld for Biomed {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, x: i32, z: i32) -> Option<i32> {
+            self.0.surface(x, z)
+        }
+        fn exposed(&self, _: IVec3) -> bool {
+            false
+        }
+        fn nether_biome(&self, _: i32, _: i32) -> Option<crate::world::nether_biome::NetherBiome> {
+            Some(self.1)
+        }
+    }
+
+    #[test]
+    fn nether_biomes_use_their_own_spawn_lists() {
+        use crate::world::nether_biome::NetherBiome;
+        let cavern = || {
+            let mut world = Grid::flat(41);
+            for x in -80..=80 {
+                for z in -80..=80 {
+                    world.set(IVec3::new(x, 60, z), Block::STONE);
+                }
+            }
+            world
+        };
+        let c = Ctx { spawning: true, dimension: Dimension::Nether, ..night(DVec3::new(0.0, 41.0, 0.0)) };
+        let mut valley = Entities::new(31);
+        let world = Biomed(cavern(), NetherBiome::SoulSandValley);
+        for _ in 0..1500 {
+            valley.update(0.05, &world, &c);
+        }
+        assert!(valley.count(MobKind::Skeleton) > 0, "soul sand valleys spawn skeletons");
+        assert_eq!(valley.count(MobKind::ZombifiedPiglin), 0);
+        assert_eq!(valley.count(MobKind::MagmaCube), 0);
+        let mut deltas = Entities::new(32);
+        let world = Biomed(cavern(), NetherBiome::BasaltDeltas);
+        for _ in 0..1500 {
+            deltas.update(0.05, &world, &c);
+        }
+        assert!(deltas.count(MobKind::MagmaCube) > 0, "basalt deltas swarm with magma cubes");
+        assert!(deltas.mobs.iter().all(|m| matches!(m.kind, MobKind::MagmaCube | MobKind::Ghast)));
+        let mut crimson = Entities::new(33);
+        let world = Biomed(cavern(), NetherBiome::CrimsonForest);
+        for _ in 0..1500 {
+            crimson.update(0.05, &world, &c);
+        }
+        assert!(crimson.count(MobKind::Hoglin) > 0, "crimson forests spawn hoglins");
+        assert!(
+            crimson.mobs.iter().all(|m| matches!(m.kind, MobKind::Hoglin | MobKind::Piglin | MobKind::ZombifiedPiglin)),
+            "crimson forest list only"
+        );
+        let mut warped = Entities::new(34);
+        let world = Biomed(cavern(), NetherBiome::WarpedForest);
+        for _ in 0..1500 {
+            warped.update(0.05, &world, &c);
+        }
+        assert!(warped.mobs.iter().all(|m| m.kind == MobKind::Enderman), "warped forests spawn only endermen");
+    }
+
+    #[test]
+    fn striders_spawn_on_lava_seas_in_every_nether_biome() {
+        use crate::world::nether_biome::NetherBiome;
+        let sea = crate::world::nether::LAVA_SEA;
+        let mut grid = Grid::flat(sea - 4);
+        for x in -80..=80 {
+            for z in -80..=80 {
+                for y in sea - 4..=sea {
+                    grid.set(IVec3::new(x, y, z), Block::LAVA);
+                }
+            }
+        }
+        let world = Biomed(grid, NetherBiome::WarpedForest);
+        let c = Ctx { spawning: true, dimension: Dimension::Nether, ..night(DVec3::new(0.0, sea as f64 + 1.0, 0.0)) };
+        let mut e = Entities::new(35);
+        for _ in 0..1500 {
+            e.update(0.05, &world, &c);
+        }
+        assert!(e.count(MobKind::Strider) > 0, "no striders on the lava");
     }
 
     /// A Nether cavern where everything with x > 20 is fortress.
@@ -3062,13 +3293,17 @@ mod tests {
         let mut e = Entities::new(21);
         let world = Fortressed(Grid::flat(61));
         let c = Ctx { spawning: true, dimension: Dimension::Nether, ..night(DVec3::new(0.0, 61.0, 0.0)) };
+        // Check each where it first appears: they may wander out later.
+        let mut seen = rustc_hash::FxHashSet::default();
         for _ in 0..2000 {
             e.update(0.05, &world, &c);
+            for m in e.mobs.iter().filter(|m| matches!(m.kind, MobKind::Blaze | MobKind::Skeleton)) {
+                if seen.insert(m.uid) {
+                    assert!(m.pos.x > 20.0, "{:?} spawned outside the fortress at {:?}", m.kind, m.pos);
+                }
+            }
         }
         assert!(e.count(MobKind::Blaze) > 0, "no fortress blazes");
-        for m in e.mobs.iter().filter(|m| matches!(m.kind, MobKind::Blaze | MobKind::Skeleton)) {
-            assert!(m.pos.x > 20.0, "{:?} spawned outside the fortress at {:?}", m.kind, m.pos);
-        }
     }
 
     #[test]

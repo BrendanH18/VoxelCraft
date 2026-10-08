@@ -58,9 +58,12 @@ impl World {
     pub fn spill_with_item(&mut self, p: IVec3, block: Block, held: Option<Stack>) {
         if self.tile_drops
             && held.is_some_and(|s| s.item == Item::SHEARS)
-            && (block.is_leaves() || block == Block::COBWEB)
+            && (block.is_leaves()
+                || block == Block::COBWEB
+                || super::nether_biome_blocks::sheared_drop(block).is_some())
         {
-            self.drops.push((p, Stack::new(block.base(), 1)));
+            let item = super::nether_biome_blocks::sheared_drop(block).unwrap_or(block.base().into());
+            self.drops.push((p, Stack::new(item, 1)));
         } else {
             self.spill_mined(p, block, held.map_or(Default::default(), |s| s.active_enchants()));
         }
@@ -136,6 +139,11 @@ impl World {
                 let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1);
                 let n = ((4 + self.roll() % 6) * times).min(64);
                 out.push(Stack::new(Item::LAPIS_LAZULI, n as u8));
+            }
+            b if let Some((item, chance)) = super::nether_biome_blocks::vine_drop_chance(b, fortune as u8) => {
+                if (self.roll() % 1_000_000) as f32 / 1_000_000.0 < chance {
+                    out.push(Stack::new(item, 1));
+                }
             }
             Block::CLAY => out.push(Stack::new(Item::CLAY_BALL, 3)),
             Block::SNOW => out.push(Stack::new(Item::SNOWBALL, 4)),
@@ -215,7 +223,11 @@ impl World {
         chunks.sort_unstable_by_key(|p| (p.x, p.y, p.z));
         chunks.dedup();
         for cpos in chunks {
-            if self.chunks.get(&cpos).is_none_or(|s| s.data.uniform().is_some_and(|b| !b.is_lava() && !b.is_fire())) {
+            if self
+                .chunks
+                .get(&cpos)
+                .is_none_or(|s| s.data.uniform().is_some_and(|b| !b.is_lava() && b.fire_age().is_none()))
+            {
                 continue;
             }
             for _ in 0..n {
@@ -233,7 +245,7 @@ impl World {
     fn random_tick_rules(&mut self, p: IVec3, fire_tick: bool) {
         let Some(b) = self.get_block(p) else { return };
         match b {
-            b if fire_tick && b.is_fire() => self.tick_fire_block(p, b.fire_age().unwrap()),
+            b if fire_tick && b.fire_age().is_some() => self.tick_fire_block(p, b.fire_age().unwrap()),
             b if fire_tick && b.is_lava() => self.tick_lava_fire(p),
             Block::GRASS => self.tick_grass(p),
             Block::FARMLAND | Block::WET_FARMLAND => self.tick_farmland(p, b),
@@ -244,6 +256,7 @@ impl World {
             }
             Block::SUGAR_CANE => self.tick_cane(p),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
+            b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
             b if b.crop_stage().is_some_and(|s| s < 7) => {
                 let wet = self.get_block(p - IVec3::Y) == Some(Block::WET_FARMLAND);
                 if self.grows_here(p) && self.one_in(if wet { CROP_GROWTH } else { 2 * CROP_GROWTH }) {
@@ -343,6 +356,9 @@ impl World {
     /// Returns whether the bone meal was used.
     pub fn apply_bone_meal(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
+        if let Some(used) = self.nether_bone_meal(p, b) {
+            return used;
+        }
         match b {
             b if b.crop_stage().is_some_and(|s| s < 7) => {
                 let (crop, stage) = b.as_crop().unwrap();

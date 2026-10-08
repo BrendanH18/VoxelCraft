@@ -159,6 +159,7 @@ impl World {
             || matches!(
                 b,
                 Block::OBSIDIAN
+                    | Block::CRYING_OBSIDIAN
                     | Block::NETHERITE_BLOCK
                     | Block::SPAWNER
                     | Block::ENCHANTING_TABLE

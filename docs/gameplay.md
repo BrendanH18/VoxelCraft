@@ -414,6 +414,20 @@ Netherrack smelts into nether bricks (four make a nether bricks block),
 quartz ore drops nether quartz, and glowstone breaks into 2–4 glowstone
 dust (four make a block). Nine gold nuggets make a gold ingot and back.
 
+The Nether has Java's five biomes, each with its own fog colour, ambient
+particles and music (see [Nether biomes](nether-biomes.md)): nether
+wastes; crimson forests of red nylium, huge crimson fungi, roots and
+weeping vines under drifting spores; warped forests of teal nylium, huge
+warped fungi, sprouts and twisting vines; soul sand valleys of soul sand
+and soul soil, basalt pillars, bone fossils and blue soul fire under
+falling ash; and basalt deltas of basalt and blackstone, magma-rimmed lava
+pools and basalt columns in white ash. Crimson and warped stems craft into
+planks and a full set of building blocks that never burn; axes strip
+stems; bone meal spreads nylium, grows forest floors, vines and huge fungi.
+Soul torches (coal over a stick over soul sand or soil) and soul fire glow
+at level 10, shroomlight at 15. `/locate biome crimson_forest` works in
+the Nether and F3 shows the biome.
+
 Each dimension keeps its own blocks, furnaces, chests and dropped items in
 the save (the Nether in a `nether` folder inside the world's). Dying in
 the Nether respawns you in the overworld. `--dimension nether` starts a
@@ -435,6 +449,11 @@ session there, as if you had just come through a portal.
 | Enderman | 40 | 2.9 blocks tall; rare at night in the Overworld and Nether, common in the End. Neutral until hit or until you look it in the eyes (within 64 blocks), then screams, opens its jaw and hits for 7. Freezes while you watch it (up close it teleports away), teleports toward you from more than 16 blocks, dodges arrows by teleporting, is hurt by water and rain, and wanders off by teleporting in daylight | 0–1 ender pearls |
 | Blaze | 20 | Nether fortresses: from spawner cages and inside fortress pieces in groups of 2-3. Hovers, glows while charging, then fires bursts of three fireballs (5 damage, setting you alight) and hits for 6 up close; hurt by water and rain, immune to fire and lava | 0–1 blaze rods |
 | Silverfish | 8 | strongholds: from the portal room's spawner; small and quick, chases and nibbles for 1 | nothing |
+| Piglin | 16 | Nether packs of 4 and bastions; a fifth are babies. Adults attack players without golden armor with a golden sword (8) or a crossbow. Opening chests or breaking gold nearby angers them for 30 s, and a hit piglin alerts the others. Throw gold ingots to barter: one is admired for about 6 s, then traded for a roll of Java's table. They hunt baby hoglins and zombify after 15 s outside the Nether | what they carried; their gear sometimes |
+| Piglin brute | 50 | bastions only; attacks any player, gold or not, with a golden axe for 13 | golden axe, sometimes |
+| Hoglin | 40 | crimson forests and bastion stables; charges players every 2 s for 3-8 and tosses them, avoids nether portals and outnumbering piglins, becomes a zoglin outside the Nether | 2-4 porkchops, 0-1 leather |
+| Zoglin | 40 | a zombified hoglin: attacks every mob and player but creepers and zoglins; immune to fire | 1-3 rotten flesh |
+| Strider | 20 | walks on the lava seas; shivers, slows and heads for lava on dry land; hurt by water | 2-5 string |
 
 Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to

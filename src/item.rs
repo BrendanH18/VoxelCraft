@@ -256,6 +256,10 @@ pub enum Sprite {
     SplashBottle([u8; 3]),
     Tool(ToolKind, Tier),
     Armor(ArmorPiece, ArmorMaterial),
+    /// A crossbow, drawn with a bolt in it once `loaded`.
+    Crossbow {
+        loaded: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -402,6 +406,18 @@ static VILLAGE_ITEMS: [ItemInfo; 3] = [
     food("golden apple", 4, 9.6, Sprite::GoldenApple),
     food("beetroot", 1, 1.2, Sprite::Lump([152, 34, 54])),
 ];
+/// Nether-mob items (840..900): the crossbow and its loaded form.
+const NETHER_MOB_ITEM: u16 = 840;
+static NETHER_MOB_ITEMS: [ItemInfo; 2] = [
+    ItemInfo { name: "crossbow", kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Crossbow { loaded: false } },
+    ItemInfo {
+        name: "charged crossbow",
+        kind: ItemKind::Material,
+        max_stack: 1,
+        sprite: Sprite::Crossbow { loaded: true },
+    },
+];
+const _: () = assert!(NETHER_MOB_ITEM as usize + NETHER_MOB_ITEMS.len() <= 900);
 /// Splash potions: `SPLASH_POTION + potion index`.
 const SPLASH_POTION: u16 = 436;
 const _: () = assert!(FIRST_POTION + POTION_COUNT <= SPLASH_POTION);
@@ -409,6 +425,8 @@ const _: () = assert!(SPLASH_POTION + POTION_COUNT <= SURVIVAL_ITEM);
 
 /// Uses before a bow breaks.
 pub const BOW_DURABILITY: u16 = 384;
+/// Uses before a crossbow breaks (Java's 465).
+pub const CROSSBOW_DURABILITY: u16 = 465;
 /// Uses before a flint and steel breaks.
 pub const FLINT_AND_STEEL_DURABILITY: u16 = 64;
 
@@ -601,6 +619,10 @@ impl Item {
     pub const EMERALD: Item = Item(366);
     pub const GHAST_TEAR: Item = Item(640);
     pub const WITHER_SKULL: Item = Item(641);
+    /// Charged by holding use; see `app::bow`.
+    pub const CROSSBOW: Item = Item(840);
+    /// A crossbow holding a loaded arrow (Java keeps this in item data).
+    pub const CHARGED_CROSSBOW: Item = Item(841);
 
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         match tier {
@@ -794,6 +816,9 @@ impl Item {
         if let Some(info) = self.0.checked_sub(VILLAGE_ITEM).and_then(|i| VILLAGE_ITEMS.get(i as usize)) {
             return *info;
         }
+        if let Some(info) = self.0.checked_sub(NETHER_MOB_ITEM).and_then(|i| NETHER_MOB_ITEMS.get(i as usize)) {
+            return *info;
+        }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
     }
 
@@ -837,6 +862,9 @@ impl Item {
     pub fn durability(self) -> Option<u16> {
         if self == Self::SHEARS {
             return Some(238);
+        }
+        if matches!(self, Self::CROSSBOW | Self::CHARGED_CROSSBOW) {
+            return Some(CROSSBOW_DURABILITY);
         }
         match self.info().kind {
             ItemKind::Tool(_, tier) => Some(tier.durability()),
@@ -935,11 +963,15 @@ impl Item {
             .chain((0..POTION_COUNT).map(|i| Item(SPLASH_POTION + i)))
             .chain((0..VILLAGE_ITEMS.len() as u16).map(|i| Item(VILLAGE_ITEM + i)))
             .chain([Self::FIRE_CHARGE, Self::MINECART, Self::CHEST_MINECART, Self::HOPPER_MINECART, Self::TNT_MINECART])
+            .chain([Self::CROSSBOW, Self::CHARGED_CROSSBOW])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
     pub fn creative_palette() -> impl Iterator<Item = Item> {
-        Block::creative_palette().map(Item::from_block).chain(Item::all_items())
+        // A charged crossbow is only made by loading one.
+        Block::creative_palette()
+            .map(Item::from_block)
+            .chain(Item::all_items().filter(|&i| i != Self::CHARGED_CROSSBOW))
     }
 }
 
@@ -1023,7 +1055,11 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + i
                 - VILLAGE_ITEM,
         ),
-        760..=764 => Some(icon_count() as u16 - 5 + (item.0 - 760)),
+        760..=764 => Some(icon_count() as u16 - 5 - NETHER_MOB_ITEMS.len() as u16 + (item.0 - 760)),
+        // Nether-mob items follow the fire charge.
+        i if (NETHER_MOB_ITEM..NETHER_MOB_ITEM + NETHER_MOB_ITEMS.len() as u16).contains(&i) => {
+            Some(icon_count() as u16 - NETHER_MOB_ITEMS.len() as u16 + i - NETHER_MOB_ITEM)
+        }
         _ => None,
     }
 }
@@ -1039,6 +1075,7 @@ pub const fn icon_count() -> u32 {
         + POTION_COUNT as u32
         + VILLAGE_ITEMS.len() as u32
         + 5
+        + NETHER_MOB_ITEMS.len() as u32
 }
 
 /// Compass needle frames, after the item icons. Frame 0 points up.

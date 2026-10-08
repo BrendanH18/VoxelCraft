@@ -33,6 +33,19 @@ pub fn run(seed: u64, rd: i32) {
         chunks.len() - dense
     );
 
+    // The Nether: caverns, biome surfaces and features, fortresses and bastions.
+    let nether = Generator::for_dimension(seed, crate::world::terrain::Dimension::Nether);
+    let t = Instant::now();
+    let mut nether_chunks = 0;
+    for &p in positions.iter().filter(|p| p.y < 4) {
+        std::hint::black_box(nether.generate(p));
+        nether_chunks += 1;
+    }
+    println!(
+        "generate nether (1 thread): {nether_chunks} chunks -> {:.3} ms/chunk",
+        t.elapsed().as_secs_f64() * 1e3 / nether_chunks as f64
+    );
+
     println!(
         "block storage: {:.2} MiB ({:.0} bytes/dense chunk)",
         chunks.values().map(|c| c.heap_bytes()).sum::<usize>() as f64 / (1024.0 * 1024.0),

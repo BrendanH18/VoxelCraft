@@ -117,8 +117,9 @@ agent-only chunks outside the host view stay unmeshed. Named agent profiles
 persist in the root level file. See [the CLI protocol and limitations](agents.md).
 
 Full client/session action extraction, mob target identities, independent
-simultaneous dimensions, authoritative skylight, shape-aware light occlusion,
-desktop networking and split-screen remain future work.
+simultaneous dimensions, authoritative skylight, shape-aware light occlusion
+and desktop networking remain future work. Split-screen is implemented; all views currently share the
+host's biome fog colour.
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
 
 ## Code layout
@@ -161,6 +162,10 @@ src/
     mod.rs           mob list, spawning/despawning rules, events, explosions
     mob.rs           mob kinds, AI, movement and combat state
     projectile.rs    skeleton arrows
+    nether.rs        piglins, brutes, hoglins, zoglins, striders: sensing, bartering,
+                     anger, zombification, bastion residents, spawn table, saves
+    mob/nether_ai.rs their per-tick movement, attacks and strider lava physics
+    model/nether.rs  their box models
     item.rs          dropped items: physics, merging, despawning, saving
     model.rs         animated box models -> camera-relative triangles
   mesh.rs            lighting + greedy meshing (runs on workers)
@@ -185,7 +190,12 @@ src/
     block.rs         block registry
     shape.rs         box shapes of stairs, fences, gates, ladders and doors
     terrain.rs       world generation
-    nether.rs        Nether caverns
+    nether.rs        Nether caverns, biome surface rules, shared grid-column cache
+    nether_biome.rs  Java's multi-noise Nether biomes, fog sampler, spawn lists
+    nether_biome_blocks.rs  crimson/warped/soul blocks (ids 1600..=1793)
+    nether_features.rs  huge fungi, vines, deltas, basalt columns (Java ports)
+    nether_decoration.rs  per-chunk feature placement across chunk borders
+    nether_flora.rs  nylium, vine growth and Nether bone meal
     fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
     bastion.rs       reserved bastion-remnant loot data
     stronghold.rs    stronghold rings and layouts (Java's pieces), painted per chunk

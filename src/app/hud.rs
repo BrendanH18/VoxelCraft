@@ -1263,6 +1263,9 @@ impl Game {
             format!("Facing: {facing} ({:.1} / {:.1})", self.player.yaw.to_degrees(), self.player.pitch.to_degrees()),
             match self.dimension {
                 crate::world::terrain::Dimension::Overworld => format!("Biome: {biome:?}"),
+                d if let Some(nether) = self.world.generator.nether_biome(b.x, b.z) => {
+                    format!("Biome: minecraft:{} ({})", nether.name(), d.name())
+                }
                 d => format!("Dimension: {}", d.name()),
             },
             format!(
