@@ -217,6 +217,35 @@ fn open_door_side(facing: Facing) -> Facing {
 pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) -> Boxes {
     let mut out = Boxes::new();
     match block.shaped() {
+        Some(Shaped::Village { kind, facing }) => match kind {
+            2 => {
+                out.push(b([0, 0, 0], [16, 2, 16]));
+                out.push(b([0, 2, 0], [2, 16, 16]));
+                out.push(b([14, 2, 0], [16, 16, 16]));
+                out.push(b([2, 2, 0], [14, 16, 2]));
+                out.push(b([2, 2, 14], [14, 16, 16]));
+            }
+            10 => out.push_turned(
+                &[b([2, 0, 6], [4, 7, 10]), b([12, 0, 6], [14, 7, 10]), b([4, 2, 2], [12, 16, 14])],
+                facing,
+            ),
+            11 => out.push_turned(
+                &[b([0, 0, 0], [16, 2, 16]), b([4, 2, 4], [12, 13, 12]), b([0, 12, 0], [16, 16, 16])],
+                facing,
+            ),
+            13 => out.push_turned(&[b([0, 0, 0], [16, 9, 16]), b([7, 9, 1], [9, 16, 15])], facing),
+            14 => out.push_turned(
+                &[
+                    b([2, 0, 6], [4, 16, 10]),
+                    b([12, 0, 6], [14, 16, 10]),
+                    b([4, 13, 7], [12, 16, 9]),
+                    b([5, 3, 5], [11, 12, 11]),
+                    b([4, 2, 4], [12, 4, 12]),
+                ],
+                facing,
+            ),
+            _ => {}
+        },
         Some(Shaped::Stairs(f)) => out.push_turned(&STAIRS, f),
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND, Facing::South),

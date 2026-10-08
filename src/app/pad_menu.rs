@@ -47,6 +47,7 @@ pub(super) enum Tab {
     Brewing(IVec3),
     Enchanting(IVec3),
     Anvil(IVec3),
+    Grindstone(IVec3),
     Smithing(IVec3),
 }
 
@@ -59,6 +60,7 @@ impl Tab {
             Tab::Brewing(_) => block == Block::BREWING_STAND,
             Tab::Enchanting(_) => block == Block::ENCHANTING_TABLE,
             Tab::Anvil(_) => block.is_anvil(),
+            Tab::Grindstone(_) => block.base() == Block::GRINDSTONE,
             Tab::Smithing(_) => block == Block::SMITHING_TABLE,
             _ => false,
         }
@@ -72,6 +74,7 @@ impl Tab {
             Tab::Brewing(p) => Container::Brewing(p),
             Tab::Enchanting(p) => Container::Enchanting(p),
             Tab::Anvil(p) => Container::Anvil(p),
+            Tab::Grindstone(p) => Container::Grindstone(p),
             Tab::Smithing(p) => Container::Smithing(p),
             _ => Container::Inventory,
         }
@@ -207,7 +210,13 @@ impl Menu {
 /// player's. Lists: nine to a row.
 fn rows(tab: Tab, lists: Lists) -> usize {
     match tab {
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) | Tab::Smithing(_) => 5,
+        Tab::Inventory
+        | Tab::Furnace(_)
+        | Tab::Brewing(_)
+        | Tab::Enchanting(_)
+        | Tab::Anvil(_)
+        | Tab::Grindstone(_)
+        | Tab::Smithing(_) => 5,
         Tab::Chest(_) => 7,
         Tab::Crafting => lists.crafts.div_ceil(COLS),
         Tab::Palette => lists.palette.div_ceil(COLS),
@@ -220,7 +229,7 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
         Tab::Furnace(_) if row == 0 => return FURNACE.len(),
         Tab::Brewing(_) if row == 0 => return BREWING.len(),
         Tab::Enchanting(_) if row == 0 => return ENCHANTING.len(),
-        Tab::Anvil(_) if row == 0 => return ANVIL.len(),
+        Tab::Anvil(_) | Tab::Grindstone(_) if row == 0 => return ANVIL.len(),
         Tab::Smithing(_) if row == 0 => return SMITHING.len(),
         Tab::Crafting => lists.crafts,
         Tab::Palette => lists.palette,
@@ -236,16 +245,26 @@ fn slot(tab: Tab, col: usize, row: usize) -> Slot {
         Tab::Furnace(_) if row == 0 => Slot::Ref(FURNACE[col]),
         Tab::Brewing(_) if row == 0 => Slot::Ref(BREWING[col]),
         Tab::Enchanting(_) if row == 0 => Slot::Ref(ENCHANTING[col]),
-        Tab::Anvil(_) if row == 0 => Slot::Ref(ANVIL[col]),
+        Tab::Anvil(_) | Tab::Grindstone(_) if row == 0 => Slot::Ref(ANVIL[col]),
         Tab::Smithing(_) if row == 0 => Slot::Ref(SMITHING[col]),
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) | Tab::Smithing(_)
+        Tab::Inventory
+        | Tab::Furnace(_)
+        | Tab::Brewing(_)
+        | Tab::Enchanting(_)
+        | Tab::Anvil(_)
+        | Tab::Grindstone(_)
+        | Tab::Smithing(_)
             if row == 4 =>
         {
             inv(col)
         }
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) | Tab::Smithing(_) => {
-            inv(COLS * row + col)
-        }
+        Tab::Inventory
+        | Tab::Furnace(_)
+        | Tab::Brewing(_)
+        | Tab::Enchanting(_)
+        | Tab::Anvil(_)
+        | Tab::Grindstone(_)
+        | Tab::Smithing(_) => inv(COLS * row + col),
         Tab::Chest(_) if row < 3 => Slot::Ref(SlotRef::Chest(COLS * row + col)),
         Tab::Chest(_) if row == 6 => inv(col),
         Tab::Chest(_) => inv(COLS * (row - 2) + col),
@@ -377,6 +396,7 @@ impl Game {
             | Tab::Brewing(_)
             | Tab::Enchanting(_)
             | Tab::Anvil(_)
+            | Tab::Grindstone(_)
             | Tab::Smithing(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
             Tab::Chest(_) => 4.0 * ((r >= 3) as u8 + (r >= 6) as u8) as f32,
             Tab::Crafting | Tab::Palette => 0.0,
@@ -396,6 +416,7 @@ impl Game {
             Tab::Brewing(_) => "Brewing Stand  (fuel, ingredient, bottles)",
             Tab::Enchanting(_) => "Enchant  (item, lapis, offers)",
             Tab::Anvil(_) => "Anvil  (item, material or book, result)",
+            Tab::Grindstone(_) => "Repair & Disenchant  (item, item, result)",
             Tab::Smithing(_) => "Smithing  (template, diamond gear, ingot, result)",
         };
         ui.text(px + 6.0, py + 5.0, title, WHITE);
@@ -422,6 +443,7 @@ impl Game {
             _ => Default::default(),
         };
         let anvil = match (tab, work[0]) {
+            (Tab::Grindstone(_), _) => voxelcraft::grindstone::result(work[0], work[1]),
             (Tab::Anvil(_), Some(left)) => crate::enchant::anvil_any_cost(left, work[1], bot.agent.creative),
             _ => None,
         };
@@ -431,7 +453,7 @@ impl Game {
             }
             _ => None,
         };
-        if let Some(r) = anvil {
+        if let Some(r) = anvil.filter(|_| !matches!(tab, Tab::Grindstone(_))) {
             // Java's cost line, beside the anvil's slots.
             let short = !bot.agent.creative && bot.agent.vitals.xp.level < r.cost;
             let (text, colour) = if !bot.agent.creative && r.cost >= crate::enchant::TOO_EXPENSIVE {

@@ -110,6 +110,7 @@ pub(crate) enum Container {
     Brewing(IVec3),
     Enchanting(IVec3),
     Anvil(IVec3),
+    Grindstone(IVec3),
     Smithing(IVec3),
 }
 
@@ -1567,6 +1568,7 @@ impl Game {
                         || b == Block::BREWING_STAND
                         || b == Block::ENCHANTING_TABLE
                         || b.is_anvil()
+                        || b.base() == Block::GRINDSTONE
                         || b == Block::SMITHING_TABLE
                         || b.is_bed()
                         || crate::world::furnace::is_furnace(b)
@@ -1581,6 +1583,7 @@ impl Game {
             Some(Block::BREWING_STAND) => return self.open_brewing(pos),
             Some(Block::ENCHANTING_TABLE) => return self.open_enchanting(pos),
             Some(b) if b.is_anvil() => return self.open_anvil(pos),
+            Some(b) if b.base() == Block::GRINDSTONE => return self.open_grindstone(pos),
             Some(Block::SMITHING_TABLE) => return self.open_smithing(pos),
             Some(Block::DRAGON_EGG) => return self.teleport_egg(pos),
             Some(b) if b.cake_bites().is_some() => {
@@ -1641,7 +1644,7 @@ impl Game {
             return;
         }
         // Furnaces and chests face whoever places them.
-        let block = crate::world::nether_blocks::placed(block, normal)
+        let block = crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal)
             .with_facing(crate::world::block::Facing::toward(self.player.forward()));
         if block.is_water() && self.dimension == Dimension::Nether {
             // Water boils away in the Nether.
@@ -1716,6 +1719,7 @@ impl Game {
                 Some(Block::BREWING_STAND) => self.open_brewing(p),
                 Some(Block::ENCHANTING_TABLE) => self.open_enchanting(p),
                 Some(b) if b.is_anvil() => self.open_anvil(p),
+                Some(b) if b.base() == Block::GRINDSTONE => self.open_grindstone(p),
                 Some(Block::SMITHING_TABLE) => self.open_smithing(p),
                 _ => log::warn!("--open-block {p}: no container there"),
             }

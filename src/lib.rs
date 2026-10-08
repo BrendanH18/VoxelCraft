@@ -8,6 +8,7 @@ pub mod control;
 pub mod crafting;
 pub mod enchant;
 pub mod entity;
+pub mod grindstone;
 pub mod inventory;
 pub mod item;
 pub mod mesh;

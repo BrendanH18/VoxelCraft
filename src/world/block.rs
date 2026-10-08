@@ -289,7 +289,8 @@ pub mod tex {
     pub const CAKE_TOP: u16 = POTATO_0 + 8;
     pub const CAKE_SIDE: u16 = CAKE_TOP + 1;
     pub const CAKE_BOTTOM: u16 = CAKE_SIDE + 1;
-    pub const COUNT: u32 = CAKE_BOTTOM as u32 + 1;
+    pub const VILLAGE: u16 = CAKE_BOTTOM + 1;
+    pub const COUNT: u32 = VILLAGE as u32 + 45;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -573,6 +574,21 @@ impl Block {
     pub const MAGMA: Block = Block(812);
     pub const GOLD_BLOCK: Block = Block(813);
     pub const CHAIN: Block = Block(814);
+    pub const DIRT_PATH: Block = Block(900);
+    pub const HAY_BALE: Block = Block(901);
+    pub const COMPOSTER: Block = Block(904);
+    pub const BARREL: Block = Block(905);
+    pub const SMOKER: Block = Block(909);
+    pub const LIT_SMOKER: Block = Block(913);
+    pub const BLAST_FURNACE: Block = Block(917);
+    pub const LIT_BLAST_FURNACE: Block = Block(921);
+    pub const CARTOGRAPHY_TABLE: Block = Block(925);
+    pub const FLETCHING_TABLE: Block = Block(929);
+    pub const GRINDSTONE: Block = Block(933);
+    pub const LECTERN: Block = Block(937);
+    pub const LOOM: Block = Block(941);
+    pub const STONECUTTER: Block = Block(945);
+    pub const BELL: Block = Block(949);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age as u16 })
@@ -725,6 +741,9 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if let Some(s) = super::village_blocks::shaped(self.0) {
+            return Some(s);
+        }
         if let Some(s) = super::nether_blocks::shaped(self.0) {
             return Some(s);
         }
@@ -852,6 +871,9 @@ impl Block {
     /// The block items, recipes and rules use for an oriented block (a
     /// furnace or chest facing any way), and the way it faces.
     pub fn oriented(self) -> Option<(Block, Facing)> {
+        if let Some(s) = super::village_blocks::oriented(self.0) {
+            return Some(s);
+        }
         if let Some(super::forms::StoneForm::Stairs { index, facing }) = super::forms::stone_form(self.0) {
             return Some((super::forms::stone_id(index, 0), facing));
         }
@@ -896,6 +918,9 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(b) = super::village_blocks::base(self.0) {
+            return b;
+        }
         if let Some(b) = super::nether_blocks::base(self.0) {
             return b;
         }
@@ -906,6 +931,7 @@ impl Block {
     pub fn with_facing(self, facing: Facing) -> Block {
         let i = facing as u16;
         match self.base() {
+            b if super::village_blocks::oriented(b.0).is_some() => Block(b.0 + i),
             // Frames keep their eye.
             Block::END_PORTAL_FRAME => Block(200 + i + if self.0 >= 204 { 4 } else { 0 }),
             // Anvils turn broadside to whoever places them (Java's facing
@@ -1067,6 +1093,7 @@ impl Block {
     /// its cell; 0 for full blocks.
     pub fn top_drop(self) -> u8 {
         match self {
+            Block::DIRT_PATH => 1,
             b if b.is_bed() => 7,
             b if b.carpet_color().is_some() => 15,
             b if b.is_slab() => 8,
@@ -1120,6 +1147,9 @@ impl Block {
             b if super::forms::planks_of(b).is_some() && b.is_door() => {
                 (!self.is_door_upper()).then(|| Item::from_block(b))
             }
+            Block::DIRT_PATH => Some(Block::DIRT.into()),
+            Block::LIT_SMOKER => Some(Block::SMOKER.into()),
+            Block::LIT_BLAST_FURNACE => Some(Block::BLAST_FURNACE.into()),
             Block::QUARTZ_ORE => Some(Item::NETHER_QUARTZ),
             // Glowstone breaks into dust (see `World::spill_block`).
             Block::GLOWSTONE | Block::NETHER_PORTAL | Block::SPAWNER => None,
@@ -1140,6 +1170,9 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if let Some(h) = super::village_blocks::hardness(self.0) {
+            return h;
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return match self.material() {
                 Block::CHAIN => 5.0,
@@ -1250,6 +1283,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if let Some(t) = super::village_blocks::tool(self.0) {
+            return Some(t);
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(ToolKind::Pickaxe);
         }
@@ -1344,6 +1380,18 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if matches!(
+            self.base(),
+            Block::SMOKER
+                | Block::LIT_SMOKER
+                | Block::BLAST_FURNACE
+                | Block::LIT_BLAST_FURNACE
+                | Block::GRINDSTONE
+                | Block::STONECUTTER
+                | Block::BELL
+        ) {
+            return Some(0);
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(if self.material() == Block::GOLD_BLOCK { 2 } else { 0 });
         }
@@ -1425,6 +1473,7 @@ impl Block {
             .chain(225..=252)
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
+            .chain(super::village_blocks::palette_ids())
             .chain(super::colors::palette_ids())
             .map(Block)
     }
@@ -1703,6 +1752,10 @@ pub enum Crop {
 /// The state of a [`RenderKind::Shaped`] block (see `world::shape`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Shaped {
+    Village {
+        kind: u8,
+        facing: Facing,
+    },
     /// The low step faces this way; the tall half is behind it.
     Stairs(Facing),
     /// Three stone plates and a rod.
@@ -1837,6 +1890,10 @@ const fn fronted(front: u16, side: u16, top: u16, facing: Facing) -> [u16; 6] {
 const fn make(id: u16) -> BlockInfo {
     use RenderKind::*;
     let (name, kind, tex) = match id {
+        900..=952 => match super::village_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         800..=834 => match super::nether_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -2115,6 +2172,9 @@ pub static INFO: [BlockInfo; STATE_CAPACITY] = {
 /// Slabs and stairs keep light out the way the original seven do. Walls,
 /// fences, gates and doors stay open.
 const fn shape_blocks_light(id: u16) -> bool {
+    if id == 900 {
+        return true;
+    }
     if let Some((_, 0..=4)) = super::nether_blocks::form(id) {
         return true;
     }
@@ -2142,7 +2202,7 @@ static EMISSION: [u8; STATE_CAPACITY] = {
         arr[i] = match i {
             22 | 37..=41 | 165..=180 | 208 | 210 => 15, // glowstone, lava, fire, portals
             36 => 14,                                   // torch
-            46 | 50..=52 => 13,                         // lit furnace, every facing
+            46 | 50..=52 | 913..=916 | 921..=924 => 13, // lit furnace, every facing
             104 => 11,                                  // Nether portal
             200..=207 | 209 => 1,                       // portal frames and dragon egg
             213 => 7,                                   // enchanting table
@@ -2206,7 +2266,7 @@ mod tests {
                 Block::MAGMA => 3,
                 Block::GLOWSTONE => 15,
                 Block::TORCH => 14,
-                Block::LIT_FURNACE => 13,
+                Block::LIT_FURNACE | Block::LIT_SMOKER | Block::LIT_BLAST_FURNACE => 13,
                 Block::NETHER_PORTAL => 11,
                 Block::END_PORTAL | Block::END_GATEWAY => 15,
                 // Java: all frame states glow faintly, with or without an eye.

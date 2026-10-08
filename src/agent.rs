@@ -97,6 +97,7 @@ pub enum Command {
     Enchanting(usize),
     /// Combines the held stack with hotbar slot 0..9 on the targeted anvil.
     Anvil(usize),
+    Grindstone(Option<usize>),
     /// Upgrades held diamond gear at the targeted smithing table, consuming
     /// a template and Netherite ingot from the inventory.
     Smithing,
@@ -505,6 +506,10 @@ impl Command {
                 Self::Effect(EffectChange::Give(effect, secs, amp))
             }
             ["anvil", n] => Self::Anvil(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
+            ["grindstone"] => Self::Grindstone(None),
+            ["grindstone", n] => {
+                Self::Grindstone(Some(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1))
+            }
             ["smithing"] => Self::Smithing,
             ["enchanting", n] => {
                 Self::Enchanting(n.parse::<usize>().ok().filter(|n| (1..=3).contains(n)).ok_or_else(bad)? - 1)
@@ -962,7 +967,8 @@ impl Agent {
                 {
                     return Err("this block requires the desktop placement action".into());
                 }
-                let block = crate::world::nether_blocks::placed(block, normal);
+                let block =
+                    crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal);
                 let at = pos + normal;
                 if !world.get_block(at).is_some_and(|b| b == Block::AIR || b.is_water() || b.is_lava()) {
                     return Err("destination occupied or unloaded".into());
@@ -1079,6 +1085,24 @@ impl Agent {
                     self.vitals.xp.add_levels(-(r.cost as i64));
                     crate::enchant::wear_anvil(world, pos);
                 }
+            }
+            Command::Grindstone(slot) => {
+                let (pos, _) = self.target(world).ok_or("no grindstone within reach")?;
+                if world.get_block(pos).is_none_or(|b| b.base() != Block::GRINDSTONE) {
+                    return Err("target is not a grindstone".into());
+                }
+                if slot == Some(self.selected) {
+                    return Err("pick a different second slot".into());
+                }
+                let a = self.inventory.get(self.selected);
+                let b = slot.and_then(|i| self.inventory.get(i));
+                let result = crate::grindstone::result(a, b).ok_or("those don't grind")?;
+                let xp = crate::grindstone::xp(a, b, crate::enchant::roll());
+                self.inventory.slots[self.selected] = Some(result.output);
+                if let Some(i) = slot {
+                    self.inventory.slots[i] = None;
+                }
+                entities.spawn_xp(pos.as_dvec3() + DVec3::splat(0.5), xp);
             }
             Command::Smithing => {
                 let (pos, _) = self.target(world).ok_or("no smithing table within reach")?;

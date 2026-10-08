@@ -41,7 +41,7 @@ impl Chest {
 }
 
 pub fn is_chest(b: Block) -> bool {
-    b.base() == Block::CHEST
+    matches!(b.base(), Block::CHEST | Block::BARREL)
 }
 
 impl World {

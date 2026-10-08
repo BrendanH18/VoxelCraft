@@ -17,6 +17,15 @@ impl Game {
         let Some(item) = self.held_item() else { return false };
         let Some(block) = self.world.get_block(pos) else { return false };
         let at = pos.as_dvec3() + DVec3::splat(0.5);
+        if item.as_tool().is_some_and(|(kind, _)| kind == ToolKind::Shovel)
+            && matches!(block, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS)
+            && normal != IVec3::NEG_Y
+            && self.world.get_block(pos + IVec3::Y) == Some(Block::AIR)
+            && self.world.set_block(pos, Block::DIRT_PATH)
+        {
+            self.wear_held(false);
+            return true;
+        }
         if item.as_tool().is_some_and(|(kind, _)| kind == ToolKind::Hoe) {
             let tillable = matches!(block, Block::GRASS | Block::DIRT)
                 && normal != IVec3::NEG_Y
@@ -60,6 +69,8 @@ impl Game {
 pub(super) fn picked_item(block: Block) -> Item {
     match block.base() {
         Block::LIT_FURNACE => Block::FURNACE.into(),
+        Block::LIT_SMOKER => Block::SMOKER.into(),
+        Block::LIT_BLAST_FURNACE => Block::BLAST_FURNACE.into(),
         Block::FARMLAND | Block::WET_FARMLAND => Block::DIRT.into(),
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Wheat, _))) => Item::WHEAT_SEEDS,
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Carrot, _))) => Item::CARROT,

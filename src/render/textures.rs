@@ -83,6 +83,9 @@ const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
+    if (tex::VILLAGE..tex::VILLAGE + 45).contains(&layer) {
+        return village_pixel(layer, x, y);
+    }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
         let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };
         let rgb = crate::color::DyeColor::ALL[color].rgb();
@@ -1634,4 +1637,74 @@ fn mips_of(layers: usize, pixel: impl Fn(usize, usize, usize) -> Rgba) -> Vec<Ve
         size = half;
     }
     mips
+}
+
+// Original procedural artwork matching each workstation's material and face.
+fn village_pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    let i = (layer - tex::VILLAGE) / 3;
+    let face = (layer - tex::VILLAGE) % 3;
+    let grain = rnd(layer, x, y, 0);
+    match i {
+        0 => {
+            if face == 1 {
+                noisy(layer, x, y, [153, 126, 76], 0.12)
+            } else {
+                pixel(tex::DIRT, x, y)
+            }
+        }
+        1 => {
+            let band = if face == 1 { y == 3 || y == 12 } else { y == 3 || y == 4 || y == 11 || y == 12 };
+            if band {
+                noisy(layer, x, y, [145, 66, 39], 0.12)
+            } else {
+                shade([198, 165, 49], 0.8 + grain * 0.25 + (x.is_multiple_of(3)) as u8 as f32 * 0.12)
+            }
+        }
+        4..=7 => {
+            let lit = i == 5 || i == 7;
+            if face == 2 && (3..13).contains(&x) && (8..13).contains(&y) {
+                if lit { noisy(layer, x, y, [239, 115, 24], 0.3) } else { shade([30, 28, 26], 0.8 + grain * 0.3) }
+            } else if i >= 6 && (y.is_multiple_of(4) || x.is_multiple_of(5)) {
+                shade([71, 73, 72], 1.0)
+            } else {
+                noisy(layer, x, y, if i >= 6 { [119, 123, 124] } else { [105, 91, 75] }, 0.12)
+            }
+        }
+        10 | 13 => {
+            if i == 13 && face == 1 && (6..10).contains(&x) {
+                noisy(layer, x, y, [193, 196, 193], 0.12)
+            } else {
+                noisy(layer, x, y, [126, 126, 120], 0.17)
+            }
+        }
+        14 => {
+            if face == 2 && (y == 4 || y == 12) {
+                shade([98, 75, 14], 1.0)
+            } else {
+                noisy(layer, x, y, [216, 172, 42], 0.12)
+            }
+        }
+        8 if face == 1 => {
+            if x < 2 || y < 2 || x > 13 || y > 13 {
+                pixel(tex::PLANKS, x, y)
+            } else {
+                noisy(
+                    layer,
+                    x,
+                    y,
+                    if (x / 4 + y / 4).is_multiple_of(2) { [220, 215, 173] } else { [136, 160, 106] },
+                    0.08,
+                )
+            }
+        }
+        9 if face == 2 && (3..13).contains(&x) && (3..13).contains(&y) => {
+            noisy(layer, x, y, if x == y || x + y == 15 { [69, 58, 42] } else { [212, 195, 148] }, 0.1)
+        }
+        12 if face == 2 => noisy(layer, x, y, if x.is_multiple_of(2) { [188, 170, 139] } else { [107, 85, 65] }, 0.12),
+        _ => {
+            let edge = y.is_multiple_of(4) || (i == 3 && (y == 3 || y == 12));
+            let c = if edge { if i == 3 { [64, 66, 61] } else { [87, 65, 38] } } else { [145, 110, 64] };
+            if i == 3 && face == 2 && x == 8 && y == 8 { [30, 26, 19, 255] } else { noisy(layer, x, y, c, 0.12) }
+        }
+    }
 }

@@ -661,6 +661,7 @@ impl Game {
                             | Tab::Brewing(pos)
                             | Tab::Enchanting(pos)
                             | Tab::Anvil(pos)
+                            | Tab::Grindstone(pos)
                             | Tab::Smithing(pos)),
                         ..
                     } => {
@@ -747,6 +748,8 @@ impl Game {
             seat.open(Menu::items(Tab::Enchanting(pos)));
         } else if block.is_anvil() {
             seat.open(Menu::items(Tab::Anvil(pos)));
+        } else if block.base() == Block::GRINDSTONE {
+            seat.open(Menu::items(Tab::Grindstone(pos)));
         } else if block == Block::SMITHING_TABLE {
             seat.open(Menu::items(Tab::Smithing(pos)));
         } else if block.is_bed() {

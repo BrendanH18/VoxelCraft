@@ -544,6 +544,7 @@ impl Game {
                     | Container::Chest(_)
                     | Container::Enchanting(_)
                     | Container::Anvil(_)
+                    | Container::Grindstone(_)
                     | Container::Smithing(_)
             )
     }
@@ -605,7 +606,7 @@ impl Game {
             out.push((SlotRef::EnchantItem, px + 14.0, py + 44.0));
             out.push((SlotRef::EnchantLapis, px + 34.0, py + 44.0));
             CRAFT_H
-        } else if let Container::Anvil(_) = self.container {
+        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.container {
             // Java's layout: input + input -> result.
             out.push((SlotRef::AnvilLeft, px + 26.0, py + 36.0));
             out.push((SlotRef::AnvilRight, px + 75.0, py + 36.0));
@@ -728,6 +729,7 @@ impl Game {
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
             (Container::Anvil(_), _) => "Anvil",
+            (Container::Grindstone(_), _) => "Repair & Disenchant",
             (Container::Smithing(_), _) => "Upgrade Gear",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
@@ -745,7 +747,7 @@ impl Game {
             brewing_ui(ui, b, px, py, (self.started.elapsed().as_secs_f32() * 8.0) as u32);
         } else if let Container::Enchanting(_) = self.container {
             self.enchanting_ui(ui, px, py);
-        } else if let Container::Anvil(_) = self.container {
+        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.container {
             self.anvil_ui(ui, px, py);
         } else if let Container::Smithing(_) = self.container {
             self.smithing_ui(ui, px, py);
@@ -1028,6 +1030,9 @@ impl Game {
             }
             return;
         };
+        if matches!(self.container, Container::Grindstone(_)) {
+            return;
+        }
         let (text, colour) = if too_expensive {
             ("Too Expensive!".to_string(), [1.0, 0.38, 0.38, 1.0])
         } else if self.mode.is_survival() && self.vitals.xp.level < result.cost {

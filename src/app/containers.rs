@@ -162,7 +162,7 @@ impl Game {
                 };
             }
             Container::Furnace(p) => {
-                let smeltable = furnace::smelt(stack.item).is_some();
+                let smeltable = self.world.furnace(p).is_some_and(|f| f.kind.smelt(stack.item).is_some());
                 let fuel = furnace::burn_time(stack.item).is_some();
                 if let Some(f) = self.world.furnace_mut(p)
                     && (smeltable || fuel)
@@ -208,7 +208,7 @@ impl Game {
                     return left;
                 }
             }
-            Container::Anvil(_) => {
+            Container::Anvil(_) | Container::Grindstone(_) => {
                 let left = self.move_to_anvil(stack);
                 if left != Some(stack) {
                     return left;

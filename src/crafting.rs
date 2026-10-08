@@ -171,6 +171,30 @@ const PLANKS: Ingredient = &[
     b(Block::MANGROVE_PLANKS),
     b(Block::CHERRY_PLANKS),
 ];
+const HAY: Ingredient = &[b(Block::HAY_BALE)];
+const WOOD_SLAB: Ingredient = &[
+    b(Block(108)),
+    b(crate::world::forms::wood_id(0, 4)),
+    b(crate::world::forms::wood_id(1, 4)),
+    b(crate::world::forms::wood_id(2, 4)),
+    b(crate::world::forms::wood_id(3, 4)),
+    b(crate::world::forms::wood_id(4, 4)),
+    b(crate::world::forms::wood_id(5, 4)),
+    b(crate::world::forms::wood_id(6, 4)),
+];
+const FURNACE: Ingredient = &[b(Block::FURNACE)];
+const STONE_SLAB: Ingredient = &[b(Block::STONE_SLAB)];
+const BOOKSHELF: Ingredient = &[b(Block::BOOKSHELF)];
+const ANY_LOG: Ingredient = &[
+    b(Block::LOG),
+    b(Block::SPRUCE_LOG),
+    b(Block::BIRCH_LOG),
+    b(Block::JUNGLE_LOG),
+    b(Block::ACACIA_LOG),
+    b(Block::DARK_OAK_LOG),
+    b(Block::MANGROVE_LOG),
+    b(Block::CHERRY_LOG),
+];
 const OAK_PLANKS: Ingredient = &[b(Block::PLANKS)];
 const MELON: Ingredient = &[b(Block::MELON)];
 const SAND: Ingredient = &[b(Block::SAND)];
@@ -314,6 +338,23 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&[" r ", "###"], &[('r', &[Item::BLAZE_ROD]), ('#', COBBLESTONE)], b(Block::BREWING_STAND), 1),
             shaped(&["###", "# #", "###"], &[('#', PLANKS)], b(Block::CHEST), 1),
             shaped(&["###"], &[('#', &[Item::WHEAT])], Item::BREAD, 1),
+            shaped(&["###", "###", "###"], &[('#', WHEAT)], b(Block::HAY_BALE), 1),
+            shapeless(&[HAY], Item::WHEAT, 9),
+            shaped(&["# #", "# #", "###"], &[('#', WOOD_SLAB)], b(Block::COMPOSTER), 1),
+            shaped(&["#s#", "# #", "#s#"], &[('#', PLANKS), ('s', WOOD_SLAB)], b(Block::BARREL), 1),
+            shaped(&[" l ", "lFl", " l "], &[('l', ANY_LOG), ('F', FURNACE)], b(Block::SMOKER), 1),
+            shaped(
+                &["III", "IFI", "SSS"],
+                &[('I', IRON), ('F', FURNACE), ('S', SMOOTH_STONE)],
+                b(Block::BLAST_FURNACE),
+                1,
+            ),
+            shaped(&["pp", "##", "##"], &[('p', &[Item::PAPER]), ('#', PLANKS)], b(Block::CARTOGRAPHY_TABLE), 1),
+            shaped(&["ff", "##", "##"], &[('f', &[Item::FLINT]), ('#', PLANKS)], b(Block::FLETCHING_TABLE), 1),
+            shaped(&["sSs", "# #"], &[('s', STICK), ('S', STONE_SLAB), ('#', PLANKS)], b(Block::GRINDSTONE), 1),
+            shaped(&["sss", " B ", " s "], &[('s', WOOD_SLAB), ('B', BOOKSHELF)], b(Block::LECTERN), 1),
+            shaped(&["ss", "##"], &[('s', STRING), ('#', PLANKS)], b(Block::LOOM), 1),
+            shaped(&[" I ", "SSS"], &[('I', IRON), ('S', STONE)], b(Block::STONECUTTER), 1),
             shapeless(&[&[Item::BONE]], Item::BONE_MEAL, 3),
             shaped(&["c", "#"], &[('c', FUEL_LUMP), ('#', STICK)], b(Block::TORCH), 4),
             shaped(&["##", "##"], &[('#', SAND)], b(Block::SANDSTONE), 1),
