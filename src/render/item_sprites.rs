@@ -203,6 +203,15 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         Sprite::Stick => handle(x, y, 2, 13),
         Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
         Sprite::Armor(piece, material) => armor(piece, material, x, y),
+        Sprite::Minecart(c) => {
+            let body = |x: i32, y: i32| (2..=13).contains(&x) && (6..=11).contains(&y);
+            let wheel = |x: i32, y: i32| {
+                let a = (x - 5).pow(2) + (y - 13).pow(2);
+                let b = (x - 10).pow(2) + (y - 13).pow(2);
+                a <= 4 || b <= 4
+            };
+            shaded(&body, x, y, c, 0.04).or_else(|| shaded(&wheel, x, y, [40, 40, 44], 0.02))
+        }
         Sprite::Lump(c) => {
             let lump = |x: i32, y: i32| {
                 let (px, py) = centre(x, y);
@@ -243,6 +252,14 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let shine = (5..=6).contains(&x) && (7..=8).contains(&y);
             stem.or(leaf).or_else(|| {
                 shaded(&body, x, y, [210, 30, 35], 0.06).map(|p| if shine { [255, 200, 200, 255] } else { p })
+            })
+        }
+        Sprite::GoldenApple => {
+            let stem = (x == 8 && (2..=4).contains(&y)).then_some(tint([90, 60, 25], 1.0));
+            let body = |x: i32, y: i32| disc(6.5, 9.5, 4.6)(x, y) || disc(9.5, 9.5, 4.6)(x, y);
+            let shine = (5..=6).contains(&x) && (7..=8).contains(&y);
+            stem.or_else(|| {
+                shaded(&body, x, y, [248, 200, 40], 0.06).map(|p| if shine { [255, 250, 190, 255] } else { p })
             })
         }
         Sprite::Bread => {

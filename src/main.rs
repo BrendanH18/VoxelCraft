@@ -39,6 +39,8 @@ pub struct Args {
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
     pub open_inventory: bool,
+    /// Open the targeted villager after its first job claim (screenshots).
+    pub open_trading: bool,
     /// Seat a virtual controller player with this screen open (screenshots).
     pub pad_player: Option<String>,
     pub inventory_search: Option<String>,
@@ -54,6 +56,8 @@ pub struct Args {
     pub place: Vec<(glam::IVec3, world::block::Block)>,
     /// Opens the container at this block once loaded (screenshots).
     pub open_block: Option<glam::IVec3>,
+    /// Debug cart placements on rails once the world loads.
+    pub carts: Vec<(entity::minecart::CartKind, glam::IVec3)>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
     /// The optional armor material forces a full set on a zombie or skeleton.
     pub spawn: Vec<(entity::MobKind, glam::IVec3, Option<entity::armor::Equipped>)>,
@@ -111,6 +115,7 @@ voxelcraft [options]
   --creative, --survival  game mode (default: survival, or the saved mode)
   --f3              start with the debug overlay open
   --inventory-search <text>  initial inventory search query
+  --open-trading    open a targeted villager once it claims a job (screenshots)
   --open-inventory  start with the inventory screen open (screenshots)
   --pad-player <s>  seat a controller player holding a copy of your
                     inventory, with play, pause, inventory, crafting or
@@ -136,6 +141,7 @@ voxelcraft [options]
   --wear item       put on a piece of armor at startup (repeatable)
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
+  --cart x,y,z,kind spawn rideable/chest/hopper/tnt cart on a rail (repeatable)
   --spawn kind,x,y,z[,material[,glint]]
                     spawn a mob once loaded (repeatable; any mob name, such as
                     zombie or magma_cube; y may be ~
@@ -176,6 +182,7 @@ fn parse_args() -> Result<Args, String> {
         debug_overlay: false,
         mode: None,
         open_inventory: false,
+        open_trading: false,
         pad_player: None,
         inventory_search: None,
         open_menu: None,
@@ -184,6 +191,7 @@ fn parse_args() -> Result<Args, String> {
         dimension: None,
         place: Vec::new(),
         open_block: None,
+        carts: Vec::new(),
         spawn: Vec::new(),
         wait: 0.0,
         pose: None,
@@ -245,6 +253,7 @@ fn parse_args() -> Result<Args, String> {
             "--f3" => args.debug_overlay = true,
             "--inventory-search" => args.inventory_search = Some(value("--inventory-search")?),
             "--open-inventory" => args.open_inventory = true,
+            "--open-trading" => args.open_trading = true,
             "--pad-player" => {
                 let m = value("--pad-player")?;
                 if !matches!(m.as_str(), "play" | "pause" | "inventory" | "crafting" | "palette") {
@@ -293,6 +302,26 @@ fn parse_args() -> Result<Args, String> {
                 .or_else(|| world::block::Block::from_name(name))
                 .ok_or_else(bad)?;
                 args.place.push((glam::IVec3::new(n[0], n[1], n[2]), block));
+            }
+            "--cart" => {
+                let v = value("--cart")?;
+                let parts: Vec<_> = v.split(',').collect();
+                if parts.len() != 4 {
+                    return Err("--cart needs x,y,z,rideable|chest|hopper|tnt".into());
+                }
+                let n: Vec<i32> = parts[..3]
+                    .iter()
+                    .map(|s| s.parse())
+                    .collect::<Result<_, _>>()
+                    .map_err(|_| "--cart coordinates must be integers")?;
+                let kind = match parts[3] {
+                    "rideable" => entity::minecart::CartKind::Rideable,
+                    "chest" => entity::minecart::CartKind::Chest,
+                    "hopper" => entity::minecart::CartKind::Hopper,
+                    "tnt" => entity::minecart::CartKind::Tnt,
+                    _ => return Err("--cart kind must be rideable, chest, hopper or tnt".into()),
+                };
+                args.carts.push((kind, glam::IVec3::new(n[0], n[1], n[2])));
             }
             "--spawn" => {
                 let v = value("--spawn")?;
@@ -411,6 +440,7 @@ impl Args {
         self.seed = None;
         self.mode = None;
         self.open_inventory = false;
+        self.open_trading = false;
         self.pad_player = None;
         self.inventory_search = None;
         self.open_console = false;
@@ -419,6 +449,7 @@ impl Args {
         self.weather = None;
         self.dimension = None;
         self.place.clear();
+        self.carts.clear();
         self.open_block = None;
         self.spawn.clear();
         self.pose = None;

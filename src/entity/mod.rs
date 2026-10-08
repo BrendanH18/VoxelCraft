@@ -13,13 +13,17 @@
 //! box-model vertices.
 
 pub mod armor;
+mod bell;
 mod bobber;
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
 pub mod fireball;
+pub mod golem;
 pub mod item;
+pub mod minecart;
 mod mob;
+mod mob_index;
 pub mod model;
 pub mod orb;
 pub mod pearl;
@@ -30,6 +34,11 @@ mod projectile;
 mod slime;
 mod thrown;
 pub mod tnt;
+pub mod villager;
+mod villager_breeding;
+mod villager_gossip;
+pub mod wandering_trader;
+mod zombie_villager;
 
 use std::f32::consts::TAU;
 
@@ -80,6 +89,7 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 /// Sounds entities make (the game maps them to audio).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
+    Bell,
     /// A creeper lit its fuse.
     Fuse,
     /// A skeleton loosed an arrow.
@@ -108,6 +118,13 @@ pub enum MobSound {
 /// Something an entity did that the game needs to react to.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EntityEvent {
+    /// Shared block impact for target blocks and touched redstone ore.
+    ProjectileBlockHit {
+        cell: IVec3,
+        pos: DVec3,
+        normal: IVec3,
+        arrow: bool,
+    },
     /// A mob or arrow hit `player`: apply `damage` and add `knockback` to
     /// their velocity; `cause` is the death message.
     PlayerHit {
@@ -181,12 +198,13 @@ pub enum EntityEvent {
         owner: PlayerId,
         pos: DVec3,
     },
-    /// One of the player's arrows hit a mob (loot is dropped internally).
+    /// An arrow or player potion hit a mob (loot is dropped internally).
     MobShot {
         kind: MobKind,
         pos: DVec3,
         killed: bool,
         burning: bool,
+        player_kill: bool,
     },
     /// Thorns or the environment killed a mob (loot is dropped internally).
     MobKilled {
@@ -198,6 +216,10 @@ pub enum EntityEvent {
     },
     /// The Ender Dragon flew through this block: remove it, without drops.
     BreakBlock {
+        cell: IVec3,
+    },
+    /// A villager needs this closed wooden door opened.
+    VillagerDoor {
         cell: IVec3,
     },
     /// A chicken laid an egg at its feet.
@@ -279,6 +301,8 @@ pub trait MobWorld: BlockSource {
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         Vec::new()
     }
+    fn village_pois(&self, _visit: &mut dyn FnMut(IVec3, Block)) {}
+    fn village_homes(&self, _visit: &mut dyn FnMut(IVec3, IVec3)) {}
     fn seed(&self) -> u64 {
         0
     }
@@ -293,6 +317,12 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn village_pois(&self, visit: &mut dyn FnMut(IVec3, Block)) {
+        self.visit_village_pois(visit);
+    }
+    fn village_homes(&self, visit: &mut dyn FnMut(IVec3, IVec3)) {
+        self.visit_village_homes(visit);
+    }
     fn seed(&self) -> u64 {
         self.generator.seed
     }
@@ -463,11 +493,29 @@ pub struct Entities {
     pub items: Vec<ItemEntity>,
     /// Experience orbs, kept and saved like dropped items.
     pub orbs: Vec<XpOrb>,
+    pub minecarts: Vec<minecart::Minecart>,
+    next_cart: u32,
     /// The dragon fight, in the End.
     pub fight: Option<dragon::Fight>,
     /// Java `doMobLoot`; set by the world before each update.
     pub mob_loot: bool,
     pub moon_brightness: f32,
+    pub village_time: f64,
+    pub village_day: i64,
+    next_villager_id: u64,
+    villager_births: rustc_hash::FxHashSet<IVec3>,
+    village_timer: f32,
+    mob_index: mob_index::MobIndex,
+    claimed_beds: rustc_hash::FxHashSet<IVec3>,
+    claimed_jobs: rustc_hash::FxHashSet<IVec3>,
+    pending_sounds: Vec<EntityEvent>,
+    trader_spawner: wandering_trader::Spawner,
+    trader_leaders: rustc_hash::FxHashMap<u64, (DVec3, f32, bool)>,
+    pub trader_spawning: bool,
+    pub villager_griefing: bool,
+    /// Seconds until another iron golem may be summoned.
+    /// Seconds until the next gossip summon roll.
+    gossip_timer: f32,
     rng: Rng,
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
@@ -496,9 +544,25 @@ impl Entities {
             tnt: Vec::new(),
             items: Vec::new(),
             orbs: Vec::new(),
+            minecarts: Vec::new(),
+            next_cart: 1,
             fight: None,
             mob_loot: true,
             moon_brightness: 1.0,
+            village_time: 0.25,
+            village_day: 0,
+            next_villager_id: 1,
+            villager_births: Default::default(),
+            village_timer: 0.0,
+            mob_index: Default::default(),
+            claimed_beds: Default::default(),
+            claimed_jobs: Default::default(),
+            pending_sounds: Vec::new(),
+            trader_spawner: Default::default(),
+            trader_leaders: Default::default(),
+            trader_spawning: true,
+            villager_griefing: true,
+            gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
@@ -539,6 +603,18 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
+        if matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader) {
+            **mob.villager.as_mut().unwrap() =
+                villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
+            mob.villager.as_mut().unwrap().gossip.day = self.village_day;
+            self.next_villager_id = self.next_villager_id.saturating_add(1);
+        }
+        if kind == MobKind::WanderingTrader {
+            mob.villager.as_mut().unwrap().trader_stock(&mut self.rng);
+        }
+        if kind == MobKind::TraderLlama {
+            mob.health = (15 + self.rng.next_int(16)) as f32;
+        }
         if kind == MobKind::Sheep {
             let roll = self.rng.next_int(100);
             let rare = if roll >= 18 { self.rng.next_int(500) } else { 1 };
@@ -546,6 +622,9 @@ impl Entities {
         }
         if kind.is_zombie() && self.rng.chance(0.05) {
             mob.baby = true;
+            if kind == MobKind::ZombieVillager {
+                mob.age = -24000;
+            }
         }
         if kind.is_zombie() || kind == MobKind::Skeleton {
             let (armor, glint) = armor::roll_monster_armor(&mut self.rng);
@@ -581,6 +660,7 @@ impl Entities {
     ) -> Vec<EntityEvent> {
         self.snapshot_positions();
         let mut events = Vec::new();
+        events.append(&mut self.pending_sounds);
         if difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.despawn_hostiles();
         } else if ctx.spawning {
@@ -594,12 +674,43 @@ impl Entities {
             self.run_spawners(dt as f32, world, ctx);
         }
 
+        self.trader_tick(dt as f32, world, ctx);
+        self.village_upkeep(dt as f32, world);
+        self.assign_hunts(ctx);
+        self.trader_upkeep();
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
-            let gone = m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
-                || ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
-                || !world.loaded(m.pos.floor().as_ivec3());
+            let resident = matches!(
+                m.kind,
+                MobKind::Villager
+                    | MobKind::IronGolem
+                    | MobKind::SnowGolem
+                    | MobKind::WanderingTrader
+                    | MobKind::TraderLlama
+            ) || m.built
+                || m.convert_left > 0.0
+                || m.villager.as_ref().is_some_and(|v| v.xp > 0);
+            let gone = m.trader.as_ref().is_some_and(|t| t.despawn <= 0.0)
+                || m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                || !resident
+                    && (ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
+                        || !world.loaded(m.pos.floor().as_ivec3()));
+            if resident
+                && !gone
+                && (!world.loaded(m.pos.floor().as_ivec3())
+                    || ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST))
+            {
+                if let Some(v) = &mut self.mobs[i].villager {
+                    v.active = false;
+                }
+                i += 1;
+                continue;
+            }
+            if let Some(v) = &mut self.mobs[i].villager {
+                v.active = true;
+            }
+            let m = &self.mobs[i];
             if gone {
                 if m.dying.is_some_and(|t| t >= mob::DEATH_TIME) {
                     let mut burst = crate::particles::Burst::new(
@@ -627,6 +738,7 @@ impl Entities {
             }
             let grounded = self.mobs[i].on_ground;
             self.mobs[i].difficulty = difficulty;
+            self.mobs[i].trader_night = (0.5..0.96).contains(&self.village_time);
             self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);
             let m = &self.mobs[i];
             if m.kind == MobKind::MagmaCube && !grounded && m.on_ground && m.alive() {
@@ -636,6 +748,8 @@ impl Entities {
             }
             i += 1;
         }
+        self.mob_index.rebuild(&self.mobs);
+        self.resolve_strikes(ctx, &mut events);
         self.separate(dt);
         if let Some(fight) = &mut self.fight {
             fight.update(dt, world, ctx, &mut self.rng, &mut events);
@@ -673,7 +787,7 @@ impl Entities {
             self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
             self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
             self.potions.retain_mut(|p| p.update(dt, world, ctx, mobs, rng, &mut events));
-            self.thrown.retain_mut(|t| t.update(dt, world, mobs, rng, &mut events));
+            self.thrown.retain_mut(|t| t.update(dt, world, mobs, &self.mob_index, rng, &mut events));
         }
         {
             let rng = &mut self.rng;
@@ -689,9 +803,9 @@ impl Entities {
         self.update_eyes(dt, &mut events);
         for e in &events {
             match *e {
-                EntityEvent::MobShot { kind, pos, killed, burning } => {
+                EntityEvent::MobShot { kind, pos, killed, burning, player_kill } => {
                     if killed && self.mob_loot {
-                        self.drop_loot_with_fire(kind, pos, 0, burning, true);
+                        self.drop_loot_with_fire(kind, pos, 0, burning, player_kill);
                     }
                     if kind == MobKind::ZombifiedPiglin {
                         self.anger_piglins(pos);
@@ -761,6 +875,7 @@ impl Entities {
     }
 
     fn blast(&mut self, center: DVec3, power: f32, credit_player: bool) {
+        self.blast_carts(center, power);
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
@@ -937,20 +1052,29 @@ impl Entities {
     fn separate(&mut self, dt: f64) {
         let n = self.mobs.len();
         for i in 0..n {
-            for j in i + 1..n {
+            if self.mobs[i].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
+                continue;
+            }
+            self.mob_index.visit(self.mobs[i].pos, 4.0, |j| {
+                if j <= i {
+                    return;
+                }
+                if self.mobs[j].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
+                    return;
+                }
                 let (a, b) = (&self.mobs[i], &self.mobs[j]);
                 let d = DVec3::new(b.pos.x - a.pos.x, 0.0, b.pos.z - a.pos.z);
                 let min = a.shape().half_width + b.shape().half_width;
                 let overlap_y = a.pos.y < b.pos.y + b.shape().height && b.pos.y < a.pos.y + a.shape().height;
                 let dist = d.length();
                 if !overlap_y || dist >= min {
-                    continue;
+                    return;
                 }
                 let dir = if dist > 1e-4 { d / dist } else { DVec3::X };
                 let push = dir * ((min - dist) * 8.0 * dt).min(0.2) / dt.max(1e-3);
                 self.mobs[i].vel -= push * 0.5;
                 self.mobs[j].vel += push * 0.5;
-            }
+            });
         }
     }
 
@@ -987,6 +1111,7 @@ impl Entities {
                     continue;
                 }
                 self.spawn(kind, pos);
+                self.note_zombie_villager(kind);
                 // Animals come in small herds, zombified piglins and End
                 // endermen in packs.
                 if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
@@ -1008,6 +1133,7 @@ impl Entities {
                             && clear_of_players(ctx, p)
                         {
                             self.spawn(kind, p);
+                            self.note_zombie_villager(kind);
                         }
                     }
                 }
@@ -1160,7 +1286,9 @@ impl Entities {
     /// Capture positions before a game tick, or snap them while paused.
     pub fn snapshot_positions(&mut self) {
         for m in &mut self.mobs {
-            m.previous_pos = m.pos;
+            if m.riding.is_none() {
+                m.previous_pos = m.pos;
+            }
         }
         for a in &mut self.arrows {
             a.previous_pos = a.pos;
@@ -1217,6 +1345,7 @@ impl Entities {
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
+        model::build_minecarts(&self.minecarts, camera, alpha, &mut self.verts);
         if let Some(fight) = &self.fight {
             dragon_model::build_fight(fight, camera, time, alpha, &mut self.verts);
         }
@@ -1444,6 +1573,9 @@ impl Entities {
         let mob = self.mobs.get_mut(index)?;
         let (kind, pos) = (mob.kind, mob.pos);
         mob.player_hit();
+        if kind == MobKind::IronGolem {
+            mob.angry_player = Some(PlayerId::HOST);
+        }
         let killed = mob.damage(damage, Some(knockback), &mut self.rng);
         if kind == MobKind::ZombifiedPiglin {
             self.anger_piglins(pos);
@@ -1469,6 +1601,20 @@ impl Entities {
         critical: bool,
         sweep: Option<DVec3>,
     ) -> Option<MobKind> {
+        self.melee_for(index, dir, held, bonus, critical, sweep, PlayerId::HOST)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn melee_for(
+        &mut self,
+        index: usize,
+        dir: DVec3,
+        held: Option<crate::inventory::Stack>,
+        bonus: f32,
+        critical: bool,
+        sweep: Option<DVec3>,
+        owner: PlayerId,
+    ) -> Option<MobKind> {
         use crate::enchant::Enchantment;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
         let (kind, pos, shape) = (target.kind, target.pos, target.shape());
@@ -1481,6 +1627,12 @@ impl Entities {
         }
         let old_health = self.mobs[index].health;
         let killed = self.knock(index, dir, damage, knockback);
+        if self.mobs[index].health < old_health {
+            self.note_villager_hurt(index, owner, killed.is_some());
+            if kind == MobKind::IronGolem && !self.mobs[index].built {
+                self.mobs[index].angry_player = Some(owner);
+            }
+        }
         if self.mobs[index].health < old_health {
             for effect in [
                 critical.then_some(crate::particles::Kind::Crit),

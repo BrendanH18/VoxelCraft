@@ -171,6 +171,30 @@ const PLANKS: Ingredient = &[
     b(Block::MANGROVE_PLANKS),
     b(Block::CHERRY_PLANKS),
 ];
+const HAY: Ingredient = &[b(Block::HAY_BALE)];
+const WOOD_SLAB: Ingredient = &[
+    b(Block(108)),
+    b(crate::world::forms::wood_id(0, 4)),
+    b(crate::world::forms::wood_id(1, 4)),
+    b(crate::world::forms::wood_id(2, 4)),
+    b(crate::world::forms::wood_id(3, 4)),
+    b(crate::world::forms::wood_id(4, 4)),
+    b(crate::world::forms::wood_id(5, 4)),
+    b(crate::world::forms::wood_id(6, 4)),
+];
+const FURNACE: Ingredient = &[b(Block::FURNACE)];
+const STONE_SLAB: Ingredient = &[b(Block::STONE_SLAB)];
+const BOOKSHELF: Ingredient = &[b(Block::BOOKSHELF)];
+const ANY_LOG: Ingredient = &[
+    b(Block::LOG),
+    b(Block::SPRUCE_LOG),
+    b(Block::BIRCH_LOG),
+    b(Block::JUNGLE_LOG),
+    b(Block::ACACIA_LOG),
+    b(Block::DARK_OAK_LOG),
+    b(Block::MANGROVE_LOG),
+    b(Block::CHERRY_LOG),
+];
 const OAK_PLANKS: Ingredient = &[b(Block::PLANKS)];
 const MELON: Ingredient = &[b(Block::MELON)];
 const SAND: Ingredient = &[b(Block::SAND)];
@@ -314,6 +338,30 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&[" r ", "###"], &[('r', &[Item::BLAZE_ROD]), ('#', COBBLESTONE)], b(Block::BREWING_STAND), 1),
             shaped(&["###", "# #", "###"], &[('#', PLANKS)], b(Block::CHEST), 1),
             shaped(&["###"], &[('#', &[Item::WHEAT])], Item::BREAD, 1),
+            shaped(&["###", "###", "###"], &[('#', WHEAT)], b(Block::HAY_BALE), 1),
+            shaped(&["GGG", "GAG", "GGG"], &[('G', &[Item::GOLD_INGOT]), ('A', &[Item::APPLE])], Item::GOLDEN_APPLE, 1),
+            shapeless(&[const { &[b(Block::PUMPKIN)] }], Item::PUMPKIN_SEEDS, 4),
+            shapeless(
+                &[const { &[b(Block::CARVED_PUMPKIN)] }, const { &[b(Block::TORCH)] }],
+                b(Block::JACK_O_LANTERN),
+                1,
+            ),
+            shapeless(&[HAY], Item::WHEAT, 9),
+            shaped(&["# #", "# #", "###"], &[('#', WOOD_SLAB)], b(Block::COMPOSTER), 1),
+            shaped(&["#s#", "# #", "#s#"], &[('#', PLANKS), ('s', WOOD_SLAB)], b(Block::BARREL), 1),
+            shaped(&[" l ", "lFl", " l "], &[('l', ANY_LOG), ('F', FURNACE)], b(Block::SMOKER), 1),
+            shaped(
+                &["III", "IFI", "SSS"],
+                &[('I', IRON), ('F', FURNACE), ('S', SMOOTH_STONE)],
+                b(Block::BLAST_FURNACE),
+                1,
+            ),
+            shaped(&["pp", "##", "##"], &[('p', &[Item::PAPER]), ('#', PLANKS)], b(Block::CARTOGRAPHY_TABLE), 1),
+            shaped(&["ff", "##", "##"], &[('f', &[Item::FLINT]), ('#', PLANKS)], b(Block::FLETCHING_TABLE), 1),
+            shaped(&["sSs", "# #"], &[('s', STICK), ('S', STONE_SLAB), ('#', PLANKS)], b(Block::GRINDSTONE), 1),
+            shaped(&["sss", " B ", " s "], &[('s', WOOD_SLAB), ('B', BOOKSHELF)], b(Block::LECTERN), 1),
+            shaped(&["ss", "##"], &[('s', STRING), ('#', PLANKS)], b(Block::LOOM), 1),
+            shaped(&[" I ", "SSS"], &[('I', IRON), ('S', STONE)], b(Block::STONECUTTER), 1),
             shapeless(&[&[Item::BONE]], Item::BONE_MEAL, 3),
             shaped(&["c", "#"], &[('c', FUEL_LUMP), ('#', STICK)], b(Block::TORCH), 4),
             shaped(&["##", "##"], &[('#', SAND)], b(Block::SANDSTONE), 1),
@@ -464,6 +512,7 @@ pub fn recipes() -> &'static [Recipe] {
             r.push(armor(ArmorPiece::Leggings, &["XXX", "X X", "X X"]));
             r.push(armor(ArmorPiece::Boots, &["X X", "X X"]));
         }
+        add_redstone_recipes(&mut r);
         add_dye_recipes(&mut r);
         add_wool_recipes(&mut r);
         add_glass_terracotta_recipes(&mut r);
@@ -641,8 +690,11 @@ mod tests {
             let g = grid(3, &[(x, 1, P), (x, 2, P)]);
             assert_eq!(g.result(), Some(Stack::new(Item::STICK, 4)));
         }
-        // Side by side is not sticks.
-        assert_eq!(grid(3, &[(0, 0, P), (1, 0, P)]).result(), None);
+        // Side by side makes a pressure plate, not sticks.
+        assert_eq!(
+            grid(3, &[(0, 0, P), (1, 0, P)]).result(),
+            Some(Stack::new(crate::world::redstone_blocks::WOOD_PLATE, 1))
+        );
         // An axe and its mirror image.
         let axe = Item::tool(ToolKind::Axe, Tier::Stone);
         let left = grid(3, &[(0, 0, C), (1, 0, C), (0, 1, C), (1, 1, Item::STICK), (1, 2, Item::STICK)]);
@@ -696,7 +748,7 @@ mod tests {
         g.consume();
         assert_eq!(g.cells[0], None);
         assert_eq!(g.cells[2], Some(Stack::new(P, 1)));
-        assert_eq!(g.result(), None);
+        assert_eq!(g.result(), Some(Stack::new(crate::world::redstone_blocks::WOOD_BUTTON, 1)));
         assert_eq!(g.take_all(), vec![Stack::new(P, 1)]);
         assert!(g.cells.iter().all(Option::is_none));
     }
@@ -1012,5 +1064,100 @@ mod glass_terracotta_recipe_tests {
             g.cells[i] = Some(Stack::new(Block::GRAVEL, 1));
         }
         assert_eq!(g.result(), Some(Stack::new(Block::concrete_powder(DyeColor::White), 8)));
+    }
+}
+
+fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
+    use crate::world::redstone_blocks as r;
+    const DUST: Ingredient = &[Item::REDSTONE];
+    const TORCH: Ingredient = &[b(r::TORCH)];
+    const QUARTZ: Ingredient = &[Item::NETHER_QUARTZ];
+    const OAK: Ingredient = &[b(Block::PLANKS)];
+    const GLOW: Ingredient = &[b(Block::GLOWSTONE)];
+    const REDSTONE_BLOCK: Ingredient = &[b(r::REDSTONE_BLOCK)];
+    const SLAB: Ingredient = &[b(Block(108))];
+    const HAY: Ingredient = &[b(Block::HAY_BALE)];
+    const PISTON: Ingredient = &[b(r::PISTON)];
+    const SLIME: Ingredient = &[Item::SLIME_BALL];
+    const BOW: Ingredient = &[Item::BOW];
+    const CHEST: Ingredient = &[b(Block::CHEST)];
+    const PLATE: Ingredient = &[b(r::STONE_PLATE)];
+    const HOPPER: Ingredient = &[b(r::HOPPER)];
+    const TNT_BLOCK: Ingredient = &[b(Block::TNT)];
+    const CART: Ingredient = &[Item::MINECART];
+    const BONE_MEAL: Ingredient = &[Item::BONE_MEAL];
+    const BONE_BLOCK: Ingredient = &[b(crate::world::gadgets::BONE_BLOCK)];
+    const ICE: Ingredient = &[b(Block::ICE)];
+    const CHARCOAL: Ingredient = &[Item::COAL, Item::CHARCOAL];
+    const GUNPOWDER: Ingredient = &[Item::GUNPOWDER];
+    const BLAZE: Ingredient = &[Item::BLAZE_POWDER];
+    recipes.extend([
+        shaped(&["s", "c"], &[('s', STICK), ('c', COBBLESTONE)], b(r::LEVER), 1),
+        shapeless(&[STONE], b(r::STONE_BUTTON), 1),
+        shapeless(&[OAK], b(r::WOOD_BUTTON), 1),
+        shaped(&["r", "s"], &[('r', DUST), ('s', STICK)], b(r::TORCH), 1),
+        shaped(&["trt", "sss"], &[('t', TORCH), ('r', DUST), ('s', STONE)], b(r::REPEATER), 1),
+        shaped(&[" t ", "tqt", "sss"], &[('t', TORCH), ('q', QUARTZ), ('s', STONE)], b(r::COMPARATOR), 1),
+        shaped(&[" r ", "rgr", " r "], &[('r', DUST), ('g', GLOW)], b(r::LAMP), 1),
+        shaped(&["rrr", "rrr", "rrr"], &[('r', DUST)], b(r::REDSTONE_BLOCK), 1),
+        shapeless(&[REDSTONE_BLOCK], Item::REDSTONE, 9),
+        shaped(&["ss"], &[('s', STONE)], b(r::STONE_PLATE), 1),
+        shaped(&["pp"], &[('p', OAK)], b(r::WOOD_PLATE), 1),
+        shaped(&["gg"], &[('g', GOLD)], b(r::LIGHT_PLATE), 1),
+        shaped(&["ii"], &[('i', IRON)], b(r::HEAVY_PLATE), 1),
+        shaped(&["ii", "ii", "ii"], &[('i', IRON)], b(r::IRON_DOOR), 3),
+        shaped(&["ii", "ii"], &[('i', IRON)], b(r::IRON_TRAPDOOR), 1),
+        shaped(&["ppp", "ppp"], &[('p', OAK)], b(r::WOOD_TRAPDOOR), 2),
+        shaped(&["ggg", "qqq", "sss"], &[('g', GLASS), ('q', QUARTZ), ('s', SLAB)], b(r::DAYLIGHT), 1),
+        shaped(&[" r ", "rhr", " r "], &[('r', DUST), ('h', HAY)], b(r::TARGET), 1),
+        shaped(&["ccc", "cbc", "crc"], &[('c', COBBLESTONE), ('b', BOW), ('r', DUST)], b(r::DISPENSER), 1),
+        shaped(&["ccc", "c c", "crc"], &[('c', COBBLESTONE), ('r', DUST)], b(r::DROPPER), 1),
+        shaped(&["i i", "ici", " i "], &[('i', IRON), ('c', CHEST)], b(r::HOPPER), 1),
+        shapeless(&[CHARCOAL, GUNPOWDER, BLAZE], Item::FIRE_CHARGE, 3),
+        shaped(&["ppp", "cic", "crc"], &[('p', PLANKS), ('c', COBBLESTONE), ('i', IRON), ('r', DUST)], b(r::PISTON), 1),
+        shaped(&["s", "p"], &[('s', SLIME), ('p', PISTON)], b(r::STICKY_PISTON), 1),
+        shaped(&["ccc", "rrq", "ccc"], &[('c', COBBLESTONE), ('r', DUST), ('q', QUARTZ)], b(r::OBSERVER), 1),
+        shaped(&["I I", "III"], &[('I', IRON)], Item::MINECART, 1),
+        shaped(
+            &["G G", "GSG", "GRG"],
+            &[('G', GOLD), ('S', STICK), ('R', DUST)],
+            b(crate::world::rails::POWERED_RAIL),
+            6,
+        ),
+        shaped(
+            &["I I", "IPI", "IRI"],
+            &[('I', IRON), ('P', PLATE), ('R', DUST)],
+            b(crate::world::rails::DETECTOR_RAIL),
+            6,
+        ),
+        shaped(
+            &["ISI", "ITI", "ISI"],
+            &[('I', IRON), ('S', STICK), ('T', TORCH)],
+            b(crate::world::rails::ACTIVATOR_RAIL),
+            6,
+        ),
+        shapeless(&[CHEST, CART], Item::CHEST_MINECART, 1),
+        shapeless(&[HOPPER, CART], Item::HOPPER_MINECART, 1),
+        shapeless(&[TNT_BLOCK, CART], Item::TNT_MINECART, 1),
+        shaped(&["bbb", "bbb", "bbb"], &[('b', BONE_MEAL)], b(crate::world::gadgets::BONE_BLOCK), 1),
+        shapeless(&[BONE_BLOCK], Item::BONE_MEAL, 9),
+        shaped(&["iii", "iii", "iii"], &[('i', ICE)], b(crate::world::gadgets::PACKED_ICE), 1),
+        shaped(&["PPP", "PRP", "PPP"], &[('P', PLANKS), ('R', DUST)], b(crate::world::gadgets::NOTE), 1),
+        shaped(&["I", "S", "P"], &[('I', IRON), ('S', STICK), ('P', PLANKS)], b(crate::world::gadgets::HOOK), 2),
+    ]);
+}
+
+#[cfg(test)]
+mod redstone_recipe_tests {
+    use super::*;
+    #[test]
+    fn every_craftable_redstone_component_has_a_matching_recipe() {
+        use crate::world::redstone_blocks as r;
+        for id in r::palette_ids().filter(|&id| id != r::WIRE.0) {
+            let item = b(Block(id));
+            let recipe = recipes().iter().find(|recipe| recipe.result.item == item).expect("redstone recipe");
+            let grid = recipe.preview();
+            assert_eq!(grid.result().map(|s| s.item), Some(item));
+        }
     }
 }

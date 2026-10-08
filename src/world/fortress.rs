@@ -318,6 +318,9 @@ pub enum Feature {
     /// A chest filled from the abandoned mineshaft table.
     MineshaftChest(u64),
     BastionChest(u64, super::bastion::ChestKind),
+    VillageChest(u64, super::village::Style),
+    VillageHome(IVec3),
+    VillageWorkstation(Block),
 }
 
 /// Fortress layouts for one Nether, cached by region.

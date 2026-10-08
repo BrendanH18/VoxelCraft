@@ -83,6 +83,15 @@ const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
+    if layer == tex::COMPOST || layer == tex::COMPOST_READY {
+        return noisy(layer, x, y, if layer == tex::COMPOST_READY { [139, 119, 90] } else { [99, 72, 42] }, 0.22);
+    }
+    if (tex::VILLAGE..tex::VILLAGE + 45).contains(&layer) {
+        return village_pixel(layer, x, y);
+    }
+    if (1139..1155).contains(&layer) {
+        return special_rail_pixel(layer, x, y);
+    }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
         let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };
         let rgb = crate::color::DyeColor::ALL[color].rgb();
@@ -143,6 +152,129 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         return p;
     }
     match layer {
+        1100..=1115 => {
+            let p = (layer - 1100) as f32 / 15.0;
+            noisy(
+                layer,
+                x,
+                y,
+                [
+                    (if p == 0.0 { 0.3 } else { p * 0.6 + 0.4 } * 255.0) as u8,
+                    ((p * p * 0.7 - 0.5).max(0.0) * 255.0) as u8,
+                    ((p * p * 0.6 - 0.7).max(0.0) * 255.0) as u8,
+                ],
+                0.1,
+            )
+        }
+        1116..=1117 => {
+            if y < 9 {
+                noisy(layer, x, y, if layer == 1116 { [255, 48, 20] } else { [90, 20, 12] }, 0.1)
+            } else {
+                noisy(layer, x, y, [125, 90, 45], 0.2)
+            }
+        }
+        1118..=1119 => {
+            if x == 7 || x == 8 {
+                noisy(layer, x, y, if layer == 1119 { [240, 35, 15] } else { [105, 20, 12] }, 0.1)
+            } else {
+                noisy(layer, x, y, [170, 165, 155], 0.1)
+            }
+        }
+        1120..=1121 => {
+            // Java's lamp: a dark rim, a 4x4 lattice of glass panes split by
+            // thin frame lines, and a lighter core in each pane.
+            let lit = layer == 1121;
+            let rim = x == 0 || y == 0 || x == 15 || y == 15;
+            let bar = x.is_multiple_of(5) || y.is_multiple_of(5);
+            let core = (2..=3).contains(&(x % 5)) && (2..=3).contains(&(y % 5));
+            let rgb = match (rim, bar, core, lit) {
+                (true, ..) => [72, 44, 26],
+                (_, true, _, false) => [96, 60, 34],
+                (_, true, _, true) => [150, 98, 50],
+                (_, _, true, false) => [150, 104, 60],
+                (_, _, true, true) => [255, 246, 214],
+                (.., false) => [122, 80, 45],
+                (.., true) => [246, 196, 112],
+            };
+            noisy(layer, x, y, rgb, 0.08)
+        }
+        1122 => noisy(layer, x, y, [180, 25, 15], 0.15),
+        1123..=1124 => {
+            let panel = (3..=6).contains(&x) || (9..=12).contains(&x);
+            if panel && (3..=6).contains(&y) {
+                [0, 0, 0, 0]
+            } else {
+                noisy(layer, x, y, if layer == 1123 { [180, 185, 183] } else { [130, 95, 50] }, 0.12)
+            }
+        }
+        1125..=1126 => noisy(
+            layer,
+            x,
+            y,
+            if x.is_multiple_of(4) || y.is_multiple_of(4) {
+                [92, 66, 38]
+            } else if layer == 1125 {
+                [218, 211, 176]
+            } else {
+                [98, 121, 153]
+            },
+            0.08,
+        ),
+        1130 => noisy(layer, x, y, if !(3..=12).contains(&x) { [96, 98, 95] } else { [167, 128, 73] }, 0.2),
+        1131 | 1132 => noisy(
+            layer,
+            x,
+            y,
+            if x == 0 || x == 15 || y == 0 || y == 15 {
+                [101, 100, 95]
+            } else if layer == 1132 {
+                [112, 167, 72]
+            } else {
+                [180, 147, 95]
+            },
+            0.16,
+        ),
+        1133 => noisy(
+            layer,
+            x,
+            y,
+            if ((4..7).contains(&x) || (10..13).contains(&x)) && (4..7).contains(&y) || (4..13).contains(&x) && y == 11
+            {
+                [36, 37, 36]
+            } else {
+                [154, 157, 151]
+            },
+            0.1,
+        ),
+        1134 | 1135 => noisy(
+            layer,
+            x,
+            y,
+            if (5..11).contains(&x) && (5..11).contains(&y) {
+                if layer == 1135 { [240, 42, 18] } else { [92, 15, 13] }
+            } else {
+                [92, 94, 89]
+            },
+            0.1,
+        ),
+        1136 | 1137 => noisy(
+            layer,
+            x,
+            y,
+            if (4..12).contains(&x) && (4..12).contains(&y) && (layer == 1136 || x > 7 || y > 7) {
+                [23, 24, 23]
+            } else {
+                [126, 128, 122]
+            },
+            0.18,
+        ),
+        1138 => noisy(layer, x, y, [64, 67, 68], 0.12),
+        1129 => noisy(layer, x, y, if y < 13 { [128, 94, 46] } else { [92, 94, 90] }, 0.2),
+        1128 => noisy(layer, x, y, if y == 3 || y == 12 { [162, 67, 29] } else { [203, 171, 58] }, 0.2),
+        1127 => {
+            let d = x.abs_diff(7).max(y.abs_diff(7));
+            noisy(layer, x, y, if matches!(d,0..=1|4..=5) { [180, 32, 26] } else { [235, 224, 194] }, 0.06)
+        }
         tex::BROWN_MUSHROOM | tex::RED_MUSHROOM => {
             // Java's small mushroom occupies six pixels of the crossed 16x16 plane.
             if (7..=8).contains(&x) && (12..=15).contains(&y) {
@@ -342,6 +474,22 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let c = if crack { [230, 240, 255] } else { [150, 186, 246] };
             let s = shade(c, 0.95 + r * 0.08);
             [s[0], s[1], s[2], if crack { 220 } else { 160 }]
+        }
+        tex::CARVED_PUMPKIN | tex::JACK_O_LANTERN => {
+            // The ribbed skin with triangular eyes and a jagged grin cut out of it.
+            let (fx, fy) = (x as i32, y as i32);
+            let eye = |cx: i32| (4..7).contains(&fy) && (fx - cx).abs() <= fy - 3 && (fx - cx).abs() <= 2;
+            let mouth = (9..13).contains(&fy) && (3..13).contains(&fx) && ((fx + fy) % 4 != 0 || fy == 10 || fy == 11);
+            if eye(4) || eye(11) || mouth {
+                if layer == tex::JACK_O_LANTERN {
+                    shade([255, 214, 90], 0.92 + r * 0.12)
+                } else {
+                    shade([64, 38, 14], 0.85 + r * 0.2)
+                }
+            } else {
+                let rib = x.is_multiple_of(4);
+                shade(if rib { [190, 110, 20] } else { [226, 140, 28] }, 0.92 + r * 0.12)
+            }
         }
         tex::PUMPKIN_SIDE | tex::MELON_SIDE => {
             // Vertical ribs (pumpkin) or stripes (melon).
@@ -1223,6 +1371,53 @@ fn rock(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
     }
 }
 
+fn special_rail_pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    if layer >= 1151 {
+        return match layer {
+            1151 => {
+                let edge = !(2..=13).contains(&x) || !(2..=13).contains(&y);
+                let lattice = (x + y).is_multiple_of(4) || (x + 16 - y).is_multiple_of(4);
+                let grain = 0.92 + rnd(layer, x, y / 2, 17) * 0.16;
+                shade(
+                    if edge {
+                        [116, 78, 44]
+                    } else if lattice {
+                        [71, 45, 26]
+                    } else {
+                        [148, 103, 58]
+                    },
+                    grain,
+                )
+            }
+            1152 => shade([176, 176, 180], if x < 4 { 0.7 } else { 1.0 }),
+            1154 => shade([224, 218, 195], if x == 0 || y == 0 || x == 15 || y == 15 { 0.85 } else { 1.0 }),
+            _ => shade([210, 210, 210], 1.0),
+        };
+    }
+    let i = layer - 1139;
+    let kind = i / 4;
+    let powered = (i / 2) % 2 == 1;
+    let east_west = i % 2 == 1;
+    let (across, along) = if east_west { (y, x) } else { (x, y) };
+    let rail = matches!(across, 4 | 5 | 10 | 11);
+    let sleeper = along % 4 <= 1 && (3..=12).contains(&across);
+    let circuit = (7..=8).contains(&across) && (kind != 1 || (3..=12).contains(&along));
+    if rail {
+        shade(
+            if kind == 0 { [224, 177, 59] } else { [169, 169, 178] },
+            if across == 4 || across == 10 { 1.0 } else { 0.75 },
+        )
+    } else if circuit {
+        shade(if powered { [235, 57, 34] } else { [98, 22, 16] }, 1.0)
+    } else if kind == 1 && (3..=12).contains(&along) && (6..=9).contains(&across) {
+        shade([155, 155, 162], 0.8)
+    } else if sleeper {
+        shade([112, 78, 46], 0.9)
+    } else {
+        [0, 0, 0, 0]
+    }
+}
+
 fn rail_pixel(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
     let iron = |lit: bool| shade([148, 148, 156], if lit { 1.18 } else { 0.78 } * (0.92 + r * 0.12));
     let wood = shade([110, 78, 46], 0.88 + r * 0.18);
@@ -1634,4 +1829,74 @@ fn mips_of(layers: usize, pixel: impl Fn(usize, usize, usize) -> Rgba) -> Vec<Ve
         size = half;
     }
     mips
+}
+
+// Original procedural artwork matching each workstation's material and face.
+fn village_pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    let i = (layer - tex::VILLAGE) / 3;
+    let face = (layer - tex::VILLAGE) % 3;
+    let grain = rnd(layer, x, y, 0);
+    match i {
+        0 => {
+            if face == 1 {
+                noisy(layer, x, y, [153, 126, 76], 0.12)
+            } else {
+                pixel(tex::DIRT, x, y)
+            }
+        }
+        1 => {
+            let band = if face == 1 { y == 3 || y == 12 } else { y == 3 || y == 4 || y == 11 || y == 12 };
+            if band {
+                noisy(layer, x, y, [145, 66, 39], 0.12)
+            } else {
+                shade([198, 165, 49], 0.8 + grain * 0.25 + (x.is_multiple_of(3)) as u8 as f32 * 0.12)
+            }
+        }
+        4..=7 => {
+            let lit = i == 5 || i == 7;
+            if face == 2 && (3..13).contains(&x) && (8..13).contains(&y) {
+                if lit { noisy(layer, x, y, [239, 115, 24], 0.3) } else { shade([30, 28, 26], 0.8 + grain * 0.3) }
+            } else if i >= 6 && (y.is_multiple_of(4) || x.is_multiple_of(5)) {
+                shade([71, 73, 72], 1.0)
+            } else {
+                noisy(layer, x, y, if i >= 6 { [119, 123, 124] } else { [105, 91, 75] }, 0.12)
+            }
+        }
+        10 | 13 => {
+            if i == 13 && face == 1 && (6..10).contains(&x) {
+                noisy(layer, x, y, [193, 196, 193], 0.12)
+            } else {
+                noisy(layer, x, y, [126, 126, 120], 0.17)
+            }
+        }
+        14 => {
+            if face == 2 && (y == 4 || y == 12) {
+                shade([98, 75, 14], 1.0)
+            } else {
+                noisy(layer, x, y, [216, 172, 42], 0.12)
+            }
+        }
+        8 if face == 1 => {
+            if x < 2 || y < 2 || x > 13 || y > 13 {
+                pixel(tex::PLANKS, x, y)
+            } else {
+                noisy(
+                    layer,
+                    x,
+                    y,
+                    if (x / 4 + y / 4).is_multiple_of(2) { [220, 215, 173] } else { [136, 160, 106] },
+                    0.08,
+                )
+            }
+        }
+        9 if face == 2 && (3..13).contains(&x) && (3..13).contains(&y) => {
+            noisy(layer, x, y, if x == y || x + y == 15 { [69, 58, 42] } else { [212, 195, 148] }, 0.1)
+        }
+        12 if face == 2 => noisy(layer, x, y, if x.is_multiple_of(2) { [188, 170, 139] } else { [107, 85, 65] }, 0.12),
+        _ => {
+            let edge = y.is_multiple_of(4) || (i == 3 && (y == 3 || y == 12));
+            let c = if edge { if i == 3 { [64, 66, 61] } else { [87, 65, 38] } } else { [145, 110, 64] };
+            if i == 3 && face == 2 && x == 8 && y == 8 { [30, 26, 19, 255] } else { noisy(layer, x, y, c, 0.12) }
+        }
+    }
 }

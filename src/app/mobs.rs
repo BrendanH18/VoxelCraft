@@ -78,6 +78,17 @@ impl Game {
     pub(super) fn attack(&mut self) -> bool {
         let eye = self.player.eye();
         let dir = self.player.forward().as_dvec3();
+        let cart_reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
+        if self.mobs.entities.cart_ray(eye, dir, cart_reach).is_some() {
+            self.mobs.attack_held = true;
+            if self.mobs.attack_cooldown <= 0.0 {
+                self.mobs.entities.hurt_cart(eye, dir, cart_reach, self.mode.is_creative());
+                self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
+                self.audio.play(Sound::Hit, Some(eye + dir * 2.0), 0.7, (0.8, 1.0));
+                self.wear_held(true);
+            }
+            return true;
+        }
         if self.mobs.entities.large_fireball(eye, dir, REACH).is_some() {
             self.mobs.attack_held = true;
             if self.mobs.attack_cooldown <= 0.0 {
@@ -116,7 +127,7 @@ impl Game {
             let held = self.inventory.get(self.actions.selected);
             let bonus = self.vitals.effects.attack_bonus();
             let dir = self.player.forward().as_dvec3();
-            self.mobs.entities.melee(i, dir, held, bonus, critical, sweep);
+            self.mobs.entities.melee_for(i, dir, held, bonus, critical, sweep, self.actor);
             let at = self.mobs.entities.mobs[i].pos + DVec3::Y * 0.5;
             let pitch = if critical { (1.25, 1.4) } else { (0.9, 1.1) };
             self.audio.play(Sound::Hit, Some(at), 0.8, pitch);
@@ -212,7 +223,18 @@ impl Game {
     pub(super) fn update_mobs(&mut self, dt: f64) {
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
+        self.mobs.entities.trader_spawning =
+            self.gamerules.bool("doTraderSpawning") && self.gamerules.bool("doMobSpawning");
+        self.mobs.entities.villager_griefing = self.gamerules.bool("mobGriefing");
         self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
+        self.mobs.entities.village_time = self.day_time;
+        self.mobs.entities.village_day = self.day_count;
+        for m in &mut self.mobs.entities.mobs {
+            if let Some(v) = &mut m.villager {
+                v.trading =
+                    self.inventory_open && self.container == super::Container::Trading(v.id) || self.pads.trading(v.id);
+            }
+        }
         if self.held_item() != Some(crate::item::Item::FISHING_ROD) || self.vitals.is_dead() {
             self.mobs.entities.drop_bobber(self.actor);
         }
@@ -223,6 +245,7 @@ impl Game {
             self.mobs.entities.prime_tnt(cell, short_fuse);
             self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
+        crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
         self.mobs.attack_cooldown -= dt;
         let mut players = vec![Target {
             alive: !self.vitals.is_dead(),
@@ -255,6 +278,10 @@ impl Game {
         let mut smashed = Vec::new();
         for event in self.mobs.entities.update_difficulty(dt, &self.world, &ctx, self.difficulty) {
             match event {
+                EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow } => {
+                    self.world.hit_redstone_target(cell, pos, normal, arrow);
+                    self.world.touch_redstone_ore(cell);
+                }
                 EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, cause } => {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
@@ -354,6 +381,7 @@ impl Game {
                 EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. } => {}
                 EntityEvent::Sound { sound, pos } => {
                     let (sound, gain) = match sound {
+                        MobSound::Bell => (Sound::Bell, 1.0),
                         MobSound::Fuse => (Sound::Fuse, 1.0),
                         MobSound::Bow => (Sound::Bow, 1.0),
                         MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7),
@@ -384,6 +412,13 @@ impl Game {
                 | EntityEvent::MobKilled { .. }
                 | EntityEvent::LaidEgg { .. }
                 | EntityEvent::Hatched { .. } => {}
+                EntityEvent::VillagerDoor { cell } => {
+                    if self.world.get_block(cell).is_some_and(|b| {
+                        matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: false, upper: false, .. }))
+                    }) {
+                        self.toggle_door(cell, glam::Vec3::ZERO);
+                    }
+                }
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
                     if self.mode.is_survival() && !self.vitals.is_dead() {
@@ -453,7 +488,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Cow => Voice::Cow,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
-        MobKind::Zombie | MobKind::Husk | MobKind::Drowned => Voice::Zombie,
+        MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,
         MobKind::Skeleton | MobKind::WitherSkeleton => Voice::Skeleton,
         MobKind::Creeper => Voice::Creeper,
         MobKind::Spider | MobKind::CaveSpider => Voice::Spider,
@@ -464,6 +499,10 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Slime | MobKind::MagmaCube => Voice::Slime,
         MobKind::Ghast => Voice::Ghast,
         MobKind::Witch => Voice::Witch,
+        MobKind::Villager | MobKind::WanderingTrader => Voice::Villager,
+        MobKind::TraderLlama => Voice::Cow,
+        MobKind::IronGolem => Voice::Cow,
+        MobKind::SnowGolem => Voice::Slime,
     }
 }
 

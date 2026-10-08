@@ -24,6 +24,7 @@ pub enum Voice {
     Slime,
     Ghast,
     Witch,
+    Villager,
 }
 
 /// What kind of sound a voice makes.
@@ -36,7 +37,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 13] = [
+    pub const ALL: [Voice; 14] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -50,6 +51,7 @@ impl Voice {
         Voice::Slime,
         Voice::Ghast,
         Voice::Witch,
+        Voice::Villager,
     ];
 
     pub fn name(self) -> &'static str {
@@ -67,6 +69,7 @@ impl Voice {
             Voice::Slime => "slime",
             Voice::Ghast => "ghast",
             Voice::Witch => "witch",
+            Voice::Villager => "villager",
         }
     }
 }
@@ -160,6 +163,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Slime => slime(call, rng),
         Voice::Ghast => ghast(call, rng),
         Voice::Witch => witch(call, rng),
+        Voice::Villager => villager(call, rng),
     }
 }
 
@@ -569,4 +573,27 @@ fn slime(call: Call, rng: &mut Rng) -> Vec<f32> {
     Biquad::lowpass(650.0, 1.5).run(&mut buf);
     add_mode(&mut buf, 0, Mode { freq: 140.0, amp: 0.6, tau: 0.08, glide: 0.5, glide_tau: 0.03 });
     dsp::finish(buf, 0.5)
+}
+
+// A short nasal "hmm", with original synthesized audio.
+fn villager(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => 0.42,
+        Call::Hurt => 0.28,
+        Call::Death => 0.65,
+    };
+    let base = rng.range(115.0, 145.0);
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| base * (1.0 + 0.15 * (t / secs * std::f32::consts::PI).sin() - 0.18 * t / secs),
+            env: &|t| swell(t, 0.04, secs * 0.55, secs),
+            formants: [(280.0, 6.0, 1.0), (1100.0, 7.0, 0.35), (2200.0, 8.0, 0.15)],
+            shift: FLAT,
+            jitter: 0.025,
+            breath: 0.08,
+        },
+    );
+    dsp::finish(out, 0.5)
 }

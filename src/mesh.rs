@@ -475,7 +475,18 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                                     blocks[(i as isize + o.x as isize + o.z as isize * D as isize) as usize]
                                 };
                                 let below = i.checked_sub(D * D).map(|j| blocks[j]).unwrap_or(Block::AIR);
-                                shaped_cells.push((i, shape::shape(b, neighbour, below)));
+                                let boxes = if matches!(b.shaped(), Some(crate::world::block::Shaped::Redstone)) {
+                                    shape::redstone_shape(b, |d| {
+                                        blocks[(i as isize
+                                            + d.x as isize
+                                            + d.y as isize * (D * D) as isize
+                                            + d.z as isize * D as isize)
+                                            as usize]
+                                    })
+                                } else {
+                                    shape::shape(b, neighbour, below)
+                                };
+                                shaped_cells.push((i, boxes));
                                 false
                             }
                             _ => false,
@@ -573,7 +584,10 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
         for (i, boxes) in &shaped_cells {
             let (i, b) = (*i, blocks[*i]);
             // See-through textures need the alpha test.
-            let see_through = b.is_ladder()
+            let see_through = matches!(
+                crate::world::redstone_blocks::component(b),
+                Some(crate::world::redstone_blocks::Component::Trapdoor { .. })
+            ) || b.is_ladder()
                 || b.is_door()
                 || b.is_rail()
                 || matches!(b, Block::IRON_BARS | Block::BREWING_STAND)
@@ -581,6 +595,31 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
             let pass = if see_through { CUTOUT } else { OPAQUE };
             let (x, y, z) = (i % D - MARGIN, i / (D * D) - MARGIN, i / D % D - MARGIN);
             let layer = tex::tinted(b.info().tex[face], foliage[x + z * CHUNK_SIZE]) as u32;
+            if let Some(rail) = b.rail_shape() {
+                if face == 2 || face == 3 {
+                    // Detail lower-u values 17..20 tag the four slopes; all
+                    // ordinary detail bounds remain 0..16. Rails are a plane.
+                    let slope = match rail {
+                        crate::world::block::RailShape::AscendingEast => 17,
+                        crate::world::block::RailShape::AscendingWest => 18,
+                        crate::world::block::RailShape::AscendingNorth => 19,
+                        crate::world::block::RailShape::AscendingSouth => 20,
+                        _ => 0,
+                    };
+                    let light = (sky[i] as u32 | (blk[i] as u32) << 4) * 0x01010101;
+                    out[CUTOUT].push([
+                        (x | y << 6 | z << 12) as u32
+                            | (layer >> 8 & 1) << 5
+                            | (layer >> 9 & 1) << 11
+                            | (layer >> 10 & 1) << 17
+                            | (face as u32) << 18
+                            | slope << 21,
+                        (layer & 255) | 255 << 8 | 16 << 16 | 16 << 21 | 1 << 26 | DETAIL,
+                        light,
+                    ]);
+                }
+                continue;
+            }
             for (j, bx) in boxes.as_slice().iter().enumerate() {
                 let depth = if positive { bx.max[d] } else { bx.min[d] };
                 let r = [bx.min[u], bx.max[u], bx.min[v], bx.max[v]];

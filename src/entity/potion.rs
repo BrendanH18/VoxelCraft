@@ -122,8 +122,9 @@ fn instant_amount(base: f32, amplifier: u8, intensity: f32) -> f32 {
 /// Splashes `potion` at `pos`. `direct` is a mob the potion hit square on
 /// (full strength). Players get [`EntityEvent::PlayerEffect`] or
 /// [`EntityEvent::PlayerMagic`]; mobs take instant damage and healing (undead
-/// the other way round, witches shrug off most of the harm). Other effects
-/// don't exist for mobs yet.
+/// the other way round, witches shrug off most of the harm). Weakness also
+/// lands on zombie villagers so a golden apple can start a cure. Other
+/// effects don't exist for mobs yet.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn splash(
     potion: Potion,
@@ -161,6 +162,20 @@ pub(super) fn splash(
             }
         }
     }
+    if effect == Effect::Weakness {
+        for (i, mob) in mobs.iter_mut().enumerate() {
+            if !mob.alive() || mob.kind != MobKind::ZombieVillager {
+                continue;
+            }
+            let (min, max) = mob.aabb();
+            let dist = if direct == Some(i) { Some(0.0) } else { reach(min, max) };
+            let Some(scale) = intensity(dist) else { continue };
+            let ticks = (scale * ticks as f32 * DURATION_SCALE + 0.5) as u32;
+            if ticks > 20 {
+                mob.weakness_left = mob.weakness_left.max(ticks as f32 / 20.0);
+            }
+        }
+    }
     if !effect.is_instant() {
         return;
     }
@@ -184,7 +199,7 @@ pub(super) fn splash(
             let (kind, burning, at) = (mob.kind, mob.burning, mob.pos);
             let killed = mob.damage(amount, None, rng);
             if owner.is_some() {
-                events.push(EntityEvent::MobShot { kind, pos: at, killed, burning });
+                events.push(EntityEvent::MobShot { kind, pos: at, killed, burning, player_kill: true });
             }
         } else {
             mob.health = (mob.health + amount).min(mob.kind.max_health());

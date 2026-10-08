@@ -289,7 +289,15 @@ pub mod tex {
     pub const CAKE_TOP: u16 = POTATO_0 + 8;
     pub const CAKE_SIDE: u16 = CAKE_TOP + 1;
     pub const CAKE_BOTTOM: u16 = CAKE_SIDE + 1;
-    pub const COUNT: u32 = CAKE_BOTTOM as u32 + 1;
+    pub const VILLAGE: u16 = CAKE_BOTTOM + 1;
+    /// Faces of carved pumpkins and jack o'lanterns, after the workstation layers.
+    pub const CARVED_PUMPKIN: u16 = VILLAGE + 45;
+    pub const JACK_O_LANTERN: u16 = CARVED_PUMPKIN + 1;
+    pub const COMPOST: u16 = JACK_O_LANTERN + 1;
+    pub const COMPOST_READY: u16 = COMPOST + 1;
+    // Redstone reserves layers 1100..=1138, rails 1139..=1150, notes/tripwire/substrates 1151..=1154.
+    pub const COUNT: u32 = 1155;
+    const _: () = assert!((COMPOST_READY as u32) < 1100);
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -541,6 +549,9 @@ impl Block {
     /// The stone-ore form of a deepslate ore, or `self` for everything else.
     /// Drops, fortune and smelting follow the stone ore.
     pub fn as_stone_ore(self) -> Block {
+        if matches!(self.0, 1435 | 1436) {
+            return Block::REDSTONE_ORE;
+        }
         match self {
             Block::DEEPSLATE_COAL_ORE => Block::COAL_ORE,
             Block::DEEPSLATE_IRON_ORE => Block::IRON_ORE,
@@ -573,6 +584,23 @@ impl Block {
     pub const MAGMA: Block = Block(812);
     pub const GOLD_BLOCK: Block = Block(813);
     pub const CHAIN: Block = Block(814);
+    pub const DIRT_PATH: Block = Block(900);
+    pub const HAY_BALE: Block = Block(901);
+    pub const COMPOSTER: Block = Block(904);
+    pub const BARREL: Block = Block(905);
+    pub const SMOKER: Block = Block(909);
+    pub const LIT_SMOKER: Block = Block(913);
+    pub const BLAST_FURNACE: Block = Block(917);
+    pub const LIT_BLAST_FURNACE: Block = Block(921);
+    pub const CARTOGRAPHY_TABLE: Block = Block(925);
+    pub const FLETCHING_TABLE: Block = Block(929);
+    pub const GRINDSTONE: Block = Block(933);
+    pub const LECTERN: Block = Block(937);
+    pub const LOOM: Block = Block(941);
+    pub const STONECUTTER: Block = Block(945);
+    pub const BELL: Block = Block(949);
+    pub const CARVED_PUMPKIN: Block = Block(953);
+    pub const JACK_O_LANTERN: Block = Block(957);
 
     pub const fn fire(age: u8) -> Block {
         Block(165 + if age > 15 { 15 } else { age as u16 })
@@ -725,6 +753,17 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if let Some(s) = super::village_blocks::shaped(self.0) {
+            return Some(s);
+        }
+        if let Some(super::redstone_blocks::Component::IronDoor { facing, open, upper }) =
+            super::redstone_blocks::component(self)
+        {
+            return Some(Shaped::Door { facing, open, upper });
+        }
+        if super::redstone_blocks::component(self).is_some() && !self.is_opaque() {
+            return Some(Shaped::Redstone);
+        }
         if let Some(s) = super::nether_blocks::shaped(self.0) {
             return Some(s);
         }
@@ -750,7 +789,9 @@ impl Block {
                 let i = self.0 - 149;
                 Shaped::Door { facing: f(i), open: i % 8 >= 4, upper: i >= 8 }
             }
-            500..=509 => Shaped::Rail,
+            500..=509 | 1471..=1506 => Shaped::Rail,
+            1557..=1572 => Shaped::Hook { facing: f(self.0 - 1557) },
+            1573..=1580 => Shaped::Tripwire,
             538..=544 => Shaped::Cake { bites: (self.0 - 538) as u8 },
             _ => return None,
         })
@@ -761,7 +802,7 @@ impl Block {
     }
 
     pub fn is_rail(self) -> bool {
-        (500..=509).contains(&self.0)
+        (500..=509).contains(&self.0) || super::rails::is_special(self)
     }
 
     pub const fn rail(shape: RailShape) -> Block {
@@ -769,7 +810,11 @@ impl Block {
     }
 
     pub fn rail_shape(self) -> Option<RailShape> {
-        (500..=509).contains(&self.0).then(|| RailShape::ALL[(self.0 - 500) as usize])
+        if (500..=509).contains(&self.0) {
+            Some(RailShape::ALL[(self.0 - 500) as usize])
+        } else {
+            super::rails::special_shape(self)
+        }
     }
 
     /// The next worse anvil (`None` once a damaged one breaks), keeping
@@ -797,6 +842,11 @@ impl Block {
     /// The other state of a door half or gate (open <-> closed), facing
     /// `facing`.
     pub fn toggled(self, facing: Facing) -> Block {
+        if let Some(super::redstone_blocks::Component::IronDoor { open, upper, .. }) =
+            super::redstone_blocks::component(self)
+        {
+            return super::redstone_blocks::iron_door(facing, !open, upper);
+        }
         match self.shaped() {
             Some(Shaped::Gate { open, .. }) => match super::forms::gate_index(self) {
                 Some(index) => super::forms::wood_id(index, 6 + (!open as u16) * 4 + facing as u16),
@@ -852,6 +902,9 @@ impl Block {
     /// The block items, recipes and rules use for an oriented block (a
     /// furnace or chest facing any way), and the way it faces.
     pub fn oriented(self) -> Option<(Block, Facing)> {
+        if let Some(s) = super::village_blocks::oriented(self.0).or_else(|| super::pumpkin_blocks::oriented(self.0)) {
+            return Some(s);
+        }
         if let Some(super::forms::StoneForm::Stairs { index, facing }) = super::forms::stone_form(self.0) {
             return Some((super::forms::stone_id(index, 0), facing));
         }
@@ -896,7 +949,22 @@ impl Block {
 
     /// This block without its orientation (itself if it has none).
     pub fn base(self) -> Block {
+        if let Some(b) = super::village_blocks::base(self.0) {
+            return b;
+        }
+        if let Some((b, _)) = super::pumpkin_blocks::oriented(self.0) {
+            return b;
+        }
+        if let Some(b) = super::redstone_blocks::base(self) {
+            return b;
+        }
         if let Some(b) = super::nether_blocks::base(self.0) {
+            return b;
+        }
+        if let Some(b) = super::rails::base(self) {
+            return b;
+        }
+        if let Some(b) = super::gadgets::base(self) {
             return b;
         }
         if self.is_rail() { Block::RAIL } else { self.oriented().map_or(self, |(b, _)| b) }
@@ -904,8 +972,17 @@ impl Block {
 
     /// The same block facing `facing` (unchanged if it has no front).
     pub fn with_facing(self, facing: Facing) -> Block {
+        use super::redstone_blocks::{self as r, Component};
+        match r::component(self) {
+            Some(Component::Repeater { delay, on, .. }) => return r::repeater(facing, delay, on),
+            Some(Component::Comparator { subtract, on, .. }) => return r::comparator(facing, subtract, on),
+            _ => {}
+        }
         let i = facing as u16;
         match self.base() {
+            b if super::village_blocks::oriented(b.0).is_some() || super::pumpkin_blocks::oriented(b.0).is_some() => {
+                Block(b.0 + i)
+            }
             // Frames keep their eye.
             Block::END_PORTAL_FRAME => Block(200 + i + if self.0 >= 204 { 4 } else { 0 }),
             // Anvils turn broadside to whoever places them (Java's facing
@@ -1067,6 +1144,7 @@ impl Block {
     /// its cell; 0 for full blocks.
     pub fn top_drop(self) -> u8 {
         match self {
+            Block::DIRT_PATH => 1,
             b if b.is_bed() => 7,
             b if b.carpet_color().is_some() => 15,
             b if b.is_slab() => 8,
@@ -1083,6 +1161,29 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
+        if matches!(
+            super::redstone_blocks::component(self),
+            Some(super::redstone_blocks::Component::PistonHead { .. } | super::redstone_blocks::Component::Moving)
+        ) {
+            return None;
+        }
+        if super::gadgets::is_tripwire(self) {
+            return Some(Item::STRING);
+        }
+        if self == super::gadgets::PACKED_ICE {
+            return None;
+        }
+        if let Some(b) = super::redstone_blocks::base(self)
+            && !matches!(
+                super::redstone_blocks::component(self),
+                Some(super::redstone_blocks::Component::GlowingOre(_))
+            )
+        {
+            if self.is_door_upper() {
+                return None;
+            }
+            return Some(if b == super::redstone_blocks::WIRE { Item::REDSTONE } else { b.into() });
+        }
         if let Some(c) = self.bed_color() {
             return (!self.is_bed_head()).then_some(c.bed());
         }
@@ -1120,6 +1221,9 @@ impl Block {
             b if super::forms::planks_of(b).is_some() && b.is_door() => {
                 (!self.is_door_upper()).then(|| Item::from_block(b))
             }
+            Block::DIRT_PATH => Some(Block::DIRT.into()),
+            Block::LIT_SMOKER => Some(Block::SMOKER.into()),
+            Block::LIT_BLAST_FURNACE => Some(Block::BLAST_FURNACE.into()),
             Block::QUARTZ_ORE => Some(Item::NETHER_QUARTZ),
             // Glowstone breaks into dust (see `World::spill_block`).
             Block::GLOWSTONE | Block::NETHER_PORTAL | Block::SPAWNER => None,
@@ -1140,6 +1244,47 @@ impl Block {
     /// held item can harvest the block and 5x when it can't, divided by the
     /// tool's speed (see `crate::mining`). Infinite for unbreakable blocks.
     pub fn hardness(self) -> f32 {
+        if let Some(h) = super::village_blocks::hardness(self.0) {
+            return h;
+        }
+        if self == super::gadgets::BONE_BLOCK {
+            return 2.0;
+        }
+        if self == super::gadgets::PACKED_ICE {
+            return 0.5;
+        }
+        if super::gadgets::is_note(self) {
+            return 0.8;
+        }
+        if super::gadgets::is_hook(self) || super::gadgets::is_tripwire(self) {
+            return 0.0;
+        }
+        if let Some(c) = super::redstone_blocks::component(self) {
+            use super::redstone_blocks::Component::*;
+            return match c {
+                Wire(_) | Torch { .. } | Repeater { .. } | Comparator { .. } => 0.0,
+                Lamp(_) => 0.3,
+                Piston { .. } | PistonHead { .. } => 1.5,
+                Observer { .. } => 3.0,
+                Dispenser { .. } => 3.5,
+                Hopper { .. } => 3.0,
+                Moving => f32::INFINITY,
+                IronDoor { .. } | Trapdoor { iron: true, .. } => 5.0,
+                Trapdoor { .. } => 3.0,
+                Plate { .. } => 0.5,
+                Daylight { .. } => 0.2,
+                Target(_) => 0.5,
+                GlowingOre(deep) => {
+                    if deep {
+                        4.5
+                    } else {
+                        3.0
+                    }
+                }
+                Source => 5.0,
+                _ => 0.5,
+            };
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return match self.material() {
                 Block::CHAIN => 5.0,
@@ -1208,11 +1353,11 @@ impl Block {
                 0.6
             }
             Block::SANDSTONE | Block::WOOL => 0.8,
-            Block::RAIL => 0.7,
+            b if b.is_rail() => 0.7,
             Block::BED_FOOT | Block::BED_HEAD => 0.2,
             Block::LADDER => 0.4,
             Block::OAK_DOOR => 3.0,
-            Block::PUMPKIN | Block::MELON => 1.0,
+            Block::PUMPKIN | Block::MELON | Block::CARVED_PUMPKIN | Block::JACK_O_LANTERN => 1.0,
             b if b.terracotta_colour().is_some() => 1.25,
             Block::STONE => 1.5,
             b if b.is_log() || b.is_planks() => 2.0,
@@ -1250,6 +1395,33 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if self == super::gadgets::BONE_BLOCK || self == super::gadgets::PACKED_ICE {
+            return Some(ToolKind::Pickaxe);
+        }
+        if let Some(t) = super::village_blocks::tool(self.0) {
+            return Some(t);
+        }
+        use super::redstone_blocks::Component;
+        if let Some(c) = super::redstone_blocks::component(self) {
+            return match c {
+                Component::Source
+                | Component::Piston { .. }
+                | Component::PistonHead { .. }
+                | Component::Observer { .. }
+                | Component::Dispenser { .. }
+                | Component::Hopper { .. }
+                | Component::GlowingOre(_)
+                | Component::IronDoor { .. }
+                | Component::Trapdoor { iron: true, .. }
+                | Component::Plate { kind: 0 | 2 | 3, .. } => Some(ToolKind::Pickaxe),
+                Component::Target(_) => Some(ToolKind::Hoe),
+                Component::Trapdoor { .. } | Component::Daylight { .. } | Component::Plate { .. } => {
+                    Some(ToolKind::Axe)
+                }
+                _ => None,
+            };
+        }
+
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(ToolKind::Pickaxe);
         }
@@ -1312,11 +1484,11 @@ impl Block {
             | Block::SMOOTH_STONE
             | Block::DEEPSLATE
             | Block::COBBLED_DEEPSLATE
-            | Block::POLISHED_DEEPSLATE
-            | Block::RAIL => Some(ToolKind::Pickaxe),
-            b if b.is_deepslate_ore() => Some(ToolKind::Pickaxe),
+            | Block::POLISHED_DEEPSLATE => Some(ToolKind::Pickaxe),
+            b if b.is_rail() || b.is_deepslate_ore() => Some(ToolKind::Pickaxe),
             Block::COBWEB => Some(ToolKind::Sword),
             Block::BOOKSHELF => Some(ToolKind::Axe),
+            b if super::gadgets::is_note(b) => Some(ToolKind::Axe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
             Block::DIRT
             | Block::GRASS
@@ -1333,6 +1505,8 @@ impl Block {
             Block::CRAFTING_TABLE
             | Block::CHEST
             | Block::PUMPKIN
+            | Block::CARVED_PUMPKIN
+            | Block::JACK_O_LANTERN
             | Block::MELON
             | Block::LADDER
             | Block::OAK_DOOR
@@ -1344,6 +1518,39 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if self == super::gadgets::BONE_BLOCK {
+            return Some(0);
+        }
+        if matches!(
+            self.base(),
+            Block::SMOKER
+                | Block::LIT_SMOKER
+                | Block::BLAST_FURNACE
+                | Block::LIT_BLAST_FURNACE
+                | Block::GRINDSTONE
+                | Block::STONECUTTER
+                | Block::BELL
+        ) {
+            return Some(0);
+        }
+        if matches!(super::redstone_blocks::component(self), Some(super::redstone_blocks::Component::GlowingOre(_))) {
+            return Some(2);
+        }
+        if matches!(
+            super::redstone_blocks::component(self),
+            Some(
+                super::redstone_blocks::Component::Source
+                    | super::redstone_blocks::Component::Observer { .. }
+                    | super::redstone_blocks::Component::Dispenser { .. }
+                    | super::redstone_blocks::Component::Hopper { .. }
+                    | super::redstone_blocks::Component::IronDoor { .. }
+                    | super::redstone_blocks::Component::Trapdoor { iron: true, .. }
+                    | super::redstone_blocks::Component::Plate { kind: 2 | 3, .. }
+            )
+        ) {
+            return Some(0);
+        }
+
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(if self.material() == Block::GOLD_BLOCK { 2 } else { 0 });
         }
@@ -1425,7 +1632,12 @@ impl Block {
             .chain(225..=252)
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
+            .chain(super::village_blocks::palette_ids())
+            .chain(super::pumpkin_blocks::palette_ids())
             .chain(super::colors::palette_ids())
+            .chain(super::redstone_blocks::palette_ids())
+            .chain(super::rails::palette_ids())
+            .chain(super::gadgets::palette_ids())
             .map(Block)
     }
 
@@ -1460,6 +1672,15 @@ impl Block {
     /// Whether this block can rest on `below`. Plants need soil and torches
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
+        if let Some(
+            super::redstone_blocks::Component::Wire(_)
+            | super::redstone_blocks::Component::Repeater { .. }
+            | super::redstone_blocks::Component::Comparator { .. }
+            | super::redstone_blocks::Component::Plate { .. },
+        ) = super::redstone_blocks::component(self)
+        {
+            return below.is_opaque() || below == Block::GLASS || below.stained_glass_color().is_some();
+        }
         match self {
             b if b.is_mushroom() => below.is_opaque(),
             b if b.carpet_color().is_some() => below.is_solid(),
@@ -1477,7 +1698,7 @@ impl Block {
                 matches!(below, Block::SUGAR_CANE | Block::GRASS | Block::DIRT | Block::SAND | Block::RED_SAND)
             }
             Block::TORCH => below.is_opaque(),
-            b if b.is_rail() => below.is_opaque(),
+            b if b.is_rail() => below.supports_fire(),
             b if b.is_door() => {
                 if b.is_door_upper() {
                     below.is_door() && !below.is_door_upper()
@@ -1497,6 +1718,9 @@ impl Block {
 
     #[inline(always)]
     pub fn is_solid(self) -> bool {
+        if self == super::redstone_blocks::MOVING {
+            return true;
+        }
         self.info().solid
     }
 
@@ -1703,8 +1927,14 @@ pub enum Crop {
 /// The state of a [`RenderKind::Shaped`] block (see `world::shape`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Shaped {
+    Village {
+        kind: u8,
+        facing: Facing,
+    },
     /// The low step faces this way; the tall half is behind it.
     Stairs(Facing),
+    /// Redstone components derive their small boxes from state and neighbours.
+    Redstone,
     /// Three stone plates and a rod.
     BrewingStand,
     /// Iron bars: a post with arms out to what they join.
@@ -1745,8 +1975,13 @@ pub enum Shaped {
     },
     /// A cobblestone-style wall: a post and arms out to what it joins.
     Wall,
-    /// A 2/16-high rail; Java's slope states still render flat.
+    /// Rail selection shape; meshing emits a flat or sloping detail plane.
     Rail,
+    /// A tripwire hook stuck to the face it points away from.
+    Hook {
+        facing: Facing,
+    },
+    Tripwire,
 }
 
 /// Java's `RailShape` for vanilla rails (block ids 500..=509).
@@ -1837,6 +2072,17 @@ const fn fronted(front: u16, side: u16, top: u16, facing: Facing) -> [u16; 6] {
 const fn make(id: u16) -> BlockInfo {
     use RenderKind::*;
     let (name, kind, tex) = match id {
+        953..=960 => match super::pumpkin_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
+        900..=952 | 961..=968 => match super::village_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
+        id if super::redstone_blocks::registry(id).is_some() => super::redstone_blocks::registry(id).unwrap(),
+        id if super::rails::registry(id).is_some() => super::rails::registry(id).unwrap(),
+        id if super::gadgets::registry(id).is_some() => super::gadgets::registry(id).unwrap(),
         800..=834 => match super::nether_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -2115,6 +2361,9 @@ pub static INFO: [BlockInfo; STATE_CAPACITY] = {
 /// Slabs and stairs keep light out the way the original seven do. Walls,
 /// fences, gates and doors stay open.
 const fn shape_blocks_light(id: u16) -> bool {
+    if id == 900 {
+        return true;
+    }
     if let Some((_, 0..=4)) = super::nether_blocks::form(id) {
         return true;
     }
@@ -2142,10 +2391,14 @@ static EMISSION: [u8; STATE_CAPACITY] = {
         arr[i] = match i {
             22 | 37..=41 | 165..=180 | 208 | 210 => 15, // glowstone, lava, fire, portals
             36 => 14,                                   // torch
-            46 | 50..=52 => 13,                         // lit furnace, every facing
+            46 | 50..=52 | 913..=916 | 921..=924 => 13, // lit furnace, every facing
             104 => 11,                                  // Nether portal
             200..=207 | 209 => 1,                       // portal frames and dragon egg
             213 => 7,                                   // enchanting table
+            1152 | 1154 | 1156 | 1158 | 1160 => 7,      // lit redstone torches
+            1435..=1436 => 9,                           // glowing redstone ores
+            1211 => 15,                                 // lit redstone lamp
+            957..=960 => 15,                            // jack o'lanterns
             812 => 3,                                   // magma
             _ => 0,
         };
@@ -2202,11 +2455,18 @@ mod tests {
     #[test]
     fn emission_table_matches_base_state_lookup_for_every_state() {
         fn reference(block: Block) -> u8 {
+            match super::super::redstone_blocks::component(block) {
+                Some(super::super::redstone_blocks::Component::Torch { lit, .. }) => return if lit { 7 } else { 0 },
+                Some(super::super::redstone_blocks::Component::Lamp(on)) => return if on { 15 } else { 0 },
+                Some(super::super::redstone_blocks::Component::GlowingOre(_)) => return 9,
+                _ => {}
+            }
             match block.base() {
                 Block::MAGMA => 3,
                 Block::GLOWSTONE => 15,
                 Block::TORCH => 14,
-                Block::LIT_FURNACE => 13,
+                Block::LIT_FURNACE | Block::LIT_SMOKER | Block::LIT_BLAST_FURNACE => 13,
+                Block::JACK_O_LANTERN => 15,
                 Block::NETHER_PORTAL => 11,
                 Block::END_PORTAL | Block::END_GATEWAY => 15,
                 // Java: all frame states glow faintly, with or without an eye.

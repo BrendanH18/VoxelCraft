@@ -109,12 +109,22 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         if (w1 >> 31u) == 1u {
             // Detail quad (shaped blocks): part of the cell `base`, bounds
             // and plane offset in 1/16 block.
-            let lo = vec2<u32>((w0 >> 21u) & 31u, (w0 >> 26u) & 31u);
+            let tag = (w0 >> 21u) & 31u;
+            let slope = face >= 2u && face <= 3u && tag >= 17u && tag <= 20u;
+            let lo = vec2<u32>(select(tag, 0u, slope), (w0 >> 26u) & 31u);
             let hi = vec2<u32>((w1 >> 16u) & 31u, (w1 >> 21u) & 31u);
             var p = vec3<f32>(base);
             p[d] += f32((w1 >> 26u) & 31u) / 16.0;
             p[u] += f32(select(lo.x, hi.x, c == 1u || c == 2u)) / 16.0;
             p[v] += f32(select(lo.y, hi.y, c >= 2u)) / 16.0;
+            if slope {
+                switch tag {
+                    case 17u: { p.y += p.x - f32(base.x); }
+                    case 18u: { p.y += 1.0 - (p.x - f32(base.x)); }
+                    case 19u: { p.y += 1.0 - (p.z - f32(base.z)); }
+                    default: { p.y += p.z - f32(base.z); }
+                }
+            }
             local = p;
         } else {
             var corner = base;

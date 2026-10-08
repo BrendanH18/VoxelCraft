@@ -47,6 +47,8 @@ pub(super) enum Tab {
     Brewing(IVec3),
     Enchanting(IVec3),
     Anvil(IVec3),
+    Grindstone(IVec3),
+    Trading(u64),
     Smithing(IVec3),
 }
 
@@ -59,6 +61,7 @@ impl Tab {
             Tab::Brewing(_) => block == Block::BREWING_STAND,
             Tab::Enchanting(_) => block == Block::ENCHANTING_TABLE,
             Tab::Anvil(_) => block.is_anvil(),
+            Tab::Grindstone(_) => block.base() == Block::GRINDSTONE,
             Tab::Smithing(_) => block == Block::SMITHING_TABLE,
             _ => false,
         }
@@ -72,6 +75,8 @@ impl Tab {
             Tab::Brewing(p) => Container::Brewing(p),
             Tab::Enchanting(p) => Container::Enchanting(p),
             Tab::Anvil(p) => Container::Anvil(p),
+            Tab::Grindstone(p) => Container::Grindstone(p),
+            Tab::Trading(id) => Container::Trading(id),
             Tab::Smithing(p) => Container::Smithing(p),
             _ => Container::Inventory,
         }
@@ -107,10 +112,16 @@ pub(super) enum Action {
 
 /// Lengths of the list tabs: craftable results, and palette items (zero
 /// outside creative, which hides that tab).
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(super) struct Lists {
     pub crafts: usize,
     pub palette: usize,
+    pub container: usize,
+}
+impl Default for Lists {
+    fn default() -> Self {
+        Self { crafts: 0, palette: 0, container: 27 }
+    }
 }
 
 const PAUSE_CHOICES: [&str; 2] = ["Resume", "Leave game"];
@@ -138,7 +149,7 @@ impl Menu {
     pub fn items(tab: Tab) -> Self {
         // Start on the hotbar, or the first entry of a list.
         let row = match tab {
-            Tab::Crafting | Tab::Palette => 0,
+            Tab::Crafting | Tab::Palette | Tab::Trading(_) => 0,
             _ => rows(tab, Lists::default()) - 1,
         };
         Menu::Items { tab, col: 0, row }
@@ -167,9 +178,9 @@ impl Menu {
                     Nav::Down => *row = (*row + 1) % rows,
                     Nav::Left => *col = (*col + len(*row) - 1) % len(*row),
                     Nav::Right => *col = (*col + 1) % len(*row),
-                    Nav::A => return Action::Click(slot(*tab, *col, *row), false),
-                    Nav::X => return Action::Click(slot(*tab, *col, *row), true),
-                    Nav::Y => return Action::QuickMove(slot(*tab, *col, *row)),
+                    Nav::A => return Action::Click(slot(*tab, *col, *row, lists), false),
+                    Nav::X => return Action::Click(slot(*tab, *col, *row, lists), true),
+                    Nav::Y => return Action::QuickMove(slot(*tab, *col, *row, lists)),
                     Nav::Lb | Nav::Rb => {
                         let mut cycle = vec![Tab::Inventory, Tab::Crafting];
                         if lists.palette > 0 {
@@ -196,7 +207,9 @@ impl Menu {
     #[cfg(test)]
     pub fn slot(&self, lists: Lists) -> Option<Slot> {
         match *self {
-            Menu::Items { tab, col, row } if rows(tab, lists) > 0 => Some(slot(tab, col, row)),
+            Menu::Items { tab, col, row } if rows(tab, lists) > 0 => {
+                Some(slot(tab, col, row.min(rows(tab, lists) - 1), lists))
+            }
             _ => None,
         }
     }
@@ -205,10 +218,23 @@ impl Menu {
 /// Inventory and furnace: a top row (armor, or the furnace's input, fuel
 /// and output), three main rows, hotbar. Chest: three chest rows, then the
 /// player's. Lists: nine to a row.
+fn container_cols(lists: Lists) -> usize {
+    if lists.container == 9 { 3 } else { COLS }
+}
+fn container_rows(lists: Lists) -> usize {
+    lists.container.div_ceil(container_cols(lists))
+}
 fn rows(tab: Tab, lists: Lists) -> usize {
     match tab {
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) | Tab::Smithing(_) => 5,
-        Tab::Chest(_) => 7,
+        Tab::Inventory
+        | Tab::Furnace(_)
+        | Tab::Brewing(_)
+        | Tab::Enchanting(_)
+        | Tab::Anvil(_)
+        | Tab::Grindstone(_)
+        | Tab::Smithing(_) => 5,
+        Tab::Trading(_) => 6,
+        Tab::Chest(_) => container_rows(lists) + 4,
         Tab::Crafting => lists.crafts.div_ceil(COLS),
         Tab::Palette => lists.palette.div_ceil(COLS),
     }
@@ -216,11 +242,15 @@ fn rows(tab: Tab, lists: Lists) -> usize {
 
 fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
     let list = match tab {
+        Tab::Trading(_) if row < 2 => return 5,
+        Tab::Chest(_) if row < container_rows(lists) => {
+            return (lists.container - row * container_cols(lists)).min(container_cols(lists));
+        }
         Tab::Inventory if row == 0 => return ArmorPiece::ALL.len(),
         Tab::Furnace(_) if row == 0 => return FURNACE.len(),
         Tab::Brewing(_) if row == 0 => return BREWING.len(),
         Tab::Enchanting(_) if row == 0 => return ENCHANTING.len(),
-        Tab::Anvil(_) if row == 0 => return ANVIL.len(),
+        Tab::Anvil(_) | Tab::Grindstone(_) if row == 0 => return ANVIL.len(),
         Tab::Smithing(_) if row == 0 => return SMITHING.len(),
         Tab::Crafting => lists.crafts,
         Tab::Palette => lists.palette,
@@ -229,26 +259,39 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
     if row + 1 == list.div_ceil(COLS) && !list.is_multiple_of(COLS) { list % COLS } else { COLS }
 }
 
-fn slot(tab: Tab, col: usize, row: usize) -> Slot {
+fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
     let inv = |i: usize| Slot::Ref(SlotRef::Inventory(i));
     match tab {
+        Tab::Trading(_) if row < 2 => Slot::Ref(SlotRef::Trade(row * 5 + col)),
+        Tab::Trading(_) if row == 5 => inv(col),
+        Tab::Trading(_) => inv(COLS * (row - 1) + col),
         Tab::Inventory if row == 0 => Slot::Ref(SlotRef::Armor(ArmorPiece::ALL[col])),
         Tab::Furnace(_) if row == 0 => Slot::Ref(FURNACE[col]),
         Tab::Brewing(_) if row == 0 => Slot::Ref(BREWING[col]),
         Tab::Enchanting(_) if row == 0 => Slot::Ref(ENCHANTING[col]),
-        Tab::Anvil(_) if row == 0 => Slot::Ref(ANVIL[col]),
+        Tab::Anvil(_) | Tab::Grindstone(_) if row == 0 => Slot::Ref(ANVIL[col]),
         Tab::Smithing(_) if row == 0 => Slot::Ref(SMITHING[col]),
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) | Tab::Smithing(_)
+        Tab::Inventory
+        | Tab::Furnace(_)
+        | Tab::Brewing(_)
+        | Tab::Enchanting(_)
+        | Tab::Anvil(_)
+        | Tab::Grindstone(_)
+        | Tab::Smithing(_)
             if row == 4 =>
         {
             inv(col)
         }
-        Tab::Inventory | Tab::Furnace(_) | Tab::Brewing(_) | Tab::Enchanting(_) | Tab::Anvil(_) | Tab::Smithing(_) => {
-            inv(COLS * row + col)
-        }
-        Tab::Chest(_) if row < 3 => Slot::Ref(SlotRef::Chest(COLS * row + col)),
-        Tab::Chest(_) if row == 6 => inv(col),
-        Tab::Chest(_) => inv(COLS * (row - 2) + col),
+        Tab::Inventory
+        | Tab::Furnace(_)
+        | Tab::Brewing(_)
+        | Tab::Enchanting(_)
+        | Tab::Anvil(_)
+        | Tab::Grindstone(_)
+        | Tab::Smithing(_) => inv(COLS * row + col),
+        Tab::Chest(_) if row < container_rows(lists) => Slot::Ref(SlotRef::Chest(container_cols(lists) * row + col)),
+        Tab::Chest(_) if row == container_rows(lists) + 3 => inv(col),
+        Tab::Chest(_) => inv(COLS * (row - container_rows(lists) + 1) + col),
         Tab::Crafting => Slot::Recipe(COLS * row + col),
         Tab::Palette => Slot::Palette(COLS * row + col),
     }
@@ -271,6 +314,7 @@ impl Game {
         Lists {
             crafts: if tab == Tab::Crafting { self.pad_crafts(name).len() } else { 0 },
             palette: if creative { Item::creative_palette().count() } else { 0 },
+            container: if let Tab::Chest(p) = tab { self.world.container_slots(p) } else { 27 },
         }
     }
 
@@ -364,10 +408,16 @@ impl Game {
         };
         let crafts = if tab == Tab::Crafting { self.pad_crafts(name) } else { Vec::new() };
         let items = if tab == Tab::Palette { palette() } else { Vec::new() };
-        let lists = Lists { crafts: crafts.len(), palette: items.len() };
+        let lists = Lists {
+            crafts: crafts.len(),
+            palette: items.len(),
+            container: if let Tab::Chest(p) = tab { self.world.container_slots(p) } else { 27 },
+        };
         let n = rows(tab, lists);
+        let row = row.min(n.saturating_sub(1));
         // Long lists scroll to keep the cursor in view.
-        let visible = (((sh - 40.0) / 18.0).floor() as usize).max(1);
+        let footer = if matches!(tab, Tab::Trading(_)) { 62.0 } else { 0.0 };
+        let visible = (((sh - 40.0 - footer) / 18.0).floor() as usize).max(1);
         let first = if n > visible { (row + 1).saturating_sub(visible / 2 + 1).min(n - visible) } else { 0 };
         let shown = n.min(visible);
         // The hotbar and the row above the main grid sit a little apart.
@@ -377,13 +427,15 @@ impl Game {
             | Tab::Brewing(_)
             | Tab::Enchanting(_)
             | Tab::Anvil(_)
+            | Tab::Grindstone(_)
             | Tab::Smithing(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
-            Tab::Chest(_) => 4.0 * ((r >= 3) as u8 + (r >= 6) as u8) as f32,
+            Tab::Trading(_) => 4.0 * ((r >= 2) as u8 + (r >= 5) as u8) as f32,
+            Tab::Chest(_) => 4.0 * ((r >= container_rows(lists)) as u8 + (r >= container_rows(lists) + 3) as u8) as f32,
             Tab::Crafting | Tab::Palette => 0.0,
         };
         let pw = COLS as f32 * 18.0 + 12.0;
         let ph = 18.0 * shown.max(1) as f32 + gap(n.saturating_sub(1)) + 26.0;
-        let (px, py) = (((sw - pw) / 2.0).floor(), ((sh - ph) / 2.0).floor().max(0.0));
+        let (px, py) = (((sw - pw) / 2.0).floor(), ((sh - ph - footer) / 2.0).floor().max(0.0));
         ui.rect(px, py, pw, ph, [0.12, 0.12, 0.14, 0.92]);
         let creative = bot.agent.creative;
         let title = match tab {
@@ -391,11 +443,13 @@ impl Game {
             Tab::Crafting if creative => "Crafting  (RB: items)",
             Tab::Crafting => "Crafting  (LB: inventory)",
             Tab::Palette => "Items  (RB: inventory)",
-            Tab::Chest(_) => "Chest",
+            Tab::Chest(p) => super::hud::container_title(self.world.get_block(p)),
             Tab::Furnace(_) => "Furnace",
             Tab::Brewing(_) => "Brewing Stand  (fuel, ingredient, bottles)",
             Tab::Enchanting(_) => "Enchant  (item, lapis, offers)",
             Tab::Anvil(_) => "Anvil  (item, material or book, result)",
+            Tab::Grindstone(_) => "Repair & Disenchant  (item, item, result)",
+            Tab::Trading(_) => "Trading  (select an offer)",
             Tab::Smithing(_) => "Smithing  (template, diamond gear, ingot, result)",
         };
         ui.text(px + 6.0, py + 5.0, title, WHITE);
@@ -422,6 +476,7 @@ impl Game {
             _ => Default::default(),
         };
         let anvil = match (tab, work[0]) {
+            (Tab::Grindstone(_), _) => voxelcraft::grindstone::result(work[0], work[1]),
             (Tab::Anvil(_), Some(left)) => crate::enchant::anvil_any_cost(left, work[1], bot.agent.creative),
             _ => None,
         };
@@ -431,7 +486,7 @@ impl Game {
             }
             _ => None,
         };
-        if let Some(r) = anvil {
+        if let Some(r) = anvil.filter(|_| !matches!(tab, Tab::Grindstone(_))) {
             // Java's cost line, beside the anvil's slots.
             let short = !bot.agent.creative && bot.agent.vitals.xp.level < r.cost;
             let (text, colour) = if !bot.agent.creative && r.cost >= crate::enchant::TOO_EXPENSIVE {
@@ -445,10 +500,33 @@ impl Game {
         let mut clue = None;
         for r in first..first + shown {
             for c in 0..row_len(tab, r, lists) {
-                let (x, y) = (px + 6.0 + 18.0 * c as f32, py + 18.0 + 18.0 * (r - first) as f32 + gap(r));
+                let offset = if matches!(tab, Tab::Chest(_)) && r < container_rows(lists) {
+                    if lists.container == 9 {
+                        54.0
+                    } else if lists.container == 5 {
+                        36.0
+                    } else {
+                        0.0
+                    }
+                } else {
+                    0.0
+                };
+                let (x, y) = (px + 6.0 + offset + 18.0 * c as f32, py + 18.0 + 18.0 * (r - first) as f32 + gap(r));
                 ui.rect(x, y, 17.0, 17.0, [0.3, 0.3, 0.32, 0.95]);
-                let stack = match slot(tab, c, r) {
+                let stack = match slot(tab, c, r, lists) {
                     Slot::Ref(SlotRef::Armor(p)) => inv.armor[p as usize],
+                    Slot::Ref(SlotRef::Trade(i)) => {
+                        if let Tab::Trading(id) = tab {
+                            self.mobs
+                                .entities
+                                .merchant(id)
+                                .and_then(|m| m.villager.as_ref())
+                                .and_then(|v| v.offers.get(i).copied().flatten())
+                                .map(|o| o.output)
+                        } else {
+                            None
+                        }
+                    }
                     Slot::Ref(SlotRef::Inventory(i)) => inv.slots[i],
                     Slot::Ref(SlotRef::Chest(i)) => chest.and_then(|ch| ch.slots[i]),
                     Slot::Ref(SlotRef::FurnaceInput) => furnace.and_then(|f| f.input),
@@ -471,7 +549,7 @@ impl Game {
                 if let Some(stack) = stack {
                     draw_stack(ui, x - 0.5, y - 0.5, stack, true, dial);
                 }
-                if let Slot::Ref(SlotRef::EnchantOffer(i)) = slot(tab, c, r)
+                if let Slot::Ref(SlotRef::EnchantOffer(i)) = slot(tab, c, r, lists)
                     && offers[i].cost > 0
                 {
                     // The level cost, green when this player can pay it.
@@ -504,6 +582,12 @@ impl Game {
         if n == 0 {
             ui.text(px + 6.0, py + 20.0, "Nothing to craft", [0.7, 0.7, 0.7, 1.0]);
         }
+        if let Tab::Trading(id) = tab
+            && row < 2
+        {
+            let i = row * 5 + col;
+            self.pad_trade_details(ui, id, i, px, py + ph + 18.0);
+        }
         if let Some((stack, x, y)) = hovered {
             if let Some(held) = inv.cursor {
                 draw_stack(ui, x + 6.0, y + 6.0, held, true, dial);
@@ -528,7 +612,7 @@ impl Game {
 mod tests {
     use super::*;
 
-    const NONE: Lists = Lists { crafts: 0, palette: 0 };
+    const NONE: Lists = Lists { crafts: 0, palette: 0, container: 27 };
     fn inv(i: usize) -> Option<Slot> {
         Some(Slot::Ref(SlotRef::Inventory(i)))
     }
@@ -603,7 +687,7 @@ mod tests {
 
     #[test]
     fn list_tabs_follow_their_lengths_and_cycle() {
-        let lists = Lists { crafts: 11, palette: 0 };
+        let lists = Lists { crafts: 11, palette: 0, container: 27 };
         let mut m = Menu::items(Tab::Inventory);
         m.press(Nav::Rb, lists);
         assert_eq!(m.slot(lists), Some(Slot::Recipe(0)));
@@ -617,7 +701,7 @@ mod tests {
         m.press(Nav::Rb, NONE);
         assert!(matches!(m, Menu::Items { tab: Tab::Inventory, .. }), "no palette in survival");
 
-        let creative = Lists { crafts: 0, palette: 30 };
+        let creative = Lists { crafts: 0, palette: 30, container: 27 };
         m.press(Nav::Lb, creative);
         assert!(matches!(m, Menu::Items { tab: Tab::Palette, .. }), "LB wraps back to the palette");
         m.press(Nav::Up, creative);
@@ -632,5 +716,44 @@ mod tests {
         m.press(Nav::Down, NONE);
         assert_eq!(m.press(Nav::A, NONE), Action::Leave);
         assert_eq!(m.press(Nav::Start, NONE), Action::Close);
+    }
+    #[test]
+    fn small_storage_containers_expose_only_their_real_slots() {
+        for n in [5, 9] {
+            let lists = Lists { container: n, ..Default::default() };
+            let mut menu = Menu::items(Tab::Chest(IVec3::ZERO));
+            menu.press(Nav::Down, lists);
+            assert_eq!(menu.slot(lists), Some(Slot::Ref(SlotRef::Chest(0))));
+            for _ in 0..n + 2 {
+                menu.press(Nav::Right, lists);
+                assert!(matches!(menu.slot(lists),Some(Slot::Ref(SlotRef::Chest(i))) if i<n));
+            }
+            for _ in 0..container_rows(lists) {
+                menu.press(Nav::Down, lists);
+            }
+            assert!(matches!(menu.slot(lists),Some(Slot::Ref(SlotRef::Inventory(i))) if (9..18).contains(&i)));
+        }
+    }
+}
+
+#[cfg(test)]
+mod trading_navigation_tests {
+    use super::*;
+    #[test]
+    fn trading_offers_and_inventory_follow_the_controller_cursor() {
+        let mut menu = Menu::items(Tab::Trading(7));
+        let lists = Lists::default();
+        assert_eq!(menu.slot(lists), Some(Slot::Ref(SlotRef::Trade(0))));
+        menu.press(Nav::Right, lists);
+        assert_eq!(menu.press(Nav::A, lists), Action::Click(Slot::Ref(SlotRef::Trade(1)), false));
+        menu.press(Nav::Down, lists);
+        assert_eq!(menu.slot(lists), Some(Slot::Ref(SlotRef::Trade(6))));
+        menu.press(Nav::Down, lists);
+        assert_eq!(menu.slot(lists), Some(Slot::Ref(SlotRef::Inventory(10))));
+        for _ in 0..3 {
+            menu.press(Nav::Down, lists);
+        }
+        assert_eq!(menu.slot(lists), Some(Slot::Ref(SlotRef::Inventory(1))));
+        assert_eq!(Tab::Trading(7).container(), Container::Trading(7));
     }
 }

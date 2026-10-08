@@ -17,6 +17,15 @@ impl Game {
         let Some(item) = self.held_item() else { return false };
         let Some(block) = self.world.get_block(pos) else { return false };
         let at = pos.as_dvec3() + DVec3::splat(0.5);
+        if item.as_tool().is_some_and(|(kind, _)| kind == ToolKind::Shovel)
+            && matches!(block, Block::GRASS | Block::DIRT | Block::SNOWY_GRASS)
+            && normal != IVec3::NEG_Y
+            && self.world.get_block(pos + IVec3::Y) == Some(Block::AIR)
+            && self.world.set_block(pos, Block::DIRT_PATH)
+        {
+            self.wear_held(false);
+            return true;
+        }
         if item.as_tool().is_some_and(|(kind, _)| kind == ToolKind::Hoe) {
             let tillable = matches!(block, Block::GRASS | Block::DIRT)
                 && normal != IVec3::NEG_Y
@@ -27,6 +36,17 @@ impl Game {
                 return true;
             }
             return false;
+        }
+        if item == Item::SHEARS && block == Block::PUMPKIN {
+            let facing = crate::world::block::Facing::toward(self.player.forward());
+            if self.world.set_block(pos, Block::CARVED_PUMPKIN.with_facing(facing)) {
+                if self.mode.is_survival() {
+                    self.inventory.wear(self.actions.selected, 1);
+                }
+                self.mobs.entities.drop_from_block(crate::inventory::Stack::new(Item::PUMPKIN_SEEDS, 4), pos);
+                self.audio.play(Sound::Break(Material::Wood), Some(at), 0.8, (0.9, 1.1));
+                return true;
+            }
         }
         if item == Item::BONE_MEAL && self.world.apply_bone_meal(pos) {
             self.audio.play(Sound::Place(Material::Grass), Some(at), 0.8, (1.2, 1.4));
@@ -58,8 +78,16 @@ impl Game {
 /// The item pick-block (middle click) looks for: crops give seeds, and
 /// farmland and lit furnaces their plain blocks.
 pub(super) fn picked_item(block: Block) -> Item {
+    if matches!(
+        voxelcraft::world::redstone_blocks::component(block),
+        Some(voxelcraft::world::redstone_blocks::Component::Wire(_))
+    ) {
+        return Item::REDSTONE;
+    }
     match block.base() {
         Block::LIT_FURNACE => Block::FURNACE.into(),
+        Block::LIT_SMOKER => Block::SMOKER.into(),
+        Block::LIT_BLAST_FURNACE => Block::BLAST_FURNACE.into(),
         Block::FARMLAND | Block::WET_FARMLAND => Block::DIRT.into(),
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Wheat, _))) => Item::WHEAT_SEEDS,
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Carrot, _))) => Item::CARROT,

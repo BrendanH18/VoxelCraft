@@ -22,9 +22,19 @@ impl Game {
         self.toggle_inventory();
     }
 
+    pub(super) fn open_grindstone(&mut self, pos: IVec3) {
+        if !self.inventory_open {
+            self.container = Container::Grindstone(pos);
+            self.toggle_inventory();
+        }
+    }
+
     /// What the inputs make, ignoring the survival cost limit, and whether
     /// it's "Too Expensive!" for this player.
     pub(super) fn anvil_preview(&self) -> Option<(AnvilResult, bool)> {
+        if matches!(self.container, Container::Grindstone(_)) {
+            return voxelcraft::grindstone::result(self.work[0], self.work[1]).map(|r| (r, false));
+        }
         let creative = self.mode.is_creative();
         let result = enchant::anvil_any_cost(self.work[0]?, self.work[1], creative)?;
         Some((result, !creative && result.cost >= enchant::TOO_EXPENSIVE))
@@ -43,7 +53,14 @@ impl Game {
         match slot {
             SlotRef::AnvilLeft | SlotRef::AnvilRight => {
                 let i = (slot == SlotRef::AnvilRight) as usize;
-                crate::inventory::click_slot(&mut self.work[i], &mut self.inventory.cursor, right);
+                if !matches!(self.container, Container::Grindstone(_))
+                    || self
+                        .inventory
+                        .cursor
+                        .is_none_or(|s| voxelcraft::grindstone::accepts(s.item) || !s.enchants.is_empty())
+                {
+                    crate::inventory::click_slot(&mut self.work[i], &mut self.inventory.cursor, right);
+                }
             }
             SlotRef::AnvilResult if self.inventory.cursor.is_none() => {
                 if let Some(out) = self.take_anvil_result() {
@@ -57,6 +74,16 @@ impl Game {
     /// Java's `AnvilMenu.onTake`: pays the levels, uses up the inputs and
     /// maybe chips the anvil. Returns the result.
     pub(super) fn take_anvil_result(&mut self) -> Option<Stack> {
+        if let Container::Grindstone(pos) = self.container {
+            let result = self.anvil_result()?;
+            let xp = voxelcraft::grindstone::xp(self.work[0], self.work[1], enchant::roll());
+            self.work[0] = None;
+            self.work[1] = None;
+            if xp > 0 {
+                self.world.xp_drops.push((pos, xp));
+            }
+            return Some(result.output);
+        }
         let Container::Anvil(pos) = self.container else { return None };
         let result = self.anvil_result()?;
         let survival = self.mode.is_survival();
@@ -94,6 +121,12 @@ impl Game {
     /// Shift-click from the inventory onto the anvil: one item into the left
     /// input if it's empty, else the right. Returns what didn't move.
     pub(super) fn move_to_anvil(&mut self, stack: Stack) -> Option<Stack> {
+        if matches!(self.container, Container::Grindstone(_))
+            && !voxelcraft::grindstone::accepts(stack.item)
+            && stack.enchants.is_empty()
+        {
+            return Some(stack);
+        }
         if self.work[0].is_none() {
             self.work[0] = Some(Stack { count: 1, ..stack });
             return (stack.count > 1).then_some(Stack { count: stack.count - 1, ..stack });

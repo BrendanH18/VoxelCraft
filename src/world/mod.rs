@@ -12,12 +12,15 @@
 //! discarded. Each chunk column also keeps a heightmap of its highest
 //! light-blocking block, which seeds skylight in mesh jobs.
 
+mod automation;
 pub mod bastion;
+pub mod bell;
 pub mod block;
 pub mod brewing;
 pub mod chest;
 pub mod chunk;
 pub mod colors;
+pub mod composter;
 pub mod dungeon;
 pub mod end;
 pub mod end_portal;
@@ -28,6 +31,7 @@ mod foraging;
 pub mod forms;
 pub mod fortress;
 pub mod furnace;
+pub mod gadgets;
 mod growth;
 pub(crate) mod height;
 pub(crate) mod lighting;
@@ -38,12 +42,20 @@ pub mod nether_complexes;
 pub mod noise;
 pub mod ore;
 mod portal;
+pub mod pumpkin_blocks;
+pub mod rails;
+pub mod redstone;
+pub mod redstone_blocks;
+mod redstone_contacts;
 pub mod shape;
 mod spawner;
 pub mod storage;
 pub mod stronghold;
 pub mod structure;
 pub mod terrain;
+pub mod village;
+pub mod village_blocks;
+mod village_life;
 
 use std::sync::Arc;
 
@@ -99,6 +111,8 @@ pub struct World {
     light_updates: lighting::LightUpdates,
     fluids: fluid::FluidState,
     fire: fire::FireState,
+    redstone: redstone::RedstoneState,
+    automation: automation::AutomationState,
     falling: Vec<falling::FallingBlock>,
     /// Furnace contents by position (see [`furnace`]).
     furnaces: FxHashMap<IVec3, furnace::Furnace>,
@@ -108,6 +122,8 @@ pub struct World {
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Spawner cages and the mob each makes (see `spawner`).
     spawners: FxHashMap<IVec3, crate::entity::MobKind>,
+    village_pois: FxHashMap<IVec3, Block>,
+    village_homes: FxHashMap<IVec3, IVec3>,
     /// Leaves waiting to decay (seconds left) after a log near them went.
     leaf_decay: FxHashMap<IVec3, f32>,
     /// Fractional random block ticks carried over between frames.
@@ -130,6 +146,12 @@ pub struct World {
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
+    /// Note blocks that played this tick: position, pitch 0..=24, instrument.
+    pub notes: Vec<(IVec3, u8, u8)>,
+    /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
+    pub golem_heads: Vec<IVec3>,
+    compost_sequence: u64,
+    bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -182,11 +204,15 @@ impl World {
             light_updates: Default::default(),
             fluids: Default::default(),
             fire: Default::default(),
+            redstone: Default::default(),
+            automation: Default::default(),
             falling: Vec::new(),
             furnaces: FxHashMap::default(),
             chests: FxHashMap::default(),
             brewing_stands: FxHashMap::default(),
             spawners: FxHashMap::default(),
+            village_pois: FxHashMap::default(),
+            village_homes: FxHashMap::default(),
             leaf_decay: FxHashMap::default(),
             random_ticks: 0.0,
             rng,
@@ -196,6 +222,10 @@ impl World {
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
+            notes: Vec::new(),
+            golem_heads: Vec::new(),
+            compost_sequence: 0,
+            bell_rings: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -385,10 +415,19 @@ impl World {
         }
         self.light_block_changed(p, old, block, old_light);
         self.track_fire(p, old, block);
+        self.track_redstone(p, old, block);
+        self.track_automation(p, old, block);
         self.track_furnace(p, old, block);
         self.track_chest(p, old, block);
         self.track_brewing_stand(p, old, block);
         self.track_spawner(p, old, block);
+        self.track_village_poi(p, block);
+        if composter::level(block) == Some(7) {
+            self.schedule_redstone(p, 20, 0);
+        }
+        if pumpkin_blocks::is_head(block) {
+            self.golem_heads.push(p);
+        }
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }
@@ -598,7 +637,7 @@ impl World {
 
     /// Install chunk data, seed gameplay light and update column state.
     /// Queue render work when in mesh range; saved chunks also restore scheduled fire.
-    fn insert_chunk(&mut self, pos: IVec3, mut data: Arc<ChunkData>, modified: bool) {
+    pub(crate) fn insert_chunk(&mut self, pos: IVec3, mut data: Arc<ChunkData>, modified: bool) {
         if !modified {
             foraging::decorate(&self.generator, pos, Arc::make_mut(&mut data));
         }
@@ -607,6 +646,7 @@ impl World {
         } else {
             self.register_structure_features(pos, &data);
         }
+        self.register_village_life(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -626,6 +666,7 @@ impl World {
             ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false, block_light: None },
         );
         self.load_block_light(pos);
+        self.load_redstone_chunk(pos);
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
@@ -635,6 +676,8 @@ impl World {
     /// Only graphical worlds emit a renderer removal message.
     fn remove_chunk(&mut self, pos: IVec3) {
         let slot = self.chunks.remove(&pos).unwrap();
+        self.village_pois.retain(|p, _| chunk_of(*p) != pos);
+        self.village_homes.retain(|p, _| chunk_of(*p) != pos);
         self.unload_block_light(pos, slot.block_light.as_ref());
         if slot.modified {
             self.saved.insert(pos, slot.data);

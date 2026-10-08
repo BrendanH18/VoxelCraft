@@ -41,12 +41,17 @@ impl Game {
         let gone = match self.container {
             Container::Furnace(pos) => self.world.furnace(pos).is_none(),
             Container::Chest(pos) => self.world.chest(pos).is_none(),
+            Container::Minecart(id) => {
+                self.mobs.entities.cart(id).is_none_or(|c| c.pos.distance(self.player.pos) > 8.0)
+            }
             Container::Brewing(pos) => self.world.brewing_stand(pos).is_none(),
             Container::Enchanting(pos) => {
                 self.world.get_block(pos) != Some(crate::world::block::Block::ENCHANTING_TABLE)
             }
             // An anvil can break in use, or fall away.
             Container::Anvil(pos) => !self.world.get_block(pos).is_some_and(|b| b.is_anvil()),
+            Container::Grindstone(pos) => self.world.get_block(pos).is_none_or(|b| b.base() != Block::GRINDSTONE),
+            Container::Trading(id) => !self.mobs.entities.merchant_in_reach(id, self.player.eye()),
             Container::Smithing(pos) => self.world.get_block(pos) != Some(Block::SMITHING_TABLE),
             _ => false,
         };

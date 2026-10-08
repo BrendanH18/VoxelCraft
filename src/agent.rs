@@ -22,7 +22,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -97,6 +97,8 @@ pub enum Command {
     Enchanting(usize),
     /// Combines the held stack with hotbar slot 0..9 on the targeted anvil.
     Anvil(usize),
+    Grindstone(Option<usize>),
+    Trade(Option<usize>),
     /// Upgrades held diamond gear at the targeted smithing table, consuming
     /// a template and Netherite ingot from the inventory.
     Smithing,
@@ -143,6 +145,8 @@ const COMMAND_NAMES: &[&str] = &[
     "enchant",
     "say",
     "smithing",
+    "grindstone",
+    "trade",
     "players",
     "catalog",
 ];
@@ -320,7 +324,15 @@ pub fn tab_complete(input: &str) -> Option<String> {
         "time" if stem.len() == 2 && stem[1] == "query" => complete_options(&["daytime", "day", "gametime"], partial)?,
         "locate" if stem.len() <= 1 => complete_options(&["structure", "biome"], partial)?,
         "locate" if stem.len() == 2 && stem[1] == "structure" => complete_options(
-            &["stronghold", "fortress", "nether_fortress", "bastion_remnant", "mineshaft", "abandoned_mineshaft"],
+            &[
+                "stronghold",
+                "fortress",
+                "nether_fortress",
+                "bastion_remnant",
+                "mineshaft",
+                "abandoned_mineshaft",
+                "village",
+            ],
             partial,
         )?,
         "locate" if stem.len() == 2 && stem[1] == "biome" => {
@@ -474,6 +486,7 @@ impl Command {
             ["difficulty", name] => Self::Difficulty(Difficulty::from_name(name).ok_or_else(bad)?),
             ["gamerule", name] => Self::GameRule { name: name.to_string(), value: None },
             ["gamerule", name, value] => Self::GameRule { name: name.to_string(), value: Some(value.to_string()) },
+            ["locate", "village"] => Self::LocateStructure("village".into()),
             ["locate", "structure", name] => Self::LocateStructure(name.to_string()),
             ["locate", "biome", name] => Self::LocateBiome(Biome::from_name(name).ok_or_else(bad)?),
             ["seed"] => Self::Seed,
@@ -505,6 +518,14 @@ impl Command {
                 Self::Effect(EffectChange::Give(effect, secs, amp))
             }
             ["anvil", n] => Self::Anvil(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
+            ["trade"] => Self::Trade(None),
+            ["trade", n] => {
+                Self::Trade(Some(n.parse::<usize>().ok().filter(|n| (1..=10).contains(n)).ok_or_else(bad)? - 1))
+            }
+            ["grindstone"] => Self::Grindstone(None),
+            ["grindstone", n] => {
+                Self::Grindstone(Some(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1))
+            }
             ["smithing"] => Self::Smithing,
             ["enchanting", n] => {
                 Self::Enchanting(n.parse::<usize>().ok().filter(|n| (1..=3).contains(n)).ok_or_else(bad)? - 1)
@@ -897,6 +918,7 @@ impl Agent {
                     self.creative,
                     world,
                     entities,
+                    self.id,
                 ) =>
             {
                 self.cooldown = 0.22;
@@ -944,6 +966,35 @@ impl Agent {
                 self.swings += 1;
             }
             Command::Place => {
+                let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
+                if !self.mode.can_interact() {
+                    return Err("this game mode cannot interact".into());
+                }
+                if self.player.vehicle.is_some() {
+                    return Err("cannot place while riding".into());
+                }
+                let reach = crate::entity::minecart::interaction_reach(world, eye, dir, 5.0);
+                if let Some(id) = entities.mount_cart(eye, dir, reach, self.id) {
+                    self.player.vehicle = Some(id);
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    return Ok(());
+                }
+                if let Some(held) = self.inventory.get(self.selected)
+                    && let Some(kind) = crate::entity::minecart::CartKind::from_item(held.item)
+                    && let Some((pos, normal)) = self.target(world)
+                {
+                    let cell = if world.get_block(pos).is_some_and(|b| b.is_rail()) { pos } else { pos + normal };
+                    if entities.place_cart(&*world, kind, cell).is_none() {
+                        return Err("minecarts need an empty rail".into());
+                    }
+                    if !self.creative {
+                        self.inventory.take_one(self.selected);
+                    }
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    return Ok(());
+                }
                 if !self.mode.can_build() {
                     return Err("this game mode cannot place blocks".into());
                 }
@@ -951,8 +1002,47 @@ impl Agent {
                     return Err("action cooling down".into());
                 }
                 let (pos, normal) = self.target(world).ok_or("no block within reach")?;
+                if world.use_redstone(pos) {
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    return Ok(());
+                }
+                if crate::survival_items::use_composter(
+                    world,
+                    entities,
+                    pos,
+                    &mut self.inventory,
+                    self.selected,
+                    self.creative,
+                ) {
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    return Ok(());
+                }
+                world.touch_redstone_ore(pos);
                 let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
                 let block = held.item.places().ok_or("selected item cannot be placed")?;
+                if block == crate::world::redstone_blocks::IRON_DOOR {
+                    let at = pos + normal;
+                    if self.player.intersects_block(at)
+                        || self.player.intersects_block(at + IVec3::Y)
+                        || others.iter().any(|&p| {
+                            Player::new(p).intersects_block(at) || Player::new(p).intersects_block(at + IVec3::Y)
+                        })
+                    {
+                        return Err("placement intersects a player".into());
+                    }
+                    if !world.place_iron_door(at, crate::world::block::Facing::toward(self.player.forward())) {
+                        return Err("placement failed".into());
+                    }
+                    if !self.creative {
+                        self.inventory.take_one(self.selected);
+                    }
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    self.emit(Event::Placed(at, block));
+                    return Ok(());
+                }
                 // Complex multi-cell placements use client gameplay until the shared action boundary is extracted.
                 if block.is_door()
                     || block.is_bed()
@@ -962,12 +1052,15 @@ impl Agent {
                 {
                     return Err("this block requires the desktop placement action".into());
                 }
-                let block = crate::world::nether_blocks::placed(block, normal);
+                let block =
+                    crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal);
+                let block = crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
                 let at = pos + normal;
                 if !world.get_block(at).is_some_and(|b| b == Block::AIR || b.is_water() || b.is_lava()) {
                     return Err("destination occupied or unloaded".into());
                 }
-                if !world.get_block(at - IVec3::Y).is_some_and(|below| block.can_stay_on(below))
+                if !world.redstone_supported(at, block)
+                    || !world.get_block(at - IVec3::Y).is_some_and(|below| block.can_stay_on(below))
                     || (block.is_mushroom() && !world.mushroom_survives(at))
                 {
                     return Err("block cannot survive here".into());
@@ -998,6 +1091,12 @@ impl Agent {
                 let stack = self.inventory.get(self.selected);
                 let held = stack.map(|s| s.item);
                 let bonus = self.vitals.effects.attack_bonus();
+                let cart_reach = crate::entity::minecart::interaction_reach(world, eye, dir, distance);
+                if entities.hurt_cart(eye, dir, cart_reach, self.creative) {
+                    self.cooldown = mining::attack_cooldown(held);
+                    self.swings += 1;
+                    return Ok(());
+                }
                 if entities.large_fireball(eye, dir, distance).is_some() {
                     entities.punch_fireball(eye, dir, distance);
                 } else if let Some((hit, t)) = entities.fight_raycast(eye, dir, distance) {
@@ -1014,7 +1113,7 @@ impl Agent {
                     let (i, _) = entities.raycast(eye, dir, distance).ok_or("no mob within reach")?;
                     let sprint = self.movement_input().sprint && (self.creative || self.vitals.hunger.can_sprint());
                     let sweep = (self.player.on_ground && !sprint).then_some(self.player.pos);
-                    entities.melee(i, dir, stack, bonus, false, sweep);
+                    entities.melee_for(i, dir, stack, bonus, false, sweep, self.id);
                 }
                 if !self.creative
                     && let Some(held) = held
@@ -1027,6 +1126,9 @@ impl Agent {
             Command::Craft(item) => self.craft(item, world)?,
             Command::Chest(take, slot) => {
                 let (pos, _) = self.target(world).ok_or("no chest within reach")?;
+                if slot >= world.container_slots(pos) {
+                    return Err("container slot out of range".into());
+                }
                 let chest = world.chest_mut(pos).ok_or("target is not a chest")?;
                 if take {
                     let stack = chest.slots[slot].ok_or("chest slot empty")?;
@@ -1079,6 +1181,33 @@ impl Agent {
                     self.vitals.xp.add_levels(-(r.cost as i64));
                     crate::enchant::wear_anvil(world, pos);
                 }
+            }
+            Command::Trade(index) => {
+                let id = entities
+                    .target_merchant(world, self.player.eye(), self.player.forward().as_dvec3(), 6.0)
+                    .ok_or("no villager within reach")?;
+                if let Some(i) = index {
+                    let xp = entities.trade_for(id, i, &mut self.inventory, self.id)?;
+                    entities.spawn_xp(self.player.pos, xp);
+                }
+            }
+            Command::Grindstone(slot) => {
+                let (pos, _) = self.target(world).ok_or("no grindstone within reach")?;
+                if world.get_block(pos).is_none_or(|b| b.base() != Block::GRINDSTONE) {
+                    return Err("target is not a grindstone".into());
+                }
+                if slot == Some(self.selected) {
+                    return Err("pick a different second slot".into());
+                }
+                let a = self.inventory.get(self.selected);
+                let b = slot.and_then(|i| self.inventory.get(i));
+                let result = crate::grindstone::result(a, b).ok_or("those don't grind")?;
+                let xp = crate::grindstone::xp(a, b, crate::enchant::roll());
+                self.inventory.slots[self.selected] = Some(result.output);
+                if let Some(i) = slot {
+                    self.inventory.slots[i] = None;
+                }
+                entities.spawn_xp(pos.as_dvec3() + DVec3::splat(0.5), xp);
             }
             Command::Smithing => {
                 let (pos, _) = self.target(world).ok_or("no smithing table within reach")?;
@@ -1228,11 +1357,26 @@ impl Agent {
         let mut input = self.movement_input();
         input.sprint &= self.creative || self.mode.invulnerable() || self.vitals.hunger.can_sprint();
         let before = self.player.pos;
-        self.player.apply_effects(&self.vitals.effects);
-        self.player
-            .wear_boots(crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::DepthStrider));
-        self.player.update(TICK_SECONDS, input, world);
-        crate::particles::water_entry(&self.player, before, world);
+        if self.player.vehicle.is_some()
+            && input.descend
+            && let Some(pos) = entities.dismount(world, self.id)
+        {
+            self.player.pos = pos;
+            self.player.vehicle = None;
+            self.player.vel = DVec3::ZERO;
+        }
+        if self.player.vehicle.is_none() {
+            self.player.apply_effects(&self.vitals.effects);
+            self.player.wear_boots(crate::enchant::armor_level(
+                &self.inventory.armor,
+                crate::enchant::Enchantment::DepthStrider,
+            ));
+            self.player.update(TICK_SECONDS, input, world);
+            crate::particles::water_entry(&self.player, before, world);
+        } else {
+            self.player.vel = DVec3::ZERO;
+            self.player.on_ground = true;
+        }
         let moved = (self.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
             respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
@@ -1270,6 +1414,8 @@ impl Agent {
             && let Some(block) = world.get_block(pos)
         {
             let held = self.inventory.get(self.selected).map(|s| s.item);
+            world.touch_redstone_ore(pos);
+            let block = world.get_block(pos).unwrap_or(block);
             let digger = self.digger(world);
             let progress = self.breaking.filter(|(p, b, _)| *p == pos && *b == block).map_or(0.0, |(_, _, n)| n)
                 + TICK_SECONDS / mining::dig_time(block, digger).max(1e-3) as f64;
@@ -1281,6 +1427,9 @@ impl Agent {
             if block != Block::BEDROCK && !block.is_door() && (self.creative || progress >= 1.0) {
                 if block.is_bed() {
                     world.break_bed_partner(pos, block, !self.creative && rules.bool("doTileDrops"));
+                }
+                if digger.held.is_some_and(|s| s.item == Item::SHEARS) {
+                    world.disarm_tripwire(pos);
                 }
                 world.set_block(pos, Block::AIR);
                 self.emit(Event::Broke(pos, block));
@@ -2142,5 +2291,58 @@ mod tests {
         assert_eq!(world.get_block(IVec3::new(3, 151, 1)), Some(Block::STONE));
         assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err());
         assert_eq!(a.inventory.get(0).unwrap().count, 1);
+    }
+
+    #[test]
+    fn cart_placement_off_rails_or_while_riding_reports_an_error() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.add(crate::item::Item::MINECART, 1);
+        world.set_block(IVec3::new(4, 151, 1), Block::STONE);
+        assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err(), "no rail");
+        a.player.vehicle = Some(1);
+        assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err(), "riding");
+        assert_eq!(a.inventory.get(0).unwrap().count, 1);
+        assert_eq!(a.swings, 0);
+    }
+}
+
+#[cfg(test)]
+mod village_agent_tests {
+    use super::*;
+    use crate::entity::{MobKind, villager::Profession};
+    use crate::world::{chunk::ChunkData, terrain::Generator};
+    use std::sync::Arc;
+    #[test]
+    fn agent_trades_targeted_villager_and_cannot_pay_through_walls() {
+        let mut saved = rustc_hash::FxHashMap::default();
+        saved.insert(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+        let mut w = World::new_headless(Arc::new(Generator::new(1)), saved, 2);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        for _ in 0..10000 {
+            w.update(a.player.pos);
+            if w.is_loaded(IVec3::new(1, 150, 1)) {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        assert!(w.is_loaded(IVec3::new(1, 150, 1)));
+        a.player.yaw = 0.0;
+        a.player.pitch = 0.0;
+        let mut e = Entities::new(42);
+        e.spawn(MobKind::Villager, DVec3::new(3.5, 150.0, 1.5));
+        let v = e.mobs[0].villager.as_mut().unwrap();
+        v.set_profession(Profession::Farmer);
+        let o = v.offers[0].unwrap();
+        a.inventory.slots[0] = Some(o.price());
+        a.execute(Command::parse("trade").unwrap(), &mut w, &mut e, &[]).unwrap();
+        a.execute(Command::parse("trade 1").unwrap(), &mut w, &mut e, &[]).unwrap();
+        assert!(a.inventory.slots.iter().flatten().any(|s| s.item == o.output.item && s.count >= o.output.count));
+        assert!(!e.orbs.is_empty());
+        assert_eq!(e.mobs[0].villager.as_ref().unwrap().offers[0].unwrap().uses, 1);
+        w.set_block(IVec3::new(2, 151, 1), Block::STONE);
+        assert!(a.execute(Command::parse("trade").unwrap(), &mut w, &mut e, &[]).is_err());
+        assert!(Command::parse("trade 11").is_err());
     }
 }

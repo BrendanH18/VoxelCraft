@@ -18,8 +18,61 @@ pub const COOK_TIME: f32 = 10.0;
 /// Most experience a furnace stores.
 const MAX_XP: f32 = 1e6;
 
+/// Java's specialized recipe types. Fast furnaces consume fuel twice as fast.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum FurnaceKind {
+    #[default]
+    Normal,
+    Smoker,
+    Blast,
+}
+impl FurnaceKind {
+    pub fn of(b: Block) -> Self {
+        match b.base() {
+            Block::SMOKER | Block::LIT_SMOKER => Self::Smoker,
+            Block::BLAST_FURNACE | Block::LIT_BLAST_FURNACE => Self::Blast,
+            _ => Self::Normal,
+        }
+    }
+    pub fn smelt(self, item: Item) -> Option<Item> {
+        let out = smelt(item)?;
+        let food = matches!(
+            item,
+            Item::RAW_PORKCHOP | Item::RAW_BEEF | Item::RAW_CHICKEN | Item::POTATO | Item::COD | Item::SALMON
+        );
+        let ore = item.block().is_some_and(|b| {
+            matches!(
+                b.as_stone_ore(),
+                Block::IRON_ORE
+                    | Block::GOLD_ORE
+                    | Block::COPPER_ORE
+                    | Block::COAL_ORE
+                    | Block::DIAMOND_ORE
+                    | Block::LAPIS_ORE
+                    | Block::QUARTZ_ORE
+                    | Block::ANCIENT_DEBRIS
+            )
+        }) || matches!(item, Item::RAW_IRON | Item::RAW_GOLD | Item::RAW_COPPER);
+        (self == Self::Normal || self == Self::Smoker && food || self == Self::Blast && ore).then_some(out)
+    }
+    pub fn cook_time(self) -> f32 {
+        if self == Self::Normal { COOK_TIME } else { COOK_TIME / 2.0 }
+    }
+    fn blocks(self, lit: bool) -> Block {
+        match (self, lit) {
+            (Self::Normal, false) => Block::FURNACE,
+            (Self::Normal, true) => Block::LIT_FURNACE,
+            (Self::Smoker, false) => Block::SMOKER,
+            (Self::Smoker, true) => Block::LIT_SMOKER,
+            (Self::Blast, false) => Block::BLAST_FURNACE,
+            (Self::Blast, true) => Block::LIT_BLAST_FURNACE,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub struct Furnace {
+    pub kind: FurnaceKind,
     pub input: Option<Stack>,
     pub fuel: Option<Stack>,
     pub output: Option<Stack>,
@@ -99,7 +152,22 @@ pub fn burn_time(item: Item) -> Option<f32> {
         Item::LAVA_BUCKET => Some(1000.0),
         Item::COAL | Item::CHARCOAL => Some(80.0),
         i if i.block().is_some_and(|b| b.is_log() || b.is_planks()) => Some(15.0),
-        i if [Block::CRAFTING_TABLE, Block::CHEST, Block::SMITHING_TABLE].map(b).contains(&i) => Some(15.0),
+        i if [
+            Block::CRAFTING_TABLE,
+            Block::CHEST,
+            Block::SMITHING_TABLE,
+            Block::BARREL,
+            Block::COMPOSTER,
+            Block::CARTOGRAPHY_TABLE,
+            Block::FLETCHING_TABLE,
+            Block::LOOM,
+            Block::LECTERN,
+        ]
+        .map(b)
+        .contains(&i) =>
+        {
+            Some(15.0)
+        }
         Item::STICK => Some(5.0),
         i if i.as_tool().is_some_and(|(_, tier)| tier == Tier::Wood) => Some(10.0),
         _ => None,
@@ -124,7 +192,7 @@ impl Furnace {
 
     /// The smelted result of the current input, if it can go to the output.
     fn product(&self) -> Option<Item> {
-        let out = smelt(self.input?.item)?;
+        let out = self.kind.smelt(self.input?.item)?;
         match self.output {
             None => Some(out),
             Some(o) if o.item == out && o.count < o.max() => Some(out),
@@ -134,6 +202,9 @@ impl Furnace {
 
     /// Advances burning and smelting by `dt` seconds.
     pub fn tick(&mut self, mut dt: f32) {
+        if self.kind != FurnaceKind::Normal {
+            dt *= 2.0;
+        }
         // Step through fuel changes so a long dt can't skip lighting the next piece.
         while dt > 0.0 {
             if !self.is_lit()
@@ -162,8 +233,8 @@ impl Furnace {
             match product {
                 Some(out) => {
                     self.cook += step;
-                    if self.cook >= COOK_TIME {
-                        self.cook -= COOK_TIME;
+                    if self.cook + 0.0001 >= COOK_TIME {
+                        self.cook = (self.cook - COOK_TIME).max(0.0);
                         self.input = take_one(self.input);
                         self.xp = (self.xp + smelt_xp(out)).min(MAX_XP);
                         match &mut self.output {
@@ -198,14 +269,15 @@ impl Furnace {
     /// Saves the slots, cooking and fuel timers, and unclaimed XP tally.
     pub fn serialize(&self) -> String {
         format!(
-            "{};{};{};{:.2};{:.2};{:.2};{:.2}",
+            "{};{};{};{:.2};{:.2};{:.2};{:.2};{}",
             stack_to_string(self.input),
             stack_to_string(self.fuel),
             stack_to_string(self.output),
             self.burn_left,
             self.burn_total,
             self.cook,
-            self.xp
+            self.xp,
+            self.kind as u8
         )
     }
 
@@ -213,13 +285,20 @@ impl Furnace {
     pub fn deserialize(text: &str) -> Option<Self> {
         let f: Vec<&str> = text.split(';').collect();
         // Saves from before experience have six fields.
-        let (input, fuel, output, left, total, cook, xp) = match f[..] {
-            [input, fuel, output, left, total, cook] => (input, fuel, output, left, total, cook, "0"),
-            [input, fuel, output, left, total, cook, xp] => (input, fuel, output, left, total, cook, xp),
+        let (input, fuel, output, left, total, cook, xp, kind) = match f[..] {
+            [input, fuel, output, left, total, cook] => (input, fuel, output, left, total, cook, "0", "0"),
+            [input, fuel, output, left, total, cook, xp] => (input, fuel, output, left, total, cook, xp, "0"),
+            [input, fuel, output, left, total, cook, xp, kind] => (input, fuel, output, left, total, cook, xp, kind),
             _ => return None,
         };
         let num = |s: &str| s.parse::<f32>().ok().filter(|v| v.is_finite() && *v >= 0.0);
         Some(Self {
+            kind: match kind {
+                "0" => FurnaceKind::Normal,
+                "1" => FurnaceKind::Smoker,
+                "2" => FurnaceKind::Blast,
+                _ => return None,
+            },
             input: stack_from_str(input)?,
             fuel: stack_from_str(fuel)?,
             output: stack_from_str(output)?,
@@ -236,7 +315,15 @@ fn take_one(stack: Option<Stack>) -> Option<Stack> {
 }
 
 pub fn is_furnace(b: Block) -> bool {
-    matches!(b.base(), Block::FURNACE | Block::LIT_FURNACE)
+    matches!(
+        b.base(),
+        Block::FURNACE
+            | Block::LIT_FURNACE
+            | Block::SMOKER
+            | Block::LIT_SMOKER
+            | Block::BLAST_FURNACE
+            | Block::LIT_BLAST_FURNACE
+    )
 }
 
 impl World {
@@ -245,6 +332,7 @@ impl World {
     }
 
     pub fn furnace_mut(&mut self, p: IVec3) -> Option<&mut Furnace> {
+        self.redstone_changed(p);
         self.furnaces.get_mut(&p)
     }
 
@@ -262,7 +350,7 @@ impl World {
                 }
             }
         } else if is_furnace(new) {
-            self.furnaces.entry(p).or_default();
+            self.furnaces.entry(p).or_default().kind = FurnaceKind::of(new);
         }
     }
 
@@ -274,14 +362,27 @@ impl World {
             if !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
                 continue;
             }
+            if let Some(b) = self.chunks.get(&super::chunk::chunk_of(p)).map(|c| {
+                c.data.get(
+                    super::chunk::local_of(p).x as usize,
+                    super::chunk::local_of(p).y as usize,
+                    super::chunk::local_of(p).z as usize,
+                )
+            }) {
+                f.kind = FurnaceKind::of(b);
+            }
+            let before = [f.input, f.fuel, f.output];
             f.tick(dt as f32);
-            relight.push((p, f.is_lit()));
+            relight.push((p, f.is_lit(), before != [f.input, f.fuel, f.output]));
         }
-        for (p, lit) in relight {
+        for (p, lit, changed) in relight {
+            if changed {
+                self.redstone_changed(p);
+            }
             let Some((_, facing)) = self.get_block(p).filter(|&b| is_furnace(b)).and_then(Block::oriented) else {
                 continue;
             };
-            let want = if lit { Block::LIT_FURNACE } else { Block::FURNACE }.with_facing(facing);
+            let want = FurnaceKind::of(self.get_block(p).unwrap()).blocks(lit).with_facing(facing);
             if self.get_block(p) != Some(want) {
                 self.edit(p, want, false);
             }
@@ -322,6 +423,31 @@ mod tests {
         for _ in 0..(secs * 20.0) as usize {
             f.tick(0.05);
         }
+    }
+
+    #[test]
+    fn fast_furnaces_filter_recipes_double_speed_and_fuel_use_and_save_kind() {
+        for (kind, input, output, reject) in [
+            (FurnaceKind::Smoker, Item::RAW_BEEF, Item::STEAK, Item::RAW_IRON),
+            (FurnaceKind::Blast, Item::RAW_IRON, Item::IRON_INGOT, Item::RAW_BEEF),
+        ] {
+            let mut f = furnace(input, 64, Item::COAL, 1);
+            f.kind = kind;
+            f.tick(5.01);
+            assert_eq!(f.output, Some(Stack::new(output, 1)));
+            f.tick(35.0);
+            assert!(!f.is_lit());
+            assert_eq!(f.output.unwrap().count, 8, "one coal always smelts eight items");
+            let saved = Furnace::deserialize(&f.serialize()).unwrap();
+            assert_eq!(saved.kind, kind);
+            let mut g = furnace(reject, 1, Item::COAL, 1);
+            g.kind = kind;
+            g.tick(20.0);
+            assert_eq!(g.fuel.unwrap().count, 1);
+            assert!(g.output.is_none());
+        }
+        assert!(FurnaceKind::Blast.smelt(Block::SAND.into()).is_none());
+        assert!(FurnaceKind::Blast.smelt(Block::ANCIENT_DEBRIS.into()).is_some());
     }
 
     #[test]

@@ -208,12 +208,16 @@ pub enum Sprite {
     Ingot([u8; 3]),
     Gem([u8; 3]),
     Apple,
+    /// An apple with a golden skin.
+    GoldenApple,
     Bread,
     /// Raw or cooked cut of meat: flesh colour and fat colour.
     Meat([u8; 3], [u8; 3]),
     Drumstick([u8; 3]),
     Bone,
     String,
+    /// A minecart, tinted for chest, hopper and TNT carts.
+    Minecart([u8; 3]),
     Feather,
     Powder([u8; 3]),
     Leather,
@@ -391,6 +395,13 @@ static MOB_ITEMS: [ItemInfo; 2] = [
     item("wither skeleton skull", Sprite::Pearl([34, 34, 38], [118, 118, 124])),
 ];
 const MOB_ITEM: u16 = 640;
+/// Village life items, append-only from 680.
+const VILLAGE_ITEM: u16 = 680;
+static VILLAGE_ITEMS: [ItemInfo; 3] = [
+    item("pumpkin seeds", Sprite::Seeds),
+    food("golden apple", 4, 9.6, Sprite::GoldenApple),
+    food("beetroot", 1, 1.2, Sprite::Lump([152, 34, 54])),
+];
 /// Splash potions: `SPLASH_POTION + potion index`.
 const SPLASH_POTION: u16 = 436;
 const _: () = assert!(FIRST_POTION + POTION_COUNT <= SPLASH_POTION);
@@ -543,6 +554,14 @@ impl Item {
     pub const GOLD_NUGGET: Item = Item(290);
     pub const MAGMA_CREAM: Item = Item(608);
     pub const IRON_NUGGET: Item = Item(609);
+    pub const FIRE_CHARGE: Item = Item(760);
+    pub const MINECART: Item = Item(761);
+    pub const CHEST_MINECART: Item = Item(762);
+    pub const HOPPER_MINECART: Item = Item(763);
+    pub const TNT_MINECART: Item = Item(764);
+    pub const PUMPKIN_SEEDS: Item = Item(680);
+    pub const GOLDEN_APPLE: Item = Item(681);
+    pub const BEETROOT: Item = Item(682);
     pub const SLIME_BALL: Item = Item(610);
     pub const BUCKET: Item = Item(291);
     pub const WATER_BUCKET: Item = Item(292);
@@ -625,6 +644,8 @@ impl Item {
     /// non-block item plants (seeds sow wheat).
     pub fn places(self) -> Option<Block> {
         match self {
+            Item::REDSTONE => Some(crate::world::redstone_blocks::WIRE),
+            Item::STRING => Some(crate::world::gadgets::TRIPWIRE),
             Item::WHEAT_SEEDS => Some(Block::wheat(0)),
             Item::CARROT => Some(Block::crop(crate::world::block::Crop::Carrot, 0)),
             Item::POTATO => Some(Block::crop(crate::world::block::Crop::Potato, 0)),
@@ -668,6 +689,39 @@ impl Item {
 
     pub fn info(self) -> ItemInfo {
         match self {
+            Self::FIRE_CHARGE => return item("fire charge", Sprite::Lump([241, 126, 27])),
+            Self::MINECART => {
+                return ItemInfo {
+                    name: "minecart",
+                    kind: ItemKind::Material,
+                    max_stack: 1,
+                    sprite: Sprite::Minecart([196, 196, 196]),
+                };
+            }
+            Self::CHEST_MINECART => {
+                return ItemInfo {
+                    name: "minecart with chest",
+                    kind: ItemKind::Material,
+                    max_stack: 1,
+                    sprite: Sprite::Minecart([150, 110, 64]),
+                };
+            }
+            Self::HOPPER_MINECART => {
+                return ItemInfo {
+                    name: "minecart with hopper",
+                    kind: ItemKind::Material,
+                    max_stack: 1,
+                    sprite: Sprite::Minecart([110, 110, 110]),
+                };
+            }
+            Self::TNT_MINECART => {
+                return ItemInfo {
+                    name: "minecart with tnt",
+                    kind: ItemKind::Material,
+                    max_stack: 1,
+                    sprite: Sprite::Minecart([180, 48, 40]),
+                };
+            }
             Self::MAGMA_CREAM => return item("magma cream", Sprite::Lump([242, 115, 30])),
             Self::IRON_NUGGET => return item("iron nugget", Sprite::Nugget([202, 206, 212])),
             Self::SLIME_BALL => return item("slimeball", Sprite::Lump([104, 180, 83])),
@@ -735,6 +789,9 @@ impl Item {
             return SURVIVAL_ITEMS[0];
         }
         if let Some(info) = self.0.checked_sub(MOB_ITEM).and_then(|i| MOB_ITEMS.get(i as usize)) {
+            return *info;
+        }
+        if let Some(info) = self.0.checked_sub(VILLAGE_ITEM).and_then(|i| VILLAGE_ITEMS.get(i as usize)) {
             return *info;
         }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
@@ -876,6 +933,8 @@ impl Item {
             .chain((608..611).map(Item))
             .chain((0..MOB_ITEMS.len() as u16).map(|i| Item(MOB_ITEM + i)))
             .chain((0..POTION_COUNT).map(|i| Item(SPLASH_POTION + i)))
+            .chain((0..VILLAGE_ITEMS.len() as u16).map(|i| Item(VILLAGE_ITEM + i)))
+            .chain([Self::FIRE_CHARGE, Self::MINECART, Self::CHEST_MINECART, Self::HOPPER_MINECART, Self::TNT_MINECART])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -951,6 +1010,20 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + i
                 - SPLASH_POTION,
         ),
+        i if (VILLAGE_ITEM..VILLAGE_ITEM + VILLAGE_ITEMS.len() as u16).contains(&i) => Some(
+            materials
+                + TOOL_COUNT
+                + ARMOR_COUNT
+                + POTION_COUNT
+                + EXTRA_ITEMS.len() as u16
+                + SURVIVAL_ITEMS.len() as u16
+                + 34
+                + MOB_ITEMS.len() as u16
+                + POTION_COUNT
+                + i
+                - VILLAGE_ITEM,
+        ),
+        760..=764 => Some(icon_count() as u16 - 5 + (item.0 - 760)),
         _ => None,
     }
 }
@@ -964,6 +1037,8 @@ pub const fn icon_count() -> u32 {
         + 34
         + MOB_ITEMS.len() as u32
         + POTION_COUNT as u32
+        + VILLAGE_ITEMS.len() as u32
+        + 5
 }
 
 /// Compass needle frames, after the item icons. Frame 0 points up.

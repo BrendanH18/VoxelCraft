@@ -229,6 +229,10 @@ impl Enchantment {
     }
 
     /// Modified enchanting level range that rolls `level` of this.
+    pub fn minimum_cost(self, level: u8) -> u32 {
+        self.cost_range(level).0
+    }
+
     fn cost_range(self, level: u8) -> (u32, u32) {
         let d = self.def();
         let extra = level.saturating_sub(1) as u32;

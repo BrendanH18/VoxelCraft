@@ -46,6 +46,7 @@ pub(super) enum SlotRef {
     SmithBase,
     SmithAddition,
     SmithResult,
+    Trade(usize),
     /// Worn armor (survival inventory).
     Armor(ArmorPiece),
 }
@@ -349,6 +350,21 @@ impl Game {
 /// The brewing stand's gauges: blaze fuel left under the fuel slot, the
 /// brew's progress as an arrow down beside the ingredient and rising
 /// bubbles on its other side while it brews.
+/// Java's screen title for a slot container block.
+pub(super) fn container_title(block: Option<crate::world::block::Block>) -> &'static str {
+    use crate::world::redstone_blocks::{self as r, Component};
+    match block {
+        Some(b) if b.base() == crate::world::block::Block::BARREL => "Barrel",
+        Some(b) => match r::component(b) {
+            Some(Component::Hopper { .. }) => "Item Hopper",
+            Some(Component::Dispenser { dropper: true, .. }) => "Dropper",
+            Some(Component::Dispenser { .. }) => "Dispenser",
+            _ => "Chest",
+        },
+        None => "Chest",
+    }
+}
+
 fn brewing_ui(ui: &mut Ui, b: &crate::world::brewing::BrewingStand, px: f32, py: f32, frame: u32) {
     use crate::world::brewing::{BREW_TIME, FUEL_USES};
     let dark = [0.45, 0.45, 0.45, 1.0];
@@ -485,8 +501,16 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
         ui.rect(x + 2.0, y + 14.0, w, 1.0, color);
     }
     if counts && stack.count > 1 {
-        let n = stack.count.to_string();
-        ui.text(x + 17.0 - Ui::text_width(&n), y + 9.0, &n, WHITE);
+        let digits = [b'0' + stack.count / 100, b'0' + stack.count / 10 % 10, b'0' + stack.count % 10];
+        let start = if stack.count >= 100 {
+            0
+        } else if stack.count >= 10 {
+            1
+        } else {
+            2
+        };
+        let n = std::str::from_utf8(&digits[start..]).expect("decimal digits");
+        ui.text(x + 17.0 - Ui::text_width(n), y + 9.0, n, WHITE);
     }
 }
 
@@ -520,6 +544,17 @@ impl Game {
     /// Height of the top section: room for the four armor slots in the
     /// survival inventory, three rows of slots otherwise.
     fn top_h(&self) -> f32 {
+        if let Container::Trading(id) = self.container {
+            return self
+                .mobs
+                .entities
+                .merchant(id)
+                .and_then(|m| m.villager.as_ref())
+                .map_or(46.0, |v| 26.0 + if v.wandering { 60.0 } else { v.level as f32 * 20.0 });
+        }
+        if self.open_container_count() == 5 {
+            return SLOT + 14.0;
+        }
         match (self.has_top_section(), self.shows_armor()) {
             (false, _) => 0.0,
             (true, true) => CRAFT_H + SLOT,
@@ -542,15 +577,28 @@ impl Game {
                 self.container,
                 Container::Furnace(_)
                     | Container::Chest(_)
+                    | Container::Minecart(_)
                     | Container::Enchanting(_)
                     | Container::Anvil(_)
+                    | Container::Grindstone(_)
+                    | Container::Trading(_)
                     | Container::Smithing(_)
             )
     }
 
+    /// Whether the search bar shows: on the inventory and storage screens,
+    /// not on workstations where it would only add clutter.
+    pub(super) fn shows_search(&self) -> bool {
+        matches!(self.container, Container::Inventory | Container::Chest(_))
+    }
+
+    fn search_h(&self) -> f32 {
+        if self.shows_search() { super::search::HEIGHT } else { 0.0 }
+    }
+
     /// Top-left corner and height of the inventory panel.
     fn panel(&self, screen: (f32, f32)) -> (f32, f32, f32) {
-        let h = PANEL_H + self.top_h() + super::search::HEIGHT;
+        let h = PANEL_H + self.top_h() + self.search_h();
         let extra = if self.recipe_book.open && self.shows_recipes() && recipe_book::fits_beside(screen.0, PANEL_W) {
             recipe_book::WIDTH + recipe_book::GAP
         } else {
@@ -566,7 +614,7 @@ impl Game {
 
     fn recipe_layout(&self, screen: (f32, f32)) -> Layout {
         let (x, y, h) = self.panel(screen);
-        Layout::new(screen.0, Rect { x, y: y + super::search::HEIGHT, w: PANEL_W, h: h - super::search::HEIGHT })
+        Layout::new(screen.0, Rect { x, y: y + self.search_h(), w: PANEL_W, h: h - self.search_h() })
     }
 
     pub(super) fn recipe_control_under_cursor(&self) -> Option<Control> {
@@ -585,13 +633,39 @@ impl Game {
     /// in creative) and the hotbar.
     fn inventory_slots(&self, screen: (f32, f32)) -> Vec<(SlotRef, f32, f32)> {
         let (px, py, _) = self.panel(screen);
-        let py = py + super::search::HEIGHT;
+        let py = py + self.search_h();
         let mut out = Vec::with_capacity(46);
-        let top = if let Container::Chest(_) = self.container {
-            for i in 0..crate::world::chest::SLOTS {
-                out.push((SlotRef::Chest(i), px + 7.0 + (i % 9) as f32 * SLOT, py + 18.0 + (i / 9) as f32 * SLOT));
+        let top = if let Container::Trading(id) = self.container {
+            if let Some(v) = self.mobs.entities.merchant(id).and_then(|m| m.villager.as_ref()) {
+                for (i, o) in v.offers.iter().enumerate() {
+                    if o.is_some() {
+                        out.push((
+                            SlotRef::Trade(i),
+                            px + 62.0 + (i % 2) as f32 * 80.0,
+                            py + 22.0 + (i / 2) as f32 * 20.0,
+                        ));
+                    }
+                }
             }
-            CRAFT_H
+            self.top_h()
+        } else if matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
+            let count = self.open_container_count();
+            let cols = if count == 9 { 3 } else { 9 };
+            let offset = if count == 9 {
+                3.0 * SLOT
+            } else if count == 5 {
+                2.0 * SLOT
+            } else {
+                0.0
+            };
+            for i in 0..count {
+                out.push((
+                    SlotRef::Chest(i),
+                    px + 7.0 + offset + (i % cols) as f32 * SLOT,
+                    py + 18.0 + (i / cols) as f32 * SLOT,
+                ));
+            }
+            self.top_h()
         } else if let Container::Furnace(_) = self.container {
             // Input over fuel (with the flame between), the output past the arrow.
             let x = px + 7.0 + 3.0 * SLOT;
@@ -605,7 +679,7 @@ impl Game {
             out.push((SlotRef::EnchantItem, px + 14.0, py + 44.0));
             out.push((SlotRef::EnchantLapis, px + 34.0, py + 44.0));
             CRAFT_H
-        } else if let Container::Anvil(_) = self.container {
+        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.container {
             // Java's layout: input + input -> result.
             out.push((SlotRef::AnvilLeft, px + 26.0, py + 36.0));
             out.push((SlotRef::AnvilRight, px + 75.0, py + 36.0));
@@ -697,7 +771,7 @@ impl Game {
         if let Container::Enchanting(_) = self.container {
             let (px, py, _) = self.panel((w as f32 / scale, h as f32 / scale));
             for i in 0..3 {
-                let (x, y, bw, bh) = enchant_offer_rect(px, py + super::search::HEIGHT, i);
+                let (x, y, bw, bh) = enchant_offer_rect(px, py + self.search_h(), i);
                 if mx >= x && mx < x + bw && my >= y && my < y + bh {
                     return Some(SlotRef::EnchantOffer(i));
                 }
@@ -719,16 +793,27 @@ impl Game {
         ui.rect(px, py, 1.0, panel_h, WHITE);
         ui.rect(px, py + panel_h - 1.0, PANEL_W, 1.0, [0.33, 0.33, 0.33, 1.0]);
         ui.rect(px + PANEL_W - 1.0, py, 1.0, panel_h, [0.33, 0.33, 0.33, 1.0]);
-        self.search_ui(ui);
-        let py = py + super::search::HEIGHT;
+        if self.shows_search() {
+            self.search_ui(ui);
+        }
+        let py = py + self.search_h();
         let title = match (self.container, self.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
-            (Container::Chest(_), _) => "Chest",
+            (Container::Chest(p), _) => container_title(self.world.get_block(p)),
+            (Container::Minecart(id), _) => {
+                if self.mobs.entities.cart(id).is_some_and(|c| c.slot_count() == 5) {
+                    "Minecart with Hopper"
+                } else {
+                    "Minecart with Chest"
+                }
+            }
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
             (Container::Anvil(_), _) => "Anvil",
+            (Container::Grindstone(_), _) => "Repair & Disenchant",
             (Container::Smithing(_), _) => "Upgrade Gear",
+            (Container::Trading(_), _) => "",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
             (Container::Inventory, GameMode::Adventure) => "Adventure Inventory",
@@ -739,17 +824,19 @@ impl Game {
             let layout = self.recipe_layout((sw, sh));
             self.recipe_button(ui, layout.toggle, if self.recipe_book.open { "Hide" } else { "Recipes" });
         }
-        if let Container::Brewing(p) = self.container
+        if let Container::Trading(id) = self.container {
+            self.trading_ui(ui, id, px, py);
+        } else if let Container::Brewing(p) = self.container
             && let Some(b) = self.world.brewing_stand(p)
         {
             brewing_ui(ui, b, px, py, (self.started.elapsed().as_secs_f32() * 8.0) as u32);
         } else if let Container::Enchanting(_) = self.container {
             self.enchanting_ui(ui, px, py);
-        } else if let Container::Anvil(_) = self.container {
+        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.container {
             self.anvil_ui(ui, px, py);
         } else if let Container::Smithing(_) = self.container {
             self.smithing_ui(ui, px, py);
-        } else if self.has_top_section() && !matches!(self.container, Container::Chest(_)) {
+        } else if self.has_top_section() && !matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
             let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0);
@@ -779,7 +866,7 @@ impl Game {
             }
         }
         let py = py + self.top_h();
-        if matches!(self.container, Container::Chest(_)) {
+        if matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
             ui.text_flat(px + 8.0, py + 6.0, "Inventory", [0.25, 0.25, 0.25, 1.0]);
         }
         if self.shows_palette() {
@@ -820,9 +907,14 @@ impl Game {
                 ui.icon(x + 1.0, y + 1.0, 16.0, layer, [0.0, 0.0, 0.0, 0.25]);
             }
             if let Some(stack) = stack {
-                self.stack_ui(ui, x, y, stack);
+                if matches!(self.container, Container::Trading(_)) {
+                    draw_stack(ui, x, y, stack, true, self.dial_of(&self.player));
+                } else {
+                    self.stack_ui(ui, x, y, stack);
+                }
             }
-            if !self.search.query.trim().is_empty()
+            if self.shows_search()
+                && !self.search.query.trim().is_empty()
                 && let Some(stack) = stack
             {
                 if stack.item.matches_query(&self.search.query) {
@@ -933,6 +1025,13 @@ impl Game {
 
     /// Contents of a furnace or chest slot on the open screen.
     fn container_slot(&self, slot: SlotRef) -> Option<Stack> {
+        if let (Container::Trading(id), SlotRef::Trade(i)) = (self.container, slot) {
+            return self.mobs.entities.merchant(id)?.villager.as_ref()?.offers.get(i)?.map(|o| o.output);
+        }
+        if let (Container::Minecart(id), SlotRef::Chest(i)) = (self.container, slot) {
+            let cart = self.mobs.entities.cart(id)?;
+            return (i < cart.slot_count()).then(|| cart.slots[i]).flatten();
+        }
         if let (Container::Chest(p), SlotRef::Chest(i)) = (self.container, slot) {
             return self.world.chest(p)?.slots[i];
         }
@@ -1028,6 +1127,9 @@ impl Game {
             }
             return;
         };
+        if matches!(self.container, Container::Grindstone(_)) {
+            return;
+        }
         let (text, colour) = if too_expensive {
             ("Too Expensive!".to_string(), [1.0, 0.38, 0.38, 1.0])
         } else if self.mode.is_survival() && self.vitals.xp.level < result.cost {

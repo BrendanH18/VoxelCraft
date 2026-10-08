@@ -27,6 +27,7 @@ mod search;
 mod settings;
 mod smithing;
 mod split;
+mod trading;
 pub use crate::simulation::survival;
 pub use voxelcraft::rules::GameMode;
 mod title;
@@ -107,9 +108,12 @@ pub(crate) enum Container {
     CraftingTable,
     Furnace(IVec3),
     Chest(IVec3),
+    Minecart(u32),
     Brewing(IVec3),
     Enchanting(IVec3),
     Anvil(IVec3),
+    Grindstone(IVec3),
+    Trading(u64),
     Smithing(IVec3),
 }
 
@@ -126,6 +130,7 @@ struct Game {
     /// player while `puppet` is set (thrown pearls remember their owner).
     actor: crate::entity::PlayerId,
     puppet_used: Option<glam::IVec3>,
+    puppet_merchant: Option<u64>,
     puppet_popup: Option<String>,
     console: console::Console,
     search: search::Search,
@@ -205,7 +210,9 @@ struct Game {
     vitals: Vitals,
     screenshot: Option<String>,
     screenshot_state: u32,
+    open_trading: bool,
     place: Vec<(glam::IVec3, Block)>,
+    carts: Vec<(crate::entity::minecart::CartKind, glam::IVec3)>,
     /// `--open-block`: a container to open once placements are done.
     open_block: Option<IVec3>,
     /// `--drop`: thrown once the world has loaded.
@@ -509,6 +516,23 @@ pub(super) struct SkyState {
 }
 
 /// Lighting and sky colours for a time of day.
+fn seat_rider(entities: &crate::entity::Entities, player: &mut Player, id: crate::entity::PlayerId) {
+    let Some(cart_id) = player.vehicle else { return };
+    match entities.cart(cart_id) {
+        Some(cart) if cart.rider == Some(id) => {
+            player.pos = cart.seat();
+            player.vel = DVec3::ZERO;
+            player.on_ground = true;
+        }
+        Some(cart) => {
+            player.pos = cart.pos + DVec3::X;
+            player.vehicle = None;
+            player.vel = DVec3::ZERO;
+        }
+        None => player.vehicle = None,
+    }
+}
+
 fn sky_state(t: f64) -> SkyState {
     let angle = (t * std::f64::consts::TAU) as f32;
     let s = angle.sin();
@@ -716,6 +740,7 @@ impl Game {
             puppet: false,
             actor: crate::entity::PlayerId::HOST,
             puppet_used: None,
+            puppet_merchant: None,
             puppet_popup: None,
             pads: {
                 let mut pads = if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() };
@@ -808,7 +833,9 @@ impl Game {
             vitals,
             screenshot: args.screenshot.clone(),
             screenshot_state: 0,
+            open_trading: args.open_trading,
             place: args.place.clone(),
+            carts: args.carts.clone(),
             open_block: args.open_block,
             drop: args.drop.clone(),
             orbs: args.orbs.clone(),
@@ -1284,9 +1311,19 @@ impl Game {
                 crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
             }
             Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
+            Some(hud::SlotRef::Trade(i)) => self.buy_trade(i),
             Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right, self.mode.is_creative()),
             Some(hud::SlotRef::Chest(i)) => {
+                if let Container::Minecart(id) = self.container {
+                    if let Some(cart) = self.mobs.entities.cart_mut(id)
+                        && i < cart.slot_count()
+                    {
+                        crate::inventory::click_slot(&mut cart.slots[i], &mut self.inventory.cursor, right);
+                    }
+                    return;
+                }
                 if let Container::Chest(pos) = self.container
+                    && i < self.world.container_slots(pos)
                     && let Some(chest) = self.world.chest_mut(pos)
                 {
                     crate::inventory::click_slot(&mut chest.slots[i], &mut self.inventory.cursor, right);
@@ -1346,6 +1383,9 @@ impl Game {
             && let Some(block) = self.world.get_block(pos)
             && block != Block::BEDROCK
         {
+            if self.held_item() == Some(Item::SHEARS) {
+                self.world.disarm_tripwire(pos);
+            }
             self.world.set_block(pos, Block::AIR);
             self.audio.block_break(block, pos);
             if block.is_bed() {
@@ -1390,7 +1430,13 @@ impl Game {
             eyes_in_water: self.player.head_in_water(&self.world),
             on_ground: self.player.on_ground || self.player.flying,
         };
-        let progress = self.actions.mine(pos, block, crate::mining::dig_time(block, digger), dt);
+        self.world.touch_redstone_ore(pos);
+        let progress = self.actions.mine(
+            pos,
+            self.world.get_block(pos).unwrap_or(block),
+            crate::mining::dig_time(block, digger),
+            dt,
+        );
         if progress < 1.0 {
             self.audio.block_hit(block, pos, dt);
             self.world.particles.push(crate::particles::Request::Hit { cell: pos, block, face });
@@ -1405,6 +1451,9 @@ impl Game {
             && !tool.has(crate::enchant::Enchantment::SilkTouch)
             && self.dimension.has_sky()
             && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
+        if digger.held.is_some_and(|s| s.item == Item::SHEARS) {
+            self.world.disarm_tripwire(pos);
+        }
         self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         if melts {
             self.world.particles.push(crate::particles::Request::Break { cell: pos, block });
@@ -1436,7 +1485,14 @@ impl Game {
         let potion = held.and_then(|i| i.as_potion());
         let food = self.held_item().and_then(|i| i.food());
         let hungry = self.mode.is_survival() && self.vitals.hunger.can_eat();
-        let using = acting && self.right_held && (milk || potion.is_some() || (food.is_some() && hungry));
+        // Right-clicking a composter fills it instead, as in Java.
+        let composting = !self.sneak_building()
+            && self
+                .target()
+                .and_then(|(pos, _)| self.world.get_block(pos))
+                .is_some_and(|b| crate::world::composter::level(b).is_some());
+        let using =
+            acting && self.right_held && (milk || potion.is_some() || (food.is_some() && hungry && !composting));
         if !using {
             self.actions.eat_timer = 0.0;
             return;
@@ -1526,8 +1582,81 @@ impl Game {
         }
     }
 
+    fn ride_minecarts(&mut self, input: crate::player::MoveInput) {
+        let mut wish = Vec::new();
+        if self.player.vehicle.is_none() && self.mode != GameMode::Spectator {
+            self.mobs.entities.push_carts(self.player.pos, self.player.collision_shape().half_width);
+        }
+        for bot in self.agents.players.values().filter(|b| b.active && b.agent.player.vehicle.is_none()) {
+            self.mobs.entities.push_carts(bot.agent.player.pos, bot.agent.player.collision_shape().half_width);
+        }
+        if self.player.vehicle.is_some() {
+            wish.push((crate::entity::PlayerId::HOST, self.player.ride_push(input)));
+        }
+        for bot in self.agents.players.values().filter(|b| b.active && b.agent.player.vehicle.is_some()) {
+            wish.push((bot.agent.id, bot.agent.player.ride_push(bot.agent.movement_input())));
+        }
+        self.mobs.entities.tick_minecarts(&mut self.world, &wish);
+        seat_rider(&self.mobs.entities, &mut self.player, crate::entity::PlayerId::HOST);
+        let ids: Vec<_> =
+            self.agents.players.values().filter(|b| b.active).map(|b| (b.agent.id, b.agent.player.vehicle)).collect();
+        for (id, vehicle) in ids {
+            if vehicle.is_none() {
+                continue;
+            }
+            if let Some(bot) = self.agents.players.values_mut().find(|b| b.agent.id == id) {
+                seat_rider(&self.mobs.entities, &mut bot.agent.player, id);
+            }
+        }
+    }
+
+    fn play_notes(&mut self) {
+        let notes = std::mem::take(&mut self.world.notes);
+        for (pos, pitch, instrument) in notes {
+            let sound = crate::audio::sounds::Sound::Note(crate::world::gadgets::Instrument::from_u8(instrument));
+            let hz = crate::world::gadgets::pitch_hz(pitch);
+            self.audio.play(sound, Some(pos.as_dvec3() + glam::DVec3::splat(0.5)), 1.0, (hz, hz));
+        }
+    }
+
     fn place_block(&mut self) {
         if !self.mode.can_interact() {
+            return;
+        }
+        if self.player.vehicle.is_some() {
+            return;
+        }
+        let eye = self.player.eye();
+        let dir = self.player.forward().as_dvec3();
+        let reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
+        if let Some((id, _)) = self.mobs.entities.cart_container(eye, dir, reach) {
+            // Controller menus have no cart tab yet; the host's screen must not open for them.
+            if self.puppet {
+                self.show_popup("Minecart storage needs the keyboard player for now");
+            } else if !self.inventory_open {
+                self.container = Container::Minecart(id);
+                self.toggle_inventory();
+            }
+            return;
+        }
+        if let Some(id) = self.mobs.entities.mount_cart(eye, dir, reach, self.actor) {
+            self.player.vehicle = Some(id);
+            return;
+        }
+        if let Some(held) = self.held_item()
+            && let Some(kind) = crate::entity::minecart::CartKind::from_item(held)
+            && let Some((pos, normal)) = self.target()
+        {
+            let cell = if self.world.get_block(pos).is_some_and(|b| b.is_rail()) { pos } else { pos + normal };
+            if self.mobs.entities.place_cart(&self.world, kind, cell).is_none() {
+                return;
+            }
+            if self.mode.is_survival() {
+                self.inventory.take_one(self.actions.selected);
+            }
+            return;
+        }
+        if self.use_villager() {
             return;
         }
         if self.use_sheep() {
@@ -1540,6 +1669,7 @@ impl Game {
             self.mode.is_creative(),
             &self.world,
             &mut self.mobs.entities,
+            self.actor,
         ) {
             return;
         }
@@ -1557,6 +1687,23 @@ impl Game {
         if self.insert_eye(pos) {
             return;
         }
+        if !self.sneak_building() && self.mode.can_build() && self.world.use_redstone(pos) {
+            return;
+        }
+        self.world.touch_redstone_ore(pos);
+        if !self.sneak_building()
+            && self.mode.can_build()
+            && voxelcraft::survival_items::use_composter(
+                &mut self.world,
+                &mut self.mobs.entities,
+                pos,
+                &mut self.inventory,
+                self.actions.selected,
+                self.mode.is_creative(),
+            )
+        {
+            return;
+        }
         // Containers open on right-click; holding Shift builds against them.
         match self.world.get_block(pos) {
             _ if self.sneak_building() => {}
@@ -1567,6 +1714,7 @@ impl Game {
                         || b == Block::BREWING_STAND
                         || b == Block::ENCHANTING_TABLE
                         || b.is_anvil()
+                        || b.base() == Block::GRINDSTONE
                         || b == Block::SMITHING_TABLE
                         || b.is_bed()
                         || crate::world::furnace::is_furnace(b)
@@ -1581,6 +1729,7 @@ impl Game {
             Some(Block::BREWING_STAND) => return self.open_brewing(pos),
             Some(Block::ENCHANTING_TABLE) => return self.open_enchanting(pos),
             Some(b) if b.is_anvil() => return self.open_anvil(pos),
+            Some(b) if b.base() == Block::GRINDSTONE => return self.open_grindstone(pos),
             Some(Block::SMITHING_TABLE) => return self.open_smithing(pos),
             Some(Block::DRAGON_EGG) => return self.teleport_egg(pos),
             Some(b) if b.cake_bites().is_some() => {
@@ -1606,6 +1755,9 @@ impl Game {
             return;
         }
         let placed = match self.held_item() {
+            Some(i) if i.block() == Some(voxelcraft::world::redstone_blocks::IRON_DOOR) => {
+                Some(self.world.place_iron_door(at, crate::world::block::Facing::toward(self.player.forward())))
+            }
             Some(i) if i.bed_color().is_some() => Some(self.place_bed(at, i.bed_color().unwrap())),
             Some(i)
                 if i == Item::OAK_DOOR
@@ -1641,8 +1793,9 @@ impl Game {
             return;
         }
         // Furnaces and chests face whoever places them.
-        let block = crate::world::nether_blocks::placed(block, normal)
+        let block = crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal)
             .with_facing(crate::world::block::Facing::toward(self.player.forward()));
+        let block = voxelcraft::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
         if block.is_water() && self.dimension == Dimension::Nether {
             // Water boils away in the Nether.
             self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
@@ -1655,6 +1808,7 @@ impl Game {
             && (!block.is_mushroom() || self.world.mushroom_survives(at));
         if free
             && supported
+            && self.world.redstone_supported(at, block)
             && !(block.is_solid() && self.player.intersects_block(at))
             && self.world.set_block(at, block)
         {
@@ -1697,6 +1851,12 @@ impl Game {
                 log::warn!("--place {pos} {}: chunk not loaded", block.name());
             }
         }
+        self.world.tick_redstone();
+        for (kind, pos) in std::mem::take(&mut self.carts) {
+            if self.mobs.entities.place_cart(&self.world, kind, pos).is_none() {
+                log::warn!("--cart {pos}: no rail");
+            }
+        }
         // Fanned out so each one can be seen.
         let drops = std::mem::take(&mut self.drop);
         for (i, &(item, count)) in drops.iter().enumerate() {
@@ -1716,6 +1876,7 @@ impl Game {
                 Some(Block::BREWING_STAND) => self.open_brewing(p),
                 Some(Block::ENCHANTING_TABLE) => self.open_enchanting(p),
                 Some(b) if b.is_anvil() => self.open_anvil(p),
+                Some(b) if b.base() == Block::GRINDSTONE => self.open_grindstone(p),
                 Some(Block::SMITHING_TABLE) => self.open_smithing(p),
                 _ => log::warn!("--open-block {p}: no container there"),
             }
@@ -1732,6 +1893,27 @@ impl Game {
     fn screenshot_done(&mut self) -> bool {
         let Some(path) = self.screenshot.clone() else { return false };
         let settled = self.world.loaded_chunks() > 0 && self.world.pending_jobs() == 0;
+        if self.open_trading
+            && self.placed
+            && self.mobs.waited()
+            && let Some(id) = self.mobs.entities.target_merchant(
+                &self.world,
+                self.player.eye(),
+                self.player.forward().as_dvec3(),
+                REACH,
+            )
+            && self
+                .mobs
+                .entities
+                .merchant(id)
+                .and_then(|m| m.villager.as_ref())
+                .is_some_and(|v| v.offers.iter().any(Option::is_some))
+        {
+            if !self.open_pad_trading(id) {
+                self.use_villager();
+            }
+            self.open_trading = false;
+        }
         match self.screenshot_state {
             0 if settled && !self.placed => {
                 self.apply_placements();
@@ -1914,9 +2096,15 @@ impl Game {
         } else if self.attack() {
             self.actions.breaking = None;
         } else if self.mode == GameMode::Creative {
+            if let Some((p, _)) = self.target() {
+                self.world.strike_note(p);
+            }
             self.break_block();
             self.action_cooldown = ACTION_REPEAT;
         } else {
+            if let Some((p, _)) = self.target() {
+                self.world.strike_note(p);
+            }
             self.mine_pressed = true;
         }
     }
@@ -1984,12 +2172,25 @@ impl Game {
         self.previous_eye = self.player.eye();
         let before = self.player.pos;
         if !arriving {
-            self.player.apply_effects(&self.vitals.effects);
-            let armor = &self.inventory.armor;
-            self.player.wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
-            self.player.update(dt, input, &self.world);
-            crate::particles::water_entry(&self.player, before, &mut self.world);
-            self.update_portal(dt);
+            if self.player.vehicle.is_some()
+                && input.descend
+                && let Some(pos) = self.mobs.entities.dismount(&self.world, crate::entity::PlayerId::HOST)
+            {
+                self.player.pos = pos;
+                self.player.vehicle = None;
+                self.player.vel = DVec3::ZERO;
+            }
+            if self.player.vehicle.is_none() {
+                self.player.apply_effects(&self.vitals.effects);
+                let armor = &self.inventory.armor;
+                self.player.wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
+                self.player.update(dt, input, &self.world);
+                crate::particles::water_entry(&self.player, before, &mut self.world);
+                self.update_portal(dt);
+            } else {
+                self.player.vel = DVec3::ZERO;
+                self.player.on_ground = true;
+            }
         }
         let moved = (self.player.pos - before).with_y(0.0).length();
         if self.gamerules.bool("doWeatherCycle") {
@@ -2038,12 +2239,29 @@ impl Game {
         self.act(acting, dt);
         self.drive_pads(dt);
         self.tick_agents();
+        self.ride_minecarts(input);
+        let sky_darken = ((1.0 - ((self.day_time - 0.25) * std::f64::consts::TAU).cos()).clamp(0.0, 1.0) * 11.0
+            + self.weather.strength as f64 * 4.0)
+            .round() as u8;
+        self.world.set_redstone_daylight(self.day_time, sky_darken);
+        let players = std::iter::once((self.player.pos, self.player.collision_shape()))
+            .filter(|_| self.mode != GameMode::Spectator && self.vitals.health > 0.0)
+            .chain(
+                self.agents
+                    .players
+                    .values()
+                    .filter(|b| b.active && b.agent.mode != GameMode::Spectator && b.agent.vitals.health > 0.0)
+                    .map(|b| (b.agent.player.pos, b.agent.player.collision_shape())),
+            );
+        self.world.redstone_contacts(players, &self.mobs.entities);
         crate::simulation::tick_world_rules(
             &mut self.world,
             self.player.pos,
             self.gamerules.bool("doFireTick"),
             self.gamerules.int("randomTickSpeed") as u32,
         );
+        self.play_notes();
+        self.world.tick_automation_entities(&mut self.mobs.entities);
         self.update_mobs(dt);
         self.update_items();
         self.tick_particles();
@@ -2290,6 +2508,15 @@ impl Game {
                     yaw: 0.0,
                     icon: None,
                 }
+            }))
+            .chain(self.world.moving_piston_blocks(alpha).map(|(block, min)| crate::render::BlockModel {
+                min,
+                size: 1.0,
+                block,
+                sky_light: crate::entity::sky_light(&self.world, min + glam::DVec3::splat(0.5)),
+                block_light: self.torch_light(min + glam::DVec3::splat(0.5)),
+                yaw: 0.0,
+                icon: None,
             }))
             .chain(self.item_models(alpha))
             .collect()

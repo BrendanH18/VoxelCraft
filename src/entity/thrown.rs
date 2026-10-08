@@ -35,11 +35,12 @@ impl Kind {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Thrown {
     pub kind: Kind,
-    pub owner: PlayerId,
+    pub owner: Option<PlayerId>,
     pub pos: DVec3,
     pub previous_pos: DVec3,
     vel: DVec3,
     age: f32,
+    origin: DVec3,
 }
 
 impl Thrown {
@@ -48,7 +49,15 @@ impl Thrown {
         let mut wobble = || rng.range(-0.017, 0.017) as f64;
         let aim = dir.normalize_or(DVec3::X) + DVec3::new(wobble(), wobble(), wobble());
         let pos = eye - DVec3::Y * 0.1;
-        Self { kind, owner, pos, previous_pos: pos, vel: aim.normalize() * SPEED + carry, age: 0.0 }
+        Self {
+            kind,
+            owner: Some(owner),
+            pos,
+            previous_pos: pos,
+            vel: aim.normalize() * SPEED + carry,
+            age: 0.0,
+            origin: pos,
+        }
     }
 
     pub(super) fn update<W: BlockSource + ?Sized>(
@@ -56,6 +65,7 @@ impl Thrown {
         dt: f64,
         world: &W,
         mobs: &mut [Mob],
+        index: &super::mob_index::MobIndex,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
@@ -73,10 +83,23 @@ impl Thrown {
                 return false;
             }
             self.pos = next;
-            if let Some(mob) = mobs.iter_mut().find(|m| {
+            let mut hit = None;
+            // All mob boxes are at most four blocks high/two blocks wide.
+            // Search reused local buckets rather than scanning every mob for
+            // every projectile substep. A mob shot must first leave its source.
+            index.visit(next - DVec3::Y * 2.0, 4.0, |i| {
+                let m = &mobs[i];
                 let (min, max) = m.aabb();
-                m.alive() && next.cmpge(min).all() && next.cmple(max).all()
-            }) {
+                let source = self.owner.is_none()
+                    && self.age < 0.25
+                    && self.origin.cmpge(min).all()
+                    && self.origin.cmple(max).all();
+                if m.alive() && !source && next.cmpge(min).all() && next.cmple(max).all() && hit.is_none_or(|j| i < j) {
+                    hit = Some(i);
+                }
+            });
+            if let Some(i) = hit {
+                let mob = &mut mobs[i];
                 let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 2.0 + DVec3::Y * 2.0;
                 let damage = if self.kind == Kind::Snowball && mob.kind == MobKind::Blaze { 3.0 } else { 0.0 };
                 let kind = mob.kind;
@@ -87,7 +110,7 @@ impl Thrown {
                         kind,
                         pos,
                         burning: mob.burning,
-                        player_kill: true,
+                        player_kill: self.owner.is_some(),
                         looting: 0,
                     });
                 }
@@ -129,9 +152,11 @@ mod tests {
                 Thrown::launch(Kind::Snowball, PlayerId::HOST, DVec3::new(0.2, 0.45, 0.5), DVec3::X, DVec3::ZERO, rng);
             let mut mob = kind_mob;
             let mut events = Vec::new();
+            let mut index = super::super::mob_index::MobIndex::default();
+            index.rebuild(std::slice::from_ref(&mob));
             let mut hit = false;
             for _ in 0..8 {
-                if !thrown.update(0.05, &world, std::slice::from_mut(&mut mob), rng, &mut events) {
+                if !thrown.update(0.05, &world, std::slice::from_mut(&mut mob), &index, rng, &mut events) {
                     hit = true;
                     break;
                 }
@@ -148,6 +173,37 @@ mod tests {
         assert!(pig.vel.x.abs() > 0.1 || pig.vel.z.abs() > 0.1);
     }
 
+    #[test]
+    fn golem_snowball_leaves_source_and_does_not_credit_player() {
+        let world = Grid::flat(0);
+        let mut rng = Rng::new(4);
+        let mut mobs = [
+            Mob::new(MobKind::SnowGolem, DVec3::new(0.5, 1.0, 0.5), 0.0),
+            Mob::new(MobKind::Blaze, DVec3::new(3.5, 1.0, 0.5), 0.0),
+        ];
+        mobs[1].health = 3.0;
+        let mut t = Thrown::launch(
+            Kind::Snowball,
+            PlayerId::HOST,
+            mobs[0].pos + DVec3::Y * 1.2,
+            DVec3::X,
+            DVec3::ZERO,
+            &mut rng,
+        );
+        t.owner = None;
+        let mut index = super::super::mob_index::MobIndex::default();
+        index.rebuild(&mobs);
+        let mut events = Vec::new();
+        for _ in 0..8 {
+            if !t.update(0.05, &world, &mut mobs, &index, &mut rng, &mut events) {
+                break;
+            }
+        }
+        assert_eq!(mobs[0].health, 4.0);
+        assert!(
+            events.iter().any(|e| matches!(e, EntityEvent::MobKilled { kind: MobKind::Blaze, player_kill: false, .. }))
+        );
+    }
     #[test]
     fn eggs_hatch_about_one_chick_in_eight() {
         let mut rng = Rng::new(9);
