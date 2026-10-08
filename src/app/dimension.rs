@@ -213,6 +213,15 @@ impl Game {
             self.player.vel = DVec3::ZERO;
             return true;
         }
+        // The bed's chunk is in, so `respawn_point` can now check the bed. If
+        // it's gone, the bed is forgotten and the fallback spot may be in an
+        // unloaded chunk: keep waiting, now targeting that spot.
+        if matches!(arrival, Arrival::Respawn) && self.spawn_bed.is_some() {
+            self.respawn_point();
+            if self.spawn_bed.is_none() {
+                return true;
+            }
+        }
         self.player.pos = match arrival {
             Arrival::Portal(p) => {
                 let range = portal_range(self.dimension);
