@@ -217,7 +217,19 @@ impl Entities {
     /// Once a second: summon village golems and let snow golems throw.
     pub(super) fn life_tick<W: MobWorld + ?Sized>(&mut self, world: &W) {
         self.mob_index.rebuild(&self.mobs);
-        self.golem_calm = (self.golem_calm - 1.0).max(0.0);
+        for i in 0..self.mobs.len() {
+            if self.mobs[i].kind != MobKind::Villager || !self.mobs[i].alive() {
+                continue;
+            }
+            let seen = self
+                .mob_index
+                .nearest(&self.mobs, self.mobs[i].pos, GOLEM_RANGE, |m| m.kind == MobKind::IronGolem)
+                .is_some();
+            let v = self.mobs[i].villager.as_mut().unwrap();
+            if v.active {
+                v.golem_seen = if seen { 30.0 } else { (v.golem_seen - 1.0).max(0.0) };
+            }
+        }
         self.gossip_timer = (self.gossip_timer - 1.0).max(0.0);
         if self.gossip_timer <= 0.0 {
             self.share_gossip();
@@ -227,9 +239,6 @@ impl Entities {
     }
 
     fn summon_golems<W: MobWorld + ?Sized>(&mut self, world: &W) {
-        if self.golem_calm > 0.0 {
-            return;
-        }
         let gossip = self.gossip_timer <= 0.0;
         if gossip {
             self.gossip_timer = 60.0;
@@ -237,7 +246,16 @@ impl Entities {
         let n = self.mobs.len();
         for i in 0..n {
             let m = &self.mobs[i];
-            if !m.alive() || m.kind != MobKind::Villager || m.age < 0 {
+            let now = self.village_day * 24000 + (self.village_time * 24000.0) as i64;
+            let eligible_villager = |o: &super::Mob| {
+                o.alive()
+                    && o.kind == MobKind::Villager
+                    && o.age >= 0
+                    && o.villager.as_ref().is_some_and(|v| {
+                        v.active && v.golem_seen <= 0.0 && v.last_slept.is_some_and(|t| (0..24000).contains(&(now - t)))
+                    })
+            };
+            if !eligible_villager(m) {
                 continue;
             }
             let fleeing = m.villager.as_ref().is_some_and(|v| v.fleeing);
@@ -246,33 +264,18 @@ impl Entities {
             }
             let pos = m.pos;
 
-            let mut golems = 0u32;
-            self.mob_index.visit(pos, GOLEM_RANGE, |j| {
-                let o = &self.mobs[j];
-                if o.alive() && o.pos.distance_squared(pos) < GOLEM_RANGE * GOLEM_RANGE && o.kind == MobKind::IronGolem
-                {
-                    golems += 1;
-                }
-            });
-            if golems > 0 {
-                continue;
-            }
-            let now = self.village_day * 24000 + (self.village_time * 24000.0) as i64;
             let mut eligible = 0;
             self.mob_index.visit(pos, 10.0, |j| {
                 let o = &self.mobs[j];
-                if o.kind == MobKind::Villager
-                    && o.age >= 0
-                    && o.pos.distance_squared(pos) <= 100.0
-                    && o.villager.as_ref().is_some_and(|v| v.last_slept.is_some_and(|t| now - t < 24000))
-                {
+                if eligible_villager(o) && o.pos.distance_squared(pos) <= 100.0 {
                     eligible += 1;
                 }
             });
             let panic = fleeing && eligible >= 3;
             let chat = gossip && !fleeing && eligible >= 5;
             if panic || chat {
-                for _ in 0..10 {
+                let mut spawned = false;
+                'attempts: for _ in 0..10 {
                     let x = pos.x.floor() as i32 + self.rng.next_int(17) as i32 - 8;
                     let z = pos.z.floor() as i32 + self.rng.next_int(17) as i32 - 8;
                     for y in ((pos.y.floor() as i32 - 6)..=(pos.y.floor() as i32 + 6)).rev() {
@@ -282,12 +285,22 @@ impl Entities {
                             && !crate::physics::overlaps_solid(world, feet, MobKind::IronGolem.shape())
                         {
                             self.spawn(MobKind::IronGolem, feet);
-                            self.golem_calm = 30.0;
-                            return;
+                            spawned = true;
+                            break 'attempts;
                         }
                     }
                 }
-                return;
+                if spawned {
+                    self.mob_index.visit(pos, GOLEM_RANGE, |j| {
+                        let o = &mut self.mobs[j];
+                        if o.pos.distance_squared(pos) <= GOLEM_RANGE * GOLEM_RANGE
+                            && o.kind == MobKind::Villager
+                            && let Some(v) = &mut o.villager
+                        {
+                            v.golem_seen = 30.0;
+                        }
+                    });
+                }
             }
         }
     }
@@ -315,8 +328,9 @@ impl Entities {
                 .map(|j| self.mobs[j].pos + DVec3::Y);
             let Some(at) = target else { continue };
             let eye = pos + DVec3::Y * 1.2;
-            let snow =
+            let mut snow =
                 Thrown::launch(thrown::Kind::Snowball, PlayerId::HOST, eye, at - eye, DVec3::ZERO, &mut self.rng);
+            snow.owner = None;
             self.thrown.push(snow);
         }
     }
@@ -467,12 +481,39 @@ mod tests {
                 v.fleeing = false;
             }
         }
-        e.golem_calm = 0.0;
         e.mobs.retain(|m| m.kind != MobKind::IronGolem);
         e.life_tick(&world);
         assert_eq!(e.count(MobKind::IronGolem), 0, "calm villagers do not summon on a panic check");
     }
 
+    #[test]
+    fn distant_villages_summon_independently_and_remember_detected_golems() {
+        let world = Beds { grid: Grid::flat(0), beds: vec![] };
+        let mut e = Entities::new(2);
+        for offset in [0.0, 80.0] {
+            for x in 0..3 {
+                e.spawn(MobKind::Villager, DVec3::new(offset + x as f64, 1.0, 0.0));
+                let v = e.mobs.last_mut().unwrap().villager.as_mut().unwrap();
+                v.last_slept = Some(0);
+                v.fleeing = true;
+            }
+        }
+        e.life_tick(&world);
+        assert_eq!(e.count(MobKind::IronGolem), 2);
+        e.mobs.retain(|m| m.kind != MobKind::IronGolem);
+        let mut restored = Entities::new(8);
+        restored.load_villagers(&e.villagers_to_string());
+        // Panic is sensed again after loading; only the golem memory persists.
+        for m in &mut restored.mobs {
+            m.villager.as_mut().unwrap().fleeing = true;
+        }
+        restored.life_tick(&world);
+        assert_eq!(restored.count(MobKind::IronGolem), 0);
+        for _ in 0..29 {
+            restored.life_tick(&world);
+        }
+        assert_eq!(restored.count(MobKind::IronGolem), 2);
+    }
     #[test]
     fn a_hit_does_not_shove_an_iron_golem() {
         let mut mob = Mob::new(MobKind::IronGolem, DVec3::new(0.5, 1.0, 0.5), 0.0);

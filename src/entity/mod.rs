@@ -511,7 +511,6 @@ pub struct Entities {
     pub trader_spawning: bool,
     pub villager_griefing: bool,
     /// Seconds until another iron golem may be summoned.
-    golem_calm: f32,
     /// Seconds until the next gossip summon roll.
     gossip_timer: f32,
     rng: Rng,
@@ -558,7 +557,6 @@ impl Entities {
             trader_leaders: Default::default(),
             trader_spawning: true,
             villager_griefing: true,
-            golem_calm: 0.0,
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawner_delays: Default::default(),
@@ -781,7 +779,7 @@ impl Entities {
             self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
             self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
             self.potions.retain_mut(|p| p.update(dt, world, ctx, mobs, rng, &mut events));
-            self.thrown.retain_mut(|t| t.update(dt, world, mobs, rng, &mut events));
+            self.thrown.retain_mut(|t| t.update(dt, world, mobs, &self.mob_index, rng, &mut events));
         }
         {
             let rng = &mut self.rng;

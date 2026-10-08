@@ -145,13 +145,15 @@ corners. Golems persist across unloading/saves. Iron golems have 100 health,
 random 7.5–21.5 monster damage, player difficulty scaling, upward knockback,
 crack stages and 25-health ingot repairs. Player-built golems never attack
 players; other golems retaliate. They target nearby hostiles except creepers.
-Creepers do not flee golems in Java. Snow golems throw snowballs, suffer water
+Creepers do not flee golems in Java. Snow golems throw snowballs that leave
+their source correctly and do not award player-kill loot/XP; they suffer water
 and desert damage. Snow-layer trails await a snow-layer block implementation.
 
 Village summoning requires recent sleep, three eligible villagers panicking
 or five on a gossip check, no nearby golem, and a supported unobstructed spawn
-position. Remaining simplifications: a cluster-wide 30-second cooldown,
-spherical sensors and minute gossip checks rather than the complete Java
+position. Each resident remembers detecting a golem for 30 seconds; the
+memory survives saves and distant villages summon independently. Remaining
+simplifications: spherical sensors and minute gossip checks rather than the complete Java
 brain memory/sensor scheduling. Snow golems' heat damage currently uses the
 desert biome rather than the complete biome temperature system.
 

@@ -49,3 +49,26 @@ impl MobIndex {
         result
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::MobKind;
+    #[test]
+    fn buckets_handle_negative_cells_and_removal() {
+        let mut mobs = vec![
+            Mob::new(MobKind::Zombie, DVec3::new(-8.1, 1.0, -0.1), 0.0),
+            Mob::new(MobKind::Zombie, DVec3::new(-7.9, 1.0, 0.1), 0.0),
+            Mob::new(MobKind::Zombie, DVec3::new(100.0, 1.0, 0.1), 0.0),
+        ];
+        let mut index = MobIndex::default();
+        index.rebuild(&mobs);
+        assert_eq!(index.nearest(&mobs, DVec3::new(-8.05, 1.0, 0.0), 1.0, |_| true), Some(0));
+        mobs.swap_remove(0);
+        index.rebuild(&mobs);
+        assert_eq!(index.nearest(&mobs, DVec3::new(-8.05, 1.0, 0.0), 1.0, |_| true), Some(1));
+        mobs[1].dying = Some(0.0);
+        index.rebuild(&mobs);
+        assert_eq!(index.nearest(&mobs, DVec3::new(-8.05, 1.0, 0.0), 1.0, |_| true), None);
+    }
+}

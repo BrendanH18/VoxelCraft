@@ -239,6 +239,7 @@ pub struct Villager {
     /// Host-only discount retained for compatibility with old saves.
     pub reputation: i16,
     pub(super) last_slept: Option<i64>,
+    pub(super) golem_seen: f32,
     pub(super) food: [Option<Stack>; 8],
     pub(super) food_level: u8,
     pub(super) courtship: u16,
@@ -269,6 +270,7 @@ impl Villager {
             active: true,
             reputation: 0,
             last_slept: None,
+            golem_seen: 0.0,
             food: [None; 8],
             food_level: 0,
             courtship: 0,
@@ -636,7 +638,7 @@ impl Entities {
                     "health":m.health,"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
-                    "last":v.last_restock,"slept":v.last_slept,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_by":m.convert_by.map(|p|p.0)}))
+                    "last":v.last_restock,"slept":v.last_slept,"golem_seen":v.golem_seen,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_by":m.convert_by.map(|p|p.0)}))
                 }
                 _ => None,
             })
@@ -742,6 +744,7 @@ impl Entities {
                 v.food_level = a["food_level"].as_u64().unwrap_or(0).min(15) as u8;
                 v.bell_hide = a["bell_hide"].as_f64().unwrap_or(0.0).clamp(0.0, 15.0) as f32;
                 v.last_slept = a["slept"].as_i64();
+                v.golem_seen = a["golem_seen"].as_f64().unwrap_or(0.0).clamp(0.0, 30.0) as f32;
                 v.gossip = super::villager_gossip::Gossip::load(&a["gossip"]);
                 v.reputation = i16::try_from(a["reputation"].as_i64().unwrap_or(0)).unwrap_or(0);
                 let mut m = Mob::new(kind, p, yaw);
