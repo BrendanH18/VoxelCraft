@@ -1200,6 +1200,10 @@ impl Entities {
                     };
                     for _ in 0..extra {
                         let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
+                        // A group straddling a biome edge stays within its spawn list.
+                        if nether && nether_spawn(world, kind, x + dx, z + dz).is_none() {
+                            continue;
+                        }
                         let spot = if kind == MobKind::Strider {
                             nether::lava_spot(world, x + dx, z + dz)
                         } else if ctx.dimension.has_sky() {
