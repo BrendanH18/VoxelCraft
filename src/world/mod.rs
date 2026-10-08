@@ -39,6 +39,7 @@ pub mod nether_complexes;
 pub mod noise;
 pub mod ore;
 mod portal;
+pub mod rails;
 pub mod redstone;
 pub mod redstone_blocks;
 mod redstone_contacts;
@@ -616,7 +617,7 @@ impl World {
 
     /// Install chunk data, seed gameplay light and update column state.
     /// Queue render work when in mesh range; saved chunks also restore scheduled fire.
-    fn insert_chunk(&mut self, pos: IVec3, mut data: Arc<ChunkData>, modified: bool) {
+    pub(crate) fn insert_chunk(&mut self, pos: IVec3, mut data: Arc<ChunkData>, modified: bool) {
         if !modified {
             foraging::decorate(&self.generator, pos, Arc::make_mut(&mut data));
         }

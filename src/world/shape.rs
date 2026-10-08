@@ -448,6 +448,7 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block
                         | super::redstone_blocks::Component::Plate { .. }
                 )
             ) => {}
+        Some(Shaped::Rail) => {}
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER_COLLISION, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND_COLLISION, Facing::South),
         Some(Shaped::EndPortal) => {}

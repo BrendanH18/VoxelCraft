@@ -595,6 +595,31 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
             let pass = if see_through { CUTOUT } else { OPAQUE };
             let (x, y, z) = (i % D - MARGIN, i / (D * D) - MARGIN, i / D % D - MARGIN);
             let layer = tex::tinted(b.info().tex[face], foliage[x + z * CHUNK_SIZE]) as u32;
+            if let Some(rail) = b.rail_shape() {
+                if face == 2 || face == 3 {
+                    // Detail lower-u values 17..20 tag the four slopes; all
+                    // ordinary detail bounds remain 0..16. Rails are a plane.
+                    let slope = match rail {
+                        crate::world::block::RailShape::AscendingEast => 17,
+                        crate::world::block::RailShape::AscendingWest => 18,
+                        crate::world::block::RailShape::AscendingNorth => 19,
+                        crate::world::block::RailShape::AscendingSouth => 20,
+                        _ => 0,
+                    };
+                    let light = (sky[i] as u32 | (blk[i] as u32) << 4) * 0x01010101;
+                    out[CUTOUT].push([
+                        (x | y << 6 | z << 12) as u32
+                            | (layer >> 8 & 1) << 5
+                            | (layer >> 9 & 1) << 11
+                            | (layer >> 10 & 1) << 17
+                            | (face as u32) << 18
+                            | slope << 21,
+                        (layer & 255) | 255 << 8 | 16 << 16 | 16 << 21 | 1 << 26 | DETAIL,
+                        light,
+                    ]);
+                }
+                continue;
+            }
             for (j, bx) in boxes.as_slice().iter().enumerate() {
                 let depth = if positive { bx.max[d] } else { bx.min[d] };
                 let r = [bx.min[u], bx.max[u], bx.min[v], bx.max[v]];

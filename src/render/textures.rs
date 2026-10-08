@@ -86,6 +86,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (tex::VILLAGE..tex::VILLAGE + 45).contains(&layer) {
         return village_pixel(layer, x, y);
     }
+    if (1139..1151).contains(&layer) {
+        return special_rail_pixel(layer, x, y);
+    }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
         let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };
         let rgb = crate::color::DyeColor::ALL[color].rgb();
@@ -1344,6 +1347,31 @@ fn rock(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
             let edge = x.is_multiple_of(8) || y.is_multiple_of(4);
             shade([64, 64, 70], if edge { 0.7 } else { 0.95 + r * 0.08 })
         }
+    }
+}
+
+fn special_rail_pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    let i = layer - 1139;
+    let kind = i / 4;
+    let powered = (i / 2) % 2 == 1;
+    let east_west = i % 2 == 1;
+    let (across, along) = if east_west { (y, x) } else { (x, y) };
+    let rail = matches!(across, 4 | 5 | 10 | 11);
+    let sleeper = along % 4 <= 1 && (3..=12).contains(&across);
+    let circuit = (7..=8).contains(&across) && (kind != 1 || (3..=12).contains(&along));
+    if rail {
+        shade(
+            if kind == 0 { [224, 177, 59] } else { [169, 169, 178] },
+            if across == 4 || across == 10 { 1.0 } else { 0.75 },
+        )
+    } else if circuit {
+        shade(if powered { [235, 57, 34] } else { [98, 22, 16] }, 1.0)
+    } else if kind == 1 && (3..=12).contains(&along) && (6..=9).contains(&across) {
+        shade([155, 155, 162], 0.8)
+    } else if sleeper {
+        shade([112, 78, 46], 0.9)
+    } else {
+        [0, 0, 0, 0]
     }
 }
 

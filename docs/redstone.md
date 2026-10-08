@@ -174,3 +174,20 @@ Sources: [HopperBlockEntity](https://raw.githubusercontent.com/mahtomedi/minecra
 [DispenserBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DispenserBlock.java),
 [DropperBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DropperBlock.java),
 [DispenseItemBehavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/core/dispenser/DispenseItemBehavior.java).
+
+
+## Rails and minecarts (round 2)
+
+Normal rails retain ids 500–509. Powered, detector and activator rail states
+use 1471–1506; 1469 is untouched. Special rails cannot curve. Rail neighbour
+updates choose straight, corner and ascending connections, remove unsupported
+rails, and switch normal junction preference when powered. Both powered and
+activator rails propagate along their own rail kind for eight additional rails
+from a directly powered rail. Detector rails emit strength 15 while a cart
+intersects their search box and recheck after 20 ticks; comparators read chest
+and hopper cart fullness. Contents/occupancy changes notify comparators.
+All rails render as alpha-tested detail planes, raised 1/16 block, with actual
+one-block slopes and separate off/on textures. Vanilla rail and cart recipes
+and base-state drops are registered.
+
+Cart entities and container detector readings are added in the following implementation commit.

@@ -9,7 +9,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::World;
 use super::block::{Block, Facing, Shaped};
 use super::chunk::CHUNK_SIZE_I;
+use super::rails;
 use super::redstone_blocks::{self as r, Component};
+
+fn family(b: Block) -> Option<Block> {
+    r::base(b).or_else(|| rails::family(b))
+}
 
 const SIDES: [IVec3; 6] = [IVec3::Y, IVec3::NEG_Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
 /// A pathological oscillator cannot monopolize a game tick. Work carries over.
@@ -26,6 +31,8 @@ pub(super) struct RedstoneState {
     queued: FxHashSet<IVec3>,
     pending: FxHashMap<IVec3, (u64, u16, u64)>,
     scheduled: BinaryHeap<ScheduledTick>,
+    /// Detector-rail comparator output, filled by the minecart tick.
+    pub(super) cart_signal: FxHashMap<IVec3, u8>,
     toggles: FxHashMap<IVec3, VecDeque<u64>>,
     burnout: FxHashMap<IVec3, u64>,
     comparator: FxHashMap<IVec3, u8>,
@@ -42,7 +49,9 @@ fn conductor(b: Block) -> bool {
 
 impl World {
     fn queue_redstone(&mut self, p: IVec3) {
-        if self.get_block(p).is_some_and(|b| r::component(b).is_some() || b.is_door() || b.is_gate() || b == Block::TNT)
+        if self
+            .get_block(p)
+            .is_some_and(|b| r::component(b).is_some() || b.is_door() || b.is_gate() || b.is_rail() || b == Block::TNT)
             && self.redstone.queued.insert(p)
         {
             self.redstone.updates.push_back(p);
@@ -65,7 +74,7 @@ impl World {
         if old == new {
             return;
         }
-        if r::base(old) != r::base(new) {
+        if family(old) != family(new) {
             self.redstone.pending.remove(&p);
             self.redstone.comparator.remove(&p);
             self.redstone.burnout.remove(&p);
@@ -85,7 +94,7 @@ impl World {
         let data = slot.data.clone();
         let mut i = 0;
         data.for_each_block(|b| {
-            if r::component(b).is_some() || b.is_door() || b.is_gate() {
+            if r::component(b).is_some() || b.is_door() || b.is_gate() || b.is_rail() {
                 let local =
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
                 self.redstone_changed(c * CHUNK_SIZE_I + local);
@@ -98,7 +107,7 @@ impl World {
         if self.redstone.pending.contains_key(&p) {
             return;
         }
-        let Some(b) = self.get_block(p).and_then(r::base) else { return };
+        let Some(b) = self.get_block(p).and_then(family) else { return };
         self.redstone.sequence += 1;
         let sequence = self.redstone.sequence;
         let due = self.redstone.tick + delay;
@@ -110,6 +119,9 @@ impl World {
     /// Strong output energizes a conductor; weak output activates devices only.
     fn emitted_signal(&self, p: IVec3, direction: IVec3, strong: bool, wires: bool) -> u8 {
         let Some(b) = self.get_block(p) else { return 0 };
+        if rails::is_powered(b) && rails::kind(b) == Some(rails::RailKind::Detector) {
+            return if !strong || direction == IVec3::NEG_Y { 15 } else { 0 };
+        }
         match r::component(b) {
             Some(Component::Plate { power, .. }) => {
                 if !strong || direction == IVec3::NEG_Y {
@@ -267,7 +279,30 @@ impl World {
         }
     }
 
+    /// Refresh comparator readings, waking the circuit only when contents or occupancy change.
+    pub fn refresh_cart_signals(&mut self, signals: impl IntoIterator<Item = (IVec3, u8)>) {
+        let previous = std::mem::take(&mut self.redstone.cart_signal);
+        let mut next = FxHashMap::default();
+        for (p, signal) in signals {
+            next.entry(p).and_modify(|v: &mut u8| *v = (*v).max(signal)).or_insert(signal);
+        }
+        for (&p, &signal) in &next {
+            if previous.get(&p) != Some(&signal) {
+                self.redstone_changed(p);
+            }
+        }
+        for p in previous.keys() {
+            if !next.contains_key(p) {
+                self.redstone_changed(*p);
+            }
+        }
+        self.redstone.cart_signal = next;
+    }
+
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
+        if self.get_block(p).is_some_and(|b| rails::kind(b) == Some(rails::RailKind::Detector)) {
+            return Some(self.redstone.cart_signal.get(&p).copied().unwrap_or(0));
+        }
         fn strength(slots: impl Iterator<Item = Option<crate::inventory::Stack>>, count: usize) -> u8 {
             let mut fullness = 0.0f64;
             let mut nonempty = false;
@@ -292,6 +327,9 @@ impl World {
 
     fn redstone_update(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if b.is_rail() {
+            return self.rail_update(p, b);
+        }
         let support = match r::component(b) {
             Some(Component::Lever { mount, .. } | Component::Button { mount, .. } | Component::Torch { mount, .. }) => {
                 Some(r::support(mount))
@@ -402,6 +440,9 @@ impl World {
 
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if rails::family(b).is_some() {
+            return self.detector_tick(p, b);
+        }
         match r::component(b) {
             Some(
                 Component::Piston { .. }
@@ -506,7 +547,7 @@ impl World {
                 let next = self.redstone.tick + 1;
                 self.redstone.pending.insert(p, (next, family, sequence));
                 self.redstone.scheduled.push(Reverse((next, priority, sequence, xyz, family)));
-            } else if self.get_block(p).and_then(r::base) == Some(Block(family)) {
+            } else if self.get_block(p).and_then(self::family) == Some(Block(family)) {
                 self.redstone.last_updates += 1;
                 self.redstone_scheduled_tick(p);
                 self.drain_redstone_updates();

@@ -1074,6 +1074,7 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
     const SLIME: Ingredient = &[Item::SLIME_BALL];
     const BOW: Ingredient = &[Item::BOW];
     const CHEST: Ingredient = &[b(Block::CHEST)];
+    const PLATE: Ingredient = &[b(r::STONE_PLATE)];
     const CHARCOAL: Ingredient = &[Item::COAL, Item::CHARCOAL];
     const GUNPOWDER: Ingredient = &[Item::GUNPOWDER];
     const BLAZE: Ingredient = &[Item::BLAZE_POWDER];
@@ -1103,6 +1104,24 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
         shaped(&["ppp", "cic", "crc"], &[('p', PLANKS), ('c', COBBLESTONE), ('i', IRON), ('r', DUST)], b(r::PISTON), 1),
         shaped(&["s", "p"], &[('s', SLIME), ('p', PISTON)], b(r::STICKY_PISTON), 1),
         shaped(&["ccc", "rrq", "ccc"], &[('c', COBBLESTONE), ('r', DUST), ('q', QUARTZ)], b(r::OBSERVER), 1),
+        shaped(
+            &["G G", "GSG", "GRG"],
+            &[('G', GOLD), ('S', STICK), ('R', DUST)],
+            b(crate::world::rails::POWERED_RAIL),
+            6,
+        ),
+        shaped(
+            &["I I", "IPI", "IRI"],
+            &[('I', IRON), ('P', PLATE), ('R', DUST)],
+            b(crate::world::rails::DETECTOR_RAIL),
+            6,
+        ),
+        shaped(
+            &["ISI", "ITI", "ISI"],
+            &[('I', IRON), ('S', STICK), ('T', TORCH)],
+            b(crate::world::rails::ACTIVATOR_RAIL),
+            6,
+        ),
     ]);
 }
 
