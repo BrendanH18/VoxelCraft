@@ -762,7 +762,7 @@ impl Game {
             (Container::Anvil(_), _) => "Anvil",
             (Container::Grindstone(_), _) => "Repair & Disenchant",
             (Container::Smithing(_), _) => "Upgrade Gear",
-            (Container::Trading(_), _) => "Trading",
+            (Container::Trading(_), _) => "",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
             (Container::Inventory, GameMode::Adventure) => "Adventure Inventory",

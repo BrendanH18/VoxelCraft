@@ -47,8 +47,13 @@ impl Game {
     }
     pub(super) fn trading_ui(&self, ui: &mut Ui, id: u64, px: f32, py: f32) {
         let Some(v) = self.mobs.entities.merchant(id).and_then(|m| m.villager.as_ref()) else { return };
-        ui.text_flat(px + 65.0, py + 5.0, v.profession.name(), [0.2, 0.2, 0.2, 1.0]);
-        ui.text_flat(px + 8.0, py + 14.0, v.level_name(), [0.2, 0.2, 0.2, 1.0]);
+        // Java titles the screen "<Profession> - <Level>".
+        let ink = [0.25, 0.25, 0.25, 1.0];
+        let mut x = px + 8.0;
+        for part in [v.profession.name(), " - ", v.level_name()] {
+            ui.text_flat(x, py + 6.0, part, ink);
+            x += Ui::text_width(part);
+        }
         for (i, o) in v.offers.iter().enumerate() {
             let Some(o) = o else { continue };
             let x = px + 8.0 + (i % 2) as f32 * 80.0;
