@@ -717,10 +717,29 @@ impl super::Entities {
                     }
                 }
             }
-            if let Some((cell, block)) = rail_cell(world, self.minecarts[i].pos)
-                && rails::kind(block) == Some(RailKind::Detector)
-            {
-                signals.push((cell, self.minecarts[i].comparator_signal()));
+            let cart = &self.minecarts[i];
+            if cart.slot_count() > 0 {
+                // Detector comparators use the same entity search box as the
+                // rail's occupancy test, even when a cart straddles two cells.
+                let (min, max) = cart.aabb();
+                let lo = min.floor().as_ivec3();
+                let hi = max.floor().as_ivec3();
+                for y in lo.y..=hi.y {
+                    for z in lo.z..=hi.z {
+                        for x in lo.x..=hi.x {
+                            let p = IVec3::new(x, y, z);
+                            if world.get_block(p).and_then(rails::kind) != Some(RailKind::Detector) {
+                                continue;
+                            }
+                            let origin = p.as_dvec3();
+                            if min.cmplt(origin + rails::DETECTOR_BOX.1).all()
+                                && max.cmpgt(origin + rails::DETECTOR_BOX.0).all()
+                            {
+                                signals.push((p, cart.comparator_signal()));
+                            }
+                        }
+                    }
+                }
             }
             let seat = self.minecarts[i].seat();
             for mob in &mut self.mobs {
@@ -1029,6 +1048,39 @@ mod tests {
         e.explode(eye + DVec3::Z * 4.0, 4.0);
         assert!(e.cart(id).unwrap().fuse.is_some());
     }
+    #[test]
+    fn detector_comparators_find_straddling_containers_and_use_the_first_cart() {
+        let mut w = world();
+        let p = IVec3::new(8, 140, 8);
+        for q in [p, p + IVec3::X] {
+            w.set_block(q - IVec3::Y, Block::STONE);
+            w.set_block(q, rails::special(RailKind::Detector, RailShape::EastWest, false));
+        }
+        w.tick_redstone();
+        let mut e = super::super::Entities::new(1);
+        let pos = p.as_dvec3() + DVec3::new(0.99, 0.0625, 0.5);
+        e.minecarts.push(Minecart::new(1, CartKind::Rideable, pos));
+        let mut first = Minecart::new(2, CartKind::Chest, pos);
+        first.slots[0] = Some(Stack::new(Item::DIAMOND, 1));
+        e.minecarts.push(first);
+        let mut full = Minecart::new(3, CartKind::Chest, pos);
+        full.slots.fill(Some(Stack::new(Item::DIAMOND, 64)));
+        e.minecarts.push(full);
+        e.tick_minecarts(&mut w, &[]);
+        w.redstone_contacts([], &e);
+        w.tick_redstone();
+        assert_eq!(w.container_signal(p), Some(1));
+        assert_eq!(w.container_signal(p + IVec3::X), Some(1));
+        // A cart above the detector's 0.8-high search box is not a contact.
+        e.minecarts.truncate(1);
+        e.minecarts[0].pos.y = p.y as f64 + 0.81;
+        w.redstone_contacts([], &e);
+        for _ in 0..21 {
+            w.tick_redstone();
+        }
+        assert_eq!(w.container_signal(p), Some(0));
+    }
+
     #[test]
     fn hopper_activation_latches_until_an_unpowered_activator_and_unloaded_fuses_pause() {
         let mut w = world();

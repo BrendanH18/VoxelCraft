@@ -167,7 +167,7 @@ impl World {
                             )
                         }
                         _ if cart && super::rails::kind(b) == Some(super::rails::RailKind::Detector) => {
-                            Some((DVec3::new(0.125, 0.0, 0.125), DVec3::new(0.875, 0.625, 0.875)))
+                            Some(super::rails::DETECTOR_BOX)
                         }
                         _ if super::gadgets::is_tripwire(b) => {
                             let attached = super::gadgets::wire_state(b).is_some_and(|(_, attached, _)| attached);

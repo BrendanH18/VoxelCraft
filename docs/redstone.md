@@ -184,7 +184,9 @@ rails, and switch normal junction preference when powered. Both powered and
 activator rails propagate along their own rail kind for eight additional rails
 from a directly powered rail. Detector rails emit strength 15 while a cart
 intersects their search box and recheck after 20 ticks; comparators read chest
-and hopper cart fullness. Contents/occupancy changes notify comparators.
+and hopper cart fullness. Contents/occupancy changes notify comparators. The first overlapping container
+cart supplies the comparator signal, including a cart straddling two detectors;
+rideable/TNT carts do not mask container carts.
 All rails render as alpha-tested detail planes, raised 1/16 block, with actual
 one-block slopes and separate off/on textures. Vanilla rail and cart recipes
 and base-state drops are registered.
@@ -226,6 +228,7 @@ No experimental minecart-improvements behaviour is enabled.
 Research used the Java implementations
 [RailState](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/RailState.java),
 [PoweredRailBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/PoweredRailBlock.java),
+[DetectorRailBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DetectorRailBlock.java),
 [AbstractMinecart](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecart.java),
 [AbstractMinecartContainer](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java),
 [MinecartHopper](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/MinecartHopper.java)

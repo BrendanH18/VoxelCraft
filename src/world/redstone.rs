@@ -296,7 +296,7 @@ impl World {
         let previous = std::mem::take(&mut self.redstone.cart_signal);
         let mut next = FxHashMap::default();
         for (p, signal) in signals {
-            next.entry(p).and_modify(|v: &mut u8| *v = (*v).max(signal)).or_insert(signal);
+            next.entry(p).or_insert(signal);
         }
         for (&p, &signal) in &next {
             if previous.get(&p) != Some(&signal) {
@@ -312,8 +312,14 @@ impl World {
     }
 
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
-        if self.get_block(p).is_some_and(|b| rails::kind(b) == Some(rails::RailKind::Detector)) {
-            return Some(self.redstone.cart_signal.get(&p).copied().unwrap_or(0));
+        if let Some(b) = self.get_block(p)
+            && rails::kind(b) == Some(rails::RailKind::Detector)
+        {
+            return Some(if rails::is_powered(b) {
+                self.redstone.cart_signal.get(&p).copied().unwrap_or(0)
+            } else {
+                0
+            });
         }
         fn strength(slots: impl Iterator<Item = Option<crate::inventory::Stack>>, count: usize) -> u8 {
             let mut fullness = 0.0f64;

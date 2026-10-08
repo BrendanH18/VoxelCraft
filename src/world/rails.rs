@@ -12,6 +12,8 @@ use super::block::{Block, RailShape, RenderKind};
 pub const POWERED_RAIL: Block = Block(1471);
 pub const DETECTOR_RAIL: Block = Block(1483);
 pub const ACTIVATOR_RAIL: Block = Block(1495);
+/// Java detector entity search, shared by occupancy and comparator queries.
+pub const DETECTOR_BOX: (glam::DVec3, glam::DVec3) = (glam::DVec3::new(0.2, 0.0, 0.2), glam::DVec3::new(0.8, 0.8, 0.8));
 const FIRST: u16 = 1471;
 const LAST: u16 = 1506;
 /// First of twelve rail texture layers: kind * 4 + powered * 2 + east_west.
