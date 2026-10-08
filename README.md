@@ -59,8 +59,8 @@ a stronghold, and watch the credits roll after the Ender Dragon falls.
       <img src="docs/images/night-mobs.jpg" alt="Zombies and pigs in a voxel landscape at night"><br>
       <h3>🌙 Company after dark</h3>
       Herds of animals wander by day. At night come zombies, skeletons,
-      creepers, spiders and Endermen, and the Nether adds blazes, ghasts
-      and more.
+      creepers, spiders and Endermen. The Nether adds blazes, ghasts,
+      piglins to barter with, hoglins and lava-walking striders.
     </td>
   </tr>
   <tr>
