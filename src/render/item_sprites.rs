@@ -410,6 +410,31 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 (k == 0 && s.abs() <= 11).then_some(tint([225, 225, 225], 0.95))
             }
         }
+        Sprite::Crossbow { loaded } => {
+            // A stock along the diagonal with a bowed limb across its top end.
+            // `s` runs along the stock toward the top right, `k` across it.
+            let (s, k) = ((x - y) as f32, (x + y - 15) as f32);
+            let limb = |x: i32, y: i32| {
+                let (s, k) = ((x - y) as f32, (x + y - 15) as f32);
+                k.abs() <= 7.0 && (s - (4.0 + 0.07 * k * k)).abs() <= 0.8
+            };
+            let stock = |x: i32, y: i32| (x + y - 15).abs() <= 1 && (x - y).abs() <= 9;
+            let string = if loaded {
+                k.abs() <= 6.0 && (s - (-3.0 + 1.17 * k.abs())).abs() <= 0.6
+            } else {
+                k.abs() <= 6.0 && (s - 3.0).abs() <= 0.5
+            };
+            let bolt = loaded && k == 0.0 && (-3.0..=9.0).contains(&s);
+            if bolt {
+                Some(if s >= 7.0 { tint([190, 190, 196], 1.0) } else { tint([150, 112, 60], 1.05) })
+            } else if limb(x, y) {
+                shaded(&limb, x, y, [96, 96, 104], 0.05)
+            } else if string {
+                Some(tint([225, 225, 225], 0.95))
+            } else {
+                shaded(&stock, x, y, HANDLE, 0.05)
+            }
+        }
         Sprite::FlintAndSteel => {
             // A curled steel striker (top right) and a flint chip (bottom left).
             let ring = |x: i32, y: i32| {
