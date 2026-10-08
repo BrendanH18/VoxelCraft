@@ -190,4 +190,46 @@ All rails render as alpha-tested detail planes, raised 1/16 block, with actual
 one-block slopes and separate off/on textures. Vanilla rail and cart recipes
 and base-state drops are registered.
 
-Cart entities and container detector readings are added in the following implementation commit.
+Minecart items 761–764 place only on rails. Cart motion runs at 20 Hz with
+Java's 0.4-block/tick movement cap, track projection, curve direction changes,
+slope gravity, occupied/empty/container friction, powered acceleration and
+unpowered braking. Walking players and mobs push carts; nearby moving empty
+rideable carts collect mobs; carts exchange momentum on contact. Right-click
+enters a rideable cart, the camera follows its seat, and sneak dismounts to a
+nearby collision-free position. Survival punches break carts into their variant
+item and spill contents; creative removes the cart without dropping its item.
+
+Chest carts expose 27 slots and hopper carts five slots through the existing
+container screen, including normal click and quick-move operations. Hoppers
+feeding or draining carts respect their eight-tick block-hopper cooldown.
+Hopper carts pull from above or collect nearby dropped stacks each tick; a
+powered activator disables collection until an unpowered activator rail is encountered.
+As in Java, a hopper below drains the cart; the cart does not push into an
+arbitrary chest below. TNT carts get an 80-tick activator fuse, a shortened fire
+fuse, and detonate on a three-block fall or fast horizontal impact. Blasts use
+the existing explosion event path with speed-dependent power.
+
+A per-dimension `minecarts` property saves ids, variant, full-precision position
+and velocity, yaw, contents with stack components, hopper enabled state, TNT
+fuse and player rider. Loading older worlds without it works. `--cart
+x,y,z,rideable|chest|hopper|tnt` places a test cart after `--place` edits, for
+visual verification.
+
+Known gaps: waterlogged rails/water cart slowdown, exact Java cart collision
+alignment and safe dismount floor selection, saved mob passengers, rolling
+cart audio, textured cargo models and TNT's special rail/support blast
+protection are not implemented. Split-screen controller riding and cart
+container menus have not been completed. Burning projectiles do not yet hit
+carts. Fire uses a deterministic short fuse rather than Java's random sum.
+The existing explosion system determines visibility and block destruction.
+No experimental minecart-improvements behaviour is enabled.
+
+Research used the Java implementations
+[RailState](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/RailState.java),
+[PoweredRailBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/PoweredRailBlock.java),
+[AbstractMinecart](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecart.java),
+[AbstractMinecartContainer](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java),
+[MinecartHopper](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/MinecartHopper.java)
+and [MinecartTNT](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/MinecartTNT.java).
+This mirror is not pinned to Java 1.21; stable legacy rules were used and the
+gaps above prevent a claim of complete Java parity.

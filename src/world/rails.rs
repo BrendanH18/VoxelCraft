@@ -336,7 +336,7 @@ impl World {
     }
 
     fn rail_unsupported(&self, p: IVec3, shape: RailShape) -> bool {
-        let solid = |q: IVec3| self.get_block(q).is_none_or(|b| b.is_opaque());
+        let solid = |q: IVec3| self.get_block(q).is_none_or(Block::supports_fire);
         if !solid(p - IVec3::Y) {
             return true;
         }

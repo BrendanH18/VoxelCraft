@@ -78,6 +78,17 @@ impl Game {
     pub(super) fn attack(&mut self) -> bool {
         let eye = self.player.eye();
         let dir = self.player.forward().as_dvec3();
+        let cart_reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
+        if self.mobs.entities.cart_ray(eye, dir, cart_reach).is_some() {
+            self.mobs.attack_held = true;
+            if self.mobs.attack_cooldown <= 0.0 {
+                self.mobs.entities.hurt_cart(eye, dir, cart_reach, self.mode.is_creative());
+                self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
+                self.audio.play(Sound::Hit, Some(eye + dir * 2.0), 0.7, (0.8, 1.0));
+                self.wear_held(true);
+            }
+            return true;
+        }
         if self.mobs.entities.large_fireball(eye, dir, REACH).is_some() {
             self.mobs.attack_held = true;
             if self.mobs.attack_cooldown <= 0.0 {

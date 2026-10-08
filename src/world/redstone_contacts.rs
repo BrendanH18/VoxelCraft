@@ -100,6 +100,9 @@ impl World {
                 false,
             );
         }
+        for cart in &entities.minecarts {
+            self.redstone_contact_box(cart.aabb(), false, false, true);
+        }
         // Iterate by temporarily taking the retained map; no per-tick allocation.
         let contacts = std::mem::take(&mut self.redstone.contacts);
         for (&p, c) in &contacts {

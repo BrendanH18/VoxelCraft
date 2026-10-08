@@ -507,6 +507,8 @@ pub struct Mob {
     hop_left: f32,
     hop_delay: f32,
     pub(super) difficulty: crate::simulation::difficulty::Difficulty,
+    /// Cart this mob is sitting in.
+    pub riding: Option<u32>,
     /// Feet position (bottom centre of the box).
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
@@ -600,6 +602,7 @@ impl Mob {
             hop_left: 0.0,
             hop_delay: 1.0,
             difficulty: Default::default(),
+            riding: None,
             pos,
             previous_pos: pos,
             vel: DVec3::ZERO,
@@ -798,8 +801,13 @@ impl Mob {
 
         let steps = (dt / MAX_STEP).ceil().max(1.0) as u32;
         let h = dt / steps as f64;
-        for _ in 0..steps {
-            self.physics_step(h, world, wish, speed);
+        if self.riding.is_some() {
+            self.vel = DVec3::ZERO;
+            self.on_ground = true;
+        } else {
+            for _ in 0..steps {
+                self.physics_step(h, world, wish, speed);
+            }
         }
 
         // Walk cycle follows ground speed.

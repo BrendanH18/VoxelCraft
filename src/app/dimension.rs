@@ -24,8 +24,19 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 10] =
-    ["furnaces", "chests", "items", "orbs", "spawners", "brewing", "dragon", "villagers", "redstone", "automation"];
+pub(super) const DIMENSION_KEYS: [&str; 11] = [
+    "furnaces",
+    "chests",
+    "items",
+    "orbs",
+    "spawners",
+    "brewing",
+    "dragon",
+    "villagers",
+    "redstone",
+    "automation",
+    "minecarts",
+];
 /// Seconds of standing in a portal before it takes you (creative: almost
 /// at once).
 const PORTAL_TIME: f32 = 4.0;
@@ -112,6 +123,7 @@ impl Game {
         props.insert("spawners".to_string(), self.world.spawners_to_string());
         props.insert("items".to_string(), self.mobs.entities.items_to_string());
         props.insert("orbs".to_string(), self.mobs.entities.orbs_to_string());
+        props.insert("minecarts".to_string(), self.mobs.entities.minecarts_to_string());
         props.insert("villagers".into(), self.mobs.entities.villagers_to_string());
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize());
@@ -121,6 +133,10 @@ impl Game {
 
     /// Sets up a freshly loaded dimension's containers and items.
     pub(super) fn restore_dimension(&mut self, props: &BTreeMap<String, String>) {
+        self.player.vehicle = None;
+        for bot in self.agents.players.values_mut() {
+            bot.agent.player.vehicle = None;
+        }
         if let Some(r) = props.get("redstone") {
             self.world.load_redstone(r);
         }
@@ -144,6 +160,20 @@ impl Game {
         }
         if let Some(orbs) = props.get("orbs") {
             self.mobs.entities.load_orbs(orbs);
+        }
+        if let Some(carts) = props.get("minecarts") {
+            self.mobs.entities.load_minecarts(carts);
+            if let Some(id) = self.mobs.entities.claim_rider(crate::entity::PlayerId::HOST) {
+                self.player.vehicle = Some(id);
+            }
+            let ids: Vec<_> = self.agents.players.values().map(|b| b.agent.id).collect();
+            for id in ids {
+                if let Some(cart) = self.mobs.entities.claim_rider(id)
+                    && let Some(bot) = self.agents.players.values_mut().find(|b| b.agent.id == id)
+                {
+                    bot.agent.player.vehicle = Some(cart);
+                }
+            }
         }
         if let Some(v) = props.get("villagers") {
             self.mobs.entities.load_villagers(v);

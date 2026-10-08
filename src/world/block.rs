@@ -1652,7 +1652,7 @@ impl Block {
                 matches!(below, Block::SUGAR_CANE | Block::GRASS | Block::DIRT | Block::SAND | Block::RED_SAND)
             }
             Block::TORCH => below.is_opaque(),
-            b if b.is_rail() => below.is_opaque(),
+            b if b.is_rail() => below.supports_fire(),
             b if b.is_door() => {
                 if b.is_door_upper() {
                     below.is_door() && !below.is_door_upper()

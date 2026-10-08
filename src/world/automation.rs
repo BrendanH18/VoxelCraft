@@ -706,7 +706,106 @@ impl World {
         entities.items.retain(|e| e.stack.count > 0);
         pickups.clear();
         self.automation.pickups = pickups;
+        self.exchange_minecarts(entities);
     }
+
+    fn exchange_minecarts(&mut self, entities: &mut crate::entity::Entities) {
+        use crate::entity::minecart::{CartKind, insert_slots, take_one};
+        let n = entities.minecarts.len();
+        for i in 0..n {
+            let cell = entities.minecarts[i].pos.floor().as_ivec3();
+            let kind = entities.minecarts[i].kind;
+            let slots = entities.minecarts[i].slot_count();
+            if !matches!(kind, CartKind::Chest | CartKind::Hopper) {
+                continue;
+            }
+            let below = cell - IVec3::Y;
+            if matches!(self.get_block(below).and_then(r::component), Some(Component::Hopper { disabled: false, .. }))
+                && self.automation.cooldown.get(&below).is_none_or(|&due| due <= self.redstone.tick)
+                && let Some(stack) = take_one(&mut entities.minecarts[i].slots[..slots])
+            {
+                if let Some(left) = self.insert_container(below, stack, IVec3::Y) {
+                    let _ = insert_slots(&mut entities.minecarts[i].slots[..slots], left);
+                } else {
+                    self.automation.cooldown.insert(below, self.redstone.tick + 8);
+                }
+            }
+            for (neighbor, side) in [
+                (cell + IVec3::Y, IVec3::NEG_Y),
+                (cell + IVec3::X, IVec3::NEG_X),
+                (cell - IVec3::X, IVec3::X),
+                (cell + IVec3::Z, IVec3::NEG_Z),
+                (cell - IVec3::Z, IVec3::Z),
+            ] {
+                let Some(Component::Hopper { facing, disabled: false }) =
+                    self.get_block(neighbor).and_then(r::component)
+                else {
+                    continue;
+                };
+                if r::hopper_direction(facing) != side
+                    || self.automation.cooldown.get(&neighbor).is_some_and(|&due| due > self.redstone.tick)
+                {
+                    continue;
+                }
+                if self.transfer_into_cart(neighbor, &mut entities.minecarts[i].slots[..slots], side) {
+                    self.automation.cooldown.insert(neighbor, self.redstone.tick + 8);
+                }
+            }
+            if kind == CartKind::Hopper && !entities.minecarts[i].disabled && entities.minecarts[i].cooldown == 0 {
+                let above = cell + IVec3::Y;
+                if self.container_count(above) > 0
+                    && self.pull_into_cart(above, &mut entities.minecarts[i].slots[..slots])
+                {
+                    entities.minecarts[i].cooldown = 0;
+                } else if let Some(item) = item_above_cart(cell, entities) {
+                    let stack = entities.items[item].stack;
+                    let left = insert_slots(&mut entities.minecarts[i].slots[..slots], stack);
+                    entities.items[item].stack.count = left.map_or(0, |s| s.count);
+                }
+            }
+        }
+        entities.items.retain(|e| e.stack.count > 0);
+    }
+
+    fn transfer_into_cart(&mut self, hopper: IVec3, slots: &mut [Option<Stack>], side: IVec3) -> bool {
+        use crate::entity::minecart::insert_slots;
+        let count = self.container_count(hopper);
+        for slot in 0..count {
+            let Some(stack) = self.container_stack(hopper, slot) else { continue };
+            if !self.can_extract(hopper, slot, side) {
+                continue;
+            }
+            let one = Stack { count: 1, ..stack };
+            if insert_slots(slots, one).is_some() {
+                continue;
+            }
+            self.set_container_stack(
+                hopper,
+                slot,
+                (stack.count > 1).then_some(Stack { count: stack.count - 1, ..stack }),
+            );
+            return true;
+        }
+        false
+    }
+
+    fn pull_into_cart(&mut self, from: IVec3, slots: &mut [Option<Stack>]) -> bool {
+        self.transfer_into_cart(from, slots, IVec3::NEG_Y)
+    }
+}
+
+fn item_above_cart(cell: IVec3, entities: &crate::entity::Entities) -> Option<usize> {
+    let min = cell.as_dvec3();
+    let max = min + DVec3::ONE;
+    entities.items.iter().position(|entity| {
+        entity.stack.count > 0
+            && entity.pos.x + 0.125 >= min.x
+            && entity.pos.x - 0.125 <= max.x
+            && entity.pos.z + 0.125 >= min.z
+            && entity.pos.z - 0.125 <= max.z
+            && entity.pos.y >= min.y
+            && entity.pos.y <= max.y + 0.5
+    })
 }
 
 #[cfg(test)]
@@ -964,5 +1063,37 @@ mod tests {
         assert_eq!(w.get_block(P), Some(Block::AIR));
         assert_eq!(w.drops.len(), 1);
         assert_eq!(w.drops[0].1.item, Item::from_block(r::PISTON));
+    }
+    #[test]
+    fn hopper_cart_collects_stacks_and_container_hoppers_obey_cooldown() {
+        use crate::entity::minecart::CartKind;
+        let mut w = world();
+        put(&mut w, P, crate::world::rails::DETECTOR_RAIL);
+        put(&mut w, P - IVec3::Y, r::hopper(4, false));
+        put(&mut w, P + IVec3::Y, Block::CHEST);
+        w.chest_mut(P + IVec3::Y).unwrap().slots[0] = Some(Stack::new(Item::DIAMOND, 3));
+        let mut e = crate::entity::Entities::new(3);
+        let id = e.spawn_cart(CartKind::Hopper, P.as_dvec3() + DVec3::new(0.5, 0.0625, 0.5));
+        w.tick_automation_entities(&mut e);
+        assert_eq!(e.cart(id).unwrap().slots[0], Some(Stack::new(Item::DIAMOND, 1)));
+        w.tick_automation_entities(&mut e);
+        assert_eq!(w.chest(P - IVec3::Y).unwrap().slots[0], Some(Stack::new(Item::DIAMOND, 1)));
+        e.cart_mut(id).unwrap().disabled = true;
+        w.tick_automation_entities(&mut e);
+        assert_eq!(e.cart(id).unwrap().slots[0], Some(Stack::new(Item::DIAMOND, 1)));
+        assert_eq!(w.chest(P + IVec3::Y).unwrap().slots[0], Some(Stack::new(Item::DIAMOND, 1)));
+        put(&mut w, P + IVec3::Y, Block::AIR);
+        let stack = Stack::new(Item::IRON_INGOT, 64);
+        e.items.push(crate::entity::ItemEntity::new(
+            stack,
+            P.as_dvec3() + DVec3::new(0.5, 0.7, 0.5),
+            DVec3::ZERO,
+            99.0,
+            &mut crate::entity::Rng::new(7),
+        ));
+        e.cart_mut(id).unwrap().disabled = false;
+        w.tick_automation_entities(&mut e);
+        assert!(e.items.is_empty());
+        assert!(e.cart(id).unwrap().slots.contains(&Some(stack)));
     }
 }

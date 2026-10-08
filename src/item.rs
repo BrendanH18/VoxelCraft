@@ -214,6 +214,8 @@ pub enum Sprite {
     Drumstick([u8; 3]),
     Bone,
     String,
+    /// A minecart, tinted for chest, hopper and TNT carts.
+    Minecart([u8; 3]),
     Feather,
     Powder([u8; 3]),
     Leather,
@@ -544,6 +546,10 @@ impl Item {
     pub const MAGMA_CREAM: Item = Item(608);
     pub const IRON_NUGGET: Item = Item(609);
     pub const FIRE_CHARGE: Item = Item(760);
+    pub const MINECART: Item = Item(761);
+    pub const CHEST_MINECART: Item = Item(762);
+    pub const HOPPER_MINECART: Item = Item(763);
+    pub const TNT_MINECART: Item = Item(764);
     pub const SLIME_BALL: Item = Item(610);
     pub const BUCKET: Item = Item(291);
     pub const WATER_BUCKET: Item = Item(292);
@@ -671,6 +677,38 @@ impl Item {
     pub fn info(self) -> ItemInfo {
         match self {
             Self::FIRE_CHARGE => return item("fire charge", Sprite::Lump([241, 126, 27])),
+            Self::MINECART => {
+                return ItemInfo {
+                    name: "minecart",
+                    kind: ItemKind::Material,
+                    max_stack: 1,
+                    sprite: Sprite::Minecart([196, 196, 196]),
+                };
+            }
+            Self::CHEST_MINECART => {
+                return ItemInfo {
+                    name: "minecart with chest",
+                    kind: ItemKind::Material,
+                    max_stack: 1,
+                    sprite: Sprite::Minecart([150, 110, 64]),
+                };
+            }
+            Self::HOPPER_MINECART => {
+                return ItemInfo {
+                    name: "minecart with hopper",
+                    kind: ItemKind::Material,
+                    max_stack: 1,
+                    sprite: Sprite::Minecart([110, 110, 110]),
+                };
+            }
+            Self::TNT_MINECART => {
+                return ItemInfo {
+                    name: "minecart with tnt",
+                    kind: ItemKind::Material,
+                    max_stack: 1,
+                    sprite: Sprite::Minecart([180, 48, 40]),
+                };
+            }
             Self::MAGMA_CREAM => return item("magma cream", Sprite::Lump([242, 115, 30])),
             Self::IRON_NUGGET => return item("iron nugget", Sprite::Nugget([202, 206, 212])),
             Self::SLIME_BALL => return item("slimeball", Sprite::Lump([104, 180, 83])),
@@ -879,7 +917,7 @@ impl Item {
             .chain((608..611).map(Item))
             .chain((0..MOB_ITEMS.len() as u16).map(|i| Item(MOB_ITEM + i)))
             .chain((0..POTION_COUNT).map(|i| Item(SPLASH_POTION + i)))
-            .chain([Self::FIRE_CHARGE])
+            .chain([Self::FIRE_CHARGE, Self::MINECART, Self::CHEST_MINECART, Self::HOPPER_MINECART, Self::TNT_MINECART])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -955,7 +993,7 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + i
                 - SPLASH_POTION,
         ),
-        760 => Some(icon_count() as u16 - 1),
+        760..=764 => Some(icon_count() as u16 - 5 + (item.0 - 760)),
         _ => None,
     }
 }
@@ -969,7 +1007,7 @@ pub const fn icon_count() -> u32 {
         + 34
         + MOB_ITEMS.len() as u32
         + POTION_COUNT as u32
-        + 1
+        + 5
 }
 
 /// Compass needle frames, after the item icons. Frame 0 points up.

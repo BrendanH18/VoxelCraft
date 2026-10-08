@@ -965,6 +965,35 @@ impl Agent {
                 self.swings += 1;
             }
             Command::Place => {
+                let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
+                if !self.mode.can_interact() {
+                    return Err("this game mode cannot interact".into());
+                }
+                if self.player.vehicle.is_some() {
+                    return Ok(());
+                }
+                let reach = crate::entity::minecart::interaction_reach(world, eye, dir, 5.0);
+                if let Some(id) = entities.mount_cart(eye, dir, reach, self.id) {
+                    self.player.vehicle = Some(id);
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    return Ok(());
+                }
+                if let Some(held) = self.inventory.get(self.selected)
+                    && let Some(kind) = crate::entity::minecart::CartKind::from_item(held.item)
+                    && let Some((pos, normal)) = self.target(world)
+                {
+                    let cell = if world.get_block(pos).is_some_and(|b| b.is_rail()) { pos } else { pos + normal };
+                    if entities.place_cart(&*world, kind, cell).is_none() {
+                        return Ok(());
+                    }
+                    if !self.creative {
+                        self.inventory.take_one(self.selected);
+                    }
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    return Ok(());
+                }
                 if !self.mode.can_build() {
                     return Err("this game mode cannot place blocks".into());
                 }
@@ -1049,6 +1078,12 @@ impl Agent {
                 let stack = self.inventory.get(self.selected);
                 let held = stack.map(|s| s.item);
                 let bonus = self.vitals.effects.attack_bonus();
+                let cart_reach = crate::entity::minecart::interaction_reach(world, eye, dir, distance);
+                if entities.hurt_cart(eye, dir, cart_reach, self.creative) {
+                    self.cooldown = mining::attack_cooldown(held);
+                    self.swings += 1;
+                    return Ok(());
+                }
                 if entities.large_fireball(eye, dir, distance).is_some() {
                     entities.punch_fireball(eye, dir, distance);
                 } else if let Some((hit, t)) = entities.fight_raycast(eye, dir, distance) {
@@ -1309,11 +1344,26 @@ impl Agent {
         let mut input = self.movement_input();
         input.sprint &= self.creative || self.mode.invulnerable() || self.vitals.hunger.can_sprint();
         let before = self.player.pos;
-        self.player.apply_effects(&self.vitals.effects);
-        self.player
-            .wear_boots(crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::DepthStrider));
-        self.player.update(TICK_SECONDS, input, world);
-        crate::particles::water_entry(&self.player, before, world);
+        if self.player.vehicle.is_some()
+            && input.descend
+            && let Some(pos) = entities.dismount(world, self.id)
+        {
+            self.player.pos = pos;
+            self.player.vehicle = None;
+            self.player.vel = DVec3::ZERO;
+        }
+        if self.player.vehicle.is_none() {
+            self.player.apply_effects(&self.vitals.effects);
+            self.player.wear_boots(crate::enchant::armor_level(
+                &self.inventory.armor,
+                crate::enchant::Enchantment::DepthStrider,
+            ));
+            self.player.update(TICK_SECONDS, input, world);
+            crate::particles::water_entry(&self.player, before, world);
+        } else {
+            self.player.vel = DVec3::ZERO;
+            self.player.on_ground = true;
+        }
         let moved = (self.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
             respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),

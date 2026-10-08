@@ -203,6 +203,15 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
         Sprite::Stick => handle(x, y, 2, 13),
         Sprite::Tool(kind, tier) => tool(kind, tier, x, y),
         Sprite::Armor(piece, material) => armor(piece, material, x, y),
+        Sprite::Minecart(c) => {
+            let body = |x: i32, y: i32| (2..=13).contains(&x) && (6..=11).contains(&y);
+            let wheel = |x: i32, y: i32| {
+                let a = (x - 5).pow(2) + (y - 13).pow(2);
+                let b = (x - 10).pow(2) + (y - 13).pow(2);
+                a <= 4 || b <= 4
+            };
+            shaded(&body, x, y, c, 0.04).or_else(|| shaded(&wheel, x, y, [40, 40, 44], 0.02))
+        }
         Sprite::Lump(c) => {
             let lump = |x: i32, y: i32| {
                 let (px, py) = centre(x, y);
