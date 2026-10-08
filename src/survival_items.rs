@@ -14,6 +14,7 @@ pub fn use_mob(
     creative: bool,
     world: &World,
     entities: &mut Entities,
+    owner: PlayerId,
 ) -> bool {
     let Some(held) = inventory.get(slot) else { return false };
     let eye = player.eye();
@@ -42,7 +43,7 @@ pub fn use_mob(
         }
         return true;
     }
-    if held.item == Item::GOLDEN_APPLE && entities.try_cure(index) {
+    if held.item == Item::GOLDEN_APPLE && entities.try_cure_for(index, owner) {
         if !creative {
             inventory.take_one(slot);
         }

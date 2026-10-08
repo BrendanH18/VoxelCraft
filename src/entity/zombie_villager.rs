@@ -34,12 +34,16 @@ impl Entities {
 
     /// A golden apple starts the 3–5 minute cure while Weakness is still active.
     pub fn try_cure(&mut self, index: usize) -> bool {
+        self.try_cure_for(index, super::PlayerId::HOST)
+    }
+    pub fn try_cure_for(&mut self, index: usize, owner: super::PlayerId) -> bool {
         let Some(mob) = self.mobs.get_mut(index) else { return false };
-        if mob.kind != MobKind::ZombieVillager || mob.weakness_left <= 0.0 || mob.convert_left > 0.0 {
+        if !mob.alive() || mob.kind != MobKind::ZombieVillager || mob.weakness_left <= 0.0 || mob.convert_left > 0.0 {
             return false;
         }
         mob.convert_left = (3600 + self.rng.next_int(2401)) as f32 / 20.0;
         mob.weakness_left = 0.0;
+        mob.convert_by = Some(owner);
         true
     }
 

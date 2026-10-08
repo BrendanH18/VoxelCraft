@@ -116,7 +116,7 @@ impl Game {
             let held = self.inventory.get(self.actions.selected);
             let bonus = self.vitals.effects.attack_bonus();
             let dir = self.player.forward().as_dvec3();
-            self.mobs.entities.melee(i, dir, held, bonus, critical, sweep);
+            self.mobs.entities.melee_for(i, dir, held, bonus, critical, sweep, self.actor);
             let at = self.mobs.entities.mobs[i].pos + DVec3::Y * 0.5;
             let pitch = if critical { (1.25, 1.4) } else { (0.9, 1.1) };
             self.audio.play(Sound::Hit, Some(at), 0.8, pitch);

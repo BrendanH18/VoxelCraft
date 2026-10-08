@@ -227,3 +227,18 @@ spitting/taming/riding, and no held potion/milk model or drinking sound.
 Biome exclusions await the unsupported void/deep-dark biome tags. A trader
 can remain frozen in a loaded chunk beyond the common 128-block activation
 radius, as other persistent village entities currently do.
+
+## Reputation
+
+Gossip is stored per player with Java's five weighted types and caps. Curing
+records the initiating player, grants major-positive 20 and minor-positive 25
+(125 initial reputation, 100 after the temporary bonus decays), and repeat
+cures do not stack. Successful trades add trading gossip; melee harm and
+nearby witnessed kills add negative gossip. Daily decay and nearby minute
+sharing preserve type-specific rules, including non-transferable permanent
+cure gossip. Host, controller and CLI prices/payments use the same player's
+reputation, and gossip/cure identity survive saves. Older single-number
+reputation migrates as a host-only legacy discount. Sharing currently visits
+the closest resident and transfers all eligible entries rather than Java's
+weighted selection of ten. Golem reputation-based hostility and gossip from
+projectile/magic damage are still absent.

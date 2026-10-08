@@ -244,6 +244,7 @@ pub struct Villager {
     pub(super) courtship: u16,
     pub(crate) bell_hide: f32,
     pub wandering: bool,
+    pub(super) gossip: super::villager_gossip::Gossip,
     seed: u64,
     restock_day: i64,
     restocks: u8,
@@ -273,16 +274,20 @@ impl Villager {
             courtship: 0,
             bell_hide: 0.0,
             wandering: false,
+            gossip: Default::default(),
             restock_day: -1,
             restocks: 0,
             last_restock: 0,
         }
     }
     pub fn observation(&self) -> Value {
+        self.observation_for(super::PlayerId::HOST)
+    }
+    pub fn observation_for(&self, owner: super::PlayerId) -> Value {
         json!({"id":self.id,"profession":self.profession.name(),"level":self.level,"rank":self.level_name(),"xp":self.xp,
             "job":self.job.map(|p|p.to_array()),"home":self.home.map(|p|p.to_array()),
             "offers":self.offers.iter().enumerate().filter_map(|(i,o)|o.map(|o|json!({"offer":i+1,
-                "cost":{"item":o.cost.item.name(),"count":self.priced(o).count},"second":o.second.map(|s|json!({"item":s.item.name(),"count":s.count})),"result":{"item":o.output.item.name(),"count":o.output.count,"stack":stack_to_string(Some(o.output))},
+                "cost":{"item":o.cost.item.name(),"count":self.priced_for(o,owner).count},"second":o.second.map(|s|json!({"item":s.item.name(),"count":s.count})),"result":{"item":o.output.item.name(),"count":o.output.count,"stack":stack_to_string(Some(o.output))},
                 "uses":o.uses,"max_uses":o.max_uses,"stocked":o.stocked(),"villager_xp":o.xp}))).collect::<Vec<_>>()})
     }
     pub fn level_name(&self) -> &'static str {
@@ -290,11 +295,16 @@ impl Villager {
     }
     /// `price` after the cure discount: `floor(reputation * multiplier)`, never below one.
     pub fn priced(&self, offer: Offer) -> Stack {
+        self.priced_for(offer, super::PlayerId::HOST)
+    }
+    pub fn priced_for(&self, offer: Offer, owner: super::PlayerId) -> Stack {
         if self.wandering {
             return offer.price();
         }
         let base = offer.price();
-        let cut = (self.reputation as f32 * offer.multiplier).floor() as i32;
+        let reputation =
+            self.gossip.reputation(owner) + if owner == super::PlayerId::HOST { self.reputation } else { 0 };
+        let cut = (reputation as f32 * offer.multiplier).floor() as i32;
         Stack { count: (base.count as i32 - cut).clamp(1, offer.cost.item.max_stack() as i32) as u8, ..base }
     }
     pub fn set_profession(&mut self, p: Profession) {
@@ -352,12 +362,20 @@ impl Villager {
     }
     /// All costs and the result must fit on a scratch inventory before any state changes.
     pub fn trade(&mut self, index: usize, inv: &mut Inventory) -> Result<u32, &'static str> {
+        self.trade_for(index, inv, super::PlayerId::HOST)
+    }
+    pub fn trade_for(
+        &mut self,
+        index: usize,
+        inv: &mut Inventory,
+        owner: super::PlayerId,
+    ) -> Result<u32, &'static str> {
         let offer = self.offers.get(index).copied().flatten().ok_or("no such offer")?;
         if !offer.stocked() {
             return Err("offer out of stock");
         }
         let mut slots = inv.slots;
-        for cost in [Some(self.priced(offer)), offer.second].into_iter().flatten() {
+        for cost in [Some(self.priced_for(offer, owner)), offer.second].into_iter().flatten() {
             let mut left = cost.count;
             for s in &mut slots {
                 if let Some(stack) = s
@@ -397,6 +415,7 @@ impl Villager {
         if self.wandering {
             return Ok(3 + (hash(self.seed ^ self.offers[index].unwrap().uses as u64) % 4) as u32);
         }
+        self.gossip.add(owner, 4, 2);
         self.xp = self.xp.saturating_add(offer.xp);
         let promoted = self.level < 5 && self.xp >= [0, 10, 70, 150, 250][self.level as usize];
         if promoted {
@@ -421,6 +440,15 @@ impl Entities {
         })
     }
     pub fn trade(&mut self, id: u64, index: usize, inv: &mut Inventory) -> Result<u32, &'static str> {
+        self.trade_for(id, index, inv, super::PlayerId::HOST)
+    }
+    pub fn trade_for(
+        &mut self,
+        id: u64,
+        index: usize,
+        inv: &mut Inventory,
+        owner: super::PlayerId,
+    ) -> Result<u32, &'static str> {
         let m = self
             .mobs
             .iter_mut()
@@ -432,7 +460,7 @@ impl Entities {
         {
             return Err("villager cannot trade now");
         }
-        m.villager.as_mut().unwrap().trade(index, inv)
+        m.villager.as_mut().unwrap().trade_for(index, inv, owner)
     }
     pub fn target_merchant(&self, world: &crate::world::World, eye: DVec3, dir: DVec3, reach: f64) -> Option<u64> {
         let (i, t) = self.raycast(eye, dir, reach)?;
@@ -494,6 +522,7 @@ impl Entities {
                 continue;
             }
             let Some(v) = &mut m.villager else { continue };
+            v.gossip.decay(self.village_day);
             if m.kind != MobKind::Villager {
                 continue;
             }
@@ -599,7 +628,7 @@ impl Entities {
             .filter_map(|m| match m.kind {
                 MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => Some(json!({
                     "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
-                    "health": m.health, "built": m.built, "anger": m.player_hit_left, "trader": m.trader.as_ref().map(|t|t.save()),
+                    "health": m.health, "built": m.built, "anger": m.player_hit_left, "anger_player":m.angry_player.map(|p|p.0), "trader": m.trader.as_ref().map(|t|t.save()),
                 })),
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
                     let v = m.villager.as_ref()?;
@@ -607,7 +636,7 @@ impl Entities {
                     "health":m.health,"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
-                    "last":v.last_restock,"slept":v.last_slept,"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left}))
+                    "last":v.last_restock,"slept":v.last_slept,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_by":m.convert_by.map(|p|p.0)}))
                 }
                 _ => None,
             })
@@ -675,6 +704,8 @@ impl Entities {
                     }
                     m.health = health.min(kind.max_health());
                     m.built = a["built"].as_bool().unwrap_or(false);
+                    m.angry_player =
+                        a["anger_player"].as_u64().and_then(|p| u32::try_from(p).ok()).map(super::PlayerId);
                     m.player_hit_left = a["anger"].as_f64().unwrap_or(0.0).clamp(0.0, 60.0) as f32;
                     return Some(m);
                 }
@@ -711,6 +742,7 @@ impl Entities {
                 v.food_level = a["food_level"].as_u64().unwrap_or(0).min(15) as u8;
                 v.bell_hide = a["bell_hide"].as_f64().unwrap_or(0.0).clamp(0.0, 15.0) as f32;
                 v.last_slept = a["slept"].as_i64();
+                v.gossip = super::villager_gossip::Gossip::load(&a["gossip"]);
                 v.reputation = i16::try_from(a["reputation"].as_i64().unwrap_or(0)).unwrap_or(0);
                 let mut m = Mob::new(kind, p, yaw);
                 m.health = health.min(kind.max_health());
@@ -719,6 +751,11 @@ impl Entities {
                 m.built = a["built"].as_bool().unwrap_or(false);
                 m.weakness_left = a["weakness"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0) as f32;
                 m.convert_left = a["convert"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0) as f32;
+                m.convert_by = a["convert_by"]
+                    .as_u64()
+                    .and_then(|p| u32::try_from(p).ok())
+                    .map(super::PlayerId)
+                    .or_else(|| (m.convert_left > 0.0).then_some(super::PlayerId::HOST));
                 if let Some(armor) = a["armor"].as_array() {
                     for (slot, value) in m.armor.iter_mut().zip(armor) {
                         *slot = value.as_u64().and_then(|i| super::armor::ArmorKind::ALL.get(i as usize).copied());
@@ -1104,5 +1141,37 @@ mod tests {
         assert_eq!(v.food_points(), 12);
         v.eat_for_breeding();
         assert_eq!(v.food_points(), 0);
+    }
+    #[test]
+    fn curing_discounts_only_the_curing_player_and_saves_identity() {
+        let mut e = Entities::new(5);
+        let w = grid();
+        let owner = super::super::PlayerId(7);
+        e.spawn(MobKind::ZombieVillager, DVec3::ZERO);
+        *e.mobs[0].villager.as_mut().unwrap().as_mut() = fixed();
+        e.mobs[0].weakness_left = 30.0;
+        assert!(e.try_cure_for(0, owner));
+        let mut restored = Entities::new(8);
+        restored.load_villagers(&e.villagers_to_string());
+        assert_eq!(restored.mobs[0].convert_by, Some(owner));
+        restored.mobs[0].convert_left = 0.05;
+        restored.update(
+            0.05,
+            &w,
+            &Ctx {
+                players: vec![Target::new(owner, DVec3::ZERO, false)],
+                daylight: 1.0,
+                spawning: false,
+                raining: false,
+                dimension: crate::world::terrain::Dimension::Overworld,
+            },
+        );
+        let v = restored.mobs[0].villager.as_ref().unwrap();
+        let o = v.offers[0].unwrap();
+        assert_eq!(v.priced_for(o, owner).count, 14);
+        assert_eq!(v.priced_for(o, super::super::PlayerId::HOST).count, 20);
+        let mut saved = Entities::new(9);
+        saved.load_villagers(&restored.villagers_to_string());
+        assert_eq!(saved.mobs[0].villager.as_ref().unwrap().priced_for(o, owner).count, 14);
     }
 }

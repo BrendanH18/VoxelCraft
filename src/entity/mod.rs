@@ -35,6 +35,7 @@ mod thrown;
 pub mod tnt;
 pub mod villager;
 mod villager_breeding;
+mod villager_gossip;
 pub mod wandering_trader;
 mod zombie_villager;
 
@@ -600,6 +601,7 @@ impl Entities {
         if matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader) {
             **mob.villager.as_mut().unwrap() =
                 villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
+            mob.villager.as_mut().unwrap().gossip.day = self.village_day;
             self.next_villager_id = self.next_villager_id.saturating_add(1);
         }
         if kind == MobKind::WanderingTrader {
@@ -1559,6 +1561,9 @@ impl Entities {
         let mob = self.mobs.get_mut(index)?;
         let (kind, pos) = (mob.kind, mob.pos);
         mob.player_hit();
+        if kind == MobKind::IronGolem {
+            mob.angry_player = Some(PlayerId::HOST);
+        }
         let killed = mob.damage(damage, Some(knockback), &mut self.rng);
         if kind == MobKind::ZombifiedPiglin {
             self.anger_piglins(pos);
@@ -1584,6 +1589,20 @@ impl Entities {
         critical: bool,
         sweep: Option<DVec3>,
     ) -> Option<MobKind> {
+        self.melee_for(index, dir, held, bonus, critical, sweep, PlayerId::HOST)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn melee_for(
+        &mut self,
+        index: usize,
+        dir: DVec3,
+        held: Option<crate::inventory::Stack>,
+        bonus: f32,
+        critical: bool,
+        sweep: Option<DVec3>,
+        owner: PlayerId,
+    ) -> Option<MobKind> {
         use crate::enchant::Enchantment;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
         let (kind, pos, shape) = (target.kind, target.pos, target.shape());
@@ -1596,6 +1615,12 @@ impl Entities {
         }
         let old_health = self.mobs[index].health;
         let killed = self.knock(index, dir, damage, knockback);
+        if self.mobs[index].health < old_health {
+            self.note_villager_hurt(index, owner, killed.is_some());
+            if kind == MobKind::IronGolem && !self.mobs[index].built {
+                self.mobs[index].angry_player = Some(owner);
+            }
+        }
         if self.mobs[index].health < old_health {
             for effect in [
                 critical.then_some(crate::particles::Kind::Crit),

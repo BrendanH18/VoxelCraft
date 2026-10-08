@@ -37,7 +37,7 @@ impl Game {
         if !self.mobs.entities.merchant_in_reach(id, self.player.eye()) {
             return;
         }
-        match self.mobs.entities.trade(id, index, &mut self.inventory) {
+        match self.mobs.entities.trade_for(id, index, &mut self.inventory, self.actor) {
             Ok(xp) => {
                 self.mobs.entities.spawn_xp(self.player.pos, xp);
                 self.audio.ui_click();
@@ -60,7 +60,7 @@ impl Game {
             let Some(o) = o else { continue };
             let x = px + 8.0 + (i % 2) as f32 * 80.0;
             let y = py + 22.0 + (i / 2) as f32 * 20.0;
-            draw_stack(ui, x, y, v.priced(*o), true, self.dial_of(&self.player));
+            draw_stack(ui, x, y, v.priced_for(*o, self.actor), true, self.dial_of(&self.player));
             if let Some(s) = o.second {
                 draw_stack(ui, x + 20.0, y, s, true, self.dial_of(&self.player));
             }
@@ -93,7 +93,7 @@ impl Game {
         }
         if let Some(o) = v.offers.get(index).copied().flatten() {
             let dial = self.dial_of(&self.player);
-            draw_stack(ui, x, y + 12.0, v.priced(o), true, dial);
+            draw_stack(ui, x, y + 12.0, v.priced_for(o, self.actor), true, dial);
             ui.text(x + 22.0, y + 16.0, o.cost.item.name(), WHITE);
             let sx = x + 22.0 + Ui::text_width(o.cost.item.name()) + 10.0;
             if let Some(s) = o.second {

@@ -78,6 +78,14 @@ pub fn iron_damage(difficulty: Difficulty, player: bool, rng: &mut super::Rng) -
     }
 }
 
+fn anger_target<'a>(mob: &super::Mob, ctx: &'a Ctx) -> Option<&'a super::Target> {
+    if let Some(owner) = mob.angry_player {
+        ctx.players.iter().find(|p| p.id == owner && p.alive && p.targetable)
+    } else {
+        ctx.nearest_target(mob.pos)
+    }
+}
+
 const GOLEM_RANGE: f64 = 16.0;
 
 /// Remove a finished pumpkin pattern and spawn the golem that was built.
@@ -102,7 +110,7 @@ pub fn finish_golems(world: &mut crate::world::World, entities: &mut Entities) {
 
 impl Entities {
     /// Point iron golems at monsters near villagers, or at a player who hit them.
-    /// Creepers step away from a nearby golem.
+    /// Built golems never retaliate against players.
     pub(super) fn assign_hunts(&mut self, ctx: &Ctx) {
         self.mob_index.rebuild(&self.mobs);
         for i in 0..self.mobs.len() {
@@ -112,8 +120,7 @@ impl Entities {
                 None
             } else {
                 match m.kind {
-                    MobKind::IronGolem if m.angry_at_player() => ctx
-                        .nearest_target(pos)
+                    MobKind::IronGolem if m.angry_at_player() => anger_target(m, ctx)
                         .filter(|p| p.pos.distance_squared(pos) < GOLEM_RANGE * GOLEM_RANGE)
                         .map(|p| p.pos),
                     MobKind::IronGolem => self
@@ -154,7 +161,7 @@ impl Entities {
             let difficulty = self.mobs[i].difficulty;
             if kind == MobKind::IronGolem
                 && self.mobs[i].angry_at_player()
-                && let Some(player) = ctx.nearest_target(pos)
+                && let Some(player) = anger_target(&self.mobs[i], ctx)
                 && player.pos.distance_squared(pos) < 9.0
             {
                 let dir = (player.pos - pos).normalize_or_zero();
@@ -212,6 +219,9 @@ impl Entities {
         self.mob_index.rebuild(&self.mobs);
         self.golem_calm = (self.golem_calm - 1.0).max(0.0);
         self.gossip_timer = (self.gossip_timer - 1.0).max(0.0);
+        if self.gossip_timer <= 0.0 {
+            self.share_gossip();
+        }
         self.summon_golems(world);
         self.snow_golems(world);
     }
@@ -519,7 +529,7 @@ mod tests {
         e.update(0.05, &world, &ctx(DVec3::new(30.0, 1.0, 0.5), false));
         assert_eq!(e.mobs[0].kind, MobKind::Villager);
         let v = e.mobs[0].villager.as_ref().unwrap();
-        assert_eq!(v.reputation, 100);
+        assert_eq!(v.gossip.reputation(PlayerId::HOST), 125);
         assert_eq!(v.profession, Profession::Cleric);
         let offer = v.offers.iter().copied().flatten().next().unwrap();
         assert!(v.priced(offer).count <= offer.price().count);

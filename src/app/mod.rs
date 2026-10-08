@@ -1570,6 +1570,7 @@ impl Game {
             self.mode.is_creative(),
             &self.world,
             &mut self.mobs.entities,
+            self.actor,
         ) {
             return;
         }

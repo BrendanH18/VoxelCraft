@@ -641,6 +641,8 @@ pub struct Mob {
     pub(super) convert_left: f32,
     pub trader: Option<Box<super::wandering_trader::Trader>>,
     pub(super) trader_night: bool,
+    pub(super) convert_by: Option<super::PlayerId>,
+    pub(super) angry_player: Option<super::PlayerId>,
 }
 
 impl Mob {
@@ -715,6 +717,8 @@ impl Mob {
             weakness_left: 0.0,
             convert_left: 0.0,
             trader_night: false,
+            convert_by: None,
+            angry_player: None,
             trader: matches!(kind, MobKind::WanderingTrader | MobKind::TraderLlama)
                 .then(|| Box::new(super::wandering_trader::Trader::new(pos))),
         }
@@ -733,7 +737,14 @@ impl Mob {
         self.weakness_left = 0.0;
         self.convert_left = 0.0;
         if let Some(v) = &mut self.villager {
-            v.reputation = 100;
+            v.reputation = 0;
+            if let Some(owner) = self.convert_by
+                && v.gossip.entries.get(&owner).is_none_or(|g| g[2] < 20)
+            {
+                v.gossip.add(owner, 2, 20);
+                v.gossip.add(owner, 3, 25);
+            }
+            self.convert_by = None;
             v.sleeping = false;
             v.trading = false;
             v.fleeing = false;
