@@ -178,6 +178,30 @@ impl Arrow {
                 // Stuck just inside the block it hit.
                 self.pos = from + step * t + step.normalize_or_zero() * 0.01;
                 self.stuck = true;
+                let cell = self.pos.floor().as_ivec3();
+                let hit = from + step * t;
+                let local = hit - cell.as_dvec3();
+                let axis = (0..3)
+                    .min_by(|&a, &b| {
+                        local[a]
+                            .abs()
+                            .min((1.0 - local[a]).abs())
+                            .total_cmp(&local[b].abs().min((1.0 - local[b]).abs()))
+                    })
+                    .unwrap();
+                let mut normal = glam::IVec3::ZERO;
+                normal[axis] = if local[axis] < 0.5 { -1 } else { 1 };
+                if world.block(cell).is_some_and(|b| {
+                    matches!(
+                        crate::world::redstone_blocks::component(b),
+                        Some(crate::world::redstone_blocks::Component::Target(_))
+                    ) || matches!(
+                        b.base(),
+                        crate::world::block::Block::REDSTONE_ORE | crate::world::block::Block::DEEPSLATE_REDSTONE_ORE
+                    )
+                }) {
+                    events.push(EntityEvent::ProjectileBlockHit { cell, pos: hit, normal, arrow: true });
+                }
                 self.age = 0.0;
                 return true;
             }
@@ -216,12 +240,22 @@ fn first_solid<W: BlockSource + ?Sized>(world: &W, from: DVec3, step: DVec3) -> 
         for z in lo.z..=hi.z {
             for x in lo.x..=hi.x {
                 let cell = glam::IVec3::new(x, y, z);
-                if !world.block(cell).is_some_and(|b| b.is_solid()) {
-                    continue;
-                }
-                let min = cell.as_dvec3();
-                if let Some(t) = crate::physics::ray_aabb(from, step, min, min + DVec3::ONE).filter(|&t| t <= 1.0) {
-                    first = Some(first.map_or(t, |f: f64| f.min(t)));
+                let Some(block) = world.block(cell).filter(|b| b.is_solid()) else { continue };
+                let boxes = if block.shaped().is_some() {
+                    crate::world::shape::shape(
+                        block,
+                        |f| world.block(cell + f.offset()).unwrap_or(crate::world::block::Block::AIR),
+                        world.block(cell - glam::IVec3::Y).unwrap_or(crate::world::block::Block::AIR),
+                    )
+                } else {
+                    crate::world::shape::Boxes::from_box(crate::world::shape::Box16::FULL)
+                };
+                for bx in boxes.as_slice() {
+                    let min = cell.as_dvec3() + DVec3::from_array(bx.min.map(|v| v as f64 / 16.0));
+                    let max = cell.as_dvec3() + DVec3::from_array(bx.max.map(|v| v as f64 / 16.0));
+                    if let Some(t) = crate::physics::ray_aabb(from, step, min, max).filter(|&t| t <= 1.0) {
+                        first = Some(first.map_or(t, |f: f64| f.min(t)));
+                    }
                 }
             }
         }

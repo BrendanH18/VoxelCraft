@@ -15,6 +15,12 @@ impl Game {
     /// of a door) for a player looking along `forward`. Returns whether it did.
     pub(super) fn toggle_door(&mut self, pos: IVec3, forward: glam::Vec3) -> bool {
         let Some(b) = self.world.get_block(pos) else { return false };
+        if matches!(
+            voxelcraft::world::redstone_blocks::component(b),
+            Some(voxelcraft::world::redstone_blocks::Component::IronDoor { .. })
+        ) {
+            return true;
+        }
         let open = match b.shaped() {
             Some(Shaped::Door { mut facing, mut open, upper }) => {
                 let other = if upper { pos - IVec3::Y } else { pos + IVec3::Y };

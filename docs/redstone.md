@@ -58,3 +58,51 @@ Behaviour is checked against the Minecraft Java block implementations:
 
 The decompiled source mirror has no pinned 1.21 revision; core rules above are
 stable Java rules, not a claim of exact 1.21 update-order parity.
+
+## Inputs, models and recipes
+
+Host right-click and generic CLI `place` call the same device use methods;
+gamepad views route through the host action path. Sneak-building bypasses use.
+Dust can toggle an isolated cross into a saved dot; the dot supplies power only
+below it. Mounted lever/buttons/torches, plates and diodes have compact shapes;
+wire, switches, torches and plates do not collide with walking entities.
+Connections include upward sides in chunk models; power shares sixteen tinted
+textures instead of allocating a texture for every state/connection.
+
+Stone plates detect living players/mobs only; oak plates detect entities,
+including item stacks and arrows. Light plates count up to fifteen entities;
+heavy plates return ceil(entity_count/10), up to 150 entities. A whole dropped
+stack counts as one entity. Binary plates recheck after 20 ticks, weighted ones
+after 10. Wooden buttons stay pressed while an arrow overlaps their shape,
+rechecking after 30 ticks; stone buttons ignore arrows and release after 20.
+Contact inputs reuse a map and query only entity bounding-box cells. Spectators,
+dead and inactive players are excluded. Entities such as XP orbs, TNT and
+projectiles other than arrows are not yet included in plate counts.
+
+Iron doors and iron trapdoors open only with power. Oak trapdoors permit manual
+operation and respond to power edges. Arrow hits activate target blocks for 20
+ticks, other callers' projectile hits for 8; face-centre distance gives 1–15
+power and hits during the active pulse are ignored. Arrows clip shaped models
+instead of the entire occupied cell. Ore illuminates to level 9 when mined,
+used, stepped on or hit by arrows. Its 30-tick expiry is a simplification of
+Java random-tick expiry; stone/deepslate ore harvest and fortune rules remain.
+
+Daylight detectors update every 20 ticks and invert on use. They use VoxelCraft's
+existing day clock and heightmap exposure; sun-angle easing and diffuse sky
+light beneath transparent roofs are approximated. In sky-less dimensions they
+produce no power. Chests, furnaces and brewing stand contents notify comparators
+on player mutations and processing completion. Container UI slot changes must
+use the mutable world accessor to issue those notifications.
+
+Every core component has its vanilla shaped/shapeless recipe; target crafting
+adds hay bales (nine wheat, reversible). Only oak wooden buttons, plates and
+trapdoors currently exist. Door hinges, waterlogging and floor/ceiling switch
+horizontal orientation are simplified. Hay bale fall-damage reduction is not
+yet added. Bare block-item IDs use the existing encoded block-item namespace;
+no material item IDs are reassigned.
+
+Additional sources: [ButtonBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ButtonBlock.java),
+[PressurePlateBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/PressurePlateBlock.java),
+[WeightedPressurePlateBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/WeightedPressurePlateBlock.java),
+[TargetBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/TargetBlock.java),
+[DaylightDetectorBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DaylightDetectorBlock.java).

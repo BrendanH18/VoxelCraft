@@ -11,6 +11,16 @@ pub const REPEATER: Block = Block(1162);
 pub const COMPARATOR: Block = Block(1194);
 pub const LAMP: Block = Block(1210);
 pub const REDSTONE_BLOCK: Block = Block(1212);
+pub const STONE_PLATE: Block = Block(1213);
+pub const WOOD_PLATE: Block = Block(1215);
+pub const LIGHT_PLATE: Block = Block(1217);
+pub const HEAVY_PLATE: Block = Block(1233);
+pub const IRON_DOOR: Block = Block(1249);
+pub const IRON_TRAPDOOR: Block = Block(1265);
+pub const DAYLIGHT: Block = Block(1281);
+pub const TARGET: Block = Block(1313);
+pub const WOOD_TRAPDOOR: Block = Block(1437);
+pub const HAY: Block = Block(1469);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Component {
@@ -22,6 +32,13 @@ pub enum Component {
     Comparator { facing: Facing, subtract: bool, on: bool },
     Lamp(bool),
     Source,
+    Plate { kind: u8, power: u8 },
+    IronDoor { facing: Facing, open: bool, upper: bool },
+    Trapdoor { facing: Facing, open: bool, top: bool, iron: bool },
+    Daylight { power: u8, inverted: bool },
+    Target(u8),
+    GlowingOre(bool),
+    Hay,
 }
 
 pub const fn wire(power: u8) -> Block {
@@ -42,10 +59,35 @@ pub const fn repeater(facing: Facing, delay: u8, on: bool) -> Block {
 pub const fn comparator(facing: Facing, subtract: bool, on: bool) -> Block {
     Block(1194 + on as u16 * 8 + subtract as u16 * 4 + facing as u16)
 }
+pub const fn plate(kind: u8, power: u8) -> Block {
+    match kind {
+        0 => Block(1213 + (power > 0) as u16),
+        1 => Block(1215 + (power > 0) as u16),
+        2 => Block(1217 + power as u16),
+        _ => Block(1233 + power as u16),
+    }
+}
+pub const fn iron_door(facing: Facing, open: bool, upper: bool) -> Block {
+    Block(1249 + facing as u16 + open as u16 * 4 + upper as u16 * 8)
+}
+pub const fn trapdoor(facing: Facing, open: bool, top: bool, iron: bool) -> Block {
+    Block(if iron { 1265 } else { 1437 } + facing as u16 + open as u16 * 4 + top as u16 * 8)
+}
+pub const fn daylight(power: u8, inverted: bool) -> Block {
+    Block(1281 + power as u16 + inverted as u16 * 16)
+}
+pub const fn target(power: u8) -> Block {
+    Block(1313 + power as u16)
+}
+pub const fn dot(power: u8) -> Block {
+    Block(1453 + power as u16)
+}
+
 pub const fn component(b: Block) -> Option<Component> {
     let id = b.0;
     Some(match id {
         1100..=1115 => Component::Wire((id - 1100) as u8),
+        1453..=1468 => Component::Wire((id - 1453) as u8),
         1116..=1127 => Component::Lever { mount: ((id - 1116) / 2) as u8, on: id % 2 == 1 },
         1128..=1151 => Component::Button { mount: ((id - 1128) % 12 / 2) as u8, on: id % 2 == 1, wood: id >= 1140 },
         1152..=1161 => Component::Torch { mount: ((id - 1152) / 2) as u8, lit: id.is_multiple_of(2) },
@@ -61,6 +103,28 @@ pub const fn component(b: Block) -> Option<Component> {
         },
         1210..=1211 => Component::Lamp(id == 1211),
         1212 => Component::Source,
+        1213..=1216 => {
+            Component::Plate { kind: ((id - 1213) / 2) as u8, power: if id.is_multiple_of(2) { 15 } else { 0 } }
+        }
+        1217..=1248 => Component::Plate { kind: ((id - 1217) / 16 + 2) as u8, power: ((id - 1217) % 16) as u8 },
+        1249..=1264 => Component::IronDoor {
+            facing: Facing::ALL[((id - 1249) % 4) as usize],
+            open: (id - 1249) % 8 >= 4,
+            upper: id >= 1257,
+        },
+        1265..=1280 | 1437..=1452 => {
+            let i = if id < 1437 { id - 1265 } else { id - 1437 };
+            Component::Trapdoor {
+                facing: Facing::ALL[(i % 4) as usize],
+                open: i % 8 >= 4,
+                top: i >= 8,
+                iron: id < 1437,
+            }
+        }
+        1281..=1312 => Component::Daylight { power: ((id - 1281) % 16) as u8, inverted: id >= 1297 },
+        1313..=1328 => Component::Target((id - 1313) as u8),
+        1435..=1436 => Component::GlowingOre(id == 1436),
+        1469 => Component::Hay,
         _ => return None,
     })
 }
@@ -76,6 +140,25 @@ pub const fn base(b: Block) -> Option<Block> {
         Some(Component::Comparator { .. }) => COMPARATOR,
         Some(Component::Lamp(_)) => LAMP,
         Some(Component::Source) => REDSTONE_BLOCK,
+        Some(Component::Plate { kind, .. }) => plate(kind, 0),
+        Some(Component::IronDoor { .. }) => IRON_DOOR,
+        Some(Component::Trapdoor { iron, .. }) => {
+            if iron {
+                IRON_TRAPDOOR
+            } else {
+                WOOD_TRAPDOOR
+            }
+        }
+        Some(Component::Daylight { .. }) => DAYLIGHT,
+        Some(Component::Target(_)) => TARGET,
+        Some(Component::Hay) => HAY,
+        Some(Component::GlowingOre(deep)) => {
+            if deep {
+                Block::DEEPSLATE_REDSTONE_ORE
+            } else {
+                Block::REDSTONE_ORE
+            }
+        }
         None => return None,
     })
 }
@@ -93,7 +176,7 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     use RenderKind::*;
     let (name, kind, layer) = match component(Block(id)) {
         Some(Component::Wire(p)) => ("redstone wire", Shaped, 1100 + p as u16),
-        Some(Component::Lever { .. }) => ("lever", Shaped, tex::COBBLESTONE),
+        Some(Component::Lever { .. }) => ("lever", Shaped, 1129),
         Some(Component::Button { wood: true, .. }) => ("oak button", Shaped, tex::PLANKS),
         Some(Component::Button { .. }) => ("stone button", Shaped, tex::STONE),
         Some(Component::Torch { lit, .. }) => ("redstone torch", Shaped, if lit { 1116 } else { 1117 }),
@@ -101,13 +184,37 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         Some(Component::Comparator { on, .. }) => ("comparator", Shaped, if on { 1119 } else { 1118 }),
         Some(Component::Lamp(on)) => ("redstone lamp", Opaque, if on { 1121 } else { 1120 }),
         Some(Component::Source) => ("block of redstone", Opaque, 1122),
+        Some(Component::Plate { kind, .. }) => (
+            [
+                "stone pressure plate",
+                "oak pressure plate",
+                "light weighted pressure plate",
+                "heavy weighted pressure plate",
+            ][kind as usize],
+            Shaped,
+            [tex::STONE, tex::PLANKS, tex::GOLD_BLOCK, tex::IRON_BLOCK][kind as usize],
+        ),
+        Some(Component::IronDoor { .. }) => ("iron door", Shaped, 1123),
+        Some(Component::Trapdoor { iron, .. }) => {
+            (if iron { "iron trapdoor" } else { "oak trapdoor" }, Shaped, if iron { 1123 } else { 1124 })
+        }
+        Some(Component::Daylight { inverted, .. }) => ("daylight detector", Shaped, if inverted { 1126 } else { 1125 }),
+        Some(Component::Target(_)) => ("target", Opaque, 1127),
+        Some(Component::Hay) => ("hay bale", Opaque, 1128),
+        Some(Component::GlowingOre(deep)) => (
+            if deep { "deepslate redstone ore" } else { "redstone ore" },
+            Opaque,
+            if deep { tex::DEEPSLATE_REDSTONE_ORE } else { tex::REDSTONE_ORE },
+        ),
         None => return None,
     };
     Some((name, kind, [layer; 6]))
 }
 
 pub fn palette_ids() -> impl Iterator<Item = u16> {
-    [1100, 1116, 1128, 1140, 1152, 1162, 1194, 1210, 1212].into_iter()
+    [1100, 1116, 1128, 1140, 1152, 1162, 1194, 1210, 1212, 1213, 1215, 1217, 1233, 1249, 1265, 1281, 1313, 1437]
+        .into_iter()
+        .chain([1469])
 }
 
 /// Java wire sides: 0 none, 1 side, 2 up. Isolated default wire is a cross.
@@ -122,7 +229,13 @@ pub fn connections(neighbour: impl Fn(glam::IVec3) -> Block) -> [u8; 4] {
             Some(Component::Repeater { facing, .. } | Component::Comparator { facing, .. }) => {
                 f.along_x() == facing.along_x()
             }
-            Some(Component::Lamp(_)) => false,
+            Some(
+                Component::Lamp(_)
+                | Component::IronDoor { .. }
+                | Component::Trapdoor { .. }
+                | Component::GlowingOre(_)
+                | Component::Hay,
+            ) => false,
             Some(_) => true,
             _ => false,
         };
@@ -136,6 +249,9 @@ pub fn connections(neighbour: impl Fn(glam::IVec3) -> Block) -> [u8; 4] {
             } else {
                 0
             };
+    }
+    if out == [0; 4] && (1453..=1468).contains(&neighbour(IVec3::ZERO).0) {
+        return out;
     }
     let ns = out[0] != 0 || out[1] != 0;
     let ew = out[2] != 0 || out[3] != 0;
@@ -166,6 +282,10 @@ pub fn placed(b: Block, normal: glam::IVec3, toward: Facing) -> Block {
         Some(Component::Torch { .. }) => torch(if mount == 5 { 0 } else { mount }, true),
         Some(Component::Repeater { .. }) => repeater(toward.opposite(), 1, false),
         Some(Component::Comparator { .. }) => comparator(toward.opposite(), false, false),
+        Some(Component::IronDoor { .. }) => iron_door(toward, false, false),
+        Some(Component::Trapdoor { iron, .. }) => {
+            trapdoor(Facing::from_offset(normal).unwrap_or(toward), false, normal == glam::IVec3::NEG_Y, iron)
+        }
         _ => b,
     }
 }

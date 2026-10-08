@@ -290,7 +290,7 @@ pub mod tex {
     pub const CAKE_SIDE: u16 = CAKE_TOP + 1;
     pub const CAKE_BOTTOM: u16 = CAKE_SIDE + 1;
     // Redstone reserves a texture band independent of compact legacy layers.
-    pub const COUNT: u32 = 1123;
+    pub const COUNT: u32 = 1130;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -542,6 +542,9 @@ impl Block {
     /// The stone-ore form of a deepslate ore, or `self` for everything else.
     /// Drops, fortune and smelting follow the stone ore.
     pub fn as_stone_ore(self) -> Block {
+        if matches!(self.0, 1435 | 1436) {
+            return Block::REDSTONE_ORE;
+        }
         match self {
             Block::DEEPSLATE_COAL_ORE => Block::COAL_ORE,
             Block::DEEPSLATE_IRON_ORE => Block::IRON_ORE,
@@ -726,6 +729,11 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
+        if let Some(super::redstone_blocks::Component::IronDoor { facing, open, upper }) =
+            super::redstone_blocks::component(self)
+        {
+            return Some(Shaped::Door { facing, open, upper });
+        }
         if super::redstone_blocks::component(self).is_some() && !self.is_opaque() {
             return Some(Shaped::Redstone);
         }
@@ -801,6 +809,11 @@ impl Block {
     /// The other state of a door half or gate (open <-> closed), facing
     /// `facing`.
     pub fn toggled(self, facing: Facing) -> Block {
+        if let Some(super::redstone_blocks::Component::IronDoor { open, upper, .. }) =
+            super::redstone_blocks::component(self)
+        {
+            return super::redstone_blocks::iron_door(facing, !open, upper);
+        }
         match self.shaped() {
             Some(Shaped::Gate { open, .. }) => match super::forms::gate_index(self) {
                 Some(index) => super::forms::wood_id(index, 6 + (!open as u16) * 4 + facing as u16),
@@ -1096,7 +1109,15 @@ impl Block {
 
     /// What breaking this block yields in survival.
     pub fn drop(self) -> Option<Item> {
-        if let Some(b) = super::redstone_blocks::base(self) {
+        if let Some(b) = super::redstone_blocks::base(self)
+            && !matches!(
+                super::redstone_blocks::component(self),
+                Some(super::redstone_blocks::Component::GlowingOre(_))
+            )
+        {
+            if self.is_door_upper() {
+                return None;
+            }
             return Some(if b == super::redstone_blocks::WIRE { Item::REDSTONE } else { b.into() });
         }
         if let Some(c) = self.bed_color() {
@@ -1161,6 +1182,19 @@ impl Block {
             return match c {
                 Wire(_) | Torch { .. } | Repeater { .. } | Comparator { .. } => 0.0,
                 Lamp(_) => 0.3,
+                IronDoor { .. } | Trapdoor { iron: true, .. } => 5.0,
+                Trapdoor { .. } => 3.0,
+                Plate { .. } => 0.5,
+                Daylight { .. } => 0.2,
+                Target(_) => 0.5,
+                Hay => 0.5,
+                GlowingOre(deep) => {
+                    if deep {
+                        4.5
+                    } else {
+                        3.0
+                    }
+                }
                 Source => 5.0,
                 _ => 0.5,
             };
@@ -1275,6 +1309,22 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        use super::redstone_blocks::Component;
+        if let Some(c) = super::redstone_blocks::component(self) {
+            return match c {
+                Component::Source
+                | Component::GlowingOre(_)
+                | Component::IronDoor { .. }
+                | Component::Trapdoor { iron: true, .. }
+                | Component::Plate { kind: 0 | 2 | 3, .. } => Some(ToolKind::Pickaxe),
+                Component::Hay | Component::Target(_) => Some(ToolKind::Hoe),
+                Component::Trapdoor { .. } | Component::Daylight { .. } | Component::Plate { .. } => {
+                    Some(ToolKind::Axe)
+                }
+                _ => None,
+            };
+        }
+
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(ToolKind::Pickaxe);
         }
@@ -1369,6 +1419,21 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if matches!(super::redstone_blocks::component(self), Some(super::redstone_blocks::Component::GlowingOre(_))) {
+            return Some(2);
+        }
+        if matches!(
+            super::redstone_blocks::component(self),
+            Some(
+                super::redstone_blocks::Component::Source
+                    | super::redstone_blocks::Component::IronDoor { .. }
+                    | super::redstone_blocks::Component::Trapdoor { iron: true, .. }
+                    | super::redstone_blocks::Component::Plate { kind: 2 | 3, .. }
+            )
+        ) {
+            return Some(0);
+        }
+
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(if self.material() == Block::GOLD_BLOCK { 2 } else { 0 });
         }
@@ -1486,6 +1551,15 @@ impl Block {
     /// Whether this block can rest on `below`. Plants need soil and torches
     /// a full block; everything else stays put.
     pub fn can_stay_on(self, below: Block) -> bool {
+        if let Some(
+            super::redstone_blocks::Component::Wire(_)
+            | super::redstone_blocks::Component::Repeater { .. }
+            | super::redstone_blocks::Component::Comparator { .. }
+            | super::redstone_blocks::Component::Plate { .. },
+        ) = super::redstone_blocks::component(self)
+        {
+            return below.is_opaque() || below == Block::GLASS || below.stained_glass_color().is_some();
+        }
         match self {
             b if b.is_mushroom() => below.is_opaque(),
             b if b.carpet_color().is_some() => below.is_solid(),
@@ -2176,6 +2250,7 @@ static EMISSION: [u8; STATE_CAPACITY] = {
             200..=207 | 209 => 1,                       // portal frames and dragon egg
             213 => 7,                                   // enchanting table
             1152 | 1154 | 1156 | 1158 | 1160 => 7,      // lit redstone torches
+            1435..=1436 => 9,                           // glowing redstone ores
             1211 => 15,                                 // lit redstone lamp
             812 => 3,                                   // magma
             _ => 0,
@@ -2236,6 +2311,7 @@ mod tests {
             match super::super::redstone_blocks::component(block) {
                 Some(super::super::redstone_blocks::Component::Torch { lit, .. }) => return if lit { 7 } else { 0 },
                 Some(super::super::redstone_blocks::Component::Lamp(on)) => return if on { 15 } else { 0 },
+                Some(super::super::redstone_blocks::Component::GlowingOre(_)) => return 9,
                 _ => {}
             }
             match block.base() {

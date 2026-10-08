@@ -40,6 +40,7 @@ pub mod ore;
 mod portal;
 pub mod redstone;
 pub mod redstone_blocks;
+mod redstone_contacts;
 pub mod shape;
 mod spawner;
 pub mod storage;

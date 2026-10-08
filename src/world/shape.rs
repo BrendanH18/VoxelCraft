@@ -324,7 +324,16 @@ pub fn redstone_shape(block: Block, neighbour: impl Fn(glam::IVec3) -> Block) ->
         Some(Component::Button { mount, on, .. }) => {
             out.push(mounted(b([5, 0, 6], [11, if on { 1 } else { 2 }, 10]), mount))
         }
-        Some(Component::Torch { mount, .. }) => out.push(mounted(b([7, 0, 7], [9, 10, 9]), mount)),
+        Some(Component::Torch { mount, .. }) => {
+            if mount == 0 {
+                out.push(b([7, 0, 7], [9, 8, 9]));
+                out.push(b([6, 7, 6], [10, 10, 10]));
+            } else {
+                let facing = Facing::ALL[(mount - 1) as usize];
+                out.push(b([7, 3, 1], [9, 11, 3]).turned(facing));
+                out.push(b([6, 10, 0], [10, 13, 4]).turned(facing));
+            }
+        }
         Some(Component::Repeater { facing, delay, .. }) => {
             out.push(b([0, 0, 0], [16, 2, 16]));
             out.push(b([7, 2, 11], [9, 8, 13]).turned(facing));
@@ -335,6 +344,17 @@ pub fn redstone_shape(block: Block, neighbour: impl Fn(glam::IVec3) -> Block) ->
             for bx in [b([3, 2, 3], [5, 8, 5]), b([11, 2, 3], [13, 8, 5]), b([7, 2, 11], [9, 8, 13])] {
                 out.push(bx.turned(facing));
             }
+        }
+        Some(Component::Plate { power, .. }) => out.push(b([1, 0, 1], [15, if power > 0 { 1 } else { 2 }, 15])),
+        Some(Component::Daylight { .. }) => out.push(b([0, 0, 0], [16, 6, 16])),
+        Some(Component::Trapdoor { facing, open, top, .. }) => {
+            out.push(if open {
+                b([0, 0, 0], [16, 16, 3]).turned(facing)
+            } else if top {
+                b([0, 13, 0], [16, 16, 16])
+            } else {
+                b([0, 0, 0], [16, 3, 16])
+            });
         }
         _ => {}
     }
@@ -356,6 +376,17 @@ fn mounted(bx: Box16, mount: u8) -> Box16 {
 pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) -> Boxes {
     let mut out = Boxes::new();
     match block.shaped() {
+        Some(Shaped::Redstone)
+            if matches!(
+                super::redstone_blocks::component(block),
+                Some(
+                    super::redstone_blocks::Component::Wire(_)
+                        | super::redstone_blocks::Component::Lever { .. }
+                        | super::redstone_blocks::Component::Button { .. }
+                        | super::redstone_blocks::Component::Torch { .. }
+                        | super::redstone_blocks::Component::Plate { .. }
+                )
+            ) => {}
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER_COLLISION, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND_COLLISION, Facing::South),
         Some(Shaped::EndPortal) => {}

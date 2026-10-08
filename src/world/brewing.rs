@@ -195,10 +195,14 @@ impl World {
     /// Brews in every stand whose chunk is loaded, noting finished brews
     /// in [`World::brews_done`] for the sound.
     pub fn tick_brewing(&mut self, dt: f64) {
+        let before = self.brews_done.len();
         for (&p, stand) in self.brewing_stands.iter_mut() {
             if self.chunks.contains_key(&super::chunk::chunk_of(p)) && stand.tick(dt as f32) {
                 self.brews_done.push(p);
             }
+        }
+        for i in before..self.brews_done.len() {
+            self.redstone_changed(self.brews_done[i]);
         }
     }
 

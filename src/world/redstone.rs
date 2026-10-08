@@ -19,6 +19,7 @@ type ScheduledTick = Reverse<(u64, i8, u64, [i32; 3], u16)>;
 
 #[derive(Default)]
 pub(super) struct RedstoneState {
+    pub(super) contacts: FxHashMap<IVec3, super::redstone_contacts::Contacts>,
     tick: u64,
     sequence: u64,
     updates: VecDeque<IVec3>,
@@ -31,6 +32,8 @@ pub(super) struct RedstoneState {
     /// Tracks powered edges for manually operable doors and gates.
     powered: FxHashSet<IVec3>,
     pub last_updates: usize,
+    day_time: f64,
+    sky_darken: u8,
 }
 
 fn conductor(b: Block) -> bool {
@@ -91,7 +94,7 @@ impl World {
         });
     }
 
-    fn schedule_redstone(&mut self, p: IVec3, delay: u64, priority: i8) {
+    pub(super) fn schedule_redstone(&mut self, p: IVec3, delay: u64, priority: i8) {
         if self.redstone.pending.contains_key(&p) {
             return;
         }
@@ -108,6 +111,20 @@ impl World {
     fn emitted_signal(&self, p: IVec3, direction: IVec3, strong: bool, wires: bool) -> u8 {
         let Some(b) = self.get_block(p) else { return 0 };
         match r::component(b) {
+            Some(Component::Plate { power, .. }) => {
+                if !strong || direction == IVec3::NEG_Y {
+                    power
+                } else {
+                    0
+                }
+            }
+            Some(Component::Daylight { power, .. } | Component::Target(power)) => {
+                if strong {
+                    0
+                } else {
+                    power
+                }
+            }
             Some(Component::Source) => {
                 if strong {
                     0
@@ -271,7 +288,9 @@ impl World {
             Some(Component::Lever { mount, .. } | Component::Button { mount, .. } | Component::Torch { mount, .. }) => {
                 Some(r::support(mount))
             }
-            Some(Component::Repeater { .. } | Component::Comparator { .. }) => Some(IVec3::NEG_Y),
+            Some(Component::Repeater { .. } | Component::Comparator { .. } | Component::Plate { .. }) => {
+                Some(IVec3::NEG_Y)
+            }
             _ => None,
         };
         if support.is_some_and(|d| self.get_block(p + d).is_some_and(|b| !b.is_solid())) {
@@ -287,7 +306,7 @@ impl World {
                 } else {
                     let target = self.wire_target(p);
                     if power != target {
-                        self.edit(p, r::wire(target), false);
+                        self.edit(p, if b.0 >= 1453 { r::dot(target) } else { r::wire(target) }, false);
                     }
                 }
             }
@@ -310,6 +329,15 @@ impl World {
                 {
                     self.schedule_redstone(p, 2, 0);
                 }
+            }
+            Some(Component::Daylight { .. }) => {
+                self.schedule_redstone(p, 20, 0);
+            }
+            Some(Component::Plate { kind, power }) if power > 0 => {
+                self.schedule_redstone(p, if kind < 2 { 20 } else { 10 }, 0);
+            }
+            Some(Component::IronDoor { .. } | Component::Trapdoor { .. }) => {
+                self.redstone_open(p, b);
             }
             Some(Component::Lamp(on)) => {
                 let powered = self.redstone_power(p) > 0;
@@ -397,7 +425,36 @@ impl World {
                 self.redstone_changed(p);
             }
             Some(Component::Button { mount, wood, on: true }) => {
-                self.edit(p, r::button(mount, false, wood), false);
+                if wood && self.redstone.contacts.get(&p).is_some_and(|c| c.arrows) {
+                    self.schedule_redstone(p, 30, 0);
+                } else {
+                    self.edit(p, r::button(mount, false, wood), false);
+                }
+            }
+            Some(Component::Plate { kind, .. }) => {
+                let power = super::redstone_contacts::plate_power(
+                    kind,
+                    self.redstone.contacts.get(&p).copied().unwrap_or_default(),
+                );
+                if b != r::plate(kind, power) {
+                    self.edit(p, r::plate(kind, power), false);
+                }
+                if power > 0 {
+                    self.schedule_redstone(p, if kind < 2 { 20 } else { 10 }, 0);
+                }
+            }
+            Some(Component::Target(_)) => {
+                self.edit(p, r::TARGET, false);
+            }
+            Some(Component::GlowingOre(deep)) => {
+                self.edit(p, if deep { Block::DEEPSLATE_REDSTONE_ORE } else { Block::REDSTONE_ORE }, false);
+            }
+            Some(Component::Daylight { power, inverted }) => {
+                let value = self.daylight_power(p, inverted);
+                if value != power {
+                    self.edit(p, r::daylight(value, inverted), false);
+                }
+                self.schedule_redstone(p, 20, 0);
             }
             Some(Component::Lamp(true)) if self.redstone_power(p) == 0 => {
                 self.edit(p, r::LAMP, false);
@@ -436,6 +493,115 @@ impl World {
         }
     }
 
+    pub fn set_redstone_daylight(&mut self, time: f64, sky_darken: u8) {
+        self.redstone.day_time = time.rem_euclid(1.0);
+        self.redstone.sky_darken = sky_darken.min(15);
+    }
+
+    fn daylight_power(&self, p: IVec3, inverted: bool) -> u8 {
+        if !self.generator.dimension.has_sky() {
+            return 0;
+        }
+        let sky = if self.sky_exposed(p) { 15u8.saturating_sub(self.redstone.sky_darken) } else { 0 };
+        if inverted {
+            return 15 - sky;
+        }
+        let angle = (self.redstone.day_time - 0.25).rem_euclid(1.0) * std::f64::consts::TAU;
+        let target = if angle < std::f64::consts::PI { 0.0 } else { std::f64::consts::TAU };
+        (sky as f64 * (angle + (target - angle) * 0.2).cos()).round().clamp(0.0, 15.0) as u8
+    }
+
+    fn redstone_open(&mut self, p: IVec3, b: Block) {
+        match r::component(b) {
+            Some(Component::IronDoor { upper, .. }) => {
+                let lower = if upper { p - IVec3::Y } else { p };
+                let on = self.redstone_power(lower) > 0 || self.redstone_power(lower + IVec3::Y) > 0;
+                for (q, upper) in [(lower, false), (lower + IVec3::Y, true)] {
+                    if let Some(Component::IronDoor { facing, open, .. }) = self.get_block(q).and_then(r::component)
+                        && open != on
+                    {
+                        self.edit(q, r::iron_door(facing, on, upper), false);
+                    }
+                }
+            }
+            Some(Component::Trapdoor { facing, open, top, iron }) => {
+                let on = self.redstone_power(p) > 0;
+                let was = self.redstone.powered.contains(&p);
+                if on {
+                    self.redstone.powered.insert(p);
+                } else {
+                    self.redstone.powered.remove(&p);
+                }
+                if (iron || was != on) && open != on {
+                    self.edit(p, r::trapdoor(facing, on, top, iron), false);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn touch_redstone_ore(&mut self, p: IVec3) -> bool {
+        let Some(b) = self.get_block(p) else { return false };
+        let deep = b.base() == Block::DEEPSLATE_REDSTONE_ORE;
+        if !deep && b.base() != Block::REDSTONE_ORE {
+            return false;
+        }
+        if !matches!(r::component(b), Some(Component::GlowingOre(_))) {
+            self.edit(p, Block(if deep { 1436 } else { 1435 }), false);
+        }
+        self.schedule_redstone(p, 30, 0);
+        true
+    }
+
+    pub fn hit_redstone_target(&mut self, p: IVec3, hit: glam::DVec3, normal: IVec3, arrow: bool) -> bool {
+        if !matches!(self.get_block(p).and_then(r::component), Some(Component::Target(_))) {
+            return false;
+        }
+        if self.redstone.pending.contains_key(&p) {
+            return true;
+        }
+        let local = hit - p.as_dvec3() - glam::DVec3::splat(0.5);
+        let distance = if normal.x != 0 {
+            local.y.abs().max(local.z.abs())
+        } else if normal.y != 0 {
+            local.x.abs().max(local.z.abs())
+        } else {
+            local.x.abs().max(local.y.abs())
+        };
+        let power = (15.0 * ((0.5 - distance) * 2.0).clamp(0.0, 1.0)).ceil().max(1.0) as u8;
+        self.edit(p, r::target(power), false);
+        self.schedule_redstone(p, if arrow { 20 } else { 8 }, 0);
+        true
+    }
+
+    pub fn redstone_supported(&self, p: IVec3, b: Block) -> bool {
+        let support = match r::component(b) {
+            Some(Component::Torch { mount, .. } | Component::Lever { mount, .. } | Component::Button { mount, .. }) => {
+                r::support(mount)
+            }
+            Some(
+                Component::Wire(_)
+                | Component::Repeater { .. }
+                | Component::Comparator { .. }
+                | Component::Plate { .. },
+            ) => IVec3::NEG_Y,
+            _ => return true,
+        };
+        self.get_block(p + support)
+            .is_some_and(|b| b.is_opaque() || b == Block::GLASS || b.stained_glass_color().is_some())
+    }
+
+    /// Shared two-cell iron door placement for all input sources.
+    pub fn place_iron_door(&mut self, p: IVec3, facing: Facing) -> bool {
+        if ![p, p + IVec3::Y].into_iter().all(|q| self.get_block(q).is_some_and(Block::is_replaceable))
+            || !self.get_block(p - IVec3::Y).is_some_and(Block::is_opaque)
+        {
+            return false;
+        }
+        self.set_block(p, r::iron_door(facing, false, false));
+        self.set_block(p + IVec3::Y, r::iron_door(facing, false, true))
+    }
+
     fn drain_redstone_updates(&mut self) {
         while self.redstone.last_updates < MAX_UPDATES {
             let Some(p) = self.redstone.updates.pop_front() else { break };
@@ -453,6 +619,16 @@ impl World {
     pub fn use_redstone(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
         let next = match r::component(b) {
+            Some(Component::Wire(power)) => {
+                if self.wire_connections(p) == [1; 4] || self.wire_connections(p) == [0; 4] {
+                    if b.0 >= 1453 { r::wire(power) } else { r::dot(power) }
+                } else {
+                    return false;
+                }
+            }
+            Some(Component::Trapdoor { facing, open, top, iron: false }) => r::trapdoor(facing, !open, top, false),
+            Some(Component::Trapdoor { iron: true, .. } | Component::IronDoor { .. }) => return true,
+            Some(Component::Daylight { power, inverted }) => r::daylight(power, !inverted),
             Some(Component::Lever { mount, on }) => r::lever(mount, !on),
             Some(Component::Button { mount, on: false, wood }) => {
                 self.schedule_redstone(p, if wood { 30 } else { 20 }, 0);
@@ -537,7 +713,10 @@ impl World {
             let values: Vec<i64> = fields.filter_map(|s| s.parse().ok()).collect();
             match (kind, values.as_slice()) {
                 ("t", &[delay, priority, seq, family])
-                    if delay >= 0 && seq >= 0 && (1100..=1499).contains(&family) && (-3..=0).contains(&priority) =>
+                    if delay >= 0
+                        && seq >= 0
+                        && ((1100..=1499).contains(&family) || matches!(family, 226 | 249))
+                        && (-3..=0).contains(&priority) =>
                 {
                     let due = tick.saturating_add(delay as u64);
                     self.redstone.pending.insert(p, (due, family as u16, seq as u64));
@@ -770,6 +949,171 @@ mod tests {
     }
 
     #[test]
+    fn buttons_release_on_java_delays_and_arrows_hold_only_wood_buttons() {
+        let mut w = world();
+        let mut entities = crate::entity::Entities::new(7);
+        supported(&mut w, AT, r::STONE_BUTTON);
+        assert!(w.use_redstone(AT));
+        ticks(&mut w, 19);
+        assert!(matches!(w.get_block(AT).and_then(r::component), Some(Component::Button { on: true, .. })));
+        ticks(&mut w, 1);
+        assert_eq!(w.get_block(AT), Some(r::STONE_BUTTON));
+        put(&mut w, AT, r::WOOD_BUTTON);
+        let pos = AT.as_dvec3() + glam::DVec3::new(0.5, 0.04, 0.5);
+        entities.arrows.push(crate::entity::Arrow::shot(pos, glam::DVec3::X, 0.1, false));
+        entities.arrows[0].pos = pos;
+        w.redstone_contacts([], &entities);
+        ticks(&mut w, 30);
+        assert!(matches!(w.get_block(AT).and_then(r::component), Some(Component::Button { on: true, .. })));
+        entities.arrows.clear();
+        w.redstone_contacts([], &entities);
+        ticks(&mut w, 30);
+        assert_eq!(w.get_block(AT), Some(r::WOOD_BUTTON));
+        put(&mut w, AT, r::STONE_BUTTON);
+        entities.arrows.push(crate::entity::Arrow::shot(pos, glam::DVec3::X, 0.1, false));
+        entities.arrows[0].pos = pos;
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::STONE_BUTTON));
+    }
+
+    #[test]
+    fn pressure_plates_filter_living_entities_and_count_item_entities_not_stack_size() {
+        let mut w = world();
+        let mut entities = crate::entity::Entities::new(7);
+        let mut rng = crate::entity::Rng::new(7);
+        let pos = AT.as_dvec3() + glam::DVec3::new(0.5, 0.1, 0.5);
+        entities.items.push(crate::entity::ItemEntity::new(
+            Stack::new(Item::DIAMOND, 64),
+            pos,
+            glam::DVec3::ZERO,
+            0.0,
+            &mut rng,
+        ));
+        supported(&mut w, AT, r::STONE_PLATE);
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::STONE_PLATE));
+        w.redstone_contacts([(pos, crate::player::SHAPE)], &entities);
+        assert_eq!(w.get_block(AT), Some(r::plate(0, 15)));
+        w.redstone_contacts([], &entities);
+        ticks(&mut w, 20);
+        assert_eq!(w.get_block(AT), Some(r::STONE_PLATE));
+        put(&mut w, AT, r::WOOD_PLATE);
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::plate(1, 15)));
+        put(&mut w, AT, r::LIGHT_PLATE);
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::plate(2, 1)));
+        for _ in 0..10 {
+            entities.items.push(crate::entity::ItemEntity::new(
+                Stack::new(Item::DIAMOND, 64),
+                pos,
+                glam::DVec3::ZERO,
+                0.0,
+                &mut rng,
+            ));
+        }
+        put(&mut w, AT, r::HEAVY_PLATE);
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::plate(3, 2)));
+        entities.items.clear();
+        w.redstone_contacts([], &entities);
+        ticks(&mut w, 10);
+        assert_eq!(w.get_block(AT), Some(r::HEAVY_PLATE));
+    }
+
+    #[test]
+    fn iron_doors_and_trapdoors_open_only_with_power_and_close_on_removal() {
+        let mut w = world();
+        put(&mut w, AT - IVec3::Y, Block::STONE);
+        assert!(w.place_iron_door(AT, Facing::East));
+        assert!(w.use_redstone(AT));
+        assert_eq!(w.get_block(AT), Some(r::iron_door(Facing::East, false, false)));
+        put(&mut w, AT - IVec3::X, r::REDSTONE_BLOCK);
+        ticks(&mut w, 1);
+        assert_eq!(w.get_block(AT), Some(r::iron_door(Facing::East, true, false)));
+        assert_eq!(w.get_block(AT + IVec3::Y), Some(r::iron_door(Facing::East, true, true)));
+        put(&mut w, AT - IVec3::X, Block::AIR);
+        ticks(&mut w, 1);
+        assert_eq!(w.get_block(AT), Some(r::iron_door(Facing::East, false, false)));
+        put(&mut w, AT, r::IRON_TRAPDOOR);
+        assert!(w.use_redstone(AT));
+        assert_eq!(w.get_block(AT), Some(r::IRON_TRAPDOOR));
+        put(&mut w, AT - IVec3::X, r::REDSTONE_BLOCK);
+        ticks(&mut w, 1);
+        assert!(matches!(w.get_block(AT).and_then(r::component), Some(Component::Trapdoor { open: true, .. })));
+    }
+
+    #[test]
+    fn targets_score_face_centres_and_ignore_hits_until_pulse_ends() {
+        let mut w = world();
+        put(&mut w, AT, r::TARGET);
+        assert!(w.hit_redstone_target(AT, AT.as_dvec3() + glam::DVec3::new(0.0, 0.5, 0.5), IVec3::NEG_X, true));
+        assert_eq!(w.get_block(AT), Some(r::target(15)));
+        w.hit_redstone_target(AT, AT.as_dvec3(), IVec3::NEG_X, false);
+        assert_eq!(w.get_block(AT), Some(r::target(15)));
+        ticks(&mut w, 19);
+        assert_eq!(w.get_block(AT), Some(r::target(15)));
+        ticks(&mut w, 1);
+        assert_eq!(w.get_block(AT), Some(r::TARGET));
+        w.hit_redstone_target(AT, AT.as_dvec3(), IVec3::NEG_X, false);
+        assert_eq!(w.get_block(AT), Some(r::target(1)));
+        ticks(&mut w, 8);
+        assert_eq!(w.get_block(AT), Some(r::TARGET));
+    }
+
+    #[test]
+    fn daylight_detectors_sample_periodically_and_ore_keeps_mining_rules() {
+        let mut w = world();
+        put(&mut w, AT, r::DAYLIGHT);
+        w.set_redstone_daylight(0.25, 0);
+        ticks(&mut w, 21);
+        assert_eq!(w.get_block(AT), Some(r::daylight(15, false)));
+        w.set_redstone_daylight(0.75, 11);
+        ticks(&mut w, 20);
+        assert_eq!(w.get_block(AT), Some(r::daylight(0, false)));
+        assert!(w.use_redstone(AT));
+        ticks(&mut w, 20);
+        assert_eq!(w.get_block(AT), Some(r::daylight(11, true)));
+        put(&mut w, AT, Block::DEEPSLATE_REDSTONE_ORE);
+        assert!(w.touch_redstone_ore(AT));
+        let glowing = w.get_block(AT).unwrap();
+        assert_eq!(glowing.emission(), 9);
+        assert_eq!(glowing.harvest_level(), Some(2));
+        assert_eq!(glowing.as_stone_ore(), Block::REDSTONE_ORE);
+        ticks(&mut w, 30);
+        assert_eq!(w.get_block(AT), Some(Block::DEEPSLATE_REDSTONE_ORE));
+    }
+
+    #[test]
+    fn isolated_wire_toggles_dot_without_horizontal_power_and_mounts_have_no_collision() {
+        let mut w = world();
+        supported(&mut w, AT, r::WIRE);
+        assert_eq!(w.wire_connections(AT), [1; 4]);
+        assert!(w.use_redstone(AT));
+        assert_eq!(w.wire_connections(AT), [0; 4]);
+        put(&mut w, AT, r::dot(7));
+        assert_eq!(w.redstone_power(AT + IVec3::X), 0);
+        assert_eq!(w.redstone_power(AT - IVec3::Y + IVec3::X), 7);
+        for b in [r::WIRE, r::LEVER, r::STONE_BUTTON, r::TORCH, r::STONE_PLATE] {
+            assert!(super::super::shape::collision(b, |_| Block::AIR, Block::AIR).is_empty());
+        }
+    }
+
+    #[test]
+    fn generic_agent_place_uses_a_lever_with_empty_hands() {
+        let mut w = world();
+        supported(&mut w, AT, r::LEVER);
+        let mut entities = crate::entity::Entities::new(7);
+        let mut a = crate::agent::Agent::new(AT.as_dvec3() + glam::DVec3::new(-2.0, 0.0, 0.5));
+        a.player.yaw = 0.0;
+        a.player.pitch = -0.45;
+        assert_eq!(a.target(&w).map(|(p, _)| p), Some(AT));
+        a.inventory.slots.fill(None);
+        a.execute(crate::agent::Command::Place, &mut w, &mut entities, &[]).unwrap();
+        assert_eq!(w.get_block(AT), Some(r::lever(0, true)));
+    }
+
+    #[test]
     #[ignore = "manual changed-grid benchmark"]
     fn dust_grid_benchmark() {
         let mut w = world();
@@ -788,7 +1132,9 @@ mod tests {
         ticks(&mut w, 1);
         eprintln!("16384-wire grid settle: {:?}, {} updates", start.elapsed(), w.redstone_updates_last_tick());
         let start = std::time::Instant::now();
-        ticks(&mut w, 1000);
+        for _ in 0..1000 {
+            std::hint::black_box(&mut w).tick_redstone();
+        }
         eprintln!("idle grid: {:?}/tick", start.elapsed() / 1000);
         put(&mut w, IVec3::new(64, 146, 64), Block::AIR);
         let start = std::time::Instant::now();

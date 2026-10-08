@@ -275,10 +275,14 @@ impl World {
             if !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
                 continue;
             }
+            let before = [f.input, f.fuel, f.output];
             f.tick(dt as f32);
-            relight.push((p, f.is_lit()));
+            relight.push((p, f.is_lit(), before != [f.input, f.fuel, f.output]));
         }
-        for (p, lit) in relight {
+        for (p, lit, changed) in relight {
+            if changed {
+                self.redstone_changed(p);
+            }
             let Some((_, facing)) = self.get_block(p).filter(|&b| is_furnace(b)).and_then(Block::oriented) else {
                 continue;
             };

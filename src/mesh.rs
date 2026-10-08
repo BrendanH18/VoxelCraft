@@ -584,7 +584,10 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
         for (i, boxes) in &shaped_cells {
             let (i, b) = (*i, blocks[*i]);
             // See-through textures need the alpha test.
-            let see_through = b.is_ladder()
+            let see_through = matches!(
+                crate::world::redstone_blocks::component(b),
+                Some(crate::world::redstone_blocks::Component::Trapdoor { .. })
+            ) || b.is_ladder()
                 || b.is_door()
                 || b.is_rail()
                 || matches!(b, Block::IRON_BARS | Block::BREWING_STAND)

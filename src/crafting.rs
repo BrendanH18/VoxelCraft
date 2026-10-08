@@ -464,6 +464,7 @@ pub fn recipes() -> &'static [Recipe] {
             r.push(armor(ArmorPiece::Leggings, &["XXX", "X X", "X X"]));
             r.push(armor(ArmorPiece::Boots, &["X X", "X X"]));
         }
+        add_redstone_recipes(&mut r);
         add_dye_recipes(&mut r);
         add_wool_recipes(&mut r);
         add_glass_terracotta_recipes(&mut r);
@@ -641,8 +642,11 @@ mod tests {
             let g = grid(3, &[(x, 1, P), (x, 2, P)]);
             assert_eq!(g.result(), Some(Stack::new(Item::STICK, 4)));
         }
-        // Side by side is not sticks.
-        assert_eq!(grid(3, &[(0, 0, P), (1, 0, P)]).result(), None);
+        // Side by side makes a pressure plate, not sticks.
+        assert_eq!(
+            grid(3, &[(0, 0, P), (1, 0, P)]).result(),
+            Some(Stack::new(crate::world::redstone_blocks::WOOD_PLATE, 1))
+        );
         // An axe and its mirror image.
         let axe = Item::tool(ToolKind::Axe, Tier::Stone);
         let left = grid(3, &[(0, 0, C), (1, 0, C), (0, 1, C), (1, 1, Item::STICK), (1, 2, Item::STICK)]);
@@ -696,7 +700,7 @@ mod tests {
         g.consume();
         assert_eq!(g.cells[0], None);
         assert_eq!(g.cells[2], Some(Stack::new(P, 1)));
-        assert_eq!(g.result(), None);
+        assert_eq!(g.result(), Some(Stack::new(crate::world::redstone_blocks::WOOD_BUTTON, 1)));
         assert_eq!(g.take_all(), vec![Stack::new(P, 1)]);
         assert!(g.cells.iter().all(Option::is_none));
     }
@@ -1012,5 +1016,54 @@ mod glass_terracotta_recipe_tests {
             g.cells[i] = Some(Stack::new(Block::GRAVEL, 1));
         }
         assert_eq!(g.result(), Some(Stack::new(Block::concrete_powder(DyeColor::White), 8)));
+    }
+}
+
+fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
+    use crate::world::redstone_blocks as r;
+    const DUST: Ingredient = &[Item::REDSTONE];
+    const TORCH: Ingredient = &[b(r::TORCH)];
+    const QUARTZ: Ingredient = &[Item::NETHER_QUARTZ];
+    const OAK: Ingredient = &[b(Block::PLANKS)];
+    const GLOW: Ingredient = &[b(Block::GLOWSTONE)];
+    const REDSTONE_BLOCK: Ingredient = &[b(r::REDSTONE_BLOCK)];
+    const SLAB: Ingredient = &[b(Block(108))];
+    const HAY: Ingredient = &[b(r::HAY)];
+    recipes.extend([
+        shaped(&["s", "c"], &[('s', STICK), ('c', COBBLESTONE)], b(r::LEVER), 1),
+        shapeless(&[STONE], b(r::STONE_BUTTON), 1),
+        shapeless(&[OAK], b(r::WOOD_BUTTON), 1),
+        shaped(&["r", "s"], &[('r', DUST), ('s', STICK)], b(r::TORCH), 1),
+        shaped(&["trt", "sss"], &[('t', TORCH), ('r', DUST), ('s', STONE)], b(r::REPEATER), 1),
+        shaped(&[" t ", "tqt", "sss"], &[('t', TORCH), ('q', QUARTZ), ('s', STONE)], b(r::COMPARATOR), 1),
+        shaped(&[" r ", "rgr", " r "], &[('r', DUST), ('g', GLOW)], b(r::LAMP), 1),
+        shaped(&["rrr", "rrr", "rrr"], &[('r', DUST)], b(r::REDSTONE_BLOCK), 1),
+        shapeless(&[REDSTONE_BLOCK], Item::REDSTONE, 9),
+        shaped(&["ss"], &[('s', STONE)], b(r::STONE_PLATE), 1),
+        shaped(&["pp"], &[('p', OAK)], b(r::WOOD_PLATE), 1),
+        shaped(&["gg"], &[('g', GOLD)], b(r::LIGHT_PLATE), 1),
+        shaped(&["ii"], &[('i', IRON)], b(r::HEAVY_PLATE), 1),
+        shaped(&["ii", "ii", "ii"], &[('i', IRON)], b(r::IRON_DOOR), 3),
+        shaped(&["ii", "ii"], &[('i', IRON)], b(r::IRON_TRAPDOOR), 1),
+        shaped(&["ppp", "ppp"], &[('p', OAK)], b(r::WOOD_TRAPDOOR), 2),
+        shaped(&["ggg", "qqq", "sss"], &[('g', GLASS), ('q', QUARTZ), ('s', SLAB)], b(r::DAYLIGHT), 1),
+        shaped(&[" r ", "rhr", " r "], &[('r', DUST), ('h', HAY)], b(r::TARGET), 1),
+        shaped(&["www", "www", "www"], &[('w', WHEAT)], b(r::HAY), 1),
+        shapeless(&[HAY], Item::WHEAT, 9),
+    ]);
+}
+
+#[cfg(test)]
+mod redstone_recipe_tests {
+    use super::*;
+    #[test]
+    fn every_craftable_redstone_component_has_a_matching_recipe() {
+        use crate::world::redstone_blocks as r;
+        for id in r::palette_ids().filter(|&id| id != r::WIRE.0) {
+            let item = b(Block(id));
+            let recipe = recipes().iter().find(|recipe| recipe.result.item == item).expect("redstone recipe");
+            let grid = recipe.preview();
+            assert_eq!(grid.result().map(|s| s.item), Some(item));
+        }
     }
 }
