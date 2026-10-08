@@ -103,7 +103,13 @@ impl Game {
             ui.text(
                 x,
                 y + 36.0,
-                if o.stocked() { "A/X/Y: trade to inventory" } else { "Out of stock - needs to work" },
+                if o.stocked() {
+                    "A/X/Y: trade to inventory"
+                } else if v.wandering {
+                    "Out of stock"
+                } else {
+                    "Out of stock - needs to work"
+                },
                 WHITE,
             );
         }
