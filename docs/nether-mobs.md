@@ -32,7 +32,8 @@ Mobs now carry a `uid`, so mobs can target other mobs (`EntityEvent::MobHit`).
 They also carry a `persistent` flag for mobs Java would never despawn. The look-around
 (sensing) runs about twice a second per mob, at staggered times, over one shared
 snapshot of the living mobs. Each mob's work is linear in the number of entities.
-Nothing in this module compares every pair of entities.
+Sensing scans the shared snapshot for each Nether mob, so its worst-case work
+is quadratic in the mob count; staggering keeps most scans off the same tick.
 
 ## Piglins
 
@@ -74,18 +75,21 @@ It picks one ingot off a stack and holds it for 119 ticks (`ADMIRE_DURATION`):
 - A hit while admiring loses the ingot (Java's `stopHoldingOffHandItem(false)`).
 - Gold nuggets go straight into the pocket.
 - Porkchops are eaten, with a 200-tick cooldown.
-- Picking anything up makes the piglin persistent.
+- Picking anything up makes the piglin persistent. `mobGriefing=false` disables
+  pickup and bartering of dropped gold.
+- Carried stacks keep wear, enchantments and names. A full pocket throws any
+  overflow back into the world, keeping the items already stored.
 
 **Zombification.** Outside the Nether, after 300 ticks, a piglin becomes a zombified
 piglin. It keeps its age, armor, persistence and uid. Immune piglins
 (`IsImmuneToZombification`) stay. The existing zombified piglin carries on: it is
 neutral, angers its whole pack within 32 blocks for 30 s when one is hit, and spawns
-in Nether packs.
+in Nether packs. Conversion drops the pocket contents and the item being admired.
 
 **Other behaviour:**
 - Piglins attack wither skeletons on sight (their nemesis).
 - They keep 6 blocks from zombified piglins and zoglins.
-- Adults hunt baby hoglins (below).
+- Adults hunt adult hoglins (below).
 
 ### Bartering table (Java 1.21 `gameplay/piglin_bartering`)
 
@@ -169,7 +173,7 @@ blocks of a player gets its residents once its corners and centre have loaded:
 - Outside the Nether, after 300 ticks, a hoglin becomes a zoglin.
 
 **Hunting.** An adult piglin that may hunt, and hasn't for a while, picks a huntable
-baby hoglin within 16 blocks (`StartHuntingHoglin`). The piglins around it join the
+adult hoglin within 16 blocks (`StartHuntingHoglin`). The piglins around it join the
 attack, and none of them hunt again for 30–120 s. A piglin hit by a hoglin whose
 herd outnumbers the piglins retreats instead.
 
@@ -179,11 +183,11 @@ herd outnumbers the piglins retreats instead.
 - They use the hoglin's tusk attack and throw.
 
 **Spawning.** Hoglins spawn only from the crimson-forest entry (weight 9, groups of
-3–4), so there are no natural hoglins until biomes land; see the spawn table. 20%
-spawn as babies. Bastion stables pen them in the meantime.
+3–4); see the spawn table. 20% spawn as babies. Bastion stables also contain
+persistent hoglins.
 
-**Breeding** needs breeding support and crimson fungus, neither of which exists.
-`nether::breeding_item` names the fungus for when they do.
+**Breeding** needs animal breeding support, which is not implemented. Crimson
+fungus exists; `nether::breeding_item` identifies it for future breeding support.
 
 ## Striders
 
@@ -214,8 +218,8 @@ per-biome lists (see [Nether biomes](nether-biomes.md#mob-spawning)) and
 | Soul sand valley | skeleton 20 (5), ghast 50 (4), enderman 1 (4) | strider 60 (1–2) |
 | Basalt deltas | ghast 40 (1), magma cube 100 (2–5) | strider 60 (1–2) |
 
-The older kinds (ghasts, magma cubes, zombified piglins, endermen) keep their
-existing `MobKind::spawn_chance` weights.
+Natural Nether attempts use these biome weights through `nether_spawn`;
+`MobKind::spawn_chance` continues to govern other dimensions.
 
 ## Crossbow
 
@@ -274,6 +278,8 @@ different pitches.
   - Piglins don't pick up and equip better weapons or armor, or golden axes for
     brutes.
   - Their pocket holds 8 stacks.
+  - Zombification retains armor but replaces the main-hand weapon with the existing
+    zombified piglin sword model; crossbows and brute axes are not retained.
   - Melee hits are credited to the nearest player, since the melee path doesn't
     name the attacker.
 - **Zoglins** only pick mob targets within 4 blocks of height, so they don't chase
@@ -282,15 +288,17 @@ different pitches.
   is removed, as before.
 - **Bastion residents** are spread over each piece's floor rather than placed at
   Java's exact jigsaw spots. Treasure-room magma cube spawners are still absent.
-- **Crossbow**: crafted with Java's recipe, but no Multishot,
-  Piercing or Quick Charge, and no first-person loading pose.
+- **Crossbow**: crafted with Java's recipe and supports existing durability
+  enchantments, but no Multishot, Piercing or Quick Charge, and no first-person
+  loading pose. Device-free agents have no bow or crossbow use command.
 - **Line of sight** uses the existing block raycast, which treats every solid block
   as opaque.
 - **Visibility**: anger and hunting counts check distance, not sight lines.
+- **Split-screen fog**: all views share the host camera's blended biome fog.
 
 ## What to check visually
 
-There's no GPU in the agent environment, so the integrator should look at these:
+Visual checks for the integrator:
 
 - **Piglins**:
   - Proportions: wide 10-pixel head, snout, tusks, flopping ears.
@@ -356,6 +364,7 @@ These machines are slower and noisier than the Apple M5 figures in
   [HoglinBase](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/hoglin/HoglinBase.java),
   [Zoglin](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/Zoglin.java),
   [ZombifiedPiglin](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/ZombifiedPiglin.java)
+- [PiglinSpecificSensor](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/ai/sensing/PiglinSpecificSensor.java)
 - [Strider](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/Strider.java)
 - [Bartering loot table](https://raw.githubusercontent.com/misode/mcmeta/1.21.5-data/data/minecraft/loot_table/gameplay/piglin_bartering.json)
 - Biome spawn lists: `data/minecraft/worldgen/biome/*.json` in the same

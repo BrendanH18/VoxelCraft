@@ -137,7 +137,7 @@ pub(super) enum Goal {
 pub struct NetherMob {
     pub weapon: Weapon,
     /// Gold held in the off hand while admiring it.
-    pub offhand: Option<Item>,
+    pub offhand: Option<Stack>,
     pub admire_left: f32,
     /// Items picked up and kept; dropped on death.
     pub pocket: Vec<Stack>,
@@ -172,6 +172,8 @@ pub struct NetherMob {
     pub(super) barter: bool,
     /// Zombified: becomes its zombie form at the next upkeep.
     pub(super) convert: bool,
+    /// This corpse's carried items have already been emitted by death loot.
+    loot_dropped: bool,
 }
 
 impl NetherMob {
@@ -204,6 +206,7 @@ impl NetherMob {
                     charge: 0.0,
                     barter: false,
                     convert: false,
+                    loot_dropped: false,
                 })
             })
     }
@@ -374,7 +377,7 @@ fn is_piglin_kind(kind: Option<MobKind>) -> bool {
 
 /// Kinds whose babies drop no loot (Java's baby animals).
 pub(super) fn babies_drop_nothing(kind: MobKind) -> bool {
-    matches!(kind, MobKind::Hoglin | MobKind::Zoglin | MobKind::Strider)
+    matches!(kind, MobKind::Hoglin | MobKind::Strider)
 }
 
 /// The item that breeds `kind` in Java (crimson fungus for hoglins). There
@@ -500,6 +503,7 @@ impl Entities {
             huntable: m.kind == MobKind::Hoglin && m.nether.as_ref().is_some_and(|n| !n.cannot_hunt),
         }));
         let (mobs, view, items, rng) = (&mut self.mobs, &self.nether_view, &self.items, &mut self.rng);
+        let allow_pickup = self.villager_griefing;
         let mut hunts = Vec::new();
         for m in mobs.iter_mut() {
             let alive = m.alive();
@@ -515,7 +519,7 @@ impl Entities {
                 MobKind::Zoglin => sense_zoglin(m, view, world, ctx),
                 MobKind::Strider => sense_strider(m, world),
                 _ => {
-                    if let Some(prey) = sense(m, view, items, world, ctx, rng) {
+                    if let Some(prey) = sense(m, view, items, world, ctx, rng, allow_pickup) {
                         hunts.push((m.pos, m.uid, prey));
                     }
                 }
@@ -609,7 +613,7 @@ impl Entities {
             Foe::Player(_) => None,
         };
         let Some(m) = self.mobs.get_mut(index) else { return };
-        let (kind, pos, baby, uid) = (m.kind, m.pos, m.baby, m.uid);
+        let (kind, pos, baby, uid, alive) = (m.kind, m.pos, m.baby, m.uid, m.alive());
         let Some(n) = m.nether.as_mut() else { return };
         if foe == Foe::Mob(uid) {
             return;
@@ -652,12 +656,14 @@ impl Entities {
             }
         }
         // Interrupted admiring: no barter; anything but currency is kept.
-        if let Some(item) = n.offhand.take() {
+        // A lethal hit leaves the offhand intact for the death-loot path.
+        let interrupted = if alive { n.offhand.take() } else { None };
+        let overflow = if let Some(stack) = interrupted {
             n.admire_left = 0.0;
-            if !is_barter_currency(item) {
-                pocket(n, Stack::new(item, 1));
-            }
-        }
+            if !is_barter_currency(stack.item) { pocket(n, stack) } else { None }
+        } else {
+            None
+        };
         if matches!(foe, Foe::Player(_)) {
             n.admire_disabled = ADMIRE_DISABLED_TIME;
         }
@@ -668,6 +674,9 @@ impl Entities {
             n.anger(foe);
         }
         n.sense_timer = 0.0;
+        if let Some(stack) = overflow {
+            self.throw_from_mob(stack, pos, None);
+        }
         self.broadcast_anger(pos, foe, uid);
     }
 
@@ -732,9 +741,11 @@ impl Entities {
         let (pos, baby) = (m.pos, m.baby);
         let Some(n) = m.nether.as_mut() else { return };
         n.barter = false;
-        let Some(item) = n.offhand.take() else { return };
-        if baby || !is_barter_currency(item) {
-            pocket(n, Stack::new(item, 1));
+        let Some(stack) = n.offhand.take() else { return };
+        if baby || !is_barter_currency(stack.item) {
+            if let Some(overflow) = pocket(n, stack) {
+                self.throw_from_mob(overflow, pos, None);
+            }
             return;
         }
         // Java throws the loot toward the nearest player in view, otherwise
@@ -767,6 +778,10 @@ impl Entities {
 
     /// A fetching piglin picks up the wanted item it reached.
     fn pick_up(&mut self, index: usize, events: &mut Vec<EntityEvent>) {
+        // The shared flag follows the world's mobGriefing gamerule.
+        if !self.villager_griefing {
+            return;
+        }
         let m = &self.mobs[index];
         let reach = m.shape().half_width + 1.0;
         let Some(j) = self.items.iter().position(|it| {
@@ -783,29 +798,36 @@ impl Entities {
         let Some(n) = m.nether.as_mut() else { return };
         let item = self.items[j].stack.item;
         let take = if item == Item::GOLD_NUGGET { self.items[j].stack.count } else { 1 };
+        let carried = Stack { count: take, ..self.items[j].stack };
+        let mut overflow = None;
         if is_food(item) {
             n.ate = EAT_COOLDOWN;
         } else if is_loved(item) {
-            n.offhand = Some(item);
+            n.offhand = Some(carried);
             n.admire_left = ADMIRE_TIME;
             events.push(EntityEvent::Sound { sound: MobSound::Ambient(m.kind), pos: m.pos + DVec3::Y * 1.6 });
         } else {
-            pocket(n, Stack::new(item, take));
+            overflow = pocket(n, carried);
         }
         n.goal = Goal::None;
         n.sense_timer = 0.0;
         // Java marks mobs that pick items up persistent.
         m.persistent = true;
+        let pos = m.pos;
         let stack = &mut self.items[j].stack;
         if stack.count <= take {
             self.items.swap_remove(j);
         } else {
             stack.count -= take;
         }
+        if let Some(stack) = overflow {
+            self.throw_from_mob(stack, pos, None);
+        }
     }
 
     /// Java's `convertTo`: a piglin outside the Nether becomes a zombified
-    /// piglin in place, keeping its age, persistence and main-hand weapon.
+    /// piglin in place, keeping its age, persistence and armor. Piglin
+    /// inventory and an admired item are dropped before conversion.
     fn zombify(&mut self, index: usize, events: &mut Vec<EntityEvent>) {
         let old = &self.mobs[index];
         let into = match old.kind {
@@ -813,6 +835,9 @@ impl Entities {
             MobKind::Hoglin => MobKind::Zoglin,
             _ => return,
         };
+        let carried: Vec<Stack> =
+            old.nether.as_ref().map(|n| n.pocket.iter().copied().chain(n.offhand).collect()).unwrap_or_default();
+        let pos = old.pos;
         let mut mob = Mob::new(into, old.pos, old.yaw);
         mob.baby = old.baby;
         mob.persistent = old.persistent;
@@ -822,22 +847,27 @@ impl Entities {
         mob.armor = old.armor;
         events.push(EntityEvent::Sound { sound: MobSound::Ambient(into), pos: old.pos + DVec3::Y * 1.6 });
         self.mobs[index] = mob;
+        for stack in carried {
+            self.items.push(ItemEntity::new(stack, pos + DVec3::Y * 0.5, DVec3::ZERO, PICKUP_DELAY, &mut self.rng));
+        }
     }
 
     /// Equipment and pocket drops for a nether mob that died at `pos`:
     /// carried items always, worn gear 8.5% (+1% per Looting level) of the
     /// time on a player kill.
     pub(super) fn equipment_drops(&mut self, kind: MobKind, pos: DVec3, looting: u8, player_kill: bool) {
-        let Some(m) = self
-            .mobs
-            .iter()
-            .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01 && m.nether.is_some())
-        else {
+        let Some(m) = self.mobs.iter_mut().find(|m| {
+            m.kind == kind
+                && !m.alive()
+                && m.pos.distance_squared(pos) < 0.01
+                && m.nether.as_ref().is_some_and(|n| !n.loot_dropped)
+        }) else {
             return;
         };
-        let n = m.nether.as_ref().unwrap();
+        let n = m.nether.as_mut().unwrap();
+        n.loot_dropped = true;
         let mut out: Vec<Stack> = n.pocket.clone();
-        out.extend(n.offhand.map(|i| Stack::new(i, 1)));
+        out.extend(n.offhand);
         let worn: Vec<Item> = n
             .weapon
             .item()
@@ -999,23 +1029,24 @@ fn floor_in<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, lo: 
     clear.then_some(pos)
 }
 
-/// Adds a stack to a piglin's pocket, merging with a matching one; a full
-/// pocket drops the oldest stack's worth on the floor (lost, like Java's
-/// overflow).
-fn pocket(n: &mut NetherMob, stack: Stack) {
-    if let Some(s) = n.pocket.iter_mut().find(|s| s.item == stack.item && s.count < s.item.max_stack()) {
-        let room = s.item.max_stack() - s.count;
-        let moved = room.min(stack.count);
-        s.count += moved;
-        if moved == stack.count {
-            return;
+/// Adds a stack to a piglin's eight-slot inventory. Any remainder is
+/// returned so the caller can throw it rather than losing existing items.
+fn pocket(n: &mut NetherMob, mut stack: Stack) -> Option<Stack> {
+    for slot in &mut n.pocket {
+        if slot.stacks_with(&stack) {
+            let moved = (slot.max() - slot.count).min(stack.count);
+            slot.count += moved;
+            stack.count -= moved;
+            if stack.count == 0 {
+                return None;
+            }
         }
-        n.pocket.push(Stack { count: stack.count - moved, ..stack });
-    } else {
-        n.pocket.push(stack);
     }
-    if n.pocket.len() > POCKET_SLOTS {
-        n.pocket.remove(0);
+    if n.pocket.len() < POCKET_SLOTS {
+        n.pocket.push(stack);
+        None
+    } else {
+        Some(stack)
     }
 }
 
@@ -1037,7 +1068,7 @@ fn wants(n: &NetherMob, baby: bool, item: Item) -> bool {
 }
 
 /// One look around for the piglin or brute `m`: picks its goal. Returns the
-/// baby hoglin it started hunting, if it did.
+/// adult hoglin it started hunting, if it did.
 fn sense<W: MobWorld + ?Sized>(
     m: &mut Mob,
     view: &[Seen],
@@ -1045,6 +1076,7 @@ fn sense<W: MobWorld + ?Sized>(
     world: &W,
     ctx: &Ctx,
     rng: &mut Rng,
+    allow_pickup: bool,
 ) -> Option<u32> {
     let (pos, baby, kind, uid) = (m.pos, m.baby, m.kind, m.uid);
     let brute = kind == MobKind::PiglinBrute;
@@ -1065,7 +1097,7 @@ fn sense<W: MobWorld + ?Sized>(
     // put it off gold for a while. Brutes don't care for gold.
     let fetch = items
         .iter()
-        .filter(|_| !brute)
+        .filter(|_| !brute && allow_pickup)
         .filter(|it| {
             let d = it.pos - pos;
             d.x * d.x + d.z * d.z <= ITEM_RANGE * ITEM_RANGE && d.y.abs() <= 4.0 && wants(n, baby, it.stack.item)
@@ -1116,12 +1148,12 @@ fn sense<W: MobWorld + ?Sized>(
             n.goal = Goal::Attack { foe: Foe::Mob(s.uid), pos: s.pos };
             return None;
         }
-        // Java's `StartHuntingHoglin`: adults hunt baby hoglins now and then.
+        // Java's `StartHuntingHoglin`: adults hunt adult hoglins now and then.
         if !brute
             && !n.cannot_hunt
             && n.hunt_cooldown <= 0.0
             && let Some(s) =
-                view.iter().find(|s| s.kind == MobKind::Hoglin && s.baby && s.huntable && near(s, ANGER_RANGE))
+                view.iter().find(|s| s.kind == MobKind::Hoglin && !s.baby && s.huntable && near(s, ANGER_RANGE))
         {
             n.anger(Foe::Mob(s.uid));
             n.hunt_cooldown = rng.range(30.0, 120.0);
@@ -1315,7 +1347,7 @@ fn save_mob(m: &Mob) -> Value {
         "baby": m.baby,
         "armor": armor,
         "weapon": n.map_or("none", |n| n.weapon.name()),
-        "offhand": n.and_then(|n| n.offhand).map(|i| i.0),
+        "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
         "admire": n.map_or(0.0, |n| n.admire_left),
         "pocket": n.map_or(String::new(), |n| {
             n.pocket.iter().map(|s| crate::inventory::stack_to_string(Some(*s))).collect::<Vec<_>>().join(",")
@@ -1347,7 +1379,11 @@ fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(n) = m.nether.as_mut() {
         n.weapon = Weapon::from_name(v["weapon"].as_str().unwrap_or("none"));
-        n.offhand = v["offhand"].as_u64().map(|i| Item(i as u16)).filter(|i| i.is_valid());
+        n.offhand = v["offhand"].as_str().and_then(|s| crate::inventory::stack_from_str(s).flatten()).or_else(|| {
+            // Earlier v0.5 saves kept only the numeric item id.
+            let id = u16::try_from(v["offhand"].as_u64()?).ok()?;
+            Item(id).is_valid().then(|| Stack::new(Item(id), 1))
+        });
         n.admire_left = v["admire"].as_f64().unwrap_or(0.0) as f32;
         if n.offhand.is_some() && n.admire_left <= 0.0 {
             n.admire_left = ADMIRE_TIME;
@@ -1504,7 +1540,7 @@ mod tests {
         // An admiring piglin isn't idle, so opening a chest doesn't upset it.
         let mut e = Entities::new(5);
         let a = swordsman(&mut e);
-        e.mobs[a].nether.as_mut().unwrap().offhand = Some(Item::GOLD_INGOT);
+        e.mobs[a].nether.as_mut().unwrap().offhand = Some(Stack::new(Item::GOLD_INGOT, 1));
         e.piglins_notice(PlayerId::HOST, gold.pos, false, &world);
         assert_eq!(e.mobs[a].nether.as_ref().unwrap().foe, None);
 
@@ -1538,7 +1574,7 @@ mod tests {
         e.items.push(ItemEntity::new(ingot, DVec3::new(3.5, 10.0, 0.5), DVec3::ZERO, THROWN_PICKUP_DELAY, &mut rng));
         run(&mut e, &world, &ctx, 3.5);
         let n = e.mobs[0].nether.as_ref().unwrap();
-        assert_eq!(n.offhand, Some(Item::GOLD_INGOT), "walked over and picked one up");
+        assert_eq!(n.offhand, Some(Stack::new(Item::GOLD_INGOT, 1)), "walked over and picked one up");
         assert!(e.mobs[0].persistent);
         assert_eq!(e.items.iter().find(|i| i.stack.item == Item::GOLD_INGOT).map(|i| i.stack.count), Some(1));
         // Admiring takes about six seconds; the second ingot follows.
@@ -1564,6 +1600,165 @@ mod tests {
     }
 
     #[test]
+    fn mob_griefing_disables_piglin_item_pickup_and_bartering() {
+        let world = Grid::flat(10);
+        let mut gold = player(DVec3::new(6.5, 10.0, 0.5));
+        gold.gold_armor = true;
+        let ctx = nether(vec![gold]);
+        let mut e = Entities::new(19);
+        swordsman(&mut e);
+        e.villager_griefing = false;
+        let gift = Stack::new(Item::GOLD_INGOT, 1);
+        e.items.push(ItemEntity::new(gift, e.mobs[0].pos, DVec3::ZERO, 0.0, &mut e.rng));
+        run(&mut e, &world, &ctx, 10.0);
+        assert_eq!(e.items.len(), 1);
+        assert_eq!(e.items[0].stack, gift);
+        assert!(!e.mobs[0].persistent);
+        assert!(!e.mobs[0].nether.as_ref().unwrap().is_admiring());
+        e.villager_griefing = true;
+        e.mobs[0].pos = e.items[0].pos;
+        e.mobs[0].vel = DVec3::ZERO;
+        e.mobs[0].nether.as_mut().unwrap().sense_timer = 0.0;
+        run(&mut e, &world, &ctx, 1.0);
+        assert!(e.mobs[0].nether.as_ref().unwrap().is_admiring());
+        assert!(e.items.is_empty());
+    }
+
+    #[test]
+    fn admired_gold_gear_keeps_components_through_pickup_save_and_death() {
+        let mut e = Entities::new(21);
+        let i = swordsman(&mut e);
+        let mut gift =
+            Stack::new(Item::tool(crate::item::ToolKind::Sword, Tier::Gold), 1).with_name("Named gift").unwrap();
+        gift.damage = 12;
+        gift.repair_cost = 3;
+        gift.enchants = crate::enchant::Enchants::NONE.with(crate::enchant::Enchantment::Sharpness, 2);
+        e.items.push(ItemEntity::new(gift, e.mobs[i].pos, DVec3::ZERO, 0.0, &mut e.rng));
+        e.pick_up(i, &mut Vec::new());
+        assert_eq!(e.mobs[i].nether.as_ref().unwrap().offhand, Some(gift));
+        let saved = e.nether_mobs_to_string();
+        let mut loaded = Entities::new(21);
+        loaded.load_nether_mobs(&saved);
+        assert_eq!(loaded.mobs[0].nether.as_ref().unwrap().offhand, Some(gift));
+        loaded.finish_admiring(0, &nether(vec![]));
+        assert_eq!(loaded.mobs[0].nether.as_ref().unwrap().pocket, vec![gift]);
+        loaded.attack(0, DVec3::X, 100.0);
+        loaded.drop_loot(MobKind::Piglin, loaded.mobs[0].pos);
+        assert!(loaded.items.iter().any(|i| i.stack == gift));
+
+        // The first v0.5 saves represented the admired item by its numeric id.
+        let mut old: Value = serde_json::from_str(&saved).unwrap();
+        old["mobs"][0]["offhand"] = json!(Item::GOLD_INGOT.0);
+        let mut loaded = Entities::new(21);
+        loaded.load_nether_mobs(&old.to_string());
+        assert_eq!(loaded.mobs[0].nether.as_ref().unwrap().offhand, Some(Stack::new(Item::GOLD_INGOT, 1)));
+    }
+
+    #[test]
+    fn full_piglin_pockets_throw_overflow_without_destroying_older_items() {
+        let mut e = Entities::new(22);
+        let i = swordsman(&mut e);
+        let kept: Vec<_> = (0..POCKET_SLOTS)
+            .map(|j| Stack::new(Item::GOLD_NUGGET, 1).with_name(&format!("Nugget {j}")).unwrap())
+            .collect();
+        let gift = Stack::new(Item::CLOCK, 1).with_name("Overflow").unwrap();
+        let n = e.mobs[i].nether.as_mut().unwrap();
+        n.pocket = kept.clone();
+        n.offhand = Some(gift);
+        e.finish_admiring(i, &nether(vec![]));
+        assert_eq!(e.mobs[i].nether.as_ref().unwrap().pocket, kept);
+        assert_eq!(e.items.len(), 1);
+        assert_eq!(e.items[0].stack, gift);
+
+        // Same item ids with different components use separate slots.
+        let n = e.mobs[i].nether.as_mut().unwrap();
+        n.pocket.truncate(1);
+        let distinct = Stack::new(Item::GOLD_NUGGET, 1).with_name("Different name").unwrap();
+        assert_eq!(pocket(n, distinct), None);
+        assert_eq!(n.pocket, vec![kept[0], distinct]);
+    }
+
+    #[test]
+    fn nether_melee_attacks_trigger_thorns_and_credit_its_kills() {
+        let world = Grid::flat(10);
+        for kind in [MobKind::Piglin, MobKind::PiglinBrute, MobKind::Hoglin, MobKind::Zoglin] {
+            let mut e = Entities::new(23);
+            e.mobs.push(Mob::new(kind, DVec3::new(0.5, 10.0, 0.5), 0.0));
+            let mut target = player(DVec3::new(1.5, 10.0, 0.5));
+            // A test-only level above VI makes a retaliation certain.
+            target.thorns = [7, 0, 0, 0];
+            let ctx = nether(vec![target]);
+            let events = e.update(0.05, &world, &ctx);
+            assert_eq!(hits(&events), 1, "{kind:?} struck the player");
+            let hurt = kind.max_health() - e.mobs[0].health;
+            assert!((1.0..5.0).contains(&hurt), "{kind:?} took Thorns damage: {hurt}");
+
+            let mut e = Entities::new(23);
+            e.mobs.push(Mob::new(kind, DVec3::new(0.5, 10.0, 0.5), 0.0));
+            e.mobs[0].health = 0.5;
+            let pocket_stack = Stack::new(Item::GOLD_NUGGET, 3);
+            e.mobs[0].nether.as_mut().unwrap().pocket.push(pocket_stack);
+            e.mobs[0].pos = DVec3::new(0.5, 10.0, 0.5);
+            // Strong existing upward knockback moves the corpse beyond the
+            // loot lookup tolerance during the same tick as lethal Thorns.
+            let struck_at = e.mobs[0].pos;
+            e.mobs[0].vel = DVec3::Y * 20.0;
+            e.update(0.05, &world, &ctx);
+            assert!(e.mobs[0].pos.distance(struck_at) > 0.1);
+            assert!(!e.mobs[0].alive(), "{kind:?} killed by Thorns");
+            assert!(!e.orbs.is_empty(), "{kind:?} kill awarded player experience");
+            assert!(e.items.iter().any(|i| i.stack == pocket_stack), "{kind:?} kill spilled inventory");
+        }
+    }
+
+    #[test]
+    fn lethal_hits_drop_the_ingot_a_piglin_is_admiring() {
+        let mut e = Entities::new(25);
+        let i = swordsman(&mut e);
+        let gift = Stack::new(Item::GOLD_INGOT, 1).with_name("Last gift").unwrap();
+        e.mobs[i].nether.as_mut().unwrap().offhand = Some(gift);
+        e.attack(i, DVec3::X, 100.0);
+        e.drop_loot(MobKind::Piglin, e.mobs[i].pos);
+        assert!(e.items.iter().any(|i| i.stack == gift));
+    }
+
+    #[test]
+    fn colocated_piglin_deaths_drop_each_inventory_once() {
+        let mut e = Entities::new(26);
+        let pos = DVec3::new(0.5, 10.0, 0.5);
+        let gifts = [
+            Stack::new(Item::CLOCK, 1).with_name("First piglin").unwrap(),
+            Stack::new(Item::CLOCK, 1).with_name("Second piglin").unwrap(),
+        ];
+        for gift in gifts {
+            let i = swordsman(&mut e);
+            e.mobs[i].nether.as_mut().unwrap().pocket.push(gift);
+            e.attack(i, DVec3::X, 100.0);
+        }
+        // Death events identify mobs by kind and position. Co-located corpses
+        // must each be consumed once instead of duplicating the first pocket.
+        for _ in 0..2 {
+            e.drop_loot(MobKind::Piglin, pos);
+        }
+        for gift in gifts {
+            assert_eq!(e.items.iter().filter(|i| i.stack == gift).count(), 1);
+        }
+    }
+
+    #[test]
+    fn baby_zoglins_drop_rotten_flesh() {
+        let mut e = Entities::new(24);
+        let mut m = Mob::new(MobKind::Zoglin, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        m.baby = true;
+        e.mobs.push(m);
+        e.attack(0, DVec3::X, 100.0);
+        e.drop_loot(MobKind::Zoglin, e.mobs[0].pos);
+        let flesh: u32 =
+            e.items.iter().filter(|i| i.stack.item == Item::ROTTEN_FLESH).map(|i| i.stack.count as u32).sum();
+        assert!((1..=3).contains(&flesh));
+    }
+
+    #[test]
     fn piglins_zombify_after_fifteen_seconds_outside_the_nether() {
         let world = Grid::flat(10);
         let far = player(DVec3::new(60.0, 10.0, 0.5));
@@ -1575,8 +1770,16 @@ mod tests {
         let overworld = Ctx { dimension: Dimension::Overworld, daylight: 0.0, ..nether(vec![far]) };
         run(&mut e, &world, &overworld, 14.5);
         assert_eq!(e.mobs[0].kind, MobKind::Piglin);
+        let pocket_stack = Stack::new(Item::CLOCK, 1).with_name("Kept clock").unwrap();
+        let admired = Stack::new(Item::GOLD_INGOT, 1).with_name("Gift").unwrap();
+        let n = e.mobs[0].nether.as_mut().unwrap();
+        n.pocket.push(pocket_stack);
+        n.offhand = Some(admired);
+        n.admire_left = 2.0;
         run(&mut e, &world, &overworld, 1.0);
         assert_eq!(e.mobs[0].kind, MobKind::ZombifiedPiglin);
+        assert!(e.items.iter().any(|i| i.stack == pocket_stack), "conversion spills its inventory");
+        assert!(e.items.iter().any(|i| i.stack == admired), "conversion cancels admiring and drops the gift");
         assert!(e.mobs[0].baby, "keeps its age");
         let mut e = Entities::new(2);
         swordsman(&mut e);
@@ -1596,7 +1799,7 @@ mod tests {
         m.armor[0] = Some(super::super::armor::ArmorKind::Gold);
         let n = m.nether.as_mut().unwrap();
         n.weapon = Weapon::Crossbow;
-        n.offhand = Some(Item::GOLD_INGOT);
+        n.offhand = Some(Stack::new(Item::GOLD_INGOT, 1));
         n.admire_left = 2.5;
         n.pocket = vec![Stack::new(Item::GOLD_NUGGET, 12), Stack::new(Item::CLOCK, 1)];
         n.zombify = 4.0;
@@ -1884,7 +2087,7 @@ mod tests {
     }
 
     #[test]
-    fn piglins_hunt_baby_hoglins_but_not_stable_ones() {
+    fn piglins_hunt_adult_hoglins_but_not_babies_or_stable_ones() {
         let world = Grid::flat(10);
         let mut gold = player(DVec3::new(40.0, 10.0, 0.5));
         gold.gold_armor = true;
@@ -1893,7 +2096,7 @@ mod tests {
         let hunter = swordsman(&mut e);
         let friend = swordsman(&mut e);
         e.mobs[friend].pos.z = 4.0;
-        let prey = hoglin_at(&mut e, 6.5, true);
+        let prey = hoglin_at(&mut e, 6.5, false);
         run(&mut e, &world, &ctx, 1.0);
         let uid = e.mobs[prey].uid;
         assert_eq!(e.mobs[hunter].nether.as_ref().unwrap().foe, Some(Foe::Mob(uid)));
@@ -1904,12 +2107,17 @@ mod tests {
                 .filter(|m| m.kind == MobKind::Piglin)
                 .all(|m| m.nether.as_ref().unwrap().hunt_cooldown >= 29.0)
         );
-        run(&mut e, &world, &ctx, 10.0);
-        assert!(e.mobs.iter().all(|m| m.kind != MobKind::Hoglin || !m.alive()), "the baby was caught");
+
+        let mut baby_only = Entities::new(9);
+        let hunter = swordsman(&mut baby_only);
+        let baby = hoglin_at(&mut baby_only, 6.5, true);
+        run(&mut baby_only, &world, &ctx, 2.0);
+        assert_eq!(baby_only.mobs[hunter].nether.as_ref().unwrap().foe, None);
+        assert_eq!(baby_only.mobs[baby].health, 40.0);
 
         let mut e = Entities::new(9);
         let hunter = swordsman(&mut e);
-        let prey = hoglin_at(&mut e, 6.5, true);
+        let prey = hoglin_at(&mut e, 6.5, false);
         e.mobs[prey].nether.as_mut().unwrap().cannot_hunt = true;
         run(&mut e, &world, &ctx, 2.0);
         assert_eq!(e.mobs[hunter].nether.as_ref().unwrap().foe, None);

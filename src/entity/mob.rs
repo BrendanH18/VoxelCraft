@@ -820,6 +820,33 @@ impl Mob {
         ((base + strength - weakness).max(0.0), cause)
     }
 
+    /// Retaliation from the armor worn by a player struck in melee.
+    pub(super) fn thorns_response(
+        &mut self,
+        target: &super::Target,
+        knockback: DVec3,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) {
+        // Thorns: each piece has a 15% chance per level
+        // to hit back for a uniform 1.0-5.0 damage.
+        for level in target.thorns.into_iter().filter(|&l| l > 0) {
+            if rng.chance(0.15 * level as f32) {
+                let back = rng.range(1.0, 5.0);
+                self.player_hit();
+                if self.damage(back, Some(-knockback * 0.5 + DVec3::Y * 3.0), rng) {
+                    events.push(EntityEvent::MobKilled {
+                        kind: self.kind,
+                        pos: self.pos,
+                        burning: self.burning || target.held_enchants.has(crate::enchant::Enchantment::FireAspect),
+                        player_kill: true,
+                        looting: target.held_enchants.level(crate::enchant::Enchantment::Looting),
+                    });
+                }
+            }
+        }
+    }
+
     /// A player hit this iron golem recently, so it may hit back.
     pub(super) fn angry_at_player(&self) -> bool {
         self.kind == MobKind::IronGolem && !self.built && self.player_hit_left > 0.0
@@ -948,6 +975,7 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) {
+        let event_start = events.len();
         let dtf = dt as f32;
         self.hop_left -= dtf;
         if self.kind.is_cube() && self.on_ground && self.hop_left <= 0.0 {
@@ -1089,6 +1117,14 @@ impl Mob {
                     self.egg_timer = rng.range(300.0, 600.0);
                     events.push(EntityEvent::LaidEgg { pos: self.pos });
                 }
+            }
+        }
+        // A lethal Thorns response is emitted during thinking, before the
+        // knockback physics step. Loot resolves after this update and must
+        // identify the corpse at its final position, rather than the old one.
+        for event in &mut events[event_start..] {
+            if let EntityEvent::MobKilled { pos, .. } = event {
+                *pos = self.pos;
             }
         }
     }
@@ -1292,24 +1328,7 @@ impl Mob {
                                     });
                                 }
                             }
-                            // Thorns: each piece has a 15% chance per level
-                            // to hit back for a uniform 1.0-5.0 damage.
-                            for level in target.thorns.into_iter().filter(|&l| l > 0) {
-                                if rng.chance(0.15 * level as f32) {
-                                    let back = rng.range(1.0, 5.0);
-                                    self.player_hit();
-                                    if self.damage(back, Some(-knockback * 0.5 + DVec3::Y * 3.0), rng) {
-                                        events.push(EntityEvent::MobKilled {
-                                            kind: self.kind,
-                                            pos: self.pos,
-                                            burning: self.burning
-                                                || target.held_enchants.has(crate::enchant::Enchantment::FireAspect),
-                                            player_kill: true,
-                                            looting: target.held_enchants.level(crate::enchant::Enchantment::Looting),
-                                        });
-                                    }
-                                }
-                            }
+                            self.thorns_response(&target, knockback, rng, events);
                         }
                     }
                 }

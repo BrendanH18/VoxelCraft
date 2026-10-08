@@ -105,7 +105,7 @@ impl Mob {
                     Foe::Player(id) => ctx.players.iter().find(|t| t.id == id).map_or(pos, |t| t.pos),
                     Foe::Mob(_) => pos,
                 };
-                Some(self.nether_attack(foe, at, speed, dt, world, rng, events))
+                Some(self.nether_attack(foe, at, speed, dt, world, ctx, rng, events))
             }
         }
     }
@@ -121,6 +121,7 @@ impl Mob {
         speed: f64,
         dt: f32,
         world: &W,
+        ctx: &Ctx,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
@@ -188,6 +189,11 @@ impl Mob {
                 Foe::Player(player) => EntityEvent::PlayerHit { player, damage, knockback: knockback.as_vec3(), cause },
                 Foe::Mob(target) => EntityEvent::MobHit { target, attacker: self.uid, damage, knockback },
             });
+            if let Foe::Player(id) = foe
+                && let Some(target) = ctx.players.iter().find(|t| t.id == id)
+            {
+                self.thorns_response(target, knockback, rng, events);
+            }
         }
         if hdist <= 0.8 + if tusks { self.shape().half_width } else { 0.0 } {
             return (None, 0.0);

@@ -538,6 +538,7 @@ pub struct Entities {
     trader_spawner: wandering_trader::Spawner,
     trader_leaders: rustc_hash::FxHashMap<u64, (DVec3, f32, bool)>,
     pub trader_spawning: bool,
+    /// The mobGriefing gamerule, shared by villager and piglin item pickup.
     pub villager_griefing: bool,
     /// Seconds until another iron golem may be summoned.
     /// Seconds until the next gossip summon roll.
