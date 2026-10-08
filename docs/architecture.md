@@ -161,6 +161,10 @@ src/
     mod.rs           mob list, spawning/despawning rules, events, explosions
     mob.rs           mob kinds, AI, movement and combat state
     projectile.rs    skeleton arrows
+    nether.rs        piglins, brutes, hoglins, zoglins, striders: sensing, bartering,
+                     anger, zombification, bastion residents, spawn table, saves
+    mob/nether_ai.rs their per-tick movement, attacks and strider lava physics
+    model/nether.rs  their box models
     item.rs          dropped items: physics, merging, despawning, saving
     model.rs         animated box models -> camera-relative triangles
   mesh.rs            lighting + greedy meshing (runs on workers)

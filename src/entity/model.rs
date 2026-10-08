@@ -17,6 +17,8 @@ use super::{Arrow, Puff, XpOrb};
 use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
 
+mod nether;
+
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 pub struct EntityVertex {
@@ -794,6 +796,9 @@ fn pose(m: &Mob, time: f32) -> Parts {
             }
             parts
         }
+        MobKind::Piglin | MobKind::PiglinBrute | MobKind::Hoglin | MobKind::Zoglin | MobKind::Strider => {
+            nether::pose(m, time)
+        }
         MobKind::Zombie | MobKind::Husk | MobKind::Drowned => {
             let (body, leg, arm_box, head_box) = match m.kind {
                 MobKind::Husk => (HUSK_BODY, HUSK_LEG, HUSK_ARM, HUSK_HEAD),
@@ -894,7 +899,10 @@ pub fn build(
             }
         }
         // Zombie villagers use the villager mesh, which is not the six-limb armor rig.
-        if (m.kind.is_zombie() && m.kind != MobKind::ZombieVillager) || m.kind == MobKind::Skeleton {
+        if (m.kind.is_zombie() && m.kind != MobKind::ZombieVillager)
+            || m.kind == MobKind::Skeleton
+            || m.kind == MobKind::Piglin
+        {
             let limbs = humanoid_armor(&posed);
             let worn = super::armor::worn_pieces(m.armor, m.armor_glint);
             super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));

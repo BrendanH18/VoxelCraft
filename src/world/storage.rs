@@ -166,7 +166,13 @@ fn decode(rle: &[u8], legacy: bool) -> Option<ChunkData> {
         if n == 0 || id as usize >= super::block::STATE_CAPACITY {
             return None;
         }
-        blocks.get_mut(i..i + n)?.fill(Block(id));
+        // v0.4.0's axis-less bone block becomes the upright axis state.
+        let block = if Block(id) == super::gadgets::LEGACY_BONE_BLOCK {
+            super::nether_biome_blocks::BONE_BLOCK
+        } else {
+            Block(id)
+        };
+        blocks.get_mut(i..i + n)?.fill(block);
         i += n;
     }
     (i == CHUNK_VOLUME).then(|| ChunkData::from_dense(blocks))
@@ -194,6 +200,16 @@ mod tests {
         for y in 0..32 {
             assert_eq!(migrated.get(31, y, 31), chunk.get(31, y, 31));
         }
+    }
+
+    #[test]
+    fn v0_4_bone_blocks_load_upright() {
+        let mut runs = Vec::new();
+        runs.extend_from_slice(&(CHUNK_VOLUME as u16).to_le_bytes());
+        runs.extend_from_slice(&super::super::gadgets::LEGACY_BONE_BLOCK.0.to_le_bytes());
+        let chunk = decode(&runs, false).unwrap();
+        assert_eq!(chunk.get(0, 0, 0), super::super::nether_biome_blocks::BONE_BLOCK);
+        assert_eq!(chunk.get(0, 0, 0).info().tex[2], super::super::block::tex::BONE_BLOCK_TOP);
     }
 
     #[test]

@@ -313,6 +313,7 @@ how to run benchmarks, script scenes and capture screenshots.
 | [Colours and dyes](docs/colors.md) | [Hosted agents and commands](docs/agents.md) |
 | [Mob parity](docs/mob-parity.md) | [Performance investigation](docs/performance-2026-10-07.md) |
 | [Player rendering](docs/player-rendering.md) | [Music](docs/music.md) and [particles](docs/particles.md) |
+| [Nether mobs](docs/nether-mobs.md): piglins, bartering, hoglins, striders | |
 
 ## 🤝 Contributing
 

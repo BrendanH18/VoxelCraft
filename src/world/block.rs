@@ -329,7 +329,10 @@ pub mod tex {
     pub const NETHER_TRAPDOORS: u16 = NETHER_DOORS + 4;
     pub const NETHER_BIOME_LAST: u16 = NETHER_TRAPDOORS + 1;
     const _: () = assert!(NETHER_BIOME_LAST <= 1399);
-    pub const COUNT: u32 = 1400;
+    // Nether mobs reserve layers 1400..=1449.
+    pub const CRYING_OBSIDIAN: u16 = 1400;
+    pub const COUNT: u32 = 1450;
+    const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -615,6 +618,8 @@ impl Block {
     pub const POLISHED_BASALT: Block = Block(809);
     pub const MAGMA: Block = Block(812);
     pub const GOLD_BLOCK: Block = Block(813);
+    /// Nether-mob blocks (1800..1850): piglins barter crying obsidian.
+    pub const CRYING_OBSIDIAN: Block = Block(1800);
     pub const CHAIN: Block = Block(814);
     pub const DIRT_PATH: Block = Block(900);
     pub const HAY_BALE: Block = Block(901);
@@ -1286,7 +1291,7 @@ impl Block {
         if let Some(h) = super::village_blocks::hardness(self.0) {
             return h;
         }
-        if self == super::gadgets::BONE_BLOCK {
+        if self == super::gadgets::LEGACY_BONE_BLOCK {
             return 2.0;
         }
         if self == super::gadgets::PACKED_ICE {
@@ -1428,7 +1433,7 @@ impl Block {
             b if b.is_deepslate_ore() => 4.5,
             Block::FURNACE | Block::LIT_FURNACE => 3.5,
             Block::SPAWNER => 5.0,
-            Block::OBSIDIAN => 50.0,
+            Block::OBSIDIAN | Block::CRYING_OBSIDIAN => 50.0,
             Block::BEDROCK | Block::AIR => f32::INFINITY,
             b if b.is_fluid() => f32::INFINITY,
             _ => 1.0,
@@ -1437,7 +1442,7 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
-        if self == super::gadgets::BONE_BLOCK || self == super::gadgets::PACKED_ICE {
+        if self == super::gadgets::LEGACY_BONE_BLOCK || self == super::gadgets::PACKED_ICE {
             return Some(ToolKind::Pickaxe);
         }
         if let Some(t) = super::village_blocks::tool(self.0) {
@@ -1496,6 +1501,7 @@ impl Block {
             | Block::COPPER_BLOCK
             | Block::EMERALD_BLOCK
             | Block::OBSIDIAN
+            | Block::CRYING_OBSIDIAN
             | Block::FURNACE
             | Block::LIT_FURNACE
             | Block::NETHERRACK
@@ -1563,7 +1569,7 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
-        if self == super::gadgets::BONE_BLOCK {
+        if self == super::gadgets::LEGACY_BONE_BLOCK {
             return Some(0);
         }
         if matches!(
@@ -1657,7 +1663,7 @@ impl Block {
             | Block::EMERALD_ORE
             | Block::RAW_GOLD_BLOCK
             | Block::EMERALD_BLOCK => Some(2),
-            Block::OBSIDIAN | Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK => Some(3),
+            Block::OBSIDIAN | Block::CRYING_OBSIDIAN | Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK => Some(3),
             _ => None,
         }
     }
@@ -1687,6 +1693,7 @@ impl Block {
             .chain(super::rails::palette_ids())
             .chain(super::gadgets::palette_ids())
             .chain(super::nether_biome_blocks::palette_ids())
+            .chain([1800])
             .map(Block)
     }
 
@@ -2145,6 +2152,7 @@ const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
+        1800 => ("crying obsidian", Opaque, all(tex::CRYING_OBSIDIAN)),
         #[cfg(test)]
         4095 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]
@@ -2458,6 +2466,7 @@ static EMISSION: [u8; STATE_CAPACITY] = {
             957..=960 => 15,                            // jack o'lanterns
             812 => 3,                                   // magma
             1600..=1687 => super::nether_biome_blocks::emission(i as u16),
+            1800 => 10, // crying obsidian
             _ => 0,
         };
         i += 1;
@@ -2529,6 +2538,7 @@ mod tests {
             }
             match block.base() {
                 Block::MAGMA => 3,
+                Block::CRYING_OBSIDIAN => 10,
                 Block::GLOWSTONE => 15,
                 Block::TORCH => 14,
                 Block::LIT_FURNACE | Block::LIT_SMOKER | Block::LIT_BLAST_FURNACE => 13,

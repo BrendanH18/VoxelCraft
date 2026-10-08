@@ -25,15 +25,17 @@ guaranteed upgrade-template chests, and a bridge with a piglin-face rampart.
 Blackstone, basalt, gilded blocks, stairs, walls, chains, lava and gold form
 the structures. Cached piece frames and clipped painting are shared by
 chunk and single-column ore-exposure queries. `/locate structure
-bastion_remnant` works in the Nether. No piglins, hoglins, brutes or magma
-cube spawners are added; bastions have no generated resident mobs. Like Java, bastions skip regions
-whose start chunk centre lies in a basalt delta (see [Nether biomes](nether-biomes.md)).
+bastion_remnant` works in the Nether. Once a bastion near a player has
+loaded, its pieces get persistent piglins, brutes and (in the stables)
+hoglins, once per bastion; see [Nether mobs](nether-mobs.md#bastion-residents).
+Magma cube spawners remain absent. Like Java, bastions skip regions whose
+start chunk centre lies in a basalt delta (see [Nether biomes](nether-biomes.md)).
 
 Loot uses the four Java 1.21.1 pools and preserves weights/counts for
 implemented items, including gear enchantments and durability. Unsupported
-items (crossbows, spectral arrows, snout trims, Pigstep, golden apples,
-crying obsidian, crimson flora and others) retain their weights as empty
-rolls. Treasure templates are guaranteed; bridge, stable and generic
+items (spectral arrows, snout trims, Pigstep, golden apples, crimson flora
+and others) retain their weights as empty rolls; crying obsidian and
+crossbows now drop. Treasure templates are guaranteed; bridge, stable and generic
 chests have a separate 10% template roll. Loot scattering uses the engine's
 existing independent RNG rather than Java's loot random-sequence stream.
 

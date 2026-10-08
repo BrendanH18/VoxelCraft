@@ -1391,6 +1391,9 @@ impl Game {
             }
             self.world.set_block(pos, Block::AIR);
             self.audio.block_break(block, pos);
+            if crate::entity::nether::guarded_by_piglins(block) {
+                self.piglins_notice(false);
+            }
             if block.is_bed() {
                 self.break_bed_partner(pos, block);
             }
@@ -1462,6 +1465,9 @@ impl Game {
             self.world.particles.push(crate::particles::Request::Break { cell: pos, block });
         }
         self.audio.block_break(block, pos);
+        if crate::entity::nether::guarded_by_piglins(block) {
+            self.piglins_notice(false);
+        }
         // Stone, ores and the like only drop with a good enough pickaxe.
         if self.gamerules.bool("doTileDrops") && crate::mining::can_harvest(block, held) {
             self.world.spill_with_item(pos, block, digger.held);

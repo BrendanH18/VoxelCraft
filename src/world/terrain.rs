@@ -512,6 +512,11 @@ impl Generator {
         self.nether.as_ref().is_some_and(|n| n.fortresses.inside(p))
     }
 
+    /// Bastion remnants within `r` blocks of `p` (none outside the Nether).
+    pub fn bastions_near(&self, p: IVec3, r: i32) -> Vec<Arc<super::bastion::Bastion>> {
+        self.nether.as_ref().map_or(Vec::new(), |n| n.fortresses.bastions.around(IVec2::new(p.x, p.z), r))
+    }
+
     fn chunk_columns(&self, pos: IVec2) -> Arc<ChunkColumns> {
         if let Some(found) = self.columns.lock().unwrap().get(&pos) {
             return Arc::clone(found);

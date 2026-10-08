@@ -11,6 +11,8 @@ use crate::world::terrain::Dimension;
 
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng};
 
+mod nether_ai;
+
 const GRAVITY: f64 = 28.0;
 /// Clears a 1-block ledge with a little margin (peak ~1.26 blocks).
 const JUMP_VELOCITY: f64 = 8.4;
@@ -115,6 +117,16 @@ pub enum MobKind {
     SnowGolem,
     WanderingTrader,
     TraderLlama,
+    /// Nether trader: barters for gold, attacks players without gold armor.
+    Piglin,
+    /// Bastion guard with a golden axe: always hostile, never bribed.
+    PiglinBrute,
+    /// Crimson-forest beast: charges players and tosses them in the air.
+    Hoglin,
+    /// A hoglin zombified outside the Nether: attacks everything.
+    Zoglin,
+    /// Walks on lava, and shivers out of it.
+    Strider,
 }
 
 impl MobKind {
@@ -125,7 +137,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 26] = [
+    pub const ALL: [MobKind; 31] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -152,6 +164,11 @@ impl MobKind {
         MobKind::SnowGolem,
         MobKind::WanderingTrader,
         MobKind::TraderLlama,
+        MobKind::Piglin,
+        MobKind::PiglinBrute,
+        MobKind::Hoglin,
+        MobKind::Zoglin,
+        MobKind::Strider,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -183,6 +200,11 @@ impl MobKind {
             MobKind::SnowGolem => "snow golem",
             MobKind::WanderingTrader => "wandering trader",
             MobKind::TraderLlama => "trader llama",
+            MobKind::Piglin => "piglin",
+            MobKind::PiglinBrute => "piglin brute",
+            MobKind::Hoglin => "hoglin",
+            MobKind::Zoglin => "zoglin",
+            MobKind::Strider => "strider",
         }
     }
 
@@ -206,7 +228,9 @@ impl MobKind {
             | MobKind::Witch
             | MobKind::Villager
             | MobKind::WanderingTrader
-            | MobKind::ZombieVillager => Shape::new(0.3, 1.95),
+            | MobKind::ZombieVillager
+            | MobKind::Piglin
+            | MobKind::PiglinBrute => Shape::new(0.3, 1.95),
             MobKind::IronGolem => Shape::new(0.7, 2.7),
             MobKind::SnowGolem => Shape::new(0.35, 1.9),
             MobKind::TraderLlama => Shape::new(0.45, 1.87),
@@ -220,6 +244,9 @@ impl MobKind {
             MobKind::Ghast => Shape::new(2.0, 4.0),
             MobKind::WitherSkeleton => Shape::new(0.35, 2.4),
             MobKind::Silverfish => Shape::new(0.2, 0.3),
+            // Java's 1.3964844 x 1.4.
+            MobKind::Hoglin | MobKind::Zoglin => Shape::new(0.698, 1.4),
+            MobKind::Strider => Shape::new(0.45, 1.7),
         }
     }
 
@@ -239,7 +266,8 @@ impl MobKind {
             | MobKind::Blaze
             | MobKind::Villager
             | MobKind::WanderingTrader
-            | MobKind::ZombieVillager => 20.0,
+            | MobKind::ZombieVillager
+            | MobKind::Strider => 20.0,
             MobKind::IronGolem => 100.0,
             MobKind::SnowGolem => 4.0,
             MobKind::TraderLlama => 30.0,
@@ -249,6 +277,9 @@ impl MobKind {
             MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Ghast => 10.0,
             MobKind::Enderman => 40.0,
+            MobKind::Piglin => 16.0,
+            MobKind::PiglinBrute => 50.0,
+            MobKind::Hoglin | MobKind::Zoglin => 40.0,
         }
     }
 
@@ -273,6 +304,10 @@ impl MobKind {
                 | MobKind::Ghast
                 | MobKind::WitherSkeleton
                 | MobKind::Witch
+                | MobKind::Piglin
+                | MobKind::PiglinBrute
+                | MobKind::Hoglin
+                | MobKind::Zoglin
         )
     }
 
@@ -280,13 +315,19 @@ impl MobKind {
     pub fn fire_immune(self) -> bool {
         matches!(
             self,
-            MobKind::ZombifiedPiglin | MobKind::Blaze | MobKind::MagmaCube | MobKind::Ghast | MobKind::WitherSkeleton
+            MobKind::ZombifiedPiglin
+                | MobKind::Blaze
+                | MobKind::MagmaCube
+                | MobKind::Ghast
+                | MobKind::WitherSkeleton
+                | MobKind::Zoglin
+                | MobKind::Strider
         )
     }
 
     /// Hurt by water and rain, like Java's endermen and blazes.
     pub fn hurt_by_water(self) -> bool {
-        matches!(self, MobKind::Enderman | MobKind::Blaze)
+        matches!(self, MobKind::Enderman | MobKind::Blaze | MobKind::Strider)
     }
 
     /// Whether this kind spawns naturally in `dimension`.
@@ -304,7 +345,15 @@ impl MobKind {
             | MobKind::TraderLlama => false,
             // Only from stronghold spawners (and infested blocks, later).
             MobKind::Silverfish | MobKind::CaveSpider => false,
-            MobKind::MagmaCube | MobKind::ZombifiedPiglin | MobKind::Ghast => dimension == Dimension::Nether,
+            // Only generated with bastions (`nether::populate_bastions`).
+            MobKind::PiglinBrute | MobKind::Zoglin => false,
+            // Picked by the Nether biome spawn lists (`world::nether_biome`).
+            MobKind::Piglin
+            | MobKind::Hoglin
+            | MobKind::Strider
+            | MobKind::MagmaCube
+            | MobKind::ZombifiedPiglin
+            | MobKind::Ghast => dimension == Dimension::Nether,
             _ => dimension == Dimension::Overworld,
         }
     }
@@ -352,6 +401,7 @@ impl MobKind {
             MobKind::Witch => 1,
             MobKind::Ghast => 4,
             MobKind::ZombifiedPiglin => 8,
+            MobKind::Piglin | MobKind::Hoglin => 4,
             MobKind::Enderman if dimension == Dimension::End => 12,
             MobKind::Enderman => 1,
             k if k.is_hostile() => 3,
@@ -369,7 +419,8 @@ impl MobKind {
             | MobKind::ZombieVillager
             | MobKind::Skeleton
             | MobKind::WitherSkeleton
-            | MobKind::ZombifiedPiglin => Creature::Undead,
+            | MobKind::ZombifiedPiglin
+            | MobKind::Zoglin => Creature::Undead,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Silverfish => Creature::Arthropod,
             _ => Creature::Other,
         }
@@ -395,6 +446,12 @@ impl MobKind {
             | MobKind::ZombieVillager
             | MobKind::Creeper
             | MobKind::ZombifiedPiglin => 1.1,
+            // Java's 0.35 speed at its 0.6 idle multiplier.
+            MobKind::Piglin | MobKind::PiglinBrute => 1.0,
+            // Java's 0.3 speed at its 0.4 idle multiplier.
+            MobKind::Hoglin | MobKind::Zoglin => 0.6,
+            // Java's 0.175 speed.
+            MobKind::Strider => 0.84,
             MobKind::Sheep | MobKind::Skeleton | MobKind::WitherSkeleton | MobKind::Blaze => 1.2,
             MobKind::Chicken | MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Ghast => 4.0,
@@ -405,6 +462,10 @@ impl MobKind {
     fn chase_speed(self) -> f64 {
         match self {
             MobKind::Enderman => 4.5,
+            // Java's 0.35 movement speed against the zombie's 0.23.
+            MobKind::Piglin | MobKind::PiglinBrute => 3.6,
+            MobKind::Hoglin | MobKind::Zoglin => 3.1,
+            MobKind::Strider => 0.84,
             MobKind::Spider | MobKind::CaveSpider => 3.0,
             MobKind::ZombifiedPiglin | MobKind::Silverfish => 2.8,
             MobKind::WitherSkeleton => 2.4,
@@ -429,6 +490,10 @@ impl MobKind {
             MobKind::IronGolem => (15.0, "was slain by an iron golem"),
             MobKind::SnowGolem => (0.0, "was slain by a snow golem"),
             MobKind::ZombieVillager => (3.0, "was slain by a zombie villager"),
+            MobKind::Piglin => (5.0, "was slain by a piglin"),
+            MobKind::PiglinBrute => (7.0, "was slain by a piglin brute"),
+            MobKind::Hoglin => (6.0, "was slain by a hoglin"),
+            MobKind::Zoglin => (6.0, "was slain by a zoglin"),
             _ => (3.0, "was slain by a zombie"),
         }
     }
@@ -452,13 +517,22 @@ impl MobKind {
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
-            MobKind::Silverfish | MobKind::Villager | MobKind::WanderingTrader => &[],
+            // Piglins drop only what they carry (`nether::equipment_drops`).
+            MobKind::Silverfish
+            | MobKind::Villager
+            | MobKind::WanderingTrader
+            | MobKind::Piglin
+            | MobKind::PiglinBrute => &[],
             MobKind::TraderLlama => &[(Item::LEATHER, 0, 2)],
             MobKind::IronGolem => &[(Item::IRON_INGOT, 3, 5), (POPPY, 0, 2)],
             MobKind::SnowGolem => &[(Item::SNOWBALL, 0, 15)],
             MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
             MobKind::MagmaCube => &[(Item::MAGMA_CREAM, -2, 1)],
             MobKind::Ghast => &[(Item::GUNPOWDER, 0, 2), (Item::GHAST_TEAR, 0, 1)],
+            // Babies drop nothing (`nether::babies_drop_nothing`).
+            MobKind::Hoglin => &[(Item::RAW_PORKCHOP, 2, 4), (Item::LEATHER, 0, 1)],
+            MobKind::Zoglin => &[(Item::ROTTEN_FLESH, 1, 3)],
+            MobKind::Strider => &[(Item::STRING, 2, 5)],
             // The skull is rolled in `drops`.
             MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
             // Java rolls a few of these; each is rolled on its own here.
@@ -538,6 +612,13 @@ pub(super) enum Ai {
 pub struct Mob {
     pub kind: MobKind,
     pub villager: Option<Box<super::villager::Villager>>,
+    /// Piglin gear, gold, anger and zombification (see `entity::nether`).
+    pub nether: Option<Box<super::nether::NetherMob>>,
+    /// Identity other mobs aim at, assigned by `Entities` (0 until then).
+    pub uid: u32,
+    /// Saved with the level and never despawned (bastion residents, piglins
+    /// that picked something up), like Java's persistence flag.
+    pub persistent: bool,
     /// Java slime size (1, 2 or 4).
     pub size: u8,
     /// A baby zombie: half size and 50% faster.
@@ -655,6 +736,9 @@ impl Mob {
             kind,
             villager: matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader)
                 .then(|| Box::new(super::villager::Villager::new(0, 0))),
+            nether: super::nether::NetherMob::for_kind(kind),
+            uid: 0,
+            persistent: false,
             size: 1,
             baby: false,
             wool_color: crate::color::DyeColor::White,
@@ -817,7 +901,7 @@ impl Mob {
         };
         self.health -= amount;
         self.hurt = HURT_TIME;
-        if let Some(kb) = knockback
+        if let Some(kb) = knockback.map(|kb| kb * self.knockback_taken())
             && self.kind != MobKind::IronGolem
         {
             self.vel.x = kb.x;
@@ -916,7 +1000,10 @@ impl Mob {
 
         // Don't walk off tall drops; wanderers pick another direction.
         let wish = wish.filter(|&dir| {
-            let safe = !self.on_ground || self.in_water || !is_cliff(world, self.pos, dir, self.shape());
+            let safe = match self.lava_step(world, dir) {
+                Some(safe) => safe,
+                None => !self.on_ground || self.in_water || !is_cliff(world, self.pos, dir, self.shape()),
+            };
             if !safe && matches!(self.ai, Ai::Wander | Ai::Panic) {
                 self.ai_timer = self.ai_timer.min(0.3);
                 self.move_yaw = rng.range(0.0, TAU);
@@ -937,7 +1024,7 @@ impl Mob {
             self.on_ground = true;
         } else {
             for _ in 0..steps {
-                self.physics_step(h, world, wish, speed);
+                self.physics_step(h, world, wish, speed * self.speed_factor());
             }
         }
         if self.health <= 0.0 && self.dying.is_none() {
@@ -1072,13 +1159,18 @@ impl Mob {
         if self.kind == MobKind::Witch && self.witch_upkeep(dt, rng) {
             return (None, 0.0);
         }
+        if self.nether.is_some()
+            && let Some(wish) = self.nether_think(dt, world, ctx, rng, events)
+        {
+            return wish;
+        }
         self.ai_timer -= dt;
         let target = ctx.nearest_target(self.pos);
         let to_player = target.map_or(DVec3::ZERO, |t| t.pos - self.pos);
         let flat = DVec3::new(to_player.x, 0.0, to_player.z);
         let hdist = flat.length();
 
-        if self.kind.is_hostile() {
+        if self.kind.is_hostile() && self.nether.is_none() {
             let aggressive = match self.kind {
                 MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
@@ -1644,6 +1736,9 @@ impl Mob {
     }
 
     fn physics_step<W: BlockSource + ?Sized>(&mut self, dt: f64, world: &W, wish: Option<DVec3>, speed: f64) {
+        if self.kind == MobKind::Strider && self.walk_on_lava(dt, world, wish, speed) {
+            return;
+        }
         let shape = self.shape();
         self.in_water = physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
         if self.kind == MobKind::SnowGolem && self.alive() && self.in_water {

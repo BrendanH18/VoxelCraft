@@ -1271,6 +1271,18 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let c = if speck { [80, 60, 110] } else { [22, 16, 34] };
             shade(c, 0.85 + r * 0.3)
         }
+        tex::CRYING_OBSIDIAN => {
+            // Obsidian streaked with glowing violet tears running down.
+            let streak = rnd(layer, x / 3, 0, 29) < 0.55 && rnd(layer, x, y / 3, 31) < 0.45;
+            let speck = rnd(layer, x, y, 13) < 0.08;
+            if streak {
+                shade([150, 46, 236], 0.8 + rnd(layer, x, y, 37) * 0.45)
+            } else if speck {
+                shade([80, 60, 110], 0.85 + r * 0.3)
+            } else {
+                shade([24, 14, 40], 0.85 + r * 0.3)
+            }
+        }
         tex::HEART_FULL | tex::HEART_HALF | tex::HEART_EMPTY => heart(layer, x, y),
         tex::FOOD_FULL | tex::FOOD_HALF | tex::FOOD_EMPTY => drumstick(layer, x, y),
         tex::BUBBLE => {

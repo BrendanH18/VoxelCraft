@@ -13,7 +13,11 @@ pub const NOTE: Block = Block(1507);
 pub const HOOK: Block = Block(1557);
 pub const TRIPWIRE: Block = Block(1573);
 /// Instrument substrates missing from the earlier block registry.
-pub const BONE_BLOCK: Block = Block(1581);
+/// The axis-aware bone block of the Nether biomes, 1631..=1633.
+pub const BONE_BLOCK: Block = super::nether_biome_blocks::BONE_BLOCK;
+/// v0.4.0's bone block, before it gained an axis. Saves load it as the
+/// upright one (`storage::decode`).
+pub const LEGACY_BONE_BLOCK: Block = Block(1581);
 pub const PACKED_ICE: Block = Block(1582);
 const NOTE_FIRST: u16 = 1507;
 const NOTE_LAST: u16 = 1556;
@@ -146,13 +150,15 @@ pub fn base(b: Block) -> Option<Block> {
         Some(HOOK)
     } else if is_tripwire(b) {
         Some(TRIPWIRE)
+    } else if b == LEGACY_BONE_BLOCK {
+        Some(BONE_BLOCK)
     } else {
         None
     }
 }
 
 pub fn palette_ids() -> impl Iterator<Item = u16> {
-    [NOTE_FIRST, HOOK_FIRST, BONE_BLOCK.0, PACKED_ICE.0].into_iter()
+    [NOTE_FIRST, HOOK_FIRST, PACKED_ICE.0].into_iter()
 }
 
 pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
@@ -166,8 +172,9 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     if is_tripwire(Block(id)) {
         return Some(("tripwire", Shaped, [WIRE_TEXTURE; 6]));
     }
-    if id == BONE_BLOCK.0 {
-        return Some(("bone block", Opaque, [1154; 6]));
+    if id == LEGACY_BONE_BLOCK.0 {
+        use super::block::tex::{BONE_BLOCK_SIDE as SIDE, BONE_BLOCK_TOP as TOP};
+        return Some(("legacy bone block", Opaque, [SIDE, SIDE, TOP, TOP, SIDE, SIDE]));
     }
     if id == PACKED_ICE.0 {
         return Some(("packed ice", Opaque, [super::block::tex::ICE; 6]));

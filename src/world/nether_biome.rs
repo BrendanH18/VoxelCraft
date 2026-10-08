@@ -27,12 +27,8 @@ pub enum NetherBiome {
     BasaltDeltas,
 }
 
-/// A mob in a Nether biome's spawn list (Java's `NetherBiomes`).
-///
-/// TODO(piglins, hoglins, striders): `Piglin`, `Hoglin` and `Strider` are
-/// built on another branch. Their weights already count against the other
-/// entries' chances; map them to their `MobKind`s in
-/// `entity::Entities::natural_spawn` (see `nether_spawn`) when they land.
+/// A mob in a Nether biome's spawn list (Java's `NetherBiomes`), mapped to
+/// its `MobKind` by `entity::Entities::natural_spawn` (see `nether_spawn`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NetherMob {
     ZombifiedPiglin,
@@ -182,8 +178,7 @@ impl NetherBiome {
     }
 
     /// The spawn entry for `mob` here, and the chance an attempt for it goes
-    /// ahead: its weight against the heaviest monster in the biome (mobs
-    /// still missing from VoxelCraft keep their share of the weight).
+    /// ahead: its weight against the heaviest monster in the biome.
     pub fn monster_spawn(self, mob: NetherMob) -> Option<(Spawn, f32)> {
         let list = self.monsters();
         let heaviest = list.iter().map(|s| s.weight).max()?;
@@ -472,7 +467,7 @@ mod tests {
         assert_eq!(chance(NetherBiome::SoulSandValley, NetherMob::ZombifiedPiglin), None);
         assert_eq!(chance(NetherBiome::BasaltDeltas, NetherMob::MagmaCube), Some(1.0));
         assert_eq!(NetherBiome::BasaltDeltas.monster_spawn(NetherMob::MagmaCube).unwrap().0.group, (2, 5));
-        // Hoglins (not built yet) still dominate the crimson forest's list.
+        // Hoglins dominate the crimson forest's list.
         assert_eq!(chance(NetherBiome::CrimsonForest, NetherMob::ZombifiedPiglin), Some(1.0 / 9.0));
         assert_eq!(chance(NetherBiome::WarpedForest, NetherMob::Enderman), Some(1.0));
         for b in NetherBiome::ALL {

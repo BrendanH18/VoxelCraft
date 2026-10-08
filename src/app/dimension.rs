@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 11] = [
+pub(super) const DIMENSION_KEYS: [&str; 12] = [
     "furnaces",
     "chests",
     "items",
@@ -36,6 +36,7 @@ pub(super) const DIMENSION_KEYS: [&str; 11] = [
     "redstone",
     "automation",
     "minecarts",
+    "nether_mobs",
 ];
 /// Seconds of standing in a portal before it takes you (creative: almost
 /// at once).
@@ -125,6 +126,7 @@ impl Game {
         props.insert("orbs".to_string(), self.mobs.entities.orbs_to_string());
         props.insert("minecarts".to_string(), self.mobs.entities.minecarts_to_string());
         props.insert("villagers".into(), self.mobs.entities.villagers_to_string());
+        props.insert("nether_mobs".into(), self.mobs.entities.nether_mobs_to_string());
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize());
         }
@@ -177,6 +179,9 @@ impl Game {
         }
         if let Some(v) = props.get("villagers") {
             self.mobs.entities.load_villagers(v);
+        }
+        if let Some(n) = props.get("nether_mobs") {
+            self.mobs.entities.load_nether_mobs(n);
         }
         self.mobs.entities.fight = self
             .world

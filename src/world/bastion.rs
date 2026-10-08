@@ -248,6 +248,11 @@ impl Bastions {
         }
         out
     }
+    /// Bastions whose bounds come within `r` blocks of column `p`, for
+    /// placing their resident mobs.
+    pub fn around(&self, p: IVec2, r: i32) -> Vec<Arc<Bastion>> {
+        self.near(p - r, p + r)
+    }
     pub fn nearest(&self, p: IVec2) -> Option<IVec3> {
         let r = p.div_euclid(IVec2::splat(REGION));
         (-2..=2)
@@ -569,7 +574,14 @@ const TREASURE_1: &[Loot] = &[
     Loot { item: Some(Item::from_block(Block::IRON_BLOCK)), weight: 1, lo: 2, hi: 5, enchanted: false, damage: None }, // iron_block
     Loot { item: Some(Item::GOLD_INGOT), weight: 1, lo: 3, hi: 9, enchanted: false, damage: None }, // gold_ingot
     Loot { item: Some(Item::IRON_INGOT), weight: 1, lo: 3, hi: 9, enchanted: false, damage: None }, // iron_ingot
-    Loot { item: None, weight: 1, lo: 3, hi: 5, enchanted: false, damage: None },                   // crying_obsidian
+    Loot {
+        item: Some(Item::from_block(Block::CRYING_OBSIDIAN)),
+        weight: 1,
+        lo: 3,
+        hi: 5,
+        enchanted: false,
+        damage: None,
+    }, // crying_obsidian
     Loot { item: Some(Item::NETHER_QUARTZ), weight: 1, lo: 8, hi: 23, enchanted: false, damage: None }, // quartz
     Loot {
         item: Some(Item::from_block(Block::GILDED_BLACKSTONE)),
@@ -585,8 +597,8 @@ const BRIDGE_0: &[Loot] = &[
     Loot { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // lodestone
 ];
 const BRIDGE_1: &[Loot] = &[
-    Loot { item: None, weight: 1, lo: 1, hi: 1, enchanted: true, damage: Some((0.10, 0.50)) }, // crossbow
-    Loot { item: None, weight: 1, lo: 10, hi: 28, enchanted: false, damage: None },            // spectral_arrow
+    Loot { item: Some(Item::CROSSBOW), weight: 1, lo: 1, hi: 1, enchanted: true, damage: Some((0.10, 0.50)) }, // crossbow
+    Loot { item: None, weight: 1, lo: 10, hi: 28, enchanted: false, damage: None }, // spectral_arrow
     Loot {
         item: Some(Item::from_block(Block::GILDED_BLACKSTONE)),
         weight: 1,
@@ -595,7 +607,14 @@ const BRIDGE_1: &[Loot] = &[
         enchanted: false,
         damage: None,
     }, // gilded_blackstone
-    Loot { item: None, weight: 1, lo: 3, hi: 8, enchanted: false, damage: None },              // crying_obsidian
+    Loot {
+        item: Some(Item::from_block(Block::CRYING_OBSIDIAN)),
+        weight: 1,
+        lo: 3,
+        hi: 8,
+        enchanted: false,
+        damage: None,
+    }, // crying_obsidian
     Loot { item: Some(Item::from_block(Block::GOLD_BLOCK)), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // gold_block
     Loot { item: Some(Item::GOLD_INGOT), weight: 1, lo: 4, hi: 9, enchanted: false, damage: None }, // gold_ingot
     Loot { item: Some(Item::IRON_INGOT), weight: 1, lo: 4, hi: 9, enchanted: false, damage: None }, // iron_ingot
@@ -689,7 +708,14 @@ const HOGLIN_STABLE_0: &[Loot] = &[
 ];
 const HOGLIN_STABLE_1: &[Loot] = &[
     Loot { item: Some(Item::tool(ToolKind::Axe, Tier::Gold)), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_axe
-    Loot { item: None, weight: 1, lo: 1, hi: 5, enchanted: false, damage: None }, // crying_obsidian
+    Loot {
+        item: Some(Item::from_block(Block::CRYING_OBSIDIAN)),
+        weight: 1,
+        lo: 1,
+        hi: 5,
+        enchanted: false,
+        damage: None,
+    }, // crying_obsidian
     Loot { item: Some(Item::from_block(Block::GLOWSTONE)), weight: 1, lo: 3, hi: 6, enchanted: false, damage: None }, // glowstone
     Loot {
         item: Some(Item::from_block(Block::GILDED_BLACKSTONE)),
@@ -727,7 +753,7 @@ const OTHER_0: &[Loot] = &[
         enchanted: false,
         damage: None,
     }, // diamond_shovel
-    Loot { item: None, weight: 6, lo: 1, hi: 1, enchanted: true, damage: Some((0.10, 0.90)) }, // crossbow
+    Loot { item: Some(Item::CROSSBOW), weight: 6, lo: 1, hi: 1, enchanted: true, damage: Some((0.10, 0.90)) }, // crossbow
     Loot {
         item: Some(Item::from_block(Block::ANCIENT_DEBRIS)),
         weight: 12,
@@ -764,7 +790,7 @@ const OTHER_1: &[Loot] = &[
     }, // golden_boots
     Loot { item: Some(Item::tool(ToolKind::Axe, Tier::Gold)), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_axe
     Loot { item: Some(Item::from_block(Block::GOLD_BLOCK)), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // gold_block
-    Loot { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // crossbow
+    Loot { item: Some(Item::CROSSBOW), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // crossbow
     Loot { item: Some(Item::GOLD_INGOT), weight: 2, lo: 1, hi: 6, enchanted: false, damage: None }, // gold_ingot
     Loot { item: Some(Item::IRON_INGOT), weight: 2, lo: 1, hi: 6, enchanted: false, damage: None }, // iron_ingot
     Loot {
@@ -807,7 +833,14 @@ const OTHER_1: &[Loot] = &[
         enchanted: false,
         damage: None,
     }, // golden_boots
-    Loot { item: None, weight: 2, lo: 1, hi: 5, enchanted: false, damage: None }, // crying_obsidian
+    Loot {
+        item: Some(Item::from_block(Block::CRYING_OBSIDIAN)),
+        weight: 2,
+        lo: 1,
+        hi: 5,
+        enchanted: false,
+        damage: None,
+    }, // crying_obsidian
 ];
 const OTHER_2: &[Loot] = &[
     Loot {

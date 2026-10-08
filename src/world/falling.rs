@@ -176,7 +176,12 @@ impl World {
                     let Some(b) = self.get_block(p) else { continue };
                     let resists = matches!(
                         b,
-                        Block::AIR | Block::BEDROCK | Block::OBSIDIAN | Block::ANCIENT_DEBRIS | Block::NETHERITE_BLOCK
+                        Block::AIR
+                            | Block::BEDROCK
+                            | Block::OBSIDIAN
+                            | Block::CRYING_OBSIDIAN
+                            | Block::ANCIENT_DEBRIS
+                            | Block::NETHERITE_BLOCK
                     ) || b.is_fluid();
                     if !resists && self.edit(p, Block::AIR, false) {
                         removed.push(p);

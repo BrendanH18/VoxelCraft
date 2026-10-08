@@ -9,8 +9,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::World;
 use super::block::{Block, Facing, Shaped};
 use super::chunk::CHUNK_SIZE_I;
-use super::rails;
 use super::nether_biome_blocks::keep_wood;
+use super::rails;
 use super::redstone_blocks::{self as r, Component};
 
 /// The block a scheduled tick is keyed by: the redstone, rail or gadget

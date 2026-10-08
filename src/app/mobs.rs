@@ -256,6 +256,7 @@ impl Game {
                 .get(self.actions.selected)
                 .map_or(Default::default(), |s| s.active_enchants()),
             shape: self.player.collision_shape(),
+            gold_armor: crate::entity::nether::wears_gold(&self.inventory.armor),
             ..Target::new(PlayerId::HOST, self.player.pos, self.mode.targetable() && !self.vitals.is_dead())
         }];
         // Agents keep source-dimension positions until arrival relocates them.
@@ -380,6 +381,13 @@ impl Game {
                 }
                 EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. } => {}
                 EntityEvent::Sound { sound, pos } => {
+                    // Brutes and zoglins are deeper takes on piglin and hoglin voices.
+                    let deep = matches!(
+                        sound,
+                        MobSound::Ambient(MobKind::PiglinBrute | MobKind::Zoglin)
+                            | MobSound::Hurt(MobKind::PiglinBrute | MobKind::Zoglin)
+                            | MobSound::Death(MobKind::PiglinBrute | MobKind::Zoglin)
+                    );
                     let (sound, gain) = match sound {
                         MobSound::Bell => (Sound::Bell, 1.0),
                         MobSound::Fuse => (Sound::Fuse, 1.0),
@@ -401,13 +409,20 @@ impl Game {
                             continue;
                         }
                     };
-                    let pitch = if sound == Sound::Fireball && gain == 1.0 { (0.6, 0.7) } else { (0.9, 1.1) };
+                    let pitch = if sound == Sound::Fireball && gain == 1.0 {
+                        (0.6, 0.7)
+                    } else if deep {
+                        (0.72, 0.82)
+                    } else {
+                        (0.9, 1.1)
+                    };
                     self.audio.play(sound, Some(pos), gain, pitch);
                 }
                 EntityEvent::MobShot { pos, .. } => {
                     self.audio.play(Sound::Hit, Some(pos + DVec3::Y * 0.5), 0.8, (0.9, 1.1))
                 }
                 EntityEvent::Shoot { .. }
+                | EntityEvent::MobHit { .. }
                 | EntityEvent::DragonXp { .. }
                 | EntityEvent::MobKilled { .. }
                 | EntityEvent::LaidEgg { .. }
@@ -503,6 +518,9 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::TraderLlama => Voice::Cow,
         MobKind::IronGolem => Voice::Cow,
         MobKind::SnowGolem => Voice::Slime,
+        MobKind::Piglin | MobKind::PiglinBrute => Voice::Piglin,
+        MobKind::Hoglin | MobKind::Zoglin => Voice::Hoglin,
+        MobKind::Strider => Voice::Strider,
     }
 }
 
