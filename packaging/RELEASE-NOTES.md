@@ -1,8 +1,6 @@
-VoxelCraft 0.3.0 makes a fresh survival world beatable. You can now travel
-from your first tree to the Ender Dragon and the credits, with experience,
-enchanting, brewing and Netherite along the way. It also adds a lot more to
-build with and fight, a visible player and armor, music, particles, game rules
-and commands.
+VoxelCraft 0.4.0 brings villages and redstone. Explore generated villages,
+trade with villagers, protect them with iron golems, cure zombie villagers, and
+build circuits, piston doors, item sorters and minecart railways.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -10,138 +8,83 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.3.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.3.0-macos-apple-silicon.dmg`
-- **Mac with Intel, macOS 13+:** `VoxelCraft-0.3.0-macos-intel.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.4.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.4.0-macos-apple-silicon.dmg`
+- **Mac with Intel, macOS 13+:** `VoxelCraft-0.4.0-macos-intel.dmg`
 
-## What's new since 0.2.0
+## What's new since 0.3.0
 
-### Survival path
+### Villages and villagers
 
-- **Experience:** orbs drop from mobs, ore and smelting, and fill an XP bar
-  with levels.
-- **Endermen and ender pearls:** Endermen teleport, stare back and carry
-  blocks. Pearls throw you across the landscape.
-- **Blazes and fortresses:** Nether fortresses have blaze spawners, loot chests
-  and nether wart. Blazes drop rods for fuel and brewing.
-- **Brewing:** nether wart and a brewing stand make potions, with extended and
-  strengthened versions. Gunpowder makes them splash potions.
-- **Strongholds and the End portal:** craft eyes of ender, follow them to a
-  stronghold and fill the portal frame to reach the End.
-- **The Ender Dragon:** fight it around the obsidian pillars, shoot the end
-  crystals that heal it, then step through the exit portal. Gateways lead to the
-  outer islands.
-- **Enchanting and anvils:** enchant at a table (bookshelves raise the levels),
-  then repair, combine and rename with anvils.
-- **Netherite and smithing:** mine ancient debris, smelt scrap, and upgrade
-  diamond gear at a smithing table.
-- **Bastion remnants:** four kinds of Nether ruin with loot, including
-  Netherite upgrade templates.
-- **Credits:** the first time you leave the End through the exit portal, a
-  skippable scrolling credits screen plays.
+- **Villages:** generated in plains, desert, savanna, taiga and snowy plains,
+  each in its own building style, with paths, farms, bells and loot chests.
+- **Villagers:** 12 professions that claim workstations, beds and daily
+  schedules (work, gather, sleep), and baby villagers that grow up.
+  Leatherworkers aren't in yet.
+- **Trading:** a Java-style trading screen with levels, XP, restocking,
+  demand-based prices, and discounts from curing and reputation.
+- **Breeding and gossip:** well-fed villagers with free beds have babies.
+  Villagers remember how players treat them and share food with each other.
+- **Iron and snow golems:** villages summon iron golems to defend them, and
+  you can build both kinds from blocks and a carved pumpkin. Shears carve
+  pumpkins.
+- **Zombie villagers:** zombies hunt villagers and can infect them on Normal
+  and Hard. Cure one with a splash potion of Weakness and a golden apple for
+  big trade discounts.
+- **Wandering trader:** visits now and then with two trader llamas and a
+  random stock, drinks invisibility at night and leaves after a while.
+- **Workstation blocks:** smokers, blast furnaces, barrels, grindstones,
+  composters (turn plant matter into bone meal, hopper-friendly), bells
+  (ring them by hand or with redstone to send villagers home) and more.
 
-### World and content
+### Redstone
 
-- **Mossy cobblestone and dungeons:** monster rooms with spawners and chests.
-- **Abandoned mineshafts:** rails, supports, cobwebs, loot, and cave spider
-  spawners in their spider corridors.
-- **Ores:** copper, redstone and emerald, with raw metal drops.
-- **Stones and deepslate:** granite, diorite, andesite and deepslate, plus
-  blackstone, basalt, magma and chains in the Nether. Underground heights now
-  follow Java's layout, with deepslate near the bottom.
-- **Wood sets:** every wood type with stairs, slabs and walls.
-- **Dyes and 16 colours:** dyes, wool, carpets, beds, stained glass and panes,
-  terracotta, glazed terracotta, concrete powder and concrete. Dye your sheep
-  and shear them.
-- **Everyday items:** shears, compass and clock (with animated icons), milk
-  buckets, bowls, snowballs and eggs, cake, pumpkin pie and mushrooms.
-- **Crops and fishing:** carrots, potatoes, and a fishing rod with bobber that
-  catches cod, salmon, junk and treasure.
-- **New mobs:** cave spiders, slimes (sized, in Java's slime chunks), magma
-  cubes, ghasts, wither skeletons (with Wither and Hunger), witches that throw
-  splash potions, husks, drowned, and baby zombies and chickens.
+- **Core components:** redstone dust, torches, repeaters, comparators, levers,
+  buttons, pressure plates, targets, daylight detectors, redstone blocks and
+  lamps, iron doors and trapdoors.
+- **Pistons and observers:** animated regular and sticky pistons, and
+  observers that pulse on block changes.
+- **Item automation:** dispensers, droppers and hoppers that move items
+  between containers.
+- **Rails and minecarts:** rails that connect into curves and slopes, powered,
+  detector and activator rails, rideable minecarts, and chest, hopper and TNT
+  minecarts.
+- **Note blocks and tripwires:** 16 instruments chosen by the block below and
+  25 pitches; tripwire hooks with string that trigger when something walks
+  through.
 
-### Player
+### Polish
 
-- **Fullscreen:** a remembered **Fullscreen** option: Borderless (native
-  fullscreen on macOS) or Exclusive at the monitor's native resolution. **F11**
-  toggles it.
-- **Third-person camera:** **F5** cycles first person and both third-person
-  views; the camera stops at walls.
-- **Player model:** a visible player with walking, swinging and sneaking
-  animations, and your own body in split-screen and for hosted players.
-- **Armor rendering:** worn armor shows on you, other players and mobs, with
-  the enchantment glint.
-- **View bobbing and hurt tilt** while walking and when damaged.
-- **Swimming and crawling:** sprint in water to swim, and fit through
-  one-block gaps by crawling. Hitboxes follow the pose.
-
-### Audio and visuals
-
-- **Procedural music:** generated, situational tracks for the Overworld, caves,
-  water, creative, the Nether, the End and the credits, using Java's timing.
-  Mix it with the new Music volume slider.
-- **Particles:** smoke, flames, bubbles, drips, splashes, block-break debris,
-  explosions, potion swirls and more, in a single draw call. Choose All,
-  Decreased or Minimal in Options.
-
-### Rules and commands
-
-- **Difficulty:** Peaceful to Hard, affecting mob damage, hunger and poison.
-- **Game modes:** Adventure, Spectator and Hardcore join Survival and Creative.
-- **Game rules:** 17 typed rules, such as `keepInventory` and `doDaylightCycle`.
-- **More commands with tab completion:** the console (**/**, **T** or backtick)
-  completes commands and arguments with **Tab**, and accepts Java-style
-  syntax for `/give`, `/gamerule`, `/difficulty`, `/gamemode`, `/effect`
-  and more.
+- The item search bar now shows only on the inventory and storage screens.
 
 ### Engine
 
-- **Block IDs are now 16-bit** and chunks use compact byte, palette or 16-bit
-  storage, so the game has room for thousands of block states.
-  Worlds from 0.2.0 load unchanged.
-- **2048 texture layers**, up from 256, with a fallback for GPUs that only
-  support the default array-layer limit.
-- **Performance:** light emission is precomputed per block state and terrain
-  columns are cached across a chunk stack. This roughly halved meshing time after the new
-  content arrived. Measured on an Apple M5 with a release build,
-  `--bench --rd 8`: generation 0.21 ms per chunk, light and mesh 0.66 ms per
-  dense chunk, and 1,576 chunks meshed in 0.17 s while streaming at 256 blocks.
-  Generated terrain is identical to before the optimization.
-
-### Split-screen and agents
-
-- **Gamepad split-screen** has full controls, menus and shared audio for up to
-  three extra players beside the keyboard player.
-- **Hosted agents can sleep** and respawn at their own beds.
+- Measured on an Apple M5 with a release build, `--bench --rd 8`: generation
+  0.22 ms per chunk and light and mesh 0.68 ms per dense chunk, unchanged
+  from 0.3.0 with all the new content.
 
 ### Known limitations
 
-- Villages, villagers, redstone, piglins and hoglins, Nether biomes, trading
-  and LAN joining aren't in yet.
+- Raids, illagers, pillager outposts and farmer harvesting aren't in yet.
+  Lecterns, looms, cartography tables and stonecutters are decorative.
+- Piglins, hoglins, striders and Nether biomes are still to come.
+- Rails don't hold water and carts aren't slowed by it. Minecart collisions
+  and dismounting aren't exactly Java's, and mobs riding carts aren't saved.
+  Split-screen players can't ride carts or open cart containers.
+- Complex redstone contraptions that depend on Java's exact update order may
+  behave differently.
+- Note blocks have no note particles or mob-head sounds.
 - The Ender Dragon can't be respawned, and the End has no chorus trees, cities,
-  shulkers or elytra. Wither skeletons drop a skull item that can't be placed,
-  so the Wither can't be summoned.
-- Mobs aren't saved with a world, so they respawn when you reload it.
-- Slimeballs only come from slimes. Brown and black dye can't be made, and the
-  coloured beds don't rotate.
-- Potions work on you; mobs only react to instant splash effects. Witches don't
-  inspect their target.
-- Fishing has cod, salmon and some junk and treasure only. Bobbers don't hook mobs.
-- Player poses don't cover riding, elytra, bows or offhand items.
-- Commands accept `@s` and `@p` only. `/locate` finds strongholds, fortresses,
-  bastion remnants, mineshafts and biomes.
-- Credits don't play for split-screen players or hosted agents.
-- Dungeon books and loot have no enchantments or discs, and Frost Walker doesn't
-  freeze water.
+  shulkers or elytra. The Wither can't be summoned yet.
+- Commands accept `@s` and `@p` only.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
   Minecraft, and several structures are simplified versions of Java's.
 
 ## Upgrading and saves
 
-Worlds from 0.2.0 load in 0.3.0. Back up your worlds before upgrading anyway:
-older versions can't open 0.3.0 worlds. Versions before 0.2.0 can't read the
-furnace records and discard their saved contents.
+Worlds from 0.3.0 and 0.2.0 load in 0.4.0. Back up your worlds before
+upgrading anyway: older versions can't open 0.4.0 worlds. Versions before
+0.2.0 can't read the furnace records and discard their saved contents.
 
 ## Installing
 
