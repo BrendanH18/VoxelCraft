@@ -414,6 +414,20 @@ Netherrack smelts into nether bricks (four make a nether bricks block),
 quartz ore drops nether quartz, and glowstone breaks into 2–4 glowstone
 dust (four make a block). Nine gold nuggets make a gold ingot and back.
 
+The Nether has Java's five biomes, each with its own fog colour, ambient
+particles and music (see [Nether biomes](nether-biomes.md)): nether
+wastes; crimson forests of red nylium, huge crimson fungi, roots and
+weeping vines under drifting spores; warped forests of teal nylium, huge
+warped fungi, sprouts and twisting vines; soul sand valleys of soul sand
+and soul soil, basalt pillars, bone fossils and blue soul fire under
+falling ash; and basalt deltas of basalt and blackstone, magma-rimmed lava
+pools and basalt columns in white ash. Crimson and warped stems craft into
+planks and a full set of building blocks that never burn; axes strip
+stems; bone meal spreads nylium, grows forest floors, vines and huge fungi.
+Soul torches (coal over a stick over soul sand or soil) and soul fire glow
+at level 10, shroomlight at 15. `/locate biome crimson_forest` works in
+the Nether and F3 shows the biome.
+
 Each dimension keeps its own blocks, furnaces, chests and dropped items in
 the save (the Nether in a `nether` folder inside the world's). Dying in
 the Nether respawns you in the overworld. `--dimension nether` starts a

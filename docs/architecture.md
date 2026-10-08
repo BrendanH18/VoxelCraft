@@ -185,7 +185,12 @@ src/
     block.rs         block registry
     shape.rs         box shapes of stairs, fences, gates, ladders and doors
     terrain.rs       world generation
-    nether.rs        Nether caverns
+    nether.rs        Nether caverns, biome surface rules, shared grid-column cache
+    nether_biome.rs  Java's multi-noise Nether biomes, fog sampler, spawn lists
+    nether_biome_blocks.rs  crimson/warped/soul blocks (ids 1600..=1793)
+    nether_features.rs  huge fungi, vines, deltas, basalt columns (Java ports)
+    nether_decoration.rs  per-chunk feature placement across chunk borders
+    nether_flora.rs  nylium, vine growth and Nether bone meal
     fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
     bastion.rs       reserved bastion-remnant loot data
     stronghold.rs    stronghold rings and layouts (Java's pieces), painted per chunk
