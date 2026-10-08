@@ -201,6 +201,11 @@ pub fn instrument(below: Block) -> Instrument {
         b if b == Block::WOOL || b.wool_color().is_some() => Instrument::Guitar,
         b if b.is_log()
             || b.is_planks()
+            || super::nether_biome_blocks::is_nether_wood(b)
+                && !matches!(
+                    super::redstone_blocks::component(b),
+                    Some(super::redstone_blocks::Component::Button { .. })
+                )
             || b.is_door()
             || is_note(b)
             || crate::world::forms::planks_of(b).is_some()
@@ -470,6 +475,23 @@ mod tests {
         w.tick_redstone();
         assert!(!hook_state(w.get_block(a).unwrap()).unwrap().2);
     }
+    #[test]
+    fn nether_wood_uses_bass_instruments() {
+        use super::super::nether_biome_blocks::NetherWood;
+        for wood in NetherWood::ALL {
+            for block in [wood.stem(), wood.stripped_stem(), wood.hyphae(), wood.stripped_hyphae(), wood.planks()] {
+                assert_eq!(instrument(block), Instrument::Bass, "{}", block.name());
+            }
+            for local in [0, 4, 5, 6, 14] {
+                assert_eq!(instrument(super::super::forms::wood_id(wood.form_index(), local)), Instrument::Bass);
+            }
+            for block in [wood.trapdoor(), wood.pressure_plate()] {
+                assert_eq!(instrument(block), Instrument::Bass);
+            }
+            assert_eq!(instrument(wood.button()), Instrument::Harp);
+        }
+    }
+
     #[test]
     fn all_sixteen_instruments_have_distinct_substrates() {
         let blocks = [

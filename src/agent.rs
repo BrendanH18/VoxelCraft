@@ -1061,6 +1061,10 @@ impl Agent {
                     crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal);
                 let block = crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
                 let at = pos + normal;
+                let block = crate::world::nether_biome_blocks::placed_vine(
+                    block,
+                    crate::world::noise::hash3(at.x, at.y, at.z, crate::enchant::roll().to_bits() as u64),
+                );
                 if !world.get_block(at).is_some_and(|b| b == Block::AIR || b.is_water() || b.is_lava()) {
                     return Err("destination occupied or unloaded".into());
                 }
@@ -1157,6 +1161,9 @@ impl Agent {
                     *dest = Some(Stack { count: dest.map_or(0, |s| s.count) + n, ..stack });
                     self.inventory.slots[self.selected] =
                         (stack.count > n).then_some(Stack { count: stack.count - n, ..stack });
+                }
+                if world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
+                    entities.piglins_notice(self.id, self.player.pos, true, world);
                 }
             }
             Command::Enchanting(i) => self.enchant_at_table(i, world)?,
@@ -1437,6 +1444,9 @@ impl Agent {
                     world.disarm_tripwire(pos);
                 }
                 world.set_block(pos, Block::AIR);
+                if crate::entity::nether::guarded_by_piglins(block) {
+                    entities.piglins_notice(self.id, self.player.pos, false, world);
+                }
                 self.emit(Event::Broke(pos, block));
                 if !self.creative {
                     if mining::can_harvest(block, held) {
@@ -2258,6 +2268,52 @@ mod tests {
             a.execute(Command::Smithing, &mut world, &mut entities, &[]).is_err(),
             "Netherite cannot upgrade again"
         );
+    }
+
+    #[test]
+    fn guarded_container_transfers_and_mining_anger_piglins_at_the_agent() {
+        use crate::entity::{Ctx, EntityEvent, MobKind, PlayerId, Target};
+        for mining in [false, true] {
+            let mut world = world();
+            for x in 0..=6 {
+                for z in 0..=4 {
+                    world.set_block(IVec3::new(x, 149, z), Block::STONE);
+                }
+            }
+            let pos = IVec3::new(4, 151, 1);
+            world.set_block(pos, if mining { Block::GOLD_BLOCK } else { Block::CHEST });
+            let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+            a.id = PlayerId(7);
+            let mut entities = Entities::new(1);
+            entities.spawn(MobKind::Piglin, DVec3::new(1.5, 150.0, 2.5));
+            entities.mobs[0].baby = false;
+            if mining {
+                a.inventory.slots[0] =
+                    Some(Stack::new(Item::tool(crate::item::ToolKind::Pickaxe, crate::item::Tier::Diamond), 1));
+                a.execute(Command::Run(MoveInput::default(), 100, true), &mut world, &mut entities, &[]).unwrap();
+                for _ in 0..100 {
+                    a.tick(&mut world, &mut entities);
+                }
+                assert_eq!(world.get_block(pos), Some(Block::AIR));
+            } else {
+                world.chest_mut(pos).unwrap().slots[0] = Some(Stack::new(Item::DIAMOND, 1));
+                a.execute(Command::Chest(true, 0), &mut world, &mut entities, &[]).unwrap();
+            }
+            let ctx = Ctx {
+                players: vec![Target { gold_armor: true, ..Target::new(a.id, a.player.pos, true) }],
+                spawning: false,
+                dimension: Dimension::Nether,
+                daylight: 0.0,
+                raining: false,
+            };
+            assert!(
+                entities
+                    .update(0.05, &world, &ctx)
+                    .iter()
+                    .any(|event| { matches!(event, EntityEvent::PlayerHit { player, .. } if *player == a.id) }),
+                "the angry piglin attacks even a player wearing gold; mining={mining}"
+            );
+        }
     }
 
     #[test]

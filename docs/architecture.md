@@ -117,8 +117,9 @@ agent-only chunks outside the host view stay unmeshed. Named agent profiles
 persist in the root level file. See [the CLI protocol and limitations](agents.md).
 
 Full client/session action extraction, mob target identities, independent
-simultaneous dimensions, authoritative skylight, shape-aware light occlusion,
-desktop networking and split-screen remain future work.
+simultaneous dimensions, authoritative skylight, shape-aware light occlusion
+and desktop networking remain future work. Split-screen is implemented; all views currently share the
+host's biome fog colour.
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
 
 ## Code layout
