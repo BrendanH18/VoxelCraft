@@ -83,6 +83,7 @@ impl Entities {
             self.mob_index.rebuild(&self.mobs);
             self.mob_index.visit(pos, 16.0, |j| {
                 if self.mobs[j].kind == MobKind::Villager
+                    && self.mobs[j].pos.distance_squared(pos) <= 16.0 * 16.0
                     && let Some(v) = &mut self.mobs[j].villager
                 {
                     v.gossip.add(player, 0, 25);
@@ -116,6 +117,16 @@ impl Entities {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn witnessed_kills_do_not_leak_outside_the_sensor_radius() {
+        let mut e = Entities::new(3);
+        for x in [0.0, 5.0, 17.0] {
+            e.spawn(MobKind::Villager, glam::DVec3::X * x);
+        }
+        e.note_villager_hurt(0, PlayerId::HOST, true);
+        assert_eq!(e.mobs[1].villager.as_ref().unwrap().gossip.reputation(PlayerId::HOST), -125);
+        assert_eq!(e.mobs[2].villager.as_ref().unwrap().gossip.reputation(PlayerId::HOST), 0);
+    }
     #[test]
     fn cures_are_per_player_caps_decay_and_roundtrip() {
         let mut g = Gossip::default();

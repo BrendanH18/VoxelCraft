@@ -12,6 +12,7 @@ use super::thrown::{self, Thrown};
 #[cfg(test)]
 use super::villager::Profession;
 use super::{Ctx, Entities, EntityEvent, MobKind, MobWorld, PlayerId};
+#[cfg(test)]
 use crate::simulation::difficulty::Difficulty;
 use crate::world::block::{Block, Facing};
 use crate::world::pumpkin_blocks;
@@ -64,18 +65,10 @@ pub fn spawn_feet(pattern: &Pattern) -> (MobKind, f32, DVec3) {
     }
 }
 
-/// Java rolls 7.5–21.5 damage. Difficulty scaling applies only to players.
-pub fn iron_damage(difficulty: Difficulty, player: bool, rng: &mut super::Rng) -> f32 {
-    let damage = 7.5 + rng.next_int(15) as f32;
-    if !player {
-        return damage;
-    }
-    match difficulty {
-        Difficulty::Peaceful => 0.0,
-        Difficulty::Easy => (damage * 0.5 + 1.0).min(damage),
-        Difficulty::Normal => damage,
-        Difficulty::Hard => damage * 1.5,
-    }
+/// Java rolls 7.5–21.5 raw damage. PlayerHit events carry unscaled
+/// damage; the app applies difficulty once, then armor/hurt immunity.
+pub fn iron_damage(rng: &mut super::Rng) -> f32 {
+    7.5 + rng.next_int(15) as f32
 }
 
 fn anger_target<'a>(mob: &super::Mob, ctx: &'a Ctx) -> Option<&'a super::Target> {
@@ -158,7 +151,6 @@ impl Entities {
             self.mobs[i].strike = false;
             let pos = self.mobs[i].pos;
             let kind = self.mobs[i].kind;
-            let difficulty = self.mobs[i].difficulty;
             if kind == MobKind::IronGolem
                 && self.mobs[i].angry_at_player()
                 && let Some(player) = anger_target(&self.mobs[i], ctx)
@@ -167,7 +159,7 @@ impl Entities {
                 let dir = (player.pos - pos).normalize_or_zero();
                 events.push(EntityEvent::PlayerHit {
                     player: player.id,
-                    damage: iron_damage(difficulty, true, &mut self.rng),
+                    damage: iron_damage(&mut self.rng),
                     knockback: (dir * 6.0 + DVec3::Y * 8.0).as_vec3(),
                     cause: "was slain by an iron golem",
                 });
@@ -186,7 +178,7 @@ impl Entities {
                 })
                 .flatten();
             let Some(j) = victim else { continue };
-            let damage = iron_damage(difficulty, false, &mut self.rng);
+            let damage = iron_damage(&mut self.rng);
             self.hit_mob(i, j, damage, 8.0, events);
         }
     }
@@ -308,7 +300,10 @@ impl Entities {
     fn snow_golems<W: MobWorld + ?Sized>(&mut self, world: &W) {
         let n = self.mobs.len();
         for i in 0..n {
-            if !self.mobs[i].alive() || self.mobs[i].kind != MobKind::SnowGolem {
+            if !self.mobs[i].alive()
+                || self.mobs[i].kind != MobKind::SnowGolem
+                || !world.loaded(self.mobs[i].pos.floor().as_ivec3())
+            {
                 continue;
             }
             let pos = self.mobs[i].pos;
@@ -430,9 +425,9 @@ mod tests {
         }
         assert!(iron && poppy);
         for _ in 0..100 {
-            let damage = iron_damage(Difficulty::Normal, false, &mut rng);
+            let damage = iron_damage(&mut rng);
             assert!((7.5..=21.5).contains(&damage));
-            assert_eq!(iron_damage(Difficulty::Peaceful, true, &mut rng), 0.0);
+            assert_eq!(Difficulty::Peaceful.mob_damage(damage), 0.0);
         }
     }
 
@@ -462,6 +457,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn iron_golem_player_event_is_scaled_once_by_the_app() {
+        let mut e = Entities::new(1);
+        e.spawn(MobKind::IronGolem, DVec3::new(0.5, 1.0, 0.5));
+        e.attack(0, DVec3::X, 1.0);
+        let events = e.update_difficulty(0.05, &Grid::flat(0), &ctx(DVec3::new(1.2, 1.0, 0.5), true), Difficulty::Hard);
+        let raw = events
+            .iter()
+            .find_map(|event| match event {
+                EntityEvent::PlayerHit { damage, .. } => Some(*damage),
+                _ => None,
+            })
+            .expect("angry golem must hit the nearby player");
+        assert!((7.5..=21.5).contains(&raw));
+        assert!((11.25..=32.25).contains(&Difficulty::Hard.mob_damage(raw)));
+    }
     #[test]
     fn panicking_villagers_summon_one_golem_beside_enough_beds() {
         let world =
