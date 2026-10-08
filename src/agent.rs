@@ -321,7 +321,15 @@ pub fn tab_complete(input: &str) -> Option<String> {
         "time" if stem.len() == 2 && stem[1] == "query" => complete_options(&["daytime", "day", "gametime"], partial)?,
         "locate" if stem.len() <= 1 => complete_options(&["structure", "biome"], partial)?,
         "locate" if stem.len() == 2 && stem[1] == "structure" => complete_options(
-            &["stronghold", "fortress", "nether_fortress", "bastion_remnant", "mineshaft", "abandoned_mineshaft"],
+            &[
+                "stronghold",
+                "fortress",
+                "nether_fortress",
+                "bastion_remnant",
+                "mineshaft",
+                "abandoned_mineshaft",
+                "village",
+            ],
             partial,
         )?,
         "locate" if stem.len() == 2 && stem[1] == "biome" => {
@@ -475,6 +483,7 @@ impl Command {
             ["difficulty", name] => Self::Difficulty(Difficulty::from_name(name).ok_or_else(bad)?),
             ["gamerule", name] => Self::GameRule { name: name.to_string(), value: None },
             ["gamerule", name, value] => Self::GameRule { name: name.to_string(), value: Some(value.to_string()) },
+            ["locate", "village"] => Self::LocateStructure("village".into()),
             ["locate", "structure", name] => Self::LocateStructure(name.to_string()),
             ["locate", "biome", name] => Self::LocateBiome(Biome::from_name(name).ok_or_else(bad)?),
             ["seed"] => Self::Seed,

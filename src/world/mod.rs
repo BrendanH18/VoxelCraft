@@ -44,6 +44,7 @@ pub mod storage;
 pub mod stronghold;
 pub mod structure;
 pub mod terrain;
+pub mod village;
 pub mod village_blocks;
 
 use std::sync::Arc;

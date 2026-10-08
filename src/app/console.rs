@@ -204,6 +204,9 @@ impl Game {
             Command::LocateStructure(name) => {
                 let key = name.strip_prefix("minecraft:").unwrap_or(&name);
                 let at = match key {
+                    "village" => {
+                        self.world.generator.villages.nearest(&self.world.generator, self.player.pos.floor().as_ivec3())
+                    }
                     "stronghold" => self.world.generator.strongholds.nearest(self.player.pos.floor().as_ivec3()),
                     "fortress" | "nether_fortress" => self.world.generator.nearest_fortress(IVec2::new(
                         self.player.pos.x.floor() as i32,
