@@ -14,7 +14,7 @@
 //! spread; the permutation tables come from our own seed hashing, so worlds
 //! are not copies of Java seeds.
 
-use glam::{IVec2, IVec3};
+use glam::{DVec3, IVec2, IVec3};
 
 use super::noise::{Perlin, hash3};
 
@@ -26,6 +26,53 @@ pub enum NetherBiome {
     WarpedForest,
     BasaltDeltas,
 }
+
+/// A mob in a Nether biome's spawn list (Java's `NetherBiomes`).
+///
+/// TODO(piglins, hoglins, striders): `Piglin`, `Hoglin` and `Strider` are
+/// built on another branch. Their weights already count against the other
+/// entries' chances; map them to their `MobKind`s in
+/// `entity::Entities::natural_spawn` (see `nether_spawn`) when they land.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NetherMob {
+    ZombifiedPiglin,
+    Ghast,
+    MagmaCube,
+    Enderman,
+    Skeleton,
+    Piglin,
+    Hoglin,
+    Strider,
+}
+
+/// One spawn list entry: weight and group size range.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Spawn {
+    pub mob: NetherMob,
+    pub weight: u32,
+    pub group: (u8, u8),
+}
+
+const fn spawn(mob: NetherMob, weight: u32, min: u8, max: u8) -> Spawn {
+    Spawn { mob, weight, group: (min, max) }
+}
+
+/// Java's `NetherBiomes` monster lists.
+const WASTES_MONSTERS: [Spawn; 5] = [
+    spawn(NetherMob::Ghast, 50, 4, 4),
+    spawn(NetherMob::ZombifiedPiglin, 100, 4, 4),
+    spawn(NetherMob::MagmaCube, 2, 4, 4),
+    spawn(NetherMob::Enderman, 1, 4, 4),
+    spawn(NetherMob::Piglin, 15, 4, 4),
+];
+const SOUL_SAND_VALLEY_MONSTERS: [Spawn; 3] =
+    [spawn(NetherMob::Skeleton, 20, 5, 5), spawn(NetherMob::Ghast, 50, 4, 4), spawn(NetherMob::Enderman, 1, 4, 4)];
+const BASALT_DELTAS_MONSTERS: [Spawn; 2] = [spawn(NetherMob::Ghast, 40, 1, 1), spawn(NetherMob::MagmaCube, 100, 2, 5)];
+const CRIMSON_FOREST_MONSTERS: [Spawn; 3] =
+    [spawn(NetherMob::ZombifiedPiglin, 1, 2, 4), spawn(NetherMob::Hoglin, 9, 3, 4), spawn(NetherMob::Piglin, 5, 3, 4)];
+const WARPED_FOREST_MONSTERS: [Spawn; 1] = [spawn(NetherMob::Enderman, 1, 4, 4)];
+/// Every Nether biome's creature list: striders on the lava.
+const CREATURES: [Spawn; 1] = [spawn(NetherMob::Strider, 60, 1, 2)];
 
 /// Java's `AmbientParticleSettings`: the particle and the chance each
 /// animate-tick sample emits it.
@@ -118,11 +165,78 @@ impl NetherBiome {
         }
     }
 
+    /// Java's monster spawn list for the biome.
+    pub const fn monsters(self) -> &'static [Spawn] {
+        match self {
+            NetherBiome::NetherWastes => &WASTES_MONSTERS,
+            NetherBiome::SoulSandValley => &SOUL_SAND_VALLEY_MONSTERS,
+            NetherBiome::CrimsonForest => &CRIMSON_FOREST_MONSTERS,
+            NetherBiome::WarpedForest => &WARPED_FOREST_MONSTERS,
+            NetherBiome::BasaltDeltas => &BASALT_DELTAS_MONSTERS,
+        }
+    }
+
+    /// Java's creature spawn list: striders in every Nether biome.
+    pub const fn creatures(self) -> &'static [Spawn] {
+        &CREATURES
+    }
+
+    /// The spawn entry for `mob` here, and the chance an attempt for it goes
+    /// ahead: its weight against the heaviest monster in the biome (mobs
+    /// still missing from VoxelCraft keep their share of the weight).
+    pub fn monster_spawn(self, mob: NetherMob) -> Option<(Spawn, f32)> {
+        let list = self.monsters();
+        let heaviest = list.iter().map(|s| s.weight).max()?;
+        list.iter().find(|s| s.mob == mob).map(|s| (*s, s.weight as f32 / heaviest as f32))
+    }
+
     /// Bastion remnants generate everywhere but basalt deltas
     /// (`#has_structure/bastion_remnant`). Fortresses generate in every
     /// Nether biome.
     pub const fn has_bastions(self) -> bool {
         !matches!(self, NetherBiome::BasaltDeltas)
+    }
+}
+
+/// The fog colour around a camera, blended like Java's `FogRenderer`:
+/// `CubicSampler.gaussianSampleVec3` over the 6×6 quarts around
+/// `(camera - 2) / 4` with kernel weights 1, 4, 6, 4, 1. The 36 biome
+/// colours are kept until the camera crosses into another quart.
+pub struct FogSampler {
+    cell: Option<IVec2>,
+    colors: [[f32; 3]; 36],
+}
+
+impl Default for FogSampler {
+    fn default() -> Self {
+        Self { cell: None, colors: [[0.0; 3]; 36] }
+    }
+}
+
+impl FogSampler {
+    const KERNEL: [f64; 7] = [0.0, 1.0, 4.0, 6.0, 4.0, 1.0, 0.0];
+
+    /// `biome` gives the biome of a quart column.
+    pub fn sample(&mut self, camera: DVec3, biome: impl Fn(i32, i32) -> NetherBiome) -> [f32; 3] {
+        let p = (camera - DVec3::splat(2.0)) * 0.25;
+        let cell = IVec2::new(p.x.floor() as i32, p.z.floor() as i32);
+        if self.cell != Some(cell) {
+            self.cell = Some(cell);
+            for (i, c) in self.colors.iter_mut().enumerate() {
+                *c = biome(cell.x - 2 + (i % 6) as i32, cell.y - 2 + (i / 6) as i32).fog_color();
+            }
+        }
+        let (fx, fz) = (p.x - cell.x as f64, p.z - cell.y as f64);
+        let weight = |f: f64, l: usize| Self::KERNEL[l + 1] + (Self::KERNEL[l] - Self::KERNEL[l + 1]) * f;
+        let (mut sum, mut total) = ([0.0f64; 3], 0.0);
+        for (i, c) in self.colors.iter().enumerate() {
+            let w = weight(fx, i % 6) * weight(fz, i / 6);
+            total += w;
+            for (s, v) in sum.iter_mut().zip(c) {
+                *s += *v as f64 * w;
+            }
+        }
+        sum.map(|s| (s / total) as f32)
     }
 }
 
@@ -346,6 +460,44 @@ mod tests {
         // Mean run length along x: regions are hundreds of blocks to a few kilometres wide.
         let run = (n * (n - 1)) as f64 * step as f64 / changes.max(1) as f64;
         assert!((200.0..3000.0).contains(&run), "mean biome run {run:.0} blocks");
+    }
+
+    #[test]
+    fn spawn_lists_follow_java() {
+        let chance = |b: NetherBiome, m| b.monster_spawn(m).map(|(_, c)| c);
+        assert_eq!(chance(NetherBiome::NetherWastes, NetherMob::ZombifiedPiglin), Some(1.0));
+        assert_eq!(chance(NetherBiome::NetherWastes, NetherMob::Ghast), Some(0.5));
+        assert_eq!(chance(NetherBiome::NetherWastes, NetherMob::MagmaCube), Some(0.02));
+        assert_eq!(chance(NetherBiome::SoulSandValley, NetherMob::Skeleton), Some(0.4));
+        assert_eq!(chance(NetherBiome::SoulSandValley, NetherMob::ZombifiedPiglin), None);
+        assert_eq!(chance(NetherBiome::BasaltDeltas, NetherMob::MagmaCube), Some(1.0));
+        assert_eq!(NetherBiome::BasaltDeltas.monster_spawn(NetherMob::MagmaCube).unwrap().0.group, (2, 5));
+        // Hoglins (not built yet) still dominate the crimson forest's list.
+        assert_eq!(chance(NetherBiome::CrimsonForest, NetherMob::ZombifiedPiglin), Some(1.0 / 9.0));
+        assert_eq!(chance(NetherBiome::WarpedForest, NetherMob::Enderman), Some(1.0));
+        for b in NetherBiome::ALL {
+            assert_eq!(b.creatures(), &[spawn(NetherMob::Strider, 60, 1, 2)]);
+        }
+    }
+
+    #[test]
+    fn fog_blends_smoothly_between_biome_colours() {
+        let mut fog = FogSampler::default();
+        // Crimson for negative x, warped for positive: a soft blend across x = 0.
+        let split = |qx: i32, _: i32| if qx < 0 { NetherBiome::CrimsonForest } else { NetherBiome::WarpedForest };
+        let far_left = fog.sample(DVec3::new(-100.0, 64.0, 0.0), split);
+        assert_eq!(far_left.map(|c| (c * 255.0).round() as u32), [0x33, 0x03, 0x03]);
+        let far_right = fog.sample(DVec3::new(100.0, 64.0, 0.0), split);
+        assert_eq!(far_right.map(|c| (c * 255.0).round() as u32), [0x1A, 0x05, 0x1A]);
+        let mut previous = fog.sample(DVec3::new(-12.0, 64.0, 0.0), split);
+        for step in 1..=96 {
+            let x = -12.0 + step as f64 * 0.25;
+            let c = fog.sample(DVec3::new(x, 64.0, 0.0), split);
+            assert!(c[0] <= previous[0] + 1e-6, "red fades monotonically at {x}");
+            assert!((c[0] - previous[0]).abs() < 0.01, "no jumps at {x}");
+            previous = c;
+        }
+        assert!((previous[0] - far_right[0]).abs() < 1e-6);
     }
 
     #[test]

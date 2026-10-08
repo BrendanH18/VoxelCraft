@@ -26,6 +26,16 @@ pub enum Kind {
     DragonBreath,
     Heart,
     Angry,
+    /// Java's `SuspendedParticle` spores drifting in crimson forests.
+    CrimsonSpore,
+    /// Warped spores sinking slowly through warped forests.
+    WarpedSpore,
+    /// Dark ash falling in soul sand valleys (`AshParticle`).
+    Ash,
+    /// Pale ash blowing through basalt deltas (`WhiteAshParticle`).
+    WhiteAsh,
+    /// The blue flame of soul torches (`soul_fire_flame`).
+    SoulFlame,
 }
 
 impl Kind {
@@ -44,6 +54,8 @@ impl Kind {
             Self::Explosion => 10,
             Self::DragonBreath => 11,
             Self::LavaDrip => 12,
+            Self::CrimsonSpore | Self::WarpedSpore | Self::Ash | Self::WhiteAsh => 13,
+            Self::SoulFlame => 14,
         }
     }
 }
@@ -93,6 +105,8 @@ struct Emitter {
 pub struct System {
     pub pool: Pool,
     pub(super) rng: Rng,
+    /// Nether biomes of the quarts around the last sampled camera.
+    pub(super) biomes: super::ambient::BiomeWindow,
     explosions: VecDeque<Emitter>,
     tracking: VecDeque<Tracking>,
 }
@@ -102,6 +116,7 @@ impl System {
         Self {
             pool: Pool::default(),
             rng: Rng::new(seed ^ 0x7061_7274_6963_6c65),
+            biomes: Default::default(),
             explosions: VecDeque::with_capacity(256),
             tracking: VecDeque::with_capacity(256),
         }
@@ -295,7 +310,7 @@ impl System {
                 p.size = 0.1 * (rng.next_f32() * rng.next_f32() * 6.0 + 1.0);
                 p.lifetime = (16.0 / rng.range(0.2, 1.0)) as u16 + 2;
             }
-            Kind::Flame => {
+            Kind::Flame | Kind::SoulFlame => {
                 p.physics = false;
                 p.friction = 0.96;
                 p.velocity = p.velocity * 0.01 + velocity;
@@ -398,6 +413,40 @@ impl System {
                 p.size *= 0.75;
                 p.lifetime = 16;
                 p.color = if kind == Kind::Heart { [1.0, 0.1, 0.1, 1.0] } else { [1.0; 4] };
+            }
+            Kind::CrimsonSpore | Kind::WarpedSpore => {
+                // SuspendedParticle: hangs where it spawns (an eighth lower),
+                // no physics or gravity, lifetime 16 / (0.2..1.0) ticks.
+                p.physics = false;
+                p.friction = 1.0;
+                p.pos.y -= 0.125;
+                p.previous = p.pos;
+                p.size *= rng.range(0.6, 1.2);
+                p.lifetime = (16.0 / rng.range(0.2, 1.0)) as u16;
+                if kind == Kind::CrimsonSpore {
+                    p.velocity = DVec3::new(gaussian(rng) * 1e-6, gaussian(rng) * 1e-4, gaussian(rng) * 1e-6);
+                    p.color = [0.9, 0.4, 0.5, 1.0];
+                } else {
+                    p.velocity = DVec3::new(0.0, rng.next_f32() as f64 * -1.9 * rng.next_f32() as f64 * 0.1, 0.0);
+                    p.color = [0.1, 0.1, 0.3, 1.0];
+                }
+            }
+            Kind::Ash | Kind::WhiteAsh => {
+                // BaseAshSmokeParticle: the base random drift scaled by
+                // (0.1, -0.1, 0.1) plus the provider's velocity, friction 0.96.
+                p.physics = false;
+                p.friction = 0.96;
+                p.velocity = java_velocity(rng, DVec3::ZERO) * DVec3::new(0.1, -0.1, 0.1) + velocity;
+                p.size *= 0.75;
+                p.lifetime = (20.0 / rng.range(0.2, 1.0)).max(1.0) as u16;
+                if kind == Kind::Ash {
+                    p.gravity = 0.1;
+                    let c = rng.next_f32() * 0.5;
+                    p.color = [c, c, c, 1.0];
+                } else {
+                    p.gravity = 0.0125;
+                    p.color = [0.729_411_8, 0.694_117_67, 0.760_784_3, 1.0];
+                }
             }
         }
         if matches!(kind, Kind::Crit | Kind::MagicCrit) {
@@ -585,6 +634,31 @@ mod tests {
             let large = system.make(Kind::LargeSmoke, DVec3::ZERO, DVec3::ZERO);
             assert!((0.29..=0.71).contains(&large.color[0]));
             assert!((0.18..0.38).contains(&large.size), "{}", large.size);
+        }
+    }
+
+    #[test]
+    fn nether_ambient_particles_follow_java_providers() {
+        let mut system = System::new(12);
+        for _ in 0..64 {
+            let crimson = system.make(Kind::CrimsonSpore, DVec3::Y * 10.0, DVec3::ZERO);
+            assert_eq!(crimson.color, [0.9, 0.4, 0.5, 1.0]);
+            assert!(!crimson.physics && crimson.gravity == 0.0 && crimson.friction == 1.0);
+            assert!((crimson.pos.y - 9.875).abs() < 1e-9, "spores start an eighth lower");
+            assert!((16..=80).contains(&crimson.lifetime), "{}", crimson.lifetime);
+            assert!(crimson.velocity.length() < 1e-3, "spores hang in the air");
+            let warped = system.make(Kind::WarpedSpore, DVec3::ZERO, DVec3::ZERO);
+            assert!(warped.velocity.y <= 0.0 && warped.velocity.y > -0.2 && warped.color == [0.1, 0.1, 0.3, 1.0]);
+            let ash = system.make(Kind::Ash, DVec3::ZERO, DVec3::ZERO);
+            assert!(ash.color[0] <= 0.5 && ash.gravity == 0.1 && ash.friction == 0.96);
+            let white = system.make(Kind::WhiteAsh, DVec3::ZERO, DVec3::new(-0.05, -0.1, -0.05));
+            assert!(white.gravity == 0.0125 && white.color[2] > white.color[1]);
+            assert!(white.velocity.y < 0.0, "white ash drifts down");
+            let soul = system.make(Kind::SoulFlame, DVec3::ZERO, DVec3::ZERO);
+            assert!(matches!(soul.texture, Texture::Sprite(14)));
+        }
+        for kind in [Kind::CrimsonSpore, Kind::WarpedSpore, Kind::Ash, Kind::WhiteAsh] {
+            assert_eq!(kind.sprite(), 13);
         }
     }
 

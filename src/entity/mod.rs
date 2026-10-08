@@ -309,6 +309,11 @@ pub trait MobWorld: BlockSource {
     fn biome(&self, _x: i32, _z: i32) -> crate::world::terrain::Biome {
         crate::world::terrain::Biome::Plains
     }
+    /// The Nether biome of a column (`None` outside the Nether, read as
+    /// nether wastes by Nether spawning).
+    fn nether_biome(&self, _x: i32, _z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
+        None
+    }
     /// Java moon brightness; clients set this from their saved day count.
     /// Inside a Nether fortress piece, where fortress mobs spawn.
     fn in_fortress(&self, _p: IVec3) -> bool {
@@ -328,6 +333,9 @@ impl MobWorld for World {
     }
     fn biome(&self, x: i32, z: i32) -> crate::world::terrain::Biome {
         self.generator.column(x, z).biome
+    }
+    fn nether_biome(&self, x: i32, z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
+        self.generator.nether_biome(x, z)
     }
     fn rains_on(&self, p: IVec3) -> bool {
         World::rains_on(self, p)
@@ -1086,9 +1094,12 @@ impl Entities {
         for center in ctx.players.iter().map(|t| t.pos) {
             for kind in MobKind::ALL {
                 let cap = kind.spawn_cap(ctx.dimension);
+                // The Nether picks by its biomes' spawn lists below.
+                let nether = ctx.dimension == Dimension::Nether;
                 if self.count_near(kind, center) >= cap
-                    || !kind.spawns_in(ctx.dimension)
-                    || !self.rng.chance(kind.spawn_chance(ctx.dimension))
+                    || (nether && nether_mob(kind).is_none())
+                    || (!nether
+                        && (!kind.spawns_in(ctx.dimension) || !self.rng.chance(kind.spawn_chance(ctx.dimension))))
                 {
                     continue;
                 }
@@ -1098,6 +1109,14 @@ impl Entities {
                 let z = (center.z + angle.sin() * dist).floor() as i32;
                 if ctx.dimension == Dimension::Overworld && !self.rng.chance(kind.biome_chance(world.biome(x, z))) {
                     continue;
+                }
+                let mut group = None;
+                if nether {
+                    let Some((spawn, chance)) = nether_spawn(world, kind, x, z) else { continue };
+                    if !self.rng.chance(chance) {
+                        continue;
+                    }
+                    group = Some(spawn.group);
                 }
                 let spot = match ctx.dimension {
                     Dimension::Overworld if kind == MobKind::Drowned => self.drowned_spot(world, x, z, ctx.daylight),
@@ -1115,11 +1134,11 @@ impl Entities {
                 // Animals come in small herds, zombified piglins and End
                 // endermen in packs.
                 if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
-                    // Nether wastes ghasts and magma cubes spawn in groups of exactly 4.
-                    let extra = if matches!(kind, MobKind::MagmaCube | MobKind::Ghast) {
-                        3
-                    } else {
-                        (self.rng.next_f32() * 3.0) as i32
+                    // Nether groups follow their biome's spawn list (wastes ghasts and
+                    // magma cubes come in fours, delta ghasts alone).
+                    let extra = match group {
+                        Some((lo, hi)) => lo as i32 - 1 + (self.rng.next_f32() * (hi - lo + 1) as f32) as i32,
+                        None => (self.rng.next_f32() * 3.0) as i32,
                     };
                     for _ in 0..extra {
                         let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
@@ -1747,6 +1766,33 @@ fn spawn_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, da
 
 /// Feet position on the first floor at or below `top` in column (x, z)
 /// with room to stand (for cavern dimensions with no sky).
+/// The Nether spawn list entry for a kind VoxelCraft has.
+fn nether_mob(kind: MobKind) -> Option<crate::world::nether_biome::NetherMob> {
+    use crate::world::nether_biome::NetherMob;
+    Some(match kind {
+        MobKind::ZombifiedPiglin => NetherMob::ZombifiedPiglin,
+        MobKind::Ghast => NetherMob::Ghast,
+        MobKind::MagmaCube => NetherMob::MagmaCube,
+        MobKind::Enderman => NetherMob::Enderman,
+        MobKind::Skeleton => NetherMob::Skeleton,
+        // TODO(piglins, hoglins, striders): map their MobKinds here, and spawn
+        // striders from `NetherBiome::creatures` on the lava sea.
+        _ => return None,
+    })
+}
+
+/// `kind`'s entry in the spawn list of the Nether biome at `(x, z)` and the
+/// chance an attempt goes ahead.
+fn nether_spawn<W: MobWorld + ?Sized>(
+    world: &W,
+    kind: MobKind,
+    x: i32,
+    z: i32,
+) -> Option<(crate::world::nether_biome::Spawn, f32)> {
+    use crate::world::nether_biome::NetherBiome;
+    world.nether_biome(x, z).unwrap_or(NetherBiome::NetherWastes).monster_spawn(nether_mob(kind)?)
+}
+
 fn cavern_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, top: i32) -> Option<DVec3> {
     let floor = (top - 24..=top).rev().find(|&y| {
         world.block(IVec3::new(x, y, z)).is_some_and(|b| b.is_solid() && b.is_opaque())
@@ -3031,6 +3077,60 @@ mod tests {
         assert!(e.mobs.iter().all(|m| {
             matches!(m.kind, MobKind::ZombifiedPiglin | MobKind::Enderman | MobKind::MagmaCube | MobKind::Ghast)
         }));
+    }
+
+    /// A Nether cavern in one biome.
+    struct Biomed(Grid, crate::world::nether_biome::NetherBiome);
+
+    impl BlockSource for Biomed {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            self.0.block(p)
+        }
+    }
+
+    impl MobWorld for Biomed {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, x: i32, z: i32) -> Option<i32> {
+            self.0.surface(x, z)
+        }
+        fn exposed(&self, _: IVec3) -> bool {
+            false
+        }
+        fn nether_biome(&self, _: i32, _: i32) -> Option<crate::world::nether_biome::NetherBiome> {
+            Some(self.1)
+        }
+    }
+
+    #[test]
+    fn nether_biomes_use_their_own_spawn_lists() {
+        use crate::world::nether_biome::NetherBiome;
+        let cavern = || {
+            let mut world = Grid::flat(41);
+            for x in -80..=80 {
+                for z in -80..=80 {
+                    world.set(IVec3::new(x, 60, z), Block::STONE);
+                }
+            }
+            world
+        };
+        let c = Ctx { spawning: true, dimension: Dimension::Nether, ..night(DVec3::new(0.0, 41.0, 0.0)) };
+        let mut valley = Entities::new(31);
+        let world = Biomed(cavern(), NetherBiome::SoulSandValley);
+        for _ in 0..1500 {
+            valley.update(0.05, &world, &c);
+        }
+        assert!(valley.count(MobKind::Skeleton) > 0, "soul sand valleys spawn skeletons");
+        assert_eq!(valley.count(MobKind::ZombifiedPiglin), 0);
+        assert_eq!(valley.count(MobKind::MagmaCube), 0);
+        let mut deltas = Entities::new(32);
+        let world = Biomed(cavern(), NetherBiome::BasaltDeltas);
+        for _ in 0..1500 {
+            deltas.update(0.05, &world, &c);
+        }
+        assert!(deltas.count(MobKind::MagmaCube) > 0, "basalt deltas swarm with magma cubes");
+        assert!(deltas.mobs.iter().all(|m| matches!(m.kind, MobKind::MagmaCube | MobKind::Ghast)));
     }
 
     /// A Nether cavern where everything with x > 20 is fortress.

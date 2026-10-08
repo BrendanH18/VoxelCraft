@@ -8,8 +8,49 @@ use crate::simulation::{
     effects::Effects,
     weather::{Precipitation, precipitation},
 };
-use crate::world::{World, block::Block};
-use glam::{DVec3, IVec3};
+use crate::world::nether_biome::{Ambient, NetherBiome};
+use crate::world::{World, block::Block, nether_biome_blocks::SOUL_TORCH};
+use glam::{DVec2, DVec3, IVec2, IVec3};
+
+/// Quarts each side of the camera's quart: the 32-block sampling range.
+const BIOME_REACH: i32 = 9;
+const BIOME_WIDTH: usize = 2 * BIOME_REACH as usize + 1;
+
+/// Nether biomes of the quarts around the camera, refreshed when it moves
+/// to another quart, so ambient sampling never runs the biome noise per
+/// block.
+pub struct BiomeWindow {
+    center: Option<IVec2>,
+    biomes: [[NetherBiome; BIOME_WIDTH]; BIOME_WIDTH],
+}
+
+impl Default for BiomeWindow {
+    fn default() -> Self {
+        Self { center: None, biomes: [[NetherBiome::NetherWastes; BIOME_WIDTH]; BIOME_WIDTH] }
+    }
+}
+
+impl BiomeWindow {
+    fn update(&mut self, world: &World, camera: IVec3) {
+        let center = IVec2::new(camera.x, camera.z).div_euclid(IVec2::splat(4));
+        if self.center == Some(center) {
+            return;
+        }
+        self.center = Some(center);
+        for (dz, row) in self.biomes.iter_mut().enumerate() {
+            for (dx, b) in row.iter_mut().enumerate() {
+                let q = center + IVec2::new(dx as i32, dz as i32) - BIOME_REACH;
+                *b = world.generator.nether_biome(q.x * 4, q.y * 4).unwrap_or(NetherBiome::NetherWastes);
+            }
+        }
+    }
+
+    fn at(&self, cell: IVec3) -> Option<NetherBiome> {
+        let l = IVec2::new(cell.x, cell.z).div_euclid(IVec2::splat(4)) - self.center? + BIOME_REACH;
+        let w = BIOME_WIDTH as i32;
+        (l.x >= 0 && l.y >= 0 && l.x < w && l.y < w).then(|| self.biomes[l.y as usize][l.x as usize])
+    }
+}
 
 impl System {
     pub fn animate_blocks(&mut self, world: &World, center: DVec3, setting: Setting) {
@@ -17,23 +58,54 @@ impl System {
             return;
         }
         let center = center.floor().as_ivec3();
+        let nether = world.generator.dimension == crate::world::terrain::Dimension::Nether;
+        if nether {
+            self.biomes.update(world, center);
+        }
         for _ in 0..667 {
             for range in [16, 32] {
                 let mut offset =
                     || (self.rng.next_f32() * range as f32) as i32 - (self.rng.next_f32() * range as f32) as i32;
                 let cell = center + IVec3::new(offset(), offset(), offset());
                 self.animate_block(world, cell, setting);
+                if nether {
+                    self.biome_ambient(world, cell, setting);
+                }
             }
         }
+    }
+
+    /// `ClientLevel.doAnimateTick`'s biome particles: in any cell that isn't
+    /// a full block, the biome's ambient particle with its probability.
+    fn biome_ambient(&mut self, world: &World, cell: IVec3, setting: Setting) {
+        let Some((ambient, chance)) = self.biomes.at(cell).and_then(NetherBiome::ambient) else { return };
+        if !self.rng.chance(chance) || world.get_block(cell).is_none_or(|b| b.is_opaque()) {
+            return;
+        }
+        let pos = cell.as_dvec3() + random_vec(&mut self.rng);
+        let mut burst = match ambient {
+            Ambient::CrimsonSpore => Burst::new(Kind::CrimsonSpore, pos, 1),
+            Ambient::WarpedSpore => Burst::new(Kind::WarpedSpore, pos, 1),
+            Ambient::Ash => Burst::new(Kind::Ash, pos, 1),
+            Ambient::WhiteAsh => Burst::new(Kind::WhiteAsh, pos, 1),
+        };
+        if ambient == Ambient::WhiteAsh {
+            // WhiteAshParticle.Provider: a drift down and against +x/+z.
+            let mut drift = || self.rng.next_f32() as f64 * self.rng.next_f32() as f64;
+            let d = DVec2::new(drift() * -0.19, drift() * -0.19);
+            burst.velocity = DVec3::new(d.x, drift() * -0.25, d.y);
+        }
+        self.burst(burst, setting);
     }
 
     pub fn animate_block(&mut self, world: &World, cell: IVec3, setting: Setting) {
         let Some(block) = world.get_block(cell) else { return };
         let base = cell.as_dvec3();
-        if block == Block::TORCH {
+        if block == Block::TORCH || block == SOUL_TORCH {
             let pos = base + DVec3::new(0.5, 0.7, 0.5);
+            let flame = if block == SOUL_TORCH { Kind::SoulFlame } else { Kind::Flame };
             self.burst(Burst::new(Kind::Smoke, pos, 1), setting);
-            self.burst(Burst::new(Kind::Flame, pos, 1), setting);
+            self.burst(Burst::new(flame, pos, 1), setting);
         } else if block.is_fire() {
             self.fire_smoke(world, cell, setting);
         } else if block.is_lava() {

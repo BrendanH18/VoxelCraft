@@ -177,6 +177,8 @@ struct Game {
     clock: crate::simulation::FixedClock,
     previous_eye: DVec3,
     rendered_eye: DVec3,
+    /// Biome-blended Nether fog colour (Java's cubic Gaussian sampler).
+    nether_fog: crate::world::nether_biome::FogSampler,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     day_time: f64,
     /// Completed daylight cycles for `/time query day`.
@@ -787,6 +789,7 @@ impl Game {
             clock: Default::default(),
             previous_eye,
             rendered_eye: previous_eye,
+            nether_fog: Default::default(),
             day_time: args
                 .time
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
@@ -2350,8 +2353,19 @@ impl Game {
         if nether {
             // No sun, no weather: a steady dim glow in a red haze.
             sky.daylight = if self.dimension == Dimension::End { 0.65 } else { dimension::NETHER_LIGHT };
-            sky.horizon = if self.dimension == Dimension::End { [0.045, 0.025, 0.065] } else { dimension::NETHER_FOG };
-            sky.zenith = if self.dimension == Dimension::End { [0.018, 0.009, 0.03] } else { dimension::NETHER_FOG };
+            let fog = match self.world.generator.dimension {
+                Dimension::Nether => {
+                    let generator = &self.world.generator;
+                    self.nether_fog.sample(camera, |qx, qz| {
+                        generator
+                            .nether_biome(qx * 4, qz * 4)
+                            .unwrap_or(crate::world::nether_biome::NetherBiome::NetherWastes)
+                    })
+                }
+                _ => dimension::NETHER_FOG,
+            };
+            sky.horizon = if self.dimension == Dimension::End { [0.045, 0.025, 0.065] } else { fog };
+            sky.zenith = if self.dimension == Dimension::End { [0.018, 0.009, 0.03] } else { fog };
         }
         let scene = split::Scene {
             sky,
