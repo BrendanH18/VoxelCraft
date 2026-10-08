@@ -179,7 +179,7 @@ cargo run --release -- --creative --world sandbox --seed 42
 ```
 
 <details>
-<summary><strong>⚙️ All command-line options</strong></summary>
+<summary><strong>⚙️ Common command-line options</strong></summary>
 <br>
 
 | Option | What it does |
@@ -195,7 +195,7 @@ cargo run --release -- --creative --world sandbox --seed 42
 | `--mute` / `--volume <0..1>` | Set audio at startup |
 | `--agent-listen <IP:PORT>` | Host command-line players in this world ([details](docs/agents.md)) |
 | `--split-screen <names>` | Show up to three hosted players in split-screen |
-| `--help` | Everything else, including benchmarks and screenshots |
+| `--help` | List every option, including benchmarks, screenshots and debug flags |
 
 </details>
 
