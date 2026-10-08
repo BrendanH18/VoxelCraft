@@ -633,6 +633,7 @@ impl Item {
     pub fn places(self) -> Option<Block> {
         match self {
             Item::REDSTONE => Some(crate::world::redstone_blocks::WIRE),
+            Item::STRING => Some(crate::world::gadgets::TRIPWIRE),
             Item::WHEAT_SEEDS => Some(Block::wheat(0)),
             Item::CARROT => Some(Block::crop(crate::world::block::Crop::Carrot, 0)),
             Item::POTATO => Some(Block::crop(crate::world::block::Crop::Potato, 0)),

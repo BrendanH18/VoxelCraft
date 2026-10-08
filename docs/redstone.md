@@ -1,7 +1,7 @@
 # Redstone
 
 Redstone simulation runs once per shared 50 ms game tick, including headless
-worlds. Component block states occupy the append-only 1100–1499 allocation;
+worlds. Component block states occupy the append-only 1100–1599 allocation;
 existing redstone dust (item 365) places wire. States share texture layers.
 
 ## Signal engine
@@ -166,9 +166,8 @@ currently scans the entity list rather than a spatial entity index.
 Scheduled ticks, cooldowns, power edges and pending ejections survive saves.
 The client calls `tick_automation_entities` between world rules and entity
 physics; headless callers must invoke it with their entity collection too.
-Only loaded containers transfer items. Rails exist but minecarts do not;
-powered/detector/activator rails are deferred together with minecart mechanics.
-Tripwire and note blocks remain optional gaps.
+Only loaded containers transfer items. Round 2 rails, carts, tripwire and note
+blocks are described below.
 
 Sources: [HopperBlockEntity](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java),
 [DispenserBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DispenserBlock.java),
@@ -233,3 +232,46 @@ Research used the Java implementations
 and [MinecartTNT](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/MinecartTNT.java).
 This mirror is not pinned to Java 1.21; stable legacy rules were used and the
 gaps above prevent a claim of complete Java parity.
+
+
+## Note blocks and tripwire (round 2)
+
+Note-block states 1507–1556 store 25 pitches and their powered edge. Right-click
+cycles the pitch, left-click plays it, and a rising redstone edge plays once;
+a non-air block above prevents playback. Sixteen instruments are selected by
+the substrate below. Bone blocks (1581) and packed ice (1582) supply xylophone
+and chime; both have their vanilla recipes, and packed ice requires Silk Touch
+to drop. Original synthesized sounds use the existing spatial audio mixer,
+with instrument-specific timbre and octave plus semitone playback rate.
+
+Hooks (1557–1572) mount on solid horizontal faces and string items place
+tripwire (1573–1580). Opposing hooks connect across 1–40 string blocks, including
+chunk boundaries. Entities crossing the wire power both hooks with strength
+15; a hook strongly powers its supporting block. Occupancy rechecks every ten
+game ticks. Cutting an armed, attached string holds a ten-tick alarm pulse;
+shears disarm before removal and suppress that pulse. String always drops as
+string. Hook facing, wire attachment/disarmed state, note pitch and powered
+state are block states; pending alarm deadlines survive redstone saves.
+
+Known gaps: note particles, mob-head instruments above the note block, and
+tripwire attach/click sounds are absent. Procedural instruments are original
+approximations of the Java timbres. Substrate mapping covers the sixteen
+canonical blocks and common existing wood/stone forms, but is not a complete
+Java block-tag table. Tripwire geometry does not yet visibly sag when detached.
+
+Research: [NoteBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/NoteBlock.java),
+[TripWireBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/TripWireBlock.java),
+and [TripWireHookBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/TripWireHookBlock.java).
+
+Validation: the requested fmt, release Clippy and release test gates pass with
+both default features and `--no-default-features`. Tests cover rail connections,
+slopes, support removal, the eight-rail power limit, cart motion/containers/riding,
+variant save round trips, all sixteen instrument substrates, note rising edges,
+wire entity contacts, cross-chunk alarm pulses and shears-safe cuts. Screenshot
+fixtures are built near y=150 using the command-line placement and cart flags.
+
+On the Apple M5, three final `--bench --rd 8` runs had median generation
+0.213 ms/chunk, light+mesh 0.669 ms/chunk and streaming 0.20 s. Three alternating
+baseline runs measured 0.227 and 0.727 ms/chunk; timings show no regression.
+Local inspected captures: `target/redstone-review/rails-carts.png`,
+`rails-close.png`, `notes-tripwire.png` and `tripwire-close.png` in that directory.

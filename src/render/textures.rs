@@ -86,7 +86,7 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (tex::VILLAGE..tex::VILLAGE + 45).contains(&layer) {
         return village_pixel(layer, x, y);
     }
-    if (1139..1151).contains(&layer) {
+    if (1139..1155).contains(&layer) {
         return special_rail_pixel(layer, x, y);
     }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
@@ -1351,6 +1351,28 @@ fn rock(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
 }
 
 fn special_rail_pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    if layer >= 1151 {
+        return match layer {
+            1151 => {
+                let edge = !(2..=13).contains(&x) || !(2..=13).contains(&y);
+                let lattice = (x + y).is_multiple_of(4) || (x + 16 - y).is_multiple_of(4);
+                let grain = 0.92 + rnd(layer, x, y / 2, 17) * 0.16;
+                shade(
+                    if edge {
+                        [116, 78, 44]
+                    } else if lattice {
+                        [71, 45, 26]
+                    } else {
+                        [148, 103, 58]
+                    },
+                    grain,
+                )
+            }
+            1152 => shade([176, 176, 180], if x < 4 { 0.7 } else { 1.0 }),
+            1154 => shade([224, 218, 195], if x == 0 || y == 0 || x == 15 || y == 15 { 0.85 } else { 1.0 }),
+            _ => shade([210, 210, 210], 1.0),
+        };
+    }
     let i = layer - 1139;
     let kind = i / 4;
     let powered = (i / 2) % 2 == 1;

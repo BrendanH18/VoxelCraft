@@ -121,6 +121,7 @@ impl World {
             }
         }
         self.redstone.contacts = contacts;
+        self.refresh_tripwires();
         self.power_detectors();
     }
 
@@ -167,6 +168,10 @@ impl World {
                         }
                         _ if cart && super::rails::kind(b) == Some(super::rails::RailKind::Detector) => {
                             Some((DVec3::new(0.125, 0.0, 0.125), DVec3::new(0.875, 0.625, 0.875)))
+                        }
+                        _ if super::gadgets::is_tripwire(b) => {
+                            let attached = super::gadgets::wire_state(b).is_some_and(|(_, attached, _)| attached);
+                            Some((DVec3::ZERO, DVec3::new(1.0, if attached { 0.09375 } else { 0.5 }, 1.0)))
                         }
                         _ => None,
                     };

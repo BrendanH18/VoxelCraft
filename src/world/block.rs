@@ -290,8 +290,8 @@ pub mod tex {
     pub const CAKE_SIDE: u16 = CAKE_TOP + 1;
     pub const CAKE_BOTTOM: u16 = CAKE_SIDE + 1;
     pub const VILLAGE: u16 = CAKE_BOTTOM + 1;
-    // Redstone reserves layers 1100..=1138, rails 1139..=1150, next available layer 1151.
-    pub const COUNT: u32 = 1151;
+    // Redstone reserves layers 1100..=1138, rails 1139..=1150, notes/tripwire/substrates 1151..=1154.
+    pub const COUNT: u32 = 1155;
     const _: () = assert!(VILLAGE as u32 + 45 <= 1100);
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
@@ -783,6 +783,8 @@ impl Block {
                 Shaped::Door { facing: f(i), open: i % 8 >= 4, upper: i >= 8 }
             }
             500..=509 | 1471..=1506 => Shaped::Rail,
+            1557..=1572 => Shaped::Hook { facing: f(self.0 - 1557) },
+            1573..=1580 => Shaped::Tripwire,
             538..=544 => Shaped::Cake { bites: (self.0 - 538) as u8 },
             _ => return None,
         })
@@ -950,6 +952,9 @@ impl Block {
             return b;
         }
         if let Some(b) = super::rails::base(self) {
+            return b;
+        }
+        if let Some(b) = super::gadgets::base(self) {
             return b;
         }
         if self.is_rail() { Block::RAIL } else { self.oriented().map_or(self, |(b, _)| b) }
@@ -1150,6 +1155,12 @@ impl Block {
         ) {
             return None;
         }
+        if super::gadgets::is_tripwire(self) {
+            return Some(Item::STRING);
+        }
+        if self == super::gadgets::PACKED_ICE {
+            return None;
+        }
         if let Some(b) = super::redstone_blocks::base(self)
             && !matches!(
                 super::redstone_blocks::component(self),
@@ -1223,6 +1234,18 @@ impl Block {
     pub fn hardness(self) -> f32 {
         if let Some(h) = super::village_blocks::hardness(self.0) {
             return h;
+        }
+        if self == super::gadgets::BONE_BLOCK {
+            return 2.0;
+        }
+        if self == super::gadgets::PACKED_ICE {
+            return 0.5;
+        }
+        if super::gadgets::is_note(self) {
+            return 0.8;
+        }
+        if super::gadgets::is_hook(self) || super::gadgets::is_tripwire(self) {
+            return 0.0;
         }
         if let Some(c) = super::redstone_blocks::component(self) {
             use super::redstone_blocks::Component::*;
@@ -1360,6 +1383,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if self == super::gadgets::BONE_BLOCK || self == super::gadgets::PACKED_ICE {
+            return Some(ToolKind::Pickaxe);
+        }
         if let Some(t) = super::village_blocks::tool(self.0) {
             return Some(t);
         }
@@ -1450,6 +1476,7 @@ impl Block {
             b if b.is_rail() || b.is_deepslate_ore() => Some(ToolKind::Pickaxe),
             Block::COBWEB => Some(ToolKind::Sword),
             Block::BOOKSHELF => Some(ToolKind::Axe),
+            b if super::gadgets::is_note(b) => Some(ToolKind::Axe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
             Block::DIRT
             | Block::GRASS
@@ -1477,6 +1504,9 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if self == super::gadgets::BONE_BLOCK {
+            return Some(0);
+        }
         if matches!(
             self.base(),
             Block::SMOKER
@@ -1592,6 +1622,7 @@ impl Block {
             .chain(super::colors::palette_ids())
             .chain(super::redstone_blocks::palette_ids())
             .chain(super::rails::palette_ids())
+            .chain(super::gadgets::palette_ids())
             .map(Block)
     }
 
@@ -1931,6 +1962,11 @@ pub enum Shaped {
     Wall,
     /// Rail selection shape; meshing emits a flat or sloping detail plane.
     Rail,
+    /// A tripwire hook stuck to the face it points away from.
+    Hook {
+        facing: Facing,
+    },
+    Tripwire,
 }
 
 /// Java's `RailShape` for vanilla rails (block ids 500..=509).
@@ -2027,6 +2063,7 @@ const fn make(id: u16) -> BlockInfo {
         },
         id if super::redstone_blocks::registry(id).is_some() => super::redstone_blocks::registry(id).unwrap(),
         id if super::rails::registry(id).is_some() => super::rails::registry(id).unwrap(),
+        id if super::gadgets::registry(id).is_some() => super::gadgets::registry(id).unwrap(),
         800..=834 => match super::nether_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),

@@ -1415,6 +1415,9 @@ impl Agent {
                 if block.is_bed() {
                     world.break_bed_partner(pos, block, !self.creative && rules.bool("doTileDrops"));
                 }
+                if digger.held.is_some_and(|s| s.item == Item::SHEARS) {
+                    world.disarm_tripwire(pos);
+                }
                 world.set_block(pos, Block::AIR);
                 self.emit(Event::Broke(pos, block));
                 if !self.creative {

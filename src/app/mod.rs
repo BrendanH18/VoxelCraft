@@ -1383,6 +1383,9 @@ impl Game {
             && let Some(block) = self.world.get_block(pos)
             && block != Block::BEDROCK
         {
+            if self.held_item() == Some(Item::SHEARS) {
+                self.world.disarm_tripwire(pos);
+            }
             self.world.set_block(pos, Block::AIR);
             self.audio.block_break(block, pos);
             if block.is_bed() {
@@ -1448,6 +1451,9 @@ impl Game {
             && !tool.has(crate::enchant::Enchantment::SilkTouch)
             && self.dimension.has_sky()
             && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
+        if digger.held.is_some_and(|s| s.item == Item::SHEARS) {
+            self.world.disarm_tripwire(pos);
+        }
         self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
         if melts {
             self.world.particles.push(crate::particles::Request::Break { cell: pos, block });
@@ -1594,6 +1600,15 @@ impl Game {
             if let Some(bot) = self.agents.players.values_mut().find(|b| b.agent.id == id) {
                 seat_rider(&self.mobs.entities, &mut bot.agent.player, id);
             }
+        }
+    }
+
+    fn play_notes(&mut self) {
+        let notes = std::mem::take(&mut self.world.notes);
+        for (pos, pitch, instrument) in notes {
+            let sound = crate::audio::sounds::Sound::Note(crate::world::gadgets::Instrument::from_u8(instrument));
+            let hz = crate::world::gadgets::pitch_hz(pitch);
+            self.audio.play(sound, Some(pos.as_dvec3() + glam::DVec3::splat(0.5)), 1.0, (hz, hz));
         }
     }
 
@@ -2055,9 +2070,15 @@ impl Game {
         } else if self.attack() {
             self.actions.breaking = None;
         } else if self.mode == GameMode::Creative {
+            if let Some((p, _)) = self.target() {
+                self.world.strike_note(p);
+            }
             self.break_block();
             self.action_cooldown = ACTION_REPEAT;
         } else {
+            if let Some((p, _)) = self.target() {
+                self.world.strike_note(p);
+            }
             self.mine_pressed = true;
         }
     }
@@ -2213,6 +2234,7 @@ impl Game {
             self.gamerules.bool("doFireTick"),
             self.gamerules.int("randomTickSpeed") as u32,
         );
+        self.play_notes();
         self.world.tick_automation_entities(&mut self.mobs.entities);
         self.update_mobs(dt);
         self.update_items();

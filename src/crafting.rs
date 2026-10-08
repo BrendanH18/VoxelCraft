@@ -1078,6 +1078,9 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
     const HOPPER: Ingredient = &[b(r::HOPPER)];
     const TNT_BLOCK: Ingredient = &[b(Block::TNT)];
     const CART: Ingredient = &[Item::MINECART];
+    const BONE_MEAL: Ingredient = &[Item::BONE_MEAL];
+    const BONE_BLOCK: Ingredient = &[b(crate::world::gadgets::BONE_BLOCK)];
+    const ICE: Ingredient = &[b(Block::ICE)];
     const CHARCOAL: Ingredient = &[Item::COAL, Item::CHARCOAL];
     const GUNPOWDER: Ingredient = &[Item::GUNPOWDER];
     const BLAZE: Ingredient = &[Item::BLAZE_POWDER];
@@ -1129,6 +1132,11 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
         shapeless(&[CHEST, CART], Item::CHEST_MINECART, 1),
         shapeless(&[HOPPER, CART], Item::HOPPER_MINECART, 1),
         shapeless(&[TNT_BLOCK, CART], Item::TNT_MINECART, 1),
+        shaped(&["bbb", "bbb", "bbb"], &[('b', BONE_MEAL)], b(crate::world::gadgets::BONE_BLOCK), 1),
+        shapeless(&[BONE_BLOCK], Item::BONE_MEAL, 9),
+        shaped(&["iii", "iii", "iii"], &[('i', ICE)], b(crate::world::gadgets::PACKED_ICE), 1),
+        shaped(&["PPP", "PRP", "PPP"], &[('P', PLANKS), ('R', DUST)], b(crate::world::gadgets::NOTE), 1),
+        shaped(&["I", "S", "P"], &[('I', IRON), ('S', STICK), ('P', PLANKS)], b(crate::world::gadgets::HOOK), 2),
     ]);
 }
 
