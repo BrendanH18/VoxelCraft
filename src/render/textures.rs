@@ -175,20 +175,22 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             }
         }
         1120..=1121 => {
-            let grid = x == 0 || y == 0 || x == 15 || y == 15 || x == y || x + y == 15;
-            noisy(
-                layer,
-                x,
-                y,
-                if grid {
-                    [62, 38, 24]
-                } else if layer == 1121 {
-                    [255, 205, 115]
-                } else {
-                    [110, 65, 30]
-                },
-                0.12,
-            )
+            // Java's lamp: a dark rim, a 4x4 lattice of glass panes split by
+            // thin frame lines, and a lighter core in each pane.
+            let lit = layer == 1121;
+            let rim = x == 0 || y == 0 || x == 15 || y == 15;
+            let bar = x.is_multiple_of(5) || y.is_multiple_of(5);
+            let core = (2..=3).contains(&(x % 5)) && (2..=3).contains(&(y % 5));
+            let rgb = match (rim, bar, core, lit) {
+                (true, ..) => [72, 44, 26],
+                (_, true, _, false) => [96, 60, 34],
+                (_, true, _, true) => [150, 98, 50],
+                (_, _, true, false) => [150, 104, 60],
+                (_, _, true, true) => [255, 246, 214],
+                (.., false) => [122, 80, 45],
+                (.., true) => [246, 196, 112],
+            };
+            noisy(layer, x, y, rgb, 0.08)
         }
         1122 => noisy(layer, x, y, [180, 25, 15], 0.15),
         1123..=1124 => {

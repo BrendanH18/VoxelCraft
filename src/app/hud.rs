@@ -587,9 +587,19 @@ impl Game {
             )
     }
 
+    /// Whether the search bar shows: on the inventory and storage screens,
+    /// not on workstations where it would only add clutter.
+    pub(super) fn shows_search(&self) -> bool {
+        matches!(self.container, Container::Inventory | Container::Chest(_))
+    }
+
+    fn search_h(&self) -> f32 {
+        if self.shows_search() { super::search::HEIGHT } else { 0.0 }
+    }
+
     /// Top-left corner and height of the inventory panel.
     fn panel(&self, screen: (f32, f32)) -> (f32, f32, f32) {
-        let h = PANEL_H + self.top_h() + super::search::HEIGHT;
+        let h = PANEL_H + self.top_h() + self.search_h();
         let extra = if self.recipe_book.open && self.shows_recipes() && recipe_book::fits_beside(screen.0, PANEL_W) {
             recipe_book::WIDTH + recipe_book::GAP
         } else {
@@ -605,7 +615,7 @@ impl Game {
 
     fn recipe_layout(&self, screen: (f32, f32)) -> Layout {
         let (x, y, h) = self.panel(screen);
-        Layout::new(screen.0, Rect { x, y: y + super::search::HEIGHT, w: PANEL_W, h: h - super::search::HEIGHT })
+        Layout::new(screen.0, Rect { x, y: y + self.search_h(), w: PANEL_W, h: h - self.search_h() })
     }
 
     pub(super) fn recipe_control_under_cursor(&self) -> Option<Control> {
@@ -624,7 +634,7 @@ impl Game {
     /// in creative) and the hotbar.
     fn inventory_slots(&self, screen: (f32, f32)) -> Vec<(SlotRef, f32, f32)> {
         let (px, py, _) = self.panel(screen);
-        let py = py + super::search::HEIGHT;
+        let py = py + self.search_h();
         let mut out = Vec::with_capacity(46);
         let top = if let Container::Trading(id) = self.container {
             if let Some(v) = self.mobs.entities.merchant(id).and_then(|m| m.villager.as_ref()) {
@@ -762,7 +772,7 @@ impl Game {
         if let Container::Enchanting(_) = self.container {
             let (px, py, _) = self.panel((w as f32 / scale, h as f32 / scale));
             for i in 0..3 {
-                let (x, y, bw, bh) = enchant_offer_rect(px, py + super::search::HEIGHT, i);
+                let (x, y, bw, bh) = enchant_offer_rect(px, py + self.search_h(), i);
                 if mx >= x && mx < x + bw && my >= y && my < y + bh {
                     return Some(SlotRef::EnchantOffer(i));
                 }
@@ -784,8 +794,10 @@ impl Game {
         ui.rect(px, py, 1.0, panel_h, WHITE);
         ui.rect(px, py + panel_h - 1.0, PANEL_W, 1.0, [0.33, 0.33, 0.33, 1.0]);
         ui.rect(px + PANEL_W - 1.0, py, 1.0, panel_h, [0.33, 0.33, 0.33, 1.0]);
-        self.search_ui(ui);
-        let py = py + super::search::HEIGHT;
+        if self.shows_search() {
+            self.search_ui(ui);
+        }
+        let py = py + self.search_h();
         let title = match (self.container, self.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
@@ -895,7 +907,8 @@ impl Game {
                     self.stack_ui(ui, x, y, stack);
                 }
             }
-            if !self.search.query.trim().is_empty()
+            if self.shows_search()
+                && !self.search.query.trim().is_empty()
                 && let Some(stack) = stack
             {
                 if stack.item.matches_query(&self.search.query) {

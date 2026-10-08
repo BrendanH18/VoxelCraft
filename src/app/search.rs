@@ -13,7 +13,7 @@ pub(super) struct Search {
 }
 impl Game {
     pub(super) fn search_key(&mut self, event: &KeyEvent) -> bool {
-        if !self.inventory_open {
+        if !self.inventory_open || !self.shows_search() {
             return false;
         }
         let PhysicalKey::Code(code) = event.physical_key else {
@@ -68,6 +68,9 @@ impl Game {
         true
     }
     pub(super) fn search_click(&mut self) -> bool {
+        if !self.shows_search() {
+            return false;
+        }
         let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         let (x, y, width) = self.search_bounds((w as f32 / scale, h as f32 / scale));
