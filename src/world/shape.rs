@@ -219,7 +219,8 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
     match block.shaped() {
         Some(Shaped::Village { kind, facing }) => match kind {
             2 => {
-                out.push(b([0, 0, 0], [16, 2, 16]));
+                let level = super::composter::level(block).unwrap_or(0).min(7);
+                out.push(b([0, 0, 0], [16, (1 + level * 2).max(2), 16]));
                 out.push(b([0, 2, 0], [2, 16, 16]));
                 out.push(b([14, 2, 0], [16, 16, 16]));
                 out.push(b([2, 2, 0], [14, 16, 2]));

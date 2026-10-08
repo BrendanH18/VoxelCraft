@@ -1399,6 +1399,18 @@ impl Game {
             eyes_in_water: self.player.head_in_water(&self.world),
             on_ground: self.player.on_ground || self.player.flying,
         };
+        if !self.sneak_building()
+            && voxelcraft::survival_items::use_composter(
+                &mut self.world,
+                &mut self.mobs.entities,
+                pos,
+                &mut self.inventory,
+                self.actions.selected,
+                self.mode.is_creative(),
+            )
+        {
+            return;
+        }
         self.world.touch_redstone_ore(pos);
         let progress = self.actions.mine(
             pos,

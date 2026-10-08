@@ -977,6 +977,18 @@ impl Agent {
                     self.swings += 1;
                     return Ok(());
                 }
+                if crate::survival_items::use_composter(
+                    world,
+                    entities,
+                    pos,
+                    &mut self.inventory,
+                    self.selected,
+                    self.creative,
+                ) {
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    return Ok(());
+                }
                 world.touch_redstone_ore(pos);
                 let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
                 let block = held.item.places().ok_or("selected item cannot be placed")?;

@@ -71,7 +71,7 @@ impl Profession {
     }
     pub fn of(b: Block) -> Option<Self> {
         Some(match b.base() {
-            Block::COMPOSTER => Self::Farmer,
+            b if crate::world::composter::level(b).is_some() => Self::Farmer,
             Block::BARREL => Self::Fisherman,
             Block::LOOM => Self::Shepherd,
             Block::FLETCHING_TABLE => Self::Fletcher,
@@ -89,7 +89,9 @@ impl Profession {
 }
 pub fn is_poi(b: Block) -> bool {
     b.is_bed_head()
-        || (b == Block::BREWING_STAND || b == Block::SMITHING_TABLE || (904..=948).contains(&b.0))
+        || (b == Block::BREWING_STAND
+            || b == Block::SMITHING_TABLE
+            || ((904..=948).contains(&b.0) || crate::world::composter::level(b).is_some()))
             && Profession::of(b).is_some()
 }
 

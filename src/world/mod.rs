@@ -19,6 +19,7 @@ pub mod brewing;
 pub mod chest;
 pub mod chunk;
 pub mod colors;
+pub mod composter;
 pub mod dungeon;
 pub mod end;
 pub mod end_portal;
@@ -144,6 +145,7 @@ pub struct World {
     pub primed_tnt: Vec<(IVec3, bool)>,
     /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
     pub golem_heads: Vec<IVec3>,
+    compost_sequence: u64,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -215,6 +217,7 @@ impl World {
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
             golem_heads: Vec::new(),
+            compost_sequence: 0,
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -411,6 +414,9 @@ impl World {
         self.track_brewing_stand(p, old, block);
         self.track_spawner(p, old, block);
         self.track_village_poi(p, block);
+        if composter::level(block) == Some(7) {
+            self.schedule_redstone(p, 20, 0);
+        }
         if pumpkin_blocks::is_head(block) {
             self.golem_heads.push(p);
         }

@@ -90,6 +90,11 @@ impl World {
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
                 self.redstone_changed(c * CHUNK_SIZE_I + local);
             }
+            if super::composter::level(b) == Some(7) {
+                let local =
+                    IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
+                self.schedule_redstone(c * CHUNK_SIZE_I + local, 20, 0);
+            }
             i += 1;
         });
     }
@@ -98,7 +103,7 @@ impl World {
         if self.redstone.pending.contains_key(&p) {
             return;
         }
-        let Some(b) = self.get_block(p).and_then(r::base) else { return };
+        let Some(b) = self.get_block(p).map(Block::base) else { return };
         self.redstone.sequence += 1;
         let sequence = self.redstone.sequence;
         let due = self.redstone.tick + delay;
@@ -268,6 +273,9 @@ impl World {
     }
 
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
+        if let Some(level) = self.get_block(p).and_then(super::composter::level) {
+            return Some(level);
+        }
         fn strength(slots: impl Iterator<Item = Option<crate::inventory::Stack>>, count: usize) -> u8 {
             let mut fullness = 0.0f64;
             let mut nonempty = false;
@@ -402,6 +410,10 @@ impl World {
 
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if super::composter::level(b).is_some() {
+            self.finish_compost(p);
+            return;
+        }
         match r::component(b) {
             Some(
                 Component::Piston { .. }
@@ -506,7 +518,7 @@ impl World {
                 let next = self.redstone.tick + 1;
                 self.redstone.pending.insert(p, (next, family, sequence));
                 self.redstone.scheduled.push(Reverse((next, priority, sequence, xyz, family)));
-            } else if self.get_block(p).and_then(r::base) == Some(Block(family)) {
+            } else if self.get_block(p).map(Block::base) == Some(Block(family)) {
                 self.redstone.last_updates += 1;
                 self.redstone_scheduled_tick(p);
                 self.drain_redstone_updates();
@@ -736,7 +748,7 @@ impl World {
                 ("t", &[delay, priority, seq, family])
                     if delay >= 0
                         && seq >= 0
-                        && ((1100..=1499).contains(&family) || matches!(family, 226 | 249))
+                        && ((1100..=1499).contains(&family) || matches!(family, 226 | 249 | 904))
                         && (-3..=0).contains(&priority) =>
                 {
                     let due = tick.saturating_add(delay as u64);

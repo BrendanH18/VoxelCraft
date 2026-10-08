@@ -293,9 +293,11 @@ pub mod tex {
     /// Faces of carved pumpkins and jack o'lanterns, after the workstation layers.
     pub const CARVED_PUMPKIN: u16 = VILLAGE + 45;
     pub const JACK_O_LANTERN: u16 = CARVED_PUMPKIN + 1;
+    pub const COMPOST: u16 = JACK_O_LANTERN + 1;
+    pub const COMPOST_READY: u16 = COMPOST + 1;
     // Redstone reserves layers 1100..=1138, independent of the compact bands above.
     pub const COUNT: u32 = 1139;
-    const _: () = assert!((JACK_O_LANTERN as u32) < 1100);
+    const _: () = assert!((COMPOST_READY as u32) < 1100);
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -2031,7 +2033,7 @@ const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
-        900..=952 => match super::village_blocks::registry(id) {
+        900..=952 | 961..=968 => match super::village_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },

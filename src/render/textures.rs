@@ -83,6 +83,9 @@ const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
+    if layer == tex::COMPOST || layer == tex::COMPOST_READY {
+        return noisy(layer, x, y, if layer == tex::COMPOST_READY { [139, 119, 90] } else { [99, 72, 42] }, 0.22);
+    }
     if (tex::VILLAGE..tex::VILLAGE + 45).contains(&layer) {
         return village_pixel(layer, x, y);
     }

@@ -41,7 +41,7 @@ pub const fn index(id: u16) -> Option<usize> {
     match id {
         900 => Some(0),
         901..=903 => Some(1),
-        904 => Some(2),
+        904 | 961..=968 => Some(2),
         905..=952 => Some(3 + ((id - 905) / 4) as usize),
         _ => None,
     }
@@ -50,7 +50,13 @@ pub fn oriented(id: u16) -> Option<(Block, Facing)> {
     (905..=952).contains(&id).then(|| (Block(905 + (id - 905) / 4 * 4), Facing::ALL[((id - 905) % 4) as usize]))
 }
 pub fn base(id: u16) -> Option<Block> {
-    if (901..=903).contains(&id) { Some(Block::HAY_BALE) } else { oriented(id).map(|(b, _)| b) }
+    if (961..=968).contains(&id) {
+        Some(Block::COMPOSTER)
+    } else if (901..=903).contains(&id) {
+        Some(Block::HAY_BALE)
+    } else {
+        oriented(id).map(|(b, _)| b)
+    }
 }
 pub fn placed(b: Block, normal: glam::IVec3) -> Block {
     if b.base() == Block::HAY_BALE {
@@ -99,8 +105,11 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     let Some(i) = index(id) else { return None };
     let layer = tex::VILLAGE + i as u16 * 3;
     let mut t = [layer, layer, layer + 1, layer + 2, layer, layer];
-    if id >= 905 {
+    if id >= 905 && id <= 952 {
         t[Facing::ALL[((id - 905) % 4) as usize].face()] = layer + 2;
+    }
+    if id >= 961 && id <= 968 {
+        t[2] = if id == 968 { tex::COMPOST_READY } else { tex::COMPOST };
     }
     if i == 1 {
         let axis = id - 901;

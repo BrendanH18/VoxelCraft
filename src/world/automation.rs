@@ -415,6 +415,9 @@ impl World {
         if self.get_block(p).is_none() {
             return 0;
         }
+        if self.get_block(p).and_then(super::composter::level).is_some() {
+            return 1;
+        }
         if self.chest(p).is_some() {
             self.container_slots(p)
         } else if self.furnace(p).is_some() {
@@ -427,6 +430,9 @@ impl World {
     }
 
     fn container_stack(&self, p: IVec3, slot: usize) -> Option<Stack> {
+        if self.get_block(p).and_then(super::composter::level) == Some(8) {
+            return Some(Stack::new(Item::BONE_MEAL, 1));
+        }
         if let Some(c) = self.chest(p) {
             return c.slots[slot];
         }
@@ -438,6 +444,9 @@ impl World {
     }
 
     fn set_container_stack(&mut self, p: IVec3, slot: usize, stack: Option<Stack>) {
+        if stack.is_none() && self.take_compost(p).is_some() {
+            return;
+        }
         if let Some(c) = self.chest_mut(p) {
             c.slots[slot] = stack;
             return;
@@ -488,6 +497,9 @@ impl World {
     }
 
     fn can_extract(&self, p: IVec3, slot: usize, side: IVec3) -> bool {
+        if self.get_block(p).and_then(super::composter::level).is_some() {
+            return side == IVec3::NEG_Y;
+        }
         if self.chest(p).is_some() {
             return true;
         }
@@ -508,6 +520,12 @@ impl World {
 
     /// Returns the remaining stack; merges components exactly like inventories.
     fn insert_container(&mut self, p: IVec3, stack: Stack, side: IVec3) -> Option<Stack> {
+        if self.get_block(p).and_then(super::composter::level).is_some() {
+            if side == IVec3::Y && self.compost(p, stack.item) {
+                return (stack.count > 1).then_some(Stack { count: stack.count.saturating_sub(1), ..stack });
+            }
+            return Some(stack);
+        }
         let count = self.container_count(p);
         let mut left = stack;
         for slot in 0..count {

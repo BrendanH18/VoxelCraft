@@ -179,3 +179,17 @@ bed checks produce angry particles. Beetroot is available as a food item;
 beetroot crops and farmer harvesting/food sharing are not implemented yet.
 Navigation uses the existing resident obstacle sidesteps; a complete Java
 path-reachability test for beds is still absent.
+
+## Composters
+
+Composters have saved block levels 0–8 (filled states 961–968). Eligible
+items use Java's 30/50/65/85/100 percent chances; the first level always
+succeeds. One input is consumed even on a failed roll. Level 7 waits twenty
+ticks before becoming ready (8), then use releases one bone meal and resets
+it. Readiness ticks survive saves and unloaded chunks wait to process them.
+The hollow collision/render shape fills with compost, with original compost
+and ready textures in the village band. Comparators read the level directly.
+Top hoppers insert compostables; bottom hoppers extract ready bone meal;
+side insertion/extraction fails. All filled states remain farmer job sites.
+Desktop, controller and CLI players share the composter action. Recipes and
+workstation acquisition retain their existing Java behavior.

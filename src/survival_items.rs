@@ -143,6 +143,35 @@ pub fn exchange(
     }
 }
 
+/// Shared composter action for every player input, including empty-hand collection.
+pub fn use_composter(
+    world: &mut World,
+    entities: &mut Entities,
+    pos: glam::IVec3,
+    inventory: &mut Inventory,
+    slot: usize,
+    creative: bool,
+) -> bool {
+    let Some(level) = world.get_block(pos).and_then(crate::world::composter::level) else {
+        return false;
+    };
+    if level == 8 {
+        if let Some(stack) = world.take_compost(pos) {
+            entities.drop_from_block(stack, pos + glam::IVec3::Y);
+        }
+        return true;
+    }
+    if let Some(held) = inventory.get(slot)
+        && crate::world::composter::chance(held.item) > 0.0
+    {
+        if world.compost(pos, held.item) && !creative {
+            inventory.take_one(slot);
+        }
+        return true;
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
