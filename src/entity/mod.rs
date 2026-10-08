@@ -30,6 +30,7 @@ mod projectile;
 mod slime;
 mod thrown;
 pub mod tnt;
+pub mod village_round;
 pub mod villager;
 
 use std::f32::consts::TAU;
@@ -494,6 +495,10 @@ pub struct Entities {
     next_villager_id: u64,
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
+    /// Seconds until another iron golem may be summoned.
+    golem_calm: f32,
+    /// Seconds until the next gossip summon roll.
+    gossip_timer: f32,
     rng: Rng,
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
@@ -530,6 +535,8 @@ impl Entities {
             next_villager_id: 1,
             villager_births: Default::default(),
             village_timer: 0.0,
+            golem_calm: 0.0,
+            gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
@@ -631,19 +638,23 @@ impl Entities {
         }
 
         self.village_upkeep(dt as f32, world);
+        self.assign_hunts(ctx);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
+            let resident = m.kind == MobKind::Villager || m.built;
             let gone = m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
-                || m.kind != MobKind::Villager
+                || !resident
                     && (ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
                         || !world.loaded(m.pos.floor().as_ivec3()));
-            if m.kind == MobKind::Villager
+            if resident
                 && !gone
                 && (!world.loaded(m.pos.floor().as_ivec3())
                     || ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST))
             {
-                self.mobs[i].villager.as_mut().unwrap().active = false;
+                if let Some(v) = &mut self.mobs[i].villager {
+                    v.active = false;
+                }
                 i += 1;
                 continue;
             }
@@ -687,6 +698,7 @@ impl Entities {
             }
             i += 1;
         }
+        self.resolve_strikes(ctx, &mut events);
         self.separate(dt);
         if let Some(fight) = &mut self.fight {
             fight.update(dt, world, ctx, &mut self.rng, &mut events);

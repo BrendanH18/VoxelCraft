@@ -39,6 +39,7 @@ pub mod nether_complexes;
 pub mod noise;
 pub mod ore;
 mod portal;
+pub mod pumpkin_blocks;
 pub mod redstone;
 pub mod redstone_blocks;
 mod redstone_contacts;
@@ -141,6 +142,8 @@ pub struct World {
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
+    /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
+    pub golem_heads: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -211,6 +214,7 @@ impl World {
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
+            golem_heads: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -407,6 +411,9 @@ impl World {
         self.track_brewing_stand(p, old, block);
         self.track_spawner(p, old, block);
         self.track_village_poi(p, block);
+        if pumpkin_blocks::is_head(block) {
+            self.golem_heads.push(p);
+        }
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }

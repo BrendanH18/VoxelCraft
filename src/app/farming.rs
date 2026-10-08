@@ -37,6 +37,17 @@ impl Game {
             }
             return false;
         }
+        if item == Item::SHEARS && block == Block::PUMPKIN {
+            let facing = crate::world::block::Facing::toward(self.player.forward());
+            if self.world.set_block(pos, Block::CARVED_PUMPKIN.with_facing(facing)) {
+                if self.mode.is_survival() {
+                    self.inventory.wear(self.actions.selected, 1);
+                }
+                self.mobs.entities.drop_from_block(crate::inventory::Stack::new(Item::PUMPKIN_SEEDS, 4), pos);
+                self.audio.play(Sound::Break(Material::Wood), Some(at), 0.8, (0.9, 1.1));
+                return true;
+            }
+        }
         if item == Item::BONE_MEAL && self.world.apply_bone_meal(pos) {
             self.audio.play(Sound::Place(Material::Grass), Some(at), 0.8, (1.2, 1.4));
             if self.mode.is_survival() {

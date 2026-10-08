@@ -339,6 +339,13 @@ pub fn recipes() -> &'static [Recipe] {
             shaped(&["###", "# #", "###"], &[('#', PLANKS)], b(Block::CHEST), 1),
             shaped(&["###"], &[('#', &[Item::WHEAT])], Item::BREAD, 1),
             shaped(&["###", "###", "###"], &[('#', WHEAT)], b(Block::HAY_BALE), 1),
+            shaped(&["GGG", "GAG", "GGG"], &[('G', &[Item::GOLD_INGOT]), ('A', &[Item::APPLE])], Item::GOLDEN_APPLE, 1),
+            shapeless(&[const { &[b(Block::PUMPKIN)] }], Item::PUMPKIN_SEEDS, 4),
+            shapeless(
+                &[const { &[b(Block::CARVED_PUMPKIN)] }, const { &[b(Block::TORCH)] }],
+                b(Block::JACK_O_LANTERN),
+                1,
+            ),
             shapeless(&[HAY], Item::WHEAT, 9),
             shaped(&["# #", "# #", "###"], &[('#', WOOD_SLAB)], b(Block::COMPOSTER), 1),
             shaped(&["#s#", "# #", "#s#"], &[('#', PLANKS), ('s', WOOD_SLAB)], b(Block::BARREL), 1),

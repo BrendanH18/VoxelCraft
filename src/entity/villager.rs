@@ -524,6 +524,7 @@ impl Entities {
                 !v.fleeing && !v.sleeping && v.job.is_some_and(|p| m.pos.distance_squared(p.as_dvec3() + 0.5) < 4.0),
             );
         }
+        self.life_tick(world);
     }
     pub fn villagers_to_string(&self) -> String {
         let mobs: Vec<Value> = self

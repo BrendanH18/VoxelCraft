@@ -177,6 +177,27 @@ const VILLAGER_HEAD: &[Cuboid] = &[
     cube([-3.0, 5.5, 4.0], [3.0, 6.5, 4.1], [62, 43, 28], 0),
 ];
 const VILLAGER_LEG: &[Cuboid] = &[cube([-2.0, -8.0, -2.0], [2.0, 0.0, 2.0], [68, 49, 36], 28)];
+const IRON_BODY: &[Cuboid] = &[
+    cube([-9.0, 0.0, -6.0], [9.0, 18.0, 6.0], [188, 188, 192], 18),
+    cube([-4.0, 16.0, 6.0], [4.0, 20.0, 8.0], [160, 160, 164], 12),
+];
+const IRON_LEG: &[Cuboid] = &[cube([-3.0, -12.0, -3.0], [3.0, 0.0, 3.0], [168, 168, 172], 16)];
+const IRON_ARM: &[Cuboid] = &[cube([-3.0, -16.0, -3.0], [3.0, 2.0, 3.0], [176, 176, 180], 16)];
+const IRON_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 10.0, 4.0], [200, 200, 204], 14),
+    cube([-1.0, 2.0, 4.0], [1.0, 6.0, 8.0], [150, 150, 154], 10),
+    cube([-2.0, 6.0, 4.0], [-0.5, 7.0, 4.2], [120, 36, 32], 0),
+    cube([0.5, 6.0, 4.0], [2.0, 7.0, 4.2], [120, 36, 32], 0),
+];
+const IRON_CRACK: &[Cuboid] = &[cube([-7.0, 4.0, 6.05], [6.0, 5.0, 6.2], [70, 70, 74], 0)];
+const SNOW_BALL: &[Cuboid] = &[cube([-5.0, -8.0, -5.0], [5.0, 2.0, 5.0], [244, 248, 252], 12)];
+const SNOW_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [226, 140, 28], 20),
+    cube([-1.0, 2.0, 4.0], [1.0, 5.0, 7.0], [90, 50, 16], 8),
+    cube([-2.0, 5.0, 4.0], [-0.6, 6.2, 4.2], [40, 24, 12], 0),
+    cube([0.6, 5.0, 4.0], [2.0, 6.2, 4.2], [40, 24, 12], 0),
+];
+const SNOW_STICK: &[Cuboid] = &[cube([-0.5, -8.0, -0.5], [0.5, 2.0, 0.5], [120, 78, 42], 16)];
 const FARMER_HAT: &[Cuboid] = &[
     cube([-6.0, 7.0, -6.0], [6.0, 8.0, 6.0], [213, 177, 88], 25),
     cube([-4.0, 8.0, -4.0], [4.0, 10.0, 4.0], [199, 159, 72], 25),
@@ -583,6 +604,38 @@ fn pose(m: &Mob, time: f32) -> Parts {
             }
             parts
         }
+        MobKind::IronGolem => {
+            // Cracks at Java's 75 / 50 / 25 percent health.
+            let cracks = if m.health > 75.0 {
+                0
+            } else if m.health > 50.0 {
+                1
+            } else if m.health > 25.0 {
+                2
+            } else {
+                3
+            };
+            let mut parts = parts![
+                part(IRON_BODY, [0.0, 12.0, 0.0], Quat::IDENTITY),
+                part(IRON_LEG, [-4.0, 12.0, 0.0], rx(swing)),
+                part(IRON_LEG, [4.0, 12.0, 0.0], rx(-swing)),
+                part(IRON_ARM, [-11.0, 28.0, 0.0], rx(0.4 + swing * 0.3)),
+                part(IRON_ARM, [11.0, 28.0, 0.0], rx(0.4 - swing * 0.3)),
+                part(IRON_HEAD, [0.0, 32.0, 2.0], head),
+            ];
+            for i in 0..cracks {
+                let y = 16.0 - i as f32 * 4.0;
+                parts.push(part(IRON_CRACK, [0.0, y, 0.0], Quat::IDENTITY));
+            }
+            parts
+        }
+        MobKind::SnowGolem => parts![
+            part(SNOW_BALL, [0.0, 8.0, 0.0], Quat::IDENTITY),
+            part(SNOW_BALL, [0.0, 16.0, 0.0], Quat::IDENTITY),
+            part(SNOW_HEAD, [0.0, 22.0, 0.0], head),
+            part(SNOW_STICK, [-6.0, 16.0, 0.0], rx(0.6)),
+            part(SNOW_STICK, [6.0, 16.0, 0.0], rx(0.6)),
+        ],
         MobKind::Witch => parts![
             part(WITCH_BODY, [0.0; 3], Quat::IDENTITY),
             part(WITCH_LEG, [-2.0, 8.0, 0.0], rx(swing)),

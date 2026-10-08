@@ -107,6 +107,10 @@ pub enum MobKind {
     /// Throws splash potions, and drinks its own.
     Witch,
     Villager,
+    /// Village defender: 100 health, built or summoned.
+    IronGolem,
+    /// Two snow blocks and a pumpkin. Melts in water and deserts.
+    SnowGolem,
 }
 
 impl MobKind {
@@ -117,7 +121,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 21] = [
+    pub const ALL: [MobKind; 23] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -139,6 +143,8 @@ impl MobKind {
         MobKind::Drowned,
         MobKind::Witch,
         MobKind::Villager,
+        MobKind::IronGolem,
+        MobKind::SnowGolem,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -165,6 +171,8 @@ impl MobKind {
             MobKind::Drowned => "drowned",
             MobKind::Witch => "witch",
             MobKind::Villager => "villager",
+            MobKind::IronGolem => "iron golem",
+            MobKind::SnowGolem => "snow golem",
         }
     }
 
@@ -187,6 +195,8 @@ impl MobKind {
             | MobKind::ZombifiedPiglin
             | MobKind::Witch
             | MobKind::Villager => Shape::new(0.3, 1.95),
+            MobKind::IronGolem => Shape::new(0.7, 2.7),
+            MobKind::SnowGolem => Shape::new(0.35, 1.9),
             MobKind::Skeleton => Shape::new(0.3, 1.99),
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
@@ -215,6 +225,8 @@ impl MobKind {
             | MobKind::ZombifiedPiglin
             | MobKind::Blaze
             | MobKind::Villager => 20.0,
+            MobKind::IronGolem => 100.0,
+            MobKind::SnowGolem => 4.0,
             MobKind::Spider => 16.0,
             MobKind::CaveSpider => 12.0,
             MobKind::Witch => 26.0,
@@ -265,7 +277,9 @@ impl MobKind {
         match self {
             MobKind::Enderman => true,
             // Only from spawners and inside fortresses (`fortress_spawn`).
-            MobKind::Blaze | MobKind::WitherSkeleton | MobKind::Villager => false,
+            MobKind::Blaze | MobKind::WitherSkeleton | MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem => {
+                false
+            }
             // Only from stronghold spawners (and infested blocks, later).
             MobKind::Silverfish | MobKind::CaveSpider => false,
             MobKind::MagmaCube | MobKind::ZombifiedPiglin | MobKind::Ghast => dimension == Dimension::Nether,
@@ -348,6 +362,8 @@ impl MobKind {
             MobKind::Cow
             | MobKind::Witch
             | MobKind::Villager
+            | MobKind::IronGolem
+            | MobKind::SnowGolem
             | MobKind::Zombie
             | MobKind::Husk
             | MobKind::Drowned
@@ -384,6 +400,8 @@ impl MobKind {
             MobKind::Husk => (3.0, "was slain by a husk"),
             MobKind::Drowned => (3.0, "was slain by a drowned"),
             MobKind::Silverfish => (1.0, "was slain by a silverfish"),
+            MobKind::IronGolem => (15.0, "was slain by an iron golem"),
+            MobKind::SnowGolem => (0.0, "was slain by a snow golem"),
             _ => (3.0, "was slain by a zombie"),
         }
     }
@@ -392,6 +410,7 @@ impl MobKind {
     /// makes the drop a chance (Java's spider eye: -1..1 is one in three).
     pub(super) fn loot(self) -> &'static [(Item, i8, u8)] {
         const WOOL: Item = Item::from_block(Block::WOOL);
+        const POPPY: Item = Item::from_block(Block::POPPY);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
@@ -405,6 +424,8 @@ impl MobKind {
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
             MobKind::Silverfish | MobKind::Villager => &[],
+            MobKind::IronGolem => &[(Item::IRON_INGOT, 3, 5), (POPPY, 0, 2)],
+            MobKind::SnowGolem => &[(Item::SNOWBALL, 0, 15)],
             MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
             MobKind::MagmaCube => &[(Item::MAGMA_CREAM, -2, 1)],
             MobKind::Ghast => &[(Item::GUNPOWDER, 0, 2), (Item::GHAST_TEAR, 0, 1)],
@@ -464,7 +485,7 @@ impl MobKind {
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
     pub fn xp(self, rng: &mut Rng) -> u32 {
         match self {
-            MobKind::Villager => 0,
+            MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem => 0,
             MobKind::Blaze => 10,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
@@ -578,6 +599,12 @@ pub struct Mob {
     lift: bool,
     height_offset: f32,
     offset_timer: f32,
+    /// Feet of whatever this mob is walking toward (a villager, monster, or player).
+    pub(super) hunt: Option<DVec3>,
+    /// `think` wants a melee swing resolved against `hunt` this tick.
+    pub(super) strike: bool,
+    /// Player-built golems stay loaded instead of despawning.
+    pub built: bool,
 }
 
 impl Mob {
@@ -645,7 +672,15 @@ impl Mob {
             lift: false,
             height_offset: 0.5,
             offset_timer: 0.0,
+            hunt: None,
+            strike: false,
+            built: false,
         }
+    }
+
+    /// A player hit this iron golem recently, so it may hit back.
+    pub(super) fn angry_at_player(&self) -> bool {
+        self.kind == MobKind::IronGolem && self.player_hit_left > 0.0
     }
 
     pub fn shape(&self) -> Shape {
@@ -696,15 +731,20 @@ impl Mob {
         };
         self.health -= amount;
         self.hurt = HURT_TIME;
-        if let Some(kb) = knockback {
+        if let Some(kb) = knockback
+            && self.kind != MobKind::IronGolem
+        {
             self.vel.x = kb.x;
             self.vel.z = kb.z;
             self.vel.y = self.vel.y.max(kb.y);
         }
-        if !self.kind.is_hostile() {
+        if !self.kind.is_hostile() && self.kind != MobKind::IronGolem {
             self.ai = Ai::Panic;
             self.ai_timer = rng.range(3.0, 5.0);
             self.move_yaw = rng.range(0.0, TAU);
+        }
+        if self.kind == MobKind::IronGolem && self.player_hit_left > 0.0 {
+            self.player_hit_left = self.player_hit_left.max(15.0);
         }
         self.provoked =
             self.provoked.max(if self.kind == MobKind::Enderman { ENDERMAN_ANGER_TIME } else { PROVOKED_TIME });
@@ -801,6 +841,17 @@ impl Mob {
         for _ in 0..steps {
             self.physics_step(h, world, wish, speed);
         }
+        if self.health <= 0.0 && self.dying.is_none() {
+            self.dying = Some(0.0);
+            self.cry = Some(MobSound::Death(self.kind));
+            events.push(EntityEvent::MobKilled {
+                kind: self.kind,
+                pos: self.pos,
+                burning: false,
+                player_kill: self.player_hit_left > 0.0,
+                looting: 0,
+            });
+        }
 
         // Walk cycle follows ground speed.
         let hspeed = self.vel.x.hypot(self.vel.z) as f32;
@@ -891,6 +942,25 @@ impl Mob {
                     dir = (DVec3::new(-dir.z, 0.0, dir.x) * self.detour_side + dir * 0.35).normalize();
                 }
                 return (Some(dir), if v.fleeing { 4.0 } else { 2.0 });
+            }
+        }
+        if let Some(goal) = self.hunt {
+            let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
+            let dist = flat.length();
+            if dist > 1e-4 {
+                let dir = flat / dist;
+                let reach = if self.kind == MobKind::IronGolem { 2.4 } else { 1.5 };
+                self.head_target = (wrap((dir.z as f32).atan2(dir.x as f32) - self.yaw).clamp(-1.2, 1.2), 0.0);
+                if dist <= reach && self.attack_cooldown <= 0.0 && self.kind == MobKind::IronGolem {
+                    self.attack_cooldown = 1.2;
+                    self.attack_anim = 0.4;
+                    self.strike = true;
+                }
+                if dist <= 0.9 {
+                    return (None, 0.0);
+                }
+                let speed = if self.kind == MobKind::IronGolem { 1.5 } else { self.kind.chase_speed() };
+                return (Some(dir), speed);
             }
         }
         if self.kind == MobKind::Witch && self.witch_upkeep(dt, rng) {
@@ -1470,6 +1540,11 @@ impl Mob {
     fn physics_step<W: BlockSource + ?Sized>(&mut self, dt: f64, world: &W, wish: Option<DVec3>, speed: f64) {
         let shape = self.shape();
         self.in_water = physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
+        if self.kind == MobKind::SnowGolem && self.alive() && self.in_water {
+            // Java: one damage each tick while in water. Death loot is emitted
+            // by the caller once health is gone.
+            self.health -= 20.0 * dt as f32;
+        }
         let hopping = self.kind.is_cube();
         let speed = if hopping { (0.2 + 0.1 * self.size as f64) * 10.0 } else { speed };
         let wish = if hopping && self.on_ground && self.hop_left > 0.0 { None } else { wish };

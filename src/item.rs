@@ -208,6 +208,8 @@ pub enum Sprite {
     Ingot([u8; 3]),
     Gem([u8; 3]),
     Apple,
+    /// An apple with a golden skin.
+    GoldenApple,
     Bread,
     /// Raw or cooked cut of meat: flesh colour and fat colour.
     Meat([u8; 3], [u8; 3]),
@@ -391,6 +393,10 @@ static MOB_ITEMS: [ItemInfo; 2] = [
     item("wither skeleton skull", Sprite::Pearl([34, 34, 38], [118, 118, 124])),
 ];
 const MOB_ITEM: u16 = 640;
+/// Village life items, append-only from 680.
+const VILLAGE_ITEM: u16 = 680;
+static VILLAGE_ITEMS: [ItemInfo; 2] =
+    [item("pumpkin seeds", Sprite::Seeds), food("golden apple", 4, 9.6, Sprite::GoldenApple)];
 /// Splash potions: `SPLASH_POTION + potion index`.
 const SPLASH_POTION: u16 = 436;
 const _: () = assert!(FIRST_POTION + POTION_COUNT <= SPLASH_POTION);
@@ -544,6 +550,8 @@ impl Item {
     pub const MAGMA_CREAM: Item = Item(608);
     pub const IRON_NUGGET: Item = Item(609);
     pub const FIRE_CHARGE: Item = Item(760);
+    pub const PUMPKIN_SEEDS: Item = Item(680);
+    pub const GOLDEN_APPLE: Item = Item(681);
     pub const SLIME_BALL: Item = Item(610);
     pub const BUCKET: Item = Item(291);
     pub const WATER_BUCKET: Item = Item(292);
@@ -740,6 +748,9 @@ impl Item {
         if let Some(info) = self.0.checked_sub(MOB_ITEM).and_then(|i| MOB_ITEMS.get(i as usize)) {
             return *info;
         }
+        if let Some(info) = self.0.checked_sub(VILLAGE_ITEM).and_then(|i| VILLAGE_ITEMS.get(i as usize)) {
+            return *info;
+        }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
     }
 
@@ -879,6 +890,7 @@ impl Item {
             .chain((608..611).map(Item))
             .chain((0..MOB_ITEMS.len() as u16).map(|i| Item(MOB_ITEM + i)))
             .chain((0..POTION_COUNT).map(|i| Item(SPLASH_POTION + i)))
+            .chain((0..VILLAGE_ITEMS.len() as u16).map(|i| Item(VILLAGE_ITEM + i)))
             .chain([Self::FIRE_CHARGE])
     }
 
@@ -955,6 +967,19 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + i
                 - SPLASH_POTION,
         ),
+        i if (VILLAGE_ITEM..VILLAGE_ITEM + VILLAGE_ITEMS.len() as u16).contains(&i) => Some(
+            materials
+                + TOOL_COUNT
+                + ARMOR_COUNT
+                + POTION_COUNT
+                + EXTRA_ITEMS.len() as u16
+                + SURVIVAL_ITEMS.len() as u16
+                + 34
+                + MOB_ITEMS.len() as u16
+                + POTION_COUNT
+                + i
+                - VILLAGE_ITEM,
+        ),
         760 => Some(icon_count() as u16 - 1),
         _ => None,
     }
@@ -969,6 +994,7 @@ pub const fn icon_count() -> u32 {
         + 34
         + MOB_ITEMS.len() as u32
         + POTION_COUNT as u32
+        + VILLAGE_ITEMS.len() as u32
         + 1
 }
 
