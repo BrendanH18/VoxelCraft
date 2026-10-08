@@ -1,6 +1,6 @@
 # Villages and villagers
 
-Village content uses append-only block states 900–952. All workstation
+Village content uses append-only block states 900–968. All workstation
 blocks have original procedural textures. Barrels use the saved 27-slot
 chest inventory, shared by host, controller players and CLI agents.
 Smokers cook food and blast furnaces smelt ores/raw metals/ancient debris
@@ -20,9 +20,9 @@ Craftable: job sites, hay bales and fast furnaces. Bells are village loot /
 creative only, as in Java. A shovel makes dirt paths; paths are 15/16 high
 and drop dirt. Hay bales support three placement axes.
 
-Current simplifications: composter processing, lectern books, loom banners,
-cartography maps, stonecutter UI, wall/ceiling grindstones, vertical barrel
-facings, bell ringing and hay-bale fall cushioning are not implemented.
+Current simplifications: lectern books, loom banners, cartography maps,
+stonecutter UI, wall/ceiling grindstones, vertical barrel facings and
+hay-bale fall cushioning are not implemented.
 Blast-furnace equipment recycling is not yet implemented.
 
 ## Java references
@@ -126,9 +126,9 @@ restock interval is a fixed day-time interval. Item families absent from the
 engine are filtered from trade pools, so some tiers offer fewer than two trades
 (or none): fish/buckets, campfires, maps, banners, item frames, suspicious stew,
 glazed terracotta, tipped arrows, and unavailable foods/stone variants. The
-leatherworker has no cauldron job site yet. Villager breeding/food inventories,
-gossip, reputation/curing discounts, raids, zombie attacks on villagers, iron
-golems, zombie villagers/curing and wandering traders remain gaps. Profession
+leatherworker has no cauldron job site yet. Raids and farmer harvesting remain
+gaps; round 2 implements breeding, gossip, reputation, golems, zombie
+villagers and wandering traders below. Profession
 aprons share an original base model across biomes; level badges are in the UI.
 
 Additional Java references:
@@ -249,3 +249,13 @@ reputation migrates as a host-only legacy discount. Sharing currently visits
 the closest resident and transfers all eligible entries rather than Java's
 weighted selection of ten. Golem reputation-based hostility and gossip from
 projectile/magic damage are still absent.
+
+Round 2 Java references:
+- [Breeding behavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java)
+- [Food sharing](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/ai/behavior/TradeWithVillager.java)
+- [Zombie conversion](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/ZombieVillager.java)
+- [Trader event spawner](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/npc/WanderingTraderSpawner.java)
+- [Trader potion and despawn behavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/npc/WanderingTrader.java)
+- [Trader llama lifetime](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/animal/horse/TraderLlama.java)
+- [Composter probabilities and hopper containers](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ComposterBlock.java)
+- [Bell behavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/entity/BellBlockEntity.java)
