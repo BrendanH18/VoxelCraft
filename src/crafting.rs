@@ -1138,6 +1138,7 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
     const TNT_BLOCK: Ingredient = &[b(Block::TNT)];
     const CART: Ingredient = &[Item::MINECART];
     const ICE: Ingredient = &[b(Block::ICE)];
+    const HOOK: Ingredient = &[b(crate::world::gadgets::HOOK)];
     const CHARCOAL: Ingredient = &[Item::COAL, Item::CHARCOAL];
     const GUNPOWDER: Ingredient = &[Item::GUNPOWDER];
     const BLAZE: Ingredient = &[Item::BLAZE_POWDER];
@@ -1192,6 +1193,7 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
         shaped(&["iii", "iii", "iii"], &[('i', ICE)], b(crate::world::gadgets::PACKED_ICE), 1),
         shaped(&["PPP", "PRP", "PPP"], &[('P', PLANKS), ('R', DUST)], b(crate::world::gadgets::NOTE), 1),
         shaped(&["I", "S", "P"], &[('I', IRON), ('S', STICK), ('P', PLANKS)], b(crate::world::gadgets::HOOK), 2),
+        shaped(&["#I#", "~H~", " # "], &[('#', STICK), ('I', IRON), ('~', STRING), ('H', HOOK)], Item::CROSSBOW, 1),
     ]);
 }
 
@@ -1225,6 +1227,15 @@ mod nether_biome_tests {
 
     fn filled(item: Item, w: usize, h: usize) -> Vec<(usize, usize, Item)> {
         (0..h).flat_map(|y| (0..w).map(move |x| (x, y, item))).collect()
+    }
+
+    #[test]
+    fn crossbows_craft_from_a_tripwire_hook() {
+        let (stick, iron, string) = (Item::STICK, Item::IRON_INGOT, Item::STRING);
+        let hook = b(crate::world::gadgets::HOOK);
+        let cells =
+            [(0, 0, stick), (1, 0, iron), (2, 0, stick), (0, 1, string), (1, 1, hook), (2, 1, string), (1, 2, stick)];
+        assert_eq!(craft(3, &cells), Some(Stack::new(Item::CROSSBOW, 1)));
     }
 
     #[test]

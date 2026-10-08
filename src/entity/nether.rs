@@ -378,7 +378,7 @@ pub(super) fn babies_drop_nothing(kind: MobKind) -> bool {
 }
 
 /// The item that breeds `kind` in Java (crimson fungus for hoglins). There
-/// is no breeding or fungus yet: this is the hook for when there is.
+/// is no animal breeding yet: this is the hook for when there is.
 pub fn breeding_item(kind: MobKind) -> Option<&'static str> {
     match kind {
         MobKind::Hoglin => Some("crimson fungus"),
@@ -387,8 +387,8 @@ pub fn breeding_item(kind: MobKind) -> Option<&'static str> {
     }
 }
 
-/// Blocks in Java's `hoglin_repellents` tag that exist: the nether portal,
-/// plus warped fungus and respawn anchors once another branch adds them.
+/// Blocks in Java's `hoglin_repellents` tag: the nether portal and warped
+/// fungus, plus potted fungus and respawn anchors once they exist.
 pub fn is_hoglin_repellent(block: Block) -> bool {
     use std::sync::OnceLock;
     static NAMED: OnceLock<Vec<Block>> = OnceLock::new();
@@ -1822,6 +1822,7 @@ mod tests {
     #[test]
     fn hoglins_shun_portals_and_outnumbering_piglins() {
         assert!(is_hoglin_repellent(Block::NETHER_PORTAL) && !is_hoglin_repellent(Block::STONE));
+        assert!(is_hoglin_repellent(crate::world::nether_biome_blocks::WARPED_FUNGUS));
         let mut world = Grid::flat(10);
         world.set(IVec3::new(-3, 10, 0), Block::NETHER_PORTAL);
         let mut e = Entities::new(6);

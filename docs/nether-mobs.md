@@ -36,7 +36,7 @@ Nothing in this module compares every pair of entities.
 
 ## Piglins
 
-**Spawning.** Piglins spawn in groups of 4 at nether-wastes weight 15, against
+**Spawning.** Piglins spawn in groups of 4 at nether-wastes weight 15 (3–4 at weight 5 in crimson forests), against
 zombified piglins' 100 (cap 4 per player). Java's `finalizeSpawn` rolls apply:
 - 20% are babies, which carry nothing.
 - Adults hold a golden sword or a crossbow, 50/50.
@@ -159,9 +159,9 @@ blocks of a player gets its residents once its corners and centre have loaded:
   Babies nip for 0.5 and don't throw.
 - They have 0.6 knockback resistance.
 - **Repellents**: any `hoglin_repellents` block within 8 blocks across and 4 up or
-  down pacifies a hoglin for 200 ticks, and it backs away. Of the tag, only nether
-  portals exist. Warped fungus, potted warped fungus and respawn anchors are matched
-  by name when another branch adds them. The box is scanned once a second.
+  down pacifies a hoglin for 200 ticks, and it backs away. Nether portals and warped
+  fungus count; potted warped fungus and respawn anchors are matched by name once
+  they exist. The box is scanned once a second.
 - A hit adult attacks back for 200 ticks and rallies adult hoglins within 16 blocks.
   A hit baby retreats for 5–20 s.
 - Adults back off when adult piglins within 16 outnumber them.
@@ -202,10 +202,9 @@ Striders are passive, fire immune and hurt by water and rain.
 
 ## The spawn table and biomes
 
-`nether::nether_spawn_table(NetherBiome)` lists Java's per-biome entries for these
-mobs. Every spawn uses `NetherBiome::DEFAULT` (nether wastes) until the biome branch
-can pass the real biome. The full Java 1.21 lists, kept in the function's doc
-comment, are:
+Spawns follow the biome under each attempt: `world::nether_biome` holds Java's
+per-biome lists (see [Nether biomes](nether-biomes.md#mob-spawning)) and
+`entity::nether_mob` maps them to these mobs. The Java 1.21 lists are:
 
 | Biome | Monsters | Creatures |
 |---|---|---|
@@ -264,8 +263,8 @@ different pitches.
 
 - **Riding**: there is no riding, so no saddles, warped fungus on a stick, strider
   steering, strider jockeys, baby striders riding adults or piglins riding hoglins.
-- **Breeding**: none for hoglins or striders (no breeding, no crimson or warped
-  fungus); striders can't be tempted.
+- **Breeding**: none for hoglins or striders (there is no animal breeding yet,
+  though the fungi exist); striders can't be tempted.
 - **Bartering**: spectral arrows and Soul Speed don't exist (see the table).
 - **Piglin details**:
   - No celebrating dance after a kill.
@@ -283,7 +282,7 @@ different pitches.
   is removed, as before.
 - **Bastion residents** are spread over each piece's floor rather than placed at
   Java's exact jigsaw spots. Treasure-room magma cube spawners are still absent.
-- **Crossbow**: no crafting recipe (tripwire hooks don't exist), no Multishot,
+- **Crossbow**: crafted with Java's recipe, but no Multishot,
   Piercing or Quick Charge, and no first-person loading pose.
 - **Line of sight** uses the existing block raycast, which treats every solid block
   as opaque.

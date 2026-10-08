@@ -193,10 +193,9 @@ and groups follow the list's sizes:
 | Basalt deltas | magma cube 100 (2–5), ghast 40 (1) |
 
 Every biome also lists striders 60 (1–2)* as creatures. Entries marked *
-are named hooks for mobs built on another branch: `NetherMob::Piglin`,
-`Hoglin` and `Strider` keep their share of the weights, and
-`entity::nether_mob` has a `TODO(piglins, hoglins, striders)` where their
-`MobKind`s map in. Fortress spawning is unchanged.
+are the [Nether mobs](nether-mobs.md); `entity::nether_mob` maps each list
+entry to its `MobKind`, and striders spawn on the lava sea at weight 60
+against zombified piglins' 100. Fortress spawning is unchanged.
 
 ## Performance
 
@@ -226,7 +225,7 @@ deltas (single thread, cold caches), against 0.7 ms in the wastes.
   overlay and wall torches are absent; vines are climbable for players
   only.
 - `/locate biome` keeps the caller's height rather than searching in 3D.
-- Piglins, hoglins and striders, and Java's spawn costs, are hooks only.
+- Java's spawn costs (soul sand valley's charge per mob) aren't modelled.
 - Worlds saved before v0.5 keep their generated Nether chunks; chunks
   generated next to them use the biomes, so old areas meet new terrain at a
   seam.
