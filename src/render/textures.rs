@@ -246,6 +246,18 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             },
             0.1,
         ),
+        1136 | 1137 => noisy(
+            layer,
+            x,
+            y,
+            if (4..12).contains(&x) && (4..12).contains(&y) && (layer == 1136 || x > 7 || y > 7) {
+                [23, 24, 23]
+            } else {
+                [126, 128, 122]
+            },
+            0.18,
+        ),
+        1138 => noisy(layer, x, y, [64, 67, 68], 0.12),
         1129 => noisy(layer, x, y, if y < 13 { [128, 94, 46] } else { [92, 94, 90] }, 0.2),
         1128 => noisy(layer, x, y, if y == 3 || y == 12 { [162, 67, 29] } else { [203, 171, 58] }, 0.2),
         1127 => {

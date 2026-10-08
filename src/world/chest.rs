@@ -42,9 +42,23 @@ impl Chest {
 
 pub fn is_chest(b: Block) -> bool {
     b.base() == Block::CHEST
+        || matches!(
+            super::redstone_blocks::component(b),
+            Some(
+                super::redstone_blocks::Component::Dispenser { .. } | super::redstone_blocks::Component::Hopper { .. }
+            )
+        )
 }
 
 impl World {
+    /// Capacity of the chest-backed storage block; unused backing slots remain empty.
+    pub fn container_slots(&self, p: IVec3) -> usize {
+        match self.get_block(p).and_then(super::redstone_blocks::component) {
+            Some(super::redstone_blocks::Component::Hopper { .. }) => 5,
+            Some(super::redstone_blocks::Component::Dispenser { .. }) => 9,
+            _ => SLOTS,
+        }
+    }
     pub fn chest(&self, p: IVec3) -> Option<&Chest> {
         self.chests.get(&p)
     }
@@ -57,13 +71,14 @@ impl World {
     /// Keeps the chest table in step with a block change at `p` (turning a
     /// chest keeps its contents).
     pub(super) fn track_chest(&mut self, p: IVec3, old: Block, new: Block) {
-        if is_chest(old) && !is_chest(new) {
-            if let Some(chest) = self.chests.remove(&p)
-                && self.tile_drops
-            {
-                self.drops.extend(chest.slots.into_iter().flatten().map(|s| (p, s)));
-            }
-        } else if is_chest(new) {
+        if is_chest(old)
+            && old.base() != new.base()
+            && let Some(chest) = self.chests.remove(&p)
+            && self.tile_drops
+        {
+            self.drops.extend(chest.slots.into_iter().flatten().map(|s| (p, s)));
+        }
+        if is_chest(new) {
             self.chests.entry(p).or_default();
         }
     }

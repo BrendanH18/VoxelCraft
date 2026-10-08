@@ -23,6 +23,9 @@ pub const WOOD_TRAPDOOR: Block = Block(1437);
 pub const PISTON: Block = Block(1329);
 pub const STICKY_PISTON: Block = Block(1341);
 pub const OBSERVER: Block = Block(1365);
+pub const DISPENSER: Block = Block(1377);
+pub const DROPPER: Block = Block(1383);
+pub const HOPPER: Block = Block(1389);
 pub const MOVING: Block = Block(1470);
 pub const HAY: Block = Block(1469);
 
@@ -47,6 +50,8 @@ pub enum Component {
     PistonHead { facing: u8, sticky: bool },
     Observer { facing: u8, on: bool },
     Moving,
+    Dispenser { facing: u8, dropper: bool },
+    Hopper { facing: u8, disabled: bool },
 }
 
 pub const fn wire(power: u8) -> Block {
@@ -109,6 +114,17 @@ pub const fn observer(facing: u8, on: bool) -> Block {
     Block(1365 + on as u16 * 6 + facing as u16)
 }
 
+pub const fn dispenser(facing: u8, dropper: bool) -> Block {
+    Block(1377 + dropper as u16 * 6 + facing as u16)
+}
+/// Hopper facing 0..3 is horizontal, 4 is downward.
+pub const fn hopper(facing: u8, disabled: bool) -> Block {
+    Block(1389 + disabled as u16 * 5 + (facing as u16 + 1) % 5)
+}
+pub fn hopper_direction(facing: u8) -> glam::IVec3 {
+    if facing == 4 { glam::IVec3::NEG_Y } else { direction(facing) }
+}
+
 pub const fn component(b: Block) -> Option<Component> {
     let id = b.0;
     Some(match id {
@@ -155,6 +171,8 @@ pub const fn component(b: Block) -> Option<Component> {
         1353..=1364 => Component::PistonHead { facing: ((id - 1353) % 6) as u8, sticky: id >= 1359 },
         1365..=1376 => Component::Observer { facing: ((id - 1365) % 6) as u8, on: id >= 1371 },
         1470 => Component::Moving,
+        1377..=1388 => Component::Dispenser { facing: ((id - 1377) % 6) as u8, dropper: id >= 1383 },
+        1389..=1398 => Component::Hopper { facing: (((id - 1389) % 5 + 4) % 5) as u8, disabled: id >= 1394 },
         1435..=1436 => Component::GlowingOre(id == 1436),
         1469 => Component::Hay,
         _ => return None,
@@ -194,6 +212,14 @@ pub const fn base(b: Block) -> Option<Block> {
         Some(Component::PistonHead { sticky, .. }) => piston_head(0, sticky),
         Some(Component::Observer { .. }) => OBSERVER,
         Some(Component::Moving) => MOVING,
+        Some(Component::Dispenser { dropper, .. }) => {
+            if dropper {
+                DROPPER
+            } else {
+                DISPENSER
+            }
+        }
+        Some(Component::Hopper { .. }) => HOPPER,
         Some(Component::GlowingOre(deep)) => {
             if deep {
                 Block::DEEPSLATE_REDSTONE_ORE
@@ -254,10 +280,17 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         Some(Component::PistonHead { .. }) => ("piston head", Shaped, 1130),
         Some(Component::Observer { .. }) => ("observer", Opaque, tex::STONE),
         Some(Component::Moving) => ("moving piston", Invisible, 1130),
+        Some(Component::Dispenser { dropper, .. }) => {
+            (if dropper { "dropper" } else { "dispenser" }, Opaque, tex::COBBLESTONE)
+        }
+        Some(Component::Hopper { .. }) => ("hopper", Shaped, 1138),
         None => return None,
     };
     let mut textures = [layer; 6];
     match component(Block(id)) {
+        Some(Component::Dispenser { facing, dropper }) => {
+            textures[texture_face(facing)] = if dropper { 1137 } else { 1136 }
+        }
         Some(Component::Piston { facing, sticky, .. } | Component::PistonHead { facing, sticky }) => {
             textures[texture_face(facing)] = if sticky { 1132 } else { 1131 };
         }
@@ -280,7 +313,7 @@ pub const fn opposite(f: u8) -> u8 {
 pub fn palette_ids() -> impl Iterator<Item = u16> {
     [1100, 1116, 1128, 1140, 1152, 1162, 1194, 1210, 1212, 1213, 1215, 1217, 1233, 1249, 1265, 1281, 1313, 1437]
         .into_iter()
-        .chain([1329, 1341, 1365, 1469])
+        .chain([1329, 1341, 1365, 1377, 1383, 1389, 1469])
 }
 
 /// Java wire sides: 0 none, 1 side, 2 up. Isolated default wire is a cross.
@@ -300,6 +333,8 @@ pub fn connections(neighbour: impl Fn(glam::IVec3) -> Block) -> [u8; 4] {
                 Component::Piston { .. }
                 | Component::PistonHead { .. }
                 | Component::Moving
+                | Component::Dispenser { .. }
+                | Component::Hopper { .. }
                 | Component::Lamp(_)
                 | Component::IronDoor { .. }
                 | Component::Trapdoor { .. }
@@ -353,11 +388,31 @@ pub fn placed(b: Block, normal: glam::IVec3, toward: Facing) -> Block {
         Some(Component::Repeater { .. }) => repeater(toward.opposite(), 1, false),
         Some(Component::Comparator { .. }) => comparator(toward.opposite(), false, false),
         Some(Component::Piston { sticky, .. }) => piston(toward as u8, sticky, false),
+        Some(Component::Dispenser { dropper, .. }) => dispenser(toward as u8, dropper),
+        Some(Component::Hopper { .. }) => {
+            hopper(if normal.y != 0 { 4 } else { opposite(Facing::from_offset(normal).unwrap_or(toward) as u8) }, false)
+        }
         Some(Component::Observer { .. }) => observer(toward.opposite() as u8, false),
         Some(Component::IronDoor { .. }) => iron_door(toward, false, false),
         Some(Component::Trapdoor { iron, .. }) => {
             trapdoor(Facing::from_offset(normal).unwrap_or(toward), false, normal == glam::IVec3::NEG_Y, iron)
         }
         _ => b,
+    }
+}
+
+/// Directional devices use the nearest view direction, including vertical
+/// placement. Mounted controls still use the clicked supporting face.
+pub fn placed_with_look(b: Block, normal: glam::IVec3, look: glam::Vec3) -> Block {
+    let placed = placed(b, normal, Facing::toward(look));
+    if look.y.abs() <= look.x.abs().max(look.z.abs()) {
+        return placed;
+    }
+    let toward = if look.y < 0.0 { 4 } else { 5 };
+    match component(b) {
+        Some(Component::Piston { sticky, .. }) => piston(toward, sticky, false),
+        Some(Component::Observer { .. }) => observer(opposite(toward), false),
+        Some(Component::Dispenser { dropper, .. }) => dispenser(toward, dropper),
+        _ => placed,
     }
 }

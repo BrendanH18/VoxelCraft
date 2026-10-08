@@ -278,7 +278,8 @@ impl World {
             ((fullness / count as f64 * 14.0).floor() as u8 + nonempty as u8).min(15)
         }
         if let Some(c) = self.chest(p) {
-            return Some(strength(c.slots.into_iter(), 27));
+            let count = self.container_slots(p);
+            return Some(strength(c.slots[..count].iter().copied(), count));
         }
         if let Some(f) = self.furnace(p) {
             return Some(strength([f.input, f.fuel, f.output].into_iter(), 3));
@@ -306,7 +307,12 @@ impl World {
             return;
         }
         match r::component(b) {
-            Some(Component::Piston { .. } | Component::Observer { .. }) => self.automation_update(p, b),
+            Some(
+                Component::Piston { .. }
+                | Component::Observer { .. }
+                | Component::Dispenser { .. }
+                | Component::Hopper { .. },
+            ) => self.automation_update(p, b),
             Some(Component::Wire(power)) => {
                 if self.get_block(p - IVec3::Y).is_some_and(|b| !b.is_solid()) {
                     self.spill_block(p, b);
@@ -397,7 +403,12 @@ impl World {
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
         match r::component(b) {
-            Some(Component::Piston { .. } | Component::Observer { .. }) => self.automation_tick(p, b),
+            Some(
+                Component::Piston { .. }
+                | Component::Observer { .. }
+                | Component::Dispenser { .. }
+                | Component::Hopper { .. },
+            ) => self.automation_tick(p, b),
             Some(Component::Torch { mount, lit }) => {
                 let powered = self.signal_from(p + r::support(mount), -r::support(mount), true) > 0;
                 let burned = self.redstone.burnout.get(&p).is_some_and(|&end| end > self.redstone.tick);

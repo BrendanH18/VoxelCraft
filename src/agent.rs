@@ -990,11 +990,7 @@ impl Agent {
                     return Err("this block requires the desktop placement action".into());
                 }
                 let block = crate::world::nether_blocks::placed(block, normal);
-                let block = crate::world::redstone_blocks::placed(
-                    block,
-                    normal,
-                    crate::world::block::Facing::toward(self.player.forward()),
-                );
+                let block = crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
                 let at = pos + normal;
                 if !world.get_block(at).is_some_and(|b| b == Block::AIR || b.is_water() || b.is_lava()) {
                     return Err("destination occupied or unloaded".into());
@@ -1060,6 +1056,9 @@ impl Agent {
             Command::Craft(item) => self.craft(item, world)?,
             Command::Chest(take, slot) => {
                 let (pos, _) = self.target(world).ok_or("no chest within reach")?;
+                if slot >= world.container_slots(pos) {
+                    return Err("container slot out of range".into());
+                }
                 let chest = world.chest_mut(pos).ok_or("target is not a chest")?;
                 if take {
                     let stack = chest.slots[slot].ok_or("chest slot empty")?;

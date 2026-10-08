@@ -290,7 +290,7 @@ pub mod tex {
     pub const CAKE_SIDE: u16 = CAKE_TOP + 1;
     pub const CAKE_BOTTOM: u16 = CAKE_SIDE + 1;
     // Redstone reserves a texture band independent of compact legacy layers.
-    pub const COUNT: u32 = 1136;
+    pub const COUNT: u32 = 1139;
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
     pub const PAGE_LAYERS: u32 = 256;
@@ -1190,6 +1190,8 @@ impl Block {
                 Lamp(_) => 0.3,
                 Piston { .. } | PistonHead { .. } => 1.5,
                 Observer { .. } => 3.0,
+                Dispenser { .. } => 3.5,
+                Hopper { .. } => 3.0,
                 Moving => f32::INFINITY,
                 IronDoor { .. } | Trapdoor { iron: true, .. } => 5.0,
                 Trapdoor { .. } => 3.0,
@@ -1322,6 +1324,11 @@ impl Block {
         if let Some(c) = super::redstone_blocks::component(self) {
             return match c {
                 Component::Source
+                | Component::Piston { .. }
+                | Component::PistonHead { .. }
+                | Component::Observer { .. }
+                | Component::Dispenser { .. }
+                | Component::Hopper { .. }
                 | Component::GlowingOre(_)
                 | Component::IronDoor { .. }
                 | Component::Trapdoor { iron: true, .. }
@@ -1435,6 +1442,9 @@ impl Block {
             super::redstone_blocks::component(self),
             Some(
                 super::redstone_blocks::Component::Source
+                    | super::redstone_blocks::Component::Observer { .. }
+                    | super::redstone_blocks::Component::Dispenser { .. }
+                    | super::redstone_blocks::Component::Hopper { .. }
                     | super::redstone_blocks::Component::IronDoor { .. }
                     | super::redstone_blocks::Component::Trapdoor { iron: true, .. }
                     | super::redstone_blocks::Component::Plate { kind: 2 | 3, .. }

@@ -520,6 +520,11 @@ impl Game {
     /// Height of the top section: room for the four armor slots in the
     /// survival inventory, three rows of slots otherwise.
     fn top_h(&self) -> f32 {
+        if let Container::Chest(p) = self.container
+            && self.world.container_slots(p) == 5
+        {
+            return SLOT + 14.0;
+        }
         match (self.has_top_section(), self.shows_armor()) {
             (false, _) => 0.0,
             (true, true) => CRAFT_H + SLOT,
@@ -587,11 +592,24 @@ impl Game {
         let (px, py, _) = self.panel(screen);
         let py = py + super::search::HEIGHT;
         let mut out = Vec::with_capacity(46);
-        let top = if let Container::Chest(_) = self.container {
-            for i in 0..crate::world::chest::SLOTS {
-                out.push((SlotRef::Chest(i), px + 7.0 + (i % 9) as f32 * SLOT, py + 18.0 + (i / 9) as f32 * SLOT));
+        let top = if let Container::Chest(p) = self.container {
+            let count = self.world.container_slots(p);
+            let cols = if count == 9 { 3 } else { 9 };
+            let offset = if count == 9 {
+                3.0 * SLOT
+            } else if count == 5 {
+                2.0 * SLOT
+            } else {
+                0.0
+            };
+            for i in 0..count {
+                out.push((
+                    SlotRef::Chest(i),
+                    px + 7.0 + offset + (i % cols) as f32 * SLOT,
+                    py + 18.0 + (i / cols) as f32 * SLOT,
+                ));
             }
-            CRAFT_H
+            self.top_h()
         } else if let Container::Furnace(_) = self.container {
             // Input over fuel (with the flame between), the output past the arrow.
             let x = px + 7.0 + 3.0 * SLOT;
@@ -724,7 +742,7 @@ impl Game {
         let title = match (self.container, self.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
-            (Container::Chest(_), _) => "Chest",
+            (Container::Chest(p), _) => self.world.get_block(p).map_or("Container", |b| b.name()),
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
             (Container::Anvil(_), _) => "Anvil",

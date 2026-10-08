@@ -6,7 +6,7 @@ use glam::{DVec3, IVec3};
 use crate::audio::sounds::{Material, Sound};
 use crate::inventory::{HOTBAR_SLOTS, SLOTS, Stack, move_into};
 use crate::item::Item;
-use crate::world::{brewing, chest, furnace};
+use crate::world::{brewing, furnace};
 
 use super::hud::SlotRef;
 use super::{Container, Game};
@@ -45,6 +45,9 @@ impl Game {
             }
             SlotRef::Chest(i) => {
                 let Container::Chest(p) = self.container else { return };
+                if i >= self.world.container_slots(p) {
+                    return;
+                }
                 let Some(stack) = self.world.chest_mut(p).and_then(|c| c.slots[i].take()) else { return };
                 let left = self.move_to_player(stack);
                 if let Some(c) = self.world.chest_mut(p) {
@@ -155,7 +158,7 @@ impl Game {
     fn move_from_inventory(&mut self, from: usize, stack: Stack) -> Option<Stack> {
         match self.container {
             Container::Chest(p) => {
-                let order: Vec<usize> = (0..chest::SLOTS).collect();
+                let order: Vec<usize> = (0..self.world.container_slots(p)).collect();
                 return match self.world.chest_mut(p) {
                     Some(c) => move_into(stack, &mut c.slots, &order),
                     None => Some(stack),

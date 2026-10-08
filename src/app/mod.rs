@@ -1287,6 +1287,7 @@ impl Game {
             Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right, self.mode.is_creative()),
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Chest(pos) = self.container
+                    && i < self.world.container_slots(pos)
                     && let Some(chest) = self.world.chest_mut(pos)
                 {
                     crate::inventory::click_slot(&mut chest.slots[i], &mut self.inventory.cursor, right);
@@ -1656,11 +1657,7 @@ impl Game {
         // Furnaces and chests face whoever places them.
         let block = crate::world::nether_blocks::placed(block, normal)
             .with_facing(crate::world::block::Facing::toward(self.player.forward()));
-        let block = voxelcraft::world::redstone_blocks::placed(
-            block,
-            normal,
-            crate::world::block::Facing::toward(self.player.forward()),
-        );
+        let block = voxelcraft::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
         if block.is_water() && self.dimension == Dimension::Nether {
             // Water boils away in the Nether.
             self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
@@ -2077,6 +2074,7 @@ impl Game {
             self.gamerules.bool("doFireTick"),
             self.gamerules.int("randomTickSpeed") as u32,
         );
+        self.world.tick_automation_entities(&mut self.mobs.entities);
         self.update_mobs(dt);
         self.update_items();
         self.tick_particles();

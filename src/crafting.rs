@@ -1031,6 +1031,11 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
     const HAY: Ingredient = &[b(r::HAY)];
     const PISTON: Ingredient = &[b(r::PISTON)];
     const SLIME: Ingredient = &[Item::SLIME_BALL];
+    const BOW: Ingredient = &[Item::BOW];
+    const CHEST: Ingredient = &[b(Block::CHEST)];
+    const CHARCOAL: Ingredient = &[Item::COAL, Item::CHARCOAL];
+    const GUNPOWDER: Ingredient = &[Item::GUNPOWDER];
+    const BLAZE: Ingredient = &[Item::BLAZE_POWDER];
     recipes.extend([
         shaped(&["s", "c"], &[('s', STICK), ('c', COBBLESTONE)], b(r::LEVER), 1),
         shapeless(&[STONE], b(r::STONE_BUTTON), 1),
@@ -1052,6 +1057,10 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
         shaped(&[" r ", "rhr", " r "], &[('r', DUST), ('h', HAY)], b(r::TARGET), 1),
         shaped(&["www", "www", "www"], &[('w', WHEAT)], b(r::HAY), 1),
         shapeless(&[HAY], Item::WHEAT, 9),
+        shaped(&["ccc", "cbc", "crc"], &[('c', COBBLESTONE), ('b', BOW), ('r', DUST)], b(r::DISPENSER), 1),
+        shaped(&["ccc", "c c", "crc"], &[('c', COBBLESTONE), ('r', DUST)], b(r::DROPPER), 1),
+        shaped(&["i i", "ici", " i "], &[('i', IRON), ('c', CHEST)], b(r::HOPPER), 1),
+        shapeless(&[CHARCOAL, GUNPOWDER, BLAZE], Item::FIRE_CHARGE, 3),
         shaped(&["ppp", "cic", "crc"], &[('p', PLANKS), ('c', COBBLESTONE), ('i', IRON), ('r', DUST)], b(r::PISTON), 1),
         shaped(&["s", "p"], &[('s', SLIME), ('p', PISTON)], b(r::STICKY_PISTON), 1),
         shaped(&["ccc", "rrq", "ccc"], &[('c', COBBLESTONE), ('r', DUST), ('q', QUARTZ)], b(r::OBSERVER), 1),

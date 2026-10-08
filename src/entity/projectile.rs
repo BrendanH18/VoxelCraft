@@ -80,6 +80,14 @@ impl Arrow {
         }
     }
 
+    /// A recoverable dispenser arrow has no player owner and travels at Java's
+    /// 1.1 blocks per game tick before drag/gravity.
+    pub fn dispensed(pos: DVec3, dir: DVec3) -> Self {
+        let mut arrow = Self::shot(pos - dir * 0.3, dir, (22.0 / BOW_SPEED) as f32, true);
+        arrow.from_player = false;
+        arrow
+    }
+
     /// Power raises Java's base arrow damage of 2 by 0.5 per level + 0.5.
     fn power_factor(&self) -> f64 {
         let power = self.enchants.level(crate::enchant::Enchantment::Power) as f64;
@@ -106,7 +114,7 @@ impl Arrow {
                 self.vel = DVec3::ZERO;
                 return true;
             }
-            return self.age < if self.from_player { PLAYER_STUCK_TIME } else { STUCK_TIME };
+            return self.age < if self.from_player || self.pickup { PLAYER_STUCK_TIME } else { STUCK_TIME };
         }
         self.vel.y -= GRAVITY * dt;
         let delta = self.vel * dt;
@@ -119,7 +127,7 @@ impl Arrow {
             // and hides anything behind it.
             let block = first_solid(world, from, step);
             let reach = block.unwrap_or(1.0);
-            if self.from_player {
+            if self.from_player || self.pickup {
                 // Whatever the step enters first: a mob, or a crystal or
                 // dragon part (fractions of the step).
                 let mob = mobs
@@ -136,7 +144,7 @@ impl Arrow {
                     && let Some(fight) = fight.as_deref_mut()
                 {
                     let damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
-                    if fight.strike(hit, damage, None, true) {
+                    if fight.strike(hit, damage, None, self.from_player) {
                         return false;
                     }
                     // Bounced off a perched dragon's scales.
@@ -162,13 +170,16 @@ impl Arrow {
                         if self.enchants.has(Enchantment::Flame) {
                             mob.ignite(5.0);
                         }
-                        mob.player_hit();
+                        if self.from_player {
+                            mob.player_hit();
+                        }
                         let killed = mob.damage(damage, Some(push), rng);
                         events.push(EntityEvent::MobShot {
                             kind: mob.kind,
                             pos: mob.pos,
                             killed,
                             burning: mob.burning,
+                            player_kill: self.from_player,
                         });
                         return false;
                     }
@@ -215,7 +226,7 @@ impl Arrow {
                     player: hit.id,
                     damage,
                     knockback: push.as_vec3(),
-                    cause: "was shot by a skeleton",
+                    cause: if self.pickup { "was shot by an arrow" } else { "was shot by a skeleton" },
                 });
                 return false;
             }
@@ -301,5 +312,41 @@ mod tests {
         assert_eq!(arrow.pos.floor().as_ivec3(), IVec3::new(0, 20, 0));
         assert!(events.is_empty(), "{events:?}");
         assert_eq!(mobs[0].health, MobKind::Cow.max_health());
+    }
+    #[test]
+    fn dispenser_arrows_hurt_mobs_and_players_without_player_kill_credit() {
+        let world = Grid::flat(10);
+        for player in [false, true] {
+            let mut arrow = Arrow::dispensed(DVec3::new(0.5, 11.0, 0.5), DVec3::X);
+            assert!((arrow.vel.length() - 22.0).abs() < 0.001);
+            let mut mobs =
+                if player { Vec::new() } else { vec![Mob::new(MobKind::Cow, DVec3::new(2.0, 10.0, 0.5), 0.0)] };
+            let ctx = Ctx {
+                players: vec![Target::new(
+                    PlayerId::HOST,
+                    DVec3::new(if player { 2.0 } else { 50.0 }, 10.0, 0.5),
+                    true,
+                )],
+                daylight: 1.0,
+                spawning: false,
+                raining: false,
+                dimension: Dimension::Overworld,
+            };
+            let mut events = Vec::new();
+            let mut rng = Rng::new(7);
+            for _ in 0..20 {
+                if !arrow.update(0.05, &world, &ctx, &mut mobs, None, &mut rng, &mut events) {
+                    break;
+                }
+            }
+            if player {
+                assert!(
+                    events.iter().any(|e| matches!(e, EntityEvent::PlayerHit { cause: "was shot by an arrow", .. }))
+                );
+            } else {
+                assert!(events.iter().any(|e| matches!(e, EntityEvent::MobShot { player_kill: false, .. })));
+                assert!(mobs[0].health < MobKind::Cow.max_health());
+            }
+        }
     }
 }

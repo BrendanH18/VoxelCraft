@@ -122,8 +122,8 @@ moving states and their age; chunk meshes omit moving placeholders and the
 existing free-block renderer interpolates them without a new frame collection.
 Collision currently uses the destination block's full cell while moving. Java
 entity displacement, slime/honey assemblies, short-pulse sticky block spitting,
-and exact piston block-event arbitration are not implemented. Controls use the
-same host/pad/CLI placement path; vertical facings can be placed by raw state ID.
+and exact piston block-event arbitration are not implemented. Directional devices use the nearest look direction, including vertical
+placement, through the same host/pad/CLI placement path.
 
 Observers watch state changes on their front face, delay two game ticks, then
 emit strength 15 from their rear for two ticks. Repeated changes during a
@@ -133,3 +133,44 @@ block state changes.
 Sources: [PistonStructureResolver](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/piston/PistonStructureResolver.java),
 [PistonBaseBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java),
 [ObserverBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ObserverBlock.java).
+
+## Inventory automation
+
+Dispensers and droppers store nine slots, hoppers five. They reuse the existing
+chest-backed save records with unused padding, preserving old container saves.
+Host and pad screens, quick moves, CLI chest commands, and comparator fullness
+respect actual capacity. Replacing a storage block with another family spills
+its contents once and creates empty storage.
+
+Dispensers/droppers fire four game ticks after a rising power edge and select a
+nonempty slot uniformly. Holding power does not repeatedly dispense. Droppers
+insert one item into the front container (retaining it if full) or eject it.
+Dispensers eject ordinary items, shoot recoverable unowned arrows, place or
+collect water/lava source buckets, and prime TNT. Fire charge item 760 has its
+vanilla three-item recipe and ignites the front cell; a travelling small
+fireball and Java dispenser inaccuracy are not implemented. Other special
+behaviours such as equipment, bonemeal and spawn eggs fall back to item drops.
+
+Hoppers push one item, then pull one from the container above in the same
+eligible cycle, followed by eight game ticks of cooldown. Empty destination
+hoppers receive a cooldown; Java's directional seven-tick optimization is
+simplified to eight. Power disables transfer and pickup. Furnace insertion
+uses top input/side fuel and bottom extraction uses output or empty buckets;
+brewing insertion uses top ingredient/side bottle or blaze powder. Stack
+components survive transfer, and full/incompatible destinations consume
+nothing. With no container above, a hopper collects item entities above its
+cavity, ignoring player pickup delay. A whole entity stack can be collected at
+once, as in Java. Active hoppers retry idle transfers each tick; item pickup
+currently scans the entity list rather than a spatial entity index.
+
+Scheduled ticks, cooldowns, power edges and pending ejections survive saves.
+The client calls `tick_automation_entities` between world rules and entity
+physics; headless callers must invoke it with their entity collection too.
+Only loaded containers transfer items. Rails exist but minecarts do not;
+powered/detector/activator rails are deferred together with minecart mechanics.
+Tripwire and note blocks remain optional gaps.
+
+Sources: [HopperBlockEntity](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java),
+[DispenserBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DispenserBlock.java),
+[DropperBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DropperBlock.java),
+[DispenseItemBehavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/core/dispenser/DispenseItemBehavior.java).

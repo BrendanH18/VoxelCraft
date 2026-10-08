@@ -311,6 +311,22 @@ pub fn redstone_shape(block: Block, neighbour: impl Fn(glam::IVec3) -> Block) ->
             out.push(directional_box(b([6, 6, 0], [10, 10, 12]), facing));
         }
         Some(Component::Moving) => out.push(b([0, 0, 0], [16, 16, 16])),
+        Some(Component::Hopper { facing, .. }) => {
+            for bx in [
+                b([0, 10, 0], [16, 16, 2]),
+                b([0, 10, 14], [16, 16, 16]),
+                b([0, 10, 2], [2, 16, 14]),
+                b([14, 10, 2], [16, 16, 14]),
+                b([4, 4, 4], [12, 10, 12]),
+            ] {
+                out.push(bx);
+            }
+            out.push(if facing == 4 {
+                b([6, 0, 6], [10, 4, 10])
+            } else {
+                b([6, 4, 8], [10, 8, 16]).turned(Facing::ALL[facing as usize])
+            });
+        }
         Some(Component::Wire(_)) => {
             let connections = r::connections(&neighbour);
             out.push(b([6, 0, 6], [10, 1, 10]));
