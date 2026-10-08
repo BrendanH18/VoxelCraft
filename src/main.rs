@@ -39,6 +39,8 @@ pub struct Args {
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
     pub open_inventory: bool,
+    /// Open the targeted villager after its first job claim (screenshots).
+    pub open_trading: bool,
     /// Seat a virtual controller player with this screen open (screenshots).
     pub pad_player: Option<String>,
     pub inventory_search: Option<String>,
@@ -111,6 +113,7 @@ voxelcraft [options]
   --creative, --survival  game mode (default: survival, or the saved mode)
   --f3              start with the debug overlay open
   --inventory-search <text>  initial inventory search query
+  --open-trading    open a targeted villager once it claims a job (screenshots)
   --open-inventory  start with the inventory screen open (screenshots)
   --pad-player <s>  seat a controller player holding a copy of your
                     inventory, with play, pause, inventory, crafting or
@@ -176,6 +179,7 @@ fn parse_args() -> Result<Args, String> {
         debug_overlay: false,
         mode: None,
         open_inventory: false,
+        open_trading: false,
         pad_player: None,
         inventory_search: None,
         open_menu: None,
@@ -245,6 +249,7 @@ fn parse_args() -> Result<Args, String> {
             "--f3" => args.debug_overlay = true,
             "--inventory-search" => args.inventory_search = Some(value("--inventory-search")?),
             "--open-inventory" => args.open_inventory = true,
+            "--open-trading" => args.open_trading = true,
             "--pad-player" => {
                 let m = value("--pad-player")?;
                 if !matches!(m.as_str(), "play" | "pause" | "inventory" | "crafting" | "palette") {
@@ -411,6 +416,7 @@ impl Args {
         self.seed = None;
         self.mode = None;
         self.open_inventory = false;
+        self.open_trading = false;
         self.pad_player = None;
         self.inventory_search = None;
         self.open_console = false;

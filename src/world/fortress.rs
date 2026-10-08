@@ -319,6 +319,7 @@ pub enum Feature {
     MineshaftChest(u64),
     BastionChest(u64, super::bastion::ChestKind),
     VillageChest(u64, super::village::Style),
+    VillageHome(IVec3),
     VillageWorkstation(Block),
 }
 

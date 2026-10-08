@@ -137,6 +137,7 @@ impl Game {
                 let Some(stack) = self.inventory.armor[piece as usize].take() else { return };
                 self.inventory.armor[piece as usize] = self.move_to_player(stack);
             }
+            SlotRef::Trade(i) => self.buy_trade(i),
             SlotRef::Palette(item) => {
                 if self.mode.is_creative() {
                     self.inventory.add(item, item.max_stack());
@@ -229,7 +230,7 @@ impl Game {
                     return None;
                 }
             }
-            Container::Inventory | Container::CraftingTable => {}
+            Container::Inventory | Container::CraftingTable | Container::Trading(_) => {}
         }
         let order: Vec<usize> =
             if from < HOTBAR_SLOTS { (HOTBAR_SLOTS..SLOTS).collect() } else { (0..HOTBAR_SLOTS).collect() };

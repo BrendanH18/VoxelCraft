@@ -22,7 +22,7 @@ use crate::world::{
     terrain::Dimension,
 };
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -98,6 +98,7 @@ pub enum Command {
     /// Combines the held stack with hotbar slot 0..9 on the targeted anvil.
     Anvil(usize),
     Grindstone(Option<usize>),
+    Trade(Option<usize>),
     /// Upgrades held diamond gear at the targeted smithing table, consuming
     /// a template and Netherite ingot from the inventory.
     Smithing,
@@ -144,6 +145,8 @@ const COMMAND_NAMES: &[&str] = &[
     "enchant",
     "say",
     "smithing",
+    "grindstone",
+    "trade",
     "players",
     "catalog",
 ];
@@ -515,6 +518,10 @@ impl Command {
                 Self::Effect(EffectChange::Give(effect, secs, amp))
             }
             ["anvil", n] => Self::Anvil(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
+            ["trade"] => Self::Trade(None),
+            ["trade", n] => {
+                Self::Trade(Some(n.parse::<usize>().ok().filter(|n| (1..=10).contains(n)).ok_or_else(bad)? - 1))
+            }
             ["grindstone"] => Self::Grindstone(None),
             ["grindstone", n] => {
                 Self::Grindstone(Some(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1))
@@ -1093,6 +1100,15 @@ impl Agent {
                 if !self.creative {
                     self.vitals.xp.add_levels(-(r.cost as i64));
                     crate::enchant::wear_anvil(world, pos);
+                }
+            }
+            Command::Trade(index) => {
+                let id = entities
+                    .target_merchant(world, self.player.eye(), self.player.forward().as_dvec3(), 6.0)
+                    .ok_or("no villager within reach")?;
+                if let Some(i) = index {
+                    let xp = entities.trade(id, i, &mut self.inventory)?;
+                    entities.spawn_xp(self.player.pos, xp);
                 }
             }
             Command::Grindstone(slot) => {
@@ -2175,5 +2191,44 @@ mod tests {
         assert_eq!(world.get_block(IVec3::new(3, 151, 1)), Some(Block::STONE));
         assert!(a.execute(Command::Place, &mut world, &mut entities, &[]).is_err());
         assert_eq!(a.inventory.get(0).unwrap().count, 1);
+    }
+}
+
+#[cfg(test)]
+mod village_agent_tests {
+    use super::*;
+    use crate::entity::{MobKind, villager::Profession};
+    use crate::world::{chunk::ChunkData, terrain::Generator};
+    use std::sync::Arc;
+    #[test]
+    fn agent_trades_targeted_villager_and_cannot_pay_through_walls() {
+        let mut saved = rustc_hash::FxHashMap::default();
+        saved.insert(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+        let mut w = World::new_headless(Arc::new(Generator::new(1)), saved, 2);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        for _ in 0..10000 {
+            w.update(a.player.pos);
+            if w.is_loaded(IVec3::new(1, 150, 1)) {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        assert!(w.is_loaded(IVec3::new(1, 150, 1)));
+        a.player.yaw = 0.0;
+        a.player.pitch = 0.0;
+        let mut e = Entities::new(42);
+        e.spawn(MobKind::Villager, DVec3::new(3.5, 150.0, 1.5));
+        let v = e.mobs[0].villager.as_mut().unwrap();
+        v.set_profession(Profession::Farmer);
+        let o = v.offers[0].unwrap();
+        a.inventory.slots[0] = Some(o.price());
+        a.execute(Command::parse("trade").unwrap(), &mut w, &mut e, &[]).unwrap();
+        a.execute(Command::parse("trade 1").unwrap(), &mut w, &mut e, &[]).unwrap();
+        assert!(a.inventory.slots.iter().flatten().any(|s| s.item == o.output.item && s.count >= o.output.count));
+        assert!(!e.orbs.is_empty());
+        assert_eq!(e.mobs[0].villager.as_ref().unwrap().offers[0].unwrap().uses, 1);
+        w.set_block(IVec3::new(2, 151, 1), Block::STONE);
+        assert!(a.execute(Command::parse("trade").unwrap(), &mut w, &mut e, &[]).is_err());
+        assert!(Command::parse("trade 11").is_err());
     }
 }

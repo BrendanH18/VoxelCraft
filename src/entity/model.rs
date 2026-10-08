@@ -162,6 +162,52 @@ const WITCH_HEAD: &[Cuboid] = &[
     cube([-1.5, 11.5, -1.5], [1.5, 12.0, 1.5], WITCH_HAT, 24),
 ];
 
+// ---------------------------------------------------------------- villager
+const VILLAGER_BODY: &[Cuboid] = &[
+    cube([-4.0, 8.0, -3.0], [4.0, 24.0, 3.0], [114, 78, 50], 30),
+    cube([-4.5, 5.0, -3.5], [4.5, 11.0, 3.5], [98, 66, 44], 30),
+    cube([-7.0, 15.0, 3.0], [7.0, 19.0, 6.0], [114, 78, 50], 28),
+    cube([-1.5, 15.0, 5.5], [1.5, 18.0, 6.5], [177, 131, 101], 24),
+];
+const VILLAGER_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [177, 131, 101], 24),
+    cube([-1.0, 1.0, 4.0], [1.0, 5.0, 6.0], [162, 117, 86], 22),
+    cube([-3.0, 4.0, 4.0], [-1.0, 5.0, 4.1], [49, 103, 43], 0),
+    cube([1.0, 4.0, 4.0], [3.0, 5.0, 4.1], [49, 103, 43], 0),
+    cube([-3.0, 5.5, 4.0], [3.0, 6.5, 4.1], [62, 43, 28], 0),
+];
+const VILLAGER_LEG: &[Cuboid] = &[cube([-2.0, -8.0, -2.0], [2.0, 0.0, 2.0], [68, 49, 36], 28)];
+const FARMER_HAT: &[Cuboid] = &[
+    cube([-6.0, 7.0, -6.0], [6.0, 8.0, 6.0], [213, 177, 88], 25),
+    cube([-4.0, 8.0, -4.0], [4.0, 10.0, 4.0], [199, 159, 72], 25),
+];
+const VILLAGER_APRONS: [[Cuboid; 1]; 15] = {
+    let colours = [
+        [114, 78, 50],
+        [79, 124, 46],
+        [155, 121, 51],
+        [166, 134, 71],
+        [223, 220, 202],
+        [139, 106, 73],
+        [226, 221, 200],
+        [224, 180, 119],
+        [135, 71, 149],
+        [90, 91, 93],
+        [69, 58, 48],
+        [86, 66, 52],
+        [218, 216, 210],
+        [159, 109, 67],
+        [204, 191, 180],
+    ];
+    let mut a = [[cube([-3.5, 8.0, 3.05], [3.5, 15.0, 3.15], [0, 0, 0], 20)]; 15];
+    let mut i = 0;
+    while i < 15 {
+        a[i][0] = cube([-3.5, 8.0, 3.05], [3.5, 15.0, 3.15], colours[i], 20);
+        i += 1;
+    }
+    a
+};
+
 // ---------------------------------------------------------------- zombified piglin
 
 const PIGLIN_SKIN: Rgb = [226, 150, 140];
@@ -412,6 +458,7 @@ const ARROW: &[Cuboid] = &[
 ];
 
 /// A part placed in model space.
+#[derive(Clone, Copy)]
 struct Part {
     boxes: &'static [Cuboid],
     pivot: Vec3,
@@ -422,13 +469,44 @@ fn part(boxes: &'static [Cuboid], pivot: [f32; 3], rot: Quat) -> Part {
     Part { boxes, pivot: Vec3::from_array(pivot), rot }
 }
 
+// Fixed-capacity poses keep every mob, including villagers, allocation-free per frame.
+struct Parts {
+    data: [Part; 16],
+    len: usize,
+}
+impl Parts {
+    fn new() -> Self {
+        Self { data: [Part { boxes: &[], pivot: Vec3::ZERO, rot: Quat::IDENTITY }; 16], len: 0 }
+    }
+    fn push(&mut self, p: Part) {
+        self.data[self.len] = p;
+        self.len += 1;
+    }
+}
+impl FromIterator<Part> for Parts {
+    fn from_iter<T: IntoIterator<Item = Part>>(items: T) -> Self {
+        let mut out = Self::new();
+        for p in items {
+            out.push(p);
+        }
+        out
+    }
+}
+impl std::ops::Deref for Parts {
+    type Target = [Part];
+    fn deref(&self) -> &[Part] {
+        &self.data[..self.len]
+    }
+}
+macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.push($p);)*out}}}
+
 /// Animated parts for a mob, in model space (pixels).
-fn pose(m: &Mob, time: f32) -> Vec<Part> {
+fn pose(m: &Mob, time: f32) -> Parts {
     let swing = m.limb_phase.sin() * m.limb_amp * 0.9;
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
-        MobKind::Pig => vec![
+        MobKind::Pig => parts![
             part(PIG_BODY, [0.0; 3], Quat::IDENTITY),
             part(PIG_LEG_BOX, [-3.0, 6.0, 5.0], rx(swing)),
             part(PIG_LEG_BOX, [3.0, 6.0, 5.0], rx(-swing)),
@@ -436,7 +514,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             part(PIG_LEG_BOX, [3.0, 6.0, -5.0], rx(swing)),
             part(PIG_HEAD, [0.0, 12.0, 8.0], head),
         ],
-        MobKind::Cow => vec![
+        MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
             part(COW_LEG, [-4.0, 12.0, 6.0], rx(swing)),
             part(COW_LEG, [4.0, 12.0, 6.0], rx(-swing)),
@@ -444,7 +522,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             part(COW_LEG, [4.0, 12.0, -6.0], rx(swing)),
             part(COW_HEAD, [0.0, 18.0, 9.0], head),
         ],
-        MobKind::Sheep => vec![
+        MobKind::Sheep => parts![
             part(if m.sheared { SHEARED_BODY } else { SHEEP_BODY }, [0.0; 3], Quat::IDENTITY),
             part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, 5.0], rx(swing)),
             part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, 5.0], rx(-swing)),
@@ -456,7 +534,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             // Wings flap while airborne.
             let flap = if m.on_ground { 0.0 } else { ((time * 22.0).sin() * 0.5 + 0.5) * 1.2 };
             let rz = Quat::from_rotation_z;
-            vec![
+            parts![
                 part(CHICKEN_BODY, [0.0; 3], Quat::IDENTITY),
                 part(CHICKEN_LEG, [-1.5, 4.0, 0.0], rx(swing)),
                 part(CHICKEN_LEG, [1.5, 4.0, 0.0], rx(-swing)),
@@ -469,7 +547,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             // Bow raised toward the target while hunting, arms swinging otherwise.
             let aiming = m.ai == Ai::Chase;
             let arm = |s: f32| if aiming { rx(-FRAC_PI_2 - m.head_pitch) } else { rx(-swing * s * 0.6) };
-            vec![
+            parts![
                 part(SKELETON_BODY, [0.0; 3], Quat::IDENTITY),
                 part(SKELETON_LEG, [-2.0, 12.0, 0.0], rx(swing)),
                 part(SKELETON_LEG, [2.0, 12.0, 0.0], rx(-swing)),
@@ -482,7 +560,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             // Sword raised toward the target while hunting.
             let striking = m.ai == Ai::Chase;
             let arm = |s: f32| if striking { rx(-FRAC_PI_2 * 0.9 + m.attack_anim * 1.2) } else { rx(-swing * s * 0.6) };
-            vec![
+            parts![
                 part(WITHER_BODY, [0.0; 3], Quat::IDENTITY),
                 part(WITHER_LIMB, [-2.0, 12.0, 0.0], rx(swing)),
                 part(WITHER_LIMB, [2.0, 12.0, 0.0], rx(-swing)),
@@ -491,13 +569,27 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
                 part(WITHER_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
-        MobKind::Witch => vec![
+        MobKind::Villager => {
+            let profession = m.villager.as_ref().map_or(super::villager::Profession::None, |v| v.profession);
+            let mut parts = parts![
+                part(VILLAGER_BODY, [0.0; 3], Quat::IDENTITY),
+                part(VILLAGER_LEG, [-2.0, 8.0, 0.0], rx(swing)),
+                part(VILLAGER_LEG, [2.0, 8.0, 0.0], rx(-swing)),
+                part(VILLAGER_HEAD, [0.0, 24.0, 0.0], head),
+                part(&VILLAGER_APRONS[profession as usize], [0.0; 3], Quat::IDENTITY)
+            ];
+            if profession == super::villager::Profession::Farmer {
+                parts.push(part(FARMER_HAT, [0.0, 24.0, 0.0], head));
+            }
+            parts
+        }
+        MobKind::Witch => parts![
             part(WITCH_BODY, [0.0; 3], Quat::IDENTITY),
             part(WITCH_LEG, [-2.0, 8.0, 0.0], rx(swing)),
             part(WITCH_LEG, [2.0, 8.0, 0.0], rx(-swing)),
             part(WITCH_HEAD, [0.0, 19.0, 0.0], head),
         ],
-        MobKind::Creeper => vec![
+        MobKind::Creeper => parts![
             part(CREEPER_BODY, [0.0; 3], Quat::IDENTITY),
             part(CREEPER_LEG, [-2.0, 6.0, 4.0], rx(swing)),
             part(CREEPER_LEG, [2.0, 6.0, 4.0], rx(-swing)),
@@ -506,12 +598,12 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             part(CREEPER_HEAD, [0.0, 18.0, 0.0], head),
         ],
         MobKind::MagmaCube => {
-            vec![part(MAGMA_BODY, [0.0; 3], Quat::IDENTITY), part(MAGMA_GLOW, [0.0; 3], Quat::IDENTITY)]
+            parts![part(MAGMA_BODY, [0.0; 3], Quat::IDENTITY), part(MAGMA_GLOW, [0.0; 3], Quat::IDENTITY)]
         }
         MobKind::Ghast => {
             // Nine-tenths of the body is the cube; eight tentacles hang to
             // the feet and twist around their own axis so they stay on the ground.
-            let mut parts = vec![part(GHAST_BODY, [0.0; 3], Quat::IDENTITY)];
+            let mut parts = parts![part(GHAST_BODY, [0.0; 3], Quat::IDENTITY)];
             for i in 0..8 {
                 let a = i as f32 * FRAC_PI_2 * 0.5;
                 let twist = (time * 1.4 + i as f32 * 0.7).sin() * 0.45;
@@ -519,12 +611,12 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             }
             parts
         }
-        MobKind::Slime => vec![part(SLIME_BODY, [0.0; 3], Quat::IDENTITY)],
+        MobKind::Slime => parts![part(SLIME_BODY, [0.0; 3], Quat::IDENTITY)],
         MobKind::Spider | MobKind::CaveSpider => {
             // Four legs a side, fanned out and drooping onto the ground; the
             // pivot height puts each tip exactly at the feet.
             let pivot_y = SPIDER_LEG_LEN * SPIDER_LEG_DROOP.sin() + SPIDER_LEG_DROOP.cos();
-            let mut parts = vec![part(SPIDER_BODY, [0.0; 3], Quat::IDENTITY)];
+            let mut parts = parts![part(SPIDER_BODY, [0.0; 3], Quat::IDENTITY)];
             for (i, &z) in [2.0f32, 0.7, -0.7, -2.0].iter().enumerate() {
                 let fan = 0.6 - i as f32 * 0.4;
                 let step = swing * 0.4 * if i % 2 == 0 { 1.0 } else { -1.0 };
@@ -541,7 +633,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             // the sides otherwise.
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.9 } else { 0.0 };
             let sword = if m.ai == Ai::Chase { rx(-1.1 + chop) } else { rx(-0.4 - swing * 0.5) };
-            vec![
+            parts![
                 part(PIGLIN_BODY, [0.0; 3], Quat::IDENTITY),
                 part(PIGLIN_LEG, [-2.0, 12.0, 0.0], rx(swing)),
                 part(PIGLIN_LEG, [2.0, 12.0, 0.0], rx(-swing)),
@@ -571,7 +663,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
         MobKind::Blaze => {
             // Java's three rings of four rods: the top two turn one way,
             // the bottom the other, each bobbing on its own phase.
-            let mut parts = vec![part(BLAZE_HEAD, [0.0, 20.0, 0.0], head)];
+            let mut parts = parts![part(BLAZE_HEAD, [0.0, 20.0, 0.0], head)];
             let t = time * 2.0 + m.limb_phase * 0.1;
             for (ring, (radius, y, speed)) in
                 [(9.0, 15.0, 1.0f32), (7.0, 8.0, 1.0), (5.0, 2.0, -1.0)].into_iter().enumerate()
@@ -595,7 +687,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             let stride = swing * 0.5;
             let lift = if angry { 3.0 } else { 0.0 };
             let arm = |s: f32| rx(if angry { -0.35 } else { 0.0 } - stride * s);
-            let mut parts = vec![
+            let mut parts = parts![
                 part(ENDERMAN_BODY, [0.0; 3], Quat::IDENTITY),
                 part(ENDERMAN_LIMB, [-2.0, 28.0, 0.0], rx(stride)),
                 part(ENDERMAN_LIMB, [2.0, 28.0, 0.0], rx(-stride)),
@@ -619,7 +711,7 @@ fn pose(m: &Mob, time: f32) -> Vec<Part> {
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.7 } else { 0.0 };
             let bob = (time * 1.6).sin() * 0.05;
             let arm = |s: f32| rx(-FRAC_PI_2 + bob * s + swing * 0.25 * s + chop);
-            vec![
+            parts![
                 part(body, [0.0; 3], Quat::IDENTITY),
                 part(leg, [-2.0, 12.0, 0.0], rx(swing)),
                 part(leg, [2.0, 12.0, 0.0], rx(-swing)),
@@ -654,7 +746,8 @@ pub fn build(
 
         // Death: topple onto the side, lifted so it doesn't sink into the
         // ground.
-        let death = m.death_progress();
+        let asleep = m.villager.as_ref().is_some_and(|v| v.sleeping);
+        let death = if asleep { 1.0 } else { m.death_progress() };
         let body = Quat::from_rotation_y(FRAC_PI_2 - m.yaw) * Quat::from_rotation_z(death * FRAC_PI_2);
         let origin = rel + Vec3::Y * (m.shape().half_width as f32 * death);
         let hurt = if m.dying.is_some() { 1.0 } else { m.hurt / HURT_TIME };

@@ -106,6 +106,7 @@ pub enum MobKind {
     Drowned,
     /// Throws splash potions, and drinks its own.
     Witch,
+    Villager,
 }
 
 impl MobKind {
@@ -116,7 +117,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 20] = [
+    pub const ALL: [MobKind; 21] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -137,6 +138,7 @@ impl MobKind {
         MobKind::Husk,
         MobKind::Drowned,
         MobKind::Witch,
+        MobKind::Villager,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -162,6 +164,7 @@ impl MobKind {
             MobKind::Husk => "husk",
             MobKind::Drowned => "drowned",
             MobKind::Witch => "witch",
+            MobKind::Villager => "villager",
         }
     }
 
@@ -178,9 +181,12 @@ impl MobKind {
             MobKind::Cow => Shape::new(0.45, 1.4),
             MobKind::Sheep => Shape::new(0.45, 1.3),
             MobKind::Chicken => Shape::new(0.2, 0.7),
-            MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombifiedPiglin | MobKind::Witch => {
-                Shape::new(0.3, 1.95)
-            }
+            MobKind::Zombie
+            | MobKind::Husk
+            | MobKind::Drowned
+            | MobKind::ZombifiedPiglin
+            | MobKind::Witch
+            | MobKind::Villager => Shape::new(0.3, 1.95),
             MobKind::Skeleton => Shape::new(0.3, 1.99),
             MobKind::Creeper => Shape::new(0.3, 1.7),
             MobKind::Spider => Shape::new(0.7, 0.9),
@@ -207,7 +213,8 @@ impl MobKind {
             | MobKind::WitherSkeleton
             | MobKind::Creeper
             | MobKind::ZombifiedPiglin
-            | MobKind::Blaze => 20.0,
+            | MobKind::Blaze
+            | MobKind::Villager => 20.0,
             MobKind::Spider => 16.0,
             MobKind::CaveSpider => 12.0,
             MobKind::Witch => 26.0,
@@ -258,7 +265,7 @@ impl MobKind {
         match self {
             MobKind::Enderman => true,
             // Only from spawners and inside fortresses (`fortress_spawn`).
-            MobKind::Blaze | MobKind::WitherSkeleton => false,
+            MobKind::Blaze | MobKind::WitherSkeleton | MobKind::Villager => false,
             // Only from stronghold spawners (and infested blocks, later).
             MobKind::Silverfish | MobKind::CaveSpider => false,
             MobKind::MagmaCube | MobKind::ZombifiedPiglin | MobKind::Ghast => dimension == Dimension::Nether,
@@ -340,6 +347,7 @@ impl MobKind {
             MobKind::Pig => 1.3,
             MobKind::Cow
             | MobKind::Witch
+            | MobKind::Villager
             | MobKind::Zombie
             | MobKind::Husk
             | MobKind::Drowned
@@ -396,7 +404,7 @@ impl MobKind {
             MobKind::ZombifiedPiglin => &[(Item::ROTTEN_FLESH, 0, 1), (Item::GOLD_NUGGET, 0, 1)],
             MobKind::Enderman => &[(Item::ENDER_PEARL, 0, 1)],
             MobKind::Blaze => &[(Item::BLAZE_ROD, 0, 1)],
-            MobKind::Silverfish => &[],
+            MobKind::Silverfish | MobKind::Villager => &[],
             MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
             MobKind::MagmaCube => &[(Item::MAGMA_CREAM, -2, 1)],
             MobKind::Ghast => &[(Item::GUNPOWDER, 0, 2), (Item::GHAST_TEAR, 0, 1)],
@@ -456,6 +464,7 @@ impl MobKind {
     /// Experience for killing one (Java's: 5 for monsters, 1-3 for animals).
     pub fn xp(self, rng: &mut Rng) -> u32 {
         match self {
+            MobKind::Villager => 0,
             MobKind::Blaze => 10,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
@@ -477,6 +486,7 @@ pub(super) enum Ai {
 
 pub struct Mob {
     pub kind: MobKind,
+    pub villager: Option<Box<super::villager::Villager>>,
     /// Java slime size (1, 2 or 4).
     pub size: u8,
     /// A baby zombie: half size and 50% faster.
@@ -575,6 +585,7 @@ impl Mob {
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,
+            villager: (kind == MobKind::Villager).then(|| Box::new(super::villager::Villager::new(0, 0))),
             size: 1,
             baby: false,
             wool_color: crate::color::DyeColor::White,
@@ -823,6 +834,13 @@ impl Mob {
                 self.teleport_pending = true;
             }
         }
+        if self.alive() && self.kind == MobKind::Villager && self.age < 0 {
+            let v = self.villager.as_mut().unwrap();
+            v.growth += dt as f32 * 20.0;
+            let ticks = v.growth.floor() as i32;
+            v.growth -= ticks as f32;
+            self.age = (self.age + ticks).min(0);
+        }
         if self.alive() && self.kind == MobKind::Chicken {
             let ticks = ((dt * 20.0).round() as i32).max(1);
             if self.age < 0 {
@@ -846,6 +864,35 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        if let Some(v) = &self.villager {
+            if v.sleeping || v.trading && !v.fleeing {
+                return (None, 0.0);
+            }
+            if let Some(goal) = v.goal {
+                let dir = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
+                if dir.length_squared() < 1.0 {
+                    return (None, 0.0);
+                }
+                let mut dir = dir.normalize();
+                for dy in 0..2 {
+                    let cell = (self.pos + dir * 1.1).floor().as_ivec3() + IVec3::Y * dy;
+                    if world.block(cell).is_some_and(|b| {
+                        matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: false, upper: false, .. }))
+                    }) {
+                        events.push(EntityEvent::VillagerDoor { cell });
+                    }
+                }
+                self.detour -= dt;
+                if self.blocked && self.on_ground && self.detour <= 0.0 && !self.can_step_up(world, dir) {
+                    self.detour = 0.8;
+                    self.detour_side = if rng.chance(0.5) { 1.0 } else { -1.0 };
+                }
+                if self.detour > 0.0 {
+                    dir = (DVec3::new(-dir.z, 0.0, dir.x) * self.detour_side + dir * 0.35).normalize();
+                }
+                return (Some(dir), if v.fleeing { 4.0 } else { 2.0 });
+            }
+        }
         if self.kind == MobKind::Witch && self.witch_upkeep(dt, rng) {
             return (None, 0.0);
         }

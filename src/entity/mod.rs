@@ -30,6 +30,7 @@ mod projectile;
 mod slime;
 mod thrown;
 pub mod tnt;
+pub mod villager;
 
 use std::f32::consts::TAU;
 
@@ -200,6 +201,10 @@ pub enum EntityEvent {
     BreakBlock {
         cell: IVec3,
     },
+    /// A villager needs this closed wooden door opened.
+    VillagerDoor {
+        cell: IVec3,
+    },
     /// A chicken laid an egg at its feet.
     LaidEgg {
         pos: DVec3,
@@ -279,6 +284,8 @@ pub trait MobWorld: BlockSource {
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         Vec::new()
     }
+    fn village_pois(&self, _visit: &mut dyn FnMut(IVec3, Block)) {}
+    fn village_homes(&self, _visit: &mut dyn FnMut(IVec3, IVec3)) {}
     fn seed(&self) -> u64 {
         0
     }
@@ -293,6 +300,12 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn village_pois(&self, visit: &mut dyn FnMut(IVec3, Block)) {
+        self.visit_village_pois(visit);
+    }
+    fn village_homes(&self, visit: &mut dyn FnMut(IVec3, IVec3)) {
+        self.visit_village_homes(visit);
+    }
     fn seed(&self) -> u64 {
         self.generator.seed
     }
@@ -468,6 +481,11 @@ pub struct Entities {
     /// Java `doMobLoot`; set by the world before each update.
     pub mob_loot: bool,
     pub moon_brightness: f32,
+    pub village_time: f64,
+    pub village_day: i64,
+    next_villager_id: u64,
+    villager_births: rustc_hash::FxHashSet<IVec3>,
+    village_timer: f32,
     rng: Rng,
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
@@ -499,6 +517,11 @@ impl Entities {
             fight: None,
             mob_loot: true,
             moon_brightness: 1.0,
+            village_time: 0.25,
+            village_day: 0,
+            next_villager_id: 1,
+            villager_births: Default::default(),
+            village_timer: 0.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
@@ -539,6 +562,11 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
+        if kind == MobKind::Villager {
+            **mob.villager.as_mut().unwrap() =
+                villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
+            self.next_villager_id = self.next_villager_id.saturating_add(1);
+        }
         if kind == MobKind::Sheep {
             let roll = self.rng.next_int(100);
             let rare = if roll >= 18 { self.rng.next_int(500) } else { 1 };
@@ -594,12 +622,27 @@ impl Entities {
             self.run_spawners(dt as f32, world, ctx);
         }
 
+        self.village_upkeep(dt as f32, world);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
             let gone = m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
-                || ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
-                || !world.loaded(m.pos.floor().as_ivec3());
+                || m.kind != MobKind::Villager
+                    && (ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
+                        || !world.loaded(m.pos.floor().as_ivec3()));
+            if m.kind == MobKind::Villager
+                && !gone
+                && (!world.loaded(m.pos.floor().as_ivec3())
+                    || ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST))
+            {
+                self.mobs[i].villager.as_mut().unwrap().active = false;
+                i += 1;
+                continue;
+            }
+            if let Some(v) = &mut self.mobs[i].villager {
+                v.active = true;
+            }
+            let m = &self.mobs[i];
             if gone {
                 if m.dying.is_some_and(|t| t >= mob::DEATH_TIME) {
                     let mut burst = crate::particles::Burst::new(
@@ -937,7 +980,13 @@ impl Entities {
     fn separate(&mut self, dt: f64) {
         let n = self.mobs.len();
         for i in 0..n {
+            if self.mobs[i].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
+                continue;
+            }
             for j in i + 1..n {
+                if self.mobs[j].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
+                    continue;
+                }
                 let (a, b) = (&self.mobs[i], &self.mobs[j]);
                 let d = DVec3::new(b.pos.x - a.pos.x, 0.0, b.pos.z - a.pos.z);
                 let min = a.shape().half_width + b.shape().half_width;

@@ -352,7 +352,20 @@ fn nav_for(button: Button) -> Option<Nav> {
     })
 }
 
+impl Pads {
+    pub(super) fn trading(&self, id: u64) -> bool {
+        self.seats.iter().any(|s| matches!(s.menu,Some(Menu::Items {tab:Tab::Trading(other),..}) if id==other))
+    }
+}
 impl Game {
+    pub(super) fn open_pad_trading(&mut self, id: u64) -> bool {
+        if let Some(seat) = self.pads.seats.first_mut() {
+            seat.open(Menu::items(Tab::Trading(id)));
+            true
+        } else {
+            false
+        }
+    }
     /// Drain controller events every frame: join, hot-plug, presses and
     /// right-stick look (applied per frame, like the mouse).
     pub(super) fn poll_pads(&mut self, dt: f32, paused: bool) {
@@ -669,6 +682,9 @@ impl Game {
                             || eye.distance(pos.as_dvec3() + 0.5) > super::REACH + 1.0
                             || agent.vitals.is_dead()
                     }
+                    Menu::Items { tab: Tab::Trading(id), .. } => {
+                        agent.vitals.is_dead() || !self.mobs.entities.merchant_in_reach(id, eye)
+                    }
                     Menu::Items { .. } => agent.vitals.is_dead(),
                     Menu::Pause { .. } => false,
                 };
@@ -706,7 +722,7 @@ impl Game {
                 }
             }
             agent.hold(tick.input, false, false);
-            let used = self
+            let (used, merchant) = self
                 .puppet(i, |g| {
                     for press in presses {
                         match press {
@@ -721,9 +737,12 @@ impl Game {
                     }
                     g.act(true, dt);
                     g.mobs.attack_cooldown -= dt;
-                    g.puppet_used.take()
+                    (g.puppet_used.take(), g.puppet_merchant.take())
                 })
-                .flatten();
+                .unwrap_or_default();
+            if let Some(id) = merchant {
+                self.pads.seats[i].open(Menu::items(Tab::Trading(id)));
+            }
             if let Some(pos) = used {
                 self.pad_use_block(i, pos);
             }

@@ -393,6 +393,10 @@ impl Villages {
         self.visit(g, base, |v| {
             for p in &v.pieces {
                 if p.kind == Kind::House {
+                    let home = p.world(1, 0, 4);
+                    if bounds.contains(home) {
+                        out.push((home, Feature::VillageHome(p.world(3, 0, 3))));
+                    }
                     let chest = p.world(5, 0, 2);
                     if bounds.contains(chest) {
                         out.push((chest, Feature::VillageChest(p.seed, v.style)));

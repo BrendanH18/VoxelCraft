@@ -46,6 +46,7 @@ pub(super) enum SlotRef {
     SmithBase,
     SmithAddition,
     SmithResult,
+    Trade(usize),
     /// Worn armor (survival inventory).
     Armor(ArmorPiece),
 }
@@ -485,8 +486,16 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
         ui.rect(x + 2.0, y + 14.0, w, 1.0, color);
     }
     if counts && stack.count > 1 {
-        let n = stack.count.to_string();
-        ui.text(x + 17.0 - Ui::text_width(&n), y + 9.0, &n, WHITE);
+        let digits = [b'0' + stack.count / 100, b'0' + stack.count / 10 % 10, b'0' + stack.count % 10];
+        let start = if stack.count >= 100 {
+            0
+        } else if stack.count >= 10 {
+            1
+        } else {
+            2
+        };
+        let n = std::str::from_utf8(&digits[start..]).expect("decimal digits");
+        ui.text(x + 17.0 - Ui::text_width(n), y + 9.0, n, WHITE);
     }
 }
 
@@ -520,6 +529,14 @@ impl Game {
     /// Height of the top section: room for the four armor slots in the
     /// survival inventory, three rows of slots otherwise.
     fn top_h(&self) -> f32 {
+        if let Container::Trading(id) = self.container {
+            return self
+                .mobs
+                .entities
+                .merchant(id)
+                .and_then(|m| m.villager.as_ref())
+                .map_or(46.0, |v| 26.0 + v.level as f32 * 20.0);
+        }
         match (self.has_top_section(), self.shows_armor()) {
             (false, _) => 0.0,
             (true, true) => CRAFT_H + SLOT,
@@ -545,6 +562,7 @@ impl Game {
                     | Container::Enchanting(_)
                     | Container::Anvil(_)
                     | Container::Grindstone(_)
+                    | Container::Trading(_)
                     | Container::Smithing(_)
             )
     }
@@ -588,7 +606,20 @@ impl Game {
         let (px, py, _) = self.panel(screen);
         let py = py + super::search::HEIGHT;
         let mut out = Vec::with_capacity(46);
-        let top = if let Container::Chest(_) = self.container {
+        let top = if let Container::Trading(id) = self.container {
+            if let Some(v) = self.mobs.entities.merchant(id).and_then(|m| m.villager.as_ref()) {
+                for (i, o) in v.offers.iter().enumerate() {
+                    if o.is_some() {
+                        out.push((
+                            SlotRef::Trade(i),
+                            px + 62.0 + (i % 2) as f32 * 80.0,
+                            py + 22.0 + (i / 2) as f32 * 20.0,
+                        ));
+                    }
+                }
+            }
+            self.top_h()
+        } else if let Container::Chest(_) = self.container {
             for i in 0..crate::world::chest::SLOTS {
                 out.push((SlotRef::Chest(i), px + 7.0 + (i % 9) as f32 * SLOT, py + 18.0 + (i / 9) as f32 * SLOT));
             }
@@ -731,6 +762,7 @@ impl Game {
             (Container::Anvil(_), _) => "Anvil",
             (Container::Grindstone(_), _) => "Repair & Disenchant",
             (Container::Smithing(_), _) => "Upgrade Gear",
+            (Container::Trading(_), _) => "Trading",
             (Container::Inventory, GameMode::Survival) => "Inventory",
             (Container::Inventory, GameMode::Creative) => "Creative",
             (Container::Inventory, GameMode::Adventure) => "Adventure Inventory",
@@ -741,7 +773,9 @@ impl Game {
             let layout = self.recipe_layout((sw, sh));
             self.recipe_button(ui, layout.toggle, if self.recipe_book.open { "Hide" } else { "Recipes" });
         }
-        if let Container::Brewing(p) = self.container
+        if let Container::Trading(id) = self.container {
+            self.trading_ui(ui, id, px, py);
+        } else if let Container::Brewing(p) = self.container
             && let Some(b) = self.world.brewing_stand(p)
         {
             brewing_ui(ui, b, px, py, (self.started.elapsed().as_secs_f32() * 8.0) as u32);
@@ -822,7 +856,11 @@ impl Game {
                 ui.icon(x + 1.0, y + 1.0, 16.0, layer, [0.0, 0.0, 0.0, 0.25]);
             }
             if let Some(stack) = stack {
-                self.stack_ui(ui, x, y, stack);
+                if matches!(self.container, Container::Trading(_)) {
+                    draw_stack(ui, x, y, stack, true, self.dial_of(&self.player));
+                } else {
+                    self.stack_ui(ui, x, y, stack);
+                }
             }
             if !self.search.query.trim().is_empty()
                 && let Some(stack) = stack
@@ -935,6 +973,9 @@ impl Game {
 
     /// Contents of a furnace or chest slot on the open screen.
     fn container_slot(&self, slot: SlotRef) -> Option<Stack> {
+        if let (Container::Trading(id), SlotRef::Trade(i)) = (self.container, slot) {
+            return self.mobs.entities.merchant(id)?.villager.as_ref()?.offers.get(i)?.map(|o| o.output);
+        }
         if let (Container::Chest(p), SlotRef::Chest(i)) = (self.container, slot) {
             return self.world.chest(p)?.slots[i];
         }

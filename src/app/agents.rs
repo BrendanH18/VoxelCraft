@@ -181,6 +181,13 @@ impl Agents {
 impl Game {
     fn agent_response(&self, agent: &Agent, radius: i32) -> Value {
         let mut state = agent.observe(&self.world, radius);
+        state["merchant"] = self
+            .mobs
+            .entities
+            .target_merchant(&self.world, agent.player.eye(), agent.player.forward().as_dvec3(), super::REACH)
+            .and_then(|id| self.mobs.entities.merchant(id))
+            .and_then(|m| m.villager.as_ref())
+            .map_or(Value::Null, |v| v.observation());
         let overworld = self.dimension == crate::world::terrain::Dimension::Overworld;
         if let Some(stack) = agent.inventory.get(agent.selected) {
             if stack.item == crate::item::Item::COMPASS {

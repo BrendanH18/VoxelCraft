@@ -282,6 +282,20 @@ impl Game {
                 self.damage_player(damage, survival::CAUSE_MAGIC);
                 return Ok(text);
             }
+            Command::Trade(index) => {
+                let id = self
+                    .mobs
+                    .entities
+                    .target_merchant(&self.world, self.player.eye(), self.player.forward().as_dvec3(), super::REACH)
+                    .ok_or("no villager within reach")?;
+                if let Some(i) = index {
+                    let xp = self.mobs.entities.trade(id, i, &mut self.inventory)?;
+                    self.mobs.entities.spawn_xp(self.player.pos, xp);
+                } else {
+                    self.container = super::Container::Trading(id);
+                    self.toggle_inventory();
+                }
+            }
             Command::Observe(_) => {
                 return Ok(format!(
                     "{} at {:.1}, {:.1}, {:.1}",

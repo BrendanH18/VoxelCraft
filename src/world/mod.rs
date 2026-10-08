@@ -46,6 +46,7 @@ pub mod structure;
 pub mod terrain;
 pub mod village;
 pub mod village_blocks;
+mod village_life;
 
 use std::sync::Arc;
 
@@ -110,6 +111,8 @@ pub struct World {
     brewing_stands: FxHashMap<IVec3, brewing::BrewingStand>,
     /// Spawner cages and the mob each makes (see `spawner`).
     spawners: FxHashMap<IVec3, crate::entity::MobKind>,
+    village_pois: FxHashMap<IVec3, Block>,
+    village_homes: FxHashMap<IVec3, IVec3>,
     /// Leaves waiting to decay (seconds left) after a log near them went.
     leaf_decay: FxHashMap<IVec3, f32>,
     /// Fractional random block ticks carried over between frames.
@@ -189,6 +192,8 @@ impl World {
             chests: FxHashMap::default(),
             brewing_stands: FxHashMap::default(),
             spawners: FxHashMap::default(),
+            village_pois: FxHashMap::default(),
+            village_homes: FxHashMap::default(),
             leaf_decay: FxHashMap::default(),
             random_ticks: 0.0,
             rng,
@@ -391,6 +396,7 @@ impl World {
         self.track_chest(p, old, block);
         self.track_brewing_stand(p, old, block);
         self.track_spawner(p, old, block);
+        self.track_village_poi(p, block);
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }
@@ -609,6 +615,7 @@ impl World {
         } else {
             self.register_structure_features(pos, &data);
         }
+        self.register_village_life(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -637,6 +644,8 @@ impl World {
     /// Only graphical worlds emit a renderer removal message.
     fn remove_chunk(&mut self, pos: IVec3) {
         let slot = self.chunks.remove(&pos).unwrap();
+        self.village_pois.retain(|p, _| chunk_of(*p) != pos);
+        self.village_homes.retain(|p, _| chunk_of(*p) != pos);
         self.unload_block_light(pos, slot.block_light.as_ref());
         if slot.modified {
             self.saved.insert(pos, slot.data);

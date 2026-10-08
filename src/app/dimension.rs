@@ -24,7 +24,8 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 7] = ["furnaces", "chests", "items", "orbs", "spawners", "brewing", "dragon"];
+pub(super) const DIMENSION_KEYS: [&str; 8] =
+    ["furnaces", "chests", "items", "orbs", "spawners", "brewing", "dragon", "villagers"];
 /// Seconds of standing in a portal before it takes you (creative: almost
 /// at once).
 const PORTAL_TIME: f32 = 4.0;
@@ -109,6 +110,7 @@ impl Game {
         props.insert("spawners".to_string(), self.world.spawners_to_string());
         props.insert("items".to_string(), self.mobs.entities.items_to_string());
         props.insert("orbs".to_string(), self.mobs.entities.orbs_to_string());
+        props.insert("villagers".into(), self.mobs.entities.villagers_to_string());
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize());
         }
@@ -134,6 +136,9 @@ impl Game {
         }
         if let Some(orbs) = props.get("orbs") {
             self.mobs.entities.load_orbs(orbs);
+        }
+        if let Some(v) = props.get("villagers") {
+            self.mobs.entities.load_villagers(v);
         }
         self.mobs.entities.fight = self
             .world

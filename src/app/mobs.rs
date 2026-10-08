@@ -213,6 +213,14 @@ impl Game {
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
         self.mobs.entities.mob_loot = self.gamerules.bool("doMobLoot");
+        self.mobs.entities.village_time = self.day_time;
+        self.mobs.entities.village_day = self.day_count;
+        for m in &mut self.mobs.entities.mobs {
+            if let Some(v) = &mut m.villager {
+                v.trading =
+                    self.inventory_open && self.container == super::Container::Trading(v.id) || self.pads.trading(v.id);
+            }
+        }
         if self.held_item() != Some(crate::item::Item::FISHING_ROD) || self.vitals.is_dead() {
             self.mobs.entities.drop_bobber(self.actor);
         }
@@ -384,6 +392,13 @@ impl Game {
                 | EntityEvent::MobKilled { .. }
                 | EntityEvent::LaidEgg { .. }
                 | EntityEvent::Hatched { .. } => {}
+                EntityEvent::VillagerDoor { cell } => {
+                    if self.world.get_block(cell).is_some_and(|b| {
+                        matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: false, upper: false, .. }))
+                    }) {
+                        self.toggle_door(cell, glam::Vec3::ZERO);
+                    }
+                }
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
                     if self.mode.is_survival() && !self.vitals.is_dead() {
@@ -464,6 +479,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Slime | MobKind::MagmaCube => Voice::Slime,
         MobKind::Ghast => Voice::Ghast,
         MobKind::Witch => Voice::Witch,
+        MobKind::Villager => Voice::Villager,
     }
 }
 

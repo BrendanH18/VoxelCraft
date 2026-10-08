@@ -27,6 +27,7 @@ mod search;
 mod settings;
 mod smithing;
 mod split;
+mod trading;
 pub use crate::simulation::survival;
 pub use voxelcraft::rules::GameMode;
 mod title;
@@ -111,6 +112,7 @@ pub(crate) enum Container {
     Enchanting(IVec3),
     Anvil(IVec3),
     Grindstone(IVec3),
+    Trading(u64),
     Smithing(IVec3),
 }
 
@@ -127,6 +129,7 @@ struct Game {
     /// player while `puppet` is set (thrown pearls remember their owner).
     actor: crate::entity::PlayerId,
     puppet_used: Option<glam::IVec3>,
+    puppet_merchant: Option<u64>,
     puppet_popup: Option<String>,
     console: console::Console,
     search: search::Search,
@@ -206,6 +209,7 @@ struct Game {
     vitals: Vitals,
     screenshot: Option<String>,
     screenshot_state: u32,
+    open_trading: bool,
     place: Vec<(glam::IVec3, Block)>,
     /// `--open-block`: a container to open once placements are done.
     open_block: Option<IVec3>,
@@ -717,6 +721,7 @@ impl Game {
             puppet: false,
             actor: crate::entity::PlayerId::HOST,
             puppet_used: None,
+            puppet_merchant: None,
             puppet_popup: None,
             pads: {
                 let mut pads = if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() };
@@ -809,6 +814,7 @@ impl Game {
             vitals,
             screenshot: args.screenshot.clone(),
             screenshot_state: 0,
+            open_trading: args.open_trading,
             place: args.place.clone(),
             open_block: args.open_block,
             drop: args.drop.clone(),
@@ -1285,6 +1291,7 @@ impl Game {
                 crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
             }
             Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
+            Some(hud::SlotRef::Trade(i)) => self.buy_trade(i),
             Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right, self.mode.is_creative()),
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Chest(pos) = self.container
@@ -1531,6 +1538,9 @@ impl Game {
         if !self.mode.can_interact() {
             return;
         }
+        if self.use_villager() {
+            return;
+        }
         if self.use_sheep() {
             return;
         }
@@ -1736,6 +1746,27 @@ impl Game {
     fn screenshot_done(&mut self) -> bool {
         let Some(path) = self.screenshot.clone() else { return false };
         let settled = self.world.loaded_chunks() > 0 && self.world.pending_jobs() == 0;
+        if self.open_trading
+            && self.placed
+            && self.mobs.waited()
+            && let Some(id) = self.mobs.entities.target_merchant(
+                &self.world,
+                self.player.eye(),
+                self.player.forward().as_dvec3(),
+                REACH,
+            )
+            && self
+                .mobs
+                .entities
+                .merchant(id)
+                .and_then(|m| m.villager.as_ref())
+                .is_some_and(|v| v.offers.iter().any(Option::is_some))
+        {
+            if !self.open_pad_trading(id) {
+                self.use_villager();
+            }
+            self.open_trading = false;
+        }
         match self.screenshot_state {
             0 if settled && !self.placed => {
                 self.apply_placements();

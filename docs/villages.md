@@ -73,3 +73,66 @@ precedence have regression coverage.
 After village generation, the same idle-system benchmark measured 0.210
 ms/generated chunk and 0.663 ms/dense light+mesh chunk (no material
 regression; this fixed benchmark volume does not intersect a village).
+
+## Residents and trading
+
+Each generated house registers one resident and a permanent birth receipt.
+Receipts are saved even if the villager dies, so regenerating an unmodified
+chunk cannot duplicate it. One in five procedural residents starts as a baby;
+babies grow over 24000 loaded simulation ticks (20 minutes), claim beds, and
+wait until adulthood to claim jobs. Villagers have Java's 20 health, 0 kill XP,
+crossed arms, noses, profession aprons, farmer hats and original nasal voices.
+
+Adults claim the nearest unclaimed loaded job site within 48 blocks. Twelve
+job-site professions are supported: farmer, fisherman, shepherd, fletcher,
+librarian, cartographer, cleric, armorer, weaponsmith, toolsmith, butcher and
+mason. Breaking a job site releases it. Untraded villagers become unemployed;
+a villager with trade XP retains its profession and seeks a matching site.
+Beds of every supported colour are claimed exclusively among villagers.
+Sensors run once a second without allocating. Work runs from day tick 2000
+to 9000; rest starts at 12000. Residents walk toward work/home, open wooden
+doors, sleep near their beds, and flee zombies/husks/drowned within eight
+blocks. Sleeping villagers lie down. Unloaded or distant residents freeze
+and remain saved; their POIs leave the loaded index when chunks unload.
+
+Right-click a villager to see prices, stock, rank and level progress. Controller
+LT opens its own Trading tab; A/X/Y on an offer completes one trade into that
+player's inventory. CLI `trade` inspects the targeted merchant in the response's
+`state.merchant`, and `trade 1` through `trade 10` buy its numbered offers.
+The host console also accepts `/trade [1..10]`. Payments (including librarian
+books) and result capacity are checked atomically. Insufficient payment, full
+inventory, dead/baby/sleeping villagers, and depleted stock consume nothing.
+Opening a screen holds that merchant still; leaving reach closes it.
+`--open-trading` opens the targeted merchant after job acquisition for captures,
+including a virtual `--pad-player play` screen.
+
+Normal Java trade definitions keep their quantities, stock caps, villager XP
+and price multipliers. Two distinct supported offers unlock per tier where
+available. Novice/Apprentice/Journeyman/Expert/Master thresholds are 0/10/70/150/250
+XP. Enchanted gear and librarian books use Java enchantment levels and price
+ranges; treasure books cost double. Successful trades release 3–6 player XP,
+plus 5 on a promotion. At most two restocks occur per day, while near the job
+site during work hours, separated by 2400 day ticks. Restocking updates Java's
+supply/demand term and resets uses. Offers, enchantments, demand, stock, rank,
+XP, bed/job claims, age, identity and restock counters survive dimension saves.
+Older saves without the additive `villagers` property remain valid.
+
+Simplifications: procedural house templates/resident ages rather than vanilla
+NBT assets; straight-line navigation with obstacle sidesteps rather than full
+brain/pathfinding; sleep near a bed rather than snapping to its exact facing;
+doors remain open. Trade selection uses an independent deterministic seed
+stream, promotions unlock immediately rather than after 40 ticks, and the
+restock interval is a fixed day-time interval. Item families absent from the
+engine are filtered from trade pools, so some tiers offer fewer than two trades
+(or none): fish/buckets, campfires, maps, banners, item frames, suspicious stew,
+glazed terracotta, tipped arrows, and unavailable foods/stone variants. The
+leatherworker has no cauldron job site yet. Villager breeding/food inventories,
+gossip, reputation/curing discounts, raids, zombie attacks on villagers, iron
+golems, zombie villagers/curing and wandering traders remain gaps. Profession
+aprons share an original base model across biomes; level badges are in the UI.
+
+Additional Java references:
+- [Normal trade tables and constructors](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/npc/VillagerTrades.java)
+- [Villager schedules](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/schedule/Schedule.java)
+- [POI acquisition](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/ai/behavior/AcquirePoi.java)
+- [Merchant stock and demand](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/trading/MerchantOffer.java)
