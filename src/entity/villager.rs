@@ -236,6 +236,9 @@ pub struct Villager {
     /// Gossip simplified to one number. A cure sets Java's major_positive (20 × 5).
     pub reputation: i16,
     pub(super) last_slept: Option<i64>,
+    pub(super) food: [Option<Stack>; 8],
+    pub(super) food_level: u8,
+    pub(super) courtship: u16,
     seed: u64,
     restock_day: i64,
     restocks: u8,
@@ -260,6 +263,9 @@ impl Villager {
             active: true,
             reputation: 0,
             last_slept: None,
+            food: [None; 8],
+            food_level: 0,
+            courtship: 0,
             restock_day: -1,
             restocks: 0,
             last_restock: 0,
@@ -445,10 +451,29 @@ impl Entities {
                 }
             }
         });
+        self.mob_index.rebuild(&self.mobs);
+        self.claimed_beds.clear();
+        self.claimed_jobs.clear();
+        for m in &self.mobs {
+            if m.alive()
+                && m.kind == MobKind::Villager
+                && let Some(v) = &m.villager
+            {
+                if let Some(p) = v.home {
+                    self.claimed_beds.insert(p);
+                }
+                if let Some(p) = v.job {
+                    self.claimed_jobs.insert(p);
+                }
+            }
+        }
         let tick = (self.village_time.rem_euclid(1.0) * 24000.0) as u32;
         for i in 0..self.mobs.len() {
-            let (before, rest) = self.mobs.split_at_mut(i);
-            let (m, after) = rest.split_first_mut().unwrap();
+            let threat = self
+                .mob_index
+                .nearest(&self.mobs, self.mobs[i].pos, 8.0, |o| o.kind.is_zombie())
+                .map(|j| self.mobs[j].pos);
+            let m = &mut self.mobs[i];
             if !m.alive() || !world.loaded(m.pos.floor().as_ivec3()) {
                 continue;
             }
@@ -456,11 +481,12 @@ impl Entities {
             if m.kind != MobKind::Villager {
                 continue;
             }
-            let others = || before.iter().chain(after.iter()).filter(|o| o.alive()).filter_map(|o| o.villager.as_ref());
+
             if let Some(p) = v.job
                 && world.loaded(p)
                 && world.block(p).and_then(Profession::of) != Some(v.profession)
             {
+                self.claimed_jobs.remove(&p);
                 v.job = None;
                 if v.xp == 0 {
                     v.set_profession(Profession::None)
@@ -470,6 +496,7 @@ impl Entities {
                 && world.loaded(p)
                 && world.block(p).is_none_or(|b| !b.is_bed_head())
             {
+                self.claimed_beds.remove(&p);
                 v.home = None;
             }
             if v.home.is_none() || v.job.is_none() && m.age >= 0 && v.profession != Profession::Nitwit {
@@ -482,7 +509,7 @@ impl Entities {
                     let prof = Profession::of(b);
                     if b.is_bed_head()
                         && (dist < hd || dist == hd && home.is_some_and(|h: IVec3| p.to_array() < h.to_array()))
-                        && !others().any(|o| o.home == Some(p))
+                        && !self.claimed_beds.contains(&p)
                     {
                         hd = dist;
                         home = Some(p);
@@ -490,7 +517,7 @@ impl Entities {
                         && (v.xp == 0 || prof == Some(v.profession))
                         && (dist < jd
                             || dist == jd && job.is_some_and(|j: (IVec3, Profession)| p.to_array() < j.0.to_array()))
-                        && !others().any(|o| o.job == Some(p))
+                        && !self.claimed_jobs.contains(&p)
                     {
                         jd = dist;
                         job = Some((p, prof.unwrap()));
@@ -498,6 +525,9 @@ impl Entities {
                 });
                 if v.home.is_none() {
                     v.home = home;
+                    if let Some(p) = home {
+                        self.claimed_beds.insert(p);
+                    }
                 }
                 if v.job.is_none()
                     && m.age >= 0
@@ -505,15 +535,10 @@ impl Entities {
                     && let Some((p, prof)) = job
                 {
                     v.job = Some(p);
+                    self.claimed_jobs.insert(p);
                     v.set_profession(prof);
                 }
             }
-            let threat = before
-                .iter()
-                .chain(after.iter())
-                .filter(|o| o.alive() && o.kind.is_zombie() && o.pos.distance_squared(m.pos) < 64.0)
-                .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)))
-                .map(|z| z.pos);
             v.fleeing = threat.is_some();
             v.sleeping = false;
             v.goal = if let Some(z) = threat {
@@ -544,6 +569,7 @@ impl Entities {
                 !v.fleeing && !v.sleeping && v.job.is_some_and(|p| m.pos.distance_squared(p.as_dvec3() + 0.5) < 4.0),
             );
         }
+        self.breed_villagers(world);
         self.life_tick(world);
     }
     pub fn villagers_to_string(&self) -> String {
@@ -562,7 +588,7 @@ impl Entities {
                     "health":m.health,"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
-                    "last":v.last_restock,"slept":v.last_slept,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left}))
+                    "last":v.last_restock,"slept":v.last_slept,"food":v.food.map(stack_to_string),"food_level":v.food_level,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left}))
                 }
                 _ => None,
             })
@@ -644,6 +670,15 @@ impl Entities {
                 v.restock_day = a["day"].as_i64()?;
                 v.restocks = (a["restocks"].as_u64()?.min(2)) as u8;
                 v.last_restock = a["last"].as_u64()?.min(23999) as u32;
+                if let Some(food) = a["food"].as_array() {
+                    for (slot, s) in v.food.iter_mut().zip(food) {
+                        *slot = s
+                            .as_str()
+                            .and_then(|s| stack_from_str(s).flatten())
+                            .filter(|s| super::villager_breeding::food_points(s.item) > 0);
+                    }
+                }
+                v.food_level = a["food_level"].as_u64().unwrap_or(0).min(15) as u8;
                 v.last_slept = a["slept"].as_i64();
                 v.reputation = i16::try_from(a["reputation"].as_i64().unwrap_or(0)).unwrap_or(0);
                 let mut m = Mob::new(kind, p, yaw);
@@ -959,5 +994,81 @@ mod tests {
         );
         assert_eq!(restored.mobs.len(), 2);
         assert_eq!(restored.mobs[0].convert_left, 202.5);
+    }
+    #[test]
+    fn breeding_consumes_twelve_food_points_claims_bed_and_saves() {
+        let mut w = grid();
+        for x in 0..3 {
+            w.blocks.insert(IVec3::new(x * 3, 0, 0), Block::BED_HEAD);
+        }
+        let mut e = Entities::new(11);
+        e.spawn(MobKind::Villager, DVec3::ZERO);
+        e.spawn(MobKind::Villager, DVec3::X);
+        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::BREAD, 3));
+        e.mobs[1].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::BEETROOT, 12));
+        for _ in 0..18 {
+            step(&mut e, &w);
+        }
+        assert_eq!(e.count(MobKind::Villager), 3);
+        assert_eq!(e.mobs[0].age, 6000);
+        assert_eq!(e.mobs[1].age, 6000);
+        assert_eq!(e.mobs[2].age, -24000);
+        assert!(e.mobs[2].baby);
+        assert_eq!(e.mobs[0].villager.as_ref().unwrap().food_points(), 0);
+        let baby_home = e.mobs[2].villager.as_ref().unwrap().home.unwrap();
+        assert!(e.mobs[..2].iter().all(|m| m.villager.as_ref().unwrap().home != Some(baby_home)));
+        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::CARROT, 23));
+        let mut restored = Entities::new(12);
+        restored.load_villagers(&e.villagers_to_string());
+        assert_eq!(restored.mobs[0].age, 6000);
+        assert_eq!(restored.mobs[0].villager.as_ref().unwrap().food_points(), 23);
+        assert_eq!(restored.mobs[2].age, -24000);
+        assert_eq!(restored.mobs[2].villager.as_ref().unwrap().home, Some(baby_home));
+        let mut rng = super::super::Rng::new(1);
+        let mut events = Vec::new();
+        restored.mobs[2].age = -1;
+        restored.mobs[2].update(
+            0.05,
+            &w,
+            &Ctx {
+                players: vec![],
+                daylight: 1.0,
+                spawning: false,
+                raining: false,
+                dimension: crate::world::terrain::Dimension::Overworld,
+            },
+            &mut rng,
+            &mut events,
+        );
+        assert_eq!(restored.mobs[2].age, 0);
+        assert!(!restored.mobs[2].baby);
+    }
+    #[test]
+    fn breeding_requires_food_free_bed_and_two_blocks_headroom() {
+        for obstruction in [false, true] {
+            let mut w = grid();
+            for x in 0..2 {
+                w.blocks.insert(IVec3::new(x * 3, 0, 0), Block::BED_HEAD);
+            }
+            if obstruction {
+                w.blocks.insert(IVec3::new(6, 0, 0), Block::BED_HEAD);
+                w.blocks.insert(IVec3::new(6, 2, 0), Block::STONE);
+            }
+            let mut e = Entities::new(3);
+            for x in 0..2 {
+                e.spawn(MobKind::Villager, DVec3::X * x as f64);
+                e.mobs[x].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::POTATO, 12));
+            }
+            for _ in 0..18 {
+                step(&mut e, &w);
+            }
+            assert_eq!(e.count(MobKind::Villager), 2);
+        }
+        let mut v = Villager::new(1, 1);
+        v.food[0] = Some(Stack::new(Item::BREAD, 2));
+        v.food[1] = Some(Stack::new(Item::CARROT, 4));
+        assert_eq!(v.food_points(), 12);
+        v.eat_for_breeding();
+        assert_eq!(v.food_points(), 0);
     }
 }

@@ -33,6 +33,7 @@ mod slime;
 mod thrown;
 pub mod tnt;
 pub mod villager;
+mod villager_breeding;
 mod zombie_villager;
 
 use std::f32::consts::TAU;
@@ -498,6 +499,8 @@ pub struct Entities {
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
     mob_index: mob_index::MobIndex,
+    claimed_beds: rustc_hash::FxHashSet<IVec3>,
+    claimed_jobs: rustc_hash::FxHashSet<IVec3>,
     /// Seconds until another iron golem may be summoned.
     golem_calm: f32,
     /// Seconds until the next gossip summon roll.
@@ -539,6 +542,8 @@ impl Entities {
             villager_births: Default::default(),
             village_timer: 0.0,
             mob_index: Default::default(),
+            claimed_beds: Default::default(),
+            claimed_jobs: Default::default(),
             golem_calm: 0.0,
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),

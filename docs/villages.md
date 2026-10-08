@@ -165,3 +165,17 @@ villagers. Cures give a capped permanent trade discount; per-player gossip,
 conversion Strength, bed/bar acceleration and equipment-drop handling are
 still to be completed. Summoning and combat use reused spatial buckets rather
 than per-mob full entity scans; collision broad phase shares that index.
+
+## Breeding
+
+Residents pick up dropped bread, carrots, potatoes and beetroot into eight
+persistent slots. Bread is worth four food points, the vegetables one; both
+parents need twelve. Awake, safe adults approach each other and court for
+275–324 ticks with hearts. A free bed within 48 blocks and two empty blocks
+above its head is required. Parents consume twelve points, receive a 6000-tick
+cooldown on success, and the child claims the bed at age -24000. Babies grow
+in loaded simulation time; food and parent cooldowns survive saves. Failed
+bed checks produce angry particles. Beetroot is available as a food item;
+beetroot crops and farmer harvesting/food sharing are not implemented yet.
+Navigation uses the existing resident obstacle sidesteps; a complete Java
+path-reachability test for beds is still absent.

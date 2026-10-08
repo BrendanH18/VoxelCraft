@@ -395,8 +395,11 @@ static MOB_ITEMS: [ItemInfo; 2] = [
 const MOB_ITEM: u16 = 640;
 /// Village life items, append-only from 680.
 const VILLAGE_ITEM: u16 = 680;
-static VILLAGE_ITEMS: [ItemInfo; 2] =
-    [item("pumpkin seeds", Sprite::Seeds), food("golden apple", 4, 9.6, Sprite::GoldenApple)];
+static VILLAGE_ITEMS: [ItemInfo; 3] = [
+    item("pumpkin seeds", Sprite::Seeds),
+    food("golden apple", 4, 9.6, Sprite::GoldenApple),
+    food("beetroot", 1, 1.2, Sprite::Lump([152, 34, 54])),
+];
 /// Splash potions: `SPLASH_POTION + potion index`.
 const SPLASH_POTION: u16 = 436;
 const _: () = assert!(FIRST_POTION + POTION_COUNT <= SPLASH_POTION);
@@ -552,6 +555,7 @@ impl Item {
     pub const FIRE_CHARGE: Item = Item(760);
     pub const PUMPKIN_SEEDS: Item = Item(680);
     pub const GOLDEN_APPLE: Item = Item(681);
+    pub const BEETROOT: Item = Item(682);
     pub const SLIME_BALL: Item = Item(610);
     pub const BUCKET: Item = Item(291);
     pub const WATER_BUCKET: Item = Item(292);
