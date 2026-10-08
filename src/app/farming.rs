@@ -26,6 +26,15 @@ impl Game {
             self.wear_held(false);
             return true;
         }
+        // Axes strip crimson and warped stems and hyphae, keeping their axis.
+        if item.as_tool().is_some_and(|(kind, _)| kind == ToolKind::Axe)
+            && let Some(stripped) = crate::world::nether_biome_blocks::stripped(block)
+            && self.world.set_block(pos, stripped)
+        {
+            self.audio.play(Sound::Place(Material::Wood), Some(at), 1.0, (0.8, 1.0));
+            self.wear_held(false);
+            return true;
+        }
         if item.as_tool().is_some_and(|(kind, _)| kind == ToolKind::Hoe) {
             let tillable = matches!(block, Block::GRASS | Block::DIRT)
                 && normal != IVec3::NEG_Y
@@ -93,6 +102,12 @@ pub(super) fn picked_item(block: Block) -> Item {
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Carrot, _))) => Item::CARROT,
         b if matches!(b.as_crop(), Some((crate::world::block::Crop::Potato, _))) => Item::POTATO,
         b if b.wart_age().is_some() => Item::NETHER_WART,
+        crate::world::nether_biome_blocks::WEEPING_VINES_PLANT => {
+            crate::world::nether_biome_blocks::WEEPING_VINES.into()
+        }
+        crate::world::nether_biome_blocks::TWISTING_VINES_PLANT => {
+            crate::world::nether_biome_blocks::TWISTING_VINES.into()
+        }
         Block::OAK_DOOR => Item::OAK_DOOR,
         b if let Some(c) = b.bed_color() => c.bed(),
         b => b.into(),

@@ -92,6 +92,8 @@ pub struct Env {
     /// Body touching lava: burns.
     pub in_lava: bool,
     pub in_fire: bool,
+    /// Touching soul fire, which burns twice as hard (Java's 2 damage).
+    pub in_soul_fire: bool,
     pub on_magma: bool,
     pub frost_walker: bool,
     /// Exposed to rain: extinguishes the player like body water does.
@@ -424,7 +426,7 @@ impl Vitals {
             self.fire_left = 0.0;
         } else if env.in_fire {
             self.fire_left = 8.0;
-            hurts.fire = 1.0;
+            hurts.fire = if env.in_soul_fire { 2.0 } else { 1.0 };
         } else {
             self.fire_left = (self.fire_left - dt).max(0.0);
         }
@@ -520,6 +522,8 @@ mod tests {
         let mut v = Vitals::default();
         let fire = Env { in_fire: true, ..Env::default() };
         assert_eq!(v.tick(DT, &fire, false).fire, 1.0, "contact hurts immediately");
+        let soul = Env { in_soul_fire: true, ..fire };
+        assert_eq!(Vitals::default().tick(DT, &soul, false).fire, 2.0, "soul fire hurts twice as much");
         assert!(v.burning());
         assert_eq!(v.tick(1.0, &Env::default(), false).burn, 1.0, "burns after leaving fire");
         for _ in 0..8 {

@@ -164,6 +164,12 @@ impl Player {
         physics::touches_block(world, self.pos, self.collision_shape(), Block::is_fire)
     }
 
+    pub fn in_soul_fire(&self, world: &World) -> bool {
+        physics::touches_block(world, self.pos, self.collision_shape(), |b| {
+            b == crate::world::nether_biome_blocks::SOUL_FIRE
+        })
+    }
+
     pub fn head_in_lava(&self, world: &World) -> bool {
         world.get_block(self.eye().floor().as_ivec3()).is_some_and(|b| b.is_lava())
     }

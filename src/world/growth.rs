@@ -256,6 +256,7 @@ impl World {
             }
             Block::SUGAR_CANE => self.tick_cane(p),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
+            b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
             b if b.crop_stage().is_some_and(|s| s < 7) => {
                 let wet = self.get_block(p - IVec3::Y) == Some(Block::WET_FARMLAND);
                 if self.grows_here(p) && self.one_in(if wet { CROP_GROWTH } else { 2 * CROP_GROWTH }) {
@@ -355,6 +356,9 @@ impl World {
     /// Returns whether the bone meal was used.
     pub fn apply_bone_meal(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
+        if let Some(used) = self.nether_bone_meal(p, b) {
+            return used;
+        }
         match b {
             b if b.crop_stage().is_some_and(|s| s < 7) => {
                 let (crop, stage) = b.as_crop().unwrap();

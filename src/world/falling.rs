@@ -33,6 +33,7 @@ impl World {
     pub(super) fn settle(&mut self, mut p: IVec3) {
         self.drop_unhung_ladders(p);
         self.solidify_nearby_powder(p);
+        self.update_nether_vines(p);
         loop {
             self.wake_fluids(p);
             let Some(b) = self.get_block(p) else { return };
