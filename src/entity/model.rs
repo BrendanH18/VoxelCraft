@@ -1032,6 +1032,45 @@ fn humanoid_armor(parts: &[Part]) -> [super::player_model::Limb; 6] {
     ]
 }
 
+pub(super) fn build_minecarts(
+    carts: &[super::minecart::Minecart],
+    camera: DVec3,
+    alpha: f64,
+    out: &mut Vec<EntityVertex>,
+) {
+    for cart in carts {
+        let pos = cart.previous_pos.lerp(cart.pos, alpha);
+        let rel = (pos - camera).as_vec3();
+        let rot = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2 - cart.yaw);
+        let xf = |p: Vec3| rel + rot * (p / 16.0);
+        let light = ([220, 255, 0, 0], 160);
+        for (min, max) in [
+            ([-7.0, 0.0, -9.0], [7.0, 2.0, 9.0]),
+            ([-8.0, 2.0, -10.0], [-6.0, 9.0, 10.0]),
+            ([6.0, 2.0, -10.0], [8.0, 9.0, 10.0]),
+            ([-6.0, 2.0, -10.0], [6.0, 9.0, -8.0]),
+            ([-6.0, 2.0, 8.0], [6.0, 9.0, 10.0]),
+        ] {
+            let body = cube(min, max, [168, 168, 172], 24);
+            push_cuboid(out, &body, &xf, rot, light, ([0.0; 3], 0.0), cart.id as f32);
+        }
+        let cargo = match cart.kind {
+            super::minecart::CartKind::Chest => Some(([118, 78, 42], [-6.0, 7.0, -6.0], [6.0, 14.0, 6.0])),
+            super::minecart::CartKind::Hopper => Some(([90, 90, 94], [-4.0, 7.0, -4.0], [4.0, 12.0, 4.0])),
+            super::minecart::CartKind::Tnt => Some((
+                if cart.fuse.is_some_and(|f| f / 5 % 2 == 0) { [245, 245, 245] } else { [176, 48, 36] },
+                [-6.0, 7.0, -6.0],
+                [6.0, 16.0, 6.0],
+            )),
+            super::minecart::CartKind::Rideable => None,
+        };
+        if let Some((color, min, max)) = cargo {
+            let box_ = cube(min, max, color, 16);
+            push_cuboid(out, &box_, &xf, rot, light, ([0.0; 3], 0.0), cart.id as f32 + 1.0);
+        }
+    }
+}
+
 /// Appends one cuboid; `tint` blends its colour toward a colour by an amount.
 pub(super) fn push_cuboid(
     out: &mut Vec<EntityVertex>,

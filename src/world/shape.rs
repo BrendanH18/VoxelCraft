@@ -312,6 +312,31 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
             out.push(b(min, max));
         }
         Some(Shaped::Rail) => out.push(RAIL),
+        Some(Shaped::Hook { facing }) => out.push_turned(
+            &[
+                b([5, 2, 0], [11, 9, 2]),
+                b([7, 3, 2], [9, 5, 7]),
+                b([5, 2, 6], [11, 3, 7]),
+                b([5, 2, 4], [6, 3, 7]),
+                b([10, 2, 4], [11, 3, 7]),
+            ],
+            facing,
+        ),
+        Some(Shaped::Tripwire) => {
+            let connects = |f: Facing| {
+                let n = neighbour(f);
+                super::gadgets::is_tripwire(n)
+                    || super::gadgets::hook_state(n).is_some_and(|(facing, _, _)| facing == f.opposite())
+            };
+            let ns = connects(Facing::North) || connects(Facing::South);
+            let ew = connects(Facing::East) || connects(Facing::West);
+            if ns || !ew {
+                out.push(b([8, 1, 0], [9, 2, 16]));
+            }
+            if ew || !ns {
+                out.push(b([0, 1, 8], [16, 2, 9]));
+            }
+        }
         Some(Shaped::Cake { bites }) => out.push(b([1 + 2 * bites, 0, 1], [15, 8, 15])),
         Some(Shaped::Fence) => {
             out.push(FENCE_POST);
@@ -448,6 +473,7 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block
                         | super::redstone_blocks::Component::Plate { .. }
                 )
             ) => {}
+        Some(Shaped::Rail | Shaped::Hook { .. } | Shaped::Tripwire) => {}
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER_COLLISION, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND_COLLISION, Facing::South),
         Some(Shaped::EndPortal) => {}

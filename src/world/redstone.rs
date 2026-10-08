@@ -9,7 +9,14 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::World;
 use super::block::{Block, Facing, Shaped};
 use super::chunk::CHUNK_SIZE_I;
+use super::rails;
 use super::redstone_blocks::{self as r, Component};
+
+fn family(b: Block) -> Option<Block> {
+    r::base(b).or_else(|| rails::family(b)).or_else(|| {
+        (super::gadgets::is_hook(b) || super::gadgets::is_tripwire(b)).then(|| super::gadgets::base(b)).flatten()
+    })
+}
 
 const SIDES: [IVec3; 6] = [IVec3::Y, IVec3::NEG_Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
 /// A pathological oscillator cannot monopolize a game tick. Work carries over.
@@ -26,6 +33,9 @@ pub(super) struct RedstoneState {
     queued: FxHashSet<IVec3>,
     pending: FxHashMap<IVec3, (u64, u16, u64)>,
     scheduled: BinaryHeap<ScheduledTick>,
+    /// Detector-rail comparator output, filled by the minecart tick.
+    pub(super) cart_signal: FxHashMap<IVec3, u8>,
+    pub(super) trip_pulse: FxHashMap<IVec3, u64>,
     toggles: FxHashMap<IVec3, VecDeque<u64>>,
     burnout: FxHashMap<IVec3, u64>,
     comparator: FxHashMap<IVec3, u8>,
@@ -42,8 +52,14 @@ fn conductor(b: Block) -> bool {
 
 impl World {
     fn queue_redstone(&mut self, p: IVec3) {
-        if self.get_block(p).is_some_and(|b| r::component(b).is_some() || b.is_door() || b.is_gate() || b == Block::TNT)
-            && self.redstone.queued.insert(p)
+        if self.get_block(p).is_some_and(|b| {
+            r::component(b).is_some()
+                || b.is_door()
+                || b.is_gate()
+                || b.is_rail()
+                || super::gadgets::participates(b)
+                || b == Block::TNT
+        }) && self.redstone.queued.insert(p)
         {
             self.redstone.updates.push_back(p);
         }
@@ -65,13 +81,14 @@ impl World {
         if old == new {
             return;
         }
-        if r::base(old) != r::base(new) {
+        if family(old) != family(new) {
             self.redstone.pending.remove(&p);
             self.redstone.comparator.remove(&p);
             self.redstone.burnout.remove(&p);
             self.redstone.toggles.remove(&p);
             self.redstone.powered.remove(&p);
         }
+        self.track_tripwire(p, old, new);
         self.redstone_changed(p);
     }
 
@@ -85,7 +102,8 @@ impl World {
         let data = slot.data.clone();
         let mut i = 0;
         data.for_each_block(|b| {
-            if r::component(b).is_some() || b.is_door() || b.is_gate() {
+            if r::component(b).is_some() || b.is_door() || b.is_gate() || b.is_rail() || super::gadgets::participates(b)
+            {
                 let local =
                     IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
                 self.redstone_changed(c * CHUNK_SIZE_I + local);
@@ -98,7 +116,7 @@ impl World {
         if self.redstone.pending.contains_key(&p) {
             return;
         }
-        let Some(b) = self.get_block(p).and_then(r::base) else { return };
+        let Some(b) = self.get_block(p).and_then(family) else { return };
         self.redstone.sequence += 1;
         let sequence = self.redstone.sequence;
         let due = self.redstone.tick + delay;
@@ -110,6 +128,12 @@ impl World {
     /// Strong output energizes a conductor; weak output activates devices only.
     fn emitted_signal(&self, p: IVec3, direction: IVec3, strong: bool, wires: bool) -> u8 {
         let Some(b) = self.get_block(p) else { return 0 };
+        if rails::is_powered(b) && rails::kind(b) == Some(rails::RailKind::Detector) {
+            return if !strong || direction == IVec3::NEG_Y { 15 } else { 0 };
+        }
+        if let Some((facing, _, on)) = super::gadgets::hook_state(b) {
+            return if on && (!strong || direction == facing.opposite().offset()) { 15 } else { 0 };
+        }
         match r::component(b) {
             Some(Component::Plate { power, .. }) => {
                 if !strong || direction == IVec3::NEG_Y {
@@ -267,7 +291,36 @@ impl World {
         }
     }
 
+    /// Refresh comparator readings, waking the circuit only when contents or occupancy change.
+    pub fn refresh_cart_signals(&mut self, signals: impl IntoIterator<Item = (IVec3, u8)>) {
+        let previous = std::mem::take(&mut self.redstone.cart_signal);
+        let mut next = FxHashMap::default();
+        for (p, signal) in signals {
+            next.entry(p).or_insert(signal);
+        }
+        for (&p, &signal) in &next {
+            if previous.get(&p) != Some(&signal) {
+                self.redstone_changed(p);
+            }
+        }
+        for p in previous.keys() {
+            if !next.contains_key(p) {
+                self.redstone_changed(*p);
+            }
+        }
+        self.redstone.cart_signal = next;
+    }
+
     pub fn container_signal(&self, p: IVec3) -> Option<u8> {
+        if let Some(b) = self.get_block(p)
+            && rails::kind(b) == Some(rails::RailKind::Detector)
+        {
+            return Some(if rails::is_powered(b) {
+                self.redstone.cart_signal.get(&p).copied().unwrap_or(0)
+            } else {
+                0
+            });
+        }
         fn strength(slots: impl Iterator<Item = Option<crate::inventory::Stack>>, count: usize) -> u8 {
             let mut fullness = 0.0f64;
             let mut nonempty = false;
@@ -292,6 +345,25 @@ impl World {
 
     fn redstone_update(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if b.is_rail() {
+            return self.rail_update(p, b);
+        }
+        if super::gadgets::is_note(b) {
+            return self.note_neighbour(p, b);
+        }
+        if super::gadgets::is_hook(b) {
+            if let Some((facing, _, _)) = super::gadgets::hook_state(b)
+                && self.get_block(p - facing.offset()).is_some_and(|s| !s.supports_fire())
+            {
+                self.spill_block(p, b);
+                self.edit(p, Block::AIR, false);
+                return;
+            }
+            return self.connect_hook(p);
+        }
+        if super::gadgets::is_tripwire(b) {
+            return;
+        }
         let support = match r::component(b) {
             Some(Component::Lever { mount, .. } | Component::Button { mount, .. } | Component::Torch { mount, .. }) => {
                 Some(r::support(mount))
@@ -402,6 +474,15 @@ impl World {
 
     fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if super::gadgets::is_hook(b) {
+            return self.hook_tick(p);
+        }
+        if super::gadgets::is_tripwire(b) {
+            return self.tripwire_tick(p);
+        }
+        if rails::family(b).is_some() {
+            return self.detector_tick(p, b);
+        }
         match r::component(b) {
             Some(
                 Component::Piston { .. }
@@ -506,7 +587,7 @@ impl World {
                 let next = self.redstone.tick + 1;
                 self.redstone.pending.insert(p, (next, family, sequence));
                 self.redstone.scheduled.push(Reverse((next, priority, sequence, xyz, family)));
-            } else if self.get_block(p).and_then(r::base) == Some(Block(family)) {
+            } else if self.get_block(p).and_then(self::family) == Some(Block(family)) {
                 self.redstone.last_updates += 1;
                 self.redstone_scheduled_tick(p);
                 self.drain_redstone_updates();
@@ -596,6 +677,9 @@ impl World {
     }
 
     pub fn redstone_supported(&self, p: IVec3, b: Block) -> bool {
+        if let Some((facing, _, _)) = super::gadgets::hook_state(b) {
+            return self.get_block(p - facing.offset()).is_some_and(Block::supports_fire);
+        }
         let support = match r::component(b) {
             Some(Component::Torch { mount, .. } | Component::Lever { mount, .. } | Component::Button { mount, .. }) => {
                 r::support(mount)
@@ -639,6 +723,10 @@ impl World {
     /// Device-independent right click; callers handle reach and build permission.
     pub fn use_redstone(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
+        if super::gadgets::is_note(b) {
+            self.cycle_note(p, b);
+            return true;
+        }
         let next = match r::component(b) {
             Some(Component::Wire(power)) => {
                 if self.wire_connections(p) == [1; 4] || self.wire_connections(p) == [0; 4] {
@@ -709,6 +797,11 @@ impl World {
         for p in &self.redstone.powered {
             entries.push(format!("p,{},{},{}", p.x, p.y, p.z));
         }
+        for (&p, &due) in &self.redstone.trip_pulse {
+            if due > self.redstone.tick {
+                entries.push(format!("w,{},{},{},{}", p.x, p.y, p.z, due - self.redstone.tick));
+            }
+        }
         entries.join("|")
     }
 
@@ -736,7 +829,7 @@ impl World {
                 ("t", &[delay, priority, seq, family])
                     if delay >= 0
                         && seq >= 0
-                        && ((1100..=1499).contains(&family) || matches!(family, 226 | 249))
+                        && ((1100..=1599).contains(&family) || matches!(family, 226 | 249))
                         && (-3..=0).contains(&priority) =>
                 {
                     let due = tick.saturating_add(delay as u64);
@@ -756,6 +849,9 @@ impl World {
                 }
                 ("h", &[age]) if (0..=60).contains(&age) && age as u64 <= tick => {
                     self.redstone.toggles.entry(p).or_default().push_back(tick - age as u64);
+                }
+                ("w", &[delay]) if delay > 0 => {
+                    self.redstone.trip_pulse.insert(p, tick.saturating_add(delay as u64));
                 }
                 ("p", []) => {
                     self.redstone.powered.insert(p);

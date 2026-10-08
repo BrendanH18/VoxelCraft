@@ -29,6 +29,7 @@ mod foraging;
 pub mod forms;
 pub mod fortress;
 pub mod furnace;
+pub mod gadgets;
 mod growth;
 pub(crate) mod height;
 pub(crate) mod lighting;
@@ -39,6 +40,7 @@ pub mod nether_complexes;
 pub mod noise;
 pub mod ore;
 mod portal;
+pub mod rails;
 pub mod redstone;
 pub mod redstone_blocks;
 mod redstone_contacts;
@@ -141,6 +143,8 @@ pub struct World {
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
+    /// Note blocks that played this tick: position, pitch 0..=24, instrument.
+    pub notes: Vec<(IVec3, u8, u8)>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -211,6 +215,7 @@ impl World {
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
+            notes: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -616,7 +621,7 @@ impl World {
 
     /// Install chunk data, seed gameplay light and update column state.
     /// Queue render work when in mesh range; saved chunks also restore scheduled fire.
-    fn insert_chunk(&mut self, pos: IVec3, mut data: Arc<ChunkData>, modified: bool) {
+    pub(crate) fn insert_chunk(&mut self, pos: IVec3, mut data: Arc<ChunkData>, modified: bool) {
         if !modified {
             foraging::decorate(&self.generator, pos, Arc::make_mut(&mut data));
         }

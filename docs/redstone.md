@@ -1,7 +1,7 @@
 # Redstone
 
 Redstone simulation runs once per shared 50 ms game tick, including headless
-worlds. Component block states occupy the append-only 1100–1499 allocation;
+worlds. Component block states occupy the append-only 1100–1599 allocation;
 existing redstone dust (item 365) places wire. States share texture layers.
 
 ## Signal engine
@@ -166,11 +166,115 @@ currently scans the entity list rather than a spatial entity index.
 Scheduled ticks, cooldowns, power edges and pending ejections survive saves.
 The client calls `tick_automation_entities` between world rules and entity
 physics; headless callers must invoke it with their entity collection too.
-Only loaded containers transfer items. Rails exist but minecarts do not;
-powered/detector/activator rails are deferred together with minecart mechanics.
-Tripwire and note blocks remain optional gaps.
+Only loaded containers transfer items. Round 2 rails, carts, tripwire and note
+blocks are described below.
 
 Sources: [HopperBlockEntity](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java),
 [DispenserBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DispenserBlock.java),
 [DropperBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DropperBlock.java),
 [DispenseItemBehavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/core/dispenser/DispenseItemBehavior.java).
+
+
+## Rails and minecarts (round 2)
+
+Normal rails retain ids 500–509. Powered, detector and activator rail states
+use 1471–1506; 1469 is untouched. Special rails cannot curve. Rail neighbour
+updates choose straight, corner and ascending connections, remove unsupported
+rails, and switch normal junction preference when powered. Both powered and
+activator rails propagate along their own rail kind for eight additional rails
+from a directly powered rail. Detector rails emit strength 15 while a cart
+intersects their search box and recheck after 20 ticks; comparators read chest
+and hopper cart fullness. Contents/occupancy changes notify comparators. The first overlapping container
+cart supplies the comparator signal, including a cart straddling two detectors;
+rideable/TNT carts do not mask container carts.
+All rails render as alpha-tested detail planes, raised 1/16 block, with actual
+one-block slopes and separate off/on textures. Vanilla rail and cart recipes
+and base-state drops are registered.
+
+Minecart items 761–764 place only on rails. Cart motion runs at 20 Hz with
+Java's 0.4-block/tick movement cap, track projection, curve direction changes,
+slope gravity, occupied/empty/container friction, powered acceleration and
+unpowered braking. Walking players and mobs push carts; nearby moving empty
+rideable carts collect mobs; carts exchange momentum on contact. Right-click
+enters a rideable cart, the camera follows its seat, and sneak dismounts to a
+nearby collision-free position. Survival punches break carts into their variant
+item and spill contents; creative removes the cart without dropping its item.
+
+Chest carts expose 27 slots and hopper carts five slots through the existing
+container screen, including normal click and quick-move operations. Hoppers
+feeding or draining carts respect their eight-tick block-hopper cooldown.
+Hopper carts pull from above or collect nearby dropped stacks each tick; a
+powered activator disables collection until an unpowered activator rail is encountered.
+As in Java, a hopper below drains the cart; the cart does not push into an
+arbitrary chest below. TNT carts get an 80-tick activator fuse, a shortened fire
+fuse, and detonate on a three-block fall or fast horizontal impact. Blasts use
+the existing explosion event path with speed-dependent power.
+
+A per-dimension `minecarts` property saves ids, variant, full-precision position
+and velocity, yaw, contents with stack components, hopper enabled state, TNT
+fuse and player rider. Loading older worlds without it works. `--cart
+x,y,z,rideable|chest|hopper|tnt` places a test cart after `--place` edits, for
+visual verification.
+
+Known gaps: waterlogged rails/water cart slowdown, exact Java cart collision
+alignment and safe dismount floor selection, saved mob passengers, rolling
+cart audio, textured cargo models and TNT's special rail/support blast
+protection are not implemented. Split-screen controller riding and cart
+container menus have not been completed. Burning projectiles do not yet hit
+carts. Fire uses a deterministic short fuse rather than Java's random sum.
+The existing explosion system determines visibility and block destruction.
+No experimental minecart-improvements behaviour is enabled.
+
+Research used the Java implementations
+[RailState](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/RailState.java),
+[PoweredRailBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/PoweredRailBlock.java),
+[DetectorRailBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DetectorRailBlock.java),
+[AbstractMinecart](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecart.java),
+[AbstractMinecartContainer](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java),
+[MinecartHopper](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/MinecartHopper.java)
+and [MinecartTNT](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/MinecartTNT.java).
+This mirror is not pinned to Java 1.21; stable legacy rules were used and the
+gaps above prevent a claim of complete Java parity.
+
+
+## Note blocks and tripwire (round 2)
+
+Note-block states 1507–1556 store 25 pitches and their powered edge. Right-click
+cycles the pitch, left-click plays it, and a rising redstone edge plays once;
+a non-air block above prevents playback. Sixteen instruments are selected by
+the substrate below. Bone blocks (1581) and packed ice (1582) supply xylophone
+and chime; both have their vanilla recipes, and packed ice requires Silk Touch
+to drop. Original synthesized sounds use the existing spatial audio mixer,
+with instrument-specific timbre and octave plus semitone playback rate.
+
+Hooks (1557–1572) mount on solid horizontal faces and string items place
+tripwire (1573–1580). Opposing hooks connect across 1–40 string blocks, including
+chunk boundaries. Entities crossing the wire power both hooks with strength
+15; a hook strongly powers its supporting block. Occupancy rechecks every ten
+game ticks. Cutting an armed, attached string holds a ten-tick alarm pulse;
+shears disarm before removal and suppress that pulse. String always drops as
+string. Hook facing, wire attachment/disarmed state, note pitch and powered
+state are block states; pending alarm deadlines survive redstone saves.
+
+Known gaps: note particles, mob-head instruments above the note block, and
+tripwire attach/click sounds are absent. Procedural instruments are original
+approximations of the Java timbres. Substrate mapping covers the sixteen
+canonical blocks and common existing wood/stone forms, but is not a complete
+Java block-tag table. Tripwire geometry does not yet visibly sag when detached.
+
+Research: [NoteBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/NoteBlock.java),
+[TripWireBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/TripWireBlock.java),
+and [TripWireHookBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/TripWireHookBlock.java).
+
+Validation: the requested fmt, release Clippy and release test gates pass with
+both default features and `--no-default-features`. Tests cover rail connections,
+slopes, support removal, the eight-rail power limit, cart motion/containers/riding,
+variant save round trips, all sixteen instrument substrates, note rising edges,
+wire entity contacts, cross-chunk alarm pulses and shears-safe cuts. Screenshot
+fixtures are built near y=150 using the command-line placement and cart flags.
+
+On the Apple M5, three final `--bench --rd 8` runs had median generation
+0.213 ms/chunk, light+mesh 0.669 ms/chunk and streaming 0.20 s. Three alternating
+baseline runs measured 0.227 and 0.727 ms/chunk; timings show no regression.
+Local inspected captures: `target/redstone-review/rails-carts.png`,
+`rails-close.png`, `notes-tripwire.png` and `tripwire-close.png` in that directory.

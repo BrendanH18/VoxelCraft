@@ -21,12 +21,18 @@ pub struct PrimedTnt {
     vel: DVec3,
     /// Seconds left before it blows.
     pub fuse: f32,
+    power: f32,
 }
 
 impl PrimedTnt {
     /// Create a moving charge with a fuse in seconds and coincident interpolation positions.
     pub fn new(pos: DVec3, vel: DVec3, fuse: f32) -> Self {
-        Self { pos, previous_pos: pos, vel, fuse }
+        Self { pos, previous_pos: pos, vel, fuse, power: POWER }
+    }
+
+    /// Already detonating TNT cart; reuse the normal explosion event path.
+    pub fn with_power(pos: DVec3, power: f32) -> Self {
+        Self { power, ..Self::new(pos, DVec3::ZERO, 0.0) }
     }
 
     /// Falls and slides; returns `false` (after queueing the blast) once
@@ -41,7 +47,7 @@ impl PrimedTnt {
         if self.fuse <= 0.0 {
             events.push(EntityEvent::Explosion {
                 center: self.pos + DVec3::Y * SHAPE.height / 2.0,
-                power: POWER,
+                power: self.power,
                 cause: "was blown up by TNT",
                 credit_player: false,
             });

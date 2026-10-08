@@ -290,8 +290,8 @@ pub mod tex {
     pub const CAKE_SIDE: u16 = CAKE_TOP + 1;
     pub const CAKE_BOTTOM: u16 = CAKE_SIDE + 1;
     pub const VILLAGE: u16 = CAKE_BOTTOM + 1;
-    // Redstone reserves layers 1100..=1138, independent of the compact bands above.
-    pub const COUNT: u32 = 1139;
+    // Redstone reserves layers 1100..=1138, rails 1139..=1150, notes/tripwire/substrates 1151..=1154.
+    pub const COUNT: u32 = 1155;
     const _: () = assert!(VILLAGE as u32 + 45 <= 1100);
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
@@ -782,7 +782,9 @@ impl Block {
                 let i = self.0 - 149;
                 Shaped::Door { facing: f(i), open: i % 8 >= 4, upper: i >= 8 }
             }
-            500..=509 => Shaped::Rail,
+            500..=509 | 1471..=1506 => Shaped::Rail,
+            1557..=1572 => Shaped::Hook { facing: f(self.0 - 1557) },
+            1573..=1580 => Shaped::Tripwire,
             538..=544 => Shaped::Cake { bites: (self.0 - 538) as u8 },
             _ => return None,
         })
@@ -793,7 +795,7 @@ impl Block {
     }
 
     pub fn is_rail(self) -> bool {
-        (500..=509).contains(&self.0)
+        (500..=509).contains(&self.0) || super::rails::is_special(self)
     }
 
     pub const fn rail(shape: RailShape) -> Block {
@@ -801,7 +803,11 @@ impl Block {
     }
 
     pub fn rail_shape(self) -> Option<RailShape> {
-        (500..=509).contains(&self.0).then(|| RailShape::ALL[(self.0 - 500) as usize])
+        if (500..=509).contains(&self.0) {
+            Some(RailShape::ALL[(self.0 - 500) as usize])
+        } else {
+            super::rails::special_shape(self)
+        }
     }
 
     /// The next worse anvil (`None` once a damaged one breaks), keeping
@@ -943,6 +949,12 @@ impl Block {
             return b;
         }
         if let Some(b) = super::nether_blocks::base(self.0) {
+            return b;
+        }
+        if let Some(b) = super::rails::base(self) {
+            return b;
+        }
+        if let Some(b) = super::gadgets::base(self) {
             return b;
         }
         if self.is_rail() { Block::RAIL } else { self.oriented().map_or(self, |(b, _)| b) }
@@ -1143,6 +1155,12 @@ impl Block {
         ) {
             return None;
         }
+        if super::gadgets::is_tripwire(self) {
+            return Some(Item::STRING);
+        }
+        if self == super::gadgets::PACKED_ICE {
+            return None;
+        }
         if let Some(b) = super::redstone_blocks::base(self)
             && !matches!(
                 super::redstone_blocks::component(self),
@@ -1216,6 +1234,18 @@ impl Block {
     pub fn hardness(self) -> f32 {
         if let Some(h) = super::village_blocks::hardness(self.0) {
             return h;
+        }
+        if self == super::gadgets::BONE_BLOCK {
+            return 2.0;
+        }
+        if self == super::gadgets::PACKED_ICE {
+            return 0.5;
+        }
+        if super::gadgets::is_note(self) {
+            return 0.8;
+        }
+        if super::gadgets::is_hook(self) || super::gadgets::is_tripwire(self) {
+            return 0.0;
         }
         if let Some(c) = super::redstone_blocks::component(self) {
             use super::redstone_blocks::Component::*;
@@ -1311,7 +1341,7 @@ impl Block {
                 0.6
             }
             Block::SANDSTONE | Block::WOOL => 0.8,
-            Block::RAIL => 0.7,
+            b if b.is_rail() => 0.7,
             Block::BED_FOOT | Block::BED_HEAD => 0.2,
             Block::LADDER => 0.4,
             Block::OAK_DOOR => 3.0,
@@ -1353,6 +1383,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if self == super::gadgets::BONE_BLOCK || self == super::gadgets::PACKED_ICE {
+            return Some(ToolKind::Pickaxe);
+        }
         if let Some(t) = super::village_blocks::tool(self.0) {
             return Some(t);
         }
@@ -1439,11 +1472,11 @@ impl Block {
             | Block::SMOOTH_STONE
             | Block::DEEPSLATE
             | Block::COBBLED_DEEPSLATE
-            | Block::POLISHED_DEEPSLATE
-            | Block::RAIL => Some(ToolKind::Pickaxe),
-            b if b.is_deepslate_ore() => Some(ToolKind::Pickaxe),
+            | Block::POLISHED_DEEPSLATE => Some(ToolKind::Pickaxe),
+            b if b.is_rail() || b.is_deepslate_ore() => Some(ToolKind::Pickaxe),
             Block::COBWEB => Some(ToolKind::Sword),
             Block::BOOKSHELF => Some(ToolKind::Axe),
+            b if super::gadgets::is_note(b) => Some(ToolKind::Axe),
             b if b.terracotta_colour().is_some() => Some(ToolKind::Pickaxe),
             Block::DIRT
             | Block::GRASS
@@ -1471,6 +1504,9 @@ impl Block {
     /// Pickaxe harvest level needed for any drop (0 wood or gold, 1 stone,
     /// 2 iron, 3 diamond); `None` if a bare hand will do.
     pub fn harvest_level(self) -> Option<u8> {
+        if self == super::gadgets::BONE_BLOCK {
+            return Some(0);
+        }
         if matches!(
             self.base(),
             Block::SMOKER
@@ -1585,6 +1621,8 @@ impl Block {
             .chain(super::village_blocks::palette_ids())
             .chain(super::colors::palette_ids())
             .chain(super::redstone_blocks::palette_ids())
+            .chain(super::rails::palette_ids())
+            .chain(super::gadgets::palette_ids())
             .map(Block)
     }
 
@@ -1645,7 +1683,7 @@ impl Block {
                 matches!(below, Block::SUGAR_CANE | Block::GRASS | Block::DIRT | Block::SAND | Block::RED_SAND)
             }
             Block::TORCH => below.is_opaque(),
-            b if b.is_rail() => below.is_opaque(),
+            b if b.is_rail() => below.supports_fire(),
             b if b.is_door() => {
                 if b.is_door_upper() {
                     below.is_door() && !below.is_door_upper()
@@ -1922,8 +1960,13 @@ pub enum Shaped {
     },
     /// A cobblestone-style wall: a post and arms out to what it joins.
     Wall,
-    /// A 2/16-high rail; Java's slope states still render flat.
+    /// Rail selection shape; meshing emits a flat or sloping detail plane.
     Rail,
+    /// A tripwire hook stuck to the face it points away from.
+    Hook {
+        facing: Facing,
+    },
+    Tripwire,
 }
 
 /// Java's `RailShape` for vanilla rails (block ids 500..=509).
@@ -2019,6 +2062,8 @@ const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         id if super::redstone_blocks::registry(id).is_some() => super::redstone_blocks::registry(id).unwrap(),
+        id if super::rails::registry(id).is_some() => super::rails::registry(id).unwrap(),
+        id if super::gadgets::registry(id).is_some() => super::gadgets::registry(id).unwrap(),
         800..=834 => match super::nether_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),

@@ -19,6 +19,7 @@ mod dragon_model;
 pub mod eye;
 pub mod fireball;
 pub mod item;
+pub mod minecart;
 mod mob;
 pub mod model;
 pub mod orb;
@@ -484,6 +485,8 @@ pub struct Entities {
     pub items: Vec<ItemEntity>,
     /// Experience orbs, kept and saved like dropped items.
     pub orbs: Vec<XpOrb>,
+    pub minecarts: Vec<minecart::Minecart>,
+    next_cart: u32,
     /// The dragon fight, in the End.
     pub fight: Option<dragon::Fight>,
     /// Java `doMobLoot`; set by the world before each update.
@@ -522,6 +525,8 @@ impl Entities {
             tnt: Vec::new(),
             items: Vec::new(),
             orbs: Vec::new(),
+            minecarts: Vec::new(),
+            next_cart: 1,
             fight: None,
             mob_loot: true,
             moon_brightness: 1.0,
@@ -812,6 +817,7 @@ impl Entities {
     }
 
     fn blast(&mut self, center: DVec3, power: f32, credit_player: bool) {
+        self.blast_carts(center, power);
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
@@ -1217,7 +1223,9 @@ impl Entities {
     /// Capture positions before a game tick, or snap them while paused.
     pub fn snapshot_positions(&mut self) {
         for m in &mut self.mobs {
-            m.previous_pos = m.pos;
+            if m.riding.is_none() {
+                m.previous_pos = m.pos;
+            }
         }
         for a in &mut self.arrows {
             a.previous_pos = a.pos;
@@ -1274,6 +1282,7 @@ impl Entities {
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.verts);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.verts);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.verts);
+        model::build_minecarts(&self.minecarts, camera, alpha, &mut self.verts);
         if let Some(fight) = &self.fight {
             dragon_model::build_fight(fight, camera, time, alpha, &mut self.verts);
         }

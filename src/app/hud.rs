@@ -552,9 +552,7 @@ impl Game {
                 .and_then(|m| m.villager.as_ref())
                 .map_or(46.0, |v| 26.0 + v.level as f32 * 20.0);
         }
-        if let Container::Chest(p) = self.container
-            && self.world.container_slots(p) == 5
-        {
+        if self.open_container_count() == 5 {
             return SLOT + 14.0;
         }
         match (self.has_top_section(), self.shows_armor()) {
@@ -579,6 +577,7 @@ impl Game {
                 self.container,
                 Container::Furnace(_)
                     | Container::Chest(_)
+                    | Container::Minecart(_)
                     | Container::Enchanting(_)
                     | Container::Anvil(_)
                     | Container::Grindstone(_)
@@ -649,8 +648,8 @@ impl Game {
                 }
             }
             self.top_h()
-        } else if let Container::Chest(p) = self.container {
-            let count = self.world.container_slots(p);
+        } else if matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
+            let count = self.open_container_count();
             let cols = if count == 9 { 3 } else { 9 };
             let offset = if count == 9 {
                 3.0 * SLOT
@@ -802,6 +801,13 @@ impl Game {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
             (Container::Chest(p), _) => container_title(self.world.get_block(p)),
+            (Container::Minecart(id), _) => {
+                if self.mobs.entities.cart(id).is_some_and(|c| c.slot_count() == 5) {
+                    "Minecart with Hopper"
+                } else {
+                    "Minecart with Chest"
+                }
+            }
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
             (Container::Anvil(_), _) => "Anvil",
@@ -830,7 +836,7 @@ impl Game {
             self.anvil_ui(ui, px, py);
         } else if let Container::Smithing(_) = self.container {
             self.smithing_ui(ui, px, py);
-        } else if self.has_top_section() && !matches!(self.container, Container::Chest(_)) {
+        } else if self.has_top_section() && !matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
             let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0);
@@ -860,7 +866,7 @@ impl Game {
             }
         }
         let py = py + self.top_h();
-        if matches!(self.container, Container::Chest(_)) {
+        if matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
             ui.text_flat(px + 8.0, py + 6.0, "Inventory", [0.25, 0.25, 0.25, 1.0]);
         }
         if self.shows_palette() {
@@ -1021,6 +1027,10 @@ impl Game {
     fn container_slot(&self, slot: SlotRef) -> Option<Stack> {
         if let (Container::Trading(id), SlotRef::Trade(i)) = (self.container, slot) {
             return self.mobs.entities.merchant(id)?.villager.as_ref()?.offers.get(i)?.map(|o| o.output);
+        }
+        if let (Container::Minecart(id), SlotRef::Chest(i)) = (self.container, slot) {
+            let cart = self.mobs.entities.cart(id)?;
+            return (i < cart.slot_count()).then(|| cart.slots[i]).flatten();
         }
         if let (Container::Chest(p), SlotRef::Chest(i)) = (self.container, slot) {
             return self.world.chest(p)?.slots[i];

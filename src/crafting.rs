@@ -1074,6 +1074,13 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
     const SLIME: Ingredient = &[Item::SLIME_BALL];
     const BOW: Ingredient = &[Item::BOW];
     const CHEST: Ingredient = &[b(Block::CHEST)];
+    const PLATE: Ingredient = &[b(r::STONE_PLATE)];
+    const HOPPER: Ingredient = &[b(r::HOPPER)];
+    const TNT_BLOCK: Ingredient = &[b(Block::TNT)];
+    const CART: Ingredient = &[Item::MINECART];
+    const BONE_MEAL: Ingredient = &[Item::BONE_MEAL];
+    const BONE_BLOCK: Ingredient = &[b(crate::world::gadgets::BONE_BLOCK)];
+    const ICE: Ingredient = &[b(Block::ICE)];
     const CHARCOAL: Ingredient = &[Item::COAL, Item::CHARCOAL];
     const GUNPOWDER: Ingredient = &[Item::GUNPOWDER];
     const BLAZE: Ingredient = &[Item::BLAZE_POWDER];
@@ -1103,6 +1110,33 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
         shaped(&["ppp", "cic", "crc"], &[('p', PLANKS), ('c', COBBLESTONE), ('i', IRON), ('r', DUST)], b(r::PISTON), 1),
         shaped(&["s", "p"], &[('s', SLIME), ('p', PISTON)], b(r::STICKY_PISTON), 1),
         shaped(&["ccc", "rrq", "ccc"], &[('c', COBBLESTONE), ('r', DUST), ('q', QUARTZ)], b(r::OBSERVER), 1),
+        shaped(&["I I", "III"], &[('I', IRON)], Item::MINECART, 1),
+        shaped(
+            &["G G", "GSG", "GRG"],
+            &[('G', GOLD), ('S', STICK), ('R', DUST)],
+            b(crate::world::rails::POWERED_RAIL),
+            6,
+        ),
+        shaped(
+            &["I I", "IPI", "IRI"],
+            &[('I', IRON), ('P', PLATE), ('R', DUST)],
+            b(crate::world::rails::DETECTOR_RAIL),
+            6,
+        ),
+        shaped(
+            &["ISI", "ITI", "ISI"],
+            &[('I', IRON), ('S', STICK), ('T', TORCH)],
+            b(crate::world::rails::ACTIVATOR_RAIL),
+            6,
+        ),
+        shapeless(&[CHEST, CART], Item::CHEST_MINECART, 1),
+        shapeless(&[HOPPER, CART], Item::HOPPER_MINECART, 1),
+        shapeless(&[TNT_BLOCK, CART], Item::TNT_MINECART, 1),
+        shaped(&["bbb", "bbb", "bbb"], &[('b', BONE_MEAL)], b(crate::world::gadgets::BONE_BLOCK), 1),
+        shapeless(&[BONE_BLOCK], Item::BONE_MEAL, 9),
+        shaped(&["iii", "iii", "iii"], &[('i', ICE)], b(crate::world::gadgets::PACKED_ICE), 1),
+        shaped(&["PPP", "PRP", "PPP"], &[('P', PLANKS), ('R', DUST)], b(crate::world::gadgets::NOTE), 1),
+        shaped(&["I", "S", "P"], &[('I', IRON), ('S', STICK), ('P', PLANKS)], b(crate::world::gadgets::HOOK), 2),
     ]);
 }
 

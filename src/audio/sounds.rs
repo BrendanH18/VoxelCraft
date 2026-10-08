@@ -9,6 +9,7 @@ use std::f32::consts::TAU;
 use super::dsp::{self, Biquad, Mode, OnePole, RATE, Rng, add_mode, crackle, mix_into, noise, samples};
 pub use super::voices::{Call, Voice};
 use crate::world::block::Block;
+use crate::world::gadgets::Instrument;
 
 /// Sound category of a block.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -60,6 +61,7 @@ pub fn material(block: Block) -> Material {
     match block.base() {
         b if b.is_log()
             || b.is_planks()
+            || crate::world::gadgets::is_note(b)
             || block.is_door()
             || block.stairs_base().is_some_and(Block::is_planks)
             || block.slab_base().is_some_and(Block::is_planks)
@@ -95,6 +97,7 @@ pub fn material(block: Block) -> Material {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Sound {
+    Note(Instrument),
     Break(Material),
     Place(Material),
     Step(Material),
@@ -158,11 +161,12 @@ const M: usize = Material::ALL.len();
 const CALLS: usize = Call::ALL.len();
 
 impl Sound {
-    pub const COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS;
+    pub const COUNT: usize = 3 * M + 27 + Voice::ALL.len() * CALLS + 16;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
         match self {
+            Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Break(m) => m as usize,
             Sound::Place(m) => M + m as usize,
             Sound::Step(m) => 2 * M + m as usize,
@@ -230,11 +234,13 @@ impl Sound {
                 Sound::DragonDeath,
             ])
             .chain(Voice::ALL.into_iter().flat_map(|v| Call::ALL.map(|c| Sound::Mob(v, c))))
+            .chain(Instrument::ALL.map(Sound::Note))
     }
 
     /// Stable sound name used when exporting or identifying samples.
     pub fn name(self) -> String {
         match self {
+            Sound::Note(i) => format!("note_{i:?}").to_ascii_lowercase(),
             Sound::Break(m) => format!("break_{}", m.name()),
             Sound::Place(m) => format!("place_{}", m.name()),
             Sound::Step(m) => format!("step_{}", m.name()),
@@ -275,6 +281,7 @@ impl Sound {
     /// Number of synthesized variations playback can choose from.
     pub fn variants(self) -> u32 {
         match self {
+            Sound::Note(_) => 1,
             Sound::Step(_) => 4,
             Sound::Break(_) | Sound::Place(_) | Sound::Swim | Sound::Drip => 3,
             Sound::Land | Sound::Splash | Sound::Explosion | Sound::Bow | Sound::Hurt | Sound::Hit | Sound::Door(_) => {
@@ -302,6 +309,7 @@ impl Sound {
     pub fn render(self, variant: u32) -> Vec<f32> {
         let mut rng = Rng::new((self.key() as u64) << 8 | variant as u64);
         match self {
+            Sound::Note(i) => note_sound(i, &mut rng),
             Sound::Break(m) => break_sound(m, &mut rng),
             Sound::Place(m) => place_sound(m, &mut rng),
             Sound::Step(m) => step_sound(m, &mut rng),
@@ -1101,4 +1109,61 @@ fn place_sound(m: Material, rng: &mut Rng) -> Vec<f32> {
 
 fn step_sound(m: Material, rng: &mut Rng) -> Vec<f32> {
     material_sound(m, rng, Kind::Step)
+}
+
+/// Original note-block timbres, centered on F# in the instrument's octave.
+/// The mixer resamples by 2^((note-12)/12), keeping all 25 pitches exact.
+fn note_sound(instrument: Instrument, rng: &mut Rng) -> Vec<f32> {
+    use Instrument::*;
+    let frequency = match instrument {
+        Bass | Didgeridoo => 92.4986,
+        Guitar => 184.9972,
+        Bell | Chime | Xylophone => 1479.9777,
+        Flute | CowBell => 739.9888,
+        _ => 369.9944,
+    };
+    let duration = match instrument {
+        Hat => 0.12,
+        Snare | BassDrum => 0.25,
+        Flute | Didgeridoo => 0.8,
+        _ => 1.1,
+    };
+    let mut out = vec![0.0; samples(duration)];
+    let mut low_noise = 0.0;
+    for (i, sample) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE;
+        let phase = TAU * frequency * t;
+        let tone = match instrument {
+            Harp => phase.sin() + 0.3 * (phase * 2.0).sin() * (-t * 9.0).exp(),
+            Bass => phase.sin() + 0.35 * (phase * 2.0).sin(),
+            Snare => 0.8 * rng.bi() + 0.2 * (TAU * 180.0 * t).sin(),
+            Hat => {
+                let n = rng.bi();
+                low_noise += 0.2 * (n - low_noise);
+                n - low_noise
+            }
+            BassDrum => (TAU * (65.0 * t + 2.0 * (1.0 - (-t * 30.0).exp()))).sin(),
+            Bell => phase.sin() + 0.45 * (phase * 2.756).sin(),
+            Flute => phase.sin() + 0.1 * (phase * 3.0).sin(),
+            Chime => phase.sin() + 0.3 * (phase * 4.0).sin(),
+            Guitar => phase.sin() + 0.5 * (phase * 2.0).sin() + 0.2 * (phase * 3.0).sin(),
+            Xylophone => phase.sin() + 0.55 * (phase * 3.0).sin() * (-t * 20.0).exp(),
+            IronXylophone => phase.sin() + 0.4 * (phase * 2.4).sin(),
+            CowBell => 0.6 * phase.sin().signum() + 0.4 * (phase * 1.48).sin(),
+            Didgeridoo => phase.sin() + 0.5 * (phase * 3.0).sin() + 0.2 * (phase * 5.0).sin(),
+            Bit => phase.sin().signum() + 0.15 * (phase * 0.5).sin().signum(),
+            Banjo => phase.sin() + 0.7 * (phase * 2.0).sin() * (-t * 12.0).exp() + 0.2 * (phase * 4.0).sin(),
+            Pling => phase.sin() + 0.4 * (phase * 2.0).sin() + 0.3 * (phase * 4.0).sin(),
+        };
+        let decay = match instrument {
+            Hat => 40.0,
+            Snare | BassDrum => 20.0,
+            Xylophone | Banjo => 9.0,
+            Flute | Didgeridoo => 2.5,
+            _ => 5.0,
+        };
+        let attack = if matches!(instrument, Flute | Didgeridoo) { (t * 35.0).min(1.0) } else { (t * 500.0).min(1.0) };
+        *sample = tone * attack * (-t * decay).exp();
+    }
+    dsp::finish(out, 0.65)
 }

@@ -195,7 +195,8 @@ pub fn silk_drop(block: Block) -> Option<Item> {
             | Block::COBWEB
             | Block::DEEPSLATE
             | Block::GILDED_BLACKSTONE
-    ) || b.is_leaves()
+    ) || b == crate::world::gadgets::PACKED_ICE
+        || b.is_leaves()
         || b.is_deepslate_ore()
         || b.stained_glass_color().is_some()
         || b.stained_pane_color().is_some();

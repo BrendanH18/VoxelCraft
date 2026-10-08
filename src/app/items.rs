@@ -41,6 +41,9 @@ impl Game {
         let gone = match self.container {
             Container::Furnace(pos) => self.world.furnace(pos).is_none(),
             Container::Chest(pos) => self.world.chest(pos).is_none(),
+            Container::Minecart(id) => {
+                self.mobs.entities.cart(id).is_none_or(|c| c.pos.distance(self.player.pos) > 8.0)
+            }
             Container::Brewing(pos) => self.world.brewing_stand(pos).is_none(),
             Container::Enchanting(pos) => {
                 self.world.get_block(pos) != Some(crate::world::block::Block::ENCHANTING_TABLE)

@@ -336,7 +336,7 @@ pub fn connections(neighbour: impl Fn(glam::IVec3) -> Block) -> [u8; 4] {
                 | Component::GlowingOre(_),
             ) => false,
             Some(_) => true,
-            _ => false,
+            _ => super::gadgets::is_hook(n) || super::rails::kind(n) == Some(super::rails::RailKind::Detector),
         };
         out[f as usize] =
             if clear && n.is_solid() && matches!(component(neighbour(d + IVec3::Y)), Some(Component::Wire(_))) {
@@ -398,6 +398,9 @@ pub fn placed(b: Block, normal: glam::IVec3, toward: Facing) -> Block {
 /// Directional devices use the nearest view direction, including vertical
 /// placement. Mounted controls still use the clicked supporting face.
 pub fn placed_with_look(b: Block, normal: glam::IVec3, look: glam::Vec3) -> Block {
+    if super::gadgets::is_hook(b) {
+        return super::gadgets::placed_hook(normal, look);
+    }
     let placed = placed(b, normal, Facing::toward(look));
     if look.y.abs() <= look.x.abs().max(look.z.abs()) {
         return placed;

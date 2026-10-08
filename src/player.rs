@@ -72,6 +72,8 @@ pub struct Player {
     pub sneaking: bool,
     /// Status effects on movement (see [`Player::apply_effects`]).
     modifiers: Modifiers,
+    /// Minecart this player is riding.
+    pub vehicle: Option<u32>,
 }
 
 /// What status effects do to movement.
@@ -113,6 +115,7 @@ impl Player {
             pushing_wall: false,
             sneaking: false,
             modifiers: Modifiers::default(),
+            vehicle: None,
         }
     }
 
@@ -257,6 +260,11 @@ impl Player {
         } else {
             self.swimming = input.sprint && self.eye_was_in_water && self.in_water && feet_water && !self.flying;
         }
+    }
+
+    /// Blocks per tick a rider pushes a slow cart (Java's 0.1 of the walk wish).
+    pub fn ride_push(&self, input: MoveInput) -> DVec3 {
+        self.wish_dir(input, false) * 0.22
     }
 
     fn wish_dir(&self, input: MoveInput, swim_look: bool) -> DVec3 {

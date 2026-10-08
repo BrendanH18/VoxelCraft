@@ -18,6 +18,14 @@ fn to_player_order() -> Vec<usize> {
 }
 
 impl Game {
+    pub(super) fn open_container_count(&self) -> usize {
+        match self.container {
+            Container::Chest(p) => self.world.container_slots(p),
+            Container::Minecart(id) => self.mobs.entities.cart(id).map_or(0, |c| c.slot_count()),
+            _ => 0,
+        }
+    }
+
     /// Right-click on a chest: its 27 slots above the inventory.
     pub(super) fn open_chest(&mut self, pos: IVec3) {
         if self.inventory_open || self.world.chest(pos).is_none() {
@@ -44,6 +52,20 @@ impl Game {
                 self.inventory.slots[i] = left;
             }
             SlotRef::Chest(i) => {
+                if let Container::Minecart(id) = self.container {
+                    let stack = self
+                        .mobs
+                        .entities
+                        .cart_mut(id)
+                        .and_then(|c| if i < c.slot_count() { c.slots[i].take() } else { None });
+                    if let Some(stack) = stack {
+                        let left = self.move_to_player(stack);
+                        if let Some(c) = self.mobs.entities.cart_mut(id) {
+                            c.slots[i] = left;
+                        }
+                    }
+                    return;
+                }
                 let Container::Chest(p) = self.container else { return };
                 if i >= self.world.container_slots(p) {
                     return;
@@ -158,6 +180,12 @@ impl Game {
     /// and the main grid. Returns what didn't move.
     fn move_from_inventory(&mut self, from: usize, stack: Stack) -> Option<Stack> {
         match self.container {
+            Container::Minecart(id) => {
+                return self.mobs.entities.cart_mut(id).map_or(Some(stack), |c| {
+                    let n = c.slot_count();
+                    crate::entity::minecart::insert_slots(&mut c.slots[..n], stack)
+                });
+            }
             Container::Chest(p) => {
                 let order: Vec<usize> = (0..self.world.container_slots(p)).collect();
                 return match self.world.chest_mut(p) {

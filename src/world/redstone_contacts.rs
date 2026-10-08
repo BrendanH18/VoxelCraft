@@ -12,6 +12,8 @@ pub(super) struct Contacts {
     pub living: u32,
     pub all: u32,
     pub arrows: bool,
+    /// Minecarts touching a detector rail's search box.
+    pub carts: u32,
 }
 
 impl World {
@@ -24,18 +26,82 @@ impl World {
     ) {
         self.redstone.contacts.clear();
         for (pos, shape) in players {
-            self.redstone_contact_box(shape.aabb(pos), true, false);
+            self.redstone_contact_box(shape.aabb(pos), true, false, false);
         }
         for mob in &entities.mobs {
             if mob.alive() {
-                self.redstone_contact_box(mob.aabb(), true, false);
+                self.redstone_contact_box(mob.aabb(), true, false, false);
             }
         }
         for item in &entities.items {
-            self.redstone_contact_box((item.pos - DVec3::splat(0.125), item.pos + DVec3::splat(0.125)), false, false);
+            self.redstone_contact_box(
+                (item.pos - DVec3::splat(0.125), item.pos + DVec3::splat(0.125)),
+                false,
+                false,
+                false,
+            );
         }
         for arrow in &entities.arrows {
-            self.redstone_contact_box((arrow.pos - DVec3::splat(0.05), arrow.pos + DVec3::splat(0.05)), false, true);
+            self.redstone_contact_box(
+                (arrow.pos - DVec3::splat(0.05), arrow.pos + DVec3::splat(0.05)),
+                false,
+                true,
+                false,
+            );
+        }
+        for orb in &entities.orbs {
+            self.redstone_contact_box(
+                (orb.pos - DVec3::splat(0.125), orb.pos + DVec3::splat(0.125)),
+                false,
+                false,
+                false,
+            );
+        }
+        for tnt in &entities.tnt {
+            self.redstone_contact_box(crate::physics::Shape::new(0.49, 0.98).aabb(tnt.pos), false, false, false);
+        }
+        for pearl in &entities.pearls {
+            self.redstone_contact_box(
+                (pearl.pos - DVec3::splat(0.125), pearl.pos + DVec3::splat(0.125)),
+                false,
+                false,
+                false,
+            );
+        }
+        for potion in &entities.potions {
+            self.redstone_contact_box(
+                (potion.pos - DVec3::splat(0.125), potion.pos + DVec3::splat(0.125)),
+                false,
+                false,
+                false,
+            );
+        }
+        for thrown in &entities.thrown {
+            self.redstone_contact_box(
+                (thrown.pos - DVec3::splat(0.125), thrown.pos + DVec3::splat(0.125)),
+                false,
+                false,
+                false,
+            );
+        }
+        for fireball in &entities.fireballs {
+            self.redstone_contact_box(
+                (fireball.pos - DVec3::splat(0.25), fireball.pos + DVec3::splat(0.25)),
+                false,
+                false,
+                false,
+            );
+        }
+        for eye in &entities.eyes {
+            self.redstone_contact_box(
+                (eye.pos - DVec3::splat(0.125), eye.pos + DVec3::splat(0.125)),
+                false,
+                false,
+                false,
+            );
+        }
+        for cart in &entities.minecarts {
+            self.redstone_contact_box(cart.aabb(), false, false, true);
         }
         // Iterate by temporarily taking the retained map; no per-tick allocation.
         let contacts = std::mem::take(&mut self.redstone.contacts);
@@ -55,9 +121,26 @@ impl World {
             }
         }
         self.redstone.contacts = contacts;
+        self.refresh_tripwires();
+        self.power_detectors();
     }
 
-    fn redstone_contact_box(&mut self, (min, max): (DVec3, DVec3), living: bool, arrow: bool) {
+    fn power_detectors(&mut self) {
+        let occupied: Vec<IVec3> =
+            self.redstone.contacts.iter().filter(|(_, c)| c.carts > 0).map(|(&p, _)| p).collect();
+        for p in occupied {
+            let Some(b) = self.get_block(p) else { continue };
+            if super::rails::kind(b) != Some(super::rails::RailKind::Detector) {
+                continue;
+            }
+            if !super::rails::is_powered(b) {
+                self.edit(p, super::rails::with_power(b, true), false);
+            }
+            self.schedule_redstone(p, 20, 0);
+        }
+    }
+
+    fn redstone_contact_box(&mut self, (min, max): (DVec3, DVec3), living: bool, arrow: bool, cart: bool) {
         if living {
             let foot = (min + DVec3::new((max.x - min.x) * 0.5, -0.01, (max.z - min.z) * 0.5)).floor().as_ivec3();
             self.touch_redstone_ore(foot);
@@ -83,6 +166,13 @@ impl World {
                                 },
                             )
                         }
+                        _ if cart && super::rails::kind(b) == Some(super::rails::RailKind::Detector) => {
+                            Some(super::rails::DETECTOR_BOX)
+                        }
+                        _ if super::gadgets::is_tripwire(b) => {
+                            let attached = super::gadgets::wire_state(b).is_some_and(|(_, attached, _)| attached);
+                            Some((DVec3::ZERO, DVec3::new(1.0, if attached { 0.09375 } else { 0.5 }, 1.0)))
+                        }
                         _ => None,
                     };
                     if let Some((a, b)) = bounds {
@@ -92,6 +182,7 @@ impl World {
                             c.living += living as u32;
                             c.all += 1;
                             c.arrows |= arrow;
+                            c.carts += u32::from(cart);
                         }
                     }
                     if living
