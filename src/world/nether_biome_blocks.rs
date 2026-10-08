@@ -375,7 +375,7 @@ pub fn can_stay_on(block: Block, below: Block) -> Option<bool> {
         SOUL_TORCH => below.is_opaque(),
         b => match Vine::of(b) {
             // Twisting vines stand on a sturdy top or more of themselves.
-            Some((Vine::Twisting, _)) => below.is_opaque() || matches!(Vine::of(below), Some((Vine::Twisting, _))),
+            Some((Vine::Twisting, _)) => sturdy_face(below) || matches!(Vine::of(below), Some((Vine::Twisting, _))),
             // Weeping vines hang from above (see `hangs_from`).
             Some((Vine::Weeping, _)) => true,
             None => return None,
@@ -383,10 +383,16 @@ pub fn can_stay_on(block: Block, below: Block) -> Option<bool> {
     })
 }
 
+// Match the full-block face support used by mounted redstone components.
+// Transparent glass is sturdy too; partial shapes need per-face support.
+fn sturdy_face(b: Block) -> bool {
+    b.is_opaque() || b == Block::GLASS || b.stained_glass_color().is_some()
+}
+
 /// Whether weeping vines can hang under `above`: a sturdy bottom face or
 /// more weeping vines.
 pub fn hangs_from(above: Block) -> bool {
-    above.is_opaque() || matches!(Vine::of(above), Some((Vine::Weeping, _)))
+    sturdy_face(above) || matches!(Vine::of(above), Some((Vine::Weeping, _)))
 }
 
 /// Roots and sprouts are replaceable, like grass.

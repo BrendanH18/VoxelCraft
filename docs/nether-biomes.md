@@ -199,13 +199,19 @@ against zombified piglins' 100. Fortress spawning is unchanged.
 
 ## Performance
 
-Headless `--bench --rd 8` on the development container (4 cores, noisy;
-medians of several runs): Overworld generation is unchanged (0.65–0.70 ms
-per chunk there), light+mesh unchanged, and the Nether line the benchmark
-now prints stays at about 0.6 ms per chunk around the bench origin, where
-the shared column cache pays for the surface rules. Feature-dense biomes
-cost more: about 1.0 ms per chunk in crimson forests and 1.2 ms in basalt
-deltas (single thread, cold caches), against 0.7 ms in the wastes.
+Measured on 2026-10-08 on an Apple M5, release build, seed 12345:
+`--bench --rd 8` gave 0.259 ms per Overworld chunk, 0.216 ms per Nether
+chunk at the benchmark origin, 0.684 ms per dense chunk for light+mesh,
+and 0.18 s for streaming. Origin throughput remains close to v0.4.
+
+Feature-heavy biomes cost more. Three fresh generators each generated
+100 chunks (5×5 columns, all four vertical Nether chunks), with a median
+of 0.234 ms per chunk in the wastes, 0.275 in soul sand valleys, 0.417 in
+crimson forests, 0.370 in warped forests and 2.360 in basalt deltas.
+The patches were centered at (-2560, -4480), (-4096, -4480),
+(-4480, -4480), (1216, -3520) and (-1024, -4480), respectively, for seed
+12345. Biome lookup was outside the timer. Basalt feature generation is
+a performance hotspot; the ordinary benchmark origin understates its cost.
 
 ## Known gaps
 

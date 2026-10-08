@@ -128,7 +128,8 @@ impl Kind {
             Kind::CrimsonFungi | Kind::WarpedFungi => (4, -12, 28),
             Kind::CrimsonVegetation | Kind::WarpedVegetation | Kind::NetherSprouts | Kind::SoulFire => (7, -3, 3),
             Kind::WeepingVines => (7, -23, 2),
-            Kind::TwistingVines => (8, -4, 2 * ROOF),
+            // Each attempt searches down from its offset to the first floor.
+            Kind::TwistingVines => (8, -ROOF, 20),
         }
     }
 
@@ -258,7 +259,6 @@ impl<'a> Probe<'a> {
 struct Canvas<'p, 'a> {
     probe: &'p Probe<'a>,
     own: FxHashMap<IVec3, Block>,
-    writes: Vec<(IVec3, Block)>,
 }
 
 impl Level for Canvas<'_, '_> {
@@ -267,7 +267,6 @@ impl Level for Canvas<'_, '_> {
     }
     fn place(&mut self, p: IVec3, b: Block) {
         self.own.insert(p, b);
-        self.writes.push((p, b));
     }
 }
 
@@ -280,7 +279,7 @@ pub(super) fn decorate(nether: &NetherGen, blocks: &mut [Block; CHUNK_VOLUME], b
         base,
         blocks,
         touched: vec![0u64; CHUNK_VOLUME / 64],
-        canvas: Canvas { probe: &probe, own: FxHashMap::default(), writes: Vec::new() },
+        canvas: Canvas { probe: &probe, own: FxHashMap::default() },
     };
     for cz in lo.y..=hi.y {
         for cx in lo.x..=hi.x {
@@ -372,9 +371,16 @@ impl Painter<'_, '_, '_> {
         }
         let mut rng = Rng(hash3(origin.x, origin.y, origin.z, seed ^ SALT_FEATURE ^ (kind as u64) << 40));
         self.canvas.own.clear();
-        self.canvas.writes.clear();
         kind.place(&mut self.canvas, &mut rng, origin);
-        for &(p, block) in &self.canvas.writes {
+        self.paint_feature();
+    }
+
+    fn paint_feature(&mut self) {
+        let b = self.base;
+        // A feature may overwrite its own blocks (deltas replace magma with
+        // lava). First-write precedence applies between features; within one
+        // feature, paint the final state from its canvas.
+        for (&p, &block) in &self.canvas.own {
             let l = p - b;
             if block == Block::AIR || l.cmplt(IVec3::ZERO).any() || l.cmpge(IVec3::splat(CHUNK_SIZE_I)).any() {
                 continue;
@@ -429,6 +435,57 @@ mod tests {
 
     fn count(blocks: &HashMap<IVec3, Block>, f: impl Fn(Block) -> bool) -> usize {
         blocks.values().filter(|&&b| f(b)).count()
+    }
+
+    #[test]
+    fn delta_painting_keeps_lava_that_replaced_its_own_magma_rim() {
+        use super::super::nether_features::tests::Flat;
+
+        struct Recorded<'c, 'p, 'a> {
+            flat: Flat,
+            canvas: &'c mut Canvas<'p, 'a>,
+        }
+        impl Level for Recorded<'_, '_, '_> {
+            fn block(&self, p: IVec3) -> Block {
+                self.flat.block(p)
+            }
+            fn place(&mut self, p: IVec3, b: Block) {
+                self.flat.place(p, b);
+                self.canvas.place(p, b);
+            }
+        }
+
+        let g = NetherGen::new(1);
+        let base = IVec3::new(-16, 32, -16);
+        let probe = Probe::new(&g, base);
+        let mut blocks = ChunkData::new_dense(Block::BASALT);
+        let mut painter = Painter {
+            base,
+            blocks: &mut blocks,
+            touched: vec![0u64; CHUNK_VOLUME / 64],
+            canvas: Canvas { probe: &probe, own: FxHashMap::default() },
+        };
+        let mut recorded = Recorded { flat: Flat::new(40, 100, Block::BASALT), canvas: &mut painter.canvas };
+        // Seed 2 replaces 28 earlier magma writes with lava inside one delta.
+        assert!(features::delta(&mut recorded, &mut Rng(2), IVec3::new(0, 39, 0)));
+        let expected = recorded.flat.blocks;
+        painter.paint_feature();
+        for (&p, &block) in &expected {
+            let l = p - base;
+            assert_eq!(painter.blocks[index(l.x as usize, l.y as usize, l.z as usize)], block, "delta at {p}");
+        }
+        // A later feature still cannot override this delta.
+        painter.canvas.own.clear();
+        for (&p, &block) in &expected {
+            if block == Block::LAVA {
+                painter.canvas.place(p, Block::MAGMA);
+            }
+        }
+        painter.paint_feature();
+        for (&p, &block) in &expected {
+            let l = p - base;
+            assert_eq!(painter.blocks[index(l.x as usize, l.y as usize, l.z as usize)], block, "precedence at {p}");
+        }
     }
 
     #[test]

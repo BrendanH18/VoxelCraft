@@ -52,8 +52,9 @@ Choose your download:
 ### Engine
 
 - Measured on an Apple M5 with a release build, `--bench --rd 8`: Overworld
-  generation 0.25 ms per chunk, Nether generation 0.21 ms per chunk, and light
-  and mesh 0.68 ms per dense chunk, unchanged from 0.4.0.
+  generation 0.26 ms per chunk, Nether generation 0.22 ms per chunk at the
+  benchmark origin, and light and mesh 0.68 ms per dense chunk, close to
+  0.4.0. Dense basalt deltas take longer to generate than the benchmark origin.
 
 ### Known limitations
 

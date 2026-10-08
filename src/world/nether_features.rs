@@ -270,14 +270,19 @@ pub fn twisting_vines(level: &mut impl Level, rng: &mut Rng, origin: IVec3, widt
     for _ in 0..width * width {
         let mut p = origin
             + IVec3::new(between(rng, -width, width), between(rng, -height, height), between(rng, -width, width));
-        // Up to the first air above the ground.
+        // Java searches down through air to the ground, then steps back up.
+        // Offsets inside solid terrain are rejected by the base check.
         loop {
-            p += IVec3::Y;
-            if p.y >= BUILD_HEIGHT || level.empty(p) {
+            p -= IVec3::Y;
+            if p.y < 0 || p.y >= BUILD_HEIGHT || !level.empty(p) {
                 break;
             }
         }
-        if p.y < BUILD_HEIGHT && !twisting_base_invalid(level, p) {
+        if p.y < 0 || p.y >= BUILD_HEIGHT {
+            continue;
+        }
+        p += IVec3::Y;
+        if !twisting_base_invalid(level, p) {
             let mut length = between(rng, 1, max);
             if int(rng, 6) == 0 {
                 length *= 2;
@@ -734,6 +739,32 @@ pub(crate) mod tests {
         let mut warped = Flat::new(40, 60, nb::WARPED_NYLIUM);
         assert!(twisting_vines(&mut warped, &mut Rng(2), IVec3::new(0, 40, 0), 8, 4, 8));
         assert!(count(&warped, |b| matches!(Vine::of(b), Some((Vine::Twisting, _)))) > 5);
+    }
+
+    #[test]
+    fn twisting_vines_find_ground_from_air_offsets_and_never_dig_out_of_rock() {
+        let origin = IVec3::new(0, 40, 0);
+        // With no vertical spread all attempts begin in air at floor height.
+        // Searching up skips every attempt; searching down finds the floor.
+        let mut floor = Flat::new(40, 100, nb::WARPED_NYLIUM);
+        assert!(twisting_vines(&mut floor, &mut Rng(2), origin, 3, 0, 2));
+        assert!(count(&floor, |b| Vine::of(b).is_some()) > 0);
+        assert!(floor.blocks.keys().all(|p| p.y >= 40));
+        // A neighbouring ledge above the start is solid at every sampled y.
+        // Java cannot grow through it to the air on its upper surface.
+        let mut ledge = Flat::new(40, 100, nb::WARPED_NYLIUM);
+        for x in -8..=8 {
+            for z in -8..=8 {
+                if x == 0 && z == 0 {
+                    continue;
+                }
+                for y in 40..=48 {
+                    ledge.blocks.insert(IVec3::new(x, y, z), Block::NETHERRACK);
+                }
+            }
+        }
+        assert!(twisting_vines(&mut ledge, &mut Rng(2), origin, 8, 4, 8));
+        assert!(!ledge.blocks.iter().any(|(p, b)| (p.x != 0 || p.z != 0) && Vine::of(*b).is_some()));
     }
 
     #[test]

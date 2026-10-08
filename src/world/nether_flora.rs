@@ -338,6 +338,27 @@ mod tests {
     }
 
     #[test]
+    fn vines_keep_their_support_when_replaced_with_glass() {
+        let mut w = world();
+        for glass in [Block::GLASS, Block::stained_glass(crate::color::DyeColor::White)] {
+            let roof = AT + IVec3::Y * 3;
+            w.set_block(roof, Block::NETHERRACK);
+            w.set_block(roof - IVec3::Y, Vine::Weeping.head(3));
+            assert!(w.redstone_supported(roof - IVec3::Y, Vine::Weeping.head(3)));
+            w.set_block(roof, glass);
+            assert_eq!(w.get_block(roof - IVec3::Y), Some(Vine::Weeping.head(3)));
+            assert!(w.redstone_supported(roof - IVec3::Y, Vine::Weeping.head(3)));
+            w.set_block(AT - IVec3::Y, Block::NETHERRACK);
+            w.set_block(AT, Vine::Twisting.head(3));
+            w.set_block(AT - IVec3::Y, glass);
+            assert_eq!(w.get_block(AT), Some(Vine::Twisting.head(3)));
+            assert!(Vine::Twisting.head(3).can_stay_on(glass));
+            w.set_block(roof, Block::AIR);
+            w.set_block(AT - IVec3::Y, Block::AIR);
+        }
+    }
+
+    #[test]
     fn soul_fire_lights_on_soul_blocks_and_goes_out_off_them() {
         let mut w = world();
         clear(&mut w);
