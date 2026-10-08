@@ -12,6 +12,7 @@
 use glam::{DVec3, IVec3};
 
 use super::thrown::{self, Thrown};
+use super::villager::{self, Profession};
 use super::{Ctx, Entities, EntityEvent, MobKind, MobWorld, PlayerId};
 use crate::simulation::difficulty::Difficulty;
 use crate::world::block::{Block, Facing};
@@ -138,6 +139,26 @@ impl Entities {
                     }
                     self.mobs[i].hunt = best.map(|(_, p)| p);
                 }
+                MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => {
+                    let mut best: Option<(f64, DVec3)> = None;
+                    for o in &self.mobs {
+                        if o.alive() && o.kind == MobKind::Villager {
+                            let d = o.pos.distance_squared(pos);
+                            if d < GOLEM_RANGE * GOLEM_RANGE && best.is_none_or(|(bd, _)| d < bd) {
+                                best = Some((d, o.pos));
+                            }
+                        }
+                    }
+                    if let Some((d, at)) = best {
+                        let player_closer = ctx.nearest_target(pos).is_some_and(|t| {
+                            let pd = t.pos.distance_squared(pos);
+                            pd < d && pd < 24.0 * 24.0
+                        });
+                        if !player_closer {
+                            self.mobs[i].hunt = Some(at);
+                        }
+                    }
+                }
                 MobKind::Creeper => {
                     let mut away: Option<(f64, DVec3)> = None;
                     for o in &self.mobs {
@@ -181,6 +202,23 @@ impl Entities {
                 });
                 continue;
             }
+            if kind.is_zombie() {
+                let mut bitten: Option<usize> = None;
+                let mut nearest = 2.25f64;
+                for j in 0..n {
+                    if i != j && self.mobs[j].alive() && self.mobs[j].kind == MobKind::Villager {
+                        let d = self.mobs[j].pos.distance_squared(pos);
+                        if d < nearest {
+                            nearest = d;
+                            bitten = Some(j);
+                        }
+                    }
+                }
+                if let Some(j) = bitten {
+                    self.infect_or_hit(i, j, events);
+                }
+                continue;
+            }
             let mut victim: Option<usize> = None;
             let mut best = f64::MAX;
             for j in 0..n {
@@ -197,6 +235,69 @@ impl Entities {
             }
             let Some(j) = victim else { continue };
             self.hit_mob(i, j, iron_damage(difficulty, false), 8.0, events);
+        }
+    }
+
+    /// A killing blow from a zombie converts the villager on Normal (50%) and Hard (100%).
+    fn infect_or_hit(&mut self, attacker: usize, victim: usize, events: &mut Vec<EntityEvent>) {
+        let (damage, _) = self.mobs[attacker].kind.melee();
+        let chance = match self.mobs[attacker].difficulty {
+            Difficulty::Peaceful | Difficulty::Easy => 0.0,
+            Difficulty::Normal => 0.5,
+            Difficulty::Hard => 1.0,
+        };
+        let killing = self.mobs[victim].health <= damage && self.mobs[victim].kind == MobKind::Villager;
+        if killing && self.rng.chance(chance) {
+            let mob = &mut self.mobs[victim];
+            mob.kind = MobKind::ZombieVillager;
+            mob.health = MobKind::ZombieVillager.max_health();
+            mob.dying = None;
+            mob.baby = mob.age < 0;
+            mob.hurt = 0.3;
+            if let Some(v) = &mut mob.villager {
+                v.sleeping = false;
+                v.trading = false;
+                v.fleeing = false;
+                v.goal = None;
+            }
+            return;
+        }
+        self.hit_mob(attacker, victim, damage, 5.0, events);
+    }
+
+    /// A golden apple starts the 3–5 minute cure while Weakness is still active.
+    pub fn try_cure(&mut self, index: usize) -> bool {
+        let mob = &mut self.mobs[index];
+        if mob.kind != MobKind::ZombieVillager || mob.weakness_left <= 0.0 || mob.convert_left > 0.0 {
+            return false;
+        }
+        mob.convert_left = self.rng.range(180.0, 300.0);
+        true
+    }
+
+    /// Natural zombies beside a villager have Java's 5% chance to be zombie villagers.
+    pub(super) fn note_village_zombie(&mut self, kind: MobKind) {
+        if kind != MobKind::Zombie {
+            return;
+        }
+        let Some(pos) = self.mobs.last().map(|m| m.pos) else { return };
+        let near = self
+            .mobs
+            .iter()
+            .any(|o| o.alive() && o.kind == MobKind::Villager && o.pos.distance_squared(pos) < 64.0 * 64.0);
+        if near && self.rng.chance(0.05) {
+            let id = self.next_villager_id;
+            self.next_villager_id = self.next_villager_id.saturating_add(1);
+            let seed = self.rng.next_int(u32::MAX) as u64;
+            let prof = Profession::ALL[1 + self.rng.next_int(14) as usize];
+            let mob = self.mobs.last_mut().unwrap();
+            if mob.baby {
+                mob.age = -24000;
+            }
+            mob.kind = MobKind::ZombieVillager;
+            let mut v = villager::Villager::new(id, seed);
+            v.set_profession(prof);
+            mob.villager = Some(Box::new(v));
         }
     }
 
@@ -479,5 +580,77 @@ mod tests {
         assert_eq!(mob.health, 90.0);
         assert_eq!(mob.vel, DVec3::ZERO);
         assert_ne!(mob.ai, crate::entity::mob::Ai::Panic);
+    }
+
+    #[test]
+    fn a_hard_zombie_converts_a_villager_and_keeps_the_profession() {
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Zombie, DVec3::new(0.5, 1.0, 0.5));
+        e.spawn(MobKind::Villager, DVec3::new(1.6, 1.0, 0.5));
+        e.mobs[0].difficulty = Difficulty::Hard;
+        e.mobs[1].villager.as_mut().unwrap().set_profession(Profession::Farmer);
+        let offers = e.mobs[1].villager.as_ref().unwrap().offers;
+        e.mobs[1].health = 1.0;
+        e.mobs[0].strike = true;
+        let mut events = Vec::new();
+        e.resolve_strikes(&ctx(DVec3::new(40.0, 1.0, 0.5), false), &mut events);
+        assert_eq!(e.mobs[1].kind, MobKind::ZombieVillager);
+        assert_eq!(e.mobs[1].health, MobKind::ZombieVillager.max_health());
+        assert_eq!(e.mobs[1].villager.as_ref().unwrap().profession, Profession::Farmer);
+        assert_eq!(e.mobs[1].villager.as_ref().unwrap().offers, offers);
+        assert!(events.iter().all(|ev| !matches!(ev, EntityEvent::MobKilled { .. })));
+
+        e.mobs[1].kind = MobKind::Villager;
+        e.mobs[1].health = 1.0;
+        e.mobs[0].difficulty = Difficulty::Easy;
+        e.mobs[0].strike = true;
+        events.clear();
+        e.resolve_strikes(&ctx(DVec3::new(40.0, 1.0, 0.5), false), &mut events);
+        assert_eq!(e.mobs[1].kind, MobKind::Villager);
+        assert!(events.iter().any(|ev| matches!(ev, EntityEvent::MobKilled { .. })));
+    }
+
+    #[test]
+    fn weakness_and_a_golden_apple_cure_into_a_discount() {
+        let world = Grid::flat(1);
+        let mut e = Entities::new(9);
+        e.spawn(MobKind::Villager, DVec3::new(0.5, 1.0, 0.5));
+        e.mobs[0].kind = MobKind::ZombieVillager;
+        e.mobs[0].villager.as_mut().unwrap().set_profession(Profession::Cleric);
+        assert!(!e.try_cure(0), "a golden apple does nothing without weakness");
+        e.mobs[0].weakness_left = 30.0;
+        assert!(e.try_cure(0));
+        assert!((180.0..=300.0).contains(&e.mobs[0].convert_left));
+        assert!(!e.try_cure(0), "a second apple does not restart the cure");
+        e.mobs[0].convert_left = 0.05;
+        e.update(0.05, &world, &ctx(DVec3::new(30.0, 1.0, 0.5), false));
+        assert_eq!(e.mobs[0].kind, MobKind::Villager);
+        let v = e.mobs[0].villager.as_ref().unwrap();
+        assert_eq!(v.reputation, 100);
+        assert_eq!(v.profession, Profession::Cleric);
+        let offer = v.offers.iter().copied().flatten().next().unwrap();
+        assert!(v.priced(offer).count <= offer.price().count);
+        assert!(v.priced(offer).count >= 1);
+    }
+
+    #[test]
+    fn some_zombies_near_villagers_spawn_as_zombie_villagers() {
+        let mut e = Entities::new(2);
+        e.spawn(MobKind::Villager, DVec3::new(0.5, 1.0, 0.5));
+        let mut converted = 0;
+        for _ in 0..200 {
+            e.spawn(MobKind::Zombie, DVec3::new(2.0, 1.0, 0.5));
+            e.note_village_zombie(MobKind::Zombie);
+            let mob = e.mobs.last().unwrap();
+            if mob.kind == MobKind::ZombieVillager {
+                converted += 1;
+                assert_ne!(mob.villager.as_ref().unwrap().profession, Profession::None);
+            }
+            e.mobs.pop();
+        }
+        assert!((2..40).contains(&converted), "{converted}");
+        e.spawn(MobKind::Zombie, DVec3::new(200.0, 1.0, 0.5));
+        e.note_village_zombie(MobKind::Zombie);
+        assert_eq!(e.mobs.last().unwrap().kind, MobKind::Zombie);
     }
 }

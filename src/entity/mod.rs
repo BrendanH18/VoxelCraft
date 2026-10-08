@@ -1056,6 +1056,7 @@ impl Entities {
                     continue;
                 }
                 self.spawn(kind, pos);
+                self.note_village_zombie(kind);
                 // Animals come in small herds, zombified piglins and End
                 // endermen in packs.
                 if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
@@ -1077,6 +1078,7 @@ impl Entities {
                             && clear_of_players(ctx, p)
                         {
                             self.spawn(kind, p);
+                            self.note_village_zombie(kind);
                         }
                     }
                 }

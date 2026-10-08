@@ -32,6 +32,12 @@ pub fn use_mob(
         }
         return true;
     }
+    if held.item == Item::GOLDEN_APPLE && entities.try_cure(index) {
+        if !creative {
+            inventory.take_one(slot);
+        }
+        return true;
+    }
     if held.item == Item::BUCKET && entities.mobs[index].kind == crate::entity::MobKind::Cow {
         exchange(inventory, slot, Item::MILK_BUCKET, creative, entities, player);
         return true;

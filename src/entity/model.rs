@@ -177,6 +177,13 @@ const VILLAGER_HEAD: &[Cuboid] = &[
     cube([-3.0, 5.5, 4.0], [3.0, 6.5, 4.1], [62, 43, 28], 0),
 ];
 const VILLAGER_LEG: &[Cuboid] = &[cube([-2.0, -8.0, -2.0], [2.0, 0.0, 2.0], [68, 49, 36], 28)];
+const ZOMBIE_VILLAGER_HEAD: &[Cuboid] = &[
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [92, 148, 78], 24),
+    cube([-1.0, 1.0, 4.0], [1.0, 5.0, 6.0], [70, 120, 58], 22),
+    cube([-3.0, 4.0, 4.0], [-1.0, 5.0, 4.1], [160, 40, 36], 0),
+    cube([1.0, 4.0, 4.0], [3.0, 5.0, 4.1], [160, 40, 36], 0),
+    cube([-3.0, 5.5, 4.0], [3.0, 6.5, 4.1], [40, 28, 22], 0),
+];
 const IRON_BODY: &[Cuboid] = &[
     cube([-9.0, 0.0, -6.0], [9.0, 18.0, 6.0], [188, 188, 192], 18),
     cube([-4.0, 16.0, 6.0], [4.0, 20.0, 8.0], [160, 160, 164], 12),
@@ -604,6 +611,21 @@ fn pose(m: &Mob, time: f32) -> Parts {
             }
             parts
         }
+        MobKind::ZombieVillager => {
+            let profession = m.villager.as_ref().map_or(super::villager::Profession::None, |v| v.profession);
+            let shake = if m.convert_left > 0.0 { (time * 18.0).sin() * 1.5 } else { 0.0 };
+            let mut parts = parts![
+                part(VILLAGER_BODY, [shake, 0.0, 0.0], Quat::IDENTITY),
+                part(VILLAGER_LEG, [-2.0 + shake, 8.0, 0.0], rx(swing)),
+                part(VILLAGER_LEG, [2.0 + shake, 8.0, 0.0], rx(-swing)),
+                part(ZOMBIE_VILLAGER_HEAD, [shake, 24.0, 0.0], head),
+                part(&VILLAGER_APRONS[profession as usize], [shake, 0.0, 0.0], Quat::IDENTITY)
+            ];
+            if profession == super::villager::Profession::Farmer {
+                parts.push(part(FARMER_HAT, [shake, 24.0, 0.0], head));
+            }
+            parts
+        }
         MobKind::IronGolem => {
             // Cracks at Java's 75 / 50 / 25 percent health.
             let cracks = if m.health > 75.0 {
@@ -850,7 +872,8 @@ pub fn build(
                 push_cuboid(out, &cuboid, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
             }
         }
-        if m.kind.is_zombie() || m.kind == MobKind::Skeleton {
+        // Zombie villagers use the villager mesh, which is not the six-limb armor rig.
+        if (m.kind.is_zombie() && m.kind != MobKind::ZombieVillager) || m.kind == MobKind::Skeleton {
             let limbs = humanoid_armor(&posed);
             let worn = super::armor::worn_pieces(m.armor, m.armor_glint);
             super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));

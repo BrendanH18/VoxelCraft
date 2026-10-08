@@ -58,7 +58,7 @@ impl Game {
             let Some(o) = o else { continue };
             let x = px + 8.0 + (i % 2) as f32 * 80.0;
             let y = py + 22.0 + (i / 2) as f32 * 20.0;
-            draw_stack(ui, x, y, o.price(), true, self.dial_of(&self.player));
+            draw_stack(ui, x, y, v.priced(*o), true, self.dial_of(&self.player));
             if let Some(s) = o.second {
                 draw_stack(ui, x + 20.0, y, s, true, self.dial_of(&self.player));
             }
@@ -86,7 +86,7 @@ impl Game {
         ui.text(x + 100.0, y, v.level_name(), WHITE);
         if let Some(o) = v.offers.get(index).copied().flatten() {
             let dial = self.dial_of(&self.player);
-            draw_stack(ui, x, y + 12.0, o.price(), true, dial);
+            draw_stack(ui, x, y + 12.0, v.priced(o), true, dial);
             ui.text(x + 22.0, y + 16.0, o.cost.item.name(), WHITE);
             let sx = x + 22.0 + Ui::text_width(o.cost.item.name()) + 10.0;
             if let Some(s) = o.second {

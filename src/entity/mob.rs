@@ -107,6 +107,8 @@ pub enum MobKind {
     /// Throws splash potions, and drinks its own.
     Witch,
     Villager,
+    /// A villager a zombie killed. Keeps the profession and can be cured.
+    ZombieVillager,
     /// Village defender: 100 health, built or summoned.
     IronGolem,
     /// Two snow blocks and a pumpkin. Melts in water and deserts.
@@ -114,14 +116,14 @@ pub enum MobKind {
 }
 
 impl MobKind {
-    /// Zombie, husk or drowned: shares the zombie's walk, armor and baby rolls.
+    /// Zombie, husk, drowned or zombie villager: shares the walk, armor and baby rolls.
     pub fn is_zombie(self) -> bool {
-        matches!(self, Self::Zombie | Self::Husk | Self::Drowned)
+        matches!(self, Self::Zombie | Self::Husk | Self::Drowned | Self::ZombieVillager)
     }
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 23] = [
+    pub const ALL: [MobKind; 24] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -143,6 +145,7 @@ impl MobKind {
         MobKind::Drowned,
         MobKind::Witch,
         MobKind::Villager,
+        MobKind::ZombieVillager,
         MobKind::IronGolem,
         MobKind::SnowGolem,
     ];
@@ -171,6 +174,7 @@ impl MobKind {
             MobKind::Drowned => "drowned",
             MobKind::Witch => "witch",
             MobKind::Villager => "villager",
+            MobKind::ZombieVillager => "zombie villager",
             MobKind::IronGolem => "iron golem",
             MobKind::SnowGolem => "snow golem",
         }
@@ -194,7 +198,8 @@ impl MobKind {
             | MobKind::Drowned
             | MobKind::ZombifiedPiglin
             | MobKind::Witch
-            | MobKind::Villager => Shape::new(0.3, 1.95),
+            | MobKind::Villager
+            | MobKind::ZombieVillager => Shape::new(0.3, 1.95),
             MobKind::IronGolem => Shape::new(0.7, 2.7),
             MobKind::SnowGolem => Shape::new(0.35, 1.9),
             MobKind::Skeleton => Shape::new(0.3, 1.99),
@@ -224,7 +229,8 @@ impl MobKind {
             | MobKind::Creeper
             | MobKind::ZombifiedPiglin
             | MobKind::Blaze
-            | MobKind::Villager => 20.0,
+            | MobKind::Villager
+            | MobKind::ZombieVillager => 20.0,
             MobKind::IronGolem => 100.0,
             MobKind::SnowGolem => 4.0,
             MobKind::Spider => 16.0,
@@ -243,6 +249,7 @@ impl MobKind {
             MobKind::Zombie
                 | MobKind::Husk
                 | MobKind::Drowned
+                | MobKind::ZombieVillager
                 | MobKind::Skeleton
                 | MobKind::Creeper
                 | MobKind::Spider
@@ -277,9 +284,12 @@ impl MobKind {
         match self {
             MobKind::Enderman => true,
             // Only from spawners and inside fortresses (`fortress_spawn`).
-            MobKind::Blaze | MobKind::WitherSkeleton | MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem => {
-                false
-            }
+            MobKind::Blaze
+            | MobKind::WitherSkeleton
+            | MobKind::Villager
+            | MobKind::ZombieVillager
+            | MobKind::IronGolem
+            | MobKind::SnowGolem => false,
             // Only from stronghold spawners (and infested blocks, later).
             MobKind::Silverfish | MobKind::CaveSpider => false,
             MobKind::MagmaCube | MobKind::ZombifiedPiglin | MobKind::Ghast => dimension == Dimension::Nether,
@@ -344,6 +354,7 @@ impl MobKind {
             MobKind::Zombie
             | MobKind::Husk
             | MobKind::Drowned
+            | MobKind::ZombieVillager
             | MobKind::Skeleton
             | MobKind::WitherSkeleton
             | MobKind::ZombifiedPiglin => Creature::Undead,
@@ -353,7 +364,7 @@ impl MobKind {
     }
 
     pub(super) fn burns_in_sun(self) -> bool {
-        matches!(self, MobKind::Zombie | MobKind::Drowned | MobKind::Skeleton)
+        matches!(self, MobKind::Zombie | MobKind::Drowned | MobKind::ZombieVillager | MobKind::Skeleton)
     }
 
     fn wander_speed(self) -> f64 {
@@ -367,6 +378,7 @@ impl MobKind {
             | MobKind::Zombie
             | MobKind::Husk
             | MobKind::Drowned
+            | MobKind::ZombieVillager
             | MobKind::Creeper
             | MobKind::ZombifiedPiglin => 1.1,
             MobKind::Sheep | MobKind::Skeleton | MobKind::WitherSkeleton | MobKind::Blaze => 1.2,
@@ -389,7 +401,7 @@ impl MobKind {
     }
 
     /// Melee damage and the death message it gives.
-    fn melee(self) -> (f32, &'static str) {
+    pub(super) fn melee(self) -> (f32, &'static str) {
         match self {
             MobKind::CaveSpider => (2.0, "was slain by a cave spider"),
             MobKind::Spider => (2.0, "was slain by a spider"),
@@ -402,6 +414,7 @@ impl MobKind {
             MobKind::Silverfish => (1.0, "was slain by a silverfish"),
             MobKind::IronGolem => (15.0, "was slain by an iron golem"),
             MobKind::SnowGolem => (0.0, "was slain by a snow golem"),
+            MobKind::ZombieVillager => (3.0, "was slain by a zombie villager"),
             _ => (3.0, "was slain by a zombie"),
         }
     }
@@ -416,7 +429,9 @@ impl MobKind {
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
             MobKind::Sheep => &[(WOOL, 1, 1)],
             MobKind::Chicken => &[(Item::RAW_CHICKEN, 1, 1), (Item::FEATHER, 0, 2)],
-            MobKind::Zombie | MobKind::Husk | MobKind::Drowned => &[(Item::ROTTEN_FLESH, 0, 2)],
+            MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => {
+                &[(Item::ROTTEN_FLESH, 0, 2)]
+            }
             MobKind::Skeleton => &[(Item::BONE, 0, 2), (Item::ARROW, 0, 2)],
             MobKind::Creeper => &[(Item::GUNPOWDER, 0, 2)],
             MobKind::Spider | MobKind::CaveSpider => &[(Item::STRING, 0, 2), (Item::SPIDER_EYE, -1, 1)],
@@ -605,6 +620,10 @@ pub struct Mob {
     pub(super) strike: bool,
     /// Player-built golems stay loaded instead of despawning.
     pub built: bool,
+    /// Seconds of splash Weakness left. A golden apple starts a cure while this is up.
+    pub(super) weakness_left: f32,
+    /// Seconds until a weakened zombie villager becomes a villager again. Zero means not curing.
+    pub(super) convert_left: f32,
 }
 
 impl Mob {
@@ -675,12 +694,30 @@ impl Mob {
             hunt: None,
             strike: false,
             built: false,
+            weakness_left: 0.0,
+            convert_left: 0.0,
         }
     }
 
     /// A player hit this iron golem recently, so it may hit back.
     pub(super) fn angry_at_player(&self) -> bool {
         self.kind == MobKind::IronGolem && self.player_hit_left > 0.0
+    }
+
+    /// The cure finished: a villager again, with Java's major_positive discount.
+    fn finish_cure(&mut self) {
+        self.kind = MobKind::Villager;
+        self.health = MobKind::Villager.max_health();
+        self.baby = false;
+        self.weakness_left = 0.0;
+        self.convert_left = 0.0;
+        if let Some(v) = &mut self.villager {
+            v.reputation = 100;
+            v.sleeping = false;
+            v.trading = false;
+            v.fleeing = false;
+            v.goal = None;
+        }
     }
 
     pub fn shape(&self) -> Shape {
@@ -798,6 +835,13 @@ impl Mob {
         self.provoked = (self.provoked - dtf).max(0.0);
         self.attack_cooldown -= dtf;
         self.player_hit_left = (self.player_hit_left - dtf).max(0.0);
+        self.weakness_left = (self.weakness_left - dtf).max(0.0);
+        if self.convert_left > 0.0 && self.dying.is_none() && self.kind == MobKind::ZombieVillager {
+            self.convert_left = (self.convert_left - dtf).max(0.0);
+            if self.convert_left == 0.0 {
+                self.finish_cure();
+            }
+        }
         self.attack_anim = (self.attack_anim - dtf).max(0.0);
 
         self.light_timer -= dtf;
@@ -885,7 +929,7 @@ impl Mob {
                 self.teleport_pending = true;
             }
         }
-        if self.alive() && self.kind == MobKind::Villager && self.age < 0 {
+        if self.alive() && matches!(self.kind, MobKind::Villager | MobKind::ZombieVillager) && self.age < 0 {
             let v = self.villager.as_mut().unwrap();
             v.growth += dt as f32 * 20.0;
             let ticks = v.growth.floor() as i32;
@@ -951,8 +995,9 @@ impl Mob {
                 let dir = flat / dist;
                 let reach = if self.kind == MobKind::IronGolem { 2.4 } else { 1.5 };
                 self.head_target = (wrap((dir.z as f32).atan2(dir.x as f32) - self.yaw).clamp(-1.2, 1.2), 0.0);
-                if dist <= reach && self.attack_cooldown <= 0.0 && self.kind == MobKind::IronGolem {
-                    self.attack_cooldown = 1.2;
+                let golem = self.kind == MobKind::IronGolem;
+                if dist <= reach && self.attack_cooldown <= 0.0 && (golem || self.kind.is_zombie()) {
+                    self.attack_cooldown = if golem { 1.2 } else { ATTACK_COOLDOWN };
                     self.attack_anim = 0.4;
                     self.strike = true;
                 }
