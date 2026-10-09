@@ -1231,8 +1231,8 @@ impl Entities {
     /// one in 40 and only deeper than five blocks below sea level. Deep water
     /// is dark enough in daylight; shallow water needs night.
     fn drowned_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
-        use crate::world::terrain::{Biome, SEA_LEVEL};
-        let river = world.biome(x, z) == Biome::River;
+        use crate::world::terrain::SEA_LEVEL;
+        let river = world.biome(x, z).is_river();
         if !self.rng.chance(if river { 1.0 / 15.0 } else { 1.0 / 40.0 }) {
             return None;
         }
@@ -1246,18 +1246,17 @@ impl Entities {
     }
 
     fn slime_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
-        use crate::world::{height::java_y, terrain::Biome};
-        if world.biome(x, z) == Biome::Swamp && self.rng.chance(0.5 * self.moon_brightness) {
+        if world.biome(x, z).is_swamp() && self.rng.chance(0.5 * self.moon_brightness) {
             let pos = spawn_spot(world, MobKind::Slime, x, z, 0.0)?;
             let y = pos.y as i32;
             let raw = (daylight * 15.0) as u8;
             let light = world.block_light(pos.floor().as_ivec3()).max(raw);
-            if y > java_y(50) && y < java_y(70) && light <= (self.rng.next_f32() * 8.0) as u8 {
+            if y > 50 && y < 70 && light <= (self.rng.next_f32() * 8.0) as u8 {
                 return Some(pos);
             }
         }
         if slime::slime_chunk(world.seed(), x.div_euclid(16), z.div_euclid(16)) && self.rng.chance(0.1) {
-            cavern_spot(world, MobKind::Slime, x, z, java_y(39)).filter(|p| p.y < java_y(40) as f64)
+            cavern_spot(world, MobKind::Slime, x, z, 39).filter(|p| p.y < 40.0)
         } else {
             None
         }

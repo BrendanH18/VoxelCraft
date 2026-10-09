@@ -352,12 +352,11 @@ impl Stronghold {
             // Java's `moveBelowSeaLevel`.
             let mut bounds = b.pieces.iter().fold(start, |acc, p| acc.union(&p.bounds));
             let ceiling = SEA_LEVEL - BELOW_SEA;
-            let mut top = bounds.max.y - bounds.min.y + 1 + 1;
+            let mut top = bounds.max.y - bounds.min.y + 1 + super::chunk::WORLD_MIN_Y + 1;
             if top < ceiling {
                 top += rng.below((ceiling - top) as u32) as i32;
             }
-            // Same ceiling map as mineshafts: Java Y, then [`height::java_y`].
-            let shift = IVec3::new(0, top - bounds.max.y + super::height::ceiling_shift(top), 0);
+            let shift = IVec3::new(0, top - bounds.max.y, 0);
             for p in &mut b.pieces {
                 p.bounds = p.bounds.shifted(shift);
             }
@@ -885,10 +884,8 @@ mod tests {
                     assert!(!p.bounds.intersects(&q.bounds), "{p:?} overlaps {q:?}");
                 }
             }
-            // `moveBelowSeaLevel` keeps the Java ceiling at or below sea - 10,
-            // and that ceiling is then mapped. Still under our sea.
-            let mapped_ceiling = crate::world::height::java_y(SEA_LEVEL - BELOW_SEA);
-            assert!(sh.bounds.max.y <= mapped_ceiling && sh.bounds.min.y > 0, "{:?}", sh.bounds);
+            // `moveBelowSeaLevel` keeps the ceiling at or below sea - 10.
+            assert!(sh.bounds.max.y <= SEA_LEVEL - BELOW_SEA && sh.bounds.min.y > -64, "{:?}", sh.bounds);
             assert!(sh.bounds.max.y < crate::world::terrain::SEA_LEVEL, "under the sea: {:?}", sh.bounds);
             // Eyes lead to the start.
             let start = s.starts()[i];

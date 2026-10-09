@@ -31,11 +31,11 @@ pub enum Style {
 impl Style {
     pub fn of(b: Biome) -> Option<Self> {
         Some(match b {
-            Biome::Plains => Self::Plains,
+            Biome::Plains | Biome::Meadow => Self::Plains,
             Biome::Desert => Self::Desert,
             Biome::Savanna => Self::Savanna,
             Biome::Taiga => Self::Taiga,
-            Biome::Snowy => Self::Snowy,
+            Biome::SnowyPlains => Self::Snowy,
             _ => return None,
         })
     }
@@ -115,7 +115,7 @@ impl Builder<'_> {
         }
         let middle = (bounds.min + bounds.max) / 2;
         let col = self.generator.column(middle.x, middle.z);
-        if col.height <= SEA_LEVEL || matches!(col.biome, Biome::Ocean | Biome::River | Biome::Swamp) {
+        if col.height <= SEA_LEVEL || col.biome.is_watery() || col.biome.is_swamp() {
             return None;
         }
         // Rigid buildings sit at their entrance level, terrain is filled below.

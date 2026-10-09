@@ -15,10 +15,13 @@
 mod automation;
 pub mod bastion;
 pub mod bell;
+pub mod biome;
 pub mod block;
 pub mod brewing;
+pub mod caves;
 pub mod chest;
 pub mod chunk;
+pub mod climate;
 pub mod colors;
 pub mod composter;
 pub mod dungeon;
@@ -33,7 +36,6 @@ pub mod fortress;
 pub mod furnace;
 pub mod gadgets;
 mod growth;
-pub(crate) mod height;
 pub(crate) mod lighting;
 pub mod mineshaft;
 pub mod nether;
@@ -1130,7 +1132,15 @@ mod tests {
         assert!(player.on_ground, "player should land");
         assert!((player.pos.y - top).abs() < 0.01, "feet at {} vs ground {top}", player.pos.y);
 
-        // Walking into a wall stops at the wall.
+        // Walking into a wall stops at the wall, on a floor built for it.
+        for dx in -4..=4 {
+            for dz in -2..=2 {
+                world.set_block(IVec3::new(x + dx, top as i32 - 1, z + dz), Block::STONE);
+                for dy in 0..5 {
+                    world.set_block(IVec3::new(x + dx, top as i32 + dy, z + dz), Block::AIR);
+                }
+            }
+        }
         let wall_x = x + 2;
         for y in 0..3 {
             world.set_block(IVec3::new(wall_x, top as i32 + y, z), Block::STONE);

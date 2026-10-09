@@ -383,12 +383,14 @@ impl MobKind {
             (MobKind::Husk, Biome::Desert) => 1.0,
             (MobKind::Husk, _) => 0.0,
             (MobKind::Zombie, Biome::Desert) => 0.2,
-            (MobKind::Zombie, Biome::River | Biome::Ocean) => 0.2,
-            (MobKind::Drowned, Biome::River | Biome::Ocean) => 1.0,
+            (MobKind::Zombie, b) if b.is_watery() => 0.2,
+            (MobKind::Drowned, b) if b.is_watery() => 1.0,
             (MobKind::Drowned, _) => 0.0,
+            // Mushroom fields spawn no monsters at all.
+            (_, Biome::MushroomFields) if self.is_hostile() => 0.0,
             // Java's weight 5 against 100 for most monsters; swamp huts keep
             // swamps full of them.
-            (MobKind::Witch, Biome::Swamp) => 0.25,
+            (MobKind::Witch, b) if b.is_swamp() => 0.25,
             (MobKind::Witch, _) => 0.05,
             _ => 1.0,
         }

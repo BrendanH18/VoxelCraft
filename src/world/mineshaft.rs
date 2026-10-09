@@ -444,13 +444,11 @@ impl Mineshaft {
         let mut bounds = b.pieces.iter().fold(start, |acc, p| acc.union(&p.bounds));
         // Java `moveBelowSeaLevel`.
         let ceiling = SEA_LEVEL - BELOW_SEA;
-        let mut top = bounds.max.y - bounds.min.y + 1 + 1;
+        let mut top = bounds.max.y - bounds.min.y + 1 + super::chunk::WORLD_MIN_Y + 1;
         if top < ceiling {
             top += b.rng.below((ceiling - top) as u32) as i32;
         }
-        // Layout stays in Java Y, then the ceiling moves onto this world's
-        // map. Pieces keep their height; the underground is not squashed.
-        let shift = IVec3::new(0, top - bounds.max.y + super::height::ceiling_shift(top), 0);
+        let shift = IVec3::new(0, top - bounds.max.y, 0);
         for p in &mut b.pieces {
             p.bounds = p.bounds.shifted(shift);
         }
