@@ -116,7 +116,7 @@ full performance display instead of duplicating the compact counter.
 - Flowing water: falls, spreads up to 7 blocks toward the nearest drop,
   dries up without a source, and forms infinite sources; lowered surfaces
 - Lava: flows like water but six times slower and only 3 blocks, glows
-  (light 15), fills caves below y = 10, burns players (4 damage every
+  (light 15), fills caves below y = -54 and some deep aquifers, burns players (4 damage every
   0.5 s) and mobs, and can be swum through with an orange haze. Where lava
   meets water a source hardens into obsidian, flowing lava into
   cobblestone, and lava pouring onto water turns it to stone

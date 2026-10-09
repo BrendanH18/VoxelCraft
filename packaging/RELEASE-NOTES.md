@@ -1,6 +1,7 @@
-VoxelCraft 0.5.0 brings the Nether to life. Explore crimson and warped
-forests, soul sand valleys and basalt deltas, barter gold with piglins, fight
-hoglins and piglin brutes in bastions, and watch striders cross the lava seas.
+VoxelCraft 0.6.0 rebuilds the Overworld. The world now reaches from y=-64 to
+y=319, with over fifty biomes, towering mountains, cheese caves and underground
+lakes, lush and dripstone caves, coral reefs and kelp forests, temples and
+shipwrecks to raid, and seas full of fish, dolphins, axolotls and guardians.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -8,80 +9,111 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.5.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.5.0-macos-apple-silicon.dmg`
-- **Mac with Intel, macOS 13+:** `VoxelCraft-0.5.0-macos-intel.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.6.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.6.0-macos-apple-silicon.dmg`
+- **Mac with Intel, macOS 13+:** `VoxelCraft-0.6.0-macos-intel.dmg`
 
-## What's new since 0.4.0
+## What's new since 0.5.0
 
-### Nether biomes
+### A taller, Java 1.18-style Overworld
 
-- **Five biomes:** nether wastes, crimson forest, warped forest, soul sand
-  valley and basalt deltas, placed by Java's multi-noise biome source. Each has
-  its own fog colour, ambient particles (spores and ash) and music. The F3
-  screen and `/locate biome` show them.
-- **Forests:** huge crimson and warped fungi, nylium floors, roots, sprouts,
-  shroomlights, and weeping and twisting vines that grow.
-- **Soul sand valleys and basalt deltas:** fossils, soul fire, basalt pillars
-  and columns, and delta lava pools.
-- **New blocks:** crimson and warped stems, hyphae, planks and every wood
-  shape (stairs, slabs, fences, gates, doors, trapdoors, buttons and pressure
-  plates), wart blocks, shroomlight, soul soil, soul fire and soul torches.
-  Nether wood doesn't burn, like Java.
-- **Bone meal:** spreads nylium onto netherrack, grows forest floor plants and
-  vines, and grows a planted fungus into a huge fungus.
-- Bone blocks now have Java's three orientations.
+- **Build from y=-64 to y=319.** Bedrock sits at the bottom, deepslate fills
+  everything below y=0, and ores are at Java's heights (diamonds peak deep down).
+- **Over fifty biomes** picked by temperature, humidity, continentalness,
+  erosion and weirdness, following Java's biome builder: deep, cold, warm and
+  frozen oceans, mushroom fields, stony shores, sunflower plains, flower forests,
+  dark forests, pale gardens, old growth birch, pine and spruce taigas,
+  mangrove swamps, bamboo and sparse jungles, savanna plateaus, wooded and
+  eroded badlands, meadows, cherry groves, groves, snowy slopes, ice spikes,
+  windswept hills, and jagged, frozen and stony peaks. `/locate biome` and F3
+  use Java's names.
+- **New shapes:** continents and deep oceans, plateaus, mountains above y=200,
+  winding river valleys and flat swamps.
+- **Caves:** cheese caverns, spaghetti and noodle tunnels, rare ravines, and
+  aquifers: underground lakes at their own levels, flooded caves near the sea
+  and lava below y=-54.
+- **Lush caves** with moss, azaleas, dripleaves, glow berries, spore blossoms
+  and clay pools, under azalea trees whose roots reach down; **dripstone caves**
+  with stalactites and stalagmites.
+- **Oceans:** kelp forests, seagrass, coral reefs with fans and sea pickles,
+  icebergs of packed and blue ice.
+- **New trees:** dark oak, pale oak with hanging moss, mangrove with roots,
+  cherry, fancy oak, mega spruce and pine, tall birch, azalea, huge mushrooms,
+  jungle trees with vines and cocoa.
 
-### Nether mobs
+### New blocks and items
 
-- **Piglins:** they attack players who wear no gold armor and get angry if you
-  open chests or break gold blocks near them. Throw them gold to barter, using
-  Java 1.21's bartering table. Outside the Nether they turn into zombified
-  piglins after 15 seconds.
-- **Bastion residents:** bastions come with piglins, piglin brutes that are
-  always hostile and swing golden axes, and penned hoglins.
-- **Hoglins and zoglins:** hoglins charge and toss players, avoid warped
-  fungus and portals, and turn into zoglins outside the Nether. Zoglins attack
-  everything.
-- **Striders:** they walk on lava and shiver when out of it.
-- **Biome spawning:** each biome spawns its own mobs, so hoglins live in
-  crimson forests while warped forests hold only endermen (and striders on the lava).
-- **Crossbow:** craft and load one, then fire. Crossbow piglins use them too.
-- **Crying obsidian:** from bartering and bastion chests.
+- About 170 new block states: podzol, coarse and rooted dirt, mycelium, mud and
+  mud bricks, moss and pale moss, snow layers, blue ice, dripstone and pointed
+  dripstone, amethyst, smooth basalt, lush cave plants, kelp, seagrass, sea
+  pickles, coral blocks, coral and fans (live and dead), prismarine family, sea
+  lanterns, sponges, turtle eggs, new leaves and saplings, pale oak wood,
+  mangrove roots, bamboo and its blocks, nine new flowers, six double plants,
+  lily pads, vines, sweet berry bushes, cocoa and mushroom blocks.
+- **Waterlogged plants:** kelp, seagrass, sea pickles and live coral hold water
+  in their cell, so you can swim through them and breaking them leaves water.
+- New items: glow berries, sweet berries, cocoa beans (brown dye at last), ink
+  and glow ink sacs (black dye), dried kelp, prismarine shards and crystals,
+  amethyst shards, turtle scutes, nautilus shells, heart of the sea, tropical
+  fish and pufferfish, and buckets of fish and axolotls.
+- Recipes for dyes from every new flower, prismarine and sea lanterns, mud
+  bricks, bamboo planks, dried kelp, packed and blue ice, and mossy cobblestone.
+- Plants grow on random ticks and with bone meal, berries can be picked, vines
+  can be climbed, and double plants break together.
+
+### Structures
+
+- **Desert pyramids** with a hidden TNT-trapped treasure room, **jungle temples**
+  with an arrow trap, **swamp huts** with witches, **igloos** with a secret
+  basement, **pillager outposts**, **shipwrecks**, **ocean ruins** and **ocean
+  monuments** with guardians, elder guardians, sponges and gold. Each has its
+  own seeded loot, and `/locate structure` finds them.
+
+### Mobs
+
+- Cod, salmon, tropical fish, pufferfish, squid, glow squid, dolphins,
+  axolotls, turtles, guardians, elder guardians and pillagers.
+- Fish school, axolotls hunt and play dead, dolphins grant Dolphin's Grace,
+  pufferfish poison, guardians fire beams and elder guardians cause Mining
+  Fatigue. Catch fish and axolotls in a water bucket.
+- Turtles live on beaches. Turtle eggs placed on sand hatch into babies that
+  grow up and drop a scute.
 
 ### Engine
 
 - Measured on an Apple M5 with a release build, `--bench --rd 8`: Overworld
-  generation 0.26 ms per chunk, Nether generation 0.22 ms per chunk at the
-  benchmark origin, and light and mesh 0.68 ms per dense chunk, close to
-  0.4.0. Dense basalt deltas take longer to generate than the benchmark origin.
+  generation 0.39 ms per chunk and light and mesh 0.87 ms per dense chunk
+  (0.26 and 0.68 ms in 0.5.0). Columns are now 12 chunks tall instead of 8.
 
 ### Known limitations
 
-- Hoglins and striders can't be bred, and striders can't be ridden or
-  saddled. Animal breeding, taming and leads are still to come.
+- Worlds from 0.5.0 and earlier load, but their edited chunks won't line up
+  with the new terrain. The world list marks them as "pre-0.6 terrain"; start
+  a new world to explore 0.6.
+- Surface terrain has no overhangs or floating islands, and there is no deep
+  dark, ancient city, glow lichen or cave spring yet.
+- Animal breeding, taming and leads are still to come, so turtles don't lay
+  eggs; turtle helmets and Turtle Master potions aren't in yet.
+- Big dripleaves don't tilt, and pointed dripstone doesn't fall or drip.
+- Structures are original builds in Java's style, not copies of its templates.
+  Buried treasure isn't generated; shipwreck treasure chests can hold the heart
+  of the sea instead.
 - There are no soul lanterns, soul campfires or Soul Speed, and crossbows have
   no Multishot, Piercing or Quick Charge.
-- Nether chunks saved by older versions keep their old terrain, so explored
-  areas meet the new biomes at a visible edge.
-- Raids, illagers, pillager outposts and farmer harvesting aren't in yet.
-  Lecterns, looms, cartography tables and stonecutters are decorative.
-- Rails don't hold water and carts aren't slowed by it. Minecart collisions
-  and dismounting aren't exactly Java's, and mobs riding carts aren't saved.
-  Split-screen players can't ride carts or open cart containers.
+- Raids aren't in yet. Lecterns, looms, cartography tables and stonecutters are
+  decorative.
 - Complex redstone contraptions that depend on Java's exact update order may
   behave differently.
 - The Ender Dragon can't be respawned, and the End has no chorus trees, cities,
   shulkers or elytra. The Wither can't be summoned yet.
 - Commands accept `@s` and `@p` only.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
-  Minecraft, and several structures are simplified versions of Java's.
+  Minecraft.
 
 ## Upgrading and saves
 
-Worlds from 0.4.0, 0.3.0 and 0.2.0 load in 0.5.0. Back up your worlds before
-upgrading anyway: older versions can't open 0.5.0 worlds. Versions before
-0.2.0 can't read the furnace records and discard their saved contents.
+Worlds from 0.5.0 and earlier load in 0.6.0 (see above about terrain). Back up
+your worlds before upgrading anyway: older versions can't open 0.6.0 worlds.
 
 ## Installing
 

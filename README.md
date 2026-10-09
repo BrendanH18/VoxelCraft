@@ -51,16 +51,18 @@ a stronghold, and watch the credits roll after the Ender Dragon falls.
     <td width="50%" valign="top">
       <img src="docs/images/sunset.jpg" alt="Square sun setting above a grassy coastline"><br>
       <h3>🌍 An endless world</h3>
-      Fourteen biomes stretch forever: jungles, savannas, swamps, deserts,
-      terraced badlands, snowy taiga, mountains, rivers and oceans. Dig down
-      for caves, ores, mineshafts and monster rooms.
+      Over fifty biomes from y=-64 to towering peaks: cherry groves, mangrove
+      swamps, bamboo jungles, pale gardens, jagged peaks, coral reefs and
+      frozen oceans. Dig down into cheese caves, lush caves and dripstone
+      caverns with underground lakes.
     </td>
     <td width="50%" valign="top">
       <img src="docs/images/night-mobs.jpg" alt="Zombies and pigs in a voxel landscape at night"><br>
       <h3>🌙 Company after dark</h3>
       Herds of animals wander by day. At night come zombies, skeletons,
-      creepers, spiders and Endermen. The Nether adds blazes, ghasts,
-      piglins to barter with, hoglins and lava-walking striders.
+      creepers, spiders and Endermen. The seas hold fish, squid, dolphins,
+      axolotls and guardians; the Nether adds blazes, ghasts, piglins,
+      hoglins and lava-walking striders.
     </td>
   </tr>
   <tr>
@@ -90,6 +92,22 @@ a stronghold, and watch the credits roll after the Ender Dragon falls.
       Brew potions from nether wart, enchant gear, repair it at an anvil, and
       take diamond to Netherite at a smithing table. Press <kbd>F5</kbd> to
       admire the result.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/cherry-grove.jpg" alt="Pink cherry trees on a mountainside above a grassy valley"><br>
+      <h3>🌸 Explore new lands</h3>
+      Climate noise shapes continents, plateaus, river valleys and mountains
+      the way Java 1.18 does, each biome with its own trees, flowers and
+      ground cover.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/desert-pyramid.jpg" alt="Sandstone desert pyramid with two towers and a terracotta floor pattern"><br>
+      <h3>🏛️ Ruins and treasure</h3>
+      Raid desert pyramids, jungle temples, igloos, shipwrecks, ocean ruins
+      and pillager outposts, or brave an ocean monument's guardians for its
+      gold.
     </td>
   </tr>
   <tr>
@@ -313,7 +331,8 @@ how to run benchmarks, script scenes and capture screenshots.
 | [Colours and dyes](docs/colors.md) | [Hosted agents and commands](docs/agents.md) |
 | [Mob parity](docs/mob-parity.md) | [Performance investigation](docs/performance-2026-10-07.md) |
 | [Player rendering](docs/player-rendering.md) | [Music](docs/music.md) and [particles](docs/particles.md) |
-| [Nether mobs](docs/nether-mobs.md): piglins, bartering, hoglins, striders | |
+| [Nether mobs](docs/nether-mobs.md): piglins, bartering, hoglins, striders | [Overworld terrain](docs/overworld-terrain.md): biomes, caves, aquifers |
+| [Overworld structures](docs/overworld-structures.md) and [aquatic mobs](docs/aquatic-mobs.md) | |
 
 ## 🤝 Contributing
 
