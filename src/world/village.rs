@@ -410,6 +410,20 @@ impl Villages {
         });
         out
     }
+    /// Outpost exclusion is against potential village placement chunks,
+    /// even when that village's biome would reject the actual build.
+    pub(super) fn near(&self, at: IVec2, radius_chunks: i32) -> bool {
+        let chunk = at.div_euclid(IVec2::splat(16));
+        let lo = ((chunk - IVec2::splat(radius_chunks)) * 16).div_euclid(IVec2::splat(REGION));
+        let hi = ((chunk + IVec2::splat(radius_chunks)) * 16).div_euclid(IVec2::splat(REGION));
+        (lo.y..=hi.y).any(|z| {
+            (lo.x..=hi.x).any(|x| {
+                let village = self.candidate(IVec2::new(x, z)).div_euclid(IVec2::splat(16));
+                (village - chunk).abs().max_element() <= radius_chunks
+            })
+        })
+    }
+
     pub fn nearest(&self, g: &Generator, from: IVec3) -> Option<IVec3> {
         if g.dimension != Dimension::Overworld {
             return None;

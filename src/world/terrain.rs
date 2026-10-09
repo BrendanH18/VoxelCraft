@@ -156,6 +156,8 @@ pub struct Generator {
     /// Abandoned mineshafts, placed per Java 16×16 chunk.
     pub mineshafts: super::mineshaft::Mineshafts,
     pub villages: super::village::Villages,
+    /// Temples, huts, igloos, outposts, shipwrecks, ruins and monuments.
+    pub temples: super::temples::Temples,
     columns: Mutex<FxHashMap<IVec2, Arc<ChunkColumns>>>,
     climate: ClimateNoise,
     caves: Caves,
@@ -198,6 +200,7 @@ impl Generator {
             dungeons: super::dungeon::Dungeons::new(seed),
             mineshafts: super::mineshaft::Mineshafts::new(seed),
             villages: super::village::Villages::new(seed),
+            temples: super::temples::Temples::new(seed),
             columns: Mutex::new(FxHashMap::default()),
             climate: ClimateNoise::new(seed),
             caves: Caves::new(seed),
@@ -498,6 +501,7 @@ impl Generator {
                 features.extend(self.dungeons.features(self, cpos));
                 features.extend(self.mineshafts.features(cpos));
                 features.extend(self.villages.features(self, cpos));
+                features.extend(self.temples.features(self, cpos));
                 features
             }
             _ => Vec::new(),
@@ -586,6 +590,7 @@ impl Generator {
         self.dungeons.paint(self, &mut blocks, base);
         self.mineshafts.paint(&mut blocks, base);
         self.villages.paint(self, &mut blocks, base);
+        self.temples.paint(self, &mut blocks, base);
         ChunkData::from_dense(blocks)
     }
 

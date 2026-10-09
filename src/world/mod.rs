@@ -61,6 +61,7 @@ mod spawner;
 pub mod storage;
 pub mod stronghold;
 pub mod structure;
+pub mod temples;
 pub mod terrain;
 pub mod trees;
 pub mod village;

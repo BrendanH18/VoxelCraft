@@ -321,6 +321,10 @@ pub enum Feature {
     VillageChest(u64, super::village::Style),
     VillageHome(IVec3),
     VillageWorkstation(Block),
+    /// A chest or dispenser filled from a v0.6 structure's table.
+    TempleChest(u64, super::temples::LootTable),
+    /// Functional furnace or brewing stand in a non-village structure.
+    UtilityBlock(Block),
 }
 
 /// Fortress layouts for one Nether, cached by region.

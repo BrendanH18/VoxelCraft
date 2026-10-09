@@ -84,10 +84,13 @@ impl World {
                 Feature::MineshaftChest(seed) if is_chest(block) => {
                     self.chests.entry(p).or_insert_with(|| super::mineshaft::loot(seed));
                 }
+                Feature::TempleChest(seed, table) if is_chest(block) => {
+                    self.chests.entry(p).or_insert_with(|| super::temples::loot(seed, table));
+                }
                 Feature::VillageChest(seed, style) if is_chest(block) => {
                     self.chests.entry(p).or_insert_with(|| super::village::loot(seed, style));
                 }
-                Feature::VillageWorkstation(site) if block.base() == site => {
+                Feature::VillageWorkstation(site) | Feature::UtilityBlock(site) if block.base() == site => {
                     if super::furnace::is_furnace(block) {
                         self.furnaces.entry(p).or_insert_with(|| super::furnace::Furnace {
                             kind: super::furnace::FurnaceKind::of(block),
