@@ -28,6 +28,13 @@ pub enum Voice {
     Piglin,
     Hoglin,
     Strider,
+    Fish,
+    Squid,
+    Dolphin,
+    Axolotl,
+    Guardian,
+    Cat,
+    Pillager,
 }
 
 /// What kind of sound a voice makes.
@@ -40,7 +47,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 17] = [
+    pub const ALL: [Voice; 24] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -58,6 +65,13 @@ impl Voice {
         Voice::Piglin,
         Voice::Hoglin,
         Voice::Strider,
+        Voice::Fish,
+        Voice::Squid,
+        Voice::Dolphin,
+        Voice::Axolotl,
+        Voice::Guardian,
+        Voice::Cat,
+        Voice::Pillager,
     ];
 
     pub fn name(self) -> &'static str {
@@ -79,6 +93,13 @@ impl Voice {
             Voice::Piglin => "piglin",
             Voice::Hoglin => "hoglin",
             Voice::Strider => "strider",
+            Voice::Fish => "fish",
+            Voice::Squid => "squid",
+            Voice::Dolphin => "dolphin",
+            Voice::Axolotl => "axolotl",
+            Voice::Guardian => "guardian",
+            Voice::Cat => "cat",
+            Voice::Pillager => "pillager",
         }
     }
 }
@@ -176,6 +197,10 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Piglin => piglin(call, rng),
         Voice::Hoglin => hoglin(call, rng),
         Voice::Strider => strider(call, rng),
+        Voice::Pillager => villager(call, rng),
+        Voice::Fish | Voice::Squid | Voice::Dolphin | Voice::Axolotl | Voice::Guardian | Voice::Cat => {
+            aquatic(voice, call, rng)
+        }
     }
 }
 
@@ -712,4 +737,30 @@ fn villager(call: Call, rng: &mut Rng) -> Vec<f32> {
         },
     );
     dsp::finish(out, 0.5)
+}
+
+/// Water clicks, dolphin whistles, guardian rasps and cats' tonal meows.
+fn aquatic(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = if call == Call::Death { 0.6 } else { 0.3 };
+    let pitch = match voice {
+        Voice::Dolphin => 1700.0,
+        Voice::Cat => 520.0,
+        Voice::Guardian => 110.0,
+        Voice::Axolotl => 700.0,
+        _ => 300.0,
+    };
+    let seed = rng.range(0.0, 6.0);
+    let mut out = vec![0.0; samples(secs)];
+    for (i, v) in out.iter_mut().enumerate() {
+        let t = i as f32 / dsp::RATE;
+        let env = (t / 0.02).min(1.0) * (1.0 - t / secs).max(0.0).powi(2);
+        let whistle = (std::f32::consts::TAU * (pitch * t + pitch * 0.25 * t * t) + seed).sin();
+        let tone = match voice {
+            Voice::Dolphin | Voice::Cat => whistle * 0.35,
+            Voice::Guardian => whistle * 0.2 + rng.bi() * 0.2,
+            _ => rng.bi() * 0.3 * (t * 90.0).sin().abs(),
+        };
+        *v = tone * env;
+    }
+    out
 }

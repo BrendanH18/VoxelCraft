@@ -127,9 +127,37 @@ pub enum MobKind {
     Zoglin,
     /// Walks on lava, and shivers out of it.
     Strider,
+    Cod,
+    Salmon,
+    TropicalFish,
+    Pufferfish,
+    Squid,
+    GlowSquid,
+    Dolphin,
+    Axolotl,
+    Guardian,
+    ElderGuardian,
+    Cat,
+    Pillager,
 }
 
 impl MobKind {
+    pub fn is_aquatic(self) -> bool {
+        matches!(
+            self,
+            Self::Cod
+                | Self::Salmon
+                | Self::TropicalFish
+                | Self::Pufferfish
+                | Self::Squid
+                | Self::GlowSquid
+                | Self::Dolphin
+                | Self::Axolotl
+                | Self::Guardian
+                | Self::ElderGuardian
+        )
+    }
+
     /// Zombie, husk, drowned or zombie villager: shares the walk, armor and baby rolls.
     pub fn is_zombie(self) -> bool {
         matches!(self, Self::Zombie | Self::Husk | Self::Drowned | Self::ZombieVillager)
@@ -137,7 +165,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 31] = [
+    pub const ALL: [MobKind; 43] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -169,6 +197,18 @@ impl MobKind {
         MobKind::Hoglin,
         MobKind::Zoglin,
         MobKind::Strider,
+        MobKind::Cod,
+        MobKind::Salmon,
+        MobKind::TropicalFish,
+        MobKind::Pufferfish,
+        MobKind::Squid,
+        MobKind::GlowSquid,
+        MobKind::Dolphin,
+        MobKind::Axolotl,
+        MobKind::Guardian,
+        MobKind::ElderGuardian,
+        MobKind::Cat,
+        MobKind::Pillager,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -205,12 +245,24 @@ impl MobKind {
             MobKind::Hoglin => "hoglin",
             MobKind::Zoglin => "zoglin",
             MobKind::Strider => "strider",
+            MobKind::Cod => "cod",
+            MobKind::Salmon => "salmon",
+            MobKind::TropicalFish => "tropical fish",
+            MobKind::Pufferfish => "pufferfish",
+            MobKind::Squid => "squid",
+            MobKind::GlowSquid => "glow squid",
+            MobKind::Dolphin => "dolphin",
+            MobKind::Axolotl => "axolotl",
+            MobKind::Guardian => "guardian",
+            MobKind::ElderGuardian => "elder guardian",
+            MobKind::Cat => "cat",
+            MobKind::Pillager => "pillager",
         }
     }
 
     /// Looks a mob up by name (spaces or underscores).
     pub fn from_name(name: &str) -> Option<MobKind> {
-        let name = name.replace('_', " ");
+        let name = name.strip_prefix("minecraft:").unwrap_or(name).replace('_', " ");
         Self::ALL.into_iter().find(|k| k.name() == name)
     }
 
@@ -247,6 +299,15 @@ impl MobKind {
             // Java's 1.3964844 x 1.4.
             MobKind::Hoglin | MobKind::Zoglin => Shape::new(0.698, 1.4),
             MobKind::Strider => Shape::new(0.45, 1.7),
+            MobKind::Cod | MobKind::TropicalFish | MobKind::Pufferfish => Shape::new(0.25, 0.4),
+            MobKind::Salmon => Shape::new(0.35, 0.4),
+            MobKind::Squid | MobKind::GlowSquid => Shape::new(0.4, 0.8),
+            MobKind::Dolphin => Shape::new(0.45, 0.6),
+            MobKind::Axolotl => Shape::new(0.375, 0.42),
+            MobKind::Guardian => Shape::new(0.425, 0.85),
+            MobKind::ElderGuardian => Shape::new(0.99875, 1.9975),
+            MobKind::Cat => Shape::new(0.3, 0.7),
+            MobKind::Pillager => Shape::new(0.3, 1.95),
         }
     }
 
@@ -280,6 +341,12 @@ impl MobKind {
             MobKind::Piglin => 16.0,
             MobKind::PiglinBrute => 50.0,
             MobKind::Hoglin | MobKind::Zoglin => 40.0,
+            MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish | MobKind::Pufferfish => 3.0,
+            MobKind::Squid | MobKind::GlowSquid | MobKind::Dolphin | MobKind::Cat => 10.0,
+            MobKind::Axolotl => 14.0,
+            MobKind::Guardian => 30.0,
+            MobKind::ElderGuardian => 80.0,
+            MobKind::Pillager => 24.0,
         }
     }
 
@@ -308,6 +375,9 @@ impl MobKind {
                 | MobKind::PiglinBrute
                 | MobKind::Hoglin
                 | MobKind::Zoglin
+                | MobKind::Guardian
+                | MobKind::ElderGuardian
+                | MobKind::Pillager
         )
     }
 
@@ -346,7 +416,7 @@ impl MobKind {
             // Only from stronghold spawners (and infested blocks, later).
             MobKind::Silverfish | MobKind::CaveSpider => false,
             // Only generated with bastions (`nether::populate_bastions`).
-            MobKind::PiglinBrute | MobKind::Zoglin => false,
+            MobKind::PiglinBrute | MobKind::Zoglin | MobKind::ElderGuardian | MobKind::Cat | MobKind::Pillager => false,
             // Picked by the Nether biome spawn lists (`world::nether_biome`).
             MobKind::Piglin
             | MobKind::Hoglin
@@ -392,6 +462,34 @@ impl MobKind {
             // swamps full of them.
             (MobKind::Witch, b) if b.is_swamp() => 0.25,
             (MobKind::Witch, _) => 0.05,
+            (MobKind::GlowSquid | MobKind::Axolotl | MobKind::Guardian, _) => 1.0,
+            (
+                MobKind::TropicalFish,
+                Biome::LushCaves
+                | Biome::MangroveSwamp
+                | Biome::WarmOcean
+                | Biome::LukewarmOcean
+                | Biome::DeepLukewarmOcean,
+            ) => 1.0,
+            (MobKind::Pufferfish, Biome::WarmOcean | Biome::LukewarmOcean | Biome::DeepLukewarmOcean) => 1.0,
+            (MobKind::Cod, b) if b.is_ocean() && b != Biome::WarmOcean => 1.0,
+            (MobKind::Salmon, b)
+                if b.is_river()
+                    || matches!(
+                        b,
+                        Biome::ColdOcean | Biome::DeepColdOcean | Biome::FrozenOcean | Biome::DeepFrozenOcean
+                    ) =>
+            {
+                1.0
+            }
+            (MobKind::Squid, b)
+                if (b.is_ocean() || b.is_river())
+                    && !matches!(b, Biome::FrozenOcean | Biome::DeepFrozenOcean | Biome::FrozenRiver) =>
+            {
+                1.0
+            }
+            (MobKind::Dolphin, b) if b.is_ocean() && !matches!(b, Biome::FrozenOcean | Biome::DeepFrozenOcean) => 0.2,
+            (k, _) if k.is_aquatic() => 0.0,
             _ => 1.0,
         }
     }
@@ -458,6 +556,9 @@ impl MobKind {
             MobKind::Chicken | MobKind::Slime | MobKind::MagmaCube => 1.0,
             MobKind::Ghast => 4.0,
             MobKind::Spider | MobKind::CaveSpider | MobKind::Enderman | MobKind::Silverfish => 1.4,
+            k if k.is_aquatic() => 1.2,
+            MobKind::Cat | MobKind::Pillager => 1.2,
+            _ => 1.2,
         }
     }
 
@@ -504,6 +605,7 @@ impl MobKind {
     /// makes the drop a chance (Java's spider eye: -1..1 is one in three).
     pub(super) fn loot(self) -> &'static [(Item, i8, u8)] {
         const WOOL: Item = Item::from_block(Block::WOOL);
+        const SPONGE: Item = Item::from_block(crate::world::overworld_blocks::WET_SPONGE);
         const POPPY: Item = Item::from_block(Block::POPPY);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
@@ -535,6 +637,15 @@ impl MobKind {
             MobKind::Hoglin => &[(Item::RAW_PORKCHOP, 2, 4), (Item::LEATHER, 0, 1)],
             MobKind::Zoglin => &[(Item::ROTTEN_FLESH, 1, 3)],
             MobKind::Strider => &[(Item::STRING, 2, 5)],
+            MobKind::Cod | MobKind::Dolphin => &[(Item::COD, 1, 1)],
+            MobKind::Salmon => &[(Item::SALMON, 1, 1)],
+            MobKind::TropicalFish => &[(Item::TROPICAL_FISH, 1, 1)],
+            MobKind::Pufferfish => &[(Item::PUFFERFISH, 1, 1)],
+            MobKind::Squid => &[(Item::INK_SAC, 1, 3)],
+            MobKind::GlowSquid => &[(Item::GLOW_INK_SAC, 1, 3)],
+            MobKind::Guardian => &[(Item::PRISMARINE_SHARD, 0, 2)],
+            MobKind::ElderGuardian => &[(Item::PRISMARINE_SHARD, 0, 2), (SPONGE, 1, 1)],
+            MobKind::Axolotl | MobKind::Cat | MobKind::Pillager => &[],
             // The skull is rolled in `drops`.
             MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
             // Java rolls a few of these; each is rolled on its own here.
@@ -562,7 +673,10 @@ impl MobKind {
                 // Java adds this even to a zero roll (looting raises the
                 // maximum, so a 0-1 drop becomes 0-2 with Looting I).
                 // Sheep's wool pool has no enchanted_count_increase.
-                let extra = if looting > 0 && item != Item::from(Block::WOOL) {
+                let extra = if looting > 0
+                    && item != Item::from(Block::WOOL)
+                    && item != Item::from(crate::world::overworld_blocks::WET_SPONGE)
+                {
                     (looting as f32 * rng.next_f32()).round() as i32
                 } else {
                     0
@@ -572,6 +686,16 @@ impl MobKind {
             })
             .filter(|&(_, n)| n > 0)
             .collect();
+        if matches!(self, MobKind::Guardian | MobKind::ElderGuardian) {
+            let cod_weight = if self == MobKind::ElderGuardian { 3 } else { 2 };
+            let roll = rng.next_int(cod_weight + 3);
+            if roll < cod_weight + 2 {
+                out.push((
+                    if roll < cod_weight { Item::COD } else { Item::PRISMARINE_CRYSTALS },
+                    1 + (looting as f32 * rng.next_f32()).round() as u8,
+                ));
+            }
+        }
         if self == MobKind::Zombie {
             // Java: 2.5% plus 1% per looting level, rolled separately.
             let chance = 0.025 + 0.01 * looting as f32;
@@ -592,7 +716,7 @@ impl MobKind {
     pub fn xp(self, rng: &mut Rng) -> u32 {
         match self {
             MobKind::Villager | MobKind::IronGolem | MobKind::SnowGolem | MobKind::WanderingTrader => 0,
-            MobKind::Blaze => 10,
+            MobKind::Blaze | MobKind::Guardian | MobKind::ElderGuardian => 10,
             k if k.is_hostile() => 5,
             _ => 1 + (rng.next_f32() * 3.0) as u32,
         }
@@ -679,7 +803,7 @@ pub struct Mob {
     pub(super) move_yaw: f32,
     head_target: (f32, f32),
     head_timer: f32,
-    attack_cooldown: f32,
+    pub(super) attack_cooldown: f32,
     burn_timer: f32,
     fire_left: f32,
     /// Java credits environmental deaths for five seconds after a player hit.
@@ -725,6 +849,7 @@ pub struct Mob {
     /// Seconds until a weakened zombie villager becomes a villager again. Zero means not curing.
     pub(super) convert_left: f32,
     pub(super) convert_tick: f32,
+    pub aquatic: Option<Box<super::aquatic::State>>,
     pub trader: Option<Box<super::wandering_trader::Trader>>,
     pub(super) trader_night: bool,
     pub(super) convert_by: Option<super::PlayerId>,
@@ -739,6 +864,7 @@ impl Mob {
             villager: matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader)
                 .then(|| Box::new(super::villager::Villager::new(0, 0))),
             nether: super::nether::NetherMob::for_kind(kind),
+            aquatic: kind.is_aquatic().then(|| Box::new(super::aquatic::State::new())),
             uid: 0,
             persistent: false,
             size: 1,
@@ -929,6 +1055,10 @@ impl Mob {
             amount
         };
         self.health -= amount;
+        if self.kind == MobKind::Axolotl && self.in_water && self.health > 0.0 && self.health < 7.0 && rng.chance(0.33)
+        {
+            self.aquatic.as_mut().unwrap().play_dead = 10.0;
+        }
         self.hurt = HURT_TIME;
         if let Some(kb) = knockback.map(|kb| kb * self.knockback_taken())
             && self.kind != MobKind::IronGolem
@@ -1021,6 +1151,7 @@ impl Mob {
             self.teleport(world, rng, None, events);
         }
 
+        super::aquatic::environment(self, dtf, world);
         let (wish, speed) = if let Some(t) = &mut self.dying {
             *t += dtf;
             (None, 0.0)
@@ -1140,6 +1271,12 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        if self.kind.is_aquatic() {
+            return super::aquatic::think(self, dt, world, ctx, rng, events);
+        }
+        if self.kind == MobKind::Pillager {
+            return super::aquatic::pillager(self, dt, world, ctx, events);
+        }
         if matches!(self.kind, MobKind::Villager | MobKind::WanderingTrader)
             && let Some(v) = &self.villager
         {
@@ -1761,7 +1898,11 @@ impl Mob {
             return;
         }
         let shape = self.shape();
-        self.in_water = physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0));
+        self.in_water = if self.kind.is_aquatic() {
+            world.block((self.pos + DVec3::Y * 0.2).floor().as_ivec3()).is_some_and(Block::holds_water)
+        } else {
+            physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0))
+        };
         if self.kind == MobKind::SnowGolem && self.alive() && self.in_water {
             // Java: one damage each tick while in water. Death loot is emitted
             // by the caller once health is gone.
@@ -1781,6 +1922,19 @@ impl Mob {
             }
         }
         let target = wish.map_or(DVec3::ZERO, |d| d * speed);
+        if self.kind.is_aquatic() && self.in_water {
+            self.vel += (target - self.vel) * (dt * 3.0).min(1.0);
+            let delta = self.vel * dt;
+            let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape);
+            self.on_ground = hit.on_ground;
+            self.blocked = hit.horizontal;
+            return;
+        }
+        if self.kind.is_aquatic() && self.on_ground && self.alive() {
+            self.vel.y = 4.0;
+            self.vel.x = self.yaw.cos() as f64 * 1.4;
+            self.vel.z = self.yaw.sin() as f64 * 1.4;
+        }
 
         if self.kind == MobKind::Ghast && self.alive() {
             // Java ghasts fly: no gravity, and they steer in three dimensions.

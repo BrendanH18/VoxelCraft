@@ -956,6 +956,24 @@ mod tests {
     }
 
     #[test]
+    fn generated_jungle_fluids_settle_after_neighbor_updates() {
+        let pos = DVec3::new(1882.0, 99.0, 682.0);
+        let mut world = World::new_headless(Arc::new(Generator::new(1)), Default::default(), 4);
+        let end = Instant::now() + Duration::from_secs(30);
+        while world.loaded_chunks() == 0 || world.pending_jobs() > 0 {
+            world.update(pos);
+            world.mesh_uploads.clear();
+            assert!(Instant::now() < end);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        for _ in 0..1200 {
+            crate::simulation::tick_world_rules(&mut world, pos, false, 0);
+        }
+        assert_eq!(world.active_fluids(), 0, "jungle fluids stay active: {}", world.active_fluids());
+        assert!(world.falling.is_empty());
+    }
+
+    #[test]
     fn the_dead_dragon_opens_the_exit_portal_and_leaves_an_egg_that_jumps() {
         let generator = Arc::new(Generator::for_dimension(3, super::terrain::Dimension::End));
         let origin = generator.end().unwrap().podium();

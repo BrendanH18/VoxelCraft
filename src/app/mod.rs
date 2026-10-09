@@ -1440,7 +1440,7 @@ impl Game {
         let progress = self.actions.mine(
             pos,
             self.world.get_block(pos).unwrap_or(block),
-            crate::mining::dig_time(block, digger),
+            crate::mining::dig_time(block, digger) / self.vitals.effects.mining_factor(),
             dt,
         );
         if progress < 1.0 {

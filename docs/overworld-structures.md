@@ -1,4 +1,4 @@
-# Overworld structures (v0.6 work in progress)
+# Overworld structures (v0.6)
 
 The generator now builds desert pyramids, jungle temples, swamp huts,
 igloos, pillager outposts, shipwrecks, ocean ruins and ocean monuments.
@@ -70,14 +70,28 @@ loads; saved contents take precedence so emptying a container remains
 permanent through regeneration. Normal storage, UI, agents and gamepads
 use the existing container paths.
 
+## Residents
+
+Huts generate a persistent witch and black cat. Basement igloos generate a
+villager and zombie villager in separate cages, plus a splash potion of
+weakness in their brewing stand. Outposts generate crossbow pillagers and
+continue spawning replacements inside their bounds when mob spawning is
+on. Huts likewise support replacement witches.
+
+Monuments generate exactly three persistent elder guardians, one in each
+wing and one in the central tower. Ordinary guardians spawn naturally in
+loaded monument water. Elders use charged beams and apply Mining Fatigue
+III within 50 blocks; player kills drop one wet sponge. Population markers
+are saved per dimension, so returning to a cleared structure or reloading
+its chunks does not regenerate its initial residents. Peaceful suppresses
+hostile residents while retaining cats and villagers.
+
+See [aquatic mobs](aquatic-mobs.md) for swimming, buckets and combat.
+
 ## Remaining parity work
 
-- Aquatic mobs, guardians/elder guardians and their monument spawning,
-  combat, Mining Fatigue and drops.
-- Pillagers, outpost population, cages and ancillary pieces; raids.
-- Hut witch/cat residents and structure-specific spawning bounds.
-- Igloo villager/zombie-villager residents, the weakness potion and variable
-  basement depth; the engine's bed rendering has no orientation states.
+- Outpost ancillary pieces, generated golems/allays, patrols and raids.
+- Variable igloo basement depth; bed orientation rendering.
 - Jungle temple lever/piston puzzle and Minecraft's full trap layout.
 - Shipwreck template variants, all floor orientations, buried treasure
   and exploration maps; `ocean_ruin` currently combines warm/cold variants.

@@ -24,10 +24,12 @@ pub enum Effect {
     SlowFalling,
     Wither,
     Hunger,
+    MiningFatigue,
+    DolphinsGrace,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 15] = [
+    pub const ALL: [Effect; 17] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -43,6 +45,8 @@ impl Effect {
         Effect::SlowFalling,
         Effect::Wither,
         Effect::Hunger,
+        Effect::MiningFatigue,
+        Effect::DolphinsGrace,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -63,6 +67,8 @@ impl Effect {
             Effect::SlowFalling => "slow_falling",
             Effect::Wither => "wither",
             Effect::Hunger => "hunger",
+            Effect::MiningFatigue => "mining_fatigue",
+            Effect::DolphinsGrace => "dolphins_grace",
         }
     }
 
@@ -89,6 +95,8 @@ impl Effect {
             Effect::SlowFalling => "Slow Falling",
             Effect::Wither => "Wither",
             Effect::Hunger => "Hunger",
+            Effect::MiningFatigue => "Mining Fatigue",
+            Effect::DolphinsGrace => "Dolphin’s Grace",
         }
     }
 
@@ -110,6 +118,8 @@ impl Effect {
             Effect::SlowFalling => 0xF3CFB9,
             Effect::Wither => 0x352A27,
             Effect::Hunger => 0x587653,
+            Effect::MiningFatigue => 0x4A4217,
+            Effect::DolphinsGrace => 0x88A3BE,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
@@ -129,6 +139,7 @@ impl Effect {
                 | Effect::Poison
                 | Effect::Wither
                 | Effect::Hunger
+                | Effect::MiningFatigue
         )
     }
 }
@@ -274,6 +285,15 @@ impl Effects {
         (1.0 + 0.2 * self.levels(Effect::Speed) as f64 - 0.15 * self.levels(Effect::Slowness) as f64).max(0.0)
     }
 
+    /// Java's fatigue multipliers for mining speed.
+    pub fn mining_factor(&self) -> f32 {
+        self.get(Effect::MiningFatigue).map_or(1.0, |a| match a.amplifier {
+            0 => 0.3,
+            1 => 0.09,
+            2 => 0.0027,
+            _ => 0.00081,
+        })
+    }
     /// Extra jump height levels (Jump Boost).
     pub fn jump_boost(&self) -> u32 {
         self.levels(Effect::JumpBoost)

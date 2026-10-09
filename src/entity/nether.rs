@@ -801,6 +801,7 @@ impl Entities {
         n.sense_timer = 0.0;
         // Java marks mobs that pick items up persistent.
         m.persistent = true;
+
         let pos = m.pos;
         let stack = &mut self.items[j].stack;
         if stack.count <= take {
@@ -890,7 +891,9 @@ impl Entities {
             self.mobs.iter().filter(|m| m.persistent && m.alive() && m.villager.is_none()).map(save_mob).collect();
         let mut bastions: Vec<[i32; 3]> = self.bastions_populated.iter().map(|p| p.to_array()).collect();
         bastions.sort_unstable();
-        json!({ "mobs": mobs, "bastions": bastions }).to_string()
+        let mut structures: Vec<_> = self.structures_populated.iter().map(|p| p.to_array()).collect();
+        structures.sort_unstable();
+        json!({ "mobs": mobs, "bastions": bastions, "structures": structures }).to_string()
     }
 
     /// Restores [`Entities::nether_mobs_to_string`], skipping bad entries.
@@ -901,6 +904,16 @@ impl Entities {
                 let p = p.as_array()?;
                 let c = |i: usize| p.get(i)?.as_i64().and_then(|v| i32::try_from(v).ok());
                 Some(IVec3::new(c(0)?, c(1)?, c(2)?))
+            }));
+        }
+        if let Some(done) = root["structures"].as_array() {
+            self.structures_populated.extend(done.iter().filter_map(|p| {
+                let p = p.as_array()?;
+                Some(IVec3::new(
+                    i32::try_from(p.first()?.as_i64()?).ok()?,
+                    i32::try_from(p.get(1)?.as_i64()?).ok()?,
+                    i32::try_from(p.get(2)?.as_i64()?).ok()?,
+                ))
             }));
         }
         let Some(mobs) = root["mobs"].as_array() else { return };
@@ -1328,6 +1341,8 @@ fn save_mob(m: &Mob) -> Value {
     let n = m.nether.as_deref();
     let armor: Vec<bool> = m.armor.iter().map(|a| a.is_some()).collect();
     json!({
+        "variant": m.aquatic.as_ref().map(|a| a.variant),
+        "color": m.wool_color as u8,
         "kind": m.kind.name(),
         "pos": m.pos.to_array(),
         "yaw": m.yaw,
@@ -1356,7 +1371,11 @@ fn load_mob(v: &Value) -> Option<Mob> {
     }
     let mut m = Mob::new(kind, pos, v["yaw"].as_f64().unwrap_or(0.0) as f32);
     m.persistent = true;
+    if let Some(a) = &mut m.aquatic {
+        a.variant = v["variant"].as_u64().unwrap_or(0).min(255) as u8;
+    }
     m.baby = v["baby"].as_bool().unwrap_or(false);
+    m.wool_color = crate::color::DyeColor::ALL.get(v["color"].as_u64().unwrap_or(0).min(15) as usize).copied().unwrap();
     if let Some(h) = v["health"].as_f64().filter(|h| *h > 0.0) {
         m.health = (h as f32).min(kind.max_health());
     }

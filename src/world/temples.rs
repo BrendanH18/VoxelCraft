@@ -157,6 +157,7 @@ pub struct Built {
     features: Vec<(IVec3, Feature)>,
     /// Where the structure's own mobs spawn (witches, pillagers, guardians).
     pub spawns: Bounds,
+    pub residents: Vec<(crate::entity::MobKind, IVec3)>,
 }
 
 /// Lays out a build in a rotated local frame: x across, z away from the
@@ -167,6 +168,7 @@ struct Builder {
     rot: u8,
     blocks: FxHashMap<IVec3, Block>,
     features: Vec<(IVec3, Feature)>,
+    residents: Vec<(crate::entity::MobKind, IVec3)>,
 }
 
 impl Builder {
@@ -179,7 +181,7 @@ impl Builder {
         } else {
             origin
         };
-        Self { origin, size, rot, blocks: FxHashMap::default(), features: Vec::new() }
+        Self { origin, size, rot, blocks: FxHashMap::default(), features: Vec::new(), residents: Vec::new() }
     }
 
     fn world(&self, x: i32, y: i32, z: i32) -> IVec3 {
@@ -267,7 +269,7 @@ impl Builder {
         blocks.sort_unstable_by_key(|(p, _)| (p.y, p.z, p.x));
         let bounds = Bounds { min, max };
         let spawns = Bounds { min, max: max + IVec3::Y * spawns_up };
-        Built { kind, bounds, blocks, features: self.features, spawns }
+        Built { kind, bounds, blocks, features: self.features, spawns, residents: self.residents }
     }
 }
 
@@ -373,6 +375,18 @@ impl Temples {
     }
 
     /// Every structure whose build may cross the box from `lo` to `hi`.
+    pub fn near(&self, g: &Generator, p: IVec3, radius: i32) -> Vec<Arc<Built>> {
+        let xz = IVec2::new(p.x, p.z);
+        self.around(g, xz - IVec2::splat(radius), xz + IVec2::splat(radius))
+            .into_iter()
+            .filter(|b| {
+                b.bounds.min.x <= p.x + radius
+                    && b.bounds.max.x >= p.x - radius
+                    && b.bounds.min.z <= p.z + radius
+                    && b.bounds.max.z >= p.z - radius
+            })
+            .collect()
+    }
     fn around(&self, g: &Generator, lo: IVec2, hi: IVec2) -> Vec<Arc<Built>> {
         let mut out = Vec::new();
         for kind in Kind::ALL {
@@ -642,6 +656,8 @@ fn swamp_hut(g: &Generator, centre: IVec2, ground: i32, rot: u8) -> Built {
     b.fill(1, 5, 2, 5, 5, 7, planks);
     b.set(4, 1, 6, Block::CRAFTING_TABLE);
     b.set(2, 1, 6, Block::BROWN_MUSHROOM);
+    b.residents.push((crate::entity::MobKind::Witch, b.world(3, 1, 5)));
+    b.residents.push((crate::entity::MobKind::Cat, b.world(2, 1, 4)));
     b.finish(Kind::SwampHut, 2)
 }
 
@@ -699,11 +715,15 @@ fn igloo(g: &Generator, centre: IVec2, ground: i32, rot: u8, seed: u64, rng: &mu
         b.fill(4, -12, 3, 4, -2, 3, Block::STONE_BRICKS);
         b.chest(2, -12, 9, Facing::North, seed, LootTable::Igloo);
         b.set(6, -12, 9, Block::BREWING_STAND);
-        b.features.push((b.world(6, -12, 9), Feature::UtilityBlock(Block::BREWING_STAND)));
+        b.features.push((b.world(6, -12, 9), Feature::IglooBrewing));
         b.set(4, -12, 9, Block::TORCH);
-        for x in [2, 6] {
-            b.fill(x, -12, 6, x, -10, 6, Block::IRON_BARS);
+        b.residents.push((crate::entity::MobKind::Villager, b.world(2, -12, 5)));
+        b.residents.push((crate::entity::MobKind::ZombieVillager, b.world(6, -12, 5)));
+        for (x0, x1) in [(1, 3), (5, 7)] {
+            b.fill(x0, -12, 6, x1, -10, 6, Block::IRON_BARS);
         }
+        b.fill(3, -12, 4, 3, -10, 6, Block::IRON_BARS);
+        b.fill(5, -12, 4, 5, -10, 6, Block::IRON_BARS);
     }
     b.finish(Kind::Igloo, 0)
 }
@@ -749,6 +769,9 @@ fn outpost(g: &Generator, centre: IVec2, ground: i32, rot: u8, seed: u64) -> Bui
     }
     b.set(4, 20, 2, Block::AIR);
     b.chest(6, 20, 6, Facing::West, seed, LootTable::Outpost);
+    for (x, y, z) in [(3, 20, 4), (5, 13, 4), (3, 1, 5)] {
+        b.residents.push((crate::entity::MobKind::Pillager, b.world(x, y, z)));
+    }
     b.finish(Kind::Outpost, 0)
 }
 
@@ -936,6 +959,9 @@ fn monument(g: &Generator, centre: IVec2, rot: u8, rng: &mut Rng) -> Built {
     b.set(32, 13, 38, lamp);
     b.set(28, 10, 30, w);
     b.set(28, 11, 30, w);
+    for (x, y, z) in [(10, 12, 38), (47, 12, 38), (29, 18, 43)] {
+        b.residents.push((crate::entity::MobKind::ElderGuardian, b.world(x, y, z)));
+    }
     b.finish(Kind::Monument, 4)
 }
 
@@ -1259,6 +1285,7 @@ mod tests {
                     match feature {
                         Feature::TempleChest(..) => assert!(super::super::chest::is_chest(block)),
                         Feature::UtilityBlock(site) => assert_eq!(block.base(), *site),
+                        Feature::IglooBrewing => assert_eq!(block, Block::BREWING_STAND),
                         _ => panic!("unexpected feature in {kind:?}"),
                     }
                 }
@@ -1358,6 +1385,39 @@ mod tests {
     }
 
     #[test]
+    fn all_residents_fit_their_rotated_rooms() {
+        use crate::{
+            entity::MobKind,
+            physics::{self, test_util::Grid},
+        };
+        let g = Generator::new(1);
+        for rot in 0..4 {
+            let buildings = [
+                swamp_hut(&g, IVec2::ZERO, 70, rot),
+                igloo(&g, IVec2::ZERO, 70, rot, 1, &mut Rng(1)),
+                outpost(&g, IVec2::ZERO, 70, rot, 1),
+                monument(&g, IVec2::ZERO, rot, &mut Rng(1)),
+            ];
+            for b in buildings {
+                let mut grid = Grid::flat(-64);
+                for &(p, block) in &b.blocks {
+                    grid.set(p, block);
+                }
+                for &(kind, p) in &b.residents {
+                    assert!(
+                        !physics::overlaps_solid(&grid, p.as_dvec3() + glam::DVec3::new(0.5, 0.0, 0.5), kind.shape()),
+                        "{:?} {kind:?} rot{rot} {p}",
+                        b.kind
+                    );
+                }
+                if b.kind == Kind::Monument {
+                    assert_eq!(b.residents.iter().filter(|(k, _)| *k == MobKind::ElderGuardian).count(), 3);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn igloo_basement_ladder_is_open_all_the_way_to_the_floor() {
         let g = Generator::new(1);
         let centre = IVec2::ZERO;
@@ -1393,7 +1453,11 @@ mod tests {
         let mut world = super::super::World::new_headless(g.clone(), Default::default(), 1);
         let mut utilities = 0;
         for &(p, feature) in &built.features {
-            let Feature::UtilityBlock(block) = feature else { continue };
+            let block = match feature {
+                Feature::UtilityBlock(block) => block,
+                Feature::IglooBrewing => Block::BREWING_STAND,
+                _ => continue,
+            };
             utilities += 1;
             let data = g.generate(chunk_of(p));
             world.register_structure_features(chunk_of(p), &data);
@@ -1403,6 +1467,10 @@ mod tests {
                 world.register_structure_features(chunk_of(p), &data);
                 assert_eq!(world.furnace(p).unwrap().fuel, fuel);
             } else {
+                assert_eq!(
+                    world.brewing_stand(p).unwrap().bottles[0].unwrap().item,
+                    Item::splash_potion(crate::potion::Potion::from_id("weakness").unwrap())
+                );
                 let fuel = Some(Stack::new(Item::BLAZE_POWDER, 2));
                 world.brewing_stand_mut(p).expect("usable generated brewing stand").fuel = fuel;
                 world.register_structure_features(chunk_of(p), &data);

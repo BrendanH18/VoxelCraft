@@ -325,6 +325,7 @@ pub enum Feature {
     TempleChest(u64, super::temples::LootTable),
     /// Functional furnace or brewing stand in a non-village structure.
     UtilityBlock(Block),
+    IglooBrewing,
 }
 
 /// Fortress layouts for one Nether, cached by region.

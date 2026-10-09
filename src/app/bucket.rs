@@ -10,7 +10,10 @@ use super::{Game, REACH};
 
 impl Game {
     pub(super) fn holding_bucket(&self) -> bool {
-        matches!(self.held_item(), Some(Item::BUCKET | Item::WATER_BUCKET | Item::LAVA_BUCKET))
+        self.held_item().is_some_and(|i| {
+            matches!(i, Item::BUCKET | Item::WATER_BUCKET | Item::LAVA_BUCKET)
+                || voxelcraft::entity::aquatic::bucket_kind(i).is_some()
+        })
     }
 
     /// Snowballs, eggs and the fishing rod act once per click, like buckets.
@@ -20,6 +23,18 @@ impl Game {
 
     /// Right-click with a bucket. Returns whether the bucket was used.
     pub(super) fn use_bucket(&mut self) -> bool {
+        if self.mobs.entities.use_water_creature_bucket(
+            &mut self.world,
+            &mut self.inventory,
+            self.actions.selected,
+            self.mode.is_creative(),
+            self.player.eye(),
+            self.player.forward().as_dvec3(),
+            REACH,
+        ) {
+            return true;
+        }
+
         match self.held_item() {
             Some(Item::GLASS_BOTTLE) => self.fill_bottle(),
             Some(Item::BUCKET) => self.fill_bucket(),

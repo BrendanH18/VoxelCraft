@@ -79,6 +79,7 @@ pub struct Player {
 /// What status effects do to movement.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Modifiers {
+    dolphins_grace: bool,
     speed: f64,
     jump_levels: u32,
     slow_falling: bool,
@@ -88,7 +89,7 @@ struct Modifiers {
 
 impl Default for Modifiers {
     fn default() -> Self {
-        Self { speed: 1.0, jump_levels: 0, slow_falling: false, depth_strider: 0 }
+        Self { dolphins_grace: false, speed: 1.0, jump_levels: 0, slow_falling: false, depth_strider: 0 }
     }
 }
 
@@ -217,6 +218,7 @@ impl Player {
         use crate::simulation::effects::Effect;
         self.modifiers = Modifiers {
             speed: effects.speed_factor(),
+            dolphins_grace: effects.has(Effect::DolphinsGrace),
             jump_levels: effects.jump_boost(),
             slow_falling: effects.has(Effect::SlowFalling),
             depth_strider: self.modifiers.depth_strider,
@@ -322,7 +324,8 @@ impl Player {
             } else {
                 0.0 // Depth Strider does not affect lava.
             };
-            let base = SWIM_SPEED + (land - SWIM_SPEED) * efficiency;
+            let base = (SWIM_SPEED + (land - SWIM_SPEED) * efficiency)
+                * if self.modifiers.dolphins_grace && fluid.is_some_and(|b| b.holds_water()) { 2.5 } else { 1.0 };
             let slowdown = if swim_look && input.sprint { SWIM_SPRINT_SLOWDOWN } else { 1.0 };
             let target = wish * base * self.modifiers.speed * slowdown;
             let k = (dt * 6.0).min(1.0);

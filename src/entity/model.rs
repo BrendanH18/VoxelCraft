@@ -533,12 +533,26 @@ impl std::ops::Deref for Parts {
 }
 macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.push($p);)*out}}}
 
+mod aquatic;
+
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
     let swing = m.limb_phase.sin() * m.limb_amp * 0.9;
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
+        MobKind::Cod
+        | MobKind::Salmon
+        | MobKind::TropicalFish
+        | MobKind::Pufferfish
+        | MobKind::Squid
+        | MobKind::GlowSquid
+        | MobKind::Dolphin
+        | MobKind::Axolotl
+        | MobKind::Guardian
+        | MobKind::ElderGuardian
+        | MobKind::Cat
+        | MobKind::Pillager => aquatic::pose(m, time),
         MobKind::Pig => parts![
             part(PIG_BODY, [0.0; 3], Quat::IDENTITY),
             part(PIG_LEG_BOX, [-3.0, 6.0, 5.0], rx(swing)),
@@ -863,6 +877,10 @@ pub fn build(
                 m.size as f32
             } else if m.kind == MobKind::WitherSkeleton {
                 1.2
+            } else if m.kind == MobKind::ElderGuardian {
+                2.35
+            } else if m.kind == MobKind::Pufferfish {
+                0.8 + m.aquatic.as_ref().map_or(0.0, |a| a.puff as f32 * 0.4)
             } else if m.baby || m.age < 0 {
                 0.5
             } else {
@@ -879,16 +897,47 @@ pub fn build(
         } else {
             (FIRE, 0.0)
         };
+        aquatic::beam(m, camera, out);
         let posed = pose(m, time);
         for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
             // Endermen eyes and blazes glow at full brightness.
-            let glow =
-                std::ptr::eq(p.boxes, ENDERMAN_EYES) || std::ptr::eq(p.boxes, MAGMA_GLOW) || m.kind == MobKind::Blaze;
+            let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES)
+                || std::ptr::eq(p.boxes, MAGMA_GLOW)
+                || matches!(m.kind, MobKind::Blaze | MobKind::GlowSquid);
             let light = if glow { [light[0], 0, light[2], 255] } else { light };
             for (ci, c) in p.boxes.iter().enumerate() {
                 let mut cuboid = *c;
+                if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
+                    cuboid.color = [44, 161, 151];
+                }
+                if m.kind == MobKind::ElderGuardian && c.color == [105, 138, 129] {
+                    cuboid.color = [173, 170, 146];
+                }
+                if m.kind == MobKind::TropicalFish && c.color == [245, 155, 45] {
+                    const COLORS: [[u8; 3]; 12] = [
+                        [245, 155, 45],
+                        [89, 145, 225],
+                        [207, 93, 171],
+                        [185, 224, 100],
+                        [232, 77, 58],
+                        [134, 90, 199],
+                        [94, 198, 205],
+                        [244, 218, 74],
+                        [168, 116, 72],
+                        [238, 191, 204],
+                        [80, 152, 112],
+                        [225, 220, 198],
+                    ];
+                    cuboid.color = COLORS[m.aquatic.as_ref().map_or(0, |a| a.variant as usize) % 12];
+                }
+                if m.kind == MobKind::Axolotl && matches!(c.color, [237, 160, 184] | [243, 179, 198] | [235, 151, 183])
+                {
+                    const COLORS: [[u8; 3]; 5] =
+                        [[237, 160, 184], [139, 104, 81], [225, 186, 66], [184, 217, 221], [89, 101, 184]];
+                    cuboid.color = COLORS[m.aquatic.as_ref().map_or(0, |a| a.variant as usize) % 5];
+                }
                 if m.kind == MobKind::Sheep && c.color == WOOL {
                     cuboid.color = if m.sheared { SHEEP_SKIN } else { m.wool_color.sheep_rgb() };
                     if m.sheared {
@@ -1278,12 +1327,12 @@ mod tests {
                 let p = Vec3::from_array(v.pos);
                 (lo.min(p), hi.max(p))
             });
-            // Blazes float above the ground on their rods.
-            let floats = kind == MobKind::Blaze;
-            assert!(lo.y.abs() < 1e-4 || floats && lo.y < 0.25, "{kind:?} feet at {}", lo.y);
+            // Swimming bodies and animated tentacles need not rest on a floor.
+            let floats = kind == MobKind::Blaze || kind.is_aquatic();
+            assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25, "{kind:?} feet at {}", lo.y);
             let h = kind.shape().height as f32;
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
-            assert!(hi.x > 10.25, "{kind:?} should extend forward along +X");
+            assert!(hi.x > if kind.is_aquatic() { 10.05 } else { 10.25 }, "{kind:?} should extend forward along +X");
             // Behind the camera: culled.
             out.clear();
             assert_eq!(
