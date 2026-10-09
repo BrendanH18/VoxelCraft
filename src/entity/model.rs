@@ -552,7 +552,8 @@ fn pose(m: &Mob, time: f32) -> Parts {
         | MobKind::Guardian
         | MobKind::ElderGuardian
         | MobKind::Cat
-        | MobKind::Pillager => aquatic::pose(m, time),
+        | MobKind::Pillager
+        | MobKind::Turtle => aquatic::pose(m, time),
         MobKind::Pig => parts![
             part(PIG_BODY, [0.0; 3], Quat::IDENTITY),
             part(PIG_LEG_BOX, [-3.0, 6.0, 5.0], rx(swing)),

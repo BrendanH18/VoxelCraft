@@ -761,6 +761,7 @@ impl Entities {
         self.player_spots.extend(ctx.players.iter().map(|t| (t.id, t.pos)));
         self.nether_sense(dt as f32, world, ctx);
         self.aquatic_sense(dt as f32, world);
+        self.grow_turtles(dt as f32);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -1897,6 +1898,8 @@ impl Entities {
 pub fn can_spawn_on(kind: MobKind, ground: Block, daylight: f32) -> bool {
     if kind.is_hostile() {
         daylight < HOSTILE_SPAWN_DAYLIGHT && ground.is_solid() && ground.is_opaque()
+    } else if kind == MobKind::Turtle {
+        ground == Block::SAND
     } else {
         ground == Block::GRASS
     }
@@ -2744,8 +2747,11 @@ mod tests {
         for kind in MobKind::ALL {
             let o = Dimension::Overworld;
             let expected = if plains_spawner(kind) { kind.spawn_cap(o) } else { 0 };
-            if kind.biome_chance(crate::world::terrain::Biome::Plains).clamp(0.0, 1.0) % 1.0 > 0.0 {
-                assert!(e.count(kind) <= kind.spawn_cap(o), "{kind:?}");
+            // One zombie in twenty spawns as a zombie villager instead.
+            if kind == MobKind::ZombieVillager
+                || kind.biome_chance(crate::world::terrain::Biome::Plains).clamp(0.0, 1.0) % 1.0 > 0.0
+            {
+                assert!(e.count(kind) <= kind.spawn_cap(o).max(MobKind::Zombie.spawn_cap(o)), "{kind:?}");
             } else {
                 assert_eq!(e.count(kind), expected, "{kind:?}");
             }

@@ -93,6 +93,19 @@ const CROSSBOW: &[Cuboid] = &[
     cube([-1.0, -1.0, -2.0], [1.0, 1.0, 8.0], [111, 78, 42], 18),
     cube([-7.0, -0.1, 1.0], [7.0, 0.1, 1.3], [198, 188, 167], 0),
 ];
+const TURTLE_SHELL: &[Cuboid] = &[
+    cube([-7.0, 2.0, -8.0], [7.0, 6.0, 8.0], [70, 110, 62], 26),
+    cube([-6.0, 6.0, -6.0], [6.0, 8.0, 6.0], [86, 126, 74], 22),
+    cube([-7.0, 0.0, -8.0], [7.0, 2.0, 8.0], [214, 204, 150], 12),
+];
+const TURTLE_HEAD: &[Cuboid] = &[
+    cube([-2.5, 0.0, 0.0], [2.5, 4.0, 5.0], [102, 168, 96], 16),
+    cube([-2.6, 2.0, 3.0], [-2.5, 3.0, 4.0], [22, 22, 22], 0),
+    cube([2.5, 2.0, 3.0], [2.6, 3.0, 4.0], [22, 22, 22], 0),
+];
+const TURTLE_FLIPPER: &[Cuboid] = &[cube([-1.0, -1.0, -2.0], [1.0, 1.0, 2.0], [102, 168, 96], 14)];
+const TURTLE_SIDE_FLIPPER: &[Cuboid] = &[cube([0.0, -0.5, -2.0], [6.0, 0.5, 2.0], [102, 168, 96], 14)];
+
 pub(super) fn pose(m: &Mob, time: f32) -> Parts {
     let tail = Quat::from_rotation_y((time * 5.0 + m.limb_phase).sin() * 0.3);
     match m.kind {
@@ -160,6 +173,17 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             part(PILLAGER_ARM, [0.0, 20.0, 0.0], Quat::from_rotation_x(-0.5)),
             part(CROSSBOW, [0.0, 18.0, 5.0], Quat::IDENTITY)
         ],
+        MobKind::Turtle => {
+            let paddle = if m.in_water { (time * 4.0).sin() * 0.6 } else { m.limb_phase.sin() * m.limb_amp };
+            parts![
+                part(TURTLE_SHELL, [0.0; 3], Quat::IDENTITY),
+                part(TURTLE_HEAD, [0.0, 2.0, 8.0], Quat::IDENTITY),
+                part(TURTLE_SIDE_FLIPPER, [6.0, 2.0, 4.0], Quat::from_rotation_y(-0.4 + paddle)),
+                part(TURTLE_SIDE_FLIPPER, [-6.0, 2.0, 4.0], Quat::from_rotation_y(PI + 0.4 - paddle)),
+                part(TURTLE_FLIPPER, [-4.0, 2.0, -8.0], Quat::from_rotation_y(paddle)),
+                part(TURTLE_FLIPPER, [4.0, 2.0, -8.0], Quat::from_rotation_y(-paddle))
+            ]
+        }
         _ => Parts::new(),
     }
 }

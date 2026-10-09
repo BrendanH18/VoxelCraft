@@ -246,6 +246,9 @@ impl Game {
             self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
+        for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
+            self.mobs.entities.hatch_turtles(cell, count);
+        }
         self.mobs.attack_cooldown -= dt;
         let mut players = vec![Target {
             alive: !self.vitals.is_dead(),
@@ -542,7 +545,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Piglin | MobKind::PiglinBrute => Voice::Piglin,
         MobKind::Hoglin | MobKind::Zoglin => Voice::Hoglin,
         MobKind::Strider => Voice::Strider,
-        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish | MobKind::Pufferfish => Voice::Fish,
+        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish | MobKind::Pufferfish | MobKind::Turtle => Voice::Fish,
         MobKind::Squid | MobKind::GlowSquid => Voice::Squid,
         MobKind::Dolphin => Voice::Dolphin,
         MobKind::Axolotl => Voice::Axolotl,

@@ -161,6 +161,8 @@ pub struct World {
     pub notes: Vec<(IVec3, u8, u8)>,
     /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
     pub golem_heads: Vec<IVec3>,
+    /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
+    pub hatched_turtles: Vec<(IVec3, u8)>,
     compost_sequence: u64,
     bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
@@ -235,6 +237,7 @@ impl World {
             primed_tnt: Vec::new(),
             notes: Vec::new(),
             golem_heads: Vec::new(),
+            hatched_turtles: Vec::new(),
             compost_sequence: 0,
             bell_rings: Vec::new(),
             raining: false,

@@ -139,6 +139,8 @@ pub enum MobKind {
     ElderGuardian,
     Cat,
     Pillager,
+    /// Beach turtle: swims, nests on sand; babies grow up and shed a scute.
+    Turtle,
 }
 
 impl MobKind {
@@ -165,7 +167,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 43] = [
+    pub const ALL: [MobKind; 44] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -209,6 +211,7 @@ impl MobKind {
         MobKind::ElderGuardian,
         MobKind::Cat,
         MobKind::Pillager,
+        MobKind::Turtle,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -257,6 +260,7 @@ impl MobKind {
             MobKind::ElderGuardian => "elder guardian",
             MobKind::Cat => "cat",
             MobKind::Pillager => "pillager",
+            MobKind::Turtle => "turtle",
         }
     }
 
@@ -308,6 +312,7 @@ impl MobKind {
             MobKind::ElderGuardian => Shape::new(0.99875, 1.9975),
             MobKind::Cat => Shape::new(0.3, 0.7),
             MobKind::Pillager => Shape::new(0.3, 1.95),
+            MobKind::Turtle => Shape::new(0.6, 0.4),
         }
     }
 
@@ -347,6 +352,7 @@ impl MobKind {
             MobKind::Guardian => 30.0,
             MobKind::ElderGuardian => 80.0,
             MobKind::Pillager => 24.0,
+            MobKind::Turtle => 30.0,
         }
     }
 
@@ -462,6 +468,9 @@ impl MobKind {
             // swamps full of them.
             (MobKind::Witch, b) if b.is_swamp() => 0.25,
             (MobKind::Witch, _) => 0.05,
+            // Java: turtles spawn on beaches only (weight 5).
+            (MobKind::Turtle, Biome::Beach) => 0.4,
+            (MobKind::Turtle, _) => 0.0,
             (MobKind::GlowSquid | MobKind::Axolotl | MobKind::Guardian, _) => 1.0,
             (
                 MobKind::TropicalFish,
@@ -606,6 +615,7 @@ impl MobKind {
     pub(super) fn loot(self) -> &'static [(Item, i8, u8)] {
         const WOOL: Item = Item::from_block(Block::WOOL);
         const SPONGE: Item = Item::from_block(crate::world::overworld_blocks::WET_SPONGE);
+        const SEAGRASS: Item = Item::from_block(crate::world::overworld_blocks::SEAGRASS);
         const POPPY: Item = Item::from_block(Block::POPPY);
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
@@ -646,6 +656,7 @@ impl MobKind {
             MobKind::Guardian => &[(Item::PRISMARINE_SHARD, 0, 2)],
             MobKind::ElderGuardian => &[(Item::PRISMARINE_SHARD, 0, 2), (SPONGE, 1, 1)],
             MobKind::Axolotl | MobKind::Cat | MobKind::Pillager => &[],
+            MobKind::Turtle => &[(SEAGRASS, 0, 2)],
             // The skull is rolled in `drops`.
             MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
             // Java rolls a few of these; each is rolled on its own here.
@@ -749,6 +760,8 @@ pub struct Mob {
     pub size: u8,
     /// A baby zombie: half size and 50% faster.
     pub baby: bool,
+    /// Seconds a baby turtle has grown (it grows up after Java's 20 minutes).
+    pub grow: f32,
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
     /// Witch: seconds left drinking, whether it's swiftness, swiftness left,
@@ -869,6 +882,7 @@ impl Mob {
             persistent: false,
             size: 1,
             baby: false,
+            grow: 0.0,
             wool_color: crate::color::DyeColor::White,
             sheared: false,
             drink_left: 0.0,

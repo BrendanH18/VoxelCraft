@@ -352,7 +352,38 @@ fn bucket_item(kind: MobKind) -> Option<Item> {
     })
 }
 
+/// Java's baby turtle growing time: 20 minutes.
+pub const TURTLE_GROW_SECS: f32 = 1200.0;
+
 impl Entities {
+    /// Baby turtles grow up after twenty minutes and shed a scute.
+    pub(super) fn grow_turtles(&mut self, dt: f32) {
+        let mut scutes = Vec::new();
+        for m in &mut self.mobs {
+            if m.kind == MobKind::Turtle && m.baby && m.alive() {
+                m.grow += dt;
+                if m.grow >= TURTLE_GROW_SECS {
+                    m.baby = false;
+                    scutes.push(m.pos);
+                }
+            }
+        }
+        for pos in scutes {
+            self.drop_from_block(Stack::new(Item::TURTLE_SCUTE, 1), pos.floor().as_ivec3());
+        }
+    }
+
+    /// Turtles hatching from eggs at `cell`.
+    pub fn hatch_turtles(&mut self, cell: glam::IVec3, count: u8) {
+        for i in 0..count {
+            let pos = cell.as_dvec3() + DVec3::new(0.3 + i as f64 * 0.15, 0.0, 0.5);
+            self.spawn(MobKind::Turtle, pos);
+            let m = self.mobs.last_mut().unwrap();
+            m.baby = true;
+            m.persistent = true;
+        }
+    }
+
     /// Shared bucket action for keyboard, controller and CLI players. Source
     /// raycasts stop through walls; entity capture is limited by the same reach.
     #[allow(clippy::too_many_arguments)]
@@ -775,5 +806,19 @@ mod tests {
         dead.load_nether_mobs(&e.nether_mobs_to_string());
         assert!(dead.mobs.is_empty());
         assert_eq!(dead.structures_populated, e.structures_populated);
+    }
+
+    #[test]
+    fn turtles_hatch_as_babies_and_grow_up_shedding_a_scute() {
+        let mut e = Entities::new(3);
+        e.hatch_turtles(glam::IVec3::new(0, 64, 0), 2);
+        assert_eq!(e.mobs.iter().filter(|m| m.kind == MobKind::Turtle && m.baby).count(), 2);
+        e.grow_turtles(TURTLE_GROW_SECS + 1.0);
+        assert!(e.mobs.iter().all(|m| !m.baby));
+        assert_eq!(e.items.iter().filter(|i| i.stack.item == Item::TURTLE_SCUTE).count(), 2);
+        assert!(crate::entity::can_spawn_on(MobKind::Turtle, Block::SAND, 1.0));
+        assert!(!crate::entity::can_spawn_on(MobKind::Turtle, Block::GRASS, 1.0));
+        assert!(MobKind::Turtle.biome_chance(crate::world::terrain::Biome::Beach) > 0.0);
+        assert_eq!(MobKind::Turtle.biome_chance(crate::world::terrain::Biome::Plains), 0.0);
     }
 }

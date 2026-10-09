@@ -241,6 +241,9 @@ struct Game {
     settings_path: Option<std::path::PathBuf>,
     /// Name shown in the world list (the save folder's name may differ).
     world_name: String,
+    /// Terrain generator the world was made with: 1 before v0.6's
+    /// 1.18-style Overworld, 2 since. Kept so old worlds stay marked.
+    terrain_version: u8,
     dimension: Dimension,
     /// The overworld's furnaces, chests and items while the player is in
     /// the Nether (saved in the root level file).
@@ -862,6 +865,9 @@ impl Game {
             arrival,
             portal_time: 0.0,
             portal_locked: false,
+            terrain_version: existing
+                .as_ref()
+                .map_or(2, |l| l.props.get("terrain").and_then(|v| v.parse().ok()).unwrap_or(1)),
             world_name: new
                 .map(|n| n.name)
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("name")).cloned())
@@ -2026,6 +2032,7 @@ impl Game {
             format!("{},{},{}", self.world_spawn.x, self.world_spawn.y, self.world_spawn.z),
         );
         props.insert("name".to_string(), self.world_name.clone());
+        props.insert("terrain".to_string(), self.terrain_version.to_string());
         // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
         inventory.return_stacks(self.craft.cells.iter().chain(&self.work).flatten().copied());

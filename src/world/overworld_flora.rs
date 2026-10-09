@@ -179,7 +179,14 @@ impl World {
                     self.edit(q, ob::MYCELIUM, false);
                 }
             }
-            // Turtle eggs crack and hatch over time (hatching spawns turtles in the game).
+            // Turtle eggs on sand hatch (Java cracks them over three stages,
+            // mostly at night; one roll in 40 stands in for that).
+            1976..=1979 => {
+                if self.get_block(p - IVec3::Y) == Some(Block::SAND) && self.one_in(40) {
+                    self.edit(p, Block::AIR, true);
+                    self.hatched_turtles.push((p, ob::egg_count(b).unwrap()));
+                }
+            }
             _ => return (ob::FIRST..=ob::LAST).contains(&b.0),
         }
         true
