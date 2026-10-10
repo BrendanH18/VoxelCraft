@@ -1,7 +1,7 @@
 # Building downloadable releases
 
-The release packages target Windows x64 and macOS 13+ (separate Apple Silicon
-and Intel DMGs). Linux is supported for source builds but has no release package.
+The release packages target Windows x64 and macOS 13+ on Apple Silicon. Intel
+Macs and Linux are supported for source builds but have no release package.
 No verified publisher signing certificates or notarization are used.
 
 ## Automated builds
@@ -14,14 +14,14 @@ Visual C++ redistributable installation.
 
 - Push a `release/*` branch to build downloadable workflow artifacts.
 - A manual workflow run builds artifacts, without publishing.
-- Push a tag matching Cargo.toml, such as `v0.3.0`, to build all three packages
+- Push a tag matching Cargo.toml, such as `v0.3.0`, to build both packages
   and create a **draft** GitHub Release with SHA-256 checksums and the notes from
   `packaging/RELEASE-NOTES.md`. The workflow never publishes automatically.
   Rerunning a tag build refreshes an existing draft's downloads; published
   releases are left unchanged.
 
 Update Cargo.toml, Cargo.lock and the release notes together for each version.
-Review all three packages before publishing the draft through GitHub Releases.
+Review both packages before publishing the draft through GitHub Releases.
 Do not move published version tags or replace published binaries; create a new
 version for fixes so downloads remain identifiable.
 
@@ -39,8 +39,8 @@ bash packaging/macos/package.sh aarch64-apple-darwin
 bash packaging/macos/smoke-test.sh dist/VoxelCraft-0.3.0-macos-apple-silicon.dmg
 ```
 
-Replace the target with `x86_64-apple-darwin` for Intel. The smoke test must run
-on a machine capable of executing the packaged architecture. The script creates
+For an Intel Mac source build, use `x86_64-apple-darwin` instead. The smoke test
+must run on a machine capable of executing the packaged architecture. The script creates
 `VoxelCraft.app` (with the `voxelcraft-agent` client in `Contents/MacOS`), adds
 metadata/icons/notices and an Applications shortcut, then
 produces a compressed DMG in `dist/`. Its ad-hoc integrity signature supplies no

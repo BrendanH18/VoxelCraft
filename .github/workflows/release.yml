@@ -34,10 +34,6 @@ jobs:
             runner: macos-15
             target: aarch64-apple-darwin
             rustflags: ''
-          - platform: macos-intel
-            runner: macos-15-intel
-            target: x86_64-apple-darwin
-            rustflags: ''
     env:
       RUSTFLAGS: ${{ matrix.rustflags }}
     steps:
@@ -59,13 +55,9 @@ jobs:
       - run: cargo test --release --locked --target ${{ matrix.target }}
       - run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Install license notice generator
-        if: matrix.platform != 'macos-intel'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-about@0.9.2
-      - name: Build license notice generator for Intel Mac
-        if: matrix.platform == 'macos-intel'
-        run: cargo install cargo-about --locked --features cli --version 0.9.2 --target-dir target/release-tools
       - name: Generate bundled license notices
         run: cargo about generate --locked --fail --target ${{ matrix.target }} --output-file packaging/THIRD-PARTY-LICENSES.html packaging/licenses.hbs
       - name: Install Inno Setup

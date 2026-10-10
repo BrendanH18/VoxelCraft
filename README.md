@@ -161,7 +161,8 @@ a stronghold, and watch the credits roll after the Ender Dragon falls.
 Head to [**Releases**](https://github.com/BrendanH18/VoxelCraft/releases):
 
 - **Windows:** run the setup wizard.
-- **Mac:** open the Apple Silicon or Intel DMG and drag VoxelCraft into Applications.
+- **Mac (Apple Silicon):** open the DMG and drag VoxelCraft into Applications.
+  Intel Macs can [build from source](docs/releases.md#local-macos-build).
 
 > [!NOTE]
 > These early builds aren't signed by a verified publisher yet, so your OS

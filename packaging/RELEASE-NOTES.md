@@ -11,7 +11,6 @@ Choose your download:
 
 - **Windows 10/11 x64:** `VoxelCraft-0.6.0-windows-x64-Setup.exe`
 - **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.6.0-macos-apple-silicon.dmg`
-- **Mac with Intel, macOS 13+:** `VoxelCraft-0.6.0-macos-intel.dmg`
 
 ## What's new since 0.5.0
 
