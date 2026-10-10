@@ -15,14 +15,13 @@ install this game; use a personal test device that permits it.
 Requires Windows 10/11 x64 and a DirectX 12 or Vulkan-capable GPU/driver.
 
 MAC
-Choose the Apple Silicon download for M-series Macs, or Intel for Intel Macs.
 Open the DMG and drag VoxelCraft.app onto the Applications shortcut.
 Eject the disk image and launch VoxelCraft from Applications.
 If macOS blocks the first launch, try opening the app once, then visit
 System Settings > Privacy & Security > Open Anyway, and confirm Open.
 The app has a local ad-hoc integrity signature, with no developer identity
 or notarization. No Apple Developer account was used to build it.
-Requires macOS 13 or later and a Metal-capable GPU.
+Requires an Apple Silicon (M-series) Mac running macOS 13 or later.
 
 UPDATES AND UNINSTALLING
 Quit the game before updating. Windows: run the new installer over the old
