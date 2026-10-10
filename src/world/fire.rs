@@ -300,7 +300,10 @@ mod tests {
         for y in world.generator.dimension.chunk_rows() {
             world.insert_chunk(IVec3::new(0, y, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
         }
-        world.columns.get_mut(&IVec2::ZERO).unwrap().foliage = Some(Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
+        let col = world.columns.get_mut(&IVec2::ZERO).unwrap();
+        col.foliage = Some(Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
+        // A plains-like snow line: rain below y = 160.
+        col.snow = Some(Box::new([160; CHUNK_SIZE * CHUNK_SIZE]));
         world
     }
 
@@ -396,11 +399,11 @@ mod tests {
             w.random_tick(AT);
         }
         assert_eq!(w.get_block(AT), Some(Block::AIR));
-        for group in [2, 4] {
-            w.columns.get_mut(&IVec2::ZERO).unwrap().foliage = Some(Box::new([group; CHUNK_SIZE * CHUNK_SIZE]));
-            assert!(!w.rains_on(AT), "dry/snowy biome {group}");
+        for line in [i16::MAX, i16::MIN] {
+            w.columns.get_mut(&IVec2::ZERO).unwrap().snow = Some(Box::new([line; CHUNK_SIZE * CHUNK_SIZE]));
+            assert!(!w.rains_on(AT), "dry/snowy biome {line}");
         }
-        w.columns.get_mut(&IVec2::ZERO).unwrap().foliage = Some(Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
+        w.columns.get_mut(&IVec2::ZERO).unwrap().snow = Some(Box::new([160; CHUNK_SIZE * CHUNK_SIZE]));
         let high = AT.with_y(170);
         w.edit(high - IVec3::Y, Block::STONE, false);
         assert!(!w.rains_on(high), "snow on high terrain");

@@ -322,6 +322,30 @@ impl Generator {
         out
     }
 
+    /// Where snow starts in every column of chunk column `(cx, cz)`,
+    /// indexed `x + z * CHUNK_SIZE`: Java's biome temperature falls below
+    /// 0.15 from this height up (it cools above y = 80). `i16::MIN` means
+    /// snow at any height, `i16::MAX` a dry biome with no precipitation.
+    pub fn snow_lines(&self, cx: i32, cz: i32) -> Box<[i16; CHUNK_SIZE * CHUNK_SIZE]> {
+        let mut out = Box::new([i16::MAX; CHUNK_SIZE * CHUNK_SIZE]);
+        if !self.dimension.has_sky() {
+            return out;
+        }
+        for (i, line) in out.iter_mut().enumerate() {
+            let (x, z) = (cx * CHUNK_SIZE_I + (i % CHUNK_SIZE) as i32, cz * CHUNK_SIZE_I + (i / CHUNK_SIZE) as i32);
+            let biome = self.climate_biome(x, z);
+            *line = if biome.is_dry() {
+                i16::MAX
+            } else if biome.is_cold() {
+                i16::MIN
+            } else {
+                // temperature_at(y) = t - (y - 80) * 0.05 / 40 < 0.15
+                (80.0 + (biome.temperature() - 0.15) * 800.0).min(i16::MAX as f32 - 1.0) as i16
+            };
+        }
+        out
+    }
+
     /// The biome alone, without the height (cheaper than [`Generator::column`]).
     fn climate_biome(&self, x: i32, z: i32) -> Biome {
         super::biome::pick(&self.climate.sample(x, z))

@@ -103,7 +103,7 @@ full performance display instead of duplicating the compact counter.
   water. Clicking tall grass with a block replaces it
 - Weather, like Minecraft: clear spells of one to five days alternate with
   rain lasting half a day to a day and a half. Rain falls as snow in cold
-  biomes and above y = 150, and not at all in deserts, savannas and
+  biomes and on high ground (biomes cool above y = 80, as in Java), and not at all in deserts, savannas and
   badlands. It greys and darkens the sky, hides the sun, moon and stars
   behind thicker clouds, stops at the first block overhead, waters
   farmland under open sky, keeps zombies and skeletons from burning, and

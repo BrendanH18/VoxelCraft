@@ -96,6 +96,8 @@ struct Column {
     loaded: i32,
     /// Biome colours, once a worker has worked them out.
     foliage: Option<Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>>,
+    /// Snow lines (see `Generator::snow_lines`), worked out with the colours.
+    snow: Option<Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>>,
 }
 
 pub struct World {
@@ -381,15 +383,27 @@ impl World {
         col.foliage.as_ref().map(|f| f[(l.x + l.z * CHUNK_SIZE_I) as usize])
     }
 
+    /// The height from which snow falls instead of rain in column `(x, z)`
+    /// (`i16::MIN`: always snow; `i16::MAX`: a dry biome with neither),
+    /// once known.
+    pub fn snow_line_at(&self, x: i32, z: i32) -> Option<i16> {
+        let col = self.columns.get(&column_of(chunk_of(IVec3::new(x, 0, z))))?;
+        let l = local_of(IVec3::new(x, 0, z));
+        col.snow.as_ref().map(|f| f[(l.x + l.z * CHUNK_SIZE_I) as usize])
+    }
+
     /// Whether rain (not snow) is falling on cell `p` right now.
     pub fn rains_on(&self, p: IVec3) -> bool {
-        // Match the weather renderer: dry biomes stay clear; cold biomes
-        // and columns whose surface is above the snow line get snow.
+        // Match the weather renderer: dry biomes stay clear, and cold
+        // biomes and high ground get snow.
         self.raining
             && self.generator.dimension.has_sky()
-            && self.surface_height(p.x, p.z).is_none_or(|h| h <= 150)
             && self.sky_exposed(p)
-            && matches!(self.foliage_at(p.x, p.z), Some(0 | 1 | 3))
+            && self.snow_line_at(p.x, p.z).is_some_and(|line| {
+                // Like the weather sheets: snow or rain by the column's ground.
+                let ground = self.surface_height(p.x, p.z).unwrap_or(i32::MIN);
+                line != i16::MAX && ground < line as i32
+            })
     }
 
     /// Whether a cell sees the sky straight up (nothing light-blocking
@@ -693,7 +707,7 @@ impl World {
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
             workers.submit(Job::Foliage(column_of(pos)));
-            Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None }
+            Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None, snow: None }
         });
         col.loaded += 1;
         // Without a sky (the Nether) every cell counts as open: the
@@ -780,9 +794,10 @@ impl World {
                         self.insert_chunk(pos, Arc::new(data), false);
                     }
                 }
-                JobResult::Foliage(key, foliage) => {
+                JobResult::Foliage(key, foliage, snow) => {
                     if let Some(col) = self.columns.get_mut(&key) {
                         col.foliage = Some(foliage);
+                        col.snow = Some(snow);
                     }
                 }
                 JobResult::Meshed { pos, version, mesh } => {
