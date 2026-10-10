@@ -1,7 +1,7 @@
 //! Monster rooms, Java's `MonsterRoomFeature` terrain feature. Each 16x16
 //! column makes ten attempts over this world's full height and four attempts
 //! in Java's deep band (`above_bottom` 6 through absolute -1, that is
-//! y = -58..=-1), mapped with [`super::height::java_y`]. Layouts are seeded
+//! y = -58..=-1). Layouts are seeded
 //! per column, validated against pristine terrain and painted in every
 //! touching 32³ chunk, so loading order cannot cut a room.
 
@@ -196,11 +196,7 @@ impl Dungeons {
                         // Java `monster_room_deep`: uniform from above_bottom 6
                         // (y = -58) through absolute -1. The old `6..=63` was
                         // that range plus 64.
-                        let y = if deep {
-                            super::height::java_y(rng.range(0, 57) as i32 - 58)
-                        } else {
-                            rng.below(256) as i32
-                        };
+                        let y = if deep { rng.range(0, 57) as i32 - 58 } else { rng.below(320) as i32 };
                         let center = IVec3::new(x, y, z);
                         let room = Room::new(center, &mut rng);
                         // Most upper attempts are above the surface; reject

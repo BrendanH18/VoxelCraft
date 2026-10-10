@@ -458,13 +458,13 @@ use crate::{
     inventory::Stack,
     item::{ArmorMaterial, ArmorPiece, Tier, ToolKind},
 };
-struct Loot {
-    item: Option<Item>,
-    weight: u32,
-    lo: u32,
-    hi: u32,
-    enchanted: bool,
-    damage: Option<(f32, f32)>,
+pub(super) struct Loot {
+    pub(super) item: Option<Item>,
+    pub(super) weight: u32,
+    pub(super) lo: u32,
+    pub(super) hi: u32,
+    pub(super) enchanted: bool,
+    pub(super) damage: Option<(f32, f32)>,
 }
 const TREASURE_0: &[Loot] = &[
     Loot { item: Some(Item::NETHERITE_INGOT), weight: 15, lo: 1, hi: 1, enchanted: false, damage: None }, // netherite_ingot
@@ -862,7 +862,7 @@ const OTHER_2: &[Loot] = &[
     Loot { item: Some(Item::COOKED_PORKCHOP), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // cooked_porkchop
 ];
 
-fn put(chest: &mut Chest, stack: Stack, rng: &mut Rng) {
+pub(super) fn put(chest: &mut Chest, stack: Stack, rng: &mut Rng) {
     let n = chest.slots.iter().filter(|s| s.is_none()).count();
     if n == 0 {
         return;
@@ -871,7 +871,7 @@ fn put(chest: &mut Chest, stack: Stack, rng: &mut Rng) {
     let slot = chest.slots.iter_mut().filter(|s| s.is_none()).nth(pick).unwrap();
     *slot = Some(stack);
 }
-fn pool(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls: (u32, u32)) {
+pub(super) fn pool(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls: (u32, u32)) {
     let weight: u32 = table.iter().map(|e| e.weight).sum();
     for _ in 0..rng.range(rolls.0, rolls.1) {
         let mut roll = rng.below(weight);

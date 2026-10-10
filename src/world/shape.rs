@@ -313,6 +313,7 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
             out.push(b(min, max));
         }
         Some(Shaped::Rail) => out.push(RAIL),
+        Some(Shaped::Custom) => super::overworld_blocks::boxes(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b)),
         Some(Shaped::Hook { facing }) => out.push_turned(
             &[
                 b([5, 2, 0], [11, 9, 2]),
@@ -478,6 +479,9 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block
         Some(Shaped::Ladder(f)) => out.push_turned(&LADDER_COLLISION, f),
         Some(Shaped::BrewingStand) => out.push_turned(&BREWING_STAND_COLLISION, Facing::South),
         Some(Shaped::EndPortal) => {}
+        Some(Shaped::Custom) => {
+            super::overworld_blocks::collision(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b))
+        }
         Some(Shaped::DragonEgg) => out.push(DRAGON_EGG_COLLISION),
         Some(Shaped::Gate { open: true, .. }) => {}
         Some(Shaped::Gate { facing, .. }) => out.push_turned(&GATE_COLLISION, facing),

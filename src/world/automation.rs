@@ -29,6 +29,7 @@ pub(super) struct AutomationState {
     cooldown: FxHashMap<IVec3, u64>,
     pickups: Vec<IVec3>,
     output: Vec<(IVec3, u8, bool, Stack)>,
+    creatures: Vec<(IVec3, Stack)>,
 }
 
 #[derive(PartialEq)]
@@ -149,7 +150,7 @@ impl World {
     }
 
     fn piston_reaction(&self, p: IVec3, b: Block) -> Reaction {
-        if p.y < 0 || p.y >= super::WORLD_HEIGHT {
+        if !self.contains_y(p.y) {
             return Reaction::Block;
         }
         if b == Block::AIR || b.is_fluid() {
@@ -335,6 +336,9 @@ impl World {
                 crate::inventory::stack_to_string(Some(stack))
             ));
         }
+        for &(p, stack) in &self.automation.creatures {
+            entries.push(format!("w,{},{},{},{}", p.x, p.y, p.z, crate::inventory::stack_to_string(Some(stack))));
+        }
         entries.join("|")
     }
 
@@ -362,6 +366,16 @@ impl World {
                     {
                         self.automation.output.push((p, facing, arrow == 1, stack));
                     }
+                }
+                continue;
+            }
+            if let Some(rest) = entry.strip_prefix("w,") {
+                if let &[x, y, z, stack] = rest.split(',').collect::<Vec<_>>().as_slice()
+                    && let (Ok(x), Ok(y), Ok(z), Some(Some(stack))) =
+                        (x.parse(), y.parse(), z.parse(), crate::inventory::stack_from_str(stack))
+                    && crate::entity::aquatic::bucket_kind(stack.item).is_some()
+                {
+                    self.automation.creatures.push((IVec3::new(x, y, z), stack));
                 }
                 continue;
             }
@@ -648,6 +662,16 @@ impl World {
         if !dropper {
             let block = self.get_block(front).unwrap();
             let replacement = match stack.item {
+                item if crate::entity::aquatic::bucket_kind(item).is_some()
+                    && (block.is_replaceable() || block.holds_water()) =>
+                {
+                    // Waterlogged plants already hold the water.
+                    if self.generator.dimension != super::terrain::Dimension::Nether && !block.holds_water() {
+                        self.set_block(front, Block::WATER);
+                    }
+                    self.automation.creatures.push((front, one));
+                    Some(Item::BUCKET)
+                }
                 Item::WATER_BUCKET | Item::LAVA_BUCKET if block.is_replaceable() => {
                     self.set_block(front, if stack.item == Item::WATER_BUCKET { Block::WATER } else { Block::LAVA });
                     Some(Item::BUCKET)
@@ -681,6 +705,9 @@ impl World {
     /// Consume entity work after shared world rules and before entity physics.
     /// Headless callers use this same method with their Entities collection.
     pub fn tick_automation_entities(&mut self, entities: &mut crate::entity::Entities) {
+        for (p, stack) in std::mem::take(&mut self.automation.creatures) {
+            entities.release_water_creature(stack, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+        }
         let mut rings = std::mem::take(&mut self.bell_rings);
         for &pos in &rings {
             entities.ring_bell(pos);
@@ -1045,6 +1072,28 @@ mod tests {
         put(&mut w, P - IVec3::X, r::REDSTONE_BLOCK);
         ticks(&mut w, 5);
         assert_eq!(w.chest(P).unwrap().slots[0].unwrap().count, 2);
+    }
+    #[test]
+    fn dispensers_release_captured_water_creatures_once_with_their_payload() {
+        let mut w = world();
+        put(&mut w, P, r::dispenser(2, false));
+        let mut bucket = Stack::new(Item::AXOLOTL_BUCKET, 1);
+        bucket.entity_data = 1 | (3 << 1) | (625 << 9);
+        w.chest_mut(P).unwrap().slots[0] = Some(bucket);
+        put(&mut w, P - IVec3::X, r::REDSTONE_BLOCK);
+        ticks(&mut w, 5);
+        // A save between dispensing and the entity tick keeps the creature.
+        let save = w.automation_to_string();
+        w.load_automation(&save);
+        let mut e = crate::entity::Entities::new(1);
+        w.tick_automation_entities(&mut e);
+        assert_eq!(e.count(crate::entity::MobKind::Axolotl), 1);
+        assert_eq!(e.mobs[0].health, 6.25);
+        assert_eq!(e.mobs[0].aquatic.as_ref().unwrap().variant, 3);
+        assert!(e.mobs[0].persistent);
+        assert_eq!(w.chest(P).unwrap().slots[0].unwrap().item, Item::BUCKET);
+        w.tick_automation_entities(&mut e);
+        assert_eq!(e.mobs.len(), 1);
     }
     #[test]
     fn dispensers_place_and_collect_source_buckets_shoot_arrows_and_light_fire() {

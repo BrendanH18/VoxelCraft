@@ -119,6 +119,11 @@ pub fn smelt(item: Item) -> Option<Item> {
         Item::POTATO => Item::BAKED_POTATO,
         Item::COD => Item::COOKED_COD,
         Item::SALMON => Item::COOKED_SALMON,
+        i if i == b(crate::world::overworld_blocks::KELP) => Item::DRIED_KELP,
+        i if i == b(crate::world::overworld_blocks::WET_SPONGE) => b(crate::world::overworld_blocks::SPONGE),
+        i if i == b(Block::BASALT) => b(crate::world::overworld_blocks::SMOOTH_BASALT),
+        i if i == b(crate::world::overworld_blocks::PALE_OAK_LOG) => Item::CHARCOAL,
+        i if i == b(crate::world::overworld_blocks::SEA_PICKLE) => crate::color::DyeColor::Lime.dye(),
         _ => return None,
     })
 }

@@ -15,10 +15,13 @@
 mod automation;
 pub mod bastion;
 pub mod bell;
+pub mod biome;
 pub mod block;
 pub mod brewing;
+pub mod caves;
 pub mod chest;
 pub mod chunk;
+pub mod climate;
 pub mod colors;
 pub mod composter;
 pub mod dungeon;
@@ -33,7 +36,6 @@ pub mod fortress;
 pub mod furnace;
 pub mod gadgets;
 mod growth;
-pub(crate) mod height;
 pub(crate) mod lighting;
 pub mod mineshaft;
 pub mod nether;
@@ -46,6 +48,8 @@ pub mod nether_features;
 mod nether_flora;
 pub mod noise;
 pub mod ore;
+pub mod overworld_blocks;
+mod overworld_flora;
 mod portal;
 pub mod pumpkin_blocks;
 pub mod rails;
@@ -57,7 +61,9 @@ mod spawner;
 pub mod storage;
 pub mod stronghold;
 pub mod structure;
+pub mod temples;
 pub mod terrain;
+pub mod trees;
 pub mod village;
 pub mod village_blocks;
 mod village_life;
@@ -70,7 +76,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::mesh::{self, D, MARGIN, MeshData, MeshInput, NO_HEIGHT, Neighborhood, Region};
 use crate::workers::{Job, JobResult, Workers};
 use block::{Block, RenderKind};
-use chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_HEIGHT, WORLD_HEIGHT_CHUNKS, chunk_of, local_of};
+use chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, chunk_of, local_of};
 use terrain::Generator;
 
 pub struct ChunkSlot {
@@ -90,6 +96,8 @@ struct Column {
     loaded: i32,
     /// Biome colours, once a worker has worked them out.
     foliage: Option<Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>>,
+    /// Snow lines (see `Generator::snow_lines`), worked out with the colours.
+    snow: Option<Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>>,
 }
 
 pub struct World {
@@ -155,6 +163,8 @@ pub struct World {
     pub notes: Vec<(IVec3, u8, u8)>,
     /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
     pub golem_heads: Vec<IVec3>,
+    /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
+    pub hatched_turtles: Vec<(IVec3, u8)>,
     compost_sequence: u64,
     bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
@@ -229,6 +239,7 @@ impl World {
             primed_tnt: Vec::new(),
             notes: Vec::new(),
             golem_heads: Vec::new(),
+            hatched_turtles: Vec::new(),
             compost_sequence: 0,
             bell_rings: Vec::new(),
             raining: false,
@@ -239,6 +250,29 @@ impl World {
 
     pub fn render_distance(&self) -> i32 {
         self.render_distance
+    }
+
+    /// Lowest block y of this world's dimension.
+    #[inline]
+    pub fn min_y(&self) -> i32 {
+        self.generator.dimension.min_y()
+    }
+
+    /// One past the highest block y of this world's dimension.
+    #[inline]
+    pub fn max_y(&self) -> i32 {
+        self.generator.dimension.max_y()
+    }
+
+    /// Whether `y` lies inside this world's build height.
+    #[inline]
+    pub fn contains_y(&self, y: i32) -> bool {
+        self.generator.dimension.contains_y(y)
+    }
+
+    /// Chunks per column in this dimension.
+    fn column_chunks(&self) -> i32 {
+        self.generator.dimension.column_chunks()
     }
 
     pub fn set_tile_drops(&mut self, enabled: bool) {
@@ -324,18 +358,18 @@ impl World {
     /// Whether every chunk of the column holding `(x, z)` is loaded.
     pub fn column_loaded(&self, x: i32, z: i32) -> bool {
         let key = column_of(chunk_of(IVec3::new(x, 0, z)));
-        self.columns.get(&key).is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
+        self.columns.get(&key).is_some_and(|c| c.loaded == self.column_chunks())
     }
 
     pub fn is_loaded(&self, block: IVec3) -> bool {
-        block.y < 0 || block.y >= WORLD_HEIGHT || self.chunks.contains_key(&chunk_of(block))
+        !self.contains_y(block.y) || self.chunks.contains_key(&chunk_of(block))
     }
 
     /// Highest light-blocking block (including leaves and water) in a fully
     /// loaded column; `None` if the column isn't loaded or is empty.
     pub fn surface_height(&self, x: i32, z: i32) -> Option<i32> {
         let key = column_of(chunk_of(IVec3::new(x, 0, z)));
-        let col = self.columns.get(&key).filter(|c| c.loaded == WORLD_HEIGHT_CHUNKS)?;
+        let col = self.columns.get(&key).filter(|c| c.loaded == self.column_chunks())?;
         let l = local_of(IVec3::new(x, 0, z));
         let h = col.heights[(l.x + l.z * CHUNK_SIZE_I) as usize];
         (h != NO_HEIGHT).then_some(h as i32)
@@ -349,15 +383,28 @@ impl World {
         col.foliage.as_ref().map(|f| f[(l.x + l.z * CHUNK_SIZE_I) as usize])
     }
 
+    /// The height from which snow falls instead of rain in column `(x, z)`
+    /// (`i16::MIN`: always snow; `i16::MAX`: a dry biome with neither),
+    /// once known.
+    pub fn snow_line_at(&self, x: i32, z: i32) -> Option<i16> {
+        let col = self.columns.get(&column_of(chunk_of(IVec3::new(x, 0, z))))?;
+        let l = local_of(IVec3::new(x, 0, z));
+        col.snow.as_ref().map(|f| f[(l.x + l.z * CHUNK_SIZE_I) as usize])
+    }
+
     /// Whether rain (not snow) is falling on cell `p` right now.
     pub fn rains_on(&self, p: IVec3) -> bool {
-        // Match the weather renderer: dry biomes stay clear; cold biomes
-        // and columns whose surface is above the snow line get snow.
+        // Match the weather renderer: dry biomes stay clear, and cold
+        // biomes and high ground get snow.
         self.raining
             && self.generator.dimension.has_sky()
-            && self.surface_height(p.x, p.z).is_none_or(|h| h <= 150)
             && self.sky_exposed(p)
-            && matches!(self.foliage_at(p.x, p.z), Some(0 | 1 | 3))
+            && self.snow_line_at(p.x, p.z).is_some_and(|line| {
+                // Like the weather sheets: snow or rain by the column's ground.
+                // Unknown ground (a partly loaded column): judge by the cell.
+                let ground = self.surface_height(p.x, p.z).unwrap_or(p.y);
+                line != i16::MAX && ground < line as i32
+            })
     }
 
     /// Whether a cell sees the sky straight up (nothing light-blocking
@@ -368,10 +415,10 @@ impl World {
 
     /// Block at a world position; `None` if the chunk isn't loaded.
     pub fn get_block(&self, p: IVec3) -> Option<Block> {
-        if p.y < 0 {
+        if p.y < self.min_y() {
             return Some(Block::BEDROCK);
         }
-        if p.y >= WORLD_HEIGHT {
+        if p.y >= self.max_y() {
             return Some(Block::AIR);
         }
         let l = local_of(p);
@@ -384,9 +431,12 @@ impl World {
     /// unsupported sand, gravel and plants fall or pop off.
     pub fn set_block(&mut self, p: IVec3, block: Block) -> bool {
         let old = self.get_block(p);
+        // Removing a waterlogged plant leaves its water source behind.
+        let broken = block == Block::AIR;
+        let block = if broken && old.is_some_and(Block::is_waterlogged) { Block::WATER } else { block };
         let changed = self.edit(p, block, true);
         if changed
-            && block == Block::AIR
+            && broken
             && let Some(old) = old.filter(|b| *b != Block::AIR && !b.is_fluid())
         {
             self.particles.push(crate::particles::Request::Break { cell: p, block: old });
@@ -402,7 +452,7 @@ impl World {
     /// Changes a block and schedules remeshing of every chunk whose geometry
     /// or lighting depends on it (synchronously for geometry if `sync`).
     fn edit(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
-        if p.y < 0 || p.y >= WORLD_HEIGHT {
+        if !self.contains_y(p.y) {
             return false;
         }
         let cpos = chunk_of(p);
@@ -447,14 +497,11 @@ impl World {
         // Light reaches 15 blocks, plus 1 for the face-adjacent sample cell;
         // a heightmap change also re-exposes everything between old and new.
         let reach = MARGIN as i32 + 1;
-        let lo_y = p.y.min(old_h).min(new_h).max(0) - reach;
+        let lo_y = p.y.min(old_h).min(new_h).max(self.min_y()) - reach;
         let hi_y = p.y.max(old_h).max(new_h) + reach;
-        let lo = chunk_of(IVec3::new(p.x - reach, lo_y, p.z - reach)).max(IVec3::new(i32::MIN, 0, i32::MIN));
-        let hi = chunk_of(IVec3::new(p.x + reach, hi_y, p.z + reach)).min(IVec3::new(
-            i32::MAX,
-            WORLD_HEIGHT_CHUNKS - 1,
-            i32::MAX,
-        ));
+        let rows = self.generator.dimension.chunk_rows();
+        let lo = chunk_of(IVec3::new(p.x - reach, lo_y, p.z - reach)).max(IVec3::new(i32::MIN, rows.start, i32::MIN));
+        let hi = chunk_of(IVec3::new(p.x + reach, hi_y, p.z + reach)).min(IVec3::new(i32::MAX, rows.end - 1, i32::MAX));
         let geometry = |c: IVec3| {
             let d = (c - cpos).abs();
             let near = |axis: usize| {
@@ -497,7 +544,7 @@ impl World {
         let new = if block.light_opacity() > 0 {
             old.max(p.y)
         } else if p.y == old {
-            (0..p.y)
+            (self.min_y()..p.y)
                 .rev()
                 .find(|&y| self.get_block(IVec3::new(p.x, y, p.z)).is_some_and(|b| b.light_opacity() > 0))
                 .unwrap_or(NO_HEIGHT as i32)
@@ -505,7 +552,7 @@ impl World {
             old
         };
         self.columns.get_mut(&key).unwrap().heights[i] = new as i16;
-        (old.max(0), new.max(0))
+        (old.max(self.min_y()), new.max(self.min_y()))
     }
 
     /// A chunk can be meshed once the 3x3 columns around it are fully
@@ -517,7 +564,7 @@ impl World {
                 (-1..=1).all(|dx| {
                     self.columns
                         .get(&IVec2::new(pos.x + dx, pos.z + dz))
-                        .is_some_and(|c| c.loaded == WORLD_HEIGHT_CHUNKS)
+                        .is_some_and(|c| c.loaded == self.column_chunks())
                 })
             })
     }
@@ -547,7 +594,7 @@ impl World {
             }
         }
         let foliage = cols[4].and_then(|c| c.foliage.clone()).unwrap_or_else(|| Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
-        Box::new(MeshInput { neighbors, heights, base_y: pos.y * CHUNK_SIZE_I, foliage })
+        Box::new(MeshInput { neighbors, heights, base_y: pos.y * CHUNK_SIZE_I, min_y: self.min_y(), foliage })
     }
 
     /// Build a ready chunk's mesh immediately and queue it for upload; defer unready chunks.
@@ -556,7 +603,11 @@ impl World {
         if !self.meshes_enabled {
             return;
         }
-        if !self.in_mesh_range(pos) || !self.ready_to_mesh(pos) {
+        if !self.in_mesh_range(pos) {
+            // Recentering re-queues it if it comes into range later.
+            return;
+        }
+        if !self.ready_to_mesh(pos) {
             self.dirty.insert(pos);
             return;
         }
@@ -577,7 +628,8 @@ impl World {
             Some(b) if b.is_opaque() => {
                 [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z].iter().all(|&o| {
                     let n = pos + o;
-                    n.y < 0 || self.chunks.get(&n).and_then(|s| s.data.uniform()).is_some_and(|b| b.is_opaque())
+                    n.y < self.generator.dimension.chunk_rows().start
+                        || self.chunks.get(&n).and_then(|s| s.data.uniform()).is_some_and(|b| b.is_opaque())
                 })
             }
             _ => false,
@@ -611,7 +663,7 @@ impl World {
         for c in std::iter::once(center).chain(self.view_centers.clone()) {
             for dz in -r..=r {
                 for dx in -r..=r {
-                    for y in 0..WORLD_HEIGHT_CHUNKS {
+                    for y in self.generator.dimension.chunk_rows() {
                         let p = IVec3::new(c.x + dx, y, c.z + dz);
                         if self.in_load_range(p) {
                             self.load_list.push(p);
@@ -626,7 +678,7 @@ impl World {
                     if dx * dx + dz * dz > 16 {
                         continue;
                     }
-                    for y in 0..WORLD_HEIGHT_CHUNKS {
+                    for y in self.generator.dimension.chunk_rows() {
                         self.load_list.push(IVec3::new(c.x + dx, y, c.z + dz));
                     }
                 }
@@ -656,7 +708,7 @@ impl World {
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
             workers.submit(Job::Foliage(column_of(pos)));
-            Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None }
+            Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None, snow: None }
         });
         col.loaded += 1;
         // Without a sky (the Nether) every cell counts as open: the
@@ -743,9 +795,10 @@ impl World {
                         self.insert_chunk(pos, Arc::new(data), false);
                     }
                 }
-                JobResult::Foliage(key, foliage) => {
+                JobResult::Foliage(key, foliage, snow) => {
                     if let Some(col) = self.columns.get_mut(&key) {
                         col.foliage = Some(foliage);
+                        col.snow = Some(snow);
                     }
                 }
                 JobResult::Meshed { pos, version, mesh } => {
@@ -870,7 +923,7 @@ impl World {
         while t <= max_dist {
             if let Some(b) = self.get_block(cell)
                 && hits(b)
-                && cell.y >= 0
+                && cell.y >= self.min_y()
             {
                 if b.kind() != RenderKind::Shaped {
                     return Some((cell, normal));
@@ -926,6 +979,24 @@ mod tests {
     }
 
     #[test]
+    fn generated_jungle_fluids_settle_after_neighbor_updates() {
+        let pos = DVec3::new(1882.0, 99.0, 682.0);
+        let mut world = World::new_headless(Arc::new(Generator::new(1)), Default::default(), 4);
+        let end = Instant::now() + Duration::from_secs(30);
+        while world.loaded_chunks() == 0 || world.pending_jobs() > 0 {
+            world.update(pos);
+            world.mesh_uploads.clear();
+            assert!(Instant::now() < end);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        for _ in 0..1200 {
+            crate::simulation::tick_world_rules(&mut world, pos, false, 0);
+        }
+        assert_eq!(world.active_fluids(), 0, "jungle fluids stay active: {}", world.active_fluids());
+        assert!(world.falling.is_empty());
+    }
+
+    #[test]
     fn the_dead_dragon_opens_the_exit_portal_and_leaves_an_egg_that_jumps() {
         let generator = Arc::new(Generator::for_dimension(3, super::terrain::Dimension::End));
         let origin = generator.end().unwrap().podium();
@@ -955,7 +1026,10 @@ mod tests {
     }
 
     fn surface_y(world: &World, x: i32, z: i32) -> i32 {
-        (0..WORLD_HEIGHT).rev().find(|&y| world.get_block(IVec3::new(x, y, z)).unwrap().is_solid()).unwrap()
+        (world.min_y()..world.max_y())
+            .rev()
+            .find(|&y| world.get_block(IVec3::new(x, y, z)).unwrap().is_solid())
+            .unwrap()
     }
 
     #[test]
@@ -1100,7 +1174,15 @@ mod tests {
         assert!(player.on_ground, "player should land");
         assert!((player.pos.y - top).abs() < 0.01, "feet at {} vs ground {top}", player.pos.y);
 
-        // Walking into a wall stops at the wall.
+        // Walking into a wall stops at the wall, on a floor built for it.
+        for dx in -4..=4 {
+            for dz in -2..=2 {
+                world.set_block(IVec3::new(x + dx, top as i32 - 1, z + dz), Block::STONE);
+                for dy in 0..5 {
+                    world.set_block(IVec3::new(x + dx, top as i32 + dy, z + dz), Block::AIR);
+                }
+            }
+        }
         let wall_x = x + 2;
         for y in 0..3 {
             world.set_block(IVec3::new(wall_x, top as i32 + y, z), Block::STONE);
@@ -1551,5 +1633,24 @@ mod tests {
         assert!(world.furnace(p).is_none());
         let spilled: Vec<_> = world.drops.iter().map(|&(_, s)| s.item).collect();
         assert_eq!(spilled, [Item::from_block(Block::SAND), Item::from_block(Block::GLASS)]);
+    }
+}
+
+#[cfg(test)]
+mod remesh_tests {
+    use super::*;
+
+    /// A synchronous edit in the loaded-but-undrawn ring must not leave a
+    /// chunk queued forever (screenshots and `is_idle` wait on the queue).
+    #[test]
+    fn edits_outside_mesh_range_do_not_queue_remeshes() {
+        let mut w = World::new(Arc::new(Generator::new(1)), Default::default(), 2);
+        w.center = Some(IVec3::ZERO);
+        let far = IVec3::new(4, 2, 0);
+        assert!(!w.in_mesh_range(far));
+        w.insert_chunk(far, Arc::new(ChunkData::Uniform(Block::AIR)), false);
+        w.dirty.clear();
+        w.set_block(far * CHUNK_SIZE_I + IVec3::splat(5), Block::STONE);
+        assert!(!w.dirty.contains(&far));
     }
 }

@@ -333,6 +333,14 @@ pub fn tab_complete(input: &str) -> Option<String> {
                 "mineshaft",
                 "abandoned_mineshaft",
                 "village",
+                "desert_pyramid",
+                "jungle_pyramid",
+                "swamp_hut",
+                "igloo",
+                "pillager_outpost",
+                "shipwreck",
+                "ocean_ruin",
+                "monument",
             ],
             partial,
         )?,
@@ -811,6 +819,26 @@ impl Agent {
             Command::SetBlock(pos, block) => {
                 if !world.set_block(pos, block) {
                     return Err("block is unchanged or unloaded".into());
+                }
+            }
+            Command::Place
+                if self.inventory.get(self.selected).is_some_and(|s| {
+                    crate::entity::aquatic::bucket_kind(s.item).is_some() || s.item == Item::WATER_BUCKET
+                }) =>
+            {
+                if !self.mode.can_interact() {
+                    return Err("spectators cannot use buckets".into());
+                }
+                if !entities.use_water_creature_bucket(
+                    world,
+                    &mut self.inventory,
+                    self.selected,
+                    self.creative,
+                    self.player.eye(),
+                    self.player.forward().as_dvec3(),
+                    6.0,
+                ) {
+                    return Err("no water creature or bucket placement within reach".into());
                 }
             }
             Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD) => {
@@ -1430,7 +1458,8 @@ impl Agent {
             let block = world.get_block(pos).unwrap_or(block);
             let digger = self.digger(world);
             let progress = self.breaking.filter(|(p, b, _)| *p == pos && *b == block).map_or(0.0, |(_, _, n)| n)
-                + TICK_SECONDS / mining::dig_time(block, digger).max(1e-3) as f64;
+                + TICK_SECONDS
+                    / (mining::dig_time(block, digger) / self.vitals.effects.mining_factor()).max(1e-3) as f64;
             self.breaking = Some((pos, block, progress));
             if !self.creative && progress < 1.0 {
                 world.particles.push(crate::particles::Request::Hit { cell: pos, block, face });
@@ -1664,13 +1693,30 @@ impl Agent {
     pub fn hurt(&mut self, amount: f32, cause: &str, knockback: DVec3, entities: &mut Entities) -> f32 {
         let inv = &self.inventory;
         let reduced = simulation::survival::armor_reduce(amount, inv.armor_points(), inv.armor_toughness());
+        self.hurt_after_armor(reduced, amount, cause, knockback, entities)
+    }
+
+    pub fn hurt_beam(&mut self, physical: f32, magic: f32, entities: &mut Entities) -> f32 {
+        let inv = &self.inventory;
+        let reduced = simulation::survival::armor_reduce(physical, inv.armor_points(), inv.armor_toughness());
+        self.hurt_after_armor(reduced + magic, physical, "was slain by a guardian", DVec3::ZERO, entities)
+    }
+
+    fn hurt_after_armor(
+        &mut self,
+        reduced: f32,
+        wear: f32,
+        cause: &str,
+        knockback: DVec3,
+        entities: &mut Entities,
+    ) -> f32 {
         let taken = self.damage(reduced, cause);
         if taken <= 0.0 {
             return 0.0;
         }
         self.player.hurt_from(knockback);
         self.player.vel += simulation::survival::knockback_taken(knockback, self.inventory.knockback_resistance());
-        self.inventory.wear_armor(amount);
+        self.inventory.wear_armor(wear);
         self.sleeping = None;
         if self.vitals.is_dead() {
             self.drop_everything(entities);

@@ -83,6 +83,8 @@ pub struct Stack {
     pub repair_cost: u16,
     /// A plain custom display name (Java uses a styled text component).
     pub name: StackName,
+    /// Captured water creature variant and health; zero means an ordinary item.
+    pub entity_data: u32,
 }
 
 impl Stack {
@@ -94,6 +96,7 @@ impl Stack {
             enchants: Enchants::NONE,
             repair_cost: 0,
             name: StackName::default(),
+            entity_data: 0,
         }
     }
 
@@ -105,6 +108,7 @@ impl Stack {
             && self.enchants == other.enchants
             && self.repair_cost == other.repair_cost
             && self.name == other.name
+            && self.entity_data == other.entity_data
     }
 
     /// The enchantments that take effect when held or worn: a book's are
@@ -395,15 +399,16 @@ impl Inventory {
 pub fn stack_to_string(stack: Option<Stack>) -> String {
     match stack {
         None => "-".to_string(),
-        Some(s) if !s.enchants.is_empty() || s.repair_cost > 0 || s.name.as_str().is_some() => {
+        Some(s) if !s.enchants.is_empty() || s.repair_cost > 0 || s.name.as_str().is_some() || s.entity_data > 0 => {
             format!(
-                "{}:{}:{}:{}:{}:{}",
+                "{}:{}:{}:{}:{}:{}:{}",
                 s.item.0,
                 s.count,
                 s.damage,
                 s.enchants.to_hex(),
                 s.repair_cost,
-                s.name.to_hex()
+                s.name.to_hex(),
+                s.entity_data
             )
         }
         Some(s) if s.damage > 0 => format!("{}:{}:{}", s.item.0, s.count, s.damage),
@@ -424,6 +429,7 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
     let enchants = fields.next().map_or(Some(Enchants::NONE), Enchants::from_hex)?;
     let repair_cost: u16 = fields.next().map_or(Some(0), |d| d.parse().ok())?;
     let name = fields.next().map_or(Some(StackName::default()), StackName::from_hex)?;
+    let entity_data = fields.next().map_or(Some(0), |d| d.parse().ok())?;
     if fields.next().is_some() {
         return None;
     }
@@ -439,6 +445,7 @@ pub fn stack_from_str(text: &str) -> Option<Option<Stack>> {
         enchants,
         repair_cost,
         name,
+        entity_data,
     }))
 }
 

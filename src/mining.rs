@@ -203,6 +203,9 @@ pub fn silk_drop(block: Block) -> Option<Item> {
     if let Some(item) = crate::world::nether_biome_blocks::silk_drop(block) {
         return Some(item);
     }
+    if let Some(item) = crate::world::overworld_blocks::silk_drop(block) {
+        return Some(item);
+    }
     (silky && Item::from(b).is_valid()).then(|| Item::from(b))
 }
 

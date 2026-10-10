@@ -26,8 +26,13 @@ pub enum Job {
 
 pub enum JobResult {
     Generated(IVec3, ChunkData),
-    Foliage(IVec2, Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>),
-    Meshed { pos: IVec3, version: u32, mesh: MeshData },
+    /// Foliage colour groups and snow lines (see `Generator::snow_lines`).
+    Foliage(IVec2, Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>, Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>),
+    Meshed {
+        pos: IVec3,
+        version: u32,
+        mesh: MeshData,
+    },
 }
 
 pub struct Workers {
@@ -55,7 +60,11 @@ impl Workers {
                     while let Ok(job) = job_rx.recv() {
                         let result = match job {
                             Job::Generate(pos) => JobResult::Generated(pos, generator.generate(pos)),
-                            Job::Foliage(col) => JobResult::Foliage(col, generator.foliage(col.x, col.y)),
+                            Job::Foliage(col) => JobResult::Foliage(
+                                col,
+                                generator.foliage(col.x, col.y),
+                                generator.snow_lines(col.x, col.y),
+                            ),
                             Job::Mesh { pos, version, input } => JobResult::Meshed {
                                 pos,
                                 version,

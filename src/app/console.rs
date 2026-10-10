@@ -220,6 +220,15 @@ impl Game {
                     "mineshaft" | "abandoned_mineshaft" => {
                         self.world.generator.mineshafts.nearest(self.player.pos.floor().as_ivec3())
                     }
+                    other
+                        if self.dimension == Dimension::Overworld
+                            && crate::world::temples::Kind::from_name(other).is_some() =>
+                    {
+                        let kind = crate::world::temples::Kind::from_name(other).unwrap();
+                        let origin = IVec2::new(self.player.pos.x.floor() as i32, self.player.pos.z.floor() as i32);
+                        self.world.generator.temples.nearest(&self.world.generator, kind, origin, 6400)
+                    }
+                    other if crate::world::temples::Kind::from_name(other).is_some() => None,
                     _ => return Err(format!("unknown structure: {name}")),
                 }
                 .ok_or("Could not find that structure nearby")?;

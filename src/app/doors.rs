@@ -59,7 +59,7 @@ impl Game {
         let up = at + IVec3::Y;
         let free =
             |p: IVec3| self.world.get_block(p).is_some_and(|b| b.is_replaceable()) && !self.player.intersects_block(p);
-        if up.y >= crate::world::chunk::WORLD_HEIGHT
+        if up.y >= self.world.max_y()
             || !free(at)
             || !free(up)
             || !self.world.get_block(at - IVec3::Y).is_some_and(|b| b.is_opaque())

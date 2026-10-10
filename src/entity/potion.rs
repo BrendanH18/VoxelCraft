@@ -68,7 +68,7 @@ impl ThrownPotion {
         events: &mut Vec<EntityEvent>,
     ) -> bool {
         self.age += dt as f32;
-        let water = world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.is_water());
+        let water = world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.holds_water());
         self.vel *= if water { 0.8f64 } else { 0.99 }.powf(dt * 20.0);
         self.vel.y -= GRAVITY * dt;
         let delta = self.vel * dt;

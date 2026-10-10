@@ -12,6 +12,7 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod aquatic;
 pub mod armor;
 mod bell;
 mod bobber;
@@ -132,6 +133,19 @@ pub enum EntityEvent {
         player: PlayerId,
         damage: f32,
         knockback: Vec3,
+        cause: &'static str,
+    },
+    /// Guardian laser: apply the armor-reduced physical and armor-bypassing
+    /// magic components as one hit, so hurt immunity doesn't discard either.
+    PlayerBeam {
+        player: PlayerId,
+        physical: f32,
+        magic: f32,
+    },
+    /// Fixed, armored contact damage (guardian spikes and pufferfish).
+    PlayerSting {
+        player: PlayerId,
+        damage: f32,
         cause: &'static str,
     },
     /// A mob or splash potion applied a status effect to this player.
@@ -329,6 +343,12 @@ pub trait MobWorld: BlockSource {
     fn in_fortress(&self, _p: IVec3) -> bool {
         false
     }
+    fn structures_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
+        Vec::new()
+    }
+    fn cave_biome(&self, _p: IVec3) -> crate::world::terrain::Biome {
+        crate::world::terrain::Biome::Plains
+    }
     /// Bastion remnants near `p`, whose residents spawn once.
     fn bastions_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::bastion::Bastion>> {
         Vec::new()
@@ -368,6 +388,12 @@ impl MobWorld for World {
     }
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         World::spawners(self)
+    }
+    fn structures_near(&self, p: IVec3, r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
+        self.generator.temples.near(&self.generator, p, r)
+    }
+    fn cave_biome(&self, p: IVec3) -> crate::world::terrain::Biome {
+        self.generator.biome_at(p)
     }
     fn in_fortress(&self, p: IVec3) -> bool {
         self.generator.in_fortress(p)
@@ -561,6 +587,8 @@ pub struct Entities {
     /// spawned; saved with the nether mobs.
     bastions_populated: rustc_hash::FxHashSet<IVec3>,
     bastion_timer: f32,
+    structures_populated: rustc_hash::FxHashSet<IVec3>,
+    structure_timer: f32,
     /// Mobs drawn last frame (F3).
     pub rendered: usize,
     verts: Vec<EntityVertex>,
@@ -611,6 +639,8 @@ impl Entities {
             player_spots: Vec::new(),
             bastions_populated: Default::default(),
             bastion_timer: 0.0,
+            structures_populated: Default::default(),
+            structure_timer: 0.0,
             rendered: 0,
             verts: Vec::new(),
         }
@@ -681,6 +711,7 @@ impl Entities {
             mob.set_size(1 << (self.rng.next_f32() * 3.0) as u8);
         }
         nether::on_spawn(&mut mob, &mut self.rng);
+        aquatic::on_spawn(&mut mob, &mut self.rng);
         self.mobs.push(mob);
     }
 
@@ -708,11 +739,12 @@ impl Entities {
         events.append(&mut self.pending_sounds);
         if difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.despawn_hostiles();
-        } else if ctx.spawning {
+        }
+        if ctx.spawning {
             self.spawn_timer -= dt as f32;
             if self.spawn_timer <= 0.0 {
                 self.spawn_timer = SPAWN_INTERVAL;
-                self.natural_spawn(world, ctx);
+                self.natural_spawn(world, ctx, difficulty);
             }
         }
         if difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
@@ -720,6 +752,7 @@ impl Entities {
             self.populate_bastions(dt as f32, world, ctx);
         }
 
+        self.populate_structures(dt as f32, world, ctx, difficulty);
         self.trader_tick(dt as f32, world, ctx);
         self.village_upkeep(dt as f32, world);
         self.assign_hunts(ctx);
@@ -727,6 +760,8 @@ impl Entities {
         self.player_spots.clear();
         self.player_spots.extend(ctx.players.iter().map(|t| (t.id, t.pos)));
         self.nether_sense(dt as f32, world, ctx);
+        self.aquatic_sense(dt as f32, world);
+        self.grow_turtles(dt as f32);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -1005,7 +1040,26 @@ impl Entities {
                 .find(|m| m.kind == kind && m.pos == pos && !m.alive())
                 .map_or((crate::color::DyeColor::White, false), |m| (m.wool_color, m.sheared))
         });
-        for (item, count) in kind.drops(&mut self.rng, looting) {
+        let mut drops = kind.drops(&mut self.rng, looting);
+        if player_kill
+            && matches!(kind, MobKind::Guardian | MobKind::ElderGuardian)
+            && self.rng.chance(0.025 + 0.01 * looting as f32)
+        {
+            let roll = self.rng.next_int(100);
+            drops.push((
+                if roll < 60 {
+                    crate::item::Item::COD
+                } else if roll < 85 {
+                    crate::item::Item::SALMON
+                } else if roll < 87 {
+                    crate::item::Item::TROPICAL_FISH
+                } else {
+                    crate::item::Item::PUFFERFISH
+                },
+                1,
+            ));
+        }
+        for (item, count) in drops {
             let item = if let Some((color, sheared)) = sheep {
                 if item == crate::item::Item::from(Block::WOOL) {
                     if sheared {
@@ -1018,6 +1072,9 @@ impl Entities {
             } else {
                 item
             };
+            if !player_kill && item == crate::item::Item::from(crate::world::overworld_blocks::WET_SPONGE) {
+                continue;
+            }
             if !player_kill
                 && matches!(
                     item,
@@ -1034,6 +1091,8 @@ impl Entities {
                     crate::item::Item::RAW_PORKCHOP => crate::item::Item::COOKED_PORKCHOP,
                     crate::item::Item::RAW_BEEF => crate::item::Item::STEAK,
                     crate::item::Item::RAW_CHICKEN => crate::item::Item::COOKED_CHICKEN,
+                    crate::item::Item::COD => crate::item::Item::COOKED_COD,
+                    crate::item::Item::SALMON => crate::item::Item::COOKED_SALMON,
                     i => i,
                 }
             } else {
@@ -1147,13 +1206,19 @@ impl Entities {
     /// isn't full. Like Java Edition's per-player mob caps, mobs only count
     /// against the players they are near, so distant players don't starve
     /// each other's spawns. Mobs never appear close to any player.
-    fn natural_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx) {
+    fn natural_spawn<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        ctx: &Ctx,
+        difficulty: crate::simulation::difficulty::Difficulty,
+    ) {
         for center in ctx.players.iter().map(|t| t.pos) {
             for kind in MobKind::ALL {
                 let cap = kind.spawn_cap(ctx.dimension);
                 // The Nether picks by its biomes' spawn lists below.
                 let nether = ctx.dimension == Dimension::Nether;
-                if self.count_near(kind, center) >= cap
+                if (difficulty == crate::simulation::difficulty::Difficulty::Peaceful && kind.is_hostile())
+                    || self.count_near(kind, center) >= cap
                     || (nether && nether_mob(kind).is_none())
                     || (!nether
                         && (!kind.spawns_in(ctx.dimension) || !self.rng.chance(kind.spawn_chance(ctx.dimension))))
@@ -1164,7 +1229,13 @@ impl Entities {
                 let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
                 let x = (center.x + angle.cos() * dist).floor() as i32;
                 let z = (center.z + angle.sin() * dist).floor() as i32;
-                if ctx.dimension == Dimension::Overworld && !self.rng.chance(kind.biome_chance(world.biome(x, z))) {
+                if ctx.dimension == Dimension::Overworld
+                    && !self.rng.chance(kind.biome_chance(if kind == MobKind::TropicalFish && center.y < 40.0 {
+                        world.cave_biome(IVec3::new(x, center.y as i32, z))
+                    } else {
+                        world.biome(x, z)
+                    }))
+                {
                     continue;
                 }
                 let mut group = None;
@@ -1176,6 +1247,9 @@ impl Entities {
                     group = Some(spawn.group);
                 }
                 let spot = match ctx.dimension {
+                    Dimension::Overworld if kind.is_aquatic() => {
+                        aquatic::spawn_spot(world, kind, x, z, center.y as i32, &mut self.rng)
+                    }
                     Dimension::Overworld if kind == MobKind::Drowned => self.drowned_spot(world, x, z, ctx.daylight),
                     Dimension::Overworld if kind == MobKind::Slime => self.slime_spot(world, x, z, ctx.daylight),
                     Dimension::Overworld => spawn_spot(world, kind, x, z, ctx.daylight),
@@ -1204,7 +1278,9 @@ impl Entities {
                         if nether && nether_spawn(world, kind, x + dx, z + dz).is_none() {
                             continue;
                         }
-                        let spot = if kind == MobKind::Strider {
+                        let spot = if kind.is_aquatic() {
+                            aquatic::spawn_spot(world, kind, x + dx, z + dz, pos.y as i32, &mut self.rng)
+                        } else if kind == MobKind::Strider {
                             nether::lava_spot(world, x + dx, z + dz)
                         } else if ctx.dimension.has_sky() {
                             spawn_spot(world, kind, x + dx, z + dz, ctx.daylight)
@@ -1221,7 +1297,7 @@ impl Entities {
                     }
                 }
             }
-            if ctx.dimension == Dimension::Nether {
+            if ctx.dimension == Dimension::Nether && difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
                 self.fortress_spawn(world, ctx, center);
             }
         }
@@ -1231,33 +1307,32 @@ impl Entities {
     /// one in 40 and only deeper than five blocks below sea level. Deep water
     /// is dark enough in daylight; shallow water needs night.
     fn drowned_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
-        use crate::world::terrain::{Biome, SEA_LEVEL};
-        let river = world.biome(x, z) == Biome::River;
+        use crate::world::terrain::SEA_LEVEL;
+        let river = world.biome(x, z).is_river();
         if !self.rng.chance(if river { 1.0 / 15.0 } else { 1.0 / 40.0 }) {
             return None;
         }
         let top = (SEA_LEVEL - 8..=SEA_LEVEL + 1)
             .rev()
-            .find(|&y| world.block(IVec3::new(x, y, z)).is_some_and(Block::is_water))?;
+            .find(|&y| world.block(IVec3::new(x, y, z)).is_some_and(Block::holds_water))?;
         let y = if river { top } else { top - 5 - (self.rng.next_f32() * 6.0) as i32 };
         let dark = daylight < HOSTILE_SPAWN_DAYLIGHT || top - y >= 4;
-        let wet = |dy: i32| world.block(IVec3::new(x, y + dy, z)).is_some_and(Block::is_water);
+        let wet = |dy: i32| world.block(IVec3::new(x, y + dy, z)).is_some_and(Block::holds_water);
         (dark && wet(0) && wet(1)).then(|| DVec3::new(x as f64 + 0.5, y as f64, z as f64 + 0.5))
     }
 
     fn slime_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
-        use crate::world::{height::java_y, terrain::Biome};
-        if world.biome(x, z) == Biome::Swamp && self.rng.chance(0.5 * self.moon_brightness) {
+        if world.biome(x, z).is_swamp() && self.rng.chance(0.5 * self.moon_brightness) {
             let pos = spawn_spot(world, MobKind::Slime, x, z, 0.0)?;
             let y = pos.y as i32;
             let raw = (daylight * 15.0) as u8;
             let light = world.block_light(pos.floor().as_ivec3()).max(raw);
-            if y > java_y(50) && y < java_y(70) && light <= (self.rng.next_f32() * 8.0) as u8 {
+            if y > 50 && y < 70 && light <= (self.rng.next_f32() * 8.0) as u8 {
                 return Some(pos);
             }
         }
         if slime::slime_chunk(world.seed(), x.div_euclid(16), z.div_euclid(16)) && self.rng.chance(0.1) {
-            cavern_spot(world, MobKind::Slime, x, z, java_y(39)).filter(|p| p.y < java_y(40) as f64)
+            cavern_spot(world, MobKind::Slime, x, z, 39).filter(|p| p.y < 40.0)
         } else {
             None
         }
@@ -1715,6 +1790,8 @@ impl Entities {
     ) -> Option<MobKind> {
         use crate::enchant::Enchantment;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
+        let spiked = matches!(target.kind, MobKind::Guardian | MobKind::ElderGuardian)
+            && target.aquatic.as_ref().is_some_and(|a| a.beam.is_some() || target.vel.length_squared() < 0.1);
         let (kind, pos, shape) = (target.kind, target.pos, target.shape());
         let base = (crate::mining::attack_damage(held.map(|s| s.item)) + bonus).max(0.0);
         let enchants = held.map_or(Default::default(), |s| s.active_enchants());
@@ -1722,6 +1799,13 @@ impl Entities {
         let (knockback, fire) = crate::mining::weapon_extras(held);
         if fire > 0.0 {
             self.mobs[index].ignite(fire);
+        }
+        if spiked {
+            self.pending_sounds.push(EntityEvent::PlayerSting {
+                player: owner,
+                damage: 2.0,
+                cause: "was pricked by a guardian",
+            });
         }
         let old_health = self.mobs[index].health;
         let killed = self.knock(index, dir, damage, knockback, owner);
@@ -1814,6 +1898,8 @@ impl Entities {
 pub fn can_spawn_on(kind: MobKind, ground: Block, daylight: f32) -> bool {
     if kind.is_hostile() {
         daylight < HOSTILE_SPAWN_DAYLIGHT && ground.is_solid() && ground.is_opaque()
+    } else if kind == MobKind::Turtle {
+        ground == Block::SAND
     } else {
         ground == Block::GRASS
     }
@@ -1912,6 +1998,7 @@ mod tests {
         kind.is_hostile()
             && kind.spawns_in(Dimension::Overworld)
             && kind != MobKind::Slime
+            && !kind.is_aquatic()
             && kind.biome_chance(crate::world::terrain::Biome::Plains) >= 1.0
     }
 
@@ -2660,8 +2747,11 @@ mod tests {
         for kind in MobKind::ALL {
             let o = Dimension::Overworld;
             let expected = if plains_spawner(kind) { kind.spawn_cap(o) } else { 0 };
-            if kind.biome_chance(crate::world::terrain::Biome::Plains).clamp(0.0, 1.0) % 1.0 > 0.0 {
-                assert!(e.count(kind) <= kind.spawn_cap(o), "{kind:?}");
+            // One zombie in twenty spawns as a zombie villager instead.
+            if kind == MobKind::ZombieVillager
+                || kind.biome_chance(crate::world::terrain::Biome::Plains).clamp(0.0, 1.0) % 1.0 > 0.0
+            {
+                assert!(e.count(kind) <= kind.spawn_cap(o).max(MobKind::Zombie.spawn_cap(o)), "{kind:?}");
             } else {
                 assert_eq!(e.count(kind), expected, "{kind:?}");
             }

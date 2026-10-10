@@ -31,11 +31,11 @@ pub enum Style {
 impl Style {
     pub fn of(b: Biome) -> Option<Self> {
         Some(match b {
-            Biome::Plains => Self::Plains,
+            Biome::Plains | Biome::Meadow => Self::Plains,
             Biome::Desert => Self::Desert,
             Biome::Savanna => Self::Savanna,
             Biome::Taiga => Self::Taiga,
-            Biome::Snowy => Self::Snowy,
+            Biome::SnowyPlains => Self::Snowy,
             _ => return None,
         })
     }
@@ -115,7 +115,7 @@ impl Builder<'_> {
         }
         let middle = (bounds.min + bounds.max) / 2;
         let col = self.generator.column(middle.x, middle.z);
-        if col.height <= SEA_LEVEL || matches!(col.biome, Biome::Ocean | Biome::River | Biome::Swamp) {
+        if col.height <= SEA_LEVEL || col.biome.is_watery() || col.biome.is_swamp() {
             return None;
         }
         // Rigid buildings sit at their entrance level, terrain is filled below.
@@ -410,6 +410,20 @@ impl Villages {
         });
         out
     }
+    /// Outpost exclusion is against potential village placement chunks,
+    /// even when that village's biome would reject the actual build.
+    pub(super) fn near(&self, at: IVec2, radius_chunks: i32) -> bool {
+        let chunk = at.div_euclid(IVec2::splat(16));
+        let lo = ((chunk - IVec2::splat(radius_chunks)) * 16).div_euclid(IVec2::splat(REGION));
+        let hi = ((chunk + IVec2::splat(radius_chunks)) * 16).div_euclid(IVec2::splat(REGION));
+        (lo.y..=hi.y).any(|z| {
+            (lo.x..=hi.x).any(|x| {
+                let village = self.candidate(IVec2::new(x, z)).div_euclid(IVec2::splat(16));
+                (village - chunk).abs().max_element() <= radius_chunks
+            })
+        })
+    }
+
     pub fn nearest(&self, g: &Generator, from: IVec3) -> Option<IVec3> {
         if g.dimension != Dimension::Overworld {
             return None;

@@ -72,7 +72,8 @@ pub(super) enum Arrival {
 fn portal_range(dim: Dimension) -> (i32, i32) {
     match dim {
         Dimension::Nether => (crate::world::nether::LAVA_SEA + 3, 116),
-        Dimension::Overworld | Dimension::End => (2, 240),
+        Dimension::Overworld => (Dimension::Overworld.min_y() + 2, 304),
+        Dimension::End => (2, 240),
     }
 }
 

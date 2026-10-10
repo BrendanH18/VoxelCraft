@@ -222,7 +222,7 @@ impl Particle {
         if self.style == Kind::LavaDrip && world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_lava) {
             return false;
         }
-        if self.motion == Motion::Bubble && !world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_water) {
+        if self.motion == Motion::Bubble && !world.block(self.pos.floor().as_ivec3()).is_some_and(Block::holds_water) {
             return false;
         }
         if self.motion == Motion::Splash
@@ -323,7 +323,7 @@ impl Pool {
 /// Shared player movement feedback; both the host and headless agents call
 /// this after movement. Lava never produces water particles.
 pub fn water_entry(player: &crate::player::Player, previous: DVec3, world: &mut crate::world::World) {
-    let wet = |pos: DVec3| world.get_block((pos + DVec3::Y * 0.3).floor().as_ivec3()).is_some_and(Block::is_water);
+    let wet = |pos: DVec3| world.get_block((pos + DVec3::Y * 0.3).floor().as_ivec3()).is_some_and(Block::holds_water);
     if !wet(player.pos) || wet(previous) {
         return;
     }

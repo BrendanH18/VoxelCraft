@@ -331,7 +331,9 @@ pub mod tex {
     const _: () = assert!(NETHER_BIOME_LAST <= 1399);
     // Nether mobs reserve layers 1400..=1449.
     pub const CRYING_OBSIDIAN: u16 = 1400;
-    pub const COUNT: u32 = 1450;
+    // v0.6 Overworld blocks use 1450.. (see `world::overworld_blocks::t`).
+    pub const COUNT: u32 = super::super::overworld_blocks::TEX_END as u32;
+    const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
     pub const CAPACITY: u32 = 2048;
@@ -659,6 +661,9 @@ impl Block {
         if self.carpet_color().is_some() {
             return (60, 20);
         }
+        if let Some(odds) = super::overworld_blocks::fire_odds(self) {
+            return odds;
+        }
         match self.material() {
             b if b.is_log() => (5, 5),
             b if b.is_planks() => (5, 20),
@@ -808,6 +813,9 @@ impl Block {
         if let Some(shaped) = super::forms::as_shaped(self.0) {
             return Some(shaped);
         }
+        if super::overworld_blocks::boxes(self).is_some() {
+            return Some(Shaped::Custom);
+        }
         let f = |i: u16| Facing::ALL[i as usize % 4];
         Some(match self.0 {
             #[cfg(test)]
@@ -918,19 +926,32 @@ impl Block {
     }
 
     pub fn is_log(self) -> bool {
-        matches!(self.0, 6 | 69..=72 | 333..=335)
+        matches!(self.0, 6 | 69..=72 | 333..=335) || super::overworld_blocks::is_log(self)
     }
 
     pub fn is_leaves(self) -> bool {
-        matches!(self.0, 7 | 23 | 73..=75)
+        matches!(self.0, 7 | 23 | 73..=75) || super::overworld_blocks::is_leaves(self)
     }
 
     pub fn is_planks(self) -> bool {
-        matches!(self.0, 8 | 76..=79 | 336..=338)
+        matches!(self.0, 8 | 76..=79 | 336..=338) || super::overworld_blocks::is_planks(self)
     }
 
     pub fn is_sapling(self) -> bool {
-        matches!(self.0, 67 | 68 | 80..=82)
+        matches!(self.0, 67 | 68 | 80..=82) || super::overworld_blocks::is_sapling(self)
+    }
+
+    /// Always holds a water source in its cell (kelp, seagrass, live coral).
+    #[inline(always)]
+    pub fn is_waterlogged(self) -> bool {
+        super::overworld_blocks::waterlogged(self.0)
+    }
+
+    /// Water, or a block holding water: what swimming, drowning and water
+    /// rendering treat as water.
+    #[inline(always)]
+    pub fn holds_water(self) -> bool {
+        self.is_water() || self.is_waterlogged()
     }
 
     pub fn is_farmland(self) -> bool {
@@ -1006,6 +1027,9 @@ impl Block {
             return b;
         }
         if let Some(b) = super::nether_biome_blocks::base(self.0) {
+            return b;
+        }
+        if let Some(b) = super::overworld_blocks::base(self.0) {
             return b;
         }
         if self.is_rail() { Block::RAIL } else { self.oriented().map_or(self, |(b, _)| b) }
@@ -1184,6 +1208,9 @@ impl Block {
     /// How far (in 1/16 block) the top of this block sits below the top of
     /// its cell; 0 for full blocks.
     pub fn top_drop(self) -> u8 {
+        if let Some(drop) = super::overworld_blocks::top_drop(self) {
+            return drop;
+        }
         match self {
             Block::DIRT_PATH => 1,
             b if b.is_bed() => 7,
@@ -1229,6 +1256,9 @@ impl Block {
             return (!self.is_bed_head()).then_some(c.bed());
         }
         if let Some(drop) = super::nether_biome_blocks::drop(self) {
+            return drop;
+        }
+        if let Some(drop) = super::overworld_blocks::drop(self) {
             return drop;
         }
         if self.glazed_color().is_some() {
@@ -1331,6 +1361,9 @@ impl Block {
         }
         if let Some((hardness, ..)) = super::nether_biome_blocks::mining(self.material()) {
             return if self.is_door() { 3.0 } else { hardness };
+        }
+        if let Some((hardness, ..)) = super::overworld_blocks::mining(self) {
+            return hardness;
         }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return match self.material() {
@@ -1472,6 +1505,9 @@ impl Block {
         if let Some((_, tool, _)) = super::nether_biome_blocks::mining(self.material()) {
             return tool;
         }
+        if let Some((_, tool, _)) = super::overworld_blocks::mining(self) {
+            return tool;
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(ToolKind::Pickaxe);
         }
@@ -1605,6 +1641,9 @@ impl Block {
         if let Some((.., level)) = super::nether_biome_blocks::mining(self.material()) {
             return level;
         }
+        if let Some((.., level)) = super::overworld_blocks::mining(self) {
+            return level;
+        }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return Some(if self.material() == Block::GOLD_BLOCK { 2 } else { 0 });
         }
@@ -1694,6 +1733,7 @@ impl Block {
             .chain(super::gadgets::palette_ids())
             .chain(super::nether_biome_blocks::palette_ids())
             .chain([1800])
+            .chain(super::overworld_blocks::palette_ids())
             .map(Block)
     }
 
@@ -1706,6 +1746,7 @@ impl Block {
             || self == Block::DEAD_BUSH
             || self == Block::FERN
             || super::nether_biome_blocks::replaceable(self)
+            || super::overworld_blocks::replaceable(self)
     }
 
     /// Colour index of a terracotta block (see [`Block::terracotta`]).
@@ -1739,6 +1780,9 @@ impl Block {
             return below.is_opaque() || below == Block::GLASS || below.stained_glass_color().is_some();
         }
         if let Some(ok) = super::nether_biome_blocks::can_stay_on(self, below) {
+            return ok;
+        }
+        if let Some(ok) = super::overworld_blocks::can_stay_on(self, below) {
             return ok;
         }
         match self {
@@ -1852,10 +1896,24 @@ pub enum Wood {
     Birch,
     Jungle,
     Acacia,
+    DarkOak,
+    Mangrove,
+    Cherry,
+    PaleOak,
 }
 
 impl Wood {
-    pub const ALL: [Wood; 5] = [Wood::Oak, Wood::Spruce, Wood::Birch, Wood::Jungle, Wood::Acacia];
+    pub const ALL: [Wood; 9] = [
+        Wood::Oak,
+        Wood::Spruce,
+        Wood::Birch,
+        Wood::Jungle,
+        Wood::Acacia,
+        Wood::DarkOak,
+        Wood::Mangrove,
+        Wood::Cherry,
+        Wood::PaleOak,
+    ];
 
     pub const fn log(self) -> Block {
         match self {
@@ -1864,6 +1922,10 @@ impl Wood {
             Wood::Birch => Block::BIRCH_LOG,
             Wood::Jungle => Block::JUNGLE_LOG,
             Wood::Acacia => Block::ACACIA_LOG,
+            Wood::DarkOak => Block::DARK_OAK_LOG,
+            Wood::Mangrove => Block::MANGROVE_LOG,
+            Wood::Cherry => Block::CHERRY_LOG,
+            Wood::PaleOak => super::overworld_blocks::PALE_OAK_LOG,
         }
     }
 
@@ -1874,6 +1936,10 @@ impl Wood {
             Wood::Birch => Block::BIRCH_LEAVES,
             Wood::Jungle => Block::JUNGLE_LEAVES,
             Wood::Acacia => Block::ACACIA_LEAVES,
+            Wood::DarkOak => super::overworld_blocks::DARK_OAK_LEAVES,
+            Wood::Mangrove => super::overworld_blocks::MANGROVE_LEAVES,
+            Wood::Cherry => super::overworld_blocks::CHERRY_LEAVES,
+            Wood::PaleOak => super::overworld_blocks::PALE_OAK_LEAVES,
         }
     }
 
@@ -1884,6 +1950,10 @@ impl Wood {
             Wood::Birch => Block::BIRCH_PLANKS,
             Wood::Jungle => Block::JUNGLE_PLANKS,
             Wood::Acacia => Block::ACACIA_PLANKS,
+            Wood::DarkOak => Block::DARK_OAK_PLANKS,
+            Wood::Mangrove => Block::MANGROVE_PLANKS,
+            Wood::Cherry => Block::CHERRY_PLANKS,
+            Wood::PaleOak => super::overworld_blocks::PALE_OAK_PLANKS,
         }
     }
 
@@ -1894,6 +1964,10 @@ impl Wood {
             Wood::Birch => Block::BIRCH_SAPLING,
             Wood::Jungle => Block::JUNGLE_SAPLING,
             Wood::Acacia => Block::ACACIA_SAPLING,
+            Wood::DarkOak => super::overworld_blocks::DARK_OAK_SAPLING,
+            Wood::Mangrove => super::overworld_blocks::MANGROVE_PROPAGULE,
+            Wood::Cherry => super::overworld_blocks::CHERRY_SAPLING,
+            Wood::PaleOak => super::overworld_blocks::PALE_OAK_SAPLING,
         }
     }
 }
@@ -2042,6 +2116,8 @@ pub enum Shaped {
         facing: Facing,
     },
     Tripwire,
+    /// Fixed boxes listed by the block's module (vines, dripleaves, bamboo, cocoa).
+    Custom,
 }
 
 /// Java's `RailShape` for vanilla rails (block ids 500..=509).
@@ -2153,6 +2229,10 @@ const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         1800 => ("crying obsidian", Opaque, all(tex::CRYING_OBSIDIAN)),
+        1900..=2076 => match super::overworld_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         #[cfg(test)]
         4095 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]
@@ -2467,6 +2547,7 @@ static EMISSION: [u8; STATE_CAPACITY] = {
             812 => 3,                                   // magma
             1600..=1687 => super::nether_biome_blocks::emission(i as u16),
             1800 => 10, // crying obsidian
+            1900..=2076 => super::overworld_blocks::emission(i as u16),
             _ => 0,
         };
         i += 1;
@@ -2486,6 +2567,8 @@ static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
             // Mesh bit tests use 4094 as a stairs stand-in at the layer limit.
             #[cfg(test)]
             _ if i == 4094 => 15,
+            // Kelp, seagrass and live coral dim light like the water they hold.
+            _ if super::overworld_blocks::waterlogged(i as u16) => 1,
             RenderKind::Invisible | RenderKind::Cross | RenderKind::Shaped => 0,
             _ if matches!(i, 10 | 98 | 99 | 576..=623 | 624..=639) => 0, // glass, beds, stained glass
             _ => 1,                                                      // leaves, water: attenuate skylight too
@@ -2527,6 +2610,9 @@ mod tests {
                 Some(super::super::redstone_blocks::Component::Lamp(on)) => return if on { 15 } else { 0 },
                 Some(super::super::redstone_blocks::Component::GlowingOre(_)) => return 9,
                 _ => {}
+            }
+            if (1900..=2076).contains(&block.0) {
+                return super::super::overworld_blocks::emission(block.0);
             }
             {
                 use super::super::nether_biome_blocks as nb;

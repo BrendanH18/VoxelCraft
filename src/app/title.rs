@@ -46,6 +46,8 @@ struct Entry {
     mode: String,
     /// Where the player was when the world was last saved.
     nether: bool,
+    /// Made before v0.6: new Overworld terrain won't line up with it.
+    legacy: bool,
     played: Option<SystemTime>,
 }
 
@@ -469,7 +471,8 @@ impl Title {
                     }
                     ui.text(x + 6.0, y + 4.0, &e.name, WHITE);
                     let place = if e.nether { ", in the Nether" } else { "" };
-                    let mut detail = format!("{}{place} - {}", super::capitalize(&e.mode), played_ago(e.played));
+                    let old = if e.legacy { ", pre-0.6 terrain" } else { "" };
+                    let mut detail = format!("{}{place}{old} - {}", super::capitalize(&e.mode), played_ago(e.played));
                     if e.dir != e.name {
                         detail = format!("{detail} ({})", e.dir);
                     }
@@ -574,6 +577,8 @@ fn list_worlds(saves_dir: &Path) -> Vec<Entry> {
                 name: prop("name").unwrap_or_else(|| dir.clone()),
                 mode: if hardcore { "hardcore".into() } else { prop("mode").unwrap_or_else(|| "survival".into()) },
                 nether: prop("dimension").as_deref() == Some("nether"),
+                // Pre-0.6 worlds save as terrain 1 once reopened, or lack it.
+                legacy: prop("terrain").and_then(|v| v.parse::<u8>().ok()).is_none_or(|v| v < 2),
                 dir,
                 played,
             })

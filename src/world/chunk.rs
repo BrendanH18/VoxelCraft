@@ -12,9 +12,11 @@ pub const CHUNK_BITS: i32 = 5;
 pub const CHUNK_SIZE: usize = 1 << CHUNK_BITS;
 pub const CHUNK_SIZE_I: i32 = CHUNK_SIZE as i32;
 pub const CHUNK_VOLUME: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
-/// World height in chunks (256 blocks).
-pub const WORLD_HEIGHT_CHUNKS: i32 = 8;
-pub const WORLD_HEIGHT: i32 = WORLD_HEIGHT_CHUNKS * CHUNK_SIZE_I;
+/// Lowest block y of any dimension (the Overworld's, as in Java 1.18+).
+/// Each dimension has its own bounds: see `terrain::Dimension::min_y`.
+pub const WORLD_MIN_Y: i32 = -64;
+/// One past the highest block y of any dimension (the Overworld's 319).
+pub const WORLD_MAX_Y: i32 = 320;
 
 /// Linear index of a local block coordinate. X is fastest, then Z, then Y.
 #[inline(always)]

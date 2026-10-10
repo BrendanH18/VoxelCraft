@@ -186,20 +186,20 @@ impl Context {
             }
             Dimension::Nether => self.nether,
             Dimension::Overworld => {
-                if current == Some(Situation::Underwater) || (self.underwater && self.biome == Biome::Ocean) {
+                if current == Some(Situation::Underwater) || (self.underwater && self.biome.is_ocean()) {
                     return Situation::Underwater;
                 }
                 if self.creative {
                     return Situation::Creative;
                 }
                 match self.biome {
-                    Biome::Forest | Biome::BirchForest | Biome::Taiga => Situation::Forest,
-                    Biome::Jungle => Situation::Jungle,
-                    Biome::Swamp => Situation::Swamp,
+                    b if b.is_forest() || b.is_taiga() => Situation::Forest,
+                    b if b.is_jungle() => Situation::Jungle,
+                    b if b.is_swamp() => Situation::Swamp,
                     Biome::Desert => Situation::Desert,
-                    Biome::Badlands => Situation::Badlands,
-                    Biome::Mountains => Situation::Mountains,
-                    Biome::Snowy => Situation::Snowy,
+                    b if b.is_badlands() => Situation::Badlands,
+                    b if b.is_mountain() || b.is_peak() => Situation::Mountains,
+                    b if b.is_cold() && !b.is_ocean() && !b.is_river() => Situation::Snowy,
                     _ => Situation::Game,
                 }
             }

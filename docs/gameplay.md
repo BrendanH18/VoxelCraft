@@ -63,17 +63,17 @@ full performance display instead of duplicating the compact counter.
 
 ## World and survival features
 
-- Infinite procedurally generated terrain in fourteen biomes: oceans,
-  beaches, winding rivers, plains, oak and birch forests, swamps with
-  shallow pools, deserts, terraced badlands striped with terracotta,
-  savannas, jungles, snowy tundra, taiga and mountains. Cold seas and rivers
-  freeze over (ice is slippery underfoot, and broken ice turns back into water). Grass and oak leaves take
-  on the colour of their biome: murky in swamps, dry and yellow in savannas
-  and badlands, vivid in jungles and cool in the snow, blending across
-  biome borders. Clay (4 clay balls when
-  broken) lines river and swamp beds. Spaghetti caves, deep caverns and ores lie below. Five kinds
-  of tree grow there: oak, birch, spruce, acacia (leaning trunks under flat
-  canopies) and jungle (tall trees, giant 2x2 trees and bushes), plus cacti
+- Infinite terrain from y=-64 through y=319, with climate-driven forest,
+  mountain, river and ocean biomes, including cherry groves, mangrove swamps,
+  bamboo jungles and pale gardens. Cheese, spaghetti and noodle caves open
+  into aquifers, lush caves and dripstone caverns. Ocean beds grow kelp,
+  seagrass and coral; aquatic plants hold water in their cells. Grass and
+  leaves blend their colours across biome borders. Trees include oak,
+  birch, spruce, acacia, jungle, dark oak, mangrove, cherry, pale oak and
+  azalea. Cold seas and rivers freeze over; ice is slippery and broken ice
+  turns back into water. New [Overworld structures](overworld-structures.md)
+  include pyramids, temples, huts, igloos, outposts, shipwrecks, ocean ruins
+  and monuments, with seeded loot and `/locate structure` support.
 - Farming and growth, driven by Minecraft-style random block ticks in the
   chunks within 128 blocks (each block is picked about once a minute).
   Breaking tall grass sometimes drops wheat seeds; till grass or dirt with
@@ -103,7 +103,7 @@ full performance display instead of duplicating the compact counter.
   water. Clicking tall grass with a block replaces it
 - Weather, like Minecraft: clear spells of one to five days alternate with
   rain lasting half a day to a day and a half. Rain falls as snow in cold
-  biomes and above y = 150, and not at all in deserts, savannas and
+  biomes and on high ground (biomes cool above y = 80, as in Java), and not at all in deserts, savannas and
   badlands. It greys and darkens the sky, hides the sun, moon and stars
   behind thicker clouds, stops at the first block overhead, waters
   farmland under open sky, keeps zombies and skeletons from burning, and
@@ -116,7 +116,7 @@ full performance display instead of duplicating the compact counter.
 - Flowing water: falls, spreads up to 7 blocks toward the nearest drop,
   dries up without a source, and forms infinite sources; lowered surfaces
 - Lava: flows like water but six times slower and only 3 blocks, glows
-  (light 15), fills caves below y = 10, burns players (4 damage every
+  (light 15), fills caves below y = -54 and some deep aquifers, burns players (4 damage every
   0.5 s) and mobs, and can be swum through with an orange haze. Where lava
   meets water a source hardens into obsidian, flowing lava into
   cobblestone, and lava pouring onto water turns it to stone

@@ -418,6 +418,33 @@ static NETHER_MOB_ITEMS: [ItemInfo; 2] = [
     },
 ];
 const _: () = assert!(NETHER_MOB_ITEM as usize + NETHER_MOB_ITEMS.len() <= 900);
+/// v0.6 Overworld items (cave, ocean and jungle drops), ids 900..=959.
+const OVERWORLD_ITEM: u16 = 900;
+const fn bucket_of(name: &'static str, colour: [u8; 3]) -> ItemInfo {
+    ItemInfo { name, kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Bucket(Some(colour)) }
+}
+static OVERWORLD_ITEMS: [ItemInfo; 19] = [
+    food("glow berries", 2, 0.4, Sprite::Lump([255, 186, 70])),
+    food("sweet berries", 2, 0.4, Sprite::Lump([186, 20, 40])),
+    item("cocoa beans", Sprite::Lump([112, 66, 34])),
+    item("amethyst shard", Sprite::Gem([170, 120, 230])),
+    food("dried kelp", 1, 0.6, Sprite::Lump([58, 70, 36])),
+    item("prismarine shard", Sprite::Gem([99, 171, 158])),
+    item("prismarine crystals", Sprite::Gem([196, 230, 214])),
+    item("turtle scute", Sprite::Gem([70, 160, 70])),
+    item("nautilus shell", Sprite::Pearl([226, 210, 190], [255, 246, 236])),
+    item("heart of the sea", Sprite::Pearl([40, 90, 200], [140, 220, 255])),
+    item("ink sac", Sprite::Lump([30, 28, 36])),
+    item("glow ink sac", Sprite::Lump([60, 190, 180])),
+    food("tropical fish", 1, 0.2, Sprite::Fish { salmon: false, cooked: false }),
+    food("pufferfish", 1, 0.2, Sprite::Lump([230, 196, 60])),
+    bucket_of("bucket of cod", [190, 160, 110]),
+    bucket_of("bucket of salmon", [190, 80, 70]),
+    bucket_of("bucket of tropical fish", [240, 130, 40]),
+    bucket_of("bucket of pufferfish", [230, 196, 60]),
+    bucket_of("bucket of axolotl", [240, 150, 190]),
+];
+const _: () = assert!(OVERWORLD_ITEM as usize + OVERWORLD_ITEMS.len() <= 960);
 /// Splash potions: `SPLASH_POTION + potion index`.
 const SPLASH_POTION: u16 = 436;
 const _: () = assert!(FIRST_POTION + POTION_COUNT <= SPLASH_POTION);
@@ -621,6 +648,25 @@ impl Item {
     pub const WITHER_SKULL: Item = Item(641);
     /// Charged by holding use; see `app::bow`.
     pub const CROSSBOW: Item = Item(840);
+    pub const GLOW_BERRIES: Item = Item(900);
+    pub const SWEET_BERRIES: Item = Item(901);
+    pub const COCOA_BEANS: Item = Item(902);
+    pub const AMETHYST_SHARD: Item = Item(903);
+    pub const DRIED_KELP: Item = Item(904);
+    pub const PRISMARINE_SHARD: Item = Item(905);
+    pub const PRISMARINE_CRYSTALS: Item = Item(906);
+    pub const TURTLE_SCUTE: Item = Item(907);
+    pub const NAUTILUS_SHELL: Item = Item(908);
+    pub const HEART_OF_THE_SEA: Item = Item(909);
+    pub const INK_SAC: Item = Item(910);
+    pub const GLOW_INK_SAC: Item = Item(911);
+    pub const TROPICAL_FISH: Item = Item(912);
+    pub const PUFFERFISH: Item = Item(913);
+    pub const COD_BUCKET: Item = Item(914);
+    pub const SALMON_BUCKET: Item = Item(915);
+    pub const TROPICAL_FISH_BUCKET: Item = Item(916);
+    pub const PUFFERFISH_BUCKET: Item = Item(917);
+    pub const AXOLOTL_BUCKET: Item = Item(918);
     /// A crossbow holding a loaded arrow (Java keeps this in item data).
     pub const CHARGED_CROSSBOW: Item = Item(841);
 
@@ -673,6 +719,9 @@ impl Item {
             Item::POTATO => Some(Block::crop(crate::world::block::Crop::Potato, 0)),
             Item::CAKE => Some(Block::cake(0)),
             Item::NETHER_WART => Some(Block::nether_wart(0)),
+            Item::GLOW_BERRIES => Some(crate::world::overworld_blocks::CAVE_VINES),
+            Item::SWEET_BERRIES => Some(crate::world::overworld_blocks::berry_bush(0)),
+            Item::COCOA_BEANS => Some(crate::world::overworld_blocks::COCOA),
             i => i.block(),
         }
     }
@@ -819,6 +868,9 @@ impl Item {
         if let Some(info) = self.0.checked_sub(NETHER_MOB_ITEM).and_then(|i| NETHER_MOB_ITEMS.get(i as usize)) {
             return *info;
         }
+        if let Some(info) = self.0.checked_sub(OVERWORLD_ITEM).and_then(|i| OVERWORLD_ITEMS.get(i as usize)) {
+            return *info;
+        }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
     }
 
@@ -882,6 +934,8 @@ impl Item {
     pub fn food_effect(self) -> Option<(crate::simulation::effects::Effect, u8, u32)> {
         match self {
             Item::SPIDER_EYE | Item::POISONOUS_POTATO => Some((crate::simulation::effects::Effect::Poison, 0, 100)),
+            // Java's pufferfish also brings nausea and hunger; poison is the dangerous part.
+            Item::PUFFERFISH => Some((crate::simulation::effects::Effect::Poison, 1, 1200)),
             _ => None,
         }
     }
@@ -964,6 +1018,7 @@ impl Item {
             .chain((0..VILLAGE_ITEMS.len() as u16).map(|i| Item(VILLAGE_ITEM + i)))
             .chain([Self::FIRE_CHARGE, Self::MINECART, Self::CHEST_MINECART, Self::HOPPER_MINECART, Self::TNT_MINECART])
             .chain([Self::CROSSBOW, Self::CHARGED_CROSSBOW])
+            .chain((0..OVERWORLD_ITEMS.len() as u16).map(|i| Item(OVERWORLD_ITEM + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1055,10 +1110,14 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + i
                 - VILLAGE_ITEM,
         ),
-        760..=764 => Some(icon_count() as u16 - 5 - NETHER_MOB_ITEMS.len() as u16 + (item.0 - 760)),
+        760..=764 => Some(base_icon_count() as u16 - 5 - NETHER_MOB_ITEMS.len() as u16 + (item.0 - 760)),
         // Nether-mob items follow the fire charge.
         i if (NETHER_MOB_ITEM..NETHER_MOB_ITEM + NETHER_MOB_ITEMS.len() as u16).contains(&i) => {
-            Some(icon_count() as u16 - NETHER_MOB_ITEMS.len() as u16 + i - NETHER_MOB_ITEM)
+            Some(base_icon_count() as u16 - NETHER_MOB_ITEMS.len() as u16 + i - NETHER_MOB_ITEM)
+        }
+        // v0.6 Overworld items come last.
+        i if (OVERWORLD_ITEM..OVERWORLD_ITEM + OVERWORLD_ITEMS.len() as u16).contains(&i) => {
+            Some(base_icon_count() as u16 + i - OVERWORLD_ITEM)
         }
         _ => None,
     }
@@ -1066,6 +1125,11 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
+    base_icon_count() + OVERWORLD_ITEMS.len() as u32
+}
+
+/// Icons up to and including the Nether-mob items.
+const fn base_icon_count() -> u32 {
     ITEMS.len() as u32
         + (TOOL_COUNT + ARMOR_COUNT + POTION_COUNT) as u32
         + EXTRA_ITEMS.len() as u32

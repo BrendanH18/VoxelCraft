@@ -7,6 +7,8 @@ use crate::world::noise::hash_f;
 
 #[path = "nether_textures.rs"]
 mod nether;
+#[path = "overworld_textures.rs"]
+mod overworld;
 
 pub const SIZE: usize = 16;
 pub const MIP_LEVELS: u32 = 5; // 16, 8, 4, 2, 1
@@ -97,6 +99,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (tex::SOUL_FIRE_0..=1399).contains(&layer) {
         return nether::pixel(layer, x, y);
+    }
+    if (crate::world::overworld_blocks::TEX..crate::world::overworld_blocks::TEX_END).contains(&layer) {
+        return overworld::pixel(layer, x, y);
     }
     if (tex::COLORED_WOOL..tex::COLORED_WOOL + 16).contains(&layer) || layer == tex::WOOL {
         let color = if layer == tex::WOOL { 0 } else { (layer - tex::COLORED_WOOL) as usize };

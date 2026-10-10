@@ -103,8 +103,8 @@ impl World {
                 if (dx, dz) == (0, 0) {
                     continue;
                 }
-                let floor = best.map_or(0, |b| b.y);
-                for y in (floor + 1..super::chunk::WORLD_HEIGHT).rev() {
+                let floor = best.map_or(self.min_y(), |b| b.y);
+                for y in (floor + 1..self.max_y()).rev() {
                     let p = IVec3::new(from.x + dx, y, from.z + dz);
                     let b = self.get_block(p).unwrap_or(Block::AIR);
                     if b.is_opaque() && b != Block::BEDROCK {

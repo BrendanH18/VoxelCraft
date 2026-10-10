@@ -241,6 +241,9 @@ struct Game {
     settings_path: Option<std::path::PathBuf>,
     /// Name shown in the world list (the save folder's name may differ).
     world_name: String,
+    /// Terrain generator the world was made with: 1 before v0.6's
+    /// 1.18-style Overworld, 2 since. Kept so old worlds stay marked.
+    terrain_version: u8,
     dimension: Dimension,
     /// The overworld's furnaces, chests and items while the player is in
     /// the Nether (saved in the root level file).
@@ -862,6 +865,9 @@ impl Game {
             arrival,
             portal_time: 0.0,
             portal_locked: false,
+            terrain_version: existing
+                .as_ref()
+                .map_or(2, |l| l.props.get("terrain").and_then(|v| v.parse().ok()).unwrap_or(1)),
             world_name: new
                 .map(|n| n.name)
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("name")).cloned())
@@ -1440,7 +1446,7 @@ impl Game {
         let progress = self.actions.mine(
             pos,
             self.world.get_block(pos).unwrap_or(block),
-            crate::mining::dig_time(block, digger),
+            crate::mining::dig_time(block, digger) / self.vitals.effects.mining_factor(),
             dt,
         );
         if progress < 1.0 {
@@ -1746,6 +1752,15 @@ impl Game {
                 return;
             }
             Some(b) if b.is_bed() => return self.use_bed(pos),
+            Some(_) if self.held_item() != Some(Item::BONE_MEAL) && self.world.harvest(pos) => {
+                self.audio.play(
+                    crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Grass),
+                    Some(pos.as_dvec3() + glam::DVec3::splat(0.5)),
+                    0.8,
+                    (1.0, 1.2),
+                );
+                return;
+            }
             Some(b) if b.is_door() || b.is_gate() => {
                 self.toggle_door(pos, self.player.forward());
                 return;
@@ -1802,6 +1817,7 @@ impl Game {
             return;
         }
         // Furnaces and chests face whoever places them.
+        let block = crate::world::overworld_blocks::placed(block, normal).unwrap_or(block);
         let block = crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal)
             .with_facing(crate::world::block::Facing::toward(self.player.forward()));
         let block = voxelcraft::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
@@ -1814,14 +1830,20 @@ impl Game {
         }
         let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
         let below = self.world.get_block(at - glam::IVec3::Y);
-        let supported = below.is_some_and(|below| block.can_stay_on(below))
+        let supported = self
+            .world
+            .overworld_placement_ok(at, block)
+            .unwrap_or_else(|| below.is_some_and(|below| block.can_stay_on(below)))
             && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || self.world.cane_has_water(at))
             && (!block.is_mushroom() || self.world.mushroom_survives(at));
         if free
             && supported
             && self.world.redstone_supported(at, block)
             && !(block.is_solid() && self.player.intersects_block(at))
-            && self.world.set_block(at, block)
+            && {
+                self.world.before_overworld_place(at, block);
+                self.world.set_block(at, block)
+            }
         {
             self.audio.block_place(block, at);
             if self.mode.is_survival() {
@@ -2010,6 +2032,7 @@ impl Game {
             format!("{},{},{}", self.world_spawn.x, self.world_spawn.y, self.world_spawn.z),
         );
         props.insert("name".to_string(), self.world_name.clone());
+        props.insert("terrain".to_string(), self.terrain_version.to_string());
         // Save what's held or on the crafting grid as if the screen closed.
         let mut inventory = self.inventory.clone();
         inventory.return_stacks(self.craft.cells.iter().chain(&self.work).flatten().copied());

@@ -1,18 +1,13 @@
 //! Overworld ore veins, following Minecraft 1.21's `ore` feature and the
 //! vanilla placed-feature JSON (InventivetalentDev/minecraft-assets 1.21.4).
 //!
-//! Bands are stored in Java Y and mapped with [`super::height::java_y`]: at
-//! or above sea level that is `y - 1`, and the underground compresses onto
-//! y = 0..62. Samples below Java bedrock (y = -64) or outside this world's
-//! 0..255 column are dropped, which clips coal's ceiling, iron's mountain
-//! band and emerald's peak. Decorator seeds are a per-cell hash, not Java's
+//! Bands are Java Y, which is this world's Y since the Overworld became
+//! y = -64..319 (v0.6); samples outside the world are dropped. Decorator seeds are a per-cell hash, not Java's
 //! xoroshiro `RandomState`, so a vanilla seed will not reproduce the same
 //! coordinates; blob shape, discard-on-air and the triangular height
 //! providers match `OreFeature` and `TrapezoidHeight`.
 //!
-//! Attempt counts are scaled by [`super::height::span_scale`] (62/127 for a
-//! band that lies fully under Java sea level) so the shorter underground
-//! does not receive Java's full vein budget. Veins are painted per Java
+//! Attempt counts are Java's. Veins are painted per Java
 //! 16×16 cell, including cells that only overlap this chunk, and only stone
 //! or deepslate is replaced. A vein in deepslate writes the deepslate ore;
 //! granite, diorite, andesite and tuff (the `ore_granite` family, size 64)
@@ -22,12 +17,12 @@
 
 use glam::IVec3;
 
+use super::biome::Biome;
 use super::block::Block;
 use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME, index};
-use super::height;
+use super::chunk::{WORLD_MAX_Y, WORLD_MIN_Y};
 use super::noise::hash3;
 use super::structure::Rng;
-use super::terrain::Biome;
 
 const JAVA_CELL: i32 = 16;
 
@@ -296,6 +291,25 @@ const FEATURES: &[Feature] = &[
         where_: Where::Overworld,
         ore: Block::ANDESITE,
     },
+    // `ore_dirt` and `ore_gravel`: big soft blobs through the stone.
+    Feature {
+        salt: 0xD127,
+        tries: Tries::Count(7),
+        band: Band::Uniform(0, 160),
+        size: 33,
+        discard: 0.0,
+        where_: Where::Overworld,
+        ore: Block::DIRT,
+    },
+    Feature {
+        salt: 0x6AE1,
+        tries: Tries::Count(14),
+        band: Band::Uniform(-64, 319),
+        size: 33,
+        discard: 0.0,
+        where_: Where::Overworld,
+        ore: Block::GRAVEL,
+    },
     // `ore_tuff`: two blobs from the bottom of the world up to Java y = 0.
     Feature {
         salt: 0x7F01,
@@ -331,40 +345,17 @@ fn sample_band(rng: &mut Rng, band: Band) -> i32 {
     }
 }
 
-/// A placed origin in this world's Y, or `None` when the Java sample falls
-/// outside the column (below bedrock, or above y = 255).
+/// A placed origin, or `None` when the sample falls outside the world.
 fn sample_world_y(rng: &mut Rng, band: Band) -> Option<i32> {
-    let java = sample_band(rng, band);
-    if java < height::JAVA_MIN_Y {
-        return None;
-    }
-    let y = height::java_y(java);
-    (0..256).contains(&y).then_some(y)
+    let y = sample_band(rng, band);
+    (WORLD_MIN_Y..WORLD_MAX_Y).contains(&y).then_some(y)
 }
 
-/// Multiply a Java attempt count by the band's height scale. A fractional
-/// part is rolled, so a count of 1 on a 62/127 band still happens sometimes
-/// instead of rounding away to zero.
-fn scale_count(n: u32, scale: f64, rng: &mut Rng) -> u32 {
-    if scale >= 1.0 {
-        return n;
-    }
-    let exact = f64::from(n) * scale;
-    let base = exact.floor() as u32;
-    let frac = exact - f64::from(base);
-    if frac > 0.0 && rng.unit() < frac { base + 1 } else { base }
-}
-
-fn scaled_attempts(tries: Tries, band: Band, rng: &mut Rng) -> u32 {
-    let (min, max) = band_limits(band);
-    let scale = height::span_scale(min, max);
+fn attempts(tries: Tries, rng: &mut Rng) -> u32 {
     match tries {
-        Tries::Count(n) => scale_count(n, scale, rng),
-        Tries::CountRange(lo, hi) => scale_count(rng.range(lo, hi), scale, rng),
-        Tries::Rarity(n) => {
-            let p = scale / f64::from(n);
-            if p > 0.0 && rng.unit() < p { 1 } else { 0 }
-        }
+        Tries::Count(n) => n,
+        Tries::CountRange(lo, hi) => rng.range(lo, hi),
+        Tries::Rarity(n) => (rng.unit() < 1.0 / f64::from(n)) as u32,
     }
 }
 
@@ -378,9 +369,7 @@ fn vein_reach(size: i32) -> i32 {
 /// World-Y extent of origins this band can place, before the vein's reach.
 fn world_limits(band: Band) -> (i32, i32) {
     let (min, max) = band_limits(band);
-    let lo = height::java_y(min.max(height::JAVA_MIN_Y));
-    let hi = height::java_y(max);
-    (lo.min(hi), lo.max(hi))
+    (min.max(WORLD_MIN_Y), max.min(WORLD_MAX_Y - 1))
 }
 
 fn overlaps_chunk(band: Band, reach: i32, base_y: i32) -> bool {
@@ -419,7 +408,7 @@ fn paint_cell(
     biome_at: &impl Fn(i32, i32) -> Biome,
 ) {
     let mut rng = Rng(hash3(cx, cz, feature.salt as i32, seed ^ feature.salt));
-    let tries = scaled_attempts(feature.tries, feature.band, &mut rng);
+    let tries = attempts(feature.tries, &mut rng);
     for _ in 0..tries {
         // Each try's vein shape draws from its own stream, so a chunk that
         // skips an out-of-reach vein still agrees with its neighbours on every
@@ -431,8 +420,8 @@ fn paint_cell(
         if feature.where_ != Where::Overworld {
             let biome = biome_at(x, z);
             let ok = match feature.where_ {
-                Where::Mountains => biome == Biome::Mountains,
-                Where::Badlands => biome == Biome::Badlands,
+                Where::Mountains => biome.is_mountain(),
+                Where::Badlands => biome.is_badlands(),
                 Where::Overworld => true,
             };
             if !ok {
@@ -518,7 +507,7 @@ fn place_vein(rng: &mut Rng, origin: IVec3, feature: &Feature, blocks: &mut [Blo
         }
         for y in y_lo..=y_hi {
             let dy = (f64::from(y) + 0.5 - cy) / radius;
-            if dy * dy >= 1.0 || !(1..256).contains(&y) {
+            if dy * dy >= 1.0 || !(WORLD_MIN_Y + 1..WORLD_MAX_Y).contains(&y) {
                 continue;
             }
             for x in x_lo..=x_hi {
@@ -664,11 +653,12 @@ mod tests {
         let mut stone_below = 0;
         let mut deepslate = 0;
         let mut granite = 0;
-        let mut diamond_hist = [0u32; 64];
-        let mut iron_low = [0u32; 72];
+        // Histograms are offset by 64 so y = -64 is index 0.
+        let mut diamond_hist = [0u32; 128];
+        let mut iron_low = [0u32; 136];
         for cx in 0..3 {
             for cz in 0..3 {
-                for cy in 0..4 {
+                for cy in -2..2 {
                     let pos = IVec3::new(cx, cy, cz);
                     let blocks = worldgen.generate(pos);
                     let again = worldgen.generate(pos);
@@ -687,22 +677,22 @@ mod tests {
                                     Block::IRON_ORE | Block::DEEPSLATE_IRON_ORE => {
                                         iron += 1;
                                         if wy < 72 {
-                                            iron_low[wy as usize] += 1;
+                                            iron_low[(wy + 64) as usize] += 1;
                                         }
                                     }
                                     Block::DIAMOND_ORE | Block::DEEPSLATE_DIAMOND_ORE => {
                                         diamond += 1;
                                         diamond_y += i64::from(wy);
-                                        assert!((0..56).contains(&wy), "diamond stays in the mapped band, y={wy}");
-                                        diamond_hist[wy as usize] += 1;
+                                        assert!((-64..24).contains(&wy), "diamond stays in its band, y={wy}");
+                                        diamond_hist[(wy + 64) as usize] += 1;
                                     }
                                     Block::REDSTONE_ORE | Block::DEEPSLATE_REDSTONE_ORE => {
-                                        assert!(wy < 50, "redstone stays in the lower band, y={wy}");
+                                        assert!(wy < 20, "redstone stays in the lower band, y={wy}");
                                     }
-                                    Block::STONE if wy <= height::java_y(0) => stone_below += 1,
+                                    Block::STONE if wy < 0 => stone_below += 1,
                                     Block::DEEPSLATE => {
                                         deepslate += 1;
-                                        assert!(wy <= 40, "deepslate at y={wy}");
+                                        assert!(wy < 8, "deepslate at y={wy}");
                                     }
                                     Block::GRANITE => granite += 1,
                                     _ => {}
@@ -719,54 +709,51 @@ mod tests {
         assert_eq!(stone_below, 0, "stone below the deepslate line is replaced");
         assert!(deepslate > 100, "deepslate fills the bottom of the world");
         assert!(granite > 20, "granite blobs generate, got {granite}");
-        let mode = |hist: &[u32]| hist.iter().enumerate().max_by_key(|(_, n)| *n).map(|(y, _)| y).unwrap() as i32;
+        let mode = |hist: &[u32]| hist.iter().enumerate().max_by_key(|(_, n)| *n).map(|(y, _)| y).unwrap() as i32 - 64;
         // Block positions spread a vein around the origin. The origin
         // distribution (below) is the peak; this only checks the blocks
         // stayed in the deep band.
         let diamond_peak = mode(&diamond_hist);
-        assert!(diamond_peak < 20, "diamond blocks peak at y={diamond_peak}");
+        assert!(diamond_peak < -20, "diamond blocks peak at y={diamond_peak}");
         let iron_peak = mode(&iron_low);
-        let iron_at = height::java_y(16);
-        assert!((iron_peak - iron_at).abs() <= 6, "iron peaks at y={iron_peak}, near java_y(16) = {iron_at}");
+        assert!((iron_peak - 16).abs() <= 20, "iron peaks at y={iron_peak}, near 16");
     }
 
     /// Origin distribution, independent of terrain. Iron's middle triangle
-    /// peaks at Java y = 16; diamond's triangle peaks on the bedrock floor
-    /// once samples below y = -64 are dropped.
+    /// peaks at y = 16; diamond's triangle peaks on the bedrock floor once
+    /// samples below y = -64 are dropped.
     #[test]
-    fn mapped_distributions_keep_java_peaks() {
+    fn distributions_keep_java_peaks() {
         let mode_of = |band: Band, draws: u32| {
-            let mut hist = [0u32; 256];
+            let mut hist = [0u32; 384];
             let mut rng = Rng(0x0E15);
             for _ in 0..draws {
                 if let Some(y) = sample_world_y(&mut rng, band) {
-                    hist[y as usize] += 1;
+                    hist[(y + 64) as usize] += 1;
                 }
             }
-            hist.iter().enumerate().max_by_key(|(_, n)| *n).map(|(y, _)| y).unwrap() as i32
+            hist.iter().enumerate().max_by_key(|(_, n)| *n).map(|(y, _)| y).unwrap() as i32 - 64
         };
         let iron = mode_of(Band::Triangle(-24, 56), 8000);
-        let at = height::java_y(16);
-        assert!((iron - at).abs() <= 2, "iron middle peaks at {iron}, java_y(16) = {at}");
+        assert!((iron - 16).abs() <= 8, "iron middle peaks at {iron}");
 
-        let mut hist = [0u32; 256];
+        let mut hist = [0u32; 384];
         for feature in FEATURES.iter().filter(|f| f.ore == Block::DIAMOND_ORE) {
             let weight = match feature.tries {
                 Tries::Count(n) => f64::from(n),
                 Tries::CountRange(lo, hi) => f64::from(lo + hi) / 2.0,
                 Tries::Rarity(n) => 1.0 / f64::from(n),
             };
-            let (min, max) = band_limits(feature.band);
-            let draws = (weight * height::span_scale(min, max) * 2000.0).round() as u32;
+            let draws = (weight * 2000.0).round() as u32;
             let mut rng = Rng(feature.salt);
             for _ in 0..draws.max(1) {
                 if let Some(y) = sample_world_y(&mut rng, feature.band) {
-                    hist[y as usize] += 1;
+                    hist[(y + 64) as usize] += 1;
                 }
             }
         }
-        let diamond = hist.iter().enumerate().max_by_key(|(_, n)| *n).map(|(y, _)| y).unwrap() as i32;
-        assert!(diamond < 12, "diamonds peak at y={diamond}");
+        let diamond = hist.iter().enumerate().max_by_key(|(_, n)| *n).map(|(y, _)| y).unwrap() as i32 - 64;
+        assert!(diamond < -52, "diamonds peak at y={diamond}");
     }
 
     /// The cull distance has to cover every block `place_vein` can write,

@@ -246,6 +246,9 @@ impl Game {
             self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
+        for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
+            self.mobs.entities.hatch_turtles(cell, count);
+        }
         self.mobs.attack_cooldown -= dt;
         let mut players = vec![Target {
             alive: !self.vitals.is_dead(),
@@ -272,8 +275,7 @@ impl Game {
                 0.0
             },
             raining: self.weather.raining,
-            spawning: self.difficulty != crate::simulation::difficulty::Difficulty::Peaceful
-                && self.gamerules.bool("doMobSpawning"),
+            spawning: self.gamerules.bool("doMobSpawning"),
             dimension: self.dimension,
         };
         let mut smashed = Vec::new();
@@ -301,6 +303,28 @@ impl Game {
                             knockback.as_dvec3(),
                             &mut self.mobs.entities,
                         );
+                    }
+                }
+                EntityEvent::PlayerBeam { player, physical, magic } => {
+                    let physical = self.difficulty.mob_damage(physical);
+                    if player == PlayerId::HOST {
+                        let reduced = crate::simulation::survival::armor_reduce(
+                            physical,
+                            self.inventory.armor_points(),
+                            self.inventory.armor_toughness(),
+                        );
+                        if self.damage_player(reduced + magic, "was slain by a guardian") > 0.0 {
+                            self.inventory.wear_armor(physical);
+                        }
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.hurt_beam(physical, magic, &mut self.mobs.entities);
+                    }
+                }
+                EntityEvent::PlayerSting { player, damage, cause } => {
+                    if player == PlayerId::HOST {
+                        self.damage_player_armored(damage, cause);
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.hurt(damage, cause, DVec3::ZERO, &mut self.mobs.entities);
                     }
                 }
                 EntityEvent::PlayerEffect { player: PlayerId::HOST, effect, amplifier, ticks } => {
@@ -521,6 +545,13 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Piglin | MobKind::PiglinBrute => Voice::Piglin,
         MobKind::Hoglin | MobKind::Zoglin => Voice::Hoglin,
         MobKind::Strider => Voice::Strider,
+        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish | MobKind::Pufferfish | MobKind::Turtle => Voice::Fish,
+        MobKind::Squid | MobKind::GlowSquid => Voice::Squid,
+        MobKind::Dolphin => Voice::Dolphin,
+        MobKind::Axolotl => Voice::Axolotl,
+        MobKind::Guardian | MobKind::ElderGuardian => Voice::Guardian,
+        MobKind::Cat => Voice::Cat,
+        MobKind::Pillager => Voice::Pillager,
     }
 }
 

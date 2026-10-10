@@ -988,7 +988,7 @@ impl Dragon {
             })
         });
         self.pos += if in_wall { self.vel * 0.8 } else { self.vel };
-        self.pos.y = self.pos.y.min(crate::world::chunk::WORLD_HEIGHT as f64 + 16.0);
+        self.pos.y = self.pos.y.min(crate::world::terrain::Dimension::End.max_y() as f64 + 16.0);
         let along = (self.vel.normalize_or_zero().dot(facing) as f32 + 1.0) / 2.0;
         let keep = 0.8 + 0.15 * along as f64;
         self.vel *= DVec3::new(keep, 0.91, keep);

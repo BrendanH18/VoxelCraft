@@ -16,8 +16,6 @@ const CLEAR: (f64, f64) = (DAY_LENGTH, 5.0 * DAY_LENGTH);
 const RAIN: (f64, f64) = (0.5 * DAY_LENGTH, 1.5 * DAY_LENGTH);
 /// Seconds for rain to fade fully in or out.
 const FADE: f32 = 10.0;
-/// Precipitation falls as snow above this height.
-const SNOW_LINE: i32 = 150;
 
 pub struct Weather {
     pub raining: bool,
@@ -116,11 +114,10 @@ impl Weather {
 
 /// What falls in column (x, z), given the ground height there.
 pub fn precipitation(world: &World, x: i32, z: i32, ground: i32) -> Precipitation {
-    match world.foliage_at(x, z) {
+    match world.snow_line_at(x, z) {
         // Deserts, savannas and badlands stay dry.
-        Some(2) | None => Precipitation::None,
-        Some(4) => Precipitation::Snow,
-        _ if ground > SNOW_LINE => Precipitation::Snow,
+        Some(i16::MAX) | None => Precipitation::None,
+        Some(line) if ground >= line as i32 => Precipitation::Snow,
         _ => Precipitation::Rain,
     }
 }
