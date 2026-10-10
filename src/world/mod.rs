@@ -588,7 +588,11 @@ impl World {
         if !self.meshes_enabled {
             return;
         }
-        if !self.in_mesh_range(pos) || !self.ready_to_mesh(pos) {
+        if !self.in_mesh_range(pos) {
+            // Recentering re-queues it if it comes into range later.
+            return;
+        }
+        if !self.ready_to_mesh(pos) {
             self.dirty.insert(pos);
             return;
         }
@@ -1613,5 +1617,24 @@ mod tests {
         assert!(world.furnace(p).is_none());
         let spilled: Vec<_> = world.drops.iter().map(|&(_, s)| s.item).collect();
         assert_eq!(spilled, [Item::from_block(Block::SAND), Item::from_block(Block::GLASS)]);
+    }
+}
+
+#[cfg(test)]
+mod remesh_tests {
+    use super::*;
+
+    /// A synchronous edit in the loaded-but-undrawn ring must not leave a
+    /// chunk queued forever (screenshots and `is_idle` wait on the queue).
+    #[test]
+    fn edits_outside_mesh_range_do_not_queue_remeshes() {
+        let mut w = World::new(Arc::new(Generator::new(1)), Default::default(), 2);
+        w.center = Some(IVec3::ZERO);
+        let far = IVec3::new(4, 2, 0);
+        assert!(!w.in_mesh_range(far));
+        w.insert_chunk(far, Arc::new(ChunkData::Uniform(Block::AIR)), false);
+        w.dirty.clear();
+        w.set_block(far * CHUNK_SIZE_I + IVec3::splat(5), Block::STONE);
+        assert!(!w.dirty.contains(&far));
     }
 }

@@ -690,6 +690,11 @@ impl Generator {
                 let (wx, wz) = (base.x + x as i32, base.z + z as i32);
                 for y in 1..CHUNK_SIZE - 1 {
                     let wy = base.y + y as i32;
+                    // Keep flammable moss and plants clear of the lava sea, or
+                    // its flames would burn through the cave as it loads.
+                    if wy <= LAVA_LEVEL + 4 {
+                        continue;
+                    }
                     let Some(biome) = super::biome::cave(&col.climate, col.height - wy) else { continue };
                     let here = blocks[index(x, y, z)];
                     let below = blocks[index(x, y - 1, z)];
