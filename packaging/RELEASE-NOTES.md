@@ -96,8 +96,8 @@ Choose your download:
   eggs; turtle helmets and Turtle Master potions aren't in yet.
 - Big dripleaves don't tilt, and pointed dripstone doesn't fall or drip.
 - Structures are original builds in Java's style, not copies of its templates.
-  Buried treasure isn't generated; shipwreck treasure chests can hold the heart
-  of the sea instead.
+  Buried treasure isn't generated yet, so there's no way to find the heart of
+  the sea.
 - There are no soul lanterns, soul campfires or Soul Speed, and crossbows have
   no Multishot, Piercing or Quick Charge.
 - Raids aren't in yet. Lecterns, looms, cartography tables and stonecutters are

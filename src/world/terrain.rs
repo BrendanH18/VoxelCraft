@@ -592,10 +592,15 @@ impl Generator {
         self.fill(&mut blocks, base, &columns);
         if base.y <= max_h {
             self.carve(&mut blocks, base, &columns);
+            // Vein origins can lie outside the chunk: use their real biome
+            // so both chunks agree on the vein.
             let biome_at = |x: i32, z: i32| {
-                let lx = (x - base.x).clamp(0, CHUNK_SIZE_I - 1) as usize;
-                let lz = (z - base.z).clamp(0, CHUNK_SIZE_I - 1) as usize;
-                columns.at(lx, lz).biome
+                let (lx, lz) = (x - base.x, z - base.z);
+                if (0..CHUNK_SIZE_I).contains(&lx) && (0..CHUNK_SIZE_I).contains(&lz) {
+                    columns.at(lx as usize, lz as usize).biome
+                } else {
+                    self.climate_biome(x, z)
+                }
             };
             super::ore::paint(self.seed, blocks.as_mut(), base, biome_at);
             if base.y < max_h - 15 {
@@ -1050,7 +1055,10 @@ impl Generator {
                 let variant = (h >> 32) as u32;
                 let pick = (h >> 24) % 100;
                 let ground = IVec3::new(tx, col.height, tz);
-                let surface = self.surface_block(col, tx, tz, 0);
+                // The same steep rule as `fill`, so trees skip bare cliffs.
+                let h = |dx: i32, dz: i32| self.column(tx + dx, tz + dz).height;
+                let steep = (h(1, 0) - h(-1, 0)).abs().max((h(0, 1) - h(0, -1)).abs());
+                let surface = self.surface_block(col, tx, tz, steep);
                 let mut tree_blocks: Vec<(IVec3, Block)> = Vec::new();
                 let collect = &mut |p, b| tree_blocks.push((p, b));
                 if !grow_tree_for(col.biome, surface, ground, variant, pick, collect) {

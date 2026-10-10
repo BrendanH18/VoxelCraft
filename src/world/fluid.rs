@@ -180,7 +180,11 @@ impl World {
     }
 
     fn fluid_step(&self, p: IVec3, fluid: Fluid, changes: &mut FxHashMap<IVec3, Block>) {
-        let Some(b) = self.get_block(p) else { return };
+        // Waterlogged plants spread their water like a source but stay put.
+        if self.get_block(p).is_none() {
+            return;
+        }
+        let b = self.cell(p);
         if b.fluid() != Some(fluid) {
             return;
         }

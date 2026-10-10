@@ -577,7 +577,8 @@ fn list_worlds(saves_dir: &Path) -> Vec<Entry> {
                 name: prop("name").unwrap_or_else(|| dir.clone()),
                 mode: if hardcore { "hardcore".into() } else { prop("mode").unwrap_or_else(|| "survival".into()) },
                 nether: prop("dimension").as_deref() == Some("nether"),
-                legacy: prop("terrain").is_none(),
+                // Pre-0.6 worlds save as terrain 1 once reopened, or lack it.
+                legacy: prop("terrain").and_then(|v| v.parse::<u8>().ok()).is_none_or(|v| v < 2),
                 dir,
                 played,
             })

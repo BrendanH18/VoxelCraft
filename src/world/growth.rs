@@ -172,7 +172,8 @@ impl World {
                 let n = (3 + self.roll() % 5 + self.up_to(fortune)).min(9) - 1;
                 out.push(Stack::new(Item::MELON_SLICE, n as u8));
             }
-            b if b.is_leaves() => {
+            // The Overworld module's leaves roll their own drops above.
+            b if b.is_leaves() && !(super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.0) => {
                 // Jungle leaves drop saplings less often, like Minecraft;
                 // fortune raises both chances.
                 let f = fortune.min(3) as usize;

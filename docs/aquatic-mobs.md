@@ -53,8 +53,9 @@ empty bucket. In the Nether the water evaporates but the creature releases.
 Tropical fish have twelve color variants; axolotls have their four ordinary
 natural colors and a blue variant available through saved bucket data.
 These original models approximate Java appearances. Exact tropical fish
-pattern encoding, breeding/taming, turtle eggs/scutes, dolphin treasure
-finding, squid ink particles and full navigation parity remain later work.
+pattern encoding, breeding/taming (so turtles don't lay eggs), turtle
+helmets, dolphin treasure finding, squid ink particles and full navigation
+parity remain later work.
 The engine uses its existing per-kind spawn caps and simplified steering,
 rather than Java’s category caps and pathfinding implementation.
 

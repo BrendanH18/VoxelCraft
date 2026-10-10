@@ -336,6 +336,9 @@ impl World {
                 crate::inventory::stack_to_string(Some(stack))
             ));
         }
+        for &(p, stack) in &self.automation.creatures {
+            entries.push(format!("w,{},{},{},{}", p.x, p.y, p.z, crate::inventory::stack_to_string(Some(stack))));
+        }
         entries.join("|")
     }
 
@@ -363,6 +366,16 @@ impl World {
                     {
                         self.automation.output.push((p, facing, arrow == 1, stack));
                     }
+                }
+                continue;
+            }
+            if let Some(rest) = entry.strip_prefix("w,") {
+                if let &[x, y, z, stack] = rest.split(',').collect::<Vec<_>>().as_slice()
+                    && let (Ok(x), Ok(y), Ok(z), Some(Some(stack))) =
+                        (x.parse(), y.parse(), z.parse(), crate::inventory::stack_from_str(stack))
+                    && crate::entity::aquatic::bucket_kind(stack.item).is_some()
+                {
+                    self.automation.creatures.push((IVec3::new(x, y, z), stack));
                 }
                 continue;
             }
@@ -652,7 +665,8 @@ impl World {
                 item if crate::entity::aquatic::bucket_kind(item).is_some()
                     && (block.is_replaceable() || block.holds_water()) =>
                 {
-                    if self.generator.dimension != super::terrain::Dimension::Nether {
+                    // Waterlogged plants already hold the water.
+                    if self.generator.dimension != super::terrain::Dimension::Nether && !block.holds_water() {
                         self.set_block(front, Block::WATER);
                     }
                     self.automation.creatures.push((front, one));
@@ -1068,6 +1082,9 @@ mod tests {
         w.chest_mut(P).unwrap().slots[0] = Some(bucket);
         put(&mut w, P - IVec3::X, r::REDSTONE_BLOCK);
         ticks(&mut w, 5);
+        // A save between dispensing and the entity tick keeps the creature.
+        let save = w.automation_to_string();
+        w.load_automation(&save);
         let mut e = crate::entity::Entities::new(1);
         w.tick_automation_entities(&mut e);
         assert_eq!(e.count(crate::entity::MobKind::Axolotl), 1);

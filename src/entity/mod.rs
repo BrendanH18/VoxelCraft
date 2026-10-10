@@ -1297,7 +1297,7 @@ impl Entities {
                     }
                 }
             }
-            if ctx.dimension == Dimension::Nether {
+            if ctx.dimension == Dimension::Nether && difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
                 self.fortress_spawn(world, ctx, center);
             }
         }

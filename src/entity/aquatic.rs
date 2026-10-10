@@ -424,7 +424,8 @@ impl Entities {
         if !world.get_block(at).is_some_and(|b| b.is_replaceable() || b.holds_water()) {
             return false;
         }
-        if world.generator.dimension != Dimension::Nether {
+        // Waterlogged plants already hold the water.
+        if world.generator.dimension != Dimension::Nether && !world.get_block(at).is_some_and(Block::holds_water) {
             world.set_block(at, Block::WATER);
         }
         self.release_water_creature(stack, at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
@@ -552,17 +553,31 @@ impl Entities {
                 {
                     continue;
                 }
-                self.structures_populated.insert(b.bounds.min);
+                // Residents are recorded one by one, so hostiles skipped on
+                // Peaceful still arrive once the difficulty goes up. The
+                // structure counts as populated only when all have spawned.
+                let mut complete = true;
                 for &(kind, p) in &b.residents {
-                    if difficulty == Difficulty::Peaceful && kind.is_hostile() {
+                    if self.structures_populated.contains(&p) {
                         continue;
                     }
+                    if difficulty == Difficulty::Peaceful && kind.is_hostile() {
+                        complete = false;
+                        continue;
+                    }
+                    self.structures_populated.insert(p);
                     self.spawn(kind, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
                     let m = self.mobs.last_mut().unwrap();
                     m.persistent = kind != MobKind::Pillager;
                     if kind == MobKind::Cat {
                         m.wool_color = crate::color::DyeColor::Black;
                     }
+                }
+                if complete {
+                    for (_, p) in &b.residents {
+                        self.structures_populated.remove(p);
+                    }
+                    self.structures_populated.insert(b.bounds.min);
                 }
             }
         }
@@ -813,7 +828,13 @@ mod tests {
         let mut e = Entities::new(3);
         e.hatch_turtles(glam::IVec3::new(0, 64, 0), 2);
         assert_eq!(e.mobs.iter().filter(|m| m.kind == MobKind::Turtle && m.baby).count(), 2);
-        e.grow_turtles(TURTLE_GROW_SECS + 1.0);
+        // Growth survives a save and reload.
+        e.grow_turtles(TURTLE_GROW_SECS - 1.0);
+        let mut e2 = Entities::new(3);
+        e2.load_nether_mobs(&e.nether_mobs_to_string());
+        assert!(e2.mobs.iter().all(|m| m.baby && m.grow >= TURTLE_GROW_SECS - 1.0));
+        e = e2;
+        e.grow_turtles(2.0);
         assert!(e.mobs.iter().all(|m| !m.baby));
         assert_eq!(e.items.iter().filter(|i| i.stack.item == Item::TURTLE_SCUTE).count(), 2);
         assert!(crate::entity::can_spawn_on(MobKind::Turtle, Block::SAND, 1.0));

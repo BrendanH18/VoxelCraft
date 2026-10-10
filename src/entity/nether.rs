@@ -1348,6 +1348,7 @@ fn save_mob(m: &Mob) -> Value {
         "yaw": m.yaw,
         "health": m.health,
         "baby": m.baby,
+        "grow": m.grow,
         "armor": armor,
         "weapon": n.map_or("none", |n| n.weapon.name()),
         "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
@@ -1375,6 +1376,7 @@ fn load_mob(v: &Value) -> Option<Mob> {
         a.variant = v["variant"].as_u64().unwrap_or(0).min(255) as u8;
     }
     m.baby = v["baby"].as_bool().unwrap_or(false);
+    m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
     m.wool_color = crate::color::DyeColor::ALL.get(v["color"].as_u64().unwrap_or(0).min(15) as usize).copied().unwrap();
     if let Some(h) = v["health"].as_f64().filter(|h| *h > 0.0) {
         m.health = (h as f32).min(kind.max_health());
