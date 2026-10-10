@@ -401,10 +401,9 @@ impl World {
             && self.sky_exposed(p)
             && self.snow_line_at(p.x, p.z).is_some_and(|line| {
                 // Like the weather sheets: snow or rain by the column's ground.
-                // Partly loaded columns have no known ground: rain, except
-                // in biomes where it always snows.
-                let ground = self.surface_height(p.x, p.z).unwrap_or(i32::MIN);
-                line != i16::MAX && line != i16::MIN && ground < line as i32
+                // Unknown ground (a partly loaded column): judge by the cell.
+                let ground = self.surface_height(p.x, p.z).unwrap_or(p.y);
+                line != i16::MAX && ground < line as i32
             })
     }
 

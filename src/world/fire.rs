@@ -409,6 +409,8 @@ mod tests {
         assert!(!w.rains_on(high), "snow on high terrain");
         // Rain is a per-column effect like the rendered weather sheets;
         // flying high above a low plain doesn't turn its rain into snow.
+        assert!(!w.rains_on(high + IVec3::X), "no known ground: judged by the cell");
+        w.edit(AT.with_y(100) + IVec3::X, Block::STONE, false);
         assert!(w.rains_on(high + IVec3::X));
     }
 
