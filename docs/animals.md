@@ -62,3 +62,18 @@ nest and drop a scute on growing up. Egg clusters have individual shell boxes.
 Sources: [Wolf](https://minecraft.wiki/w/Wolf), [Cat](https://minecraft.wiki/w/Cat),
 [Parrot](https://minecraft.wiki/w/Parrot), [Fox](https://minecraft.wiki/w/Fox),
 [Rabbit](https://minecraft.wiki/w/Rabbit), [Goat](https://minecraft.wiki/w/Goat).
+
+## Leads and name tags
+
+Craft two leads from four string and a slimeball. Use a lead on a passive
+or neutral animal (farm animals, companions, golems, hoglins, striders,
+dolphins, axolotls) to hold it; using the animal again takes the lead back.
+Leashed animals follow when the rope passes six blocks and the lead snaps,
+dropping itself, past ten. Use a fence while holding animals to tie every
+lead within seven blocks to a knot; hitting or using the knot releases
+them. Leashes and knots are saved with the animal.
+
+Name an anvil-renamed name tag onto any mob to give it a nameplate and
+stop it despawning. Name tags come from dungeon chests and fishing
+treasure. Sources: [Lead](https://minecraft.wiki/w/Lead),
+[Name Tag](https://minecraft.wiki/w/Name_Tag).

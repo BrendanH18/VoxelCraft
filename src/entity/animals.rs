@@ -207,6 +207,9 @@ impl Entities {
     /// Shared action. `Some(true)` consumes food; `Some(false)` uses an
     /// empty hand/owner command; `None` permits ordinary item actions.
     pub fn use_animal(&mut self, index: usize, held: Option<Stack>, player: PlayerId) -> Option<bool> {
+        if let Some(result) = self.use_lead_or_name(index, held, player) {
+            return Some(result);
+        }
         let m = self.mobs.get_mut(index)?;
         if !m.alive() {
             return None;
@@ -563,7 +566,7 @@ impl Mob {
         let owner = a.owner?;
         let t = ctx.players.iter().find(|t| t.id == owner && t.alive)?;
         let distance = t.pos.distance_squared(self.pos);
-        if distance > 144.0 && self.riding.is_none() {
+        if distance > 144.0 && self.riding.is_none() && self.leash.is_none() {
             for _ in 0..10 {
                 let p = t.pos.floor().as_ivec3()
                     + IVec3::new(rng.next_int(7) as i32 - 3, rng.next_int(3) as i32 - 1, rng.next_int(7) as i32 - 3);

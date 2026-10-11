@@ -20,6 +20,13 @@ pub fn use_mob(
     let eye = player.eye();
     let dir = player.forward().as_dvec3();
     let reach = world.raycast(eye, dir, 6.0).map_or(6.0, |(p, _)| eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5)));
+    if let Some((p, _)) = world.raycast(eye, dir, 6.0)
+        && world.get_block(p).is_some_and(crate::entity::leash::fence)
+        && entities.raycast(eye, dir, reach).is_none()
+        && entities.use_fence_knot(owner, p)
+    {
+        return true;
+    }
     let Some((index, _)) = entities.raycast(eye, dir, reach) else { return false };
     if let Some(result) = entities.use_animal(index, held, owner) {
         if result && !creative {
@@ -182,6 +189,20 @@ pub fn use_composter(
         return true;
     }
     false
+}
+
+/// A fence knot is an entity target in front of its fence block.
+pub fn attack_knot(player: &Player, world: &World, entities: &mut Entities) -> bool {
+    let Some((p, _)) = world.raycast(player.eye(), player.forward().as_dvec3(), 6.0) else { return false };
+    world.get_block(p).is_some_and(crate::entity::leash::fence)
+        && entities
+            .raycast(
+                player.eye(),
+                player.forward().as_dvec3(),
+                player.eye().distance(p.as_dvec3() + glam::DVec3::splat(0.5)),
+            )
+            .is_none()
+        && entities.break_fence_knot(p)
 }
 
 #[cfg(test)]

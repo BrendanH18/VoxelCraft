@@ -76,6 +76,9 @@ impl Game {
     /// Left-button press: hits the mob under the crosshair. Returns `true`
     /// if a mob was targeted, in which case no block should be broken.
     pub(super) fn attack(&mut self) -> bool {
+        if voxelcraft::survival_items::attack_knot(&self.player, &self.world, &mut self.mobs.entities) {
+            return true;
+        }
         let eye = self.player.eye();
         let dir = self.player.forward().as_dvec3();
         let cart_reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);

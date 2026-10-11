@@ -893,8 +893,17 @@ impl Entities {
 
     /// Persistent nether mobs, as JSON for the level file.
     pub fn nether_mobs_to_string(&self) -> String {
-        let mobs: Vec<Value> =
-            self.mobs.iter().filter(|m| m.persistent && m.alive() && m.villager.is_none()).map(save_mob).collect();
+        let mobs: Vec<Value> = self
+            .mobs
+            .iter()
+            .filter(|m| {
+                m.persistent
+                    && m.alive()
+                    && m.villager.is_none()
+                    && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)
+            })
+            .map(save_mob)
+            .collect();
         let mut bastions: Vec<[i32; 3]> = self.bastions_populated.iter().map(|p| p.to_array()).collect();
         bastions.sort_unstable();
         let mut structures: Vec<_> = self.structures_populated.iter().map(|p| p.to_array()).collect();
@@ -1359,6 +1368,7 @@ fn save_mob(m: &Mob) -> Value {
         "egg_timer": m.egg_timer,
         "sheared": m.sheared,
         "animal": m.animal.as_deref().map(super::animals::save),
+        "identity": super::leash::save(m),
         "armor": armor,
         "weapon": n.map_or("none", |n| n.weapon.name()),
         "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
@@ -1382,6 +1392,7 @@ fn load_mob(v: &Value) -> Option<Mob> {
     }
     let mut m = Mob::new(kind, pos, v["yaw"].as_f64().unwrap_or(0.0) as f32);
     m.persistent = true;
+    super::leash::load(&mut m, &v["identity"]);
     if let Some(a) = &mut m.aquatic {
         a.variant = v["variant"].as_u64().unwrap_or(0).min(255) as u8;
     }

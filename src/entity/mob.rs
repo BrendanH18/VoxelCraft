@@ -811,6 +811,9 @@ pub(super) enum Ai {
 
 pub struct Mob {
     pub kind: MobKind,
+    pub name: crate::inventory::StackName,
+    pub leash: Option<super::leash::Leash>,
+    pub leash_pos: Option<DVec3>,
     pub animal: Option<Box<super::animals::State>>,
     pub villager: Option<Box<super::villager::Villager>>,
     /// Piglin gear, gold, anger and zombification (see `entity::nether`).
@@ -938,6 +941,9 @@ impl Mob {
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,
+            name: Default::default(),
+            leash: None,
+            leash_pos: None,
             animal: kind.has_animal_state().then(|| Box::new(super::animals::State::new(pos))),
             villager: matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader)
                 .then(|| Box::new(super::villager::Villager::new(0, 0))),
@@ -1353,6 +1359,9 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        if let Some(wish) = self.leash_think(dt, world, rng) {
+            return wish;
+        }
         if let Some(wish) = self.companion_think(dt, world, ctx, rng, events) {
             return wish;
         }

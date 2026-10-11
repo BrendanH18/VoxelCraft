@@ -17,6 +17,7 @@ use super::{Arrow, Puff, XpOrb};
 use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
 
+mod labels;
 mod nether;
 
 #[repr(C)]
@@ -900,6 +901,7 @@ pub fn build(
         } else {
             (FIRE, 0.0)
         };
+        labels::attachments(m, camera, forward, rel, out);
         aquatic::beam(m, camera, out);
         let posed = pose(m, time);
         for (pi, p) in posed.iter().enumerate() {

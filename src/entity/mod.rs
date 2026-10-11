@@ -23,6 +23,7 @@ pub mod eye;
 pub mod fireball;
 pub mod golem;
 pub mod item;
+pub mod leash;
 pub mod minecart;
 mod mob;
 mod mob_index;
@@ -778,6 +779,7 @@ impl Entities {
         self.aquatic_sense(dt as f32, world);
         self.grow_loaded_turtles(dt as f32, world, ctx);
         self.tick_animals(dt as f32, world, ctx, &mut events);
+        self.tick_leashes(dt as f32, world, ctx);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
