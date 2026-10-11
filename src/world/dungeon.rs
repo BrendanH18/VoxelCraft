@@ -264,20 +264,20 @@ impl Dungeons {
 // Java's simple_dungeon has three independent pools: 1-3, 1-4, and 3
 // rolls. Entries with no usable VoxelCraft counterpart remain weighted
 // blanks, preserving the relative odds of the items we can award. Omitted:
-// saddle, golden apples, three music discs, name tag, three horse armors,
+// golden apples, three music discs and name tags,
 // redstone and melon, pumpkin and beetroot seeds.
 type Entry = (Option<Item>, u32, u8, u8);
 const RARE: &[Entry] = &[
-    (None, 20, 1, 1),                 // saddle
-    (None, 15, 1, 1),                 // golden apple
-    (None, 2, 1, 1),                  // enchanted golden apple
-    (None, 2, 1, 1),                  // music disc otherside
-    (None, 15, 1, 1),                 // music disc 13
-    (None, 15, 1, 1),                 // music disc cat
-    (Some(Item::NAME_TAG), 20, 1, 1), // name tag
-    (None, 10, 1, 1),                 // golden horse armor
-    (None, 15, 1, 1),                 // iron horse armor
-    (None, 5, 1, 1),                  // diamond horse armor
+    (Some(Item::SADDLE), 20, 1, 1),             // saddle
+    (None, 15, 1, 1),                           // golden apple
+    (None, 2, 1, 1),                            // enchanted golden apple
+    (None, 2, 1, 1),                            // music disc otherside
+    (None, 15, 1, 1),                           // music disc 13
+    (None, 15, 1, 1),                           // music disc cat
+    (Some(Item::NAME_TAG), 20, 1, 1),           // name tag
+    (Some(Item::GOLDEN_HORSE_ARMOR), 10, 1, 1), // golden horse armor
+    (Some(Item::IRON_HORSE_ARMOR), 15, 1, 1),   // iron horse armor
+    (Some(Item::DIAMOND_HORSE_ARMOR), 5, 1, 1), // diamond horse armor
     (Some(Item::ENCHANTED_BOOK), 10, 1, 1),
 ];
 const COMMON: &[Entry] = &[

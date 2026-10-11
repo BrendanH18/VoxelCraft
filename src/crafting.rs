@@ -546,6 +546,7 @@ pub fn recipes() -> &'static [Recipe] {
         add_glass_terracotta_recipes(&mut r);
         add_nether_biome_recipes(&mut r);
         add_overworld_recipes(&mut r);
+        add_mount_recipes(&mut r);
         r
     })
 }
@@ -1396,5 +1397,54 @@ mod nether_biome_tests {
         assert_eq!(craft(3, &filled(Item::BONE_MEAL, 3, 3)), Some(Stack::new(nb::BONE_BLOCK, 1)));
         assert_eq!(craft(2, &[(0, 0, b(nb::BONE_BLOCK))]), Some(Stack::new(Item::BONE_MEAL, 9)));
         assert_eq!(craft(3, &filled(b(nb::WARPED_WART_BLOCK), 3, 3)), None, "warped wart blocks are found, not made");
+    }
+}
+
+/// Java 1.21: five matching planks, no shovel; chest variants are shapeless.
+fn add_mount_recipes(r: &mut Vec<Recipe>) {
+    r.push(shaped(
+        &["GGG", "GCG", "GGG"],
+        &[('G', ingredient(Item::GOLD_NUGGET)), ('C', ingredient(Item::CARROT))],
+        Item::GOLDEN_CARROT,
+        1,
+    ));
+    use crate::world::block::Wood;
+    for i in 0..10u8 {
+        let plank = if i == 9 { crate::world::overworld_blocks::BAMBOO_PLANKS } else { Wood::ALL[i as usize].planks() };
+        r.push(shaped(&["# #", "###"], &[('#', ingredient(b(plank)))], Item::boat(i, false), 1));
+        r.push(shapeless(&[ingredient(Item::boat(i, false)), ingredient(b(Block::CHEST))], Item::boat(i, true), 1));
+    }
+    r.push(shaped(
+        &["R ", " C"],
+        &[('R', ingredient(Item::FISHING_ROD)), ('C', ingredient(Item::CARROT))],
+        Item::CARROT_ON_A_STICK,
+        1,
+    ));
+    r.push(shaped(
+        &["R ", " F"],
+        &[('R', ingredient(Item::FISHING_ROD)), ('F', ingredient(b(crate::world::nether_biome_blocks::WARPED_FUNGUS)))],
+        Item::WARPED_FUNGUS_ON_A_STICK,
+        1,
+    ));
+    r.push(shaped(&["L L", "LLL", "L L"], &[('L', ingredient(Item::LEATHER))], Item::LEATHER_HORSE_ARMOR, 1));
+}
+
+#[cfg(test)]
+mod mount_recipe_tests {
+    use super::*;
+    #[test]
+    fn every_mount_recipe_crafts_its_preview_and_gear_is_loot_only() {
+        let recipes = recipes();
+        for id in 960..980 {
+            let r = recipes.iter().find(|r| r.result.item == Item(id)).unwrap();
+            assert_eq!(r.preview().result(), Some(r.result));
+        }
+        for id in [981, 982, 983] {
+            let r = recipes.iter().find(|r| r.result.item == Item(id)).unwrap();
+            assert_eq!(r.preview().result(), Some(r.result));
+        }
+        for id in [980, 984, 985, 986] {
+            assert!(!recipes.iter().any(|r| r.result.item == Item(id)));
+        }
     }
 }

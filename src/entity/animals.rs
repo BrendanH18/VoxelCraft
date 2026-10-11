@@ -108,6 +108,7 @@ impl MobKind {
             Self::Strider => food == Item::from_block(crate::world::nether_biome_blocks::WARPED_FUNGUS),
             Self::Turtle => food == Item::from_block(crate::world::overworld_blocks::SEAGRASS),
             Self::Axolotl => food == Item::TROPICAL_FISH_BUCKET,
+            Self::Horse | Self::Donkey => matches!(food, Item::GOLDEN_CARROT | Item::GOLDEN_APPLE),
             _ => false,
         }
     }
@@ -130,7 +131,13 @@ impl MobKind {
                 | Self::Strider
                 | Self::Turtle
                 | Self::Axolotl
+                | Self::Horse
+                | Self::Donkey
         )
+    }
+    /// Mates must match, except that a horse and a donkey make a mule.
+    pub fn can_mate_with(self, other: MobKind) -> bool {
+        self == other || matches!((self, other), (Self::Horse, Self::Donkey) | (Self::Donkey, Self::Horse))
     }
 }
 impl Mob {
@@ -144,6 +151,7 @@ impl Mob {
                     && !a.pregnant
                     && (!matches!(self.kind, MobKind::Cat | MobKind::Wolf) || a.owner.is_some())
                     && (self.kind != MobKind::Wolf || self.health >= self.max_health())
+                    && (!super::mounts::equine(self.kind) || self.mount.as_ref().is_some_and(|s| s.tame))
             })
     }
     /// Feeding a baby removes 10% of its remaining growth time, rounded to
@@ -225,6 +233,10 @@ impl Entities {
             self.drop_loot_with_fire(kind, pos, 0, false, false);
             return Some(true);
         }
+        // Untamed horses and foals take food through the mount rules (temper, healing, growth).
+        if super::mounts::equine(m.kind) && (m.baby || !m.mount.as_ref().is_some_and(|s| s.tame)) {
+            return None;
+        }
         let a = m.animal.as_mut()?;
         let taming = match m.kind {
             MobKind::Wolf => food == Some(Item::BONE),
@@ -284,6 +296,9 @@ impl Entities {
             }
             a.love = LOVE_SECONDS;
             a.love_by = Some(player);
+            if let (Some(s), Some((heal, _, _))) = (m.mount.as_ref(), super::mounts::food(food)) {
+                m.health = (m.health + heal).min(s.max_health);
+            }
         }
         m.persistent = true;
         self.animal_hearts(index);
@@ -300,7 +315,9 @@ impl Entities {
     /// apply their own attribute/variant inheritance. Does not feed parents.
     pub fn animal_child(&mut self, first: usize, second: usize) -> Mob {
         let (a, b) = (&self.mobs[first], &self.mobs[second]);
-        let mut child = Mob::new(a.kind, a.pos, self.rng.range(0.0, std::f32::consts::TAU));
+        let kind = if a.kind == b.kind { a.kind } else { MobKind::Mule };
+        let mut child = Mob::new(kind, a.pos, self.rng.range(0.0, std::f32::consts::TAU));
+        super::mounts::inherit(&mut child, a, b, &mut self.rng);
         child.age = BABY_AGE;
         child.baby = true;
         child.persistent = true;
@@ -364,10 +381,9 @@ impl Entities {
                 continue;
             }
             let m = &self.mobs[i];
-            let Some(j) = self
-                .mob_index
-                .nearest(&self.mobs, m.pos, 8.0, |b| b.uid != m.uid && b.kind == m.kind && b.ready_to_breed())
-            else {
+            let Some(j) = self.mob_index.nearest(&self.mobs, m.pos, 8.0, |b| {
+                b.uid != m.uid && b.kind.can_mate_with(m.kind) && b.ready_to_breed()
+            }) else {
                 self.mobs[i].animal.as_mut().unwrap().courtship = 0.0;
                 continue;
             };

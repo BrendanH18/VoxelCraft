@@ -683,6 +683,9 @@ impl Game {
                             || eye.distance(pos.as_dvec3() + 0.5) > super::REACH + 1.0
                             || agent.vitals.is_dead()
                     }
+                    Menu::Items { tab: Tab::Vehicle(id), .. } => {
+                        agent.vitals.is_dead() || !self.mobs.entities.vehicle_in_reach(id, eye)
+                    }
                     Menu::Items { tab: Tab::Trading(id), .. } => {
                         agent.vitals.is_dead() || !self.mobs.entities.merchant_in_reach(id, eye)
                     }
@@ -723,7 +726,7 @@ impl Game {
                 }
             }
             agent.hold(tick.input, false, false);
-            let (used, merchant) = self
+            let (used, merchant, vehicle) = self
                 .puppet(i, |g| {
                     for press in presses {
                         match press {
@@ -738,9 +741,12 @@ impl Game {
                     }
                     g.act(true, dt);
                     g.mobs.attack_cooldown -= dt;
-                    (g.puppet_used.take(), g.puppet_merchant.take())
+                    (g.puppet_used.take(), g.puppet_merchant.take(), g.puppet_vehicle.take())
                 })
                 .unwrap_or_default();
+            if let Some(id) = vehicle {
+                self.pads.seats[i].open(Menu::items(Tab::Vehicle(id)));
+            }
             if let Some(id) = merchant {
                 self.pads.seats[i].open(Menu::items(Tab::Trading(id)));
             }

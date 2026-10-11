@@ -490,11 +490,14 @@ fn has_pillars(kind: Kind) -> bool {
     !matches!(kind, Kind::CorridorCrossing | Kind::RightTurn | Kind::LeftTurn | Kind::BridgeEnd)
 }
 
-/// Java's nether bridge chest loot (2-4 rolls), leaving out saddles and
-/// horse armor, which don't exist yet.
+/// Java's nether bridge chest loot (2-4 rolls), including saddles and horse armor.
 pub fn loot(seed: u64) -> Chest {
     let gold = |kind| Item::tool(kind, Tier::Gold);
-    let table: [LootEntry; 8] = [
+    let table: [LootEntry; 12] = [
+        (Item::SADDLE, 10, 1, 1),
+        (Item::GOLDEN_HORSE_ARMOR, 8, 1, 1),
+        (Item::IRON_HORSE_ARMOR, 5, 1, 1),
+        (Item::DIAMOND_HORSE_ARMOR, 3, 1, 1),
         (Item::DIAMOND, 5, 1, 3),
         (Item::IRON_INGOT, 5, 1, 5),
         (Item::GOLD_INGOT, 15, 1, 3),

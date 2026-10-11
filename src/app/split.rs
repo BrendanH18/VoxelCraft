@@ -325,6 +325,7 @@ impl Game {
             survival: !a.creative,
             underwater,
             dial: self.dial_of(&a.player),
+            vehicle: a.player.vehicle,
         };
         // Screens cover the hotbar, as Minecraft's do.
         let pad = self.pad_view(name).unwrap_or_default();

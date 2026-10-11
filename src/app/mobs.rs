@@ -241,6 +241,10 @@ impl Game {
         if self.held_item() != Some(crate::item::Item::FISHING_ROD) || self.vitals.is_dead() {
             self.mobs.entities.drop_bobber(self.actor);
         }
+        super::seat_rider(&self.mobs.entities, &mut self.player, crate::entity::PlayerId::HOST);
+        for bot in self.agents.players.values_mut().filter(|b| b.active) {
+            super::seat_rider(&self.mobs.entities, &mut bot.agent.player, bot.agent.id);
+        }
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.mobs.entities.despawn_hostiles();
         }
@@ -309,6 +313,15 @@ impl Game {
                             knockback.as_dvec3(),
                             &mut self.mobs.entities,
                         );
+                    }
+                }
+                EntityEvent::PlayerFall { player, damage } => {
+                    if self.gamerules.bool("fallDamage") {
+                        if player == PlayerId::HOST {
+                            self.damage_player(damage, crate::simulation::survival::CAUSE_FALL);
+                        } else if let Some(bot) = self.agents.by_id_mut(player) {
+                            bot.agent.hurt_fall(damage, &mut self.mobs.entities);
+                        }
                     }
                 }
                 EntityEvent::PlayerBeam { player, physical, magic } => {
@@ -420,6 +433,14 @@ impl Game {
                     );
                     let (sound, gain) = match sound {
                         MobSound::Bell => (Sound::Bell, 1.0),
+                        MobSound::BoatPaddle(water) => (
+                            Sound::Step(if water {
+                                crate::audio::sounds::Material::Water
+                            } else {
+                                crate::audio::sounds::Material::Wood
+                            }),
+                            0.6,
+                        ),
                         MobSound::Fuse => (Sound::Fuse, 1.0),
                         MobSound::Bow => (Sound::Bow, 1.0),
                         MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7),
@@ -551,6 +572,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Witch => Voice::Witch,
         MobKind::Villager | MobKind::WanderingTrader => Voice::Villager,
         MobKind::TraderLlama => Voice::Cow,
+        MobKind::Horse | MobKind::Donkey | MobKind::Mule => Voice::Horse,
         MobKind::IronGolem => Voice::Cow,
         MobKind::SnowGolem => Voice::Slime,
         MobKind::Piglin | MobKind::PiglinBrute => Voice::Piglin,

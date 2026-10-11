@@ -33,6 +33,11 @@ a time. Every texture is painted by code, every sound and song is
 synthesized as you play, and there isn't a single bundled game asset in the
 repository.
 
+[Boats and riding](docs/mounts.md) includes boats and chest boats for every
+Overworld wood, bamboo rafts, two seats, storage and saved riders. Saddle pigs
+and striders, or tame horses, equip them and charge a jump; donkeys and mules
+carry chests.
+
 It's still early, but it's already a real game: you can start in a field with
 nothing, work your way up to diamond, light a portal to the Nether, track down
 a stronghold, and watch the credits roll after the Ender Dragon falls.

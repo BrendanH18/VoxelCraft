@@ -235,6 +235,7 @@ pub fn roll_catch(rng: &mut Rng, luck: i32, open_water: bool) -> Stack {
             (Item::FISHING_ROD, 1),
             (Item::NAME_TAG, 1),
             (Item::NAUTILUS_SHELL, 1),
+            (Item::SADDLE, 1),
         ],
     );
     Stack { enchants: treasure_enchants(rng, item), ..Stack::new(item, 1) }

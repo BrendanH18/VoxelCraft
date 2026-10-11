@@ -78,6 +78,7 @@ pub(super) struct HudPlayer<'a> {
     pub survival: bool,
     pub underwater: bool,
     pub dial: crate::item::Dial,
+    pub vehicle: Option<u32>,
 }
 
 impl Game {
@@ -200,6 +201,7 @@ impl Game {
             survival: self.mode.is_survival(),
             underwater: self.player.head_in_water(&self.world),
             dial: self.dial_of(&self.player),
+            vehicle: self.player.vehicle,
         };
         let y0 = self.bar_ui(ui, &hud, now);
         let survival = hud.survival;
@@ -245,7 +247,15 @@ impl Game {
             }
         }
         if hud.survival {
-            xp_bar_ui(ui, hud.vitals.xp, x0, y0 - 7.0, total);
+            if let Some(m) = hud.vehicle.and_then(|id| self.mobs.entities.mount(id))
+                && crate::entity::mounts::equine(m.kind)
+                && let Some(s) = &m.mount
+            {
+                ui.rect(x0, y0 - 7., total, 5., [0.15, 0.15, 0.2, 1.]);
+                ui.rect(x0 + 1., y0 - 6., (total - 2.) * s.jump_charge, 3., [0.3, 0.6, 1., 1.]);
+            } else {
+                xp_bar_ui(ui, hud.vitals.xp, x0, y0 - 7.0, total);
+            }
             self.vitals_ui(ui, hud, x0, x0 + total, y0 - 17.0, now);
         }
         effects_ui(ui, &hud.vitals.effects);
@@ -288,17 +298,37 @@ impl Game {
             }
         }
 
-        // Hunger, right to left; drumsticks shiver when nearly empty.
-        let half_food = v.hunger.food.ceil() as u32;
-        let starving = v.hunger.food <= 0.0;
-        for i in 0..(survival::MAX_FOOD as u32 / 2) {
-            let layer = match half_food.saturating_sub(i * 2) {
-                0 => tex::FOOD_EMPTY,
-                1 => tex::FOOD_HALF,
-                _ => tex::FOOD_FULL,
-            };
-            let jitter = if half_food <= 6 || starving { (hash(i + 50, tick) % 3) as f32 - 1.0 } else { 0.0 };
-            ui.icon(right - 1.0 - ICON - i as f32 * STEP, y + jitter, ICON, layer, WHITE);
+        if let Some(m) = hud.vehicle.and_then(|id| self.mobs.entities.mount(id))
+            && crate::entity::mounts::equine(m.kind)
+            && let Some(s) = &m.mount
+        {
+            for i in 0..(s.max_health / 2.).floor() as u32 {
+                let layer = match (m.health.ceil() as u32).saturating_sub(i * 2) {
+                    0 => tex::HEART_EMPTY,
+                    1 => tex::HEART_HALF,
+                    _ => tex::HEART_FULL,
+                };
+                ui.icon(
+                    right - 1. - ICON - (i % 10) as f32 * STEP,
+                    y - (i / 10) as f32 * 10.,
+                    ICON,
+                    layer,
+                    [1., 0.75, 0.55, 1.],
+                );
+            }
+        } else {
+            // Hunger, right to left; drumsticks shiver when nearly empty.
+            let half_food = v.hunger.food.ceil() as u32;
+            let starving = v.hunger.food <= 0.0;
+            for i in 0..(survival::MAX_FOOD as u32 / 2) {
+                let layer = match half_food.saturating_sub(i * 2) {
+                    0 => tex::FOOD_EMPTY,
+                    1 => tex::FOOD_HALF,
+                    _ => tex::FOOD_FULL,
+                };
+                let jitter = if half_food <= 6 || starving { (hash(i + 50, tick) % 3) as f32 - 1.0 } else { 0.0 };
+                ui.icon(right - 1.0 - ICON - i as f32 * STEP, y + jitter, ICON, layer, WHITE);
+            }
         }
 
         // Air bubbles sit above the hunger bar.
@@ -801,13 +831,7 @@ impl Game {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
             (Container::Chest(p), _) => container_title(self.world.get_block(p)),
-            (Container::Minecart(id), _) => {
-                if self.mobs.entities.cart(id).is_some_and(|c| c.slot_count() == 5) {
-                    "Minecart with Hopper"
-                } else {
-                    "Minecart with Chest"
-                }
-            }
+            (Container::Minecart(id), _) => self.mobs.entities.vehicle_title(id),
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
             (Container::Anvil(_), _) => "Anvil",
@@ -1029,8 +1053,7 @@ impl Game {
             return self.mobs.entities.merchant(id)?.villager.as_ref()?.offers.get(i)?.map(|o| o.output);
         }
         if let (Container::Minecart(id), SlotRef::Chest(i)) = (self.container, slot) {
-            let cart = self.mobs.entities.cart(id)?;
-            return (i < cart.slot_count()).then(|| cart.slots[i]).flatten();
+            return self.mobs.entities.vehicle_slots(id)?.get(i).copied().flatten();
         }
         if let (Container::Chest(p), SlotRef::Chest(i)) = (self.container, slot) {
             return self.world.chest(p)?.slots[i];

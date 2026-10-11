@@ -107,8 +107,13 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
     let ease = 1.0 - (1.0 - attack).powi(4);
     right_arm -= (ease * PI).sin() * 1.2 + (attack * PI).sin() * (player.pitch + 0.7) * 0.75;
     left_arm += turn;
-    let swim = player.swim_amount;
-    let crouch = player.pose == PlayerPose::Crouching;
+    let riding = player.vehicle.is_some();
+    if riding {
+        right_arm -= std::f32::consts::PI / 5.;
+        left_arm -= std::f32::consts::PI / 5.;
+    }
+    let swim = if riding { 0. } else { player.swim_amount };
+    let crouch = !riding && player.pose == PlayerPose::Crouching;
     if crouch {
         right_arm += 0.4;
         left_arm += 0.4;
@@ -178,14 +183,18 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
             [-2.0, -12.0, -2.0],
             [2.0, 0.0, 2.0],
             [0.0, 16.0],
-            rx(phase.cos() * 1.4 * amount) * ry(0.005) * rz(0.005),
+            rx(if riding { -1.4137167 } else { phase.cos() * 1.4 * amount })
+                * ry(if riding { std::f32::consts::PI / 10. } else { 0.005 })
+                * rz(if riding { 0.07853982 } else { 0.005 }),
         ),
         limb(
             [1.9, leg_y, leg_z],
             [-2.0, -12.0, -2.0],
             [2.0, 0.0, 2.0],
             [16.0, 48.0],
-            rx((phase + PI).cos() * 1.4 * amount) * ry(-0.005) * rz(-0.005),
+            rx(if riding { -1.4137167 } else { (phase + PI).cos() * 1.4 * amount })
+                * ry(if riding { -std::f32::consts::PI / 10. } else { -0.005 })
+                * rz(if riding { -0.07853982 } else { -0.005 }),
         ),
     ]
 }

@@ -28,6 +28,7 @@ pub mod minecart;
 mod mob;
 mod mob_index;
 pub mod model;
+pub mod mounts;
 pub mod nether;
 pub mod orb;
 pub mod pearl;
@@ -94,6 +95,7 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
     Bell,
+    BoatPaddle(bool),
     /// A creeper lit its fuse.
     Fuse,
     /// A skeleton loosed an arrow.
@@ -136,6 +138,11 @@ pub enum EntityEvent {
         damage: f32,
         knockback: Vec3,
         cause: &'static str,
+    },
+    /// An equine's landing applies the same fall damage to its rider.
+    PlayerFall {
+        player: PlayerId,
+        damage: f32,
     },
     /// Guardian laser: apply the armor-reduced physical and armor-bypassing
     /// magic components as one hit, so hurt immunity doesn't discard either.
@@ -692,6 +699,10 @@ impl Entities {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
         mob.persistent = kind.has_animal_state();
+        if let Some(s) = &mut mob.mount {
+            **s = mounts::State::new(kind, &mut self.rng);
+            mob.health = s.max_health;
+        }
         if matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader) {
             **mob.villager.as_mut().unwrap() =
                 villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
@@ -827,6 +838,19 @@ impl Entities {
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
                 let dead = self.mobs.swap_remove(i);
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                    && let Some(s) = &dead.mount
+                {
+                    for stack in s
+                        .slots
+                        .iter()
+                        .flatten()
+                        .copied()
+                        .chain(s.chest.then(|| crate::inventory::Stack::new(Block::CHEST, 1)))
+                    {
+                        self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                    }
+                }
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME) && dead.kind.is_cube() && dead.size > 1 {
                     let count = 2 + (self.rng.next_f32() * 3.0) as usize;
                     for n in 0..count {
@@ -839,11 +863,25 @@ impl Entities {
                 }
                 continue;
             }
+            let before_tame = self.mobs[i].mount.as_ref().map(|s| (s.tame, s.rider));
             let grounded = self.mobs[i].on_ground;
             self.mobs[i].difficulty = difficulty;
             self.mobs[i].trader_night = (0.5..0.96).contains(&self.village_time);
             self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);
             let m = &self.mobs[i];
+            if let Some((tame, rider)) = before_tame
+                && let Some(s) = &m.mount
+                && !tame
+                && (s.tame || rider.is_some() && s.rider.is_none())
+            {
+                let mut burst = crate::particles::Burst::new(
+                    if s.tame { crate::particles::Kind::Heart } else { crate::particles::Kind::Angry },
+                    m.pos + DVec3::Y * m.shape().height,
+                    7,
+                );
+                burst.spread = DVec3::new(0.5, 0.5, 0.5);
+                self.particles.push(crate::particles::Request::Burst(burst));
+            }
             if m.kind == MobKind::MagmaCube && !grounded && m.on_ground && m.alive() {
                 let mut b = crate::particles::Burst::new(crate::particles::Kind::Flame, m.pos, m.size as u16 * 8);
                 b.spread = DVec3::new(m.shape().half_width, 0.0, m.shape().half_width);

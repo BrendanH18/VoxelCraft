@@ -536,6 +536,7 @@ macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.pus
 
 mod animals;
 mod aquatic;
+mod mounts;
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -543,6 +544,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
+        MobKind::Horse | MobKind::Donkey | MobKind::Mule => mounts::pose(m),
         MobKind::Cod
         | MobKind::Salmon
         | MobKind::TropicalFish
@@ -903,7 +905,10 @@ pub fn build(
         };
         labels::attachments(m, camera, forward, rel, out);
         aquatic::beam(m, camera, out);
-        let posed = pose(m, time);
+        let mut posed = pose(m, time);
+        if matches!(m.kind, MobKind::Pig | MobKind::Strider) {
+            mounts::equipment(m, &mut posed);
+        }
         for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * ((p.pivot + p.rot * v) * animals::model_scale(m)) * scale / 16.0;
@@ -1204,6 +1209,59 @@ pub(super) fn build_minecarts(
         let rot = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2 - cart.yaw);
         let xf = |p: Vec3| rel + rot * (p / 16.0);
         let light = ([220, 255, 0, 0], 160);
+        if let Some((wood, chest)) = cart.kind.boat() {
+            let colors = [
+                [162, 130, 79],
+                [104, 78, 46],
+                [214, 204, 153],
+                [166, 119, 83],
+                [176, 91, 53],
+                [66, 43, 20],
+                [118, 56, 48],
+                [226, 174, 174],
+                [228, 218, 214],
+                [196, 176, 82],
+            ];
+            let color = colors[wood as usize];
+            let boxes = [
+                ([-8., 0., -14.], [8., 3., 14.]),
+                ([-10., 3., -14.], [-8., 9., 14.]),
+                ([8., 3., -14.], [10., 9., 14.]),
+                ([-8., 3., -14.], [8., 9., -12.]),
+                ([-8., 3., 12.], [8., 9., 14.]),
+            ];
+            for &(min, max) in &boxes[..if wood == 9 { 1 } else { 5 }] {
+                push_cuboid(out, &cube(min, max, color, 20), &xf, rot, light, ([0.; 3], 0.), cart.id as f32);
+            }
+            for side in [-1., 1.] {
+                let paddle_rot = Quat::from_rotation_z(side * (0.4 + cart.paddle.sin() * 0.35));
+                let pivot = Vec3::new(side * 9., 7., 0.);
+                let paddle_xf = |p: Vec3| xf(pivot + paddle_rot * p);
+                for (min, max) in [([0., -12., -1.], [1., 3., 1.]), ([-2., -15., -2.], [3., -10., 2.])] {
+                    push_cuboid(
+                        out,
+                        &cube(min, max, color, 16),
+                        &paddle_xf,
+                        rot * paddle_rot,
+                        light,
+                        ([0.; 3], 0.),
+                        cart.id as f32,
+                    );
+                }
+            }
+            if chest {
+                push_cuboid(
+                    out,
+                    &cube([-6., 3., -10.], [6., 15., 2.], [135, 88, 40], 16),
+                    &xf,
+                    rot,
+                    light,
+                    ([0.; 3], 0.),
+                    cart.id as f32,
+                );
+            }
+            continue;
+        }
         for (min, max) in [
             ([-7.0, 0.0, -9.0], [7.0, 2.0, 9.0]),
             ([-8.0, 2.0, -10.0], [-6.0, 9.0, 10.0]),
@@ -1222,7 +1280,7 @@ pub(super) fn build_minecarts(
                 [-6.0, 7.0, -6.0],
                 [6.0, 16.0, 6.0],
             )),
-            super::minecart::CartKind::Rideable => None,
+            super::minecart::CartKind::Rideable | super::minecart::CartKind::Boat { .. } => None,
         };
         if let Some((color, min, max)) = cargo {
             let box_ = cube(min, max, color, 16);

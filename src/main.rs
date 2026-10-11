@@ -35,6 +35,7 @@ pub struct Args {
     pub screenshot: Option<String>,
     /// Session-only perspective for screenshot inspection.
     pub camera: voxelcraft::camera::CameraMode,
+    pub ride: Option<String>,
     pub bench_render: bool,
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
@@ -141,7 +142,8 @@ voxelcraft [options]
   --wear item       put on a piece of armor at startup (repeatable)
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
-  --cart x,y,z,kind spawn rideable/chest/hopper/tnt cart on a rail (repeatable)
+  --cart x,y,z,kind spawn a cart on rails, or a named boat/raft (repeatable)
+  --ride name      ride a scripted boat or saddled/tamed animal (screenshots)
   --spawn kind,x,y,z[,material[,glint]]
                     spawn a mob once loaded (repeatable; any mob name, such as
                     zombie or magma_cube; y may be ~
@@ -178,6 +180,7 @@ fn parse_args() -> Result<Args, String> {
         bench: false,
         screenshot: None,
         camera: Default::default(),
+        ride: None,
         bench_render: false,
         debug_overlay: false,
         mode: None,
@@ -303,6 +306,7 @@ fn parse_args() -> Result<Args, String> {
                 .ok_or_else(bad)?;
                 args.place.push((glam::IVec3::new(n[0], n[1], n[2]), block));
             }
+            "--ride" => args.ride = Some(value("--ride")?.replace('_', " ")),
             "--cart" => {
                 let v = value("--cart")?;
                 let parts: Vec<_> = v.split(',').collect();
@@ -319,7 +323,9 @@ fn parse_args() -> Result<Args, String> {
                     "chest" => entity::minecart::CartKind::Chest,
                     "hopper" => entity::minecart::CartKind::Hopper,
                     "tnt" => entity::minecart::CartKind::Tnt,
-                    _ => return Err("--cart kind must be rideable, chest, hopper or tnt".into()),
+                    name => item::Item::from_name(name)
+                        .and_then(entity::minecart::CartKind::from_item)
+                        .ok_or("unknown vehicle kind")?,
                 };
                 args.carts.push((kind, glam::IVec3::new(n[0], n[1], n[2])));
             }
