@@ -20,3 +20,47 @@ breaks it into three matching planks and two sticks, spilling its contents.
 Reference rules: [boats](https://minecraft.wiki/w/Boat),
 [chest boats](https://minecraft.wiki/w/Boat_with_Chest),
 [horses](https://minecraft.wiki/w/Horse), [striders](https://minecraft.wiki/w/Strider).
+
+## Animal mounts
+
+Use a saddle on an adult pig or strider, then use it to sit. Hold a carrot
+on a stick for pigs or warped fungus on a stick for striders; use starts a
+smooth boost lasting 7–49 seconds. Boosts use seven durability on a carrot
+stick and one on a fungus stick. Striders retain their lava walking and
+shivering slowdown. Sneak dismounts onto a nearby clear position away from lava.
+
+Horses spawn in plains/savannas, donkeys also in meadows; mules can be
+summoned. Use an empty hand to mount an untamed adult. Failed taming
+attempts add five temper, making later attempts more likely to succeed.
+Hearts indicate success. Wheat, sugar and apples heal and raise temper;
+golden carrots and apples are stronger. Hay heals twenty health points.
+Feeding foals speeds their twenty-minute growth.
+
+A tamed horse needs a saddle for steering. Use horse armor to equip it;
+leather armor crafts from seven leather, while iron/gold/diamond armor and
+saddles come from structure loot. Saddles can also be fished up. Use a chest
+on a tamed donkey or mule to add fifteen storage slots. Sneak-use or open
+your inventory while riding to manage equipment/storage. The first slot is
+a saddle; only horses accept armor in the second slot. Donkey/mule storage
+starts in the third slot. Keyboard and controller menus enforce these rules;
+CLI `chest take/put <slot>` accesses targeted or ridden vehicle storage.
+
+Horse coats have seven colours and five marking patterns. Each has Java's
+random health (15–30), speed (0.1125–0.3375 attribute), and jump (0.4–1.0)
+distributions. Donkeys/mules use 0.175 speed and 0.5 jump. Hold jump to charge
+and release to jump; the blue charge bar replaces XP and mount hearts replace
+hunger while riding. Equines step over one-block obstacles and share their reduced fall damage
+with riders. Saddles, armor,
+stats, temper, owner, riders and storage survive saves; equipment and cargo
+spill when the animal dies.
+
+Breeding integration: `entity::mounts::breeding_food` exposes horse/donkey,
+pig and strider food. Mules return an empty list because they are sterile.
+The separate breeding feature should check adult/tame state before love mode.
+
+Current parity gaps: llamas/camels and undead horses are not implemented;
+horse coats/armor and sounds are procedural approximations; horse herd coats
+are independently selected. Water-current steering/bubble columns and exact
+Java land-status fall quirks for boats remain future work. Offhand controls
+await a player offhand system. Horse armor dyeing and Java's dedicated horse
+inventory layout are not yet implemented.

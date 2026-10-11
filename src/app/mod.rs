@@ -131,6 +131,7 @@ struct Game {
     actor: crate::entity::PlayerId,
     puppet_used: Option<glam::IVec3>,
     puppet_merchant: Option<u64>,
+    puppet_vehicle: Option<u32>,
     puppet_popup: Option<String>,
     console: console::Console,
     search: search::Search,
@@ -138,6 +139,7 @@ struct Game {
     world: World,
     player: Player,
     camera: voxelcraft::camera::CameraMode,
+    scripted_ride: Option<String>,
     storage: Storage,
     keys: FxHashSet<KeyCode>,
     /// Shift / Ctrl state (shift-click, Ctrl+Q, sneak-placing).
@@ -522,20 +524,7 @@ pub(super) struct SkyState {
 
 /// Lighting and sky colours for a time of day.
 fn seat_rider(entities: &crate::entity::Entities, player: &mut Player, id: crate::entity::PlayerId) {
-    let Some(cart_id) = player.vehicle else { return };
-    match entities.cart(cart_id) {
-        Some(cart) if cart.seat_for(id).is_some() => {
-            player.pos = cart.seat_for(id).unwrap();
-            player.vel = DVec3::ZERO;
-            player.on_ground = true;
-        }
-        Some(cart) => {
-            player.pos = cart.pos + DVec3::X;
-            player.vehicle = None;
-            player.vel = DVec3::ZERO;
-        }
-        None => player.vehicle = None,
-    }
+    entities.seat_player(player, id);
 }
 
 fn sky_state(t: f64) -> SkyState {
@@ -746,6 +735,7 @@ impl Game {
             actor: crate::entity::PlayerId::HOST,
             puppet_used: None,
             puppet_merchant: None,
+            puppet_vehicle: None,
             puppet_popup: None,
             pads: {
                 let mut pads = if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() };
@@ -787,6 +777,7 @@ impl Game {
             show_hud: true,
             hand: Default::default(),
             camera: args.camera,
+            scripted_ride: args.ride.clone(),
             last_space: now - Duration::from_secs(1),
             last_frame: now,
             clock: Default::default(),
@@ -1144,6 +1135,13 @@ impl Game {
         if !self.inventory_open && !self.mode.can_interact() {
             return;
         }
+        if !self.inventory_open
+            && self.container == Container::Inventory
+            && let Some(id) = self.player.vehicle
+            && self.mobs.entities.vehicle_slots(id).is_some_and(|slots| !slots.is_empty())
+        {
+            self.container = Container::Minecart(id);
+        }
         self.inventory_open = !self.inventory_open;
         if self.inventory_open {
             self.search.focused = self.mode == GameMode::Creative && self.container == Container::Inventory;
@@ -1324,10 +1322,10 @@ impl Game {
             Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right, self.mode.is_creative()),
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Minecart(id) = self.container {
-                    if let Some(cart) = self.mobs.entities.cart_mut(id)
-                        && i < cart.slot_count()
+                    if self.inventory.cursor.is_none_or(|s| self.mobs.entities.vehicle_accepts(id, i, s.item))
+                        && let Some(slot) = self.mobs.entities.vehicle_slots_mut(id).and_then(|slots| slots.get_mut(i))
                     {
-                        crate::inventory::click_slot(&mut cart.slots[i], &mut self.inventory.cursor, right);
+                        crate::inventory::click_slot(slot, &mut self.inventory.cursor, right);
                     }
                     return;
                 }
@@ -1598,6 +1596,27 @@ impl Game {
     }
 
     fn ride_minecarts(&mut self, input: crate::player::MoveInput) {
+        for m in &mut self.mobs.entities.mobs {
+            if let Some(s) = &mut m.mount
+                && let Some(id) = s.rider
+            {
+                let alive = if id == crate::entity::PlayerId::HOST {
+                    !self.vitals.is_dead()
+                } else {
+                    self.agents.players.values().any(|b| b.active && b.agent.id == id && !b.agent.vitals.is_dead())
+                };
+                if !alive {
+                    s.rider = None;
+                }
+            }
+        }
+        self.mobs.entities.mount_input(
+            crate::entity::PlayerId::HOST,
+            &self.player,
+            input,
+            &self.inventory,
+            self.actions.selected,
+        );
         let mut wish = Vec::new();
         if self.player.vehicle.is_none() && self.mode != GameMode::Spectator {
             self.mobs.entities.push_carts(self.player.pos, self.player.collision_shape().half_width);
@@ -1634,32 +1653,53 @@ impl Game {
         }
     }
 
+    fn open_vehicle(&mut self, id: u32) {
+        if self.puppet {
+            self.puppet_vehicle = Some(id);
+        } else if !self.inventory_open {
+            self.container = Container::Minecart(id);
+            self.toggle_inventory();
+        }
+    }
+
     fn place_block(&mut self) {
         if !self.mode.can_interact() {
             return;
         }
         if let Some(id) = self.player.vehicle {
-            if self.mobs.entities.cart(id).is_some_and(|c| c.kind.boat().is_some() && c.slot_count() > 0)
-                && !self.puppet
-                && !self.inventory_open
-            {
-                self.container = Container::Minecart(id);
-                self.toggle_inventory();
+            if self.mobs.entities.boost_mount(
+                self.actor,
+                &mut self.inventory,
+                self.actions.selected,
+                self.mode.is_creative(),
+            ) {
+                return;
+            }
+            if self.mobs.entities.vehicle_slots(id).is_some_and(|slots| !slots.is_empty()) {
+                self.open_vehicle(id);
             }
             return;
         }
         let eye = self.player.eye();
         let dir = self.player.forward().as_dvec3();
         let reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
-        if let Some((id, _)) = self.mobs.entities.cart_container(eye, dir, reach)
+        if let Some(id) = self.mobs.entities.vehicle_container(eye, dir, reach)
             && (self.sneak_building() || self.mobs.entities.cart(id).is_some_and(|c| c.kind.boat().is_none()))
         {
-            // Controller menus have no cart tab yet; the host's screen must not open for them.
-            if self.puppet {
-                self.show_popup("Minecart storage needs the keyboard player for now");
-            } else if !self.inventory_open {
-                self.container = Container::Minecart(id);
-                self.toggle_inventory();
+            self.open_vehicle(id);
+            return;
+        }
+        if self.mobs.entities.use_mount(
+            eye,
+            dir,
+            reach,
+            self.actor,
+            &mut self.inventory,
+            self.actions.selected,
+            self.mode.is_creative(),
+        ) {
+            if let Some(id) = self.mobs.entities.mount_for_player(self.actor) {
+                self.player.vehicle = Some(id);
             }
             return;
         }
@@ -1929,6 +1969,29 @@ impl Game {
             }
         }
         self.spawn_pending_mobs();
+        if let Some(name) = self.scripted_ride.take() {
+            self.mobs.entities.ensure_mob_ids();
+            let mut vehicle = None;
+            if let Some(mob) = self.mobs.entities.mobs.iter_mut().find(|m| m.kind.name() == name && m.mount.is_some()) {
+                let s = mob.mount.as_mut().unwrap();
+                s.tame = true;
+                s.slots[0] = Some(Stack::new(Item::SADDLE, 1));
+                s.rider = Some(crate::entity::PlayerId::HOST);
+                vehicle = Some(crate::entity::mounts::MOB_VEHICLE | mob.uid);
+            } else if let Some(cart) = self.mobs.entities.minecarts.iter_mut().find(|c| c.kind.item().name() == name) {
+                cart.rider = Some(crate::entity::PlayerId::HOST);
+                vehicle = Some(cart.id);
+            }
+            if let Some(id) = vehicle {
+                self.player.vehicle = Some(id);
+                seat_rider(&self.mobs.entities, &mut self.player, crate::entity::PlayerId::HOST);
+                if self.inventory_open {
+                    self.container = Container::Minecart(id);
+                }
+            } else {
+                log::warn!("--ride: no scripted vehicle named {name}");
+            }
+        }
         // Seated once the ground it stands on is in place.
         if let Some(screen) = self.virtual_pad.take() {
             self.virtual_pad(&screen);

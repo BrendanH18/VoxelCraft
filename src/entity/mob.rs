@@ -141,6 +141,9 @@ pub enum MobKind {
     Pillager,
     /// Beach turtle: swims, nests on sand; babies grow up and shed a scute.
     Turtle,
+    Horse,
+    Donkey,
+    Mule,
 }
 
 impl MobKind {
@@ -167,7 +170,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 44] = [
+    pub const ALL: [MobKind; 47] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -212,6 +215,9 @@ impl MobKind {
         MobKind::Cat,
         MobKind::Pillager,
         MobKind::Turtle,
+        MobKind::Horse,
+        MobKind::Donkey,
+        MobKind::Mule,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -261,6 +267,9 @@ impl MobKind {
             MobKind::Cat => "cat",
             MobKind::Pillager => "pillager",
             MobKind::Turtle => "turtle",
+            MobKind::Horse => "horse",
+            MobKind::Donkey => "donkey",
+            MobKind::Mule => "mule",
         }
     }
 
@@ -313,6 +322,9 @@ impl MobKind {
             MobKind::Cat => Shape::new(0.3, 0.7),
             MobKind::Pillager => Shape::new(0.3, 1.95),
             MobKind::Turtle => Shape::new(0.6, 0.4),
+            MobKind::Horse => Shape::new(0.698, 1.6),
+            MobKind::Donkey => Shape::new(0.698, 1.5),
+            MobKind::Mule => Shape::new(0.698, 1.6),
         }
     }
 
@@ -353,6 +365,7 @@ impl MobKind {
             MobKind::ElderGuardian => 80.0,
             MobKind::Pillager => 24.0,
             MobKind::Turtle => 30.0,
+            MobKind::Horse | MobKind::Donkey | MobKind::Mule => 30.0,
         }
     }
 
@@ -410,6 +423,7 @@ impl MobKind {
     pub fn spawns_in(self, dimension: Dimension) -> bool {
         match self {
             MobKind::Enderman => true,
+            MobKind::Mule => false,
             // Only from spawners and inside fortresses (`fortress_spawn`).
             MobKind::Blaze
             | MobKind::WitherSkeleton
@@ -456,6 +470,9 @@ impl MobKind {
     pub fn biome_chance(self, biome: crate::world::terrain::Biome) -> f32 {
         use crate::world::terrain::Biome;
         match (self, biome) {
+            (MobKind::Horse, Biome::Plains | Biome::Savanna | Biome::SavannaPlateau) => 0.5,
+            (MobKind::Donkey, Biome::Plains | Biome::Savanna | Biome::Meadow) => 0.25,
+            (MobKind::Horse | MobKind::Donkey | MobKind::Mule, _) => 0.,
             (MobKind::Husk, Biome::Desert) => 1.0,
             (MobKind::Husk, _) => 0.0,
             (MobKind::Zombie, Biome::Desert) => 0.2,
@@ -637,7 +654,7 @@ impl MobKind {
             | MobKind::WanderingTrader
             | MobKind::Piglin
             | MobKind::PiglinBrute => &[],
-            MobKind::TraderLlama => &[(Item::LEATHER, 0, 2)],
+            MobKind::TraderLlama | MobKind::Horse | MobKind::Donkey | MobKind::Mule => &[(Item::LEATHER, 0, 2)],
             MobKind::IronGolem => &[(Item::IRON_INGOT, 3, 5), (POPPY, 0, 2)],
             MobKind::SnowGolem => &[(Item::SNOWBALL, 0, 15)],
             MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
@@ -750,6 +767,7 @@ pub struct Mob {
     pub kind: MobKind,
     pub villager: Option<Box<super::villager::Villager>>,
     /// Piglin gear, gold, anger and zombification (see `entity::nether`).
+    pub mount: Option<Box<super::mounts::State>>,
     pub nether: Option<Box<super::nether::NetherMob>>,
     /// Identity other mobs aim at, assigned by `Entities` (0 until then).
     pub uid: u32,
@@ -872,14 +890,22 @@ pub struct Mob {
 impl Mob {
     /// Create a healthy, idle mob at `pos` with `yaw` in radians; snap its initial render position.
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
+        let mount = super::mounts::rideable(kind).then(|| {
+            Box::new(super::mounts::State::new(
+                kind,
+                &mut Rng::new(pos.x.to_bits() ^ pos.z.to_bits().rotate_left(17) ^ yaw.to_bits() as u64),
+            ))
+        });
+        let health = mount.as_ref().map_or(kind.max_health(), |s| s.max_health);
         Self {
+            mount,
             kind,
             villager: matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader)
                 .then(|| Box::new(super::villager::Villager::new(0, 0))),
             nether: super::nether::NetherMob::for_kind(kind),
             aquatic: kind.is_aquatic().then(|| Box::new(super::aquatic::State::new())),
             uid: 0,
-            persistent: false,
+            persistent: super::mounts::equine(kind),
             size: 1,
             baby: false,
             grow: 0.0,
@@ -902,7 +928,7 @@ impl Mob {
             yaw,
             head_yaw: 0.0,
             head_pitch: 0.0,
-            health: kind.max_health(),
+            health,
             hurt: 0.0,
             dying: None,
             on_ground: false,
@@ -1068,6 +1094,8 @@ impl Mob {
         } else {
             amount
         };
+        let armor = self.mount.as_ref().and_then(|s| s.slots[1]).map_or(0, |s| super::mounts::armor_points(s.item));
+        let amount = if armor > 0 { crate::simulation::survival::armor_reduce(amount, armor, 0.) } else { amount };
         self.health -= amount;
         if self.kind == MobKind::Axolotl && self.in_water && self.health > 0.0 && self.health < 7.0 && rng.chance(0.33)
         {
@@ -1166,15 +1194,26 @@ impl Mob {
         }
 
         super::aquatic::environment(self, dtf, world);
+        if super::mounts::equine(self.kind) && self.baby && self.age < 0 {
+            self.grow += dtf * 20.;
+            let ticks = self.grow.floor() as i32;
+            self.grow -= ticks as f32;
+            self.age = (self.age + ticks).min(0);
+            self.baby = self.age < 0;
+        }
         let (wish, speed) = if let Some(t) = &mut self.dying {
             *t += dtf;
             (None, 0.0)
         } else {
-            self.think(dtf, world, ctx, rng, events)
+            super::mounts::control(self, dt, rng).unwrap_or_else(|| self.think(dtf, world, ctx, rng, events))
         };
 
         // Don't walk off tall drops; wanderers pick another direction.
+        let controlled = self.mount.as_ref().is_some_and(|s| s.controlled());
         let wish = wish.filter(|&dir| {
+            if controlled {
+                return true;
+            }
             let safe = match self.lava_step(world, dir) {
                 Some(safe) => safe,
                 None => !self.on_ground || self.in_water || !is_cliff(world, self.pos, dir, self.shape()),
@@ -1187,7 +1226,7 @@ impl Mob {
         });
 
         // Turn the body toward the direction of travel.
-        if let Some(dir) = wish {
+        if let Some(dir) = wish.filter(|_| !controlled) {
             let target = (dir.z as f32).atan2(dir.x as f32);
             self.yaw = turn_toward(self.yaw, target, 8.0 * dtf);
         }
@@ -1199,7 +1238,16 @@ impl Mob {
             self.on_ground = true;
         } else {
             for _ in 0..steps {
-                self.physics_step(h, world, wish, speed * self.speed_factor());
+                let controlled = self.mount.as_ref().is_some_and(|s| s.controlled());
+                self.physics_step(h, world, wish, speed * if controlled { 1. } else { self.speed_factor() });
+            }
+        }
+        if let Some(s) = &mut self.mount {
+            let damage = std::mem::take(&mut s.rider_fall);
+            if damage > 0.
+                && let Some(player) = s.rider
+            {
+                events.push(EntityEvent::PlayerFall { player, damage });
             }
         }
         if self.health <= 0.0 && self.dying.is_none() {
@@ -1907,7 +1955,13 @@ impl Mob {
         Some((None, 0.0))
     }
 
-    fn physics_step<W: BlockSource + ?Sized>(&mut self, dt: f64, world: &W, wish: Option<DVec3>, speed: f64) {
+    pub(super) fn physics_step<W: BlockSource + ?Sized>(
+        &mut self,
+        dt: f64,
+        world: &W,
+        wish: Option<DVec3>,
+        speed: f64,
+    ) {
         if self.kind == MobKind::Strider && self.walk_on_lava(dt, world, wish, speed) {
             return;
         }
@@ -1976,7 +2030,12 @@ impl Mob {
                 self.vel.x += (target.x - self.vel.x) * k;
                 self.vel.z += (target.z - self.vel.z) * k;
             }
-            self.vel.y = (self.vel.y - GRAVITY * dt).max(-78.0);
+            self.vel.y = if super::mounts::equine(self.kind) {
+                // Java: gravity 0.08 blocks/tick and vertical drag 0.98.
+                ((self.vel.y - 32.0 * dt) * 0.98f64.powf(dt * 20.)).max(-78.)
+            } else {
+                (self.vel.y - GRAVITY * dt).max(-78.)
+            };
             if self.kind == MobKind::Chicken {
                 self.vel.y = self.vel.y.max(-2.5); // flaps its way down
             }
@@ -1996,6 +2055,8 @@ impl Mob {
             } else if let Some(dir) = wish
                 && self.on_ground
                 && self.blocked
+                && !super::mounts::equine(self.kind)
+                && !self.mount.as_ref().is_some_and(|s| s.controlled())
                 && self.can_step_up(world, dir)
             {
                 self.vel.y = JUMP_VELOCITY;
@@ -2008,11 +2069,38 @@ impl Mob {
         }
 
         let delta = self.vel * dt;
+        let from_y = self.pos.y;
+        let step_height = if super::mounts::equine(self.kind) || self.mount.as_ref().is_some_and(|s| s.controlled()) {
+            1.
+        } else {
+            crate::player::STEP_HEIGHT
+        };
         let hit = if self.on_ground {
-            physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, shape, crate::player::STEP_HEIGHT)
+            physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, shape, step_height)
         } else {
             physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape)
         };
+        if let Some(s) = &mut self.mount {
+            if self.in_water {
+                s.fall_distance = 0.;
+            } else {
+                s.fall_distance += (from_y - self.pos.y).max(0.);
+            }
+            if hit.on_ground {
+                let damage = if super::mounts::equine(self.kind) {
+                    ((s.fall_distance - 6.) * 0.5).ceil().max(0.) as f32
+                } else if self.kind == MobKind::Strider {
+                    0.
+                } else {
+                    (s.fall_distance - 3.).ceil().max(0.) as f32
+                };
+                self.health -= damage;
+                if super::mounts::equine(self.kind) && s.rider.is_some() {
+                    s.rider_fall += damage;
+                }
+                s.fall_distance = 0.;
+            }
+        }
         self.on_ground = hit.on_ground;
         self.blocked = hit.horizontal;
     }

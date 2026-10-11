@@ -227,7 +227,7 @@ pub fn roll_catch(rng: &mut Rng, luck: i32, open_water: bool) -> Stack {
     if roll < junk || treasure == 0 {
         return junk_stack(rng);
     }
-    let item = pick(rng, &[(Item::ENCHANTED_BOOK, 1), (Item::BOW, 1), (Item::FISHING_ROD, 1)]);
+    let item = pick(rng, &[(Item::ENCHANTED_BOOK, 1), (Item::BOW, 1), (Item::FISHING_ROD, 1), (Item::SADDLE, 1)]);
     Stack { enchants: treasure_enchants(rng, item), ..Stack::new(item, 1) }
 }
 

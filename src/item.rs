@@ -453,7 +453,7 @@ const MOUNT_ITEM: u16 = 960;
 const fn single(name: &'static str, sprite: Sprite) -> ItemInfo {
     ItemInfo { name, kind: ItemKind::Material, max_stack: 1, sprite }
 }
-static MOUNT_ITEMS: [ItemInfo; 27] = [
+static MOUNT_ITEMS: [ItemInfo; 28] = [
     single("oak boat", Sprite::Boat([162, 130, 79], false)),
     single("spruce boat", Sprite::Boat([104, 78, 46], false)),
     single("birch boat", Sprite::Boat([214, 204, 153], false)),
@@ -481,6 +481,7 @@ static MOUNT_ITEMS: [ItemInfo; 27] = [
     single("iron horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Iron)),
     single("golden horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Gold)),
     single("diamond horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Diamond)),
+    food("golden carrot", 6, 14.4, Sprite::Lump([235, 192, 52])),
 ];
 const _: () = assert!(MOUNT_ITEM as usize + MOUNT_ITEMS.len() <= 1000);
 /// Splash potions: `SPLASH_POTION + potion index`.
@@ -645,6 +646,7 @@ impl Item {
     pub const IRON_HORSE_ARMOR: Item = Item(984);
     pub const GOLDEN_HORSE_ARMOR: Item = Item(985);
     pub const DIAMOND_HORSE_ARMOR: Item = Item(986);
+    pub const GOLDEN_CARROT: Item = Item(987);
     /// Wood index follows Wood::ALL; index 9 is bamboo.
     pub const fn boat(wood: u8, chest: bool) -> Item {
         Item(960 + wood as u16 + if chest { 10 } else { 0 })

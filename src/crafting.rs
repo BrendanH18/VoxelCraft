@@ -1381,6 +1381,12 @@ mod nether_biome_tests {
 
 /// Java 1.21: five matching planks, no shovel; chest variants are shapeless.
 fn add_mount_recipes(r: &mut Vec<Recipe>) {
+    r.push(shaped(
+        &["GGG", "GCG", "GGG"],
+        &[('G', ingredient(Item::GOLD_NUGGET)), ('C', ingredient(Item::CARROT))],
+        Item::GOLDEN_CARROT,
+        1,
+    ));
     use crate::world::block::Wood;
     for i in 0..10u8 {
         let plank = if i == 9 { crate::world::overworld_blocks::BAMBOO_PLANKS } else { Wood::ALL[i as usize].planks() };

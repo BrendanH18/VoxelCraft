@@ -61,6 +61,9 @@ pub fn fits_at<W: BlockSource + ?Sized>(world: &W, pos: DVec3, pose: PlayerPose)
 
 /// Java `Player.updatePlayerPose` when the swimming box fits at the feet.
 pub fn resolve_pose<W: BlockSource + ?Sized>(player: &Player, world: &W, shift: bool) -> PlayerPose {
+    if player.vehicle.is_some() {
+        return PlayerPose::Standing;
+    }
     if !fits_at(world, player.pos, PlayerPose::Swimming) {
         return player.pose;
     }

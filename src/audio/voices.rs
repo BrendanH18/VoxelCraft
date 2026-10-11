@@ -35,6 +35,7 @@ pub enum Voice {
     Guardian,
     Cat,
     Pillager,
+    Horse,
 }
 
 /// What kind of sound a voice makes.
@@ -47,7 +48,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 24] = [
+    pub const ALL: [Voice; 25] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -72,11 +73,13 @@ impl Voice {
         Voice::Guardian,
         Voice::Cat,
         Voice::Pillager,
+        Voice::Horse,
     ];
 
     pub fn name(self) -> &'static str {
         match self {
             Voice::Pig => "pig",
+            Voice::Horse => "horse",
             Voice::Cow => "cow",
             Voice::Sheep => "sheep",
             Voice::Chicken => "chicken",
@@ -181,6 +184,7 @@ const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
 pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
     match voice {
         Voice::Pig => pig(call, rng),
+        Voice::Horse => horse(call, rng),
         Voice::Cow => cow(call, rng),
         Voice::Sheep => sheep(call, rng),
         Voice::Chicken => chicken(call, rng),
@@ -763,4 +767,28 @@ fn aquatic(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         *v = tone * env;
     }
     out
+}
+
+/// A rising whinny with a short vibrating tail, synthesized without assets.
+fn horse(call: Call, rng: &mut Rng) -> Vec<f32> {
+    let secs = match call {
+        Call::Ambient => 1.1,
+        Call::Hurt => 0.55,
+        Call::Death => 1.25,
+    };
+    utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| {
+                let base = if t < 0.3 { lerp(160., 430., t / 0.3) } else { lerp(430., 160., (t - 0.3) / (secs - 0.3)) };
+                base * (1. + 0.12 * (t * 65.).sin())
+            },
+            env: &|t| swell(t, 0.04, 0.25, secs) * 0.6,
+            formants: [(650., 4., 0.7), (1500., 5., 0.5), (2800., 5., 0.2)],
+            shift: FLAT,
+            jitter: 0.03,
+            breath: 0.12,
+        },
+    )
 }

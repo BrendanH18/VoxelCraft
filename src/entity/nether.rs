@@ -485,15 +485,8 @@ impl Entities {
     /// fight or flee and which dropped items they want. Runs before the
     /// mobs move each update.
     pub(super) fn nether_sense<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx) {
-        let mut any = false;
-        for m in &mut self.mobs {
-            if m.uid == 0 {
-                self.next_uid = self.next_uid.max(1);
-                m.uid = self.next_uid;
-                self.next_uid = self.next_uid.wrapping_add(1).max(1);
-            }
-            any |= m.nether.is_some();
-        }
+        self.ensure_mob_ids();
+        let any = self.mobs.iter().any(|m| m.nether.is_some());
         self.nether_view.clear();
         if !any {
             return;
@@ -917,7 +910,14 @@ impl Entities {
             }));
         }
         let Some(mobs) = root["mobs"].as_array() else { return };
-        self.mobs.extend(mobs.iter().filter_map(load_mob));
+        for mut mob in mobs.iter().filter_map(load_mob) {
+            if mob.uid == 0 || self.mobs.iter().any(|m| m.uid == mob.uid) {
+                self.next_uid = self.next_uid.max(1);
+                mob.uid = self.next_uid;
+            }
+            self.next_uid = self.next_uid.max(mob.uid.saturating_add(1));
+            self.mobs.push(mob);
+        }
     }
 }
 
@@ -1341,6 +1341,9 @@ fn save_mob(m: &Mob) -> Value {
     let n = m.nether.as_deref();
     let armor: Vec<bool> = m.armor.iter().map(|a| a.is_some()).collect();
     json!({
+        "uid": m.uid,
+        "riding": m.riding,
+        "mount": m.mount.as_ref().map(|s|s.save()),
         "variant": m.aquatic.as_ref().map(|a| a.variant),
         "color": m.wool_color as u8,
         "kind": m.kind.name(),
@@ -1349,6 +1352,7 @@ fn save_mob(m: &Mob) -> Value {
         "health": m.health,
         "baby": m.baby,
         "grow": m.grow,
+        "age": m.age,
         "armor": armor,
         "weapon": n.map_or("none", |n| n.weapon.name()),
         "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
@@ -1372,14 +1376,21 @@ fn load_mob(v: &Value) -> Option<Mob> {
     }
     let mut m = Mob::new(kind, pos, v["yaw"].as_f64().unwrap_or(0.0) as f32);
     m.persistent = true;
+    m.uid =
+        v["uid"].as_u64().and_then(|u| u32::try_from(u).ok()).filter(|u| *u < super::mounts::MOB_VEHICLE).unwrap_or(0);
+    m.riding = v["riding"].as_u64().and_then(|u| u32::try_from(u).ok());
+    if v["mount"].is_object() && super::mounts::rideable(kind) {
+        m.mount = Some(Box::new(super::mounts::State::load(kind, &v["mount"])?));
+    }
     if let Some(a) = &mut m.aquatic {
         a.variant = v["variant"].as_u64().unwrap_or(0).min(255) as u8;
     }
     m.baby = v["baby"].as_bool().unwrap_or(false);
+    m.age = v["age"].as_i64().and_then(|a| i32::try_from(a).ok()).unwrap_or(if m.baby { -24000 } else { 0 });
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
     m.wool_color = crate::color::DyeColor::ALL.get(v["color"].as_u64().unwrap_or(0).min(15) as usize).copied().unwrap();
     if let Some(h) = v["health"].as_f64().filter(|h| *h > 0.0) {
-        m.health = (h as f32).min(kind.max_health());
+        m.health = (h as f32).min(m.mount.as_ref().map_or(kind.max_health(), |s| s.max_health));
     }
     if let Some(armor) = v["armor"].as_array() {
         for (slot, worn) in m.armor.iter_mut().zip(armor) {

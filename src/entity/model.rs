@@ -534,6 +534,7 @@ impl std::ops::Deref for Parts {
 macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.push($p);)*out}}}
 
 mod aquatic;
+mod mounts;
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -541,6 +542,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
+        MobKind::Horse | MobKind::Donkey | MobKind::Mule => mounts::pose(m),
         MobKind::Cod
         | MobKind::Salmon
         | MobKind::TropicalFish
@@ -899,7 +901,10 @@ pub fn build(
             (FIRE, 0.0)
         };
         aquatic::beam(m, camera, out);
-        let posed = pose(m, time);
+        let mut posed = pose(m, time);
+        if matches!(m.kind, MobKind::Pig | MobKind::Strider) {
+            mounts::equipment(m, &mut posed);
+        }
         for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
@@ -1213,16 +1218,14 @@ pub(super) fn build_minecarts(
                 [196, 176, 82],
             ];
             let color = colors[wood as usize];
-            let mut boxes = vec![([-8., 0., -14.], [8., 3., 14.])];
-            if wood != 9 {
-                boxes.extend([
-                    ([-10., 3., -14.], [-8., 9., 14.]),
-                    ([8., 3., -14.], [10., 9., 14.]),
-                    ([-8., 3., -14.], [8., 9., -12.]),
-                    ([-8., 3., 12.], [8., 9., 14.]),
-                ]);
-            }
-            for (min, max) in boxes {
+            let boxes = [
+                ([-8., 0., -14.], [8., 3., 14.]),
+                ([-10., 3., -14.], [-8., 9., 14.]),
+                ([8., 3., -14.], [10., 9., 14.]),
+                ([-8., 3., -14.], [8., 9., -12.]),
+                ([-8., 3., 12.], [8., 9., 14.]),
+            ];
+            for &(min, max) in &boxes[..if wood == 9 { 1 } else { 5 }] {
                 push_cuboid(out, &cube(min, max, color, 20), &xf, rot, light, ([0.; 3], 0.), cart.id as f32);
             }
             for side in [-1., 1.] {

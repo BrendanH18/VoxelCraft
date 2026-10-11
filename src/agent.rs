@@ -1004,9 +1004,18 @@ impl Agent {
                     return Err("this game mode cannot interact".into());
                 }
                 if self.player.vehicle.is_some() {
+                    if entities.boost_mount(self.id, &mut self.inventory, self.selected, self.creative) {
+                        return Ok(());
+                    }
                     return Err("cannot place while riding".into());
                 }
                 let reach = crate::entity::minecart::interaction_reach(world, eye, dir, 5.0);
+                if entities.use_mount(eye, dir, reach, self.id, &mut self.inventory, self.selected, self.creative) {
+                    if let Some(id) = entities.mount_for_player(self.id) {
+                        self.player.vehicle = Some(id);
+                    }
+                    return Ok(());
+                }
                 if let Some(id) = entities.mount_cart(eye, dir, reach, self.id) {
                     self.player.vehicle = Some(id);
                     self.cooldown = 0.22;
@@ -1167,6 +1176,50 @@ impl Agent {
             }
             Command::Craft(item) => self.craft(item, world)?,
             Command::Chest(take, slot) => {
+                let eye = self.player.eye();
+                let dir = self.player.forward().as_dvec3();
+                let reach = crate::entity::minecart::interaction_reach(world, eye, dir, 5.);
+                let vehicle = self
+                    .player
+                    .vehicle
+                    .filter(|id| entities.vehicle_slots(*id).is_some_and(|s| !s.is_empty()))
+                    .or_else(|| entities.vehicle_container(eye, dir, reach));
+                if let Some(id) = vehicle {
+                    if !entities.vehicle_in_reach(id, eye) {
+                        return Err("vehicle out of reach".into());
+                    }
+                    if take {
+                        let stack = entities
+                            .vehicle_slots(id)
+                            .and_then(|slots| slots.get(slot).copied().flatten())
+                            .ok_or("vehicle slot empty or out of range")?;
+                        let left = self.inventory.add_stack(stack);
+                        entities.vehicle_slots_mut(id).unwrap()[slot] =
+                            (left > 0).then_some(Stack { count: left, ..stack });
+                        if left == stack.count {
+                            return Err("inventory full".into());
+                        }
+                    } else {
+                        let stack = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+                        if !entities.vehicle_accepts(id, slot, stack.item) {
+                            return Err("item does not fit this mount slot".into());
+                        }
+                        let dest = &mut entities.vehicle_slots_mut(id).unwrap()[slot];
+                        let room = match dest {
+                            None => stack.max(),
+                            Some(s) if s.stacks_with(&stack) => s.max() - s.count,
+                            _ => 0,
+                        };
+                        let n = room.min(stack.count);
+                        if n == 0 {
+                            return Err("vehicle slot full or incompatible".into());
+                        }
+                        *dest = Some(Stack { count: dest.map_or(0, |s| s.count) + n, ..stack });
+                        self.inventory.slots[self.selected] =
+                            (stack.count > n).then_some(Stack { count: stack.count - n, ..stack });
+                    }
+                    return Ok(());
+                }
                 let (pos, _) = self.target(world).ok_or("no chest within reach")?;
                 if slot >= world.container_slots(pos) {
                     return Err("container slot out of range".into());
@@ -1395,6 +1448,8 @@ impl Agent {
         }
         self.cooldown = (self.cooldown - TICK_SECONDS).max(0.0);
         if self.vitals.is_dead() {
+            entities.dismount(world, self.id);
+            self.player.vehicle = None;
             self.remaining = 0;
             self.sleeping = None;
             return;
@@ -1419,8 +1474,8 @@ impl Agent {
             self.player.update(TICK_SECONDS, input, world);
             crate::particles::water_entry(&self.player, before, world);
         } else {
-            self.player.vel = DVec3::ZERO;
-            self.player.on_ground = true;
+            entities.mount_input(self.id, &self.player, input, &self.inventory, self.selected);
+            entities.seat_player(&mut self.player, self.id);
         }
         let moved = (self.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
@@ -1699,6 +1754,14 @@ impl Agent {
         let inv = &self.inventory;
         let reduced = simulation::survival::armor_reduce(amount, inv.armor_points(), inv.armor_toughness());
         self.hurt_after_armor(reduced, amount, cause, knockback, entities)
+    }
+
+    /// Mounted falls bypass armor points, retaining protection and death/drop rules.
+    pub fn hurt_fall(&mut self, amount: f32, entities: &mut Entities) {
+        self.damage(amount, simulation::survival::CAUSE_FALL);
+        if self.vitals.is_dead() {
+            self.drop_everything(entities);
+        }
     }
 
     pub fn hurt_beam(&mut self, physical: f32, magic: f32, entities: &mut Entities) -> f32 {
