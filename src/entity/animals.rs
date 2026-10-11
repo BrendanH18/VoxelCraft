@@ -109,6 +109,8 @@ impl MobKind {
             Self::Turtle => food == Item::from_block(crate::world::overworld_blocks::SEAGRASS),
             Self::Axolotl => food == Item::TROPICAL_FISH_BUCKET,
             Self::Horse | Self::Donkey => matches!(food, Item::GOLDEN_CARROT | Item::GOLDEN_APPLE),
+            Self::Llama => food == Item::from_block(crate::world::block::Block::HAY_BALE),
+            Self::Camel => food == Item::from_block(crate::world::block::Block::CACTUS),
             _ => false,
         }
     }
@@ -133,6 +135,8 @@ impl MobKind {
                 | Self::Axolotl
                 | Self::Horse
                 | Self::Donkey
+                | Self::Llama
+                | Self::Camel
         )
     }
     /// Mates must match, except that a horse and a donkey make a mule.
@@ -296,7 +300,7 @@ impl Entities {
             }
             a.love = LOVE_SECONDS;
             a.love_by = Some(player);
-            if let (Some(s), Some((heal, _, _))) = (m.mount.as_ref(), super::mounts::food(food)) {
+            if let (Some(s), Some((heal, _, _))) = (m.mount.as_ref(), super::mounts::food(m.kind, food)) {
                 m.health = (m.health + heal).min(s.max_health);
             }
         }

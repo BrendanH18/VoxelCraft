@@ -149,6 +149,10 @@ pub enum MobKind {
     Horse,
     Donkey,
     Mule,
+    /// Mountain and savanna pack animal: carries chests and carpets, spits, can't be steered.
+    Llama,
+    /// Desert-village mount: two seats, dashes, sits down now and then.
+    Camel,
 }
 
 impl MobKind {
@@ -175,7 +179,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 52] = [
+    pub const ALL: [MobKind; 54] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -228,6 +232,8 @@ impl MobKind {
         MobKind::Horse,
         MobKind::Donkey,
         MobKind::Mule,
+        MobKind::Llama,
+        MobKind::Camel,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -285,6 +291,8 @@ impl MobKind {
             MobKind::Horse => "horse",
             MobKind::Donkey => "donkey",
             MobKind::Mule => "mule",
+            MobKind::Llama => "llama",
+            MobKind::Camel => "camel",
         }
     }
 
@@ -345,6 +353,8 @@ impl MobKind {
             MobKind::Horse => Shape::new(0.698, 1.6),
             MobKind::Donkey => Shape::new(0.698, 1.5),
             MobKind::Mule => Shape::new(0.698, 1.6),
+            MobKind::Llama => Shape::new(0.45, 1.87),
+            MobKind::Camel => Shape::new(0.85, 2.375),
         }
     }
 
@@ -389,7 +399,8 @@ impl MobKind {
             MobKind::Fox | MobKind::Goat => 10.0,
             MobKind::Parrot => 6.0,
             MobKind::Rabbit => 3.0,
-            MobKind::Horse | MobKind::Donkey | MobKind::Mule => 30.0,
+            MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => 30.0,
+            MobKind::Camel => 32.0,
         }
     }
 
@@ -496,7 +507,10 @@ impl MobKind {
         match (self, biome) {
             (MobKind::Horse, Biome::Plains | Biome::Savanna | Biome::SavannaPlateau) => 0.5,
             (MobKind::Donkey, Biome::Plains | Biome::Savanna | Biome::Meadow) => 0.25,
-            (MobKind::Horse | MobKind::Donkey | MobKind::Mule, _) => 0.,
+            // Java: llamas in windswept hills and savanna plateaus; camels only come with desert villages.
+            (MobKind::Llama, Biome::WindsweptHills | Biome::WindsweptGravellyHills | Biome::WindsweptForest) => 0.5,
+            (MobKind::Llama, Biome::SavannaPlateau | Biome::WindsweptSavanna) => 0.5,
+            (MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama | MobKind::Camel, _) => 0.,
             (MobKind::Husk, Biome::Desert) => 1.0,
             (MobKind::Husk, _) => 0.0,
             (MobKind::Zombie, Biome::Desert) => 0.2,
@@ -713,8 +727,11 @@ impl MobKind {
             | MobKind::Villager
             | MobKind::WanderingTrader
             | MobKind::Piglin
-            | MobKind::PiglinBrute => &[],
-            MobKind::TraderLlama | MobKind::Horse | MobKind::Donkey | MobKind::Mule => &[(Item::LEATHER, 0, 2)],
+            | MobKind::PiglinBrute
+            | MobKind::Camel => &[],
+            MobKind::TraderLlama | MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama => {
+                &[(Item::LEATHER, 0, 2)]
+            }
             MobKind::IronGolem => &[(Item::IRON_INGOT, 3, 5), (POPPY, 0, 2)],
             MobKind::SnowGolem => &[(Item::SNOWBALL, 0, 15)],
             MobKind::Slime => &[(Item::SLIME_BALL, 0, 2)],
@@ -1246,7 +1263,7 @@ impl Mob {
         }
         self.hurt = (self.hurt - dtf).max(0.0);
         self.provoked = (self.provoked - dtf).max(0.0);
-        if self.kind == MobKind::Wolf && self.provoked == 0.0 {
+        if matches!(self.kind, MobKind::Wolf | MobKind::Llama) && self.provoked == 0.0 {
             self.angry_player = None;
         }
         self.attack_cooldown -= dtf;
@@ -2158,7 +2175,9 @@ impl Mob {
 
         let delta = self.vel * dt;
         let from_y = self.pos.y;
-        let step_height = if super::mounts::equine(self.kind) || self.mount.as_ref().is_some_and(|s| s.controlled()) {
+        let step_height = if self.kind == MobKind::Camel {
+            1.5
+        } else if super::mounts::equine(self.kind) || self.mount.as_ref().is_some_and(|s| s.controlled()) {
             1.
         } else {
             crate::player::STEP_HEIGHT

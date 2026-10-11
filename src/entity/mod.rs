@@ -792,6 +792,7 @@ impl Entities {
         self.grow_loaded_turtles(dt as f32, world, ctx);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
+        self.llama_spit(ctx, &mut events);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -1885,6 +1886,9 @@ impl Entities {
                 self.mobs[index].angry_player = Some(owner);
             }
             if kind == MobKind::IronGolem && !self.mobs[index].built {
+                self.mobs[index].angry_player = Some(owner);
+            }
+            if kind == MobKind::Llama {
                 self.mobs[index].angry_player = Some(owner);
             }
         }

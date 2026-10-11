@@ -576,7 +576,7 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Ghast => Voice::Ghast,
         MobKind::Witch => Voice::Witch,
         MobKind::Villager | MobKind::WanderingTrader => Voice::Villager,
-        MobKind::TraderLlama => Voice::Cow,
+        MobKind::TraderLlama | MobKind::Llama | MobKind::Camel => Voice::Cow,
         MobKind::Horse | MobKind::Donkey | MobKind::Mule => Voice::Horse,
         MobKind::IronGolem => Voice::Cow,
         MobKind::SnowGolem => Voice::Slime,

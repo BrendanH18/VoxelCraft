@@ -545,6 +545,8 @@ fn pose(m: &Mob, time: f32) -> Parts {
     let rx = Quat::from_rotation_x;
     match m.kind {
         MobKind::Horse | MobKind::Donkey | MobKind::Mule => mounts::pose(m),
+        MobKind::Llama => mounts::llama(m),
+        MobKind::Camel => mounts::camel(m),
         MobKind::Cod
         | MobKind::Salmon
         | MobKind::TropicalFish
@@ -920,6 +922,7 @@ pub fn build(
             for (ci, c) in p.boxes.iter().enumerate() {
                 let mut cuboid = *c;
                 animals::colour(m, &mut cuboid);
+                mounts::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }

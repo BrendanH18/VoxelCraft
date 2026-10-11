@@ -57,6 +57,7 @@ impl Mob {
                 "chest": s.chest,
                 "saddle": s.saddled(),
                 "armor": s.slots[1].map_or(0, |a| a.item.0),
+                "sitting": s.sit_ticks > 0,
             });
         }
         if let Some(a) = &self.aquatic {
@@ -120,12 +121,13 @@ impl Mob {
             s.variant = small(&w["variant"]).unwrap_or(0).min(6);
             s.marking = small(&w["marking"]).unwrap_or(0).min(4);
             s.chest = w["chest"] == true;
+            s.sit_ticks = u32::from(w["sitting"] == true);
             s.slots[0] = (w["saddle"] == true).then(|| crate::inventory::Stack::new(Item::SADDLE, 1));
             s.slots[1] = w["armor"]
                 .as_u64()
                 .and_then(|i| u16::try_from(i).ok())
                 .map(Item)
-                .filter(|i| super::mounts::armor_points(*i) > 0)
+                .filter(|i| super::mounts::armor_points(*i) > 0 || super::mounts::is_carpet(*i))
                 .map(|i| crate::inventory::Stack::new(i, 1));
         }
         if let (Some(a), w) = (self.aquatic.as_mut(), &v["aquatic"])

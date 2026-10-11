@@ -495,6 +495,12 @@ impl Entities {
                 if hash(world.seed() ^ home.x as u64 ^ ((home.z as u64) << 32)).is_multiple_of(5) {
                     m.age = -24000;
                 }
+                // Java's desert village houses sometimes keep a camel; here one home in four.
+                if world.biome(home.x, home.z) == crate::world::terrain::Biome::Desert
+                    && hash(world.seed() ^ 0xCA3E1 ^ home.x as u64 ^ ((home.z as u64) << 32)).is_multiple_of(4)
+                {
+                    self.spawn(MobKind::Camel, spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+                }
             }
         });
         self.mob_index.rebuild(&self.mobs);

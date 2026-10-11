@@ -10,22 +10,31 @@ use serde_json::{Value, json};
 /// Mob vehicle ids occupy the upper half; carts keep their existing ids.
 pub const MOB_VEHICLE: u32 = 1 << 31;
 
+/// Java's `AbstractHorse` family: temper taming, mount health and inventory, horse fall damage.
 pub fn equine(kind: MobKind) -> bool {
-    matches!(kind, MobKind::Horse | MobKind::Donkey | MobKind::Mule)
+    matches!(kind, MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama | MobKind::Camel)
 }
 pub fn rideable(kind: MobKind) -> bool {
     equine(kind) || matches!(kind, MobKind::Pig | MobKind::Strider)
 }
-/// The breeding agent should use this hook after checking tame/adult state.
-/// Mules are sterile. Feeding below intentionally does not implement love mode.
-pub fn breeding_food(kind: MobKind) -> &'static [Item] {
-    match kind {
-        MobKind::Horse | MobKind::Donkey => &[Item::GOLDEN_CARROT, Item::GOLDEN_APPLE],
-        MobKind::Pig => &[Item::CARROT, Item::POTATO, Item::BEETROOT],
-        MobKind::Strider => const { &[Item::from_block(crate::world::nether_biome_blocks::WARPED_FUNGUS)] },
-        _ => &[],
-    }
+/// Mounts with a charged jump (a camel's charge is its dash).
+pub fn jumps(kind: MobKind) -> bool {
+    matches!(kind, MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Camel)
 }
+/// Donkeys, mules and llamas can carry a chest.
+pub fn chested(kind: MobKind) -> bool {
+    matches!(kind, MobKind::Donkey | MobKind::Mule | MobKind::Llama)
+}
+/// Java's `getMaxTemper`: llamas tame within 30 temper, other horses within 100.
+pub fn max_temper(kind: MobKind) -> u8 {
+    if kind == MobKind::Llama { 30 } else { 100 }
+}
+/// Carpets are llama decor.
+pub fn is_carpet(item: Item) -> bool {
+    item.block().is_some_and(|b| b.carpet_color().is_some())
+}
+/// Ticks between camel dashes (Java's 55).
+pub const DASH_COOLDOWN: u16 = 55;
 
 /// Java's `AbstractHorse.createOffspringAttribute`: the parents' mean, spread by a
 /// triangular random draw, reflected back inside the attribute's natural range.
@@ -49,7 +58,18 @@ pub(super) fn inherit(child: &mut Mob, a: &Mob, b: &Mob, rng: &mut Rng) {
     if !equine(child.kind) {
         return;
     }
+    if child.kind == MobKind::Camel {
+        return;
+    }
     c.max_health = offspring_attribute(x.max_health as f64, y.max_health as f64, 15., 30., rng) as f32;
+    if child.kind == MobKind::Llama {
+        // Java: a random strength up to the stronger parent's, rarely one more; a parent's coat.
+        let top = x.strength.max(y.strength) as u32 + u32::from(rng.chance(0.03));
+        c.strength = (1 + rng.next_int(top.max(1))).min(5) as u8;
+        c.variant = if rng.chance(0.5) { x.variant } else { y.variant };
+        child.health = c.max_health;
+        return;
+    }
     c.speed = offspring_attribute(x.speed, y.speed, 0.1125, 0.3375, rng);
     c.jump = offspring_attribute(x.jump, y.jump, 0.4, 1., rng);
     if child.kind == MobKind::Horse {
@@ -77,7 +97,16 @@ pub struct State {
     pub variant: u8,
     pub marking: u8,
     pub chest: bool,
-    /// Saddle, horse armor, then fifteen donkey/mule storage slots.
+    /// Llama strength 1..=5: three chest slots per point.
+    pub strength: u8,
+    /// A camel's second (rear) seat.
+    pub passenger: Option<PlayerId>,
+    /// Ticks until a camel can dash again.
+    pub dash_cooldown: u16,
+    /// Camel sitting: ticks left sitting down, and ticks left standing up after a rider mounts.
+    pub sit_ticks: u32,
+    pub stand_ticks: u16,
+    /// Saddle (llamas: unused), horse armor or llama carpet, then fifteen storage slots.
     pub slots: [Option<Stack>; 17],
     pub jump_charge: f32,
     jump_ticks: u32,
@@ -88,6 +117,7 @@ pub struct State {
     wish: DVec3,
     yaw: f32,
     steering: bool,
+    sprinting: bool,
     pub fall_distance: f64,
     pub(super) rider_fall: f32,
     regen_ticks: f32,
@@ -96,11 +126,22 @@ pub struct State {
 impl State {
     pub fn new(kind: MobKind, rng: &mut Rng) -> Self {
         let horse = kind == MobKind::Horse;
-        let max_health = if equine(kind) { (15 + rng.next_int(8) + rng.next_int(9)) as f32 } else { kind.max_health() };
+        let camel = kind == MobKind::Camel;
+        let max_health =
+            if equine(kind) && !camel { (15 + rng.next_int(8) + rng.next_int(9)) as f32 } else { kind.max_health() };
         let speed = if horse {
             (0.45 + rng.next_f32() as f64 * 0.3 + rng.next_f32() as f64 * 0.3 + rng.next_f32() as f64 * 0.3) * 0.25
+        } else if camel {
+            0.09
         } else {
             0.175
+        };
+        // Java: strength 1..=3, or 1..=5 one time in 25.
+        let strength = if kind == MobKind::Llama {
+            let top = if rng.chance(0.04) { 5 } else { 3 };
+            1 + rng.next_int(top) as u8
+        } else {
+            3
         };
         let jump = if horse {
             0.4 + rng.next_f32() as f64 * 0.2 + rng.next_f32() as f64 * 0.2 + rng.next_f32() as f64 * 0.2
@@ -108,16 +149,26 @@ impl State {
             0.5
         };
         Self {
-            tame: !equine(kind),
+            // Camels need no taming, only a saddle.
+            tame: !equine(kind) || camel,
             temper: 0,
             owner: None,
             rider: None,
             max_health,
             speed,
             jump,
-            variant: if horse { rng.next_int(7) as u8 } else { 0 },
+            variant: match kind {
+                MobKind::Horse => rng.next_int(7) as u8,
+                MobKind::Llama => rng.next_int(4) as u8,
+                _ => 0,
+            },
             marking: if horse { rng.next_int(5) as u8 } else { 0 },
             chest: false,
+            strength,
+            passenger: None,
+            dash_cooldown: 0,
+            sit_ticks: 0,
+            stand_ticks: 0,
             slots: [None; 17],
             jump_charge: 0.,
             jump_ticks: 0,
@@ -128,6 +179,7 @@ impl State {
             wish: DVec3::ZERO,
             yaw: 0.,
             steering: false,
+            sprinting: false,
             fall_distance: 0.,
             rider_fall: 0.,
             regen_ticks: 0.,
@@ -140,12 +192,11 @@ impl State {
         self.slots[0].is_some_and(|s| s.item == Item::SADDLE)
     }
     pub fn slot_count(&self, kind: MobKind) -> usize {
-        if self.chest {
-            17
-        } else if kind == MobKind::Horse {
-            2
-        } else {
-            1
+        match kind {
+            MobKind::Llama if self.chest => 2 + 3 * self.strength as usize,
+            _ if self.chest => 17,
+            MobKind::Horse | MobKind::Llama => 2,
+            _ => 1,
         }
     }
     pub fn accepts(&self, kind: MobKind, slot: usize, item: Item) -> bool {
@@ -153,9 +204,9 @@ impl State {
             return false;
         }
         match slot {
-            0 => item == Item::SADDLE,
-            1 => kind == MobKind::Horse && armor_points(item) > 0,
-            2..=16 => self.chest,
+            0 => item == Item::SADDLE && kind != MobKind::Llama,
+            1 => kind == MobKind::Horse && armor_points(item) > 0 || kind == MobKind::Llama && is_carpet(item),
+            2..=16 => self.chest && slot < self.slot_count(kind),
             _ => false,
         }
     }
@@ -169,6 +220,7 @@ impl State {
     ) {
         self.wish = player.ride_push(input) / 0.22;
         self.yaw = player.yaw;
+        self.sprinting = input.sprint;
         let steering_item = match kind {
             MobKind::Pig => Some(Item::CARROT_ON_A_STICK),
             MobKind::Strider => Some(Item::WARPED_FUNGUS_ON_A_STICK),
@@ -191,7 +243,8 @@ impl State {
     pub fn save(&self) -> Value {
         json!({"tame":self.tame,"temper":self.temper,"owner":self.owner.map(|p|p.0),"rider":self.rider.map(|p|p.0),
             "health":self.max_health,"speed":self.speed,"jump":self.jump,"variant":self.variant,"marking":self.marking,
-            "chest":self.chest,"slots":self.slots.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>()})
+            "chest":self.chest,"strength":self.strength,"passenger":self.passenger.map(|p|p.0),
+            "slots":self.slots.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>()})
     }
     pub fn load(kind: MobKind, v: &Value) -> Option<Self> {
         let mut s = Self::new(kind, &mut Rng::new(0));
@@ -204,14 +257,19 @@ impl State {
         s.jump = v["jump"].as_f64()?;
         if !s.max_health.is_finite()
             || !(1. ..=40.).contains(&s.max_health)
-            || !(0.1..=0.4).contains(&s.speed)
+            || !(0.05..=0.4).contains(&s.speed)
             || !(0.4..=1.).contains(&s.jump)
         {
             return None;
         }
         s.variant = v["variant"].as_u64()?.min(6) as u8;
         s.marking = v["marking"].as_u64()?.min(4) as u8;
-        s.chest = v["chest"].as_bool().unwrap_or(false) && matches!(kind, MobKind::Donkey | MobKind::Mule);
+        s.chest = v["chest"].as_bool().unwrap_or(false) && chested(kind);
+        s.strength = v["strength"].as_u64().map_or(s.strength, |n| n.clamp(1, 5) as u8);
+        s.passenger = v["passenger"].as_u64().and_then(|p| u32::try_from(p).ok()).map(PlayerId);
+        if kind == MobKind::Llama {
+            s.variant = s.variant.min(3);
+        }
         for (i, piece) in v["slots"].as_array()?.iter().take(17).enumerate() {
             let stack = stack_from_str(piece.as_str()?)?;
             if let Some(stack) = stack
@@ -260,7 +318,19 @@ pub fn launch_speed(v: f64) -> f64 {
     lo
 }
 
-pub fn food(item: Item) -> Option<(f32, u8, i32)> {
+/// Java `handleEating`: health healed, temper gained and baby growth in ticks.
+pub fn food(kind: MobKind, item: Item) -> Option<(f32, u8, i32)> {
+    let hay = Item::from_block(crate::world::block::Block::HAY_BALE);
+    if kind == MobKind::Llama {
+        return match item {
+            Item::WHEAT => Some((2., 3, 200)),
+            i if i == hay => Some((10., 6, 1800)),
+            _ => None,
+        };
+    }
+    if kind == MobKind::Camel {
+        return (item == Item::from_block(crate::world::block::Block::CACTUS)).then_some((2., 0, 200));
+    }
     Some(match item {
         Item::SUGAR => (1., 3, 600),
         Item::WHEAT => (2., 3, 400),
@@ -278,21 +348,42 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
     let s = mob.mount.as_mut()?;
     if mob.health <= 0.0 {
         s.rider = None;
+        s.passenger = None;
         return None;
     }
+    let ticks = (dt * 20.).round() as u32;
     s.regen_ticks += dt as f32 * 20.;
     if equine(mob.kind) && s.regen_ticks >= 900. {
         mob.health = (mob.health + 1.).min(s.max_health);
         s.regen_ticks = 0.;
     }
+    s.dash_cooldown = s.dash_cooldown.saturating_sub(ticks as u16);
+    if mob.kind == MobKind::Camel {
+        // Idle camels sit down now and then; a rider makes one stand, which takes 2.6 s.
+        if s.rider.is_some() && s.sit_ticks > 0 {
+            s.sit_ticks = 0;
+            s.stand_ticks = 52;
+        }
+        if s.rider.is_none() && s.sit_ticks == 0 && !mob.baby && mob.on_ground && rng.chance(ticks as f32 / 2400.) {
+            s.sit_ticks = 600 + rng.next_int(600);
+        }
+        if s.sit_ticks > 0 {
+            s.sit_ticks = s.sit_ticks.saturating_sub(ticks);
+            return Some((None, 0.));
+        }
+        if s.stand_ticks > 0 {
+            s.stand_ticks = s.stand_ticks.saturating_sub(ticks as u16);
+            return Some((None, 0.));
+        }
+    }
     let rider = s.rider?;
     if !s.tame {
         if rng.chance((dt as f32 * 20. / 50.).min(1.)) {
-            if rng.next_int(100) < s.temper as u32 {
+            if rng.next_int(max_temper(mob.kind) as u32) < s.temper as u32 {
                 s.tame = true;
                 s.owner = Some(rider);
             } else {
-                s.temper = (s.temper + 5).min(100);
+                s.temper = (s.temper + 5).min(max_temper(mob.kind));
                 s.rider = None;
             }
         }
@@ -302,13 +393,28 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
         return None;
     }
     mob.yaw = s.yaw;
-    if mob.on_ground
+    let forward = DVec3::new(mob.yaw.cos() as f64, 0., mob.yaw.sin() as f64);
+    if mob.kind == MobKind::Camel {
+        // Java dash: forward 22.2 x charge x speed and up 1.43 x charge x 0.42 blocks/tick.
+        if let Some(charge) = s.pending_jump.take()
+            && mob.on_ground
+            && s.dash_cooldown == 0
+            && charge > 0.
+        {
+            let charge = charge as f64;
+            mob.vel += forward * 22.2222 * charge * s.speed * 20. * 0.45;
+            mob.vel.y = 1.4285 * charge * 0.42 * 20.;
+            s.dash_cooldown = DASH_COOLDOWN;
+        }
+    } else if mob.on_ground
         && let Some(charge) = s.pending_jump.take()
     {
         mob.vel.y = launch_speed(s.jump * if charge >= 0.9 { 1. } else { 0.4 + 0.4 * charge as f64 / 0.9 });
     }
-    let forward = DVec3::new(mob.yaw.cos() as f64, 0., mob.yaw.sin() as f64);
-    let mut speed = if equine(mob.kind) {
+    let mut speed = if mob.kind == MobKind::Camel {
+        // Java's ridden camel: +0.1 speed while sprinting with the dash ready.
+        (s.speed + if s.sprinting && s.dash_cooldown == 0 { 0.1 } else { 0. }) * 43.17
+    } else if equine(mob.kind) {
         s.speed * 43.17
     } else if mob.kind == MobKind::Pig {
         2.42
@@ -327,6 +433,39 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
         }
     }
     Some((Some(if equine(mob.kind) { s.wish } else { forward }), speed))
+}
+
+impl Entities {
+    /// Java llamas spit (1 damage) at whoever hurt them, every two seconds while provoked.
+    pub(super) fn llama_spit(&mut self, ctx: &super::Ctx, events: &mut Vec<super::EntityEvent>) {
+        for m in &mut self.mobs {
+            if m.kind != MobKind::Llama || !m.alive() || m.attack_cooldown > 0.0 {
+                continue;
+            }
+            let Some(target) = m.angry_player.and_then(|id| ctx.players.iter().find(|t| t.id == id && t.targetable))
+            else {
+                continue;
+            };
+            let mouth = m.pos + DVec3::Y * (m.shape().height * 0.9);
+            let aim = target.pos + DVec3::Y * 1.4 - mouth;
+            if aim.length_squared() > 16.0 * 16.0 {
+                continue;
+            }
+            m.look_at(target.pos, 1.0);
+            m.attack_cooldown = 2.0;
+            let mut b = crate::particles::Burst::new(crate::particles::Kind::Poof, mouth, 6);
+            b.velocity_spread = DVec3::splat(0.01);
+            b.color = Some([0.95, 0.95, 0.9, 1.0]);
+            self.particles.push(crate::particles::Request::Burst(b));
+            let push = (aim.with_y(0.0).normalize_or_zero() * 0.2).as_vec3();
+            events.push(super::EntityEvent::PlayerHit {
+                player: target.id,
+                damage: 1.0,
+                knockback: push,
+                cause: "was spat on by a llama",
+            });
+        }
+    }
 }
 
 impl Entities {
@@ -368,12 +507,26 @@ impl Entities {
     }
     pub fn mount_seat(&self, vehicle: u32, player: PlayerId) -> Option<DVec3> {
         let m = self.mount(vehicle)?;
-        (m.mount.as_ref()?.rider == Some(player)).then(|| m.pos + DVec3::Y * (m.shape().height * 0.75 - 0.35))
+        let s = m.mount.as_ref()?;
+        let seat = m.pos + DVec3::Y * (m.shape().height * 0.75 - 0.35);
+        if m.kind != MobKind::Camel {
+            return (s.rider == Some(player)).then_some(seat);
+        }
+        // Java camel seats: 0.5 blocks either side of centre when both are taken.
+        let forward = DVec3::new(m.yaw.cos() as f64, 0., m.yaw.sin() as f64) * 0.5;
+        let seat = seat - DVec3::Y * if s.sit_ticks > 0 { 0.9 } else { 0. };
+        if s.rider == Some(player) {
+            Some(if s.passenger.is_some() { seat + forward } else { seat })
+        } else {
+            (s.passenger == Some(player)).then_some(seat - forward)
+        }
     }
     pub fn mount_for_player(&self, player: PlayerId) -> Option<u32> {
         self.mobs
             .iter()
-            .find(|m| m.alive() && m.mount.as_ref().is_some_and(|s| s.rider == Some(player)))
+            .find(|m| {
+                m.alive() && m.mount.as_ref().is_some_and(|s| s.rider == Some(player) || s.passenger == Some(player))
+            })
             .map(|m| MOB_VEHICLE | m.uid)
     }
     pub fn mount_input(
@@ -412,17 +565,18 @@ impl Entities {
             return false;
         }
         let s = m.mount.as_mut().unwrap();
+        let kind = m.kind;
         let held = inventory.get(selected).map(|s| s.item);
         let mut consume = false;
-        if held == Some(Item::SADDLE) && s.tame && !s.saddled() && !m.baby {
+        if held == Some(Item::SADDLE) && s.tame && !s.saddled() && !m.baby && kind != MobKind::Llama {
             s.slots[0] = Some(Stack::new(Item::SADDLE, 1));
             consume = true;
         } else if let Some(item) = held
-            && m.kind == MobKind::Horse
+            && matches!(kind, MobKind::Horse | MobKind::Llama)
             && !m.baby
-            && s.tame
-            && armor_points(item) > 0
+            && s.accepts(kind, 1, item)
         {
+            // Horse armor or llama carpet: equip, returning what was worn.
             let previous = s.slots[1].replace(Stack::new(item, 1));
             if !creative {
                 inventory.take_one(selected);
@@ -440,30 +594,39 @@ impl Entities {
             && s.tame
             && !m.baby
             && !s.chest
-            && matches!(m.kind, MobKind::Donkey | MobKind::Mule)
+            && chested(kind)
         {
             s.chest = true;
             consume = true;
-        } else if let Some((heal, temper, _)) = held.and_then(food)
-            && equine(m.kind)
+        } else if let Some((heal, temper, growth)) = held.and_then(|i| food(kind, i))
+            && equine(kind)
         {
             if m.baby {
-                m.age = (m.age + held.and_then(food).unwrap().2).min(0);
+                m.age = (m.age + growth).min(0);
                 m.baby = m.age < 0;
                 consume = true;
             }
-            if m.health < s.max_health || !s.tame && s.temper < 100 {
+            let max = max_temper(kind);
+            if m.health < s.max_health || !s.tame && s.temper < max {
                 m.health = (m.health + heal).min(s.max_health);
-                s.temper = s.temper.saturating_add(temper).min(100);
+                s.temper = s.temper.saturating_add(temper).min(max);
                 consume = true;
             } else if !consume {
                 return false;
             }
         } else if !m.baby
             && s.rider.is_none()
-            && (equine(m.kind) && (s.tame || held.is_none()) || !equine(m.kind) && s.saddled())
+            && (equine(kind) && (s.tame || held.is_none()) || !equine(kind) && s.saddled())
         {
             s.rider = Some(player);
+        } else if !m.baby
+            && kind == MobKind::Camel
+            && s.rider.is_some_and(|r| r != player)
+            && s.passenger.is_none()
+            && held.is_none_or(|i| food(kind, i).is_none())
+        {
+            // A camel's rear seat.
+            s.passenger = Some(player);
         } else {
             return false;
         }
@@ -508,7 +671,13 @@ impl Entities {
     pub fn dismount_animal<W: BlockSource + ?Sized>(&mut self, world: &W, player: PlayerId) -> Option<DVec3> {
         let id = self.mount_for_player(player)?;
         let m = self.mount_mut(id)?;
-        m.mount.as_mut()?.rider = None;
+        let s = m.mount.as_mut()?;
+        if s.rider == Some(player) {
+            // The rear passenger slides forward, as in Java.
+            s.rider = s.passenger.take();
+        } else {
+            s.passenger = None;
+        }
         let side = DVec3::new(-(m.yaw.sin() as f64), 0., m.yaw.cos() as f64) * (m.shape().half_width + 0.4);
         for offset in [side, -side, DVec3::X * 1.5, DVec3::NEG_X * 1.5, DVec3::Z * 1.5, DVec3::NEG_Z * 1.5] {
             for dy in [0., 1., -1.] {
@@ -665,7 +834,7 @@ mod tests {
             let s = State::new(kind, &mut rng);
             assert_eq!((s.speed, s.jump), (0.175, 0.5));
         }
-        assert!(breeding_food(MobKind::Mule).is_empty());
+        assert!(!MobKind::Mule.is_breedable());
     }
     #[test]
     fn bucking_raises_temper_and_a_full_temper_mount_tames_to_its_rider() {
@@ -901,5 +1070,57 @@ mod tests {
         let s = foal.mount.as_ref().unwrap();
         assert!((15. ..=30.).contains(&s.max_health) && (0.4..=1.).contains(&s.jump));
         assert_eq!(foal.health, s.max_health);
+    }
+    #[test]
+    fn llamas_have_java_strength_coats_and_chest_slots() {
+        let mut rng = Rng::new(11);
+        let mut seen = [0u32; 6];
+        for _ in 0..4000 {
+            let s = State::new(MobKind::Llama, &mut rng);
+            seen[s.strength as usize] += 1;
+            assert!(s.variant < 4 && !s.tame);
+        }
+        assert_eq!(seen[0], 0);
+        // Strength 4 and 5 only come from the 1-in-25 roll.
+        assert!(seen[4] + seen[5] > 0 && seen[4] + seen[5] < 200);
+        let mut s = State::new(MobKind::Llama, &mut rng);
+        s.tame = true;
+        s.chest = true;
+        s.strength = 2;
+        assert_eq!(s.slot_count(MobKind::Llama), 8);
+        assert!(!s.accepts(MobKind::Llama, 0, Item::SADDLE));
+        let carpet = Item::from_block(crate::world::block::Block::carpet(crate::color::DyeColor::Blue));
+        assert!(s.accepts(MobKind::Llama, 1, carpet));
+        assert!(s.accepts(MobKind::Llama, 7, Item::WHEAT) && !s.accepts(MobKind::Llama, 8, Item::WHEAT));
+        let saved = State::load(MobKind::Llama, &s.save()).unwrap();
+        assert_eq!((saved.strength, saved.chest), (2, true));
+    }
+    #[test]
+    fn camels_need_no_taming_seat_two_and_dash_on_cooldown() {
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Camel, DVec3::new(5., 140., 5.));
+        e.mobs[0].on_ground = true;
+        let mut inv = Inventory::default();
+        inv.slots[0] = Some(Stack::new(Item::SADDLE, 1));
+        let eye = DVec3::new(5., 141.5, 2.);
+        assert!(e.use_mount(eye, DVec3::Z, 5., PlayerId::HOST, &mut inv, 0, false));
+        assert!(e.mobs[0].mount.as_ref().unwrap().saddled());
+        assert!(e.use_mount(eye, DVec3::Z, 5., PlayerId::HOST, &mut inv, 1, false));
+        assert!(e.use_mount(eye, DVec3::Z, 5., PlayerId(7), &mut inv, 1, false));
+        let id = e.mount_for_player(PlayerId(7)).unwrap();
+        let (front, back) = (e.mount_seat(id, PlayerId::HOST).unwrap(), e.mount_seat(id, PlayerId(7)).unwrap());
+        assert!((front - back).length() > 0.9);
+        let m = &mut e.mobs[0];
+        let s = m.mount.as_mut().unwrap();
+        let mut p = Player::new(DVec3::ZERO);
+        p.yaw = 0.;
+        for jump in [true, true, true, false] {
+            s.input(MobKind::Camel, &p, MoveInput { jump, ..Default::default() }, None, None);
+        }
+        control(m, 0.05, &mut Rng::new(1));
+        assert!(m.vel.x > 5. && m.vel.y > 0.);
+        assert_eq!(m.mount.as_ref().unwrap().dash_cooldown, DASH_COOLDOWN);
+        assert!(e.dismount_animal(&world(), PlayerId::HOST).is_some());
+        assert_eq!(e.mobs[0].mount.as_ref().unwrap().rider, Some(PlayerId(7)));
     }
 }

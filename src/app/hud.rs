@@ -249,7 +249,7 @@ impl Game {
         }
         if hud.survival {
             if let Some(m) = hud.vehicle.and_then(|id| self.mobs.entities.mount(id))
-                && crate::entity::mounts::equine(m.kind)
+                && crate::entity::mounts::jumps(m.kind)
                 && let Some(s) = &m.mount
             {
                 ui.rect(x0, y0 - 7., total, 5., [0.15, 0.15, 0.2, 1.]);
