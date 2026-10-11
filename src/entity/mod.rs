@@ -12,6 +12,7 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod animals;
 pub mod aquatic;
 pub mod armor;
 mod bell;
@@ -432,6 +433,8 @@ pub struct Target {
     pub shape: crate::physics::Shape,
     /// Wears a piece of golden armor, which keeps piglins calm.
     pub gold_armor: bool,
+    /// Selected food for animal temptation, shared by every input device.
+    pub held_item: Option<crate::item::Item>,
 }
 
 impl Target {
@@ -447,6 +450,7 @@ impl Target {
             held_enchants: Default::default(),
             shape: crate::player::SHAPE,
             gold_armor: false,
+            held_item: None,
         }
     }
 
@@ -659,7 +663,7 @@ impl Entities {
             mob.wool_color = color;
             return Some(false);
         }
-        if item != crate::item::Item::SHEARS || mob.sheared {
+        if item != crate::item::Item::SHEARS || mob.sheared || mob.baby || mob.age < 0 {
             return None;
         }
         mob.sheared = true;
@@ -677,6 +681,7 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
+        mob.persistent = kind.is_breedable() && !matches!(kind, MobKind::Hoglin | MobKind::Strider);
         if matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader) {
             **mob.villager.as_mut().unwrap() =
                 villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
@@ -762,6 +767,7 @@ impl Entities {
         self.nether_sense(dt as f32, world, ctx);
         self.aquatic_sense(dt as f32, world);
         self.grow_turtles(dt as f32);
+        self.tick_animals(dt as f32, world, ctx, &mut events);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -1013,6 +1019,9 @@ impl Entities {
             .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
             .map_or((1, false), |m| (m.size, m.baby));
         let (size, baby) = size;
+        if baby && kind.is_breedable() {
+            return;
+        }
         if player_kill {
             let xp = if kind.is_cube() {
                 size as u32
@@ -1647,6 +1656,8 @@ impl Entities {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
         mob.age = -24000;
+        mob.baby = true;
+        mob.persistent = kind.is_breedable();
         self.mobs.push(mob);
     }
 
@@ -2817,7 +2828,10 @@ mod tests {
         assert_eq!(e.mobs.len(), 1, "kept by the nearby agent");
         let c = Ctx { players: vec![far_host], ..c };
         e.update(0.05, &world, &c);
-        assert!(e.mobs.is_empty(), "despawns once nobody is near");
+        assert_eq!(e.mobs.len(), 1, "Java farm animals persist while inactive");
+        let before = e.mobs[0].pos;
+        e.update(1.0, &world, &c);
+        assert_eq!(e.mobs[0].pos, before, "distant persistent mobs stop ticking");
     }
 
     #[test]

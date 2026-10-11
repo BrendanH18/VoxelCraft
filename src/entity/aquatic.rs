@@ -364,6 +364,7 @@ impl Entities {
                 m.grow += dt;
                 if m.grow >= TURTLE_GROW_SECS {
                     m.baby = false;
+                    m.age = 0;
                     scutes.push(m.pos);
                 }
             }
@@ -380,6 +381,7 @@ impl Entities {
             self.spawn(MobKind::Turtle, pos);
             let m = self.mobs.last_mut().unwrap();
             m.baby = true;
+            m.age = -24000;
             m.persistent = true;
         }
     }

@@ -748,6 +748,7 @@ pub(super) enum Ai {
 
 pub struct Mob {
     pub kind: MobKind,
+    pub animal: Option<Box<super::animals::State>>,
     pub villager: Option<Box<super::villager::Villager>>,
     /// Piglin gear, gold, anger and zombification (see `entity::nether`).
     pub nether: Option<Box<super::nether::NetherMob>>,
@@ -874,6 +875,7 @@ impl Mob {
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,
+            animal: kind.is_breedable().then(|| Box::new(super::animals::State::new(pos))),
             villager: matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader)
                 .then(|| Box::new(super::villager::Villager::new(0, 0))),
             nether: super::nether::NetherMob::for_kind(kind),
@@ -1068,6 +1070,10 @@ impl Mob {
         } else {
             amount
         };
+        if let Some(a) = &mut self.animal {
+            a.love = 0.0;
+            a.courtship = 0.0;
+        }
         self.health -= amount;
         if self.kind == MobKind::Axolotl && self.in_water && self.health > 0.0 && self.health < 7.0 && rng.chance(0.33)
         {
@@ -1254,16 +1260,12 @@ impl Mob {
             self.age = if self.age < 0 { (self.age + ticks).min(0) } else { (self.age - ticks).max(0) };
             self.baby = self.age < 0;
         }
-        if self.alive() && self.kind == MobKind::Chicken {
-            let ticks = ((dt * 20.0).round() as i32).max(1);
-            if self.age < 0 {
-                self.age = (self.age + ticks).min(0);
-            } else {
-                self.egg_timer -= dtf;
-                if self.egg_timer <= 0.0 {
-                    self.egg_timer = rng.range(300.0, 600.0);
-                    events.push(EntityEvent::LaidEgg { pos: self.pos });
-                }
+        self.advance_animal_age(dtf);
+        if self.alive() && self.kind == MobKind::Chicken && self.age >= 0 {
+            self.egg_timer -= dtf;
+            if self.egg_timer <= 0.0 {
+                self.egg_timer = rng.range(300.0, 600.0);
+                events.push(EntityEvent::LaidEgg { pos: self.pos });
             }
         }
         // A lethal Thorns response is emitted during thinking, before the
@@ -1285,6 +1287,9 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        if let Some(wish) = self.animal_think(dt, world, ctx, rng) {
+            return wish;
+        }
         if self.kind.is_aquatic() {
             return super::aquatic::think(self, dt, world, ctx, rng, events);
         }

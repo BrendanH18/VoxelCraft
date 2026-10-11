@@ -209,7 +209,7 @@ impl Mob {
     }
 
     /// Turns the head toward a point, up to `max` radians off the body.
-    fn look_at(&mut self, at: DVec3, max: f32) {
+    pub(crate) fn look_at(&mut self, at: DVec3, max: f32) {
         let to = at - self.pos;
         let hdist = to.x.hypot(to.z);
         let eye = to.y + 1.62 - self.shape().height * 0.9;
@@ -219,7 +219,7 @@ impl Mob {
 
     /// Heads along `dir`, side-stepping for a moment when blocked by a wall
     /// it can't jump (the same detour the other chasers use).
-    fn steer<W: MobWorld + ?Sized>(&mut self, dir: DVec3, dt: f32, world: &W, rng: &mut Rng) -> DVec3 {
+    pub(crate) fn steer<W: MobWorld + ?Sized>(&mut self, dir: DVec3, dt: f32, world: &W, rng: &mut Rng) -> DVec3 {
         self.detour -= dt;
         if self.detour <= 0.0 && self.blocked && self.on_ground && !self.can_step_up(world, dir) {
             self.detour = rng.range(0.6, 1.2);

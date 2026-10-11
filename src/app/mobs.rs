@@ -260,6 +260,7 @@ impl Game {
                 .map_or(Default::default(), |s| s.active_enchants()),
             shape: self.player.collision_shape(),
             gold_armor: crate::entity::nether::wears_gold(&self.inventory.armor),
+            held_item: self.held_item(),
             ..Target::new(PlayerId::HOST, self.player.pos, self.mode.targetable() && !self.vitals.is_dead())
         }];
         // Agents keep source-dimension positions until arrival relocates them.

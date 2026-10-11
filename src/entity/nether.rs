@@ -1349,6 +1349,10 @@ fn save_mob(m: &Mob) -> Value {
         "health": m.health,
         "baby": m.baby,
         "grow": m.grow,
+        "age": m.age,
+        "egg_timer": m.egg_timer,
+        "sheared": m.sheared,
+        "animal": m.animal.as_deref().map(super::animals::save),
         "armor": armor,
         "weapon": n.map_or("none", |n| n.weapon.name()),
         "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
@@ -1376,6 +1380,14 @@ fn load_mob(v: &Value) -> Option<Mob> {
         a.variant = v["variant"].as_u64().unwrap_or(0).min(255) as u8;
     }
     m.baby = v["baby"].as_bool().unwrap_or(false);
+    m.age =
+        v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(-24000, 6000) as i32;
+    m.egg_timer =
+        v["egg_timer"].as_f64().filter(|t| t.is_finite() && *t >= 0.0).unwrap_or(m.egg_timer as f64).min(600.0) as f32;
+    m.sheared = v["sheared"].as_bool().unwrap_or(false);
+    if let Some(a) = m.animal.as_mut() {
+        super::animals::load(a, &v["animal"]);
+    }
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
     m.wool_color = crate::color::DyeColor::ALL.get(v["color"].as_u64().unwrap_or(0).min(15) as usize).copied().unwrap();
     if let Some(h) = v["health"].as_f64().filter(|h| *h > 0.0) {
@@ -1874,7 +1886,7 @@ mod tests {
     fn persistent_piglins_round_trip_through_the_level_file() {
         let mut e = Entities::new(4);
         swordsman(&mut e);
-        e.spawn(MobKind::Pig, DVec3::ZERO);
+        e.spawn(MobKind::Zombie, DVec3::ZERO);
         let m = &mut e.mobs[0];
         m.persistent = true;
         m.health = 11.0;
