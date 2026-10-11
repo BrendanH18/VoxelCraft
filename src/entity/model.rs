@@ -17,6 +17,7 @@ use super::{Arrow, Puff, XpOrb};
 use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
 
+mod labels;
 mod nether;
 
 #[repr(C)]
@@ -533,6 +534,7 @@ impl std::ops::Deref for Parts {
 }
 macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.push($p);)*out}}}
 
+mod animals;
 mod aquatic;
 
 /// Animated parts for a mob, in model space (pixels).
@@ -554,6 +556,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         | MobKind::Cat
         | MobKind::Pillager
         | MobKind::Turtle => aquatic::pose(m, time),
+        MobKind::Wolf | MobKind::Fox | MobKind::Parrot | MobKind::Rabbit | MobKind::Goat => animals::pose(m, time),
         MobKind::Pig => parts![
             part(PIG_BODY, [0.0; 3], Quat::IDENTITY),
             part(PIG_LEG_BOX, [-3.0, 6.0, 5.0], rx(swing)),
@@ -898,11 +901,12 @@ pub fn build(
         } else {
             (FIRE, 0.0)
         };
+        labels::attachments(m, camera, forward, rel, out);
         aquatic::beam(m, camera, out);
         let posed = pose(m, time);
         for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
-            let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
+            let xf = |v: Vec3| origin + body * ((p.pivot + p.rot * v) * animals::model_scale(m)) * scale / 16.0;
             // Endermen eyes and blazes glow at full brightness.
             let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES)
                 || std::ptr::eq(p.boxes, MAGMA_GLOW)
@@ -910,6 +914,7 @@ pub fn build(
             let light = if glow { [light[0], 0, light[2], 255] } else { light };
             for (ci, c) in p.boxes.iter().enumerate() {
                 let mut cuboid = *c;
+                animals::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }

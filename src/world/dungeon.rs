@@ -268,16 +268,16 @@ impl Dungeons {
 // redstone and melon, pumpkin and beetroot seeds.
 type Entry = (Option<Item>, u32, u8, u8);
 const RARE: &[Entry] = &[
-    (None, 20, 1, 1), // saddle
-    (None, 15, 1, 1), // golden apple
-    (None, 2, 1, 1),  // enchanted golden apple
-    (None, 2, 1, 1),  // music disc otherside
-    (None, 15, 1, 1), // music disc 13
-    (None, 15, 1, 1), // music disc cat
-    (None, 20, 1, 1), // name tag
-    (None, 10, 1, 1), // golden horse armor
-    (None, 15, 1, 1), // iron horse armor
-    (None, 5, 1, 1),  // diamond horse armor
+    (None, 20, 1, 1),                 // saddle
+    (None, 15, 1, 1),                 // golden apple
+    (None, 2, 1, 1),                  // enchanted golden apple
+    (None, 2, 1, 1),                  // music disc otherside
+    (None, 15, 1, 1),                 // music disc 13
+    (None, 15, 1, 1),                 // music disc cat
+    (Some(Item::NAME_TAG), 20, 1, 1), // name tag
+    (None, 10, 1, 1),                 // golden horse armor
+    (None, 15, 1, 1),                 // iron horse armor
+    (None, 5, 1, 1),                  // diamond horse armor
     (Some(Item::ENCHANTED_BOOK), 10, 1, 1),
 ];
 const COMMON: &[Entry] = &[
@@ -288,9 +288,9 @@ const COMMON: &[Entry] = &[
     (Some(Item::BUCKET), 10, 1, 1),
     (None, 15, 1, 4), // redstone
     (Some(Item::COAL), 15, 1, 4),
-    (None, 10, 2, 4), // melon seeds
-    (None, 10, 2, 4), // pumpkin seeds
-    (None, 10, 2, 4), // beetroot seeds
+    (Some(Item::MELON_SEEDS), 10, 2, 4),    // melon seeds
+    (Some(Item::PUMPKIN_SEEDS), 10, 2, 4),  // pumpkin seeds
+    (Some(Item::BEETROOT_SEEDS), 10, 2, 4), // beetroot seeds
 ];
 const JUNK: &[Entry] = &[
     (Some(Item::BONE), 10, 1, 8),

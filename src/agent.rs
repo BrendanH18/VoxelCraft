@@ -944,15 +944,17 @@ impl Agent {
                 }
             }
             Command::Place
-                if crate::survival_items::use_mob(
-                    &self.player,
-                    &mut self.inventory,
-                    self.selected,
-                    self.creative,
-                    world,
-                    entities,
-                    self.id,
-                ) =>
+                if self.mode.can_interact()
+                    && self.cooldown <= 0.0
+                    && crate::survival_items::use_mob(
+                        &self.player,
+                        &mut self.inventory,
+                        self.selected,
+                        self.creative,
+                        world,
+                        entities,
+                        self.id,
+                    ) =>
             {
                 self.cooldown = 0.22;
                 self.swings += 1;
@@ -1118,8 +1120,16 @@ impl Agent {
                 }
             }
             Command::Attack => {
+                if !self.mode.can_interact() {
+                    return Err("this game mode cannot attack".into());
+                }
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
+                }
+                if crate::survival_items::attack_knot(&self.player, world, entities) {
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                    return Ok(());
                 }
                 let distance = self
                     .target(world)

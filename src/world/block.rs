@@ -332,7 +332,8 @@ pub mod tex {
     // Nether mobs reserve layers 1400..=1449.
     pub const CRYING_OBSIDIAN: u16 = 1400;
     // v0.6 Overworld blocks use 1450.. (see `world::overworld_blocks::t`).
-    pub const COUNT: u32 = super::super::overworld_blocks::TEX_END as u32;
+    pub const COUNT: u32 = 1753;
+    const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
@@ -2229,7 +2230,7 @@ const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         1800 => ("crying obsidian", Opaque, all(tex::CRYING_OBSIDIAN)),
-        1900..=2076 => match super::overworld_blocks::registry(id) {
+        1900..=2076 | 2150..=2157 => match super::overworld_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },

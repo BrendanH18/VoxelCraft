@@ -563,8 +563,14 @@ impl Entities {
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
                 self.nether_hurt(i, Foe::Mob(attacker));
+                if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
+                    self.animals_defend_owner(attacker, owner);
+                }
+                let wolf_kill = self.mobs.iter().any(|m| {
+                    m.uid == attacker && m.kind == MobKind::Wolf && m.animal.as_ref().is_some_and(|a| a.owner.is_some())
+                });
                 if killed {
-                    self.drop_loot_with_fire(kind, pos, 0, burning, false);
+                    self.drop_loot_with_fire(kind, pos, 0, burning, wolf_kill);
                 }
             }
         }
@@ -887,8 +893,17 @@ impl Entities {
 
     /// Persistent nether mobs, as JSON for the level file.
     pub fn nether_mobs_to_string(&self) -> String {
-        let mobs: Vec<Value> =
-            self.mobs.iter().filter(|m| m.persistent && m.alive() && m.villager.is_none()).map(save_mob).collect();
+        let mobs: Vec<Value> = self
+            .mobs
+            .iter()
+            .filter(|m| {
+                m.persistent
+                    && m.alive()
+                    && m.villager.is_none()
+                    && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)
+            })
+            .map(save_mob)
+            .collect();
         let mut bastions: Vec<[i32; 3]> = self.bastions_populated.iter().map(|p| p.to_array()).collect();
         bastions.sort_unstable();
         let mut structures: Vec<_> = self.structures_populated.iter().map(|p| p.to_array()).collect();
@@ -1349,6 +1364,11 @@ fn save_mob(m: &Mob) -> Value {
         "health": m.health,
         "baby": m.baby,
         "grow": m.grow,
+        "age": m.age,
+        "egg_timer": m.egg_timer,
+        "sheared": m.sheared,
+        "animal": m.animal.as_deref().map(super::animals::save),
+        "identity": super::leash::save(m),
         "armor": armor,
         "weapon": n.map_or("none", |n| n.weapon.name()),
         "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
@@ -1372,14 +1392,23 @@ fn load_mob(v: &Value) -> Option<Mob> {
     }
     let mut m = Mob::new(kind, pos, v["yaw"].as_f64().unwrap_or(0.0) as f32);
     m.persistent = true;
+    super::leash::load(&mut m, &v["identity"]);
     if let Some(a) = &mut m.aquatic {
         a.variant = v["variant"].as_u64().unwrap_or(0).min(255) as u8;
     }
     m.baby = v["baby"].as_bool().unwrap_or(false);
+    m.age =
+        v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(-24000, 6000) as i32;
+    m.egg_timer =
+        v["egg_timer"].as_f64().filter(|t| t.is_finite() && *t >= 0.0).unwrap_or(m.egg_timer as f64).min(600.0) as f32;
+    m.sheared = v["sheared"].as_bool().unwrap_or(false);
+    if let Some(a) = m.animal.as_mut() {
+        super::animals::load(a, &v["animal"]);
+    }
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
     m.wool_color = crate::color::DyeColor::ALL.get(v["color"].as_u64().unwrap_or(0).min(15) as usize).copied().unwrap();
     if let Some(h) = v["health"].as_f64().filter(|h| *h > 0.0) {
-        m.health = (h as f32).min(kind.max_health());
+        m.health = (h as f32).min(m.max_health());
     }
     if let Some(armor) = v["armor"].as_array() {
         for (slot, worn) in m.armor.iter_mut().zip(armor) {
@@ -1874,7 +1903,7 @@ mod tests {
     fn persistent_piglins_round_trip_through_the_level_file() {
         let mut e = Entities::new(4);
         swordsman(&mut e);
-        e.spawn(MobKind::Pig, DVec3::ZERO);
+        e.spawn(MobKind::Zombie, DVec3::ZERO);
         let m = &mut e.mobs[0];
         m.persistent = true;
         m.health = 11.0;

@@ -35,6 +35,11 @@ pub enum Voice {
     Guardian,
     Cat,
     Pillager,
+    Wolf,
+    Fox,
+    Parrot,
+    Rabbit,
+    Goat,
 }
 
 /// What kind of sound a voice makes.
@@ -47,7 +52,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 24] = [
+    pub const ALL: [Voice; 29] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -72,6 +77,11 @@ impl Voice {
         Voice::Guardian,
         Voice::Cat,
         Voice::Pillager,
+        Voice::Wolf,
+        Voice::Fox,
+        Voice::Parrot,
+        Voice::Rabbit,
+        Voice::Goat,
     ];
 
     pub fn name(self) -> &'static str {
@@ -100,6 +110,11 @@ impl Voice {
             Voice::Guardian => "guardian",
             Voice::Cat => "cat",
             Voice::Pillager => "pillager",
+            Voice::Wolf => "wolf",
+            Voice::Fox => "fox",
+            Voice::Parrot => "parrot",
+            Voice::Rabbit => "rabbit",
+            Voice::Goat => "goat",
         }
     }
 }
@@ -198,6 +213,7 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Hoglin => hoglin(call, rng),
         Voice::Strider => strider(call, rng),
         Voice::Pillager => villager(call, rng),
+        Voice::Wolf | Voice::Fox | Voice::Parrot | Voice::Rabbit | Voice::Goat => animal_voice(voice, call, rng),
         Voice::Fish | Voice::Squid | Voice::Dolphin | Voice::Axolotl | Voice::Guardian | Voice::Cat => {
             aquatic(voice, call, rng)
         }
@@ -763,4 +779,30 @@ fn aquatic(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         *v = tone * env;
     }
     out
+}
+
+/// Original companion calls using the same formant synthesis as farm mobs.
+fn animal_voice(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
+    let (base, length, breath, formants) = match voice {
+        Voice::Wolf => (180.0, 0.3, 0.45, [(550.0, 4.0, 1.0), (1150.0, 4.0, 0.7), (2500.0, 6.0, 0.3)]),
+        Voice::Fox => (580.0, 0.4, 0.4, [(950.0, 4.0, 1.0), (1800.0, 5.0, 0.6), (3200.0, 7.0, 0.25)]),
+        Voice::Parrot => (1100.0, 0.24, 0.35, [(1400.0, 5.0, 1.0), (2600.0, 6.0, 0.6), (3800.0, 7.0, 0.3)]),
+        Voice::Rabbit => (900.0, 0.2, 0.65, [(1100.0, 5.0, 1.0), (2100.0, 5.0, 0.6), (3300.0, 6.0, 0.25)]),
+        _ => (220.0, 0.8, 0.35, [(600.0, 4.0, 1.0), (1600.0, 5.0, 0.6), (2600.0, 6.0, 0.3)]),
+    };
+    let secs = length * if call == Call::Death { 1.6 } else { 1.0 };
+    let pitch = base * rng.range(0.9, 1.1) * if call == Call::Hurt { 1.4 } else { 1.0 };
+    let out = utter(
+        rng,
+        &Utterance {
+            secs,
+            f0: &|t| pitch * (1.0 - 0.35 * t / secs) * (1.0 + 0.06 * (t * 45.0).sin()),
+            env: &|t| swell(t, 0.01, secs * 0.6, secs),
+            formants,
+            shift: FLAT,
+            jitter: 0.06,
+            breath,
+        },
+    );
+    dsp::finish(out, 0.45)
 }

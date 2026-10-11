@@ -84,7 +84,8 @@ a stronghold, and watch the credits roll after the Ender Dragon falls.
       <img src="docs/images/farming.jpg" alt="Rows of wheat at every growth stage on wet and dry farmland, with oak and spruce saplings behind"><br>
       <h3>🌾 Settle down</h3>
       Till soil, sow seeds and bake bread. Saplings grow into trees, grass
-      creeps back over bare dirt, and a bed skips the night.
+      creeps back over bare dirt, and a bed skips the night. Breed animals,
+      feed their babies, and collect eggs from chickens.
     </td>
     <td width="50%" valign="top">
       <img src="docs/images/third-person-armor.jpg" alt="Third-person view of the player wearing a full set of diamond armor"><br>

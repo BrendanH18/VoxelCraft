@@ -149,6 +149,14 @@ impl Game {
         if !anyone || asleep < needed {
             return;
         }
+        if (0.5..0.96).contains(&self.day_time) {
+            if self.sleeping.is_some() {
+                self.mobs.entities.cat_morning_gifts(self.actor, self.player.pos);
+            }
+            for bot in self.agents.players.values().filter(|b| b.agent.sleeping.is_some()) {
+                self.mobs.entities.cat_morning_gifts(bot.id, bot.agent.player.pos);
+            }
+        }
         self.sleeping = None;
         for bot in self.agents.players.values_mut() {
             bot.agent.sleeping = None;

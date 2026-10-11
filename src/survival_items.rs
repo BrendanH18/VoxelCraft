@@ -16,11 +16,29 @@ pub fn use_mob(
     entities: &mut Entities,
     owner: PlayerId,
 ) -> bool {
-    let Some(held) = inventory.get(slot) else { return false };
+    let held = inventory.get(slot);
     let eye = player.eye();
     let dir = player.forward().as_dvec3();
     let reach = world.raycast(eye, dir, 6.0).map_or(6.0, |(p, _)| eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5)));
+    if let Some((p, _)) = world.raycast(eye, dir, 6.0)
+        && world.get_block(p).is_some_and(crate::entity::leash::fence)
+        && entities.raycast(eye, dir, reach).is_none()
+        && entities.use_fence_knot(owner, p)
+    {
+        return true;
+    }
     let Some((index, _)) = entities.raycast(eye, dir, reach) else { return false };
+    if let Some(result) = entities.use_animal(index, held, owner) {
+        if result && !creative {
+            if held.is_some_and(|s| s.item == Item::TROPICAL_FISH_BUCKET) {
+                exchange(inventory, slot, Item::WATER_BUCKET, false, entities, player);
+            } else {
+                inventory.take_one(slot);
+            }
+        }
+        return true;
+    }
+    let Some(held) = held else { return false };
     if (held.item.dye_color().is_some() || held.item == Item::SHEARS)
         && let Some(shears) = entities.use_on_sheep(index, held.item)
     {
@@ -171,6 +189,20 @@ pub fn use_composter(
         return true;
     }
     false
+}
+
+/// A fence knot is an entity target in front of its fence block.
+pub fn attack_knot(player: &Player, world: &World, entities: &mut Entities) -> bool {
+    let Some((p, _)) = world.raycast(player.eye(), player.forward().as_dvec3(), 6.0) else { return false };
+    world.get_block(p).is_some_and(crate::entity::leash::fence)
+        && entities
+            .raycast(
+                player.eye(),
+                player.forward().as_dvec3(),
+                player.eye().distance(p.as_dvec3() + glam::DVec3::splat(0.5)),
+            )
+            .is_none()
+        && entities.break_fence_knot(p)
 }
 
 #[cfg(test)]

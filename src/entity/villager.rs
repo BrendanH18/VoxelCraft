@@ -629,12 +629,12 @@ impl Entities {
             .filter(|m| m.alive())
             .filter_map(|m| match m.kind {
                 MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => Some(json!({
-                    "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
+                    "identity":super::leash::save(m), "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
                     "health": m.health, "built": m.built, "anger": m.player_hit_left, "anger_player":m.angry_player.map(|p|p.0), "trader": m.trader.as_ref().map(|t|t.save()),
                 })),
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
                     let v = m.villager.as_ref()?;
-                    Some(json!({"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
+                    Some(json!({"identity":super::leash::save(m),"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
                     "health":m.health,"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
@@ -772,7 +772,8 @@ impl Entities {
                 m.villager = Some(Box::new(v));
                 Some(m)
             };
-            if let Some(m) = load() {
+            if let Some(mut m) = load() {
+                super::leash::load(&mut m, &a["identity"]);
                 if let Some(v) = m.villager.as_ref() {
                     self.next_villager_id = self.next_villager_id.max(v.id.saturating_add(1));
                 }

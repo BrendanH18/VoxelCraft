@@ -141,6 +141,11 @@ pub enum MobKind {
     Pillager,
     /// Beach turtle: swims, nests on sand; babies grow up and shed a scute.
     Turtle,
+    Wolf,
+    Fox,
+    Parrot,
+    Rabbit,
+    Goat,
 }
 
 impl MobKind {
@@ -167,7 +172,7 @@ impl MobKind {
     pub fn is_cube(self) -> bool {
         matches!(self, Self::Slime | Self::MagmaCube)
     }
-    pub const ALL: [MobKind; 44] = [
+    pub const ALL: [MobKind; 49] = [
         MobKind::Pig,
         MobKind::Cow,
         MobKind::Sheep,
@@ -212,6 +217,11 @@ impl MobKind {
         MobKind::Cat,
         MobKind::Pillager,
         MobKind::Turtle,
+        MobKind::Wolf,
+        MobKind::Fox,
+        MobKind::Parrot,
+        MobKind::Rabbit,
+        MobKind::Goat,
     ];
 
     /// Lowercase mob name used by commands and saved spawner entries.
@@ -261,6 +271,11 @@ impl MobKind {
             MobKind::Cat => "cat",
             MobKind::Pillager => "pillager",
             MobKind::Turtle => "turtle",
+            MobKind::Wolf => "wolf",
+            MobKind::Fox => "fox",
+            MobKind::Parrot => "parrot",
+            MobKind::Rabbit => "rabbit",
+            MobKind::Goat => "goat",
         }
     }
 
@@ -313,6 +328,11 @@ impl MobKind {
             MobKind::Cat => Shape::new(0.3, 0.7),
             MobKind::Pillager => Shape::new(0.3, 1.95),
             MobKind::Turtle => Shape::new(0.6, 0.4),
+            MobKind::Wolf => Shape::new(0.3, 0.85),
+            MobKind::Fox => Shape::new(0.3, 0.7),
+            MobKind::Parrot => Shape::new(0.25, 0.9),
+            MobKind::Rabbit => Shape::new(0.2, 0.5),
+            MobKind::Goat => Shape::new(0.45, 1.3),
         }
     }
 
@@ -353,6 +373,10 @@ impl MobKind {
             MobKind::ElderGuardian => 80.0,
             MobKind::Pillager => 24.0,
             MobKind::Turtle => 30.0,
+            MobKind::Wolf => 8.0,
+            MobKind::Fox | MobKind::Goat => 10.0,
+            MobKind::Parrot => 6.0,
+            MobKind::Rabbit => 3.0,
         }
     }
 
@@ -469,6 +493,42 @@ impl MobKind {
             (MobKind::Witch, b) if b.is_swamp() => 0.25,
             (MobKind::Witch, _) => 0.05,
             // Java: turtles spawn on beaches only (weight 5).
+            (
+                MobKind::Wolf,
+                Biome::Forest
+                | Biome::OldGrowthBirchForest
+                | Biome::Taiga
+                | Biome::SnowyTaiga
+                | Biome::OldGrowthPineTaiga
+                | Biome::OldGrowthSpruceTaiga
+                | Biome::Grove
+                | Biome::SavannaPlateau
+                | Biome::WindsweptForest
+                | Biome::SparseJungle
+                | Biome::WoodedBadlands,
+            ) => 0.5,
+            (
+                MobKind::Fox,
+                Biome::Taiga
+                | Biome::SnowyTaiga
+                | Biome::OldGrowthPineTaiga
+                | Biome::OldGrowthSpruceTaiga
+                | Biome::Grove,
+            ) => 0.5,
+            (MobKind::Parrot, Biome::Jungle | Biome::BambooJungle | Biome::SparseJungle) => 0.4,
+            (
+                MobKind::Rabbit,
+                Biome::Desert
+                | Biome::SnowyPlains
+                | Biome::SnowyTaiga
+                | Biome::Grove
+                | Biome::Meadow
+                | Biome::FlowerForest
+                | Biome::Taiga
+                | Biome::CherryGrove,
+            ) => 0.4,
+            (MobKind::Goat, Biome::FrozenPeaks | Biome::JaggedPeaks | Biome::SnowySlopes) => 0.5,
+            (MobKind::Wolf | MobKind::Fox | MobKind::Parrot | MobKind::Rabbit | MobKind::Goat, _) => 0.0,
             (MobKind::Turtle, Biome::Beach) => 0.4,
             (MobKind::Turtle, _) => 0.0,
             (MobKind::GlowSquid | MobKind::Axolotl | MobKind::Guardian, _) => 1.0,
@@ -620,7 +680,7 @@ impl MobKind {
         match self {
             MobKind::Pig => &[(Item::RAW_PORKCHOP, 1, 3)],
             MobKind::Cow => &[(Item::RAW_BEEF, 1, 3), (Item::LEATHER, 0, 2)],
-            MobKind::Sheep => &[(WOOL, 1, 1)],
+            MobKind::Sheep => &[(WOOL, 1, 1), (Item::RAW_MUTTON, 1, 2)],
             MobKind::Chicken => &[(Item::RAW_CHICKEN, 1, 1), (Item::FEATHER, 0, 2)],
             MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => {
                 &[(Item::ROTTEN_FLESH, 0, 2)]
@@ -657,6 +717,9 @@ impl MobKind {
             MobKind::ElderGuardian => &[(Item::PRISMARINE_SHARD, 0, 2), (SPONGE, 1, 1)],
             MobKind::Axolotl | MobKind::Cat | MobKind::Pillager => &[],
             MobKind::Turtle => &[(SEAGRASS, 0, 2)],
+            MobKind::Wolf | MobKind::Fox | MobKind::Goat => &[],
+            MobKind::Parrot => &[(Item::FEATHER, 1, 2)],
+            MobKind::Rabbit => &[(Item::RAW_RABBIT, 0, 1), (Item::RABBIT_HIDE, 0, 1)],
             // The skull is rolled in `drops`.
             MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
             // Java rolls a few of these; each is rolled on its own here.
@@ -748,6 +811,10 @@ pub(super) enum Ai {
 
 pub struct Mob {
     pub kind: MobKind,
+    pub name: crate::inventory::StackName,
+    pub leash: Option<super::leash::Leash>,
+    pub leash_pos: Option<DVec3>,
+    pub animal: Option<Box<super::animals::State>>,
     pub villager: Option<Box<super::villager::Villager>>,
     /// Piglin gear, gold, anger and zombification (see `entity::nether`).
     pub nether: Option<Box<super::nether::NetherMob>>,
@@ -874,6 +941,10 @@ impl Mob {
     pub fn new(kind: MobKind, pos: DVec3, yaw: f32) -> Self {
         Self {
             kind,
+            name: Default::default(),
+            leash: None,
+            leash_pos: None,
+            animal: kind.has_animal_state().then(|| Box::new(super::animals::State::new(pos))),
             villager: matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader)
                 .then(|| Box::new(super::villager::Villager::new(0, 0))),
             nether: super::nether::NetherMob::for_kind(kind),
@@ -1068,6 +1139,10 @@ impl Mob {
         } else {
             amount
         };
+        if let Some(a) = &mut self.animal {
+            a.love = 0.0;
+            a.courtship = 0.0;
+        }
         self.health -= amount;
         if self.kind == MobKind::Axolotl && self.in_water && self.health > 0.0 && self.health < 7.0 && rng.chance(0.33)
         {
@@ -1143,6 +1218,9 @@ impl Mob {
         }
         self.hurt = (self.hurt - dtf).max(0.0);
         self.provoked = (self.provoked - dtf).max(0.0);
+        if self.kind == MobKind::Wolf && self.provoked == 0.0 {
+            self.angry_player = None;
+        }
         self.attack_cooldown -= dtf;
         self.player_hit_left = (self.player_hit_left - dtf).max(0.0);
         self.weakness_left = (self.weakness_left - dtf).max(0.0);
@@ -1194,7 +1272,7 @@ impl Mob {
 
         let steps = (dt / MAX_STEP).ceil().max(1.0) as u32;
         let h = dt / steps as f64;
-        if self.riding.is_some() {
+        if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
             self.vel = DVec3::ZERO;
             self.on_ground = true;
         } else {
@@ -1254,16 +1332,12 @@ impl Mob {
             self.age = if self.age < 0 { (self.age + ticks).min(0) } else { (self.age - ticks).max(0) };
             self.baby = self.age < 0;
         }
-        if self.alive() && self.kind == MobKind::Chicken {
-            let ticks = ((dt * 20.0).round() as i32).max(1);
-            if self.age < 0 {
-                self.age = (self.age + ticks).min(0);
-            } else {
-                self.egg_timer -= dtf;
-                if self.egg_timer <= 0.0 {
-                    self.egg_timer = rng.range(300.0, 600.0);
-                    events.push(EntityEvent::LaidEgg { pos: self.pos });
-                }
+        self.advance_animal_age(dtf);
+        if self.alive() && self.kind == MobKind::Chicken && self.age >= 0 {
+            self.egg_timer -= dtf;
+            if self.egg_timer <= 0.0 {
+                self.egg_timer = rng.range(300.0, 600.0);
+                events.push(EntityEvent::LaidEgg { pos: self.pos });
             }
         }
         // A lethal Thorns response is emitted during thinking, before the
@@ -1285,6 +1359,15 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        if let Some(wish) = self.leash_think(dt, world, rng) {
+            return wish;
+        }
+        if let Some(wish) = self.companion_think(dt, world, ctx, rng, events) {
+            return wish;
+        }
+        if let Some(wish) = self.animal_think(dt, world, ctx, rng) {
+            return wish;
+        }
         if self.kind.is_aquatic() {
             return super::aquatic::think(self, dt, world, ctx, rng, events);
         }
@@ -1935,6 +2018,10 @@ impl Mob {
                 self.hop_left /= 3.0;
             }
         }
+        if self.kind == MobKind::Rabbit && self.on_ground && wish.is_some() && self.hop_left <= 0.0 {
+            self.vel.y = if self.blocked { 8.4 } else { 4.6 };
+            self.hop_left = 0.5;
+        }
         let target = wish.map_or(DVec3::ZERO, |d| d * speed);
         if self.kind.is_aquatic() && self.in_water {
             self.vel += (target - self.vel) * (dt * 3.0).min(1.0);
@@ -1950,7 +2037,7 @@ impl Mob {
             self.vel.z = self.yaw.sin() as f64 * 1.4;
         }
 
-        if self.kind == MobKind::Ghast && self.alive() {
+        if self.alive() && (self.kind == MobKind::Ghast || self.kind == MobKind::Parrot && wish.is_some()) {
             // Java ghasts fly: no gravity, and they steer in three dimensions.
             let k = (dt * 1.6).min(1.0);
             self.vel += (target - self.vel) * k;
@@ -1977,7 +2064,7 @@ impl Mob {
                 self.vel.z += (target.z - self.vel.z) * k;
             }
             self.vel.y = (self.vel.y - GRAVITY * dt).max(-78.0);
-            if self.kind == MobKind::Chicken {
+            if matches!(self.kind, MobKind::Chicken | MobKind::Parrot) {
                 self.vel.y = self.vel.y.max(-2.5); // flaps its way down
             }
             if self.kind == MobKind::Blaze && self.alive() {
