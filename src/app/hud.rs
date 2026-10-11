@@ -180,6 +180,7 @@ impl Game {
             let msg = "Click to play  -  Esc for the menu";
             ui.text((sw - Ui::text_width(msg)) / 2.0, sh / 2.0 - 24.0, msg, WHITE);
         }
+        self.lan_ui(&mut ui);
         if self.console.open {
             self.console_ui(&mut ui);
         }

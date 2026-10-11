@@ -18,6 +18,7 @@ mod gamepad;
 mod hand;
 mod hud;
 mod items;
+mod lan;
 mod menu;
 mod mobs;
 mod pad_menu;
@@ -119,6 +120,7 @@ pub(crate) enum Container {
 
 struct Game {
     agents: agents::Agents,
+    lan: lan::Lan,
     split: split::Split,
     pads: gamepad::Pads,
     /// `--pad-player` screen, seated once the world loads.
@@ -283,11 +285,28 @@ impl App {
         self.game = Some(game);
     }
 
+    fn join_lan(&mut self, connection: voxelcraft::lan::Connection, profile: String) {
+        let shell = self.title.take().expect("title screen").into_shell();
+        self.args.join = Some("connected".into());
+        let mut game = Game::start(shell, &self.args, &self.saves_dir, "lan-client", None);
+        game.lan.client = Some(connection);
+        game.lan.profile = profile;
+        game.arrival = None;
+        game.placed = true;
+        game.world = World::new_remote(Arc::new(Generator::new(0)), 2);
+        game.lan.offline_render_distance = Some(game.settings.render_distance);
+        game.settings.render_distance = 2;
+        game.apply_settings();
+        self.args.clear_one_shot();
+        self.game = Some(game);
+    }
+
     /// Saves the world and goes back to the title screen.
     fn quit_to_title(&mut self) {
         let Some(mut game) = self.game.take() else { return };
         game.save();
         game.save_settings();
+        game.close_lan("Server closed");
         let shell = game.into_shell();
         self.title = Some(title::Title::new(shell, &self.saves_dir));
     }
@@ -338,7 +357,13 @@ impl ApplicationHandler for App {
         audio.set_music_volume(settings.music_volume);
         let shell = Shell { renderer, audio, settings, settings_path };
         // A named world, a fresh one or a scripted run skips the title screen.
-        let to_title = matches!(self.args.open_menu.as_deref(), Some("title" | "create"));
+        let to_title = matches!(self.args.open_menu.as_deref(), Some("title" | "create" | "multiplayer"));
+        if let Some(address) = self.args.join.clone() {
+            let mut title = title::Title::new(shell, &self.saves_dir);
+            title.connect_address(address, self.args.profile.clone());
+            self.title = Some(title);
+            return;
+        }
         match self.args.world.clone() {
             Some(world) if !to_title => self.play(shell, &world, None),
             None if !to_title && (self.args.new_world || scripted) => self.play(shell, "world", None),
@@ -346,6 +371,9 @@ impl ApplicationHandler for App {
                 let mut title = title::Title::new(shell, &self.saves_dir);
                 if self.args.open_menu.as_deref() == Some("create") {
                     title.show_create();
+                }
+                if self.args.open_menu.as_deref() == Some("multiplayer") {
+                    title.show_multiplayer();
                 }
                 title.screenshot = self.args.screenshot.take();
                 self.title = Some(title);
@@ -364,6 +392,7 @@ impl ApplicationHandler for App {
                     let shell = self.title.take().expect("title screen").into_shell();
                     self.play(shell, &dir, new);
                 }
+                Some(title::Action::Join(connection, profile)) => self.join_lan(connection, profile),
                 Some(title::Action::Quit) => event_loop.exit(),
                 None => {}
             }
@@ -473,6 +502,13 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 game.frame();
+                if let Some(reason) = game.lan.lost.take() {
+                    self.quit_to_title();
+                    if let Some(title) = self.title.as_mut() {
+                        title.connection_error(reason);
+                    }
+                    return;
+                }
                 if game.screenshot_done() || game.bench_render_done() {
                     event_loop.exit();
                 }
@@ -499,6 +535,7 @@ impl ApplicationHandler for App {
         {
             game.save();
             game.save_settings();
+            game.close_lan("Server closed");
         }
         if let Some(title) = &self.title {
             title.save_settings();
@@ -555,7 +592,7 @@ impl Game {
     ) -> Game {
         let Shell { renderer, audio, settings, settings_path } = shell;
         let storage = Storage::new(saves_dir.join(world_dir));
-        let existing = if args.new_world || new.is_some() || !storage.exists() {
+        let existing = if args.join.is_some() || args.new_world || new.is_some() || !storage.exists() {
             None
         } else {
             match storage.load_level() {
@@ -568,7 +605,7 @@ impl Game {
         };
         // `--new` replaces the save, so the old world's Nether must not carry
         // over into the new one. Scripted runs never write saves.
-        if args.new_world && settings_path.is_some() {
+        if args.join.is_none() && args.new_world && settings_path.is_some() {
             for dimension in [Dimension::Nether, Dimension::End] {
                 let nether = dimension::storage_for(&storage, dimension);
                 if nether.exists()
@@ -728,6 +765,7 @@ impl Game {
         }
         let mut game = Game {
             agents,
+            lan: lan::Lan::default(),
             split: split::Split { follow: args.split_screen.clone(), side_by_side: args.split_side },
             // Screenshot runs never read controllers.
             virtual_pad: args.pad_player.clone(),
@@ -844,6 +882,7 @@ impl Game {
             particles: crate::particles::System::new(seed),
             menu: match args.open_menu.as_deref() {
                 Some("pause") => Some(menu::Screen::Pause),
+                Some("lan") => Some(menu::Screen::Lan),
                 Some("options") => Some(menu::Screen::Options),
                 _ => None,
             },
@@ -874,6 +913,13 @@ impl Game {
         } else if game.screenshot.is_none() && game.bench_render.is_none() && !game.console.open {
             game.set_grab(true);
         }
+        game.lan.mode = game.mode;
+        game.lan.profile = args.profile.clone().unwrap_or_else(|| lan::local_profile(saves_dir));
+        if let Some(address) = args.host_lan
+            && let Err(e) = game.open_lan(address)
+        {
+            game.show_popup(&e);
+        }
         game
     }
 
@@ -886,6 +932,9 @@ impl Game {
     }
 
     fn set_grab(&mut self, grab: bool) {
+        if self.puppet {
+            return;
+        }
         let window = &self.renderer.window;
         if grab {
             let ok = window
@@ -926,6 +975,9 @@ impl Game {
             KeyCode::KeyE => self.toggle_inventory(),
             KeyCode::KeyQ => self.drop_selected(self.modifiers.control_key()),
             // Hardcore deaths end in spectator for good; only `/gamemode` cheats out.
+            KeyCode::KeyG if self.lan.client.is_some() => {
+                self.lan_command(if self.mode.is_creative() { "/gamemode survival" } else { "/gamemode creative" })
+            }
             KeyCode::KeyG if !self.hardcore => {
                 let mode = match self.mode {
                     GameMode::Survival => GameMode::Creative,
@@ -1096,6 +1148,10 @@ impl Game {
 
     /// Back to the world spawn with full health.
     fn respawn(&mut self) {
+        if self.lan.client.is_some() {
+            self.lan_command("respawn");
+            return;
+        }
         let kept_xp = self.gamerules.bool("keepInventory").then_some(self.vitals.xp);
         if self.dimension != Dimension::Overworld {
             self.vitals.respawn();
@@ -1132,6 +1188,10 @@ impl Game {
 
     /// Open or close the inventory, clearing queued input on entry and returning crafting stacks on exit.
     fn toggle_inventory(&mut self) {
+        if self.lan.client.is_some() {
+            self.lan_command(if self.inventory_open { "close" } else { "inventory" });
+            return;
+        }
         if !self.inventory_open && !self.mode.can_interact() {
             return;
         }
@@ -1147,7 +1207,9 @@ impl Game {
             self.search.focused = self.mode == GameMode::Creative && self.container == Container::Inventory;
             self.search.selected = false;
             self.set_grab(false);
-            self.keys.clear();
+            if !self.puppet {
+                self.keys.clear();
+            }
             self.left_held = false;
             self.right_held = false;
             self.jump_pressed = false;
@@ -1280,6 +1342,12 @@ impl Game {
     }
 
     fn inventory_click(&mut self, right: bool) {
+        if self.lan.client.is_some() {
+            if let Some(slot) = self.slot_under_cursor().and_then(lan::encode_slot) {
+                self.lan_send(voxelcraft::lan::Packet::Click { slot, right, shift: self.modifiers.shift_key() });
+            }
+            return;
+        }
         if self.search_click() {
             return;
         }
@@ -1907,6 +1975,10 @@ impl Game {
     }
 
     fn pick_block(&mut self) {
+        if self.lan.client.is_some() {
+            self.lan_command("pick");
+            return;
+        }
         let Some(b) = self.target().and_then(|(pos, _)| self.world.get_block(pos)) else { return };
         if b.is_fire() {
             return;
@@ -2097,8 +2169,12 @@ impl Game {
     }
 
     fn save(&mut self) {
+        if self.lan.client.is_some() {
+            self.last_save = Instant::now();
+            return;
+        }
         let mut props = std::collections::BTreeMap::new();
-        props.insert("agents".into(), self.agents.serialize(self.dimension.name()));
+        props.insert("agents".into(), self.serialize_lan_profiles());
         props.insert("pads".into(), self.pads.serialize());
         props.insert("mode".to_string(), self.mode.name().to_string());
         props.insert("difficulty".to_string(), self.difficulty.name().to_string());
@@ -2194,6 +2270,14 @@ impl Game {
 
     /// Attack/mine button (left click, or a controller's RT) pressed or released.
     fn attack_button(&mut self, pressed: bool) {
+        if self.lan.client.is_some() {
+            self.left_held = pressed;
+            self.lan_button_edge(true, pressed);
+            if pressed {
+                self.hand.swing();
+            }
+            return;
+        }
         if !self.mode.can_interact() {
             return;
         }
@@ -2222,6 +2306,14 @@ impl Game {
 
     /// Use button (right click, or a controller's LT) pressed or released.
     fn use_button(&mut self, pressed: bool) {
+        if self.lan.client.is_some() {
+            self.right_held = pressed;
+            self.lan_button_edge(false, pressed);
+            if pressed {
+                self.hand.swing();
+            }
+            return;
+        }
         if !self.mode.can_interact() {
             return;
         }
@@ -2348,6 +2440,7 @@ impl Game {
 
         let acting = self.menu.is_none() && !self.console.open && self.mouse_grabbed && !self.inventory_open;
         self.act(acting, dt);
+        self.drive_lan(dt);
         self.drive_pads(dt);
         self.tick_agents();
         self.ride_minecarts(input);
@@ -2389,26 +2482,43 @@ impl Game {
     /// Offline pause keeps streaming active and snaps interpolation to the current state.
     fn frame(&mut self) {
         let now = Instant::now();
+        self.poll_lan();
         self.poll_agents();
-        let paused = (self.menu.is_some() || self.console.open || self.credits.is_some()) && self.agents.host.is_none();
+        let paused = (self.menu.is_some() || self.console.open || self.credits.is_some())
+            && self.agents.host.is_none()
+            && self.lan.host.is_none()
+            && self.lan.client.is_none();
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
         let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
         self.update_credits(elapsed.as_secs_f32().min(0.25));
-        self.poll_pads(dt as f32, paused);
+        if self.lan.client.is_none() {
+            self.poll_pads(dt as f32, paused);
+        }
 
         // Streaming and GPU uploads continue during offline pause.
-        self.update_arrival();
+        if self.lan.client.is_none() {
+            self.update_arrival();
+        }
         let viewers: Vec<DVec3> = self.followed().map(|(_, b)| b.agent.player.pos).collect();
         self.world.set_viewers(&viewers);
         self.world.update_players(self.player.pos, &self.agents.positions());
-        if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0
+        if self.lan.client.is_none()
+            && !self.placed
+            && self.screenshot.is_none()
+            && self.world.pending_jobs() == 0
+            && self.world.loaded_chunks() > 0
         {
             self.apply_placements();
         }
         for _ in 0..ticks {
-            self.tick();
+            if self.lan.client.is_some() {
+                self.tick_lan_client();
+            } else {
+                self.tick();
+                self.send_lan_state();
+            }
         }
         if paused {
             self.previous_eye = self.player.eye();

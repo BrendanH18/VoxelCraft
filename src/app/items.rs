@@ -235,6 +235,10 @@ impl Game {
     /// Q: drops one of the selected item, or the whole stack with Ctrl.
     /// With the inventory open, drops from the slot under the mouse.
     pub(super) fn drop_selected(&mut self, whole_stack: bool) {
+        if self.lan.client.is_some() {
+            self.lan_command(if whole_stack { "drop_stack" } else { "drop" });
+            return;
+        }
         let slot = if self.inventory_open {
             match self.slot_under_cursor() {
                 Some(super::hud::SlotRef::Inventory(i)) => i,

@@ -98,6 +98,9 @@ impl Default for Body {
 }
 
 impl Body {
+    pub(super) fn container(&self) -> Container {
+        self.container
+    }
     /// Lets go of both triggers (opening a screen, sleeping, dying).
     fn let_go(&mut self) {
         self.left_held = false;
@@ -501,7 +504,7 @@ impl Game {
 
     /// A free standing spot next to the host, or the host's own (players
     /// don't collide, but a shared spot puts the camera inside the host).
-    fn beside_host(&self) -> DVec3 {
+    pub(super) fn beside_host(&self) -> DVec3 {
         let host = self.player.pos;
         let open = |p: IVec3| self.world.get_block(p).is_some_and(|b| !b.is_solid());
         [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)]
@@ -584,13 +587,11 @@ impl Game {
         })
     }
 
-    /// Swaps controller player `i`'s state with the host's: body, inventory,
+    /// Swaps a hosted player's state with the host's: body, inventory,
     /// vitals, hand animation and hand state. Calling it twice restores both.
-    fn swap_puppet(&mut self, i: usize) -> bool {
+    fn swap_body(&mut self, name: &str, body: &mut Body) -> bool {
         use std::mem::swap;
-        let seat = &mut self.pads.seats[i];
-        let Some(bot) = self.agents.players.get_mut(&seat.name) else { return false };
-        let body = &mut seat.body;
+        let Some(bot) = self.agents.players.get_mut(name) else { return false };
         swap(&mut self.player, &mut bot.agent.player);
         swap(&mut self.inventory, &mut bot.agent.inventory);
         swap(&mut self.vitals, &mut bot.agent.vitals);
@@ -627,12 +628,22 @@ impl Game {
     /// container screens act for them. Popups become their own messages,
     /// and containers and beds they use land in `puppet_used`.
     pub(super) fn puppet<R>(&mut self, i: usize, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
-        let seat = &mut self.pads.seats[i];
-        let bot = self.agents.players.get(&seat.name)?;
+        let name = self.pads.seats[i].name.clone();
+        let mut body = std::mem::take(&mut self.pads.seats[i].body);
+        let result = self.puppet_body(&name, &mut body, f);
+        self.pads.seats[i].body = body;
+        if let Some(text) = self.puppet_popup.take() {
+            self.pads.seats[i].message = Some((text, Instant::now()));
+        }
+        result
+    }
+
+    /// Shared desktop action boundary for controller and LAN player bodies.
+    pub(super) fn puppet_body<R>(&mut self, name: &str, body: &mut Body, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
+        let bot = self.agents.players.get(name)?;
         let (selected, player_mode, id) = (bot.agent.selected, bot.agent.mode, bot.id);
-        // Switching slots interrupts mining, eating and drawing, as it does for the host.
-        seat.body.actions.select(selected);
-        if !self.swap_puppet(i) {
+        body.actions.select(selected);
+        if !self.swap_body(name, body) {
             return None;
         }
         let mode = std::mem::replace(&mut self.mode, player_mode);
@@ -642,13 +653,9 @@ impl Game {
         self.puppet = false;
         self.actor = crate::entity::PlayerId::HOST;
         self.mode = mode;
-        self.swap_puppet(i);
-        let seat = &mut self.pads.seats[i];
-        if let Some(text) = self.puppet_popup.take() {
-            seat.message = Some((text, Instant::now()));
-        }
-        if let Some(bot) = self.agents.players.get_mut(&seat.name) {
-            bot.agent.selected = seat.body.actions.selected;
+        self.swap_body(name, body);
+        if let Some(bot) = self.agents.players.get_mut(name) {
+            bot.agent.selected = body.actions.selected;
         }
         Some(result)
     }

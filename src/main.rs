@@ -15,6 +15,9 @@ use winit::event_loop::{ControlFlow, EventLoop};
 
 pub struct Args {
     pub seed: Option<u64>,
+    pub host_lan: Option<std::net::SocketAddr>,
+    pub join: Option<String>,
+    pub profile: Option<String>,
     pub agent_listen: Option<std::net::SocketAddr>,
     pub agent_token: Option<String>,
     pub agent_cheats: bool,
@@ -93,6 +96,9 @@ pub struct Args {
 
 const USAGE: &str = "\
 voxelcraft [options]
+  --host-lan <IP:PORT>     open a desktop world to LAN (0.0.0.0:0 chooses a port)
+  --join <HOST:PORT>       join a LAN world; never writes its save
+  --profile <name>         local LAN identity (restored on reconnect)
   --agent-listen <IP:PORT>  host CLI players (default recommended: 127.0.0.1:4242)
   --agent-token <token>    shared token (required for LAN, at least 16 characters)
   --agent-cheats           permit agents to use give, gamemode, tp and world commands
@@ -122,7 +128,7 @@ voxelcraft [options]
                     inventory, with play, pause, inventory, crafting or
                     palette (creative) open
                     (screenshots)
-  --open-menu <m>   start with a menu open: pause, options, title or create (screenshots)
+  --open-menu <m>   start with a menu open: pause, options, title, create, lan or multiplayer (screenshots)
   --open-block x,y,z  open the furnace, chest, brewing stand, enchanting
                     table, anvil or smithing table once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
@@ -165,6 +171,9 @@ voxelcraft [options]
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         seed: None,
+        host_lan: None,
+        join: None,
+        profile: None,
         agent_listen: None,
         agent_token: None,
         agent_cheats: false,
@@ -217,6 +226,15 @@ fn parse_args() -> Result<Args, String> {
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
         match a.as_str() {
+            "--host-lan" => args.host_lan = Some(value("--host-lan")?.parse().map_err(|_| "bad --host-lan IP:PORT")?),
+            "--join" => args.join = Some(value("--join")?),
+            "--profile" => {
+                let profile = value("--profile")?;
+                if !voxelcraft::control::valid_name(&profile) {
+                    return Err("invalid --profile (1..24 letters, digits, underscores)".into());
+                }
+                args.profile = Some(profile);
+            }
             "--agent-listen" => {
                 args.agent_listen = Some(value("--agent-listen")?.parse().map_err(|_| "bad --agent-listen IP:PORT")?)
             }
@@ -266,8 +284,10 @@ fn parse_args() -> Result<Args, String> {
             }
             "--open-menu" => {
                 let m = value("--open-menu")?;
-                if !matches!(m.as_str(), "pause" | "options" | "title" | "create") {
-                    return Err(format!("--open-menu: expected pause, options, title or create, got {m}"));
+                if !matches!(m.as_str(), "pause" | "options" | "title" | "create" | "lan" | "multiplayer") {
+                    return Err(format!(
+                        "--open-menu: expected pause, options, title, create, lan or multiplayer, got {m}"
+                    ));
                 }
                 args.open_menu = Some(m);
             }
@@ -443,6 +463,8 @@ impl Args {
     /// once it has loaded, so worlds picked later start as saved.
     pub fn clear_one_shot(&mut self) {
         self.new_world = false;
+        self.host_lan = None;
+        self.join = None;
         self.seed = None;
         self.mode = None;
         self.open_inventory = false;

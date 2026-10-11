@@ -202,8 +202,9 @@ Timeouts and host shutdown end outstanding requests.
 Agents share the host's active dimension and relocate alongside it when the
 host travels. Agent simulation pauses during arrival and while its feet or
 supporting terrain are unloaded; timed commands resume after loading.
-Independent simultaneous dimensions and desktop client joining
-are future work. Every player has a stable ID (the host is 0; agent profiles
+Independent simultaneous dimensions remain future work.
+[Desktop LAN joining](lan.md) uses a separate versioned binary transport;
+the JSON-lines agent protocol remains unchanged. Every player has a stable ID (the host is 0; agent profiles
 keep theirs in the save and `players` reports them). Hostile mobs chase the
 nearest survival player, host or agent; melee, skeleton arrows and explosions
 hurt agents with armor, knockback and death drops. Mobs spawn around every

@@ -34,6 +34,7 @@ pub(crate) struct NewWorld {
 pub(super) enum Action {
     /// Load the save folder, creating it as described if `Some`.
     Play(String, Option<NewWorld>),
+    Join(voxelcraft::lan::Connection, String),
     Quit,
 }
 
@@ -56,6 +57,7 @@ enum Screen {
     List,
     Create,
     ConfirmDelete,
+    Multiplayer,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -66,6 +68,11 @@ enum Widget {
     Create,
     Delete,
     Quit,
+    Multiplayer,
+    Join,
+    Address,
+    Profile,
+    Server(usize),
     NameField,
     SeedField,
     Mode,
@@ -112,6 +119,12 @@ pub(super) struct Title {
     /// `--open-menu title --screenshot`: capture after a few frames, then quit.
     pub screenshot: Option<String>,
     frames: u32,
+    address: String,
+    profile: String,
+    profile_focus: bool,
+    message: String,
+    discovery: Option<voxelcraft::lan::Discovery>,
+    connecting: Option<crossbeam_channel::Receiver<Result<voxelcraft::lan::Connection, String>>>,
 }
 
 impl Title {
@@ -138,7 +151,62 @@ impl Title {
             started: Instant::now(),
             screenshot: None,
             frames: 0,
+            address: "127.0.0.1:25565".into(),
+            profile: super::lan::local_profile(saves_dir),
+            profile_focus: false,
+            message: String::new(),
+            discovery: None,
+            connecting: None,
         }
+    }
+
+    pub fn connection_error(&mut self, reason: String) {
+        self.show_multiplayer();
+        self.message = reason;
+    }
+    pub fn show_multiplayer(&mut self) {
+        self.screen = Screen::Multiplayer;
+        self.discovery = voxelcraft::lan::Discovery::new().ok();
+        self.message = "Scanning for games on your local network".into();
+    }
+    pub fn connect_address(&mut self, address: String, profile: Option<String>) {
+        self.show_multiplayer();
+        self.address = address;
+        if let Some(profile) = profile {
+            self.profile = profile;
+        }
+        self.connect();
+    }
+    fn connect(&mut self) {
+        if self.connecting.is_some() {
+            return;
+        }
+        if !voxelcraft::control::valid_name(&self.profile) {
+            self.message = "Profile: 1..24 letters, digits or underscores".into();
+            return;
+        }
+        let path = self.saves_dir.parent().unwrap_or(&self.saves_dir).join("lan-profile.txt");
+        let _ = std::fs::create_dir_all(path.parent().unwrap());
+        let _ = std::fs::write(path, &self.profile);
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        self.connecting = Some(rx);
+        self.message = "Connecting...".into();
+        let (address, profile) = (self.address.clone(), self.profile.clone());
+        std::thread::spawn(move || {
+            use std::net::ToSocketAddrs;
+            let result = (|| {
+                let addresses = address.to_socket_addrs().map_err(|e| e.to_string())?;
+                let mut last = "No address found".to_string();
+                for address in addresses.take(4) {
+                    match voxelcraft::lan::Connection::connect(address, &profile) {
+                        Ok(c) => return Ok(c),
+                        Err(e) => last = e.to_string(),
+                    }
+                }
+                Err(last)
+            })();
+            let _ = tx.send(result);
+        });
     }
 
     pub fn into_shell(self) -> Shell {
@@ -191,13 +259,23 @@ impl Title {
                 if let Some(action) = self.key(code) {
                     return Some(action);
                 }
-                if self.screen == Screen::Create
+                if matches!(self.screen, Screen::Create | Screen::Multiplayer)
                     && let Some(text) = &event.text
                 {
                     self.type_text(text);
                 }
             }
             WindowEvent::RedrawRequested => {
+                if let Some(discovery) = &mut self.discovery {
+                    discovery.poll();
+                }
+                if let Some(result) = self.connecting.as_ref().and_then(|rx| rx.try_recv().ok()) {
+                    self.connecting = None;
+                    match result {
+                        Ok(connection) => return Some(Action::Join(connection, self.profile.clone())),
+                        Err(e) => self.message = format!("Could not connect: {e}"),
+                    }
+                }
                 self.frame();
                 return self.screenshot_done().then_some(Action::Quit);
             }
@@ -208,6 +286,20 @@ impl Title {
 
     fn key(&mut self, code: KeyCode) -> Option<Action> {
         match (self.screen, code) {
+            (Screen::Multiplayer, KeyCode::Enter) => self.connect(),
+            (Screen::Multiplayer, KeyCode::Tab) => self.profile_focus = !self.profile_focus,
+            (Screen::Multiplayer, KeyCode::Backspace) => {
+                if self.profile_focus {
+                    self.profile.pop();
+                } else {
+                    self.address.pop();
+                }
+            }
+            (Screen::Multiplayer, KeyCode::Escape) => {
+                self.screen = Screen::List;
+                self.discovery = None;
+                self.connecting = None;
+            }
             (Screen::List, KeyCode::Enter) => return self.play_selected(),
             (Screen::List, KeyCode::ArrowUp | KeyCode::ArrowDown) if !self.worlds.is_empty() => {
                 let i = self.selected.unwrap_or(0) as isize + if code == KeyCode::ArrowUp { -1 } else { 1 };
@@ -235,6 +327,16 @@ impl Title {
     }
 
     fn type_text(&mut self, text: &str) {
+        if self.screen == Screen::Multiplayer {
+            let max = if self.profile_focus { 24 } else { 128 };
+            let field = if self.profile_focus { &mut self.profile } else { &mut self.address };
+            for c in text.chars().filter(|c| c.is_ascii() && !c.is_ascii_control()) {
+                if field.len() < max {
+                    field.push(c);
+                }
+            }
+            return;
+        }
         let max = if self.focus == Field::Name { NAME_MAX } else { SEED_MAX };
         let field = self.field();
         for c in text.chars().filter(|c| c.is_ascii() && !c.is_ascii_control()) {
@@ -285,6 +387,15 @@ impl Title {
                 }
             }
             Widget::Play => return self.play_selected(),
+            Widget::Multiplayer => self.show_multiplayer(),
+            Widget::Join => self.connect(),
+            Widget::Address => self.profile_focus = false,
+            Widget::Profile => self.profile_focus = true,
+            Widget::Server(i) => {
+                if let Some(server) = self.discovery.as_ref().and_then(|d| d.servers.get(i)) {
+                    self.address = server.address.to_string();
+                }
+            }
             Widget::Create => {
                 self.show_create();
             }
@@ -308,7 +419,11 @@ impl Title {
                 }
             }
             Widget::CreateWorld => return Some(self.create()),
-            Widget::Cancel => self.screen = Screen::List,
+            Widget::Cancel => {
+                self.screen = Screen::List;
+                self.discovery = None;
+                self.connecting = None;
+            }
             Widget::ConfirmDelete => {
                 self.delete_selected();
                 self.screen = Screen::List;
@@ -349,7 +464,7 @@ impl Title {
     /// The world list's box (x, y, w, h).
     fn list_rect((sw, sh): (f32, f32)) -> [f32; 4] {
         let top = 64.0;
-        let bottom = sh - 2.0 * (BUTTON_H + 4.0) - 16.0;
+        let bottom = sh - 3.0 * (BUTTON_H + 4.0) - 16.0;
         [((sw - LIST_W) / 2.0).floor(), top, LIST_W, (bottom - top).max(ROW_H)]
     }
 
@@ -374,6 +489,7 @@ impl Title {
                 out.push((Widget::Create, [cx + 2.0, by, HALF_W, BUTTON_H]));
                 out.push((Widget::Delete, [left, by + BUTTON_H + 4.0, HALF_W, BUTTON_H]));
                 out.push((Widget::Quit, [cx + 2.0, by + BUTTON_H + 4.0, HALF_W, BUTTON_H]));
+                out.push((Widget::Multiplayer, [cx - BUTTON_W / 2.0, by + 2.0 * (BUTTON_H + 4.0), BUTTON_W, BUTTON_H]));
             }
             Screen::Create => {
                 let x = cx - BUTTON_W / 2.0;
@@ -385,6 +501,18 @@ impl Title {
                 out.push((Widget::Hardcore, [x, y + 130.0, BUTTON_W, BUTTON_H]));
                 out.push((Widget::CreateWorld, [cx - HALF_W - 2.0, y + 178.0, HALF_W, BUTTON_H]));
                 out.push((Widget::Cancel, [cx + 2.0, y + 178.0, HALF_W, BUTTON_H]));
+            }
+            Screen::Multiplayer => {
+                let x = cx - BUTTON_W / 2.0;
+                out.push((Widget::Address, [x, 70.0, BUTTON_W, BUTTON_H]));
+                out.push((Widget::Profile, [x, 110.0, BUTTON_W, BUTTON_H]));
+                if let Some(discovery) = &self.discovery {
+                    for i in 0..discovery.servers.len().min(3) {
+                        out.push((Widget::Server(i), [cx - LIST_W / 2.0, 154.0 + i as f32 * 24.0, LIST_W, BUTTON_H]));
+                    }
+                }
+                out.push((Widget::Join, [cx - HALF_W - 2.0, sh - 34.0, HALF_W, BUTTON_H]));
+                out.push((Widget::Cancel, [cx + 2.0, sh - 34.0, HALF_W, BUTTON_H]));
             }
             Screen::ConfirmDelete => {
                 let y = (sh / 2.0 + 10.0).floor();
@@ -401,6 +529,14 @@ impl Title {
             Widget::Create => "Create New World".into(),
             Widget::Delete => "Delete".into(),
             Widget::Quit => "Quit Game".into(),
+            Widget::Multiplayer => "Multiplayer".into(),
+            Widget::Join => "Direct Connect".into(),
+            Widget::Server(i) => self
+                .discovery
+                .as_ref()
+                .and_then(|d| d.servers.get(i))
+                .map_or(String::new(), |s| format!("{} ({})", s.name, s.address)),
+            Widget::Address | Widget::Profile => String::new(),
             Widget::Mode => format!("Game Mode: {}", super::capitalize(self.mode.name())),
             Widget::Difficulty => {
                 format!("Difficulty: {}{}", self.difficulty, if self.hardcore { " Locked" } else { "" })
@@ -450,6 +586,13 @@ impl Title {
                 };
                 centred(&mut ui, y + 156.0, hint, grey);
             }
+            Screen::Multiplayer => {
+                ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.7]);
+                centred(&mut ui, 24.0, "Multiplayer", WHITE);
+                ui.text(sw / 2.0 - BUTTON_W / 2.0, 56.0, "Server Address (IP:port)", grey);
+                ui.text(sw / 2.0 - BUTTON_W / 2.0, 96.0, "Local Profile", grey);
+                centred(&mut ui, 136.0, &fit(&self.message, sw - 16.0), grey);
+            }
             Screen::ConfirmDelete => {
                 ui.rect(0.0, 0.0, sw, sh, [0.25, 0.0, 0.0, 0.75]);
                 let name = self.selected.and_then(|i| self.worlds.get(i)).map_or("", |e| e.name.as_str());
@@ -478,6 +621,13 @@ impl Title {
                     }
                     ui.text(x + 6.0, y + 15.0, &fit(&detail, w - 12.0), grey);
                 }
+                Widget::Address | Widget::Profile => {
+                    let focused = (widget == Widget::Profile) == self.profile_focus;
+                    ui.rect(x, y, w, h, if focused { WHITE } else { grey });
+                    ui.rect(x + 1.0, y + 1.0, w - 2.0, h - 2.0, [0.0, 0.0, 0.0, 1.0]);
+                    let text = if widget == Widget::Address { &self.address } else { &self.profile };
+                    ui.text(x + 4.0, y + 6.0, &fit(text, w - 8.0), WHITE);
+                }
                 Widget::NameField | Widget::SeedField => {
                     let focused = (widget == Widget::NameField) == (self.focus == Field::Name);
                     ui.rect(x, y, w, h, if focused { WHITE } else { [0.63, 0.63, 0.63, 1.0] });
@@ -498,7 +648,7 @@ impl Title {
                         BUTTON
                     };
                     bevel(&mut ui, r, fill, enabled);
-                    let label = self.label(widget);
+                    let label = fit(&self.label(widget), w - 8.0);
                     let color = match (enabled, hot) {
                         (false, _) => grey,
                         (true, true) => [1.0, 1.0, 0.63, 1.0],

@@ -223,8 +223,8 @@ impl Game {
                 if matches!(command, Command::Dimension(_)) {
                     return Err("dimension travel is controlled by the host in this prototype".into());
                 }
-                if self.pads.seated(&req.player) {
-                    return Err("player is controlled by a local gamepad".into());
+                if self.pads.seated(&req.player) || self.lan_owns(&req.player) {
+                    return Err("player is controlled by a local gamepad or LAN client".into());
                 }
                 if !self.agents.players.contains_key(&req.player) {
                     if self.agents.players.len() >= 32 {
