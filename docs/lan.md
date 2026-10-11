@@ -71,9 +71,12 @@ Nonfinite values, movement outside −1…1, unknown buttons/slots, malformed RL
 and out-of-range block states are rejected. Text is bounded to 1024 bytes.
 
 Chunk packets contain three `i32` coordinates and `(u16 length, u16 block
-state)` RLE pairs totaling exactly 32³ cells. Subscriptions cover a four-chunk
-radius around each remote player, nearest first, including meshing neighbors;
-the current client renders two 32-block chunks (64 blocks). Changed immutable
+state)` RLE pairs totaling exactly 32³ cells. After Welcome the client asks
+for its own render distance; the host streams the smaller of that and its own,
+capped at 8 chunks (256 blocks, Java's 16), plus two rings so edge chunks have
+all their meshing neighbours, nearest first. The host keeps that radius loaded
+around every remote player. A joining client evicts nothing until the host has
+sent its real position, so chunks already delivered are never dropped. Changed immutable
 chunk snapshots are resent in TCP order, without client terrain generation or
 client world ticking. This preserves extended block states and all world edits,
 including fluid/fire/redstone updates, at the cost of resending an entire changed
@@ -86,7 +89,7 @@ versioned together with the binary framing; it is not a final all-binary state
 schema. Mob/item/arrow snapshots are capped at 256 each within 160 blocks.
 
 Sockets are nonblocking during gameplay. Each peer has at most 2 MiB queued;
-chunk sending yields at 512 KiB backlog and sends at most 16 snapshots per
+chunk sending yields at 512 KiB backlog and sends at most 32 snapshots per
 host tick. Polling limits bytes, frames and accepts. At most eight TCP sessions
 and 32 saved profiles are accepted. An incomplete handshake expires after
 5 seconds, inactive sockets after 15 seconds, and held input after 0.5 seconds.
@@ -155,7 +158,7 @@ This is a playable first slice, not complete Java LAN parity:
   damage, sweeping, critical hits and thorns need parity work.
 - Input is coalesced per server tick, with simple correction/replay rather than
   a jitter buffer. Reconnect creates a fresh subscription. Moving rapidly into
-  uncached chunks waits for the authority, and view distance is fixed at two.
+  uncached chunks waits for the authority; view distance is capped at eight.
 - Old player save records remain compatible. Session rules (cheats/PvP/mode)
   are selected again when publishing. There is no save-directory lock or
   authenticated/encrypted transport; independent hosts must use different saves.

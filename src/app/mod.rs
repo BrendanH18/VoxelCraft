@@ -293,9 +293,11 @@ impl App {
         game.lan.profile = profile;
         game.arrival = None;
         game.placed = true;
-        game.world = World::new_remote(Arc::new(Generator::new(0)), 2);
+        game.world =
+            World::new_remote(Arc::new(Generator::new(0)), game.settings.render_distance.clamp(2, lan::LAN_VIEW_MAX));
         game.lan.offline_render_distance = Some(game.settings.render_distance);
-        game.settings.render_distance = 2;
+        // Start at the distance we will ask the host for; its first state may lower it.
+        game.settings.render_distance = game.settings.render_distance.clamp(2, lan::LAN_VIEW_MAX);
         game.apply_settings();
         self.args.clear_one_shot();
         self.game = Some(game);

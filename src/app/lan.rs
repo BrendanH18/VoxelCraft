@@ -18,6 +18,8 @@ use std::time::{Duration, Instant};
 use voxelcraft::agent::{Agent, Command};
 use voxelcraft::lan::{Connection, Input, Listener, Packet};
 
+/// Largest view distance (in 32-block chunks) a LAN host streams to clients.
+pub(super) const LAN_VIEW_MAX: i32 = 8;
 pub(super) struct Peer {
     connection: Connection,
     profile: Option<String>,
@@ -35,6 +37,8 @@ pub(super) struct Peer {
     last_portal_message: Instant,
     used_at: Option<IVec3>,
     sent: BTreeMap<(i32, i32, i32), Arc<ChunkData>>,
+    /// View distance the client asked for (chunks); the host streams at most its own.
+    view: i32,
 }
 impl Peer {
     fn new(connection: Connection) -> Self {
@@ -55,6 +59,7 @@ impl Peer {
             used_at: None,
             last_portal_message: Instant::now() - Duration::from_secs(10),
             sent: BTreeMap::new(),
+            view: 2,
         }
     }
 }
@@ -295,6 +300,8 @@ impl Game {
                         };
                         self.lan.id = id;
                         self.reset_lan_world(seed, dimension);
+                        let view = self.lan.offline_render_distance.unwrap_or(LAN_VIEW_MAX).clamp(2, LAN_VIEW_MAX);
+                        self.lan_command(&format!("view {view}"));
                     }
                     Packet::Chunk { pos, data } => self.world.receive_chunk(pos, data),
                     Packet::State(state) => self.receive_lan_state(&state),
@@ -449,6 +456,10 @@ impl Game {
                     return Err("Too many queued button edges".into());
                 }
                 peer.edges.push((if command.starts_with("attack") { 8 } else { 16 }, command.ends_with("down")));
+            }
+            c if c.starts_with("view ") => {
+                let view = c[5..].trim().parse::<i32>().map_err(|_| "Bad view distance".to_string())?;
+                peer.view = view.clamp(2, LAN_VIEW_MAX);
             }
             "inventory" => {
                 self.with_remote(peer, |g| {
@@ -728,6 +739,9 @@ impl Game {
         let players: Vec<_> = std::iter::once(state(&host, &self.lan.profile))
             .chain(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, b)| state(&b.agent, n)))
             .collect();
+        let host_view = self.settings.render_distance.clamp(2, LAN_VIEW_MAX);
+        let widest = self.lan.peers.iter().map(|p| p.view.min(host_view)).max().unwrap_or(2);
+        self.world.set_agent_radius(widest + 2);
         for peer in &mut self.lan.peers {
             let Some(name) = &peer.profile else {
                 continue;
@@ -745,16 +759,20 @@ impl Game {
                     id: bot.id.0,
                 });
             }
+            let view = peer.view.min(host_view);
             let center = chunk_of(bot.agent.player.pos.floor().as_ivec3());
-            let chunks = self.world.network_chunks(center, 4);
+            // Two rings beyond the client's view, so every meshed chunk has all eight
+            // horizontal neighbours (diagonals of edge chunks reach about r + 1.42).
+            let radius = view + 2;
+            let chunks = self.world.network_chunks(center, radius);
             peer.sent.retain(|p, _| {
                 let d = (IVec3::new(p.0, p.1, p.2) - center).with_y(0);
-                d.length_squared() <= 16
+                d.length_squared() <= radius * radius
             });
             for (pos, data) in chunks
                 .into_iter()
                 .filter(|(p, d)| peer.sent.get(&(p.x, p.y, p.z)).is_none_or(|old| !Arc::ptr_eq(old, d)))
-                .take(16)
+                .take(32)
                 .collect::<Vec<_>>()
             {
                 if peer.connection.queued_bytes() > 512 * 1024 {
@@ -786,7 +804,7 @@ impl Game {
                 .collect::<Vec<_>>()
                 .join(";");
             let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
-            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":players,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"items":items,"arrows":arrows});
+            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":players,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"items":items,"arrows":arrows});
             if let Err(e) = peer.connection.send(Packet::State(snapshot)).and_then(|()| peer.connection.flush()) {
                 peer.connection.close(&e.to_string());
             }
@@ -796,7 +814,8 @@ impl Game {
         self.renderer.clear_world();
         self.dimension = dimension;
         self.arrival = None;
-        self.world = World::new_remote(Arc::new(Generator::for_dimension(seed, dimension)), 2);
+        self.world =
+            World::new_remote(Arc::new(Generator::for_dimension(seed, dimension)), self.settings.render_distance);
         self.lan.predictions.clear();
         self.lan.ready = false;
         self.mobs.entities = crate::entity::Entities::new(seed);
@@ -889,6 +908,16 @@ impl Game {
         self.player.yaw = yaw;
         self.player.pitch = pitch;
         self.lan.ready = true;
+        self.world.release_unloads();
+        // View distance: the client's own setting, capped by what the host streams.
+        if let Some(view) = snapshot["view"].as_i64() {
+            let want =
+                (view as i32).min(self.lan.offline_render_distance.unwrap_or(LAN_VIEW_MAX)).clamp(2, LAN_VIEW_MAX);
+            if want != self.settings.render_distance {
+                self.settings.render_distance = want;
+                self.world.set_render_distance(want);
+            }
+        }
         self.day_time = snapshot["time"].as_f64().unwrap_or(self.day_time);
         self.weather.raining = snapshot["rain"] == true;
         self.weather.strength = snapshot["rain_strength"].as_f64().unwrap_or(0.0) as f32;

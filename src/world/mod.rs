@@ -115,6 +115,11 @@ pub struct World {
     load_cursor: usize,
     center: Option<IVec3>,
     agent_centers: Vec<IVec3>,
+    /// Remote replicas evict nothing until the host has placed the player: a
+    /// placeholder centre would drop chunks the host already counts as delivered.
+    hold_unloads: bool,
+    /// Chunk radius kept loaded around agent and LAN players (4 unless a LAN host widens it).
+    agent_radius: i32,
     /// Chunks of other players shown in split-screen: loaded and meshed at
     /// the full render distance, like the host's.
     view_centers: Vec<IVec3>,
@@ -196,6 +201,7 @@ impl World {
     pub fn new_remote(generator: Arc<Generator>, distance: i32) -> Self {
         let mut world = Self::new(generator, FxHashMap::default(), distance);
         world.remote = true;
+        world.hold_unloads = true;
         world
     }
 
@@ -293,6 +299,8 @@ impl World {
             load_cursor: 0,
             center: None,
             agent_centers: Vec::new(),
+            hold_unloads: false,
+            agent_radius: 4,
             view_centers: Vec::new(),
             render_distance,
             region: None,
@@ -369,6 +377,23 @@ impl World {
         }
     }
 
+    /// A remote replica's player now has its authoritative position: allow evictions.
+    pub fn release_unloads(&mut self) {
+        if self.hold_unloads {
+            self.hold_unloads = false;
+            self.center = None;
+        }
+    }
+
+    /// Widens (or restores) the radius loaded around agent and LAN players.
+    pub fn set_agent_radius(&mut self, radius: i32) {
+        let radius = radius.clamp(4, 32);
+        if radius != self.agent_radius {
+            self.agent_radius = radius;
+            self.center = None;
+        }
+    }
+
     pub fn loaded_chunks(&self) -> usize {
         self.chunks.len()
     }
@@ -422,7 +447,7 @@ impl World {
         (self.horizontal_dist2(pos) as f32) <= r * r
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
-                d.length_squared() <= 16
+                d.length_squared() <= self.agent_radius * self.agent_radius
             })
     }
 
@@ -433,7 +458,7 @@ impl World {
         self.horizontal_dist2(pos) <= r * r
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
-                d.length_squared() <= 25
+                d.length_squared() <= (self.agent_radius + 1) * (self.agent_radius + 1)
             })
     }
 
@@ -722,7 +747,11 @@ impl World {
         self.center = Some(center);
 
         // Unload far chunks; keep player edits around in memory.
-        let far: Vec<IVec3> = self.chunks.keys().copied().filter(|&p| !self.in_keep_range(p)).collect();
+        let far: Vec<IVec3> = if self.hold_unloads {
+            Vec::new()
+        } else {
+            self.chunks.keys().copied().filter(|&p| !self.in_keep_range(p)).collect()
+        };
         for pos in far {
             self.remove_chunk(pos);
         }
@@ -754,10 +783,11 @@ impl World {
                 }
             }
         }
+        let r = self.agent_radius;
         for c in &self.agent_centers {
-            for dz in -4..=4 {
-                for dx in -4..=4 {
-                    if dx * dx + dz * dz > 16 {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    if dx * dx + dz * dz > r * r {
                         continue;
                     }
                     for y in self.generator.dimension.chunk_rows() {
