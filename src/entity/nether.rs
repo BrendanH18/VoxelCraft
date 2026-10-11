@@ -90,7 +90,7 @@ impl Weapon {
         }
     }
 
-    fn name(self) -> &'static str {
+    pub(super) fn name(self) -> &'static str {
         match self {
             Weapon::None => "none",
             Weapon::GoldenSword => "golden_sword",
@@ -99,7 +99,7 @@ impl Weapon {
         }
     }
 
-    fn from_name(name: &str) -> Self {
+    pub(super) fn from_name(name: &str) -> Self {
         [Weapon::GoldenSword, Weapon::Crossbow, Weapon::GoldenAxe]
             .into_iter()
             .find(|w| w.name() == name)

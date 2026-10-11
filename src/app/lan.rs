@@ -39,6 +39,8 @@ pub(super) struct Peer {
     sent: BTreeMap<(i32, i32, i32), Arc<ChunkData>>,
     /// View distance the client asked for (chunks); the host streams at most its own.
     view: i32,
+    /// Mobs whose look this client has; others get it on their next snapshot.
+    looked: std::collections::BTreeSet<u32>,
 }
 impl Peer {
     fn new(connection: Connection) -> Self {
@@ -60,11 +62,14 @@ impl Peer {
             last_portal_message: Instant::now() - Duration::from_secs(10),
             sent: BTreeMap::new(),
             view: 2,
+            looked: Default::default(),
         }
     }
 }
 #[derive(Default)]
 pub(super) struct Lan {
+    /// Host ticks with peers, to refresh mob looks once a second.
+    look_ticks: u32,
     pub host: Option<Listener>,
     peers: Vec<Peer>,
     pub client: Option<Connection>,
@@ -118,7 +123,7 @@ fn state(agent: &Agent, name: &str) -> Value {
         "mode":agent.mode.name(),"selected":agent.selected,"inventory":agent.inventory.serialize(),
         "cursor":stack_to_string(agent.inventory.cursor),"health":agent.vitals.health,"air":agent.vitals.air,
         "food":agent.vitals.hunger.food,"saturation":agent.vitals.hunger.saturation,"exhaustion":agent.vitals.hunger.exhaustion,
-        "death":agent.vitals.death,"xp":agent.vitals.xp.serialize(),"effects":agent.vitals.effects.serialize(),"sleep":agent.sleeping})
+        "death":agent.vitals.death,"xp":agent.vitals.xp.serialize(),"effects":agent.vitals.effects.serialize(),"sleep":agent.sleeping,"vehicle":agent.player.vehicle})
 }
 fn apply(agent: &mut Agent, v: &Value) {
     if let Some(pos) = vector(&v["pos"]) {
@@ -157,6 +162,7 @@ fn apply(agent: &mut Agent, v: &Value) {
         agent.vitals.effects = crate::simulation::effects::Effects::deserialize(effects);
     }
     agent.sleeping = v["sleep"].as_f64().map(|f| f as f32);
+    agent.player.vehicle = v["vehicle"].as_u64().and_then(|id| u32::try_from(id).ok());
 }
 
 impl Game {
@@ -739,6 +745,7 @@ impl Game {
         let players: Vec<_> = std::iter::once(state(&host, &self.lan.profile))
             .chain(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, b)| state(&b.agent, n)))
             .collect();
+        self.lan.look_ticks = self.lan.look_ticks.wrapping_add(1);
         let host_view = self.settings.render_distance.clamp(2, LAN_VIEW_MAX);
         let widest = self.lan.peers.iter().map(|p| p.view.min(host_view)).max().unwrap_or(2);
         self.world.set_agent_radius(widest + 2);
@@ -792,7 +799,34 @@ impl Game {
                 Container::CraftingTable => json!({"kind":"crafting"}),
                 _ => json!({"kind":"inventory"}),
             };
-            let mobs: Vec<_> = self.mobs.entities.mobs.iter().filter(|m|m.pos.distance_squared(bot.agent.player.pos)<160.0*160.0).take(256).map(|m|json!({"uid":m.uid,"kind":m.kind.name(),"pos":m.pos.to_array(),"yaw":m.yaw,"head_yaw":m.head_yaw,"head_pitch":m.head_pitch,"health":m.health,"hurt":m.hurt,"dying":m.dying,"size":m.size,"baby":m.baby})).collect();
+            let refresh = self.lan.look_ticks.is_multiple_of(20);
+            let mut looked = std::collections::BTreeSet::new();
+            let mobs: Vec<_> = self
+                .mobs
+                .entities
+                .mobs
+                .iter()
+                .filter(|m| m.pos.distance_squared(bot.agent.player.pos) < 160.0 * 160.0)
+                .take(256)
+                .map(|m| {
+                    let mut v = json!({"uid":m.uid,"kind":m.kind.name(),"pos":m.pos.to_array(),"yaw":m.yaw,"head_yaw":m.head_yaw,"head_pitch":m.head_pitch,"health":m.health,"hurt":m.hurt,"dying":m.dying,"size":m.size,"baby":m.baby});
+                    if refresh || !peer.looked.contains(&m.uid) {
+                        v["look"] = m.look();
+                    }
+                    looked.insert(m.uid);
+                    v
+                })
+                .collect();
+            peer.looked = looked;
+            let carts: Vec<_> = self
+                .mobs
+                .entities
+                .minecarts
+                .iter()
+                .filter(|c| c.pos.distance_squared(bot.agent.player.pos) < 160.0 * 160.0)
+                .take(64)
+                .map(|c| json!({"cart": c.serialize(), "paddle": c.paddle}))
+                .collect();
             let items = self
                 .mobs
                 .entities
@@ -804,7 +838,7 @@ impl Game {
                 .collect::<Vec<_>>()
                 .join(";");
             let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
-            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":players,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"items":items,"arrows":arrows});
+            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":players,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows});
             if let Err(e) = peer.connection.send(Packet::State(snapshot)).and_then(|()| peer.connection.flush()) {
                 peer.connection.close(&e.to_string());
             }
@@ -854,7 +888,10 @@ impl Game {
         let movement = input.movement();
         self.lan_send(Packet::Input(input));
         self.previous_eye = self.player.eye();
-        if self.lan.ready {
+        // A seated client takes its position from the host; the vehicle moves it.
+        if self.lan.ready && self.player.vehicle.is_some() {
+            self.lan.predictions.push_back(input);
+        } else if self.lan.ready {
             self.player.apply_effects(&self.vitals.effects);
             self.player.wear_boots(crate::enchant::armor_level(
                 &self.inventory.armor,
@@ -899,7 +936,8 @@ impl Game {
             self.actions.selected = own.selected;
             self.previous_eye = self.player.eye();
         }
-        for input in &self.lan.predictions {
+        let seated = self.player.vehicle.is_some();
+        for input in self.lan.predictions.iter().filter(|_| !seated) {
             self.player.yaw = input.yaw;
             self.player.pitch = input.pitch;
             self.player.apply_effects(&self.vitals.effects);
@@ -989,8 +1027,25 @@ impl Game {
                 mob.dying = m["dying"].as_f64().map(|f| f as f32);
                 mob.size = m["size"].as_u64().unwrap_or(1) as u8;
                 mob.baby = m["baby"] == true;
+                if m["look"].is_object() {
+                    mob.apply_look(&m["look"]);
+                }
+                mob.animate_replica(voxelcraft::simulation::TICK_SECONDS as f32);
                 self.mobs.entities.mobs.push(mob);
             }
+        }
+        if let Some(carts) = snapshot["carts"].as_array() {
+            let previous: BTreeMap<u32, DVec3> = self.mobs.entities.minecarts.iter().map(|c| (c.id, c.pos)).collect();
+            self.mobs.entities.minecarts = carts
+                .iter()
+                .take(64)
+                .filter_map(|c| {
+                    let mut cart = crate::entity::minecart::Minecart::deserialize(c["cart"].as_str()?)?;
+                    cart.previous_pos = previous.get(&cart.id).copied().unwrap_or(cart.pos);
+                    cart.paddle = c["paddle"].as_f64().unwrap_or(0.0) as f32;
+                    Some(cart)
+                })
+                .collect();
         }
         self.mobs.entities.arrows.clear();
         if let Some(arrows) = snapshot["arrows"].as_array() {

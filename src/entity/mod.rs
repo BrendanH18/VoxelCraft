@@ -24,6 +24,7 @@ pub mod fireball;
 pub mod golem;
 pub mod item;
 pub mod leash;
+mod look;
 pub mod minecart;
 mod mob;
 mod mob_index;

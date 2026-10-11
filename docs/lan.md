@@ -83,8 +83,13 @@ including fluid/fire/redstone updates, at the cost of resending an entire change
 chunk. There is no edit-delta protocol yet.
 
 State packets currently carry bounded JSON within the binary frame: player
-inventory/vitals/XP/effects, open chest/furnace/crafting state, time/weather,
-nearby mob poses, dropped items and arrow visuals. This hybrid schema is
+inventory/vitals/XP/effects and seat, open chest/furnace/crafting state,
+time/weather, nearby mob poses, boats and minecarts, dropped items and arrow
+visuals. Each mob's look (coat, markings, saddle and armor, collar, wool,
+name, lead, fish variant, profession, held weapon) is sent when a client first
+sees it and refreshed once a second; clients derive walk animation from the
+replicated motion. Seated clients take their position from the host instead
+of predicting walking, so boats, minecarts, pigs, striders and horses work. This hybrid schema is
 versioned together with the binary framing; it is not a final all-binary state
 schema. Mob/item/arrow snapshots are capped at 256 each within 160 blocks.
 
@@ -148,7 +153,7 @@ This is a playable first slice, not complete Java LAN parity:
   Independent dimensions and remote-triggered dimension travel need P0 work.
 - Brewing, enchanting, anvils, smithing and villager screens are not replicated;
   using one reports that it is unsupported. The recipe-book controls, outside
-  cursor tossing and minecart storage/riding are not supported for LAN clients.
+  cursor tossing and boat/minecart/mount storage are not supported for LAN clients.
 - Common mobs, players, held items/armor, dropped items and arrows replicate;
   other projectiles, TNT/falling-block entities, XP-orb visuals, boss-fight
   structures, skin/nameplate drawing and full mob animation/equipment fields
