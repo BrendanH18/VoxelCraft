@@ -297,8 +297,10 @@ The [gameplay guide](docs/gameplay.md) covers survival rules, mobs and every rec
   </tr>
 </table>
 
-See [hosted agents and commands](docs/agents.md) for the protocol, LAN setup
-and current limits. Joining from a second game window is in progress.
+Open a world with **Esc → Open to LAN**, then use **Multiplayer → Direct
+Connect** in a second desktop instance. LAN players share host-authoritative
+terrain, survival, chat and basic containers. See [LAN play and current
+limits](docs/lan.md) and [hosted agents and commands](docs/agents.md).
 
 <a id="under-the-hood"></a>
 

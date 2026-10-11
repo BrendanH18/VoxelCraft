@@ -76,6 +76,9 @@ impl Game {
     /// Left-button press: hits the mob under the crosshair. Returns `true`
     /// if a mob was targeted, in which case no block should be broken.
     pub(super) fn attack(&mut self) -> bool {
+        if self.attack_lan_player() {
+            return true;
+        }
         let eye = self.player.eye();
         let dir = self.player.forward().as_dvec3();
         let cart_reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
@@ -201,7 +204,10 @@ impl Game {
     /// Block breaking is suppressed while aiming at a mob, and for the rest
     /// of a click that started as an attack.
     pub(super) fn attacking(&self) -> bool {
-        self.mobs.attack_held || self.mob_target().is_some() || self.fight_target().is_some()
+        self.mobs.attack_held
+            || self.mob_target().is_some()
+            || self.fight_target().is_some()
+            || self.lan_player_target().is_some()
     }
 
     /// Applies `--spawn` requests (with the other `--place` edits).

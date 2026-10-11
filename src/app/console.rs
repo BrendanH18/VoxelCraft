@@ -31,7 +31,12 @@ impl Game {
                 && matches!(code, KeyCode::Slash | KeyCode::KeyT | KeyCode::Backquote)
             {
                 self.console.open = true;
-                self.console.input = "/".into();
+                self.console.input = if code == KeyCode::KeyT && (self.lan.host.is_some() || self.lan.client.is_some())
+                {
+                    String::new()
+                } else {
+                    "/".into()
+                };
                 self.keys.clear();
                 self.left_held = false;
                 self.right_held = false;
@@ -56,11 +61,15 @@ impl Game {
                     self.console.history.push(input.clone());
                     self.console.lines.push_back(input.clone());
                     let words: Vec<&str> = input.trim_start_matches('/').split_whitespace().collect();
-                    let result = match words[..] {
-                        ["splitscreen"] => self.split_command(""),
-                        ["splitscreen", arg] => self.split_command(arg),
-                        ["splitscreen", ..] => Err("usage: /splitscreen [player|off|side|stacked]".into()),
-                        _ => Command::parse(&input).and_then(|c| self.host_command(c)),
+                    let result = if let Some(result) = self.lan_console(&input) {
+                        result
+                    } else {
+                        match words[..] {
+                            ["splitscreen"] => self.split_command(""),
+                            ["splitscreen", arg] => self.split_command(arg),
+                            ["splitscreen", ..] => Err("usage: /splitscreen [player|off|side|stacked]".into()),
+                            _ => Command::parse(&input).and_then(|c| self.host_command(c)),
+                        }
                     };
                     self.console.lines.push_back(result.unwrap_or_else(|e| format!("Error: {e}")));
                     while self.console.lines.len() > 64 {
