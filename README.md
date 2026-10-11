@@ -33,11 +33,6 @@ a time. Every texture is painted by code, every sound and song is
 synthesized as you play, and there isn't a single bundled game asset in the
 repository.
 
-[Boats and riding](docs/mounts.md) includes boats and chest boats for every
-Overworld wood, bamboo rafts, two seats, storage and saved riders. Saddle pigs
-and striders, or tame horses, equip them and charge a jump; donkeys and mules
-carry chests.
-
 It's still early, but it's already a real game: you can start in a field with
 nothing, work your way up to diamond, light a portal to the Nether, track down
 a stronghold, and watch the credits roll after the Ender Dragon falls.
@@ -128,6 +123,21 @@ a stronghold, and watch the credits roll after the Ender Dragon falls.
       <h3>🎨 Build anything</h3>
       Sixteen dye colours across wool, glass, terracotta and concrete, every
       wood type, plus stairs, slabs, fences, doors and ladders.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/animals.jpg" alt="Horses, a donkey, llamas, a camel, a wolf with a parrot, a goat, a sleeping fox, a rabbit, a chicken and a sheep on a grassy meadow"><br>
+      <h3>🐴 Tame and ride</h3>
+      Tame horses, wolves, cats and parrots, saddle pigs and camels, load
+      llamas and donkeys with chests, and sail boats across the sea. Breed
+      every farm animal, lead them home on a lead, and name your favourites.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/lan.jpg" alt="A second player's view of the host holding a diamond sword between a horse and a llama"><br>
+      <h3>🌐 Open to LAN</h3>
+      Share your world with friends on the same network. They find it under
+      Multiplayer, then mine, build, fight mobs and ride alongside you.
     </td>
   </tr>
 </table>
@@ -303,9 +313,10 @@ The [gameplay guide](docs/gameplay.md) covers survival rules, mobs and every rec
   </tr>
 </table>
 
-Open a world with **Esc → Open to LAN**, then use **Multiplayer → Direct
-Connect** in a second desktop instance. LAN players share host-authoritative
-terrain, survival, chat and basic containers. See [LAN play and current
+Play with friends on your home network: load a world, press **Esc → Open to
+LAN**, and they'll find it under **Multiplayer** (or type your address into
+Direct Connect). Everyone shares the host's world, with chat, a player list
+(<kbd>Tab</kbd>) and optional PvP. See [LAN play and current
 limits](docs/lan.md) and [hosted agents and commands](docs/agents.md).
 
 <a id="under-the-hood"></a>
@@ -341,7 +352,8 @@ how to run benchmarks, script scenes and capture screenshots.
 | [Mob parity](docs/mob-parity.md) | [Performance investigation](docs/performance-2026-10-07.md) |
 | [Player rendering](docs/player-rendering.md) | [Music](docs/music.md) and [particles](docs/particles.md) |
 | [Nether mobs](docs/nether-mobs.md): piglins, bartering, hoglins, striders | [Overworld terrain](docs/overworld-terrain.md): biomes, caves, aquifers |
-| [Overworld structures](docs/overworld-structures.md) and [aquatic mobs](docs/aquatic-mobs.md) | |
+| [Overworld structures](docs/overworld-structures.md) and [aquatic mobs](docs/aquatic-mobs.md) | [LAN play](docs/lan.md) |
+| [Animals](docs/animals.md): breeding, taming, leads; [boats and riding](docs/mounts.md) | |
 
 ## 🤝 Contributing
 

@@ -814,7 +814,7 @@ impl Game {
             creative_scroll: 0,
             cursor_px: (0.0, 0.0),
             actions: actions::Actions::default(),
-            show_hud: true,
+            show_hud: !args.no_hud,
             hand: Default::default(),
             camera: args.camera,
             scripted_ride: args.ride.clone(),

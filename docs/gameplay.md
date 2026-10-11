@@ -455,6 +455,11 @@ session there, as if you had just come through a portal.
 | Zoglin | 40 | a zombified hoglin: attacks every mob and player but creepers and zoglins; immune to fire | 1-3 rotten flesh |
 | Strider | 20 | walks on the lava seas; shivers, slows and heads for lava on dry land; hurt by water | 2-5 string |
 
+Wolves, cats, parrots, foxes, rabbits and goats, breeding and leads are
+covered in [animals](animals.md); horses, donkeys, mules, llamas, camels,
+saddled pigs and striders, and boats in [boats and riding](mounts.md);
+fish, dolphins, axolotls, turtles and guardians in [aquatic mobs](aquatic-mobs.md).
+
 Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to
 4 zombies and 3 of the others). Inside Nether fortress pieces, Java's

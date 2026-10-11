@@ -7,7 +7,7 @@ Agents have independent positions, inventories, health, hunger and creative
 flight. Blocks, dropped items, chests, time and weather belong to the host.
 The world continues ticking at 20 Hz while the host uses menus or loses focus.
 Local gamepad players can join split-screen (see "Gamepad players" below);
-joining from another desktop remains on the roadmap.
+other desktops join through [Open to LAN](lan.md).
 
 ## Installed builds
 

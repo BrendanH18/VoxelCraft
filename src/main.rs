@@ -89,6 +89,8 @@ pub struct Args {
     pub drop: Vec<(item::Item, u8)>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
     pub mute: bool,
+    /// Start with the HUD hidden (F1), for clean screenshots.
+    pub no_hud: bool,
     pub volume: Option<f32>,
     pub export_sounds: bool,
     pub export_music: bool,
@@ -165,6 +167,7 @@ voxelcraft [options]
   --camera <first|third|front>  starting camera perspective (F5 cycles in game)
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
   --mute            start with sound muted (M toggles in game)
+  --no-hud          start with the HUD and hand hidden (F1 toggles in game)
   --volume <0..1>   master volume (default: 1, or the saved option)
   --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
@@ -218,6 +221,7 @@ fn parse_args() -> Result<Args, String> {
         enchants: Vec::new(),
         drop: Vec::new(),
         mute: false,
+        no_hud: false,
         volume: None,
         export_sounds: false,
         export_music: false,
@@ -443,6 +447,7 @@ fn parse_args() -> Result<Args, String> {
                 args.pose = Some(v.try_into().map_err(|_| "--pose needs x,y,z,yaw,pitch")?);
             }
             "--mute" => args.mute = true,
+            "--no-hud" => args.no_hud = true,
             "--volume" => {
                 args.volume = Some(value("--volume")?.parse::<f32>().map_err(|_| "bad --volume")?.clamp(0.0, 1.0))
             }
