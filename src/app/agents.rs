@@ -73,6 +73,8 @@ impl Agents {
             shape: b.agent.player.collision_shape(),
             gold_armor: voxelcraft::entity::nether::wears_gold(&b.agent.inventory.armor),
             held_item: b.agent.inventory.get(b.agent.selected).map(|s| s.item),
+            on_ground: b.agent.player.on_ground,
+            in_water: b.agent.player.in_water,
             ..Target::new(b.id, b.agent.player.pos, b.agent.targetable())
         })
     }

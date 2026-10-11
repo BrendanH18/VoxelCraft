@@ -2,7 +2,7 @@
 
 Right-click two adults with their food to breed them. The same `place` action
 works for CLI agents and gamepad players. Cows and sheep eat wheat, pigs eat
-carrots/potatoes/beetroots, chickens eat wheat/pumpkin seeds, cats eat raw
+carrots/potatoes/beetroots, chickens eat wheat/pumpkin/melon/beetroot seeds, foxes eat sweet/glow berries, rabbits eat carrots/golden carrots/dandelions, goats eat wheat, cats eat raw
 cod/salmon, hoglins eat crimson fungus, striders eat warped fungus, turtles eat
 seagrass, and axolotls eat buckets of tropical fish (returning a water bucket).
 
@@ -31,3 +31,34 @@ Sources: [Breeding](https://minecraft.wiki/w/Breeding),
 [Sheep](https://minecraft.wiki/w/Sheep),
 [Turtle](https://minecraft.wiki/w/Turtle),
 [Axolotl](https://minecraft.wiki/w/Axolotl).
+
+## Companions and life cycles
+
+Bones tame wolves, raw fish tame cats, and seeds tame parrots. Each bone/fish
+has a 1/3 success chance, each seed 1/10. Owners use a non-food item or empty
+hand to toggle sitting. Standing companions follow their owner and teleport
+when separated by more than twelve blocks. Dye changes wolf/cat collars;
+meat heals wolves before putting a healthy adult into love mode. Wolves defend
+their owner and attack the owner's target (except creepers/ghasts). Tail angle
+shows health; tamed wolves have forty health. Nearby cats scare creepers and
+may bring a gift after their owner sleeps through the night.
+
+Parrots imitate nearby hostile calls and perch on an owner's free shoulder;
+jumping or entering water releases them. Cookies kill parrots. Foxes sleep
+by day, pick up ground items and eat carried food; bred foxes trust the two
+players who fed their parents. Rabbits hop and drop rabbit meat/hide, with a
+10% rabbit-foot chance on a player kill. Goats jump, charge stationary players
+and lose one of their two horns when a ram hits stone, logs, packed ice, or
+iron/copper/emerald ore. Screaming goats have shorter ram cooldowns.
+
+Sheep graze grass for two seconds, restoring wool and accelerating baby growth
+by sixty seconds. `mobGriefing=false` preserves the grass while still restoring
+wool. Pregnant turtles return to their imprinted beach, dig for ten seconds
+and lay one to four eggs. Eggs progress through two cracked stages before
+hatching; sand is required. Progress is guaranteed on a random tick between
+21600 and 22560 day ticks, and otherwise has a 1/500 chance. Babies imprint the
+nest and drop a scute on growing up. Egg clusters have individual shell boxes.
+
+Sources: [Wolf](https://minecraft.wiki/w/Wolf), [Cat](https://minecraft.wiki/w/Cat),
+[Parrot](https://minecraft.wiki/w/Parrot), [Fox](https://minecraft.wiki/w/Fox),
+[Rabbit](https://minecraft.wiki/w/Rabbit), [Goat](https://minecraft.wiki/w/Goat).

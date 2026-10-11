@@ -100,6 +100,20 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (tex::SOUL_FIRE_0..=1399).contains(&layer) {
         return nether::pixel(layer, x, y);
     }
+    if (1750..=1752).contains(&layer) {
+        let speckle = rnd(layer, x, y, 1) < 0.14;
+        let crack = layer > 1750 && ((x + y * 2).is_multiple_of(13) || layer == 1752 && (x * 3 + y).is_multiple_of(11));
+        return shade(
+            if crack {
+                [69, 83, 60]
+            } else if speckle {
+                [100, 150, 90]
+            } else {
+                [236, 232, 212]
+            },
+            0.92 + rnd(layer, x, y, 0) * 0.08,
+        );
+    }
     if (crate::world::overworld_blocks::TEX..crate::world::overworld_blocks::TEX_END).contains(&layer) {
         return overworld::pixel(layer, x, y);
     }

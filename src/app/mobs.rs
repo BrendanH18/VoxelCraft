@@ -261,6 +261,8 @@ impl Game {
             shape: self.player.collision_shape(),
             gold_armor: crate::entity::nether::wears_gold(&self.inventory.armor),
             held_item: self.held_item(),
+            on_ground: self.player.on_ground,
+            in_water: self.player.in_water,
             ..Target::new(PlayerId::HOST, self.player.pos, self.mode.targetable() && !self.vitals.is_dead())
         }];
         // Agents keep source-dimension positions until arrival relocates them.
@@ -452,6 +454,11 @@ impl Game {
                 | EntityEvent::MobKilled { .. }
                 | EntityEvent::LaidEgg { .. }
                 | EntityEvent::Hatched { .. } => {}
+                EntityEvent::AnimalBlock { cell, from, to } => {
+                    if self.world.get_block(cell) == Some(from) {
+                        self.world.set_block(cell, to);
+                    }
+                }
                 EntityEvent::VillagerDoor { cell } => {
                     if self.world.get_block(cell).is_some_and(|b| {
                         matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: false, upper: false, .. }))
@@ -553,6 +560,11 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Guardian | MobKind::ElderGuardian => Voice::Guardian,
         MobKind::Cat => Voice::Cat,
         MobKind::Pillager => Voice::Pillager,
+        MobKind::Wolf => Voice::Wolf,
+        MobKind::Fox => Voice::Fox,
+        MobKind::Parrot => Voice::Parrot,
+        MobKind::Rabbit => Voice::Rabbit,
+        MobKind::Goat => Voice::Goat,
     }
 }
 

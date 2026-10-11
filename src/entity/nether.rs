@@ -563,8 +563,14 @@ impl Entities {
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
                 self.nether_hurt(i, Foe::Mob(attacker));
+                if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
+                    self.animals_defend_owner(attacker, owner);
+                }
+                let wolf_kill = self.mobs.iter().any(|m| {
+                    m.uid == attacker && m.kind == MobKind::Wolf && m.animal.as_ref().is_some_and(|a| a.owner.is_some())
+                });
                 if killed {
-                    self.drop_loot_with_fire(kind, pos, 0, burning, false);
+                    self.drop_loot_with_fire(kind, pos, 0, burning, wolf_kill);
                 }
             }
         }
@@ -1391,7 +1397,7 @@ fn load_mob(v: &Value) -> Option<Mob> {
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
     m.wool_color = crate::color::DyeColor::ALL.get(v["color"].as_u64().unwrap_or(0).min(15) as usize).copied().unwrap();
     if let Some(h) = v["health"].as_f64().filter(|h| *h > 0.0) {
-        m.health = (h as f32).min(kind.max_health());
+        m.health = (h as f32).min(m.max_health());
     }
     if let Some(armor) = v["armor"].as_array() {
         for (slot, worn) in m.armor.iter_mut().zip(armor) {

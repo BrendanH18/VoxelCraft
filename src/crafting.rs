@@ -521,6 +521,27 @@ pub fn recipes() -> &'static [Recipe] {
         }
         add_redstone_recipes(&mut r);
         add_dye_recipes(&mut r);
+        r.push(shaped(&["ss ", "so ", "  s"], &[('s', &[Item::STRING]), ('o', &[Item::SLIME_BALL])], Item::LEAD, 2));
+        r.push(shaped(&["rr", "rr"], &[('r', &[Item::RABBIT_HIDE])], Item::LEATHER, 1));
+        r.push(shaped(&["wcw"], &[('w', &[Item::WHEAT]), ('c', &[Item::COCOA_BEANS])], Item::COOKIE, 8));
+        r.push(shaped(
+            &["nnn", "ncn", "nnn"],
+            &[('n', &[Item::GOLD_NUGGET]), ('c', &[Item::CARROT])],
+            Item::GOLDEN_CARROT,
+            1,
+        ));
+        r.push(shapeless(&[&[Item::MELON_SLICE]], Item::MELON_SEEDS, 1));
+        r.push(shapeless(
+            &[
+                &[Item::COOKED_RABBIT],
+                &[Item::BAKED_POTATO],
+                &[Item::CARROT],
+                const { &[Item::from_block(Block::BROWN_MUSHROOM), Item::from_block(Block::RED_MUSHROOM)] },
+                &[Item::BOWL],
+            ],
+            Item::RABBIT_STEW,
+            1,
+        ));
         add_wool_recipes(&mut r);
         add_glass_terracotta_recipes(&mut r);
         add_nether_biome_recipes(&mut r);
