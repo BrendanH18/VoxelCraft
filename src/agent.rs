@@ -1018,6 +1018,11 @@ impl Agent {
                     && let Some((pos, normal)) = self.target(world)
                 {
                     let cell = if world.get_block(pos).is_some_and(|b| b.is_rail()) { pos } else { pos + normal };
+                    let cell = if kind.boat().is_some() && world.get_block(pos).is_some_and(|b| b.is_water()) {
+                        pos
+                    } else {
+                        cell
+                    };
                     if entities.place_cart(&*world, kind, cell).is_none() {
                         return Err("minecarts need an empty rail".into());
                     }

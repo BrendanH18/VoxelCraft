@@ -218,6 +218,9 @@ pub enum Sprite {
     String,
     /// A minecart, tinted for chest, hopper and TNT carts.
     Minecart([u8; 3]),
+    Boat([u8; 3], bool),
+    Saddle,
+    SteeringStick([u8; 3]),
     Feather,
     Powder([u8; 3]),
     Leather,
@@ -445,6 +448,41 @@ static OVERWORLD_ITEMS: [ItemInfo; 19] = [
     bucket_of("bucket of axolotl", [240, 150, 190]),
 ];
 const _: () = assert!(OVERWORLD_ITEM as usize + OVERWORLD_ITEMS.len() <= 960);
+/// Mount items use the reserved append-only 960..=999 range.
+const MOUNT_ITEM: u16 = 960;
+const fn single(name: &'static str, sprite: Sprite) -> ItemInfo {
+    ItemInfo { name, kind: ItemKind::Material, max_stack: 1, sprite }
+}
+static MOUNT_ITEMS: [ItemInfo; 27] = [
+    single("oak boat", Sprite::Boat([162, 130, 79], false)),
+    single("spruce boat", Sprite::Boat([104, 78, 46], false)),
+    single("birch boat", Sprite::Boat([214, 204, 153], false)),
+    single("jungle boat", Sprite::Boat([166, 119, 83], false)),
+    single("acacia boat", Sprite::Boat([176, 91, 53], false)),
+    single("dark oak boat", Sprite::Boat([66, 43, 20], false)),
+    single("mangrove boat", Sprite::Boat([118, 56, 48], false)),
+    single("cherry boat", Sprite::Boat([226, 174, 174], false)),
+    single("pale oak boat", Sprite::Boat([228, 218, 214], false)),
+    single("bamboo raft", Sprite::Boat([196, 176, 82], false)),
+    single("oak chest boat", Sprite::Boat([162, 130, 79], true)),
+    single("spruce chest boat", Sprite::Boat([104, 78, 46], true)),
+    single("birch chest boat", Sprite::Boat([214, 204, 153], true)),
+    single("jungle chest boat", Sprite::Boat([166, 119, 83], true)),
+    single("acacia chest boat", Sprite::Boat([176, 91, 53], true)),
+    single("dark oak chest boat", Sprite::Boat([66, 43, 20], true)),
+    single("mangrove chest boat", Sprite::Boat([118, 56, 48], true)),
+    single("cherry chest boat", Sprite::Boat([226, 174, 174], true)),
+    single("pale oak chest boat", Sprite::Boat([228, 218, 214], true)),
+    single("bamboo chest raft", Sprite::Boat([196, 176, 82], true)),
+    single("saddle", Sprite::Saddle),
+    single("carrot on a stick", Sprite::SteeringStick([214, 112, 28])),
+    single("warped fungus on a stick", Sprite::SteeringStick([30, 150, 140])),
+    single("leather horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Leather)),
+    single("iron horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Iron)),
+    single("golden horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Gold)),
+    single("diamond horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Diamond)),
+];
+const _: () = assert!(MOUNT_ITEM as usize + MOUNT_ITEMS.len() <= 1000);
 /// Splash potions: `SPLASH_POTION + potion index`.
 const SPLASH_POTION: u16 = 436;
 const _: () = assert!(FIRST_POTION + POTION_COUNT <= SPLASH_POTION);
@@ -600,6 +638,17 @@ impl Item {
     pub const MAGMA_CREAM: Item = Item(608);
     pub const IRON_NUGGET: Item = Item(609);
     pub const FIRE_CHARGE: Item = Item(760);
+    pub const SADDLE: Item = Item(980);
+    pub const CARROT_ON_A_STICK: Item = Item(981);
+    pub const WARPED_FUNGUS_ON_A_STICK: Item = Item(982);
+    pub const LEATHER_HORSE_ARMOR: Item = Item(983);
+    pub const IRON_HORSE_ARMOR: Item = Item(984);
+    pub const GOLDEN_HORSE_ARMOR: Item = Item(985);
+    pub const DIAMOND_HORSE_ARMOR: Item = Item(986);
+    /// Wood index follows Wood::ALL; index 9 is bamboo.
+    pub const fn boat(wood: u8, chest: bool) -> Item {
+        Item(960 + wood as u16 + if chest { 10 } else { 0 })
+    }
     pub const MINECART: Item = Item(761);
     pub const CHEST_MINECART: Item = Item(762);
     pub const HOPPER_MINECART: Item = Item(763);
@@ -871,6 +920,9 @@ impl Item {
         if let Some(info) = self.0.checked_sub(OVERWORLD_ITEM).and_then(|i| OVERWORLD_ITEMS.get(i as usize)) {
             return *info;
         }
+        if let Some(info) = self.0.checked_sub(MOUNT_ITEM).and_then(|i| MOUNT_ITEMS.get(i as usize)) {
+            return *info;
+        }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
     }
 
@@ -912,6 +964,12 @@ impl Item {
 
     /// Uses before breaking, for tools and armor.
     pub fn durability(self) -> Option<u16> {
+        if self == Self::CARROT_ON_A_STICK {
+            return Some(25);
+        }
+        if self == Self::WARPED_FUNGUS_ON_A_STICK {
+            return Some(100);
+        }
         if self == Self::SHEARS {
             return Some(238);
         }
@@ -1019,6 +1077,7 @@ impl Item {
             .chain([Self::FIRE_CHARGE, Self::MINECART, Self::CHEST_MINECART, Self::HOPPER_MINECART, Self::TNT_MINECART])
             .chain([Self::CROSSBOW, Self::CHARGED_CROSSBOW])
             .chain((0..OVERWORLD_ITEMS.len() as u16).map(|i| Item(OVERWORLD_ITEM + i)))
+            .chain((0..MOUNT_ITEMS.len() as u16).map(|i| Item(MOUNT_ITEM + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1119,13 +1178,16 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if (OVERWORLD_ITEM..OVERWORLD_ITEM + OVERWORLD_ITEMS.len() as u16).contains(&i) => {
             Some(base_icon_count() as u16 + i - OVERWORLD_ITEM)
         }
+        i if (MOUNT_ITEM..MOUNT_ITEM + MOUNT_ITEMS.len() as u16).contains(&i) => {
+            Some(base_icon_count() as u16 + OVERWORLD_ITEMS.len() as u16 + i - MOUNT_ITEM)
+        }
         _ => None,
     }
 }
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    base_icon_count() + OVERWORLD_ITEMS.len() as u32
+    base_icon_count() + OVERWORLD_ITEMS.len() as u32 + MOUNT_ITEMS.len() as u32
 }
 
 /// Icons up to and including the Nether-mob items.

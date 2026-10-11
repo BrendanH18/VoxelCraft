@@ -524,8 +524,8 @@ pub(super) struct SkyState {
 fn seat_rider(entities: &crate::entity::Entities, player: &mut Player, id: crate::entity::PlayerId) {
     let Some(cart_id) = player.vehicle else { return };
     match entities.cart(cart_id) {
-        Some(cart) if cart.rider == Some(id) => {
-            player.pos = cart.seat();
+        Some(cart) if cart.seat_for(id).is_some() => {
+            player.pos = cart.seat_for(id).unwrap();
             player.vel = DVec3::ZERO;
             player.on_ground = true;
         }
@@ -1638,13 +1638,22 @@ impl Game {
         if !self.mode.can_interact() {
             return;
         }
-        if self.player.vehicle.is_some() {
+        if let Some(id) = self.player.vehicle {
+            if self.mobs.entities.cart(id).is_some_and(|c| c.kind.boat().is_some() && c.slot_count() > 0)
+                && !self.puppet
+                && !self.inventory_open
+            {
+                self.container = Container::Minecart(id);
+                self.toggle_inventory();
+            }
             return;
         }
         let eye = self.player.eye();
         let dir = self.player.forward().as_dvec3();
         let reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
-        if let Some((id, _)) = self.mobs.entities.cart_container(eye, dir, reach) {
+        if let Some((id, _)) = self.mobs.entities.cart_container(eye, dir, reach)
+            && (self.sneak_building() || self.mobs.entities.cart(id).is_some_and(|c| c.kind.boat().is_none()))
+        {
             // Controller menus have no cart tab yet; the host's screen must not open for them.
             if self.puppet {
                 self.show_popup("Minecart storage needs the keyboard player for now");
@@ -1663,6 +1672,11 @@ impl Game {
             && let Some((pos, normal)) = self.target()
         {
             let cell = if self.world.get_block(pos).is_some_and(|b| b.is_rail()) { pos } else { pos + normal };
+            let cell = if kind.boat().is_some() && self.world.get_block(pos).is_some_and(|b| b.is_water()) {
+                pos
+            } else {
+                cell
+            };
             if self.mobs.entities.place_cart(&self.world, kind, cell).is_none() {
                 return;
             }

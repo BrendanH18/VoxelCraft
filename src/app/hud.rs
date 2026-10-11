@@ -802,7 +802,9 @@ impl Game {
             (Container::Furnace(_), _) => "Furnace",
             (Container::Chest(p), _) => container_title(self.world.get_block(p)),
             (Container::Minecart(id), _) => {
-                if self.mobs.entities.cart(id).is_some_and(|c| c.slot_count() == 5) {
+                if self.mobs.entities.cart(id).is_some_and(|c| c.kind.boat().is_some()) {
+                    "Boat with Chest"
+                } else if self.mobs.entities.cart(id).is_some_and(|c| c.slot_count() == 5) {
                     "Minecart with Hopper"
                 } else {
                     "Minecart with Chest"

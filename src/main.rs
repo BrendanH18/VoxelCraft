@@ -319,7 +319,9 @@ fn parse_args() -> Result<Args, String> {
                     "chest" => entity::minecart::CartKind::Chest,
                     "hopper" => entity::minecart::CartKind::Hopper,
                     "tnt" => entity::minecart::CartKind::Tnt,
-                    _ => return Err("--cart kind must be rideable, chest, hopper or tnt".into()),
+                    name => item::Item::from_name(name)
+                        .and_then(entity::minecart::CartKind::from_item)
+                        .ok_or("unknown vehicle kind")?,
                 };
                 args.carts.push((kind, glam::IVec3::new(n[0], n[1], n[2])));
             }
