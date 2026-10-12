@@ -341,6 +341,38 @@ def busy_join(data):
         host.stop()
 
 
+def host_travel(data):
+    """The host stands in a Nether portal; joined players follow it into the Nether."""
+    port = free_port()
+    # A lit 2x3 portal in the x=0 plane around the host's spawn at (0.5, 151, 0.5).
+    frame = [(0, y, z) for y in (150, 154) for z in (0, 1)] + [(0, y, z) for y in range(151, 154) for z in (-1, 2)]
+    extra = []
+    for x, y, z in frame:
+        extra += ["--place", f"{x},{y},{z},obsidian"]
+    host = Host(data, port, extra=extra + ["--pose", "0.5,151,1.0,90,0"])
+    c = None
+    try:
+        c = Client(port, "Follower")
+        c.until(lambda s: s["self"]["ground"], secs=30, why="spawn")
+        # Light the frame from outside, as a player would.
+        c.command("/tp 2.5 151 0.5")
+        c.command("/give flint_and_steel")
+        c.run(0.6)
+        c.selected = next(i for i, s in enumerate(c.inventory()[:9]) if s != "-")
+        c.use(c.aim_at(0.5, 150.95, 0.5))
+        start = time.monotonic()
+        c.until(lambda s: s["dimension"] == "nether", secs=30, why="host travel")
+        chunks = c.chunks
+        c.until(lambda s: s["dimension"] == "nether" and s["self"]["ground"], secs=30, why="land in the Nether")
+        c.run(2.0)
+        check("players follow the host through a portal", c.chunks > chunks,
+              f"Nether after {time.monotonic() - start:.1f}s, {c.chunks - chunks} Nether chunks, at {[round(x) for x in c.me()['pos']]}")
+    finally:
+        if c:
+            c.close()
+        host.stop()
+
+
 def pvp(data):
     """With PvP on, a sword and a bow hurt another player; with it off, neither does."""
     for enabled in (True, False):
@@ -357,7 +389,7 @@ def pvp(data):
             a.command("/give bow")
             a.command("/give arrow 16")
             a.run(0.8)
-            b.run(0.1)
+            b.until(lambda s: s["self"]["health"] >= 20.0, why=f"Ben at full health ({b.last['self']})")
             start = b.me()["health"]
             aim = a.aim_at(3.5, 152.0, 4.5)
             a.control(*aim, buttons=8)
@@ -395,6 +427,7 @@ def main():
         races(data / "races")
         busy_join(data / "busy")
         pvp(data)
+        host_travel(data / "travel")
     finally:
         if keep:
             print("data kept in", data)
