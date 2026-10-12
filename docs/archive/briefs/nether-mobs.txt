@@ -1,0 +1,35 @@
+> Historical record, superseded on 2026-10-12. Old task instructions, priorities,
+> reference versions and completion claims are not current guidance. See
+> [the archive index](../README.md) and [the current roadmap](../../roadmap.md).
+
+You are implementing VoxelCraft v0.5 "Nether mobs". VoxelCraft is a Rust/wgpu clone of Minecraft Java Edition. Goal: match Minecraft Java 1.21 behaviour and look as closely as possible, with high code quality and no performance regressions.
+
+## Setup and git rules
+- Start from branch `t3/roadmap-release-next` (git fetch origin t3/roadmap-release-next; check it out). Work on ONE branch, `agent/nether-mobs`, created from it, and push it to origin. Never push to any other branch, never open PRs, never force-push, never touch refs/t3/*.
+- Commit author: `git config user.name "Brendan Hallas"` and `git config user.email "151875764+BrendanH18@users.noreply.github.com"`. One focused commit per feature with a clear message body.
+- Linux needs: `sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev pkg-config` (same as CI). Use a stable Rust toolchain (rustup if needed).
+- Gate before EVERY commit (all must pass):
+  `cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo clippy --release --no-default-features --all-targets -- -D warnings && cargo test --release && cargo test --release --no-default-features`
+  rustfmt max_width is 120. `cargo test` also validates every WGSL shader with naga.
+- Performance: run `cargo run --release -- --bench --rd 8` before and after (headless; Overworld gen ≈0.22 ms/chunk, light+mesh ≈0.65 ms/chunk). No regressions; no O(n²) scans across all entities, no per-frame allocations in hot paths. Report numbers.
+- You cannot take screenshots here (no GPU window); rely on tests. The integrator will check visuals.
+- Saves must stay compatible (existing worlds load); add round-trip tests for any new saved state.
+- Other agents edit block.rs, item.rs, crafting.rs, entity/mob.rs and textures.rs concurrently: keep diffs to shared files small and additive, append to registries, never reorder or renumber existing entries, never reuse block 1469.
+- Texture layers: constants in `mod tex` in src/world/block.rs (CAPACITY 2048). Use only your layer range below; raise `COUNT` to cover it and keep the const asserts valid.
+- Push after each gated commit so work isn't lost.
+
+
+Your branch: `agent/nether-mobs`. Your reserved IDs: blocks 1800-1849, items 840-899, texture layers 1400..=1449.
+
+## Codebase pointers
+Read docs/architecture.md, docs/gameplay.md, docs/mob-parity.md, docs/bastions.md first. Mobs: src/entity/ (mob.rs core type/AI, model.rs box models, mod.rs registry; follow zombie, wither skeleton, ghast, magma cube, villager); src/app/mobs.rs runs them; Nether spawning near src/world/nether*.rs and src/app/mobs.rs; bastions in src/world/bastion.rs, nether_complexes.rs (bastion loot data exists); items src/item.rs; effects src/entity/potion.rs. Bartering is throw-gold-at-piglin, not the villager trading UI. Another branch adds Nether biomes: do NOT implement biomes; put spawns behind a small `nether_spawn_table(...)` the integrator can later key by biome, with Java's per-biome tables documented in a comment.
+
+## Scope (priority order; leave a clean, gated state if you run out of room)
+1. Piglins: adult/baby, golden sword and crossbow variants (add a proper crossbow item in your range if none exists, else fall back and document); Java anger rules (no gold armour, opening chests/breaking gold blocks nearby, alerting others); admire and pick up gold; bartering with Java 1.21's table (weights, counts, ~6 s admire); zombify in Overworld/End after 15 s. Piglin brutes in bastions (always hostile, axe). Spawn in the Nether and in bastions.
+2. Zombified piglins if missing: neutral, group anger on hit, Nether spawning.
+3. Hoglins: hostile, knock-up attack, avoid warped fungus/portals/respawn anchors where they exist, crimson-fungus breeding only if breeding infra exists (else hook + doc), zombify to zoglins in the Overworld; zoglins attack everything. Drops porkchop/leather. Piglins hunt baby hoglins.
+4. Striders: walk on lava, shiver out of lava, spawn on lava seas, drop string; saddle + warped fungus on a stick riding only if riding infra exists, else document the gap.
+5. Sounds through the existing audio system; hurt/death consistent with other mobs. Update docs/mob-parity.md, write docs/nether-mobs.md (Java references, bartering table, known gaps).
+
+Add unit tests (bartering weights and determinism, anger rules, zombification timers, save round trips, spawn rules).
+Final reply: commit list, what works, known gaps, bench numbers before/after, and what the integrator must check visually.

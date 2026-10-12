@@ -4,6 +4,19 @@ Bug reports, focused fixes, documentation improvements, and feature ideas are we
 For a larger change, open an issue first to discuss the approach. Search existing
 issues and pull requests before starting.
 
+Read the [project roadmap](docs/roadmap.md) before choosing feature work.
+It defines the single-player 1.0 scope, milestone dependencies and
+acceptance criteria. Update the affected requirements when a change adds
+verified behavior, reveals a gap or changes an agreed scope. Planned
+targets and passing build checks must not be presented as completed features.
+
+Project-wide [agent instructions](AGENTS.md) and the
+[agent engineering guide](docs/agent-guide.md) are versioned in this repository.
+`CLAUDE.md` imports `AGENTS.md`; there is no external notes folder to install.
+See the [documentation index](docs/README.md) for current guidance and clearly
+marked historical records. The [restructuring plan](docs/restructuring.md)
+tracks proposed changes and review of pending v0.7 work.
+
 ## Set up
 
 Install a recent stable Rust toolchain with `rustfmt` and `clippy`. VoxelCraft uses
@@ -35,6 +48,12 @@ Use `--data-dir target/playtest` for isolated testing;
 Keep pull requests focused and explain the behavior they change. Add or update
 tests when changing rules that can be checked without a GPU, and describe manual
 checks for graphics, input, or audio changes.
+
+Submit changes through a pull request; `main` is protected. Work on your assigned
+branch and preserve unrelated work. Coding agents create branches or open PRs
+when explicitly requested by the owner; the owner handles merging and releases
+unless instructed otherwise. Record local checks separately from GitHub CI and
+CodeQL results, and do not bypass repository protections.
 
 Run the same checks as CI before submitting:
 

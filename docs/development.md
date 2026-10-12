@@ -1,6 +1,6 @@
 # Development tools
 
-[← Back to VoxelCraft](../README.md) · [Architecture](architecture.md) · [Contributing](../CONTRIBUTING.md)
+[← Back to VoxelCraft](../README.md) · [Documentation index](README.md) · [Architecture](architecture.md) · [Contributing](../CONTRIBUTING.md) · [Agent guide](agent-guide.md)
 
 Run commands from the repository root. See the README for platform prerequisites.
 

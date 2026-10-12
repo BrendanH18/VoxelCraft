@@ -1,0 +1,35 @@
+> Historical record, superseded on 2026-10-12. Old task instructions, priorities,
+> reference versions and completion claims are not current guidance. See
+> [the archive index](../README.md) and [the current roadmap](../../roadmap.md).
+
+You are implementing VoxelCraft v0.5 "Nether biomes". VoxelCraft is a Rust/wgpu clone of Minecraft Java Edition. Goal: match Minecraft Java 1.21 behaviour and look as closely as possible, with high code quality and no performance regressions.
+
+## Setup and git rules
+- Start from branch `t3/roadmap-release-next` (git fetch origin t3/roadmap-release-next; check it out). Work on ONE branch, `agent/nether-biomes`, created from it, and push it to origin. Never push to any other branch, never open PRs, never force-push, never touch refs/t3/*.
+- Commit author: `git config user.name "Brendan Hallas"` and `git config user.email "151875764+BrendanH18@users.noreply.github.com"`. One focused commit per feature with a clear message body.
+- Linux needs: `sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev pkg-config` (same as CI). Use a stable Rust toolchain (rustup if needed).
+- Gate before EVERY commit (all must pass):
+  `cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo clippy --release --no-default-features --all-targets -- -D warnings && cargo test --release && cargo test --release --no-default-features`
+  rustfmt max_width is 120. `cargo test` also validates every WGSL shader with naga.
+- Performance: run `cargo run --release -- --bench --rd 8` before and after (headless; Overworld gen ≈0.22 ms/chunk, light+mesh ≈0.65 ms/chunk). No regressions; no O(n²) scans across all entities, no per-frame allocations in hot paths. Report numbers.
+- You cannot take screenshots here (no GPU window); rely on tests. The integrator will check visuals.
+- Saves must stay compatible (existing worlds load); add round-trip tests for any new saved state.
+- Other agents edit block.rs, item.rs, crafting.rs, entity/mob.rs and textures.rs concurrently: keep diffs to shared files small and additive, append to registries, never reorder or renumber existing entries, never reuse block 1469.
+- Texture layers: constants in `mod tex` in src/world/block.rs (CAPACITY 2048). Use only your layer range below; raise `COUNT` to cover it and keep the const asserts valid.
+- Push after each gated commit so work isn't lost.
+
+
+Your branch: `agent/nether-biomes`. Your reserved IDs: blocks 1600-1799, items 800-839, texture layers 1300..=1399.
+
+## Codebase pointers
+Read docs/architecture.md, docs/gameplay.md, docs/bastions.md first. Nether generation: src/world/nether.rs, nether_blocks.rs, nether_complexes.rs, bastion.rs; terrain/noise: terrain.rs, noise.rs; blocks: src/world/block.rs (Block is u16 over a 4096-state table); shaped blocks: src/world/shape.rs; items: src/item.rs; recipes: src/crafting.rs; textures: src/render/textures.rs, item sprites: src/render/item_sprites.rs; music: src/audio/music*; particles: src/particles.
+
+## Scope (priority order; leave a clean, gated state if you run out of room)
+1. Nether biome source: Java-like multi-noise with nether wastes, crimson forest, warped forest, soul sand valley, basalt deltas at Java's parameter points; biome lookup usable by gameplay (/locate biome, F3 if present).
+2. Blocks: crimson/warped nylium, stems/hyphae (+stripped), planks, slabs, stairs, fences, fence gates, doors, trapdoors, buttons, pressure plates; nether wart block, warped wart block, shroomlight, crimson/warped fungus and roots, nether sprouts, weeping and twisting vines (growing), soul soil, soul fire, soul torch/lantern if lanterns exist. Correct drops, tool tiers, light (shroomlight 15, soul fire 10), nether wood not flammable, recipes, bone meal on nylium spreads vegetation, fungus + bone meal grows a huge fungus. Reuse existing basalt/blackstone/magma.
+3. Features: huge crimson/warped fungi, vegetation patches, ceiling weeping vines, twisting vines, soul sand valley fossils and soul fire, basalt columns and delta lava pools; ores consistent with existing Nether gen.
+4. Atmosphere: per-biome fog colour, ambient particles (crimson spores, warped spores, white ash, ash) via the particle system, per-biome music if feasible.
+5. Per-biome spawn tables may name mobs built on another branch (piglins, hoglins, striders): leave clearly named hooks/TODOs, don't implement those mobs.
+
+Add unit tests (biome lookup determinism, feature bounds, block properties, recipes, save round trip). Write docs/nether-biomes.md (what was built, Java references, known gaps).
+Final reply: commit list, what works, known gaps, bench numbers before/after, and what the integrator must check visually.
