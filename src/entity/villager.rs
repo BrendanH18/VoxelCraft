@@ -251,6 +251,36 @@ pub struct Villager {
     restocks: u8,
     last_restock: u32,
 }
+impl Mob {
+    /// What a LAN client's trading screen shows: merchant id, profession, level, xp and offers.
+    pub fn trade_view(&self) -> Option<Value> {
+        let v = self.villager.as_ref()?;
+        Some(json!({
+            "id": v.id,
+            "profession": Profession::ALL.iter().position(|p| *p == v.profession).unwrap_or(0),
+            "level": v.level,
+            "xp": v.xp,
+            "wandering": v.wandering,
+            "offers": v.offers.map(|o| o.map(Offer::save)),
+        }))
+    }
+    /// Applies [`Mob::trade_view`] to a client's copy of the merchant.
+    pub fn apply_trade_view(&mut self, t: &Value) {
+        let Some(v) = self.villager.as_mut() else { return };
+        v.id = t["id"].as_u64().unwrap_or(v.id);
+        v.profession =
+            t["profession"].as_u64().and_then(|i| Profession::ALL.get(i as usize).copied()).unwrap_or(v.profession);
+        v.level = t["level"].as_u64().unwrap_or(1).clamp(1, 5) as u8;
+        v.xp = t["xp"].as_u64().unwrap_or(0).min(u16::MAX as u64) as u16;
+        v.wandering = t["wandering"] == true;
+        if let Some(offers) = t["offers"].as_array() {
+            for (slot, o) in v.offers.iter_mut().zip(offers) {
+                *slot = Offer::load(o);
+            }
+        }
+    }
+}
+
 impl Villager {
     pub fn new(id: u64, seed: u64) -> Self {
         Self {

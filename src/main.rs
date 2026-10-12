@@ -21,6 +21,8 @@ pub struct Args {
     pub agent_listen: Option<std::net::SocketAddr>,
     pub agent_token: Option<String>,
     pub agent_cheats: bool,
+    /// `--lan-cheats`: LAN players may use cheat commands (Open to LAN's Allow Cheats).
+    pub lan_cheats: bool,
     pub open_console: bool,
     /// `--split-screen`: agent profiles to follow in extra views.
     pub split_screen: Vec<String>,
@@ -100,6 +102,7 @@ const USAGE: &str = "\
 voxelcraft [options]
   --host-lan <IP:PORT>     open a desktop world to LAN (0.0.0.0:0 chooses a port)
   --join <HOST:PORT>       join a LAN world; never writes its save
+  --lan-cheats             with --host-lan: allow LAN players cheat commands
   --profile <name>         local LAN identity (restored on reconnect)
   --agent-listen <IP:PORT>  host CLI players (default recommended: 127.0.0.1:4242)
   --agent-token <token>    shared token (required for LAN, at least 16 characters)
@@ -180,6 +183,7 @@ fn parse_args() -> Result<Args, String> {
         agent_listen: None,
         agent_token: None,
         agent_cheats: false,
+        lan_cheats: false,
         open_console: false,
         split_screen: Vec::new(),
         split_side: false,
@@ -244,6 +248,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--agent-token" => args.agent_token = Some(value("--agent-token")?),
             "--agent-cheats" => args.agent_cheats = true,
+            "--lan-cheats" => args.lan_cheats = true,
             "--split-screen" => {
                 let v = value("--split-screen")?;
                 args.split_screen = v.split(',').map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).collect();

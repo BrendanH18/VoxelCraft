@@ -259,10 +259,15 @@ impl Game {
     /// Clicking off the inventory panel throws the held stack (or one of
     /// it with the right button). Returns whether the click was used.
     pub(super) fn throw_cursor(&mut self, one: bool) -> bool {
-        let Some(stack) = self.inventory.cursor else { return false };
         if !self.cursor_off_panel() {
             return false;
         }
+        self.toss_cursor(one)
+    }
+
+    /// Throws the held stack (or one item of it), as a click outside the screen does.
+    pub(super) fn toss_cursor(&mut self, one: bool) -> bool {
+        let Some(stack) = self.inventory.cursor else { return false };
         let count = if one { 1 } else { stack.count };
         self.inventory.cursor = (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
         self.throw(Stack { count, ..stack });

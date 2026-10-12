@@ -916,6 +916,7 @@ impl Game {
             game.set_grab(true);
         }
         game.lan.mode = game.mode;
+        game.lan.cheats = args.lan_cheats;
         game.lan.profile = args.profile.clone().unwrap_or_else(|| lan::local_profile(saves_dir));
         if let Some(address) = args.host_lan
             && let Err(e) = game.open_lan(address)
@@ -1345,7 +1346,25 @@ impl Game {
 
     fn inventory_click(&mut self, right: bool) {
         if self.lan.client.is_some() {
+            // Search, the recipe book and its paging are local views; slots and tossing go to the host.
+            if self.search_click() {
+                return;
+            }
+            if !right && let Some(control) = self.recipe_control_under_cursor() {
+                match control {
+                    recipe_book::Control::Toggle => self.recipe_book.open = !self.recipe_book.open,
+                    recipe_book::Control::Previous => self.recipe_book.step(-1),
+                    recipe_book::Control::Next => self.recipe_book.step(1),
+                }
+                self.audio.ui_click();
+                return;
+            }
+            if self.inventory.cursor.is_some() && self.cursor_off_panel() {
+                self.lan_command(if right { "toss_one" } else { "toss" });
+                return;
+            }
             if let Some(slot) = self.slot_under_cursor().and_then(lan::encode_slot) {
+                self.audio.ui_click();
                 self.lan_send(voxelcraft::lan::Packet::Click { slot, right, shift: self.modifiers.shift_key() });
             }
             return;

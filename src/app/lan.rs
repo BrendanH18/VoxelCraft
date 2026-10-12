@@ -519,6 +519,9 @@ impl Game {
             "pick" => {
                 self.with_remote(peer, |g| g.pick_block());
             }
+            "toss" | "toss_one" if peer.open => {
+                self.with_remote(peer, |g| g.toss_cursor(command == "toss_one"));
+            }
             "drop" | "drop_stack" => {
                 self.with_remote(peer, |g| g.drop_selected(command == "drop_stack"));
             }
@@ -583,6 +586,33 @@ impl Game {
         }
         Ok(())
     }
+    /// Opens screen `container` for the player being puppeted, as their click would.
+    fn open_screen(&mut self, container: Container) {
+        if self.inventory_open {
+            return;
+        }
+        self.container = container;
+        self.toggle_inventory();
+    }
+    /// Whether the open screen's block, merchant or vehicle is still there and in reach.
+    pub(super) fn lan_container_ok(&self) -> bool {
+        let eye = self.player.eye();
+        let near = |p: IVec3, ok: fn(Block) -> bool| {
+            eye.distance(p.as_dvec3() + 0.5) <= super::REACH + 1.0 && self.world.get_block(p).is_some_and(ok)
+        };
+        match self.container {
+            Container::Inventory | Container::CraftingTable => true,
+            Container::Chest(p) => near(p, crate::world::chest::is_chest),
+            Container::Furnace(p) => near(p, crate::world::furnace::is_furnace),
+            Container::Brewing(p) => near(p, |b| b == Block::BREWING_STAND),
+            Container::Enchanting(p) => near(p, |b| b == Block::ENCHANTING_TABLE),
+            Container::Anvil(p) => near(p, Block::is_anvil),
+            Container::Grindstone(p) => near(p, |b| b.base() == Block::GRINDSTONE),
+            Container::Smithing(p) => near(p, |b| b == Block::SMITHING_TABLE),
+            Container::Trading(id) => self.mobs.entities.merchant_in_reach(id, eye),
+            Container::Minecart(id) => self.mobs.entities.vehicle_in_reach(id, eye),
+        }
+    }
     fn remote_click(&mut self, peer: &mut Peer, encoded: u16, right: bool, shift: bool) {
         if !peer.open {
             return;
@@ -594,18 +624,7 @@ impl Game {
             }
         }
         self.with_remote(peer, |g| {
-            let reachable = match g.container {
-                Container::Chest(p) => {
-                    g.world.get_block(p).is_some_and(crate::world::chest::is_chest)
-                        && g.player.eye().distance(p.as_dvec3() + 0.5) <= super::REACH + 1.0
-                }
-                Container::Furnace(p) => {
-                    g.world.get_block(p).is_some_and(crate::world::furnace::is_furnace)
-                        && g.player.eye().distance(p.as_dvec3() + 0.5) <= super::REACH + 1.0
-                }
-                _ => true,
-            };
-            if !reachable || g.vitals.is_dead() {
+            if !g.lan_container_ok() || g.vitals.is_dead() {
                 return;
             }
             if let Some(slot) = decode_slot(encoded, g.container, g.mode, g.craft.size) {
@@ -657,8 +676,9 @@ impl Game {
                 self.with_remote(peer, |g| g.toggle_inventory());
             }
             if self.agents.players[&name].agent.vitals.is_dead() {
-                let stacks = peer.grid.take_all();
+                let mut stacks = peer.grid.take_all();
                 let bot = self.agents.players.get_mut(&name).unwrap();
+                stacks.extend(bot.agent.work.iter_mut().filter_map(Option::take));
                 if self.gamerules.bool("keepInventory") {
                     bot.agent.inventory.return_stacks(stacks);
                 } else {
@@ -671,19 +691,7 @@ impl Game {
             }
             // Close destroyed or out-of-reach containers before accepting any more clicks.
             self.with_remote(peer, |g| {
-                let pos = match g.container {
-                    Container::Chest(p) | Container::Furnace(p) => Some(p),
-                    _ => None,
-                };
-                if g.inventory_open
-                    && (g.vitals.is_dead()
-                        || pos.is_some_and(|p| {
-                            g.player.eye().distance(p.as_dvec3() + 0.5) > super::REACH + 1.0
-                                || g.world.get_block(p).is_none_or(|b| {
-                                    !crate::world::chest::is_chest(b) && !crate::world::furnace::is_furnace(b)
-                                })
-                        }))
-                {
+                if g.inventory_open && (g.vitals.is_dead() || !g.lan_container_ok()) {
                     g.toggle_inventory();
                 }
             });
@@ -703,9 +711,16 @@ impl Game {
                         }
                         g.act(true, dt);
                         g.mobs.attack_cooldown -= dt;
-                        g.puppet_used.take()
+                        (g.puppet_used.take(), g.puppet_merchant.take(), g.puppet_vehicle.take())
                     })
-                    .flatten();
+                    .unwrap_or_default();
+                let (used, merchant, vehicle) = used;
+                if let Some(id) = merchant {
+                    self.with_remote(peer, |g| g.open_screen(Container::Trading(id)));
+                }
+                if let Some(id) = vehicle {
+                    self.with_remote(peer, |g| g.open_screen(Container::Minecart(id)));
+                }
                 if let Some(p) = used {
                     peer.used_at = Some(p);
                     match self.world.get_block(p) {
@@ -721,11 +736,22 @@ impl Game {
                         Some(b) if crate::world::furnace::is_furnace(b) => {
                             self.with_remote(peer, |g| g.open_furnace(p));
                         }
-                        _ => {
-                            let _ = peer
-                                .connection
-                                .send(Packet::Chat("This workstation is not supported by LAN yet".into()));
+                        Some(Block::BREWING_STAND) => {
+                            self.with_remote(peer, |g| g.open_screen(Container::Brewing(p)));
                         }
+                        Some(Block::ENCHANTING_TABLE) => {
+                            self.with_remote(peer, |g| g.open_screen(Container::Enchanting(p)));
+                        }
+                        Some(b) if b.is_anvil() => {
+                            self.with_remote(peer, |g| g.open_screen(Container::Anvil(p)));
+                        }
+                        Some(b) if b.base() == Block::GRINDSTONE => {
+                            self.with_remote(peer, |g| g.open_screen(Container::Grindstone(p)));
+                        }
+                        Some(Block::SMITHING_TABLE) => {
+                            self.with_remote(peer, |g| g.open_screen(Container::Smithing(p)));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -759,6 +785,7 @@ impl Game {
             peer.applied = input.sequence;
             self.puppet_used = None;
             self.puppet_merchant = None;
+            self.puppet_vehicle = None;
             if let Some(message) = self.puppet_popup.take() {
                 let _ = peer.connection.send(Packet::Chat(message));
             }
@@ -830,6 +857,7 @@ impl Game {
                     peer.sent.insert((pos.x, pos.y, pos.z), data);
                 }
             }
+            let work: Vec<_> = bot.agent.work.iter().map(|s| stack_to_string(*s)).collect();
             let container = match peer.body.container() {
                 Container::Chest(p) => {
                     json!({"kind":"chest","pos":p.to_array(),"state":self.world.chest(p).map(|c|c.serialize())})
@@ -837,8 +865,30 @@ impl Game {
                 Container::Furnace(p) => {
                     json!({"kind":"furnace","pos":p.to_array(),"state":self.world.furnace(p).map(|c|c.serialize())})
                 }
+                Container::Brewing(p) => {
+                    json!({"kind":"brewing","pos":p.to_array(),"state":self.world.brewing_stand(p).map(|b|b.serialize())})
+                }
+                Container::Enchanting(p) => json!({"kind":"enchanting","pos":p.to_array(),"work":work}),
+                Container::Anvil(p) => json!({"kind":"anvil","pos":p.to_array(),"work":work}),
+                Container::Grindstone(p) => json!({"kind":"grindstone","pos":p.to_array(),"work":work}),
+                Container::Smithing(p) => json!({"kind":"smithing","pos":p.to_array(),"work":work}),
+                Container::Trading(id) => match self.mobs.entities.merchant(id) {
+                    Some(m) => json!({"kind":"trading","uid":m.uid,"trade":m.trade_view()}),
+                    None => json!({"kind":"inventory"}),
+                },
+                Container::Minecart(id) => {
+                    let slots: Vec<_> = self
+                        .mobs
+                        .entities
+                        .vehicle_slots(id)
+                        .map(|s| s.iter().map(|s| stack_to_string(*s)).collect())
+                        .unwrap_or_default();
+                    let mount = self.mobs.entities.mount(id).and_then(|m| m.mount.as_ref());
+                    json!({"kind":"vehicle","id":id,"slots":slots,"chest":mount.is_some_and(|s| s.chest),
+                        "strength":mount.map_or(3, |s| s.strength)})
+                }
                 Container::CraftingTable => json!({"kind":"crafting"}),
-                _ => json!({"kind":"inventory"}),
+                Container::Inventory => json!({"kind":"inventory"}),
             };
             let refresh = self.lan.look_ticks.is_multiple_of(20);
             let mut looked = std::collections::BTreeSet::new();
@@ -1078,9 +1128,33 @@ impl Game {
                 }
                 Container::Furnace(p)
             }
+            (Some("brewing"), Some(p)) => {
+                if let Some(text) = c["state"].as_str() {
+                    self.world.load_brewing_stands(&format!("{},{},{}={text}", p.x, p.y, p.z));
+                }
+                Container::Brewing(p)
+            }
+            (Some("enchanting"), Some(p)) => Container::Enchanting(p),
+            (Some("anvil"), Some(p)) => Container::Anvil(p),
+            (Some("grindstone"), Some(p)) => Container::Grindstone(p),
+            (Some("smithing"), Some(p)) => Container::Smithing(p),
+            (Some("trading"), _) => match c["trade"]["id"].as_u64() {
+                Some(id) => Container::Trading(id),
+                None => Container::Inventory,
+            },
+            (Some("vehicle"), _) => match c["id"].as_u64().and_then(|id| u32::try_from(id).ok()) {
+                Some(id) => Container::Minecart(id),
+                None => Container::Inventory,
+            },
             (Some("crafting"), _) => Container::CraftingTable,
             _ => Container::Inventory,
         };
+        self.work = [None; 3];
+        if let Some(work) = c["work"].as_array() {
+            for (slot, v) in self.work.iter_mut().zip(work) {
+                *slot = v.as_str().and_then(stack_from_str).flatten();
+            }
+        }
         self.craft = Grid::new(if snapshot["grid_size"] == 3 { 3 } else { 2 });
         if let Some(cells) = snapshot["grid"].as_array() {
             for (slot, v) in self.craft.cells.iter_mut().zip(cells) {
@@ -1144,6 +1218,26 @@ impl Game {
                     Some(cart)
                 })
                 .collect();
+        }
+        // Screens that show mob state: the merchant's offers and a mount's storage.
+        let c = &snapshot["container"];
+        if c["kind"] == "trading"
+            && let Some(uid) = c["uid"].as_u64()
+            && let Some(m) = self.mobs.entities.mobs.iter_mut().find(|m| m.uid as u64 == uid)
+        {
+            m.apply_trade_view(&c["trade"]);
+        }
+        if c["kind"] == "vehicle"
+            && let Some(id) = c["id"].as_u64().and_then(|id| u32::try_from(id).ok())
+            && let Some(s) = self.mobs.entities.mount_mut(id).and_then(|m| m.mount.as_mut())
+        {
+            s.tame = true;
+            s.chest = c["chest"] == true;
+            s.strength = c["strength"].as_u64().unwrap_or(3).clamp(1, 5) as u8;
+            s.slots = [None; 17];
+            for (slot, v) in s.slots.iter_mut().zip(c["slots"].as_array().into_iter().flatten()) {
+                *slot = v.as_str().and_then(stack_from_str).flatten();
+            }
         }
         if let Some(sounds) = snapshot["sounds"].as_array() {
             for s in sounds.iter().take(96) {
@@ -1234,6 +1328,20 @@ pub(super) fn encode_slot(slot: SlotRef) -> Option<u16> {
         SlotRef::FurnaceFuel => 301,
         SlotRef::FurnaceOutput => 302,
         SlotRef::Armor(piece) => 400 + piece as u16,
+        SlotRef::BrewBottle(i) if i < 3 => 500 + i as u16,
+        SlotRef::BrewIngredient => 503,
+        SlotRef::BrewFuel => 504,
+        SlotRef::EnchantItem => 510,
+        SlotRef::EnchantLapis => 511,
+        SlotRef::EnchantOffer(i) if i < 3 => 512 + i as u16,
+        SlotRef::AnvilLeft => 520,
+        SlotRef::AnvilRight => 521,
+        SlotRef::AnvilResult => 522,
+        SlotRef::SmithTemplate => 530,
+        SlotRef::SmithBase => 531,
+        SlotRef::SmithAddition => 532,
+        SlotRef::SmithResult => 533,
+        SlotRef::Trade(i) if i < 10 => 540 + i as u16,
         SlotRef::Palette(item) => 1000 + crate::item::Item::creative_palette().position(|i| i == item)? as u16,
         _ => return None,
     })
@@ -1243,7 +1351,31 @@ fn decode_slot(slot: u16, container: Container, mode: GameMode, grid_size: usize
         0..=35 => Some(SlotRef::Inventory(slot as usize)),
         100..=108 if (slot - 100) < (grid_size * grid_size) as u16 => Some(SlotRef::Craft((slot - 100) as usize)),
         109 => Some(SlotRef::CraftResult),
-        200..=253 if matches!(container, Container::Chest(_)) => Some(SlotRef::Chest((slot - 200) as usize)),
+        200..=253 if matches!(container, Container::Chest(_) | Container::Minecart(_)) => {
+            Some(SlotRef::Chest((slot - 200) as usize))
+        }
+        500..=504 if matches!(container, Container::Brewing(_)) => Some(match slot {
+            503 => SlotRef::BrewIngredient,
+            504 => SlotRef::BrewFuel,
+            i => SlotRef::BrewBottle((i - 500) as usize),
+        }),
+        510..=514 if matches!(container, Container::Enchanting(_)) => Some(match slot {
+            510 => SlotRef::EnchantItem,
+            511 => SlotRef::EnchantLapis,
+            i => SlotRef::EnchantOffer((i - 512) as usize),
+        }),
+        520..=522 if matches!(container, Container::Anvil(_) | Container::Grindstone(_)) => Some(match slot {
+            520 => SlotRef::AnvilLeft,
+            521 => SlotRef::AnvilRight,
+            _ => SlotRef::AnvilResult,
+        }),
+        530..=533 if matches!(container, Container::Smithing(_)) => Some(match slot {
+            530 => SlotRef::SmithTemplate,
+            531 => SlotRef::SmithBase,
+            532 => SlotRef::SmithAddition,
+            _ => SlotRef::SmithResult,
+        }),
+        540..=549 if matches!(container, Container::Trading(_)) => Some(SlotRef::Trade((slot - 540) as usize)),
         300..=302 if matches!(container, Container::Furnace(_)) => Some(match slot {
             300 => SlotRef::FurnaceInput,
             301 => SlotRef::FurnaceFuel,
