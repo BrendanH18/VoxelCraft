@@ -4,6 +4,12 @@ Bug reports, focused fixes, documentation improvements, and feature ideas are we
 For a larger change, open an issue first to discuss the approach. Search existing
 issues and pull requests before starting.
 
+Read the [project roadmap](docs/roadmap.md) before choosing feature work.
+It defines the single-player 1.0 scope, milestone dependencies and
+acceptance criteria. Update the affected requirements when a change adds
+verified behavior, reveals a gap or changes an agreed scope. Planned
+targets and passing build checks must not be presented as completed features.
+
 ## Set up
 
 Install a recent stable Rust toolchain with `rustfmt` and `clippy`. VoxelCraft uses

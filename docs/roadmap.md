@@ -1,0 +1,624 @@
+# VoxelCraft roadmap
+
+[← Back to VoxelCraft](../README.md) · [Contributing](../CONTRIBUTING.md) · [Architecture](architecture.md) · [Development](development.md)
+
+## Current plan — updated 2026-10-12
+
+Build a faithful recreation of modern Minecraft Java single-player gameplay
+in Rust. Version 1.0 must deliver complete core survival, building,
+exploration and progression, with very high quality and performance.
+Match Java's mechanics, terrain generation and structure layouts as exactly
+as practical. Multiplayer follows the single-player 1.0 milestone.
+
+Reference hardware is an M5 MacBook Pro. The performance requirement
+is **240 FPS minimum at 1920 x 1080 physical pixels and a 256-block view
+distance** (Java's 16 chunks; VoxelCraft's current `--rd 8`). Also measure
+native-resolution performance; a native-resolution numerical gate is not yet
+specified.
+
+Original handmade textures, models, sounds and music are allowed when they
+improve quality. Keep procedural generation where it is useful. All
+implementation and shipped assets remain original or appropriately licensed.
+
+A feature is complete only after correctness checks, player testing,
+save/reload checks and performance verification. Dates remain flexible.
+Milestones follow dependencies and acceptance evidence, not a fixed release
+calendar or the number of implementation tasks completed.
+
+Immediate order:
+
+1. M0: establish the reference version, requirement inventory and test/benchmark fixtures.
+2. M1: correct the simulation, player, lighting, spawning, navigation and save foundations.
+3. M2: complete block/item families and their gameplay integrations.
+4. M3: match Java terrain, features, structures and exploration.
+5. M4: complete mobs, animals, villages, farming, travel and weather interactions.
+6. M5: verify the entire survival and equipment progression.
+7. M6: complete core automation, workstation and storage behavior.
+8. M7: finish presentation, usability, stability and the 1.0 acceptance pass.
+
+Work can overlap where dependencies permit. Bring existing working features
+up to the acceptance standard; do not rebuild them merely because this
+roadmap is new.
+
+Existing multiplayer, split-screen, controller and CLI-agent capabilities
+receive maintenance and integration fixes, not new feature expansion ahead
+of the single-player goal.
+
+This tracked document is the authoritative project roadmap. Update it with
+the code as scope or verified behavior changes. Milestones and performance
+figures below are acceptance targets unless explicitly recorded as measured
+results; they are not promises that the current release already meets them.
+
+## 1. Product target and scope
+
+### 1.1 The experience version 1.0 must deliver
+
+A player can install the game, create a world, survive the first night,
+explore recognizable modern Java biomes and structures, build with complete
+material families, farm and keep animals, trade with villagers, travel
+through all three dimensions, brew and enchant, upgrade equipment, defeat
+the bosses and continue playing in a durable world. Ordinary building,
+resource gathering, transport, storage and automation work as an experienced
+Java player expects.
+
+The game feels finished in routine use: readable interfaces, responsive
+controls, coherent visuals and audio, correct collision, dependable saves,
+smooth terrain streaming and predictable mechanics. A feature with a name,
+texture or creative-menu entry but no survival acquisition or function does
+not satisfy this target.
+
+Creative mode is required as a building mode and validation tool. Survival
+and its difficulty settings are the primary acceptance path. Preserve
+existing Hardcore, Adventure and Spectator behavior; deeper mode-specific
+scope is assessed in the requirement inventory rather than assumed complete.
+
+### 1.2 Reference-version policy
+
+Research baseline as of 2026-10-12: **Minecraft Java Edition 26.3**, released
+2026-09-15. The 26.4 development line is still snapshots at this review.
+Use stable released behavior, not snapshot experiments, as the parity target.
+
+Sources:
+
+- [Java 26.3 released notes](https://feedback.minecraft.net/hc/en-us/articles/48913133328013-Minecraft-Java-Edition-26-3).
+- [Java 26.4 Snapshot 3](https://www.minecraft.net/de-de/article/minecraft-26-4-snapshot-3).
+
+Record the exact reference version in each behavioral fixture, recipe/loot
+inventory and comparison report. Older source or data may help explain a
+mechanic but cannot override changed behavior in the selected reference
+version. Distinguish Java from Bedrock rules.
+
+Recheck the latest stable Java version at milestone planning and before 1.0.
+Record new released core features as explicit scope changes with their
+dependencies and acceptance checks. Resolve those changes before calling
+1.0 equivalent to the current core game. Do not silently freeze the target
+at Java 1.21 or move all modern content after 1.0.
+
+### 1.3 Fidelity policy
+
+Java gameplay is the default contract: recipes, acquisition, drops,
+durability, combat, movement, lighting, spawning, AI, fluids, growth,
+redstone, containers, world generation and structures.
+
+For terrain, pursue matching algorithms, seed behavior, biome placement,
+large terrain features, structure starts and structure layouts. Matching
+Java names or approximate distributions alone is insufficient. Validate
+block-level reference fixtures where practical, including negative
+coordinates and chunk borders. The existing original heightmap and compact
+structure layouts are partial implementations under this target.
+
+Engine internals may differ: 32-cube chunks, compact storage, GPU packing,
+caches, threading and rendering techniques are implementation choices.
+They must preserve observable gameplay and generation behavior.
+Original art and audio can reproduce the recognizable style and feedback
+without duplicating Java's asset files.
+
+Document every intentional observable difference with its reason, affected
+requirements and player impact. A fidelity exception is a scope decision
+for the maintainer, not something an implementation agent may hide under
+"performance," "simplification" or "practical." Optimize the matching
+behavior first; do not silently remove simulation work or content to hit FPS.
+
+### 1.4 What can follow 1.0
+
+Multiplayer hosting/joining, dedicated servers, internet services and
+independent multiplayer dimensions follow 1.0. Existing implementations are
+preserved and regression-checked when shared code changes.
+
+Candidates for later side-feature work include the full advancement/
+statistics interface, archaeology-specific interactions, the complete
+command/selector language, custom skins, resource/data-pack compatibility,
+and mod/plugin APIs. These are proposed deferrals under the maintainer's allowance
+for less-used side features, not blanket exclusions of associated core
+content. M0 must record the exact boundary: for example, a loot-bearing
+structure still needs a playable exploration/reward loop even if its
+archaeology mechanics are deferred.
+
+Modern biomes, building materials, mobs, equipment and travel mechanics
+belong in 1.0 when they participate in the chosen core loops. Being introduced
+in a recent release does not make a feature optional.
+
+New split-screen polish, agent-specific features, graphics modes unrelated
+to Java fidelity, mobile/console/web ports and vanilla network/save-format
+interoperability are outside the current core milestone unless the maintainer
+explicitly changes the scope. Internal save stability is required; importing
+Minecraft saves is a separate compatibility project.
+
+## 2. Status and tracking rules
+
+Use one current record per requirement, with these fields:
+`ID | scope/reference | state | dependencies | code/asset evidence |
+acceptance cases/results | known differences | next action`.
+
+States:
+- **Unassessed:** no current comparison against the selected Java reference.
+- **Missing:** no functional implementation.
+- **Partial:** implementation exists but content, behavior or integration is incomplete.
+- **Implemented, unverified:** behavior is implemented but required acceptance evidence is incomplete.
+- **Verified:** all applicable completion checks passed for the recorded commit and scope.
+- **Deferred:** explicitly outside the current milestone, with a reason and destination.
+
+A shipped release is not a completion state. A passing test suite is not
+proof that all requirements are implemented. Record desktop, headless,
+controller and agent evidence separately when applicable.
+
+A group below contains multiple requirements; split it into individual
+rows in M0 before claiming the entire group Verified. Every missing member
+of a material family, recipe, loot pool or mob behavior remains visible.
+Never mark a whole group done because its first feature landed.
+
+Evidence must identify the tested commit, Java reference, fixture or manual
+steps, platform and result. Preserve failed acceptance cases until resolved.
+After an integration change, recheck the affected behavior and its dependent
+systems. Don't erase a defect by changing its test to match the wrong behavior.
+
+Keep the active roadmap focused on present scope, dependencies, status and
+next work. Keep implementation details and benchmark reports in the development
+documentation; release notes describe only delivered behavior.
+
+## 3. Starting inventory — evidence, not a new completion claim
+
+Baseline for this rewrite: `main` at `022ca44`, package version 0.6.0.
+The 2026-10-11 review passed formatting, strict release Clippy and existing
+release tests in both desktop and headless configurations. Desktop:
+670 library + 78 executable + 5 integration tests passed; three ignored.
+Headless: 670 library + 5 integration tests passed; two ignored.
+Three-dimension headless smoke and an rd=8 meshing/streaming benchmark passed.
+
+Those results do not satisfy the new full fidelity or 240 FPS acceptance
+gates. The review did not complete a fresh-world survival playthrough,
+physical-controller testing or a representative 1080p frame-time suite.
+
+Current broad state:
+
+- **Partial under the new target:** simulation/player/save foundations;
+  survival and End progression; enchanting/brewing/Netherite; materials and
+  shaped blocks; villages and redstone; Nether content; modern Overworld
+  generation/structures/aquatic mobs; presentation and options.
+- **Existing implementations to retain:** fixed 20 Hz simulation, device-free
+  library, gameplay block light, compact saves, crafting/containers, physics,
+  survival, three dimensions, progression entities, procedural assets,
+  particles/music, third-person poses, controller players and CLI agents.
+- **Work outside this baseline:** assess later changes at their merged commit
+  before importing completion claims. Pending work is not counted as shipped
+  or verified in the 0.6 inventory.
+
+### 3.1 Confirmed 0.6 audit follow-ups
+
+These findings belong in the new requirement records. They were reproduced
+or traced on the baseline above; recheck whether later branch work fixes them.
+
+- **BLD-01 / BLD-02:** pale-oak and bamboo stairs/slabs/fences/doors are absent;
+  bamboo mosaic has no recipe; mud-brick and prismarine shaped families are
+  incomplete. Relevant sources: [world/forms.rs](../src/world/forms.rs), [crafting.rs](../src/crafting.rs).
+- **ENV-04:** dry sponges do not absorb neighboring water. Wet-sponge smelting
+  exists. Relevant sources: [world/mod.rs](../src/world/mod.rs), [world/overworld_blocks.rs](../src/world/overworld_blocks.rs).
+- **PRO-02:** pufferfish is not accepted for brewing Water Breathing.
+  Relevant source: [world/brewing.rs](../src/world/brewing.rs).
+- **BLD-02 / AUT-03:** dried kelp blocks, bamboo and bamboo mosaic lack fuel
+  handling; kelp, berries, moss and new flowers lack composter integration.
+  Relevant sources: [world/furnace.rs](../src/world/furnace.rs), [world/composter.rs](../src/world/composter.rs).
+- **FOO-03:** fishing pools still omit existing tropical fish, pufferfish and
+  nautilus shells. Relevant source: [entity/bobber.rs](../src/entity/bobber.rs).
+- **GEN-02 / BLD-03:** amethyst geodes do not generate; budding amethyst
+  incorrectly drops with Silk Touch. Relevant sources: [world/terrain.rs](../src/world/terrain.rs),
+  [world/overworld_blocks.rs](../src/world/overworld_blocks.rs).
+- **FOO-02:** bone meal on mangrove leaves does not create propagules;
+  one dark-oak sapling grows a tree without the Java 2x2 requirement.
+  Relevant sources: [world/overworld_flora.rs](../src/world/overworld_flora.rs), [world/growth.rs](../src/world/growth.rs).
+- **MOB-03:** baby turtle growth runs while the turtle is unloaded/distant.
+  Relevant sources: [entity/aquatic.rs](../src/entity/aquatic.rs), [entity/mod.rs](../src/entity/mod.rs).
+- **PLY-04:** CLI water buckets attempt creature capture without a fallback
+  for ordinary pouring. Relevant sources: [agent.rs](../src/agent.rs), [app/bucket.rs](../src/app/bucket.rs).
+- **FOO-02:** ripe cocoa randomly yields two or three beans instead of the
+  reference loot's three. Relevant source: [world/overworld_flora.rs](../src/world/overworld_flora.rs).
+
+Broader known partial areas include real skylight and shape-aware lighting,
+light-based cave spawning, navigation, full material/state families, missing
+workstation functions, anvil naming, additional brewing, world-generation
+fidelity, turtle reproduction, dripstone/dripleaf behavior and complete
+current-version content. The inventory must inspect these rather than trust
+old "done" labels.
+
+## 4. Core requirement catalogue
+
+All groups are in scope unless an individual requirement is explicitly
+deferred or has an maintainer-approved fidelity exception. IDs are stable tracking
+keys, not release versions or block/item ID allocations.
+
+### PLY — Player, simulation and controls
+
+- **PLY-01:** authoritative 20 Hz gameplay, correct random/scheduled ticking,
+  render interpolation, loaded-region activity and pause behavior. No
+  duplicate ticks, frame-rate-dependent outcomes or render-dependent rules.
+- **PLY-02:** Java movement, acceleration, collision, step-up, sneaking,
+  sprinting, jumping, swimming/crawling and appropriate poses/hitboxes.
+  Climbing, fluid movement, fall/void damage and environment interactions
+  work with every applicable block state.
+- **PLY-03:** health, hunger/saturation/exhaustion, air, regeneration, damage
+  immunity, status effects, death/respawn, XP, beds, difficulty and gamerules.
+- **PLY-04:** one consistent action contract for building, mining, combat,
+  item use and containers. Desktop is the primary player path; relevant
+  existing controller and CLI paths remain functional when shared features change.
+- **PLY-05:** equipment, armor/offhand/shields, attack timing, criticals,
+  sweeping, projectiles, enchantment effects and all core weapon families.
+  Correct tool wear, item remainders and attribution of hits/loot/XP.
+- **PLY-06:** keyboard/mouse bindings, sensitivity/FOV, first/third-person
+  cameras, view bobbing, interaction reach, targeting and clear feedback.
+
+### BLD — Blocks, items, crafting and building
+
+- **BLD-01:** complete in-scope wood, stone, metal, color and modern material
+  families. Include their Java-supported shapes, orientations and recipes;
+  don't invent counterparts Java lacks or omit functional family members.
+- **BLD-02:** survival acquisition and complete crafting/smelting/fuel paths,
+  yields, remainders, repair materials, compost eligibility and trading uses.
+  Recipes accept exactly the appropriate alternatives.
+- **BLD-03:** hardness, harvest/tool rules, drops, Fortune/Silk Touch,
+  gravity, burning/explosion behavior, support removal and persistence.
+- **BLD-04:** top/bottom/double slabs, normal/upside-down/corner stairs,
+  doors/hinges, gates, trapdoors, walls, fences, panes, bars, ladders,
+  wall-mounted blocks and waterlogging. Collision, lighting, culling,
+  placement and neighbor updates agree on the actual state/shape.
+- **BLD-05:** functional storage and ordinary building utilities, including
+  double chests, barrels, signs, beds, lights and relevant decorative items.
+  Inventory icons, held/dropped models and world geometry are consistent.
+- **BLD-06:** sufficient registry capacity and versioned state encoding for
+  the selected modern catalogue. Preserve existing IDs/migrations; do not
+  silently reuse retired IDs or let unregistered states masquerade as features.
+
+### GEN — Terrain, dimensions and exploration
+
+- **GEN-01:** matching climate/biome/density generation, terrain heights,
+  surfaces, rivers, mountains, oceans and dimension bounds. Same seeds and
+  coordinates reproduce the selected Java reference behavior in fixtures.
+- **GEN-02:** Java caves/carvers/aquifers, ore distributions and exposure
+  rules, deepslate, geodes, springs and lush/dripstone/deep-dark content.
+- **GEN-03:** correct trees, flora, fungi, reefs, ocean vegetation, ice,
+  snow and other biome features; deterministic feature interactions and
+  continuation across chunk borders.
+- **GEN-04:** Nether and End biome/terrain/features, portal placement and
+  travel, arrival safety, dimension-specific rules and separated persistence.
+- **GEN-05:** all structures needed for core exploration/progression, with
+  Java placement rules, layouts, terrain alignment, traps, block entities,
+  residents, spawners and appropriate loot.
+  Includes villages/dungeons/mineshafts, temples/huts/igloos/outposts,
+  shipwrecks/ruins/monuments/buried treasure, strongholds, fortresses/
+  bastions, End cities/ships, mansions, ancient cities and trial chambers.
+  Include relevant structures from the selected newer stable releases.
+- **GEN-06:** maps/compasses/clocks and exploration rewards needed to find
+  and use core content. Loot acquisition is meaningful without cheat commands.
+- **GEN-07:** generation independent of chunk request order, unloading,
+  parallelism and cache eviction. No clipped structures, border mismatches,
+  floating unsupported features or respawned looted containers/residents.
+
+### MOB — Spawning, AI and the living world
+
+- **MOB-01:** actual sky/block light, biome/dimension/structure tables,
+  category caps, spawn surfaces/volumes, activation distance, despawning,
+  persistence and difficulty rules.
+- **MOB-02:** navigation and line of sight that respect block shapes,
+  hazards, doors, vertical routes, water and unloaded regions. Correct
+  targets, cooldowns, attacks, equipment and observable Java behaviors.
+- **MOB-03:** relevant passive/aquatic mobs, ages, breeding/feeding, wool
+  regrowth, egg laying, taming/companions, buckets, leads, naming and persistence.
+- **MOB-04:** relevant hostile/neutral mobs, illagers, guardians, boss-adjacent
+  mobs and modern core roster; complete drops and associated resource loops.
+- **MOB-05:** villagers, jobs/POIs, schedules, all required professions,
+  workstation behavior, trading/restocking, reputation, breeding, golems,
+  zombie conversion/cures, wandering traders and raids.
+- **MOB-06:** matching models, animations, effects and sounds. Displayed
+  attack state, movement and equipment agree with simulation; death and
+  conversion preserve or drop inventory according to the reference.
+
+### FOO — Food, farming and travel
+
+- **FOO-01:** core crops/foods, stem crops, mushrooms, berries, cocoa,
+  cooking, milk/stews/cake/pie, bees/honey and related acquisition.
+- **FOO-02:** Java growth, bone meal, support/light/water conditions, soil,
+  trees/propagules, harvesting, yields and renewable farming loops.
+- **FOO-03:** fishing behavior, open-water rules, complete relevant loot,
+  rod enchantments, wear and XP.
+- **FOO-04:** boats/chest boats and rafts, carts/rails, saddles, mounts,
+  steering, storage, dismount safety and matching travel physics.
+  Modern core travel content is included when selected in M0.
+
+### PRO — Survival and equipment progression
+
+- **PRO-01:** a fresh survival world can reach the Nether, acquire blaze/
+  pearl ingredients, find a stronghold, activate its portal, defeat the
+  dragon, return through the exit and continue safely without cheats.
+- **PRO-02:** brewable in-scope potions, ingredient acquisition, effects,
+  drink/splash/lingering delivery, tipped arrows and related item use.
+- **PRO-03:** XP awards/pickup/death loss, enchanting offers/bookshelves/
+  lapis, all required enchantment behaviors, repair/renaming/grindstones.
+- **PRO-04:** ancient debris/scrap/ingots, bastion templates, Netherite
+  upgrades and correct metadata/durability/repair/fire behavior.
+- **PRO-05:** End crystals/dragon respawn, gateways, outer-End rewards,
+  shulkers/boxes, elytra and fireworks.
+- **PRO-06:** Wither summoning/fight, Nether stars, beacons and their
+  acquisition, construction, range and effect rules.
+- **PRO-07:** core modern progression/equipment/encounters, including trial
+  content and new weapon/material families in the selected reference.
+  Each must be obtainable and useful in survival, not creative-only.
+
+### ENV — Environmental systems
+
+- **ENV-01:** fluid flow, source formation, waterlogging, lava/water
+  reactions, buckets, bubble columns and appropriate entity/item behavior.
+- **ENV-02:** fire/lava ignition, spread, extinguishing, burning,
+  explosions/TNT and block/entity/item resistance.
+- **ENV-03:** rain/snow/thunder/lightning, weather exposure, accumulation/
+  melting/freezing and difficulty-dependent environmental interactions.
+- **ENV-04:** functional special blocks: sponges, dripstone/dripping/falling,
+  dripleaf tilt, mud and other in-scope cave/ocean/biome interactions.
+- **ENV-05:** authoritative skylight/block light and shape-aware
+  propagation/occlusion for gameplay, rendering, spawning and growth.
+
+### AUT — Automation, workstations and storage
+
+- **AUT-01:** Java redstone signal rules, dust/connectivity, switches/
+  plates/torches, repeaters/comparators, timing, update order, lighting,
+  targets/daylight/tripwire and applicable modern sensors.
+- **AUT-02:** pistons/sticky pistons, observers, moving collision/entity
+  displacement, block reactions and Java-relevant contraption behavior.
+- **AUT-03:** dispensers/droppers/hoppers, all in-scope special dispensing,
+  sided transfers, composters, automatic crafting and related devices.
+- **AUT-04:** furnaces/smokers/blast furnaces, brewing, enchanting, anvils,
+  smithing, grindstones, stonecutters and other core workstation interfaces.
+  Job-site registration alone does not make a workstation functional.
+- **AUT-05:** storage, container metadata, carts/boats and interaction
+  transactions without duplication, deletion or missed comparator updates.
+- **AUT-06:** representative Java farms, clocks, sorting, transport and
+  manufacturing work after unload/reload and save/restart.
+
+### UX — Presentation, usability and distribution
+
+- **UX-01:** coherent original textures/models/icons, readable states and
+  appropriate animation. Original handmade assets can replace weak
+  procedural ones; document asset provenance and runtime/memory costs.
+- **UX-02:** clear sound cues, music, particles, weather/lighting and
+  combat/item feedback. Verify trigger, timing, visual density and audio
+  quality through gameplay, not only synthetic-output tests.
+- **UX-03:** title/world management, seed entry/display/copy, settings,
+  key rebinding, GUI scaling/accessibility/subtitles, inventory/search,
+  recipe discovery and every core container/workstation interface.
+- **UX-04:** install/start/save/quit/reopen/update behavior on the existing
+  supported desktop platforms. M5 macOS is the performance reference;
+  Windows and Linux retain correctness/build regression coverage.
+- **UX-05:** graceful errors, world backups/migration, recovery guidance
+  and a clearly documented 1.0 save-compatibility policy.
+
+## 5. Dependency-ordered milestones
+
+Each milestone stays open until its exit checks pass. Reuse working code and
+land focused changes; a milestone is not permission for a blanket rewrite.
+
+### M0 — Reference, inventory and verification tools
+
+Deliver the per-feature catalogue against the selected current stable
+reference, classify existing main and pending-branch work, and make every
+required acquisition/use/drop path explicit. Resolve proposed side-feature
+deferrals and deliberate fidelity exceptions.
+
+Create repeatable Java comparison fixtures and representative M5 benchmark
+worlds/routes. Establish reliable frame-time, simulation, streaming, memory
+and generation measurements. Identify registry/state capacity limits before
+adding further content.
+
+Exit: every core requirement has a state and acceptance cases; no unresolved
+"modern," "basic" or "done" labels hide its scope. The performance suite runs
+on the reference machine and records a reproducible baseline, whether or not
+that baseline yet reaches 240 FPS.
+
+### M1 — Correct single-player foundations
+
+Close PLY and ENV-05 foundation gaps, particularly lighting, block-shape
+interaction, spawn rules, navigation, loaded-region activity, action
+consistency and save integrity. Diagnose architectural performance issues
+before adding more expensive systems.
+
+Exit: indoor/cave spawning and torch suppression match Java fixtures;
+representative mobs navigate terrain and hazards; collision/light queries
+agree with placed states; pause/load/unload/death/save tests preserve state;
+simulation outcomes don't change with render frame rate. Existing headless,
+controller and agent regression paths remain functional.
+
+### M2 — Complete materials and interactions
+
+Close BLD, the confirmed 0.6 integration defects and relevant ENV/FOO block
+rules. Complete family members, states, acquisition, recipes, tool/loot/fuel/
+compost/repair integration and ordinary building utilities.
+
+Exit: sample every required family through survival acquisition, crafting,
+placement, interaction, mining and save/reload. Sponges drain water;
+supported fuels burn; compostables compost; buds/trees/cocoa drop and grow
+correctly. A builder can use all required orientation/shape/waterlogging
+states with consistent collision and lighting.
+
+### M3 — Java terrain and exploration
+
+Close GEN. Replace observable approximations that fail the selected
+reference fixtures. Implement missing cave/biome/features and core structure
+families with correct layouts, residents and loot. Preserve edited worlds
+through an explicit generation-version migration strategy.
+
+Exit: a documented seed/coordinate corpus matches Java biome, terrain,
+feature and structure fixtures to the agreed fidelity contract.
+Generate neighboring chunks in different orders/threads and across cache
+evictions; compare outputs and inspect borders. Explore each core biome/
+structure family without cheats, obtain its rewards, and prove cleared
+containers/residents stay cleared after restart.
+
+### M4 — A complete living world
+
+Close MOB, FOO and relevant ENV rules: animals and companions, villagers/
+raids, aquatic/hostile mobs, crops/trees/fishing, mounts/travel and weather.
+
+Exit: play renewable farming, breeding/taming, trading/cure/raid, fishing,
+travel and environmental scenarios. Validate creature category caps and
+behavior in day/night, lit caves, Peaceful and all dimensions.
+Persistent mobs, ages, carried items, homes/jobs and mount/storage state
+survive unloading and restart without continuing unloaded-only timers.
+
+### M5 — Complete survival progression
+
+Close PRO using the correctly generated/acquired content from prior
+milestones. Recheck existing End progression rather than presume it remains
+valid after terrain, AI, combat and lighting changes.
+
+Exit: a fresh-world, no-cheat playthrough covers first-night survival,
+equipment progression, Nether access, potion/enchantment/upgrades, the
+stronghold/dragon/return path, post-dragon End travel, Wither/beacons and
+the selected modern progression. Separate repeatable scenarios cover
+dragon respawn, elytra/fireworks, shulker storage and difficult encounters.
+Record failed or impractically unreliable acquisition paths as defects.
+
+### M6 — Dependable building and automation
+
+Close AUT and remaining core utility UI. Match Java contraption behavior;
+do not label queued propagation or approximate pistons sufficient by default.
+
+Exit: reference clocks, doors, piston mechanisms, sorting/hopper systems,
+farms, rail/storage transport and crafting/processing fixtures work with
+Java timing and resource accounting. Repeat after chunk unload, save/
+restart and interruption during scheduled/moving updates. No duplication,
+inventory loss or dead scheduled machinery.
+
+### M7 — Quality, performance and 1.0 acceptance
+
+Close UX, finish all requirement records and run the full completion matrix.
+Polish textures/models, movement/feedback, sound, menus and accessibility
+where actual play exposes problems. Optimize feature-heavy terrain, AI,
+lighting, simulation and rendering without weakening the parity contract.
+
+Exit: all mandatory core rows are Verified; every remaining exception/
+deferral is explicit; current stable Java scope has been reconciled;
+fresh-world and long-session acceptance passes are recorded; save migration/
+stability and distribution are checked; the reference M5 performance gate
+passes across the representative scene suite. No unresolved core
+correctness, acquisition, persistence or release-blocking performance defects.
+
+## 6. Performance acceptance
+
+### 6.1 Reference configuration and frame-time gate
+
+- Reference M5 MacBook Pro; record CPU/GPU variant, RAM, macOS and build commit.
+- Release build, 1920 x 1080 **physical render pixels**, 256-block view range.
+  Record the simulation distance separately; begin with Java's 8 chunks
+  (128 blocks) for the repeatable comparison setup.
+- Normal intended visual/audio settings, full in-scope gameplay, no hidden
+  entity/particle/content removal. Record all options.
+- VSync/frame caps disabled for measurement. Native-resolution runs are
+  reported separately; don't substitute logical Retina window dimensions.
+- Steady-state gate: **1% low at least 240 FPS** (the reciprocal of the
+  mean of the slowest 1% of frame times), with **p99 frame time at most
+  4.17 ms**. Also record average, p50, p95, p99, worst frame and any distinct
+  hitch. These statistics are complementary, not interchangeable. This is
+  the roadmap's measurement definition of the stated minimum target,
+  not a new measured claim.
+- Measure cold streaming and interaction stalls separately; don't discard
+  them to present steady-state numbers as whole-session performance.
+  M0 establishes explicit streaming/hitch budgets before these are marked Verified.
+
+Use a consistent power/thermal setup, a warm-up period, at least three
+60-second measured runs per steady-state scene and a longer streaming route.
+Publish per-scene results, not only an average across easy and hard scenes.
+An offscreen origin sweep or meshing microbenchmark alone cannot pass the gate.
+
+### 6.2 Representative scenes and systems
+
+Cover open terrain, dense forests, mountains, underground caves, oceans/
+monuments, villages/raids, Nether forests/basalt deltas, the dragon fight,
+weather, busy farms/redstone/storage and normal menus/inventory overlays.
+Specify reproducible mob counts, activity, weather and interaction sequences.
+
+Measure:
+- CPU/GPU frame times and render submission/upload costs.
+- Fixed-step simulation latency; meet 20 Hz without dropped gameplay ticks.
+- Generation, decorations, lighting and meshing per chunk, including cold
+  feature-heavy biomes and structures.
+- Streaming movement and rapid edits/explosions/fluid changes.
+- Save/load time, memory use and bounded cache/queue growth over a long session.
+- Native-resolution and longer-view-distance scaling, reported separately.
+
+Set system budgets from the measured baseline and profile bottlenecks.
+A proposed internal tick-time budget must not replace the frame-time gate
+or the no-skipped-ticks requirement. Compare against the selected Java
+reference at equivalent view/simulation distances and scenes when making
+relative performance claims.
+
+## 7. Feature completion and release policy
+
+For every individual feature, all applicable checks must pass:
+
+1. **Reference correctness:** documented selected-version behavior and meaningful
+   comparison/regression cases, including edge conditions.
+2. **Survival completeness:** acquire it without cheats; craft/process, use,
+   repair and dispose of it correctly. No essential input is creative-only.
+3. **Integration:** tool/loot/enchantment, inventory/container/automation,
+   light/physics/AI and relevant existing input paths agree.
+4. **Player testing:** interact through the normal UI and controls. Inspect
+   appearance/animation and listen to sound; a screenshot or constructor
+   test alone is insufficient.
+5. **Persistence:** save/restart and unload/reload relevant state, including
+   interrupted work, carried components, scheduled actions and cleared loot.
+6. **Performance:** measure the feature in representative loaded gameplay;
+   no unbounded caches/queues or unexplained regressions.
+7. **Delivery evidence:** record the commit, scope, test results, manual
+   steps/captures and remaining differences; update the requirement state.
+
+Use the repository's required pre-commit chain for source changes:
+`cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test --release`.
+Also run relevant headless checks, shader validation, cross-platform CI
+and applicable benchmark/player/save checks. Tests that merely mirror the
+implementation do not establish Java correctness.
+
+Minor releases can contain completed subsets of the roadmap, but shipped
+features must meet their defined contract. Label omitted members and
+approved scope limits explicitly. Don't publish a half-functional item or
+system as complete simply because its partial code builds.
+
+There are no promised milestone dates or automatic version increments.
+Assign release versions when a coherent, verified scope is ready.
+Keep one focused source commit per feature/fix on the assigned branch,
+following the [contribution workflow](../CONTRIBUTING.md). Keep roadmap updates
+reviewable alongside implementation changes and release notes.
+
+## 8. Final acceptance record for 1.0
+
+- [ ] Current stable Java reference and exact core scope recorded.
+- [ ] Every mandatory core feature individually Verified with evidence.
+- [ ] Proposed side-feature deferrals resolved; fidelity exceptions explicit.
+- [ ] Fresh-world survival progression and continued post-boss play passed.
+- [ ] Building, exploration, farming, animals, villagers, travel and automation scenarios passed.
+- [ ] Player-facing interfaces, controls, feedback and original assets reviewed in play.
+- [ ] Save/restart/unload, migration, interruption and long-session stability passed.
+- [ ] M5 1080p/256-block 240 FPS gate passed in every required steady-state scene.
+- [ ] Streaming/hitch budgets passed; native-resolution and scaling results reported.
+- [ ] Existing supported-platform checks and installer/update smoke passed.
+- [ ] Existing controller/agent/multiplayer shared-code regressions addressed.
+- [ ] Release documentation accurately states delivered scope and remaining limitations.
+
+Multiplayer and additional side features receive their own roadmap after
+this single-player acceptance milestone. They are not prerequisites for 1.0.

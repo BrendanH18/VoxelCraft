@@ -21,6 +21,7 @@
   <a href="docs/gameplay.md">Gameplay guide</a> &nbsp;·&nbsp;
   <a href="#multiplayer">Multiplayer</a> &nbsp;·&nbsp;
   <a href="#under-the-hood">Under the hood</a> &nbsp;·&nbsp;
+  <a href="docs/roadmap.md">Roadmap</a> &nbsp;·&nbsp;
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
 
@@ -32,6 +33,11 @@ VoxelCraft is a love letter to the classic block game, rebuilt one system at
 a time. Every texture is painted by code, every sound and song is
 synthesized as you play, and there isn't a single bundled game asset in the
 repository.
+
+The [project roadmap](docs/roadmap.md) targets complete core single-player
+gameplay in modern Minecraft Java's style, with close mechanical and world
+generation fidelity. It defines the work, quality checks and performance
+targets still needed for 1.0; multiplayer follows that milestone.
 
 It's still early, but it's already a real game: you can start in a field with
 nothing, work your way up to diamond, light a portal to the Nether, track down
@@ -321,6 +327,8 @@ Your numbers will vary with hardware and scene. The
 [architecture notes](docs/architecture.md) dig into the renderer, code layout
 and sound synthesis, and the [development guide](docs/development.md) shows
 how to run benchmarks, script scenes and capture screenshots.
+These recorded sweeps are separate from the roadmap's
+[1080p frame-time acceptance target](docs/roadmap.md#6-performance-acceptance).
 
 ## 📚 Docs
 
@@ -334,6 +342,9 @@ how to run benchmarks, script scenes and capture screenshots.
 | [Player rendering](docs/player-rendering.md) | [Music](docs/music.md) and [particles](docs/particles.md) |
 | [Nether mobs](docs/nether-mobs.md): piglins, bartering, hoglins, striders | [Overworld terrain](docs/overworld-terrain.md): biomes, caves, aquifers |
 | [Overworld structures](docs/overworld-structures.md) and [aquatic mobs](docs/aquatic-mobs.md) | |
+
+The [roadmap](docs/roadmap.md) is the source of truth for goals, scope,
+milestones and completion criteria.
 
 ## 🤝 Contributing
 
