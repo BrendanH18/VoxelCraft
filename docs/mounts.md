@@ -54,9 +54,10 @@ with riders. Saddles, armor,
 stats, temper, owner, riders and storage survive saves; equipment and cargo
 spill when the animal dies.
 
-Breeding integration: `entity::mounts::breeding_food` exposes horse/donkey,
-pig and strider food. Mules return an empty list because they are sterile.
-The separate breeding feature should check adult/tame state before love mode.
+Breeding uses the shared animal pipeline (`docs/animals.md`): tamed adult
+horses and donkeys breed on golden carrots and apples, a horse and a donkey
+make a mule, and mules are sterile. Foals inherit health, speed and jump with
+Java's offspring formula.
 
 ## Llamas and camels
 
@@ -65,8 +66,12 @@ and a strength of 1–3 (1–5 one time in 25). Tame one like a horse by
 mounting it with an empty hand; llamas tame within 30 temper. Wheat heals 2
 and adds 3 temper, hay bales heal 10, add 6 and breed tamed adults. A chest
 gives three slots per strength point and a carpet decorates its back.
-Riders can't steer llamas. A llama you hit spits at you for 1 damage every
-two seconds until it calms down. Foals take a random strength up to the
+Riders can't steer llamas. A llama you hit spits back once: Java's spit
+projectile flies 1.5 blocks a tick and does 1 damage to whatever it hits.
+Llamas also spit at wild wolves, which keep their distance. Lead a llama and
+others within nine blocks fall in behind it as a caravan of up to ten, each
+following the one ahead until it is ridden, led itself, or left 16 blocks
+behind. Foals take a random strength up to the
 stronger parent's (rarely one more) and a parent's coat.
 
 Camels live in desert villages and need no taming: saddle one to steer it.
@@ -75,8 +80,8 @@ off. Hold and release jump to dash forward (2.75 s cooldown; sprinting adds
 speed while the dash is ready). Camels step up 1.5 blocks, sit down now and
 then when idle, take 2.6 s to stand when mounted, eat and breed on cactus.
 
-Current parity gaps: llama caravans, llamas attacking wolves and spit as a
-dodgeable projectile, camel sitting on command, and undead horses are not implemented;
+Current parity gaps: camels can't be told to sit, and undead horses are not
+implemented (skeleton horses come from lightning traps, and there is no lightning yet);
 horse coats/armor and sounds are procedural approximations; horse herd coats
 are independently selected. Water-current steering/bubble columns and exact
 Java land-status fall quirks for boats remain future work. Offhand controls

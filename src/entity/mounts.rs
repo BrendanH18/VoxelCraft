@@ -101,6 +101,9 @@ pub struct State {
     pub strength: u8,
     /// A camel's second (rear) seat.
     pub passenger: Option<PlayerId>,
+    /// A llama's caravan: the uid of the llama it follows, and where that llama is.
+    pub caravan: Option<u32>,
+    pub caravan_pos: Option<DVec3>,
     /// Ticks until a camel can dash again.
     pub dash_cooldown: u16,
     /// Camel sitting: ticks left sitting down, and ticks left standing up after a rider mounts.
@@ -166,6 +169,8 @@ impl State {
             chest: false,
             strength,
             passenger: None,
+            caravan: None,
+            caravan_pos: None,
             dash_cooldown: 0,
             sit_ticks: 0,
             stand_ticks: 0,
@@ -376,6 +381,16 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
             return Some((None, 0.));
         }
     }
+    // A caravan llama walks after the one ahead, keeping about two blocks back.
+    if s.rider.is_none()
+        && let Some(ahead) = s.caravan_pos
+    {
+        let flat = (ahead - mob.pos) * DVec3::new(1., 0., 1.);
+        if flat.length_squared() > 2.5 * 2.5 {
+            mob.look_at(ahead, 1.0);
+            return Some((Some(flat.normalize()), 2.6));
+        }
+    }
     let rider = s.rider?;
     if !s.tame {
         if rng.chance((dt as f32 * 20. / 50.).min(1.)) {
@@ -436,34 +451,122 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
 }
 
 impl Entities {
-    /// Java llamas spit (1 damage) at whoever hurt them, every two seconds while provoked.
-    pub(super) fn llama_spit(&mut self, ctx: &super::Ctx, events: &mut Vec<super::EntityEvent>) {
-        for m in &mut self.mobs {
-            if m.kind != MobKind::Llama || !m.alive() || m.attack_cooldown > 0.0 {
+    /// Java llama behaviour beyond riding: spit at whoever hurt them (once per hit) and at
+    /// wild wolves, scare wild wolves off, and follow a led llama in a caravan.
+    pub(super) fn tick_llamas(&mut self, ctx: &super::Ctx) {
+        if !self.mobs.iter().any(|m| m.kind == MobKind::Llama) {
+            return;
+        }
+        self.ensure_mob_ids();
+        // Spitting: Java's LlamaSpit, 1.5 blocks a tick with a little spread.
+        for i in 0..self.mobs.len() {
+            let m = &self.mobs[i];
+            if m.kind != MobKind::Llama || !m.alive() || m.attack_cooldown > 0.0 || m.baby {
                 continue;
             }
-            let Some(target) = m.angry_player.and_then(|id| ctx.players.iter().find(|t| t.id == id && t.targetable))
-            else {
-                continue;
+            let player = m.angry_player.and_then(|id| ctx.players.iter().find(|t| t.id == id && t.targetable));
+            let target = if let Some(t) = player {
+                // Java aims at a third of the target's height.
+                Some(t.pos + DVec3::Y * 0.6)
+            } else {
+                // Java's LlamaAttackWolfGoal: wild wolves in range get spat at.
+                self.mobs
+                    .iter()
+                    .filter(|w| {
+                        w.kind == MobKind::Wolf
+                            && w.alive()
+                            && w.animal.as_ref().is_some_and(|a| a.owner.is_none())
+                            && w.pos.distance_squared(m.pos) < 16.0 * 16.0
+                    })
+                    .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)))
+                    .map(|w| w.pos + DVec3::Y * (w.shape().height / 3.0))
             };
-            let mouth = m.pos + DVec3::Y * (m.shape().height * 0.9);
-            let aim = target.pos + DVec3::Y * 1.4 - mouth;
-            if aim.length_squared() > 16.0 * 16.0 {
+            let Some(target) = target else { continue };
+            let head = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let mouth = head + (target - head).with_y(0.0).normalize_or_zero() * 0.5;
+            if (target - mouth).length_squared() > 16.0 * 16.0 {
                 continue;
             }
-            m.look_at(target.pos, 1.0);
+            let spit = super::thrown::Thrown::spit(mouth, target, m.uid, &mut self.rng);
+            let m = &mut self.mobs[i];
+            m.look_at(target, 1.0);
             m.attack_cooldown = 2.0;
-            let mut b = crate::particles::Burst::new(crate::particles::Kind::Poof, mouth, 6);
+            m.attack_anim = 0.3;
+            // Java: one spit per provocation, then the llama calms down.
+            m.angry_player = None;
+            self.thrown.push(spit);
+            let mut b = crate::particles::Burst::new(crate::particles::Kind::Poof, mouth, 4);
             b.velocity_spread = DVec3::splat(0.01);
             b.color = Some([0.95, 0.95, 0.9, 1.0]);
             self.particles.push(crate::particles::Request::Burst(b));
-            let push = (aim.with_y(0.0).normalize_or_zero() * 0.2).as_vec3();
-            events.push(super::EntityEvent::PlayerHit {
-                player: target.id,
-                damage: 1.0,
-                knockback: push,
-                cause: "was spat on by a llama",
-            });
+        }
+        // Wild wolves keep away from llamas (Java's wolf AvoidEntityGoal).
+        let llamas: Vec<DVec3> =
+            self.mobs.iter().filter(|m| m.kind == MobKind::Llama && m.alive()).map(|m| m.pos).collect();
+        for w in &mut self.mobs {
+            if w.kind != MobKind::Wolf || !w.alive() || w.animal.as_ref().is_none_or(|a| a.owner.is_some()) {
+                continue;
+            }
+            if let Some(l) = llamas.iter().find(|l| l.distance_squared(w.pos) < 64.0)
+                && w.ai != super::mob::Ai::Panic
+            {
+                let away = w.pos - *l;
+                w.ai = super::mob::Ai::Panic;
+                w.ai_timer = 2.0;
+                w.move_yaw = away.z.atan2(away.x) as f32;
+            }
+        }
+        // Caravans: an unled adult llama joins the tail of a led llama (or its caravan)
+        // within 9 blocks, up to ten llamas long, and follows the one ahead.
+        let ids: Vec<(u32, DVec3, bool, Option<u32>)> = self
+            .mobs
+            .iter()
+            .filter(|m| m.kind == MobKind::Llama && m.alive())
+            .map(|m| (m.uid, m.pos, m.leash.is_some(), m.mount.as_ref().and_then(|s| s.caravan)))
+            .collect();
+        let pos_of = |uid: u32| ids.iter().find(|l| l.0 == uid).map(|l| l.1);
+        let depth = |mut uid: u32| {
+            let mut n = 1;
+            while let Some(next) = ids.iter().find(|l| l.0 == uid).and_then(|l| l.3) {
+                n += 1;
+                uid = next;
+                if n > 10 {
+                    break;
+                }
+            }
+            n
+        };
+        let mut joins = Vec::new();
+        for m in self.mobs.iter().filter(|m| m.kind == MobKind::Llama && m.alive()) {
+            let Some(s) = m.mount.as_ref() else { continue };
+            if m.leash.is_some() || m.baby || s.rider.is_some() || s.caravan.is_some() {
+                continue;
+            }
+            let head = ids
+                .iter()
+                .filter(|l| {
+                    l.0 != m.uid
+                        && (l.2 || l.3.is_some())
+                        && !ids.iter().any(|f| f.3 == Some(l.0))
+                        && l.1.distance_squared(m.pos) < 81.0
+                        && depth(l.0) < 10
+                })
+                .min_by(|a, b| a.1.distance_squared(m.pos).total_cmp(&b.1.distance_squared(m.pos)));
+            if let Some(h) = head {
+                joins.push((m.uid, h.0));
+            }
+        }
+        for m in self.mobs.iter_mut().filter(|m| m.kind == MobKind::Llama) {
+            let Some(s) = m.mount.as_mut() else { continue };
+            if let Some((_, head)) = joins.iter().find(|j| j.0 == m.uid) {
+                s.caravan = Some(*head);
+            }
+            // Leave when led, ridden, or the llama ahead is gone or more than 16 blocks away.
+            let ahead = s.caravan.and_then(pos_of);
+            if m.leash.is_some() || s.rider.is_some() || ahead.is_none_or(|p| p.distance_squared(m.pos) > 256.0) {
+                s.caravan = None;
+            }
+            s.caravan_pos = s.caravan.and_then(pos_of);
         }
     }
 }

@@ -20,6 +20,8 @@ const MAX_FLIGHT: f32 = 30.0;
 pub enum Kind {
     Snowball,
     Egg,
+    /// A llama's spit (Java's LlamaSpit): 1 damage to whatever it hits.
+    LlamaSpit,
 }
 
 impl Kind {
@@ -36,6 +38,8 @@ impl Kind {
 pub struct Thrown {
     pub kind: Kind,
     pub owner: Option<PlayerId>,
+    /// The mob that threw it (`uid`); it never hits its own thrower.
+    pub shooter: Option<u32>,
     pub pos: DVec3,
     pub previous_pos: DVec3,
     vel: DVec3,
@@ -44,6 +48,25 @@ pub struct Thrown {
 }
 
 impl Thrown {
+    /// A llama spits from `from` at `target` (Java: 1.5 blocks a tick, inaccuracy 10).
+    pub fn spit(from: DVec3, target: DVec3, shooter: u32, rng: &mut Rng) -> Self {
+        let d = target - from;
+        // Java aims a little high over distance to offset the drop.
+        let aim = d + DVec3::Y * (d.with_y(0.0).length() * 0.2);
+        let mut wobble = || rng.range(-0.0172, 0.0172) as f64 * 10.0 * 0.5;
+        let dir = aim.normalize_or(DVec3::X) + DVec3::new(wobble(), wobble(), wobble()) * 0.1;
+        Self {
+            kind: Kind::LlamaSpit,
+            owner: None,
+            shooter: Some(shooter),
+            pos: from,
+            previous_pos: from,
+            vel: dir.normalize() * SPEED,
+            age: 0.0,
+            origin: from,
+        }
+    }
+
     /// Thrown from `eye` along `dir`, carrying the thrower's velocity.
     pub fn launch(kind: Kind, owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3, rng: &mut Rng) -> Self {
         let mut wobble = || rng.range(-0.017, 0.017) as f64;
@@ -52,6 +75,7 @@ impl Thrown {
         Self {
             kind,
             owner: Some(owner),
+            shooter: None,
             pos,
             previous_pos: pos,
             vel: aim.normalize() * SPEED + carry,
@@ -60,12 +84,14 @@ impl Thrown {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn update<W: BlockSource + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
         mobs: &mut [Mob],
         index: &super::mob_index::MobIndex,
+        players: &[super::Target],
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
@@ -73,7 +99,8 @@ impl Thrown {
         let ticks = dt * 20.0;
         let water = world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.holds_water());
         self.vel *= if water { 0.8f64 } else { 0.99 }.powf(ticks);
-        self.vel.y -= GRAVITY * dt;
+        // Java: thrown items fall 0.03 blocks/tick², llama spit 0.06.
+        self.vel.y -= if self.kind == Kind::LlamaSpit { GRAVITY * 2.0 } else { GRAVITY } * dt;
         let delta = self.vel * dt;
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
         for _ in 0..steps {
@@ -83,6 +110,17 @@ impl Thrown {
                 return false;
             }
             self.pos = next;
+            if self.kind == Kind::LlamaSpit
+                && let Some(t) = players.iter().find(|t| t.targetable && t.contains(next))
+            {
+                events.push(EntityEvent::PlayerHit {
+                    player: t.id,
+                    damage: 1.0,
+                    knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
+                    cause: "was spat on by a llama",
+                });
+                return false;
+            }
             let mut hit = None;
             // All mob boxes are at most four blocks high/two blocks wide.
             // Search reused local buckets rather than scanning every mob for
@@ -94,14 +132,24 @@ impl Thrown {
                     && self.age < 0.25
                     && self.origin.cmpge(min).all()
                     && self.origin.cmple(max).all();
-                if m.alive() && !source && next.cmpge(min).all() && next.cmple(max).all() && hit.is_none_or(|j| i < j) {
+                if m.alive()
+                    && !source
+                    && Some(m.uid) != self.shooter
+                    && next.cmpge(min).all()
+                    && next.cmple(max).all()
+                    && hit.is_none_or(|j| i < j)
+                {
                     hit = Some(i);
                 }
             });
             if let Some(i) = hit {
                 let mob = &mut mobs[i];
                 let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 2.0 + DVec3::Y * 2.0;
-                let damage = if self.kind == Kind::Snowball && mob.kind == MobKind::Blaze { 3.0 } else { 0.0 };
+                let damage = match self.kind {
+                    Kind::Snowball if mob.kind == MobKind::Blaze => 3.0,
+                    Kind::LlamaSpit => 1.0,
+                    _ => 0.0,
+                };
                 let kind = mob.kind;
                 let pos = mob.pos;
                 let killed = mob.damage(damage, Some(push), rng);
@@ -156,7 +204,7 @@ mod tests {
             index.rebuild(std::slice::from_ref(&mob));
             let mut hit = false;
             for _ in 0..8 {
-                if !thrown.update(0.05, &world, std::slice::from_mut(&mut mob), &index, rng, &mut events) {
+                if !thrown.update(0.05, &world, std::slice::from_mut(&mut mob), &index, &[], rng, &mut events) {
                     hit = true;
                     break;
                 }
@@ -195,7 +243,7 @@ mod tests {
         index.rebuild(&mobs);
         let mut events = Vec::new();
         for _ in 0..8 {
-            if !t.update(0.05, &world, &mut mobs, &index, &mut rng, &mut events) {
+            if !t.update(0.05, &world, &mut mobs, &index, &[], &mut rng, &mut events) {
                 break;
             }
         }

@@ -799,7 +799,7 @@ impl Entities {
         self.grow_loaded_turtles(dt as f32, world, ctx);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
-        self.llama_spit(ctx, &mut events);
+        self.tick_llamas(ctx);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -948,7 +948,7 @@ impl Entities {
             self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
             self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
             self.potions.retain_mut(|p| p.update(dt, world, ctx, mobs, rng, &mut events));
-            self.thrown.retain_mut(|t| t.update(dt, world, mobs, &self.mob_index, rng, &mut events));
+            self.thrown.retain_mut(|t| t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events));
         }
         {
             let rng = &mut self.rng;

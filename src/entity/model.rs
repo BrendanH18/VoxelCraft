@@ -1024,6 +1024,7 @@ pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64,
         let (color, size) = match t.kind {
             super::thrown::Kind::Snowball => ([245, 245, 250], 2.0),
             super::thrown::Kind::Egg => ([236, 224, 196], 2.2),
+            super::thrown::Kind::LlamaSpit => ([235, 238, 228], 1.5),
         };
         let c = cube([-size, -size, -size], [size, size, size], color, 16);
         push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);

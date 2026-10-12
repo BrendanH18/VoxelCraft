@@ -191,3 +191,67 @@ fn wolf_defends_its_owner_from_a_zombie() {
     }
     assert_eq!(e.mobs[0].animal.as_ref().unwrap().foe.map(|f| f.0), Some(zombie));
 }
+
+fn run(e: &mut Entities, c: &Ctx, ticks: usize) -> Vec<voxelcraft::entity::EntityEvent> {
+    let mut all = Vec::new();
+    for _ in 0..ticks {
+        all.extend(e.update(0.05, &Flat, c));
+    }
+    all
+}
+#[test]
+fn a_hurt_llama_spits_once_and_the_spit_hits() {
+    let mut e = Entities::new(2);
+    e.spawn(MobKind::Llama, DVec3::new(4., 1., 0.));
+    e.mobs[0].baby = false;
+    e.mobs[0].age = 0;
+    e.melee(0, DVec3::X, None, 1., false, None);
+    let mut c = ctx();
+    c.players[0] = Target::new(PlayerId::HOST, DVec3::new(0., 1., 0.), true);
+    let hits = |ev: &[voxelcraft::entity::EntityEvent]| {
+        ev.iter()
+            .filter(|e| {
+                matches!(e, voxelcraft::entity::EntityEvent::PlayerHit { cause: "was spat on by a llama", damage, .. } if *damage == 1.0)
+            })
+            .count()
+    };
+    let first = run(&mut e, &c, 30);
+    assert_eq!(hits(&first), 1, "one spit lands");
+    assert_eq!(hits(&run(&mut e, &c, 100)), 0, "a llama spits once per provocation");
+}
+#[test]
+fn llamas_spit_at_wild_wolves_which_keep_away() {
+    let mut e = Entities::new(3);
+    e.spawn(MobKind::Llama, DVec3::new(0., 1., 0.));
+    e.spawn(MobKind::Wolf, DVec3::new(5., 1., 0.));
+    for m in &mut e.mobs {
+        m.baby = false;
+        m.age = 0;
+    }
+    let health = e.mobs[1].health;
+    run(&mut e, &ctx(), 30);
+    assert!(e.mobs[1].health < health, "spit hurts the wolf");
+    assert!(e.mobs[1].pos.x > 5.5, "the wolf runs from the llama");
+}
+#[test]
+fn llamas_follow_a_led_llama_in_a_caravan() {
+    let mut e = Entities::new(4);
+    for x in [0., 4., 7.] {
+        e.spawn(MobKind::Llama, DVec3::new(x, 1., 0.));
+        let m = e.mobs.last_mut().unwrap();
+        m.baby = false;
+        m.age = 0;
+    }
+    e.ensure_mob_ids();
+    let head = e.mobs[0].uid;
+    e.mobs[0].leash = Some(voxelcraft::entity::leash::Leash::Player(PlayerId::HOST));
+    e.mobs[0].pos = DVec3::new(-3., 1., 0.);
+    let mut c = ctx();
+    c.players[0] = Target::new(PlayerId::HOST, DVec3::new(-5., 1., 0.), false);
+    run(&mut e, &c, 200);
+    let caravan = |i: usize| e.mobs[i].mount.as_ref().unwrap().caravan;
+    assert_eq!(caravan(1).or(caravan(2)), Some(head), "one llama follows the led one");
+    let tail = if caravan(1) == Some(head) { 2 } else { 1 };
+    assert_eq!(caravan(tail), Some(e.mobs[3 - tail].uid), "the other follows it");
+    assert!(e.mobs[1].pos.x < 0. && e.mobs[2].pos.x < 3., "the caravan walked after the leader");
+}
