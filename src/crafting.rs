@@ -161,20 +161,7 @@ const fn b(block: Block) -> Item {
 }
 
 /// Any kind of planks (oak first, so guides show oak).
-const PLANKS: Ingredient = &[
-    b(Block::PLANKS),
-    b(Block::SPRUCE_PLANKS),
-    b(Block::BIRCH_PLANKS),
-    b(Block::JUNGLE_PLANKS),
-    b(Block::ACACIA_PLANKS),
-    b(Block::DARK_OAK_PLANKS),
-    b(Block::MANGROVE_PLANKS),
-    b(Block::CHERRY_PLANKS),
-    b(crate::world::nether_biome_blocks::CRIMSON_PLANKS),
-    b(crate::world::nether_biome_blocks::WARPED_PLANKS),
-    b(crate::world::overworld_blocks::PALE_OAK_PLANKS),
-    b(crate::world::overworld_blocks::BAMBOO_PLANKS),
-];
+const PLANKS: Ingredient = &crate::content::PLANKS;
 const HAY: Ingredient = &[b(Block::HAY_BALE)];
 const WOOD_SLAB: Ingredient = &[
     b(Block(108)),

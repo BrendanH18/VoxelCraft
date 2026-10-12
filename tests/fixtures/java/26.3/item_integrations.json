@@ -1,0 +1,127 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "source": "https://piston-data.mojang.com/v1/objects/33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c/server.jar",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "fuel_sources": [
+    "net.minecraft.world.item.Items (CookingFuel registrations)",
+    "data/minecraft/context_int_provider/cooking/time_*.json"
+  ],
+  "fuel_cases": [
+    {
+      "item": "minecraft:bamboo",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:bamboo_block",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_planks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_mosaic",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:dried_kelp_block",
+      "ticks": 4001
+    },
+    {
+      "item": "minecraft:oak_planks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pale_oak_planks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_slab",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:oak_stairs",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_door",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:ladder",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:coal",
+      "ticks": 1600
+    },
+    {
+      "item": "minecraft:charcoal",
+      "ticks": 1600
+    },
+    {
+      "item": "minecraft:blaze_rod",
+      "ticks": 2400
+    },
+    {
+      "item": "minecraft:lava_bucket",
+      "ticks": 20000
+    },
+    {
+      "item": "minecraft:crimson_planks",
+      "ticks": null
+    },
+    {
+      "item": "minecraft:warped_planks",
+      "ticks": null
+    },
+    {
+      "item": "minecraft:stone",
+      "ticks": null
+    }
+  ],
+  "brewing": [
+    {
+      "path": "data/minecraft/recipe/brewing/potion_awkward_pufferfish.json",
+      "bottle": "minecraft:potion",
+      "input": "minecraft:awkward",
+      "ingredient": "minecraft:pufferfish",
+      "output": "minecraft:water_breathing"
+    },
+    {
+      "path": "data/minecraft/recipe/brewing/splash_potion_awkward_pufferfish.json",
+      "bottle": "minecraft:splash_potion",
+      "input": "minecraft:awkward",
+      "ingredient": "minecraft:pufferfish",
+      "output": "minecraft:water_breathing"
+    }
+  ],
+  "pending_recipes": [
+    {
+      "path": "data/minecraft/recipe/lead.json",
+      "pattern": [
+        "~~ ",
+        "~~ ",
+        "  ~"
+      ],
+      "ingredients": {
+        "~": "minecraft:string"
+      },
+      "result": "minecraft:lead",
+      "count": 2
+    },
+    {
+      "path": "data/minecraft/recipe/saddle.json",
+      "pattern": [
+        " X ",
+        "X#X"
+      ],
+      "ingredients": {
+        "#": "minecraft:iron_ingot",
+        "X": "minecraft:leather"
+      },
+      "result": "minecraft:saddle",
+      "count": 1
+    }
+  ]
+}

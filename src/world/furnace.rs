@@ -11,7 +11,7 @@ use glam::IVec3;
 use super::World;
 use super::block::Block;
 use crate::inventory::{Stack, stack_from_str, stack_to_string};
-use crate::item::{Item, Tier};
+use crate::item::Item;
 
 /// Seconds to smelt one item.
 pub const COOK_TIME: f32 = 10.0;
@@ -152,31 +152,7 @@ pub fn smelt_xp(out: Item) -> f32 {
 
 /// Seconds one of `item` burns as fuel (Minecraft's values / 20).
 pub fn burn_time(item: Item) -> Option<f32> {
-    let b = Item::from_block;
-    match item {
-        Item::LAVA_BUCKET => Some(1000.0),
-        Item::COAL | Item::CHARCOAL => Some(80.0),
-        i if i.block().is_some_and(|b| b.is_log() || b.is_planks()) => Some(15.0),
-        i if [
-            Block::CRAFTING_TABLE,
-            Block::CHEST,
-            Block::SMITHING_TABLE,
-            Block::BARREL,
-            Block::COMPOSTER,
-            Block::CARTOGRAPHY_TABLE,
-            Block::FLETCHING_TABLE,
-            Block::LOOM,
-            Block::LECTERN,
-        ]
-        .map(b)
-        .contains(&i) =>
-        {
-            Some(15.0)
-        }
-        Item::STICK => Some(5.0),
-        i if i.as_tool().is_some_and(|(_, tier)| tier == Tier::Wood) => Some(10.0),
-        _ => None,
-    }
+    crate::content::fuel::ticks(item).map(|ticks| ticks as f32 / 20.0)
 }
 
 impl Furnace {
@@ -214,8 +190,12 @@ impl Furnace {
         while dt > 0.0 {
             if !self.is_lit()
                 && self.product().is_some()
-                && let Some(t) = self.fuel.and_then(|f| burn_time(f.item))
+                && let Some(ticks) = self.fuel.and_then(|f| crate::content::fuel::ticks(f.item))
             {
+                // Java integer-divides fuel ticks for fast furnaces. Our timers
+                // use doubled simulation time there, so retain even ticks only.
+                let ticks = if self.kind == FurnaceKind::Normal { ticks } else { ticks / 2 * 2 };
+                let t = ticks as f32 / 20.0;
                 // A lava bucket burns down to an empty bucket.
                 let bucket = self.fuel.is_some_and(|f| f.item == Item::LAVA_BUCKET);
                 self.fuel = if bucket { Some(Stack::new(Item::BUCKET, 1)) } else { take_one(self.fuel) };
