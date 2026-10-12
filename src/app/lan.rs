@@ -813,6 +813,10 @@ impl Game {
                     if refresh || !peer.looked.contains(&m.uid) {
                         v["look"] = m.look();
                     }
+                    // The charge bar changes every tick, so it rides with the pose.
+                    if let Some(mount) = m.mount.as_ref().filter(|s| s.jump_charge > 0.0) {
+                        v["jump"] = json!(mount.jump_charge);
+                    }
                     looked.insert(m.uid);
                     v
                 })
@@ -1029,6 +1033,9 @@ impl Game {
                 mob.baby = m["baby"] == true;
                 if m["look"].is_object() {
                     mob.apply_look(&m["look"]);
+                }
+                if let Some(mount) = mob.mount.as_mut() {
+                    mount.jump_charge = m["jump"].as_f64().map_or(0.0, |j| j.clamp(0.0, 1.0) as f32);
                 }
                 mob.animate_replica(voxelcraft::simulation::TICK_SECONDS as f32);
                 self.mobs.entities.mobs.push(mob);

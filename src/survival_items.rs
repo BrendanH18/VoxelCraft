@@ -7,7 +7,10 @@ use crate::{
     world::World,
 };
 
-pub fn use_mob(
+/// Fence knots, leads, name tags and animal feeding/taming/sitting under the crosshair.
+/// Every input path (desktop, controller, LAN, CLI agent) runs this before mounting, so
+/// a carrot breeds a saddled pig and a name tag names a tamed horse instead of seating you.
+pub fn use_animal_target(
     player: &Player,
     inventory: &mut Inventory,
     slot: usize,
@@ -28,16 +31,34 @@ pub fn use_mob(
         return true;
     }
     let Some((index, _)) = entities.raycast(eye, dir, reach) else { return false };
-    if let Some(result) = entities.use_animal(index, held, owner) {
-        if result && !creative {
-            if held.is_some_and(|s| s.item == Item::TROPICAL_FISH_BUCKET) {
-                exchange(inventory, slot, Item::WATER_BUCKET, false, entities, player);
-            } else {
-                inventory.take_one(slot);
-            }
+    let Some(result) = entities.use_animal(index, held, owner) else { return false };
+    if result && !creative {
+        if held.is_some_and(|s| s.item == Item::TROPICAL_FISH_BUCKET) {
+            exchange(inventory, slot, Item::WATER_BUCKET, false, entities, player);
+        } else {
+            inventory.take_one(slot);
         }
+    }
+    true
+}
+
+pub fn use_mob(
+    player: &Player,
+    inventory: &mut Inventory,
+    slot: usize,
+    creative: bool,
+    world: &World,
+    entities: &mut Entities,
+    owner: PlayerId,
+) -> bool {
+    if use_animal_target(player, inventory, slot, creative, world, entities, owner) {
         return true;
     }
+    let held = inventory.get(slot);
+    let eye = player.eye();
+    let dir = player.forward().as_dvec3();
+    let reach = world.raycast(eye, dir, 6.0).map_or(6.0, |(p, _)| eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5)));
+    let Some((index, _)) = entities.raycast(eye, dir, reach) else { return false };
     let Some(held) = held else { return false };
     if (held.item.dye_color().is_some() || held.item == Item::SHEARS)
         && let Some(shears) = entities.use_on_sheep(index, held.item)

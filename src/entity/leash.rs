@@ -31,6 +31,11 @@ impl MobKind {
                 | Self::Zoglin
                 | Self::Strider
                 | Self::TraderLlama
+                | Self::Horse
+                | Self::Donkey
+                | Self::Mule
+                | Self::Llama
+                | Self::Camel
                 | Self::IronGolem
                 | Self::SnowGolem
                 | Self::Dolphin

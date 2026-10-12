@@ -768,18 +768,18 @@ impl Entities {
                         && t.on_ground
                         && m.pos.distance_squared(t.pos) < 1.0
                     {
-                        let side = if self.mobs[..i].iter().any(|b| {
-                            b.kind == MobKind::Parrot
-                                && b.animal.as_ref().is_some_and(|a| a.owner == Some(t.id) && a.perched == Some(0))
-                        }) {
-                            1
-                        } else {
-                            0
+                        // Two shoulders per player: check every parrot already sitting on one.
+                        let taken = |side: u8| {
+                            self.mobs.iter().enumerate().any(|(j, b)| {
+                                j != i
+                                    && b.kind == MobKind::Parrot
+                                    && b.alive()
+                                    && b.animal
+                                        .as_ref()
+                                        .is_some_and(|a| a.owner == Some(t.id) && a.perched == Some(side))
+                            })
                         };
-                        if !self.mobs[..i].iter().any(|b| {
-                            b.kind == MobKind::Parrot
-                                && b.animal.as_ref().is_some_and(|a| a.owner == Some(t.id) && a.perched == Some(side))
-                        }) {
+                        if let Some(side) = [0, 1].into_iter().find(|&side| !taken(side)) {
                             self.mobs[i].animal.as_mut().unwrap().perched = Some(side);
                         }
                     }

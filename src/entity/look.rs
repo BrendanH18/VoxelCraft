@@ -58,6 +58,8 @@ impl Mob {
                 "saddle": s.saddled(),
                 "armor": s.slots[1].map_or(0, |a| a.item.0),
                 "sitting": s.sit_ticks > 0,
+                "max_health": s.max_health,
+                "jump": s.jump_charge,
             });
         }
         if let Some(a) = &self.aquatic {
@@ -122,6 +124,10 @@ impl Mob {
             s.marking = small(&w["marking"]).unwrap_or(0).min(4);
             s.chest = w["chest"] == true;
             s.sit_ticks = u32::from(w["sitting"] == true);
+            s.jump_charge = w["jump"].as_f64().map_or(0.0, |j| j.clamp(0.0, 1.0) as f32);
+            if let Some(h) = w["max_health"].as_f64().filter(|h| h.is_finite() && (1.0..=100.0).contains(h)) {
+                s.max_health = h as f32;
+            }
             s.slots[0] = (w["saddle"] == true).then(|| crate::inventory::Stack::new(Item::SADDLE, 1));
             s.slots[1] = w["armor"]
                 .as_u64()

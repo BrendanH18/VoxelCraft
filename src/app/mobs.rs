@@ -479,6 +479,7 @@ impl Game {
                 }
                 EntityEvent::Shoot { .. }
                 | EntityEvent::MobHit { .. }
+                | EntityEvent::OwnerHurt { .. }
                 | EntityEvent::DragonXp { .. }
                 | EntityEvent::MobKilled { .. }
                 | EntityEvent::LaidEgg { .. }

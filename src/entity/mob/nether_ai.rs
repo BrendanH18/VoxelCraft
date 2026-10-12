@@ -149,6 +149,7 @@ impl Mob {
                         from: eye + dir * 0.5,
                         target: aim,
                         cause: "was shot by a piglin",
+                        shooter: self.uid,
                     });
                     events.push(EntityEvent::Sound { sound: MobSound::Bow, pos: eye });
                 }

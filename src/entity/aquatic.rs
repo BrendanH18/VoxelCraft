@@ -265,7 +265,12 @@ pub(super) fn pillager<W: MobWorld + ?Sized>(
     let visible = super::mob::line_of_sight(w, from, t.pos + DVec3::Y);
     m.charged = visible && delta.length_squared() < 225.0;
     if m.charged && m.attack_cooldown <= 0.0 {
-        events.push(EntityEvent::Shoot { from, target: t.pos + DVec3::Y, cause: "was shot by a pillager" });
+        events.push(EntityEvent::Shoot {
+            from,
+            target: t.pos + DVec3::Y,
+            cause: "was shot by a pillager",
+            shooter: m.uid,
+        });
         m.attack_cooldown = 2.5;
         m.attack_anim = 0.4;
     }

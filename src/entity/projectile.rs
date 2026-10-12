@@ -32,6 +32,8 @@ pub struct Arrow {
     pub from_player: bool,
     /// The actual player who fired this arrow, independent of pickup rights.
     pub owner: Option<PlayerId>,
+    /// The mob that shot it (`uid`), if any.
+    pub shooter: Option<u32>,
     /// Death message for players hit by this projectile.
     cause: &'static str,
     /// The player can collect it once stuck (not arrows shot in creative).
@@ -60,6 +62,7 @@ impl Arrow {
             stuck: false,
             from_player: false,
             owner: None,
+            shooter: None,
             cause,
             pickup: false,
             critical: false,
@@ -81,6 +84,7 @@ impl Arrow {
             stuck: false,
             from_player: true,
             owner: Some(PlayerId::HOST),
+            shooter: None,
             cause: "was shot by an arrow",
             pickup,
             critical: power >= 1.0,
@@ -238,6 +242,9 @@ impl Arrow {
                     knockback: push.as_vec3(),
                     cause: self.cause,
                 });
+                if let Some(attacker) = self.shooter {
+                    events.push(EntityEvent::OwnerHurt { player: hit.id, attacker });
+                }
                 return false;
             }
         }

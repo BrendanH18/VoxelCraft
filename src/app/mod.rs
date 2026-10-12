@@ -1759,6 +1759,18 @@ impl Game {
             self.open_vehicle(id);
             return;
         }
+        // Leads, name tags, food and taming come before mounting (as for agents).
+        if voxelcraft::survival_items::use_animal_target(
+            &self.player,
+            &mut self.inventory,
+            self.actions.selected,
+            self.mode.is_creative(),
+            &self.world,
+            &mut self.mobs.entities,
+            self.actor,
+        ) {
+            return;
+        }
         if self.mobs.entities.use_mount(
             eye,
             dir,

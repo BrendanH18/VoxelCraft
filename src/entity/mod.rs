@@ -202,6 +202,8 @@ pub enum EntityEvent {
         from: DVec3,
         target: DVec3,
         cause: &'static str,
+        /// The shooting mob's uid, so its target's wolves can retaliate.
+        shooter: u32,
     },
     /// A blaze or ghast shot a fireball (turned into a projectile internally).
     /// `large` is a ghast fireball: slower, explosive, and punchable.
@@ -223,6 +225,11 @@ pub enum EntityEvent {
     PearlLanded {
         owner: PlayerId,
         pos: DVec3,
+    },
+    /// Mob `attacker` hurt `player` (handled internally: their wolves retaliate).
+    OwnerHurt {
+        player: PlayerId,
+        attacker: u32,
     },
     /// An arrow or player potion hit a mob (loot is dropped internally).
     MobShot {
@@ -840,6 +847,12 @@ impl Entities {
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
                 let dead = self.mobs.swap_remove(i);
+                // Whatever a fox carries in its mouth drops, enchantments and names intact.
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                    && let Some(stack) = dead.animal.as_ref().and_then(|a| a.mouth)
+                {
+                    self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                }
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                     && let Some(s) = &dead.mount
                 {
@@ -902,8 +915,10 @@ impl Entities {
         // Mob bow/crossbow shots become arrows, blaze shots fireballs.
         for e in &events {
             match *e {
-                EntityEvent::Shoot { from, target, cause } => {
-                    self.arrows.push(Arrow::aimed(from, target, cause, &mut self.rng));
+                EntityEvent::Shoot { from, target, cause, shooter } => {
+                    let mut arrow = Arrow::aimed(from, target, cause, &mut self.rng);
+                    arrow.shooter = Some(shooter);
+                    self.arrows.push(arrow);
                 }
                 EntityEvent::ThrowPotion { from, vel, potion } => {
                     self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
@@ -962,6 +977,17 @@ impl Entities {
                     {
                         self.nether_hurt(i, nether::Foe::Player(owner));
                     }
+                    // Java's OwnerHurtTargetGoal: a player's wolves join in on what they shoot.
+                    if let Some(owner) = owner
+                        && !killed
+                        && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
+                    {
+                        self.animals_owner_attack(i, owner);
+                    }
+                }
+                EntityEvent::OwnerHurt { player, attacker } => {
+                    // Java's OwnerHurtByTargetGoal: wolves go for whatever hurt their owner.
+                    self.animals_defend_owner(attacker, player);
                 }
                 EntityEvent::DragonXp { pos, points } => {
                     if self.mob_loot {
