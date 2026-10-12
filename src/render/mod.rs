@@ -89,6 +89,9 @@ fn group_mask(faces: u8, pass: usize) -> u8 {
 }
 
 /// Everything the renderer needs to know about the current frame.
+/// Most block-breaking crack decals drawn at once (Java shows every nearby player's).
+pub const MAX_CRACKS: usize = 16;
+
 pub struct FrameParams {
     pub camera: DVec3,
     pub forward: Vec3,
@@ -110,8 +113,8 @@ pub struct FrameParams {
     /// Targeted block and its outline's corners within the cell (beds,
     /// slabs and shaped blocks are smaller).
     pub highlight: Option<(IVec3, [f32; 3], [f32; 3])>,
-    /// Block being broken and the crack texture layer to overlay on it.
-    pub crack: Option<(IVec3, u16)>,
+    /// Blocks being broken (by anyone in view) and the crack texture layer to overlay on each.
+    pub cracks: Vec<(IVec3, u16)>,
     /// Free-standing blocks (falling sand and gravel).
     pub block_models: Vec<BlockModel>,
     /// The first-person hand (`None` in third person or with the HUD hidden).
@@ -627,7 +630,7 @@ impl Renderer {
         });
         let decal_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("crack decal"),
-            size: 36 * 24,
+            size: 36 * 24 * MAX_CRACKS as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1163,8 +1166,11 @@ impl Renderer {
         };
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 
-        if let Some((b, layer)) = p.crack {
-            self.queue.write_buffer(&self.decal_buf, 0, &Self::decal_vertices(b, p.camera, layer));
+        let cracks = p.cracks.len().min(MAX_CRACKS);
+        if cracks > 0 {
+            let verts: Vec<u8> =
+                p.cracks[..cracks].iter().flat_map(|&(b, layer)| Self::decal_vertices(b, p.camera, layer)).collect();
+            self.queue.write_buffer(&self.decal_buf, 0, &verts);
         }
         if let Some((b, lo, hi)) = p.highlight {
             let verts = self.outline_vertices(b, lo, hi, p.camera);
@@ -1268,10 +1274,10 @@ impl Renderer {
                 pass.draw(0..6, 0..1);
             }
 
-            if p.crack.is_some() {
+            if cracks > 0 {
                 pass.set_pipeline(&self.decal_pipeline);
                 pass.set_vertex_buffer(0, self.decal_buf.slice(..));
-                pass.draw(0..36, 0..1);
+                pass.draw(0..36 * cracks as u32, 0..1);
             }
             if p.highlight.is_some() {
                 pass.set_pipeline(&self.line_pipeline);

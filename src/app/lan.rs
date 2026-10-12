@@ -72,6 +72,8 @@ pub(super) struct Lan {
     look_ticks: u32,
     /// Particle effects since the last state, for clients to replay (JSON requests).
     pub effects: Vec<(DVec3, Value)>,
+    /// A client's view of every player's block breaking, from the host.
+    pub remote_cracks: Vec<(IVec3, f32)>,
     /// Host tick timing and traffic since the last `LAN stats` log line.
     pub stats_tick_secs: f64,
     pub stats_tick_max: f64,
@@ -96,6 +98,47 @@ pub(super) struct Lan {
 impl Lan {
     pub(super) fn has_peers(&self) -> bool {
         !self.peers.is_empty()
+    }
+    /// Each LAN player's profile with what it is breaking and its eating progress.
+    pub(super) fn bodies(&self) -> impl Iterator<Item = (&str, Option<(IVec3, f32)>, f32)> {
+        self.peers.iter().filter_map(|p| Some((p.profile.as_deref()?, p.body.breaking(), p.body.eating())))
+    }
+}
+
+impl Game {
+    /// Every player's block breaking: the host's, controller and LAN players' (their bodies)
+    /// and CLI agents'. On a LAN client, the host's list.
+    pub(super) fn all_breaking(&self) -> Vec<(IVec3, f32)> {
+        if self.lan.client.is_some() {
+            return self.lan.remote_cracks.clone();
+        }
+        let mut out: Vec<_> = self.actions.breaking.into_iter().collect();
+        for (name, bot) in self.agents.players.iter().filter(|(_, b)| b.active) {
+            let body = self
+                .pad_view(name)
+                .map(|p| p.breaking)
+                .or_else(|| self.lan.bodies().find(|b| b.0 == name).map(|b| b.1));
+            out.extend(body.unwrap_or_else(|| bot.agent.breaking(&self.world)));
+        }
+        out.retain(|&(_, f)| f > 0.0);
+        out
+    }
+    /// Crack decals within 32 blocks of `eye`, nearest first.
+    pub(super) fn cracks_seen_from(&self, eye: DVec3) -> Vec<(IVec3, u16)> {
+        let mut cracks: Vec<_> = self
+            .all_breaking()
+            .into_iter()
+            .filter(|(p, _)| (p.as_dvec3() + 0.5).distance_squared(eye) < 32.0 * 32.0)
+            .collect();
+        cracks.sort_by(|a, b| {
+            (a.0.as_dvec3() + 0.5).distance_squared(eye).total_cmp(&(b.0.as_dvec3() + 0.5).distance_squared(eye))
+        });
+        cracks.dedup_by_key(|c| c.0);
+        cracks
+            .into_iter()
+            .take(crate::render::MAX_CRACKS)
+            .map(|(p, f)| (p, crate::world::block::tex::CRACK_0 + (f * 10.0).min(9.0) as u16))
+            .collect()
     }
 }
 impl Drop for Lan {
@@ -169,9 +212,9 @@ fn state(agent: &Agent, name: &str) -> Value {
 fn r3(x: f64) -> f64 {
     (x * 1000.0).round() / 1000.0
 }
-fn state_lite(agent: &Agent, name: &str) -> Value {
+fn state_lite(agent: &Agent, name: &str, swing: Option<f32>, eating: f32) -> Value {
     let p = agent.player.pos;
-    json!({"id":agent.id.0,"name":name,"pos":[r3(p.x), r3(p.y), r3(p.z)],"vel":[0.0, 0.0, 0.0],
+    json!({"swing":swing.map(|t| r3(t as f64)),"eat":r3(eating as f64),"id":agent.id.0,"name":name,"pos":[r3(p.x), r3(p.y), r3(p.z)],"vel":[0.0, 0.0, 0.0],
         "yaw":r3(agent.player.yaw as f64),"pitch":r3(agent.player.pitch as f64),"ground":agent.player.on_ground,
         "flying":agent.player.flying,"sneak":agent.player.sneaking,"mode":agent.mode.name(),"selected":agent.selected,
         "held":stack_to_string(agent.inventory.get(agent.selected)),
@@ -839,9 +882,18 @@ impl Game {
         host.inventory = self.inventory.clone();
         host.vitals = self.vitals.clone();
         host.sleeping = self.sleeping;
-        let players: Vec<_> = std::iter::once(state_lite(&host, &self.lan.profile))
-            .chain(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, b)| state_lite(&b.agent, n)))
-            .collect();
+        let host_eating = (self.actions.eat_timer / super::EAT_TIME) as f32;
+        let players: Vec<_> =
+            std::iter::once(state_lite(&host, &self.lan.profile, self.hand.swing_time(), host_eating))
+                .chain(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, b)| {
+                    let eating = self
+                        .pad_view(n)
+                        .map(|p| p.eating)
+                        .or_else(|| self.lan.bodies().find(|x| x.0 == n).map(|x| x.2))
+                        .unwrap_or_else(|| b.agent.eating());
+                    state_lite(&b.agent, n, b.hand.swing_time(), eating)
+                }))
+                .collect();
         self.lan.look_ticks = self.lan.look_ticks.wrapping_add(1);
         self.lan.stats_ticks += 1;
         if self.lan.stats_ticks >= 200 {
@@ -865,6 +917,7 @@ impl Game {
         let sounds = self.audio.tap.replace(Vec::new()).unwrap_or_default();
         let effects = std::mem::take(&mut self.lan.effects);
         let host_pos = self.player.pos;
+        let breaking = self.all_breaking();
         let host_view = self.settings.render_distance.clamp(2, LAN_VIEW_MAX);
         let widest = self.lan.peers.iter().map(|p| p.view.min(host_view)).max().unwrap_or(2);
         self.world.set_agent_radius(widest + 2);
@@ -1008,6 +1061,12 @@ impl Game {
                 .take(128)
                 .map(|(_, j)| j.clone())
                 .collect();
+            let cracks: Vec<_> = breaking
+                .iter()
+                .filter(|(p, _)| (p.as_dvec3() + 0.5).distance_squared(me) < 32.0 * 32.0)
+                .take(crate::render::MAX_CRACKS)
+                .map(|(p, f)| json!([p.x, p.y, p.z, r3(*f as f64)]))
+                .collect();
             let extras = self.mobs.entities.replica_extras(bot.agent.player.pos, 160.0);
             let falling: Vec<_> = self
                 .world
@@ -1041,7 +1100,7 @@ impl Game {
             let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
             // Everyone but this client itself (it has its own full state).
             let others: Vec<&Value> = players.iter().filter(|p| p["id"] != bot.id.0).collect();
-            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects});
+            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks});
             let (snapshot, shed_looks) = fit_state(snapshot);
             if shed_looks {
                 // Looks dropped to fit: resend them all next tick.
@@ -1241,6 +1300,8 @@ impl Game {
                 let bot = self.agents.players.get_mut(name).unwrap();
                 bot.active = true;
                 apply(&mut bot.agent, p);
+                bot.hand.set_swing_time(p["swing"].as_f64().map(|t| t as f32));
+                bot.agent.show_eating(p["eat"].as_f64().unwrap_or(0.0) as f32);
                 bot.id = voxelcraft::entity::PlayerId(p["id"].as_u64().unwrap_or(0) as u32);
             }
         }
@@ -1312,6 +1373,18 @@ impl Game {
                 *slot = v.as_str().and_then(stack_from_str).flatten();
             }
         }
+        self.lan.remote_cracks = snapshot["cracks"]
+            .as_array()
+            .map(|c| {
+                c.iter()
+                    .take(crate::render::MAX_CRACKS)
+                    .filter_map(|c| {
+                        let i = |k: usize| c.get(k).and_then(Value::as_i64).and_then(|v| i32::try_from(v).ok());
+                        Some((IVec3::new(i(0)?, i(1)?, i(2)?), c.get(3)?.as_f64()?.clamp(0.0, 1.0) as f32))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         if let Some(sounds) = snapshot["sounds"].as_array() {
             for s in sounds.iter().take(96) {
                 let f = |i: usize| s.get(i).and_then(Value::as_f64);
@@ -1617,7 +1690,7 @@ mod tests {
         p.inventory.slots[5] = Some(crate::inventory::Stack::new(crate::item::Item::DIAMOND, 64));
         p.inventory.armor[0] = Some(crate::inventory::Stack::new(crate::item::Item::BONE, 1));
         p.player.sneaking = true;
-        let lite = state_lite(&p, "Remote");
+        let lite = state_lite(&p, "Remote", Some(0.1), 0.5);
         assert!(lite.get("inventory").is_none(), "no inventory for others");
         let mut copy = Agent::new(DVec3::ZERO);
         apply(&mut copy, &lite);
@@ -1626,6 +1699,8 @@ mod tests {
         assert_eq!(copy.inventory.armor[0].unwrap().item, crate::item::Item::BONE);
         assert!(copy.player.sneaking);
         assert_eq!(copy.player.pos, p.player.pos);
+        assert_eq!(lite["swing"], 0.1);
+        assert_eq!(lite["eat"], 0.5);
     }
     #[test]
     fn player_snapshot_preserves_progression_inventory_and_cursor() {

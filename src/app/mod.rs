@@ -2702,10 +2702,7 @@ impl Game {
                 let (min, max) = self.world.outline(p);
                 (p, min, max)
             }),
-            crack: self
-                .actions
-                .breaking
-                .map(|(p, progress)| (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u16)),
+            cracks: self.cracks_seen_from(eye),
             block_models: self.block_models(alpha),
             hand: (self.camera.first_person() && self.show_hud && !self.vitals.is_dead() && self.sleeping.is_none())
                 .then(|| {

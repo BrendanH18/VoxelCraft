@@ -1688,6 +1688,11 @@ impl Agent {
         self.bite as f32 / EAT_TICKS as f32
     }
 
+    /// Shows a remote player's eating progress (0..1) on this copy (LAN clients).
+    pub fn show_eating(&mut self, fraction: f32) {
+        self.bite = (fraction.clamp(0.0, 1.0) * EAT_TICKS as f32) as _;
+    }
+
     /// The targeted enchanting table and its offers for the held item.
     fn table_offers(&self, world: &World) -> Option<(IVec3, [crate::enchant::Offer; 3])> {
         let (pos, _) = self.target(world)?;

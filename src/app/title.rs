@@ -699,7 +699,7 @@ impl Title {
             time: t * 8.0,
             highlight: None,
             hand: None,
-            crack: None,
+            cracks: Vec::new(),
             block_models: Vec::new(),
             ui: self.build_ui(),
             rain: 0.0,

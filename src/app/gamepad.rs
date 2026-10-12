@@ -101,6 +101,14 @@ impl Body {
     pub(super) fn container(&self) -> Container {
         self.container
     }
+    /// The block this player is breaking and how far along (0..1).
+    pub(super) fn breaking(&self) -> Option<(glam::IVec3, f32)> {
+        self.actions.breaking
+    }
+    /// Eating progress 0..1.
+    pub(super) fn eating(&self) -> f32 {
+        (self.actions.eat_timer / super::EAT_TIME) as f32
+    }
     /// Lets go of both triggers (opening a screen, sleeping, dying).
     fn let_go(&mut self) {
         self.left_held = false;

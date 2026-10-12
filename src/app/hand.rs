@@ -22,6 +22,15 @@ pub(super) struct HandAnim {
 impl HandAnim {
     /// Swings the arm (breaking, hitting, placing). A swing already past
     /// halfway starts over, so holding the button keeps it going.
+    /// Seconds into the current swing, for LAN clients to draw others' arms.
+    pub(super) fn swing_time(&self) -> Option<f32> {
+        self.swing
+    }
+    /// Mirrors a remote player's swing.
+    pub(super) fn set_swing_time(&mut self, t: Option<f32>) {
+        self.swing = t.filter(|t| t.is_finite() && (0.0..SWING_TIME).contains(t));
+    }
+
     pub(super) fn swing(&mut self) {
         if self.swing.is_none_or(|t| t >= SWING_TIME * 0.5) {
             self.swing = Some(0.0);
