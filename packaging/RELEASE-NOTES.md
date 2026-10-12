@@ -22,12 +22,18 @@ Choose your download:
   network, or type an address into Direct Connect. Each computer keeps a local
   profile name, and rejoining with it brings back your inventory, position and
   bed.
-- Players share the host's world: mining and building, chests, furnaces and
-  crafting, mobs, items, damage and death, sleeping and riding. Chat with
-  <kbd>T</kbd>, see who's on with <kbd>Tab</kbd>; the host can `/kick` and turn
-  `/pvp` on or off. View distance follows each player's setting, up to 256
-  blocks.
+- Players share the host's world and everything in it: mining and building,
+  every screen (chests, furnaces, crafting, brewing, enchanting, anvils,
+  grindstones, smithing, villager trading, and boat, minecart and mount
+  storage), mobs, items, damage and death, sleeping and riding. You see each
+  other's names, swings and mining cracks and hear each other's footsteps and
+  fights. View distance follows each player's setting, up to 256 blocks.
+- Chat with <kbd>T</kbd> and see who's on with <kbd>Tab</kbd>. The host can
+  `/kick`, turn `/pvp` on or off (with Java's criticals, sweeps, enchantments
+  and arrows) and `/save-all`. When the host goes through a portal, everyone
+  follows.
 - Save and Quit saves everyone and sends them back to the title screen.
+- A world can only be open in one VoxelCraft window at a time.
 
 ### Tame and breed
 
@@ -50,13 +56,14 @@ Choose your download:
 
 ### Ride
 
-- **Boats and chest boats** for every wood, and bamboo rafts. Two seats, ice
-  is fast, and chest boats hold 27 stacks.
+- **Boats and chest boats** for every wood, and bamboo rafts. Boats seat two
+  (chest boats one, plus 27 stacks of storage), and ice is fast.
 - **Horses, donkeys and mules** with Java's random health, speed and jump.
   Tame them by riding until they accept you, then saddle and steer; hold jump
   to charge a leap. Horse armor, and chests for donkeys and mules.
 - **Llamas** in mountains and savannas carry chests sized by their strength,
-  wear carpets, and spit at whoever hits them.
+  wear carpets, spit at whoever hits them (and at wolves), and follow a led
+  llama in a caravan.
 - **Camels** live in desert villages: saddle one to ride two players at once,
   dash forward, and step over 1.5-block ledges.
 - **Pigs and striders** take a saddle; steer them with a carrot or warped
@@ -68,16 +75,17 @@ Boats and chest boats, saddle, carrot and warped fungus on a stick, leather,
 iron, golden and diamond horse armor, golden carrot, lead, name tag, raw and
 cooked rabbit, rabbit stew, rabbit hide and foot, raw and cooked mutton,
 cookie, goat horns, and melon and beetroot seeds. Saddles, name tags and horse
-armor turn up in dungeon and temple chests and as fishing treasure.
+armor turn up in dungeon, temple and fortress chests; saddles and name tags are
+also fishing treasure.
 
 ### Known limitations
 
 - LAN is for VoxelCraft players on a trusted local network: there are no
   accounts or encryption, and it can't join Minecraft servers. Everyone stays
-  in the host's dimension; when the host travels, the others follow. Brewing,
-  enchanting, anvils, smithing and villager trading aren't available to joining
-  players yet, and they don't hear each other's block and mob sounds.
-- Llamas don't form caravans, and undead horses aren't in yet.
+  in the host's dimension; when the host travels, the others follow. It has
+  been tested between processes on one computer, not yet across Windows, Mac
+  and Linux machines on a real network.
+- Undead horses aren't in yet (they need lightning, which isn't in yet either).
 - Surface terrain has no overhangs or floating islands, and there is no deep
   dark, ancient city, glow lichen or cave spring yet.
 - Turtle helmets and Turtle Master potions aren't in yet, and buried treasure
