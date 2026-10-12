@@ -531,11 +531,13 @@ impl Title {
             Widget::Quit => "Quit Game".into(),
             Widget::Multiplayer => "Multiplayer".into(),
             Widget::Join => "Direct Connect".into(),
-            Widget::Server(i) => self
-                .discovery
-                .as_ref()
-                .and_then(|d| d.servers.get(i))
-                .map_or(String::new(), |s| format!("{} ({})", s.name, s.address)),
+            Widget::Server(i) => self.discovery.as_ref().and_then(|d| d.servers.get(i)).map_or(String::new(), |s| {
+                let players = s.players.map_or(String::new(), |(n, max)| format!(" - {n}/{max} players"));
+                match s.version.as_deref() {
+                    Some(v) if v != voxelcraft::lan::GAME_VERSION => format!("{} - needs VoxelCraft {v}", s.name),
+                    _ => format!("{} ({}){players}", s.name, s.address),
+                }
+            }),
             Widget::Address | Widget::Profile => String::new(),
             Widget::Mode => format!("Game Mode: {}", super::capitalize(self.mode.name())),
             Widget::Difficulty => {

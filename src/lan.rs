@@ -440,24 +440,52 @@ impl Listener {
             Err(e) => Err(e),
         }
     }
-    pub fn announce(&mut self, name: &str) {
+    /// Multicasts the world's name, port, player count (host included) and game version.
+    pub fn announce(&mut self, name: &str, players: usize) {
         if self.last_announce.elapsed() < Duration::from_millis(1500) {
             return;
         }
         self.last_announce = Instant::now();
         let text = format!(
-            "[VX1][MOTD]{}[/MOTD][AD]{}[/AD]",
+            "[VX1][MOTD]{}[/MOTD][AD]{}[/AD][P]{}/{}[/P][V]{}[/V]",
             name.chars().filter(|c| !c.is_control() && *c != '[' && *c != ']').take(64).collect::<String>(),
-            self.address.port()
+            self.address.port(),
+            players.min(MAX_PLAYERS),
+            MAX_PLAYERS,
+            GAME_VERSION,
         );
         let _ = self.announce.send_to(text.as_bytes(), (std::net::Ipv4Addr::new(224, 0, 2, 60), DISCOVERY_PORT));
     }
 }
+/// The host plus eight joined clients.
+pub const MAX_PLAYERS: usize = 9;
+
 #[derive(Clone)]
 pub struct Advertisement {
     pub address: SocketAddr,
     pub name: String,
+    /// Players in the world (host included), when the host reports it.
+    pub players: Option<(usize, usize)>,
+    /// The host's game version; joining needs an exact match.
+    pub version: Option<String>,
     pub seen: Instant,
+}
+
+/// Parses `[VX1][MOTD]name[/MOTD][AD]port[/AD]` plus optional `[P]n/max[/P][V]version[/V]`.
+/// A parsed announcement: world name, port, players/max and game version.
+pub type Announcement = (String, u16, Option<(usize, usize)>, Option<String>);
+
+pub fn parse_advertisement(text: &str) -> Option<Announcement> {
+    let (name, rest) = text.strip_prefix("[VX1][MOTD]")?.split_once("[/MOTD][AD]")?;
+    let (port, rest) = rest.split_once("[/AD]")?;
+    let port = port.parse::<u16>().ok().filter(|p| *p != 0)?;
+    let tag = |open: &str, close: &str| rest.split_once(open).and_then(|(_, r)| r.split_once(close)).map(|(v, _)| v);
+    let players = tag("[P]", "[/P]").and_then(|p| {
+        let (n, max) = p.split_once('/')?;
+        Some((n.parse().ok()?, max.parse().ok()?))
+    });
+    let version = tag("[V]", "[/V]").map(|v| v.chars().filter(|c| !c.is_control()).take(32).collect());
+    Some((name.chars().filter(|c| !c.is_control()).take(64).collect(), port, players, version))
 }
 pub struct Discovery {
     socket: UdpSocket,
@@ -479,20 +507,13 @@ impl Discovery {
             let Ok(text) = std::str::from_utf8(&buf[..n]) else {
                 continue;
             };
-            let Some((name, port)) = text.strip_prefix("[VX1][MOTD]").and_then(|s| s.split_once("[/MOTD][AD]")) else {
-                continue;
-            };
-            let Some(port) = port.strip_suffix("[/AD]").and_then(|s| s.parse::<u16>().ok()).filter(|p| *p != 0) else {
+            let Some((name, port, players, version)) = parse_advertisement(text) else {
                 continue;
             };
             let address = SocketAddr::new(from.ip(), port);
             self.servers.retain(|s| s.address != address);
             if self.servers.len() < 32 {
-                self.servers.push(Advertisement {
-                    address,
-                    name: name.chars().filter(|c| !c.is_control()).take(64).collect(),
-                    seen: Instant::now(),
-                });
+                self.servers.push(Advertisement { address, name, players, version, seen: Instant::now() });
             }
         }
         self.servers.retain(|s| s.seen.elapsed() < Duration::from_secs(5));
@@ -611,6 +632,19 @@ mod tests {
         }
         assert!(count > 0 && count <= 11);
         assert!(connection.queued_bytes() <= MAX_QUEUE);
+    }
+    #[test]
+    fn advertisements_carry_player_count_and_version_and_accept_the_old_form() {
+        let (name, port, players, version) =
+            parse_advertisement("[VX1][MOTD]My World[/MOTD][AD]25565[/AD][P]3/9[/P][V]0.7.0[/V]").unwrap();
+        assert_eq!(
+            (name.as_str(), port, players, version.as_deref()),
+            ("My World", 25565, Some((3, 9)), Some("0.7.0"))
+        );
+        let (_, port, players, version) = parse_advertisement("[VX1][MOTD]Old[/MOTD][AD]4000[/AD]").unwrap();
+        assert_eq!((port, players, version), (4000, None, None));
+        assert!(parse_advertisement("[VX1][MOTD]Bad[/MOTD][AD]0[/AD]").is_none());
+        assert!(parse_advertisement("hello").is_none());
     }
     #[test]
     fn handshake_checks_game_and_protocol_versions_and_identity() {

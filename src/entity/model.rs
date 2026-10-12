@@ -1342,6 +1342,22 @@ pub(super) fn push_cuboid(
 }
 
 pub use super::player_model::{PlayerAppearance, build_player};
+
+/// A player's name tag above their head, as Java shows within 64 blocks (hidden while sneaking).
+pub fn build_player_name(
+    player: &crate::player::Player,
+    feet: DVec3,
+    name: &str,
+    camera: DVec3,
+    out: &mut Vec<EntityVertex>,
+) {
+    let rel = (feet - camera).as_vec3();
+    if player.sneaking || name.is_empty() || rel.length_squared() > 64.0 * 64.0 {
+        return;
+    }
+    let toward = (rel + Vec3::Y * 2.1).normalize_or(Vec3::X);
+    labels::label(name, rel + Vec3::Y * 2.1, toward, out);
+}
 pub use super::player_pose::{PlayerPose, fits_at, resolve_pose};
 
 #[cfg(test)]

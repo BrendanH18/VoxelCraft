@@ -195,7 +195,8 @@ impl Game {
                 Vec::new()
             };
             // Everyone else is visible from this view, the host included.
-            let mut others: Vec<(&crate::player::Player, DVec3, crate::entity::model::PlayerAppearance)> = Vec::new();
+            let mut others: Vec<(&crate::player::Player, DVec3, crate::entity::model::PlayerAppearance, &str)> =
+                Vec::new();
             if !self.vitals.is_dead() || self.vitals.since_damage() < 1.0 {
                 others.push((
                     &self.player,
@@ -209,6 +210,7 @@ impl Game {
                             self.inventory.armor,
                         ),
                     ),
+                    self.lan.profile.as_str(),
                 ));
             }
             for (other, b) in &self.agents.players {
@@ -220,6 +222,7 @@ impl Game {
                             host_dial.at(b.agent.player.yaw, b.agent.player.pos.x, b.agent.player.pos.z),
                             b.hand.appearance(&b.agent.vitals, b.agent.eating(), scene.alpha, b.agent.inventory.armor),
                         ),
+                        other.as_str(),
                     ));
                 }
             }

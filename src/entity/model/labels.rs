@@ -38,16 +38,21 @@ pub(super) fn attachments(m: &Mob, camera: DVec3, forward: Vec3, rel: Vec3, out:
     }
     nameplate(m, forward, rel, out);
 }
-#[cfg(feature = "client")]
 fn nameplate(m: &Mob, forward: Vec3, rel: Vec3, out: &mut Vec<EntityVertex>) {
     let Some(text) = m.name.as_str() else { return };
     if rel.length_squared() > 32.0 * 32.0 || !m.alive() {
         return;
     }
+    label(text, rel + Vec3::Y * (m.shape().height as f32 + 0.3), forward, out);
+}
+
+/// Draws `text` centred above `bottom` (camera-relative), facing a camera looking along `forward`,
+/// as Java's dark-backed white name tag.
+#[cfg(feature = "client")]
+pub(crate) fn label(text: &str, bottom: Vec3, forward: Vec3, out: &mut Vec<EntityVertex>) {
     let right = forward.cross(Vec3::Y).normalize_or(Vec3::X);
     let pixel = 0.022;
-    let origin =
-        rel + Vec3::Y * (m.shape().height as f32 + 0.3) - right * (text.chars().count() as f32 * 8.0 * pixel * 0.5);
+    let origin = bottom - right * (text.chars().count() as f32 * 8.0 * pixel * 0.5);
     let emissive = [255, 255, 0, 255];
     let w = text.chars().count() as f32 * 8.0 * pixel;
     let behind = forward * 0.003;
@@ -84,4 +89,4 @@ fn nameplate(m: &Mob, forward: Vec3, rel: Vec3, out: &mut Vec<EntityVertex>) {
     }
 }
 #[cfg(not(feature = "client"))]
-fn nameplate(_: &Mob, _: Vec3, _: Vec3, _: &mut Vec<EntityVertex>) {}
+pub(crate) fn label(_: &str, _: Vec3, _: Vec3, _: &mut Vec<EntityVertex>) {}

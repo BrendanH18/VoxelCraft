@@ -2606,12 +2606,12 @@ impl Game {
         };
         let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } = self.fog(&scene, camera);
         let dial = self.dial_of(&self.player);
-        let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance)> = self
+        let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)> = self
             .agents
             .players
-            .values()
-            .filter(|b| b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0))
-            .map(|b| {
+            .iter()
+            .filter(|(_, b)| b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0))
+            .map(|(name, b)| {
                 let pose = dial.at(b.agent.player.yaw, b.agent.player.pos.x, b.agent.player.pos.z);
                 (
                     &b.agent.player,
@@ -2620,6 +2620,7 @@ impl Game {
                         pose,
                         b.hand.appearance(&b.agent.vitals, b.agent.eating(), alpha, b.agent.inventory.armor),
                     ),
+                    name.as_str(),
                 )
             })
             .collect();
@@ -2773,13 +2774,13 @@ impl Game {
 /// fog range of `camera`.
 fn push_avatars(
     world: &World,
-    players: &[(&Player, DVec3, crate::entity::model::PlayerAppearance)],
+    players: &[(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)],
     camera: DVec3,
     fog_end: f32,
     time: f32,
     verts: &mut Vec<crate::entity::model::EntityVertex>,
 ) {
-    for &(player, feet, appearance) in players {
+    for &(player, feet, appearance, name) in players {
         // A body around the camera (players can share a spot) would fill the view.
         let inside = (camera - feet).with_y(0.0).length() < 0.4 && (feet.y..feet.y + 1.9).contains(&camera.y);
         if !inside && feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
@@ -2795,6 +2796,9 @@ fn push_avatars(
                 appearance,
                 verts,
             );
+            if appearance.death.is_none() {
+                crate::entity::model::build_player_name(player, feet, name, camera, verts);
+            }
         }
     }
 }

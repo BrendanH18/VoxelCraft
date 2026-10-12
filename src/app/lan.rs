@@ -325,7 +325,8 @@ impl Game {
             return;
         }
         if let Some(host) = &mut self.lan.host {
-            host.announce(&self.world_name);
+            let players = 1 + self.lan.peers.iter().filter(|p| p.profile.is_some()).count();
+            host.announce(&self.world_name, players);
             for _ in 0..8 {
                 match host.accept() {
                     Ok(Some(mut c)) if self.lan.peers.len() >= 8 => c.close("LAN server is full (8 clients)"),
