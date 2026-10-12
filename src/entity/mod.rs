@@ -37,6 +37,7 @@ pub mod player_model;
 mod player_pose;
 pub mod potion;
 mod projectile;
+mod replica;
 mod slime;
 mod thrown;
 pub mod tnt;

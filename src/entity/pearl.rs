@@ -31,6 +31,11 @@ pub struct Pearl {
 }
 
 impl Pearl {
+    /// A LAN client's copy: drawn only, never simulated.
+    pub(super) fn replica(pos: DVec3, previous_pos: DVec3) -> Self {
+        Self { owner: PlayerId::HOST, pos, previous_pos, vel: DVec3::ZERO, age: 0.0 }
+    }
+
     /// Thrown from `eye` along `dir`, carrying the thrower's velocity
     /// `carry`, with Java's slight random spread.
     pub fn thrown(owner: PlayerId, eye: DVec3, dir: DVec3, carry: DVec3, rng: &mut Rng) -> Self {

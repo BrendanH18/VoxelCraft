@@ -50,6 +50,15 @@ pub struct Retrieve {
 }
 
 impl Bobber {
+    /// A LAN client's copy: drawn only, never simulated.
+    pub(super) fn replica(owner: PlayerId, pos: DVec3, previous_pos: DVec3, biting: bool) -> Self {
+        let mut b = Self::cast(owner, pos, DVec3::X, 0, 0, &mut Rng::new(0));
+        b.pos = pos;
+        b.previous_pos = previous_pos;
+        b.biting = biting;
+        b
+    }
+
     /// Cast from `eye` along `dir`. `lure` and `luck` are the rod's levels.
     pub fn cast(owner: PlayerId, eye: DVec3, dir: DVec3, lure: u8, luck: u8, rng: &mut Rng) -> Self {
         let dir = dir.normalize_or(DVec3::NEG_Z);

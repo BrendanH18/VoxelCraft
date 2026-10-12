@@ -117,6 +117,33 @@ fn vector(v: &Value) -> Option<DVec3> {
     let p = DVec3::new(a[0].as_f64()?, a[1].as_f64()?, a[2].as_f64()?);
     (p.is_finite() && p.abs().max_element() <= 30_000_000.0).then_some(p)
 }
+/// Keeps a state snapshot inside one frame: in a crowded scene, sheds (in order) the
+/// extra entities, dropped items, mob looks and finally all mobs, rather than disconnecting.
+/// Returns the snapshot (if anything fits) and whether mob looks were shed.
+fn fit_state(mut v: Value) -> (Option<Value>, bool) {
+    let fits = |v: &Value| serde_json::to_vec(v).is_ok_and(|b| b.len() < voxelcraft::lan::MAX_FRAME - 16);
+    let mut shed_looks = false;
+    for shed in ["extras", "items", "looks", "mobs"] {
+        if fits(&v) {
+            return (Some(v), shed_looks);
+        }
+        match shed {
+            "looks" => {
+                shed_looks = true;
+                if let Some(mobs) = v["mobs"].as_array_mut() {
+                    for m in mobs {
+                        if let Some(m) = m.as_object_mut() {
+                            m.remove("look");
+                        }
+                    }
+                }
+            }
+            key => v[key] = Value::Null,
+        }
+    }
+    (fits(&v).then_some(v), true)
+}
+
 fn state(agent: &Agent, name: &str) -> Value {
     json!({"id":agent.id.0,"name":name,"pos":agent.player.pos.to_array(),"vel":agent.player.vel.to_array(),
         "yaw":agent.player.yaw,"pitch":agent.player.pitch,"ground":agent.player.on_ground,"flying":agent.player.flying,
@@ -823,6 +850,17 @@ impl Game {
                 })
                 .collect();
             peer.looked = looked;
+            let extras = self.mobs.entities.replica_extras(bot.agent.player.pos, 160.0);
+            let falling: Vec<_> = self
+                .world
+                .falling_blocks()
+                .iter()
+                .filter(|f| f.pos.distance_squared(bot.agent.player.pos) < 160.0 * 160.0)
+                .take(256)
+                .map(|f| {
+                    json!([f.block.0, f.pos.x, f.pos.y, f.pos.z, f.previous_pos.x, f.previous_pos.y, f.previous_pos.z])
+                })
+                .collect();
             let carts: Vec<_> = self
                 .mobs
                 .entities
@@ -843,8 +881,17 @@ impl Game {
                 .collect::<Vec<_>>()
                 .join(";");
             let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
-            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":players,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows});
-            if let Err(e) = peer.connection.send(Packet::State(snapshot)).and_then(|()| peer.connection.flush()) {
+            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":players,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows,"extras":extras,"falling":falling});
+            let (snapshot, shed_looks) = fit_state(snapshot);
+            if shed_looks {
+                // Looks dropped to fit: resend them all next tick.
+                peer.looked.clear();
+            }
+            let result = match snapshot {
+                Some(v) => peer.connection.send(Packet::State(v)),
+                None => Ok(()),
+            };
+            if let Err(e) = result.and_then(|()| peer.connection.flush()) {
                 peer.connection.close(&e.to_string());
             }
         }
@@ -1055,6 +1102,21 @@ impl Game {
                 })
                 .collect();
         }
+        if snapshot["extras"].is_object() {
+            self.mobs.entities.apply_replica_extras(&snapshot["extras"]);
+        }
+        if let Some(falling) = snapshot["falling"].as_array() {
+            self.world.set_falling_replica(falling.iter().filter_map(|f| {
+                let n = |i: usize| f.get(i).and_then(Value::as_f64);
+                let block = voxelcraft::world::block::Block(u16::try_from(f.get(0)?.as_u64()?).ok()?);
+                if block.0 as usize >= voxelcraft::world::block::STATE_CAPACITY {
+                    return None;
+                }
+                let pos = DVec3::new(n(1)?, n(2)?, n(3)?);
+                let previous = DVec3::new(n(4)?, n(5)?, n(6)?);
+                (pos.is_finite() && previous.is_finite()).then_some((block, pos, previous))
+            }));
+        }
         self.mobs.entities.arrows.clear();
         if let Some(arrows) = snapshot["arrows"].as_array() {
             for a in arrows.iter().take(256) {
@@ -1249,6 +1311,20 @@ fn button_transitions(mut previous: u8, edges: &[(u8, bool)], latest: u8) -> Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn oversized_state_sheds_optional_parts_instead_of_disconnecting() {
+        let big = "x".repeat(1000);
+        let mobs: Vec<_> = (0..256).map(|i| json!({"uid": i, "look": {"name": big}})).collect();
+        let v = json!({"self": {"health": 20}, "mobs": mobs, "items": big, "extras": {"pad": big}});
+        let (fitted, shed) = fit_state(v);
+        let fitted = fitted.expect("still sends the player's own state");
+        assert!(shed, "looks were dropped");
+        assert_eq!(fitted["self"]["health"], 20);
+        assert!(fitted["extras"].is_null() && fitted["items"].is_null());
+        assert!(serde_json::to_vec(&fitted).unwrap().len() < voxelcraft::lan::MAX_FRAME);
+        let small = json!({"self": {}, "mobs": [{"uid": 1, "look": {}}]});
+        assert_eq!(fit_state(small.clone()), (Some(small), false));
+    }
     #[test]
     fn button_edges_preserve_taps_and_do_not_reopen_a_closed_container() {
         assert_eq!(button_transitions(0, &[(8, true), (8, false)], 0), vec![(8, true), (8, false)]);

@@ -25,6 +25,11 @@ pub struct EnderEye {
 }
 
 impl EnderEye {
+    /// A LAN client's copy: drawn only, never simulated.
+    pub(super) fn replica(pos: DVec3, previous_pos: DVec3) -> Self {
+        Self { pos, previous_pos, vel: DVec3::ZERO, target: pos, life: 0, survives: true, pending: 0.0 }
+    }
+
     /// Released at `pos`, heading for `stronghold`: if that is more than 12
     /// blocks away it aims 12 blocks that way and 8 up.
     pub fn signalled(pos: DVec3, stronghold: DVec3, survives: bool) -> Self {

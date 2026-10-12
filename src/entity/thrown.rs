@@ -48,6 +48,11 @@ pub struct Thrown {
 }
 
 impl Thrown {
+    /// A LAN client's copy: drawn only, never simulated.
+    pub(super) fn replica(kind: Kind, pos: DVec3, previous_pos: DVec3) -> Self {
+        Self { kind, owner: None, shooter: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0, origin: pos }
+    }
+
     /// A llama spits from `from` at `target` (Java: 1.5 blocks a tick, inaccuracy 10).
     pub fn spit(from: DVec3, target: DVec3, shooter: u32, rng: &mut Rng) -> Self {
         let d = target - from;

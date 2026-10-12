@@ -25,6 +25,11 @@ pub struct PrimedTnt {
 }
 
 impl PrimedTnt {
+    /// A LAN client's copy: drawn only, never simulated.
+    pub(super) fn replica(pos: DVec3, previous_pos: DVec3, fuse: f32) -> Self {
+        Self { pos, previous_pos, vel: DVec3::ZERO, fuse, power: POWER }
+    }
+
     /// Create a moving charge with a fuse in seconds and coincident interpolation positions.
     pub fn new(pos: DVec3, vel: DVec3, fuse: f32) -> Self {
         Self { pos, previous_pos: pos, vel, fuse, power: POWER }

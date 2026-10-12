@@ -27,6 +27,15 @@ pub fn can_fall_into(b: Block) -> bool {
 }
 
 impl World {
+    /// A LAN client's copy of the host's falling blocks: drawn only.
+    pub fn set_falling_replica(&mut self, blocks: impl IntoIterator<Item = (Block, DVec3, DVec3)>) {
+        self.falling = blocks
+            .into_iter()
+            .take(256)
+            .map(|(block, pos, previous_pos)| FallingBlock { block, pos, previous_pos, speed: 0.0 })
+            .collect();
+    }
+
     /// Reacts to the block at `p` changing: wakes fluids, drops the block
     /// if it is an unsupported gravity block, and pops off or drops whatever
     /// rested on it, all the way up.
