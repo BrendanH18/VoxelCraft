@@ -128,6 +128,11 @@ See [the headless smoke run and checks](development.md#headless-simulation-found
 src/
   lib.rs             reusable engine exports (no device dependencies)
   main.rs            desktop argument parsing, event loop
+  content/
+    mod.rs           shared plank ingredient tag (including explicit Nether fuel exceptions)
+    fuel.rs          first furnace fuel definitions, in Java ticks
+  survival_items/
+    bucket.rs        shared fluid-bucket/bottle execution and client presentation effects
   simulation/
     mod.rs           fixed 20 Hz clock, world/player steps, interpolation
     survival.rs      health, hunger, exhaustion, regeneration (unit tested)

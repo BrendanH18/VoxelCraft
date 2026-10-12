@@ -220,9 +220,14 @@ or traced on the baseline above; recheck whether later branch work fixes them.
   exists. Relevant sources: [world/mod.rs](../src/world/mod.rs), [world/overworld_blocks.rs](../src/world/overworld_blocks.rs).
 - **PRO-02:** pufferfish is not accepted for brewing Water Breathing.
   Relevant source: [world/brewing.rs](../src/world/brewing.rs).
+  Follow-up: normal/splash brewing and interrupted brewing-save regressions
+  are implemented on the assessment branch; ordinary-player acceptance remains.
 - **BLD-02 / AUT-03:** dried kelp blocks, bamboo and bamboo mosaic lack fuel
   handling; kelp, berries, moss and new flowers lack composter integration.
   Relevant sources: [world/furnace.rs](../src/world/furnace.rs), [world/composter.rs](../src/world/composter.rs).
+  Follow-up: shared fuel metadata and reference-value/save cases now cover the
+  named missing fuels and additional existing wooden forms. Composter coverage
+  and the full fuel catalogue remain incomplete.
 - **FOO-03:** fishing pools still omit existing tropical fish, pufferfish and
   nautilus shells. Relevant source: [entity/bobber.rs](../src/entity/bobber.rs).
 - **GEN-02 / BLD-03:** amethyst geodes do not generate; budding amethyst
@@ -235,6 +240,9 @@ or traced on the baseline above; recheck whether later branch work fixes them.
   Relevant sources: [entity/aquatic.rs](../src/entity/aquatic.rs), [entity/mod.rs](../src/entity/mod.rs).
 - **PLY-04:** CLI water buckets attempt creature capture without a fallback
   for ordinary pouring. Relevant sources: [agent.rs](../src/agent.rs), [app/bucket.rs](../src/app/bucket.rs).
+  Follow-up: shared bucket/bottle execution now provides that fallback and covers
+  pickup, creative, overflow, Nether and payload cases. Full player/session
+  extraction and player acceptance remain open.
 - **FOO-02:** ripe cocoa randomly yields two or three beans instead of the
   reference loot's three. Relevant source: [world/overworld_flora.rs](../src/world/overworld_flora.rs).
 
@@ -250,14 +258,23 @@ old "done" labels.
 The branch `t3/continue-project-build`, inspected at `f5bf0d1` on 2026-10-12,
 contains animals, breeding, companions, leads, mounts, boats, LAN work and
 additional tests. Keep this code and its branch. It is not part of the 0.6
-baseline above and is **Unassessed** against this roadmap's reference and
-acceptance gates. Historical completion reports do not change that state.
+baseline above. The [initial assessment](verification/2026-10-12-v0.7-assessment.md)
+classifies reviewed animal/transport work as **Partial**: existing tests pass,
+but modern lead/saddle acquisition fails independent 26.3 cases. Other behaviors
+remain Unassessed, and none of these groups is Verified. Historical completion
+reports do not override the current acceptance gates.
 
 Review and retain useful single-player work under MOB-03/MOB-06, FOO-02/FOO-04,
 AUT-05 and applicable player/save requirements. Preserve the LAN implementation
 while deferring new multiplayer expansion. Review dependencies before choosing
 a merge or focused cherry-picks. See the
 [pending-work assessment plan](restructuring.md#pending-v07-work-retain-and-assess).
+
+The same assessment delivered the first reference fixtures, shared fuel metadata,
+Water Breathing integration and shared bucket actions. These fixes remain
+Implemented-unverified under full player/performance acceptance. Retain the
+pending branch's turtle activity gating and save-lock improvements for review;
+do not assume every earlier audit gap still needs a duplicate implementation.
 
 ## 4. Core requirement catalogue
 

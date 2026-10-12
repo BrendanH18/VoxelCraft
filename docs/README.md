@@ -29,6 +29,8 @@ roadmap and recorded checks to assess completeness against the current target.
   [hosted agents/commands](agents.md).
 - [Release guide](releases.md).
 - [Dated performance investigation](performance-2026-10-07.md).
+- [Initial v0.7 assessment and first correctness fixes](verification/2026-10-12-v0.7-assessment.md):
+  tested commits, reference failures, regression/save checks and remaining acceptance work.
 
 ## History
 

@@ -2,11 +2,12 @@
 
 [Documentation index](README.md) · [Roadmap](roadmap.md) · [Agent instructions](../AGENTS.md)
 
-This is an implementation plan, not a claim that the code has been restructured.
-The repository/agent-notes migration establishes versioned guidance; the engine,
-content and asset changes below remain Planned. The roadmap remains authoritative
-for product scope and completion. Link evidence here and update its affected
-requirements as each change lands.
+This implementation plan records delivered slices and remaining work. The
+repository/agent-notes migration established versioned guidance; the initial
+assessment delivered the first content/action/fixture changes. Each task's
+status below distinguishes those slices from the larger work still planned.
+The roadmap remains authoritative for product scope and completion. Link evidence
+here and update its affected requirements as each change lands.
 
 ## Pending v0.7 work: retain and assess
 
@@ -21,9 +22,9 @@ uncommitted work; a new plan is not a reason to delete it.
 
 | Pending work | Relevant roadmap requirements | Next disposition |
 | --- | --- | --- |
-| Animals, breeding, companions, leads and naming | MOB-03, MOB-06, FOO-02 | Unassessed against the selected reference; verify and retain useful single-player work |
-| Boats, mounts, storage and transport | FOO-04, AUT-05 | Unassessed; check acquisition, interactions, persistence and performance |
-| Shared fixes, including save locking and interaction integration | PLY-04, UX-04, UX-05 | Review independently and retain applicable corrections |
+| Animals, breeding, companions, leads and naming | MOB-03, MOB-06, FOO-02 | Partial after initial assessment; retain implementations, correct the modern lead recipe and finish acceptance |
+| Boats, mounts, storage and transport | FOO-04, AUT-05 | Partial; retain implementations, add the modern saddle recipe and finish interaction/persistence/performance checks |
+| Shared fixes, including save locking and interaction integration | PLY-04, UX-04, UX-05 | Useful turtle gating and save-lock code identified; full player/platform acceptance remains |
 | LAN networking and multiplayer presentation | Post-1.0 scope | Preserve existing code; defer further expansion and maintain shared behavior |
 
 Before integrating the branch:
@@ -45,9 +46,16 @@ Before integrating the branch:
 Pause new feature expansion while this assessment and M0/M1 foundations are
 established. Continue bounded bug fixes that preserve existing work.
 
+The [initial assessment and fix report](verification/2026-10-12-v0.7-assessment.md)
+records the tested source, passing existing suites, independent reference
+failures and first shared content/action changes. It is not a completed v0.7
+acceptance pass; the original branch and uncommitted patch remain preserved.
+
 ## STR-01 — Reference fixtures and performance scenes
 
-**Status:** Planned. **Roadmap:** M0; PLY-01, GEN-07, UX-04/05; performance acceptance.
+**Status:** Partial: first Java 26.3 item fixtures and reproduction tool implemented;
+full inventory and performance scenes Planned.
+**Roadmap:** M0; PLY-01, GEN-07, UX-04/05; performance acceptance.
 
 Extend existing headless integration tests rather than replacing them. Add
 `tests/fixtures/java/<reference-version>/` for expected behavior and selected
@@ -70,7 +78,8 @@ even if it misses the target. Require M5 hardware evidence for its performance g
 
 ## STR-02 — Shared content definitions and tags
 
-**Status:** Planned. **Roadmap:** M2; BLD-01/02/03/06, FOO-01/02, AUT-03/04.
+**Status:** Partial: shared plank ingredients and fuel definitions implemented;
+other integrations Planned. **Roadmap:** M2; BLD-01/02/03/06, FOO-01/02, AUT-03/04.
 **Dependency:** STR-01 coverage for the first migrated content family.
 
 Introduce `src/content/` with authoritative content definitions and typed tags.
@@ -93,7 +102,9 @@ no unexplained regression.
 
 ## STR-03 — Shared gameplay actions and session ownership
 
-**Status:** Planned. **Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.
+**Status:** Partial: shared bucket/bottle execution and typed presentation effects
+implemented; broader actions and session ownership Planned.
+**Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.
 **Dependency:** STR-01 regression coverage and review of pending v0.7 changes.
 
 Extract device-independent action validation and execution from the desktop
@@ -154,7 +165,8 @@ v0.7 work can be integrated without an unnecessary parallel rewrite.
 
 ## STR-06 — Documentation and verification records
 
-**Status:** Repository migration implemented; ongoing evidence workflow Planned.
+**Status:** Repository migration and first dated verification record implemented;
+ongoing per-feature evidence workflow continues.
 **Roadmap:** M0; every requirement's delivery evidence.
 
 Use `docs/README.md` to distinguish player guides, engineering documents,
