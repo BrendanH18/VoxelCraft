@@ -152,6 +152,44 @@ impl ChunkData {
         }
     }
 
+    /// Cells that differ between two versions of a chunk (`index`, new block), or `None` once
+    /// more than `limit` differ. LAN hosts send these instead of whole chunks.
+    pub fn diff(old: &ChunkData, new: &ChunkData, limit: usize) -> Option<Vec<(u16, Block)>> {
+        let mut out = Vec::new();
+        if let (Some(a), Some(b)) = (old.uniform(), new.uniform()) {
+            return if a == b { Some(out) } else { None };
+        }
+        let (mut a, mut b) = ([Block::AIR; CHUNK_SIZE], [Block::AIR; CHUNK_SIZE]);
+        for row in (0..CHUNK_VOLUME).step_by(CHUNK_SIZE) {
+            old.copy_row(row, &mut a);
+            new.copy_row(row, &mut b);
+            if a == b {
+                continue;
+            }
+            for (i, (x, y)) in a.iter().zip(&b).enumerate() {
+                if x != y {
+                    if out.len() == limit {
+                        return None;
+                    }
+                    out.push(((row + i) as u16, *y));
+                }
+            }
+        }
+        Some(out)
+    }
+
+    /// This chunk with `edits` applied (as [`ChunkData::diff`] produces).
+    pub fn with_edits(&self, edits: &[(u16, Block)]) -> ChunkData {
+        let mut blocks = ChunkData::new_dense(Block::AIR);
+        for row in (0..CHUNK_VOLUME).step_by(CHUNK_SIZE) {
+            self.copy_row(row, &mut blocks[row..row + CHUNK_SIZE]);
+        }
+        for &(i, b) in edits {
+            blocks[i as usize] = b;
+        }
+        ChunkData::from_dense(blocks)
+    }
+
     /// Copies a contiguous row into meshing scratch storage without per-cell
     /// enum dispatch. Snapshots continue to share the original Arc unchanged.
     pub fn copy_row(&self, start: usize, dst: &mut [Block]) {
@@ -203,6 +241,20 @@ impl ChunkData {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn diffs_rebuild_the_new_chunk_and_give_up_past_the_limit() {
+        let mut old = ChunkData::Uniform(Block::STONE);
+        old.set(1, 2, 3, Block::DIRT);
+        let mut new = old.clone();
+        new.set(4, 5, 6, Block::GLASS);
+        new.set(1, 2, 3, Block::AIR);
+        let cells = ChunkData::diff(&old, &new, 16).unwrap();
+        assert_eq!(cells.len(), 2);
+        let rebuilt = old.with_edits(&cells);
+        assert!(ChunkData::diff(&rebuilt, &new, 0).unwrap().is_empty());
+        assert!(ChunkData::diff(&ChunkData::Uniform(Block::AIR), &ChunkData::Uniform(Block::STONE), 64).is_none());
+        assert!(ChunkData::diff(&old, &new, 1).is_none());
+    }
     use super::*;
 
     #[test]

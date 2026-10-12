@@ -72,6 +72,11 @@ pub(super) struct Lan {
     look_ticks: u32,
     /// Particle effects since the last state, for clients to replay (JSON requests).
     pub effects: Vec<(DVec3, Value)>,
+    /// Host tick timing and traffic since the last `LAN stats` log line.
+    pub stats_tick_secs: f64,
+    pub stats_tick_max: f64,
+    stats_ticks: u32,
+    stats_sent: u64,
     pub host: Option<Listener>,
     peers: Vec<Peer>,
     pub client: Option<Connection>,
@@ -159,6 +164,20 @@ fn state(agent: &Agent, name: &str) -> Value {
         "food":agent.vitals.hunger.food,"saturation":agent.vitals.hunger.saturation,"exhaustion":agent.vitals.hunger.exhaustion,
         "death":agent.vitals.death,"xp":agent.vitals.xp.serialize(),"effects":agent.vitals.effects.serialize(),"sleep":agent.sleeping,"vehicle":agent.player.vehicle})
 }
+/// What clients need of *other* players: pose, held item, armor and health, not their inventory.
+/// Rounds to a millimetre (or a thousandth of a radian): plenty for drawing, far fewer bytes.
+fn r3(x: f64) -> f64 {
+    (x * 1000.0).round() / 1000.0
+}
+fn state_lite(agent: &Agent, name: &str) -> Value {
+    let p = agent.player.pos;
+    json!({"id":agent.id.0,"name":name,"pos":[r3(p.x), r3(p.y), r3(p.z)],"vel":[0.0, 0.0, 0.0],
+        "yaw":r3(agent.player.yaw as f64),"pitch":r3(agent.player.pitch as f64),"ground":agent.player.on_ground,
+        "flying":agent.player.flying,"sneak":agent.player.sneaking,"mode":agent.mode.name(),"selected":agent.selected,
+        "held":stack_to_string(agent.inventory.get(agent.selected)),
+        "armor":agent.inventory.armor.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),
+        "health":agent.vitals.health,"death":agent.vitals.death,"sleep":agent.sleeping,"vehicle":agent.player.vehicle})
+}
 fn apply(agent: &mut Agent, v: &Value) {
     if let Some(pos) = vector(&v["pos"]) {
         agent.previous_pos = agent.player.pos;
@@ -178,6 +197,15 @@ fn apply(agent: &mut Agent, v: &Value) {
     if let Some(inv) = v["inventory"].as_str().and_then(crate::inventory::Inventory::deserialize) {
         agent.inventory = inv;
     }
+    if let Some(held) = v["held"].as_str() {
+        // Another player's lite state: just what is drawn.
+        agent.inventory = crate::inventory::Inventory::default();
+        agent.inventory.slots[agent.selected] = stack_from_str(held).flatten();
+        for (slot, s) in agent.inventory.armor.iter_mut().zip(v["armor"].as_array().into_iter().flatten()) {
+            *slot = s.as_str().and_then(stack_from_str).flatten();
+        }
+    }
+    agent.player.sneaking = v["sneak"] == true;
     agent.inventory.cursor = v["cursor"].as_str().and_then(stack_from_str).flatten();
     agent.vitals = crate::simulation::survival::Vitals::restore(
         v["health"].as_f64().unwrap_or(20.0) as f32,
@@ -344,6 +372,7 @@ impl Game {
                         self.lan_command(&format!("view {view}"));
                     }
                     Packet::Chunk { pos, data } => self.world.receive_chunk(pos, data),
+                    Packet::Edits { pos, cells } => self.world.receive_edits(pos, &cells),
                     Packet::State(state) => self.receive_lan_state(&state),
                     Packet::Chat(message) => self.chat_line(&message),
                     Packet::Disconnect(reason) => {
@@ -550,6 +579,10 @@ impl Game {
                     peer.body = Body::default();
                     peer.open = false;
                 }
+            }
+            "/save-all" if self.lan.cheats => {
+                self.save();
+                let _ = peer.connection.send(Packet::Chat("Saved the game".into()));
             }
             _ => {
                 if !command.starts_with('/') {
@@ -806,10 +839,28 @@ impl Game {
         host.inventory = self.inventory.clone();
         host.vitals = self.vitals.clone();
         host.sleeping = self.sleeping;
-        let players: Vec<_> = std::iter::once(state(&host, &self.lan.profile))
-            .chain(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, b)| state(&b.agent, n)))
+        let players: Vec<_> = std::iter::once(state_lite(&host, &self.lan.profile))
+            .chain(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, b)| state_lite(&b.agent, n)))
             .collect();
         self.lan.look_ticks = self.lan.look_ticks.wrapping_add(1);
+        self.lan.stats_ticks += 1;
+        if self.lan.stats_ticks >= 200 {
+            // Every ten seconds: tick cost and bandwidth, for docs/lan.md's measurements.
+            let sent: u64 = self.lan.peers.iter().map(|p| p.connection.sent_bytes).sum();
+            let rate = sent.saturating_sub(self.lan.stats_sent) as f64 / 10.0 / 1024.0;
+            log::info!(
+                "LAN stats: {} clients, tick {:.2} ms avg / {:.2} ms max, {:.1} KiB/s sent ({:.1} per client)",
+                self.lan.peers.len(),
+                self.lan.stats_tick_secs * 1000.0 / self.lan.stats_ticks as f64,
+                self.lan.stats_tick_max * 1000.0,
+                rate,
+                rate / self.lan.peers.len().max(1) as f64,
+            );
+            self.lan.stats_ticks = 0;
+            self.lan.stats_tick_secs = 0.0;
+            self.lan.stats_tick_max = 0.0;
+            self.lan.stats_sent = sent;
+        }
         // Sounds and particles since the last state, replayed by clients near them.
         let sounds = self.audio.tap.replace(Vec::new()).unwrap_or_default();
         let effects = std::mem::take(&mut self.lan.effects);
@@ -844,17 +895,30 @@ impl Game {
                 let d = (IVec3::new(p.0, p.1, p.2) - center).with_y(0);
                 d.length_squared() <= radius * radius
             });
-            for (pos, data) in chunks
-                .into_iter()
-                .filter(|(p, d)| peer.sent.get(&(p.x, p.y, p.z)).is_none_or(|old| !Arc::ptr_eq(old, d)))
-                .take(32)
-                .collect::<Vec<_>>()
-            {
+            // Changed chunks the client has go first as cell edits (a whole chunk only past
+            // MAX_EDITS changes); then up to 32 new chunks, nearest first.
+            let mut fresh = 0;
+            for (pos, data) in chunks {
+                let key = (pos.x, pos.y, pos.z);
+                let old = peer.sent.get(&key);
+                if old.is_some_and(|old| Arc::ptr_eq(old, &data)) {
+                    continue;
+                }
                 if peer.connection.queued_bytes() > 512 * 1024 {
                     break;
                 }
-                if peer.connection.send(Packet::Chunk { pos, data: data.clone() }).is_ok() {
-                    peer.sent.insert((pos.x, pos.y, pos.z), data);
+                let edits = old
+                    .and_then(|old| voxelcraft::world::chunk::ChunkData::diff(old, &data, voxelcraft::lan::MAX_EDITS));
+                let packet = match edits {
+                    Some(cells) => Packet::Edits { pos, cells },
+                    None if fresh < 32 => {
+                        fresh += 1;
+                        Packet::Chunk { pos, data: data.clone() }
+                    }
+                    None => continue,
+                };
+                if peer.connection.send(packet).is_ok() {
+                    peer.sent.insert(key, data);
                 }
             }
             let work: Vec<_> = bot.agent.work.iter().map(|s| stack_to_string(*s)).collect();
@@ -900,7 +964,11 @@ impl Game {
                 .filter(|m| m.pos.distance_squared(bot.agent.player.pos) < 160.0 * 160.0)
                 .take(256)
                 .map(|m| {
-                    let mut v = json!({"uid":m.uid,"kind":m.kind.name(),"pos":m.pos.to_array(),"yaw":m.yaw,"head_yaw":m.head_yaw,"head_pitch":m.head_pitch,"health":m.health,"hurt":m.hurt,"dying":m.dying,"size":m.size,"baby":m.baby});
+                    // Compact pose: uid, kind, position, yaws/pitch, health, hurt, dying (-1 alive), size, baby.
+                    let kind = crate::entity::MobKind::ALL.iter().position(|k| *k == m.kind).unwrap_or(0);
+                    let mut v = json!({"m":[m.uid, kind, r3(m.pos.x), r3(m.pos.y), r3(m.pos.z), r3(m.yaw as f64),
+                        r3(m.head_yaw as f64), r3(m.head_pitch as f64), r3(m.health as f64), r3(m.hurt as f64),
+                        m.dying.map_or(-1.0, |d| r3(d as f64)), m.size, u8::from(m.baby)]});
                     if refresh || !peer.looked.contains(&m.uid) {
                         v["look"] = m.look();
                     }
@@ -971,7 +1039,9 @@ impl Game {
                 .collect::<Vec<_>>()
                 .join(";");
             let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
-            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":players,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects});
+            // Everyone but this client itself (it has its own full state).
+            let others: Vec<&Value> = players.iter().filter(|p| p["id"] != bot.id.0).collect();
+            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects});
             let (snapshot, shed_looks) = fit_state(snapshot);
             if shed_looks {
                 // Looks dropped to fit: resend them all next tick.
@@ -1178,24 +1248,27 @@ impl Game {
             let mut previous: BTreeMap<_, _> =
                 std::mem::take(&mut self.mobs.entities.mobs).into_iter().map(|m| (m.uid, m)).collect();
             for m in mobs.iter().take(256) {
-                let (Some(kind), Some(pos)) =
-                    (m["kind"].as_str().and_then(crate::entity::MobKind::from_name), vector(&m["pos"]))
-                else {
+                let f = |i: usize| m["m"].get(i).and_then(Value::as_f64);
+                let kind =
+                    m["m"].get(1).and_then(Value::as_u64).and_then(|k| crate::entity::MobKind::ALL.get(k as usize));
+                let (Some(&kind), Some(x), Some(y), Some(z)) = (kind, f(2), f(3), f(4)) else { continue };
+                let pos = DVec3::new(x, y, z);
+                if !pos.is_finite() {
                     continue;
-                };
-                let uid = m["uid"].as_u64().unwrap_or(0) as u32;
+                }
+                let uid = m["m"].get(0).and_then(Value::as_u64).unwrap_or(0) as u32;
                 let mut mob = previous.remove(&uid).unwrap_or_else(|| crate::entity::Mob::new(kind, pos, 0.0));
                 mob.previous_pos = mob.pos;
                 mob.pos = pos;
                 mob.uid = uid;
-                mob.yaw = m["yaw"].as_f64().unwrap_or(0.0) as f32;
-                mob.head_yaw = m["head_yaw"].as_f64().unwrap_or(0.0) as f32;
-                mob.head_pitch = m["head_pitch"].as_f64().unwrap_or(0.0) as f32;
-                mob.health = m["health"].as_f64().unwrap_or(20.0) as f32;
-                mob.hurt = m["hurt"].as_f64().unwrap_or(0.0) as f32;
-                mob.dying = m["dying"].as_f64().map(|f| f as f32);
-                mob.size = m["size"].as_u64().unwrap_or(1) as u8;
-                mob.baby = m["baby"] == true;
+                mob.yaw = f(5).unwrap_or(0.0) as f32;
+                mob.head_yaw = f(6).unwrap_or(0.0) as f32;
+                mob.head_pitch = f(7).unwrap_or(0.0) as f32;
+                mob.health = f(8).unwrap_or(20.0) as f32;
+                mob.hurt = f(9).unwrap_or(0.0) as f32;
+                mob.dying = f(10).filter(|d| *d >= 0.0).map(|d| d as f32);
+                mob.size = f(11).unwrap_or(1.0).clamp(1.0, 4.0) as u8;
+                mob.baby = f(12) == Some(1.0);
                 if m["look"].is_object() {
                     mob.apply_look(&m["look"]);
                 }
@@ -1535,6 +1608,24 @@ mod tests {
         assert!(button_transitions(16, &[], 16).is_empty());
         assert_eq!(button_transitions(16, &[], 0), vec![(16, false)]);
         assert_eq!(button_transitions(0, &[(16, true)], 16), vec![(16, true)]);
+    }
+    #[test]
+    fn other_players_get_a_lite_state_with_what_is_drawn() {
+        let mut p = Agent::new(DVec3::new(1.0, 2.0, 3.0));
+        p.selected = 2;
+        p.inventory.slots[2] = Some(crate::inventory::Stack::new(crate::item::Item::STICK, 1));
+        p.inventory.slots[5] = Some(crate::inventory::Stack::new(crate::item::Item::DIAMOND, 64));
+        p.inventory.armor[0] = Some(crate::inventory::Stack::new(crate::item::Item::BONE, 1));
+        p.player.sneaking = true;
+        let lite = state_lite(&p, "Remote");
+        assert!(lite.get("inventory").is_none(), "no inventory for others");
+        let mut copy = Agent::new(DVec3::ZERO);
+        apply(&mut copy, &lite);
+        assert_eq!(copy.inventory.get(2).unwrap().item, crate::item::Item::STICK);
+        assert!(copy.inventory.get(5).is_none());
+        assert_eq!(copy.inventory.armor[0].unwrap().item, crate::item::Item::BONE);
+        assert!(copy.player.sneaking);
+        assert_eq!(copy.player.pos, p.player.pos);
     }
     #[test]
     fn player_snapshot_preserves_progression_inventory_and_cursor() {

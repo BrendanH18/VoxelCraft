@@ -223,6 +223,15 @@ impl World {
         chunks
     }
 
+    /// Applies a host's cell edits to a chunk this replica already holds.
+    pub fn receive_edits(&mut self, pos: IVec3, cells: &[(u16, Block)]) {
+        if cells.is_empty() {
+            return;
+        }
+        let Some(data) = self.chunks.get(&pos).map(|s| s.data.with_edits(cells)) else { return };
+        self.receive_chunk(pos, Arc::new(data));
+    }
+
     /// Install an exact authoritative snapshot, invalidate stale meshes and heightmaps.
     /// This does not settle blocks, generate decoration or create simulation drops.
     pub fn receive_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>) {

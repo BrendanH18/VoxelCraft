@@ -68,6 +68,10 @@ impl Game {
                             ["splitscreen"] => self.split_command(""),
                             ["splitscreen", arg] => self.split_command(arg),
                             ["splitscreen", ..] => Err("usage: /splitscreen [player|off|side|stacked]".into()),
+                            ["save-all"] => {
+                                self.save();
+                                Ok("Saved the game".into())
+                            }
                             _ => Command::parse(&input).and_then(|c| self.host_command(c)),
                         }
                     };

@@ -2549,7 +2549,11 @@ impl Game {
             if self.lan.client.is_some() {
                 self.tick_lan_client();
             } else {
+                let started = Instant::now();
                 self.tick();
+                let took = started.elapsed().as_secs_f64();
+                self.lan.stats_tick_secs += took;
+                self.lan.stats_tick_max = self.lan.stats_tick_max.max(took);
                 self.send_lan_state();
             }
         }

@@ -69,8 +69,16 @@ pub enum Packet {
         pos: IVec3,
         data: Arc<ChunkData>,
     },
+    /// Changed cells of a chunk the client already has: (linear index, new state).
+    Edits {
+        pos: IVec3,
+        cells: Vec<(u16, Block)>,
+    },
     Disconnect(String),
 }
+
+/// Most cells an `Edits` packet carries; more changes send the whole chunk.
+pub const MAX_EDITS: usize = 1024;
 fn bad(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
@@ -143,6 +151,19 @@ impl Packet {
                 }
                 out.extend_from_slice(&run.to_le_bytes());
                 out.extend_from_slice(&previous.0.to_le_bytes());
+            }
+            Self::Edits { pos, cells } => {
+                if cells.len() > MAX_EDITS {
+                    return Err(bad("too many edits"));
+                }
+                out.push(9);
+                for p in pos.to_array() {
+                    out.extend_from_slice(&p.to_le_bytes());
+                }
+                for (i, b) in cells {
+                    out.extend_from_slice(&i.to_le_bytes());
+                    out.extend_from_slice(&b.0.to_le_bytes());
+                }
             }
             Self::Click { slot, right, shift } => {
                 out.push(8);
@@ -218,6 +239,25 @@ impl Packet {
                     return Err(bad("incomplete chunk"));
                 }
                 Self::Chunk { pos, data: Arc::new(ChunkData::from_dense(blocks)) }
+            }
+            9 => {
+                let pos = IVec3::new(r.i32()?, r.i32()?, r.i32()?);
+                if pos.x.abs_diff(0) > 937_500 || pos.z.abs_diff(0) > 937_500 || !(-2..10).contains(&pos.y) {
+                    return Err(bad("invalid chunk position"));
+                }
+                if r.0.len() % 4 != 0 || r.0.len() / 4 > MAX_EDITS {
+                    return Err(bad("invalid edits"));
+                }
+                let mut cells = Vec::with_capacity(r.0.len() / 4);
+                while !r.0.is_empty() {
+                    let i = r.u16()?;
+                    let b = Block(r.u16()?);
+                    if i as usize >= CHUNK_VOLUME || b.0 as usize >= crate::world::block::STATE_CAPACITY {
+                        return Err(bad("invalid edit"));
+                    }
+                    cells.push((i, b));
+                }
+                Self::Edits { pos, cells }
             }
             8 => {
                 let slot = r.u16()?;
@@ -632,6 +672,18 @@ mod tests {
         }
         assert!(count > 0 && count <= 11);
         assert!(connection.queued_bytes() <= MAX_QUEUE);
+    }
+    #[test]
+    fn edits_round_trip_and_reject_bad_cells() {
+        let packet = Packet::Edits { pos: IVec3::new(3, 4, -5), cells: vec![(0, Block::STONE), (32767, Block::DIRT)] };
+        let frame = packet.encode().unwrap();
+        let Packet::Edits { pos, cells } = Packet::decode(&frame[4..]).unwrap() else { panic!() };
+        assert_eq!((pos, cells), (IVec3::new(3, 4, -5), vec![(0, Block::STONE), (32767, Block::DIRT)]));
+        let mut bad = frame[4..].to_vec();
+        bad.extend_from_slice(&[0xff, 0xff, 1, 0]); // index 65535
+        assert!(Packet::decode(&bad).is_err());
+        let many = Packet::Edits { pos: IVec3::ZERO, cells: vec![(0, Block::AIR); MAX_EDITS + 1] };
+        assert!(many.encode().is_err());
     }
     #[test]
     fn advertisements_carry_player_count_and_version_and_accept_the_old_form() {
