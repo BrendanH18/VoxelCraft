@@ -70,6 +70,8 @@ impl Peer {
 pub(super) struct Lan {
     /// Host ticks with peers, to refresh mob looks once a second.
     look_ticks: u32,
+    /// Particle effects since the last state, for clients to replay (JSON requests).
+    pub effects: Vec<(DVec3, Value)>,
     pub host: Option<Listener>,
     peers: Vec<Peer>,
     pub client: Option<Connection>,
@@ -85,6 +87,11 @@ pub(super) struct Lan {
     predictions: VecDeque<Input>,
     ready: bool,
     messages: VecDeque<String>,
+}
+impl Lan {
+    pub(super) fn has_peers(&self) -> bool {
+        !self.peers.is_empty()
+    }
 }
 impl Drop for Lan {
     fn drop(&mut self) {
@@ -760,6 +767,8 @@ impl Game {
     }
     pub(super) fn send_lan_state(&mut self) {
         if self.lan.peers.is_empty() {
+            self.audio.tap = None;
+            self.lan.effects.clear();
             return;
         }
         let mut host = Agent::new(self.player.pos);
@@ -774,6 +783,10 @@ impl Game {
             .chain(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, b)| state(&b.agent, n)))
             .collect();
         self.lan.look_ticks = self.lan.look_ticks.wrapping_add(1);
+        // Sounds and particles since the last state, replayed by clients near them.
+        let sounds = self.audio.tap.replace(Vec::new()).unwrap_or_default();
+        let effects = std::mem::take(&mut self.lan.effects);
+        let host_pos = self.player.pos;
         let host_view = self.settings.render_distance.clamp(2, LAN_VIEW_MAX);
         let widest = self.lan.peers.iter().map(|p| p.view.min(host_view)).max().unwrap_or(2);
         self.world.set_agent_radius(widest + 2);
@@ -850,6 +863,33 @@ impl Game {
                 })
                 .collect();
             peer.looked = looked;
+            let me = bot.agent.player.pos;
+            let sounds: Vec<_> = sounds
+                .iter()
+                .filter_map(|&(sound, pos, gain, (lo, hi))| {
+                    use crate::audio::sounds::Sound;
+                    let movement = matches!(sound, Sound::Step(_) | Sound::Land | Sound::Splash | Sound::Swim);
+                    // Positionless sounds are the host's own: only body sounds others would hear.
+                    let pos = match pos {
+                        Some(p) => p,
+                        None if movement || sound == Sound::Hurt => host_pos,
+                        None => return None,
+                    };
+                    // A client hears its own steps locally.
+                    if movement && pos.distance_squared(me) < 1.0 {
+                        return None;
+                    }
+                    (pos.distance_squared(me) < 64.0 * 64.0)
+                        .then(|| json!([sound.key(), pos.x, pos.y, pos.z, gain, lo, hi]))
+                })
+                .take(96)
+                .collect();
+            let effects: Vec<_> = effects
+                .iter()
+                .filter(|(p, _)| p.distance_squared(me) < 96.0 * 96.0)
+                .take(128)
+                .map(|(_, j)| j.clone())
+                .collect();
             let extras = self.mobs.entities.replica_extras(bot.agent.player.pos, 160.0);
             let falling: Vec<_> = self
                 .world
@@ -881,7 +921,7 @@ impl Game {
                 .collect::<Vec<_>>()
                 .join(";");
             let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
-            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":players,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows,"extras":extras,"falling":falling});
+            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":players,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects});
             let (snapshot, shed_looks) = fit_state(snapshot);
             if shed_looks {
                 // Looks dropped to fit: resend them all next tick.
@@ -951,6 +991,9 @@ impl Game {
             ));
             self.player.update(crate::simulation::TICK_SECONDS, movement, &self.world);
             self.lan.predictions.push_back(input);
+        }
+        if self.lan.ready {
+            self.tick_particles();
             if self.lan.predictions.len() > 128 {
                 self.lan.lost = Some("Server stopped acknowledging input".into());
             }
@@ -1101,6 +1144,35 @@ impl Game {
                     Some(cart)
                 })
                 .collect();
+        }
+        if let Some(sounds) = snapshot["sounds"].as_array() {
+            for s in sounds.iter().take(96) {
+                let f = |i: usize| s.get(i).and_then(Value::as_f64);
+                let (Some(sound), Some(x), Some(y), Some(z), Some(gain), Some(lo), Some(hi)) = (
+                    s.get(0).and_then(Value::as_u64).and_then(|k| crate::audio::sounds::Sound::from_key(k as usize)),
+                    f(1),
+                    f(2),
+                    f(3),
+                    f(4),
+                    f(5),
+                    f(6),
+                ) else {
+                    continue;
+                };
+                let pos = DVec3::new(x, y, z);
+                if pos.is_finite() {
+                    let pitch = (lo.clamp(0.1, 4.0) as f32, hi.clamp(0.1, 4.0) as f32);
+                    self.audio.play(sound, Some(pos), gain.clamp(0.0, 4.0) as f32, pitch);
+                }
+            }
+        }
+        if let Some(effects) = snapshot["effects"].as_array() {
+            let setting = self.settings.particles;
+            for e in effects.iter().take(128) {
+                if let Some(request) = crate::particles::Request::from_json(e) {
+                    self.particles.request(request, setting, &self.world);
+                }
+            }
         }
         if snapshot["extras"].is_object() {
             self.mobs.entities.apply_replica_extras(&snapshot["extras"]);

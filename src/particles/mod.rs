@@ -261,6 +261,82 @@ pub enum Request {
     },
 }
 
+impl Request {
+    /// Where the effect happens, for range checks.
+    pub fn pos(&self) -> DVec3 {
+        match self {
+            Request::Particle(p) => p.pos,
+            Request::Burst(b) | Request::Tracking(b) => b.pos,
+            Request::Explosion { pos, .. } | Request::EyeBreak { pos } => *pos,
+            Request::Break { cell, .. } | Request::Hit { cell, .. } => cell.as_dvec3() + DVec3::splat(0.5),
+        }
+    }
+
+    /// A compact JSON form for LAN clients. Raw single particles are not sent.
+    pub fn to_json(&self) -> Option<serde_json::Value> {
+        use serde_json::json;
+        let v = |p: DVec3| [p.x, p.y, p.z];
+        let c = |p: IVec3| [p.x, p.y, p.z];
+        Some(match self {
+            Request::Particle(_) => return None,
+            Request::Burst(b) | Request::Tracking(b) => json!({
+                "t": if matches!(self, Request::Burst(_)) { "b" } else { "t" },
+                "k": b.kind as u8, "p": v(b.pos), "v": v(b.velocity), "s": v(b.spread), "vs": v(b.velocity_spread),
+                "n": b.count, "c": b.color, "f": b.forced, "i": b.important,
+            }),
+            Request::Explosion { pos, large } => json!({"t": "x", "p": v(*pos), "l": large}),
+            Request::Break { cell, block } => json!({"t": "r", "p": c(*cell), "b": block.0}),
+            Request::Hit { cell, block, face } => json!({"t": "h", "p": c(*cell), "b": block.0, "d": c(*face)}),
+            Request::EyeBreak { pos } => json!({"t": "e", "p": v(*pos)}),
+        })
+    }
+
+    /// Parses [`Request::to_json`], rejecting anything malformed or unbounded.
+    pub fn from_json(j: &serde_json::Value) -> Option<Request> {
+        let v = |k: &str| -> Option<DVec3> {
+            let a = j[k].as_array()?;
+            let p = DVec3::new(a.first()?.as_f64()?, a.get(1)?.as_f64()?, a.get(2)?.as_f64()?);
+            (p.is_finite() && p.abs().max_element() < 1.0e8).then_some(p)
+        };
+        let c = |k: &str| -> Option<IVec3> {
+            let a = j[k].as_array()?;
+            Some(IVec3::new(
+                i32::try_from(a.first()?.as_i64()?).ok()?,
+                i32::try_from(a.get(1)?.as_i64()?).ok()?,
+                i32::try_from(a.get(2)?.as_i64()?).ok()?,
+            ))
+        };
+        let block = || -> Option<Block> {
+            let b = Block(u16::try_from(j["b"].as_u64()?).ok()?);
+            ((b.0 as usize) < crate::world::block::STATE_CAPACITY).then_some(b)
+        };
+        Some(match j["t"].as_str()? {
+            t @ ("b" | "t") => {
+                let mut b = Burst::new(
+                    *Kind::ALL.get(j["k"].as_u64()? as usize)?,
+                    v("p")?,
+                    u16::try_from(j["n"].as_u64()?).ok()?.min(256),
+                );
+                b.velocity = v("v")?;
+                b.spread = v("s")?;
+                b.velocity_spread = v("vs")?;
+                b.color = j["c"].as_array().and_then(|a| {
+                    let f = |i: usize| a.get(i).and_then(serde_json::Value::as_f64).map(|x| x as f32);
+                    Some([f(0)?, f(1)?, f(2)?, f(3)?])
+                });
+                b.forced = j["f"] == true;
+                b.important = j["i"] == true;
+                if t == "b" { Request::Burst(b) } else { Request::Tracking(b) }
+            }
+            "x" => Request::Explosion { pos: v("p")?, large: j["l"] == true },
+            "r" => Request::Break { cell: c("p")?, block: block()? },
+            "h" => Request::Hit { cell: c("p")?, block: block()?, face: c("d")?.clamp(IVec3::NEG_ONE, IVec3::ONE) },
+            "e" => Request::EyeBreak { pos: v("p")? },
+            _ => return None,
+        })
+    }
+}
+
 /// A bounded request mailbox; oldest requests are evicted if the client isn't polling.
 pub struct Requests(VecDeque<Request>);
 
@@ -349,6 +425,30 @@ pub fn water_entry(player: &crate::player::Player, previous: DVec3, world: &mut 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requests_round_trip_as_json_for_lan_clients() {
+        for (i, kind) in Kind::ALL.into_iter().enumerate() {
+            assert_eq!(kind as usize, i, "Kind::ALL must follow declaration order");
+        }
+        let mut b = Burst::new(Kind::Heart, DVec3::new(1.0, 2.0, 3.0), 7);
+        b.color = Some([0.1, 0.2, 0.3, 1.0]);
+        b.spread = DVec3::splat(0.5);
+        b.forced = true;
+        for r in [
+            Request::Burst(b),
+            Request::Tracking(b),
+            Request::Explosion { pos: DVec3::X, large: true },
+            Request::Break { cell: IVec3::new(4, 5, 6), block: Block::STONE },
+            Request::Hit { cell: IVec3::ONE, block: Block::DIRT, face: IVec3::Y },
+            Request::EyeBreak { pos: DVec3::Z },
+        ] {
+            let back = Request::from_json(&r.to_json().unwrap()).unwrap();
+            assert_eq!(format!("{back:?}"), format!("{r:?}"));
+        }
+        assert!(Request::from_json(&serde_json::json!({"t": "b", "k": 999})).is_none());
+        assert!(Request::from_json(&serde_json::json!({"t": "r", "p": [0, 0, 0], "b": 65535})).is_none());
+    }
     struct Floor;
     impl BlockSource for Floor {
         fn block(&self, p: IVec3) -> Option<Block> {

@@ -208,6 +208,19 @@ impl Sound {
         }
     }
 
+    /// The sound with this [`Sound::key`] (for sounds sent over LAN).
+    pub fn from_key(key: usize) -> Option<Sound> {
+        static TABLE: std::sync::OnceLock<Vec<Option<Sound>>> = std::sync::OnceLock::new();
+        let table = TABLE.get_or_init(|| {
+            let mut t = vec![None; Sound::COUNT];
+            for s in Sound::all() {
+                t[s.key()] = Some(s);
+            }
+            t
+        });
+        table.get(key).copied().flatten()
+    }
+
     /// Every material, gameplay and mob sound synthesized into the audio bank.
     pub fn all() -> impl Iterator<Item = Sound> {
         let per_material = Material::ALL.into_iter().flat_map(|m| [Sound::Break(m), Sound::Place(m), Sound::Step(m)]);

@@ -35,7 +35,13 @@ const SWIM_STROKE: f64 = 2.4;
 /// Interval between hit sounds while mining a block.
 const HIT_INTERVAL: f64 = 0.22;
 
+/// A sound copied for LAN clients: (sound, position or `None` for the host's own, gain, pitch range).
+pub type Tapped = (Sound, Option<DVec3>, f32, (f32, f32));
+
 pub struct Audio {
+    /// While a LAN world has players, every played sound is copied here for them:
+    /// (sound, position or `None` for the host's own, gain, pitch range).
+    pub tap: Option<Vec<Tapped>>,
     tx: Option<Sender<Command>>,
     music: MusicStream,
     /// Dropping this ends the audio thread (and closes the device).
@@ -97,6 +103,7 @@ impl Audio {
         };
 
         Self {
+            tap: None,
             tx,
             music,
             _stop: stop,
@@ -130,6 +137,11 @@ impl Audio {
     /// Plays `sound` at a world position (or at the listener if `None`),
     /// with a random pitch in `pitch`.
     pub fn play(&mut self, sound: Sound, pos: Option<DVec3>, gain: f32, pitch: (f32, f32)) {
+        if let Some(tap) = &mut self.tap
+            && tap.len() < 512
+        {
+            tap.push((sound, pos, gain, pitch));
+        }
         if self.muted || self.tx.is_none() {
             return;
         }

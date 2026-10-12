@@ -39,6 +39,32 @@ pub enum Kind {
 }
 
 impl Kind {
+    pub const ALL: [Kind; 23] = [
+        Kind::Smoke,
+        Kind::LargeSmoke,
+        Kind::Rain,
+        Kind::Flame,
+        Kind::Crit,
+        Kind::MagicCrit,
+        Kind::Poof,
+        Kind::Lava,
+        Kind::LavaDrip,
+        Kind::Splash,
+        Kind::Bubble,
+        Kind::Explosion,
+        Kind::Portal,
+        Kind::Glyph,
+        Kind::Effect,
+        Kind::DragonBreath,
+        Kind::Heart,
+        Kind::Angry,
+        Kind::CrimsonSpore,
+        Kind::WarpedSpore,
+        Kind::Ash,
+        Kind::WhiteAsh,
+        Kind::SoulFlame,
+    ];
+
     pub fn sprite(self) -> u16 {
         match self {
             Self::Smoke | Self::LargeSmoke | Self::Poof => 0,

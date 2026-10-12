@@ -319,3 +319,11 @@ fn mixer_is_cheap() {
     println!("1 s of audio with {MAX_VOICES} voices mixed in {ms:.2} ms");
     assert!(ms < 250.0, "mixing too slow: {ms} ms per second of audio");
 }
+
+#[test]
+fn every_sound_round_trips_through_its_key() {
+    for sound in Sound::all() {
+        assert_eq!(Sound::from_key(sound.key()), Some(sound));
+    }
+    assert_eq!(Sound::from_key(Sound::COUNT), None);
+}

@@ -25,12 +25,19 @@ impl Game {
             };
             centers.iter().any(|center| pos.distance_squared(*center) <= radius * radius)
         };
+        let lan = self.lan.host.is_some() && self.lan.has_peers();
         while let Some(request) = self.world.particles.pop() {
+            if lan && let Some(j) = request.to_json() {
+                self.lan.effects.push((request.pos(), j));
+            }
             if visible(&request) {
                 self.particles.request(request, setting, &self.world);
             }
         }
         while let Some(request) = self.mobs.entities.particles.pop() {
+            if lan && let Some(j) = request.to_json() {
+                self.lan.effects.push((request.pos(), j));
+            }
             if visible(&request) {
                 self.particles.request(request, setting, &self.world);
             }
