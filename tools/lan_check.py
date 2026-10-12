@@ -341,12 +341,60 @@ def busy_join(data):
         host.stop()
 
 
+def pvp(data):
+    """With PvP on, a sword and a bow hurt another player; with it off, neither does."""
+    for enabled in (True, False):
+        port = free_port()
+        host = Host(data / ("pvp-on" if enabled else "pvp-off"), port, extra=["--lan-pvp"] if enabled else [])
+        a = b = None
+        try:
+            a, b = Client(port, "Ann"), Client(port, "Ben")
+            for c in (a, b):
+                c.until(lambda s: s["self"]["ground"], why="spawn")
+            b.command("/tp 3.5 151 4.5")
+            a.command("/tp 0.5 151 4.5")
+            a.command("/give diamond_sword")
+            a.command("/give bow")
+            a.command("/give arrow 16")
+            a.run(0.8)
+            b.run(0.1)
+            start = b.me()["health"]
+            aim = a.aim_at(3.5, 152.0, 4.5)
+            a.control(*aim, buttons=8)
+            a.command("attack_down")
+            a.control(*aim)
+            a.command("attack_up")
+            a.run(0.8, *aim)
+            b.run(0.1)
+            after_sword = b.me()["health"]
+            a.selected = 1
+            aim = a.aim_at(3.5, 152.3, 4.5)
+            a.control(*aim, buttons=16)
+            a.command("use_down")
+            a.run(1.2, *aim, buttons=16)
+            a.command("use_up")
+            a.run(1.0, *aim)
+            b.run(0.1)
+            after_bow = b.me()["health"]
+            if enabled:
+                check("PvP on: sword and bow hurt another player", start > after_sword > after_bow,
+                      f"{start} -> {after_sword:.1f} -> {after_bow:.1f}")
+            else:
+                check("PvP off: players can't hurt each other", start == after_sword == after_bow, f"{after_bow}")
+        finally:
+            for c in (a, b):
+                if c:
+                    c.close()
+            host.stop()
+
+
 def main():
     keep = "--keep" in sys.argv
     data = Path(tempfile.mkdtemp(prefix="vx-lan-check-"))
     try:
         races(data / "races")
         busy_join(data / "busy")
+        pvp(data)
     finally:
         if keep:
             print("data kept in", data)

@@ -713,6 +713,7 @@ impl Game {
         });
     }
     pub(super) fn drive_lan(&mut self, dt: f64) {
+        self.mobs.entities.pvp = self.lan.host.is_some() && self.lan.pvp;
         if self.arrival.is_some() {
             return;
         }
@@ -1620,22 +1621,91 @@ impl Game {
             return true;
         }
         self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
+        // Java's player melee: criticals while falling, enchantment bonuses, Knockback (and
+        // sprinting) shoves, Fire Aspect, sword sweeps across nearby players and Thorns.
         let held = self.inventory.get(self.actions.selected);
         let enchants = held.map_or(Default::default(), |s| s.active_enchants());
-        let damage = crate::mining::attack_damage(self.held_item())
-            + self.vitals.effects.attack_bonus()
-            + crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
+        let p = &self.player;
+        let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
+        let sprint = if self.puppet {
+            self.agents.players.values().find(|b| b.id == self.actor).is_some_and(|b| b.agent.movement_input().sprint)
+        } else {
+            self.movement_input(self.arrival.is_some()).sprint
+        };
+        let base = (crate::mining::attack_damage(self.held_item()) + self.vitals.effects.attack_bonus()).max(0.0);
+        let bonus = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
+        let damage = base * if critical { 1.5 } else { 1.0 } + bonus;
+        let (knock_level, fire) = crate::mining::weapon_extras(held);
         let dir = self.player.forward().as_dvec3().with_y(0.0).normalize_or_zero();
-        let bot = self.agents.players.get_mut(&name).unwrap();
-        let (mode, creative) = (bot.agent.mode, bot.agent.creative);
-        if self.puppet && bot.id == self.actor {
-            bot.agent.mode = self.lan.host_mode;
-            bot.agent.creative = self.lan.host_mode.is_creative();
+        let shove = 0.4 + 0.5 * (knock_level as f64 + if sprint { 1.0 } else { 0.0 });
+        let sword = held.and_then(|s| s.item.as_tool()).is_some_and(|(k, _)| k == crate::item::ToolKind::Sword);
+        let sweep = sword && self.player.on_ground && !critical && !sprint;
+        let attacker = self.actor;
+        let host_mode = self.lan.host_mode;
+        let puppet = self.puppet;
+        let hit = |g: &mut Self, target: &str, amount: f32, push: DVec3, fire: f32| -> Option<(DVec3, [u8; 4])> {
+            let bot = g.agents.players.get_mut(target)?;
+            let (mode, creative) = (bot.agent.mode, bot.agent.creative);
+            if puppet && bot.id == attacker {
+                bot.agent.mode = host_mode;
+                bot.agent.creative = host_mode.is_creative();
+            }
+            bot.agent.hurt(amount, "was slain by a player", push, &mut g.mobs.entities);
+            if fire > 0.0 {
+                bot.agent.vitals.ignite(fire);
+            }
+            bot.agent.mode = mode;
+            bot.agent.creative = creative;
+            let thorns = crate::entity::Target::thorns_of(&bot.agent.inventory.armor);
+            Some((bot.agent.player.pos, thorns))
+        };
+        let Some((at, thorns)) = hit(self, &name, damage, dir * shove + DVec3::Y * 0.2, fire) else { return true };
+        if sweep {
+            let level = enchants.level(crate::enchant::Enchantment::SweepingEdge) as f32;
+            let swept = 1.0 + level / (level + 1.0) * base;
+            let near: Vec<String> = self
+                .agents
+                .players
+                .iter()
+                .filter(|(n, b)| {
+                    **n != name
+                        && b.id != attacker
+                        && b.active
+                        && !b.agent.vitals.is_dead()
+                        && b.agent.player.pos.distance_squared(at) < 1.0 + 1.0
+                        && b.agent.player.pos.distance_squared(self.player.pos) < 9.0
+                })
+                .map(|(n, _)| n.clone())
+                .collect();
+            for other in near {
+                hit(self, &other, swept, dir * 0.4 + DVec3::Y * 0.2, 0.0);
+            }
+            let mut burst = crate::particles::Burst::new(crate::particles::Kind::Poof, at + DVec3::Y, 3);
+            burst.spread = DVec3::splat(0.5);
+            self.mobs.entities.particles.push(crate::particles::Request::Burst(burst));
         }
-        bot.agent.hurt(damage, "was slain by a player", dir * 0.4 + DVec3::Y * 0.2, &mut self.mobs.entities);
-        bot.agent.mode = mode;
-        bot.agent.creative = creative;
+        if critical {
+            let mut burst = crate::particles::Burst::new(crate::particles::Kind::Crit, at + DVec3::Y, 16);
+            burst.spread = DVec3::splat(0.4);
+            self.mobs.entities.particles.push(crate::particles::Request::Burst(burst));
+        }
+        self.audio.play(
+            crate::audio::sounds::Sound::Hit,
+            Some(at + DVec3::Y),
+            0.8,
+            if critical { (1.25, 1.4) } else { (0.9, 1.1) },
+        );
+        // Thorns: each piece 15% per level to hit back for 1-5.
+        for level in thorns.into_iter().filter(|&l| l > 0) {
+            if self.mobs.entities.roll_chance(0.15 * level as f32) {
+                let back = self.mobs.entities.roll_range(1.0, 5.0);
+                self.damage_player(back, "was killed trying to hurt a player");
+            }
+        }
         self.wear_held(true);
+        if self.mode.is_survival() {
+            self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
+        }
         true
     }
 }

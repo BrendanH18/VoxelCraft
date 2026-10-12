@@ -602,6 +602,8 @@ pub struct Entities {
     /// Seconds until the next gossip summon roll.
     gossip_timer: f32,
     rng: Rng,
+    /// Players may hurt each other (a LAN world's PvP setting): their arrows hit players.
+    pub pvp: bool,
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
     spawner_delays: rustc_hash::FxHashMap<IVec3, f32>,
@@ -661,6 +663,7 @@ impl Entities {
             villager_griefing: true,
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
+            pvp: false,
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
             merge_timer: 0.0,
@@ -1811,7 +1814,17 @@ impl Entities {
         let mut arrow = Arrow::shot(eye, dir, power, pickup);
         arrow.enchants = enchants;
         arrow.owner = Some(owner);
+        arrow.pvp = self.pvp;
         self.arrows.push(arrow);
+    }
+
+    /// A shared random roll (`p` chance), for host rules outside the entity simulation.
+    pub fn roll_chance(&mut self, p: f32) -> bool {
+        self.rng.chance(p)
+    }
+    /// A shared uniform draw in `lo..hi`.
+    pub fn roll_range(&mut self, lo: f32, hi: f32) -> f32 {
+        self.rng.range(lo, hi)
     }
 
     /// Stuck player arrows within reach of a player at `feet`, removed.
