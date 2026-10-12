@@ -119,6 +119,8 @@ pub(crate) enum Container {
 }
 
 struct Game {
+    /// Exclusive claim on the open save (`session.lock`), released when the game closes.
+    session_lock: Option<std::fs::File>,
     agents: agents::Agents,
     lan: lan::Lan,
     split: split::Split,
@@ -278,7 +280,20 @@ impl App {
     /// Loads (or creates) a world and leaves the title screen. Debug
     /// options like `--give` only apply to the first world of a session.
     fn play(&mut self, shell: Shell, world_dir: &str, new: Option<title::NewWorld>) {
+        // One process per save; scripted runs (screenshots, benchmarks) never write, so they may share.
+        let scripted = self.args.screenshot.is_some() || self.args.bench_render;
+        let lock = Storage::new(self.saves_dir.join(world_dir)).lock();
+        if let Err(e) = &lock
+            && !scripted
+        {
+            log::warn!("cannot open world '{world_dir}': {e}");
+            let mut title = title::Title::new(shell, &self.saves_dir);
+            title.world_error(format!("Can't open \"{world_dir}\": {e}"));
+            self.title = Some(title);
+            return;
+        }
         let mut game = Game::start(shell, &self.args, &self.saves_dir, world_dir, new);
+        game.session_lock = lock.ok();
         game.apply_settings();
         self.args.clear_one_shot();
         self.title = None;
@@ -766,6 +781,7 @@ impl Game {
             agents.restore_pad_beds(text);
         }
         let mut game = Game {
+            session_lock: None,
             agents,
             lan: lan::Lan::default(),
             split: split::Split { follow: args.split_screen.clone(), side_by_side: args.split_side },

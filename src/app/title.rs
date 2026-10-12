@@ -160,6 +160,11 @@ impl Title {
         }
     }
 
+    /// Shows `reason` under the world list (a world that couldn't be opened).
+    pub fn world_error(&mut self, reason: String) {
+        self.screen = Screen::List;
+        self.message = reason;
+    }
     pub fn connection_error(&mut self, reason: String) {
         self.show_multiplayer();
         self.message = reason;
@@ -572,6 +577,9 @@ impl Title {
                 ui.rect(x, y, lw, lh, [0.0, 0.0, 0.0, 0.8]);
                 if self.worlds.is_empty() {
                     centred(&mut ui, y + lh / 2.0 - 4.0, "No worlds yet: create one!", grey);
+                }
+                if !self.message.is_empty() {
+                    centred(&mut ui, y + lh + 4.0, &fit(&self.message, sw - 16.0), [1.0, 0.5, 0.45, 1.0]);
                 }
             }
             Screen::Create => {
