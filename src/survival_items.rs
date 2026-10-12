@@ -1,4 +1,5 @@
 //! Shared everyday item actions for desktop, controller and device-free players.
+pub mod bucket;
 use crate::{
     entity::{Entities, PlayerId},
     inventory::Inventory,

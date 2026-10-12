@@ -29,6 +29,7 @@ pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pi
 pub enum Event {
     Broke(IVec3, Block),
     Placed(IVec3, Block),
+    Bucket(crate::survival_items::bucket::Effect),
     Chew,
     /// Absorbed an experience orb; with the level-up chime volume when it
     /// reached a multiple of five levels.
@@ -822,24 +823,40 @@ impl Agent {
                 }
             }
             Command::Place
-                if self.inventory.get(self.selected).is_some_and(|s| {
-                    crate::entity::aquatic::bucket_kind(s.item).is_some() || s.item == Item::WATER_BUCKET
-                }) =>
+                if self
+                    .inventory
+                    .get(self.selected)
+                    .is_some_and(|s| crate::survival_items::bucket::handles(s.item)) =>
             {
                 if !self.mode.can_interact() {
                     return Err("spectators cannot use buckets".into());
                 }
-                if !entities.use_water_creature_bucket(
-                    world,
+                // Empty buckets still milk cows before trying a fluid source.
+                if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::BUCKET)
+                    && crate::survival_items::use_mob(
+                        &self.player,
+                        &mut self.inventory,
+                        self.selected,
+                        self.creative,
+                        world,
+                        entities,
+                        self.id,
+                    )
+                {
+                    return Ok(());
+                }
+                let Some(effect) = crate::survival_items::bucket::use_bucket(
+                    &self.player,
                     &mut self.inventory,
                     self.selected,
                     self.creative,
-                    self.player.eye(),
-                    self.player.forward().as_dvec3(),
+                    world,
+                    entities,
                     6.0,
-                ) {
-                    return Err("no water creature or bucket placement within reach".into());
-                }
+                ) else {
+                    return Err("no bucket or bottle interaction within reach".into());
+                };
+                self.emit(Event::Bucket(effect));
             }
             Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD) => {
                 if !self.mode.can_interact() {

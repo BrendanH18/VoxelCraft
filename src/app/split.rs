@@ -138,6 +138,7 @@ impl Game {
                 match event {
                     Event::Broke(pos, block) => self.audio.block_break(block, pos),
                     Event::Placed(pos, block) => self.audio.block_place(block, pos),
+                    Event::Bucket(effect) => super::bucket::feedback(&mut self.audio, effect),
                     Event::Chew => {
                         let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
                         self.audio.play(sound, Some(bot.agent.player.eye()), 0.7, (1.4, 1.7));
