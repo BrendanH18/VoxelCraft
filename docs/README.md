@@ -1,0 +1,37 @@
+# VoxelCraft documentation
+
+[Project README](../README.md) · [Contributing](../CONTRIBUTING.md)
+
+## Goals, status and planned changes
+
+- [Roadmap](roadmap.md): authoritative scope, dependencies and completion criteria.
+- [Restructuring plan](restructuring.md): planned verification, content, gameplay,
+  asset and module changes, including how to retain pending v0.7 work.
+
+Neither a planned task nor a historical release report establishes verified parity.
+
+## Playing
+
+- [Gameplay](gameplay.md) and [survival items](survival-items.md).
+- [Colours](colors.md), [bastions](bastions.md) and [Nether biomes](nether-biomes.md).
+- [Overworld terrain](overworld-terrain.md), [structures](overworld-structures.md)
+  and [aquatic mobs](aquatic-mobs.md).
+- [Mob parity](mob-parity.md), [Nether mobs](nether-mobs.md) and [redstone](redstone.md).
+- [Player rendering](player-rendering.md), [music](music.md) and [particles](particles.md).
+
+Feature guides describe their documented implementation and limitations. Use the
+roadmap and recorded checks to assess completeness against the current target.
+
+## Engineering and delivery
+
+- [Agent instructions](../AGENTS.md) and [engineering guide](agent-guide.md).
+- [Architecture](architecture.md), [development tools](development.md) and
+  [hosted agents/commands](agents.md).
+- [Release guide](releases.md).
+- [Dated performance investigation](performance-2026-10-07.md).
+
+## History
+
+[Archived roadmaps and task briefs](archive/README.md) preserve earlier decisions,
+allocations and review reports. They are superseded historical records, not
+current instructions or a second roadmap.

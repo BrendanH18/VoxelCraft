@@ -1,0 +1,181 @@
+# Project restructuring plan
+
+[Documentation index](README.md) · [Roadmap](roadmap.md) · [Agent instructions](../AGENTS.md)
+
+This is an implementation plan, not a claim that the code has been restructured.
+The repository/agent-notes migration establishes versioned guidance; the engine,
+content and asset changes below remain Planned. The roadmap remains authoritative
+for product scope and completion. Link evidence here and update its affected
+requirements as each change lands.
+
+## Pending v0.7 work: retain and assess
+
+As inspected on 2026-10-12, branch
+[`t3/continue-project-build`](https://github.com/BrendanH18/VoxelCraft/tree/t3/continue-project-build)
+contains package version 0.7.0 at commit
+[`f5bf0d1`](https://github.com/BrendanH18/VoxelCraft/commit/f5bf0d169487452383aa3b6ab588b29fe08814fb).
+It contains substantial animals, breeding, companions, leads, mounts, boats,
+LAN implementation and tests. Its presence and historical test reports do not
+establish completion under the new roadmap. Preserve that branch and any
+uncommitted work; a new plan is not a reason to delete it.
+
+| Pending work | Relevant roadmap requirements | Next disposition |
+| --- | --- | --- |
+| Animals, breeding, companions, leads and naming | MOB-03, MOB-06, FOO-02 | Unassessed against the selected reference; verify and retain useful single-player work |
+| Boats, mounts, storage and transport | FOO-04, AUT-05 | Unassessed; check acquisition, interactions, persistence and performance |
+| Shared fixes, including save locking and interaction integration | PLY-04, UX-04, UX-05 | Review independently and retain applicable corrections |
+| LAN networking and multiplayer presentation | Post-1.0 scope | Preserve existing code; defer further expansion and maintain shared behavior |
+
+Before integrating the branch:
+
+1. Record its current tip and inventory changes against `main`, including
+   uncommitted work separately. Historical briefs help identify intended scope.
+2. Classify each behavior under the new roadmap. Review existing
+   `tests/release_0_7.rs`, `tests/lan_loopback.rs` and the LAN harness on that branch
+   before writing duplicate checks.
+3. Verify relevant single-player behavior, controller/CLI regressions, old/new
+   save round trips and representative performance. Report remaining differences.
+4. Integrate useful work through a reviewed PR, keeping LAN expansion out of
+   single-player acceptance. Choose merge versus focused cherry-picks based on
+   dependencies; do not assume tightly coupled commits can be separated safely.
+5. Reconcile version and release claims only after a coherent scope passes its
+   checks. Do not bump versions, release, merge or delete branches as part of
+   this documentation migration.
+
+Pause new feature expansion while this assessment and M0/M1 foundations are
+established. Continue bounded bug fixes that preserve existing work.
+
+## STR-01 — Reference fixtures and performance scenes
+
+**Status:** Planned. **Roadmap:** M0; PLY-01, GEN-07, UX-04/05; performance acceptance.
+
+Extend existing headless integration tests rather than replacing them. Add
+`tests/fixtures/java/<reference-version>/` for expected behavior and selected
+generation outputs. Every fixture records source/provenance, reference version,
+setup and expected outcomes; do not bless current Rust output as Java evidence.
+Add per-feature scenarios for acquisition/use, boundary conditions, interrupted
+work and save/reload. Keep lightweight rule tests beside their modules.
+
+Define reproducible benchmark scenes/routes for ordinary survival, dense
+building, entities, active automation and streaming. Record commit, seed,
+hardware, physical resolution, view distance, warm-up/sample procedure,
+frame-time distribution, memory and streaming hitches in machine-readable
+results. Measure native resolution separately. Do not turn the existing
+1600x900 synchronized render benchmark into a claim of 1080p acceptance.
+
+**Acceptance:** the first scenario independently detects a known parity defect;
+fixtures can be reproduced; save/reload changes observable state correctly;
+the scene runner reports the roadmap's 1% low and p99 metrics. Capture a baseline
+even if it misses the target. Require M5 hardware evidence for its performance gate.
+
+## STR-02 — Shared content definitions and tags
+
+**Status:** Planned. **Roadmap:** M2; BLD-01/02/03/06, FOO-01/02, AUT-03/04.
+**Dependency:** STR-01 coverage for the first migrated content family.
+
+Introduce `src/content/` with authoritative content definitions and typed tags.
+Migrate one family at a time from duplicated crafting ingredient, fuel and
+composting lists. Centralize recipe/loot integration metadata and presentation
+references while retaining specialized behavior code for growth, placement and
+other stateful rules. Start with static Rust definitions and compact lookup
+tables; a runtime data loader is not a prerequisite.
+
+Preserve numeric block/item/state meanings, texture mappings and legacy save
+compatibility. Treat version-specific exceptions explicitly; a generic material
+tag must not silently determine every gameplay behavior. Validate expected
+integrations and record intentional ineligible/unsupported cases.
+
+**Acceptance:** the migrated family has complete acquisition, recipe, drop,
+fuel/compost and presentation checks where applicable; a missing expected
+integration produces a useful failure. Old saves keep their IDs. Parsing or
+allocation is not introduced into per-cell/per-frame lookups; benchmarks show
+no unexplained regression.
+
+## STR-03 — Shared gameplay actions and session ownership
+
+**Status:** Planned. **Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.
+**Dependency:** STR-01 regression coverage and review of pending v0.7 changes.
+
+Extract device-independent action validation and execution from the desktop
+application and CLI-agent paths. Input adapters submit actions with explicit
+player identity; shared code validates reach, mode, timing, held item and
+inventory before mutating state. Separate player/session state from camera,
+menus, hand animation and device resources. Return events for presentation.
+
+Begin with bucket use, including ordinary pouring and creature capture, because
+the 0.6 audit found different behavior across input paths. Then migrate mining,
+placement, combat, item use and workstation/container transactions in small
+steps. Replace controller `Game::puppet` state swapping as interactions move.
+Preserve each action's current frame/tick timing until a reference-backed
+behavior correction is made explicitly. This is not a multiplayer expansion.
+
+**Acceptance:** the same scenario has consistent gameplay outcomes through the
+desktop, controller and CLI adapters; invalid actions cannot partially consume
+inventory or edit the world. Headless scenarios exercise the shared execution
+path. Death, interruption, containers and save/reload preserve the correct
+player's state; visual/input checks confirm ordinary play.
+
+## STR-04 — Original asset pipeline
+
+**Status:** Planned. **Roadmap:** M7; UX-01/02, MOB-06.
+
+Add `assets/` for original or appropriately licensed textures, models, audio and
+music, with a manifest recording stable names, provenance/licenses and mappings
+to runtime resources. Keep procedural generation where useful and allow
+individual handmade assets to replace outputs without changing gameplay IDs.
+Add validation/packaging tools for dimensions, formats, references, animations
+and complete resource inclusion. Design paths for packaged executables, not
+just execution from the repository root.
+
+**Acceptance:** one original asset loads correctly in development and packaged
+builds; missing resources produce actionable errors; existing procedural
+resources still work; visual/audio player checks and startup/frame/memory
+measurements cover the change. Asset provenance is reviewable.
+
+## STR-05 — Focused modules, then evaluate a workspace
+
+**Status:** Planned. **Roadmap:** supports M1–M7; PLY-04, UX-04/05.
+**Dependency:** relevant behavior coverage; session extraction informs boundaries.
+
+Separate command parsing from execution in `src/agent.rs`, application
+coordination from gameplay rules in `src/app/mod.rs`, and entity lifecycle
+from individual AI systems in `src/entity/mod.rs`. Extract one responsibility
+per focused change; use existing subsystem modules where appropriate.
+
+Keep the reusable library and `client` feature working throughout. Consider
+separate engine/client Cargo workspace crates only after those boundaries are
+clear and the split has a concrete benefit. A workspace split is a later
+decision, not an automatic requirement or a performance claim.
+
+**Acceptance:** desktop and `--no-default-features` builds/tests pass; extracted
+simulation code has no device dependency; public interfaces and save behavior
+remain compatible; changed hot paths have relevant benchmark evidence. Existing
+v0.7 work can be integrated without an unnecessary parallel rewrite.
+
+## STR-06 — Documentation and verification records
+
+**Status:** Repository migration implemented; ongoing evidence workflow Planned.
+**Roadmap:** M0; every requirement's delivery evidence.
+
+Use `docs/README.md` to distinguish player guides, engineering documents,
+plans/status and archives. Keep `docs/roadmap.md` as the only active roadmap and
+root `AGENTS.md` as the shared instructions; `CLAUDE.md` imports them.
+Archive superseded briefs with explicit historical context.
+
+As features are assessed, add dated reports under `docs/verification/` recording
+requirement IDs, tested commit, reference version, automated/manual/save and
+performance evidence, and remaining differences. Link reports from affected
+roadmap records; do not create a second independent status ledger.
+
+**Acceptance:** a fresh checkout includes all active guidance without an external
+notes directory or hook; links resolve; planned and verified states are distinct.
+Each newly Verified feature links to reproducible evidence for its defined scope.
+
+## Implementation order
+
+Finish the repository migration, assess pending v0.7 work, then start STR-01.
+Use a small vertical slice: reference bucket/fuel scenarios, first content
+definitions, shared bucket execution, save/reload and performance verification.
+Proceed with STR-02/03 as their coverage permits. STR-04 and STR-05 follow actual
+quality and maintainability needs; no blanket engine rewrite is authorized by
+this plan. STR-06 evidence updates accompany each completed feature.

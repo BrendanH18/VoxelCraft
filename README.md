@@ -345,6 +345,11 @@ These recorded sweeps are separate from the roadmap's
 
 The [roadmap](docs/roadmap.md) is the source of truth for goals, scope,
 milestones and completion criteria.
+The [documentation index](docs/README.md) separates player guides, engineering
+guidance and historical records. [Shared agent instructions](AGENTS.md) are
+tracked in this repository; no separate notes folder or setup hook is needed.
+The [restructuring plan](docs/restructuring.md) describes proposed code changes
+and assessment of pending v0.7 work; it does not claim those changes are complete.
 
 ## 🤝 Contributing
 

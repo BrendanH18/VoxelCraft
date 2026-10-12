@@ -1,6 +1,6 @@
 # VoxelCraft roadmap
 
-[← Back to VoxelCraft](../README.md) · [Contributing](../CONTRIBUTING.md) · [Architecture](architecture.md) · [Development](development.md)
+[← Back to VoxelCraft](../README.md) · [Documentation index](README.md) · [Contributing](../CONTRIBUTING.md) · [Architecture](architecture.md) · [Development](development.md)
 
 ## Current plan — updated 2026-10-12
 
@@ -43,6 +43,11 @@ roadmap is new.
 Existing multiplayer, split-screen, controller and CLI-agent capabilities
 receive maintenance and integration fixes, not new feature expansion ahead
 of the single-player goal.
+
+Retain the pending v0.7.0 branch and assess its useful single-player work before
+integration. The [restructuring plan](restructuring.md) records that assessment
+and six concrete architecture/verification tasks. Those code and asset tasks
+are planned, not implemented by the documentation migration.
 
 This tracked document is the authoritative project roadmap. Update it with
 the code as scope or verified behavior changes. Milestones and performance
@@ -239,6 +244,20 @@ workstation functions, anvil naming, additional brewing, world-generation
 fidelity, turtle reproduction, dripstone/dripleaf behavior and complete
 current-version content. The inventory must inspect these rather than trust
 old "done" labels.
+
+### 3.2 Pending v0.7.0 work
+
+The branch `t3/continue-project-build`, inspected at `f5bf0d1` on 2026-10-12,
+contains animals, breeding, companions, leads, mounts, boats, LAN work and
+additional tests. Keep this code and its branch. It is not part of the 0.6
+baseline above and is **Unassessed** against this roadmap's reference and
+acceptance gates. Historical completion reports do not change that state.
+
+Review and retain useful single-player work under MOB-03/MOB-06, FOO-02/FOO-04,
+AUT-05 and applicable player/save requirements. Preserve the LAN implementation
+while deferring new multiplayer expansion. Review dependencies before choosing
+a merge or focused cherry-picks. See the
+[pending-work assessment plan](restructuring.md#pending-v07-work-retain-and-assess).
 
 ## 4. Core requirement catalogue
 
