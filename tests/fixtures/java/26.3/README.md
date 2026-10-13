@@ -16,18 +16,25 @@ is 1 and fast cooking reduction is 2, using integer division. Notably the
 selected version's dried-kelp provider is **4001 ticks**; rounding it to 4000
 would lose reference precision. Crimson/warped planks have no cooking fuel.
 
-Brewing and pending lead/saddle recipe facts identify their exact paths in the
-artifact. The lead and saddle cases are recorded for the pending v0.7 assessment:
-they are not silently skipped verification cases for the current 0.6 baseline,
-which does not yet register those items. They must become normal integration
-tests when that content is integrated.
+Brewing and lead/saddle recipe facts identify their exact paths in the
+artifact. The fixture keeps its original `pending_recipes` key so regenerated
+output still diffs cleanly. The v0.7 content that registers leads and saddles
+was merged in `22ad25c`, so these cases are now normal integration tests:
+`retained_transport_recipes_match_java_26_3_and_consume_the_grid` crafts both
+recipes and checks the grid is consumed.
 
 The shared bucket scenarios in `tests/shared_buckets.rs` are original setups
-based on Java 26.3 `BucketItem.use/emptyContents` and `ItemUtils.createFilledResult`:
-source pickup, adjacent-face pouring, creative item retention, stacked-container
-overflow, bottle filling without source removal and Nether water evaporation.
+based on Java 26.3 `BucketItem.use/emptyContents`, `BottleItem.use`,
+`Player.mayUseItemAt`, `Bucketable.bucketMobPickup`, `BlockBehaviour.canBeReplaced`,
+`ServerPlayerGameMode.useItemOn` and `ItemUtils.createFilledResult`. They cover
+source pickup, pouring on the hit face (grass and ferns are not replaced in
+place), water into a water-holding plant in place, destroying replaceable blocks
+with their drops, creative item retention, stacked-container overflow, bottle
+filling without source removal, Nether water evaporation, Adventure failure for
+fluid buckets, and entity and block use taking priority over buckets on the CLI.
 They also exercise VoxelCraft's existing creature payload and save format.
-They do not establish full waterlogging, cauldron or offhand parity.
+They do not establish full waterlogging, cauldron or offhand parity. VoxelCraft
+has no separate dry/waterlogged block states.
 
 Reproduce the data-derived facts from a downloaded server artifact:
 

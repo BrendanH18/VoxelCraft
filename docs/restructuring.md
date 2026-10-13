@@ -23,8 +23,8 @@ uncommitted work; a new plan is not a reason to delete it.
 
 | Pending work | Relevant roadmap requirements | Next disposition |
 | --- | --- | --- |
-| Animals, breeding, companions, leads and naming | MOB-03, MOB-06, FOO-02 | Partial after initial assessment; retain implementations, correct the modern lead recipe and finish acceptance |
-| Boats, mounts, storage and transport | FOO-04, AUT-05 | Partial; retain implementations, add the modern saddle recipe and finish interaction/persistence/performance checks |
+| Animals, breeding, companions, leads and naming | MOB-03, MOB-06, FOO-02 | Partial; retained in `22ad25c`, which also corrected the Java 26.3 lead recipe (`retained_transport_recipes_match_java_26_3_and_consume_the_grid`). Finish interaction, persistence and performance acceptance |
+| Boats, mounts, storage and transport | FOO-04, AUT-05 | Partial; retained in `22ad25c` with the Java 26.3 saddle recipe (same test). Finish interaction/persistence/performance checks |
 | Shared fixes, including save locking and interaction integration | PLY-04, UX-04, UX-05 | Useful turtle gating and save-lock code identified; full player/platform acceptance remains |
 | LAN networking and multiplayer presentation | Post-1.0 scope | Preserve existing code; defer further expansion and maintain shared behavior |
 
@@ -117,6 +117,9 @@ reference reach, progress and ice rules. Shared block placement is implemented
 ([placement evidence](verification/2026-10-13-shared-placement.md)), including
 paired-cell validation, inventory spending and low-cube targeting. Melee is
 shared with Java attack-strength charging ([combat evidence](verification/2026-10-13-shared-combat.md)).
+Buckets and bottles share Java's entity-then-block-then-item priority,
+Adventure permission and hit-face pouring on desktop and CLI
+([bucket review evidence](verification/2026-10-13-review-bucket-fixes.md)).
 Other item use and container transactions still need extraction; controller/LAN `Game::puppet`
 still swaps session and presentation state and must be removed.
 **Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.
