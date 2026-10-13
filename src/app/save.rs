@@ -2,7 +2,8 @@
 use super::*;
 impl Game {
     pub(super) fn save(&mut self) {
-        if self.lan.client.is_some() {
+        // LAN clients do not own the world; benchmark scenes never write saves.
+        if self.lan.client.is_some() || self.benchmark.is_some() {
             self.last_save = Instant::now();
             return;
         }

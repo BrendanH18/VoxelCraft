@@ -333,7 +333,11 @@ impl Game {
         game.restore_dimension(&dimension_props);
         if game.session.vitals.is_dead() {
             game.on_death();
-        } else if game.screenshot.is_none() && game.bench_render.is_none() && !game.console.open {
+        } else if game.screenshot.is_none()
+            && game.bench_render.is_none()
+            && game.benchmark.is_none()
+            && !game.console.open
+        {
             game.set_grab(true);
         }
         game.lan.mode = game.session.mode;

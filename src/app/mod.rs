@@ -270,7 +270,8 @@ impl App {
     /// Loads (or creates) a world and leaves the title screen. Debug
     /// options like `--give` only apply to the first world of a session.
     fn play(&mut self, shell: Shell, world_dir: &str, new: Option<title::NewWorld>) {
-        // One process per save; scripted runs (screenshots, benchmarks) never write, so they may share.
+        // One process per save; scripted runs (screenshots, benchmarks) never autosave and may share.
+        // Benchmarks never write; a screenshot run saves only if its window is explicitly closed.
         let scripted = self.args.screenshot.is_some() || self.args.bench_render || self.args.benchmark_scene.is_some();
         let lock = Storage::new(self.saves_dir.join(world_dir)).lock();
         if let Err(e) = &lock
@@ -413,9 +414,24 @@ impl ApplicationHandler for App {
             return;
         }
         let Some(game) = self.game.as_mut() else { return };
+        // A live benchmark ignores keyboard, pointer and focus changes so stray input
+        // cannot pause it or open menus; closing the window abandons it without saving.
+        if game.benchmark.is_some()
+            && matches!(
+                event,
+                WindowEvent::KeyboardInput { .. }
+                    | WindowEvent::MouseInput { .. }
+                    | WindowEvent::MouseWheel { .. }
+                    | WindowEvent::CursorMoved { .. }
+                    | WindowEvent::ModifiersChanged(_)
+                    | WindowEvent::Focused(_)
+            )
+        {
+            return;
+        }
         match event {
             WindowEvent::CloseRequested => {
-                self.save_on_exit = true;
+                self.save_on_exit = game.benchmark.is_none();
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => game.renderer.resize(size.width, size.height),
@@ -539,6 +555,7 @@ impl ApplicationHandler for App {
         if let (Some(game), DeviceEvent::MouseMotion { delta }) = (self.game.as_mut(), event)
             && game.mouse_grabbed
             && !game.inventory_open
+            && game.benchmark.is_none()
         {
             let k = MOUSE_SENSITIVITY * game.settings.sensitivity;
             game.session.player.look(delta.0 as f32 * k, delta.1 as f32 * k);
@@ -1768,7 +1785,8 @@ impl Game {
         let ticks = self.clock.advance(elapsed, paused);
         let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
         self.update_credits(elapsed.as_secs_f32().min(0.25));
-        if self.lan.client.is_none() {
+        // Benchmark scenes take no controller input (a stray Start would pause sampling).
+        if self.lan.client.is_none() && self.benchmark.is_none() {
             self.poll_pads(dt as f32, paused);
         }
 
@@ -1838,7 +1856,8 @@ impl Game {
         for pos in self.world.mesh_removals.drain(..) {
             self.renderer.remove_mesh(pos);
         }
-        if now - self.last_save > AUTOSAVE_EVERY {
+        // Scripted runs (screenshots, benchmarks) have no options path and never autosave.
+        if self.settings_path.is_some() && now - self.last_save > AUTOSAVE_EVERY {
             self.save();
         }
 
