@@ -220,6 +220,9 @@ def extract_facts(jar, data):
     require("getMaxSpawnClusterSize" in position and "isMaxGroupSizeReached" in position, "pack limits changed")
     distance = method(spawner, "private static boolean isRightDistanceToPlayerAndSpawnPoint(")
     require("double 576.0d" in distance and "double 24.0d" in distance, "player distance changed")
+    spawn_point = re.search(r"ServerLevel\.getRespawnData[\s\S]*RespawnData\.dimension[\s\S]*ServerLevel\.dimension"
+                            r"[\s\S]*RespawnData\.pos[\s\S]*// double ([\d.]+)d\n[^\n]*BlockPos\.closerToCenterThan", distance)
+    require(spawn_point, "spawn point distance changed")
     chunk = method(spawner, "public static void spawnCategoryForChunk(")
     require("getMinY" in chunk and "iconst_1" in chunk, "minimum start height changed")
     cluster = method(inspect("net.minecraft.world.entity.Mob"), "public int getMaxSpawnClusterSize(")
@@ -231,6 +234,7 @@ def extract_facts(jar, data):
         "first_pack_steps": "ceil(nextFloat() * 4)",
         "step": "x and z += nextInt(6) - nextInt(6)",
         "min_player_distance_squared": 576.0,
+        "spawn_point_min_distance": float(spawn_point[1]),
         "pack_steps_after_choice": "the chosen entry's count",
         "max_cluster": 4,
     }

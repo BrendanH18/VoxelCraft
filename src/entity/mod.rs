@@ -621,6 +621,10 @@ pub struct Entities {
     trader_spawner: wandering_trader::Spawner,
     trader_leaders: rustc_hash::FxHashMap<u64, (DVec3, f32, bool)>,
     pub trader_spawning: bool,
+    /// The world spawn point when it lies in this dimension (Java's
+    /// `ServerLevel.getRespawnData`); natural spawns keep 24 blocks clear of
+    /// its block centre. Set by the world before each update.
+    pub world_spawn: Option<IVec3>,
     /// The mobGriefing gamerule, shared by villager and piglin item pickup.
     pub villager_griefing: bool,
     /// Seconds until another iron golem may be summoned.
@@ -685,6 +689,7 @@ impl Entities {
             trader_spawner: Default::default(),
             trader_leaders: Default::default(),
             trader_spawning: true,
+            world_spawn: None,
             villager_griefing: true,
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
@@ -1536,9 +1541,24 @@ pub fn in_spawn_ring(player: DVec3, pos: DVec3) -> bool {
     (SPAWN_MIN_DIST * SPAWN_MIN_DIST..=SPAWN_MAX_DIST * SPAWN_MAX_DIST).contains(&d2)
 }
 
-/// No player is closer than [`SPAWN_MIN_DIST`] to `pos`.
-fn clear_of_players(ctx: &Ctx, pos: DVec3) -> bool {
+/// No player is closer than [`SPAWN_MIN_DIST`] to `pos`, and `pos` is not
+/// within 24 blocks of the world spawn point.
+fn clear_of_players(ctx: &Ctx, world_spawn: Option<IVec3>, pos: DVec3) -> bool {
     ctx.nearest_player_dist2(pos).is_none_or(|d| d >= SPAWN_MIN_DIST * SPAWN_MIN_DIST)
+        && !near_world_spawn(world_spawn, pos)
+}
+
+/// Java's minimum distance of natural spawns from the world spawn point.
+pub const SPAWN_POINT_MIN_DIST: f64 = 24.0;
+
+/// The spawn-point half of Java's
+/// `NaturalSpawner.isRightDistanceToPlayerAndSpawnPoint`:
+/// `spawn.closerToCenterThan(pos, 24.0)`, i.e. the squared distance from the
+/// spawn block's centre (each axis + 0.5) to `pos` is strictly below 24².
+pub fn near_world_spawn(world_spawn: Option<IVec3>, pos: DVec3) -> bool {
+    world_spawn.is_some_and(|s| {
+        (s.as_dvec3() + DVec3::splat(0.5)).distance_squared(pos) < SPAWN_POINT_MIN_DIST * SPAWN_POINT_MIN_DIST
+    })
 }
 
 /// Feet position for a mob on the sky-exposed surface of column (x, z),

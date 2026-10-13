@@ -231,6 +231,9 @@ impl Game {
     pub(super) fn update_mobs(&mut self, dt: f64) {
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
+        // The world spawn (Java's respawn data) is an Overworld position.
+        self.mobs.entities.world_spawn =
+            (self.dimension == crate::world::terrain::Dimension::Overworld).then_some(self.world_spawn);
         self.mobs.entities.trader_spawning =
             self.gamerules.bool("doTraderSpawning") && self.gamerules.bool("doMobSpawning");
         self.mobs.entities.villager_griefing = self.gamerules.bool("mobGriefing");

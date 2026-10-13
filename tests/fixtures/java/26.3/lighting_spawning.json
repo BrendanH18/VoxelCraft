@@ -1075,6 +1075,7 @@
     "first_pack_steps": "ceil(nextFloat() * 4)",
     "step": "x and z += nextInt(6) - nextInt(6)",
     "min_player_distance_squared": 576.0,
+    "spawn_point_min_distance": 24.0,
     "pack_steps_after_choice": "the chosen entry's count",
     "max_cluster": 4
   },

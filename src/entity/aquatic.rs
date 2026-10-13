@@ -551,7 +551,7 @@ impl Entities {
                             let p = b.residents.iter().find(|(k, _)| *k == kind).map(|(_, p)| *p);
                             if count < cap
                                 && let Some(p) = p
-                                && super::clear_of_players(ctx, p.as_dvec3())
+                                && super::clear_of_players(ctx, self.world_spawn, p.as_dvec3())
                                 && w.loaded(p)
                                 && !physics::overlaps_solid(w, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), kind.shape())
                             {
