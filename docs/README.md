@@ -52,6 +52,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Gameplay skylight and cave spawning](verification/2026-10-13-lighting-spawning.md):
   propagated sky light, cave/torch/reference scenarios, clock/weather inputs and
   Overworld/End process-restart checks; remaining shape and spawn differences.
+- [Amethyst geodes](verification/2026-10-13-amethyst-geodes.md):
+  Java 26.3 geode feature parameters, wall bud states 2400–2415, layout/bud/
+  chunk-order tests, benchmark and remaining differences.
 - [M5 scene baseline](verification/2026-10-13-m5-baseline.md):
   three runs of all five initial scenes, tracked raw frame samples and the
   failed frame-time gate; streaming hitches and remaining profiling work.

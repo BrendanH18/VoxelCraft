@@ -11,6 +11,7 @@
 //! | 1980..=2009 | coral blocks, coral and coral fans, live then dead, five colours each |
 //! | 2010..=2031 | dark oak, mangrove, cherry and pale oak leaves and saplings; pale oak wood; roots; bamboo; petals; hanging moss |
 //! | 2032..=2076 | flowers, double plants, lily pad, vines, sweet berries, cocoa, mushroom blocks |
+//! | 2400..=2415 | wall amethyst buds and clusters (GEN-02): facing south, north, east, west, four sizes each |
 //!
 //! Aquatic plants (kelp, seagrass, sea pickles, live coral and fans) are
 //! always waterlogged: they hold a water source in their cell, render a
@@ -286,6 +287,39 @@ pub const fn amethyst_bud(size: u16, down: bool) -> Block {
     Block(1926 + down as u16 * 4 + size)
 }
 
+/// First of the sixteen wall bud states: Java's `facing` north, south,
+/// east and west, stored in [`Facing::ALL`] order, four sizes each.
+pub const WALL_BUDS: u16 = 2400;
+/// Last wall bud state.
+pub const WALL_BUDS_LAST: u16 = WALL_BUDS + 15;
+
+/// An amethyst bud or cluster pointing along any of Java's six `facing`
+/// directions (away from the block it grows on).
+pub fn amethyst_bud_facing(size: u16, facing: IVec3) -> Block {
+    match facing.y {
+        1 => amethyst_bud(size, false),
+        -1 => amethyst_bud(size, true),
+        _ => {
+            let f = Facing::from_offset(facing).expect("a unit direction");
+            let i = Facing::ALL.iter().position(|&g| g == f).unwrap() as u16;
+            Block(WALL_BUDS + i * 4 + size)
+        }
+    }
+}
+
+/// `(size, facing)` of any amethyst bud or cluster state.
+pub fn bud_facing(b: Block) -> Option<(u16, IVec3)> {
+    if let Some((size, down)) = bud_of(b) {
+        return Some((size, if down { IVec3::NEG_Y } else { IVec3::Y }));
+    }
+    let i = b.0.checked_sub(WALL_BUDS).filter(|&i| i < 16)?;
+    Some((i % 4, Facing::ALL[(i / 4) as usize].offset()))
+}
+
+const fn is_wall_bud(id: u16) -> bool {
+    id >= WALL_BUDS && id <= WALL_BUDS_LAST
+}
+
 pub const fn bud_of(b: Block) -> Option<(u16, bool)> {
     if b.0 < 1926 || b.0 > 1933 {
         return None;
@@ -435,6 +469,12 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
             (NAMES[((id - 1926) % 4) as usize], Cross, all(t::BUDS + (id - 1926)))
         }
         1934 => ("smooth basalt", Opaque, all(t::SMOOTH_BASALT)),
+        // Wall buds are drawn as their Java outline box with the bud texture.
+        2400..=2415 => {
+            const NAMES: [&str; 4] =
+                ["small amethyst bud", "medium amethyst bud", "large amethyst bud", "amethyst cluster"];
+            (NAMES[((id - WALL_BUDS) % 4) as usize], Shaped, all(t::BUDS + (id - WALL_BUDS) % 4))
+        }
         1940 => ("azalea", Cutout, column(t::AZALEA_SIDE, t::AZALEA_TOP, t::AZALEA_SIDE)),
         1941 => ("flowering azalea", Cutout, column(t::FLOWERING_AZALEA_SIDE, t::FLOWERING_AZALEA_TOP, t::AZALEA_SIDE)),
         1942 => ("azalea leaves", Cutout, all(t::AZALEA_LEAVES)),
@@ -555,6 +595,7 @@ pub const fn base(id: u16) -> Option<Block> {
     Some(match id {
         1914..=1923 => pointed_dripstone(false, Thickness::Tip),
         1930..=1933 => Block(id - 4),
+        2400..=2415 => Block(1926 + (id - WALL_BUDS) % 4),
         1945 => CAVE_VINES,
         1946 | 1947 => CAVE_VINES,
         1951 => BIG_DRIPLEAF,
@@ -585,6 +626,7 @@ pub const fn emission(id: u16) -> u8 {
         1927 | 1931 => 2,
         1928 | 1932 => 4,
         1929 | 1933 => 5,
+        2400..=2415 => [1, 2, 4, 5][((id - WALL_BUDS) % 4) as usize],
         _ => 0,
     }
 }
@@ -643,6 +685,10 @@ pub fn drop(b: Block) -> Option<Option<Item>> {
     if egg_count(b).is_some() {
         return Some(None);
     }
+    // Buds need silk touch; clusters drop shards in `spill_mined`.
+    if is_wall_bud(b.0) {
+        return Some(None);
+    }
     if !(FIRST..=LAST).contains(&b.0) {
         return None;
     }
@@ -695,7 +741,7 @@ pub fn silk_drop(b: Block) -> Option<Item> {
         return Some(TURTLE_EGG.into());
     }
     match b.0 {
-        1900 | 1903 | 1909 | 1926..=1933 | 1976..=1979 | 1990..=2009 | 1980..=1984 | 2074..=2076 => {
+        1900 | 1903 | 1909 | 1926..=1933 | 2400..=2415 | 1976..=1979 | 1990..=2009 | 1980..=1984 | 2074..=2076 => {
             Some(b.base().into())
         }
         1910 => Some(SNOW_LAYER.into()),
@@ -792,6 +838,9 @@ pub fn hangs_from(block: Block, above: Block) -> Option<bool> {
 
 /// Whether a wall-mounted plant (vines, cocoa) still has its wall.
 pub fn wall_ok(block: Block, wall: Block) -> Option<bool> {
+    if is_wall_bud(block.0) {
+        return Some(sturdy(wall));
+    }
     if let Some(_f) = vine_wall(block) {
         return Some(sturdy(wall) || wall.is_leaves() || wall.is_log());
     }
@@ -803,6 +852,9 @@ pub fn wall_ok(block: Block, wall: Block) -> Option<bool> {
 
 /// The wall direction of a wall-mounted plant.
 pub fn wall_of(block: Block) -> Option<Facing> {
+    if is_wall_bud(block.0) {
+        return Facing::from_offset(-bud_facing(block)?.1);
+    }
     vine_wall(block).or_else(|| cocoa_of(block).map(|(_, f)| f))
 }
 
@@ -874,7 +926,28 @@ pub fn boxes(b: Block) -> Option<&'static [super::shape::Box16]> {
     if let Some(n) = egg_count(b) {
         return Some(&EGGS[..n as usize]);
     }
+    // Java's `AmethystClusterBlock` outlines: (height, inset) of small (3, 4),
+    // medium (4, 3), large (5, 3) and cluster (7, 3), against the wall.
+    static WALL_BUD_BOXES: [[B; 1]; 16] = {
+        const SIZES: [(u8, u8); 4] = [(3, 4), (4, 3), (5, 3), (7, 3)];
+        let mut out = [[bx([0; 3], [0; 3])]; 16];
+        let mut i = 0;
+        while i < 16 {
+            let (h, o) = SIZES[i % 4];
+            let (lo, hi) = (o, 16 - o);
+            out[i] = [match i / 4 {
+                // Pointing south (+Z): the wall is north of the cell.
+                0 => bx([lo, lo, 0], [hi, hi, h]),
+                1 => bx([lo, lo, 16 - h], [hi, hi, 16]),
+                2 => bx([0, lo, lo], [h, hi, hi]),
+                _ => bx([16 - h, lo, lo], [16, hi, hi]),
+            }];
+            i += 1;
+        }
+        out
+    };
     Some(match b.0 {
+        2400..=2415 => &WALL_BUD_BOXES[(b.0 - WALL_BUDS) as usize],
         2054..=2057 => &VINES[(b.0 - 2054) as usize],
         1950 => &DRIPLEAF,
         2022..=2024 => &BAMBOO_POST,
@@ -923,6 +996,7 @@ pub fn placed(block: Block, normal: IVec3) -> Option<Block> {
     Some(match block.0 {
         1914 => pointed_dripstone(normal.y < 0, Thickness::Tip),
         1926..=1929 if normal.y < 0 => Block(block.0 + 4),
+        1926..=1929 if normal.y == 0 => amethyst_bud_facing(block.0 - 1926, normal),
         2054 => {
             let wall = Facing::from_offset(-normal)?;
             vine(wall)
@@ -954,6 +1028,11 @@ mod tests {
             assert_ne!(b.kind(), RenderKind::Invisible, "{id}");
             assert!(mining(b).is_some(), "{} mines", b.name());
         }
+        for id in WALL_BUDS..=WALL_BUDS_LAST {
+            let b = Block(id);
+            assert_eq!(b.kind(), RenderKind::Shaped, "{id}");
+            assert!(mining(b).is_some() && b.name().contains("amethyst"), "{id}");
+        }
         for id in palette_ids() {
             let b = Block(id);
             assert_eq!(b.base(), b, "palette holds default states: {}", b.name());
@@ -973,6 +1052,36 @@ mod tests {
                 assert_eq!(bud_of(amethyst_bud(size, down)), Some((size, down)));
             }
         }
+        // Six-way buds: every facing has its own state, all sharing the
+        // upright bud's item, rules and light.
+        let faces = [IVec3::NEG_Y, IVec3::Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
+        let mut states = std::collections::HashSet::new();
+        for size in 0..4 {
+            for f in faces {
+                let b = amethyst_bud_facing(size, f);
+                assert!(states.insert(b), "{f} {size}");
+                assert_eq!(bud_facing(b), Some((size, f)));
+                assert_eq!(b.base(), amethyst_bud(size, false));
+                assert_eq!(b.emission(), amethyst_bud(size, false).emission());
+                assert_eq!(b.hardness(), 1.5);
+                assert_eq!(silk_drop(b), Some(amethyst_bud(size, false).into()));
+                assert_eq!(b.drop(), None, "buds need silk touch; clusters drop shards");
+                if f.y == 0 {
+                    // The wall is behind the bud; its Java outline touches it.
+                    let wall = wall_of(b).unwrap();
+                    assert_eq!(wall.offset(), -f);
+                    assert_eq!(wall_ok(b, Block::STONE), Some(true));
+                    assert_eq!(wall_ok(b, Block::AIR), Some(false));
+                    let bx = boxes(b).unwrap()[0];
+                    let axis = if f.x != 0 { 0 } else { 2 };
+                    let height = [3, 4, 5, 7][size as usize];
+                    assert_eq!(bx.max[axis] - bx.min[axis], height);
+                    assert_eq!(if f[axis] > 0 { bx.min[axis] } else { bx.max[axis] }, if f[axis] > 0 { 0 } else { 16 });
+                    assert_eq!(placed(amethyst_bud(size, false), f), Some(b));
+                }
+            }
+        }
+        assert_eq!(states.len(), 24);
         for n in 1..=4 {
             assert_eq!(pickle_count(sea_pickles(n)), Some(n));
             assert_eq!(egg_count(turtle_eggs(n)), Some(n));
@@ -1052,7 +1161,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("voxelcraft-overworld-blocks-{}", std::process::id()));
         let storage = Storage::new(&dir);
         let mut chunk = ChunkData::Uniform(Block::STONE);
-        for (i, id) in (FIRST..=LAST).enumerate() {
+        let ids = || (FIRST..=LAST).chain(WALL_BUDS..=WALL_BUDS_LAST);
+        for (i, id) in ids().enumerate() {
             chunk.set(i % 32, i / 32, 3, Block(id));
         }
         let pos = IVec3::new(2, -2, -7);
@@ -1060,7 +1170,7 @@ mod tests {
             .save(&LevelInfo { seed: 1, player: None, props: Default::default() }, &[(pos, Arc::new(chunk))])
             .unwrap();
         let loaded = storage.load_chunks().unwrap();
-        for (i, id) in (FIRST..=LAST).enumerate() {
+        for (i, id) in ids().enumerate() {
             assert_eq!(loaded[&pos].get(i % 32, i / 32, 3), Block(id));
         }
         std::fs::remove_dir_all(dir).unwrap();
