@@ -156,12 +156,38 @@ the actual surface dimensions. VSync is disabled and the normal renderer,
 world streaming and 20 Hz simulation remain active. Controlled camera flight
 and initial health are explicit fixture overrides; these scenes do not replace
 ordinary-player tests or the full roadmap biome/encounter matrix.
+Survival and streaming cameras fly 24 blocks above the generator's surface along
+their routes and face their direction of travel. The entity scene holds dawn with
+no daylight cycle or natural spawning, so its 160 mobs do not burn.
+
+A benchmark run ignores keyboard, pointer, controller and focus input. It never
+autosaves or saves, including when its window is closed. Keep its window
+visible and unobstructed. Frames skipped because the surface is hidden or
+occluded are counted, and any skipped frame makes the run invalid.
 
 Reports include average FPS, the reciprocal of the mean of the slowest 1% of
-frames, p50/p95/p99/worst frame time, stalls over 50 ms, cold load, process RSS,
-GPU allocation and discarded simulation time. GPU timestamp costs are currently
-reported as unavailable; surface intervals measure presented throughput. Neither
-this suite nor the older offscreen sweep alone proves 1.0 performance acceptance.
+frames, p50/p95/p99/worst frame time, stalls over 50 ms, cold load and process
+RSS. They also include completed versus expected simulation ticks, paused and
+discarded simulation time, unpresented frames and entity populations at sample
+start and end. Present mode is reported as requested and as resolved from the
+surface's supported modes, along with the relevant options. GPU memory is
+reported in two forms. The chunk quad arena's used and reserved bytes are always
+recorded. Device-allocator totals are `null` where the backend provides no
+allocator report, including Metal on macOS; `null` never means zero.
+GPU timestamp costs are currently reported as unavailable; surface intervals
+measure presented throughput.
+
+Each report has `acceptance_eligible_configuration`, `run_valid` and
+`ineligible_reasons`. A run is valid only with zero paused time, completed ticks
+within max(2, 0.5%) of 20 per sampled second, zero unpresented frames and, for
+the entity scene, start and end populations within 5% of 160. The runner's
+`reference_gate_passed` also requires enhanced graphics, an uncapped resolved
+present mode, a matching source fingerprint, M5 hardware, all scenes and three
+repeats. The fingerprint covers the files embedded by `build.rs`, including
+`packaging/icons/*`. `reference_gate_problems` lists each failure. Run
+`python3 -m unittest tools/test_benchmark_scenes.py` after changing the gate.
+Neither this suite nor the older offscreen sweep alone proves 1.0 performance
+acceptance.
 
 The low-level flags are `--benchmark-scene`, `--benchmark-output`,
 `--benchmark-warmup`, `--benchmark-duration` and `--size WIDTHxHEIGHT`.

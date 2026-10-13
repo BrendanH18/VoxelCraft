@@ -50,8 +50,12 @@ roadmap and recorded checks to assess completeness against the current target.
   propagated sky light, cave/torch/reference scenarios, clock/weather inputs and
   Overworld/End process-restart checks; remaining shape and spawn differences.
 - [M5 scene baseline](verification/2026-10-13-m5-baseline.md):
-  three runs of all five initial scenes, tracked raw frame samples and the
-  failed frame-time gate; streaming hitches and remaining profiling work.
+  first recording of all five initial scenes and its raw frame samples,
+  corrected as invalid (paused, occluded-window and population-loss runs);
+  it must be re-measured.
+- [Benchmark harness review fixes](verification/2026-10-13-review-bench-fixes.md):
+  pause/tick/presentation/population validity checks, input isolation, no saves,
+  terrain-following cameras, telemetry and runner gate fixes; proposed roadmap text.
 
 ## History
 

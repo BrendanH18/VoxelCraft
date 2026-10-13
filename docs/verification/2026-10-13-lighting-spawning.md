@@ -75,7 +75,8 @@ shared-session/mining and retained v0.7 regressions.
 
 The real desktop LAN regression harness subsequently passed **13/13** checks on
 one Mac. The [full M5 scene baseline](2026-10-13-m5-baseline.md) measured this
-commit and fails the frame-time gate in every scene. Individual lighting cost
+commit. It has since been corrected as invalid (paused, occluded-window and
+population-loss runs) and must be re-measured. Individual lighting cost
 attribution and ordinary-player acceptance remain open.
 
 The benchmark source fingerprint now includes the mining fixture embedded by
