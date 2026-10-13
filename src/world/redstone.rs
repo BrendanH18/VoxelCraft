@@ -632,6 +632,9 @@ impl World {
         }
     }
 
+    pub(super) fn turtle_hatching_time(&self) -> bool {
+        (0.9..=0.94).contains(&self.redstone.day_time)
+    }
     pub fn set_redstone_daylight(&mut self, time: f64, sky_darken: u8) {
         self.redstone.day_time = time.rem_euclid(1.0);
         self.redstone.sky_darken = sky_darken.min(15);

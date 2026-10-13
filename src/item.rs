@@ -218,6 +218,9 @@ pub enum Sprite {
     String,
     /// A minecart, tinted for chest, hopper and TNT carts.
     Minecart([u8; 3]),
+    Boat([u8; 3], bool),
+    Saddle,
+    SteeringStick([u8; 3]),
     Feather,
     Powder([u8; 3]),
     Leather,
@@ -445,6 +448,73 @@ static OVERWORLD_ITEMS: [ItemInfo; 19] = [
     bucket_of("bucket of axolotl", [240, 150, 190]),
 ];
 const _: () = assert!(OVERWORLD_ITEM as usize + OVERWORLD_ITEMS.len() <= 960);
+/// Mount items use the reserved append-only 960..=999 range.
+const MOUNT_ITEM: u16 = 960;
+const fn single(name: &'static str, sprite: Sprite) -> ItemInfo {
+    ItemInfo { name, kind: ItemKind::Material, max_stack: 1, sprite }
+}
+static MOUNT_ITEMS: [ItemInfo; 28] = [
+    single("oak boat", Sprite::Boat([162, 130, 79], false)),
+    single("spruce boat", Sprite::Boat([104, 78, 46], false)),
+    single("birch boat", Sprite::Boat([214, 204, 153], false)),
+    single("jungle boat", Sprite::Boat([166, 119, 83], false)),
+    single("acacia boat", Sprite::Boat([176, 91, 53], false)),
+    single("dark oak boat", Sprite::Boat([66, 43, 20], false)),
+    single("mangrove boat", Sprite::Boat([118, 56, 48], false)),
+    single("cherry boat", Sprite::Boat([226, 174, 174], false)),
+    single("pale oak boat", Sprite::Boat([228, 218, 214], false)),
+    single("bamboo raft", Sprite::Boat([196, 176, 82], false)),
+    single("oak chest boat", Sprite::Boat([162, 130, 79], true)),
+    single("spruce chest boat", Sprite::Boat([104, 78, 46], true)),
+    single("birch chest boat", Sprite::Boat([214, 204, 153], true)),
+    single("jungle chest boat", Sprite::Boat([166, 119, 83], true)),
+    single("acacia chest boat", Sprite::Boat([176, 91, 53], true)),
+    single("dark oak chest boat", Sprite::Boat([66, 43, 20], true)),
+    single("mangrove chest boat", Sprite::Boat([118, 56, 48], true)),
+    single("cherry chest boat", Sprite::Boat([226, 174, 174], true)),
+    single("pale oak chest boat", Sprite::Boat([228, 218, 214], true)),
+    single("bamboo chest raft", Sprite::Boat([196, 176, 82], true)),
+    single("saddle", Sprite::Saddle),
+    single("carrot on a stick", Sprite::SteeringStick([214, 112, 28])),
+    single("warped fungus on a stick", Sprite::SteeringStick([30, 150, 140])),
+    single("leather horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Leather)),
+    single("iron horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Iron)),
+    single("golden horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Gold)),
+    single("diamond horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Diamond)),
+    food("golden carrot", 6, 14.4, Sprite::Lump([235, 192, 52])),
+];
+const _: () = assert!(MOUNT_ITEM as usize + MOUNT_ITEMS.len() <= 1000);
+/// v0.7 animal items. Reserved ids 1000..=1039; do not relocate older ranges.
+const ANIMAL_ITEM: u16 = 1000;
+static ANIMAL_ITEMS: [ItemInfo; 21] = [
+    item("lead", Sprite::Lump([151, 113, 68])),
+    item("name tag", Sprite::Lump([222, 211, 169])),
+    food("raw rabbit", 3, 1.8, Sprite::Lump([205, 146, 142])),
+    food("cooked rabbit", 5, 6.0, Sprite::Lump([170, 100, 61])),
+    item("rabbit hide", Sprite::Lump([150, 117, 88])),
+    item("rabbit foot", Sprite::Lump([207, 199, 178])),
+    ItemInfo {
+        name: "rabbit stew",
+        kind: ItemKind::Food { hunger: 10, saturation: 12.0 },
+        max_stack: 1,
+        sprite: Sprite::Lump([161, 109, 62]),
+    },
+    food("cookie", 2, 0.4, Sprite::Lump([190, 128, 61])),
+    item("goat horn ponder", Sprite::Lump([191, 185, 170])),
+    item("goat horn sing", Sprite::Lump([191, 185, 170])),
+    item("goat horn seek", Sprite::Lump([191, 185, 170])),
+    item("goat horn feel", Sprite::Lump([191, 185, 170])),
+    item("goat horn admire", Sprite::Lump([191, 185, 170])),
+    item("goat horn call", Sprite::Lump([191, 185, 170])),
+    item("goat horn yearn", Sprite::Lump([191, 185, 170])),
+    item("goat horn dream", Sprite::Lump([191, 185, 170])),
+    item("melon seeds", Sprite::Seeds),
+    item("beetroot seeds", Sprite::Seeds),
+    food("raw mutton", 2, 1.2, Sprite::Lump([198, 88, 90])),
+    food("cooked mutton", 6, 9.6, Sprite::Lump([148, 81, 45])),
+    item("phantom membrane", Sprite::Lump([194, 185, 170])),
+];
+const _: () = assert!(ANIMAL_ITEM as usize + ANIMAL_ITEMS.len() <= 1040);
 /// Splash potions: `SPLASH_POTION + potion index`.
 const SPLASH_POTION: u16 = 436;
 const _: () = assert!(FIRST_POTION + POTION_COUNT <= SPLASH_POTION);
@@ -547,6 +617,20 @@ impl Item {
     pub const MUSHROOM_STEW: Item = Item(515);
     pub const SNOWBALL: Item = Item(516);
     pub const EGG: Item = Item(517);
+    pub const LEAD: Item = Item(1000);
+    pub const NAME_TAG: Item = Item(1001);
+    pub const RAW_RABBIT: Item = Item(1002);
+    pub const COOKED_RABBIT: Item = Item(1003);
+    pub const RABBIT_HIDE: Item = Item(1004);
+    pub const RABBIT_FOOT: Item = Item(1005);
+    pub const RABBIT_STEW: Item = Item(1006);
+    pub const COOKIE: Item = Item(1007);
+    pub const GOAT_HORN: Item = Item(1008);
+    pub const MELON_SEEDS: Item = Item(1016);
+    pub const BEETROOT_SEEDS: Item = Item(1017);
+    pub const RAW_MUTTON: Item = Item(1018);
+    pub const COOKED_MUTTON: Item = Item(1019);
+    pub const PHANTOM_MEMBRANE: Item = Item(1020);
     pub const COMPASS: Item = Item(518);
     pub const CLOCK: Item = Item(519);
     pub const CARROT: Item = Item(520);
@@ -600,6 +684,18 @@ impl Item {
     pub const MAGMA_CREAM: Item = Item(608);
     pub const IRON_NUGGET: Item = Item(609);
     pub const FIRE_CHARGE: Item = Item(760);
+    pub const SADDLE: Item = Item(980);
+    pub const CARROT_ON_A_STICK: Item = Item(981);
+    pub const WARPED_FUNGUS_ON_A_STICK: Item = Item(982);
+    pub const LEATHER_HORSE_ARMOR: Item = Item(983);
+    pub const IRON_HORSE_ARMOR: Item = Item(984);
+    pub const GOLDEN_HORSE_ARMOR: Item = Item(985);
+    pub const DIAMOND_HORSE_ARMOR: Item = Item(986);
+    pub const GOLDEN_CARROT: Item = Item(987);
+    /// Wood index follows Wood::ALL; index 9 is bamboo.
+    pub const fn boat(wood: u8, chest: bool) -> Item {
+        Item(960 + wood as u16 + if chest { 10 } else { 0 })
+    }
     pub const MINECART: Item = Item(761);
     pub const CHEST_MINECART: Item = Item(762);
     pub const HOPPER_MINECART: Item = Item(763);
@@ -871,6 +967,12 @@ impl Item {
         if let Some(info) = self.0.checked_sub(OVERWORLD_ITEM).and_then(|i| OVERWORLD_ITEMS.get(i as usize)) {
             return *info;
         }
+        if let Some(info) = self.0.checked_sub(MOUNT_ITEM).and_then(|i| MOUNT_ITEMS.get(i as usize)) {
+            return *info;
+        }
+        if let Some(info) = self.0.checked_sub(ANIMAL_ITEM).and_then(|i| ANIMAL_ITEMS.get(i as usize)) {
+            return ItemInfo { max_stack: if (1008..=1015).contains(&self.0) { 1 } else { info.max_stack }, ..*info };
+        }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
     }
 
@@ -912,6 +1014,12 @@ impl Item {
 
     /// Uses before breaking, for tools and armor.
     pub fn durability(self) -> Option<u16> {
+        if self == Self::CARROT_ON_A_STICK {
+            return Some(25);
+        }
+        if self == Self::WARPED_FUNGUS_ON_A_STICK {
+            return Some(100);
+        }
         if self == Self::SHEARS {
             return Some(238);
         }
@@ -951,7 +1059,7 @@ impl Item {
     pub fn remainder(self) -> Option<Item> {
         match self {
             Self::MILK_BUCKET => Some(Self::BUCKET),
-            Self::MUSHROOM_STEW => Some(Self::BOWL),
+            Self::MUSHROOM_STEW | Self::RABBIT_STEW => Some(Self::BOWL),
             _ => None,
         }
     }
@@ -1019,6 +1127,8 @@ impl Item {
             .chain([Self::FIRE_CHARGE, Self::MINECART, Self::CHEST_MINECART, Self::HOPPER_MINECART, Self::TNT_MINECART])
             .chain([Self::CROSSBOW, Self::CHARGED_CROSSBOW])
             .chain((0..OVERWORLD_ITEMS.len() as u16).map(|i| Item(OVERWORLD_ITEM + i)))
+            .chain((0..MOUNT_ITEMS.len() as u16).map(|i| Item(MOUNT_ITEM + i)))
+            .chain((0..ANIMAL_ITEMS.len() as u16).map(|i| Item(ANIMAL_ITEM + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1119,13 +1229,19 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if (OVERWORLD_ITEM..OVERWORLD_ITEM + OVERWORLD_ITEMS.len() as u16).contains(&i) => {
             Some(base_icon_count() as u16 + i - OVERWORLD_ITEM)
         }
+        i if (MOUNT_ITEM..MOUNT_ITEM + MOUNT_ITEMS.len() as u16).contains(&i) => {
+            Some(base_icon_count() as u16 + OVERWORLD_ITEMS.len() as u16 + i - MOUNT_ITEM)
+        }
+        i if (ANIMAL_ITEM..ANIMAL_ITEM + ANIMAL_ITEMS.len() as u16).contains(&i) => {
+            Some(base_icon_count() as u16 + OVERWORLD_ITEMS.len() as u16 + MOUNT_ITEMS.len() as u16 + i - ANIMAL_ITEM)
+        }
         _ => None,
     }
 }
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    base_icon_count() + OVERWORLD_ITEMS.len() as u32
+    base_icon_count() + OVERWORLD_ITEMS.len() as u32 + MOUNT_ITEMS.len() as u32 + ANIMAL_ITEMS.len() as u32
 }
 
 /// Icons up to and including the Nether-mob items.

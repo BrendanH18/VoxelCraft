@@ -235,6 +235,10 @@ impl Game {
     /// Q: drops one of the selected item, or the whole stack with Ctrl.
     /// With the inventory open, drops from the slot under the mouse.
     pub(super) fn drop_selected(&mut self, whole_stack: bool) {
+        if self.lan.client.is_some() {
+            self.lan_command(if whole_stack { "drop_stack" } else { "drop" });
+            return;
+        }
         let slot = if self.inventory_open {
             match self.slot_under_cursor() {
                 Some(super::hud::SlotRef::Inventory(i)) => i,
@@ -255,10 +259,15 @@ impl Game {
     /// Clicking off the inventory panel throws the held stack (or one of
     /// it with the right button). Returns whether the click was used.
     pub(super) fn throw_cursor(&mut self, one: bool) -> bool {
-        let Some(stack) = self.inventory.cursor else { return false };
         if !self.cursor_off_panel() {
             return false;
         }
+        self.toss_cursor(one)
+    }
+
+    /// Throws the held stack (or one item of it), as a click outside the screen does.
+    pub(super) fn toss_cursor(&mut self, one: bool) -> bool {
+        let Some(stack) = self.inventory.cursor else { return false };
         let count = if one { 1 } else { stack.count };
         self.inventory.cursor = (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
         self.throw(Stack { count, ..stack });

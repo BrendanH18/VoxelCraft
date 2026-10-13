@@ -33,6 +33,21 @@ impl Storage {
         Self { dir: dir.into() }
     }
 
+    /// Claims this save for one process (Java's `session.lock`): the returned file holds an
+    /// exclusive lock until dropped, or until the process exits, even after a crash.
+    pub fn lock(&self) -> io::Result<fs::File> {
+        fs::create_dir_all(&self.dir)?;
+        let file =
+            fs::OpenOptions::new().create(true).truncate(false).write(true).open(self.dir.join("session.lock"))?;
+        match file.try_lock() {
+            Ok(()) => Ok(file),
+            Err(fs::TryLockError::WouldBlock) => {
+                Err(io::Error::new(io::ErrorKind::WouldBlock, "this world is open in another VoxelCraft window"))
+            }
+            Err(fs::TryLockError::Error(e)) => Err(e),
+        }
+    }
+
     pub fn dir(&self) -> &Path {
         &self.dir
     }
@@ -180,6 +195,17 @@ fn decode(rle: &[u8], legacy: bool) -> Option<ChunkData> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_save_can_only_be_claimed_once_at_a_time() {
+        let dir = std::env::temp_dir().join(format!("vx-lock-{}", std::process::id()));
+        let storage = Storage::new(&dir);
+        let first = storage.lock().expect("first claim");
+        let second = Storage::new(&dir).lock();
+        assert_eq!(second.unwrap_err().kind(), io::ErrorKind::WouldBlock);
+        drop(first);
+        assert!(storage.lock().is_ok(), "released when the game closes");
+        let _ = fs::remove_dir_all(dir);
+    }
     use super::*;
 
     #[test]

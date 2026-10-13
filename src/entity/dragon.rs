@@ -201,6 +201,133 @@ pub struct Fight {
 }
 
 impl Fight {
+    /// What a LAN client needs to draw the fight and its boss bar.
+    pub fn replica_json(&self) -> serde_json::Value {
+        use serde_json::json;
+        let v3 = |p: DVec3| [p.x, p.y, p.z];
+        let phase = |p: Phase| match p {
+            Phase::HoldingPattern => 0,
+            Phase::Strafe(_) => 1,
+            Phase::LandingApproach => 2,
+            Phase::Landing => 3,
+            Phase::SittingFlaming => 4,
+            Phase::SittingScanning => 5,
+            Phase::SittingAttacking => 6,
+            Phase::Takeoff => 7,
+            Phase::Charging => 8,
+            Phase::Dying => 9,
+        };
+        json!({
+            "podium": [self.podium.x, self.podium.y, self.podium.z],
+            "dragon": self.dragon.as_ref().map(|d| json!({
+                "pos": v3(d.pos), "prev": v3(d.previous_pos), "yaw": d.yaw, "prev_yaw": d.previous_yaw,
+                "health": d.health, "phase": phase(d.phase), "flap": d.flap, "prev_flap": d.previous_flap,
+                "hurt": d.hurt, "death": d.death_ticks, "healer": d.healer,
+            })),
+            "crystals": self.crystals.iter().map(|c| json!([c.pos.x, c.pos.y, c.pos.z, c.age])).collect::<Vec<_>>(),
+            "fireballs": self.fireballs.iter().map(|f| json!([v3(f.pos), v3(f.previous_pos), v3(f.dir)])).collect::<Vec<_>>(),
+        })
+    }
+
+    /// A LAN client's fight: built from [`Fight::replica_json`] and never simulated.
+    pub fn replica(v: &serde_json::Value) -> Option<Self> {
+        let podium = v["podium"].as_array()?;
+        let podium = IVec3::new(
+            podium.first()?.as_i64()? as i32,
+            podium.get(1)?.as_i64()? as i32,
+            podium.get(2)?.as_i64()? as i32,
+        );
+        let mut fight = Self {
+            dragon: None,
+            crystals: Vec::new(),
+            fireballs: Vec::new(),
+            clouds: Vec::new(),
+            previously_killed: false,
+            podium,
+            nodes: [DVec3::ZERO; 24],
+            detonating: Vec::new(),
+            pending: 0.0,
+            unopened: false,
+            gateway_order: [IVec3::ZERO; 20],
+            gateways: 0,
+            unbuilt: Vec::new(),
+            links: Vec::new(),
+        };
+        fight.apply_replica(v);
+        Some(fight)
+    }
+
+    /// Updates a client fight from the host's latest [`Fight::replica_json`].
+    pub fn apply_replica(&mut self, v: &serde_json::Value) {
+        let v3 = |a: &serde_json::Value| -> Option<DVec3> {
+            let p = DVec3::new(a.get(0)?.as_f64()?, a.get(1)?.as_f64()?, a.get(2)?.as_f64()?);
+            p.is_finite().then_some(p)
+        };
+        let d = &v["dragon"];
+        match v3(&d["pos"]) {
+            Some(pos) => {
+                let dragon = self.dragon.get_or_insert_with(|| Dragon::new(pos));
+                dragon.pos = pos;
+                dragon.previous_pos = v3(&d["prev"]).unwrap_or(pos);
+                dragon.yaw = d["yaw"].as_f64().unwrap_or(0.0) as f32;
+                dragon.previous_yaw = d["prev_yaw"].as_f64().unwrap_or(dragon.yaw as f64) as f32;
+                dragon.health = d["health"].as_f64().unwrap_or(0.0).clamp(0.0, MAX_HEALTH as f64) as f32;
+                dragon.flap = d["flap"].as_f64().unwrap_or(0.0) as f32;
+                dragon.previous_flap = d["prev_flap"].as_f64().unwrap_or(dragon.flap as f64) as f32;
+                dragon.hurt = d["hurt"].as_f64().unwrap_or(0.0) as f32;
+                dragon.death_ticks = d["death"].as_u64().unwrap_or(0).min(1000) as u32;
+                dragon.healer = d["healer"].as_u64().map(|i| i as usize);
+                dragon.phase = match d["phase"].as_u64().unwrap_or(0) {
+                    1 => Phase::Strafe(PlayerId::HOST),
+                    2 => Phase::LandingApproach,
+                    3 => Phase::Landing,
+                    4 => Phase::SittingFlaming,
+                    5 => Phase::SittingScanning,
+                    6 => Phase::SittingAttacking,
+                    7 => Phase::Takeoff,
+                    8 => Phase::Charging,
+                    9 => Phase::Dying,
+                    _ => Phase::HoldingPattern,
+                };
+                // The neck and tail follow the yaw and height history, as on the host.
+                dragon.history_at = (dragon.history_at + 1) % 64;
+                dragon.history[dragon.history_at] = (dragon.yaw, dragon.pos.y);
+                dragon.place_parts();
+            }
+            None => self.dragon = None,
+        }
+        self.crystals = v["crystals"]
+            .as_array()
+            .map(|cs| {
+                cs.iter()
+                    .take(32)
+                    .filter_map(|c| {
+                        let pos = v3(c)?;
+                        Some(Crystal { pos, age: c.get(3)?.as_u64()? as u32, pillar: 0 })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.fireballs = v["fireballs"]
+            .as_array()
+            .map(|fs| {
+                fs.iter()
+                    .take(32)
+                    .filter_map(|f| {
+                        let pos = v3(&f[0])?;
+                        Some(DragonFireball {
+                            pos,
+                            previous_pos: v3(&f[1]).unwrap_or(pos),
+                            vel: DVec3::ZERO,
+                            dir: v3(&f[2]).unwrap_or(DVec3::X),
+                            age: 0,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+    }
+
     /// A fresh fight: a dragon and a crystal on every pillar.
     pub fn new(end: &EndGen) -> Self {
         let mut fight = Self::empty(end);

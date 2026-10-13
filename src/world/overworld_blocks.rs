@@ -315,7 +315,13 @@ pub const fn turtle_eggs(count: u8) -> Block {
 }
 
 pub const fn egg_count(b: Block) -> Option<u8> {
-    if b.0 >= 1976 && b.0 <= 1979 { Some((b.0 - 1975) as u8) } else { None }
+    if b.0 >= 1976 && b.0 <= 1979 {
+        Some((b.0 - 1975) as u8)
+    } else if b.0 >= 2150 && b.0 <= 2157 {
+        Some(((b.0 - 2150) % 4 + 1) as u8)
+    } else {
+        None
+    }
 }
 
 pub const fn vine(wall: Facing) -> Block {
@@ -347,6 +353,30 @@ pub fn cocoa_of(b: Block) -> Option<(u8, Facing)> {
 /// The two halves of a double plant: (lower, upper).
 pub const DOUBLE_PLANTS: [Block; 6] = [SUNFLOWER, LILAC, ROSE_BUSH, PEONY, LARGE_FERN, DOUBLE_TALL_GRASS];
 
+/// v0.7 cracked egg states, assigned block ids 2150..=2157.
+pub const fn egg_stage(b: Block) -> Option<u8> {
+    if b.0 >= 1976 && b.0 <= 1979 {
+        Some(0)
+    } else if b.0 >= 2150 && b.0 <= 2157 {
+        Some(((b.0 - 2150) / 4 + 1) as u8)
+    } else {
+        None
+    }
+}
+pub const fn turtle_eggs_stage(count: u8, stage: u8) -> Block {
+    let count = if count < 1 {
+        1
+    } else if count > 4 {
+        4
+    } else {
+        count
+    };
+    if stage == 0 {
+        turtle_eggs(count)
+    } else {
+        Block(2150 + (if stage > 2 { 2 } else { stage } as u16 - 1) * 4 + count as u16 - 1)
+    }
+}
 /// Lower half of a double plant (itself for the lower half), and whether `b` is the upper half.
 pub const fn double_of(b: Block) -> Option<(Block, bool)> {
     if b.0 < 2041 || b.0 > 2052 {
@@ -425,7 +455,8 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         1973 => ("sea lantern", Opaque, all(t::SEA_LANTERN)),
         1974 => ("sponge", Opaque, all(t::SPONGE)),
         1975 => ("wet sponge", Opaque, all(t::WET_SPONGE)),
-        1976..=1979 => ("turtle egg", Cross, all(t::TURTLE_EGGS + (id - 1976))),
+        1976..=1979 => ("turtle egg", Shaped, all(1750)),
+        2150..=2157 => ("turtle egg", Shaped, all(1751 + (id - 2150) / 4)),
         1980..=2009 => {
             let i = id - 1980;
             let (kind, dead, colour) = (i / 10, i % 10 >= 5, (i % 5) as usize);
@@ -523,7 +554,7 @@ pub const fn base(id: u16) -> Option<Block> {
         1961 => KELP,
         1964 => TALL_SEAGRASS,
         1966..=1968 => SEA_PICKLE,
-        1977..=1979 => TURTLE_EGG,
+        1977..=1979 | 2150..=2157 => TURTLE_EGG,
         2023 | 2024 => BAMBOO,
         2031 => PALE_HANGING_MOSS_TIP,
         2042 | 2044 | 2046 | 2048 | 2050 | 2052 => Block(id - 1),
@@ -597,6 +628,9 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
 /// `World::spill_mined` such as berries and pickles); `None` for blocks
 /// this module doesn't own.
 pub fn drop(b: Block) -> Option<Option<Item>> {
+    if egg_count(b).is_some() {
+        return Some(None);
+    }
     if !(FIRST..=LAST).contains(&b.0) {
         return None;
     }
@@ -645,6 +679,9 @@ pub fn sheared_drop(b: Block) -> Option<Item> {
 /// What silk touch keeps beyond shears: coral, buds, blue ice, eggs,
 /// podzol and mycelium, mushroom blocks.
 pub fn silk_drop(b: Block) -> Option<Item> {
+    if egg_count(b).is_some() {
+        return Some(TURTLE_EGG.into());
+    }
     match b.0 {
         1900 | 1903 | 1909 | 1925 | 1926..=1933 | 1976..=1979 | 1990..=2009 | 1980..=1984 | 2074..=2076 => {
             Some(b.base().into())
@@ -687,6 +724,9 @@ fn sturdy(b: Block) -> bool {
 /// Hanging plants check the block above instead (see [`hangs_from`]).
 pub fn can_stay_on(block: Block, below: Block) -> Option<bool> {
     let id = block.0;
+    if egg_count(block).is_some() {
+        return Some(true);
+    }
     if !(FIRST..=LAST).contains(&id) {
         return None;
     }
@@ -816,6 +856,11 @@ pub fn boxes(b: Block) -> Option<&'static [super::shape::Box16]> {
         }
         out
     };
+    static EGGS: [B; 4] =
+        [bx([3, 0, 3], [8, 7, 8]), bx([9, 0, 8], [14, 7, 13]), bx([3, 0, 9], [8, 7, 14]), bx([9, 0, 2], [14, 7, 7])];
+    if let Some(n) = egg_count(b) {
+        return Some(&EGGS[..n as usize]);
+    }
     Some(match b.0 {
         2054..=2057 => &VINES[(b.0 - 2054) as usize],
         1950 => &DRIPLEAF,

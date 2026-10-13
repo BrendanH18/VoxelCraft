@@ -12,6 +12,7 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod animals;
 pub mod aquatic;
 pub mod armor;
 mod bell;
@@ -22,10 +23,13 @@ pub mod eye;
 pub mod fireball;
 pub mod golem;
 pub mod item;
+pub mod leash;
+mod look;
 pub mod minecart;
 mod mob;
 mod mob_index;
 pub mod model;
+pub mod mounts;
 pub mod nether;
 pub mod orb;
 pub mod pearl;
@@ -33,6 +37,7 @@ pub mod player_model;
 mod player_pose;
 pub mod potion;
 mod projectile;
+mod replica;
 mod slime;
 mod thrown;
 pub mod tnt;
@@ -92,6 +97,7 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
     Bell,
+    BoatPaddle(bool),
     /// A creeper lit its fuse.
     Fuse,
     /// A skeleton loosed an arrow.
@@ -134,6 +140,11 @@ pub enum EntityEvent {
         damage: f32,
         knockback: Vec3,
         cause: &'static str,
+    },
+    /// An equine's landing applies the same fall damage to its rider.
+    PlayerFall {
+        player: PlayerId,
+        damage: f32,
     },
     /// Guardian laser: apply the armor-reduced physical and armor-bypassing
     /// magic components as one hit, so hurt immunity doesn't discard either.
@@ -192,6 +203,8 @@ pub enum EntityEvent {
         from: DVec3,
         target: DVec3,
         cause: &'static str,
+        /// The shooting mob's uid, so its target's wolves can retaliate.
+        shooter: u32,
     },
     /// A blaze or ghast shot a fireball (turned into a projectile internally).
     /// `large` is a ghast fireball: slower, explosive, and punchable.
@@ -213,6 +226,11 @@ pub enum EntityEvent {
     PearlLanded {
         owner: PlayerId,
         pos: DVec3,
+    },
+    /// Mob `attacker` hurt `player` (handled internally: their wolves retaliate).
+    OwnerHurt {
+        player: PlayerId,
+        attacker: u32,
     },
     /// An arrow or player potion hit a mob (loot is dropped internally).
     MobShot {
@@ -236,6 +254,11 @@ pub enum EntityEvent {
         cell: IVec3,
     },
     /// A villager needs this closed wooden door opened.
+    AnimalBlock {
+        cell: IVec3,
+        from: Block,
+        to: Block,
+    },
     VillagerDoor {
         cell: IVec3,
     },
@@ -432,6 +455,10 @@ pub struct Target {
     pub shape: crate::physics::Shape,
     /// Wears a piece of golden armor, which keeps piglins calm.
     pub gold_armor: bool,
+    /// Selected food for animal temptation, shared by every input device.
+    pub held_item: Option<crate::item::Item>,
+    pub on_ground: bool,
+    pub in_water: bool,
 }
 
 impl Target {
@@ -447,6 +474,9 @@ impl Target {
             held_enchants: Default::default(),
             shape: crate::player::SHAPE,
             gold_armor: false,
+            held_item: None,
+            on_ground: true,
+            in_water: false,
         }
     }
 
@@ -572,6 +602,8 @@ pub struct Entities {
     /// Seconds until the next gossip summon roll.
     gossip_timer: f32,
     rng: Rng,
+    /// Players may hurt each other (a LAN world's PvP setting): their arrows hit players.
+    pub pvp: bool,
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
     spawner_delays: rustc_hash::FxHashMap<IVec3, f32>,
@@ -631,6 +663,7 @@ impl Entities {
             villager_griefing: true,
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
+            pvp: false,
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
             merge_timer: 0.0,
@@ -659,7 +692,7 @@ impl Entities {
             mob.wool_color = color;
             return Some(false);
         }
-        if item != crate::item::Item::SHEARS || mob.sheared {
+        if item != crate::item::Item::SHEARS || mob.sheared || mob.baby || mob.age < 0 {
             return None;
         }
         mob.sheared = true;
@@ -677,6 +710,11 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
+        mob.persistent = kind.has_animal_state();
+        if let Some(s) = &mut mob.mount {
+            **s = mounts::State::new(kind, &mut self.rng);
+            mob.health = s.max_health;
+        }
         if matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader) {
             **mob.villager.as_mut().unwrap() =
                 villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
@@ -712,6 +750,7 @@ impl Entities {
         }
         nether::on_spawn(&mut mob, &mut self.rng);
         aquatic::on_spawn(&mut mob, &mut self.rng);
+        animals::on_spawn(&mut mob, &mut self.rng);
         self.mobs.push(mob);
     }
 
@@ -761,7 +800,10 @@ impl Entities {
         self.player_spots.extend(ctx.players.iter().map(|t| (t.id, t.pos)));
         self.nether_sense(dt as f32, world, ctx);
         self.aquatic_sense(dt as f32, world);
-        self.grow_turtles(dt as f32);
+        self.grow_loaded_turtles(dt as f32, world, ctx);
+        self.tick_animals(dt as f32, world, ctx, &mut events);
+        self.tick_leashes(dt as f32, world, ctx);
+        self.tick_llamas(ctx);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -809,6 +851,25 @@ impl Entities {
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
                 let dead = self.mobs.swap_remove(i);
+                // Whatever a fox carries in its mouth drops, enchantments and names intact.
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                    && let Some(stack) = dead.animal.as_ref().and_then(|a| a.mouth)
+                {
+                    self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                }
+                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
+                    && let Some(s) = &dead.mount
+                {
+                    for stack in s
+                        .slots
+                        .iter()
+                        .flatten()
+                        .copied()
+                        .chain(s.chest.then(|| crate::inventory::Stack::new(Block::CHEST, 1)))
+                    {
+                        self.items.push(ItemEntity::new(stack, dead.pos, DVec3::ZERO, 0.5, &mut self.rng));
+                    }
+                }
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME) && dead.kind.is_cube() && dead.size > 1 {
                     let count = 2 + (self.rng.next_f32() * 3.0) as usize;
                     for n in 0..count {
@@ -821,11 +882,25 @@ impl Entities {
                 }
                 continue;
             }
+            let before_tame = self.mobs[i].mount.as_ref().map(|s| (s.tame, s.rider));
             let grounded = self.mobs[i].on_ground;
             self.mobs[i].difficulty = difficulty;
             self.mobs[i].trader_night = (0.5..0.96).contains(&self.village_time);
             self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);
             let m = &self.mobs[i];
+            if let Some((tame, rider)) = before_tame
+                && let Some(s) = &m.mount
+                && !tame
+                && (s.tame || rider.is_some() && s.rider.is_none())
+            {
+                let mut burst = crate::particles::Burst::new(
+                    if s.tame { crate::particles::Kind::Heart } else { crate::particles::Kind::Angry },
+                    m.pos + DVec3::Y * m.shape().height,
+                    7,
+                );
+                burst.spread = DVec3::new(0.5, 0.5, 0.5);
+                self.particles.push(crate::particles::Request::Burst(burst));
+            }
             if m.kind == MobKind::MagmaCube && !grounded && m.on_ground && m.alive() {
                 let mut b = crate::particles::Burst::new(crate::particles::Kind::Flame, m.pos, m.size as u16 * 8);
                 b.spread = DVec3::new(m.shape().half_width, 0.0, m.shape().half_width);
@@ -844,8 +919,10 @@ impl Entities {
         // Mob bow/crossbow shots become arrows, blaze shots fireballs.
         for e in &events {
             match *e {
-                EntityEvent::Shoot { from, target, cause } => {
-                    self.arrows.push(Arrow::aimed(from, target, cause, &mut self.rng));
+                EntityEvent::Shoot { from, target, cause, shooter } => {
+                    let mut arrow = Arrow::aimed(from, target, cause, &mut self.rng);
+                    arrow.shooter = Some(shooter);
+                    self.arrows.push(arrow);
                 }
                 EntityEvent::ThrowPotion { from, vel, potion } => {
                     self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
@@ -875,7 +952,7 @@ impl Entities {
             self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
             self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
             self.potions.retain_mut(|p| p.update(dt, world, ctx, mobs, rng, &mut events));
-            self.thrown.retain_mut(|t| t.update(dt, world, mobs, &self.mob_index, rng, &mut events));
+            self.thrown.retain_mut(|t| t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events));
         }
         {
             let rng = &mut self.rng;
@@ -904,6 +981,17 @@ impl Entities {
                     {
                         self.nether_hurt(i, nether::Foe::Player(owner));
                     }
+                    // Java's OwnerHurtTargetGoal: a player's wolves join in on what they shoot.
+                    if let Some(owner) = owner
+                        && !killed
+                        && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.alive())
+                    {
+                        self.animals_owner_attack(i, owner);
+                    }
+                }
+                EntityEvent::OwnerHurt { player, attacker } => {
+                    // Java's OwnerHurtByTargetGoal: wolves go for whatever hurt their owner.
+                    self.animals_defend_owner(attacker, player);
                 }
                 EntityEvent::DragonXp { pos, points } => {
                     if self.mob_loot {
@@ -1013,6 +1101,9 @@ impl Entities {
             .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
             .map_or((1, false), |m| (m.size, m.baby));
         let (size, baby) = size;
+        if baby && kind.is_breedable() && kind != MobKind::Hoglin {
+            return;
+        }
         if player_kill {
             let xp = if kind.is_cube() {
                 size as u32
@@ -1041,6 +1132,9 @@ impl Entities {
                 .map_or((crate::color::DyeColor::White, false), |m| (m.wool_color, m.sheared))
         });
         let mut drops = kind.drops(&mut self.rng, looting);
+        if kind == MobKind::Rabbit && player_kill && self.rng.chance(0.1 + looting as f32 * 0.03) {
+            drops.push((crate::item::Item::RABBIT_FOOT, 1));
+        }
         if player_kill
             && matches!(kind, MobKind::Guardian | MobKind::ElderGuardian)
             && self.rng.chance(0.025 + 0.01 * looting as f32)
@@ -1090,6 +1184,8 @@ impl Entities {
                 match item {
                     crate::item::Item::RAW_PORKCHOP => crate::item::Item::COOKED_PORKCHOP,
                     crate::item::Item::RAW_BEEF => crate::item::Item::STEAK,
+                    crate::item::Item::RAW_MUTTON => crate::item::Item::COOKED_MUTTON,
+                    crate::item::Item::RAW_RABBIT => crate::item::Item::COOKED_RABBIT,
                     crate::item::Item::RAW_CHICKEN => crate::item::Item::COOKED_CHICKEN,
                     crate::item::Item::COD => crate::item::Item::COOKED_COD,
                     crate::item::Item::SALMON => crate::item::Item::COOKED_SALMON,
@@ -1262,6 +1358,7 @@ impl Entities {
                     continue;
                 }
                 self.spawn(kind, pos);
+                self.natural_animal(world.biome(x, z));
                 self.note_zombie_villager(kind);
                 // Animals come in small herds, zombified piglins and End
                 // endermen in packs.
@@ -1292,6 +1389,7 @@ impl Entities {
                             && clear_of_players(ctx, p)
                         {
                             self.spawn(kind, p);
+                            self.natural_animal(world.biome(x + dx, z + dz));
                             self.note_zombie_villager(kind);
                         }
                     }
@@ -1647,6 +1745,8 @@ impl Entities {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
         mob.age = -24000;
+        mob.baby = true;
+        mob.persistent = kind.is_breedable();
         self.mobs.push(mob);
     }
 
@@ -1714,7 +1814,17 @@ impl Entities {
         let mut arrow = Arrow::shot(eye, dir, power, pickup);
         arrow.enchants = enchants;
         arrow.owner = Some(owner);
+        arrow.pvp = self.pvp;
         self.arrows.push(arrow);
+    }
+
+    /// A shared random roll (`p` chance), for host rules outside the entity simulation.
+    pub fn roll_chance(&mut self, p: f32) -> bool {
+        self.rng.chance(p)
+    }
+    /// A shared uniform draw in `lo..hi`.
+    pub fn roll_range(&mut self, lo: f32, hi: f32) -> f32 {
+        self.rng.range(lo, hi)
     }
 
     /// Stuck player arrows within reach of a player at `feet`, removed.
@@ -1807,11 +1917,18 @@ impl Entities {
                 cause: "was pricked by a guardian",
             });
         }
+        self.animals_owner_attack(index, owner);
         let old_health = self.mobs[index].health;
         let killed = self.knock(index, dir, damage, knockback, owner);
         if self.mobs[index].health < old_health {
             self.note_villager_hurt(index, owner, killed.is_some());
+            if kind == MobKind::Wolf && self.mobs[index].animal.as_ref().is_some_and(|a| a.owner != Some(owner)) {
+                self.mobs[index].angry_player = Some(owner);
+            }
             if kind == MobKind::IronGolem && !self.mobs[index].built {
+                self.mobs[index].angry_player = Some(owner);
+            }
+            if kind == MobKind::Llama {
                 self.mobs[index].angry_player = Some(owner);
             }
         }
@@ -1898,6 +2015,10 @@ impl Entities {
 pub fn can_spawn_on(kind: MobKind, ground: Block, daylight: f32) -> bool {
     if kind.is_hostile() {
         daylight < HOSTILE_SPAWN_DAYLIGHT && ground.is_solid() && ground.is_opaque()
+    } else if kind == MobKind::Goat {
+        matches!(ground, Block::GRASS | Block::STONE | Block::SNOW | crate::world::gadgets::PACKED_ICE)
+    } else if kind == MobKind::Rabbit {
+        ground == Block::GRASS || ground == Block::SAND || ground == Block::SNOW
     } else if kind == MobKind::Turtle {
         ground == Block::SAND
     } else {
@@ -2480,7 +2601,14 @@ mod tests {
     #[test]
     fn looting_does_not_increase_sheep_wool() {
         for seed in 0..100 {
-            assert_eq!(MobKind::Sheep.drops(&mut Rng::new(seed), 7), vec![(crate::item::Item::from(Block::WOOL), 1)]);
+            assert_eq!(
+                MobKind::Sheep
+                    .drops(&mut Rng::new(seed), 7)
+                    .iter()
+                    .find(|(i, _)| *i == crate::item::Item::from(Block::WOOL))
+                    .map(|s| s.1),
+                Some(1)
+            );
         }
     }
 
@@ -2817,7 +2945,10 @@ mod tests {
         assert_eq!(e.mobs.len(), 1, "kept by the nearby agent");
         let c = Ctx { players: vec![far_host], ..c };
         e.update(0.05, &world, &c);
-        assert!(e.mobs.is_empty(), "despawns once nobody is near");
+        assert_eq!(e.mobs.len(), 1, "Java farm animals persist while inactive");
+        let before = e.mobs[0].pos;
+        e.update(1.0, &world, &c);
+        assert_eq!(e.mobs[0].pos, before, "distant persistent mobs stop ticking");
     }
 
     #[test]
@@ -3480,7 +3611,8 @@ mod colored_sheep_tests {
         e.items.clear();
         e.mobs[0].dying = Some(0.0);
         e.drop_loot(MobKind::Sheep, DVec3::ZERO);
-        assert!(e.items.is_empty(), "sheared sheep drop no wool");
+        assert!(e.items.iter().all(|i| i.stack.item == Item::RAW_MUTTON), "sheared sheep drop mutton, no wool");
+        e.items.clear();
         e.mobs[0].sheared = false;
         e.drop_loot(MobKind::Sheep, DVec3::ZERO);
         assert_eq!(e.items[0].stack.item, Item::from(Block::wool(DyeColor::Black)));

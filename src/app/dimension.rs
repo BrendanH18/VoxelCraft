@@ -183,6 +183,12 @@ impl Game {
         }
         if let Some(n) = props.get("nether_mobs") {
             self.mobs.entities.load_nether_mobs(n);
+            self.player.vehicle =
+                self.mobs.entities.mount_for_player(crate::entity::PlayerId::HOST).or(self.player.vehicle);
+            for bot in self.agents.players.values_mut() {
+                bot.agent.player.vehicle =
+                    self.mobs.entities.mount_for_player(bot.agent.id).or(bot.agent.player.vehicle);
+            }
         }
         self.mobs.entities.fight = self
             .world

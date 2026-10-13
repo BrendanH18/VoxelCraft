@@ -17,6 +17,7 @@ use super::{Arrow, Puff, XpOrb};
 use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
 
+mod labels;
 mod nether;
 
 #[repr(C)]
@@ -533,7 +534,9 @@ impl std::ops::Deref for Parts {
 }
 macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.push($p);)*out}}}
 
+mod animals;
 mod aquatic;
+mod mounts;
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -541,6 +544,9 @@ fn pose(m: &Mob, time: f32) -> Parts {
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
+        MobKind::Horse | MobKind::Donkey | MobKind::Mule => mounts::pose(m),
+        MobKind::Llama => mounts::llama(m),
+        MobKind::Camel => mounts::camel(m),
         MobKind::Cod
         | MobKind::Salmon
         | MobKind::TropicalFish
@@ -554,6 +560,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         | MobKind::Cat
         | MobKind::Pillager
         | MobKind::Turtle => aquatic::pose(m, time),
+        MobKind::Wolf | MobKind::Fox | MobKind::Parrot | MobKind::Rabbit | MobKind::Goat => animals::pose(m, time),
         MobKind::Pig => parts![
             part(PIG_BODY, [0.0; 3], Quat::IDENTITY),
             part(PIG_LEG_BOX, [-3.0, 6.0, 5.0], rx(swing)),
@@ -898,11 +905,15 @@ pub fn build(
         } else {
             (FIRE, 0.0)
         };
+        labels::attachments(m, camera, forward, rel, out);
         aquatic::beam(m, camera, out);
-        let posed = pose(m, time);
+        let mut posed = pose(m, time);
+        if matches!(m.kind, MobKind::Pig | MobKind::Strider) {
+            mounts::equipment(m, &mut posed);
+        }
         for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
-            let xf = |v: Vec3| origin + body * (p.pivot + p.rot * v) * scale / 16.0;
+            let xf = |v: Vec3| origin + body * ((p.pivot + p.rot * v) * animals::model_scale(m)) * scale / 16.0;
             // Endermen eyes and blazes glow at full brightness.
             let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES)
                 || std::ptr::eq(p.boxes, MAGMA_GLOW)
@@ -910,6 +921,8 @@ pub fn build(
             let light = if glow { [light[0], 0, light[2], 255] } else { light };
             for (ci, c) in p.boxes.iter().enumerate() {
                 let mut cuboid = *c;
+                animals::colour(m, &mut cuboid);
+                mounts::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }
@@ -1011,6 +1024,7 @@ pub fn build_thrown(thrown: &[super::thrown::Thrown], camera: DVec3, alpha: f64,
         let (color, size) = match t.kind {
             super::thrown::Kind::Snowball => ([245, 245, 250], 2.0),
             super::thrown::Kind::Egg => ([236, 224, 196], 2.2),
+            super::thrown::Kind::LlamaSpit => ([235, 238, 228], 1.5),
         };
         let c = cube([-size, -size, -size], [size, size, size], color, 16);
         push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([230, 0, 0, 0], 0), (FIRE, 0.0), 0.0);
@@ -1199,6 +1213,59 @@ pub(super) fn build_minecarts(
         let rot = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2 - cart.yaw);
         let xf = |p: Vec3| rel + rot * (p / 16.0);
         let light = ([220, 255, 0, 0], 160);
+        if let Some((wood, chest)) = cart.kind.boat() {
+            let colors = [
+                [162, 130, 79],
+                [104, 78, 46],
+                [214, 204, 153],
+                [166, 119, 83],
+                [176, 91, 53],
+                [66, 43, 20],
+                [118, 56, 48],
+                [226, 174, 174],
+                [228, 218, 214],
+                [196, 176, 82],
+            ];
+            let color = colors[wood as usize];
+            let boxes = [
+                ([-8., 0., -14.], [8., 3., 14.]),
+                ([-10., 3., -14.], [-8., 9., 14.]),
+                ([8., 3., -14.], [10., 9., 14.]),
+                ([-8., 3., -14.], [8., 9., -12.]),
+                ([-8., 3., 12.], [8., 9., 14.]),
+            ];
+            for &(min, max) in &boxes[..if wood == 9 { 1 } else { 5 }] {
+                push_cuboid(out, &cube(min, max, color, 20), &xf, rot, light, ([0.; 3], 0.), cart.id as f32);
+            }
+            for side in [-1., 1.] {
+                let paddle_rot = Quat::from_rotation_z(side * (0.4 + cart.paddle.sin() * 0.35));
+                let pivot = Vec3::new(side * 9., 7., 0.);
+                let paddle_xf = |p: Vec3| xf(pivot + paddle_rot * p);
+                for (min, max) in [([0., -12., -1.], [1., 3., 1.]), ([-2., -15., -2.], [3., -10., 2.])] {
+                    push_cuboid(
+                        out,
+                        &cube(min, max, color, 16),
+                        &paddle_xf,
+                        rot * paddle_rot,
+                        light,
+                        ([0.; 3], 0.),
+                        cart.id as f32,
+                    );
+                }
+            }
+            if chest {
+                push_cuboid(
+                    out,
+                    &cube([-6., 3., -10.], [6., 15., 2.], [135, 88, 40], 16),
+                    &xf,
+                    rot,
+                    light,
+                    ([0.; 3], 0.),
+                    cart.id as f32,
+                );
+            }
+            continue;
+        }
         for (min, max) in [
             ([-7.0, 0.0, -9.0], [7.0, 2.0, 9.0]),
             ([-8.0, 2.0, -10.0], [-6.0, 9.0, 10.0]),
@@ -1217,7 +1284,7 @@ pub(super) fn build_minecarts(
                 [-6.0, 7.0, -6.0],
                 [6.0, 16.0, 6.0],
             )),
-            super::minecart::CartKind::Rideable => None,
+            super::minecart::CartKind::Rideable | super::minecart::CartKind::Boat { .. } => None,
         };
         if let Some((color, min, max)) = cargo {
             let box_ = cube(min, max, color, 16);
@@ -1275,6 +1342,22 @@ pub(super) fn push_cuboid(
 }
 
 pub use super::player_model::{PlayerAppearance, build_player};
+
+/// A player's name tag above their head, as Java shows within 64 blocks (hidden while sneaking).
+pub fn build_player_name(
+    player: &crate::player::Player,
+    feet: DVec3,
+    name: &str,
+    camera: DVec3,
+    out: &mut Vec<EntityVertex>,
+) {
+    let rel = (feet - camera).as_vec3();
+    if player.sneaking || name.is_empty() || rel.length_squared() > 64.0 * 64.0 {
+        return;
+    }
+    let toward = (rel + Vec3::Y * 2.1).normalize_or(Vec3::X);
+    labels::label(name, rel + Vec3::Y * 2.1, toward, out);
+}
 pub use super::player_pose::{PlayerPose, fits_at, resolve_pose};
 
 #[cfg(test)]

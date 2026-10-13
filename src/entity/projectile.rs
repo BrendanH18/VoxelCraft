@@ -32,6 +32,10 @@ pub struct Arrow {
     pub from_player: bool,
     /// The actual player who fired this arrow, independent of pickup rights.
     pub owner: Option<PlayerId>,
+    /// The mob that shot it (`uid`), if any.
+    pub shooter: Option<u32>,
+    /// A player's arrow in a world with PvP on: it can hit other players.
+    pub pvp: bool,
     /// Death message for players hit by this projectile.
     cause: &'static str,
     /// The player can collect it once stuck (not arrows shot in creative).
@@ -60,6 +64,8 @@ impl Arrow {
             stuck: false,
             from_player: false,
             owner: None,
+            shooter: None,
+            pvp: false,
             cause,
             pickup: false,
             critical: false,
@@ -81,6 +87,8 @@ impl Arrow {
             stuck: false,
             from_player: true,
             owner: Some(PlayerId::HOST),
+            shooter: None,
+            pvp: false,
             cause: "was shot by an arrow",
             pickup,
             critical: power >= 1.0,
@@ -226,18 +234,41 @@ impl Arrow {
                 self.age = 0.0;
                 return true;
             }
-            if self.from_player {
+            if self.from_player && !self.pvp {
                 continue;
             }
-            if let Some(hit) = ctx.players.iter().find(|t| t.targetable && t.contains(self.pos)) {
-                let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0;
-                let damage = (self.vel.length() / SPEED * 3.0).ceil() as f32;
+            if let Some(hit) = ctx
+                .players
+                .iter()
+                .find(|t| t.targetable && t.contains(self.pos) && !(self.from_player && Some(t.id) == self.owner))
+            {
+                let (damage, push) = if self.from_player {
+                    // Another player's bow: the same damage, criticals, Punch and Flame as on mobs.
+                    use crate::enchant::Enchantment;
+                    let mut damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
+                    if self.critical {
+                        damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
+                    }
+                    let punch = 1.0 + 3.0 * self.enchants.level(Enchantment::Punch) as f64;
+                    if self.enchants.has(Enchantment::Flame) {
+                        events.push(EntityEvent::Ignite { player: hit.id, secs: 5.0 });
+                    }
+                    (damage, DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 * punch + DVec3::Y * 3.0)
+                } else {
+                    (
+                        (self.vel.length() / SPEED * 3.0).ceil() as f32,
+                        DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0,
+                    )
+                };
                 events.push(EntityEvent::PlayerHit {
                     player: hit.id,
                     damage,
                     knockback: push.as_vec3(),
-                    cause: self.cause,
+                    cause: if self.from_player { "was shot by a player" } else { self.cause },
                 });
+                if let Some(attacker) = self.shooter {
+                    events.push(EntityEvent::OwnerHurt { player: hit.id, attacker });
+                }
                 return false;
             }
         }

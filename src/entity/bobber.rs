@@ -50,6 +50,15 @@ pub struct Retrieve {
 }
 
 impl Bobber {
+    /// A LAN client's copy: drawn only, never simulated.
+    pub(super) fn replica(owner: PlayerId, pos: DVec3, previous_pos: DVec3, biting: bool) -> Self {
+        let mut b = Self::cast(owner, pos, DVec3::X, 0, 0, &mut Rng::new(0));
+        b.pos = pos;
+        b.previous_pos = previous_pos;
+        b.biting = biting;
+        b
+    }
+
     /// Cast from `eye` along `dir`. `lure` and `luck` are the rod's levels.
     pub fn cast(owner: PlayerId, eye: DVec3, dir: DVec3, lure: u8, luck: u8, rng: &mut Rng) -> Self {
         let dir = dir.normalize_or(DVec3::NEG_Z);
@@ -227,7 +236,17 @@ pub fn roll_catch(rng: &mut Rng, luck: i32, open_water: bool) -> Stack {
     if roll < junk || treasure == 0 {
         return junk_stack(rng);
     }
-    let item = pick(rng, &[(Item::ENCHANTED_BOOK, 1), (Item::BOW, 1), (Item::FISHING_ROD, 1)]);
+    let item = pick(
+        rng,
+        &[
+            (Item::ENCHANTED_BOOK, 1),
+            (Item::BOW, 1),
+            (Item::FISHING_ROD, 1),
+            (Item::NAME_TAG, 1),
+            (Item::NAUTILUS_SHELL, 1),
+            (Item::SADDLE, 1),
+        ],
+    );
     Stack { enchants: treasure_enchants(rng, item), ..Stack::new(item, 1) }
 }
 

@@ -251,6 +251,36 @@ pub struct Villager {
     restocks: u8,
     last_restock: u32,
 }
+impl Mob {
+    /// What a LAN client's trading screen shows: merchant id, profession, level, xp and offers.
+    pub fn trade_view(&self) -> Option<Value> {
+        let v = self.villager.as_ref()?;
+        Some(json!({
+            "id": v.id,
+            "profession": Profession::ALL.iter().position(|p| *p == v.profession).unwrap_or(0),
+            "level": v.level,
+            "xp": v.xp,
+            "wandering": v.wandering,
+            "offers": v.offers.map(|o| o.map(Offer::save)),
+        }))
+    }
+    /// Applies [`Mob::trade_view`] to a client's copy of the merchant.
+    pub fn apply_trade_view(&mut self, t: &Value) {
+        let Some(v) = self.villager.as_mut() else { return };
+        v.id = t["id"].as_u64().unwrap_or(v.id);
+        v.profession =
+            t["profession"].as_u64().and_then(|i| Profession::ALL.get(i as usize).copied()).unwrap_or(v.profession);
+        v.level = t["level"].as_u64().unwrap_or(1).clamp(1, 5) as u8;
+        v.xp = t["xp"].as_u64().unwrap_or(0).min(u16::MAX as u64) as u16;
+        v.wandering = t["wandering"] == true;
+        if let Some(offers) = t["offers"].as_array() {
+            for (slot, o) in v.offers.iter_mut().zip(offers) {
+                *slot = Offer::load(o);
+            }
+        }
+    }
+}
+
 impl Villager {
     pub fn new(id: u64, seed: u64) -> Self {
         Self {
@@ -495,6 +525,12 @@ impl Entities {
                 if hash(world.seed() ^ home.x as u64 ^ ((home.z as u64) << 32)).is_multiple_of(5) {
                     m.age = -24000;
                 }
+                // Java's desert village houses sometimes keep a camel; here one home in four.
+                if world.biome(home.x, home.z) == crate::world::terrain::Biome::Desert
+                    && hash(world.seed() ^ 0xCA3E1 ^ home.x as u64 ^ ((home.z as u64) << 32)).is_multiple_of(4)
+                {
+                    self.spawn(MobKind::Camel, spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+                }
             }
         });
         self.mob_index.rebuild(&self.mobs);
@@ -629,12 +665,12 @@ impl Entities {
             .filter(|m| m.alive())
             .filter_map(|m| match m.kind {
                 MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => Some(json!({
-                    "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
+                    "identity":super::leash::save(m), "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
                     "health": m.health, "built": m.built, "anger": m.player_hit_left, "anger_player":m.angry_player.map(|p|p.0), "trader": m.trader.as_ref().map(|t|t.save()),
                 })),
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
                     let v = m.villager.as_ref()?;
-                    Some(json!({"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
+                    Some(json!({"identity":super::leash::save(m),"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
                     "health":m.health,"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
@@ -772,7 +808,8 @@ impl Entities {
                 m.villager = Some(Box::new(v));
                 Some(m)
             };
-            if let Some(m) = load() {
+            if let Some(mut m) = load() {
+                super::leash::load(&mut m, &a["identity"]);
                 if let Some(v) = m.villager.as_ref() {
                     self.next_villager_id = self.next_villager_id.max(v.id.saturating_add(1));
                 }

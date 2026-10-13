@@ -186,17 +186,15 @@ impl Game {
                 (p, min, max)
             });
             let pad = self.pad_view(name).map(|p| (p.breaking, p.eating));
-            let crack = pad
-                .map_or_else(|| a.breaking(&self.world), |p| p.0)
-                .filter(|&(_, f)| f > 0.0)
-                .map(|(p, f)| (p, crate::world::block::tex::CRACK_0 + (f * 10.0).min(9.0) as u16));
+            let cracks = self.cracks_seen_from(eye);
             let ui = if self.show_hud || a.vitals.is_dead() {
                 self.follower_ui(name, bot, (vp.width, vp.height), scene.now)
             } else {
                 Vec::new()
             };
             // Everyone else is visible from this view, the host included.
-            let mut others: Vec<(&crate::player::Player, DVec3, crate::entity::model::PlayerAppearance)> = Vec::new();
+            let mut others: Vec<(&crate::player::Player, DVec3, crate::entity::model::PlayerAppearance, &str)> =
+                Vec::new();
             if !self.vitals.is_dead() || self.vitals.since_damage() < 1.0 {
                 others.push((
                     &self.player,
@@ -210,6 +208,7 @@ impl Game {
                             self.inventory.armor,
                         ),
                     ),
+                    self.lan.profile.as_str(),
                 ));
             }
             for (other, b) in &self.agents.players {
@@ -221,6 +220,7 @@ impl Game {
                             host_dial.at(b.agent.player.yaw, b.agent.player.pos.x, b.agent.player.pos.z),
                             b.hand.appearance(&b.agent.vitals, b.agent.eating(), scene.alpha, b.agent.inventory.armor),
                         ),
+                        other.as_str(),
                     ));
                 }
             }
@@ -267,7 +267,7 @@ impl Game {
                 enhanced_graphics: self.settings.enhanced_graphics,
                 time: scene.time,
                 highlight,
-                crack,
+                cracks,
                 block_models: models,
                 hand: (bot.camera.first_person() && self.show_hud && !a.vitals.is_dead()).then(|| {
                     let eating = pad.map_or(a.eating(), |p| p.1);
@@ -326,6 +326,7 @@ impl Game {
             survival: !a.creative,
             underwater,
             dial: self.dial_of(&a.player),
+            vehicle: a.player.vehicle,
         };
         // Screens cover the hotbar, as Minecraft's do.
         let pad = self.pad_view(name).unwrap_or_default();

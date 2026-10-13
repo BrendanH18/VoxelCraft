@@ -21,7 +21,7 @@ impl Game {
     pub(super) fn open_container_count(&self) -> usize {
         match self.container {
             Container::Chest(p) => self.world.container_slots(p),
-            Container::Minecart(id) => self.mobs.entities.cart(id).map_or(0, |c| c.slot_count()),
+            Container::Minecart(id) => self.mobs.entities.vehicle_slots(id).map_or(0, |s| s.len()),
             _ => 0,
         }
     }
@@ -66,12 +66,14 @@ impl Game {
                     let stack = self
                         .mobs
                         .entities
-                        .cart_mut(id)
-                        .and_then(|c| if i < c.slot_count() { c.slots[i].take() } else { None });
+                        .vehicle_slots_mut(id)
+                        .and_then(|slots| slots.get_mut(i))
+                        .and_then(Option::take);
                     if let Some(stack) = stack {
                         let left = self.move_to_player(stack);
-                        if let Some(c) = self.mobs.entities.cart_mut(id) {
-                            c.slots[i] = left;
+                        if let Some(slot) = self.mobs.entities.vehicle_slots_mut(id).and_then(|slots| slots.get_mut(i))
+                        {
+                            *slot = left;
                         }
                     }
                     return;
@@ -191,10 +193,10 @@ impl Game {
     fn move_from_inventory(&mut self, from: usize, stack: Stack) -> Option<Stack> {
         match self.container {
             Container::Minecart(id) => {
-                return self.mobs.entities.cart_mut(id).map_or(Some(stack), |c| {
-                    let n = c.slot_count();
-                    crate::entity::minecart::insert_slots(&mut c.slots[..n], stack)
-                });
+                if self.mobs.entities.vehicle_slots(id).is_none() {
+                    return Some(stack);
+                }
+                return self.mobs.entities.insert_vehicle(id, stack);
             }
             Container::Chest(p) => {
                 let order: Vec<usize> = (0..self.world.container_slots(p)).collect();

@@ -12,6 +12,7 @@ pub mod entity;
 pub mod grindstone;
 pub mod inventory;
 pub mod item;
+pub mod lan;
 pub mod mesh;
 pub mod mining;
 #[path = "audio/music.rs"]

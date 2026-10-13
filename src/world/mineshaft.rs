@@ -605,9 +605,9 @@ fn floor_touches(p: &Piece, chunk: &Bounds) -> bool {
 /// powered/detector/activator rails) stay weighted blanks.
 type Entry = (Option<Item>, u32, u8, u8);
 const RARE: &[Entry] = &[
-    (None, 20, 1, 1), // golden apple
-    (None, 1, 1, 1),  // enchanted golden apple
-    (None, 30, 1, 1), // name tag
+    (None, 20, 1, 1),                 // golden apple
+    (None, 1, 1, 1),                  // enchanted golden apple
+    (Some(Item::NAME_TAG), 30, 1, 1), // name tag
     (Some(Item::ENCHANTED_BOOK), 10, 1, 1),
     (Some(Item::tool(ToolKind::Pickaxe, Tier::Iron)), 5, 1, 1),
     (None, 5, 1, 1), // empty
@@ -620,10 +620,10 @@ const COMMON: &[Entry] = &[
     (Some(Item::DIAMOND), 3, 1, 2),
     (Some(Item::COAL), 10, 3, 8),
     (Some(Item::BREAD), 15, 1, 3),
-    (None, 15, 3, 6), // glow berries
-    (None, 10, 2, 4), // melon seeds
-    (None, 10, 2, 4), // pumpkin seeds
-    (None, 10, 2, 4), // beetroot seeds
+    (None, 15, 3, 6),                       // glow berries
+    (Some(Item::MELON_SEEDS), 10, 2, 4),    // melon seeds
+    (Some(Item::PUMPKIN_SEEDS), 10, 2, 4),  // pumpkin seeds
+    (Some(Item::BEETROOT_SEEDS), 10, 2, 4), // beetroot seeds
 ];
 const RAILS: &[Entry] = &[
     (Some(Item::from_block(Block::RAIL)), 20, 4, 8),

@@ -179,12 +179,19 @@ impl World {
                     self.edit(q, ob::MYCELIUM, false);
                 }
             }
-            // Turtle eggs on sand hatch (Java cracks them over three stages,
-            // mostly at night; one roll in 40 stands in for that).
-            1976..=1979 => {
-                if self.get_block(p - IVec3::Y) == Some(Block::SAND) && self.one_in(40) {
-                    self.edit(p, Block::AIR, true);
-                    self.hatched_turtles.push((p, ob::egg_count(b).unwrap()));
+            // Java: three random-tick stages, always progressing in the
+            // narrow pre-dawn window (21600..22560), otherwise 1/500.
+            1976..=1979 | 2150..=2157 => {
+                let sand = self.get_block(p - IVec3::Y).is_some_and(|b| b == Block::SAND || b == Block::RED_SAND);
+                if sand && (self.turtle_hatching_time() || self.one_in(500)) {
+                    let count = ob::egg_count(b).unwrap();
+                    let stage = ob::egg_stage(b).unwrap();
+                    if stage == 2 {
+                        self.edit(p, Block::AIR, true);
+                        self.hatched_turtles.push((p, count));
+                    } else {
+                        self.edit(p, ob::turtle_eggs_stage(count, stage + 1), true);
+                    }
                 }
             }
             _ => return (ob::FIRST..=ob::LAST).contains(&b.0),
@@ -544,5 +551,28 @@ mod tests {
         assert_eq!(w.overworld_placement_ok(vine, ob::vine(Facing::North)), Some(true));
         w.set_block(wall, Block::AIR);
         assert_eq!(w.get_block(vine), Some(Block::AIR));
+    }
+    #[test]
+    fn turtle_eggs_crack_twice_then_hatch_all_babies_before_dawn() {
+        let mut w = world();
+        let p = IVec3::new(6, 80, 6);
+        w.set_block(p - IVec3::Y * 2, Block::STONE);
+        w.set_block(p - IVec3::Y, Block::SAND);
+        w.set_block(p, ob::turtle_eggs(4));
+        w.set_redstone_daylight(0.92, 11);
+        for stage in 1..=2 {
+            w.random_tick(p);
+            assert_eq!(ob::egg_stage(w.get_block(p).unwrap()), Some(stage));
+            assert_eq!(ob::egg_count(w.get_block(p).unwrap()), Some(4));
+        }
+        w.random_tick(p);
+        assert_eq!(w.get_block(p), Some(Block::AIR));
+        assert_eq!(w.hatched_turtles, vec![(p, 4)]);
+        w.set_block(p - IVec3::Y, Block::DIRT);
+        w.set_block(p, ob::TURTLE_EGG);
+        for _ in 0..100 {
+            w.random_tick(p);
+        }
+        assert_eq!(w.get_block(p), Some(ob::TURTLE_EGG));
     }
 }

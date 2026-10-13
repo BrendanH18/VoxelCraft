@@ -73,6 +73,7 @@ const CAT: &[Cuboid] = &[
     cube([-2.5, 7.0, 9.0], [-1.0, 8.0, 9.1], [167, 186, 62], 0),
     cube([1.0, 7.0, 9.0], [2.5, 8.0, 9.1], [167, 186, 62], 0),
 ];
+const CAT_COLLAR: &[Cuboid] = &[cube([-2.6, 4.0, 3.0], [2.6, 7.0, 4.0], [255, 0, 254], 0)];
 const CAT_LEG: &[Cuboid] = &[cube([-0.8, -3.0, -0.8], [0.8, 0.0, 0.8], [27, 27, 29], 16)];
 const CAT_TAIL: &[Cuboid] = &[cube([-0.6, 0.0, -8.0], [0.6, 1.2, 0.0], [27, 27, 29], 18)];
 const PILLAGER_BODY: &[Cuboid] = &[
@@ -157,14 +158,20 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             }
             p
         }
-        MobKind::Cat => parts![
-            part(CAT, [0.0; 3], Quat::IDENTITY),
-            part(CAT_TAIL, [0.0, 5.0, -6.0], tail),
-            part(CAT_LEG, [-2.0, 3.0, 3.0], Quat::from_rotation_x(m.limb_phase.sin() * 0.5)),
-            part(CAT_LEG, [2.0, 3.0, 3.0], Quat::from_rotation_x(-m.limb_phase.sin() * 0.5)),
-            part(CAT_LEG, [-2.0, 3.0, -4.0], Quat::IDENTITY),
-            part(CAT_LEG, [2.0, 3.0, -4.0], Quat::IDENTITY)
-        ],
+        MobKind::Cat => {
+            let mut p = parts![
+                part(CAT, [0.0; 3], Quat::IDENTITY),
+                part(CAT_TAIL, [0.0, 5.0, -6.0], tail),
+                part(CAT_LEG, [-2.0, 3.0, 3.0], Quat::from_rotation_x(m.limb_phase.sin() * 0.5)),
+                part(CAT_LEG, [2.0, 3.0, 3.0], Quat::from_rotation_x(-m.limb_phase.sin() * 0.5)),
+                part(CAT_LEG, [-2.0, 3.0, -4.0], Quat::IDENTITY),
+                part(CAT_LEG, [2.0, 3.0, -4.0], Quat::IDENTITY)
+            ];
+            if m.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
+                p.push(part(CAT_COLLAR, [0.0; 3], Quat::IDENTITY));
+            }
+            p
+        }
         MobKind::Pillager => parts![
             part(PILLAGER_BODY, [0.0; 3], Quat::IDENTITY),
             part(PILLAGER_LEG, [-2.0, 12.0, 0.0], Quat::from_rotation_x(m.limb_phase.sin() * m.limb_amp)),

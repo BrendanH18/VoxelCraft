@@ -264,7 +264,9 @@ impl World {
             Block::SUGAR_CANE => self.tick_cane(p),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
-            b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.0) => {
+            b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.0)
+                || (2150..=2157).contains(&b.0) =>
+            {
                 self.tick_overworld_flora(p, b);
             }
             b if b.crop_stage().is_some_and(|s| s < 7) => {

@@ -18,6 +18,7 @@ mod gamepad;
 mod hand;
 mod hud;
 mod items;
+mod lan;
 mod menu;
 mod mobs;
 mod pad_menu;
@@ -118,7 +119,10 @@ pub(crate) enum Container {
 }
 
 struct Game {
+    /// Exclusive claim on the open save (`session.lock`), released when the game closes.
+    session_lock: Option<std::fs::File>,
     agents: agents::Agents,
+    lan: lan::Lan,
     split: split::Split,
     pads: gamepad::Pads,
     /// `--pad-player` screen, seated once the world loads.
@@ -131,6 +135,7 @@ struct Game {
     actor: crate::entity::PlayerId,
     puppet_used: Option<glam::IVec3>,
     puppet_merchant: Option<u64>,
+    puppet_vehicle: Option<u32>,
     puppet_popup: Option<String>,
     console: console::Console,
     search: search::Search,
@@ -138,6 +143,7 @@ struct Game {
     world: World,
     player: Player,
     camera: voxelcraft::camera::CameraMode,
+    scripted_ride: Option<String>,
     storage: Storage,
     keys: FxHashSet<KeyCode>,
     /// Shift / Ctrl state (shift-click, Ctrl+Q, sneak-placing).
@@ -274,10 +280,41 @@ impl App {
     /// Loads (or creates) a world and leaves the title screen. Debug
     /// options like `--give` only apply to the first world of a session.
     fn play(&mut self, shell: Shell, world_dir: &str, new: Option<title::NewWorld>) {
+        // One process per save; scripted runs (screenshots, benchmarks) never write, so they may share.
+        let scripted = self.args.screenshot.is_some() || self.args.bench_render;
+        let lock = Storage::new(self.saves_dir.join(world_dir)).lock();
+        if let Err(e) = &lock
+            && !scripted
+        {
+            log::warn!("cannot open world '{world_dir}': {e}");
+            let mut title = title::Title::new(shell, &self.saves_dir);
+            title.world_error(format!("Can't open \"{world_dir}\": {e}"));
+            self.title = Some(title);
+            return;
+        }
         let mut game = Game::start(shell, &self.args, &self.saves_dir, world_dir, new);
+        game.session_lock = lock.ok();
         game.apply_settings();
         self.args.clear_one_shot();
         self.title = None;
+        self.game = Some(game);
+    }
+
+    fn join_lan(&mut self, connection: voxelcraft::lan::Connection, profile: String) {
+        let shell = self.title.take().expect("title screen").into_shell();
+        self.args.join = Some("connected".into());
+        let mut game = Game::start(shell, &self.args, &self.saves_dir, "lan-client", None);
+        game.lan.client = Some(connection);
+        game.lan.profile = profile;
+        game.arrival = None;
+        game.placed = true;
+        game.world =
+            World::new_remote(Arc::new(Generator::new(0)), game.settings.render_distance.clamp(2, lan::LAN_VIEW_MAX));
+        game.lan.offline_render_distance = Some(game.settings.render_distance);
+        // Start at the distance we will ask the host for; its first state may lower it.
+        game.settings.render_distance = game.settings.render_distance.clamp(2, lan::LAN_VIEW_MAX);
+        game.apply_settings();
+        self.args.clear_one_shot();
         self.game = Some(game);
     }
 
@@ -286,6 +323,7 @@ impl App {
         let Some(mut game) = self.game.take() else { return };
         game.save();
         game.save_settings();
+        game.close_lan("Server closed");
         let shell = game.into_shell();
         self.title = Some(title::Title::new(shell, &self.saves_dir));
     }
@@ -336,7 +374,13 @@ impl ApplicationHandler for App {
         audio.set_music_volume(settings.music_volume);
         let shell = Shell { renderer, audio, settings, settings_path };
         // A named world, a fresh one or a scripted run skips the title screen.
-        let to_title = matches!(self.args.open_menu.as_deref(), Some("title" | "create"));
+        let to_title = matches!(self.args.open_menu.as_deref(), Some("title" | "create" | "multiplayer"));
+        if let Some(address) = self.args.join.clone() {
+            let mut title = title::Title::new(shell, &self.saves_dir);
+            title.connect_address(address, self.args.profile.clone());
+            self.title = Some(title);
+            return;
+        }
         match self.args.world.clone() {
             Some(world) if !to_title => self.play(shell, &world, None),
             None if !to_title && (self.args.new_world || scripted) => self.play(shell, "world", None),
@@ -344,6 +388,9 @@ impl ApplicationHandler for App {
                 let mut title = title::Title::new(shell, &self.saves_dir);
                 if self.args.open_menu.as_deref() == Some("create") {
                     title.show_create();
+                }
+                if self.args.open_menu.as_deref() == Some("multiplayer") {
+                    title.show_multiplayer();
                 }
                 title.screenshot = self.args.screenshot.take();
                 self.title = Some(title);
@@ -362,6 +409,7 @@ impl ApplicationHandler for App {
                     let shell = self.title.take().expect("title screen").into_shell();
                     self.play(shell, &dir, new);
                 }
+                Some(title::Action::Join(connection, profile)) => self.join_lan(connection, profile),
                 Some(title::Action::Quit) => event_loop.exit(),
                 None => {}
             }
@@ -471,6 +519,13 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 game.frame();
+                if let Some(reason) = game.lan.lost.take() {
+                    self.quit_to_title();
+                    if let Some(title) = self.title.as_mut() {
+                        title.connection_error(reason);
+                    }
+                    return;
+                }
                 if game.screenshot_done() || game.bench_render_done() {
                     event_loop.exit();
                 }
@@ -497,6 +552,7 @@ impl ApplicationHandler for App {
         {
             game.save();
             game.save_settings();
+            game.close_lan("Server closed");
         }
         if let Some(title) = &self.title {
             title.save_settings();
@@ -522,20 +578,7 @@ pub(super) struct SkyState {
 
 /// Lighting and sky colours for a time of day.
 fn seat_rider(entities: &crate::entity::Entities, player: &mut Player, id: crate::entity::PlayerId) {
-    let Some(cart_id) = player.vehicle else { return };
-    match entities.cart(cart_id) {
-        Some(cart) if cart.rider == Some(id) => {
-            player.pos = cart.seat();
-            player.vel = DVec3::ZERO;
-            player.on_ground = true;
-        }
-        Some(cart) => {
-            player.pos = cart.pos + DVec3::X;
-            player.vehicle = None;
-            player.vel = DVec3::ZERO;
-        }
-        None => player.vehicle = None,
-    }
+    entities.seat_player(player, id);
 }
 
 fn sky_state(t: f64) -> SkyState {
@@ -566,7 +609,7 @@ impl Game {
     ) -> Game {
         let Shell { renderer, audio, settings, settings_path } = shell;
         let storage = Storage::new(saves_dir.join(world_dir));
-        let existing = if args.new_world || new.is_some() || !storage.exists() {
+        let existing = if args.join.is_some() || args.new_world || new.is_some() || !storage.exists() {
             None
         } else {
             match storage.load_level() {
@@ -579,7 +622,7 @@ impl Game {
         };
         // `--new` replaces the save, so the old world's Nether must not carry
         // over into the new one. Scripted runs never write saves.
-        if args.new_world && settings_path.is_some() {
+        if args.join.is_none() && args.new_world && settings_path.is_some() {
             for dimension in [Dimension::Nether, Dimension::End] {
                 let nether = dimension::storage_for(&storage, dimension);
                 if nether.exists()
@@ -738,7 +781,9 @@ impl Game {
             agents.restore_pad_beds(text);
         }
         let mut game = Game {
+            session_lock: None,
             agents,
+            lan: lan::Lan::default(),
             split: split::Split { follow: args.split_screen.clone(), side_by_side: args.split_side },
             // Screenshot runs never read controllers.
             virtual_pad: args.pad_player.clone(),
@@ -746,6 +791,7 @@ impl Game {
             actor: crate::entity::PlayerId::HOST,
             puppet_used: None,
             puppet_merchant: None,
+            puppet_vehicle: None,
             puppet_popup: None,
             pads: {
                 let mut pads = if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() };
@@ -784,9 +830,10 @@ impl Game {
             creative_scroll: 0,
             cursor_px: (0.0, 0.0),
             actions: actions::Actions::default(),
-            show_hud: true,
+            show_hud: !args.no_hud,
             hand: Default::default(),
             camera: args.camera,
+            scripted_ride: args.ride.clone(),
             last_space: now - Duration::from_secs(1),
             last_frame: now,
             clock: Default::default(),
@@ -853,6 +900,7 @@ impl Game {
             particles: crate::particles::System::new(seed),
             menu: match args.open_menu.as_deref() {
                 Some("pause") => Some(menu::Screen::Pause),
+                Some("lan") => Some(menu::Screen::Lan),
                 Some("options") => Some(menu::Screen::Options),
                 _ => None,
             },
@@ -883,6 +931,15 @@ impl Game {
         } else if game.screenshot.is_none() && game.bench_render.is_none() && !game.console.open {
             game.set_grab(true);
         }
+        game.lan.mode = game.mode;
+        game.lan.cheats = args.lan_cheats;
+        game.lan.pvp = args.lan_pvp;
+        game.lan.profile = args.profile.clone().unwrap_or_else(|| lan::local_profile(saves_dir));
+        if let Some(address) = args.host_lan
+            && let Err(e) = game.open_lan(address)
+        {
+            game.show_popup(&e);
+        }
         game
     }
 
@@ -895,6 +952,9 @@ impl Game {
     }
 
     fn set_grab(&mut self, grab: bool) {
+        if self.puppet {
+            return;
+        }
         let window = &self.renderer.window;
         if grab {
             let ok = window
@@ -935,6 +995,9 @@ impl Game {
             KeyCode::KeyE => self.toggle_inventory(),
             KeyCode::KeyQ => self.drop_selected(self.modifiers.control_key()),
             // Hardcore deaths end in spectator for good; only `/gamemode` cheats out.
+            KeyCode::KeyG if self.lan.client.is_some() => {
+                self.lan_command(if self.mode.is_creative() { "/gamemode survival" } else { "/gamemode creative" })
+            }
             KeyCode::KeyG if !self.hardcore => {
                 let mode = match self.mode {
                     GameMode::Survival => GameMode::Creative,
@@ -1105,6 +1168,10 @@ impl Game {
 
     /// Back to the world spawn with full health.
     fn respawn(&mut self) {
+        if self.lan.client.is_some() {
+            self.lan_command("respawn");
+            return;
+        }
         let kept_xp = self.gamerules.bool("keepInventory").then_some(self.vitals.xp);
         if self.dimension != Dimension::Overworld {
             self.vitals.respawn();
@@ -1141,15 +1208,28 @@ impl Game {
 
     /// Open or close the inventory, clearing queued input on entry and returning crafting stacks on exit.
     fn toggle_inventory(&mut self) {
+        if self.lan.client.is_some() {
+            self.lan_command(if self.inventory_open { "close" } else { "inventory" });
+            return;
+        }
         if !self.inventory_open && !self.mode.can_interact() {
             return;
+        }
+        if !self.inventory_open
+            && self.container == Container::Inventory
+            && let Some(id) = self.player.vehicle
+            && self.mobs.entities.vehicle_slots(id).is_some_and(|slots| !slots.is_empty())
+        {
+            self.container = Container::Minecart(id);
         }
         self.inventory_open = !self.inventory_open;
         if self.inventory_open {
             self.search.focused = self.mode == GameMode::Creative && self.container == Container::Inventory;
             self.search.selected = false;
             self.set_grab(false);
-            self.keys.clear();
+            if !self.puppet {
+                self.keys.clear();
+            }
             self.left_held = false;
             self.right_held = false;
             self.jump_pressed = false;
@@ -1282,6 +1362,30 @@ impl Game {
     }
 
     fn inventory_click(&mut self, right: bool) {
+        if self.lan.client.is_some() {
+            // Search, the recipe book and its paging are local views; slots and tossing go to the host.
+            if self.search_click() {
+                return;
+            }
+            if !right && let Some(control) = self.recipe_control_under_cursor() {
+                match control {
+                    recipe_book::Control::Toggle => self.recipe_book.open = !self.recipe_book.open,
+                    recipe_book::Control::Previous => self.recipe_book.step(-1),
+                    recipe_book::Control::Next => self.recipe_book.step(1),
+                }
+                self.audio.ui_click();
+                return;
+            }
+            if self.inventory.cursor.is_some() && self.cursor_off_panel() {
+                self.lan_command(if right { "toss_one" } else { "toss" });
+                return;
+            }
+            if let Some(slot) = self.slot_under_cursor().and_then(lan::encode_slot) {
+                self.audio.ui_click();
+                self.lan_send(voxelcraft::lan::Packet::Click { slot, right, shift: self.modifiers.shift_key() });
+            }
+            return;
+        }
         if self.search_click() {
             return;
         }
@@ -1324,10 +1428,10 @@ impl Game {
             Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right, self.mode.is_creative()),
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Minecart(id) = self.container {
-                    if let Some(cart) = self.mobs.entities.cart_mut(id)
-                        && i < cart.slot_count()
+                    if self.inventory.cursor.is_none_or(|s| self.mobs.entities.vehicle_accepts(id, i, s.item))
+                        && let Some(slot) = self.mobs.entities.vehicle_slots_mut(id).and_then(|slots| slots.get_mut(i))
                     {
-                        crate::inventory::click_slot(&mut cart.slots[i], &mut self.inventory.cursor, right);
+                        crate::inventory::click_slot(slot, &mut self.inventory.cursor, right);
                     }
                     return;
                 }
@@ -1598,6 +1702,27 @@ impl Game {
     }
 
     fn ride_minecarts(&mut self, input: crate::player::MoveInput) {
+        for m in &mut self.mobs.entities.mobs {
+            if let Some(s) = &mut m.mount
+                && let Some(id) = s.rider
+            {
+                let alive = if id == crate::entity::PlayerId::HOST {
+                    !self.vitals.is_dead()
+                } else {
+                    self.agents.players.values().any(|b| b.active && b.agent.id == id && !b.agent.vitals.is_dead())
+                };
+                if !alive {
+                    s.rider = None;
+                }
+            }
+        }
+        self.mobs.entities.mount_input(
+            crate::entity::PlayerId::HOST,
+            &self.player,
+            input,
+            &self.inventory,
+            self.actions.selected,
+        );
         let mut wish = Vec::new();
         if self.player.vehicle.is_none() && self.mode != GameMode::Spectator {
             self.mobs.entities.push_carts(self.player.pos, self.player.collision_shape().half_width);
@@ -1634,23 +1759,65 @@ impl Game {
         }
     }
 
+    fn open_vehicle(&mut self, id: u32) {
+        if self.puppet {
+            self.puppet_vehicle = Some(id);
+        } else if !self.inventory_open {
+            self.container = Container::Minecart(id);
+            self.toggle_inventory();
+        }
+    }
+
     fn place_block(&mut self) {
         if !self.mode.can_interact() {
             return;
         }
-        if self.player.vehicle.is_some() {
+        if let Some(id) = self.player.vehicle {
+            if self.mobs.entities.boost_mount(
+                self.actor,
+                &mut self.inventory,
+                self.actions.selected,
+                self.mode.is_creative(),
+            ) {
+                return;
+            }
+            if self.mobs.entities.vehicle_slots(id).is_some_and(|slots| !slots.is_empty()) {
+                self.open_vehicle(id);
+            }
             return;
         }
         let eye = self.player.eye();
         let dir = self.player.forward().as_dvec3();
         let reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
-        if let Some((id, _)) = self.mobs.entities.cart_container(eye, dir, reach) {
-            // Controller menus have no cart tab yet; the host's screen must not open for them.
-            if self.puppet {
-                self.show_popup("Minecart storage needs the keyboard player for now");
-            } else if !self.inventory_open {
-                self.container = Container::Minecart(id);
-                self.toggle_inventory();
+        if let Some(id) = self.mobs.entities.vehicle_container(eye, dir, reach)
+            && (self.sneak_building() || self.mobs.entities.cart(id).is_some_and(|c| c.kind.boat().is_none()))
+        {
+            self.open_vehicle(id);
+            return;
+        }
+        // Leads, name tags, food and taming come before mounting (as for agents).
+        if voxelcraft::survival_items::use_animal_target(
+            &self.player,
+            &mut self.inventory,
+            self.actions.selected,
+            self.mode.is_creative(),
+            &self.world,
+            &mut self.mobs.entities,
+            self.actor,
+        ) {
+            return;
+        }
+        if self.mobs.entities.use_mount(
+            eye,
+            dir,
+            reach,
+            self.actor,
+            &mut self.inventory,
+            self.actions.selected,
+            self.mode.is_creative(),
+        ) {
+            if let Some(id) = self.mobs.entities.mount_for_player(self.actor) {
+                self.player.vehicle = Some(id);
             }
             return;
         }
@@ -1663,6 +1830,11 @@ impl Game {
             && let Some((pos, normal)) = self.target()
         {
             let cell = if self.world.get_block(pos).is_some_and(|b| b.is_rail()) { pos } else { pos + normal };
+            let cell = if kind.boat().is_some() && self.world.get_block(pos).is_some_and(|b| b.is_water()) {
+                pos
+            } else {
+                cell
+            };
             if self.mobs.entities.place_cart(&self.world, kind, cell).is_none() {
                 return;
             }
@@ -1853,6 +2025,10 @@ impl Game {
     }
 
     fn pick_block(&mut self) {
+        if self.lan.client.is_some() {
+            self.lan_command("pick");
+            return;
+        }
         let Some(b) = self.target().and_then(|(pos, _)| self.world.get_block(pos)) else { return };
         if b.is_fire() {
             return;
@@ -1915,6 +2091,29 @@ impl Game {
             }
         }
         self.spawn_pending_mobs();
+        if let Some(name) = self.scripted_ride.take() {
+            self.mobs.entities.ensure_mob_ids();
+            let mut vehicle = None;
+            if let Some(mob) = self.mobs.entities.mobs.iter_mut().find(|m| m.kind.name() == name && m.mount.is_some()) {
+                let s = mob.mount.as_mut().unwrap();
+                s.tame = true;
+                s.slots[0] = Some(Stack::new(Item::SADDLE, 1));
+                s.rider = Some(crate::entity::PlayerId::HOST);
+                vehicle = Some(crate::entity::mounts::MOB_VEHICLE | mob.uid);
+            } else if let Some(cart) = self.mobs.entities.minecarts.iter_mut().find(|c| c.kind.item().name() == name) {
+                cart.rider = Some(crate::entity::PlayerId::HOST);
+                vehicle = Some(cart.id);
+            }
+            if let Some(id) = vehicle {
+                self.player.vehicle = Some(id);
+                seat_rider(&self.mobs.entities, &mut self.player, crate::entity::PlayerId::HOST);
+                if self.inventory_open {
+                    self.container = Container::Minecart(id);
+                }
+            } else {
+                log::warn!("--ride: no scripted vehicle named {name}");
+            }
+        }
         // Seated once the ground it stands on is in place.
         if let Some(screen) = self.virtual_pad.take() {
             self.virtual_pad(&screen);
@@ -2020,8 +2219,12 @@ impl Game {
     }
 
     fn save(&mut self) {
+        if self.lan.client.is_some() {
+            self.last_save = Instant::now();
+            return;
+        }
         let mut props = std::collections::BTreeMap::new();
-        props.insert("agents".into(), self.agents.serialize(self.dimension.name()));
+        props.insert("agents".into(), self.serialize_lan_profiles());
         props.insert("pads".into(), self.pads.serialize());
         props.insert("mode".to_string(), self.mode.name().to_string());
         props.insert("difficulty".to_string(), self.difficulty.name().to_string());
@@ -2117,6 +2320,14 @@ impl Game {
 
     /// Attack/mine button (left click, or a controller's RT) pressed or released.
     fn attack_button(&mut self, pressed: bool) {
+        if self.lan.client.is_some() {
+            self.left_held = pressed;
+            self.lan_button_edge(true, pressed);
+            if pressed {
+                self.hand.swing();
+            }
+            return;
+        }
         if !self.mode.can_interact() {
             return;
         }
@@ -2145,6 +2356,14 @@ impl Game {
 
     /// Use button (right click, or a controller's LT) pressed or released.
     fn use_button(&mut self, pressed: bool) {
+        if self.lan.client.is_some() {
+            self.right_held = pressed;
+            self.lan_button_edge(false, pressed);
+            if pressed {
+                self.hand.swing();
+            }
+            return;
+        }
         if !self.mode.can_interact() {
             return;
         }
@@ -2271,6 +2490,7 @@ impl Game {
 
         let acting = self.menu.is_none() && !self.console.open && self.mouse_grabbed && !self.inventory_open;
         self.act(acting, dt);
+        self.drive_lan(dt);
         self.drive_pads(dt);
         self.tick_agents();
         self.ride_minecarts(input);
@@ -2312,26 +2532,47 @@ impl Game {
     /// Offline pause keeps streaming active and snaps interpolation to the current state.
     fn frame(&mut self) {
         let now = Instant::now();
+        self.poll_lan();
         self.poll_agents();
-        let paused = (self.menu.is_some() || self.console.open || self.credits.is_some()) && self.agents.host.is_none();
+        let paused = (self.menu.is_some() || self.console.open || self.credits.is_some())
+            && self.agents.host.is_none()
+            && self.lan.host.is_none()
+            && self.lan.client.is_none();
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
         let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
         self.update_credits(elapsed.as_secs_f32().min(0.25));
-        self.poll_pads(dt as f32, paused);
+        if self.lan.client.is_none() {
+            self.poll_pads(dt as f32, paused);
+        }
 
         // Streaming and GPU uploads continue during offline pause.
-        self.update_arrival();
+        if self.lan.client.is_none() {
+            self.update_arrival();
+        }
         let viewers: Vec<DVec3> = self.followed().map(|(_, b)| b.agent.player.pos).collect();
         self.world.set_viewers(&viewers);
         self.world.update_players(self.player.pos, &self.agents.positions());
-        if !self.placed && self.screenshot.is_none() && self.world.pending_jobs() == 0 && self.world.loaded_chunks() > 0
+        if self.lan.client.is_none()
+            && !self.placed
+            && self.screenshot.is_none()
+            && self.world.pending_jobs() == 0
+            && self.world.loaded_chunks() > 0
         {
             self.apply_placements();
         }
         for _ in 0..ticks {
-            self.tick();
+            if self.lan.client.is_some() {
+                self.tick_lan_client();
+            } else {
+                let started = Instant::now();
+                self.tick();
+                let took = started.elapsed().as_secs_f64();
+                self.lan.stats_tick_secs += took;
+                self.lan.stats_tick_max = self.lan.stats_tick_max.max(took);
+                self.send_lan_state();
+            }
         }
         if paused {
             self.previous_eye = self.player.eye();
@@ -2405,12 +2646,12 @@ impl Game {
         };
         let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } = self.fog(&scene, camera);
         let dial = self.dial_of(&self.player);
-        let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance)> = self
+        let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)> = self
             .agents
             .players
-            .values()
-            .filter(|b| b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0))
-            .map(|b| {
+            .iter()
+            .filter(|(_, b)| b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0))
+            .map(|(name, b)| {
                 let pose = dial.at(b.agent.player.yaw, b.agent.player.pos.x, b.agent.player.pos.z);
                 (
                     &b.agent.player,
@@ -2419,6 +2660,7 @@ impl Game {
                         pose,
                         b.hand.appearance(&b.agent.vitals, b.agent.eating(), alpha, b.agent.inventory.armor),
                     ),
+                    name.as_str(),
                 )
             })
             .collect();
@@ -2477,10 +2719,7 @@ impl Game {
                 let (min, max) = self.world.outline(p);
                 (p, min, max)
             }),
-            crack: self
-                .actions
-                .breaking
-                .map(|(p, progress)| (p, crate::world::block::tex::CRACK_0 + (progress * 10.0).min(9.0) as u16)),
+            cracks: self.cracks_seen_from(eye),
             block_models: self.block_models(alpha),
             hand: (self.camera.first_person() && self.show_hud && !self.vitals.is_dead() && self.sleeping.is_none())
                 .then(|| {
@@ -2572,13 +2811,13 @@ impl Game {
 /// fog range of `camera`.
 fn push_avatars(
     world: &World,
-    players: &[(&Player, DVec3, crate::entity::model::PlayerAppearance)],
+    players: &[(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)],
     camera: DVec3,
     fog_end: f32,
     time: f32,
     verts: &mut Vec<crate::entity::model::EntityVertex>,
 ) {
-    for &(player, feet, appearance) in players {
+    for &(player, feet, appearance, name) in players {
         // A body around the camera (players can share a spot) would fill the view.
         let inside = (camera - feet).with_y(0.0).length() < 0.4 && (feet.y..feet.y + 1.9).contains(&camera.y);
         if !inside && feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
@@ -2594,6 +2833,9 @@ fn push_avatars(
                 appearance,
                 verts,
             );
+            if appearance.death.is_none() {
+                crate::entity::model::build_player_name(player, feet, name, camera, verts);
+            }
         }
     }
 }

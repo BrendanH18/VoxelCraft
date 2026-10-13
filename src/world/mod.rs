@@ -115,12 +115,18 @@ pub struct World {
     load_cursor: usize,
     center: Option<IVec3>,
     agent_centers: Vec<IVec3>,
+    /// Remote replicas evict nothing until the host has placed the player: a
+    /// placeholder centre would drop chunks the host already counts as delivered.
+    hold_unloads: bool,
+    /// Chunk radius kept loaded around agent and LAN players (4 unless a LAN host widens it).
+    agent_radius: i32,
     /// Chunks of other players shown in split-screen: loaded and meshed at
     /// the full render distance, like the host's.
     view_centers: Vec<IVec3>,
     render_distance: i32,
     region: Option<Box<Region>>,
     meshes_enabled: bool,
+    remote: bool,
     light_updates: lighting::LightUpdates,
     fluids: fluid::FluidState,
     fire: fire::FireState,
@@ -191,6 +197,96 @@ impl World {
         Self::with_meshing(generator, saved, distance, false)
     }
 
+    /// Rendering replica: terrain only arrives from the LAN authority.
+    pub fn new_remote(generator: Arc<Generator>, distance: i32) -> Self {
+        let mut world = Self::new(generator, FxHashMap::default(), distance);
+        world.remote = true;
+        world.hold_unloads = true;
+        world
+    }
+
+    /// Immutable subscription snapshots; pointer identity detects even nonvisual edits.
+    pub fn network_chunks(&self, center: IVec3, radius: i32) -> Vec<(IVec3, Arc<ChunkData>)> {
+        let mut chunks: Vec<_> = self
+            .chunks
+            .iter()
+            .filter(|(p, _)| {
+                let d = (**p - center).with_y(0);
+                d.length_squared() <= radius * radius
+            })
+            .map(|(&p, s)| (p, s.data.clone()))
+            .collect();
+        chunks.sort_unstable_by_key(|(p, _)| {
+            let d = *p - center;
+            d.with_y(0).length_squared() * 2 + d.y * d.y
+        });
+        chunks
+    }
+
+    /// Applies a host's cell edits to a chunk this replica already holds.
+    pub fn receive_edits(&mut self, pos: IVec3, cells: &[(u16, Block)]) {
+        if cells.is_empty() {
+            return;
+        }
+        let Some(data) = self.chunks.get(&pos).map(|s| s.data.with_edits(cells)) else { return };
+        self.receive_chunk(pos, Arc::new(data));
+    }
+
+    /// Install an exact authoritative snapshot, invalidate stale meshes and heightmaps.
+    /// This does not settle blocks, generate decoration or create simulation drops.
+    pub fn receive_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>) {
+        if !self.remote || !self.generator.dimension.chunk_rows().contains(&pos.y) {
+            return;
+        }
+        let version = self.chunks.get(&pos).map_or(0, |s| s.version.wrapping_add(1));
+        let in_flight = self.chunks.get(&pos).is_some_and(|s| s.mesh_in_flight);
+        let existed = self.chunks.contains_key(&pos);
+        self.chunks.insert(
+            pos,
+            ChunkSlot {
+                data,
+                modified: false,
+                version,
+                meshed_version: None,
+                mesh_in_flight: in_flight,
+                block_light: None,
+            },
+        );
+        let key = column_of(pos);
+        let col = self.columns.entry(key).or_insert_with(|| {
+            self.workers.submit(Job::Foliage(key));
+            Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None, snow: None }
+        });
+        if !existed {
+            col.loaded += 1;
+        }
+        col.heights.fill(NO_HEIGHT);
+        if self.generator.dimension.has_sky() {
+            for (p, s) in &self.chunks {
+                if column_of(*p) == key {
+                    let heights = mesh::chunk_heights(&s.data, p.y * CHUNK_SIZE_I);
+                    for (h, new) in col.heights.iter_mut().zip(heights) {
+                        *h = (*h).max(new);
+                    }
+                }
+            }
+        }
+        self.load_block_light(pos);
+        // A heightmap change affects every vertical chunk of the neighboring
+        // columns; a data change also affects their block-light margins.
+        let affected: Vec<_> = self
+            .chunks
+            .keys()
+            .copied()
+            .filter(|p| (p.x - pos.x).abs() <= 1 && (p.z - pos.z).abs() <= 1 && self.in_mesh_range(*p))
+            .collect();
+        for p in affected {
+            let slot = self.chunks.get_mut(&p).unwrap();
+            slot.version = slot.version.wrapping_add(1);
+            self.dirty.insert(p);
+        }
+    }
+
     /// Initialize shared world state and workers, selecting whether streaming also builds render meshes.
     fn with_meshing(
         generator: Arc<Generator>,
@@ -212,10 +308,13 @@ impl World {
             load_cursor: 0,
             center: None,
             agent_centers: Vec::new(),
+            hold_unloads: false,
+            agent_radius: 4,
             view_centers: Vec::new(),
             render_distance,
             region: None,
             meshes_enabled,
+            remote: false,
             light_updates: Default::default(),
             fluids: Default::default(),
             fire: Default::default(),
@@ -287,6 +386,23 @@ impl World {
         }
     }
 
+    /// A remote replica's player now has its authoritative position: allow evictions.
+    pub fn release_unloads(&mut self) {
+        if self.hold_unloads {
+            self.hold_unloads = false;
+            self.center = None;
+        }
+    }
+
+    /// Widens (or restores) the radius loaded around agent and LAN players.
+    pub fn set_agent_radius(&mut self, radius: i32) {
+        let radius = radius.clamp(4, 32);
+        if radius != self.agent_radius {
+            self.agent_radius = radius;
+            self.center = None;
+        }
+    }
+
     pub fn loaded_chunks(&self) -> usize {
         self.chunks.len()
     }
@@ -340,7 +456,7 @@ impl World {
         (self.horizontal_dist2(pos) as f32) <= r * r
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
-                d.length_squared() <= 16
+                d.length_squared() <= self.agent_radius * self.agent_radius
             })
     }
 
@@ -351,7 +467,7 @@ impl World {
         self.horizontal_dist2(pos) <= r * r
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
-                d.length_squared() <= 25
+                d.length_squared() <= (self.agent_radius + 1) * (self.agent_radius + 1)
             })
     }
 
@@ -640,7 +756,11 @@ impl World {
         self.center = Some(center);
 
         // Unload far chunks; keep player edits around in memory.
-        let far: Vec<IVec3> = self.chunks.keys().copied().filter(|&p| !self.in_keep_range(p)).collect();
+        let far: Vec<IVec3> = if self.hold_unloads {
+            Vec::new()
+        } else {
+            self.chunks.keys().copied().filter(|&p| !self.in_keep_range(p)).collect()
+        };
         for pos in far {
             self.remove_chunk(pos);
         }
@@ -672,10 +792,11 @@ impl World {
                 }
             }
         }
+        let r = self.agent_radius;
         for c in &self.agent_centers {
-            for dz in -4..=4 {
-                for dx in -4..=4 {
-                    if dx * dx + dz * dz > 16 {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    if dx * dx + dz * dz > r * r {
                         continue;
                     }
                     for y in self.generator.dimension.chunk_rows() {
@@ -817,7 +938,7 @@ impl World {
         }
 
         // Generate the nearest missing chunks.
-        while self.gen_in_flight.len() < cap && self.load_cursor < self.load_list.len() {
+        while !self.remote && self.gen_in_flight.len() < cap && self.load_cursor < self.load_list.len() {
             let pos = self.load_list[self.load_cursor];
             self.load_cursor += 1;
             if self.chunks.contains_key(&pos) || self.gen_in_flight.contains(&pos) {

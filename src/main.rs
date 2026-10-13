@@ -15,9 +15,16 @@ use winit::event_loop::{ControlFlow, EventLoop};
 
 pub struct Args {
     pub seed: Option<u64>,
+    pub host_lan: Option<std::net::SocketAddr>,
+    pub join: Option<String>,
+    pub profile: Option<String>,
     pub agent_listen: Option<std::net::SocketAddr>,
     pub agent_token: Option<String>,
     pub agent_cheats: bool,
+    /// `--lan-cheats`: LAN players may use cheat commands (Open to LAN's Allow Cheats).
+    pub lan_cheats: bool,
+    /// `--lan-pvp`: LAN players can hurt each other (Open to LAN's PvP).
+    pub lan_pvp: bool,
     pub open_console: bool,
     /// `--split-screen`: agent profiles to follow in extra views.
     pub split_screen: Vec<String>,
@@ -35,6 +42,7 @@ pub struct Args {
     pub screenshot: Option<String>,
     /// Session-only perspective for screenshot inspection.
     pub camera: voxelcraft::camera::CameraMode,
+    pub ride: Option<String>,
     pub bench_render: bool,
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
@@ -85,6 +93,8 @@ pub struct Args {
     pub drop: Vec<(item::Item, u8)>,
     /// Sound: start muted, master volume 0..1, dump WAVs and exit.
     pub mute: bool,
+    /// Start with the HUD hidden (F1), for clean screenshots.
+    pub no_hud: bool,
     pub volume: Option<f32>,
     pub export_sounds: bool,
     pub export_music: bool,
@@ -92,6 +102,11 @@ pub struct Args {
 
 const USAGE: &str = "\
 voxelcraft [options]
+  --host-lan <IP:PORT>     open a desktop world to LAN (0.0.0.0:0 chooses a port)
+  --join <HOST:PORT>       join a LAN world; never writes its save
+  --lan-cheats             with --host-lan: allow LAN players cheat commands
+  --lan-pvp                with --host-lan: players can hurt each other
+  --profile <name>         local LAN identity (restored on reconnect)
   --agent-listen <IP:PORT>  host CLI players (default recommended: 127.0.0.1:4242)
   --agent-token <token>    shared token (required for LAN, at least 16 characters)
   --agent-cheats           permit agents to use give, gamemode, tp and world commands
@@ -121,7 +136,7 @@ voxelcraft [options]
                     inventory, with play, pause, inventory, crafting or
                     palette (creative) open
                     (screenshots)
-  --open-menu <m>   start with a menu open: pause, options, title or create (screenshots)
+  --open-menu <m>   start with a menu open: pause, options, title, create, lan or multiplayer (screenshots)
   --open-block x,y,z  open the furnace, chest, brewing stand, enchanting
                     table, anvil or smithing table once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
@@ -141,7 +156,8 @@ voxelcraft [options]
   --wear item       put on a piece of armor at startup (repeatable)
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
-  --cart x,y,z,kind spawn rideable/chest/hopper/tnt cart on a rail (repeatable)
+  --cart x,y,z,kind spawn a cart on rails, or a named boat/raft (repeatable)
+  --ride name      ride a scripted boat or saddled/tamed animal (screenshots)
   --spawn kind,x,y,z[,material[,glint]]
                     spawn a mob once loaded (repeatable; any mob name, such as
                     zombie or magma_cube; y may be ~
@@ -157,15 +173,21 @@ voxelcraft [options]
   --camera <first|third|front>  starting camera perspective (F5 cycles in game)
   --pose x,y,z,yaw,pitch  start flying at this position (degrees)
   --mute            start with sound muted (M toggles in game)
+  --no-hud          start with the HUD and hand hidden (F1 toggles in game)
   --volume <0..1>   master volume (default: 1, or the saved option)
   --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         seed: None,
+        host_lan: None,
+        join: None,
+        profile: None,
         agent_listen: None,
         agent_token: None,
         agent_cheats: false,
+        lan_cheats: false,
+        lan_pvp: false,
         open_console: false,
         split_screen: Vec::new(),
         split_side: false,
@@ -178,6 +200,7 @@ fn parse_args() -> Result<Args, String> {
         bench: false,
         screenshot: None,
         camera: Default::default(),
+        ride: None,
         bench_render: false,
         debug_overlay: false,
         mode: None,
@@ -206,6 +229,7 @@ fn parse_args() -> Result<Args, String> {
         enchants: Vec::new(),
         drop: Vec::new(),
         mute: false,
+        no_hud: false,
         volume: None,
         export_sounds: false,
         export_music: false,
@@ -214,11 +238,22 @@ fn parse_args() -> Result<Args, String> {
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
         match a.as_str() {
+            "--host-lan" => args.host_lan = Some(value("--host-lan")?.parse().map_err(|_| "bad --host-lan IP:PORT")?),
+            "--join" => args.join = Some(value("--join")?),
+            "--profile" => {
+                let profile = value("--profile")?;
+                if !voxelcraft::control::valid_name(&profile) {
+                    return Err("invalid --profile (1..24 letters, digits, underscores)".into());
+                }
+                args.profile = Some(profile);
+            }
             "--agent-listen" => {
                 args.agent_listen = Some(value("--agent-listen")?.parse().map_err(|_| "bad --agent-listen IP:PORT")?)
             }
             "--agent-token" => args.agent_token = Some(value("--agent-token")?),
             "--agent-cheats" => args.agent_cheats = true,
+            "--lan-cheats" => args.lan_cheats = true,
+            "--lan-pvp" => args.lan_pvp = true,
             "--split-screen" => {
                 let v = value("--split-screen")?;
                 args.split_screen = v.split(',').map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).collect();
@@ -263,8 +298,10 @@ fn parse_args() -> Result<Args, String> {
             }
             "--open-menu" => {
                 let m = value("--open-menu")?;
-                if !matches!(m.as_str(), "pause" | "options" | "title" | "create") {
-                    return Err(format!("--open-menu: expected pause, options, title or create, got {m}"));
+                if !matches!(m.as_str(), "pause" | "options" | "title" | "create" | "lan" | "multiplayer") {
+                    return Err(format!(
+                        "--open-menu: expected pause, options, title, create, lan or multiplayer, got {m}"
+                    ));
                 }
                 args.open_menu = Some(m);
             }
@@ -303,6 +340,7 @@ fn parse_args() -> Result<Args, String> {
                 .ok_or_else(bad)?;
                 args.place.push((glam::IVec3::new(n[0], n[1], n[2]), block));
             }
+            "--ride" => args.ride = Some(value("--ride")?.replace('_', " ")),
             "--cart" => {
                 let v = value("--cart")?;
                 let parts: Vec<_> = v.split(',').collect();
@@ -319,7 +357,9 @@ fn parse_args() -> Result<Args, String> {
                     "chest" => entity::minecart::CartKind::Chest,
                     "hopper" => entity::minecart::CartKind::Hopper,
                     "tnt" => entity::minecart::CartKind::Tnt,
-                    _ => return Err("--cart kind must be rideable, chest, hopper or tnt".into()),
+                    name => item::Item::from_name(name)
+                        .and_then(entity::minecart::CartKind::from_item)
+                        .ok_or("unknown vehicle kind")?,
                 };
                 args.carts.push((kind, glam::IVec3::new(n[0], n[1], n[2])));
             }
@@ -417,6 +457,7 @@ fn parse_args() -> Result<Args, String> {
                 args.pose = Some(v.try_into().map_err(|_| "--pose needs x,y,z,yaw,pitch")?);
             }
             "--mute" => args.mute = true,
+            "--no-hud" => args.no_hud = true,
             "--volume" => {
                 args.volume = Some(value("--volume")?.parse::<f32>().map_err(|_| "bad --volume")?.clamp(0.0, 1.0))
             }
@@ -437,6 +478,8 @@ impl Args {
     /// once it has loaded, so worlds picked later start as saved.
     pub fn clear_one_shot(&mut self) {
         self.new_world = false;
+        self.host_lan = None;
+        self.join = None;
         self.seed = None;
         self.mode = None;
         self.open_inventory = false;

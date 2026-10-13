@@ -76,6 +76,11 @@ impl Game {
     /// Left-button press: hits the mob under the crosshair. Returns `true`
     /// if a mob was targeted, in which case no block should be broken.
     pub(super) fn attack(&mut self) -> bool {
+        if voxelcraft::survival_items::attack_knot(&self.player, &self.world, &mut self.mobs.entities)
+            || self.attack_lan_player()
+        {
+            return true;
+        }
         let eye = self.player.eye();
         let dir = self.player.forward().as_dvec3();
         let cart_reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
@@ -201,7 +206,10 @@ impl Game {
     /// Block breaking is suppressed while aiming at a mob, and for the rest
     /// of a click that started as an attack.
     pub(super) fn attacking(&self) -> bool {
-        self.mobs.attack_held || self.mob_target().is_some() || self.fight_target().is_some()
+        self.mobs.attack_held
+            || self.mob_target().is_some()
+            || self.fight_target().is_some()
+            || self.lan_player_target().is_some()
     }
 
     /// Applies `--spawn` requests (with the other `--place` edits).
@@ -238,6 +246,10 @@ impl Game {
         if self.held_item() != Some(crate::item::Item::FISHING_ROD) || self.vitals.is_dead() {
             self.mobs.entities.drop_bobber(self.actor);
         }
+        super::seat_rider(&self.mobs.entities, &mut self.player, crate::entity::PlayerId::HOST);
+        for bot in self.agents.players.values_mut().filter(|b| b.active) {
+            super::seat_rider(&self.mobs.entities, &mut bot.agent.player, bot.agent.id);
+        }
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.mobs.entities.despawn_hostiles();
         }
@@ -260,6 +272,9 @@ impl Game {
                 .map_or(Default::default(), |s| s.active_enchants()),
             shape: self.player.collision_shape(),
             gold_armor: crate::entity::nether::wears_gold(&self.inventory.armor),
+            held_item: self.held_item(),
+            on_ground: self.player.on_ground,
+            in_water: self.player.in_water,
             ..Target::new(PlayerId::HOST, self.player.pos, self.mode.targetable() && !self.vitals.is_dead())
         }];
         // Agents keep source-dimension positions until arrival relocates them.
@@ -303,6 +318,15 @@ impl Game {
                             knockback.as_dvec3(),
                             &mut self.mobs.entities,
                         );
+                    }
+                }
+                EntityEvent::PlayerFall { player, damage } => {
+                    if self.gamerules.bool("fallDamage") {
+                        if player == PlayerId::HOST {
+                            self.damage_player(damage, crate::simulation::survival::CAUSE_FALL);
+                        } else if let Some(bot) = self.agents.by_id_mut(player) {
+                            bot.agent.hurt_fall(damage, &mut self.mobs.entities);
+                        }
                     }
                 }
                 EntityEvent::PlayerBeam { player, physical, magic } => {
@@ -414,6 +438,14 @@ impl Game {
                     );
                     let (sound, gain) = match sound {
                         MobSound::Bell => (Sound::Bell, 1.0),
+                        MobSound::BoatPaddle(water) => (
+                            Sound::Step(if water {
+                                crate::audio::sounds::Material::Water
+                            } else {
+                                crate::audio::sounds::Material::Wood
+                            }),
+                            0.6,
+                        ),
                         MobSound::Fuse => (Sound::Fuse, 1.0),
                         MobSound::Bow => (Sound::Bow, 1.0),
                         MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7),
@@ -447,10 +479,16 @@ impl Game {
                 }
                 EntityEvent::Shoot { .. }
                 | EntityEvent::MobHit { .. }
+                | EntityEvent::OwnerHurt { .. }
                 | EntityEvent::DragonXp { .. }
                 | EntityEvent::MobKilled { .. }
                 | EntityEvent::LaidEgg { .. }
                 | EntityEvent::Hatched { .. } => {}
+                EntityEvent::AnimalBlock { cell, from, to } => {
+                    if self.world.get_block(cell) == Some(from) {
+                        self.world.set_block(cell, to);
+                    }
+                }
                 EntityEvent::VillagerDoor { cell } => {
                     if self.world.get_block(cell).is_some_and(|b| {
                         matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: false, upper: false, .. }))
@@ -539,7 +577,8 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Ghast => Voice::Ghast,
         MobKind::Witch => Voice::Witch,
         MobKind::Villager | MobKind::WanderingTrader => Voice::Villager,
-        MobKind::TraderLlama => Voice::Cow,
+        MobKind::TraderLlama | MobKind::Llama | MobKind::Camel => Voice::Cow,
+        MobKind::Horse | MobKind::Donkey | MobKind::Mule => Voice::Horse,
         MobKind::IronGolem => Voice::Cow,
         MobKind::SnowGolem => Voice::Slime,
         MobKind::Piglin | MobKind::PiglinBrute => Voice::Piglin,
@@ -552,6 +591,11 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Guardian | MobKind::ElderGuardian => Voice::Guardian,
         MobKind::Cat => Voice::Cat,
         MobKind::Pillager => Voice::Pillager,
+        MobKind::Wolf => Voice::Wolf,
+        MobKind::Fox => Voice::Fox,
+        MobKind::Parrot => Voice::Parrot,
+        MobKind::Rabbit => Voice::Rabbit,
+        MobKind::Goat => Voice::Goat,
     }
 }
 

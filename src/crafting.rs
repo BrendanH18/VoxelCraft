@@ -508,10 +508,33 @@ pub fn recipes() -> &'static [Recipe] {
         }
         add_redstone_recipes(&mut r);
         add_dye_recipes(&mut r);
+        r.push(shaped(&["ss ", "ss ", "  s"], &[('s', &[Item::STRING])], Item::LEAD, 2));
+        r.push(shaped(&[" l ", "lil"], &[('l', &[Item::LEATHER]), ('i', &[Item::IRON_INGOT])], Item::SADDLE, 1));
+        r.push(shaped(&["rr", "rr"], &[('r', &[Item::RABBIT_HIDE])], Item::LEATHER, 1));
+        r.push(shaped(&["wcw"], &[('w', &[Item::WHEAT]), ('c', &[Item::COCOA_BEANS])], Item::COOKIE, 8));
+        r.push(shaped(
+            &["nnn", "ncn", "nnn"],
+            &[('n', &[Item::GOLD_NUGGET]), ('c', &[Item::CARROT])],
+            Item::GOLDEN_CARROT,
+            1,
+        ));
+        r.push(shapeless(&[&[Item::MELON_SLICE]], Item::MELON_SEEDS, 1));
+        r.push(shapeless(
+            &[
+                &[Item::COOKED_RABBIT],
+                &[Item::BAKED_POTATO],
+                &[Item::CARROT],
+                const { &[Item::from_block(Block::BROWN_MUSHROOM), Item::from_block(Block::RED_MUSHROOM)] },
+                &[Item::BOWL],
+            ],
+            Item::RABBIT_STEW,
+            1,
+        ));
         add_wool_recipes(&mut r);
         add_glass_terracotta_recipes(&mut r);
         add_nether_biome_recipes(&mut r);
         add_overworld_recipes(&mut r);
+        add_mount_recipes(&mut r);
         r
     })
 }
@@ -1362,5 +1385,48 @@ mod nether_biome_tests {
         assert_eq!(craft(3, &filled(Item::BONE_MEAL, 3, 3)), Some(Stack::new(nb::BONE_BLOCK, 1)));
         assert_eq!(craft(2, &[(0, 0, b(nb::BONE_BLOCK))]), Some(Stack::new(Item::BONE_MEAL, 9)));
         assert_eq!(craft(3, &filled(b(nb::WARPED_WART_BLOCK), 3, 3)), None, "warped wart blocks are found, not made");
+    }
+}
+
+/// Java 1.21: five matching planks, no shovel; chest variants are shapeless.
+fn add_mount_recipes(r: &mut Vec<Recipe>) {
+    use crate::world::block::Wood;
+    for i in 0..10u8 {
+        let plank = if i == 9 { crate::world::overworld_blocks::BAMBOO_PLANKS } else { Wood::ALL[i as usize].planks() };
+        r.push(shaped(&["# #", "###"], &[('#', ingredient(b(plank)))], Item::boat(i, false), 1));
+        r.push(shapeless(&[ingredient(Item::boat(i, false)), ingredient(b(Block::CHEST))], Item::boat(i, true), 1));
+    }
+    r.push(shaped(
+        &["R ", " C"],
+        &[('R', ingredient(Item::FISHING_ROD)), ('C', ingredient(Item::CARROT))],
+        Item::CARROT_ON_A_STICK,
+        1,
+    ));
+    r.push(shaped(
+        &["R ", " F"],
+        &[('R', ingredient(Item::FISHING_ROD)), ('F', ingredient(b(crate::world::nether_biome_blocks::WARPED_FUNGUS)))],
+        Item::WARPED_FUNGUS_ON_A_STICK,
+        1,
+    ));
+    r.push(shaped(&["L L", "LLL", "L L"], &[('L', ingredient(Item::LEATHER))], Item::LEATHER_HORSE_ARMOR, 1));
+}
+
+#[cfg(test)]
+mod mount_recipe_tests {
+    use super::*;
+    #[test]
+    fn every_mount_recipe_crafts_its_preview_and_metal_armor_is_loot_only() {
+        let recipes = recipes();
+        for id in 960..980 {
+            let r = recipes.iter().find(|r| r.result.item == Item(id)).unwrap();
+            assert_eq!(r.preview().result(), Some(r.result));
+        }
+        for id in [980, 981, 982, 983] {
+            let r = recipes.iter().find(|r| r.result.item == Item(id)).unwrap();
+            assert_eq!(r.preview().result(), Some(r.result));
+        }
+        for id in [984, 985, 986] {
+            assert!(!recipes.iter().any(|r| r.result.item == Item(id)));
+        }
     }
 }

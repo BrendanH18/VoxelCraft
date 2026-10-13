@@ -664,6 +664,33 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let slice = |x: i32, y: i32| (4..=13).contains(&y) && (3..=12).contains(&x);
             shaded(&slice, x, y, [150, 96, 52], 0.04).map(|p| if y <= 7 { tint([248, 248, 244], 1.0) } else { p })
         }
+        Sprite::Boat(c, chest) => {
+            let hull = |x: i32, y: i32| (7..=12).contains(&y) && (x - 8).abs() <= (15 - y);
+            shaded(&hull, x, y, c, 0.06).or_else(|| {
+                if chest && (5..=10).contains(&x) && (3..=7).contains(&y) {
+                    Some(tint([135, 88, 40], 1.0))
+                } else if x + y == 15 && (2..=7).contains(&x) {
+                    Some(tint(c, 0.85))
+                } else {
+                    None
+                }
+            })
+        }
+        Sprite::Saddle => {
+            let leather =
+                |x: i32, y: i32| (4..=11).contains(&y) && (3..=12).contains(&x) && (y >= 7 || x <= 5 || x >= 10);
+            shaded(&leather, x, y, [145, 80, 40], 0.04)
+                .or_else(|| ((x == 3 || x == 12) && (11..=14).contains(&y)).then_some(tint([185, 185, 185], 1.0)))
+        }
+        Sprite::SteeringStick(c) => {
+            if x + y == 16 && (2..=13).contains(&x) {
+                Some(tint([150, 104, 60], 1.0))
+            } else if (2..=5).contains(&x) && (4..=8).contains(&y) {
+                Some(tint(c, 1.0))
+            } else {
+                None
+            }
+        }
         Sprite::FishingRod => {
             let stick = (x + y).abs_diff(16) <= 1 && (2..=13).contains(&x);
             let line = (x - 4).abs() + (y - 4).abs() <= 3 && y < 7 && x < 8;

@@ -116,3 +116,23 @@ fn pufferfish_brewing_resumes_after_save_without_consuming_twice() {
     assert_eq!(restored.ingredient, Some(Stack::new(Item::PUFFERFISH, 1)));
     assert_eq!(restored.fuel_left, brewing::FUEL_USES - 1);
 }
+
+#[test]
+fn retained_transport_recipes_match_java_26_3_and_consume_the_grid() {
+    for case in reference()["pending_recipes"].as_array().unwrap() {
+        let mut grid = voxelcraft::crafting::Grid::new(3);
+        for (y, row) in case["pattern"].as_array().unwrap().iter().enumerate() {
+            for (x, symbol) in row.as_str().unwrap().chars().enumerate() {
+                if symbol != ' ' {
+                    let ingredient = item(case["ingredients"][symbol.to_string()].as_str().unwrap());
+                    grid.cells[y * 3 + x] = Some(Stack::new(ingredient, 1));
+                }
+            }
+        }
+        let result = Stack::new(item(case["result"].as_str().unwrap()), case["count"].as_u64().unwrap() as u8);
+        assert_eq!(grid.result(), Some(result));
+        grid.consume();
+        assert!(grid.cells.iter().all(Option::is_none));
+        assert_eq!(grid.result(), None);
+    }
+}

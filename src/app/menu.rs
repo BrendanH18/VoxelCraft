@@ -15,6 +15,7 @@ use super::settings::{FOV, RENDER_DISTANCE, SENSITIVITY, Settings};
 pub(super) enum Screen {
     Pause,
     Options,
+    Lan,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -22,6 +23,11 @@ pub(super) enum Widget {
     Resume,
     Options,
     SaveAndQuit,
+    OpenLan,
+    LanMode,
+    LanCheats,
+    LanPvp,
+    StartLan,
     RenderDistance,
     Fov,
     Sensitivity,
@@ -62,6 +68,11 @@ impl Widget {
             Widget::Resume => "Back to Game".into(),
             Widget::Options => "Options...".into(),
             Widget::SaveAndQuit => "Save and Quit to Title".into(),
+            Widget::OpenLan => "Open to LAN".into(),
+            Widget::LanMode => "Game Mode".into(),
+            Widget::LanCheats => "Allow Cheats".into(),
+            Widget::LanPvp => "PvP".into(),
+            Widget::StartLan => "Start LAN World".into(),
             Widget::RenderDistance => format!("Render Distance: {} chunks", s.render_distance),
             Widget::Fov => format!("FOV: {}", s.fov as i32),
             Widget::Sensitivity => format!("Sensitivity: {}%", (s.sensitivity * 100.0).round() as i32),
@@ -120,7 +131,8 @@ impl Widget {
 /// Widgets of a screen and their rectangles (x, y, w, h) in UI pixels.
 fn layout(screen: Screen, (sw, sh): (f32, f32)) -> Vec<(Widget, [f32; 4])> {
     let widgets: &[Widget] = match screen {
-        Screen::Pause => &[Widget::Resume, Widget::Options, Widget::SaveAndQuit],
+        Screen::Pause => &[Widget::Resume, Widget::Options, Widget::OpenLan, Widget::SaveAndQuit],
+        Screen::Lan => &[Widget::LanMode, Widget::LanCheats, Widget::LanPvp, Widget::StartLan, Widget::Done],
         Screen::Options => &[
             Widget::RenderDistance,
             Widget::Fov,
@@ -198,6 +210,7 @@ impl Game {
     /// Escape inside the menus: options back to pause, pause back to the game.
     pub(super) fn menu_back(&mut self) {
         match self.menu {
+            Some(Screen::Lan) => self.menu = Some(Screen::Pause),
             Some(Screen::Options) => {
                 self.save_settings();
                 self.menu = Some(Screen::Pause);
@@ -230,6 +243,29 @@ impl Game {
         match widget {
             Widget::Resume => self.menu_back(),
             Widget::Options => self.menu = Some(Screen::Options),
+            Widget::OpenLan => {
+                if self.lan.host.is_none() && self.lan.client.is_none() {
+                    self.menu = Some(Screen::Lan);
+                } else {
+                    self.show_popup("World is already connected to LAN");
+                }
+            }
+            Widget::LanMode => {
+                self.lan.mode = match self.lan.mode {
+                    super::GameMode::Survival => super::GameMode::Creative,
+                    _ => super::GameMode::Survival,
+                }
+            }
+            Widget::LanCheats => self.lan.cheats = !self.lan.cheats,
+            Widget::LanPvp => self.lan.pvp = !self.lan.pvp,
+            Widget::StartLan => {
+                if let Err(e) = self.open_lan("0.0.0.0:0".parse().unwrap()) {
+                    self.show_popup(&e);
+                } else {
+                    self.menu = None;
+                    self.set_grab(true);
+                }
+            }
             Widget::Done => self.menu_back(),
             Widget::Vsync => {
                 self.settings.vsync = !self.settings.vsync;
@@ -288,6 +324,9 @@ impl Game {
 
     /// Pushes the settings to the world, renderer and audio.
     pub(super) fn apply_settings(&mut self) {
+        if self.lan.client.is_some() {
+            self.settings.render_distance = 2;
+        }
         let s = self.settings;
         if self.world.render_distance() != s.render_distance {
             self.world.set_render_distance(s.render_distance);
@@ -301,7 +340,13 @@ impl Game {
 
     pub(super) fn save_settings(&self) {
         if let Some(path) = &self.settings_path
-            && let Err(e) = self.settings.save(path)
+            && let Err(e) = {
+                let mut settings = self.settings;
+                if let Some(distance) = self.lan.offline_render_distance {
+                    settings.render_distance = distance;
+                }
+                settings.save(path)
+            }
         {
             log::error!("failed to save options to {}: {e}", path.display());
         }
@@ -316,6 +361,7 @@ impl Game {
         let title = match screen {
             Screen::Pause => "Game Menu",
             Screen::Options => "Options",
+            Screen::Lan => "Open to LAN",
         };
         let top = widgets.first().map_or(sh / 2.0, |(_, r)| r[1]);
         ui.text(((sw - Ui::text_width(title)) / 2.0).floor(), top - 20.0, title, WHITE);
@@ -323,7 +369,16 @@ impl Game {
         let hovered = self.widget_under_cursor().map(|(w, _)| w);
         for (widget, [x, y, w, h]) in widgets {
             let hot = hovered == Some(widget) || self.menu_drag == Some(widget);
-            let label = widget.label(&self.settings, self.difficulty, self.hardcore);
+            let label = match widget {
+                Widget::LanMode => format!("Game Mode: {}", super::capitalize(self.lan.mode.name())),
+                Widget::LanCheats => format!("Allow Cheats: {}", if self.lan.cheats { "On" } else { "Off" }),
+                Widget::LanPvp => format!("PvP: {}", if self.lan.pvp { "On" } else { "Off" }),
+                Widget::OpenLan if self.lan.host.is_some() => {
+                    format!("LAN Port: {}", self.lan.host.as_ref().unwrap().address.port())
+                }
+                Widget::OpenLan if self.lan.client.is_some() => "Connected to LAN".into(),
+                _ => widget.label(&self.settings, self.difficulty, self.hardcore),
+            };
             if widget.is_slider() {
                 // Minecraft-style: a dark track with a button-like handle.
                 bevel(ui, [x, y, w, h], [0.16, 0.16, 0.16, 1.0], false);
@@ -412,7 +467,7 @@ mod tests {
 
     #[test]
     fn layout_is_centred_and_hit_testable() {
-        for screen in [Screen::Pause, Screen::Options] {
+        for screen in [Screen::Pause, Screen::Options, Screen::Lan] {
             let size = (640.0, 360.0);
             let widgets = layout(screen, size);
             for (i, &(w, r)) in widgets.iter().enumerate() {

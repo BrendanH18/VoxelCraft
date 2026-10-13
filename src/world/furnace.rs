@@ -38,7 +38,14 @@ impl FurnaceKind {
         let out = smelt(item)?;
         let food = matches!(
             item,
-            Item::RAW_PORKCHOP | Item::RAW_BEEF | Item::RAW_CHICKEN | Item::POTATO | Item::COD | Item::SALMON
+            Item::RAW_PORKCHOP
+                | Item::RAW_BEEF
+                | Item::RAW_CHICKEN
+                | Item::RAW_RABBIT
+                | Item::RAW_MUTTON
+                | Item::POTATO
+                | Item::COD
+                | Item::SALMON
         );
         let ore = item.block().is_some_and(|b| {
             matches!(
@@ -116,6 +123,8 @@ pub fn smelt(item: Item) -> Option<Item> {
         Item::RAW_PORKCHOP => Item::COOKED_PORKCHOP,
         Item::RAW_BEEF => Item::STEAK,
         Item::RAW_CHICKEN => Item::COOKED_CHICKEN,
+        Item::RAW_RABBIT => Item::COOKED_RABBIT,
+        Item::RAW_MUTTON => Item::COOKED_MUTTON,
         Item::POTATO => Item::BAKED_POTATO,
         Item::COD => Item::COOKED_COD,
         Item::SALMON => Item::COOKED_SALMON,
@@ -139,6 +148,8 @@ pub fn smelt_xp(out: Item) -> f32 {
         Item::COOKED_PORKCHOP
         | Item::STEAK
         | Item::COOKED_CHICKEN
+        | Item::COOKED_MUTTON
+        | Item::COOKED_RABBIT
         | Item::BAKED_POTATO
         | Item::COOKED_COD
         | Item::COOKED_SALMON => 0.35,

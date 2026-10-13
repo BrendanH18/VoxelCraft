@@ -265,7 +265,12 @@ pub(super) fn pillager<W: MobWorld + ?Sized>(
     let visible = super::mob::line_of_sight(w, from, t.pos + DVec3::Y);
     m.charged = visible && delta.length_squared() < 225.0;
     if m.charged && m.attack_cooldown <= 0.0 {
-        events.push(EntityEvent::Shoot { from, target: t.pos + DVec3::Y, cause: "was shot by a pillager" });
+        events.push(EntityEvent::Shoot {
+            from,
+            target: t.pos + DVec3::Y,
+            cause: "was shot by a pillager",
+            shooter: m.uid,
+        });
         m.attack_cooldown = 2.5;
         m.attack_anim = 0.4;
     }
@@ -357,13 +362,25 @@ pub const TURTLE_GROW_SECS: f32 = 1200.0;
 
 impl Entities {
     /// Baby turtles grow up after twenty minutes and shed a scute.
+    #[cfg(test)]
     pub(super) fn grow_turtles(&mut self, dt: f32) {
+        self.grow_turtles_matching(dt, |_| true);
+    }
+    pub(super) fn grow_loaded_turtles<W: MobWorld + ?Sized>(&mut self, dt: f32, w: &W, ctx: &Ctx) {
+        self.grow_turtles_matching(dt, |m| {
+            w.loaded(m.pos.floor().as_ivec3())
+                && ctx.nearest_player_dist2(m.pos).is_none_or(|d| d <= super::DESPAWN_DIST.powi(2))
+        });
+    }
+    fn grow_turtles_matching(&mut self, dt: f32, mut active: impl FnMut(&Mob) -> bool) {
         let mut scutes = Vec::new();
         for m in &mut self.mobs {
-            if m.kind == MobKind::Turtle && m.baby && m.alive() {
+            if m.kind == MobKind::Turtle && m.baby && m.alive() && active(m) {
                 m.grow += dt;
+                m.age = -((TURTLE_GROW_SECS - m.grow).max(0.0) * 20.0) as i32;
                 if m.grow >= TURTLE_GROW_SECS {
                     m.baby = false;
+                    m.age = 0;
                     scutes.push(m.pos);
                 }
             }
@@ -380,6 +397,7 @@ impl Entities {
             self.spawn(MobKind::Turtle, pos);
             let m = self.mobs.last_mut().unwrap();
             m.baby = true;
+            m.age = -24000;
             m.persistent = true;
         }
     }

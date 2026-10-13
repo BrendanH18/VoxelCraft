@@ -72,6 +72,9 @@ impl Agents {
             held_enchants: b.agent.inventory.get(b.agent.selected).map_or(Default::default(), |s| s.active_enchants()),
             shape: b.agent.player.collision_shape(),
             gold_armor: voxelcraft::entity::nether::wears_gold(&b.agent.inventory.armor),
+            held_item: b.agent.inventory.get(b.agent.selected).map(|s| s.item),
+            on_ground: b.agent.player.on_ground,
+            in_water: b.agent.player.in_water,
             ..Target::new(b.id, b.agent.player.pos, b.agent.targetable())
         })
     }
@@ -220,8 +223,8 @@ impl Game {
                 if matches!(command, Command::Dimension(_)) {
                     return Err("dimension travel is controlled by the host in this prototype".into());
                 }
-                if self.pads.seated(&req.player) {
-                    return Err("player is controlled by a local gamepad".into());
+                if self.pads.seated(&req.player) || self.lan_owns(&req.player) {
+                    return Err("player is controlled by a local gamepad or LAN client".into());
                 }
                 if !self.agents.players.contains_key(&req.player) {
                     if self.agents.players.len() >= 32 {

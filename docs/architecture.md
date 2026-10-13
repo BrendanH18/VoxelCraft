@@ -118,7 +118,8 @@ persist in the root level file. See [the CLI protocol and limitations](agents.md
 
 Full client/session action extraction, mob target identities, independent
 simultaneous dimensions, authoritative skylight, shape-aware light occlusion
-and desktop networking remain future work. Split-screen is implemented; all views currently share the
+remain future work. A first desktop LAN slice uses bounded binary-framed TCP,
+authoritative chunk snapshots and the existing hosted-player actions; see [LAN](lan.md). Split-screen is implemented; all views currently share the
 host's biome fog colour.
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
 
