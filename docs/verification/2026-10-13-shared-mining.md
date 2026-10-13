@@ -11,17 +11,24 @@ Reference: official Java Edition 26.3 server SHA-1
 
 `PlayerSession` owns fixed-tick mining progress and the validated destruction
 transaction. Desktop, controller/LAN hands and CLI mining call this entry point;
-adapters retain sound, hand animation and repeat-delay presentation. Validation
+adapters retain sound and hand animation. Validation
 checks the actor, mode, life/sleep state, hotbar stack, loaded terrain and an
 engine-computed raycast before inventory or world mutation. Outcomes identify
-the actor. Changed targets or slots and release/interruption restart progress;
-an idle controller rules tick neither cancels nor advances the hands' clock.
+the actor. Release/interruption restarts progress; an idle controller rules
+tick neither cancels nor advances the hands' clock.
+
+> **Corrected by the [review fixes](2026-10-13-review-mining-fixes.md):** progress
+> is keyed on position and held item (not slot or block state), the session owns
+> Java's five-tick destroy delay for every adapter, Creative destroys the dragon
+> egg without a drop instead of teleporting it, iron doors and Creative double
+> plants suppress the lower-half drop, exhaustion requires the correct tool,
+> Creative swords cannot break blocks, and Haste is implemented.
 
 The transaction centralizes harvest eligibility, drops/XP, tool wear, exhaustion,
 piglin response, tripwire disarming, ice replacement and bed/door partners.
 Mining the upper door or bed head removes both halves and drops one item.
-Creative can destroy bedrock. Attacking a dragon egg invokes the retained
-teleport behavior and does not mine a drop.
+Creative can destroy bedrock and destroys a dragon egg without a drop; a
+Survival attack on the egg invokes the retained teleport behavior.
 
 Reference-backed corrections include:
 
@@ -66,9 +73,11 @@ or cross-machine behavior.
 
 State: **Partial** for STR-03 and PLY-04. Placement, combat and container actions,
 other reach checks and removal of `Game::puppet` remain open. The raycast still
-needs full reference block-shape fidelity. Creative tool restrictions, Haste,
-complete tool/enchantment metadata and destruction/repeat-delay parity require
-further assessment; the retained egg teleport algorithm is not newly verified.
+needs full reference block-shape fidelity. Complete tool/enchantment metadata
+requires further assessment; the retained egg teleport algorithm is not newly
+verified. Creative tool restrictions, Haste and destroy-delay timing are
+addressed in the [review fixes](2026-10-13-review-mining-fixes.md), which list
+their remaining differences.
 
 Normal keyboard/controller, hand/audio and visual acceptance remains unverified.
 The isolated native playtest could not be accessed: Computer Use returned

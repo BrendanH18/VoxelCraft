@@ -27,10 +27,12 @@ pub enum Effect {
     MiningFatigue,
     DolphinsGrace,
     Resistance,
+    /// Appended: effects persist by Java id, but icon layers follow this order.
+    Haste,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 18] = [
+    pub const ALL: [Effect; 19] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -49,6 +51,7 @@ impl Effect {
         Effect::MiningFatigue,
         Effect::DolphinsGrace,
         Effect::Resistance,
+        Effect::Haste,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -72,6 +75,7 @@ impl Effect {
             Effect::MiningFatigue => "mining_fatigue",
             Effect::DolphinsGrace => "dolphins_grace",
             Effect::Resistance => "resistance",
+            Effect::Haste => "haste",
         }
     }
 
@@ -101,6 +105,7 @@ impl Effect {
             Effect::MiningFatigue => "Mining Fatigue",
             Effect::DolphinsGrace => "Dolphin’s Grace",
             Effect::Resistance => "Resistance",
+            Effect::Haste => "Haste",
         }
     }
 
@@ -125,6 +130,7 @@ impl Effect {
             Effect::MiningFatigue => 0x4A4217,
             Effect::DolphinsGrace => 0x88A3BE,
             Effect::Resistance => 0x9146F0,
+            Effect::Haste => 0xD9C043,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
@@ -293,6 +299,13 @@ impl Effects {
     /// Java's fatigue multipliers for mining speed.
     pub fn resistance_factor(&self) -> f32 {
         self.get(Effect::Resistance).map_or(1.0, |e| (1.0 - 0.2 * (f32::from(e.amplifier) + 1.0)).max(0.0))
+    }
+
+    /// `Player.getDestroySpeed`'s Haste multiplier, `1 + (amplifier + 1) * 0.2`
+    /// in single precision; exactly 1.0 without Haste. Conduit Power, which
+    /// shares the formula, is not registered.
+    pub fn dig_speed_factor(&self) -> f32 {
+        self.get(Effect::Haste).map_or(1.0, |a| 1.0 + (i32::from(a.amplifier) + 1) as f32 * 0.2)
     }
 
     pub fn mining_factor(&self) -> f32 {

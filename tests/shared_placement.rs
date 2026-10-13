@@ -161,6 +161,12 @@ fn vine_age_comes_from_shared_world_rng_and_failed_requests_do_not_advance_it() 
     let (mut control, mut a, _) = scene(item);
     let (mut invalid, mut b, _) = scene(item);
     assert!(b.place_held(9, &mut invalid, &[]).is_err());
+    // A late rejection: slot, stack, target and destination pass; support fails.
+    invalid.set_block(AT - IVec3::Y, Block::AIR);
+    assert_eq!(b.place_held(0, &mut invalid, &[]), Err("block cannot survive here"));
+    assert_eq!(invalid.get_block(AT), Some(Block::AIR));
+    assert_eq!(b.inventory.get(0), Some(Stack::new(item, 1)));
+    invalid.set_block(AT - IVec3::Y, Block::STONE);
     a.place_held(0, &mut control, &[]).unwrap();
     b.place_held(0, &mut invalid, &[]).unwrap();
     let expected = control.get_block(AT).unwrap();

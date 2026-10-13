@@ -66,9 +66,8 @@ use voxelcraft::rules::GameRules;
 use survival::Vitals;
 
 const REACH: f64 = 6.0;
+/// Placement/use repeat; mining timing is owned by the shared session.
 const ACTION_REPEAT: f64 = 0.22;
-/// Pause between breaking one block and starting the next in survival.
-const BREAK_DELAY: f64 = 0.15;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
 /// Seconds of holding right-click to eat (Minecraft's 32 ticks).
 const EAT_TIME: f64 = 1.6;
@@ -731,8 +730,8 @@ impl Game {
     }
 
     fn select(&mut self, slot: usize) {
+        // Mining progress follows the held item (Java `sameDestroyTarget`), not the slot.
         if self.actions.select(slot) {
-            self.session.cancel_mining();
             self.session.cancel_consumption();
             self.show_selected_name();
         }
@@ -1676,12 +1675,6 @@ impl Game {
         } else if self.attack() {
             self.actions.breaking = None;
             self.session.cancel_mining();
-        } else if self.session.mode == GameMode::Creative {
-            if let Some((p, _)) = self.target() {
-                self.world.strike_note(p);
-            }
-            self.break_block();
-            self.action_cooldown = ACTION_REPEAT;
         } else {
             if let Some((p, _)) = self.target() {
                 self.world.strike_note(p);
@@ -1726,25 +1719,20 @@ impl Game {
         }
         let mine_pressed = std::mem::take(&mut self.mine_pressed);
         self.action_cooldown -= dt;
-        if acting && (self.left_held || mine_pressed) && self.session.mode.is_survival() {
-            if self.action_cooldown <= 0.0 {
-                self.continue_breaking(dt);
-            }
-            if self.actions.breaking.is_some() {
+        if acting && (self.left_held || mine_pressed) {
+            // Shared session timing, including Java's destroy delay, in every mode.
+            self.continue_breaking(dt);
+            if self.actions.breaking.is_some() || self.session.mining_delay() > 0 {
                 self.hand.swing();
             }
         } else if acting
             && self.action_cooldown <= 0.0
-            && (self.left_held || self.right_held)
+            && self.right_held
             && self.actions.bow_draw.is_none()
             // Buckets act once per click.
-            && !(self.right_held && !self.left_held && (self.holding_bucket() || self.holding_throwable()))
+            && !(self.holding_bucket() || self.holding_throwable())
         {
-            if self.left_held {
-                self.break_block();
-            } else {
-                self.place_block();
-            }
+            self.place_block();
             self.hand.swing();
             self.action_cooldown = ACTION_REPEAT;
         }

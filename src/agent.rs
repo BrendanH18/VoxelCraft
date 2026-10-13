@@ -219,8 +219,8 @@ impl Agent {
                 self.session.cancel_mining();
             }
             Command::Select(slot) => {
+                // Java keeps progress while the held stack is the same item and components.
                 self.selected = slot;
-                self.session.cancel_mining();
                 self.bite = 0;
                 self.session.cancel_consumption();
             }
@@ -880,18 +880,14 @@ impl Agent {
         if self.remaining == 0 && self.mining {
             self.session.cancel_mining();
         }
-        if self.remaining > 0 && self.mining && self.cooldown <= 0.0 {
+        // The session owns Java's destroy delay; no adapter repeat cooldown applies.
+        if self.remaining > 0 && self.mining {
             match self.session.tick_mining(self.selected, world, entities, rules) {
-                Ok(crate::session::mining::Outcome::Hit { .. }) => self.swings += 1,
                 Ok(crate::session::mining::Outcome::Broken { cell, block, .. }) => {
                     self.swings += 1;
                     self.emit(Event::Broke(cell, block));
-                    self.cooldown = 0.15;
                 }
-                Ok(crate::session::mining::Outcome::TeleportedEgg { .. }) => {
-                    self.swings += 1;
-                    self.cooldown = 0.15;
-                }
+                Ok(_) => self.swings += 1,
                 Err(_) => self.session.cancel_mining(),
             }
         }
@@ -1243,7 +1239,7 @@ mod tests {
     }
 
     #[test]
-    fn replacing_a_targeted_block_resets_mining_progress() {
+    fn replacing_a_targeted_block_keeps_progress_at_the_new_rate_until_it_is_air() {
         let mut world = world();
         let at = IVec3::new(3, 151, 1);
         world.set_block(IVec3::new(1, 149, 1), Block::STONE);
@@ -1254,14 +1250,17 @@ mod tests {
             a.hold(MoveInput::default(), true, false);
             a.tick(&mut world, &mut e);
         }
-        assert!(a.breaking(&world).is_some());
+        let (_, before) = a.breaking(&world).unwrap();
+        // Java keys progress on position and held item, not the block state.
         world.set_block(at, Block::STONE);
-        assert!(a.breaking(&world).is_none(), "old cracks disappear as soon as the block changes");
+        assert_eq!(a.breaking(&world), Some((at, before)));
         a.hold(MoveInput::default(), true, false);
         a.tick(&mut world, &mut Entities::new(1));
         assert_eq!(world.get_block(at), Some(Block::STONE));
-        let expected = (TICK_SECONDS / crate::mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
-        assert_eq!(a.breaking(&world), Some((at, expected)));
+        let delta = crate::mining::dig_progress(Block::STONE, a.digger(&world), 1.0);
+        assert_eq!(a.breaking(&world), Some((at, before + delta)));
+        world.set_block(at, Block::AIR);
+        assert!(a.breaking(&world).is_none(), "cracks disappear once the cell is air");
     }
 
     #[test]
@@ -1314,11 +1313,15 @@ mod tests {
         a.inventory.slots[0].as_mut().unwrap().enchants =
             crate::enchant::Enchants::NONE.with(Enchantment::Efficiency, 5);
         assert_eq!(a.breaking(&world).unwrap(), before, "changing tools cannot change existing progress");
+        // Java `sameDestroyTarget` compares item components: the enchanted
+        // pickaxe restarts without progress this tick, then accrues its rate.
+        a.hold(MoveInput::default(), true, false);
+        a.tick(&mut world, &mut entities);
+        assert!(a.breaking(&world).is_none(), "a different held stack restarts the dig");
         a.hold(MoveInput::default(), true, false);
         a.tick(&mut world, &mut entities);
         let after = a.breaking(&world).unwrap();
-        let expected =
-            before.1 + (TICK_SECONDS / crate::mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
+        let expected = (TICK_SECONDS / crate::mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
         assert!((after.1 - expected).abs() < 1e-6);
         assert_eq!(world.get_block(at), Some(Block::STONE), "a faster tool does not retroactively finish the dig");
     }
