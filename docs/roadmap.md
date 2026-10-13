@@ -276,13 +276,17 @@ findings above as either erased evidence or current Verified status.
 
 ### 3.2 Pending v0.7.0 work
 
-The branch `t3/continue-project-build`, inspected at `f5bf0d1` on 2026-10-12,
-contains animals, breeding, companions, leads, mounts, boats, LAN work and
-additional tests. Keep this code and its branch. It is not part of the 0.6
-baseline above. The [initial assessment](verification/2026-10-12-v0.7-assessment.md)
-classifies reviewed animal/transport work as **Partial**: existing tests pass,
-but modern lead/saddle acquisition fails independent 26.3 cases. Other behaviors
-remain Unassessed, and none of these groups is Verified. Historical completion
+The former branch `t3/continue-project-build`, inspected at `f5bf0d1` on
+2026-10-12, contains animals, breeding, companions, leads, mounts, boats, LAN
+work and additional tests. All of its commits were merged into
+`work/v0.7-assessment` in `22ad25c`; the branch label was retired on
+2026-10-13 at the owner's request. It is not part of the 0.6 baseline above.
+The [initial assessment](verification/2026-10-12-v0.7-assessment.md) classifies
+reviewed animal/transport work as **Partial**. It found modern lead/saddle
+acquisition failing independent 26.3 cases; the `22ad25c` merge corrected both
+recipes, and `retained_transport_recipes_match_java_26_3_and_consume_the_grid`
+passes. Interaction, persistence and performance acceptance remain. Other
+behaviors remain Unassessed, and none of these groups is Verified. Historical completion
 reports do not override the current acceptance gates.
 
 Review and retain useful single-player work under MOB-03/MOB-06, FOO-02/FOO-04,
@@ -324,6 +328,11 @@ Java's attack-strength charge and corrects reach and tool attack attributes
 against a reproducible 26.3 fixture. PLY-04/05 remain **Partial**: other weapon
 families, the attack indicator, container/item-use extraction and player
 acceptance remain open.
+
+The [bucket review fixes](verification/2026-10-13-review-bucket-fixes.md) give
+entity and block use priority over bucket actions through one shared ordering
+used by desktop and CLI, deny fluid placement in Adventure, pour on the hit face
+as Java does and drop destroyed plants. PLY-04 remains **Partial**.
 
 The [lighting and spawning follow-up](verification/2026-10-13-lighting-spawning.md)
 implements propagated gameplay skylight, End skylight, full-height ground-monster

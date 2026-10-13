@@ -49,6 +49,8 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Shared melee](verification/2026-10-13-shared-combat.md): actor-owned attacks,
   Java attack-strength charging, reference reach and tool attributes; remaining
   weapon families, attack indicator and ordinary-player acceptance.
+- [Bucket review fixes](verification/2026-10-13-review-bucket-fixes.md): shared
+  use-priority ordering, Adventure denial and Java hit-face pouring.
 - [Gameplay skylight and cave spawning](verification/2026-10-13-lighting-spawning.md):
   propagated sky light, cave/torch/reference scenarios, clock/weather inputs and
   Overworld/End process-restart checks; remaining shape and spawn differences.
