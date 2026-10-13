@@ -63,6 +63,11 @@ impl GameMode {
     pub const fn targetable(self) -> bool {
         self.is_survival()
     }
+
+    /// Default Java 26.3 block interaction range, including Creative's modifier.
+    pub const fn block_reach(self) -> f64 {
+        if self.is_creative() { 5.0 } else { 4.5 }
+    }
 }
 
 impl fmt::Display for GameMode {
