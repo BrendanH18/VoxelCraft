@@ -7,8 +7,6 @@ import hashlib
 import io
 import json
 from pathlib import Path
-import re
-import subprocess
 import tempfile
 import zipfile
 from extract_java_item_fixtures import SERVER_SHA1
@@ -19,22 +17,9 @@ BUILDING_NAMES += ['bamboo_mosaic','bamboo_mosaic_stairs','bamboo_mosaic_slab']
 BUILDING_NAMES += [f'{stone}_{form}' for stone in ('mud_brick','prismarine','prismarine_brick','dark_prismarine') for form in ('stairs','slab')]+['mud_brick_wall','prismarine_wall']
 
 def associations(jar_path):
-    def inspect(*flags):
-        return subprocess.check_output(['javap','-classpath',str(jar_path),*flags,'net.minecraft.world.item.Items'],text=True)
-    code=inspect('-c','-p')
-    verbose=inspect('-v','-p').split('BootstrapMethods:')[1]
-    methods={re.search(r'(lambda\$static\$\d+)\(',block).group(1):block for block in code.split('\n\n') if re.search(r'(lambda\$static\$\d+)\(',block.split('\n')[0])}
-    boot={int(block.split(':')[0].strip()):re.search(r'Items\.(lambda\$static\$\d+)',block).group(1) for block in re.split(r'\n(?=  \d+:)',verbose) if re.search(r'Items\.(lambda\$static\$\d+)',block)}
-    clinit=code.split('  static {};')[1]
-    start,result=0,{}
-    for match in re.finditer(r'putstatic\s+#[^\n]*// Field ([A-Z0-9_]+):',clinit):
-        block=clinit[start:match.start()]
-        start=match.end()
-        fields=re.findall(r'ContextIntProviders\.(COMPOSTABLE_[A-Z_]+):',block)
-        for number in re.findall(r'InvokeDynamic #(\d+):',block):
-            fields+=re.findall(r'ContextIntProviders\.(COMPOSTABLE_[A-Z_]+):',methods.get(boot.get(int(number)),''))
-        if fields: result[match.group(1).lower()]=fields[-1].removeprefix('COMPOSTABLE_').lower()
-    return result
+    # Some colored collections and property builders delegate through another callback.
+    from java_item_associations import provider_associations
+    return provider_associations(jar_path, "COMPOSTABLE_")
 
 def extract(server):
     data=server.read_bytes()

@@ -258,8 +258,10 @@ absorption, composting metadata, fish weights, budding-amethyst loot, cocoa
 count and sapling/propagule fixes. Reference, integration and process-restart
 checks are recorded in the [content/resource report](verification/2026-10-12-content-and-assets.md).
 These are implemented slices; ordinary-player acceptance, remaining state/
-waterlogging fidelity and other identified mechanics remain open. The full
-fuel catalogue still needs reconciliation. Turtle helmets and normal/splash
+waterlogging fidelity and other identified mechanics remain open. The [complete reference fuel inventory](verification/2026-10-12-fuel-inventory.md)
+now checks all 176 currently registered reference fuels and 48 non-fuel
+exceptions; 171 reference fuel names remain missing registrations under
+M0/BLD-01/02. Turtle helmets and normal/splash
 Turtle Master potions now have reference-derived recipes, equipment/effect
 behavior and persistence checks; see the
 [turtle equipment report](verification/2026-10-12-turtle-equipment.md).

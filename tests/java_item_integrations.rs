@@ -16,11 +16,7 @@ fn reference() -> Value {
 }
 
 fn item(id: &str) -> Item {
-    let name = id.strip_prefix("minecraft:").unwrap_or(id);
-    if name == "bamboo_block" {
-        return Item::from_block(voxelcraft::world::overworld_blocks::BAMBOO_BLOCK);
-    }
-    Item::from_name(name).unwrap_or_else(|| panic!("unregistered fixture item {id}"))
+    Item::from_name(id).unwrap_or_else(|| panic!("unregistered fixture item {id}"))
 }
 
 #[test]

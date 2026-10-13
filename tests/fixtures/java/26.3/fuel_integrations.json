@@ -1,0 +1,1799 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.item.Items cookingFuel registrations, including nested callbacks",
+    "data/minecraft/context_int_provider/cooking/time_*.json"
+  ],
+  "fuels": [
+    {
+      "item": "minecraft:acacia_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:acacia_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:acacia_chest_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:acacia_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:acacia_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:acacia_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:acacia_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:acacia_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:acacia_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:acacia_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:acacia_sapling",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:acacia_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:acacia_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:acacia_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:acacia_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:acacia_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:acacia_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:azalea",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:bamboo",
+      "provider": "bamboo",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:bamboo_block",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:bamboo_chest_raft",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:bamboo_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:bamboo_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:bamboo_mosaic",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_mosaic_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:bamboo_mosaic_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_raft",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:bamboo_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:bamboo_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:bamboo_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bamboo_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:barrel",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:birch_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:birch_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:birch_chest_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:birch_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:birch_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:birch_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:birch_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:birch_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:birch_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:birch_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:birch_sapling",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:birch_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:birch_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:birch_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:birch_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:birch_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:birch_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:black_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:black_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:black_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:black_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:black_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:black_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:blaze_rod",
+      "provider": "blaze_rod",
+      "ticks": 2400
+    },
+    {
+      "item": "minecraft:blue_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:blue_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:blue_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:blue_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:blue_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:blue_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:bookshelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bow",
+      "provider": "wood_items_small",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:bowl",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:brown_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:brown_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:brown_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:brown_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:brown_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:brown_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:cartography_table",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:charcoal",
+      "provider": "coal",
+      "ticks": 1600
+    },
+    {
+      "item": "minecraft:cherry_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:cherry_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:cherry_chest_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:cherry_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:cherry_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:cherry_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:cherry_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:cherry_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:cherry_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:cherry_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:cherry_sapling",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:cherry_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:cherry_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:cherry_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:cherry_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:cherry_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:cherry_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:chest",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:chiseled_bookshelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:coal",
+      "provider": "coal",
+      "ticks": 1600
+    },
+    {
+      "item": "minecraft:coal_block",
+      "provider": "coal_block",
+      "ticks": 16000
+    },
+    {
+      "item": "minecraft:composter",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:crafting_table",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:crossbow",
+      "provider": "wood_items_small",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:cyan_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:cyan_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:cyan_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:cyan_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:cyan_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:cyan_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:dark_oak_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:dark_oak_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:dark_oak_chest_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:dark_oak_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:dark_oak_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:dark_oak_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:dark_oak_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:dark_oak_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:dark_oak_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:dark_oak_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:dark_oak_sapling",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:dark_oak_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:dark_oak_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:dark_oak_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:dark_oak_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:dark_oak_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:dark_oak_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:daylight_detector",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:dead_bush",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:dried_kelp_block",
+      "provider": "dried_kelp_block",
+      "ticks": 4001
+    },
+    {
+      "item": "minecraft:dry_short_grass",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:dry_tall_grass",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:fishing_rod",
+      "provider": "wood_items_small",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:fletching_table",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:flowering_azalea",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:gray_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:gray_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:gray_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:gray_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:gray_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:gray_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:green_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:green_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:green_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:green_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:green_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:green_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:jukebox",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:jungle_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:jungle_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:jungle_chest_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:jungle_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:jungle_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:jungle_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:jungle_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:jungle_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:jungle_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:jungle_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:jungle_sapling",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:jungle_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:jungle_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:jungle_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:jungle_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:jungle_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:jungle_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:ladder",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:lava_bucket",
+      "provider": "lava_bucket",
+      "ticks": 20000
+    },
+    {
+      "item": "minecraft:leaf_litter",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:lectern",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:light_blue_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:light_blue_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:light_blue_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:light_blue_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:light_blue_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:light_blue_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:light_gray_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:light_gray_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:light_gray_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:light_gray_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:light_gray_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:light_gray_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:lime_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:lime_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:lime_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:lime_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:lime_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:lime_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:loom",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:magenta_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:magenta_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:magenta_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:magenta_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:magenta_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:magenta_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:mangrove_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:mangrove_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:mangrove_chest_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:mangrove_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:mangrove_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:mangrove_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:mangrove_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:mangrove_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:mangrove_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:mangrove_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:mangrove_propagule",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:mangrove_roots",
+      "provider": "roots",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:mangrove_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:mangrove_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:mangrove_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:mangrove_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:mangrove_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:mangrove_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:note_block",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:oak_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:oak_chest_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:oak_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:oak_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:oak_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_sapling",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:oak_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:oak_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:oak_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:oak_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:orange_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:orange_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:orange_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:orange_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:orange_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:orange_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:pale_oak_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:pale_oak_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:pale_oak_chest_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:pale_oak_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:pale_oak_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pale_oak_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pale_oak_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:pale_oak_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pale_oak_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pale_oak_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pale_oak_sapling",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:pale_oak_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pale_oak_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:pale_oak_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:pale_oak_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pale_oak_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pale_oak_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pink_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:pink_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:pink_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:pink_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:pink_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:pink_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:poplar_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:poplar_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:poplar_chest_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:poplar_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:poplar_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:poplar_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:poplar_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:poplar_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:poplar_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:poplar_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:poplar_sapling",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:poplar_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:poplar_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:poplar_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:poplar_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:poplar_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:poplar_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:purple_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:purple_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:purple_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:purple_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:purple_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:purple_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:red_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:red_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:red_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:red_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:red_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:red_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:scaffolding",
+      "provider": "bamboo",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:smithing_table",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:spruce_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:spruce_button",
+      "provider": "wood_items_extra_small",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:spruce_chest_boat",
+      "provider": "boats",
+      "ticks": 1200
+    },
+    {
+      "item": "minecraft:spruce_door",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:spruce_fence",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:spruce_fence_gate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:spruce_hanging_sign",
+      "provider": "hanging_signs",
+      "ticks": 800
+    },
+    {
+      "item": "minecraft:spruce_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:spruce_planks",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:spruce_pressure_plate",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:spruce_sapling",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:spruce_shelf",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:spruce_sign",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:spruce_slab",
+      "provider": "wood_slabs",
+      "ticks": 150
+    },
+    {
+      "item": "minecraft:spruce_stairs",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:spruce_trapdoor",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:spruce_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stick",
+      "provider": "dry_plants",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:stripped_acacia_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_acacia_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_bamboo_block",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_birch_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_birch_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_cherry_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_cherry_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_dark_oak_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_dark_oak_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_jungle_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_jungle_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_mangrove_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_mangrove_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_oak_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_oak_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_pale_oak_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_pale_oak_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_poplar_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_poplar_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_spruce_log",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:stripped_spruce_wood",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:trapped_chest",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:white_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:white_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:white_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:white_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:white_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:white_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:wooden_axe",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:wooden_hoe",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:wooden_pickaxe",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:wooden_shovel",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:wooden_spear",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:wooden_sword",
+      "provider": "wood_items_large",
+      "ticks": 200
+    },
+    {
+      "item": "minecraft:yellow_banner",
+      "provider": "wood_blocks",
+      "ticks": 300
+    },
+    {
+      "item": "minecraft:yellow_carpet",
+      "provider": "wool_carpets",
+      "ticks": 67
+    },
+    {
+      "item": "minecraft:yellow_cushion",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:yellow_wool",
+      "provider": "wool",
+      "ticks": 100
+    },
+    {
+      "item": "minecraft:yellow_wool_slab",
+      "provider": "wool_slabs",
+      "ticks": 50
+    },
+    {
+      "item": "minecraft:yellow_wool_stairs",
+      "provider": "wool",
+      "ticks": 100
+    }
+  ],
+  "non_fuels": [
+    "minecraft:black_bed",
+    "minecraft:blue_bed",
+    "minecraft:brown_bed",
+    "minecraft:crimson_button",
+    "minecraft:crimson_door",
+    "minecraft:crimson_fence",
+    "minecraft:crimson_fence_gate",
+    "minecraft:crimson_hanging_sign",
+    "minecraft:crimson_hyphae",
+    "minecraft:crimson_planks",
+    "minecraft:crimson_pressure_plate",
+    "minecraft:crimson_sign",
+    "minecraft:crimson_slab",
+    "minecraft:crimson_stairs",
+    "minecraft:crimson_stem",
+    "minecraft:crimson_trapdoor",
+    "minecraft:cyan_bed",
+    "minecraft:gray_bed",
+    "minecraft:green_bed",
+    "minecraft:light_blue_bed",
+    "minecraft:light_gray_bed",
+    "minecraft:lime_bed",
+    "minecraft:magenta_bed",
+    "minecraft:moss_carpet",
+    "minecraft:muddy_mangrove_roots",
+    "minecraft:oak_leaves",
+    "minecraft:orange_bed",
+    "minecraft:pale_moss_carpet",
+    "minecraft:pink_bed",
+    "minecraft:purple_bed",
+    "minecraft:red_bed",
+    "minecraft:spruce_leaves",
+    "minecraft:stone",
+    "minecraft:stripped_crimson_hyphae",
+    "minecraft:stripped_crimson_stem",
+    "minecraft:stripped_warped_hyphae",
+    "minecraft:stripped_warped_stem",
+    "minecraft:warped_button",
+    "minecraft:warped_door",
+    "minecraft:warped_fence",
+    "minecraft:warped_fence_gate",
+    "minecraft:warped_hanging_sign",
+    "minecraft:warped_hyphae",
+    "minecraft:warped_planks",
+    "minecraft:warped_pressure_plate",
+    "minecraft:warped_sign",
+    "minecraft:warped_slab",
+    "minecraft:warped_stairs",
+    "minecraft:warped_stem",
+    "minecraft:warped_trapdoor",
+    "minecraft:white_bed",
+    "minecraft:yellow_bed"
+  ]
+}

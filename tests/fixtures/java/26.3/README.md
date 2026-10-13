@@ -64,3 +64,20 @@ scales intensity by distance between collision boxes, not entity feet. Its
 default duration scale is one. The narrow tests cover Turtle Master's two
 effects, attenuation, the vertical query boundary and the existing instant
 healing/harming path; they do not prove every projectile collision rule.
+
+## Complete cooking-fuel registrations
+
+`fuel_integrations.json` is extracted from all Items fuel registrations in
+the pinned artifact, including nested property callbacks and colored
+collections. It covers 347 registered fuels and 52 explicit non-fuel exceptions.
+`tests/full_fuel_integrations.rs` checks every name implemented by VoxelCraft,
+consumer/save behavior and integer rounding. Unregistered reference names remain
+visible in `examples/fuel_inventory.rs` output; they are missing content rather
+than completed integrations. See the [inventory evidence](../../../../docs/verification/2026-10-12-fuel-inventory.md).
+
+```sh
+python3 tools/extract_java_fuel_fixtures.py /path/to/server.jar --output target/java-fuel-integrations.json
+diff tests/fixtures/java/26.3/fuel_integrations.json target/java-fuel-integrations.json
+cargo run --release --no-default-features --example fuel_inventory > target/fuel-inventory.json
+cargo test --release --test full_fuel_integrations
+```

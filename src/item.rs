@@ -1130,6 +1130,11 @@ impl Item {
     }
 
     pub fn from_name(name: &str) -> Option<Item> {
+        let name = name.strip_prefix("minecraft:").unwrap_or(name);
+        // Keep the original player-facing label, while resolving the reference ID.
+        if name == "bamboo_block" {
+            return Some(Item::from_block(crate::world::overworld_blocks::BAMBOO_BLOCK));
+        }
         if name.replace('_', " ") == "red bed" {
             return Some(Item::BED);
         }

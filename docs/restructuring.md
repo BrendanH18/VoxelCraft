@@ -78,7 +78,10 @@ even if it misses the target. Require M5 hardware evidence for its performance g
 
 ## STR-02 — Shared content definitions and tags
 
-**Status:** Shared planks, fuel definitions, compost classes and fishing weights implemented, with audited building/plant integrations. Recipe/registry/presentation consolidation and the full fuel inventory remain in progress. **Roadmap:** M2; BLD-01/02/03/06, FOO-01/02, AUT-03/04.
+**Status:** Shared planks, fuel definitions, compost classes and fishing weights implemented, with audited building/plant integrations. The full reference fuel inventory and every currently registered fuel integration
+are implemented ([evidence](verification/2026-10-12-fuel-inventory.md)); 171
+reference fuel items remain missing registrations. Recipe/registry/presentation
+consolidation remains in progress. **Roadmap:** M2; BLD-01/02/03/06, FOO-01/02, AUT-03/04.
 **Dependency:** STR-01 coverage for the first migrated content family.
 
 Introduce `src/content/` with authoritative content definitions and typed tags.
