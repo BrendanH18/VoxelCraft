@@ -156,3 +156,40 @@ fn dark_oak_requires_four_saplings_and_mangrove_propagules_mature_under_leaves()
     assert_eq!(w.get_block(P), Some(Block::AIR));
     assert_eq!(w.drops, vec![(P, Stack::new(ob::MANGROVE_PROPAGULE, 1))]);
 }
+/// Java 26.3 `TreeGrower.PALE_OAK` has only `PALE_OAK_BONEMEAL` (a 2x2 tree);
+/// `SaplingBlock.isValidBonemealTarget` uses `TreeGrower.canGrow`, and
+/// `findTwoByTwoSaplingPos` tries x then z offsets from 0 down to -1.
+#[test]
+fn pale_and_dark_oak_need_a_two_by_two_and_lone_ones_keep_bone_meal() {
+    for sapling in [ob::DARK_OAK_SAPLING, ob::PALE_OAK_SAPLING] {
+        let mut w = world(Dimension::Overworld);
+        for x in -1..=2 {
+            for z in -1..=2 {
+                w.set_block(P + IVec3::new(x, -1, z), Block::DIRT);
+            }
+        }
+        w.set_block(P, sapling);
+        for _ in 0..64 {
+            assert!(!w.apply_bone_meal(P), "a lone sapling is not a bone-meal target");
+            assert!(!w.grow_tree(P));
+        }
+        assert_eq!(w.get_block(P), Some(sapling));
+        // A 3x3 of saplings: the corner at offset (0, 0) wins over (-1, -1).
+        for x in -1..=1 {
+            for z in -1..=1 {
+                w.set_block(P + IVec3::new(x, 0, z), sapling);
+            }
+        }
+        assert!(w.grow_tree(P));
+        for d in [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z] {
+            assert!(w.get_block(P + d).unwrap().is_log(), "{d}");
+        }
+        for d in [IVec3::new(-1, 0, -1), IVec3::new(-1, 0, 0), IVec3::new(0, 0, -1), IVec3::new(-1, 0, 1)] {
+            assert_eq!(w.get_block(P + d), Some(sapling), "{d}");
+        }
+    }
+    let mut w = world(Dimension::Overworld);
+    w.set_block(P - IVec3::Y, Block::DIRT);
+    w.set_block(P, Block::OAK_SAPLING);
+    assert!(w.apply_bone_meal(P), "a lone oak sapling consumes bone meal");
+}

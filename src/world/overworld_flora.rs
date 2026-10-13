@@ -360,12 +360,8 @@ impl World {
                 self.drops.push((p, Stack::new(ob::PINK_PETALS, 1)));
                 true
             }
-            2014..=2017 => {
-                if self.roll() % 100 < 45 {
-                    self.grow_tree(p);
-                }
-                true
-            }
+            // Saplings (2014..=2017) use the shared `apply_bone_meal` arm,
+            // including Java's 2x2 bone-meal target check.
             _ => return None,
         })
     }
