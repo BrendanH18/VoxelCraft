@@ -1,6 +1,7 @@
 /// Embed Windows icon/version resources only when building the desktop client.
 fn main() {
     embed_assets();
+    embed_mining_tags();
     println!("cargo:rerun-if-env-changed=VOXELCRAFT_BUILD_REVISION");
     if let Ok(revision) = std::env::var("VOXELCRAFT_BUILD_REVISION") {
         println!("cargo:rustc-env=VOXELCRAFT_BUILD_REVISION={revision}");
@@ -17,6 +18,31 @@ fn main() {
             .compile()
             .expect("compile Windows icon and version resources");
     }
+}
+
+/// Emit static reference names at build time; gameplay never parses fixture JSON.
+fn embed_mining_tags() {
+    use std::{fs, path::PathBuf};
+    const PATH: &str = "tests/fixtures/java/26.3/mining.json";
+    println!("cargo:rerun-if-changed={PATH}");
+    let fixture: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(PATH).expect("read reference mining tags"))
+            .expect("parse reference mining tags");
+    let mut names: Vec<String> = fixture["ice_support_blocks"]
+        .as_array()
+        .expect("ice support tag")
+        .iter()
+        .map(|v| v.as_str().expect("reference block ID").replace('_', " "))
+        .collect();
+    names.sort_unstable();
+    assert!(names.windows(2).all(|pair| pair[0] != pair[1]), "duplicate reference mining tag name");
+    let mut generated = String::from("const ICE_SUPPORT_NAMES: &[&str] = &[\n");
+    for name in names {
+        generated.push_str(&format!("{name:?},\n"));
+    }
+    generated.push_str("];\n");
+    fs::write(PathBuf::from(std::env::var("OUT_DIR").expect("build output")).join("mining_tags.rs"), generated)
+        .expect("write static mining tags");
 }
 
 /// Generate the embedded resource catalogue from its authoritative manifest.

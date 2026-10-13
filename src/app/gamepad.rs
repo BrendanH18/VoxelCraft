@@ -420,6 +420,7 @@ impl Game {
                     seat.body.let_go();
                     if let Some(bot) = self.agents.players.get_mut(&seat.name) {
                         bot.agent.session.cancel_consumption();
+                        bot.agent.session.cancel_mining();
                     }
                     if seat.menu.take().is_some() {
                         closing.push(seat.name.clone());
@@ -536,6 +537,7 @@ impl Game {
         if let Some(bot) = self.agents.players.get_mut(name) {
             bot.active = false;
             bot.agent.session.cancel_consumption();
+            bot.agent.session.cancel_mining();
             bot.agent.session.sleeping = None;
             bot.agent.hold(MoveInput::default(), false, false);
         }
@@ -676,6 +678,7 @@ impl Game {
             agent.hold(MoveInput::default(), false, false);
             if let Some(menu) = self.pads.seats[i].menu {
                 agent.session.cancel_consumption();
+                agent.session.cancel_mining();
                 // Screens close on death, and containers when they're gone or out of reach.
                 let eye = agent.session.player.eye();
                 let gone = match menu {

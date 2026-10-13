@@ -46,8 +46,7 @@ impl Game {
         true
     }
 
-    /// After one half of a bed at `pos` broke, removes the other half. Only
-    /// the foot drops the bed, so breaking the head spills the foot's drop.
+    /// Bed explosions use the same two-cell removal helper as mining.
     pub(super) fn break_bed_partner(&mut self, pos: IVec3, half: Block) {
         self.world.break_bed_partner(pos, half, self.session.mode.is_survival() && self.gamerules.bool("doTileDrops"));
     }
@@ -63,6 +62,7 @@ impl Game {
         self.left_held = false;
         self.right_held = false;
         self.actions.reset();
+        self.session.cancel_mining();
         self.session.cancel_consumption();
         self.session.sleeping = Some(0.0);
         self.audio.play(Sound::Step(Material::Snow), None, 0.6, (0.8, 0.9));

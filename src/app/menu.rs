@@ -204,6 +204,7 @@ impl Game {
         self.jump_pressed = false;
         self.mine_pressed = false;
         self.actions.reset();
+        self.session.cancel_mining();
         self.session.cancel_consumption();
         self.release_attack();
     }

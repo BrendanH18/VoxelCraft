@@ -1,0 +1,2217 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "IceBlock.playerDestroy",
+    "DragonEggBlock.attack",
+    "ServerPlayerGameMode.handleBlockBreakAction",
+    "BlockBehaviour.getDestroyProgress",
+    "Player.getDestroySpeed",
+    "Attributes.SUBMERGED_MINING_SPEED",
+    "Attributes.BLOCK_INTERACTION_RANGE",
+    "ServerPlayer.CREATIVE_BLOCK_INTERACTION_RANGE_MODIFIER",
+    "data/minecraft/dimension_type/overworld.json",
+    "data/minecraft/dimension_type/the_end.json",
+    "data/minecraft/dimension_type/the_nether.json",
+    "data/minecraft/tags/block/acacia_logs.json",
+    "data/minecraft/tags/block/all_hanging_signs.json",
+    "data/minecraft/tags/block/anvil.json",
+    "data/minecraft/tags/block/bamboo_blocks.json",
+    "data/minecraft/tags/block/banners.json",
+    "data/minecraft/tags/block/bars.json",
+    "data/minecraft/tags/block/beds.json",
+    "data/minecraft/tags/block/birch_logs.json",
+    "data/minecraft/tags/block/blocks_motion.json",
+    "data/minecraft/tags/block/blocks_motion_no_leaves.json",
+    "data/minecraft/tags/block/candle_cakes.json",
+    "data/minecraft/tags/block/cauldrons.json",
+    "data/minecraft/tags/block/ceiling_hanging_signs.json",
+    "data/minecraft/tags/block/chains.json",
+    "data/minecraft/tags/block/cherry_logs.json",
+    "data/minecraft/tags/block/coal_ores.json",
+    "data/minecraft/tags/block/concrete.json",
+    "data/minecraft/tags/block/concrete_powders.json",
+    "data/minecraft/tags/block/concrete_slabs.json",
+    "data/minecraft/tags/block/concrete_stairs.json",
+    "data/minecraft/tags/block/copper.json",
+    "data/minecraft/tags/block/copper_chests.json",
+    "data/minecraft/tags/block/copper_ores.json",
+    "data/minecraft/tags/block/coral_blocks.json",
+    "data/minecraft/tags/block/crimson_stems.json",
+    "data/minecraft/tags/block/dark_oak_logs.json",
+    "data/minecraft/tags/block/diamond_ores.json",
+    "data/minecraft/tags/block/dirt.json",
+    "data/minecraft/tags/block/doors.json",
+    "data/minecraft/tags/block/emerald_ores.json",
+    "data/minecraft/tags/block/fence_gates.json",
+    "data/minecraft/tags/block/fences.json",
+    "data/minecraft/tags/block/glazed_terracotta.json",
+    "data/minecraft/tags/block/gold_ores.json",
+    "data/minecraft/tags/block/grass_blocks.json",
+    "data/minecraft/tags/block/ice.json",
+    "data/minecraft/tags/block/ice_melts_when_destroyed_above.json",
+    "data/minecraft/tags/block/iron_ores.json",
+    "data/minecraft/tags/block/jungle_logs.json",
+    "data/minecraft/tags/block/lanterns.json",
+    "data/minecraft/tags/block/lapis_ores.json",
+    "data/minecraft/tags/block/leaves.json",
+    "data/minecraft/tags/block/lightning_rods.json",
+    "data/minecraft/tags/block/logs.json",
+    "data/minecraft/tags/block/logs_that_burn.json",
+    "data/minecraft/tags/block/mangrove_logs.json",
+    "data/minecraft/tags/block/oak_logs.json",
+    "data/minecraft/tags/block/ores.json",
+    "data/minecraft/tags/block/pale_oak_logs.json",
+    "data/minecraft/tags/block/planks.json",
+    "data/minecraft/tags/block/poplar_logs.json",
+    "data/minecraft/tags/block/pressure_plates.json",
+    "data/minecraft/tags/block/redstone_ores.json",
+    "data/minecraft/tags/block/sand.json",
+    "data/minecraft/tags/block/shulker_boxes.json",
+    "data/minecraft/tags/block/slabs.json",
+    "data/minecraft/tags/block/speleothems.json",
+    "data/minecraft/tags/block/spruce_logs.json",
+    "data/minecraft/tags/block/stairs.json",
+    "data/minecraft/tags/block/stone_bricks.json",
+    "data/minecraft/tags/block/stone_pressure_plates.json",
+    "data/minecraft/tags/block/terracotta.json",
+    "data/minecraft/tags/block/trapdoors.json",
+    "data/minecraft/tags/block/wall_hanging_signs.json",
+    "data/minecraft/tags/block/walls.json",
+    "data/minecraft/tags/block/warped_stems.json",
+    "data/minecraft/tags/block/wooden_doors.json",
+    "data/minecraft/tags/block/wooden_fences.json",
+    "data/minecraft/tags/block/wooden_pressure_plates.json",
+    "data/minecraft/tags/block/wooden_shelves.json",
+    "data/minecraft/tags/block/wooden_slabs.json",
+    "data/minecraft/tags/block/wooden_stairs.json",
+    "data/minecraft/tags/block/wooden_trapdoors.json",
+    "data/minecraft/tags/block/wool.json",
+    "data/minecraft/tags/block/wool_slabs.json",
+    "data/minecraft/tags/block/wool_stairs.json",
+    "data/minecraft/tags/enchantment/prevents_ice_melting.json"
+  ],
+  "ice_support_blocks": [
+    "acacia_door",
+    "acacia_fence",
+    "acacia_fence_gate",
+    "acacia_hanging_sign",
+    "acacia_leaves",
+    "acacia_log",
+    "acacia_planks",
+    "acacia_pressure_plate",
+    "acacia_shelf",
+    "acacia_slab",
+    "acacia_stairs",
+    "acacia_trapdoor",
+    "acacia_wall_hanging_sign",
+    "acacia_wood",
+    "amethyst_block",
+    "amethyst_cluster",
+    "ancient_debris",
+    "andesite",
+    "andesite_slab",
+    "andesite_stairs",
+    "andesite_wall",
+    "anvil",
+    "azalea_leaves",
+    "bamboo",
+    "bamboo_block",
+    "bamboo_door",
+    "bamboo_fence",
+    "bamboo_fence_gate",
+    "bamboo_hanging_sign",
+    "bamboo_mosaic",
+    "bamboo_mosaic_slab",
+    "bamboo_mosaic_stairs",
+    "bamboo_planks",
+    "bamboo_pressure_plate",
+    "bamboo_shelf",
+    "bamboo_slab",
+    "bamboo_stairs",
+    "bamboo_trapdoor",
+    "bamboo_wall_hanging_sign",
+    "barrel",
+    "barrier",
+    "basalt",
+    "beacon",
+    "bedrock",
+    "bee_nest",
+    "beehive",
+    "bell",
+    "birch_door",
+    "birch_fence",
+    "birch_fence_gate",
+    "birch_hanging_sign",
+    "birch_leaves",
+    "birch_log",
+    "birch_planks",
+    "birch_pressure_plate",
+    "birch_shelf",
+    "birch_slab",
+    "birch_stairs",
+    "birch_trapdoor",
+    "birch_wall_hanging_sign",
+    "birch_wood",
+    "black_banner",
+    "black_bed",
+    "black_candle_cake",
+    "black_concrete",
+    "black_concrete_powder",
+    "black_concrete_slab",
+    "black_concrete_stairs",
+    "black_glazed_terracotta",
+    "black_shulker_box",
+    "black_stained_glass",
+    "black_stained_glass_pane",
+    "black_terracotta",
+    "black_wall_banner",
+    "black_wool",
+    "black_wool_slab",
+    "black_wool_stairs",
+    "blackstone",
+    "blackstone_slab",
+    "blackstone_stairs",
+    "blackstone_wall",
+    "blast_furnace",
+    "blue_banner",
+    "blue_bed",
+    "blue_candle_cake",
+    "blue_concrete",
+    "blue_concrete_powder",
+    "blue_concrete_slab",
+    "blue_concrete_stairs",
+    "blue_glazed_terracotta",
+    "blue_ice",
+    "blue_shulker_box",
+    "blue_stained_glass",
+    "blue_stained_glass_pane",
+    "blue_terracotta",
+    "blue_wall_banner",
+    "blue_wool",
+    "blue_wool_slab",
+    "blue_wool_stairs",
+    "bone_block",
+    "bookshelf",
+    "brain_coral_block",
+    "brewing_stand",
+    "brick_slab",
+    "brick_stairs",
+    "brick_wall",
+    "bricks",
+    "brown_banner",
+    "brown_bed",
+    "brown_candle_cake",
+    "brown_concrete",
+    "brown_concrete_powder",
+    "brown_concrete_slab",
+    "brown_concrete_stairs",
+    "brown_glazed_terracotta",
+    "brown_mushroom_block",
+    "brown_shulker_box",
+    "brown_stained_glass",
+    "brown_stained_glass_pane",
+    "brown_terracotta",
+    "brown_wall_banner",
+    "brown_wool",
+    "brown_wool_slab",
+    "brown_wool_stairs",
+    "bubble_coral_block",
+    "budding_amethyst",
+    "cactus",
+    "cake",
+    "calcite",
+    "calibrated_sculk_sensor",
+    "campfire",
+    "candle_cake",
+    "cartography_table",
+    "carved_pumpkin",
+    "cauldron",
+    "chain_command_block",
+    "cherry_door",
+    "cherry_fence",
+    "cherry_fence_gate",
+    "cherry_hanging_sign",
+    "cherry_leaves",
+    "cherry_log",
+    "cherry_planks",
+    "cherry_pressure_plate",
+    "cherry_shelf",
+    "cherry_slab",
+    "cherry_stairs",
+    "cherry_trapdoor",
+    "cherry_wall_hanging_sign",
+    "cherry_wood",
+    "chest",
+    "chipped_anvil",
+    "chiseled_bookshelf",
+    "chiseled_cinnabar",
+    "chiseled_copper",
+    "chiseled_deepslate",
+    "chiseled_nether_bricks",
+    "chiseled_polished_blackstone",
+    "chiseled_quartz_block",
+    "chiseled_red_sandstone",
+    "chiseled_resin_bricks",
+    "chiseled_sandstone",
+    "chiseled_stone_bricks",
+    "chiseled_sulfur",
+    "chiseled_tuff",
+    "chiseled_tuff_bricks",
+    "cinnabar",
+    "cinnabar_brick_slab",
+    "cinnabar_brick_stairs",
+    "cinnabar_brick_wall",
+    "cinnabar_bricks",
+    "cinnabar_slab",
+    "cinnabar_stairs",
+    "cinnabar_wall",
+    "clay",
+    "coal_block",
+    "coal_ore",
+    "coarse_dirt",
+    "cobbled_deepslate",
+    "cobbled_deepslate_slab",
+    "cobbled_deepslate_stairs",
+    "cobbled_deepslate_wall",
+    "cobblestone",
+    "cobblestone_slab",
+    "cobblestone_stairs",
+    "cobblestone_wall",
+    "command_block",
+    "composter",
+    "conduit",
+    "copper_bars",
+    "copper_block",
+    "copper_bulb",
+    "copper_chain",
+    "copper_chest",
+    "copper_door",
+    "copper_grate",
+    "copper_lantern",
+    "copper_ore",
+    "copper_trapdoor",
+    "cracked_deepslate_bricks",
+    "cracked_deepslate_tiles",
+    "cracked_nether_bricks",
+    "cracked_polished_blackstone_bricks",
+    "cracked_stone_bricks",
+    "crafter",
+    "crafting_table",
+    "creaking_heart",
+    "crimson_door",
+    "crimson_fence",
+    "crimson_fence_gate",
+    "crimson_hanging_sign",
+    "crimson_hyphae",
+    "crimson_nylium",
+    "crimson_planks",
+    "crimson_pressure_plate",
+    "crimson_shelf",
+    "crimson_slab",
+    "crimson_stairs",
+    "crimson_stem",
+    "crimson_trapdoor",
+    "crimson_wall_hanging_sign",
+    "crying_obsidian",
+    "cut_copper",
+    "cut_copper_slab",
+    "cut_copper_stairs",
+    "cut_red_sandstone",
+    "cut_red_sandstone_slab",
+    "cut_sandstone",
+    "cut_sandstone_slab",
+    "cyan_banner",
+    "cyan_bed",
+    "cyan_candle_cake",
+    "cyan_concrete",
+    "cyan_concrete_powder",
+    "cyan_concrete_slab",
+    "cyan_concrete_stairs",
+    "cyan_glazed_terracotta",
+    "cyan_shulker_box",
+    "cyan_stained_glass",
+    "cyan_stained_glass_pane",
+    "cyan_terracotta",
+    "cyan_wall_banner",
+    "cyan_wool",
+    "cyan_wool_slab",
+    "cyan_wool_stairs",
+    "damaged_anvil",
+    "dark_oak_door",
+    "dark_oak_fence",
+    "dark_oak_fence_gate",
+    "dark_oak_hanging_sign",
+    "dark_oak_leaves",
+    "dark_oak_log",
+    "dark_oak_planks",
+    "dark_oak_pressure_plate",
+    "dark_oak_shelf",
+    "dark_oak_slab",
+    "dark_oak_stairs",
+    "dark_oak_trapdoor",
+    "dark_oak_wall_hanging_sign",
+    "dark_oak_wood",
+    "dark_prismarine",
+    "dark_prismarine_slab",
+    "dark_prismarine_stairs",
+    "daylight_detector",
+    "dead_brain_coral",
+    "dead_brain_coral_block",
+    "dead_brain_coral_fan",
+    "dead_brain_coral_wall_fan",
+    "dead_bubble_coral",
+    "dead_bubble_coral_block",
+    "dead_bubble_coral_fan",
+    "dead_bubble_coral_wall_fan",
+    "dead_fire_coral",
+    "dead_fire_coral_block",
+    "dead_fire_coral_fan",
+    "dead_fire_coral_wall_fan",
+    "dead_horn_coral",
+    "dead_horn_coral_block",
+    "dead_horn_coral_fan",
+    "dead_horn_coral_wall_fan",
+    "dead_tube_coral",
+    "dead_tube_coral_block",
+    "dead_tube_coral_fan",
+    "dead_tube_coral_wall_fan",
+    "decorated_pot",
+    "deepslate",
+    "deepslate_brick_slab",
+    "deepslate_brick_stairs",
+    "deepslate_brick_wall",
+    "deepslate_bricks",
+    "deepslate_coal_ore",
+    "deepslate_copper_ore",
+    "deepslate_diamond_ore",
+    "deepslate_emerald_ore",
+    "deepslate_gold_ore",
+    "deepslate_iron_ore",
+    "deepslate_lapis_ore",
+    "deepslate_redstone_ore",
+    "deepslate_tile_slab",
+    "deepslate_tile_stairs",
+    "deepslate_tile_wall",
+    "deepslate_tiles",
+    "diamond_block",
+    "diamond_ore",
+    "diorite",
+    "diorite_slab",
+    "diorite_stairs",
+    "diorite_wall",
+    "dirt",
+    "dirt_path",
+    "dispenser",
+    "dragon_egg",
+    "dried_ghast",
+    "dried_kelp_block",
+    "dripstone_block",
+    "dropper",
+    "emerald_block",
+    "emerald_ore",
+    "enchanting_table",
+    "end_portal_frame",
+    "end_stone",
+    "end_stone_brick_slab",
+    "end_stone_brick_stairs",
+    "end_stone_brick_wall",
+    "end_stone_bricks",
+    "ender_chest",
+    "exposed_chiseled_copper",
+    "exposed_copper",
+    "exposed_copper_bars",
+    "exposed_copper_bulb",
+    "exposed_copper_chain",
+    "exposed_copper_chest",
+    "exposed_copper_door",
+    "exposed_copper_grate",
+    "exposed_copper_lantern",
+    "exposed_copper_trapdoor",
+    "exposed_cut_copper",
+    "exposed_cut_copper_slab",
+    "exposed_cut_copper_stairs",
+    "exposed_lightning_rod",
+    "farmland",
+    "fire_coral_block",
+    "fletching_table",
+    "flowering_azalea_leaves",
+    "frosted_ice",
+    "furnace",
+    "gilded_blackstone",
+    "glass",
+    "glass_pane",
+    "glowstone",
+    "gold_block",
+    "gold_ore",
+    "granite",
+    "granite_slab",
+    "granite_stairs",
+    "granite_wall",
+    "grass_block",
+    "gravel",
+    "gray_banner",
+    "gray_bed",
+    "gray_candle_cake",
+    "gray_concrete",
+    "gray_concrete_powder",
+    "gray_concrete_slab",
+    "gray_concrete_stairs",
+    "gray_glazed_terracotta",
+    "gray_shulker_box",
+    "gray_stained_glass",
+    "gray_stained_glass_pane",
+    "gray_terracotta",
+    "gray_wall_banner",
+    "gray_wool",
+    "gray_wool_slab",
+    "gray_wool_stairs",
+    "green_banner",
+    "green_bed",
+    "green_candle_cake",
+    "green_concrete",
+    "green_concrete_powder",
+    "green_concrete_slab",
+    "green_concrete_stairs",
+    "green_glazed_terracotta",
+    "green_shulker_box",
+    "green_stained_glass",
+    "green_stained_glass_pane",
+    "green_terracotta",
+    "green_wall_banner",
+    "green_wool",
+    "green_wool_slab",
+    "green_wool_stairs",
+    "grindstone",
+    "hay_block",
+    "heavy_weighted_pressure_plate",
+    "honey_block",
+    "honeycomb_block",
+    "hopper",
+    "horn_coral_block",
+    "ice",
+    "infested_chiseled_stone_bricks",
+    "infested_cobblestone",
+    "infested_cracked_stone_bricks",
+    "infested_deepslate",
+    "infested_mossy_stone_bricks",
+    "infested_stone",
+    "infested_stone_bricks",
+    "iron_bars",
+    "iron_block",
+    "iron_chain",
+    "iron_door",
+    "iron_ore",
+    "iron_trapdoor",
+    "jack_o_lantern",
+    "jigsaw",
+    "jukebox",
+    "jungle_door",
+    "jungle_fence",
+    "jungle_fence_gate",
+    "jungle_hanging_sign",
+    "jungle_leaves",
+    "jungle_log",
+    "jungle_planks",
+    "jungle_pressure_plate",
+    "jungle_shelf",
+    "jungle_slab",
+    "jungle_stairs",
+    "jungle_trapdoor",
+    "jungle_wall_hanging_sign",
+    "jungle_wood",
+    "lantern",
+    "lapis_block",
+    "lapis_ore",
+    "large_amethyst_bud",
+    "lava_cauldron",
+    "lectern",
+    "light_blue_banner",
+    "light_blue_bed",
+    "light_blue_candle_cake",
+    "light_blue_concrete",
+    "light_blue_concrete_powder",
+    "light_blue_concrete_slab",
+    "light_blue_concrete_stairs",
+    "light_blue_glazed_terracotta",
+    "light_blue_shulker_box",
+    "light_blue_stained_glass",
+    "light_blue_stained_glass_pane",
+    "light_blue_terracotta",
+    "light_blue_wall_banner",
+    "light_blue_wool",
+    "light_blue_wool_slab",
+    "light_blue_wool_stairs",
+    "light_gray_banner",
+    "light_gray_bed",
+    "light_gray_candle_cake",
+    "light_gray_concrete",
+    "light_gray_concrete_powder",
+    "light_gray_concrete_slab",
+    "light_gray_concrete_stairs",
+    "light_gray_glazed_terracotta",
+    "light_gray_shulker_box",
+    "light_gray_stained_glass",
+    "light_gray_stained_glass_pane",
+    "light_gray_terracotta",
+    "light_gray_wall_banner",
+    "light_gray_wool",
+    "light_gray_wool_slab",
+    "light_gray_wool_stairs",
+    "light_weighted_pressure_plate",
+    "lightning_rod",
+    "lime_banner",
+    "lime_bed",
+    "lime_candle_cake",
+    "lime_concrete",
+    "lime_concrete_powder",
+    "lime_concrete_slab",
+    "lime_concrete_stairs",
+    "lime_glazed_terracotta",
+    "lime_shulker_box",
+    "lime_stained_glass",
+    "lime_stained_glass_pane",
+    "lime_terracotta",
+    "lime_wall_banner",
+    "lime_wool",
+    "lime_wool_slab",
+    "lime_wool_stairs",
+    "lodestone",
+    "loom",
+    "magenta_banner",
+    "magenta_bed",
+    "magenta_candle_cake",
+    "magenta_concrete",
+    "magenta_concrete_powder",
+    "magenta_concrete_slab",
+    "magenta_concrete_stairs",
+    "magenta_glazed_terracotta",
+    "magenta_shulker_box",
+    "magenta_stained_glass",
+    "magenta_stained_glass_pane",
+    "magenta_terracotta",
+    "magenta_wall_banner",
+    "magenta_wool",
+    "magenta_wool_slab",
+    "magenta_wool_stairs",
+    "magma_block",
+    "mangrove_door",
+    "mangrove_fence",
+    "mangrove_fence_gate",
+    "mangrove_hanging_sign",
+    "mangrove_leaves",
+    "mangrove_log",
+    "mangrove_planks",
+    "mangrove_pressure_plate",
+    "mangrove_roots",
+    "mangrove_shelf",
+    "mangrove_slab",
+    "mangrove_stairs",
+    "mangrove_trapdoor",
+    "mangrove_wall_hanging_sign",
+    "mangrove_wood",
+    "medium_amethyst_bud",
+    "melon",
+    "moss_block",
+    "mossy_cobblestone",
+    "mossy_cobblestone_slab",
+    "mossy_cobblestone_stairs",
+    "mossy_cobblestone_wall",
+    "mossy_stone_brick_slab",
+    "mossy_stone_brick_stairs",
+    "mossy_stone_brick_wall",
+    "mossy_stone_bricks",
+    "moving_piston",
+    "mud",
+    "mud_brick_slab",
+    "mud_brick_stairs",
+    "mud_brick_wall",
+    "mud_bricks",
+    "muddy_mangrove_roots",
+    "mushroom_stem",
+    "mycelium",
+    "nether_brick_fence",
+    "nether_brick_slab",
+    "nether_brick_stairs",
+    "nether_brick_wall",
+    "nether_bricks",
+    "nether_gold_ore",
+    "nether_quartz_ore",
+    "nether_wart_block",
+    "netherite_block",
+    "netherrack",
+    "note_block",
+    "oak_door",
+    "oak_fence",
+    "oak_fence_gate",
+    "oak_hanging_sign",
+    "oak_leaves",
+    "oak_log",
+    "oak_planks",
+    "oak_pressure_plate",
+    "oak_shelf",
+    "oak_slab",
+    "oak_stairs",
+    "oak_trapdoor",
+    "oak_wall_hanging_sign",
+    "oak_wood",
+    "observer",
+    "obsidian",
+    "ochre_froglight",
+    "orange_banner",
+    "orange_bed",
+    "orange_candle_cake",
+    "orange_concrete",
+    "orange_concrete_powder",
+    "orange_concrete_slab",
+    "orange_concrete_stairs",
+    "orange_glazed_terracotta",
+    "orange_poplar_leaves",
+    "orange_shulker_box",
+    "orange_stained_glass",
+    "orange_stained_glass_pane",
+    "orange_terracotta",
+    "orange_wall_banner",
+    "orange_wool",
+    "orange_wool_slab",
+    "orange_wool_stairs",
+    "oxidized_chiseled_copper",
+    "oxidized_copper",
+    "oxidized_copper_bars",
+    "oxidized_copper_bulb",
+    "oxidized_copper_chain",
+    "oxidized_copper_chest",
+    "oxidized_copper_door",
+    "oxidized_copper_grate",
+    "oxidized_copper_lantern",
+    "oxidized_copper_trapdoor",
+    "oxidized_cut_copper",
+    "oxidized_cut_copper_slab",
+    "oxidized_cut_copper_stairs",
+    "oxidized_lightning_rod",
+    "packed_ice",
+    "packed_mud",
+    "pale_moss_block",
+    "pale_oak_door",
+    "pale_oak_fence",
+    "pale_oak_fence_gate",
+    "pale_oak_hanging_sign",
+    "pale_oak_leaves",
+    "pale_oak_log",
+    "pale_oak_planks",
+    "pale_oak_pressure_plate",
+    "pale_oak_shelf",
+    "pale_oak_slab",
+    "pale_oak_stairs",
+    "pale_oak_trapdoor",
+    "pale_oak_wall_hanging_sign",
+    "pale_oak_wood",
+    "pearlescent_froglight",
+    "petrified_oak_slab",
+    "pink_banner",
+    "pink_bed",
+    "pink_candle_cake",
+    "pink_concrete",
+    "pink_concrete_powder",
+    "pink_concrete_slab",
+    "pink_concrete_stairs",
+    "pink_glazed_terracotta",
+    "pink_shulker_box",
+    "pink_stained_glass",
+    "pink_stained_glass_pane",
+    "pink_terracotta",
+    "pink_wall_banner",
+    "pink_wool",
+    "pink_wool_slab",
+    "pink_wool_stairs",
+    "piston",
+    "piston_head",
+    "podzol",
+    "pointed_dripstone",
+    "polished_andesite",
+    "polished_andesite_slab",
+    "polished_andesite_stairs",
+    "polished_basalt",
+    "polished_blackstone",
+    "polished_blackstone_brick_slab",
+    "polished_blackstone_brick_stairs",
+    "polished_blackstone_brick_wall",
+    "polished_blackstone_bricks",
+    "polished_blackstone_pressure_plate",
+    "polished_blackstone_slab",
+    "polished_blackstone_stairs",
+    "polished_blackstone_wall",
+    "polished_cinnabar",
+    "polished_cinnabar_slab",
+    "polished_cinnabar_stairs",
+    "polished_cinnabar_wall",
+    "polished_deepslate",
+    "polished_deepslate_slab",
+    "polished_deepslate_stairs",
+    "polished_deepslate_wall",
+    "polished_diorite",
+    "polished_diorite_slab",
+    "polished_diorite_stairs",
+    "polished_granite",
+    "polished_granite_slab",
+    "polished_granite_stairs",
+    "polished_sulfur",
+    "polished_sulfur_slab",
+    "polished_sulfur_stairs",
+    "polished_sulfur_wall",
+    "polished_tuff",
+    "polished_tuff_slab",
+    "polished_tuff_stairs",
+    "polished_tuff_wall",
+    "poplar_door",
+    "poplar_fence",
+    "poplar_fence_gate",
+    "poplar_hanging_sign",
+    "poplar_log",
+    "poplar_planks",
+    "poplar_pressure_plate",
+    "poplar_shelf",
+    "poplar_slab",
+    "poplar_stairs",
+    "poplar_trapdoor",
+    "poplar_wall_hanging_sign",
+    "poplar_wood",
+    "potent_sulfur",
+    "powder_snow_cauldron",
+    "prismarine",
+    "prismarine_brick_slab",
+    "prismarine_brick_stairs",
+    "prismarine_bricks",
+    "prismarine_slab",
+    "prismarine_stairs",
+    "prismarine_wall",
+    "pumpkin",
+    "purple_banner",
+    "purple_bed",
+    "purple_candle_cake",
+    "purple_concrete",
+    "purple_concrete_powder",
+    "purple_concrete_slab",
+    "purple_concrete_stairs",
+    "purple_glazed_terracotta",
+    "purple_shulker_box",
+    "purple_stained_glass",
+    "purple_stained_glass_pane",
+    "purple_terracotta",
+    "purple_wall_banner",
+    "purple_wool",
+    "purple_wool_slab",
+    "purple_wool_stairs",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs",
+    "quartz_block",
+    "quartz_bricks",
+    "quartz_pillar",
+    "quartz_slab",
+    "quartz_stairs",
+    "raw_copper_block",
+    "raw_gold_block",
+    "raw_iron_block",
+    "red_banner",
+    "red_bed",
+    "red_candle_cake",
+    "red_concrete",
+    "red_concrete_powder",
+    "red_concrete_slab",
+    "red_concrete_stairs",
+    "red_glazed_terracotta",
+    "red_mushroom_block",
+    "red_nether_brick_slab",
+    "red_nether_brick_stairs",
+    "red_nether_brick_wall",
+    "red_nether_bricks",
+    "red_poplar_leaves",
+    "red_sand",
+    "red_sandstone",
+    "red_sandstone_slab",
+    "red_sandstone_stairs",
+    "red_sandstone_wall",
+    "red_shulker_box",
+    "red_stained_glass",
+    "red_stained_glass_pane",
+    "red_terracotta",
+    "red_wall_banner",
+    "red_wool",
+    "red_wool_slab",
+    "red_wool_stairs",
+    "redstone_block",
+    "redstone_lamp",
+    "redstone_ore",
+    "reinforced_deepslate",
+    "repeating_command_block",
+    "resin_block",
+    "resin_brick_slab",
+    "resin_brick_stairs",
+    "resin_brick_wall",
+    "resin_bricks",
+    "respawn_anchor",
+    "rooted_dirt",
+    "sand",
+    "sandstone",
+    "sandstone_slab",
+    "sandstone_stairs",
+    "sandstone_wall",
+    "sculk",
+    "sculk_catalyst",
+    "sculk_sensor",
+    "sculk_shrieker",
+    "sculk_vein",
+    "sea_lantern",
+    "shroomlight",
+    "shulker_box",
+    "slime_block",
+    "small_amethyst_bud",
+    "smithing_table",
+    "smoker",
+    "smooth_basalt",
+    "smooth_quartz",
+    "smooth_quartz_slab",
+    "smooth_quartz_stairs",
+    "smooth_red_sandstone",
+    "smooth_red_sandstone_slab",
+    "smooth_red_sandstone_stairs",
+    "smooth_sandstone",
+    "smooth_sandstone_slab",
+    "smooth_sandstone_stairs",
+    "smooth_stone",
+    "smooth_stone_slab",
+    "sniffer_egg",
+    "snow_block",
+    "soul_campfire",
+    "soul_lantern",
+    "soul_sand",
+    "soul_soil",
+    "spawner",
+    "sponge",
+    "spruce_door",
+    "spruce_fence",
+    "spruce_fence_gate",
+    "spruce_hanging_sign",
+    "spruce_leaves",
+    "spruce_log",
+    "spruce_planks",
+    "spruce_pressure_plate",
+    "spruce_shelf",
+    "spruce_slab",
+    "spruce_stairs",
+    "spruce_trapdoor",
+    "spruce_wall_hanging_sign",
+    "spruce_wood",
+    "sticky_piston",
+    "stone",
+    "stone_brick_slab",
+    "stone_brick_stairs",
+    "stone_brick_wall",
+    "stone_bricks",
+    "stone_pressure_plate",
+    "stone_slab",
+    "stone_stairs",
+    "stonecutter",
+    "straw_bed",
+    "stripped_acacia_log",
+    "stripped_acacia_wood",
+    "stripped_bamboo_block",
+    "stripped_birch_log",
+    "stripped_birch_wood",
+    "stripped_cherry_log",
+    "stripped_cherry_wood",
+    "stripped_crimson_hyphae",
+    "stripped_crimson_stem",
+    "stripped_dark_oak_log",
+    "stripped_dark_oak_wood",
+    "stripped_jungle_log",
+    "stripped_jungle_wood",
+    "stripped_mangrove_log",
+    "stripped_mangrove_wood",
+    "stripped_oak_log",
+    "stripped_oak_wood",
+    "stripped_pale_oak_log",
+    "stripped_pale_oak_wood",
+    "stripped_poplar_log",
+    "stripped_poplar_wood",
+    "stripped_spruce_log",
+    "stripped_spruce_wood",
+    "stripped_warped_hyphae",
+    "stripped_warped_stem",
+    "structure_block",
+    "sulfur",
+    "sulfur_brick_slab",
+    "sulfur_brick_stairs",
+    "sulfur_brick_wall",
+    "sulfur_bricks",
+    "sulfur_slab",
+    "sulfur_spike",
+    "sulfur_stairs",
+    "sulfur_wall",
+    "suspicious_gravel",
+    "suspicious_sand",
+    "target",
+    "terracotta",
+    "test_block",
+    "test_instance_block",
+    "tinted_glass",
+    "tnt",
+    "trapped_chest",
+    "trial_spawner",
+    "tube_coral_block",
+    "tuff",
+    "tuff_brick_slab",
+    "tuff_brick_stairs",
+    "tuff_brick_wall",
+    "tuff_bricks",
+    "tuff_slab",
+    "tuff_stairs",
+    "tuff_wall",
+    "turtle_egg",
+    "vault",
+    "verdant_froglight",
+    "warped_door",
+    "warped_fence",
+    "warped_fence_gate",
+    "warped_hanging_sign",
+    "warped_hyphae",
+    "warped_nylium",
+    "warped_planks",
+    "warped_pressure_plate",
+    "warped_shelf",
+    "warped_slab",
+    "warped_stairs",
+    "warped_stem",
+    "warped_trapdoor",
+    "warped_wall_hanging_sign",
+    "warped_wart_block",
+    "water_cauldron",
+    "waxed_chiseled_copper",
+    "waxed_copper_bars",
+    "waxed_copper_block",
+    "waxed_copper_bulb",
+    "waxed_copper_chain",
+    "waxed_copper_chest",
+    "waxed_copper_door",
+    "waxed_copper_grate",
+    "waxed_copper_lantern",
+    "waxed_copper_trapdoor",
+    "waxed_cut_copper",
+    "waxed_cut_copper_slab",
+    "waxed_cut_copper_stairs",
+    "waxed_exposed_chiseled_copper",
+    "waxed_exposed_copper",
+    "waxed_exposed_copper_bars",
+    "waxed_exposed_copper_bulb",
+    "waxed_exposed_copper_chain",
+    "waxed_exposed_copper_chest",
+    "waxed_exposed_copper_door",
+    "waxed_exposed_copper_grate",
+    "waxed_exposed_copper_lantern",
+    "waxed_exposed_copper_trapdoor",
+    "waxed_exposed_cut_copper",
+    "waxed_exposed_cut_copper_slab",
+    "waxed_exposed_cut_copper_stairs",
+    "waxed_exposed_lightning_rod",
+    "waxed_lightning_rod",
+    "waxed_oxidized_chiseled_copper",
+    "waxed_oxidized_copper",
+    "waxed_oxidized_copper_bars",
+    "waxed_oxidized_copper_bulb",
+    "waxed_oxidized_copper_chain",
+    "waxed_oxidized_copper_chest",
+    "waxed_oxidized_copper_door",
+    "waxed_oxidized_copper_grate",
+    "waxed_oxidized_copper_lantern",
+    "waxed_oxidized_copper_trapdoor",
+    "waxed_oxidized_cut_copper",
+    "waxed_oxidized_cut_copper_slab",
+    "waxed_oxidized_cut_copper_stairs",
+    "waxed_oxidized_lightning_rod",
+    "waxed_weathered_chiseled_copper",
+    "waxed_weathered_copper",
+    "waxed_weathered_copper_bars",
+    "waxed_weathered_copper_bulb",
+    "waxed_weathered_copper_chain",
+    "waxed_weathered_copper_chest",
+    "waxed_weathered_copper_door",
+    "waxed_weathered_copper_grate",
+    "waxed_weathered_copper_lantern",
+    "waxed_weathered_copper_trapdoor",
+    "waxed_weathered_cut_copper",
+    "waxed_weathered_cut_copper_slab",
+    "waxed_weathered_cut_copper_stairs",
+    "waxed_weathered_lightning_rod",
+    "weathered_chiseled_copper",
+    "weathered_copper",
+    "weathered_copper_bars",
+    "weathered_copper_bulb",
+    "weathered_copper_chain",
+    "weathered_copper_chest",
+    "weathered_copper_door",
+    "weathered_copper_grate",
+    "weathered_copper_lantern",
+    "weathered_copper_trapdoor",
+    "weathered_cut_copper",
+    "weathered_cut_copper_slab",
+    "weathered_cut_copper_stairs",
+    "weathered_lightning_rod",
+    "wet_sponge",
+    "white_banner",
+    "white_bed",
+    "white_candle_cake",
+    "white_concrete",
+    "white_concrete_powder",
+    "white_concrete_slab",
+    "white_concrete_stairs",
+    "white_glazed_terracotta",
+    "white_shulker_box",
+    "white_stained_glass",
+    "white_stained_glass_pane",
+    "white_terracotta",
+    "white_wall_banner",
+    "white_wool",
+    "white_wool_slab",
+    "white_wool_stairs",
+    "yellow_banner",
+    "yellow_bed",
+    "yellow_candle_cake",
+    "yellow_concrete",
+    "yellow_concrete_powder",
+    "yellow_concrete_slab",
+    "yellow_concrete_stairs",
+    "yellow_glazed_terracotta",
+    "yellow_poplar_leaves",
+    "yellow_shulker_box",
+    "yellow_stained_glass",
+    "yellow_stained_glass_pane",
+    "yellow_terracotta",
+    "yellow_wall_banner",
+    "yellow_wool",
+    "yellow_wool_slab",
+    "yellow_wool_stairs"
+  ],
+  "ice_melting_prevented_by": [
+    "silk_touch"
+  ],
+  "water_evaporates": {
+    "overworld": false,
+    "the_nether": true,
+    "the_end": false
+  },
+  "fatigue_factors": [
+    {
+      "amplifier": 0,
+      "factor": 0.30000001192092896
+    },
+    {
+      "amplifier": 1,
+      "factor": 0.09000000357627869
+    },
+    {
+      "amplifier": 2,
+      "factor": 0.027000000700354576
+    },
+    {
+      "amplifier": 3,
+      "factor": 0.008100000210106373
+    },
+    {
+      "amplifier": 4,
+      "factor": 0.0024300001095980406
+    },
+    {
+      "amplifier": 5,
+      "factor": 0.00072900002123788
+    },
+    {
+      "amplifier": 6,
+      "factor": 0.000218700006371364
+    },
+    {
+      "amplifier": 7,
+      "factor": 6.56100019114092e-05
+    },
+    {
+      "amplifier": 8,
+      "factor": 1.968300057342276e-05
+    },
+    {
+      "amplifier": 9,
+      "factor": 5.904899808228947e-06
+    },
+    {
+      "amplifier": 10,
+      "factor": 1.7714700106807868e-06
+    },
+    {
+      "amplifier": 11,
+      "factor": 5.31441003204236e-07
+    },
+    {
+      "amplifier": 12,
+      "factor": 1.5943230380344176e-07
+    },
+    {
+      "amplifier": 13,
+      "factor": 4.782969043048979e-08
+    },
+    {
+      "amplifier": 14,
+      "factor": 1.4348906951511253e-08
+    },
+    {
+      "amplifier": 15,
+      "factor": 4.304672174271218e-09
+    },
+    {
+      "amplifier": 16,
+      "factor": 1.2914016522813654e-09
+    },
+    {
+      "amplifier": 17,
+      "factor": 3.8742048458217937e-10
+    },
+    {
+      "amplifier": 18,
+      "factor": 1.1622614676243259e-10
+    },
+    {
+      "amplifier": 19,
+      "factor": 3.486784472261917e-11
+    },
+    {
+      "amplifier": 20,
+      "factor": 1.0460353069841055e-11
+    },
+    {
+      "amplifier": 21,
+      "factor": 3.1381058775842297e-12
+    },
+    {
+      "amplifier": 22,
+      "factor": 9.414318283273992e-13
+    },
+    {
+      "amplifier": 23,
+      "factor": 2.824295430772089e-13
+    },
+    {
+      "amplifier": 24,
+      "factor": 8.472886156790996e-14
+    },
+    {
+      "amplifier": 25,
+      "factor": 2.541865745393345e-14
+    },
+    {
+      "amplifier": 26,
+      "factor": 7.625597066773446e-15
+    },
+    {
+      "amplifier": 27,
+      "factor": 2.287679289438623e-15
+    },
+    {
+      "amplifier": 28,
+      "factor": 6.86303786831587e-16
+    },
+    {
+      "amplifier": 29,
+      "factor": 2.0589113075552016e-16
+    },
+    {
+      "amplifier": 30,
+      "factor": 6.176733657967809e-17
+    },
+    {
+      "amplifier": 31,
+      "factor": 1.8530202297392407e-17
+    },
+    {
+      "amplifier": 32,
+      "factor": 5.559060689217722e-18
+    },
+    {
+      "amplifier": 33,
+      "factor": 1.6677181240472554e-18
+    },
+    {
+      "amplifier": 34,
+      "factor": 5.003154372141766e-19
+    },
+    {
+      "amplifier": 35,
+      "factor": 1.500946363341318e-19
+    },
+    {
+      "amplifier": 36,
+      "factor": 4.5028390900239543e-20
+    },
+    {
+      "amplifier": 37,
+      "factor": 1.3508516946954436e-20
+    },
+    {
+      "amplifier": 38,
+      "factor": 4.052555326424401e-21
+    },
+    {
+      "amplifier": 39,
+      "factor": 1.2157665777324811e-21
+    },
+    {
+      "amplifier": 40,
+      "factor": 3.6472995312490516e-22
+    },
+    {
+      "amplifier": 41,
+      "factor": 1.0941898341311665e-22
+    },
+    {
+      "amplifier": 42,
+      "factor": 3.2825698179378616e-23
+    },
+    {
+      "amplifier": 43,
+      "factor": 9.84770882272486e-24
+    },
+    {
+      "amplifier": 44,
+      "factor": 2.9543126862605035e-24
+    },
+    {
+      "amplifier": 45,
+      "factor": 8.86293805878151e-25
+    },
+    {
+      "amplifier": 46,
+      "factor": 2.65888131902684e-25
+    },
+    {
+      "amplifier": 47,
+      "factor": 7.976644080340036e-26
+    },
+    {
+      "amplifier": 48,
+      "factor": 2.392993224102011e-26
+    },
+    {
+      "amplifier": 49,
+      "factor": 7.17898013452922e-27
+    },
+    {
+      "amplifier": 50,
+      "factor": 2.1536938862843703e-27
+    },
+    {
+      "amplifier": 51,
+      "factor": 6.461081851446105e-28
+    },
+    {
+      "amplifier": 52,
+      "factor": 1.938324507285583e-28
+    },
+    {
+      "amplifier": 53,
+      "factor": 5.814973521856749e-29
+    },
+    {
+      "amplifier": 54,
+      "factor": 1.7444921468349908e-29
+    },
+    {
+      "amplifier": 55,
+      "factor": 5.233476515736611e-30
+    },
+    {
+      "amplifier": 56,
+      "factor": 1.570042917105164e-30
+    },
+    {
+      "amplifier": 57,
+      "factor": 4.710128751315492e-31
+    },
+    {
+      "amplifier": 58,
+      "factor": 1.4130386018847606e-31
+    },
+    {
+      "amplifier": 59,
+      "factor": 4.239115923203717e-32
+    },
+    {
+      "amplifier": 60,
+      "factor": 1.2717347181863975e-32
+    },
+    {
+      "amplifier": 61,
+      "factor": 3.8152043014959865e-33
+    },
+    {
+      "amplifier": 62,
+      "factor": 1.1445613088158952e-33
+    },
+    {
+      "amplifier": 63,
+      "factor": 3.433683742776693e-34
+    },
+    {
+      "amplifier": 64,
+      "factor": 1.030105099874134e-34
+    },
+    {
+      "amplifier": 65,
+      "factor": 3.090315529211142e-35
+    },
+    {
+      "amplifier": 66,
+      "factor": 9.270946157154538e-36
+    },
+    {
+      "amplifier": 67,
+      "factor": 2.781283918892843e-36
+    },
+    {
+      "amplifier": 68,
+      "factor": 8.343852115410935e-37
+    },
+    {
+      "amplifier": 69,
+      "factor": 2.5031555897817298e-37
+    },
+    {
+      "amplifier": 70,
+      "factor": 7.509466545137435e-38
+    },
+    {
+      "amplifier": 71,
+      "factor": 2.2528399355152612e-38
+    },
+    {
+      "amplifier": 72,
+      "factor": 6.75851994667563e-39
+    },
+    {
+      "amplifier": 73,
+      "factor": 2.0275555636131497e-39
+    },
+    {
+      "amplifier": 74,
+      "factor": 6.0826722960333065e-40
+    },
+    {
+      "amplifier": 75,
+      "factor": 1.8247988862130633e-40
+    },
+    {
+      "amplifier": 76,
+      "factor": 5.474452710577763e-41
+    },
+    {
+      "amplifier": 77,
+      "factor": 1.6423218001886856e-41
+    },
+    {
+      "amplifier": 78,
+      "factor": 4.926965400566057e-42
+    },
+    {
+      "amplifier": 79,
+      "factor": 1.478369879862682e-42
+    },
+    {
+      "amplifier": 80,
+      "factor": 4.428103147266422e-43
+    },
+    {
+      "amplifier": 81,
+      "factor": 1.3312335411085762e-43
+    },
+    {
+      "amplifier": 82,
+      "factor": 3.923635700109488e-44
+    },
+    {
+      "amplifier": 83,
+      "factor": 1.2611686178923354e-44
+    },
+    {
+      "amplifier": 84,
+      "factor": 4.203895392974451e-45
+    },
+    {
+      "amplifier": 85,
+      "factor": 1.401298464324817e-45
+    },
+    {
+      "amplifier": 86,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 87,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 88,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 89,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 90,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 91,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 92,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 93,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 94,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 95,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 96,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 97,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 98,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 99,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 100,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 101,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 102,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 103,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 104,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 105,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 106,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 107,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 108,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 109,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 110,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 111,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 112,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 113,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 114,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 115,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 116,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 117,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 118,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 119,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 120,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 121,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 122,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 123,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 124,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 125,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 126,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 127,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 128,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 129,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 130,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 131,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 132,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 133,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 134,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 135,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 136,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 137,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 138,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 139,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 140,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 141,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 142,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 143,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 144,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 145,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 146,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 147,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 148,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 149,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 150,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 151,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 152,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 153,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 154,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 155,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 156,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 157,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 158,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 159,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 160,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 161,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 162,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 163,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 164,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 165,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 166,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 167,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 168,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 169,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 170,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 171,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 172,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 173,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 174,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 175,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 176,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 177,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 178,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 179,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 180,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 181,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 182,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 183,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 184,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 185,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 186,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 187,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 188,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 189,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 190,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 191,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 192,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 193,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 194,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 195,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 196,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 197,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 198,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 199,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 200,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 201,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 202,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 203,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 204,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 205,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 206,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 207,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 208,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 209,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 210,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 211,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 212,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 213,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 214,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 215,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 216,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 217,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 218,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 219,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 220,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 221,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 222,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 223,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 224,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 225,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 226,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 227,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 228,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 229,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 230,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 231,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 232,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 233,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 234,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 235,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 236,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 237,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 238,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 239,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 240,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 241,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 242,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 243,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 244,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 245,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 246,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 247,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 248,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 249,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 250,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 251,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 252,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 253,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 254,
+      "factor": 0.0
+    },
+    {
+      "amplifier": 255,
+      "factor": 0.0
+    }
+  ],
+  "progress_cases": [
+    {
+      "block": "stone",
+      "tool": "hand",
+      "setup_hardness": 1.5,
+      "setup_speed": 1.0,
+      "eyes_in_water": false,
+      "on_ground": true,
+      "delta": 0.006666666828095913
+    },
+    {
+      "block": "stone",
+      "tool": "hand",
+      "setup_hardness": 1.5,
+      "setup_speed": 1.0,
+      "eyes_in_water": true,
+      "on_ground": true,
+      "delta": 0.0013333334354683757
+    },
+    {
+      "block": "stone",
+      "tool": "hand",
+      "setup_hardness": 1.5,
+      "setup_speed": 1.0,
+      "eyes_in_water": true,
+      "on_ground": false,
+      "delta": 0.0002666666405275464
+    },
+    {
+      "block": "stone",
+      "tool": "wooden_pickaxe",
+      "setup_hardness": 1.5,
+      "setup_speed": 2.0,
+      "eyes_in_water": false,
+      "on_ground": true,
+      "delta": 0.04444444552063942
+    },
+    {
+      "block": "stone",
+      "tool": "wooden_pickaxe",
+      "setup_hardness": 1.5,
+      "setup_speed": 2.0,
+      "eyes_in_water": true,
+      "on_ground": true,
+      "delta": 0.008888889104127884
+    },
+    {
+      "block": "stone",
+      "tool": "wooden_pickaxe",
+      "setup_hardness": 1.5,
+      "setup_speed": 2.0,
+      "eyes_in_water": true,
+      "on_ground": false,
+      "delta": 0.0017777776811271906
+    },
+    {
+      "block": "stone",
+      "tool": "iron_pickaxe",
+      "setup_hardness": 1.5,
+      "setup_speed": 6.0,
+      "eyes_in_water": false,
+      "on_ground": true,
+      "delta": 0.13333334028720856
+    },
+    {
+      "block": "stone",
+      "tool": "iron_pickaxe",
+      "setup_hardness": 1.5,
+      "setup_speed": 6.0,
+      "eyes_in_water": true,
+      "on_ground": true,
+      "delta": 0.02666666731238365
+    },
+    {
+      "block": "stone",
+      "tool": "iron_pickaxe",
+      "setup_hardness": 1.5,
+      "setup_speed": 6.0,
+      "eyes_in_water": true,
+      "on_ground": false,
+      "delta": 0.005333333741873503
+    }
+  ],
+  "block_reach": {
+    "survival": 4.5,
+    "creative": 5.0
+  }
+}

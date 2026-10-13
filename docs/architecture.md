@@ -113,7 +113,7 @@ The optional desktop agent host accepts bounded, versioned JSON-lines TCP
 requests. Network workers enqueue commands; the game thread validates and
 executes them. Desktop and device-free agents use the same `PlayerSession` for
 identity, movement, inventory, vitals, mode, workstation inputs and personal
-spawn data. The session owns validated fixed-tick food/drink transactions;
+spawn data. The session owns validated fixed-tick food/drink and mining transactions;
 adapters handle sounds, hand animation and damage/death presentation. Streaming,
 fire and growth use the union of active player ranges;
 agent-only chunks outside the host view stay unmeshed. Named agent profiles
@@ -135,9 +135,11 @@ src/
   session.rs         actor-owned core state, personal spawn selection
   session/
     consumption.rs   fixed-tick food/drink validation and transactions
+    mining.rs        actor-owned progress, validated destruction and outcomes
   content/
     mod.rs           shared plank ingredient tag (including explicit Nether fuel exceptions)
     fuel.rs          first furnace fuel definitions, in Java ticks
+    mining.rs        build-embedded ice support tag and bounded state lookup
   survival_items/
     bucket.rs        shared fluid-bucket/bottle execution and client presentation effects
   simulation/

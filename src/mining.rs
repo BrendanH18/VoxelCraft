@@ -73,6 +73,31 @@ pub fn dig_time(block: Block, digger: Digger) -> f32 {
     block.hardness() * harvest_factor(block, held) / speed
 }
 
+/// Java's single-precision progress per gameplay tick: speed / hardness /
+/// 30 with the correct tool, or / 100 otherwise. Keep division order explicit.
+pub fn dig_progress(block: Block, digger: Digger, effect_factor: f32) -> f32 {
+    let hardness = block.hardness();
+    if !hardness.is_finite() || hardness < 0.0 {
+        return 0.0;
+    }
+    let held = digger.held.map(|s| s.item);
+    let mut speed = tool_speed(block, held);
+    if speed > 1.0 {
+        speed += enchant::efficiency_bonus(digger.held.map_or(Enchants::NONE, |s| s.active_enchants()));
+    }
+    speed *= effect_factor;
+    if digger.eyes_in_water && !digger.helmet.has(Enchantment::AquaAffinity) {
+        speed *= 0.2;
+    }
+    if !digger.on_ground {
+        speed /= 5.0;
+    }
+    let progress = speed / hardness / if can_harvest(block, held) { 30.0 } else { 100.0 };
+    // Java's NaN progress cannot satisfy a completion comparison; expose zero
+    // progress instead of passing NaN into presentation/network state.
+    if progress.is_nan() { 0.0 } else { progress }
+}
+
 /// Durability a tool loses for breaking a block (swords wear faster, as
 /// they're not meant for it) or for hitting a mob (the reverse).
 pub fn wear(held: Item, hitting_mob: bool) -> u16 {

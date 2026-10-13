@@ -300,6 +300,12 @@ harming-potion death drops were corrected. PLY-03/04 remain **Partial**: full
 food/effect parity, other shared actions, controller/LAN state-swap removal and
 ordinary player/performance acceptance are still open.
 
+The [shared mining follow-up](verification/2026-10-13-shared-mining.md) adds one
+actor-owned destruction path, reference block reach and float progress, corrected
+Mining Fatigue and ice support, and interruption/process-restart evidence.
+PLY-04 and BLD-03 remain **Partial**; other actions, full shape/tool/timing parity
+and player/performance acceptance remain open.
+
 All groups are in scope unless an individual requirement is explicitly
 deferred or has an maintainer-approved fidelity exception. IDs are stable tracking
 keys, not release versions or block/item ID allocations.

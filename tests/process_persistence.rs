@@ -22,6 +22,7 @@ const B: IVec3 = IVec3::new(6, 145, 4);
 const T: IVec3 = IVec3::new(6, 145, 6);
 const C: IVec3 = IVec3::new(8, 145, 4);
 const P: IVec3 = IVec3::new(10, 145, 4);
+const M: IVec3 = IVec3::new(14, 146, 8);
 #[test]
 fn saved_interrupted_work_and_v07_entities_survive_a_process_restart() {
     let path = std::env::temp_dir().join(format!(
@@ -91,12 +92,23 @@ fn persistence_worker() {
         inventory.slots[2] = Some(Stack::new(Item::potion(Potion::from_id("strong_turtle_master").unwrap()), 1));
         let mut e = Entities::new(7);
         let mut session = PlayerSession::new(PlayerId(3), DVec3::new(12.5, 145., 4.5));
+        session.player.yaw = 1.;
+        session.player.on_ground = true;
         inventory.slots[3] = Some(Stack::new(Item::APPLE, 2));
+        inventory.slots[4] =
+            Some(Stack::new(Item::tool(voxelcraft::item::ToolKind::Pickaxe, voxelcraft::item::Tier::Iron), 1));
         session.inventory = inventory;
         session.vitals.hunger.food = 8.;
         session.spawn_point = Some(IVec3::new(15, 145, 5));
         for _ in 0..31 {
             assert!(session.tick_consumption(3, true, &mut e).unwrap().completed.is_none());
+        }
+        w.set_block(M, Block::STONE);
+        for _ in 0..3 {
+            assert!(matches!(
+                session.tick_mining(4, &mut w, &mut e, &Default::default()).unwrap(),
+                voxelcraft::session::mining::Outcome::Hit { .. }
+            ));
         }
         e.spawn(MobKind::Donkey, DVec3::new(14.5, 145., 4.5));
         e.mobs[0].uid = 7;
@@ -159,6 +171,9 @@ fn persistence_worker() {
             voxelcraft::rules::GameMode::Survival,
         );
         session.vitals.hunger.food = 8.;
+        session.player.yaw = level.player.unwrap().1;
+        session.player.pitch = level.player.unwrap().2;
+        session.player.on_ground = true;
         let coords = level.props["spawn_point"].split(',').map(|s| s.parse::<i32>().unwrap()).collect::<Vec<_>>();
         session.spawn_point = Some(IVec3::new(coords[0], coords[1], coords[2]));
         assert_eq!(session.spawn_point, Some(IVec3::new(15, 145, 5)));
@@ -169,6 +184,21 @@ fn persistence_worker() {
         }
         assert!(session.tick_consumption(3, true, &mut e).unwrap().completed.is_some());
         assert_eq!(session.inventory.get(3), Some(Stack::new(Item::APPLE, 1)));
+        assert!(session.breaking(&w).is_none(), "mining progress is transient");
+        assert_eq!(w.get_block(M), Some(Block::STONE));
+        for _ in 0..7 {
+            assert!(matches!(
+                session.tick_mining(4, &mut w, &mut e, &Default::default()).unwrap(),
+                voxelcraft::session::mining::Outcome::Hit { .. }
+            ));
+            assert_eq!(session.inventory.get(4).unwrap().damage, 0);
+            assert_eq!(w.get_block(M), Some(Block::STONE));
+        }
+        assert!(matches!(
+            session.tick_mining(4, &mut w, &mut e, &Default::default()).unwrap(),
+            voxelcraft::session::mining::Outcome::Broken { .. }
+        ));
+        assert_eq!(session.inventory.get(4).unwrap().damage, 1);
         e.load_nether_mobs(&level.props["mobs"]);
         assert_eq!(e.mobs[0].effects.get(Effect::Resistance).unwrap().ticks, 197);
         assert_eq!(e.mobs[0].effects.get(Effect::Slowness).unwrap().amplifier, 3);

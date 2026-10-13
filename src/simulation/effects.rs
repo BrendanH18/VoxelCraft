@@ -296,12 +296,7 @@ impl Effects {
     }
 
     pub fn mining_factor(&self) -> f32 {
-        self.get(Effect::MiningFatigue).map_or(1.0, |a| match a.amplifier {
-            0 => 0.3,
-            1 => 0.09,
-            2 => 0.0027,
-            _ => 0.00081,
-        })
+        self.get(Effect::MiningFatigue).map_or(1.0, |a| 0.3f64.powf(f64::from(a.amplifier) + 1.) as f32)
     }
     /// Extra jump height levels (Jump Boost).
     pub fn jump_boost(&self) -> u32 {

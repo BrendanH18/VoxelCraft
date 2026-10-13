@@ -98,3 +98,19 @@ cargo test --release --test session_consumption --test process_persistence
 The fixture proves these timing facts, not complete food/effect parity. Honey
 and other unregistered consumables, always-edible foods and multiple food side
 effects remain explicit scope gaps in the session report.
+
+## Mining rules and ice support
+
+`mining.json` records the expanded ice support tag, Silk Touch and dimension
+rules, block interaction range, all Mining Fatigue amplifier factors and nine
+explicit float-progress scenarios. The reproducer inspects official data and
+bytecode, using reference operation order rather than Rust output.
+
+```sh
+python3 tools/extract_java_mining_fixtures.py /path/to/server.jar --output target/java-mining.json
+diff tests/fixtures/java/26.3/mining.json target/java-mining.json
+cargo test --release --test shared_mining --test process_persistence
+```
+
+This proves the stated rules and scenarios, not full block shapes, tool/effect
+metadata or every Creative restriction. See the [mining evidence](../../../../docs/verification/2026-10-13-shared-mining.md).

@@ -7,6 +7,7 @@ pub mod consumption;
 pub mod fishing;
 pub mod fuel;
 pub mod interaction;
+pub mod mining;
 
 /// All implemented plank ingredients. Oak stays first for recipe-book previews.
 /// Nether planks are valid ingredients but explicitly are not furnace fuels.

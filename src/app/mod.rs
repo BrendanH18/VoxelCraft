@@ -732,6 +732,7 @@ impl Game {
 
     fn select(&mut self, slot: usize) {
         if self.actions.select(slot) {
+            self.session.cancel_mining();
             self.session.cancel_consumption();
             self.show_selected_name();
         }
@@ -822,6 +823,7 @@ impl Game {
         self.jump_pressed = false;
         self.mine_pressed = false;
         self.actions.reset();
+        self.session.cancel_mining();
         self.session.cancel_consumption();
         if self.hardcore {
             self.set_grab(true);
@@ -859,6 +861,7 @@ impl Game {
     fn set_mode(&mut self, mode: GameMode) {
         self.session.set_mode(mode);
         self.actions.reset();
+        self.session.cancel_mining();
         self.session.cancel_consumption();
         self.show_popup(&format!("{} mode", capitalize(mode.name())));
     }
@@ -892,6 +895,7 @@ impl Game {
             self.jump_pressed = false;
             self.mine_pressed = false;
             self.actions.reset();
+            self.session.cancel_mining();
             self.session.cancel_consumption();
         } else {
             if let Container::Chest(pos) = self.container {
@@ -1497,12 +1501,14 @@ impl Game {
             Some(i) if i < HOTBAR_SLOTS => self.select(i),
             Some(i) => {
                 self.actions.reset();
+                self.session.cancel_mining();
                 self.session.cancel_consumption();
                 self.session.inventory.slots.swap(i, self.actions.selected);
                 self.show_selected_name();
             }
             None if self.session.mode == GameMode::Creative => {
                 self.actions.reset();
+                self.session.cancel_mining();
                 self.session.cancel_consumption();
                 self.session.inventory.slots[self.actions.selected] = Some(Stack::new(item, item.max_stack()));
                 self.show_selected_name();
@@ -1728,9 +1734,11 @@ impl Game {
         }
         if !pressed {
             self.actions.breaking = None;
+            self.session.cancel_mining();
             self.release_attack();
         } else if self.attack() {
             self.actions.breaking = None;
+            self.session.cancel_mining();
         } else if self.session.mode == GameMode::Creative {
             if let Some((p, _)) = self.target() {
                 self.world.strike_note(p);
@@ -1801,6 +1809,7 @@ impl Game {
         }
         if !self.left_held {
             self.actions.breaking = None;
+            self.session.cancel_mining();
         }
         self.eat(acting, dt);
         self.update_bow(acting, dt);

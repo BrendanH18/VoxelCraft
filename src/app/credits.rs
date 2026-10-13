@@ -68,6 +68,7 @@ impl Game {
         self.credits = Some(0.0);
         self.session.player.vel = glam::DVec3::ZERO;
         self.actions.reset();
+        self.session.cancel_mining();
         self.session.cancel_consumption();
         self.keys.clear();
         self.set_grab(false);

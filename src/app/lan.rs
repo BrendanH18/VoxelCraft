@@ -378,6 +378,7 @@ impl Game {
         if let Some(name) = &peer.profile {
             if let Some(bot) = self.agents.players.get_mut(name) {
                 bot.active = false;
+                bot.agent.session.cancel_mining();
                 bot.agent.hold(Default::default(), false, false);
                 bot.agent.session.sleeping = None;
                 bot.agent.session.inventory.return_stacks(peer.grid.take_all());
@@ -741,6 +742,7 @@ impl Game {
                 bot.agent.session.sleeping = None;
             }
             if bot.agent.session.vitals.is_dead() || peer.open || bot.agent.session.sleeping.is_some() {
+                bot.agent.session.cancel_mining();
                 bot.agent.hold(Default::default(), false, false);
             } else {
                 bot.agent.hold(input.movement(), false, false);

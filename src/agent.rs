@@ -60,8 +60,6 @@ pub struct Agent {
     /// Holding "use" eats held food; `bite` counts the ticks chewed.
     eating: bool,
     bite: u32,
-    /// Accumulated fraction broken, using the speed at each tick.
-    breaking: Option<(IVec3, Block, f64)>,
     cooldown: f64,
     /// The world's `keepInventory` rule, refreshed every tick so deaths
     /// outside `tick_rules` (mobs, pearls, `kill`) honour it too.
@@ -95,14 +93,13 @@ impl Agent {
             mining: false,
             eating: false,
             bite: 0,
-            breaking: None,
             cooldown: 0.0,
             keep_inventory: false,
         }
     }
 
     pub fn target(&self, world: &World) -> Option<(IVec3, IVec3)> {
-        world.raycast(self.session.player.eye(), self.session.player.forward().as_dvec3(), 6.0)
+        self.session.block_target(world)
     }
 
     /// Changes abilities together so command, host and controller paths agree.
@@ -174,19 +171,12 @@ impl Agent {
                 if mine && !self.session.mode.can_build() {
                     return Err("this game mode cannot break blocks".into());
                 }
-                if mine
-                    && self
-                        .target(world)
-                        .is_some_and(|(p, _)| world.get_block(p).is_some_and(|b| b.is_door() || b.is_bed()))
-                {
-                    return Err("multi-cell blocks require the desktop mining action".into());
-                }
                 self.input = input;
                 self.remaining = n;
                 self.mining = mine;
                 self.eating = false;
                 self.session.cancel_consumption();
-                self.breaking = None;
+                self.session.cancel_mining();
             }
             Command::Eat => {
                 let duration = self.session.consumption_duration(self.selected)?;
@@ -200,11 +190,11 @@ impl Agent {
             Command::Look(yaw, pitch) => {
                 self.session.player.yaw = yaw.to_radians();
                 self.session.player.pitch = pitch.to_radians();
-                self.breaking = None;
+                self.session.cancel_mining();
             }
             Command::Select(slot) => {
                 self.selected = slot;
-                self.breaking = None;
+                self.session.cancel_mining();
                 self.bite = 0;
                 self.session.cancel_consumption();
             }
@@ -947,6 +937,7 @@ impl Agent {
         self.cooldown = (self.cooldown - TICK_SECONDS).max(0.0);
         if self.session.vitals.is_dead() {
             self.session.cancel_consumption();
+            self.session.cancel_mining();
             entities.dismount(world, self.session.id);
             self.session.player.vehicle = None;
             self.remaining = 0;
@@ -1012,54 +1003,23 @@ impl Agent {
             self.remaining = 0;
             return;
         }
-        if self.remaining > 0
-            && self.mining
-            && self.cooldown <= 0.0
-            && let Some((pos, face)) = self.target(world)
-            && let Some(block) = world.get_block(pos)
-        {
-            let held = self.session.inventory.get(self.selected).map(|s| s.item);
-            world.touch_redstone_ore(pos);
-            let block = world.get_block(pos).unwrap_or(block);
-            let digger = self.digger(world);
-            let progress = self.breaking.filter(|(p, b, _)| *p == pos && *b == block).map_or(0.0, |(_, _, n)| n)
-                + TICK_SECONDS
-                    / (mining::dig_time(block, digger) / self.session.vitals.effects.mining_factor()).max(1e-3) as f64;
-            self.breaking = Some((pos, block, progress));
-            if !self.creative && progress < 1.0 {
-                world.particles.push(crate::particles::Request::Hit { cell: pos, block, face });
+        if self.remaining == 0 && self.mining {
+            self.session.cancel_mining();
+        }
+        if self.remaining > 0 && self.mining && self.cooldown <= 0.0 {
+            match self.session.tick_mining(self.selected, world, entities, rules) {
+                Ok(crate::session::mining::Outcome::Hit { .. }) => self.swings += 1,
+                Ok(crate::session::mining::Outcome::Broken { cell, block, .. }) => {
+                    self.swings += 1;
+                    self.emit(Event::Broke(cell, block));
+                    self.cooldown = 0.15;
+                }
+                Ok(crate::session::mining::Outcome::TeleportedEgg { .. }) => {
+                    self.swings += 1;
+                    self.cooldown = 0.15;
+                }
+                Err(_) => self.session.cancel_mining(),
             }
-            self.swings += 1;
-            if block != Block::BEDROCK && !block.is_door() && (self.creative || progress >= 1.0) {
-                if block.is_bed() {
-                    world.break_bed_partner(pos, block, !self.creative && rules.bool("doTileDrops"));
-                }
-                if digger.held.is_some_and(|s| s.item == Item::SHEARS) {
-                    world.disarm_tripwire(pos);
-                }
-                world.set_block(pos, Block::AIR);
-                if crate::entity::nether::guarded_by_piglins(block) {
-                    entities.piglins_notice(self.session.id, self.session.player.pos, false, world);
-                }
-                self.emit(Event::Broke(pos, block));
-                if !self.creative {
-                    if mining::can_harvest(block, held) {
-                        let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
-                        if rules.bool("doTileDrops") {
-                            world.spill_with_item(pos, block, digger.held);
-                            entities.drop_mined_xp(block, pos, tool);
-                        }
-                    }
-                    if let Some(held) = held {
-                        self.session.inventory.wear(self.selected, mining::wear(held, false));
-                    }
-                    self.session.vitals.hunger.exhaust(simulation::survival::EXHAUST_MINE);
-                }
-                self.breaking = None;
-                self.cooldown = 0.15;
-            }
-        } else {
-            self.breaking = None;
         }
         self.chew(entities);
         if self.session.vitals.is_dead() {
@@ -1286,6 +1246,9 @@ impl Agent {
     /// Held device input for the next tick (a local controller). Unlike a
     /// timed `move` or `mine`, this keeps mining progress on the same block.
     pub fn hold(&mut self, input: MoveInput, mining: bool, using: bool) {
+        if self.mining && !mining {
+            self.session.cancel_mining();
+        }
         if self.eating && !using {
             self.session.cancel_consumption();
         }
@@ -1297,11 +1260,7 @@ impl Agent {
 
     /// The block being mined and the fraction broken (for crack overlays).
     pub fn breaking(&self, world: &World) -> Option<(IVec3, f32)> {
-        let (pos, block, progress) = self.breaking?;
-        if world.get_block(pos)? != block {
-            return None;
-        }
-        Some((pos, (progress as f32).min(1.0)))
+        self.session.breaking(world)
     }
 
     /// Held movement for the current command or controller tick.
@@ -1310,6 +1269,7 @@ impl Agent {
     }
 
     /// What this agent mines with, and where it stands (Java's penalties).
+    #[cfg(test)]
     fn digger(&self, world: &World) -> mining::Digger {
         mining::Digger {
             held: self.session.inventory.get(self.selected),
@@ -1413,9 +1373,15 @@ mod tests {
         let mut world = world();
         let at = IVec3::new(3, 151, 1);
         world.set_block(IVec3::new(1, 149, 1), Block::STONE);
-        world.set_block(at, Block::STONE);
+        world.set_block(at, Block::DIRT);
         let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
-        a.breaking = Some((at, Block::DIRT, 0.99));
+        let mut e = Entities::new(1);
+        for _ in 0..10 {
+            a.hold(MoveInput::default(), true, false);
+            a.tick(&mut world, &mut e);
+        }
+        assert!(a.breaking(&world).is_some());
+        world.set_block(at, Block::STONE);
         assert!(a.breaking(&world).is_none(), "old cracks disappear as soon as the block changes");
         a.hold(MoveInput::default(), true, false);
         a.tick(&mut world, &mut Entities::new(1));

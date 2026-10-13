@@ -2,32 +2,13 @@
 use super::*;
 impl Game {
     pub(super) fn target(&self) -> Option<(glam::IVec3, glam::IVec3)> {
-        self.world.raycast(self.session.player.eye(), self.session.player.forward().as_dvec3(), REACH)
+        self.session.block_target(&self.world)
     }
 
-    /// Instant break (creative).
+    /// Creative still breaks on the input edge; execution uses the shared rules.
     pub(super) fn break_block(&mut self) {
-        if !self.session.mode.can_build() || self.attacking() {
-            return;
-        }
-        if let Some((pos, _)) = self.target()
-            && let Some(block) = self.world.get_block(pos)
-            && block != Block::BEDROCK
-        {
-            if self.held_item() == Some(Item::SHEARS) {
-                self.world.disarm_tripwire(pos);
-            }
-            self.world.set_block(pos, Block::AIR);
-            self.audio.block_break(block, pos);
-            if crate::entity::nether::guarded_by_piglins(block) {
-                self.piglins_notice(false);
-            }
-            if block.is_bed() {
-                self.break_bed_partner(pos, block);
-            }
-            if block.is_door() {
-                self.break_door_partner(pos, block);
-            }
+        if !self.attacking() {
+            self.mine_held(crate::simulation::TICK_SECONDS);
         }
     }
 
@@ -38,79 +19,40 @@ impl Game {
         }
     }
 
-    /// Timed break with drops (survival). Called every frame while the
-    /// button is held.
+    /// Fixed-tick mining; the client only presents the shared outcome.
     pub(super) fn continue_breaking(&mut self, dt: f64) {
-        if !self.session.mode.can_build() || self.attacking() {
+        if self.attacking() {
+            self.session.cancel_mining();
             self.actions.breaking = None;
             return;
         }
-        let Some((pos, face)) = self.target() else {
-            self.actions.breaking = None;
-            return;
-        };
-        let Some(block) = self.world.get_block(pos) else { return };
-        // The dragon egg won't be mined: it jumps away from the hit.
-        if block == Block::DRAGON_EGG {
-            self.actions.breaking = None;
-            self.action_cooldown = BREAK_DELAY;
-            self.teleport_egg(pos);
-            return;
+        self.mine_held(dt);
+    }
+
+    fn mine_held(&mut self, dt: f64) {
+        use voxelcraft::session::mining::Outcome;
+        let result =
+            self.session.tick_mining(self.actions.selected, &mut self.world, &mut self.mobs.entities, &self.gamerules);
+        match result {
+            Ok(Outcome::Hit { cell, block, .. }) => self.audio.block_hit(block, cell, dt),
+            Ok(Outcome::Broken { cell, block, tool_broken, .. }) => {
+                self.audio.block_break(block, cell);
+                if self.session.mode.is_survival() {
+                    self.action_cooldown = BREAK_DELAY;
+                }
+                if let Some(item) = tool_broken {
+                    self.show_popup(&format!("{} broke", capitalize(item.name())));
+                }
+            }
+            Ok(Outcome::TeleportedEgg { destination, .. }) => {
+                self.action_cooldown = BREAK_DELAY;
+                if let Some(to) = destination {
+                    self.audio.play(crate::audio::sounds::Sound::Teleport, Some(to.as_dvec3()), 0.6, (0.9, 1.1));
+                }
+            }
+            Err(_) => self.session.cancel_mining(),
         }
-        let held = self.held_item();
-        let digger = crate::mining::Digger {
-            held: self.session.inventory.get(self.actions.selected),
-            helmet: self.session.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
-            eyes_in_water: self.session.player.head_in_water(&self.world),
-            on_ground: self.session.player.on_ground || self.session.player.flying,
-        };
-        self.world.touch_redstone_ore(pos);
-        let progress = self.actions.mine(
-            pos,
-            self.world.get_block(pos).unwrap_or(block),
-            crate::mining::dig_time(block, digger) / self.session.vitals.effects.mining_factor(),
-            dt,
-        );
-        if progress < 1.0 {
-            self.audio.block_hit(block, pos, dt);
-            self.world.particles.push(crate::particles::Request::Hit { cell: pos, block, face });
-            return;
-        }
-        self.actions.breaking = None;
-        self.action_cooldown = BREAK_DELAY;
-        // Broken ice melts into water, unless it was floating over nothing
-        // or silk touch keeps it whole.
-        let tool = digger.held.map_or(Default::default(), |s| s.active_enchants());
-        let melts = block == Block::ICE
-            && !tool.has(crate::enchant::Enchantment::SilkTouch)
-            && self.dimension.has_sky()
-            && self.world.get_block(pos - glam::IVec3::Y).is_some_and(|b| b != Block::AIR);
-        if digger.held.is_some_and(|s| s.item == Item::SHEARS) {
-            self.world.disarm_tripwire(pos);
-        }
-        self.world.set_block(pos, if melts { Block::WATER } else { Block::AIR });
-        if melts {
-            self.world.particles.push(crate::particles::Request::Break { cell: pos, block });
-        }
-        self.audio.block_break(block, pos);
-        if crate::entity::nether::guarded_by_piglins(block) {
-            self.piglins_notice(false);
-        }
-        // Stone, ores and the like only drop with a good enough pickaxe.
-        if self.gamerules.bool("doTileDrops") && crate::mining::can_harvest(block, held) {
-            self.world.spill_with_item(pos, block, digger.held);
-            self.mobs.entities.drop_mined_xp(block, pos, tool);
-        }
-        if block.is_bed() {
-            self.break_bed_partner(pos, block);
-        }
-        if block.is_door() {
-            self.break_door_partner(pos, block);
-        }
-        self.session.vitals.hunger.exhaust(survival::EXHAUST_MINE);
-        if block.hardness() > 0.0 {
-            self.wear_held(false);
-        }
+        self.actions.breaking = self.session.breaking(&self.world);
     }
 
     /// Held use advances the shared fixed-tick consumption clock. Dried kelp

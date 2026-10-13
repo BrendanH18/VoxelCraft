@@ -99,19 +99,4 @@ impl Game {
         self.audio.block_place(ladder, at);
         true
     }
-
-    /// After one half of a door at `pos` broke, removes the other. Only the
-    /// lower half drops the door; breaking the upper one spills it.
-    pub(super) fn break_door_partner(&mut self, pos: IVec3, half: Block) {
-        // A lower half takes the upper one with it as it loses its support.
-        if !half.is_door_upper() {
-            return;
-        }
-        let below = pos - IVec3::Y;
-        let Some(lower) = self.world.get_block(below).filter(|b| b.is_door() && !b.is_door_upper()) else { return };
-        self.world.set_block(below, Block::AIR);
-        if self.session.mode.is_survival() {
-            self.world.spill_block(below, lower);
-        }
-    }
 }

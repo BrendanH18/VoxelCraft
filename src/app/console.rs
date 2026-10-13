@@ -41,6 +41,7 @@ impl Game {
                 self.left_held = false;
                 self.right_held = false;
                 self.actions.reset();
+                self.session.cancel_mining();
                 self.session.cancel_consumption();
                 self.set_grab(false);
                 return true;

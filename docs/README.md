@@ -40,6 +40,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Shared player sessions and consumption](verification/2026-10-13-player-session.md):
   actor ownership, reference timing, interruption/death and persistence checks;
   remaining shared-action extraction and player acceptance.
+- [Shared mining transactions](verification/2026-10-13-shared-mining.md):
+  reference reach, progress, fatigue and ice support; input interruption,
+  partner removal and process-restart evidence; remaining acceptance.
 
 ## History
 

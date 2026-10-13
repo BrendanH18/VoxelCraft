@@ -3,6 +3,7 @@
 //! Desktop, controller, LAN and CLI adapters own one of these for each player.
 //! Camera, hand animation and screen navigation belong to their adapters.
 pub mod consumption;
+pub mod mining;
 use glam::{DVec3, IVec3};
 
 use crate::{
@@ -25,6 +26,7 @@ pub struct PlayerSession {
     pub spawn_bed: Option<IVec3>,
     pub spawn_point: Option<IVec3>,
     consumption: consumption::State,
+    mining: mining::State,
 }
 
 /// Personal spawn selection; adapters supply their existing world-spawn fallback.
@@ -34,6 +36,15 @@ pub struct PersonalSpawn {
 }
 
 impl PlayerSession {
+    /// Default Java 26.3 block interaction range, including Creative's modifier.
+    pub fn block_reach(&self) -> f64 {
+        if self.mode.is_creative() { 5.0 } else { 4.5 }
+    }
+
+    pub fn block_target(&self, world: &crate::world::World) -> Option<(IVec3, IVec3)> {
+        world.raycast(self.player.eye(), self.player.forward().as_dvec3(), self.block_reach())
+    }
+
     pub fn new(id: PlayerId, pos: DVec3) -> Self {
         Self {
             id,
@@ -46,6 +57,7 @@ impl PlayerSession {
             spawn_bed: None,
             spawn_point: None,
             consumption: Default::default(),
+            mining: Default::default(),
         }
     }
 
@@ -61,12 +73,14 @@ impl PlayerSession {
             spawn_bed: None,
             spawn_point: None,
             consumption: Default::default(),
+            mining: Default::default(),
         }
     }
 
     /// Keep the mode and its movement abilities together for every adapter.
     pub fn set_mode(&mut self, mode: GameMode) {
         self.cancel_consumption();
+        self.cancel_mining();
         self.mode = mode;
         self.player.can_fly = mode.can_fly();
         self.player.noclip = mode == GameMode::Spectator;
