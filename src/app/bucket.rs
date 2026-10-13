@@ -5,7 +5,7 @@ use crate::audio::{
 };
 use crate::item::Item;
 use crate::world::block::Block;
-use voxelcraft::survival_items::bucket::{self, Effect, Use};
+use voxelcraft::survival_items::bucket::{self, Effect};
 
 use super::Game;
 
@@ -17,27 +17,6 @@ impl Game {
     /// Snowballs, eggs and the fishing rod act once per click, like buckets.
     pub(super) fn holding_throwable(&self) -> bool {
         matches!(self.held_item(), Some(Item::SNOWBALL | Item::EGG | Item::FISHING_ROD))
-    }
-
-    /// Runs after entity interactions; a targeted block whose use takes
-    /// priority is left to the caller's block-use path.
-    pub(super) fn use_bucket(&mut self) -> bool {
-        let sneaking = self.sneak_building();
-        let reach = self.session.block_reach();
-        let Use::Item(Some(effect)) = bucket::use_held(
-            &self.session.player,
-            &mut self.session.inventory,
-            self.actions.selected,
-            self.session.mode,
-            sneaking,
-            &mut self.world,
-            &mut self.mobs.entities,
-            reach,
-        ) else {
-            return false;
-        };
-        feedback(&mut self.audio, effect);
-        true
     }
 }
 

@@ -56,6 +56,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Gameplay skylight and cave spawning](verification/2026-10-13-lighting-spawning.md):
   propagated sky light, cave/torch/reference scenarios, clock/weather inputs and
   Overworld/End process-restart checks; remaining shape and spawn differences.
+- [Shared right-click use chain](verification/2026-10-13-shared-use.md):
+  one session use chain for desktop and CLI, outcome reporting, CLI and rider
+  behavior changes and remaining Adventure-mode difference.
 - [Lighting and spawning review fixes](verification/2026-10-13-review-lighting-fixes.md):
   spawn-point exclusion, thunder/rain thresholds, detectors, conductor start
   cells, incremental LAN replica relight with measured cost; End ambient gap.

@@ -1243,199 +1243,93 @@ impl Game {
         if !self.session.mode.can_interact() {
             return;
         }
-        if let Some(id) = self.session.player.vehicle {
-            if self.mobs.entities.boost_mount(
-                self.session.id,
-                &mut self.session.inventory,
-                self.actions.selected,
-                self.session.mode.is_creative(),
-            ) {
-                return;
+        let others = self.agents.positions();
+        let ctx = voxelcraft::session::interact::UseContext { sneaking: self.sneak_building(), others: &others };
+        let result = self.session.use_held(self.actions.selected, &mut self.world, &mut self.mobs.entities, &ctx);
+        let Ok(Some(done)) = result else { return };
+        if let Some(item) = done.tool_broken {
+            self.tool_broke(item);
+        }
+        self.present_use(done.used);
+    }
+
+    /// Sounds, screens and sleep for a shared use outcome.
+    fn present_use(&mut self, used: voxelcraft::session::interact::Used) {
+        use crate::audio::sounds::{Material, Sound};
+        use voxelcraft::session::interact::Used;
+        let centre = |cell: glam::IVec3| cell.as_dvec3() + glam::DVec3::splat(0.5);
+        let throw = |audio: &mut crate::audio::Audio, from: glam::DVec3| {
+            // Java's throw is the bow sound, pitched well down.
+            audio.play(Sound::Bow, Some(from), 0.5, (0.42, 0.62));
+        };
+        match used {
+            Used::OpenVehicle(id) => self.open_vehicle(id),
+            Used::OpenMerchant(id) => self.open_merchant(id),
+            Used::Bucket(effect) => bucket::feedback(&mut self.audio, effect),
+            Used::PearlThrown { from }
+            | Used::PotionThrown { from }
+            | Used::ProjectileThrown { from }
+            | Used::Rod { from, broke: false } => throw(&mut self.audio, from),
+            Used::EyeReleased { from } => items::eye_thrown_sound(&mut self.audio, from),
+            Used::EyeInserted { cell, opened } => items::frame_filled_sounds(&mut self.audio, cell, opened),
+            // A controller or LAN player's own screens and bed open instead.
+            Used::Screen { cell, .. } | Used::Bed { cell } if self.puppet => self.puppet_used = Some(cell),
+            Used::Screen { cell, block } => self.open_block_screen(cell, block),
+            Used::Bed { cell } => self.use_bed(cell),
+            Used::EggTeleported { destination: Some(to) } => {
+                self.audio.play(Sound::Teleport, Some(to.as_dvec3()), 0.6, (0.9, 1.1));
             }
-            if self.mobs.entities.vehicle_slots(id).is_some_and(|slots| !slots.is_empty()) {
-                self.open_vehicle(id);
+            Used::Harvested { cell } => {
+                self.audio.play(Sound::Break(Material::Grass), Some(centre(cell)), 0.8, (1.0, 1.2));
             }
-            return;
-        }
-        let eye = self.session.player.eye();
-        let dir = self.session.player.forward().as_dvec3();
-        let reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, self.session.entity_reach());
-        if let Some(id) = self.mobs.entities.vehicle_container(eye, dir, reach)
-            && (self.sneak_building() || self.mobs.entities.cart(id).is_some_and(|c| c.kind.boat().is_none()))
-        {
-            self.open_vehicle(id);
-            return;
-        }
-        // Leads, name tags, food and taming come before mounting (as for agents).
-        if voxelcraft::survival_items::use_animal_target(
-            &self.session.player,
-            &mut self.session.inventory,
-            self.actions.selected,
-            self.session.mode.is_creative(),
-            &self.world,
-            &mut self.mobs.entities,
-            self.session.id,
-        ) {
-            return;
-        }
-        if self.mobs.entities.use_mount(
-            eye,
-            dir,
-            reach,
-            self.session.id,
-            &mut self.session.inventory,
-            self.actions.selected,
-            self.session.mode.is_creative(),
-        ) {
-            if let Some(id) = self.mobs.entities.mount_for_player(self.session.id) {
-                self.session.player.vehicle = Some(id);
+            Used::Door { cell, open: Some(open) } => {
+                self.audio.play(Sound::Door(open), Some(centre(cell)), 0.8, (0.9, 1.1));
             }
-            return;
-        }
-        if let Some(id) = self.mobs.entities.mount_cart(eye, dir, reach, self.session.id) {
-            self.session.player.vehicle = Some(id);
-            return;
-        }
-        if let Some(held) = self.held_item()
-            && let Some(kind) = crate::entity::minecart::CartKind::from_item(held)
-            && let Some((pos, normal)) = self.target()
-        {
-            let cell = if self.world.get_block(pos).is_some_and(|b| b.is_rail()) { pos } else { pos + normal };
-            let cell = if kind.boat().is_some() && self.world.get_block(pos).is_some_and(|b| b.is_water()) {
-                pos
-            } else {
-                cell
-            };
-            if self.mobs.entities.place_cart(&self.world, kind, cell).is_none() {
-                return;
+            Used::TntPrimed { cell } => self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05)),
+            Used::Ignited { cell, portal } => {
+                self.audio.play(Sound::Place(Material::Stone), Some(cell.as_dvec3()), 0.7, (1.6, 1.9));
+                if portal {
+                    self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.5, 0.6));
+                }
             }
-            if self.session.mode.is_survival() {
-                self.session.inventory.take_one(self.actions.selected);
+            Used::Stripped { cell } => {
+                self.audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 1.0, (0.8, 1.0))
             }
-            return;
-        }
-        if self.use_villager() {
-            return;
-        }
-        if self.use_sheep() {
-            return;
-        }
-        if voxelcraft::survival_items::use_mob(
-            &self.session.player,
-            &mut self.session.inventory,
-            self.actions.selected,
-            self.session.mode.is_creative(),
-            &self.world,
-            &mut self.mobs.entities,
-            self.session.id,
-        ) {
-            return;
-        }
-        if !self.aiming_at_usable()
-            && (self.use_bucket()
-                || self.throw_pearl()
-                || self.throw_splash_potion()
-                || self.throw_eye()
-                || self.throw_projectile()
-                || self.use_rod())
-        {
-            return;
-        }
-        let Some((pos, normal)) = self.target() else { return };
-        if self.insert_eye(pos) {
-            return;
-        }
-        if !self.sneak_building() && self.session.mode.can_build() && self.world.use_redstone(pos) {
-            return;
-        }
-        self.world.touch_redstone_ore(pos);
-        if !self.sneak_building()
-            && self.session.mode.can_build()
-            && voxelcraft::survival_items::use_composter(
-                &mut self.world,
-                &mut self.mobs.entities,
-                pos,
-                &mut self.session.inventory,
-                self.actions.selected,
-                self.session.mode.is_creative(),
-            )
-        {
-            return;
-        }
-        // Containers open on right-click; holding Shift builds against them.
-        match self.world.get_block(pos) {
-            _ if self.sneak_building() => {}
-            // A controller player's own screens and bed open instead.
-            Some(b)
-                if self.puppet
-                    && (b == Block::CRAFTING_TABLE
-                        || b == Block::BREWING_STAND
-                        || b == Block::ENCHANTING_TABLE
-                        || b.is_anvil()
-                        || b.base() == Block::GRINDSTONE
-                        || b == Block::SMITHING_TABLE
-                        || b.is_bed()
-                        || crate::world::furnace::is_furnace(b)
-                        || crate::world::chest::is_chest(b)) =>
-            {
-                self.puppet_used = Some(pos);
-                return;
+            Used::Tilled { cell } => {
+                self.audio.play(Sound::Step(Material::Gravel), Some(centre(cell)), 1.0, (0.8, 0.9))
             }
-            Some(Block::CRAFTING_TABLE) => return self.open_crafting_table(),
-            Some(b) if crate::world::furnace::is_furnace(b) => return self.open_furnace(pos),
-            Some(b) if crate::world::chest::is_chest(b) => return self.open_chest(pos),
-            Some(Block::BREWING_STAND) => return self.open_brewing(pos),
-            Some(Block::ENCHANTING_TABLE) => return self.open_enchanting(pos),
-            Some(b) if b.is_anvil() => return self.open_anvil(pos),
-            Some(b) if b.base() == Block::GRINDSTONE => return self.open_grindstone(pos),
-            Some(Block::SMITHING_TABLE) => return self.open_smithing(pos),
-            Some(Block::DRAGON_EGG) => return self.teleport_egg(pos),
-            Some(b) if b.cake_bites().is_some() => {
-                voxelcraft::survival_items::bite_cake(
-                    &mut self.world,
-                    pos,
-                    &mut self.session.vitals,
-                    self.session.mode.is_creative(),
-                );
-                return;
+            Used::Carved { cell } => self.audio.play(Sound::Break(Material::Wood), Some(centre(cell)), 0.8, (0.9, 1.1)),
+            Used::BoneMeal { cell } => {
+                self.audio.play(Sound::Place(Material::Grass), Some(centre(cell)), 0.8, (1.2, 1.4));
             }
-            Some(b) if b.is_bed() => return self.use_bed(pos),
-            Some(_) if self.held_item() != Some(Item::BONE_MEAL) && self.world.harvest(pos) => {
-                self.audio.play(
-                    crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Grass),
-                    Some(pos.as_dvec3() + glam::DVec3::splat(0.5)),
-                    0.8,
-                    (1.0, 1.2),
-                );
-                return;
-            }
-            Some(b) if b.is_door() || b.is_gate() => {
-                self.toggle_door(pos, self.session.player.forward());
-                return;
+            Used::Placed(placement) => {
+                use voxelcraft::session::placement::{Kind, Outcome};
+                match placement {
+                    Outcome::Placed { cell, block, kind, .. } => {
+                        let sound = if kind == Kind::Bed { Block::WOOL } else { block };
+                        self.audio.block_place(sound, cell);
+                    }
+                    Outcome::WaterEvaporated { cell, .. } => {
+                        self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 0.6, (1.6, 1.8));
+                    }
+                }
             }
             _ => {}
         }
-        if !self.session.mode.can_build() {
-            return;
-        }
-        if self.strike_flint(pos, normal) || self.use_item_on(pos, normal) {
-            return;
-        }
-        let others = self.agents.positions();
-        let result = self.session.place_held(self.actions.selected, &mut self.world, &others);
-        use voxelcraft::session::placement::{Kind, Outcome};
-        match result {
-            Ok(Outcome::Placed { cell, block, kind, .. }) => {
-                let sound = match kind {
-                    Kind::Bed => Block::WOOL,
-                    _ => block,
-                };
-                self.audio.block_place(sound, cell);
-            }
-            Ok(Outcome::WaterEvaporated { cell, .. }) => {
-                self.audio.play(crate::audio::sounds::Sound::Fuse, Some(cell.as_dvec3()), 0.6, (1.6, 1.8));
-            }
-            Err(_) => {}
+    }
+
+    /// Opens the desktop screen for a used workstation or container block.
+    fn open_block_screen(&mut self, cell: glam::IVec3, block: Block) {
+        match block {
+            Block::CRAFTING_TABLE => self.open_crafting_table(),
+            b if crate::world::furnace::is_furnace(b) => self.open_furnace(cell),
+            b if crate::world::chest::is_chest(b) => self.open_chest(cell),
+            Block::BREWING_STAND => self.open_brewing(cell),
+            Block::ENCHANTING_TABLE => self.open_enchanting(cell),
+            b if b.is_anvil() => self.open_anvil(cell),
+            b if b.base() == Block::GRINDSTONE => self.open_grindstone(cell),
+            Block::SMITHING_TABLE => self.open_smithing(cell),
+            _ => {}
         }
     }
 
@@ -1565,7 +1459,7 @@ impl Game {
                 .is_some_and(|v| v.offers.iter().any(Option::is_some))
         {
             if !self.open_pad_trading(id) {
-                self.use_villager();
+                self.open_merchant(id);
             }
             self.open_trading = false;
         }

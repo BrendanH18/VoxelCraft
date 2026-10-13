@@ -14,7 +14,6 @@ use glam::{DVec3, IVec3};
 use rustc_hash::FxHashMap;
 
 use crate::audio::sounds::{Material, Sound};
-use crate::item::Item;
 use crate::world::World;
 use crate::world::block::Block;
 use crate::world::chunk::ChunkData;
@@ -425,35 +424,6 @@ impl Game {
 
     pub(super) fn portal_needed(&self) -> f32 {
         if self.session.mode.is_creative() { CREATIVE_PORTAL_TIME } else { PORTAL_TIME }
-    }
-
-    /// Right-click with flint and steel: primes TNT or lights a portal/fire
-    /// in front of the clicked face. Only successful uses spend durability.
-    pub(super) fn strike_flint(&mut self, pos: IVec3, normal: IVec3) -> bool {
-        if self.held_item() != Some(Item::FLINT_AND_STEEL) {
-            return false;
-        }
-        if self.world.get_block(pos) == Some(Block::TNT) {
-            self.world.set_block(pos, Block::AIR);
-            self.mobs.entities.prime_tnt(pos, false);
-            self.audio.play(Sound::Fuse, Some(pos.as_dvec3()), 1.0, (0.95, 1.05));
-            if self.session.mode.is_survival() && self.session.inventory.wear(self.actions.selected, 1) {
-                self.show_popup("Flint and steel broke");
-            }
-            return true;
-        }
-        let at = pos + normal;
-        if !self.world.ignite(at) {
-            return true;
-        }
-        self.audio.play(Sound::Place(Material::Stone), Some(pos.as_dvec3()), 0.7, (1.6, 1.9));
-        if self.session.mode.is_survival() && self.session.inventory.wear(self.actions.selected, 1) {
-            self.show_popup("Flint and steel broke");
-        }
-        if self.world.get_block(at) == Some(Block::NETHER_PORTAL) {
-            self.audio.play(Sound::Fuse, Some(at.as_dvec3()), 1.0, (0.5, 0.6));
-        }
-        true
     }
 
     /// Beds explode in both the Nether and the End.

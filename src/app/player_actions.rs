@@ -5,13 +5,6 @@ impl Game {
         self.session.block_target(&self.world)
     }
 
-    /// Sends the dragon egg at `pos` somewhere nearby, with a teleport sound.
-    pub(super) fn teleport_egg(&mut self, pos: glam::IVec3) {
-        if let Some(to) = self.world.teleport_egg(pos) {
-            self.audio.play(crate::audio::sounds::Sound::Teleport, Some(to.as_dvec3()), 0.6, (0.9, 1.1));
-        }
-    }
-
     /// Fixed-tick mining in every mode, once per tick while the attack input is
     /// held (a press is consumed on the next tick, as Java handles clicks in
     /// its tick); the client only presents the shared outcome.

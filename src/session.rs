@@ -4,6 +4,7 @@
 //! Camera, hand animation and screen navigation belong to their adapters.
 pub mod combat;
 pub mod consumption;
+pub mod interact;
 pub mod mining;
 pub mod placement;
 use glam::{DVec3, IVec3};

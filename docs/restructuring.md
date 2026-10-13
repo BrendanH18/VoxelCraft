@@ -126,7 +126,11 @@ trading and vehicle storage within entity reach + 4 of the entity's box
 (pinned in `combat.json`), and the desktop now closes block screens when the
 player walks out of range. Bucket targeting uses block reach; merchant and
 vehicle targeting use entity reach. The old shared 6.0 reach constant is gone.
-Other item use and container transactions still need extraction; controller/LAN `Game::puppet`
+The right-click chain is shared ([use evidence](verification/2026-10-13-shared-use.md)):
+`PlayerSession::use_held` runs entity, item and block uses for the desktop and
+CLI (and so the headless LAN server), reporting screens, beds, vehicle storage
+and trading for adapters to open. Bow drawing, eating presentation, drops and
+container clicks remain adapter code; controller/LAN `Game::puppet`
 still swaps session and presentation state and must be removed.
 **Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.
 **Dependency:** STR-01 regression coverage and review of pending v0.7 changes.

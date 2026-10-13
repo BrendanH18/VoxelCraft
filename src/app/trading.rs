@@ -3,34 +3,14 @@ use super::hud::draw_stack;
 use super::{Container, Game};
 use crate::render::ui::{Ui, WHITE};
 impl Game {
-    pub(super) fn use_villager(&mut self) -> bool {
-        if self.sneak_building() {
-            return false;
-        }
-        let Some(id) = self.mobs.entities.target_merchant(
-            &self.world,
-            self.session.player.eye(),
-            self.session.player.forward().as_dvec3(),
-            self.session.entity_reach(),
-        ) else {
-            return false;
-        };
-        if self
-            .mobs
-            .entities
-            .merchant(id)
-            .and_then(|m| m.villager.as_ref())
-            .is_none_or(|v| v.offers.iter().all(Option::is_none))
-        {
-            return true;
-        }
+    /// Opens trading with a targeted merchant that has offers.
+    pub(super) fn open_merchant(&mut self, id: u64) {
         if self.puppet {
             self.puppet_merchant = Some(id);
         } else if !self.inventory_open {
             self.container = Container::Trading(id);
             self.toggle_inventory();
         }
-        true
     }
     pub(super) fn buy_trade(&mut self, index: usize) {
         let Container::Trading(id) = self.container else { return };

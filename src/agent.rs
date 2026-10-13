@@ -100,34 +100,6 @@ impl Agent {
 
     /// The shared bucket/bottle step, after entity interactions. `None` means
     /// the held item is not a bucket or the targeted block's use comes first.
-    fn use_held_bucket(&mut self, world: &mut World, entities: &mut Entities) -> Option<Result<(), String>> {
-        use crate::survival_items::bucket::{self, Use};
-        match bucket::use_held(
-            &self.session.player,
-            &mut self.session.inventory,
-            self.selected,
-            self.session.mode,
-            self.session.player.sneaking,
-            world,
-            entities,
-            6.0,
-        ) {
-            Use::NotHeld | Use::Block(_) => None,
-            Use::Item(Some(effect)) => {
-                self.emit(Event::Bucket(effect));
-                Some(Ok(()))
-            }
-            Use::Item(None) if !self.session.mode.can_build() && !self.held_is(Item::GLASS_BOTTLE) => {
-                Some(Err("this game mode cannot use buckets here".into()))
-            }
-            Use::Item(None) => Some(Err("no bucket or bottle interaction within reach".into())),
-        }
-    }
-
-    fn held_is(&self, item: Item) -> bool {
-        self.session.inventory.get(self.selected).is_some_and(|stack| stack.item == item)
-    }
-
     /// Changes abilities together so command, host and controller paths agree.
     pub fn set_mode(&mut self, mode: GameMode) {
         self.session.set_mode(mode);
@@ -297,231 +269,54 @@ impl Agent {
                 }
                 self.swings += 1;
             }
-            Command::Place
-                if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD) =>
-            {
-                if !self.session.mode.can_interact() {
-                    return Err("spectators cannot use items".into());
-                }
-                if self.cooldown > 0.0 {
-                    return Err("action cooling down".into());
-                }
-                crate::survival_items::use_rod(
-                    &self.session.player,
-                    &mut self.session.inventory,
-                    self.selected,
-                    self.creative,
-                    self.session.id,
-                    entities,
-                );
-                self.cooldown = 0.22;
-                self.swings += 1;
-            }
-            Command::Place
-                if self
-                    .inventory
-                    .get(self.selected)
-                    .is_some_and(|s| s.item == Item::SNOWBALL || s.item == Item::EGG) =>
-            {
-                if !self.session.mode.can_interact() {
-                    return Err("spectators cannot use items".into());
-                }
-                if self.cooldown > 0.0 {
-                    return Err("action cooling down".into());
-                }
-                crate::survival_items::throw_held(
-                    &self.session.player,
-                    &mut self.session.inventory,
-                    self.selected,
-                    self.creative,
-                    self.session.id,
-                    entities,
-                );
-                self.cooldown = 0.22;
-                self.swings += 1;
-            }
-            Command::Place
-                if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::ENDER_PEARL) =>
-            {
-                if !self.session.mode.can_interact() {
-                    return Err("spectators cannot use items".into());
-                }
-                if self.session.vitals.pearl_cooldown > 0.0 {
-                    return Err("ender pearl cooling down".into());
-                }
-                self.session.vitals.pearl_cooldown = crate::entity::pearl::COOLDOWN;
-                let p = &self.session.player;
-                let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
-                entities.throw_pearl(self.session.id, p.eye(), p.forward().as_dvec3(), carry);
-                self.swings += 1;
-                if !self.creative {
-                    self.session.inventory.take_one(self.selected);
-                }
-            }
-            Command::Place
-                if self.session.inventory.get(self.selected).is_some_and(|s| s.item.as_splash_potion().is_some()) =>
-            {
-                if !self.session.mode.can_interact() {
-                    return Err("spectators cannot use items".into());
-                }
-                let potion = self.session.inventory.get(self.selected).and_then(|s| s.item.as_splash_potion()).unwrap();
-                let p = &self.session.player;
-                let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
-                entities.throw_potion(self.session.id, potion, p.eye(), p.forward().as_dvec3(), carry);
-                self.swings += 1;
-                if !self.creative {
-                    self.session.inventory.take_one(self.selected);
-                }
-            }
-            Command::Place
-                if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::EYE_OF_ENDER) =>
-            {
-                if !self.session.mode.can_interact() {
-                    return Err("spectators cannot use items".into());
-                }
-                if self.cooldown > 0.0 {
-                    return Err("action cooling down".into());
-                }
-                let frame = self
-                    .target(world)
-                    .map(|(pos, _)| pos)
-                    .filter(|&pos| world.get_block(pos).is_some_and(|b| b.base() == Block::END_PORTAL_FRAME));
-                if let Some(pos) = frame {
-                    let opened =
-                        world.insert_eye(pos).ok_or("that frame already holds an eye, or its ring isn't loaded")?;
-                    self.emit(Event::FrameFilled(pos, opened));
-                } else {
-                    if world.generator.dimension != crate::world::terrain::Dimension::Overworld {
-                        return Err("eyes of ender only find strongholds in the overworld".into());
-                    }
-                    let from = self.session.player.pos + DVec3::Y * (crate::player::SHAPE.height * 0.5);
-                    let target = world.generator.strongholds.nearest(from.floor().as_ivec3()).ok_or("no stronghold")?;
-                    entities.release_eye(from, target.as_dvec3());
-                    self.emit(Event::EyeThrown(from));
-                }
-                self.cooldown = 0.22;
-                self.swings += 1;
-                if !self.creative {
-                    self.session.inventory.take_one(self.selected);
-                }
-            }
-            Command::Place
-                if self.session.mode.can_interact()
-                    && self.cooldown <= 0.0
-                    && crate::survival_items::use_mob(
-                        &self.session.player,
-                        &mut self.session.inventory,
-                        self.selected,
-                        self.creative,
-                        world,
-                        entities,
-                        self.session.id,
-                    ) =>
-            {
-                self.cooldown = 0.22;
-                self.swings += 1;
-            }
-            Command::Place
-                if self
-                    .target(world)
-                    .is_some_and(|(pos, _)| world.get_block(pos).is_some_and(|b| b.cake_bites().is_some())) =>
-            {
-                let (pos, _) = self.target(world).unwrap();
-                if !crate::survival_items::bite_cake(world, pos, &mut self.session.vitals, self.creative) {
-                    return Err("not hungry enough to eat cake".into());
-                }
-                self.swings += 1;
-            }
             Command::Place => {
-                let (eye, dir) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
+                use crate::session::interact::{UseContext, Used};
                 if !self.session.mode.can_interact() {
                     return Err("this game mode cannot interact".into());
                 }
-                if self.session.player.vehicle.is_some() {
-                    if entities.boost_mount(self.session.id, &mut self.session.inventory, self.selected, self.creative)
-                    {
-                        return Ok(());
-                    }
-                    // Riders still use buckets and bottles (Java `Item.use` has no vehicle check).
-                    if let Some(result) = self.use_held_bucket(world, entities) {
-                        return result;
-                    }
-                    return Err("cannot place while riding".into());
-                }
-                let reach = crate::entity::minecart::interaction_reach(world, eye, dir, 5.0);
-                if entities.use_mount(
-                    eye,
-                    dir,
-                    reach,
-                    self.session.id,
-                    &mut self.session.inventory,
-                    self.selected,
-                    self.creative,
-                ) {
-                    if let Some(id) = entities.mount_for_player(self.session.id) {
-                        self.session.player.vehicle = Some(id);
-                    }
-                    return Ok(());
-                }
-                if let Some(id) = entities.mount_cart(eye, dir, reach, self.session.id) {
-                    self.session.player.vehicle = Some(id);
-                    self.cooldown = 0.22;
-                    self.swings += 1;
-                    return Ok(());
-                }
-                if let Some(held) = self.session.inventory.get(self.selected)
-                    && let Some(kind) = crate::entity::minecart::CartKind::from_item(held.item)
-                    && let Some((pos, normal)) = self.target(world)
-                {
-                    let cell = if world.get_block(pos).is_some_and(|b| b.is_rail()) { pos } else { pos + normal };
-                    let cell = if kind.boat().is_some() && world.get_block(pos).is_some_and(|b| b.is_water()) {
-                        pos
-                    } else {
-                        cell
-                    };
-                    if entities.place_cart(&*world, kind, cell).is_none() {
-                        return Err("minecarts need an empty rail".into());
-                    }
-                    if !self.creative {
-                        self.session.inventory.take_one(self.selected);
-                    }
-                    self.cooldown = 0.22;
-                    self.swings += 1;
-                    return Ok(());
-                }
-                // Entity interactions have declined; block use or the bucket comes next.
-                if let Some(result) = self.use_held_bucket(world, entities) {
-                    return result;
-                }
-                if !self.session.mode.can_build() {
-                    return Err("this game mode cannot place blocks".into());
-                }
-                if self.cooldown > 0.0 {
+                let held = self.session.inventory.get(self.selected).map(|s| s.item);
+                // Pearls keep their own cooldown; splash potions, buckets and bottles have none.
+                let bucket = held.is_some_and(crate::survival_items::bucket::handles);
+                let cooled = bucket
+                    || matches!(held, Some(Item::ENDER_PEARL))
+                    || held.is_some_and(|i| i.as_splash_potion().is_some());
+                if !cooled && self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
-                let (pos, _) = self.target(world).ok_or("no block within reach")?;
-                if world.use_redstone(pos) {
+                let ctx = UseContext { sneaking: self.session.player.sneaking, others };
+                let done = self.session.use_held(self.selected, world, entities, &ctx)?;
+                let Some(done) = done else {
+                    return Err(if bucket && !self.session.mode.can_build() && held != Some(Item::GLASS_BOTTLE) {
+                        "this game mode cannot use buckets here"
+                    } else if bucket {
+                        "no bucket or bottle interaction within reach"
+                    } else if self.session.player.vehicle.is_some() {
+                        "cannot place while riding"
+                    } else if !self.session.mode.can_build() {
+                        "this game mode cannot place blocks"
+                    } else {
+                        "no block within reach"
+                    }
+                    .into());
+                };
+                match done.used {
+                    Used::Placed(crate::session::placement::Outcome::Placed { cell, block, .. }) => {
+                        self.emit(Event::Placed(cell, block));
+                    }
+                    Used::Bucket(effect) => self.emit(Event::Bucket(effect)),
+                    Used::EyeInserted { cell, opened } => self.emit(Event::FrameFilled(cell, opened)),
+                    Used::EyeReleased { from } => self.emit(Event::EyeThrown(from)),
+                    // The agent protocol has no screens or beds: use its container,
+                    // trade and sleep commands, or sneak to build against the block.
+                    Used::Screen { .. } => return Err("that block opens a screen; use its command or sneak".into()),
+                    Used::Bed { .. } => return Err("use the sleep command for beds".into()),
+                    Used::OpenVehicle(_) => return Err("that vehicle has storage; use chest take/put".into()),
+                    Used::OpenMerchant(_) => return Err("use trade to see this villager's offers".into()),
+                    _ => {}
+                }
+                if !matches!(done.used, Used::PearlThrown { .. } | Used::PotionThrown { .. } | Used::Bucket(_)) {
                     self.cooldown = 0.22;
-                    self.swings += 1;
-                    return Ok(());
                 }
-                if crate::survival_items::use_composter(
-                    world,
-                    entities,
-                    pos,
-                    &mut self.session.inventory,
-                    self.selected,
-                    self.creative,
-                ) {
-                    self.cooldown = 0.22;
-                    self.swings += 1;
-                    return Ok(());
-                }
-                let result = self.session.place_held(self.selected, world, others)?;
-                if let crate::session::placement::Outcome::Placed { cell, block, .. } = result {
-                    self.emit(Event::Placed(cell, block));
-                }
-                self.cooldown = 0.22;
                 self.swings += 1;
             }
             Command::Attack => {
