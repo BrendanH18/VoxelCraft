@@ -123,3 +123,50 @@ fn the_cli_no_longer_places_against_screens_and_reports_why() {
     assert!(err.contains("screen"), "{err}");
     assert_eq!(w.get_block(WALL - IVec3::X), Some(Block::AIR));
 }
+
+#[test]
+fn bows_draw_in_ticks_shoot_on_release_and_let_go_when_the_slot_changes() {
+    use voxelcraft::session::ranged::{FULL_DRAW_TICKS, Ranged};
+    let (w, mut s, mut e) = scene(Some(Item::BOW));
+    s.inventory.slots[1] = Some(Stack::new(Item::ARROW, 2));
+    s.inventory.slots[2] = Some(Stack::new(Item::BOW, 1));
+    assert!(matches!(s.start_draw(0, &w, &mut e), Some(shot) if shot.ranged == Ranged::Drawing));
+    for _ in 0..FULL_DRAW_TICKS {
+        assert_eq!(s.tick_draw(0, true), None);
+    }
+    assert_eq!(s.draw_power(0), Some(1.0));
+    let shot = s.release_draw(0, &mut e).unwrap();
+    assert!(matches!(shot.ranged, Ranged::ArrowShot { power, .. } if power == 1.0));
+    assert_eq!(s.inventory.get(1).unwrap().count, 1, "one arrow spent");
+    assert_eq!(s.inventory.get(0).unwrap().damage, 1, "the bow wears");
+    assert_eq!(e.arrows.len(), 1);
+
+    // Selecting another bow lets the string go without shooting.
+    s.start_draw(0, &w, &mut e).unwrap();
+    for _ in 0..FULL_DRAW_TICKS {
+        s.tick_draw(0, true);
+    }
+    assert_eq!(s.tick_draw(2, true), None);
+    assert!(!s.drawing());
+    assert_eq!(s.release_draw(2, &mut e), None);
+    assert_eq!(e.arrows.len(), 1);
+}
+
+#[test]
+fn crossbows_load_after_twenty_five_ticks_and_fire_on_the_next_use() {
+    use voxelcraft::session::ranged::{CROSSBOW_CHARGE_TICKS, Ranged};
+    let (w, mut s, mut e) = scene(Some(Item::CROSSBOW));
+    s.inventory.slots[1] = Some(Stack::new(Item::ARROW, 1));
+    s.start_draw(0, &w, &mut e).unwrap();
+    for _ in 0..CROSSBOW_CHARGE_TICKS - 1 {
+        assert_eq!(s.tick_draw(0, true), None);
+    }
+    let loaded = s.tick_draw(0, true).unwrap();
+    assert!(matches!(loaded.ranged, Ranged::CrossbowLoaded { .. }));
+    assert_eq!(s.inventory.get(0).unwrap().item, Item::CHARGED_CROSSBOW);
+    assert_eq!(s.inventory.get(1), None, "loading spends the arrow");
+    let fired = s.start_draw(0, &w, &mut e).unwrap();
+    assert!(matches!(fired.ranged, Ranged::CrossbowFired { .. }));
+    assert_eq!(s.inventory.get(0).unwrap().item, Item::CROSSBOW);
+    assert_eq!(e.arrows.len(), 1);
+}

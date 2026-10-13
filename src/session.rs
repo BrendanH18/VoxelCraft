@@ -7,6 +7,7 @@ pub mod consumption;
 pub mod interact;
 pub mod mining;
 pub mod placement;
+pub mod ranged;
 use glam::{DVec3, IVec3};
 
 use crate::{
@@ -29,6 +30,7 @@ pub struct PlayerSession {
     pub spawn_bed: Option<IVec3>,
     pub spawn_point: Option<IVec3>,
     combat: combat::State,
+    ranged: ranged::State,
     consumption: consumption::State,
     mining: mining::State,
 }
@@ -75,6 +77,7 @@ impl PlayerSession {
             spawn_bed: None,
             spawn_point: None,
             combat: Default::default(),
+            ranged: Default::default(),
             consumption: Default::default(),
             mining: Default::default(),
         }
@@ -92,6 +95,7 @@ impl PlayerSession {
             spawn_bed: None,
             spawn_point: None,
             combat: Default::default(),
+            ranged: Default::default(),
             consumption: Default::default(),
             mining: Default::default(),
         }

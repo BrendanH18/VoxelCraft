@@ -28,6 +28,13 @@ Screens, beds, vehicle storage and trading are reported as outcomes; adapters
 open their own screens or apply sleeping rules. Tool breakage is reported with
 the outcome.
 
+Bows and crossbows are session state too ([src/session/ranged.rs](../../src/session/ranged.rs)):
+drawing counts fixed ticks (20 for full power, 25 to load a crossbow) with
+Java's `BowItem.getPowerForTime` curve. The desktop already advanced them once
+per tick, so timing is unchanged. A draw belongs to its hotbar slot; selecting
+another slot lets the string go for every player. The CLI has no draw command
+yet.
+
 ## Behavior changes
 
 - **CLI order and coverage.** `place` previously tried held items first (armor,
@@ -51,8 +58,9 @@ recorded difference, not a fidelity exception.
 
 `tests/shared_use.rs` covers screen outcomes and sneaking placement, door
 toggling through the session and the CLI, flint and steel on fire and TNT with
-Survival-only wear, tilling and paths, and the CLI's screen-block error. The
+Survival-only wear, tilling and paths, the CLI's screen-block error, bow
+draw/release/slot-change and crossbow load/fire. The
 existing bucket, placement, mining, combat and CLI suites pass unchanged except
-for the intended cooldown exemptions. Release tests: **965 passed, zero failed**;
-headless: **881 passed, zero failed**; desktop LAN harness **13/13** on one Mac. Ordinary keyboard/controller play, LAN play and performance
+for the intended cooldown exemptions. With the bow move, release tests: **967 passed, zero
+failed**; headless: **885 passed, zero failed**; desktop LAN harness **13/13** on one Mac. Ordinary keyboard/controller play, LAN play and performance
 acceptance remain unverified.

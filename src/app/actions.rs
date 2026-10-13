@@ -9,13 +9,12 @@ pub(super) struct Actions {
     pub breaking: Option<(IVec3, f32)>,
     /// Presentation mirror of the session's normalized consumption progress.
     pub eat_timer: f64,
-    /// Seconds the bow has been drawn, while drawing.
-    pub bow_draw: Option<f64>,
 }
 
 impl Actions {
-    /// Selecting a different slot interrupts both actions, even if its
-    /// item is the same kind as the previous one.
+    /// Selecting a different slot interrupts mining and eating presentation,
+    /// even if its item is the same kind as the previous one. The session lets
+    /// a bow go when its drawing slot is no longer selected.
     pub fn select(&mut self, slot: usize) -> bool {
         if self.selected == slot {
             return false;
@@ -28,7 +27,6 @@ impl Actions {
     pub fn reset(&mut self) {
         self.breaking = None;
         self.eat_timer = 0.0;
-        self.bow_draw = None;
     }
 }
 

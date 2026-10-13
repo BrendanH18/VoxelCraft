@@ -1638,7 +1638,7 @@ impl Game {
         } else if acting
             && self.action_cooldown <= 0.0
             && self.right_held
-            && self.actions.bow_draw.is_none()
+            && !self.session.drawing()
             // Buckets act once per click.
             && !(self.holding_bucket() || self.holding_throwable())
         {
@@ -1651,7 +1651,7 @@ impl Game {
             self.session.cancel_mining();
         }
         self.eat(acting, dt);
-        self.update_bow(acting, dt);
+        self.update_bow(acting);
     }
 
     /// Poll streaming, run due fixed gameplay ticks and render interpolated positions.

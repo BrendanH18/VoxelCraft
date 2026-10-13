@@ -590,11 +590,11 @@ impl Game {
     pub(super) fn pad_view(&self, name: &str) -> Option<PadView<'_>> {
         let seat = self.pads.seats.iter().find(|s| s.name == name)?;
         let a = &seat.body.actions;
-        let held = self.agents.players.get(name)?.agent.session.inventory.get(a.selected).map(|s| s.item);
+        let session = &self.agents.players.get(name)?.agent.session;
         Some(PadView {
             breaking: a.breaking,
             eating: (a.eat_timer / super::EAT_TIME) as f32,
-            bow: a.bow_draw.filter(|_| held == Some(crate::item::Item::BOW)).map(super::bow::power),
+            bow: session.draw_power(a.selected),
             message: seat.message.as_ref().filter(|(_, t)| t.elapsed() < MESSAGE_TIME).map(|(m, _)| m.as_str()),
         })
     }
