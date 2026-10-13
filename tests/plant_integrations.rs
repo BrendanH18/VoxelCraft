@@ -114,6 +114,44 @@ fn sponge_absorbs_connected_water_six_steps_and_respects_walls_and_limit() {
     nether.set_block(P, ob::WET_SPONGE);
     assert_eq!(nether.get_block(P), Some(ob::SPONGE));
 }
+/// Java 26.3 `SpongeBlock.removeWaterBreadthFirstSearch` tries
+/// `BucketPickup.pickupBlock` first: a waterlogged block loses its water,
+/// counts toward the 64 and the search continues through it.
+#[test]
+fn sponge_drains_waterlogged_coral_and_continues_through_it() {
+    let mut w = world(Dimension::Overworld);
+    let fan = ob::coral(2, 0, false);
+    let plant = ob::coral(1, 3, false);
+    w.set_block(P + IVec3::X, Block::WATER);
+    w.set_block(P + IVec3::X * 2, fan);
+    w.set_block(P + IVec3::X * 3, plant);
+    w.set_block(P + IVec3::X * 4, Block::WATER);
+    w.set_block(P, ob::SPONGE);
+    assert_eq!(w.get_block(P), Some(ob::WET_SPONGE));
+    assert_eq!(w.get_block(P + IVec3::X), Some(Block::AIR));
+    // No dry live-coral state exists, so drained coral takes Java's eventual dead form.
+    assert_eq!(w.get_block(P + IVec3::X * 2), Some(ob::coral(2, 0, true)));
+    assert_eq!(w.get_block(P + IVec3::X * 3), Some(ob::coral(1, 3, true)));
+    assert_eq!(w.get_block(P + IVec3::X * 4), Some(Block::AIR), "the search continues past waterlogged blocks");
+    assert!(w.drops.is_empty(), "drained coral is not broken");
+}
+/// `WetSpongeBlock.onPlace` dries a wet sponge only when it is placed where
+/// water evaporates; neighbour changes do not.
+#[test]
+fn nether_wet_sponge_dries_only_when_placed() {
+    let generator = Generator::for_dimension(7, Dimension::Nether);
+    let mut w = World::new_remote(Arc::new(generator), 2);
+    w.receive_chunk(IVec3::new(0, 3, 0), Arc::new(ChunkData::Uniform(ob::WET_SPONGE)));
+    w.receive_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+    let top = IVec3::new(12, 127, 12);
+    assert_eq!(w.get_block(top), Some(ob::WET_SPONGE));
+    w.set_block(top + IVec3::Y, Block::STONE);
+    w.set_block(top + IVec3::Y, Block::AIR);
+    assert_eq!(w.get_block(top), Some(ob::WET_SPONGE), "a neighbour change does not dry it");
+    w.set_block(top + IVec3::Y, ob::WET_SPONGE);
+    assert_eq!(w.get_block(top + IVec3::Y), Some(ob::SPONGE), "placing one dries it");
+    assert_eq!(w.get_block(top), Some(ob::WET_SPONGE));
+}
 #[test]
 fn dry_sponge_responds_to_water_placed_after_it() {
     let mut w = world(Dimension::Overworld);
