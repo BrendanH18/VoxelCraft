@@ -48,6 +48,7 @@ pub fn brew(potion: Potion, ingredient: Item) -> Option<Potion> {
         ("awkward", Item::MAGMA_CREAM) => to("fire_resistance"),
         ("awkward", Item::GHAST_TEAR) => to("regeneration"),
         ("awkward", Item::PUFFERFISH) => to("water_breathing"),
+        ("awkward", Item::TURTLE_HELMET) => to("turtle_master"),
         ("water", Item::MAGMA_CREAM | Item::REDSTONE | Item::GHAST_TEAR) => to("mundane"),
         (id, Item::REDSTONE) if to(&format!("long_{id}")).is_some() => to(&format!("long_{id}")),
         // Glowstone strengthens to level II.

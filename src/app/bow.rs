@@ -4,7 +4,6 @@
 
 use crate::audio::sounds::Sound;
 use crate::item::Item;
-use crate::world::block::Block;
 
 use super::Game;
 
@@ -28,18 +27,9 @@ impl Game {
     /// Whether the crosshair is on a block that right-click uses
     /// (containers and beds) rather than building against it.
     pub(super) fn aiming_at_usable(&self) -> bool {
-        self.target().and_then(|(pos, _)| self.world.get_block(pos)).is_some_and(|b| {
-            b == Block::CRAFTING_TABLE
-                || b.is_bed()
-                || b.is_door()
-                || b.is_gate()
-                || crate::world::furnace::is_furnace(b)
-                || crate::world::chest::is_chest(b)
-                || b == Block::BREWING_STAND
-                || b == Block::ENCHANTING_TABLE
-                || b.is_anvil()
-                || b == Block::SMITHING_TABLE
-        })
+        self.target()
+            .and_then(|(pos, _)| self.world.get_block(pos))
+            .is_some_and(voxelcraft::content::interaction::blocks_item_use)
     }
 
     /// Right-click with a bow: starts drawing it if there's an arrow to

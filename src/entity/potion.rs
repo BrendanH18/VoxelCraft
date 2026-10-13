@@ -20,8 +20,8 @@ const GRAVITY: f64 = 20.0;
 /// How far a splash reaches horizontally and vertically.
 const REACH: f64 = 4.0;
 const REACH_Y: f64 = 2.0;
-/// Splash potions give 75% of a drinkable potion's duration.
-const DURATION_SCALE: f32 = 0.75;
+/// Java 26.3 splash items have no reduced duration component; the default is 1.
+const DURATION_SCALE: f32 = 1.0;
 /// Longest move per collision check (blocks).
 const STEP: f64 = 0.2;
 const MAX_FLIGHT: f32 = 30.0;
@@ -81,7 +81,8 @@ impl ThrownPotion {
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
-                self.shatter(None, ctx, mobs, rng, events);
+                self.pos = next;
+                self.shatter(ctx, mobs, rng, events);
                 return false;
             }
             self.pos = next;
@@ -91,7 +92,7 @@ impl ThrownPotion {
                 m.alive() && next.cmpge(min).all() && next.cmple(max).all()
             });
             if hit_player || hit_mob.is_some() {
-                self.shatter(hit_mob, ctx, mobs, rng, events);
+                self.shatter(ctx, mobs, rng, events);
                 return false;
             }
         }
@@ -101,113 +102,125 @@ impl ThrownPotion {
         true
     }
 
-    fn shatter(
-        &self,
-        direct: Option<usize>,
-        ctx: &Ctx,
-        mobs: &mut [Mob],
-        rng: &mut Rng,
-        events: &mut Vec<EntityEvent>,
-    ) {
+    fn shatter(&self, ctx: &Ctx, mobs: &mut [Mob], rng: &mut Rng, events: &mut Vec<EntityEvent>) {
         events.push(EntityEvent::PotionSplashed { pos: self.pos, colour: self.potion.colour() });
-        splash(self.potion, self.owner, self.pos, direct, ctx, mobs, rng, events);
+        splash(self.potion, self.owner, self.pos, self.age, ctx, mobs, rng, events);
     }
 }
 
-/// Distance from `p` to the box `min..max` (0 inside).
-fn box_distance(p: DVec3, min: DVec3, max: DVec3) -> f64 {
-    (min - p).max(p - max).max(DVec3::ZERO).length()
+/// Java 26.3 measures between the potion's 0.25 × 0.25 collision box at
+/// impact and the recipient's box inflated by ProjectileUtil.computeMargin.
+/// The candidate query uses the uninflated recipient and a 4 × 2 × 4 expansion.
+fn splash_intensity(pos: DVec3, age: f32, min: DVec3, max: DVec3) -> Option<f64> {
+    let potion_min = pos - DVec3::new(0.125, 0.0, 0.125);
+    let potion_max = pos + DVec3::new(0.125, 0.25, 0.125);
+    let reach = DVec3::new(REACH, REACH_Y, REACH);
+    if !(max.cmpgt(potion_min - reach).all() && min.cmplt(potion_max + reach).all()) {
+        return None;
+    }
+    let margin = f64::from((((age * 20.0).round() - 2.0) / 20.0).clamp(0.0, 0.3));
+    let separation = (min - margin - potion_max).max(potion_min - max - margin).max(DVec3::ZERO);
+    let distance = separation.length();
+    (distance < REACH).then_some(1.0 - distance / REACH)
 }
 
 /// Java's instant effect amount: `base << amplifier`, scaled and rounded.
-fn instant_amount(base: f32, amplifier: u8, intensity: f32) -> f32 {
-    (intensity * (base * (1u32 << amplifier.min(20)) as f32) + 0.5).floor()
+fn instant_amount(base: f32, amplifier: u8, intensity: f64) -> f32 {
+    (intensity * f64::from(base) * f64::from(1u32 << amplifier.min(20)) + 0.5).floor() as f32
 }
 
-/// Splashes `potion` at `pos`. `direct` is a mob the potion hit square on
-/// (full strength). Players get [`EntityEvent::PlayerEffect`] or
+/// Splashes `potion` at the impact position. Players get [`EntityEvent::PlayerEffect`] or
 /// [`EntityEvent::PlayerMagic`]; mobs take instant damage and healing (undead
 /// the other way round, witches shrug off most of the harm). Weakness also
-/// lands on zombie villagers so a golden apple can start a cure. Other
-/// effects don't exist for mobs yet.
+/// lands on zombie villagers so a golden apple can start a cure. Slowness
+/// and Resistance apply to mobs; other non-instant mob effects remain incomplete.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn splash(
     potion: Potion,
     owner: Option<PlayerId>,
     pos: DVec3,
-    direct: Option<usize>,
+    age: f32,
     ctx: &Ctx,
     mobs: &mut [Mob],
     rng: &mut Rng,
     events: &mut Vec<EntityEvent>,
 ) {
-    let Some((effect, amplifier, ticks)) = potion.info().effect else { return };
-    let reach = |min: DVec3, max: DVec3| {
-        let near = (min - pos).max(pos - max).max(DVec3::ZERO);
-        (near.x <= REACH && near.z <= REACH && near.y <= REACH_Y).then(|| box_distance(pos, min, max))
-    };
-    let intensity = |dist: Option<f64>| dist.filter(|d| *d < REACH).map(|d| 1.0 - d as f32 / REACH as f32);
-    for t in ctx.players.iter().filter(|t| t.alive) {
-        let (min, max) = t.shape.aabb(t.pos);
-        let Some(scale) = reach(min, max).and_then(|d| intensity(Some(d))) else { continue };
-        match effect {
-            Effect::InstantDamage => {
-                let amount = instant_amount(6.0, amplifier, scale);
-                events.push(EntityEvent::PlayerMagic { player: t.id, amount });
-            }
-            Effect::InstantHealth => {
-                let amount = instant_amount(4.0, amplifier, scale);
-                events.push(EntityEvent::PlayerMagic { player: t.id, amount: -amount });
-            }
-            _ => {
-                let ticks = (scale * ticks as f32 * DURATION_SCALE + 0.5) as u32;
-                if ticks > 20 {
-                    events.push(EntityEvent::PlayerEffect { player: t.id, effect, amplifier, ticks });
+    for (effect, amplifier, ticks) in potion.effects() {
+        for t in ctx.players.iter().filter(|t| t.alive) {
+            let (min, max) = t.shape.aabb(t.pos);
+            let Some(scale) = splash_intensity(pos, age, min, max) else { continue };
+            match effect {
+                Effect::InstantDamage => {
+                    let amount = instant_amount(6.0, amplifier, scale);
+                    events.push(EntityEvent::PlayerMagic { player: t.id, amount });
+                }
+                Effect::InstantHealth => {
+                    let amount = instant_amount(4.0, amplifier, scale);
+                    events.push(EntityEvent::PlayerMagic { player: t.id, amount: -amount });
+                }
+                _ => {
+                    let ticks = (scale * f64::from(ticks) * f64::from(DURATION_SCALE) + 0.5) as u32;
+                    if ticks > 20 {
+                        events.push(EntityEvent::PlayerEffect { player: t.id, effect, amplifier, ticks });
+                    }
                 }
             }
         }
-    }
-    if effect == Effect::Weakness {
-        for (i, mob) in mobs.iter_mut().enumerate() {
-            if !mob.alive() || mob.kind != MobKind::ZombieVillager {
+        if matches!(effect, Effect::Slowness | Effect::Resistance) {
+            for mob in mobs.iter_mut() {
+                if !mob.alive() {
+                    continue;
+                }
+                let (min, max) = mob.aabb();
+                let Some(scale) = splash_intensity(pos, age, min, max) else {
+                    continue;
+                };
+                let duration = (scale * f64::from(ticks) * f64::from(DURATION_SCALE) + 0.5) as u32;
+                if duration > 20 {
+                    mob.effects.add(effect, amplifier, duration);
+                }
+            }
+        }
+        if effect == Effect::Weakness {
+            for mob in mobs.iter_mut() {
+                if !mob.alive() || mob.kind != MobKind::ZombieVillager {
+                    continue;
+                }
+                let (min, max) = mob.aabb();
+                let Some(scale) = splash_intensity(pos, age, min, max) else { continue };
+                let ticks = (scale * f64::from(ticks) * f64::from(DURATION_SCALE) + 0.5) as u32;
+                if ticks > 20 {
+                    mob.weakness_left = mob.weakness_left.max(ticks as f32 / 20.0);
+                }
+            }
+        }
+        if !effect.is_instant() {
+            continue;
+        }
+        for mob in mobs.iter_mut() {
+            if !mob.alive() {
                 continue;
             }
             let (min, max) = mob.aabb();
-            let dist = if direct == Some(i) { Some(0.0) } else { reach(min, max) };
-            let Some(scale) = intensity(dist) else { continue };
-            let ticks = (scale * ticks as f32 * DURATION_SCALE + 0.5) as u32;
-            if ticks > 20 {
-                mob.weakness_left = mob.weakness_left.max(ticks as f32 / 20.0);
+            let Some(scale) = splash_intensity(pos, age, min, max) else { continue };
+            let undead = mob.kind.creature() == crate::enchant::Creature::Undead;
+            // Healing hurts the undead and harming heals them.
+            let harms = (effect == Effect::InstantDamage) != undead;
+            let base = if effect == Effect::InstantDamage { 6.0 } else { 4.0 };
+            let amount = instant_amount(base, amplifier, scale);
+            if harms {
+                let amount = if mob.kind == MobKind::Witch { amount * 0.15 } else { amount };
+                if owner.is_some() {
+                    mob.player_hit();
+                }
+                let (kind, burning, at) = (mob.kind, mob.burning, mob.pos);
+                let killed = mob.damage(amount, None, rng);
+                if owner.is_some() {
+                    events.push(EntityEvent::MobShot { kind, pos: at, killed, burning, player_kill: true, owner });
+                }
+            } else {
+                mob.health = (mob.health + amount).min(mob.kind.max_health());
             }
-        }
-    }
-    if !effect.is_instant() {
-        return;
-    }
-    for (i, mob) in mobs.iter_mut().enumerate() {
-        if !mob.alive() {
-            continue;
-        }
-        let (min, max) = mob.aabb();
-        let dist = if direct == Some(i) { Some(0.0) } else { reach(min, max) };
-        let Some(scale) = intensity(dist) else { continue };
-        let undead = mob.kind.creature() == crate::enchant::Creature::Undead;
-        // Healing hurts the undead and harming heals them.
-        let harms = (effect == Effect::InstantDamage) != undead;
-        let base = if effect == Effect::InstantDamage { 6.0 } else { 4.0 };
-        let amount = instant_amount(base, amplifier, scale);
-        if harms {
-            let amount = if mob.kind == MobKind::Witch { amount * 0.15 } else { amount };
-            if owner.is_some() {
-                mob.player_hit();
-            }
-            let (kind, burning, at) = (mob.kind, mob.burning, mob.pos);
-            let killed = mob.damage(amount, None, rng);
-            if owner.is_some() {
-                events.push(EntityEvent::MobShot { kind, pos: at, killed, burning, player_kill: true, owner });
-            }
-        } else {
-            mob.health = (mob.health + amount).min(mob.kind.max_health());
         }
     }
 }
@@ -257,7 +270,7 @@ mod tests {
             Target::new(PlayerId(3), DVec3::new(9.0, 10.0, 0.0), true),
         ]);
         let mut events = Vec::new();
-        splash(harming, None, DVec3::new(0.0, 10.0, 0.0), None, &c, &mut [], &mut Rng::new(1), &mut events);
+        splash(harming, None, DVec3::new(0.0, 10.0, 0.0), 0.0, &c, &mut [], &mut Rng::new(1), &mut events);
         let amount = |id| {
             events.iter().find_map(|e| match *e {
                 EntityEvent::PlayerMagic { player, amount } if player == PlayerId(id) => Some(amount),
@@ -270,13 +283,37 @@ mod tests {
     }
 
     #[test]
-    fn splash_effects_last_three_quarters_and_mobs_take_instant_damage() {
+    fn turtle_master_splash_applies_both_effects_with_reference_box_distance() {
+        let potion = Potion::from_id("turtle_master").unwrap();
+        let origin = DVec3::new(0., 10., 0.);
+        let c = ctx(vec![
+            Target::new(PlayerId::HOST, origin, true),
+            Target::new(PlayerId(2), origin + DVec3::X * 2., true),
+            Target::new(PlayerId(3), origin + DVec3::Y * 2.3, true),
+        ]);
+        let mut mobs = [Mob::new(MobKind::Horse, origin, 0.)];
+        let mut events = Vec::new();
+        splash(potion, None, origin, 0., &c, &mut mobs, &mut Rng::new(1), &mut events);
+        for (effect, amplifier) in [(Effect::Slowness, 3), (Effect::Resistance, 2)] {
+            assert_eq!(mobs[0].effects.get(effect).map(|e| (e.amplifier, e.ticks)), Some((amplifier, 400)));
+            assert!(events.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { player: PlayerId::HOST, effect: actual, amplifier: amp, ticks: 400 } if *actual == effect && *amp == amplifier)));
+            // Player half-width .3 + potion half-width .125, so separation is 1.575.
+            assert!(events.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { player: PlayerId(2), effect: actual, amplifier: amp, ticks: 243 } if *actual == effect && *amp == amplifier)));
+        }
+        assert!(!events.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { player: PlayerId(3), .. })));
+        // After eight flight ticks, the recipient's box has the maximum .3 margin.
+        let (min, max) = c.players[1].shape.aabb(c.players[1].pos);
+        assert!((splash_intensity(origin, 0.4, min, max).unwrap() - 0.68125).abs() < 1e-6);
+    }
+
+    #[test]
+    fn splash_effects_keep_reference_duration_and_mobs_take_instant_damage() {
         let poison = Potion::from_id("poison").unwrap();
         let c = ctx(vec![Target::new(PlayerId(4), DVec3::new(0.0, 10.0, 0.0), true)]);
         let mut events = Vec::new();
-        splash(poison, None, DVec3::new(0.0, 10.0, 0.0), None, &c, &mut [], &mut Rng::new(1), &mut events);
+        splash(poison, None, DVec3::new(0.0, 10.0, 0.0), 0.0, &c, &mut [], &mut Rng::new(1), &mut events);
         let EntityEvent::PlayerEffect { effect: Effect::Poison, ticks, .. } = events[0] else { panic!("{events:?}") };
-        assert_eq!(ticks, (900.0 * 0.75 + 0.5) as u32);
+        assert_eq!(ticks, 900, "Java 26.3 default splash duration scale is one");
 
         let mut mobs = [
             Mob::new(MobKind::Zombie, DVec3::new(1.0, 10.0, 0.0), 0.0),
@@ -287,7 +324,7 @@ mod tests {
             harming,
             Some(PlayerId::HOST),
             DVec3::new(0.0, 10.0, 0.0),
-            Some(0),
+            0.0,
             &c,
             &mut mobs,
             &mut Rng::new(1),
@@ -301,7 +338,7 @@ mod tests {
             healing,
             Some(PlayerId::HOST),
             DVec3::new(0.0, 10.0, 0.0),
-            Some(0),
+            0.0,
             &c,
             &mut mobs,
             &mut Rng::new(1),

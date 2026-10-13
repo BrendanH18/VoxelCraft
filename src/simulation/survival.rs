@@ -89,6 +89,8 @@ pub struct Env {
     /// Respiration level of the worn helmet: air lasts `level + 1` times
     /// as long (Java skips a tick's loss with chance `level / (level + 1)`).
     pub respiration: u8,
+    /// Worn turtle helmet renews ten seconds of Water Breathing while eyes are dry.
+    pub turtle_helmet: bool,
     /// Body touching lava: burns.
     pub in_lava: bool,
     pub in_fire: bool,
@@ -310,6 +312,11 @@ impl Vitals {
         if creative || self.is_dead() || amount <= 0.0 {
             return 0.0;
         }
+        let amount = if matches!(cause, CAUSE_STARVE | "fell out of the world") {
+            amount
+        } else {
+            amount * self.effects.resistance_factor()
+        };
         let taken = if self.since_damage < INVULNERABLE {
             // Only a stronger hit gets through, and only the difference.
             if amount <= self.last_damage {
@@ -361,6 +368,9 @@ impl Vitals {
         }
         use super::effects::Effect;
         let effect = self.effects.tick(dt);
+        if env.turtle_helmet && !env.head_in_water {
+            self.effects.add(Effect::WaterBreathing, 0, 200);
+        }
         self.health = (self.health + effect.heal).min(MAX_HEALTH);
         // Poison never takes the last half heart, and armor doesn't help.
         if effect.poison > 0.0 && self.health > 1.0 && !creative {

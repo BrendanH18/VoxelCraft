@@ -276,3 +276,10 @@ steps and client action adapters are in `src/app/startup.rs`, `save.rs`,
 `tick.rs` and `player_actions.rs`. Window events and frame rendering remain
 in the coordinator. Controller/CLI/desktop action ownership is a separate,
 ongoing extraction; moving a file alone does not complete STR-03.
+
+Turtle equipment uses standalone item **1040** for the turtle helmet.
+The retained v0.7 animal reservation 1000–1039 remains untouched. Potion indices
+36–38 append normal/long/strong Turtle Master. Their normal items reserve
+1041–1043 and splash items 1044–1046, because the old ranges are full. Existing potion/item meanings
+stay unchanged. The [turtle equipment report](verification/2026-10-12-turtle-equipment.md)
+records the accompanying implementation and acceptance evidence.

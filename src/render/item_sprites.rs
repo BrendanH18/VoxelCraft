@@ -131,6 +131,7 @@ fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
         ArmorMaterial::Gold => [246, 208, 62],
         ArmorMaterial::Diamond => [70, 222, 210],
         ArmorMaterial::Netherite => [96, 88, 94],
+        ArmorMaterial::Turtle => [58, 140, 83],
     }
 }
 
@@ -783,6 +784,9 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         }
         Effect::Poison => {
             ["...##...", "...##...", "..####..", ".######.", ".######.", "########", ".######.", "..####.."]
+        }
+        Effect::Resistance => {
+            ["########", "#......#", "#..##..#", "#..##..#", ".#....#.", "..#..#..", "...##...", "........"]
         }
         Effect::FireResistance => {
             ["...#....", "..##..#.", "..###.#.", ".#####..", ".######.", "########", "########", ".######."]

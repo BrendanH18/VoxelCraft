@@ -1365,6 +1365,7 @@ fn save_mob(m: &Mob) -> Value {
         "pos": m.pos.to_array(),
         "yaw": m.yaw,
         "health": m.health,
+        "effects": m.effects.serialize(),
         "baby": m.baby,
         "grow": m.grow,
         "age": m.age,
@@ -1417,6 +1418,7 @@ fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(a) = m.animal.as_mut() {
         super::animals::load(a, &v["animal"]);
     }
+    m.effects = crate::simulation::effects::Effects::deserialize(v["effects"].as_str().unwrap_or(""));
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
     m.wool_color = crate::color::DyeColor::ALL.get(v["color"].as_u64().unwrap_or(0).min(15) as usize).copied().unwrap();
     if let Some(h) = v["health"].as_f64().filter(|h| *h > 0.0) {

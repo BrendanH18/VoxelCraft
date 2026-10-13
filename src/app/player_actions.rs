@@ -185,7 +185,13 @@ impl Game {
     /// Right-click with armor in hand puts it on (swapping out the worn
     /// piece), unless aimed at a container. Returns whether it did.
     pub(super) fn equip_held(&mut self) -> bool {
-        if !self.mode.is_survival() || self.aiming_at_usable() || !self.inventory.equip(self.actions.selected) {
+        if !voxelcraft::survival_items::equip_armor(
+            &self.player,
+            &mut self.inventory,
+            self.actions.selected,
+            self.mode,
+            &self.world,
+        ) {
             return false;
         }
         let sound = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Wood);

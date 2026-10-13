@@ -102,7 +102,8 @@ no unexplained regression.
 ## STR-03 — Shared gameplay actions and session ownership
 
 **Status:** Partial: shared bucket/bottle execution and typed presentation effects
-implemented; broader actions and session ownership Planned.
+implemented, plus shared held-armor validation; broader actions and session
+ownership remain Planned.
 **Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.
 **Dependency:** STR-01 regression coverage and review of pending v0.7 changes.
 

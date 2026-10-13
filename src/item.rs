@@ -100,6 +100,7 @@ pub enum ArmorMaterial {
     Gold,
     Diamond,
     Netherite,
+    Turtle,
 }
 
 impl ArmorMaterial {
@@ -116,6 +117,7 @@ impl ArmorMaterial {
         let points = match self {
             ArmorMaterial::Leather => [1, 3, 2, 1],
             ArmorMaterial::Gold => [2, 5, 3, 1],
+            ArmorMaterial::Turtle => [2, 6, 5, 2],
             ArmorMaterial::Iron => [2, 6, 5, 2],
             ArmorMaterial::Diamond | ArmorMaterial::Netherite => [3, 8, 6, 3],
         };
@@ -130,6 +132,7 @@ impl ArmorMaterial {
             ArmorMaterial::Iron => 15,
             ArmorMaterial::Diamond => 33,
             ArmorMaterial::Netherite => 37,
+            ArmorMaterial::Turtle => 25,
         };
         base * [11, 16, 15, 13][piece as usize]
     }
@@ -517,8 +520,8 @@ static ANIMAL_ITEMS: [ItemInfo; 21] = [
 const _: () = assert!(ANIMAL_ITEM as usize + ANIMAL_ITEMS.len() <= 1040);
 /// Splash potions: `SPLASH_POTION + potion index`.
 const SPLASH_POTION: u16 = 436;
-const _: () = assert!(FIRST_POTION + POTION_COUNT <= SPLASH_POTION);
-const _: () = assert!(SPLASH_POTION + POTION_COUNT <= SURVIVAL_ITEM);
+const _: () = assert!(FIRST_POTION + LEGACY_POTION_COUNT <= SPLASH_POTION);
+const _: () = assert!(SPLASH_POTION + LEGACY_POTION_COUNT <= SURVIVAL_ITEM);
 
 /// Uses before a bow breaks.
 pub const BOW_DURABILITY: u16 = 384;
@@ -606,10 +609,14 @@ const NETHERITE_TOOLS: u16 = 311;
 const NETHERITE_ARMOR: u16 = NETHERITE_TOOLS + TOOL_KINDS.len() as u16;
 /// Potions start at this id: `FIRST_POTION + potion index`.
 const FIRST_POTION: u16 = 400;
+const LEGACY_POTION_COUNT: u16 = 36;
+const AUDIT_POTION: u16 = 1041;
+const AUDIT_SPLASH_POTION: u16 = 1044;
 /// Raw metals and gems. 360 is diamond boots (`FIRST_ARMOR` ends there),
 /// so these start at 361.
 const EXTRA_ITEM: u16 = 361;
 const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
+const _: () = assert!(POTION_COUNT - LEGACY_POTION_COUNT <= 3);
 
 impl Item {
     pub const MILK_BUCKET: Item = Item(513);
@@ -752,6 +759,8 @@ impl Item {
     pub const PRISMARINE_SHARD: Item = Item(905);
     pub const PRISMARINE_CRYSTALS: Item = Item(906);
     pub const TURTLE_SCUTE: Item = Item(907);
+    /// Standalone append-only audit gear ID; v0.7 reserves 1000..1039.
+    pub const TURTLE_HELMET: Item = Item(1040);
     pub const NAUTILUS_SHELL: Item = Item(908);
     pub const HEART_OF_THE_SEA: Item = Item(909);
     pub const INK_SAC: Item = Item(910);
@@ -776,27 +785,49 @@ impl Item {
     pub const fn armor(piece: ArmorPiece, material: ArmorMaterial) -> Item {
         match material {
             ArmorMaterial::Netherite => Item(NETHERITE_ARMOR + piece as u16),
+            ArmorMaterial::Turtle => {
+                assert!(matches!(piece, ArmorPiece::Helmet), "turtle material has only a helmet");
+                Self::TURTLE_HELMET
+            }
             _ => Item(FIRST_ARMOR + material as u16 * 4 + piece as u16),
         }
     }
 
     pub const fn potion(potion: crate::potion::Potion) -> Item {
-        Item(FIRST_POTION + potion.0 as u16)
+        let index = potion.0 as u16;
+        Item(if index < LEGACY_POTION_COUNT {
+            FIRST_POTION + index
+        } else {
+            AUDIT_POTION + index - LEGACY_POTION_COUNT
+        })
     }
 
     pub const fn splash_potion(potion: crate::potion::Potion) -> Item {
-        Item(SPLASH_POTION + potion.0 as u16)
+        let index = potion.0 as u16;
+        Item(if index < LEGACY_POTION_COUNT {
+            SPLASH_POTION + index
+        } else {
+            AUDIT_SPLASH_POTION + index - LEGACY_POTION_COUNT
+        })
     }
 
     /// The potion of a throwable splash potion item.
     pub fn as_splash_potion(self) -> Option<crate::potion::Potion> {
-        let i = self.0.checked_sub(SPLASH_POTION).filter(|&i| i < POTION_COUNT)?;
+        let i = if (AUDIT_SPLASH_POTION..AUDIT_SPLASH_POTION + POTION_COUNT - LEGACY_POTION_COUNT).contains(&self.0) {
+            LEGACY_POTION_COUNT + self.0 - AUDIT_SPLASH_POTION
+        } else {
+            self.0.checked_sub(SPLASH_POTION).filter(|&i| i < LEGACY_POTION_COUNT)?
+        };
         Some(crate::potion::Potion(i as u8))
     }
 
     /// The potion this item is (a water bottle is one too).
     pub fn as_potion(self) -> Option<crate::potion::Potion> {
-        let i = self.0.checked_sub(FIRST_POTION).filter(|&i| i < POTION_COUNT)?;
+        let i = if (AUDIT_POTION..AUDIT_POTION + POTION_COUNT - LEGACY_POTION_COUNT).contains(&self.0) {
+            LEGACY_POTION_COUNT + self.0 - AUDIT_POTION
+        } else {
+            self.0.checked_sub(FIRST_POTION).filter(|&i| i < LEGACY_POTION_COUNT)?
+        };
         Some(crate::potion::Potion(i as u8))
     }
 
@@ -856,6 +887,14 @@ impl Item {
 
     pub fn info(self) -> ItemInfo {
         match self {
+            Self::TURTLE_HELMET => {
+                return ItemInfo {
+                    name: "turtle helmet",
+                    kind: ItemKind::Armor(ArmorPiece::Helmet, ArmorMaterial::Turtle),
+                    max_stack: 1,
+                    sprite: Sprite::Armor(ArmorPiece::Helmet, ArmorMaterial::Turtle),
+                };
+            }
             Self::FIRE_CHARGE => return item("fire charge", Sprite::Lump([241, 126, 27])),
             Self::MINECART => {
                 return ItemInfo {
@@ -1112,7 +1151,7 @@ impl Item {
     pub fn all_items() -> impl Iterator<Item = Item> {
         let materials = (0..ITEMS.len() as u16).map(|i| Item(FIRST_ITEM + i));
         let tools = (0..TOOL_COUNT + ARMOR_COUNT).map(|i| Item(FIRST_TOOL + i));
-        let potions = (0..POTION_COUNT).map(|i| Item(FIRST_POTION + i));
+        let potions = (0..POTION_COUNT).map(|i| Self::potion(crate::potion::Potion(i as u8)));
         let extra = (0..EXTRA_ITEMS.len() as u16).map(|i| Item(EXTRA_ITEM + i));
         materials
             .chain(tools)
@@ -1122,13 +1161,14 @@ impl Item {
             .chain((576..607).map(Item))
             .chain((608..611).map(Item))
             .chain((0..MOB_ITEMS.len() as u16).map(|i| Item(MOB_ITEM + i)))
-            .chain((0..POTION_COUNT).map(|i| Item(SPLASH_POTION + i)))
+            .chain((0..POTION_COUNT).map(|i| Self::splash_potion(crate::potion::Potion(i as u8))))
             .chain((0..VILLAGE_ITEMS.len() as u16).map(|i| Item(VILLAGE_ITEM + i)))
             .chain([Self::FIRE_CHARGE, Self::MINECART, Self::CHEST_MINECART, Self::HOPPER_MINECART, Self::TNT_MINECART])
             .chain([Self::CROSSBOW, Self::CHARGED_CROSSBOW])
             .chain((0..OVERWORLD_ITEMS.len() as u16).map(|i| Item(OVERWORLD_ITEM + i)))
             .chain((0..MOUNT_ITEMS.len() as u16).map(|i| Item(MOUNT_ITEM + i)))
             .chain((0..ANIMAL_ITEMS.len() as u16).map(|i| Item(ANIMAL_ITEM + i)))
+            .chain([Self::TURTLE_HELMET])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1165,9 +1205,12 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
+        1040 => Some(icon_count() as u16 - 1),
         i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some(i - FIRST_ITEM),
         i if item.as_tool().is_some() || item.as_armor().is_some() => Some(materials + i - FIRST_TOOL),
-        i if item.as_potion().is_some() => Some(materials + TOOL_COUNT + ARMOR_COUNT + i - FIRST_POTION),
+        _ if item.as_potion().is_some() => {
+            Some(materials + TOOL_COUNT + ARMOR_COUNT + item.as_potion().unwrap().0 as u16)
+        }
         i if (EXTRA_ITEM..EXTRA_ITEM + EXTRA_ITEMS.len() as u16).contains(&i) => {
             Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + i - EXTRA_ITEM)
         }
@@ -1195,7 +1238,7 @@ fn sprite_index(item: Item) -> Option<u16> {
                 - MOB_ITEM,
         ),
         // Splash potions come last, after every mob item.
-        i if item.as_splash_potion().is_some() => Some(
+        _ if item.as_splash_potion().is_some() => Some(
             materials
                 + TOOL_COUNT
                 + ARMOR_COUNT
@@ -1204,8 +1247,7 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + SURVIVAL_ITEMS.len() as u16
                 + 34
                 + MOB_ITEMS.len() as u16
-                + i
-                - SPLASH_POTION,
+                + item.as_splash_potion().unwrap().0 as u16,
         ),
         i if (VILLAGE_ITEM..VILLAGE_ITEM + VILLAGE_ITEMS.len() as u16).contains(&i) => Some(
             materials
@@ -1241,7 +1283,7 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    base_icon_count() + OVERWORLD_ITEMS.len() as u32 + MOUNT_ITEMS.len() as u32 + ANIMAL_ITEMS.len() as u32
+    base_icon_count() + OVERWORLD_ITEMS.len() as u32 + MOUNT_ITEMS.len() as u32 + ANIMAL_ITEMS.len() as u32 + 1
 }
 
 /// Icons up to and including the Nether-mob items.

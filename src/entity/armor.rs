@@ -8,7 +8,7 @@ use crate::inventory::Stack;
 use crate::item::{ArmorMaterial, ArmorPiece};
 
 /// Materials with a generated 64×64 armor sheet. Indexed like Java's
-/// equipment table: leather, gold, chain, iron, diamond, plus netherite.
+/// equipment table: leather, gold, chain, iron, diamond, plus netherite and turtle.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ArmorKind {
     Leather = 0,
@@ -17,16 +17,18 @@ pub enum ArmorKind {
     Gold = 3,
     Diamond = 4,
     Netherite = 5,
+    Turtle = 6,
 }
 
 impl ArmorKind {
-    pub const ALL: [ArmorKind; 6] = [
+    pub const ALL: [ArmorKind; 7] = [
         ArmorKind::Leather,
         ArmorKind::Chain,
         ArmorKind::Iron,
         ArmorKind::Gold,
         ArmorKind::Diamond,
         ArmorKind::Netherite,
+        ArmorKind::Turtle,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -37,6 +39,7 @@ impl ArmorKind {
             "gold" | "golden" => Self::Gold,
             "diamond" => Self::Diamond,
             "netherite" => Self::Netherite,
+            "turtle" => Self::Turtle,
             _ => return None,
         })
     }
@@ -48,6 +51,7 @@ impl ArmorKind {
             ArmorMaterial::Gold => Self::Gold,
             ArmorMaterial::Diamond => Self::Diamond,
             ArmorMaterial::Netherite => Self::Netherite,
+            ArmorMaterial::Turtle => Self::Turtle,
         }
     }
 }
@@ -70,10 +74,10 @@ pub struct Equipped {
 pub const LEATHER_DYE: [u8; 3] = [160, 101, 64];
 
 /// Skin occupies array layer 0. Two sheets per material, then leather overlays.
-pub const ARRAY_LAYERS: u32 = 15;
+pub const ARRAY_LAYERS: u32 = 17;
 
 pub fn layer(kind: ArmorKind, inner: bool) -> u16 {
-    1 + kind as u16 * 2 + u16::from(inner)
+    if kind == ArmorKind::Turtle { 15 + u16::from(inner) } else { 1 + kind as u16 * 2 + u16::from(inner) }
 }
 
 pub fn leather_overlay(inner: bool) -> u16 {
@@ -130,9 +134,9 @@ pub fn roll_monster_armor(rng: &mut super::Rng) -> ([Option<ArmorKind>; 4], u8) 
     (armor, glint)
 }
 
-/// Armor sheets packed after the skin layer: 14 × 64 × 64 RGBA.
+/// Armor sheets packed after the skin layer: 16 × 64 × 64 RGBA.
 pub fn layer_pixels() -> Vec<u8> {
-    let mut pixels = vec![0u8; 14 * 64 * 64 * 4];
+    let mut pixels = vec![0u8; (ARRAY_LAYERS as usize - 1) * 64 * 64 * 4];
     for kind in ArmorKind::ALL {
         paint(&mut pixels, layer(kind, false), kind, false, false);
         paint(&mut pixels, layer(kind, true), kind, true, false);
@@ -245,6 +249,7 @@ fn texel(kind: ArmorKind, part: Part, overlay: bool, face: usize, at: [usize; 2]
             let facet = (x / 2 + y / 2).is_multiple_of(2);
             plate(if facet { [56, 206, 198] } else { [132, 232, 224] }, [24, 120, 118], [168, 244, 236], edge, face)
         }
+        ArmorKind::Turtle => plate([58, 140, 83], [32, 82, 51], [101, 172, 94], edge, face),
         ArmorKind::Netherite => plate([48, 40, 44], [24, 18, 22], [96, 52, 56], edge, face),
     })
 }
@@ -288,7 +293,9 @@ mod tests {
             seen[i] = true;
         }
         assert!(seen.iter().all(|s| *s));
-        assert_eq!(layer_pixels().len(), 14 * 64 * 64 * 4);
+        assert_eq!(layer_pixels().len(), 16 * 64 * 64 * 4);
+        assert_eq!((leather_overlay(false), leather_overlay(true)), (13, 14));
+        assert_eq!((layer(ArmorKind::Turtle, false), layer(ArmorKind::Turtle, true)), (15, 16));
     }
 
     #[test]

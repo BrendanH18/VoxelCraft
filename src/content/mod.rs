@@ -5,6 +5,7 @@ use crate::{item::Item, world::block::Block};
 pub mod compost;
 pub mod fishing;
 pub mod fuel;
+pub mod interaction;
 
 /// All implemented plank ingredients. Oak stays first for recipe-book previews.
 /// Nether planks are valid ingredients but explicitly are not furnace fuels.

@@ -107,6 +107,7 @@ pub fn tick_player(
     let moved = (player.pos - before).with_y(0.0).length();
     let env = Env {
         respiration: crate::enchant::armor_level(armor, crate::enchant::Enchantment::Respiration),
+        turtle_helmet: armor[0].is_some_and(|s| s.item == crate::item::Item::TURTLE_HELMET),
         frost_walker: crate::enchant::armor_level(armor, crate::enchant::Enchantment::FrostWalker) > 0,
         ..player_environment(player, world, input, moved)
     };
@@ -135,6 +136,7 @@ pub fn player_environment(player: &Player, world: &World, input: MoveInput, move
         sprinting: input.sprint && moved > 0.0,
         jumped: player.jumped,
         respiration: 0,
+        turtle_helmet: false,
     }
 }
 

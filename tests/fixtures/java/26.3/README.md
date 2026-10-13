@@ -41,3 +41,26 @@ cargo test --release --no-default-features --test java_item_integrations --test 
 The extractor checks the exact artifact hash. Keep game binaries and inspection
 output under ignored `target/`; only these normalized facts and original tests
 belong in Git. Do not regenerate a new-version fixture over this version's file.
+
+## Turtle equipment and potions
+
+`turtle_integrations.json` records turtle helmet crafting/repair/equipment
+stats and all normal/splash Turtle Master brewing variants. The reproducer
+extracts recipes and repair tags from JSON and constants from the selected
+server bytecode; it checks the known registration forms and fails on changes.
+It does not read VoxelCraft source or the existing fixture.
+
+```sh
+python3 tools/extract_java_turtle_fixtures.py /path/to/server.jar --output target/java-turtle-integrations.json
+diff tests/fixtures/java/26.3/turtle_integrations.json target/java-turtle-integrations.json
+cargo test --release --test turtle_integrations --test process_persistence
+cargo test --release --lib entity::potion::tests
+```
+
+The splash tests additionally use `ThrownSplashPotion.onHitAsPotion`,
+`EntityTypes.SPLASH_POTION` (0.25 × 0.25 box) and
+`ProjectileUtil.computeMargin` (0 through 0.3 based on flight ticks). Java 26.3
+scales intensity by distance between collision boxes, not entity feet. Its
+default duration scale is one. The narrow tests cover Turtle Master's two
+effects, attenuation, the vertical query boundary and the existing instant
+healing/harming path; they do not prove every projectile collision rule.

@@ -93,7 +93,7 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
     if suffocating {
         a.damage_tick += dt;
         if a.damage_tick >= 1.0 {
-            m.health -= 2.0;
+            m.health -= 2.0 * m.effects.resistance_factor();
             a.damage_tick %= 1.0;
         }
     } else {

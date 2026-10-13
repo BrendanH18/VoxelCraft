@@ -8,6 +8,27 @@ use crate::{
     world::World,
 };
 
+/// The same held-armor validation and transaction for every player adapter.
+pub fn equip_armor(
+    player: &Player,
+    inventory: &mut Inventory,
+    slot: usize,
+    mode: crate::rules::GameMode,
+    world: &World,
+) -> bool {
+    if !mode.is_survival() || inventory.get(slot).is_none_or(|s| s.item.as_armor().is_none()) {
+        return false;
+    }
+    if world
+        .raycast(player.eye(), player.forward().as_dvec3(), 6.0)
+        .and_then(|(p, _)| world.get_block(p))
+        .is_some_and(crate::content::interaction::blocks_item_use)
+    {
+        return false;
+    }
+    inventory.equip(slot)
+}
+
 /// Fence knots, leads, name tags and animal feeding/taming/sitting under the crosshair.
 /// Every input path (desktop, controller, LAN, CLI agent) runs this before mounting, so
 /// a carrot breeds a saddled pig and a name tag names a tamed horse instead of seating you.

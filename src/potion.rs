@@ -18,16 +18,17 @@ pub struct PotionInfo {
     pub name: &'static str,
     /// Effect, amplifier and duration in ticks (instant effects: 1).
     pub effect: Option<(Effect, u8, u32)>,
+    pub secondary_effect: Option<(Effect, u8, u32)>,
 }
 
 const fn p(id: &'static str, name: &'static str, effect: Option<(Effect, u8, u32)>) -> PotionInfo {
-    PotionInfo { id, name, effect }
+    PotionInfo { id, name, effect, secondary_effect: None }
 }
 
 /// Java's durations (ticks): 3:00 / 8:00 for most, 1:30 / 4:00 for
 /// slowness, weakness and slow falling, 0:45 / 1:30 for poison and
 /// regeneration; strong variants are level II for half as long or less.
-pub static POTIONS: [PotionInfo; 36] = [
+pub static POTIONS: [PotionInfo; 39] = [
     p("water", "water bottle", None),
     p("mundane", "mundane potion", None),
     p("thick", "thick potion", None),
@@ -64,6 +65,24 @@ pub static POTIONS: [PotionInfo; 36] = [
     p("strong_leaping", "strong potion of leaping", Some((Effect::JumpBoost, 1, 1800))),
     p("slow_falling", "potion of slow falling", Some((Effect::SlowFalling, 0, 1800))),
     p("long_slow_falling", "long potion of slow falling", Some((Effect::SlowFalling, 0, 4800))),
+    PotionInfo {
+        id: "turtle_master",
+        name: "potion of the turtle master",
+        effect: Some((Effect::Slowness, 3, 400)),
+        secondary_effect: Some((Effect::Resistance, 2, 400)),
+    },
+    PotionInfo {
+        id: "long_turtle_master",
+        name: "long potion of the turtle master",
+        effect: Some((Effect::Slowness, 3, 800)),
+        secondary_effect: Some((Effect::Resistance, 2, 800)),
+    },
+    PotionInfo {
+        id: "strong_turtle_master",
+        name: "strong potion of the turtle master",
+        effect: Some((Effect::Slowness, 5, 400)),
+        secondary_effect: Some((Effect::Resistance, 3, 400)),
+    },
 ];
 
 /// Java's colour of water and of the effectless bases.
@@ -89,28 +108,49 @@ impl Potion {
         (0..Self::COUNT as u8).map(Potion)
     }
 
-    /// Liquid colour: the effect's, or water's.
+    /// Every effect, preserving their reference registration order.
+    pub fn effects(self) -> impl Iterator<Item = (Effect, u8, u32)> {
+        [self.info().effect, self.info().secondary_effect].into_iter().flatten()
+    }
+
+    /// Java's amplifier-weighted colour mixture, or water for an effectless base.
     pub fn colour(self) -> [u8; 3] {
-        self.info().effect.map_or(WATER_COLOUR, |(e, _, _)| e.colour())
+        let mut colour = [0u32; 3];
+        let mut weight = 0;
+        for (effect, amplifier, _) in self.effects() {
+            let w = u32::from(amplifier) + 1;
+            weight += w;
+            for (sum, c) in colour.iter_mut().zip(effect.colour()) {
+                *sum += u32::from(c) * w;
+            }
+        }
+        if weight == 0 { WATER_COLOUR } else { colour.map(|c| (c / weight) as u8) }
     }
 
-    /// Applies the potion's effect to whoever drank it; returns instant
-    /// damage for the caller's damage entry point.
     pub fn drink(self, vitals: &mut Vitals) -> f32 {
-        match self.info().effect {
-            Some((effect, amp, ticks)) => vitals.apply_effect(effect, amp, ticks),
-            None => 0.0,
-        }
+        self.effects().map(|(effect, amp, ticks)| vitals.apply_effect(effect, amp, ticks)).sum()
     }
 
-    /// Tooltip line, e.g. "Speed II (1:30)", or "No Effects".
-    pub fn describe(self) -> String {
+    pub fn describe_lines(self) -> Vec<String> {
         use crate::simulation::effects::{duration_text, level_name};
-        match self.info().effect {
-            None => "No Effects".into(),
-            Some((e, amp, _)) if e.is_instant() => format!("{} {}", e.name(), level_name(amp)),
-            Some((e, amp, ticks)) => format!("{} {} ({})", e.name(), level_name(amp), duration_text(ticks)),
+        let mut lines: Vec<_> = self
+            .effects()
+            .map(|(effect, amp, ticks)| {
+                if effect.is_instant() {
+                    format!("{} {}", effect.name(), level_name(amp))
+                } else {
+                    format!("{} {} ({})", effect.name(), level_name(amp), duration_text(ticks))
+                }
+            })
+            .collect();
+        if lines.is_empty() {
+            lines.push("No Effects".into());
         }
+        lines
+    }
+    /// Backwards-compatible single-line description for CLI feedback.
+    pub fn describe(self) -> String {
+        self.describe_lines().join(", ")
     }
 }
 

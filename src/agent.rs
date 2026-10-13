@@ -290,6 +290,18 @@ impl Agent {
                     return Err("block is unchanged or unloaded".into());
                 }
             }
+            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item.as_armor().is_some()) => {
+                if !crate::survival_items::equip_armor(
+                    &self.player,
+                    &mut self.inventory,
+                    self.selected,
+                    self.mode,
+                    world,
+                ) {
+                    return Err("cannot equip held armor here".into());
+                }
+                self.swings += 1;
+            }
             Command::Place
                 if self
                     .inventory
@@ -977,6 +989,7 @@ impl Agent {
             respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
             frost_walker: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker)
                 > 0,
+            turtle_helmet: self.inventory.armor[0].is_some_and(|s| s.item == Item::TURTLE_HELMET),
             ..simulation::player_environment(&self.player, world, input, moved)
         };
         let hurts = self.vitals.tick_rules(

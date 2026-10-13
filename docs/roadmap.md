@@ -259,7 +259,11 @@ count and sapling/propagule fixes. Reference, integration and process-restart
 checks are recorded in the [content/resource report](verification/2026-10-12-content-and-assets.md).
 These are implemented slices; ordinary-player acceptance, remaining state/
 waterlogging fidelity and other identified mechanics remain open. The full
-fuel catalogue still needs reconciliation. Do not interpret the historical
+fuel catalogue still needs reconciliation. Turtle helmets and normal/splash
+Turtle Master potions now have reference-derived recipes, equipment/effect
+behavior and persistence checks; see the
+[turtle equipment report](verification/2026-10-12-turtle-equipment.md).
+Their ordinary-player and performance acceptance remains open. Do not interpret the historical
 findings above as either erased evidence or current Verified status.
 
 ### 3.2 Pending v0.7.0 work

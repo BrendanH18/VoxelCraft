@@ -893,6 +893,7 @@ pub struct Mob {
     pub head_yaw: f32,
     pub head_pitch: f32,
     pub health: f32,
+    pub effects: crate::simulation::effects::Effects,
     /// Seconds of hurt flash left.
     pub hurt: f32,
     /// Seconds since death, while the death animation plays.
@@ -1017,6 +1018,7 @@ impl Mob {
             head_yaw: 0.0,
             head_pitch: 0.0,
             health,
+            effects: Default::default(),
             hurt: 0.0,
             dying: None,
             on_ground: false,
@@ -1188,6 +1190,7 @@ impl Mob {
         }
         let armor = self.mount.as_ref().and_then(|s| s.slots[1]).map_or(0, |s| super::mounts::armor_points(s.item));
         let amount = if armor > 0 { crate::simulation::survival::armor_reduce(amount, armor, 0.) } else { amount };
+        let amount = amount * self.effects.resistance_factor();
         self.health -= amount;
         if self.kind == MobKind::Axolotl && self.in_water && self.health > 0.0 && self.health < 7.0 && rng.chance(0.33)
         {
@@ -1243,6 +1246,16 @@ impl Mob {
     ) {
         let event_start = events.len();
         let dtf = dt as f32;
+        if self.alive() {
+            let outcome = self.effects.tick(dtf);
+            if outcome.heal > 0.0 {
+                self.health = (self.health + outcome.heal).min(self.max_health());
+            }
+            let damage = outcome.damage + outcome.wither + outcome.poison.min((self.health - 1.0).max(0.0));
+            if damage > 0.0 {
+                self.damage(damage, None, rng);
+            }
+        }
         self.hop_left -= dtf;
         if self.kind.is_cube() && self.on_ground && self.hop_left <= 0.0 {
             self.hop_delay = rng.range(0.5, 1.5);
@@ -2069,6 +2082,8 @@ impl Mob {
         wish: Option<DVec3>,
         speed: f64,
     ) {
+        let effect_speed = self.effects.speed_factor();
+        let speed = speed * effect_speed;
         if self.kind == MobKind::Strider && self.walk_on_lava(dt, world, wish, speed) {
             return;
         }
@@ -2081,10 +2096,10 @@ impl Mob {
         if self.kind == MobKind::SnowGolem && self.alive() && self.in_water {
             // Java: one damage each tick while in water. Death loot is emitted
             // by the caller once health is gone.
-            self.health -= 20.0 * dt as f32;
+            self.health -= 20.0 * dt as f32 * self.effects.resistance_factor();
         }
         let hopping = self.kind.is_cube();
-        let speed = if hopping { (0.2 + 0.1 * self.size as f64) * 10.0 } else { speed };
+        let speed = if hopping { (0.2 + 0.1 * self.size as f64) * 10.0 * effect_speed } else { speed };
         let wish = if hopping && self.on_ground && self.hop_left > 0.0 { None } else { wish };
         if hopping && self.on_ground && self.alive() && self.hop_left <= 0.0 {
             self.vel.y = 8.4 + if self.kind == MobKind::MagmaCube { 2.0 * self.size as f64 } else { 0.0 };
@@ -2207,7 +2222,7 @@ impl Mob {
                 } else {
                     (s.fall_distance - 3.).ceil().max(0.) as f32
                 };
-                self.health -= damage;
+                self.health -= damage * self.effects.resistance_factor();
                 if super::mounts::equine(self.kind) && s.rider.is_some() {
                     s.rider_fall += damage;
                 }
@@ -2362,4 +2377,35 @@ fn wrap(a: f32) -> f32 {
 fn turn_toward(from: f32, to: f32, max: f32) -> f32 {
     let d = wrap(to - from);
     wrap(from + d.clamp(-max, max))
+}
+
+#[cfg(test)]
+mod equipment_effect_tests {
+    use super::*;
+    use crate::{physics::test_util::Grid, simulation::effects::Effect};
+
+    #[test]
+    fn turtle_master_slowness_reaches_walking_and_hopping_physics() {
+        let world = Grid::flat(10);
+        for kind in [MobKind::Horse, MobKind::Zombie, MobKind::Slime] {
+            let mut normal = Mob::new(kind, DVec3::new(0.5, 11., 0.5), 0.);
+            let mut slowed = Mob::new(kind, normal.pos, 0.);
+            slowed.effects.add(Effect::Slowness, 3, 400);
+            normal.physics_step(0.05, &world, Some(DVec3::X), 3.);
+            slowed.physics_step(0.05, &world, Some(DVec3::X), 3.);
+            assert!(normal.vel.x > 0.);
+            assert!((slowed.vel.x / normal.vel.x - 0.4).abs() < 1e-6, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn resistance_also_reduces_snow_golem_water_damage() {
+        let mut world = Grid::flat(10);
+        world.set(IVec3::new(0, 11, 0), Block::WATER);
+        let mut m = Mob::new(MobKind::SnowGolem, DVec3::new(0.5, 11., 0.5), 0.);
+        m.effects.add(Effect::Resistance, 2, 400);
+        let before = m.health;
+        m.physics_step(0.05, &world, None, 0.);
+        assert!((before - m.health - 0.4).abs() < 1e-6);
+    }
 }

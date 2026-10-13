@@ -6,6 +6,7 @@ use voxelcraft::{
     inventory::{Inventory, Stack},
     item::Item,
     potion::Potion,
+    simulation::effects::Effect,
     world::{
         World,
         block::Block,
@@ -17,6 +18,7 @@ use voxelcraft::{
 };
 const F: IVec3 = IVec3::new(4, 145, 4);
 const B: IVec3 = IVec3::new(6, 145, 4);
+const T: IVec3 = IVec3::new(6, 145, 6);
 const C: IVec3 = IVec3::new(8, 145, 4);
 const P: IVec3 = IVec3::new(10, 145, 4);
 #[test]
@@ -56,6 +58,7 @@ fn persistence_worker() {
         w.set_block(F, Block::FURNACE);
         w.set_block(B, Block::BREWING_STAND);
         w.set_block(C, Block::COMPOSTER);
+        w.set_block(T, Block::BREWING_STAND);
         w.set_block(P + IVec3::Y, ob::MANGROVE_LEAVES);
         w.apply_bone_meal(P + IVec3::Y);
         w.apply_bone_meal(P);
@@ -69,6 +72,10 @@ fn persistence_worker() {
         b.bottles = [Some(Stack::new(Item::potion(Potion::from_id("awkward").unwrap()), 1)); 3];
         b.ingredient = Some(Stack::new(Item::PUFFERFISH, 1));
         b.fuel = Some(Stack::new(Item::BLAZE_POWDER, 1));
+        let t = w.brewing_stand_mut(T).unwrap();
+        t.bottles = [Some(Stack::new(Item::splash_potion(Potion::AWKWARD), 1)); 3];
+        t.ingredient = Some(Stack::new(Item::TURTLE_HELMET, 1));
+        t.fuel = Some(Stack::new(Item::BLAZE_POWDER, 1));
         for _ in 0..80 {
             w.tick_furnaces(0.05);
             w.tick_brewing(0.05);
@@ -79,9 +86,13 @@ fn persistence_worker() {
         let mut inventory = Inventory::default();
         inventory.slots[0] = Some(Stack::new(Item::SADDLE, 1));
         inventory.slots[1] = Some(Stack::new(forms::wood_id(10, 14), 3));
+        inventory.armor[0] = Some(Stack::new(Item::TURTLE_HELMET, 1));
+        inventory.slots[2] = Some(Stack::new(Item::potion(Potion::from_id("strong_turtle_master").unwrap()), 1));
         let mut e = Entities::new(7);
         e.spawn(MobKind::Donkey, DVec3::new(14.5, 145., 4.5));
         e.mobs[0].uid = 7;
+        e.mobs[0].effects.add(Effect::Slowness, 3, 197);
+        e.mobs[0].effects.add(Effect::Resistance, 2, 197);
         let mount = e.mobs[0].mount.as_mut().unwrap();
         mount.tame = true;
         mount.owner = Some(PlayerId(3));
@@ -124,8 +135,15 @@ fn persistence_worker() {
         let inventory = Inventory::deserialize(&level.props["inventory"]).unwrap();
         assert_eq!(inventory.get(0), Some(Stack::new(Item::SADDLE, 1)));
         assert_eq!(inventory.get(1), Some(Stack::new(forms::wood_id(10, 14), 3)));
+        assert_eq!(inventory.armor[0], Some(Stack::new(Item::TURTLE_HELMET, 1)));
+        assert_eq!(
+            inventory.get(2),
+            Some(Stack::new(Item::potion(Potion::from_id("strong_turtle_master").unwrap()), 1))
+        );
         let mut e = Entities::new(7);
         e.load_nether_mobs(&level.props["mobs"]);
+        assert_eq!(e.mobs[0].effects.get(Effect::Resistance).unwrap().ticks, 197);
+        assert_eq!(e.mobs[0].effects.get(Effect::Slowness).unwrap().amplifier, 3);
         let mount = e.mobs[0].mount.as_ref().unwrap();
         assert!(mount.tame && mount.chest);
         assert_eq!(mount.owner, Some(PlayerId(3)));
@@ -147,6 +165,14 @@ fn persistence_worker() {
                 .all(|b| *b == Some(Stack::new(Item::potion(Potion::from_id("water_breathing").unwrap()), 1)))
         );
         assert!(w.brewing_stand(B).unwrap().ingredient.is_none());
+        assert!(
+            w.brewing_stand(T)
+                .unwrap()
+                .bottles
+                .iter()
+                .all(|b| *b == Some(Stack::new(Item::splash_potion(Potion::from_id("turtle_master").unwrap()), 1)))
+        );
+        assert!(w.brewing_stand(T).unwrap().ingredient.is_none());
         assert_eq!(w.take_compost(C), Some(Stack::new(Item::BONE_MEAL, 1)));
     }
 }

@@ -537,6 +537,7 @@ pub fn recipes() -> &'static [Recipe] {
         add_glass_terracotta_recipes(&mut r);
         add_nether_biome_recipes(&mut r);
         add_overworld_recipes(&mut r);
+        r.push(shaped(&["###", "# #"], &[('#', &[Item::TURTLE_SCUTE])], Item::TURTLE_HELMET, 1));
         add_mount_recipes(&mut r);
         r
     })

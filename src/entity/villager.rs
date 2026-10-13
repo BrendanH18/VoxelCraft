@@ -666,12 +666,12 @@ impl Entities {
             .filter_map(|m| match m.kind {
                 MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => Some(json!({
                     "identity":super::leash::save(m), "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
-                    "health": m.health, "built": m.built, "anger": m.player_hit_left, "anger_player":m.angry_player.map(|p|p.0), "trader": m.trader.as_ref().map(|t|t.save()),
+                    "health": m.health, "effects":m.effects.serialize(), "built": m.built, "anger": m.player_hit_left, "anger_player":m.angry_player.map(|p|p.0), "trader": m.trader.as_ref().map(|t|t.save()),
                 })),
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
                     let v = m.villager.as_ref()?;
                     Some(json!({"identity":super::leash::save(m),"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
-                    "health":m.health,"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
+                    "health":m.health,"effects":m.effects.serialize(),"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
                     "last":v.last_restock,"slept":v.last_slept,"golem_seen":v.golem_seen,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_tick":m.convert_tick,"convert_by":m.convert_by.map(|p|p.0)}))
@@ -809,6 +809,7 @@ impl Entities {
                 Some(m)
             };
             if let Some(mut m) = load() {
+                m.effects = crate::simulation::effects::Effects::deserialize(a["effects"].as_str().unwrap_or(""));
                 super::leash::load(&mut m, &a["identity"]);
                 if let Some(v) = m.villager.as_ref() {
                     self.next_villager_id = self.next_villager_id.max(v.id.saturating_add(1));

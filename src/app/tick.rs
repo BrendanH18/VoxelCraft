@@ -42,6 +42,7 @@ impl Game {
             respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
             frost_walker: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker)
                 > 0,
+            turtle_helmet: self.inventory.armor[0].is_some_and(|s| s.item == Item::TURTLE_HELMET),
             ..crate::simulation::player_environment(&self.player, &self.world, input, moved)
         };
         let hurts = if arriving || self.arrival.is_some() {

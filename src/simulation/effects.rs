@@ -26,10 +26,11 @@ pub enum Effect {
     Hunger,
     MiningFatigue,
     DolphinsGrace,
+    Resistance,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 17] = [
+    pub const ALL: [Effect; 18] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -47,6 +48,7 @@ impl Effect {
         Effect::Hunger,
         Effect::MiningFatigue,
         Effect::DolphinsGrace,
+        Effect::Resistance,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -69,6 +71,7 @@ impl Effect {
             Effect::Hunger => "hunger",
             Effect::MiningFatigue => "mining_fatigue",
             Effect::DolphinsGrace => "dolphins_grace",
+            Effect::Resistance => "resistance",
         }
     }
 
@@ -97,6 +100,7 @@ impl Effect {
             Effect::Hunger => "Hunger",
             Effect::MiningFatigue => "Mining Fatigue",
             Effect::DolphinsGrace => "Dolphin’s Grace",
+            Effect::Resistance => "Resistance",
         }
     }
 
@@ -120,6 +124,7 @@ impl Effect {
             Effect::Hunger => 0x587653,
             Effect::MiningFatigue => 0x4A4217,
             Effect::DolphinsGrace => 0x88A3BE,
+            Effect::Resistance => 0x9146F0,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
@@ -286,6 +291,10 @@ impl Effects {
     }
 
     /// Java's fatigue multipliers for mining speed.
+    pub fn resistance_factor(&self) -> f32 {
+        self.get(Effect::Resistance).map_or(1.0, |e| (1.0 - 0.2 * (f32::from(e.amplifier) + 1.0)).max(0.0))
+    }
+
     pub fn mining_factor(&self) -> f32 {
         self.get(Effect::MiningFatigue).map_or(1.0, |a| match a.amplifier {
             0 => 0.3,
