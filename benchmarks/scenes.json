@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "seed": 12345,
+  "view_distance_blocks": 256,
+  "simulation_distance_blocks": 128,
+  "physical_resolution": [1920, 1080],
+  "graphics": "enhanced",
+  "warmup_seconds": 10,
+  "sample_seconds": 60,
+  "repeats": 3,
+  "scenes": [
+    {"name": "survival", "description": "Seeded outdoor terrain, active simulation and a slow 12-block camera orbit"},
+    {"name": "building", "description": "25 x 25 platform, eight-level pale oak/glass construction and camera sweep"},
+    {"name": "entities", "description": "160 cows, sheep, pigs, chickens, zombies, skeletons, wolves and horses, active AI and camera sweep"},
+    {"name": "automation", "description": "85 active furnaces with loaded fuel/input, redstone sources and powered dust"},
+    {"name": "streaming", "description": "12-block/s route across terrain with lateral turns, continued generation and simulation", "sample_seconds": 180}
+  ],
+  "fixture_overrides": {"camera_flight": true, "initial_health": 10000},
+  "limits": "Controlled benchmark cameras do not establish ordinary-player acceptance. GPU timestamps are not yet available; surface frame intervals measure throughput. Additional roadmap biomes, encounters and long-session memory scenes must be added as their implementation passes assessment."
+}

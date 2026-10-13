@@ -27,6 +27,7 @@ pub const DAY_LENGTH: f64 = 600.0;
 pub struct FixedClock {
     remainder: Duration,
     ticks: u64,
+    discarded: Duration,
 }
 
 impl FixedClock {
@@ -37,7 +38,9 @@ impl FixedClock {
             self.remainder = Duration::ZERO;
             return 0;
         }
-        self.remainder += elapsed.min(TICK_DURATION * MAX_CATCH_UP_TICKS);
+        let accepted = elapsed.min(TICK_DURATION * MAX_CATCH_UP_TICKS);
+        self.discarded += elapsed - accepted;
+        self.remainder += accepted;
         let ticks = (self.remainder.as_nanos() / TICK_DURATION.as_nanos()) as u32;
         self.remainder -= TICK_DURATION * ticks;
         self.ticks = self.ticks.saturating_add(ticks as u64);
@@ -47,6 +50,11 @@ impl FixedClock {
     /// Number of steps returned by `advance` since creation; paused time does not count.
     pub fn ticks(&self) -> u64 {
         self.ticks
+    }
+
+    /// Wall time lost to the existing catch-up budget; performance reports must expose it.
+    pub fn discarded(&self) -> Duration {
+        self.discarded
     }
 
     /// Render between the last two completed simulation snapshots.

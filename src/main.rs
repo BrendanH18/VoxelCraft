@@ -44,6 +44,11 @@ pub struct Args {
     pub camera: voxelcraft::camera::CameraMode,
     pub ride: Option<String>,
     pub bench_render: bool,
+    pub benchmark_scene: Option<String>,
+    pub benchmark_output: Option<std::path::PathBuf>,
+    pub benchmark_duration: f64,
+    pub benchmark_warmup: f64,
+    pub physical_size: Option<(u32, u32)>,
     pub debug_overlay: bool,
     pub mode: Option<app::GameMode>,
     pub open_inventory: bool,
@@ -175,7 +180,12 @@ voxelcraft [options]
   --mute            start with sound muted (M toggles in game)
   --no-hud          start with the HUD and hand hidden (F1 toggles in game)
   --volume <0..1>   master volume (default: 1, or the saved option)
-  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit\n  --validate-assets validate embedded original resources and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
+  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit\n  --benchmark-scene <survival|building|entities|automation|streaming> run live scene
+  --benchmark-output <file.json>  write frame samples and statistics
+  --benchmark-duration <seconds>  sample period (default 60)
+  --benchmark-warmup <seconds>    warm-up after loading (default 10)
+  --size <WIDTHxHEIGHT> physical render resolution (benchmark default 1920x1080)
+  --validate-assets validate embedded original resources and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
@@ -202,6 +212,11 @@ fn parse_args() -> Result<Args, String> {
         camera: Default::default(),
         ride: None,
         bench_render: false,
+        benchmark_scene: None,
+        benchmark_output: None,
+        benchmark_duration: 60.0,
+        benchmark_warmup: 10.0,
+        physical_size: None,
         debug_overlay: false,
         mode: None,
         open_inventory: false,
@@ -285,6 +300,39 @@ fn parse_args() -> Result<Args, String> {
             "--new" => args.new_world = true,
             "--bench" => args.bench = true,
             "--bench-render" => args.bench_render = true,
+            "--benchmark-scene" => {
+                let scene = value("--benchmark-scene")?;
+                if !matches!(scene.as_str(), "survival" | "building" | "entities" | "automation" | "streaming") {
+                    return Err("unknown benchmark scene".into());
+                }
+                args.benchmark_scene = Some(scene);
+            }
+            "--benchmark-output" => args.benchmark_output = Some(value("--benchmark-output")?.into()),
+            "--benchmark-duration" => {
+                args.benchmark_duration = value("--benchmark-duration")?
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|n| n.is_finite() && *n >= 1.0 && *n <= 3600.0)
+                    .ok_or("benchmark duration must be 1..3600 seconds")?;
+            }
+            "--benchmark-warmup" => {
+                args.benchmark_warmup = value("--benchmark-warmup")?
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 600.0)
+                    .ok_or("benchmark warm-up must be 0..600 seconds")?;
+            }
+            "--size" => {
+                let value = value("--size")?;
+                let (w, h) = value.split_once('x').ok_or("--size requires WIDTHxHEIGHT in physical pixels")?;
+                let parse = |v: &str| {
+                    v.parse::<u32>()
+                        .ok()
+                        .filter(|&n| (320..=8192).contains(&n))
+                        .ok_or("physical size must be 320..8192 pixels")
+                };
+                args.physical_size = Some((parse(w)?, parse(h)?));
+            }
             "--f3" => args.debug_overlay = true,
             "--inventory-search" => args.inventory_search = Some(value("--inventory-search")?),
             "--open-inventory" => args.open_inventory = true,
@@ -544,6 +592,14 @@ fn main() {
             std::process::exit(2);
         }
     };
+    if args.benchmark_scene.is_some()
+        && (args.benchmark_output.is_none() || args.bench_render || args.screenshot.is_some())
+    {
+        eprintln!(
+            "live benchmark requires --benchmark-output and cannot combine with screenshot/legacy render benchmark"
+        );
+        std::process::exit(2);
+    }
     if args.export_music {
         if let Err(e) = audio::export_music("target/music", args.seed.unwrap_or(42)) {
             eprintln!("music export failed: {e}");

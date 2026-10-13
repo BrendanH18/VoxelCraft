@@ -13,7 +13,8 @@ here and update its affected requirements as each change lands.
 
 As inspected on 2026-10-12, branch
 [`t3/continue-project-build`](https://github.com/BrendanH18/VoxelCraft/tree/t3/continue-project-build)
-contains package version 0.7.0 at commit
+was retained and merged into the assessment branch at `22ad25c`. Its original
+branch remains at package version 0.7.0, commit
 [`f5bf0d1`](https://github.com/BrendanH18/VoxelCraft/commit/f5bf0d169487452383aa3b6ab588b29fe08814fb).
 It contains substantial animals, breeding, companions, leads, mounts, boats,
 LAN implementation and tests. Its presence and historical test reports do not
@@ -53,8 +54,7 @@ acceptance pass; the original branch and uncommitted patch remain preserved.
 
 ## STR-01 — Reference fixtures and performance scenes
 
-**Status:** Partial: first Java 26.3 item fixtures and reproduction tool implemented;
-full inventory and performance scenes Planned.
+**Status:** Reference item/building/plant fixtures, reproduction tools and process-restart checks implemented; the initial five live benchmark scenes are implemented and smoke-tested. Full-length/native baselines and the broader reference inventory remain in progress.
 **Roadmap:** M0; PLY-01, GEN-07, UX-04/05; performance acceptance.
 
 Extend existing headless integration tests rather than replacing them. Add
@@ -78,8 +78,7 @@ even if it misses the target. Require M5 hardware evidence for its performance g
 
 ## STR-02 — Shared content definitions and tags
 
-**Status:** Partial: shared plank ingredients and fuel definitions implemented;
-other integrations Planned. **Roadmap:** M2; BLD-01/02/03/06, FOO-01/02, AUT-03/04.
+**Status:** Shared planks, fuel definitions, compost classes and fishing weights implemented, with audited building/plant integrations. Recipe/registry/presentation consolidation and the full fuel inventory remain in progress. **Roadmap:** M2; BLD-01/02/03/06, FOO-01/02, AUT-03/04.
 **Dependency:** STR-01 coverage for the first migrated content family.
 
 Introduce `src/content/` with authoritative content definitions and typed tags.
@@ -128,7 +127,7 @@ player's state; visual/input checks confirm ordinary play.
 
 ## STR-04 — Original asset pipeline
 
-**Status:** Planned. **Roadmap:** M7; UX-01/02, MOB-06.
+**Status:** Embedded original PNG/model/WAV pipeline, manifest and validation implemented; ordinary-player/visual/audio/performance acceptance in progress. **Roadmap:** M7; UX-01/02, MOB-06.
 
 Add `assets/` for original or appropriately licensed textures, models, audio and
 music, with a manifest recording stable names, provenance/licenses and mappings
@@ -145,7 +144,7 @@ measurements cover the change. Asset provenance is reviewable.
 
 ## STR-05 — Focused modules, then evaluate a workspace
 
-**Status:** Planned. **Roadmap:** supports M1–M7; PLY-04, UX-04/05.
+**Status:** Focused command parsing/execution, entity lifecycle/spawning and application startup/save/tick/action modules implemented. Desktop/headless checks pass. Workspace evaluation retains the existing library/client feature boundary; shared action/session extraction continues under STR-03. **Roadmap:** supports M1–M7; PLY-04, UX-04/05.
 **Dependency:** relevant behavior coverage; session extraction informs boundaries.
 
 Separate command parsing from execution in `src/agent.rs`, application
@@ -191,3 +190,15 @@ definitions, shared bucket execution, save/reload and performance verification.
 Proceed with STR-02/03 as their coverage permits. STR-04 and STR-05 follow actual
 quality and maintainability needs; no blanket engine rewrite is authorized by
 this plan. STR-06 evidence updates accompany each completed feature.
+
+## Cargo workspace decision
+
+Retain the current reusable library plus optional `client` feature. The
+headless build already excludes window/GPU/audio/device dependencies, and
+existing integration tests consume the same library. The focused modules make
+ownership and responsibilities reviewable without introducing separate package
+versions, manifests and build/test coordination now. A crate split does not
+fix action ownership or duplicate gameplay rules; STR-03 addresses those directly.
+Revisit a workspace when a second independent consumer or dependency/compile
+measurement demonstrates a concrete benefit. This is the required evaluation,
+not a performance claim or a deferred requirement to create more crates.

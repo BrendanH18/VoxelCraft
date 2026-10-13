@@ -133,3 +133,32 @@ cargo run --release -- --help
 
 `--help` and `--version` exit successfully when used alone. Flags and defaults
 are defined in [src/main.rs](../src/main.rs).
+
+## Live performance scene suite
+
+The initial scene definitions are in `benchmarks/scenes.json`. Run
+`python3 tools/benchmark_scenes.py` for three measured runs per scene, with ten
+seconds of warm-up and sixty measured seconds (streaming uses 180 seconds).
+The tool builds a release executable with a runtime source fingerprint, records
+hardware and executable identity, and writes per-frame samples and summaries
+under ignored `target/benchmarks/`. Set `CARGO_TARGET_DIR` normally if you use a
+shared build cache. Run benchmarks without concurrent builds or GPU workloads.
+
+Use `--quick --repeats 1` only to smoke-test the runner. Such results are always
+ineligible for acceptance. `--native-resolution WIDTHxHEIGHT` writes a separate
+native-resolution run; use a separate `--output` folder. The normal reference
+configuration requests 1920 x 1080 physical pixels and rd=8. Each report records
+the actual surface dimensions. VSync is disabled and the normal renderer,
+world streaming and 20 Hz simulation remain active. Controlled camera flight
+and initial health are explicit fixture overrides; these scenes do not replace
+ordinary-player tests or the full roadmap biome/encounter matrix.
+
+Reports include average FPS, the reciprocal of the mean of the slowest 1% of
+frames, p50/p95/p99/worst frame time, stalls over 50 ms, cold load, process RSS,
+GPU allocation and discarded simulation time. GPU timestamp costs are currently
+reported as unavailable; surface intervals measure presented throughput. Neither
+this suite nor the older offscreen sweep alone proves 1.0 performance acceptance.
+
+The low-level flags are `--benchmark-scene`, `--benchmark-output`,
+`--benchmark-warmup`, `--benchmark-duration` and `--size WIDTHxHEIGHT`.
+The legacy `--bench-render` remains available for historical comparisons.

@@ -264,3 +264,15 @@ Texture layers 1753–1758 append pale oak/bamboo doors and trapdoors; existing
 layer meanings remain intact. These definitions inherit the existing shaped
 block representation; adding the family is not proof of complete Java state,
 lighting or waterlogging parity. See the [content/resource evidence](verification/2026-10-12-content-and-assets.md).
+
+## Focused application and simulation modules
+
+`src/agent/command.rs` owns syntax, coordinates and completion;
+`src/agent.rs` owns execution and timed inputs. Entity tick coordination is in
+`src/entity/lifecycle.rs` and population/cage activation in
+`src/entity/spawning.rs`; individual AI/animal/mount systems retain their
+existing modules. Application startup, disk-save assembly, fixed gameplay
+steps and client action adapters are in `src/app/startup.rs`, `save.rs`,
+`tick.rs` and `player_actions.rs`. Window events and frame rendering remain
+in the coordinator. Controller/CLI/desktop action ownership is a separate,
+ongoing extraction; moving a file alone does not complete STR-03.
