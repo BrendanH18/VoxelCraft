@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "seed": 12345,
   "view_distance_blocks": 256,
   "simulation_distance_blocks": 128,
@@ -9,12 +9,16 @@
   "sample_seconds": 60,
   "repeats": 3,
   "scenes": [
-    {"name": "survival", "description": "Seeded outdoor terrain, active simulation and a slow 12-block camera orbit"},
+    {"name": "survival", "description": "Seeded outdoor terrain, active simulation and a slow 12-block camera orbit facing its direction of travel", "camera_clearance_blocks": 24},
     {"name": "building", "description": "25 x 25 platform, eight-level pale oak/glass construction and camera sweep"},
-    {"name": "entities", "description": "160 cows, sheep, pigs, chickens, zombies, skeletons, wolves and horses, active AI and camera sweep"},
+    {"name": "entities", "description": "160 cows, sheep, pigs, chickens, zombies, skeletons, wolves and horses, active AI and camera sweep",
+     "fixture": {"day_time": 0.0, "gamerules": {"doDaylightCycle": false, "doMobSpawning": false}, "population": 160, "population_tolerance": 0.05}},
     {"name": "automation", "description": "85 active furnaces with loaded fuel/input, redstone sources and powered dust"},
-    {"name": "streaming", "description": "12-block/s route across terrain with lateral turns, continued generation and simulation", "sample_seconds": 180}
+    {"name": "streaming", "description": "12-block/s route across terrain with lateral turns, facing its direction of travel, continued generation and simulation", "sample_seconds": 180, "camera_clearance_blocks": 24}
   ],
   "fixture_overrides": {"camera_flight": true, "initial_health": 10000},
-  "limits": "Controlled benchmark cameras do not establish ordinary-player acceptance. GPU timestamps are not yet available; surface frame intervals measure throughput. Additional roadmap biomes, encounters and long-session memory scenes must be added as their implementation passes assessment."
+  "camera_routes": "Survival and streaming cameras fly at the generator's surface height (bilinear 8-block samples, maximum from 16 blocks behind to 32 ahead, never below sea level) plus the scene's clearance.",
+  "entity_fixture": "The entity scene holds dawn (time 0.0, below the undead sunburn threshold) with no daylight cycle or natural spawning, so its specified population is not burned or diluted; start and end populations must stay within 5%.",
+  "validity": "A run counts only with zero paused simulation time, completed ticks within max(2, 0.5%) of 20 per sampled second, zero unpresented (hidden or occluded window) frames, enhanced graphics, an uncapped resolved present mode and any fixed scene population held. Benchmark runs ignore keyboard, pointer, controller and focus input and never save.",
+  "limits": "Controlled benchmark cameras do not establish ordinary-player acceptance. GPU timestamps are not yet available; device-allocator GPU memory is null where the backend has no allocator report (Metal). Surface frame intervals measure throughput. Additional roadmap biomes, encounters and long-session memory scenes must be added as their implementation passes assessment."
 }

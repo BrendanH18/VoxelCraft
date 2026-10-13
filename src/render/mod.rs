@@ -280,6 +280,32 @@ pub struct Renderer {
     offscreen: Option<wgpu::Texture>,
     /// Render to `offscreen` instead of the window (benchmarks).
     pub force_offscreen: bool,
+    /// Present modes the surface reports, to resolve the `Auto*` request.
+    present_modes: Vec<wgpu::PresentMode>,
+    /// Frames skipped since startup because no surface image was available
+    /// (hidden, minimized or occluded window).
+    pub skipped_frames: u64,
+}
+
+/// Concrete mode wgpu picks for an `Auto*` request, following its documented
+/// fallback order (wgpu-core `surface_config`); other requests are returned as-is.
+pub fn resolve_present_mode(requested: wgpu::PresentMode, supported: &[wgpu::PresentMode]) -> wgpu::PresentMode {
+    use wgpu::PresentMode as P;
+    let order: &[P] = match requested {
+        P::AutoVsync => &[P::FifoRelaxed, P::Fifo],
+        P::AutoNoVsync => &[P::Immediate, P::Mailbox, P::Fifo],
+        other => return other,
+    };
+    order.iter().copied().find(|mode| supported.contains(mode)).unwrap_or(P::Fifo)
+}
+
+/// GPU memory a report can state; unavailable values are `None`, never zero.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GpuMemory {
+    /// Device allocator totals (allocated, reserved) where the backend reports them.
+    pub device: Option<(u64, u64)>,
+    /// The chunk quad arena's (used, reserved) bytes, tracked by this renderer.
+    pub chunk_arena: (u64, u64),
 }
 
 /// Specialize away paging branches on adapters that can hold all block layers.
@@ -779,6 +805,22 @@ impl Renderer {
             capture: None,
             offscreen: None,
             force_offscreen: false,
+            present_modes: caps.present_modes.clone(),
+            skipped_frames: 0,
+        }
+    }
+
+    /// The present mode requested from wgpu and the concrete mode it resolves to.
+    pub fn present_modes(&self) -> (wgpu::PresentMode, wgpu::PresentMode) {
+        let requested = self.config.present_mode;
+        (requested, resolve_present_mode(requested, &self.present_modes))
+    }
+
+    /// Current GPU memory telemetry; device totals are absent on backends without an allocator report.
+    pub fn gpu_memory(&self) -> GpuMemory {
+        GpuMemory {
+            device: self.device.generate_allocator_report().map(|r| (r.total_allocated_bytes, r.total_reserved_bytes)),
+            chunk_arena: (self.arena.used_bytes(), self.arena.capacity_bytes()),
         }
     }
 
@@ -1075,6 +1117,7 @@ impl Renderer {
         // spinning.
         if frame.is_none() {
             if !self.force_offscreen && self.capture.is_none() {
+                self.skipped_frames += 1;
                 std::thread::sleep(std::time::Duration::from_millis(8));
                 return None;
             }
@@ -1328,6 +1371,16 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auto_present_modes_resolve_like_wgpu() {
+        use wgpu::PresentMode as P;
+        assert_eq!(resolve_present_mode(P::AutoNoVsync, &[P::Fifo, P::Immediate]), P::Immediate);
+        assert_eq!(resolve_present_mode(P::AutoNoVsync, &[P::Fifo, P::Mailbox]), P::Mailbox);
+        assert_eq!(resolve_present_mode(P::AutoNoVsync, &[P::Fifo]), P::Fifo);
+        assert_eq!(resolve_present_mode(P::AutoVsync, &[P::Fifo, P::FifoRelaxed]), P::FifoRelaxed);
+        assert_eq!(resolve_present_mode(P::Mailbox, &[P::Fifo]), P::Mailbox);
+    }
 
     #[test]
     fn shaders_parse_and_validate() {

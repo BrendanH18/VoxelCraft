@@ -70,5 +70,5 @@ Ordinary keyboard/controller, hand/audio/visual and cross-machine LAN
 acceptance remains unverified. The earlier native-input attempt returned
 `cgWindowNotFound`; no native input was performed. No new placement frame-time
 comparison was run. The separate [M5 baseline](2026-10-13-m5-baseline.md)
-predates this slice and fails the 240 FPS gate. No version bump, release,
+predates this slice; it has since been corrected as invalid and must be re-measured. No version bump, release,
 main merge or completion claim is included.

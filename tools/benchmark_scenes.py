@@ -10,17 +10,23 @@ import subprocess
 import time
 
 ROOT=Path(__file__).resolve().parents[1]
+TICKS_PER_SECOND=20.0
+TICK_TOLERANCE=0.005 # matches voxelcraft::performance::TICK_TOLERANCE
 
 def command(*args):
     return subprocess.check_output(args,cwd=ROOT,text=True).strip()
 
+def source_paths(root=ROOT):
+    """Every input compiled into the executable: sources, embedded assets and build.rs inputs."""
+    paths=[root/'Cargo.toml',root/'Cargo.lock',root/'build.rs',
+           root/'tests/fixtures/java/26.3/mining.json'] # build.rs embeds this gameplay tag
+    for directory in ['src','assets','packaging/icons']: # build.rs/window icon embed packaging/icons
+        paths.extend(p for p in (root/directory).rglob('*') if p.is_file())
+    return sorted(paths)
+
 def source():
-    paths=[ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'build.rs',
-           ROOT/'tests/fixtures/java/26.3/mining.json'] # build.rs embeds this gameplay tag
-    for directory in ['src','assets']:
-        paths.extend(p for p in (ROOT/directory).rglob('*') if p.is_file())
     digest=hashlib.sha256()
-    for path in sorted(paths): digest.update(path.relative_to(ROOT).as_posix().encode()+b'\0'+path.read_bytes()+b'\0')
+    for path in source_paths(): digest.update(path.relative_to(ROOT).as_posix().encode()+b'\0'+path.read_bytes()+b'\0')
     return {'commit':command('git','rev-parse','HEAD'),'dirty':bool(command('git','status','--porcelain')),'runtime_source_sha256':digest.hexdigest()}
 
 def hardware():
@@ -32,6 +38,36 @@ def hardware():
         out['graphics']=[{'chip':gpu.get('sppci_model'),'cores':gpu.get('sppci_cores'),'displays':[{'resolution':d.get('spdisplays_resolution'),'native_pixels':d.get('_spdisplays_pixels')} for d in gpu.get('spdisplays_ndrvs',[])]} for gpu in displays]
     else: out['chip']=platform.processor()
     return out
+
+def ticks_within_tolerance(ticks,seconds):
+    expected=seconds*TICKS_PER_SECOND
+    return abs(ticks-expected)<=max(2.0,expected*TICK_TOLERANCE)
+
+def run_problems(report,specification):
+    """Reasons one scene report cannot count toward the reference gate; empty when it can."""
+    out=list(report.get('ineligible_reasons',[]))
+    if not report.get('acceptance_eligible_configuration'): out.append('configuration is not the reference configuration')
+    if not report.get('run_valid'): out.append('run reported invalid samples')
+    if report.get('graphics')!=specification['graphics']: out.append(f"graphics is not {specification['graphics']}")
+    if report.get('paused_simulation_ms',None)!=0: out.append('simulation pause time is not zero')
+    if report.get('unpresented_frames',None)!=0: out.append('unpresented frame count is not zero')
+    if not ticks_within_tolerance(report.get('completed_simulation_ticks',0),report.get('sample_seconds',0)):
+        out.append('completed simulation ticks differ from 20 per sampled second')
+    if not report.get('source_matches_runner'): out.append('executable was not built from the measured source')
+    return list(dict.fromkeys(out))
+
+def reference_gate(metadata,definitions,quick,native,repeats):
+    """Overall reference result: protocol, hardware, scene coverage and every run's validity and thresholds."""
+    problems=[]
+    if quick: problems.append('quick smoke protocol')
+    if native: problems.append('native-resolution runs are reported separately')
+    if repeats<3: problems.append('fewer than three repeats')
+    if {r['scene'] for r in metadata['runs']}!=set(definitions): problems.append('not every scene was measured')
+    if 'M5' not in metadata['hardware'].get('chip',''): problems.append('not M5 reference hardware')
+    invalid=[f"{r['scene']}-{i+1}" for i,r in enumerate(metadata['runs']) if r.get('gate_problems')]
+    if invalid: problems.append('invalid runs: '+', '.join(invalid))
+    if not all(r.get('frame_thresholds_passed') for r in metadata['runs']): problems.append('frame-time thresholds not met')
+    return not problems,problems
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -56,7 +92,7 @@ def main():
         executable=Path(env.get('CARGO_TARGET_DIR',ROOT/'target'))/'release/voxelcraft'
     executable=executable.resolve(strict=True)
     args.output.mkdir(parents=True,exist_ok=True)
-    metadata={'schema':1,'source':revision,'hardware':hardware(),'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest(),
+    metadata={'schema':2,'source':revision,'hardware':hardware(),'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest(),
               'protocol':'quick smoke' if args.quick else 'scene baseline','resolution_class':'native' if args.native_resolution else '1080p','specification':specification,'runs':[]}
     resolution=args.native_resolution or '1920x1080'
     for scene in names:
@@ -85,12 +121,17 @@ def main():
             report['wall_elapsed_seconds']=time.monotonic()-started
             # A supplied binary may have been built from different working source: do not misattribute it.
             report['source_matches_runner']=report['source_revision']==revision['runtime_source_sha256']
+            report['gate_problems']=run_problems(report,specification)
             output.write_text(json.dumps(report,indent=2)+'\n')
             metadata['runs'].append({k:v for k,v in report.items() if k!='frame_times_ms'})
-            print(f"  {report['frame_stats']['one_percent_low_fps']:.1f} FPS 1% low, {report['frame_stats']['p99_ms']:.3f} ms p99; peak RSS {peak_rss_kib/1024:.1f} MiB",flush=True)
+            validity='valid' if not report['gate_problems'] else 'INVALID: '+'; '.join(report['gate_problems'])
+            print(f"  {report['frame_stats']['one_percent_low_fps']:.1f} FPS 1% low, {report['frame_stats']['p99_ms']:.3f} ms p99; "
+                  f"{report['completed_simulation_ticks']} ticks; peak RSS {peak_rss_kib/1024:.1f} MiB; {validity}",flush=True)
             (args.output/'summary.json').write_text(json.dumps(metadata,indent=2)+'\n')
-    measured_names={r['scene'] for r in metadata['runs']}
-    metadata['reference_gate_passed']=not args.quick and not args.native_resolution and args.repeats>=3 and measured_names==set(definitions) and 'M5' in metadata['hardware'].get('chip','') and all(r['acceptance_eligible_configuration'] and r['frame_thresholds_passed'] and r['source_matches_runner'] for r in metadata['runs'])
+    passed,problems=reference_gate(metadata,definitions,args.quick,args.native_resolution,args.repeats)
+    metadata['reference_gate_passed']=passed
+    metadata['reference_gate_problems']=problems
+    metadata['all_runs_valid']=all(not r['gate_problems'] for r in metadata['runs'])
     metadata['remaining_acceptance']='These five initial scenes do not cover the full roadmap environment/encounter matrix or ordinary player testing. GPU timestamp costs and long-session memory stability remain separate checks.'
     (args.output/'summary.json').write_text(json.dumps(metadata,indent=2)+'\n')
 

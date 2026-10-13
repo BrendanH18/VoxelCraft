@@ -29,13 +29,16 @@ pub struct FixedClock {
     remainder: Duration,
     ticks: u64,
     discarded: Duration,
+    paused: Duration,
 }
 
 impl FixedClock {
     /// Number of 50 ms steps to run. Offline pause clears fractional time,
     /// so resuming never catches up time spent in a menu or out of focus.
+    /// That wall time is counted separately in [`FixedClock::paused`].
     pub fn advance(&mut self, elapsed: Duration, paused: bool) -> u32 {
         if paused {
+            self.paused += elapsed + self.remainder;
             self.remainder = Duration::ZERO;
             return 0;
         }
@@ -56,6 +59,12 @@ impl FixedClock {
     /// Wall time lost to the existing catch-up budget; performance reports must expose it.
     pub fn discarded(&self) -> Duration {
         self.discarded
+    }
+
+    /// Wall time (including dropped fractional time) that produced no steps
+    /// because the game was paused; performance reports must expose it.
+    pub fn paused(&self) -> Duration {
+        self.paused
     }
 
     /// Render between the last two completed simulation snapshots.
@@ -173,6 +182,26 @@ mod tests {
         assert_eq!(clock.advance(Duration::from_secs(120), false), MAX_CATCH_UP_TICKS);
         assert_eq!(clock.advance(Duration::ZERO, false), 0);
         assert_eq!(clock.ticks(), 6);
+    }
+
+    #[test]
+    fn paused_and_discarded_time_are_accounted_separately() {
+        let mut clock = FixedClock::default();
+        assert_eq!(clock.advance(Duration::from_millis(30), false), 0);
+        // The fractional 30 ms is dropped by the pause and counted with it.
+        assert_eq!(clock.advance(Duration::from_secs(2), true), 0);
+        assert_eq!(clock.paused(), Duration::from_millis(2030));
+        assert_eq!(clock.discarded(), Duration::ZERO);
+        assert_eq!(clock.advance(Duration::from_millis(1000), false), MAX_CATCH_UP_TICKS);
+        assert_eq!(clock.discarded(), Duration::from_millis(750));
+        assert_eq!(clock.paused(), Duration::from_millis(2030));
+        // Every non-paused, non-discarded millisecond became a step.
+        let mut clock = FixedClock::default();
+        for _ in 0..600 {
+            clock.advance(Duration::from_millis(5), false);
+        }
+        clock.advance(Duration::from_millis(5), true);
+        assert_eq!((clock.ticks(), clock.paused(), clock.discarded()), (60, Duration::from_millis(5), Duration::ZERO));
     }
 
     #[test]
