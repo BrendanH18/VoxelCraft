@@ -290,11 +290,11 @@ impl Game {
             players.extend(self.agents.targets());
         }
         let ctx = entity::Ctx {
-            spawn_light: crate::simulation::lighting::SpawnLight::at(
+            spawn_light: crate::simulation::lighting::SpawnLight::for_dimension(
+                self.dimension,
                 (self.day_time.rem_euclid(1.) * 24000.).floor() as u32,
-                self.weather.strength,
-                if self.weather.thundering { self.weather.strength } else { 0. },
-                self.weather.thundering,
+                self.weather.rain_level(),
+                self.weather.thunder_level(),
             ),
             players,
             // The Nether has no sun to burn the undead.
@@ -303,7 +303,7 @@ impl Game {
             } else {
                 0.0
             },
-            raining: self.weather.raining,
+            raining: self.weather.is_raining() && self.dimension.has_sky(),
             spawning: self.gamerules.bool("doMobSpawning"),
             dimension: self.dimension,
         };

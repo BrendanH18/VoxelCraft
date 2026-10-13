@@ -592,10 +592,10 @@ mod tests {
         let night = darken["day_multiplier_keyframes"][2][1].as_f64().unwrap() as f32 * 15.0;
         let rain = darken["rain_blend"]["alpha"].as_f64().unwrap() as f32;
         let level = crate::simulation::lighting::SpawnLight::at;
-        assert_eq!(level(6000, 0., 0., false).sky_darken, 0);
-        assert_eq!(level(18000, 0., 0., false).sky_darken, (15.0 - night) as u8, "clear night");
-        assert_eq!(level(6000, 1., 0., false).sky_darken, (15.0 - (15.0 + (4.0 - 15.0) * rain)) as u8, "rain at noon");
-        assert_eq!(level(18000, 1., 0., false).sky_darken, 11, "rainy night stays at the night level");
+        assert_eq!(level(6000, 0., 0.).sky_darken, 0);
+        assert_eq!(level(18000, 0., 0.).sky_darken, (15.0 - night) as u8, "clear night");
+        assert_eq!(level(6000, 1., 0.).sky_darken, (15.0 - (15.0 + (4.0 - 15.0) * rain)) as u8, "rain at noon");
+        assert_eq!(level(18000, 1., 0.).sky_darken, 11, "rainy night stays at the night level");
     }
 
     fn ctx(players: Vec<Target>) -> Ctx {

@@ -39,7 +39,8 @@ impl Game {
             self.weather.update(dt);
         }
         self.update_sleep(dt);
-        self.world.raining = self.weather.raining && self.dimension.has_sky();
+        // Java's isRaining compares the faded rain level, not the target state.
+        self.world.raining = self.weather.is_raining() && self.dimension.has_sky();
         let env = crate::simulation::survival::Env {
             respiration: crate::enchant::armor_level(
                 &self.session.inventory.armor,

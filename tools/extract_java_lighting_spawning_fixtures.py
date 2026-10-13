@@ -164,12 +164,20 @@ def extract_facts(jar, data):
     dark = method(inspect("net.minecraft.world.entity.monster.Monster"), "public static boolean isDarkEnoughToSpawn(")
     for token in ["LightLayer.SKY", "bipush        32", "monsterSpawnBlockLightLimit", "LightLayer.BLOCK", "isThundering", "bipush        10", "monsterSpawnLightTest"]:
         require(token in dark, f"isDarkEnoughToSpawn changed: {token}")
+    level_code = inspect("net.minecraft.world.level.Level")
+    thundering = method(level_code, "public boolean isThundering(")
+    threshold = re.search(r"canHaveWeather[\s\S]*fconst_1[\s\S]*getThunderLevel:\(F\)F\n[^\n]*f2d\n[^\n]*// double ([\d.]+)d\n[^\n]*dcmpl", thundering)
+    require(threshold, "isThundering changed")
+    thunder_level = method(level_code, "public float getThunderLevel(")
+    require(re.search(r"oThunderLevel[\s\S]*thunderLevel[\s\S]*Mth\.lerp[\s\S]*getRainLevel:\(F\)F\n[^\n]*fmul", thunder_level), "thunder level changed")
     facts["monster_light"] = {
         "sky_roll": 32,
         "rule": "fail if sky > nextInt(32); fail if block light > the dimension's limit (when below 15); pass if max(sky - darken, block) <= the dimension's light test sample",
         "thunder_darken": 10,
+        "thundering": "Level.isThundering: canHaveWeather and (double) getThunderLevel(1) > thundering_above; getThunderLevel = lerp(oThunderLevel, thunderLevel) * getRainLevel",
+        "thundering_above": float(threshold[1]),
     }
-    sky = method(inspect("net.minecraft.world.level.Level"), "public void updateSkyBrightness(")
+    sky = method(level_code, "public void updateSkyBrightness(")
     require("float 15.0f" in sky and "SKY_LIGHT_LEVEL" in sky and "f2i" in sky, "sky darkening changed")
     attrs = inspect("net.minecraft.world.attribute.EnvironmentAttributes")
     default_level = re.search(r"String gameplay/sky_light_level\n[^\n]*\n[^\n]*\n\s+\d+: ldc_w?\s+#\d+\s+// float ([\d.]+)f", attrs)
@@ -197,7 +205,7 @@ def extract_facts(jar, data):
         "thunder_blend": {"toward": float(blends[1][0]), "alpha": float(blends[1][1])},
         "weather_rule": "lerp(rainLevel - thunderLevel, base, rainModifier(base)); then lerp(thunderLevel, base, thunderModifier(base))",
     }
-    facts["sky_darken"]["cases"] = sky_darkening_cases(facts["sky_darken"], facts["monster_light"]["thunder_darken"])
+    facts["sky_darken"]["cases"] = sky_darkening_cases(facts["sky_darken"], facts["monster_light"])
     dims = {}
     for dim in ["overworld", "the_nether", "the_end"]:
         d = read(f"data/minecraft/dimension_type/{dim}.json")
@@ -275,8 +283,10 @@ def extract_facts(jar, data):
     return facts
 
 
-def sky_darkening_cases(facts, thunder_darken):
-    """Explicit clock/weather scenarios, evaluated in Java float precision."""
+def sky_darkening_cases(facts, monster_light):
+    """Explicit clock/weather scenarios, evaluated in Java float precision.
+    `thunder` is getThunderLevel(1); thundering is derived from it."""
+    thunder_darken = monster_light["thunder_darken"]
     f32 = lambda n: struct.unpack("f", struct.pack("f", n))[0]
     def lerp(alpha, a, b):
         return f32(a + f32(alpha * f32(b - a)))
@@ -294,8 +304,8 @@ def sky_darkening_cases(facts, thunder_darken):
             hi = keys[i + 1] if i + 1 < len(keys) else (keys[0][0] + period, keys[0][1])
         alpha = f32(f32(t - lo[0]) / f32(hi[0] - lo[0]))
         day_level = f32(f32(facts["default_level"]) * lerp(alpha, lo[1], hi[1]))
-        for rain, thunder, thundering in [(0., 0., False), (1., 0., False), (1., 1., True),
-                                           (0.5, 0., False), (0.7, 0.35, False), (0.7, 0.35, True)]:
+        for rain, thunder in [(0., 0.), (1., 0.), (1., 1.), (0.5, 0.), (0.7, 0.35), (1., 0.9), (1., 0.95)]:
+            thundering = f32(thunder) > monster_light["thundering_above"]
             level = day_level
             rain_only = f32(f32(rain) - f32(thunder))
             if rain_only > 0:

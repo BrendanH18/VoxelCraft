@@ -87,7 +87,9 @@
   "monster_light": {
     "sky_roll": 32,
     "rule": "fail if sky > nextInt(32); fail if block light > the dimension's limit (when below 15); pass if max(sky - darken, block) <= the dimension's light test sample",
-    "thunder_darken": 10
+    "thunder_darken": 10,
+    "thundering": "Level.isThundering: canHaveWeather and (double) getThunderLevel(1) > thundering_above; getThunderLevel = lerp(oThunderLevel, thunderLevel) * getRainLevel",
+    "thundering_above": 0.9
   },
   "sky_darken": {
     "rule": "int(15 - gameplay/sky_light_level)",
@@ -164,10 +166,18 @@
       },
       {
         "tick": 0,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 0,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       },
       {
@@ -212,10 +222,18 @@
       },
       {
         "tick": 1,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 1,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       },
       {
@@ -260,10 +278,18 @@
       },
       {
         "tick": 132,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 132,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       },
       {
@@ -308,10 +334,18 @@
       },
       {
         "tick": 133,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 133,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       },
       {
@@ -356,10 +390,18 @@
       },
       {
         "tick": 134,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 134,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       },
       {
@@ -404,10 +446,18 @@
       },
       {
         "tick": 6000,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 6000,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       },
       {
@@ -452,10 +502,18 @@
       },
       {
         "tick": 11866,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 11866,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       },
       {
@@ -500,10 +558,18 @@
       },
       {
         "tick": 11867,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 11867,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       },
       {
@@ -548,10 +614,18 @@
       },
       {
         "tick": 11868,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 11868,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       },
       {
@@ -596,10 +670,18 @@
       },
       {
         "tick": 12768,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 8,
+        "monster_darken": 8
+      },
+      {
+        "tick": 12768,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 7,
+        "sky_darken": 8,
         "monster_darken": 10
       },
       {
@@ -644,8 +726,16 @@
       },
       {
         "tick": 13669,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 13669,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
         "sky_darken": 10,
         "monster_darken": 10
@@ -692,8 +782,16 @@
       },
       {
         "tick": 13670,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 13670,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
         "sky_darken": 11,
         "monster_darken": 10
@@ -740,8 +838,16 @@
       },
       {
         "tick": 18000,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 18000,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
         "sky_darken": 11,
         "monster_darken": 10
@@ -788,8 +894,16 @@
       },
       {
         "tick": 22329,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 22329,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
         "sky_darken": 11,
         "monster_darken": 10
@@ -836,8 +950,16 @@
       },
       {
         "tick": 22330,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 22330,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
         "sky_darken": 11,
         "monster_darken": 10
@@ -884,8 +1006,16 @@
       },
       {
         "tick": 22331,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22331,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
         "sky_darken": 10,
         "monster_darken": 10
@@ -932,10 +1062,18 @@
       },
       {
         "tick": 23231,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 8,
+        "monster_darken": 8
+      },
+      {
+        "tick": 23231,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 7,
+        "sky_darken": 8,
         "monster_darken": 10
       },
       {
@@ -980,10 +1118,18 @@
       },
       {
         "tick": 23999,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 23999,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       },
       {
@@ -1028,10 +1174,18 @@
       },
       {
         "tick": 24000,
-        "rain": 0.7,
-        "thunder": 0.35,
+        "rain": 1.0,
+        "thunder": 0.9,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 24000,
+        "rain": 1.0,
+        "thunder": 0.95,
         "thundering": true,
-        "sky_darken": 3,
+        "sky_darken": 5,
         "monster_darken": 10
       }
     ]
