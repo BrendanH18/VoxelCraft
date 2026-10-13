@@ -4,9 +4,7 @@
 use glam::IVec3;
 
 use crate::audio::sounds::Sound;
-use crate::item::Item;
-use crate::world::block::{Block, Facing, Shaped};
-use crate::world::forms::{self, WoodForm};
+use crate::world::block::{Facing, Shaped};
 
 use super::Game;
 
@@ -50,53 +48,6 @@ impl Game {
             _ => return false,
         };
         self.audio.play(Sound::Door(open), Some(pos.as_dvec3() + 0.5), 0.8, (0.9, 1.1));
-        true
-    }
-
-    /// Places a door with its lower half at `at`, facing the player.
-    /// Returns whether it went down.
-    pub(super) fn place_door(&mut self, at: IVec3, item: Item) -> bool {
-        let up = at + IVec3::Y;
-        let free = |p: IVec3| {
-            self.world.get_block(p).is_some_and(|b| b.is_replaceable()) && !self.session.player.intersects_block(p)
-        };
-        if up.y >= self.world.max_y()
-            || !free(at)
-            || !free(up)
-            || !self.world.get_block(at - IVec3::Y).is_some_and(|b| b.is_opaque())
-        {
-            return false;
-        }
-        let facing = Facing::toward(self.session.player.forward());
-        let (lower, upper) = if item == Item::OAK_DOOR {
-            (Block::door(facing, false, false), Block::door(facing, false, true))
-        } else if let Some(block) = item.block()
-            && let Some(WoodForm::Door { index, .. }) = forms::wood_form(block.0)
-        {
-            (forms::wood_id(index, 14 + facing as u16), forms::wood_id(index, 22))
-        } else {
-            return false;
-        };
-        self.world.set_block(at, lower);
-        self.world.set_block(up, upper);
-        self.audio.block_place(Block::PLANKS, at);
-        true
-    }
-
-    /// Hangs a ladder on the side `normal` of the wall at `wall`. Returns
-    /// whether it went up.
-    pub(super) fn place_ladder(&mut self, wall: IVec3, normal: IVec3) -> bool {
-        let at = wall + normal;
-        let Some(facing) = Facing::from_offset(normal) else { return false };
-        let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
-        if !free || !self.world.get_block(wall).is_some_and(|b| b.is_opaque()) {
-            return false;
-        }
-        let ladder = Block::LADDER.with_facing(facing);
-        if !self.world.set_block(at, ladder) {
-            return false;
-        }
-        self.audio.block_place(ladder, at);
         true
     }
 }

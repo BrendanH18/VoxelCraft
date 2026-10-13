@@ -306,6 +306,12 @@ Mining Fatigue and ice support, and interruption/process-restart evidence.
 PLY-04 and BLD-03 remain **Partial**; other actions, full shape/tool/timing parity
 and player/performance acceptance remain open.
 
+The [shared placement follow-up](verification/2026-10-13-shared-placement.md)
+adds one actor-owned block placement transaction, paired-cell validation,
+low-cube targeting and process-restart evidence. PLY-04 and BLD-02/03 remain
+**Partial**: complete item-use ordering, shape/state/support parity and ordinary
+player/performance acceptance remain open.
+
 The [lighting and spawning follow-up](verification/2026-10-13-lighting-spawning.md)
 implements propagated gameplay skylight, End skylight, full-height ground-monster
 attempts, cave/torch checks and reference clock/weather darkening. ENV-05 and

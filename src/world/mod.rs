@@ -1095,17 +1095,32 @@ impl World {
         max_dist: f64,
         hits: impl Fn(Block) -> bool,
     ) -> Option<(IVec3, IVec3)> {
+        if !origin.is_finite() || !dir.is_finite() || !max_dist.is_finite() || max_dist < 0.0 || dir == DVec3::ZERO {
+            return None;
+        }
         let mut cell = origin.floor().as_ivec3();
-        let step = IVec3::new(dir.x.signum() as i32, dir.y.signum() as i32, dir.z.signum() as i32);
+        let axis_step = |v: f64| {
+            if v > 0. {
+                1
+            } else if v < 0. {
+                -1
+            } else {
+                0
+            }
+        };
+        let step = IVec3::new(axis_step(dir.x), axis_step(dir.y), axis_step(dir.z));
         let inv = DVec3::new(
             if dir.x != 0.0 { 1.0 / dir.x.abs() } else { f64::INFINITY },
             if dir.y != 0.0 { 1.0 / dir.y.abs() } else { f64::INFINITY },
             if dir.z != 0.0 { 1.0 / dir.z.abs() } else { f64::INFINITY },
         );
         let frac = origin - origin.floor();
-        let first = |f: f64, s: i32| if s > 0 { 1.0 - f } else { f };
+        let first = |f: f64, s: i32, inverse: f64| {
+            // An axis-parallel ray on an integer plane must not produce 0*inf.
+            if s == 0 { f64::INFINITY } else { (if s > 0 { 1.0 - f } else { f }) * inverse }
+        };
         let mut t_max =
-            DVec3::new(first(frac.x, step.x) * inv.x, first(frac.y, step.y) * inv.y, first(frac.z, step.z) * inv.z);
+            DVec3::new(first(frac.x, step.x, inv.x), first(frac.y, step.y, inv.y), first(frac.z, step.z, inv.z));
         let mut normal = IVec3::ZERO;
         let mut t = 0.0;
         while t <= max_dist {
@@ -1113,11 +1128,19 @@ impl World {
                 && hits(b)
                 && cell.y >= self.min_y()
             {
-                if b.kind() != RenderKind::Shaped {
+                if b.kind() != RenderKind::Shaped && b.top_drop() == 0 {
                     return Some((cell, normal));
                 }
-                // Shaped blocks only count where the ray meets their boxes.
-                if let Some((hit, face)) = crate::physics::ray_shape(self, cell, origin, dir)
+                // Low cube forms (including bottom slabs) are selected at
+                // their visual top, not at the full voxel's boundary.
+                let intersection = if b.kind() == RenderKind::Shaped {
+                    crate::physics::ray_shape(self, cell, origin, dir)
+                } else {
+                    let lo = cell.as_dvec3();
+                    let height = 1.0 - f64::from(b.top_drop()) / 16.0;
+                    crate::physics::ray_aabb_face(origin, dir, lo, lo + DVec3::new(1.0, height, 1.0))
+                };
+                if let Some((hit, face)) = intersection
                     && hit <= max_dist
                 {
                     return Some((cell, if face == IVec3::ZERO { normal } else { face }));

@@ -1406,84 +1406,21 @@ impl Game {
         if self.strike_flint(pos, normal) || self.use_item_on(pos, normal) {
             return;
         }
-        // Clicking tall grass replaces it instead of building against it.
-        let at = if self.world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
-        if self.agents.positions().iter().any(|&p| Player::new(p).intersects_block(at)) {
-            return;
-        }
-        let placed = match self.held_item() {
-            Some(i) if i.block() == Some(voxelcraft::world::redstone_blocks::IRON_DOOR) => {
-                Some(self.world.place_iron_door(at, crate::world::block::Facing::toward(self.session.player.forward())))
+        let others = self.agents.positions();
+        let result = self.session.place_held(self.actions.selected, &mut self.world, &others);
+        use voxelcraft::session::placement::{Kind, Outcome};
+        match result {
+            Ok(Outcome::Placed { cell, block, kind, .. }) => {
+                let sound = match kind {
+                    Kind::Bed => Block::WOOL,
+                    _ => block,
+                };
+                self.audio.block_place(sound, cell);
             }
-            Some(i) if i.bed_color().is_some() => Some(self.place_bed(at, i.bed_color().unwrap())),
-            Some(i)
-                if i == Item::OAK_DOOR
-                    || i.block().is_some_and(|b| {
-                        matches!(crate::world::forms::wood_form(b.0), Some(crate::world::forms::WoodForm::Door { .. }))
-                    }) =>
-            {
-                Some(self.place_door(at, i))
+            Ok(Outcome::WaterEvaporated { cell, .. }) => {
+                self.audio.play(crate::audio::sounds::Sound::Fuse, Some(cell.as_dvec3()), 0.6, (1.6, 1.8));
             }
-            Some(i) if i.block().is_some_and(|b| b.is_ladder()) => Some(self.place_ladder(pos, normal)),
-            _ => None,
-        };
-        if let Some(placed) = placed {
-            if placed && self.session.mode.is_survival() {
-                self.session.inventory.take_one(self.actions.selected);
-            }
-            return;
-        }
-        let Some(block) = self.session.inventory.get(self.actions.selected).and_then(|s| s.item.places()) else {
-            return;
-        };
-        // A slab on top of the same slab makes the full block.
-        if block.is_slab()
-            && normal == IVec3::Y
-            && self.world.get_block(pos) == Some(block)
-            && let Some(full) = block.slab_base()
-        {
-            if !self.session.player.intersects_block(pos) {
-                self.world.set_block(pos, full);
-                self.audio.block_place(full, pos);
-                if self.session.mode.is_survival() {
-                    self.session.inventory.take_one(self.actions.selected);
-                }
-            }
-            return;
-        }
-        // Furnaces and chests face whoever places them.
-        let block = crate::world::overworld_blocks::placed(block, normal).unwrap_or(block);
-        let block = crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal)
-            .with_facing(crate::world::block::Facing::toward(self.session.player.forward()));
-        let block = voxelcraft::world::redstone_blocks::placed_with_look(block, normal, self.session.player.forward());
-        let roll = crate::world::noise::hash3(at.x, at.y, at.z, self.started.elapsed().subsec_nanos() as u64);
-        let block = crate::world::nether_biome_blocks::placed_vine(block, roll);
-        if block.is_water() && self.dimension == Dimension::Nether {
-            // Water boils away in the Nether.
-            self.audio.play(crate::audio::sounds::Sound::Fuse, Some(at.as_dvec3()), 0.6, (1.6, 1.8));
-            return;
-        }
-        let free = self.world.get_block(at).is_some_and(|b| b.is_replaceable());
-        let below = self.world.get_block(at - glam::IVec3::Y);
-        let supported = self
-            .world
-            .overworld_placement_ok(at, block)
-            .unwrap_or_else(|| below.is_some_and(|below| block.can_stay_on(below)))
-            && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || self.world.cane_has_water(at))
-            && (!block.is_mushroom() || self.world.mushroom_survives(at));
-        if free
-            && supported
-            && self.world.redstone_supported(at, block)
-            && !(block.is_solid() && self.session.player.intersects_block(at))
-            && {
-                self.world.before_overworld_place(at, block);
-                self.world.set_block(at, block)
-            }
-        {
-            self.audio.block_place(block, at);
-            if self.session.mode.is_survival() {
-                self.session.inventory.take_one(self.actions.selected);
-            }
+            Err(_) => {}
         }
     }
 

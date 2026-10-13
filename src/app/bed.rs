@@ -21,31 +21,6 @@ pub(super) fn can_sleep(day_time: f64, raining: bool) -> bool {
 }
 
 impl Game {
-    /// Places a bed with its foot at `at` and its head one block further
-    /// along the way the player faces. Returns whether it went down.
-    pub(super) fn place_bed(&mut self, at: IVec3, color: crate::color::DyeColor) -> bool {
-        let f = self.session.player.forward();
-        let dir = if f.x.abs() > f.z.abs() {
-            IVec3::new(f.x.signum() as i32, 0, 0)
-        } else {
-            IVec3::new(0, 0, f.z.signum() as i32)
-        };
-        let head = at + dir;
-        let fits = |p: IVec3| {
-            self.world.get_block(p).is_some_and(|b| b.is_replaceable())
-                && self.world.get_block(p - IVec3::Y).is_some_and(|b| b.is_opaque())
-                && !self.session.player.intersects_block(p)
-        };
-        if !fits(at) || !fits(head) {
-            return false;
-        }
-        if !self.world.place_colored_bed(at, dir, color) {
-            return false;
-        }
-        self.audio.block_place(Block::WOOL, at);
-        true
-    }
-
     /// Bed explosions use the same two-cell removal helper as mining.
     pub(super) fn break_bed_partner(&mut self, pos: IVec3, half: Block) {
         self.world.break_bed_partner(pos, half, self.session.mode.is_survival() && self.gamerules.bool("doTileDrops"));

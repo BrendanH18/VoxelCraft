@@ -13,10 +13,7 @@ use crate::player::{MoveInput, Player};
 use crate::rules::GameMode;
 use crate::simulation::survival::{self, Vitals};
 use crate::simulation::{self, TICK_SECONDS};
-use crate::world::{
-    World,
-    block::{Block, RenderKind},
-};
+use crate::world::{World, block::Block};
 
 pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
@@ -442,38 +439,6 @@ impl Agent {
                 }
                 self.swings += 1;
             }
-            Command::Place
-                if self.session.inventory.get(self.selected).is_some_and(|s| s.item.bed_color().is_some()) =>
-            {
-                if !self.session.mode.can_build() {
-                    return Err("this game mode cannot place beds".into());
-                }
-                if self.cooldown > 0.0 {
-                    return Err("action cooling down".into());
-                }
-                let (pos, normal) = self.target(world).ok_or("no block within reach")?;
-                let at = if world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
-                let direction = crate::world::block::Facing::toward(self.session.player.forward()).opposite().offset();
-                let head = at + direction;
-                if self.session.player.intersects_block(at)
-                    || self.session.player.intersects_block(head)
-                    || others.iter().any(|&p| {
-                        crate::player::Player::new(p).intersects_block(at)
-                            || crate::player::Player::new(p).intersects_block(head)
-                    })
-                {
-                    return Err("bed intersects a player".into());
-                }
-                let color = self.session.inventory.get(self.selected).unwrap().item.bed_color().unwrap();
-                if !world.place_colored_bed(at, direction, color) {
-                    return Err("bed does not fit".into());
-                }
-                if !self.creative {
-                    self.session.inventory.take_one(self.selected);
-                }
-                self.cooldown = 0.22;
-                self.swings += 1;
-            }
             Command::Place => {
                 let (eye, dir) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
                 if !self.session.mode.can_interact() {
@@ -533,7 +498,7 @@ impl Agent {
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
-                let (pos, normal) = self.target(world).ok_or("no block within reach")?;
+                let (pos, _) = self.target(world).ok_or("no block within reach")?;
                 if world.use_redstone(pos) {
                     self.cooldown = 0.22;
                     self.swings += 1;
@@ -551,71 +516,12 @@ impl Agent {
                     self.swings += 1;
                     return Ok(());
                 }
-                world.touch_redstone_ore(pos);
-                let held = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
-                let block = held.item.places().ok_or("selected item cannot be placed")?;
-                if block == crate::world::redstone_blocks::IRON_DOOR {
-                    let at = pos + normal;
-                    if self.session.player.intersects_block(at)
-                        || self.session.player.intersects_block(at + IVec3::Y)
-                        || others.iter().any(|&p| {
-                            Player::new(p).intersects_block(at) || Player::new(p).intersects_block(at + IVec3::Y)
-                        })
-                    {
-                        return Err("placement intersects a player".into());
-                    }
-                    if !world.place_iron_door(at, crate::world::block::Facing::toward(self.session.player.forward())) {
-                        return Err("placement failed".into());
-                    }
-                    if !self.creative {
-                        self.session.inventory.take_one(self.selected);
-                    }
-                    self.cooldown = 0.22;
-                    self.swings += 1;
-                    self.emit(Event::Placed(at, block));
-                    return Ok(());
+                let result = self.session.place_held(self.selected, world, others)?;
+                if let crate::session::placement::Outcome::Placed { cell, block, .. } = result {
+                    self.emit(Event::Placed(cell, block));
                 }
-                // Complex multi-cell placements use client gameplay until the shared action boundary is extracted.
-                if block.is_door()
-                    || block.is_bed()
-                    || block.is_ladder()
-                    || block.kind() == RenderKind::Invisible
-                    || block.is_fire()
-                {
-                    return Err("this block requires the desktop placement action".into());
-                }
-                let block =
-                    crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal);
-                let block =
-                    crate::world::redstone_blocks::placed_with_look(block, normal, self.session.player.forward());
-                let at = pos + normal;
-                let block = crate::world::nether_biome_blocks::placed_vine(
-                    block,
-                    crate::world::noise::hash3(at.x, at.y, at.z, crate::enchant::roll().to_bits() as u64),
-                );
-                if !world.get_block(at).is_some_and(|b| b == Block::AIR || b.is_water() || b.is_lava()) {
-                    return Err("destination occupied or unloaded".into());
-                }
-                if !world.redstone_supported(at, block)
-                    || !world.get_block(at - IVec3::Y).is_some_and(|below| block.can_stay_on(below))
-                    || (block.is_mushroom() && !world.mushroom_survives(at))
-                {
-                    return Err("block cannot survive here".into());
-                }
-                if (block.is_solid() && self.session.player.intersects_block(at))
-                    || others.iter().any(|&p| Player::new(p).intersects_block(at))
-                {
-                    return Err("placement intersects a player".into());
-                }
-                if !world.set_block(at, block) {
-                    return Err("placement failed".into());
-                }
-                self.emit(Event::Placed(at, block));
                 self.cooldown = 0.22;
                 self.swings += 1;
-                if !self.creative {
-                    self.session.inventory.take_one(self.selected);
-                }
             }
             Command::Attack => {
                 if !self.session.mode.can_interact() {

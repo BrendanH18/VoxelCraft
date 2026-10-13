@@ -287,6 +287,10 @@ steps and client action adapters are in `src/app/startup.rs`, `save.rs`,
 `tick.rs` and `player_actions.rs`. Window events and frame rendering remain
 in the coordinator. Controller/CLI/desktop action ownership is a separate,
 ongoing extraction; moving a file alone does not complete STR-03.
+`src/session/placement.rs` owns validated block placement and actor outcomes;
+`src/content/placement.rs` maps existing door-family states without adding IDs.
+Client/CLI adapters retain other item interactions and presentation. See the
+[placement evidence and remaining boundaries](verification/2026-10-13-shared-placement.md).
 
 Turtle equipment uses standalone item **1040** for the turtle helmet.
 The retained v0.7 animal reservation 1000–1039 remains untouched. Potion indices

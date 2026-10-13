@@ -43,6 +43,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Shared mining transactions](verification/2026-10-13-shared-mining.md):
   reference reach, progress, fatigue and ice support; input interruption,
   partner removal and process-restart evidence; remaining acceptance.
+- [Shared block placement](verification/2026-10-13-shared-placement.md):
+  actor-owned validation, paired blocks, low-cube targeting and process-restart
+  checks; remaining shape/state and ordinary-player acceptance.
 - [Gameplay skylight and cave spawning](verification/2026-10-13-lighting-spawning.md):
   propagated sky light, cave/torch/reference scenarios, clock/weather inputs and
   Overworld/End process-restart checks; remaining shape and spawn differences.
