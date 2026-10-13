@@ -45,7 +45,15 @@ fn scene(dimension: Dimension) -> (World, Agent, Entities) {
 }
 
 fn direct(world: &mut World, agent: &mut Agent, entities: &mut Entities) -> Option<Effect> {
-    bucket::use_bucket(&agent.player, &mut agent.inventory, agent.selected, agent.creative, world, entities, 6.)
+    bucket::use_bucket(
+        &agent.session.player,
+        &mut agent.session.inventory,
+        agent.selected,
+        agent.creative,
+        world,
+        entities,
+        6.,
+    )
 }
 
 #[test]
@@ -142,7 +150,18 @@ fn misses_out_of_reach_and_spectator_actions_leave_inventory_and_world_unchanged
         assert_eq!(world.get_block(POUR), Some(Block::AIR));
     }
     agent.set_mode(GameMode::Survival);
-    assert!(bucket::use_bucket(&agent.player, &mut agent.inventory, 0, false, &mut world, &mut entities, 1.).is_none());
+    assert!(
+        bucket::use_bucket(
+            &agent.session.player,
+            &mut agent.session.inventory,
+            0,
+            false,
+            &mut world,
+            &mut entities,
+            1.
+        )
+        .is_none()
+    );
     assert_eq!(world.get_block(POUR), Some(Block::AIR));
 }
 

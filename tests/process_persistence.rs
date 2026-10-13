@@ -6,6 +6,7 @@ use voxelcraft::{
     inventory::{Inventory, Stack},
     item::Item,
     potion::Potion,
+    session::PlayerSession,
     simulation::effects::Effect,
     world::{
         World,
@@ -89,6 +90,14 @@ fn persistence_worker() {
         inventory.armor[0] = Some(Stack::new(Item::TURTLE_HELMET, 1));
         inventory.slots[2] = Some(Stack::new(Item::potion(Potion::from_id("strong_turtle_master").unwrap()), 1));
         let mut e = Entities::new(7);
+        let mut session = PlayerSession::new(PlayerId(3), DVec3::new(12.5, 145., 4.5));
+        inventory.slots[3] = Some(Stack::new(Item::APPLE, 2));
+        session.inventory = inventory;
+        session.vitals.hunger.food = 8.;
+        session.spawn_point = Some(IVec3::new(15, 145, 5));
+        for _ in 0..31 {
+            assert!(session.tick_consumption(3, true, &mut e).unwrap().completed.is_none());
+        }
         e.spawn(MobKind::Donkey, DVec3::new(14.5, 145., 4.5));
         e.mobs[0].uid = 7;
         e.mobs[0].effects.add(Effect::Slowness, 3, 197);
@@ -104,7 +113,8 @@ fn persistence_worker() {
         e.spawn(MobKind::Turtle, DVec3::new(16.5, 145., 4.5));
         e.mobs[2].age = -12000;
         let props = [
-            ("inventory", inventory.serialize()),
+            ("inventory", session.inventory.serialize()),
+            ("spawn_point", "15,145,5".into()),
             ("furnaces", w.furnaces_to_string()),
             ("brewing", w.brewing_stands_to_string()),
             ("redstone", w.redstone_to_string()),
@@ -141,6 +151,24 @@ fn persistence_worker() {
             Some(Stack::new(Item::potion(Potion::from_id("strong_turtle_master").unwrap()), 1))
         );
         let mut e = Entities::new(7);
+        let mut session = PlayerSession::from_parts(
+            PlayerId(3),
+            voxelcraft::player::Player::new(level.player.unwrap().0),
+            inventory,
+            Default::default(),
+            voxelcraft::rules::GameMode::Survival,
+        );
+        session.vitals.hunger.food = 8.;
+        let coords = level.props["spawn_point"].split(',').map(|s| s.parse::<i32>().unwrap()).collect::<Vec<_>>();
+        session.spawn_point = Some(IVec3::new(coords[0], coords[1], coords[2]));
+        assert_eq!(session.spawn_point, Some(IVec3::new(15, 145, 5)));
+        assert_eq!(session.consumption_progress(), 0., "interrupted use is transient");
+        for _ in 0..31 {
+            assert!(session.tick_consumption(3, true, &mut e).unwrap().completed.is_none());
+            assert_eq!(session.inventory.get(3), Some(Stack::new(Item::APPLE, 2)));
+        }
+        assert!(session.tick_consumption(3, true, &mut e).unwrap().completed.is_some());
+        assert_eq!(session.inventory.get(3), Some(Stack::new(Item::APPLE, 1)));
         e.load_nether_mobs(&level.props["mobs"]);
         assert_eq!(e.mobs[0].effects.get(Effect::Resistance).unwrap().ticks, 197);
         assert_eq!(e.mobs[0].effects.get(Effect::Slowness).unwrap().amplifier, 3);

@@ -37,6 +37,9 @@ roadmap and recorded checks to assess completeness against the current target.
   helmet, brewing, splash geometry and save compatibility; remaining player acceptance.
 - [Complete fuel inventory](verification/2026-10-12-fuel-inventory.md):
   implemented fuel integrations and the explicit missing-registration inventory.
+- [Shared player sessions and consumption](verification/2026-10-13-player-session.md):
+  actor ownership, reference timing, interruption/death and persistence checks;
+  remaining shared-action extraction and player acceptance.
 
 ## History
 

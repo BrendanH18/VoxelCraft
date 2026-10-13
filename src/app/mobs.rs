@@ -49,8 +49,8 @@ impl Game {
     /// Index of the living mob under the crosshair, if it's within reach and
     /// in front of the targeted block.
     pub(super) fn mob_target(&self) -> Option<usize> {
-        let eye = self.player.eye();
-        let dir = self.player.forward().as_dvec3();
+        let eye = self.session.player.eye();
+        let dir = self.session.player.forward().as_dvec3();
         let block_dist = self
             .target()
             .and_then(|(b, _)| physics::ray_aabb(eye, dir, b.as_dvec3(), b.as_dvec3() + DVec3::ONE))
@@ -63,11 +63,11 @@ impl Game {
         let Some(index) = self.mob_target() else { return false };
         let Some(item) = self.held_item() else { return false };
         let Some(shears) = self.mobs.entities.use_on_sheep(index, item) else { return false };
-        if self.mode.is_survival() {
+        if self.session.mode.is_survival() {
             if shears {
-                self.inventory.wear(self.actions.selected, 1);
+                self.session.inventory.wear(self.actions.selected, 1);
             } else {
-                self.inventory.take_one(self.actions.selected);
+                self.session.inventory.take_one(self.actions.selected);
             }
         }
         true
@@ -76,18 +76,18 @@ impl Game {
     /// Left-button press: hits the mob under the crosshair. Returns `true`
     /// if a mob was targeted, in which case no block should be broken.
     pub(super) fn attack(&mut self) -> bool {
-        if voxelcraft::survival_items::attack_knot(&self.player, &self.world, &mut self.mobs.entities)
+        if voxelcraft::survival_items::attack_knot(&self.session.player, &self.world, &mut self.mobs.entities)
             || self.attack_lan_player()
         {
             return true;
         }
-        let eye = self.player.eye();
-        let dir = self.player.forward().as_dvec3();
+        let eye = self.session.player.eye();
+        let dir = self.session.player.forward().as_dvec3();
         let cart_reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
         if self.mobs.entities.cart_ray(eye, dir, cart_reach).is_some() {
             self.mobs.attack_held = true;
             if self.mobs.attack_cooldown <= 0.0 {
-                self.mobs.entities.hurt_cart(eye, dir, cart_reach, self.mode.is_creative());
+                self.mobs.entities.hurt_cart(eye, dir, cart_reach, self.session.mode.is_creative());
                 self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
                 self.audio.play(Sound::Hit, Some(eye + dir * 2.0), 0.7, (0.8, 1.0));
                 self.wear_held(true);
@@ -101,8 +101,8 @@ impl Game {
                 self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
                 self.audio.play(Sound::Hit, Some(eye + dir * 2.0), 0.7, (0.6, 0.8));
                 self.wear_held(true);
-                if self.mode.is_survival() {
-                    self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
+                if self.session.mode.is_survival() {
+                    self.session.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
                 }
             }
             return true;
@@ -115,30 +115,30 @@ impl Game {
         if self.mobs.attack_cooldown <= 0.0 {
             self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
             // A hit while falling is a critical one, like Minecraft.
-            let p = &self.player;
+            let p = &self.session.player;
             let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
             // Controller input belongs to the puppet's agent, not the host's keys.
             let sprint = if self.puppet {
                 self.agents
                     .players
                     .values()
-                    .find(|b| b.id == self.actor)
+                    .find(|b| b.id == self.session.id)
                     .is_some_and(|b| b.agent.movement_input().sprint)
-                    && (self.mode.invulnerable() || self.vitals.hunger.can_sprint())
+                    && (self.session.mode.invulnerable() || self.session.vitals.hunger.can_sprint())
             } else {
                 self.movement_input(self.arrival.is_some()).sprint
             };
             let sweep = (p.on_ground && !critical && !sprint).then_some(p.pos);
-            let held = self.inventory.get(self.actions.selected);
-            let bonus = self.vitals.effects.attack_bonus();
-            let dir = self.player.forward().as_dvec3();
-            self.mobs.entities.melee_for(i, dir, held, bonus, critical, sweep, self.actor);
+            let held = self.session.inventory.get(self.actions.selected);
+            let bonus = self.session.vitals.effects.attack_bonus();
+            let dir = self.session.player.forward().as_dvec3();
+            self.mobs.entities.melee_for(i, dir, held, bonus, critical, sweep, self.session.id);
             let at = self.mobs.entities.mobs[i].pos + DVec3::Y * 0.5;
             let pitch = if critical { (1.25, 1.4) } else { (0.9, 1.1) };
             self.audio.play(Sound::Hit, Some(at), 0.8, pitch);
             self.wear_held(true);
-            if self.mode.is_survival() {
-                self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
+            if self.session.mode.is_survival() {
+                self.session.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
             }
         }
         true
@@ -147,8 +147,8 @@ impl Game {
     /// The End crystal or dragon part under the crosshair, if it's within
     /// reach and in front of the targeted block and any mob.
     fn fight_target(&self) -> Option<crate::entity::dragon::Hit> {
-        let eye = self.player.eye();
-        let dir = self.player.forward().as_dvec3();
+        let eye = self.session.player.eye();
+        let dir = self.session.player.forward().as_dvec3();
         let block_dist = self
             .target()
             .and_then(|(b, _)| physics::ray_aabb(eye, dir, b.as_dvec3(), b.as_dvec3() + DVec3::ONE))
@@ -162,16 +162,16 @@ impl Game {
         self.mobs.attack_held = true;
         if self.mobs.attack_cooldown <= 0.0 {
             self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
-            let p = &self.player;
+            let p = &self.session.player;
             let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
-            let base = crate::mining::attack_damage(self.held_item()) + self.vitals.effects.attack_bonus();
+            let base = crate::mining::attack_damage(self.held_item()) + self.session.vitals.effects.attack_bonus();
             let sharpness =
-                self.inventory.get(self.actions.selected).map_or(Default::default(), |s| s.active_enchants());
+                self.session.inventory.get(self.actions.selected).map_or(Default::default(), |s| s.active_enchants());
             let damage = base.max(0.0) * if critical { 1.5 } else { 1.0 }
                 + crate::enchant::damage_bonus(sharpness, crate::enchant::Creature::Other);
-            let by = self.actor;
+            let by = self.session.id;
             if self.mobs.entities.strike(hit, damage, by) {
-                let impact = self.player.eye() + self.player.forward().as_dvec3() * 2.0;
+                let impact = self.session.player.eye() + self.session.player.forward().as_dvec3() * 2.0;
                 for kind in [
                     critical.then_some(crate::particles::Kind::Crit),
                     (crate::enchant::damage_bonus(sharpness, crate::enchant::Creature::Other) > 0.0)
@@ -186,14 +186,14 @@ impl Game {
                 }
                 self.audio.play(
                     Sound::Hit,
-                    Some(self.player.eye() + self.player.forward().as_dvec3() * 2.0),
+                    Some(self.session.player.eye() + self.session.player.forward().as_dvec3() * 2.0),
                     0.8,
                     (0.9, 1.1),
                 );
                 self.wear_held(true);
             }
-            if self.mode.is_survival() {
-                self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
+            if self.session.mode.is_survival() {
+                self.session.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
             }
         }
         true
@@ -243,12 +243,12 @@ impl Game {
                     self.inventory_open && self.container == super::Container::Trading(v.id) || self.pads.trading(v.id);
             }
         }
-        if self.held_item() != Some(crate::item::Item::FISHING_ROD) || self.vitals.is_dead() {
-            self.mobs.entities.drop_bobber(self.actor);
+        if self.held_item() != Some(crate::item::Item::FISHING_ROD) || self.session.vitals.is_dead() {
+            self.mobs.entities.drop_bobber(self.session.id);
         }
-        super::seat_rider(&self.mobs.entities, &mut self.player, crate::entity::PlayerId::HOST);
+        super::seat_rider(&self.mobs.entities, &mut self.session.player, crate::entity::PlayerId::HOST);
         for bot in self.agents.players.values_mut().filter(|b| b.active) {
-            super::seat_rider(&self.mobs.entities, &mut bot.agent.player, bot.agent.id);
+            super::seat_rider(&self.mobs.entities, &mut bot.agent.session.player, bot.agent.session.id);
         }
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.mobs.entities.despawn_hostiles();
@@ -263,19 +263,24 @@ impl Game {
         }
         self.mobs.attack_cooldown -= dt;
         let mut players = vec![Target {
-            alive: !self.vitals.is_dead(),
-            look: self.player.forward().as_dvec3(),
-            thorns: Target::thorns_of(&self.inventory.armor),
+            alive: !self.session.vitals.is_dead(),
+            look: self.session.player.forward().as_dvec3(),
+            thorns: Target::thorns_of(&self.session.inventory.armor),
             held_enchants: self
+                .session
                 .inventory
                 .get(self.actions.selected)
                 .map_or(Default::default(), |s| s.active_enchants()),
-            shape: self.player.collision_shape(),
-            gold_armor: crate::entity::nether::wears_gold(&self.inventory.armor),
+            shape: self.session.player.collision_shape(),
+            gold_armor: crate::entity::nether::wears_gold(&self.session.inventory.armor),
             held_item: self.held_item(),
-            on_ground: self.player.on_ground,
-            in_water: self.player.in_water,
-            ..Target::new(PlayerId::HOST, self.player.pos, self.mode.targetable() && !self.vitals.is_dead())
+            on_ground: self.session.player.on_ground,
+            in_water: self.session.player.in_water,
+            ..Target::new(
+                PlayerId::HOST,
+                self.session.player.pos,
+                self.session.mode.targetable() && !self.session.vitals.is_dead(),
+            )
         }];
         // Agents keep source-dimension positions until arrival relocates them.
         if self.arrival.is_none() {
@@ -304,9 +309,9 @@ impl Game {
                     // Knockback only lands with damage, so hurt immunity
                     // also stops repeated shoves.
                     if self.damage_player_armored(self.difficulty.mob_damage(damage), cause) > 0.0 {
-                        self.player.hurt_from(knockback.as_dvec3());
-                        let resistance = self.inventory.knockback_resistance();
-                        self.player.vel +=
+                        self.session.player.hurt_from(knockback.as_dvec3());
+                        let resistance = self.session.inventory.knockback_resistance();
+                        self.session.player.vel +=
                             crate::simulation::survival::knockback_taken(knockback.as_dvec3(), resistance);
                     }
                 }
@@ -334,11 +339,11 @@ impl Game {
                     if player == PlayerId::HOST {
                         let reduced = crate::simulation::survival::armor_reduce(
                             physical,
-                            self.inventory.armor_points(),
-                            self.inventory.armor_toughness(),
+                            self.session.inventory.armor_points(),
+                            self.session.inventory.armor_toughness(),
                         );
                         if self.damage_player(reduced + magic, "was slain by a guardian") > 0.0 {
-                            self.inventory.wear_armor(physical);
+                            self.session.inventory.wear_armor(physical);
                         }
                     } else if let Some(bot) = self.agents.by_id_mut(player) {
                         bot.agent.hurt_beam(physical, magic, &mut self.mobs.entities);
@@ -352,8 +357,8 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerEffect { player: PlayerId::HOST, effect, amplifier, ticks } => {
-                    if self.mode.is_survival() {
-                        let damage = self.vitals.apply_effect(effect, amplifier, ticks);
+                    if self.session.mode.is_survival() {
+                        let damage = self.session.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
                             self.damage_player(damage, "was killed by magic");
                         }
@@ -361,9 +366,9 @@ impl Game {
                 }
                 EntityEvent::PlayerEffect { player, effect, amplifier, ticks } => {
                     if let Some(bot) = self.agents.by_id_mut(player)
-                        && bot.agent.mode.is_survival()
+                        && bot.agent.session.mode.is_survival()
                     {
-                        let damage = bot.agent.vitals.apply_effect(effect, amplifier, ticks);
+                        let damage = bot.agent.session.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
                             bot.agent.hurt(damage, "was killed by magic", DVec3::ZERO, &mut self.mobs.entities);
                         }
@@ -379,24 +384,24 @@ impl Game {
                     self.audio.play(Sound::Break(crate::audio::sounds::Material::Glass), Some(pos), 1.0, (0.9, 1.1));
                 }
                 EntityEvent::PlayerMagic { player: PlayerId::HOST, amount } => {
-                    if self.mode.is_survival() {
+                    if self.session.mode.is_survival() {
                         if amount > 0.0 {
                             self.damage_player(amount, "was killed by magic");
                         } else {
-                            self.vitals.health =
-                                (self.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
+                            self.session.vitals.health =
+                                (self.session.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
                         }
                     }
                 }
                 EntityEvent::PlayerMagic { player, amount } => {
                     if let Some(bot) = self.agents.by_id_mut(player)
-                        && bot.agent.mode.is_survival()
+                        && bot.agent.session.mode.is_survival()
                     {
                         if amount > 0.0 {
                             bot.agent.hurt(amount, "was killed by magic", DVec3::ZERO, &mut self.mobs.entities);
                         } else {
-                            bot.agent.vitals.health =
-                                (bot.agent.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
+                            bot.agent.session.vitals.health =
+                                (bot.agent.session.vitals.health - amount).min(crate::simulation::survival::MAX_HEALTH);
                         }
                     }
                 }
@@ -411,15 +416,15 @@ impl Game {
                     self.pearl_landed(owner, pos);
                 }
                 EntityEvent::Ignite { player: PlayerId::HOST, secs } => {
-                    if self.mode.is_survival() {
-                        self.vitals.ignite(secs);
+                    if self.session.mode.is_survival() {
+                        self.session.vitals.ignite(secs);
                     }
                 }
                 EntityEvent::Ignite { player, secs } => {
                     if let Some(bot) = self.agents.by_id_mut(player)
-                        && bot.agent.mode.is_survival()
+                        && bot.agent.session.mode.is_survival()
                     {
-                        bot.agent.vitals.ignite(secs);
+                        bot.agent.session.vitals.ignite(secs);
                     }
                 }
                 EntityEvent::IgniteBlock { cell } => {
@@ -498,29 +503,29 @@ impl Game {
                 }
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
-                    if self.mode.is_survival() && !self.vitals.is_dead() {
+                    if self.session.mode.is_survival() && !self.session.vitals.is_dead() {
                         let push = crate::simulation::survival::knockback_taken(
                             velocity.as_dvec3(),
-                            self.inventory.knockback_resistance(),
+                            self.session.inventory.knockback_resistance(),
                         );
-                        shove(&mut self.player.vel, push);
+                        shove(&mut self.session.player.vel, push);
                     }
                 }
                 EntityEvent::Shove { player, velocity } => {
                     if let Some(bot) = self.agents.by_id_mut(player)
-                        && bot.agent.mode.is_survival()
+                        && bot.agent.session.mode.is_survival()
                     {
                         let push = crate::simulation::survival::knockback_taken(
                             velocity.as_dvec3(),
-                            bot.agent.inventory.knockback_resistance(),
+                            bot.agent.session.inventory.knockback_resistance(),
                         );
-                        shove(&mut bot.agent.player.vel, push);
+                        shove(&mut bot.agent.session.player.vel, push);
                     }
                 }
                 EntityEvent::BuildGateway { pos } => self.world.build_gateway(pos),
                 EntityEvent::PearlGateway { owner, cell, pos } => {
                     if owner == PlayerId::HOST {
-                        if !self.vitals.is_dead() {
+                        if !self.session.vitals.is_dead() {
                             self.enter_gateway(cell);
                         }
                     } else {
@@ -618,22 +623,22 @@ impl Game {
             self.mobs.entities.prime_tnt(cell, short_fuse);
         }
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
-        let mid = self.player.pos + DVec3::Y * 0.9;
+        let mid = self.session.player.pos + DVec3::Y * 0.9;
         if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center))
             && let damage = self.difficulty.mob_damage(damage)
             && self.damage_player_armored(damage, cause) > 0.0
         {
             let away = (mid - center).normalize_or(DVec3::Y);
-            self.player.hurt_from(away);
+            self.session.player.hurt_from(away);
             let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;
-            self.player.vel +=
-                crate::simulation::survival::knockback_taken(push, self.inventory.knockback_resistance());
+            self.session.player.vel +=
+                crate::simulation::survival::knockback_taken(push, self.session.inventory.knockback_resistance());
         }
         if self.arrival.is_some() {
             return;
         }
         for bot in self.agents.players.values_mut().filter(|b| b.active) {
-            let mid = bot.agent.player.pos + DVec3::Y * 0.9;
+            let mid = bot.agent.session.player.pos + DVec3::Y * 0.9;
             if let Some((damage, impact)) = entity::explosion_damage(power, mid.distance(center)) {
                 let away = (mid - center).normalize_or(DVec3::Y);
                 let push = away * (impact as f64 * 14.0) + DVec3::Y * 4.0;

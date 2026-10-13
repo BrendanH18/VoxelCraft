@@ -3,6 +3,7 @@
 use crate::{item::Item, world::block::Block};
 
 pub mod compost;
+pub mod consumption;
 pub mod fishing;
 pub mod fuel;
 pub mod interaction;

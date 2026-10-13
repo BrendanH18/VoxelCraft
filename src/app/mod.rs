@@ -124,6 +124,7 @@ pub(crate) enum Container {
 }
 
 struct Game {
+    session: voxelcraft::session::PlayerSession,
     /// Exclusive claim on the open save (`session.lock`), released when the game closes.
     session_lock: Option<std::fs::File>,
     agents: agents::Agents,
@@ -135,9 +136,6 @@ struct Game {
     /// A controller player's state is swapped into the host's fields (see
     /// `Game::puppet`), and the container or bed they used, if any.
     puppet: bool,
-    /// Who host interaction code is acting for: the host, or a controller
-    /// player while `puppet` is set (thrown pearls remember their owner).
-    actor: crate::entity::PlayerId,
     puppet_used: Option<glam::IVec3>,
     puppet_merchant: Option<u64>,
     puppet_vehicle: Option<u32>,
@@ -146,7 +144,6 @@ struct Game {
     search: search::Search,
     renderer: Renderer,
     world: World,
-    player: Player,
     camera: voxelcraft::camera::CameraMode,
     scripted_ride: Option<String>,
     storage: Storage,
@@ -160,20 +157,15 @@ struct Game {
     jump_pressed: bool,
     mine_pressed: bool,
     action_cooldown: f64,
-    mode: GameMode,
     /// Shared world difficulty (old saves default to Normal).
     difficulty: Difficulty,
     /// World-wide one-life flag; locks difficulty to Hard.
     hardcore: bool,
     gamerules: GameRules,
-    inventory: Inventory,
     inventory_open: bool,
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
     /// crafting table. Emptied back into the inventory when it closes.
     craft: crate::crafting::Grid,
-    /// Inputs for the open enchanting table, anvil or smithing table;
-    /// emptied back into the inventory when the screen closes.
-    work: enchanting::WorkSlots,
     container: Container,
     recipe_book: recipe_book::RecipeBook,
     /// First visible row of the creative palette.
@@ -194,16 +186,10 @@ struct Game {
     day_time: f64,
     /// Completed daylight cycles for `/time query day`.
     day_count: i64,
-    /// Seconds spent asleep so far (the screen fades out), if in bed.
-    sleeping: Option<f32>,
-    /// Foot of the bed the player respawns at.
-    spawn_bed: Option<glam::IVec3>,
     /// Whether this player has already seen the end credits.
     credits_seen: bool,
     /// Seconds into the credits while they play.
     credits: Option<f32>,
-    /// Exact Overworld point set by `/spawnpoint`, replacing a bed spawn.
-    spawn_point: Option<glam::IVec3>,
     /// Shared Overworld spawn changed by `/setworldspawn`.
     world_spawn: glam::IVec3,
     weather: weather::Weather,
@@ -219,8 +205,6 @@ struct Game {
     show_debug: bool,
     /// Short message above the hotbar (item names, mode changes).
     popup: (String, Instant),
-    /// Health, air, hunger and fall tracking (survival).
-    vitals: Vitals,
     screenshot: Option<String>,
     screenshot_state: u32,
     open_trading: bool,
@@ -443,7 +427,11 @@ impl ApplicationHandler for App {
             WindowEvent::ModifiersChanged(m) => game.modifiers = m.state(),
             WindowEvent::Focused(false) => {
                 // Like Minecraft: switching away pauses (not in scripted runs).
-                if game.had_focus && game.settings_path.is_some() && game.menu.is_none() && !game.vitals.is_dead() {
+                if game.had_focus
+                    && game.settings_path.is_some()
+                    && game.menu.is_none()
+                    && !game.session.vitals.is_dead()
+                {
                     game.open_menu();
                 } else {
                     game.set_grab(false);
@@ -490,7 +478,7 @@ impl ApplicationHandler for App {
                     }
                     return;
                 }
-                if game.vitals.is_dead() {
+                if game.session.vitals.is_dead() {
                     if pressed && button == MouseButton::Left {
                         game.respawn();
                     }
@@ -553,7 +541,7 @@ impl ApplicationHandler for App {
             && !game.inventory_open
         {
             let k = MOUSE_SENSITIVITY * game.settings.sensitivity;
-            game.player.look(delta.0 as f32 * k, delta.1 as f32 * k);
+            game.session.player.look(delta.0 as f32 * k, delta.1 as f32 * k);
         }
     }
 
@@ -654,7 +642,7 @@ impl Game {
         }
         let blocked_when_dead =
             [KeyCode::KeyE, KeyCode::KeyG, KeyCode::KeyF, KeyCode::KeyQ, KeyCode::Space, KeyCode::Escape];
-        if self.vitals.is_dead() && blocked_when_dead.contains(&code) {
+        if self.session.vitals.is_dead() && blocked_when_dead.contains(&code) {
             return;
         }
         match code {
@@ -663,29 +651,31 @@ impl Game {
             KeyCode::KeyE => self.toggle_inventory(),
             KeyCode::KeyQ => self.drop_selected(self.modifiers.control_key()),
             // Hardcore deaths end in spectator for good; only `/gamemode` cheats out.
-            KeyCode::KeyG if self.lan.client.is_some() => {
-                self.lan_command(if self.mode.is_creative() { "/gamemode survival" } else { "/gamemode creative" })
-            }
+            KeyCode::KeyG if self.lan.client.is_some() => self.lan_command(if self.session.mode.is_creative() {
+                "/gamemode survival"
+            } else {
+                "/gamemode creative"
+            }),
             KeyCode::KeyG if !self.hardcore => {
-                let mode = match self.mode {
+                let mode = match self.session.mode {
                     GameMode::Survival => GameMode::Creative,
                     GameMode::Creative | GameMode::Adventure | GameMode::Spectator => GameMode::Survival,
                 };
                 self.set_mode(mode);
             }
-            KeyCode::KeyF if self.player.can_fly => {
-                self.player.flying = !self.player.flying;
-                self.player.vel = DVec3::ZERO;
+            KeyCode::KeyF if self.session.player.can_fly => {
+                self.session.player.flying = !self.session.player.flying;
+                self.session.player.vel = DVec3::ZERO;
             }
             // Waiting in bed for other players: jumping gets up.
-            KeyCode::Space if self.sleeping.is_some() => self.sleeping = None,
+            KeyCode::Space if self.session.sleeping.is_some() => self.session.sleeping = None,
             KeyCode::Space => {
                 self.jump_pressed = true;
                 // Double-tap space toggles flight, like Minecraft creative.
                 let now = Instant::now();
-                if self.player.can_fly && now - self.last_space < Duration::from_millis(280) {
-                    self.player.flying = !self.player.flying;
-                    self.player.vel.y = 0.0;
+                if self.session.player.can_fly && now - self.last_space < Duration::from_millis(280) {
+                    self.session.player.flying = !self.session.player.flying;
+                    self.session.player.vel.y = 0.0;
                 }
                 self.last_space = now;
             }
@@ -742,12 +732,13 @@ impl Game {
 
     fn select(&mut self, slot: usize) {
         if self.actions.select(slot) {
+            self.session.cancel_consumption();
             self.show_selected_name();
         }
     }
 
     fn show_selected_name(&mut self) {
-        if let Some(s) = self.inventory.get(self.actions.selected) {
+        if let Some(s) = self.session.inventory.get(self.actions.selected) {
             self.show_popup(s.display_name());
         }
     }
@@ -763,7 +754,7 @@ impl Game {
 
     /// Sneaking builds against containers and beds instead of using them.
     fn sneak_building(&self) -> bool {
-        if self.puppet { self.player.sneaking } else { self.modifiers.shift_key() }
+        if self.puppet { self.session.player.sneaking } else { self.modifiers.shift_key() }
     }
 
     /// The single entry point for hurting the player (falls, drowning,
@@ -774,14 +765,14 @@ impl Game {
     /// when absorbed by the 0.5 s hurt immunity that follows each hit (a
     /// stronger hit within it only deals the difference).
     pub(crate) fn damage_player(&mut self, amount: f32, cause: &str) -> f32 {
-        let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
-        let taken = self.vitals.damage(amount, cause, self.mode.invulnerable());
+        let amount = crate::enchant::protect(amount, &self.session.inventory.armor, cause);
+        let taken = self.session.vitals.damage(amount, cause, self.session.mode.invulnerable());
         if taken > 0.0 {
-            self.player.animation.hurt_direction = 0.0;
-            self.sleeping = None;
+            self.session.player.animation.hurt_direction = 0.0;
+            self.session.sleeping = None;
             self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.9, (0.92, 1.05));
         }
-        if taken > 0.0 && self.vitals.is_dead() {
+        if taken > 0.0 && self.session.vitals.is_dead() {
             self.on_death();
         }
         taken
@@ -790,10 +781,14 @@ impl Game {
     /// Hurts the player through their armor (mobs, arrows, blasts, lava),
     /// wearing it down when the hit lands.
     pub(crate) fn damage_player_armored(&mut self, amount: f32, cause: &str) -> f32 {
-        let reduced = survival::armor_reduce(amount, self.inventory.armor_points(), self.inventory.armor_toughness());
+        let reduced = survival::armor_reduce(
+            amount,
+            self.session.inventory.armor_points(),
+            self.session.inventory.armor_toughness(),
+        );
         let taken = self.damage_player(reduced, cause);
-        if taken > 0.0 && self.mode.is_survival() {
-            for item in self.inventory.wear_armor(amount) {
+        if taken > 0.0 && self.session.mode.is_survival() {
+            for item in self.session.inventory.wear_armor(amount) {
                 self.show_popup(&format!("{} broke", capitalize(item.name())));
                 let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
                 self.audio.play(sound, None, 0.8, (1.3, 1.5));
@@ -805,18 +800,18 @@ impl Game {
     /// Releases the mouse and stops all actions for the death screen. A
     /// survival player drops everything they carried.
     fn on_death(&mut self) {
-        self.vitals.effects.clear();
+        self.session.vitals.effects.clear();
         if self.gamerules.bool("showDeathMessages") {
-            log::info!("player {}", self.vitals.death.as_deref().unwrap_or("died"));
+            log::info!("player {}", self.session.vitals.death.as_deref().unwrap_or("died"));
         }
         if self.inventory_open {
             self.toggle_inventory();
         }
-        if self.mode.is_survival() && !self.gamerules.bool("keepInventory") {
+        if self.session.mode.is_survival() && !self.gamerules.bool("keepInventory") {
             self.drop_everything();
         }
         if self.hardcore {
-            self.vitals.respawn();
+            self.session.vitals.respawn();
             self.set_mode(GameMode::Spectator);
             self.show_popup("Game over - Spectator mode");
         }
@@ -827,6 +822,7 @@ impl Game {
         self.jump_pressed = false;
         self.mine_pressed = false;
         self.actions.reset();
+        self.session.cancel_consumption();
         if self.hardcore {
             self.set_grab(true);
         } else if self.gamerules.bool("doImmediateRespawn") {
@@ -840,37 +836,30 @@ impl Game {
             self.lan_command("respawn");
             return;
         }
-        let kept_xp = self.gamerules.bool("keepInventory").then_some(self.vitals.xp);
+        let kept_xp = self.gamerules.bool("keepInventory").then_some(self.session.vitals.xp);
         if self.dimension != Dimension::Overworld {
-            self.vitals.respawn();
+            self.session.vitals.respawn();
             if let Some(xp) = kept_xp {
-                self.vitals.xp = xp;
+                self.session.vitals.xp = xp;
             }
             self.switch_dimension(Dimension::Overworld, dimension::Arrival::Respawn);
             self.set_grab(true);
             return;
         }
-        self.player.pos = self.respawn_point();
-        self.player.vel = DVec3::ZERO;
-        self.player.flying = false;
-        self.vitals.respawn();
+        self.session.player.pos = self.respawn_point();
+        self.session.player.vel = DVec3::ZERO;
+        self.session.player.flying = false;
+        self.session.vitals.respawn();
         if let Some(xp) = kept_xp {
-            self.vitals.xp = xp;
+            self.session.vitals.xp = xp;
         }
         self.set_grab(true);
     }
 
     fn set_mode(&mut self, mode: GameMode) {
-        self.mode = mode;
-        self.player.can_fly = mode.can_fly();
-        self.player.noclip = mode == GameMode::Spectator;
-        if mode == GameMode::Spectator {
-            self.player.flying = true;
-        }
-        if !self.player.can_fly {
-            self.player.flying = false;
-        }
+        self.session.set_mode(mode);
         self.actions.reset();
+        self.session.cancel_consumption();
         self.show_popup(&format!("{} mode", capitalize(mode.name())));
     }
 
@@ -880,19 +869,19 @@ impl Game {
             self.lan_command(if self.inventory_open { "close" } else { "inventory" });
             return;
         }
-        if !self.inventory_open && !self.mode.can_interact() {
+        if !self.inventory_open && !self.session.mode.can_interact() {
             return;
         }
         if !self.inventory_open
             && self.container == Container::Inventory
-            && let Some(id) = self.player.vehicle
+            && let Some(id) = self.session.player.vehicle
             && self.mobs.entities.vehicle_slots(id).is_some_and(|slots| !slots.is_empty())
         {
             self.container = Container::Minecart(id);
         }
         self.inventory_open = !self.inventory_open;
         if self.inventory_open {
-            self.search.focused = self.mode == GameMode::Creative && self.container == Container::Inventory;
+            self.search.focused = self.session.mode == GameMode::Creative && self.container == Container::Inventory;
             self.search.selected = false;
             self.set_grab(false);
             if !self.puppet {
@@ -903,12 +892,13 @@ impl Game {
             self.jump_pressed = false;
             self.mine_pressed = false;
             self.actions.reset();
+            self.session.cancel_consumption();
         } else {
             if let Container::Chest(pos) = self.container {
                 self.chest_sound(pos, 0.8);
             }
             let table = self.take_work();
-            self.inventory.return_stacks(self.craft.take_all().into_iter().chain(table));
+            self.session.inventory.return_stacks(self.craft.take_all().into_iter().chain(table));
             self.craft = crate::crafting::Grid::new(2);
             self.container = Container::Inventory;
             self.set_grab(true);
@@ -948,7 +938,7 @@ impl Game {
     /// fuel slot only blaze powder (Java's slot rules).
     fn brewing_click(&mut self, pos: IVec3, slot: hud::SlotRef, right: bool) {
         use crate::world::brewing;
-        let cursor = &mut self.inventory.cursor;
+        let cursor = &mut self.session.inventory.cursor;
         let Some(b) = self.world.brewing_stand_mut(pos) else { return };
         match slot {
             hud::SlotRef::BrewBottle(i) => {
@@ -980,7 +970,7 @@ impl Game {
     /// A click on a furnace slot. Fuel only takes things that burn; the
     /// output can only be taken from.
     fn furnace_click(&mut self, pos: IVec3, slot: hud::SlotRef, right: bool) {
-        let cursor = &mut self.inventory.cursor;
+        let cursor = &mut self.session.inventory.cursor;
         let Some(f) = self.world.furnace_mut(pos) else { return };
         let before = f.output.map_or(0, |s| s.count);
         match slot {
@@ -1012,15 +1002,15 @@ impl Game {
     pub(super) fn award_furnace_xp(&mut self, pos: IVec3, before: u8) {
         let roll = self.mobs.entities.roll();
         let Some(xp) = self.world.furnace_mut(pos).and_then(|f| f.take_output_xp(before, roll)) else { return };
-        self.mobs.entities.spawn_xp(self.player.pos, xp);
+        self.mobs.entities.spawn_xp(self.session.player.pos, xp);
     }
 
     /// Clicking the crafting result: takes one craft onto the cursor (or
     /// onto a matching held stack, if it fits) and uses up the ingredients.
     fn take_craft_result(&mut self) {
         let Some(result) = self.craft.result() else { return };
-        match &mut self.inventory.cursor {
-            None => self.inventory.cursor = Some(result),
+        match &mut self.session.inventory.cursor {
+            None => self.session.inventory.cursor = Some(result),
             Some(c) if c.stacks_with(&result) && c.count as u16 + result.count as u16 <= c.max() as u16 => {
                 c.count += result.count
             }
@@ -1044,7 +1034,7 @@ impl Game {
                 self.audio.ui_click();
                 return;
             }
-            if self.inventory.cursor.is_some() && self.cursor_off_panel() {
+            if self.session.inventory.cursor.is_some() && self.cursor_off_panel() {
                 self.lan_command(if right { "toss_one" } else { "toss" });
                 return;
             }
@@ -1073,7 +1063,7 @@ impl Game {
         if slot.is_some() {
             self.audio.ui_click();
         }
-        if self.modifiers.shift_key() && self.inventory.cursor.is_none() {
+        if self.modifiers.shift_key() && self.session.inventory.cursor.is_none() {
             if let Some(slot) = slot {
                 self.quick_move(slot);
             }
@@ -1087,19 +1077,21 @@ impl Game {
     /// A left (or right) click on a slot of the open container screen.
     fn click_slot(&mut self, slot: hud::SlotRef, right: bool) {
         match Some(slot) {
-            Some(hud::SlotRef::Inventory(i)) => self.inventory.click(i, right),
+            Some(hud::SlotRef::Inventory(i)) => self.session.inventory.click(i, right),
             Some(hud::SlotRef::Craft(i)) => {
-                crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.inventory.cursor, right)
+                crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.session.inventory.cursor, right)
             }
             Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
             Some(hud::SlotRef::Trade(i)) => self.buy_trade(i),
-            Some(hud::SlotRef::Armor(piece)) => self.inventory.click_armor(piece, right, self.mode.is_creative()),
+            Some(hud::SlotRef::Armor(piece)) => {
+                self.session.inventory.click_armor(piece, right, self.session.mode.is_creative())
+            }
             Some(hud::SlotRef::Chest(i)) => {
                 if let Container::Minecart(id) = self.container {
-                    if self.inventory.cursor.is_none_or(|s| self.mobs.entities.vehicle_accepts(id, i, s.item))
+                    if self.session.inventory.cursor.is_none_or(|s| self.mobs.entities.vehicle_accepts(id, i, s.item))
                         && let Some(slot) = self.mobs.entities.vehicle_slots_mut(id).and_then(|slots| slots.get_mut(i))
                     {
-                        crate::inventory::click_slot(slot, &mut self.inventory.cursor, right);
+                        crate::inventory::click_slot(slot, &mut self.session.inventory.cursor, right);
                     }
                     return;
                 }
@@ -1107,7 +1099,7 @@ impl Game {
                     && i < self.world.container_slots(pos)
                     && let Some(chest) = self.world.chest_mut(pos)
                 {
-                    crate::inventory::click_slot(&mut chest.slots[i], &mut self.inventory.cursor, right);
+                    crate::inventory::click_slot(&mut chest.slots[i], &mut self.session.inventory.cursor, right);
                 }
             }
             Some(s @ (hud::SlotRef::FurnaceInput | hud::SlotRef::FurnaceFuel | hud::SlotRef::FurnaceOutput)) => {
@@ -1134,7 +1126,7 @@ impl Game {
             ) => self.smithing_click(s, right),
             Some(hud::SlotRef::Palette(item)) => {
                 // Creative palette: take a full stack, or trash the held one.
-                self.inventory.cursor = match self.inventory.cursor {
+                self.session.inventory.cursor = match self.session.inventory.cursor {
                     Some(_) => None,
                     None => Some(Stack::new(item, item.max_stack())),
                 };
@@ -1145,7 +1137,7 @@ impl Game {
 
     /// Scrolls the creative palette by whole rows.
     fn scroll_palette(&mut self, rows: i32) {
-        if self.mode.is_creative() {
+        if self.session.mode.is_creative() {
             let max = hud::palette_rows(&self.search.query).saturating_sub(hud::PALETTE_ROWS);
             self.creative_scroll = self.creative_scroll.saturating_add_signed(rows as isize).min(max);
         }
@@ -1157,9 +1149,12 @@ impl Game {
                 && let Some(id) = s.rider
             {
                 let alive = if id == crate::entity::PlayerId::HOST {
-                    !self.vitals.is_dead()
+                    !self.session.vitals.is_dead()
                 } else {
-                    self.agents.players.values().any(|b| b.active && b.agent.id == id && !b.agent.vitals.is_dead())
+                    self.agents
+                        .players
+                        .values()
+                        .any(|b| b.active && b.agent.session.id == id && !b.agent.session.vitals.is_dead())
                 };
                 if !alive {
                     s.rider = None;
@@ -1168,34 +1163,41 @@ impl Game {
         }
         self.mobs.entities.mount_input(
             crate::entity::PlayerId::HOST,
-            &self.player,
+            &self.session.player,
             input,
-            &self.inventory,
+            &self.session.inventory,
             self.actions.selected,
         );
         let mut wish = Vec::new();
-        if self.player.vehicle.is_none() && self.mode != GameMode::Spectator {
-            self.mobs.entities.push_carts(self.player.pos, self.player.collision_shape().half_width);
+        if self.session.player.vehicle.is_none() && self.session.mode != GameMode::Spectator {
+            self.mobs.entities.push_carts(self.session.player.pos, self.session.player.collision_shape().half_width);
         }
-        for bot in self.agents.players.values().filter(|b| b.active && b.agent.player.vehicle.is_none()) {
-            self.mobs.entities.push_carts(bot.agent.player.pos, bot.agent.player.collision_shape().half_width);
+        for bot in self.agents.players.values().filter(|b| b.active && b.agent.session.player.vehicle.is_none()) {
+            self.mobs
+                .entities
+                .push_carts(bot.agent.session.player.pos, bot.agent.session.player.collision_shape().half_width);
         }
-        if self.player.vehicle.is_some() {
-            wish.push((crate::entity::PlayerId::HOST, self.player.ride_push(input)));
+        if self.session.player.vehicle.is_some() {
+            wish.push((crate::entity::PlayerId::HOST, self.session.player.ride_push(input)));
         }
-        for bot in self.agents.players.values().filter(|b| b.active && b.agent.player.vehicle.is_some()) {
-            wish.push((bot.agent.id, bot.agent.player.ride_push(bot.agent.movement_input())));
+        for bot in self.agents.players.values().filter(|b| b.active && b.agent.session.player.vehicle.is_some()) {
+            wish.push((bot.agent.session.id, bot.agent.session.player.ride_push(bot.agent.movement_input())));
         }
         self.mobs.entities.tick_minecarts(&mut self.world, &wish);
-        seat_rider(&self.mobs.entities, &mut self.player, crate::entity::PlayerId::HOST);
-        let ids: Vec<_> =
-            self.agents.players.values().filter(|b| b.active).map(|b| (b.agent.id, b.agent.player.vehicle)).collect();
+        seat_rider(&self.mobs.entities, &mut self.session.player, crate::entity::PlayerId::HOST);
+        let ids: Vec<_> = self
+            .agents
+            .players
+            .values()
+            .filter(|b| b.active)
+            .map(|b| (b.agent.session.id, b.agent.session.player.vehicle))
+            .collect();
         for (id, vehicle) in ids {
             if vehicle.is_none() {
                 continue;
             }
-            if let Some(bot) = self.agents.players.values_mut().find(|b| b.agent.id == id) {
-                seat_rider(&self.mobs.entities, &mut bot.agent.player, id);
+            if let Some(bot) = self.agents.players.values_mut().find(|b| b.agent.session.id == id) {
+                seat_rider(&self.mobs.entities, &mut bot.agent.session.player, id);
             }
         }
     }
@@ -1219,15 +1221,15 @@ impl Game {
     }
 
     fn place_block(&mut self) {
-        if !self.mode.can_interact() {
+        if !self.session.mode.can_interact() {
             return;
         }
-        if let Some(id) = self.player.vehicle {
+        if let Some(id) = self.session.player.vehicle {
             if self.mobs.entities.boost_mount(
-                self.actor,
-                &mut self.inventory,
+                self.session.id,
+                &mut self.session.inventory,
                 self.actions.selected,
-                self.mode.is_creative(),
+                self.session.mode.is_creative(),
             ) {
                 return;
             }
@@ -1236,8 +1238,8 @@ impl Game {
             }
             return;
         }
-        let eye = self.player.eye();
-        let dir = self.player.forward().as_dvec3();
+        let eye = self.session.player.eye();
+        let dir = self.session.player.forward().as_dvec3();
         let reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
         if let Some(id) = self.mobs.entities.vehicle_container(eye, dir, reach)
             && (self.sneak_building() || self.mobs.entities.cart(id).is_some_and(|c| c.kind.boat().is_none()))
@@ -1247,13 +1249,13 @@ impl Game {
         }
         // Leads, name tags, food and taming come before mounting (as for agents).
         if voxelcraft::survival_items::use_animal_target(
-            &self.player,
-            &mut self.inventory,
+            &self.session.player,
+            &mut self.session.inventory,
             self.actions.selected,
-            self.mode.is_creative(),
+            self.session.mode.is_creative(),
             &self.world,
             &mut self.mobs.entities,
-            self.actor,
+            self.session.id,
         ) {
             return;
         }
@@ -1261,18 +1263,18 @@ impl Game {
             eye,
             dir,
             reach,
-            self.actor,
-            &mut self.inventory,
+            self.session.id,
+            &mut self.session.inventory,
             self.actions.selected,
-            self.mode.is_creative(),
+            self.session.mode.is_creative(),
         ) {
-            if let Some(id) = self.mobs.entities.mount_for_player(self.actor) {
-                self.player.vehicle = Some(id);
+            if let Some(id) = self.mobs.entities.mount_for_player(self.session.id) {
+                self.session.player.vehicle = Some(id);
             }
             return;
         }
-        if let Some(id) = self.mobs.entities.mount_cart(eye, dir, reach, self.actor) {
-            self.player.vehicle = Some(id);
+        if let Some(id) = self.mobs.entities.mount_cart(eye, dir, reach, self.session.id) {
+            self.session.player.vehicle = Some(id);
             return;
         }
         if let Some(held) = self.held_item()
@@ -1288,8 +1290,8 @@ impl Game {
             if self.mobs.entities.place_cart(&self.world, kind, cell).is_none() {
                 return;
             }
-            if self.mode.is_survival() {
-                self.inventory.take_one(self.actions.selected);
+            if self.session.mode.is_survival() {
+                self.session.inventory.take_one(self.actions.selected);
             }
             return;
         }
@@ -1300,13 +1302,13 @@ impl Game {
             return;
         }
         if voxelcraft::survival_items::use_mob(
-            &self.player,
-            &mut self.inventory,
+            &self.session.player,
+            &mut self.session.inventory,
             self.actions.selected,
-            self.mode.is_creative(),
+            self.session.mode.is_creative(),
             &self.world,
             &mut self.mobs.entities,
-            self.actor,
+            self.session.id,
         ) {
             return;
         }
@@ -1324,19 +1326,19 @@ impl Game {
         if self.insert_eye(pos) {
             return;
         }
-        if !self.sneak_building() && self.mode.can_build() && self.world.use_redstone(pos) {
+        if !self.sneak_building() && self.session.mode.can_build() && self.world.use_redstone(pos) {
             return;
         }
         self.world.touch_redstone_ore(pos);
         if !self.sneak_building()
-            && self.mode.can_build()
+            && self.session.mode.can_build()
             && voxelcraft::survival_items::use_composter(
                 &mut self.world,
                 &mut self.mobs.entities,
                 pos,
-                &mut self.inventory,
+                &mut self.session.inventory,
                 self.actions.selected,
-                self.mode.is_creative(),
+                self.session.mode.is_creative(),
             )
         {
             return;
@@ -1370,7 +1372,12 @@ impl Game {
             Some(Block::SMITHING_TABLE) => return self.open_smithing(pos),
             Some(Block::DRAGON_EGG) => return self.teleport_egg(pos),
             Some(b) if b.cake_bites().is_some() => {
-                voxelcraft::survival_items::bite_cake(&mut self.world, pos, &mut self.vitals, self.mode.is_creative());
+                voxelcraft::survival_items::bite_cake(
+                    &mut self.world,
+                    pos,
+                    &mut self.session.vitals,
+                    self.session.mode.is_creative(),
+                );
                 return;
             }
             Some(b) if b.is_bed() => return self.use_bed(pos),
@@ -1384,12 +1391,12 @@ impl Game {
                 return;
             }
             Some(b) if b.is_door() || b.is_gate() => {
-                self.toggle_door(pos, self.player.forward());
+                self.toggle_door(pos, self.session.player.forward());
                 return;
             }
             _ => {}
         }
-        if !self.mode.can_build() {
+        if !self.session.mode.can_build() {
             return;
         }
         if self.strike_flint(pos, normal) || self.use_item_on(pos, normal) {
@@ -1402,7 +1409,7 @@ impl Game {
         }
         let placed = match self.held_item() {
             Some(i) if i.block() == Some(voxelcraft::world::redstone_blocks::IRON_DOOR) => {
-                Some(self.world.place_iron_door(at, crate::world::block::Facing::toward(self.player.forward())))
+                Some(self.world.place_iron_door(at, crate::world::block::Facing::toward(self.session.player.forward())))
             }
             Some(i) if i.bed_color().is_some() => Some(self.place_bed(at, i.bed_color().unwrap())),
             Some(i)
@@ -1417,23 +1424,25 @@ impl Game {
             _ => None,
         };
         if let Some(placed) = placed {
-            if placed && self.mode.is_survival() {
-                self.inventory.take_one(self.actions.selected);
+            if placed && self.session.mode.is_survival() {
+                self.session.inventory.take_one(self.actions.selected);
             }
             return;
         }
-        let Some(block) = self.inventory.get(self.actions.selected).and_then(|s| s.item.places()) else { return };
+        let Some(block) = self.session.inventory.get(self.actions.selected).and_then(|s| s.item.places()) else {
+            return;
+        };
         // A slab on top of the same slab makes the full block.
         if block.is_slab()
             && normal == IVec3::Y
             && self.world.get_block(pos) == Some(block)
             && let Some(full) = block.slab_base()
         {
-            if !self.player.intersects_block(pos) {
+            if !self.session.player.intersects_block(pos) {
                 self.world.set_block(pos, full);
                 self.audio.block_place(full, pos);
-                if self.mode.is_survival() {
-                    self.inventory.take_one(self.actions.selected);
+                if self.session.mode.is_survival() {
+                    self.session.inventory.take_one(self.actions.selected);
                 }
             }
             return;
@@ -1441,8 +1450,8 @@ impl Game {
         // Furnaces and chests face whoever places them.
         let block = crate::world::overworld_blocks::placed(block, normal).unwrap_or(block);
         let block = crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal)
-            .with_facing(crate::world::block::Facing::toward(self.player.forward()));
-        let block = voxelcraft::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
+            .with_facing(crate::world::block::Facing::toward(self.session.player.forward()));
+        let block = voxelcraft::world::redstone_blocks::placed_with_look(block, normal, self.session.player.forward());
         let roll = crate::world::noise::hash3(at.x, at.y, at.z, self.started.elapsed().subsec_nanos() as u64);
         let block = crate::world::nether_biome_blocks::placed_vine(block, roll);
         if block.is_water() && self.dimension == Dimension::Nether {
@@ -1461,15 +1470,15 @@ impl Game {
         if free
             && supported
             && self.world.redstone_supported(at, block)
-            && !(block.is_solid() && self.player.intersects_block(at))
+            && !(block.is_solid() && self.session.player.intersects_block(at))
             && {
                 self.world.before_overworld_place(at, block);
                 self.world.set_block(at, block)
             }
         {
             self.audio.block_place(block, at);
-            if self.mode.is_survival() {
-                self.inventory.take_one(self.actions.selected);
+            if self.session.mode.is_survival() {
+                self.session.inventory.take_one(self.actions.selected);
             }
         }
     }
@@ -1484,16 +1493,18 @@ impl Game {
             return;
         }
         let item = farming::picked_item(b);
-        match self.inventory.find(item) {
+        match self.session.inventory.find(item) {
             Some(i) if i < HOTBAR_SLOTS => self.select(i),
             Some(i) => {
                 self.actions.reset();
-                self.inventory.slots.swap(i, self.actions.selected);
+                self.session.cancel_consumption();
+                self.session.inventory.slots.swap(i, self.actions.selected);
                 self.show_selected_name();
             }
-            None if self.mode == GameMode::Creative => {
+            None if self.session.mode == GameMode::Creative => {
                 self.actions.reset();
-                self.inventory.slots[self.actions.selected] = Some(Stack::new(item, item.max_stack()));
+                self.session.cancel_consumption();
+                self.session.inventory.slots[self.actions.selected] = Some(Stack::new(item, item.max_stack()));
                 self.show_selected_name();
             }
             None => {}
@@ -1502,11 +1513,13 @@ impl Game {
 
     /// Applies `--place` edits (once).
     fn apply_placements(&mut self) {
+        let mut failed_placements = 0;
         for &(mut pos, block) in &self.place {
             if pos.y == i32::MIN {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
             }
             if !self.world.set_block(pos, block) {
+                failed_placements += 1;
                 log::warn!("--place {pos} {}: chunk not loaded", block.name());
             }
         }
@@ -1520,10 +1533,11 @@ impl Game {
         let drops = std::mem::take(&mut self.drop);
         for (i, &(item, count)) in drops.iter().enumerate() {
             let turn = (i as f64 - (drops.len() as f64 - 1.0) / 2.0) * 0.22;
-            let dir = glam::DQuat::from_rotation_y(turn) * self.player.forward().as_dvec3();
-            self.mobs.entities.throw(Stack::new(item, count), self.player.eye(), dir);
+            let dir = glam::DQuat::from_rotation_y(turn) * self.session.player.forward().as_dvec3();
+            self.mobs.entities.throw(Stack::new(item, count), self.session.player.eye(), dir);
         }
-        let ahead = self.player.pos + self.player.forward().as_dvec3().with_y(0.0).normalize_or_zero() * 4.0;
+        let ahead =
+            self.session.player.pos + self.session.player.forward().as_dvec3().with_y(0.0).normalize_or_zero() * 4.0;
         for points in std::mem::take(&mut self.orbs) {
             self.mobs.entities.spawn_xp(ahead + DVec3::Y, points);
         }
@@ -1555,8 +1569,8 @@ impl Game {
                 vehicle = Some(cart.id);
             }
             if let Some(id) = vehicle {
-                self.player.vehicle = Some(id);
-                seat_rider(&self.mobs.entities, &mut self.player, crate::entity::PlayerId::HOST);
+                self.session.player.vehicle = Some(id);
+                seat_rider(&self.mobs.entities, &mut self.session.player, crate::entity::PlayerId::HOST);
                 if self.inventory_open {
                     self.container = Container::Minecart(id);
                 }
@@ -1568,6 +1582,7 @@ impl Game {
         if let Some(screen) = self.virtual_pad.take() {
             self.virtual_pad(&screen);
         }
+        log::info!("scripted scene ready: {} placements, {failed_placements} failures", self.place.len());
     }
 
     /// Drives `--screenshot`: once streaming settles, capture a frame and
@@ -1580,8 +1595,8 @@ impl Game {
             && self.mobs.waited()
             && let Some(id) = self.mobs.entities.target_merchant(
                 &self.world,
-                self.player.eye(),
-                self.player.forward().as_dvec3(),
+                self.session.player.eye(),
+                self.session.player.forward().as_dvec3(),
                 REACH,
             )
             && self
@@ -1663,7 +1678,7 @@ impl Game {
             );
             return true;
         }
-        self.player.yaw += std::f32::consts::TAU / FRAMES as f32;
+        self.session.player.yaw += std::f32::consts::TAU / FRAMES as f32;
         self.frame_started = Some(Instant::now());
         false
     }
@@ -1676,8 +1691,8 @@ impl Game {
             && !self.console.open
             && self.mouse_grabbed
             && !self.inventory_open
-            && !self.vitals.is_dead()
-            && self.sleeping.is_none()
+            && !self.session.vitals.is_dead()
+            && self.session.sleeping.is_none()
             && !arriving
         {
             MoveInput {
@@ -1687,7 +1702,7 @@ impl Game {
                 descend: held(KeyCode::ShiftLeft),
                 // Too hungry to sprint at 6 food or less (survival).
                 sprint: (held(KeyCode::ControlLeft) || held(KeyCode::KeyR))
-                    && (self.mode.invulnerable() || self.vitals.hunger.can_sprint()),
+                    && (self.session.mode.invulnerable() || self.session.vitals.hunger.can_sprint()),
             }
         } else {
             MoveInput::default()
@@ -1704,7 +1719,7 @@ impl Game {
             }
             return;
         }
-        if !self.mode.can_interact() {
+        if !self.session.mode.can_interact() {
             return;
         }
         self.left_held = pressed;
@@ -1716,7 +1731,7 @@ impl Game {
             self.release_attack();
         } else if self.attack() {
             self.actions.breaking = None;
-        } else if self.mode == GameMode::Creative {
+        } else if self.session.mode == GameMode::Creative {
             if let Some((p, _)) = self.target() {
                 self.world.strike_note(p);
             }
@@ -1740,7 +1755,7 @@ impl Game {
             }
             return;
         }
-        if !self.mode.can_interact() {
+        if !self.session.mode.can_interact() {
             return;
         }
         self.right_held = pressed;
@@ -1751,6 +1766,7 @@ impl Game {
             self.place_block();
             self.action_cooldown = ACTION_REPEAT;
         } else if !pressed {
+            self.session.cancel_consumption();
             self.actions.eat_timer = 0.0;
             self.release_bow();
         }
@@ -1761,7 +1777,7 @@ impl Game {
     fn act(&mut self, acting: bool, dt: f64) {
         let mine_pressed = std::mem::take(&mut self.mine_pressed);
         self.action_cooldown -= dt;
-        if acting && (self.left_held || mine_pressed) && self.mode.is_survival() {
+        if acting && (self.left_held || mine_pressed) && self.session.mode.is_survival() {
             if self.action_cooldown <= 0.0 {
                 self.continue_breaking(dt);
             }
@@ -1814,9 +1830,9 @@ impl Game {
         if self.lan.client.is_none() {
             self.update_arrival();
         }
-        let viewers: Vec<DVec3> = self.followed().map(|(_, b)| b.agent.player.pos).collect();
+        let viewers: Vec<DVec3> = self.followed().map(|(_, b)| b.agent.session.player.pos).collect();
         self.world.set_viewers(&viewers);
-        self.world.update_players(self.player.pos, &self.agents.positions());
+        self.world.update_players(self.session.player.pos, &self.agents.positions());
         if self.lan.client.is_none()
             && !self.placed
             && self.screenshot.is_none()
@@ -1838,33 +1854,36 @@ impl Game {
             }
         }
         if paused {
-            self.previous_eye = self.player.eye();
+            self.previous_eye = self.session.player.eye();
             self.mobs.entities.snapshot_positions();
             self.world.snapshot_falling_positions();
         }
         let input = self.movement_input(self.arrival.is_some());
-        let rain_here = weather::rain_at(&self.world, &self.weather, self.player.pos);
+        let rain_here = weather::rain_at(&self.world, &self.weather, self.session.player.pos);
         // `followed()`, spelled out so `audio` can be borrowed mutably.
         let others: Vec<_> = (self.split.follow.iter())
             .filter_map(|name| self.agents.players.get(name))
             .filter(|b| b.active)
             .take(split::MAX_VIEWS - 1)
-            .map(|b| (&b.agent.player, weather::rain_at(&self.world, &self.weather, b.agent.player.pos)))
+            .map(|b| {
+                (&b.agent.session.player, weather::rain_at(&self.world, &self.weather, b.agent.session.player.pos))
+            })
             .collect();
-        let dragon_music = self.mobs.entities.fight.as_ref().is_some_and(|f| f.boss_bar(self.player.pos).is_some());
+        let dragon_music =
+            self.mobs.entities.fight.as_ref().is_some_and(|f| f.boss_bar(self.session.player.pos).is_some());
         self.audio.update_music(
-            &self.player,
+            &self.session.player,
             &self.world,
-            self.mode == GameMode::Creative,
+            self.session.mode == GameMode::Creative,
             dragon_music,
             self.credits.is_some(),
         );
-        self.audio.update(&self.player, &self.world, rain_here, &others, dt);
+        self.audio.update(&self.session.player, &self.world, rain_here, &others, dt);
         self.agent_sounds();
         let alpha = if paused { 1.0 } else { self.clock.alpha() };
-        let eye = crate::simulation::interpolated_eye(self.previous_eye, self.player.eye(), alpha);
+        let eye = crate::simulation::interpolated_eye(self.previous_eye, self.session.player.eye(), alpha);
         self.rendered_eye = eye;
-        let (camera, forward) = self.camera.view(&self.world, eye, self.player.forward());
+        let (camera, forward) = self.camera.view(&self.world, eye, self.session.player.forward());
         self.hand.update(dt as f32, self.held_item());
         self.animate_hands(dt as f32, alpha, paused);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
@@ -1908,20 +1927,28 @@ impl Game {
             now,
         };
         let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } = self.fog(&scene, camera);
-        let dial = self.dial_of(&self.player);
+        let dial = self.dial_of(&self.session.player);
         let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)> = self
             .agents
             .players
             .iter()
-            .filter(|(_, b)| b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0))
+            .filter(|(_, b)| {
+                b.active && (!b.agent.session.vitals.is_dead() || b.agent.session.vitals.since_damage() < 1.0)
+            })
             .map(|(name, b)| {
-                let pose = dial.at(b.agent.player.yaw, b.agent.player.pos.x, b.agent.player.pos.z);
+                let pose =
+                    dial.at(b.agent.session.player.yaw, b.agent.session.player.pos.x, b.agent.session.player.pos.z);
                 (
-                    &b.agent.player,
-                    b.agent.previous_pos.lerp(b.agent.player.pos, alpha),
+                    &b.agent.session.player,
+                    b.agent.previous_pos.lerp(b.agent.session.player.pos, alpha),
                     Self::stamp_look(
                         pose,
-                        b.hand.appearance(&b.agent.vitals, b.agent.eating(), alpha, b.agent.inventory.armor),
+                        b.hand.appearance(
+                            &b.agent.session.vitals,
+                            b.agent.eating(),
+                            alpha,
+                            b.agent.session.inventory.armor,
+                        ),
                     ),
                     name.as_str(),
                 )
@@ -1931,8 +1958,8 @@ impl Game {
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         if !self.camera.first_person() {
             crate::entity::model::build_player(
-                &self.player,
-                eye - (self.player.eye() - self.player.pos),
+                &self.session.player,
+                eye - (self.session.player.eye() - self.session.player.pos),
                 camera,
                 (
                     crate::entity::sky_light(&self.world, eye),
@@ -1942,17 +1969,17 @@ impl Game {
                 Self::stamp_look(
                     dial,
                     self.hand.appearance(
-                        &self.vitals,
+                        &self.session.vitals,
                         (self.actions.eat_timer / EAT_TIME) as f32,
                         alpha,
-                        self.inventory.armor,
+                        self.session.inventory.armor,
                     ),
                 ),
                 verts,
             );
         }
         self.renderer.set_entities(verts);
-        self.renderer.set_particles(&self.particles.pool, &self.world, camera, self.player.forward(), alpha);
+        self.renderer.set_particles(&self.particles.pool, &self.world, camera, self.session.player.forward(), alpha);
         weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
         let viewports = self.viewports();
@@ -1960,8 +1987,8 @@ impl Game {
             camera,
             forward,
             view_effect: voxelcraft::camera::view_effect(
-                &self.player,
-                &self.vitals,
+                &self.session.player,
+                &self.session.vitals,
                 alpha as f32,
                 self.settings.view_bobbing,
             ),
@@ -1984,19 +2011,22 @@ impl Game {
             }),
             cracks: self.cracks_seen_from(eye),
             block_models: self.block_models(alpha),
-            hand: (self.camera.first_person() && self.show_hud && !self.vitals.is_dead() && self.sleeping.is_none())
-                .then(|| {
-                    let eye = self.player.eye();
-                    let eating = (self.actions.eat_timer / EAT_TIME) as f32;
-                    Self::stamp_hand(
-                        dial,
-                        self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye)),
-                    )
-                }),
+            hand: (self.camera.first_person()
+                && self.show_hud
+                && !self.session.vitals.is_dead()
+                && self.session.sleeping.is_none())
+            .then(|| {
+                let eye = self.session.player.eye();
+                let eating = (self.actions.eat_timer / EAT_TIME) as f32;
+                Self::stamp_hand(
+                    dial,
+                    self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye)),
+                )
+            }),
             rain: scene.rain,
-            night_vision: self.vitals.effects.night_vision(scene.time),
+            night_vision: self.session.vitals.effects.night_vision(scene.time),
             ui: if self.show_hud
-                || self.vitals.is_dead()
+                || self.session.vitals.is_dead()
                 || self.menu.is_some()
                 || self.console.open
                 || self.credits.is_some()

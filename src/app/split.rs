@@ -141,9 +141,11 @@ impl Game {
                     Event::Bucket(effect) => super::bucket::feedback(&mut self.audio, effect),
                     Event::Chew => {
                         let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
-                        self.audio.play(sound, Some(bot.agent.player.eye()), 0.7, (1.4, 1.7));
+                        self.audio.play(sound, Some(bot.agent.session.player.eye()), 0.7, (1.4, 1.7));
                     }
-                    Event::Xp(chime) => super::items::xp_sounds(&mut self.audio, Some(bot.agent.player.eye()), chime),
+                    Event::Xp(chime) => {
+                        super::items::xp_sounds(&mut self.audio, Some(bot.agent.session.player.eye()), chime)
+                    }
                     Event::EyeThrown(from) => super::items::eye_thrown_sound(&mut self.audio, from),
                     Event::FrameFilled(pos, opened) => super::items::frame_filled_sounds(&mut self.audio, pos, opened),
                 }
@@ -171,8 +173,8 @@ impl Game {
     /// Draws every followed player's view after the host's.
     pub(super) fn draw_followers(&mut self, frame: &mut Frame, scene: &Scene, viewports: &[Viewport]) {
         let names: Vec<String> = self.followed().map(|(n, _)| n.clone()).collect();
-        let host_feet = self.rendered_eye - (self.player.eye() - self.player.pos);
-        let host_dial = self.dial_of(&self.player);
+        let host_feet = self.rendered_eye - (self.session.player.eye() - self.session.player.pos);
+        let host_dial = self.dial_of(&self.session.player);
         for (name, &vp) in names.iter().zip(&viewports[1..]) {
             let bot = &self.agents.players[name];
             let a = &bot.agent;
@@ -195,30 +197,42 @@ impl Game {
             // Everyone else is visible from this view, the host included.
             let mut others: Vec<(&crate::player::Player, DVec3, crate::entity::model::PlayerAppearance, &str)> =
                 Vec::new();
-            if !self.vitals.is_dead() || self.vitals.since_damage() < 1.0 {
+            if !self.session.vitals.is_dead() || self.session.vitals.since_damage() < 1.0 {
                 others.push((
-                    &self.player,
+                    &self.session.player,
                     host_feet,
                     Self::stamp_look(
                         host_dial,
                         self.hand.appearance(
-                            &self.vitals,
+                            &self.session.vitals,
                             (self.actions.eat_timer / super::EAT_TIME) as f32,
                             scene.alpha,
-                            self.inventory.armor,
+                            self.session.inventory.armor,
                         ),
                     ),
                     self.lan.profile.as_str(),
                 ));
             }
             for (other, b) in &self.agents.players {
-                if other != name && b.active && (!b.agent.vitals.is_dead() || b.agent.vitals.since_damage() < 1.0) {
+                if other != name
+                    && b.active
+                    && (!b.agent.session.vitals.is_dead() || b.agent.session.vitals.since_damage() < 1.0)
+                {
                     others.push((
-                        &b.agent.player,
-                        b.agent.previous_pos.lerp(b.agent.player.pos, scene.alpha),
+                        &b.agent.session.player,
+                        b.agent.previous_pos.lerp(b.agent.session.player.pos, scene.alpha),
                         Self::stamp_look(
-                            host_dial.at(b.agent.player.yaw, b.agent.player.pos.x, b.agent.player.pos.z),
-                            b.hand.appearance(&b.agent.vitals, b.agent.eating(), scene.alpha, b.agent.inventory.armor),
+                            host_dial.at(
+                                b.agent.session.player.yaw,
+                                b.agent.session.player.pos.x,
+                                b.agent.session.player.pos.z,
+                            ),
+                            b.hand.appearance(
+                                &b.agent.session.vitals,
+                                b.agent.eating(),
+                                scene.alpha,
+                                b.agent.session.inventory.armor,
+                            ),
                         ),
                         other.as_str(),
                     ));

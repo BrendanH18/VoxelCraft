@@ -47,10 +47,10 @@ impl Game {
             return false;
         }
         if item == Item::SHEARS && block == Block::PUMPKIN {
-            let facing = crate::world::block::Facing::toward(self.player.forward());
+            let facing = crate::world::block::Facing::toward(self.session.player.forward());
             if self.world.set_block(pos, Block::CARVED_PUMPKIN.with_facing(facing)) {
-                if self.mode.is_survival() {
-                    self.inventory.wear(self.actions.selected, 1);
+                if self.session.mode.is_survival() {
+                    self.session.inventory.wear(self.actions.selected, 1);
                 }
                 self.mobs.entities.drop_from_block(crate::inventory::Stack::new(Item::PUMPKIN_SEEDS, 4), pos);
                 self.audio.play(Sound::Break(Material::Wood), Some(at), 0.8, (0.9, 1.1));
@@ -59,8 +59,8 @@ impl Game {
         }
         if item == Item::BONE_MEAL && self.world.apply_bone_meal(pos) {
             self.audio.play(Sound::Place(Material::Grass), Some(at), 0.8, (1.2, 1.4));
-            if self.mode.is_survival() {
-                self.inventory.take_one(self.actions.selected);
+            if self.session.mode.is_survival() {
+                self.session.inventory.take_one(self.actions.selected);
             }
             return true;
         }
@@ -73,7 +73,7 @@ impl Game {
         if fallen <= 0.5 {
             return;
         }
-        let below = (self.player.pos - DVec3::Y * 0.1).floor().as_ivec3();
+        let below = (self.session.player.pos - DVec3::Y * 0.1).floor().as_ivec3();
         if !self.world.get_block(below).is_some_and(Block::is_farmland) {
             return;
         }

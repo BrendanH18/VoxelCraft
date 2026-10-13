@@ -9,8 +9,8 @@ impl Game {
         }
         let Some(id) = self.mobs.entities.target_merchant(
             &self.world,
-            self.player.eye(),
-            self.player.forward().as_dvec3(),
+            self.session.player.eye(),
+            self.session.player.forward().as_dvec3(),
             super::REACH,
         ) else {
             return false;
@@ -34,12 +34,12 @@ impl Game {
     }
     pub(super) fn buy_trade(&mut self, index: usize) {
         let Container::Trading(id) = self.container else { return };
-        if !self.mobs.entities.merchant_in_reach(id, self.player.eye()) {
+        if !self.mobs.entities.merchant_in_reach(id, self.session.player.eye()) {
             return;
         }
-        match self.mobs.entities.trade_for(id, index, &mut self.inventory, self.actor) {
+        match self.mobs.entities.trade_for(id, index, &mut self.session.inventory, self.session.id) {
             Ok(xp) => {
-                self.mobs.entities.spawn_xp(self.player.pos, xp);
+                self.mobs.entities.spawn_xp(self.session.player.pos, xp);
                 self.audio.ui_click();
             }
             Err(message) => self.show_popup(message),
@@ -60,9 +60,9 @@ impl Game {
             let Some(o) = o else { continue };
             let x = px + 8.0 + (i % 2) as f32 * 80.0;
             let y = py + 22.0 + (i / 2) as f32 * 20.0;
-            draw_stack(ui, x, y, v.priced_for(*o, self.actor), true, self.dial_of(&self.player));
+            draw_stack(ui, x, y, v.priced_for(*o, self.session.id), true, self.dial_of(&self.session.player));
             if let Some(s) = o.second {
-                draw_stack(ui, x + 20.0, y, s, true, self.dial_of(&self.player));
+                draw_stack(ui, x + 20.0, y, s, true, self.dial_of(&self.session.player));
             }
             ui.text_flat(
                 x + 40.0,
@@ -92,8 +92,8 @@ impl Game {
             ui.text(x + 100.0, y, v.level_name(), WHITE);
         }
         if let Some(o) = v.offers.get(index).copied().flatten() {
-            let dial = self.dial_of(&self.player);
-            draw_stack(ui, x, y + 12.0, v.priced_for(o, self.actor), true, dial);
+            let dial = self.dial_of(&self.session.player);
+            draw_stack(ui, x, y + 12.0, v.priced_for(o, self.session.id), true, dial);
             ui.text(x + 22.0, y + 16.0, o.cost.item.name(), WHITE);
             let sx = x + 22.0 + Ui::text_width(o.cost.item.name()) + 10.0;
             if let Some(s) = o.second {

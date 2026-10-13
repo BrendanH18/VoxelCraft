@@ -24,7 +24,7 @@ impl Game {
     /// Places a bed with its foot at `at` and its head one block further
     /// along the way the player faces. Returns whether it went down.
     pub(super) fn place_bed(&mut self, at: IVec3, color: crate::color::DyeColor) -> bool {
-        let f = self.player.forward();
+        let f = self.session.player.forward();
         let dir = if f.x.abs() > f.z.abs() {
             IVec3::new(f.x.signum() as i32, 0, 0)
         } else {
@@ -34,7 +34,7 @@ impl Game {
         let fits = |p: IVec3| {
             self.world.get_block(p).is_some_and(|b| b.is_replaceable())
                 && self.world.get_block(p - IVec3::Y).is_some_and(|b| b.is_opaque())
-                && !self.player.intersects_block(p)
+                && !self.session.player.intersects_block(p)
         };
         if !fits(at) || !fits(head) {
             return false;
@@ -49,21 +49,22 @@ impl Game {
     /// After one half of a bed at `pos` broke, removes the other half. Only
     /// the foot drops the bed, so breaking the head spills the foot's drop.
     pub(super) fn break_bed_partner(&mut self, pos: IVec3, half: Block) {
-        self.world.break_bed_partner(pos, half, self.mode.is_survival() && self.gamerules.bool("doTileDrops"));
+        self.world.break_bed_partner(pos, half, self.session.mode.is_survival() && self.gamerules.bool("doTileDrops"));
     }
 
     /// Right-click on a bed: sets the respawn point and, at night or in the
     /// rain with no monsters about, goes to sleep.
     pub(super) fn use_bed(&mut self, pos: IVec3) {
         let Some(at) = self.bed_rest(pos) else { return };
-        self.player.pos = at;
-        self.player.vel = DVec3::ZERO;
-        self.player.flying = false;
+        self.session.player.pos = at;
+        self.session.player.vel = DVec3::ZERO;
+        self.session.player.flying = false;
         self.keys.clear();
         self.left_held = false;
         self.right_held = false;
         self.actions.reset();
-        self.sleeping = Some(0.0);
+        self.session.cancel_consumption();
+        self.session.sleeping = Some(0.0);
         self.audio.play(Sound::Step(Material::Snow), None, 0.6, (0.8, 0.9));
     }
 
@@ -75,9 +76,9 @@ impl Game {
             return None;
         }
         let (foot, rest) = self.bed_rules(pos)?;
-        if self.spawn_bed != Some(foot) {
-            self.spawn_bed = Some(foot);
-            self.spawn_point = None;
+        if self.session.spawn_bed != Some(foot) {
+            self.session.spawn_bed = Some(foot);
+            self.session.spawn_point = None;
             self.show_popup("Respawn point set");
         }
         rest.map_err(|e| self.show_popup(e)).ok()
@@ -91,8 +92,13 @@ impl Game {
         let at = DVec3::new(centre.x, foot.y as f64 + Block::BED_FOOT.height(), centre.z);
         let monsters =
             || self.mobs.entities.mobs.iter().any(|m| m.kind.is_hostile() && m.pos.distance(centre) < MONSTER_RANGE);
-        let host = self.sleeping.is_some().then_some(self.player.pos);
-        let agents = self.agents.players.values().filter(|b| b.agent.sleeping.is_some()).map(|b| b.agent.player.pos);
+        let host = self.session.sleeping.is_some().then_some(self.session.player.pos);
+        let agents = self
+            .agents
+            .players
+            .values()
+            .filter(|b| b.agent.session.sleeping.is_some())
+            .map(|b| b.agent.session.player.pos);
         let occupied = || host.into_iter().chain(agents).any(|p| p.distance(at) < 0.5);
         let rest = if !can_sleep(self.day_time, self.weather.raining) {
             Err("You can only sleep at night")
@@ -118,15 +124,15 @@ impl Game {
         }
         let (foot, rest) = self.bed_rules(pos).ok_or("not looking at a bed")?;
         let agent = &mut self.agents.players.get_mut(name).unwrap().agent;
-        agent.spawn_bed = Some(foot);
-        agent.spawn_point = None;
+        agent.session.spawn_bed = Some(foot);
+        agent.session.spawn_point = None;
         let at = rest?;
-        agent.player.pos = at;
-        agent.player.vel = DVec3::ZERO;
-        agent.player.flying = false;
+        agent.session.player.pos = at;
+        agent.session.player.vel = DVec3::ZERO;
+        agent.session.player.flying = false;
         agent.previous_pos = at;
         agent.remaining = 0;
-        agent.sleeping = Some(0.0);
+        agent.session.sleeping = Some(0.0);
         self.audio.play(Sound::Step(Material::Snow), Some(at), 0.6, (0.8, 0.9));
         Ok(())
     }
@@ -135,31 +141,32 @@ impl Game {
     /// agent or controller player) has faded out in bed, it's morning and
     /// the rain has stopped, as in Java with everyone needing to sleep.
     pub(super) fn update_sleep(&mut self, dt: f64) {
-        if let Some(t) = &mut self.sleeping {
+        if let Some(t) = &mut self.session.sleeping {
             *t = (*t + dt as f32).min(SLEEP_TIME);
         }
         for bot in self.agents.players.values_mut() {
-            if let Some(t) = &mut bot.agent.sleeping {
+            if let Some(t) = &mut bot.agent.session.sleeping {
                 *t = (*t + dt as f32).min(SLEEP_TIME);
             }
         }
-        let anyone = self.sleeping.is_some() || self.agents.players.values().any(|b| b.agent.sleeping.is_some());
+        let anyone =
+            self.session.sleeping.is_some() || self.agents.players.values().any(|b| b.agent.session.sleeping.is_some());
         let (asleep, players) = self.sleep_count();
         let needed = required_sleepers(players, self.gamerules.int("playersSleepingPercentage"));
         if !anyone || asleep < needed {
             return;
         }
         if (0.5..0.96).contains(&self.day_time) {
-            if self.sleeping.is_some() {
-                self.mobs.entities.cat_morning_gifts(self.actor, self.player.pos);
+            if self.session.sleeping.is_some() {
+                self.mobs.entities.cat_morning_gifts(self.session.id, self.session.player.pos);
             }
-            for bot in self.agents.players.values().filter(|b| b.agent.sleeping.is_some()) {
-                self.mobs.entities.cat_morning_gifts(bot.id, bot.agent.player.pos);
+            for bot in self.agents.players.values().filter(|b| b.agent.session.sleeping.is_some()) {
+                self.mobs.entities.cat_morning_gifts(bot.id, bot.agent.session.player.pos);
             }
         }
-        self.sleeping = None;
+        self.session.sleeping = None;
         for bot in self.agents.players.values_mut() {
-            bot.agent.sleeping = None;
+            bot.agent.session.sleeping = None;
         }
         self.day_time = WAKE_TIME;
         if self.weather.raining {
@@ -172,10 +179,10 @@ impl Game {
     /// included, for the "waiting for others" message.
     pub(super) fn sleep_count(&self) -> (usize, usize) {
         let faded = |t: Option<f32>| t.is_some_and(|t| t >= SLEEP_TIME);
-        let mut counts = (faded(self.sleeping) as usize, !self.vitals.is_dead() as usize);
+        let mut counts = (faded(self.session.sleeping) as usize, !self.session.vitals.is_dead() as usize);
         for (name, bot) in &self.agents.players {
-            if bot.active && !bot.agent.vitals.is_dead() && !self.unplugged(name) {
-                counts.0 += faded(bot.agent.sleeping) as usize;
+            if bot.active && !bot.agent.session.vitals.is_dead() && !self.unplugged(name) {
+                counts.0 += faded(bot.agent.session.sleeping) as usize;
                 counts.1 += 1;
             }
         }
@@ -185,16 +192,12 @@ impl Game {
     /// Where to respawn: on the bed last slept in if it's still there,
     /// otherwise the world spawn.
     pub(super) fn respawn_point(&mut self) -> DVec3 {
-        if let Some(foot) = self.spawn_bed {
-            if self.world.get_block(foot).is_some_and(|b| b.is_bed() && !b.is_bed_head()) {
-                let top = foot.y as f64 + Block::BED_FOOT.height();
-                return DVec3::new(foot.x as f64 + 0.5, top, foot.z as f64 + 0.5);
-            }
-            self.spawn_bed = None;
+        let personal = self.session.personal_spawn(&self.world);
+        if personal.missing_bed {
             self.show_popup("Your home bed was missing");
         }
-        if let Some(point) = self.spawn_point {
-            return point.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+        if let Some(position) = personal.position {
+            return position;
         }
         let radius = self.gamerules.int("spawnRadius");
         let offset = spawn_offset(self.world.generator.seed, radius);

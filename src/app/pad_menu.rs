@@ -376,10 +376,10 @@ impl Game {
         let work = self.take_pad_work(name);
         let Some(bot) = self.agents.players.get_mut(name) else { return };
         let agent = &mut bot.agent;
-        let cursor = agent.inventory.cursor.take();
-        agent.inventory.return_stacks(cursor.into_iter().chain(work));
-        for stack in agent.inventory.take_spill() {
-            self.mobs.entities.throw(stack, agent.player.eye(), agent.player.forward().as_dvec3());
+        let cursor = agent.session.inventory.cursor.take();
+        agent.session.inventory.return_stacks(cursor.into_iter().chain(work));
+        for stack in agent.session.inventory.take_spill() {
+            self.mobs.entities.throw(stack, agent.session.player.eye(), agent.session.player.forward().as_dvec3());
         }
     }
 
@@ -388,11 +388,11 @@ impl Game {
         let (sw, sh) = ui.size();
         ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.45]);
         let Some(bot) = self.agents.players.get(name) else { return };
-        let inv = &bot.agent.inventory;
+        let inv = &bot.agent.session.inventory;
         let dial = crate::item::Dial {
-            yaw: bot.agent.player.yaw,
-            x: bot.agent.player.pos.x,
-            z: bot.agent.player.pos.z,
+            yaw: bot.agent.session.player.yaw,
+            x: bot.agent.session.player.pos.x,
+            z: bot.agent.session.player.pos.z,
             spawn_x: self.world_spawn.x as f64 + 0.5,
             spawn_z: self.world_spawn.z as f64 + 0.5,
             overworld: self.dimension == crate::world::terrain::Dimension::Overworld,
@@ -484,7 +484,7 @@ impl Game {
         let work = self.pad_work(name);
         let offers = match (tab, work[0]) {
             (Tab::Enchanting(pos), Some(item)) if crate::enchant::table_accepts(item) => crate::enchant::offers(
-                bot.agent.vitals.xp.seed,
+                bot.agent.session.vitals.xp.seed,
                 item.item,
                 crate::enchant::bookshelves(&self.world, pos),
             ),
@@ -503,7 +503,7 @@ impl Game {
         };
         if let Some(r) = anvil.filter(|_| !matches!(tab, Tab::Grindstone(_))) {
             // Java's cost line, beside the anvil's slots.
-            let short = !bot.agent.creative && bot.agent.vitals.xp.level < r.cost;
+            let short = !bot.agent.creative && bot.agent.session.vitals.xp.level < r.cost;
             let (text, colour) = if !bot.agent.creative && r.cost >= crate::enchant::TOO_EXPENSIVE {
                 ("Too Expensive!".to_string(), [1.0, 0.38, 0.38, 1.0])
             } else {

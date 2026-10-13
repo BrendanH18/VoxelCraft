@@ -2,12 +2,12 @@
 use super::*;
 impl Game {
     pub(super) fn target(&self) -> Option<(glam::IVec3, glam::IVec3)> {
-        self.world.raycast(self.player.eye(), self.player.forward().as_dvec3(), REACH)
+        self.world.raycast(self.session.player.eye(), self.session.player.forward().as_dvec3(), REACH)
     }
 
     /// Instant break (creative).
     pub(super) fn break_block(&mut self) {
-        if !self.mode.can_build() || self.attacking() {
+        if !self.session.mode.can_build() || self.attacking() {
             return;
         }
         if let Some((pos, _)) = self.target()
@@ -41,7 +41,7 @@ impl Game {
     /// Timed break with drops (survival). Called every frame while the
     /// button is held.
     pub(super) fn continue_breaking(&mut self, dt: f64) {
-        if !self.mode.can_build() || self.attacking() {
+        if !self.session.mode.can_build() || self.attacking() {
             self.actions.breaking = None;
             return;
         }
@@ -59,16 +59,16 @@ impl Game {
         }
         let held = self.held_item();
         let digger = crate::mining::Digger {
-            held: self.inventory.get(self.actions.selected),
-            helmet: self.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
-            eyes_in_water: self.player.head_in_water(&self.world),
-            on_ground: self.player.on_ground || self.player.flying,
+            held: self.session.inventory.get(self.actions.selected),
+            helmet: self.session.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
+            eyes_in_water: self.session.player.head_in_water(&self.world),
+            on_ground: self.session.player.on_ground || self.session.player.flying,
         };
         self.world.touch_redstone_ore(pos);
         let progress = self.actions.mine(
             pos,
             self.world.get_block(pos).unwrap_or(block),
-            crate::mining::dig_time(block, digger) / self.vitals.effects.mining_factor(),
+            crate::mining::dig_time(block, digger) / self.session.vitals.effects.mining_factor(),
             dt,
         );
         if progress < 1.0 {
@@ -107,21 +107,20 @@ impl Game {
         if block.is_door() {
             self.break_door_partner(pos, block);
         }
-        self.vitals.hunger.exhaust(survival::EXHAUST_MINE);
+        self.session.vitals.hunger.exhaust(survival::EXHAUST_MINE);
         if block.hardness() > 0.0 {
             self.wear_held(false);
         }
     }
 
-    /// Eating: holding right-click with food in survival, when not full,
-    /// finishes a bite after [`EAT_TIME`] seconds. Potions drink the same
-    /// way, in any mode.
+    /// Held use advances the shared fixed-tick consumption clock. Dried kelp
+    /// takes 0.8 seconds; other currently registered food/drinks take 1.6.
     pub(super) fn eat(&mut self, acting: bool, dt: f64) {
         let held = self.held_item();
         let milk = held == Some(Item::MILK_BUCKET);
         let potion = held.and_then(|i| i.as_potion());
         let food = self.held_item().and_then(|i| i.food());
-        let hungry = self.mode.is_survival() && self.vitals.hunger.can_eat();
+        let hungry = self.session.mode.is_survival() && self.session.vitals.hunger.can_eat();
         // Right-clicking a composter fills it instead, as in Java.
         let composting = !self.sneak_building()
             && self
@@ -131,54 +130,25 @@ impl Game {
         let using =
             acting && self.right_held && (milk || potion.is_some() || (food.is_some() && hungry && !composting));
         if !using {
+            self.session.cancel_consumption();
             self.actions.eat_timer = 0.0;
             return;
         }
-        let before = self.actions.eat_timer;
-        let finished = self.actions.eat(dt);
-        // Chewing sounds four times a second.
-        if (before / 0.25).floor() != ((before + dt) / 0.25).floor() {
-            let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
-            self.audio.play(sound, Some(self.player.eye()), 0.7, (1.4, 1.7));
-        }
-        if !finished {
+        let before = self.session.consumption_elapsed();
+        let result = self.session.tick_consumption(self.actions.selected, using, &mut self.mobs.entities);
+        let Ok(step) = result else {
+            self.session.cancel_consumption();
+            self.actions.eat_timer = 0.0;
             return;
+        };
+        // This adapter field is now presentation only; progress belongs to the session.
+        self.actions.eat_timer = f64::from(step.progress) * EAT_TIME;
+        if using && (before / 0.25).floor() != ((before + dt) / 0.25).floor() {
+            let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
+            self.audio.play(sound, Some(self.session.player.eye()), 0.7, (1.4, 1.7));
         }
-        if milk {
-            self.vitals.effects.clear();
-            voxelcraft::survival_items::exchange(
-                &mut self.inventory,
-                self.actions.selected,
-                Item::BUCKET,
-                self.mode.is_creative(),
-                &mut self.mobs.entities,
-                &self.player,
-            );
-        } else if let Some(potion) = potion {
-            // Creative keeps the potion; survival is left with the bottle.
-            if self.mode.is_survival() {
-                self.inventory.slots[self.actions.selected] = Some(crate::inventory::Stack::new(Item::GLASS_BOTTLE, 1));
-            }
-            let damage = potion.drink(&mut self.vitals);
-            self.damage_player(damage, survival::CAUSE_MAGIC);
-        } else if let Some((hunger, saturation)) = food {
-            let effect = self.held_item().and_then(|item| item.food_effect_roll(self.mobs.entities.roll()));
-            if let Some(remainder) = held.and_then(Item::remainder) {
-                voxelcraft::survival_items::exchange(
-                    &mut self.inventory,
-                    self.actions.selected,
-                    remainder,
-                    false,
-                    &mut self.mobs.entities,
-                    &self.player,
-                );
-            } else {
-                self.inventory.take_one(self.actions.selected);
-            }
-            self.vitals.hunger.eat(hunger, saturation);
-            if let Some((effect, amp, ticks)) = effect {
-                self.vitals.apply_effect(effect, amp, ticks);
-            }
+        if let Some(consumed) = step.completed {
+            self.damage_player(consumed.magic_damage, survival::CAUSE_MAGIC);
         }
     }
 
@@ -186,16 +156,16 @@ impl Game {
     /// piece), unless aimed at a container. Returns whether it did.
     pub(super) fn equip_held(&mut self) -> bool {
         if !voxelcraft::survival_items::equip_armor(
-            &self.player,
-            &mut self.inventory,
+            &self.session.player,
+            &mut self.session.inventory,
             self.actions.selected,
-            self.mode,
+            self.session.mode,
             &self.world,
         ) {
             return false;
         }
         let sound = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Wood);
-        self.audio.play(sound, Some(self.player.eye()), 0.6, (1.4, 1.6));
+        self.audio.play(sound, Some(self.session.player.eye()), 0.6, (1.4, 1.6));
         true
     }
 
@@ -207,18 +177,19 @@ impl Game {
 
     /// The item in the selected hotbar slot.
     pub(super) fn held_item(&self) -> Option<Item> {
-        self.inventory.get(self.actions.selected).map(|s| s.item)
+        self.session.inventory.get(self.actions.selected).map(|s| s.item)
     }
 
     /// Wears the held tool for a block broken or a mob hit (survival).
     pub(super) fn wear_held(&mut self, hitting_mob: bool) {
         let Some(held) = self.held_item() else { return };
-        if self.mode.is_survival() && self.inventory.wear(self.actions.selected, crate::mining::wear(held, hitting_mob))
+        if self.session.mode.is_survival()
+            && self.session.inventory.wear(self.actions.selected, crate::mining::wear(held, hitting_mob))
         {
             self.show_popup(&format!("{} broke", capitalize(held.name())));
             self.audio.play(
                 crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood),
-                Some(self.player.eye()),
+                Some(self.session.player.eye()),
                 0.8,
                 (1.3, 1.5),
             );

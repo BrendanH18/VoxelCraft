@@ -19,7 +19,7 @@ impl Game {
     }
 
     pub(super) fn smithing_result(&self) -> Option<Stack> {
-        crate::smithing::upgrade(self.work[0]?, self.work[1]?, self.work[2]?)
+        crate::smithing::upgrade(self.session.work[0]?, self.session.work[1]?, self.session.work[2]?)
     }
 
     pub(super) fn smithing_click(&mut self, slot: SlotRef, right: bool) {
@@ -30,14 +30,14 @@ impl Game {
             _ => None,
         };
         if let Some((i, accepts)) = input {
-            if self.inventory.cursor.is_none_or(|s| accepts(s.item)) {
-                crate::inventory::click_slot(&mut self.work[i], &mut self.inventory.cursor, right);
+            if self.session.inventory.cursor.is_none_or(|s| accepts(s.item)) {
+                crate::inventory::click_slot(&mut self.session.work[i], &mut self.session.inventory.cursor, right);
             }
         } else if slot == SlotRef::SmithResult
-            && self.inventory.cursor.is_none()
+            && self.session.inventory.cursor.is_none()
             && let Some(out) = self.take_smithing_result()
         {
-            self.inventory.cursor = Some(out);
+            self.session.inventory.cursor = Some(out);
         }
     }
 
@@ -46,7 +46,7 @@ impl Game {
     pub(super) fn take_smithing_result(&mut self) -> Option<Stack> {
         let Container::Smithing(pos) = self.container else { return None };
         let result = self.smithing_result()?;
-        for input in &mut self.work {
+        for input in &mut self.session.work {
             let stack = input.as_mut().expect("a smithing result has all inputs");
             stack.count -= 1;
             if stack.count == 0 {
@@ -60,11 +60,11 @@ impl Game {
 
     pub(super) fn quick_take_smithing(&mut self) {
         let Some(result) = self.smithing_result() else { return };
-        let mut slots = self.inventory.slots;
+        let mut slots = self.session.inventory.slots;
         if move_into(result, &mut slots, &(0..crate::inventory::SLOTS).collect::<Vec<_>>()).is_none()
             && let Some(out) = self.take_smithing_result()
         {
-            self.inventory.add_stack(out);
+            self.session.inventory.add_stack(out);
         }
     }
 
@@ -78,8 +78,8 @@ impl Game {
         ]
         .into_iter()
         .enumerate()
-        .find_map(|(i, accepts)| (accepts && self.work[i].is_none()).then_some(i));
+        .find_map(|(i, accepts)| (accepts && self.session.work[i].is_none()).then_some(i));
         let Some(i) = slot else { return Some(stack) };
-        move_into(stack, std::slice::from_mut(&mut self.work[i]), &[0])
+        move_into(stack, std::slice::from_mut(&mut self.session.work[i]), &[0])
     }
 }

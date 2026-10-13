@@ -88,7 +88,7 @@ impl Game {
         }
         let room = w - 6.0;
         let text = if self.search.query.is_empty() && !self.search.focused {
-            let hints: &[&str] = if self.mode.is_creative() && self.container == Container::Inventory {
+            let hints: &[&str] = if self.session.mode.is_creative() && self.container == Container::Inventory {
                 &["Search items..."]
             } else {
                 &["Find items (Ctrl+F)...", "Find items..."]

@@ -41,6 +41,7 @@ impl Game {
                 self.left_held = false;
                 self.right_held = false;
                 self.actions.reset();
+                self.session.cancel_consumption();
                 self.set_grab(false);
                 return true;
             }
@@ -137,39 +138,39 @@ impl Game {
                 return Ok(format!("{HELP} Host only: splitscreen [player|off|side|stacked]."));
             }
             Command::Give(item, count) => {
-                let left = self.inventory.add(item, count);
+                let left = self.session.inventory.add(item, count);
                 return Ok(format!("Gave {} {}", count - left, item.name()));
             }
             Command::Clear => {
-                let count: u32 = self.inventory.take_all().into_iter().map(|stack| stack.count as u32).sum();
-                self.work.fill(None);
+                let count: u32 = self.session.inventory.take_all().into_iter().map(|stack| stack.count as u32).sum();
+                self.session.work.fill(None);
                 self.craft.cells.fill(None);
                 return Ok(format!("Removed {count} items"));
             }
             Command::Kill => {
-                let was_dead = self.vitals.is_dead();
-                self.vitals.damage(f32::MAX, "was killed", false);
-                if !was_dead && self.vitals.is_dead() {
+                let was_dead = self.session.vitals.is_dead();
+                self.session.vitals.damage(f32::MAX, "was killed", false);
+                if !was_dead && self.session.vitals.is_dead() {
                     self.on_death();
                 }
             }
             Command::Summon(kind, pos) => {
-                let at = pos.resolve(self.player.pos)?;
+                let at = pos.resolve(self.session.player.pos)?;
                 self.mobs.entities.spawn(kind, at);
                 return Ok(format!("Summoned {} at {:.1} {:.1} {:.1}", kind.name(), at.x, at.y, at.z));
             }
             Command::Mode(mode) => self.set_mode(mode),
             Command::Teleport(pos) => {
-                let pos = pos.resolve(self.player.pos)?;
-                self.player.pos = pos;
-                self.player.vel = glam::DVec3::ZERO;
-                self.vitals.reset_fall();
-                self.previous_eye = self.player.eye();
+                let pos = pos.resolve(self.session.player.pos)?;
+                self.session.player.pos = pos;
+                self.session.player.vel = glam::DVec3::ZERO;
+                self.session.vitals.reset_fall();
+                self.previous_eye = self.session.player.eye();
             }
             Command::SpawnPoint(pos) => {
-                let p = pos.resolve(self.player.pos)?.floor().as_ivec3();
-                self.spawn_bed = None;
-                self.spawn_point = Some(p);
+                let p = pos.resolve(self.session.player.pos)?.floor().as_ivec3();
+                self.session.spawn_bed = None;
+                self.session.spawn_point = Some(p);
                 return Ok(format!("Set spawn point to {} {} {}", p.x, p.y, p.z));
             }
             Command::Time(time) => {
@@ -210,35 +211,44 @@ impl Game {
             }
             Command::Seed => return Ok(format!("Seed: [{}]", self.world.generator.seed)),
             Command::SetWorldSpawn(pos) => {
-                let p = pos.resolve(self.player.pos)?.floor().as_ivec3();
+                let p = pos.resolve(self.session.player.pos)?.floor().as_ivec3();
                 self.world_spawn = p;
                 return Ok(format!("Set the world spawn point to {} {} {}", p.x, p.y, p.z));
             }
             Command::LocateStructure(name) => {
                 let key = name.strip_prefix("minecraft:").unwrap_or(&name);
                 let at = match key {
-                    "village" => {
-                        self.world.generator.villages.nearest(&self.world.generator, self.player.pos.floor().as_ivec3())
+                    "village" => self
+                        .world
+                        .generator
+                        .villages
+                        .nearest(&self.world.generator, self.session.player.pos.floor().as_ivec3()),
+                    "stronghold" => {
+                        self.world.generator.strongholds.nearest(self.session.player.pos.floor().as_ivec3())
                     }
-                    "stronghold" => self.world.generator.strongholds.nearest(self.player.pos.floor().as_ivec3()),
                     "fortress" | "nether_fortress" => self.world.generator.nearest_fortress(IVec2::new(
-                        self.player.pos.x.floor() as i32,
-                        self.player.pos.z.floor() as i32,
+                        self.session.player.pos.x.floor() as i32,
+                        self.session.player.pos.z.floor() as i32,
                     )),
                     "bastion_remnant" | "bastion" if self.dimension == Dimension::Nether => {
-                        crate::world::bastion::Bastions::new(self.world.generator.seed)
-                            .nearest(IVec2::new(self.player.pos.x.floor() as i32, self.player.pos.z.floor() as i32))
+                        crate::world::bastion::Bastions::new(self.world.generator.seed).nearest(IVec2::new(
+                            self.session.player.pos.x.floor() as i32,
+                            self.session.player.pos.z.floor() as i32,
+                        ))
                     }
                     "bastion_remnant" | "bastion" => None,
                     "mineshaft" | "abandoned_mineshaft" => {
-                        self.world.generator.mineshafts.nearest(self.player.pos.floor().as_ivec3())
+                        self.world.generator.mineshafts.nearest(self.session.player.pos.floor().as_ivec3())
                     }
                     other
                         if self.dimension == Dimension::Overworld
                             && crate::world::temples::Kind::from_name(other).is_some() =>
                     {
                         let kind = crate::world::temples::Kind::from_name(other).unwrap();
-                        let origin = IVec2::new(self.player.pos.x.floor() as i32, self.player.pos.z.floor() as i32);
+                        let origin = IVec2::new(
+                            self.session.player.pos.x.floor() as i32,
+                            self.session.player.pos.z.floor() as i32,
+                        );
                         self.world.generator.temples.nearest(&self.world.generator, kind, origin, 6400)
                     }
                     other if crate::world::temples::Kind::from_name(other).is_some() => None,
@@ -248,7 +258,8 @@ impl Game {
                 return Ok(self.locate_message(at, key));
             }
             Command::LocateBiome(biome) => {
-                let origin = IVec2::new(self.player.pos.x.floor() as i32, self.player.pos.z.floor() as i32);
+                let origin =
+                    IVec2::new(self.session.player.pos.x.floor() as i32, self.session.player.pos.z.floor() as i32);
                 let at = self
                     .world
                     .generator
@@ -260,7 +271,7 @@ impl Game {
                 let at = self
                     .world
                     .generator
-                    .nearest_nether_biome(self.player.pos.floor().as_ivec3(), biome, 12_800)
+                    .nearest_nether_biome(self.session.player.pos.floor().as_ivec3(), biome, 12_800)
                     .ok_or("Could not find that biome nearby")?;
                 return Ok(self.locate_message(at, biome.name()));
             }
@@ -295,20 +306,20 @@ impl Game {
                 ));
             }
             Command::Xp(change) => {
-                if let Some(chime) = change.apply(&mut self.vitals.xp) {
+                if let Some(chime) = change.apply(&mut self.session.vitals.xp) {
                     self.audio.play(crate::audio::sounds::Sound::LevelUp, None, chime, (1.0, 1.0));
                 }
                 return Ok(self.xp_summary());
             }
             Command::XpQuery => return Ok(self.xp_summary()),
             Command::Enchant(e, level) => {
-                let slot = &mut self.inventory.slots[self.actions.selected];
+                let slot = &mut self.session.inventory.slots[self.actions.selected];
                 let stack = crate::enchant::command(*slot, e, level)?;
                 *slot = Some(stack);
                 return Ok(format!("Applied {} to {}", e.describe(level), stack.item.name()));
             }
             Command::Effect(change) => {
-                let (damage, text) = change.apply(&mut self.vitals);
+                let (damage, text) = change.apply(&mut self.session.vitals);
                 self.damage_player(damage, survival::CAUSE_MAGIC);
                 return Ok(text);
             }
@@ -316,11 +327,16 @@ impl Game {
                 let id = self
                     .mobs
                     .entities
-                    .target_merchant(&self.world, self.player.eye(), self.player.forward().as_dvec3(), super::REACH)
+                    .target_merchant(
+                        &self.world,
+                        self.session.player.eye(),
+                        self.session.player.forward().as_dvec3(),
+                        super::REACH,
+                    )
                     .ok_or("no villager within reach")?;
                 if let Some(i) = index {
-                    let xp = self.mobs.entities.trade_for(id, i, &mut self.inventory, self.actor)?;
-                    self.mobs.entities.spawn_xp(self.player.pos, xp);
+                    let xp = self.mobs.entities.trade_for(id, i, &mut self.session.inventory, self.session.id)?;
+                    self.mobs.entities.spawn_xp(self.session.player.pos, xp);
                 } else {
                     self.container = super::Container::Trading(id);
                     self.toggle_inventory();
@@ -330,9 +346,9 @@ impl Game {
                 return Ok(format!(
                     "{} at {:.1}, {:.1}, {:.1}",
                     self.dimension.name(),
-                    self.player.pos.x,
-                    self.player.pos.y,
-                    self.player.pos.z
+                    self.session.player.pos.x,
+                    self.session.player.pos.y,
+                    self.session.player.pos.z
                 ));
             }
             Command::Say(message) => {
@@ -367,13 +383,13 @@ impl Game {
 
     fn locate_message(&self, at: IVec3, label: &str) -> String {
         let there = at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
-        let blocks = (there - self.player.pos).length().round() as i32;
+        let blocks = (there - self.session.player.pos).length().round() as i32;
         format!("The nearest {label} is at {} {} {} ({blocks} blocks away)", at.x, at.y, at.z)
     }
 
     /// Formats the host's level and progress toward the next level.
     fn xp_summary(&self) -> String {
-        let xp = &self.vitals.xp;
+        let xp = &self.session.vitals.xp;
         let next = crate::simulation::experience::points_to_next(xp.level);
         format!("Level {} ({}/{} points to the next)", xp.level, xp.points, next)
     }

@@ -81,3 +81,20 @@ diff tests/fixtures/java/26.3/fuel_integrations.json target/java-fuel-integratio
 cargo run --release --no-default-features --example fuel_inventory > target/fuel-inventory.json
 cargo test --release --test full_fuel_integrations
 ```
+
+## Consumption durations
+
+`consumption.json` records independent Java consumption timing for representative
+food, dried kelp, milk and potion registrations. The reproducer verifies the
+official server hash, default food/drink builders and their item associations;
+unknown bytecode forms fail instead of inferring a duration from Rust.
+
+```sh
+python3 tools/extract_java_consumption_fixtures.py /path/to/server.jar --output target/java-consumption.json
+diff tests/fixtures/java/26.3/consumption.json target/java-consumption.json
+cargo test --release --test session_consumption --test process_persistence
+```
+
+The fixture proves these timing facts, not complete food/effect parity. Honey
+and other unregistered consumables, always-edible foods and multiple food side
+effects remain explicit scope gaps in the session report.

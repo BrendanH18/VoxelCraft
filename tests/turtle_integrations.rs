@@ -117,8 +117,8 @@ fn cli_and_client_rule_equip_the_same_helmet_and_reject_spectators_without_consu
     let mut cli = Agent::new(direct.player.pos);
     cli.inventory = direct.inventory.clone();
     assert!(voxelcraft::survival_items::equip_armor(
-        &direct.player,
-        &mut direct.inventory,
+        &direct.session.player,
+        &mut direct.session.inventory,
         0,
         GameMode::Survival,
         &world

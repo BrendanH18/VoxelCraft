@@ -1,0 +1,97 @@
+//! Authoritative per-player gameplay state, independent of devices and presentation.
+//!
+//! Desktop, controller, LAN and CLI adapters own one of these for each player.
+//! Camera, hand animation and screen navigation belong to their adapters.
+pub mod consumption;
+use glam::{DVec3, IVec3};
+
+use crate::{
+    entity::PlayerId,
+    inventory::{Inventory, Stack},
+    player::Player,
+    rules::GameMode,
+    simulation::survival::Vitals,
+};
+
+pub struct PlayerSession {
+    pub id: PlayerId,
+    pub player: Player,
+    pub inventory: Inventory,
+    pub vitals: Vitals,
+    pub mode: GameMode,
+    /// Transient workstation inputs are owned by the player, not a device.
+    pub work: [Option<Stack>; 3],
+    pub sleeping: Option<f32>,
+    pub spawn_bed: Option<IVec3>,
+    pub spawn_point: Option<IVec3>,
+    consumption: consumption::State,
+}
+
+/// Personal spawn selection; adapters supply their existing world-spawn fallback.
+pub struct PersonalSpawn {
+    pub position: Option<DVec3>,
+    pub missing_bed: bool,
+}
+
+impl PlayerSession {
+    pub fn new(id: PlayerId, pos: DVec3) -> Self {
+        Self {
+            id,
+            player: Player::new(pos),
+            inventory: Inventory::default(),
+            vitals: Vitals::default(),
+            mode: GameMode::Survival,
+            work: [None; 3],
+            sleeping: None,
+            spawn_bed: None,
+            spawn_point: None,
+            consumption: Default::default(),
+        }
+    }
+
+    pub fn from_parts(id: PlayerId, player: Player, inventory: Inventory, vitals: Vitals, mode: GameMode) -> Self {
+        Self {
+            id,
+            player,
+            inventory,
+            vitals,
+            mode,
+            work: [None; 3],
+            sleeping: None,
+            spawn_bed: None,
+            spawn_point: None,
+            consumption: Default::default(),
+        }
+    }
+
+    /// Keep the mode and its movement abilities together for every adapter.
+    pub fn set_mode(&mut self, mode: GameMode) {
+        self.cancel_consumption();
+        self.mode = mode;
+        self.player.can_fly = mode.can_fly();
+        self.player.noclip = mode == GameMode::Spectator;
+        self.player.flying = mode == GameMode::Spectator || (self.player.flying && self.player.can_fly);
+    }
+
+    pub fn personal_spawn(&mut self, world: &crate::world::World) -> PersonalSpawn {
+        use crate::world::{block::Block, terrain::Dimension};
+        if world.generator.dimension != Dimension::Overworld {
+            return PersonalSpawn { position: None, missing_bed: false };
+        }
+        let mut missing_bed = false;
+        if let Some(foot) = self.spawn_bed {
+            if world.get_block(foot).is_some_and(|b| b.is_bed() && !b.is_bed_head()) {
+                return PersonalSpawn {
+                    position: Some(foot.as_dvec3() + DVec3::new(0.5, Block::BED_FOOT.height(), 0.5)),
+                    missing_bed: false,
+                };
+            }
+            self.spawn_bed = None;
+            missing_bed = true;
+        }
+        PersonalSpawn {
+            position: self.spawn_point.map(|point| point.as_dvec3() + DVec3::new(0.5, 0., 0.5)),
+            missing_bed,
+        }
+    }
+}

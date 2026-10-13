@@ -9,49 +9,56 @@ impl Game {
         let arriving = self.update_arrival();
         let input = self.movement_input(arriving);
         self.jump_pressed = false;
-        self.previous_eye = self.player.eye();
-        let before = self.player.pos;
+        self.previous_eye = self.session.player.eye();
+        let before = self.session.player.pos;
         if !arriving {
-            if self.player.vehicle.is_some()
+            if self.session.player.vehicle.is_some()
                 && input.descend
                 && let Some(pos) = self.mobs.entities.dismount(&self.world, crate::entity::PlayerId::HOST)
             {
-                self.player.pos = pos;
-                self.player.vehicle = None;
-                self.player.vel = DVec3::ZERO;
+                self.session.player.pos = pos;
+                self.session.player.vehicle = None;
+                self.session.player.vel = DVec3::ZERO;
             }
-            if self.player.vehicle.is_none() {
-                self.player.apply_effects(&self.vitals.effects);
-                let armor = &self.inventory.armor;
-                self.player.wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
-                self.player.update(dt, input, &self.world);
-                crate::particles::water_entry(&self.player, before, &mut self.world);
+            if self.session.player.vehicle.is_none() {
+                self.session.player.apply_effects(&self.session.vitals.effects);
+                let armor = &self.session.inventory.armor;
+                self.session
+                    .player
+                    .wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
+                self.session.player.update(dt, input, &self.world);
+                crate::particles::water_entry(&self.session.player, before, &mut self.world);
                 self.update_portal(dt);
             } else {
-                self.player.vel = DVec3::ZERO;
-                self.player.on_ground = true;
+                self.session.player.vel = DVec3::ZERO;
+                self.session.player.on_ground = true;
             }
         }
-        let moved = (self.player.pos - before).with_y(0.0).length();
+        let moved = (self.session.player.pos - before).with_y(0.0).length();
         if self.gamerules.bool("doWeatherCycle") {
             self.weather.update(dt);
         }
         self.update_sleep(dt);
         self.world.raining = self.weather.raining && self.dimension.has_sky();
         let env = crate::simulation::survival::Env {
-            respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
-            frost_walker: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker)
-                > 0,
-            turtle_helmet: self.inventory.armor[0].is_some_and(|s| s.item == Item::TURTLE_HELMET),
-            ..crate::simulation::player_environment(&self.player, &self.world, input, moved)
+            respiration: crate::enchant::armor_level(
+                &self.session.inventory.armor,
+                crate::enchant::Enchantment::Respiration,
+            ),
+            frost_walker: crate::enchant::armor_level(
+                &self.session.inventory.armor,
+                crate::enchant::Enchantment::FrostWalker,
+            ) > 0,
+            turtle_helmet: self.session.inventory.armor[0].is_some_and(|s| s.item == Item::TURTLE_HELMET),
+            ..crate::simulation::player_environment(&self.session.player, &self.world, input, moved)
         };
         let hurts = if arriving || self.arrival.is_some() {
             Default::default()
         } else {
-            self.vitals.tick_rules(
+            self.session.vitals.tick_rules(
                 dt as f32,
                 &env,
-                self.mode.invulnerable(),
+                self.session.mode.invulnerable(),
                 self.difficulty,
                 self.gamerules.bool("naturalRegeneration"),
             )
@@ -86,19 +93,21 @@ impl Game {
             + self.weather.strength as f64 * 4.0)
             .round() as u8;
         self.world.set_redstone_daylight(self.day_time, sky_darken);
-        let players = std::iter::once((self.player.pos, self.player.collision_shape()))
-            .filter(|_| self.mode != GameMode::Spectator && self.vitals.health > 0.0)
+        let players = std::iter::once((self.session.player.pos, self.session.player.collision_shape()))
+            .filter(|_| self.session.mode != GameMode::Spectator && self.session.vitals.health > 0.0)
             .chain(
                 self.agents
                     .players
                     .values()
-                    .filter(|b| b.active && b.agent.mode != GameMode::Spectator && b.agent.vitals.health > 0.0)
-                    .map(|b| (b.agent.player.pos, b.agent.player.collision_shape())),
+                    .filter(|b| {
+                        b.active && b.agent.session.mode != GameMode::Spectator && b.agent.session.vitals.health > 0.0
+                    })
+                    .map(|b| (b.agent.session.player.pos, b.agent.session.player.collision_shape())),
             );
         self.world.redstone_contacts(players, &self.mobs.entities);
         crate::simulation::tick_world_rules(
             &mut self.world,
-            self.player.pos,
+            self.session.player.pos,
             self.gamerules.bool("doFireTick"),
             self.gamerules.int("randomTickSpeed") as u32,
         );

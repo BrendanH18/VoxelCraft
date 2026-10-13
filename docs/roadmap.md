@@ -293,6 +293,13 @@ do not assume every earlier audit gap still needs a duplicate implementation.
 
 ## 4. Core requirement catalogue
 
+Assessment follow-up (2026-10-13): [shared player-session and consumption work](verification/2026-10-13-player-session.md)
+implements actor ownership for core player state and one fixed-tick food/drink
+transaction path across client and CLI adapters. Dried kelp timing and CLI
+harming-potion death drops were corrected. PLY-03/04 remain **Partial**: full
+food/effect parity, other shared actions, controller/LAN state-swap removal and
+ordinary player/performance acceptance are still open.
+
 All groups are in scope unless an individual requirement is explicitly
 deferred or has an maintainer-approved fidelity exception. IDs are stable tracking
 keys, not release versions or block/item ID allocations.

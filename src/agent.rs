@@ -16,7 +16,6 @@ use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{
     World,
     block::{Block, RenderKind},
-    terrain::Dimension,
 };
 
 pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
@@ -47,18 +46,8 @@ pub mod command;
 pub use command::{Command, Coordinate, EffectChange, PositionSpec, TimeQuery, WeatherKind, XpChange, tab_complete};
 
 pub struct Agent {
-    pub player: Player,
+    pub session: crate::session::PlayerSession,
     pub previous_pos: DVec3,
-    pub inventory: Inventory,
-    /// Transient enchanting, anvil or smithing inputs for a controller player.
-    /// Saved as returned inventory and dropped on death with the other gear.
-    pub work: [Option<Stack>; 3],
-    pub vitals: Vitals,
-    /// The host's stable ID for this player (owner of its thrown pearls).
-    pub id: crate::entity::PlayerId,
-    /// Per-player Java game mode. `creative` remains as a compatibility
-    /// mirror for old saves and controller code.
-    pub mode: GameMode,
     pub creative: bool,
     pub selected: usize,
     pub remaining: u32,
@@ -66,13 +55,6 @@ pub struct Agent {
     pub swings: u32,
     /// Sounds to play, drained by the host.
     pub events: Vec<Event>,
-    /// Seconds in bed (the host fades the view and skips the night once
-    /// everyone has slept long enough). Acting or being hurt gets up.
-    pub sleeping: Option<f32>,
-    /// Foot of the Overworld bed last used, where a dead agent respawns.
-    pub spawn_bed: Option<IVec3>,
-    /// Exact command-set Overworld spawn point, replacing a bed spawn.
-    pub spawn_point: Option<IVec3>,
     input: MoveInput,
     mining: bool,
     /// Holding "use" eats held food; `bite` counts the ticks chewed.
@@ -86,25 +68,29 @@ pub struct Agent {
     keep_inventory: bool,
 }
 
+impl std::ops::Deref for Agent {
+    type Target = crate::session::PlayerSession;
+    fn deref(&self) -> &Self::Target {
+        &self.session
+    }
+}
+impl std::ops::DerefMut for Agent {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.session
+    }
+}
+
 impl Agent {
     /// Creates an idle survival player with empty inventory at `pos`.
     pub fn new(pos: DVec3) -> Self {
         Self {
-            player: Player::new(pos),
+            session: crate::session::PlayerSession::new(crate::entity::PlayerId::default(), pos),
             previous_pos: pos,
-            inventory: Inventory::default(),
-            work: [None; 3],
-            vitals: Vitals::default(),
-            id: crate::entity::PlayerId::default(),
-            mode: GameMode::Survival,
             creative: false,
             selected: 0,
             remaining: 0,
             swings: 0,
             events: Vec::new(),
-            sleeping: None,
-            spawn_bed: None,
-            spawn_point: None,
             input: MoveInput::default(),
             mining: false,
             eating: false,
@@ -116,29 +102,23 @@ impl Agent {
     }
 
     pub fn target(&self, world: &World) -> Option<(IVec3, IVec3)> {
-        world.raycast(self.player.eye(), self.player.forward().as_dvec3(), 6.0)
+        world.raycast(self.session.player.eye(), self.session.player.forward().as_dvec3(), 6.0)
     }
 
     /// Changes abilities together so command, host and controller paths agree.
     pub fn set_mode(&mut self, mode: GameMode) {
-        self.mode = mode;
+        self.session.set_mode(mode);
         self.creative = mode.is_creative();
-        self.player.can_fly = mode.can_fly();
-        self.player.noclip = mode == GameMode::Spectator;
-        self.player.flying = mode == GameMode::Spectator || (self.player.flying && self.player.can_fly);
-        if !self.player.can_fly {
-            self.player.flying = false;
-        }
     }
 
     /// Hardcore death has already dropped inventory and experience; revive
     /// only as a non-interacting spectator.
     pub fn hardcore_spectate(&mut self) {
-        if self.vitals.is_dead() {
-            self.vitals.respawn();
+        if self.session.vitals.is_dead() {
+            self.session.vitals.respawn();
             self.set_mode(GameMode::Spectator);
             self.remaining = 0;
-            self.sleeping = None;
+            self.session.sleeping = None;
         }
     }
 
@@ -151,10 +131,10 @@ impl Agent {
         entities: &mut Entities,
         others: &[DVec3],
     ) -> Result<(), String> {
-        if self.vitals.is_dead() && !matches!(command, Command::Respawn | Command::Observe(_) | Command::Help) {
+        if self.session.vitals.is_dead() && !matches!(command, Command::Respawn | Command::Observe(_) | Command::Help) {
             return Err("player is dead; respawn first".into());
         }
-        if self.mode == GameMode::Spectator
+        if self.session.mode == GameMode::Spectator
             && !matches!(
                 command,
                 Command::Help
@@ -187,11 +167,11 @@ impl Agent {
             _ => false,
         };
         if !resting {
-            self.sleeping = None;
+            self.session.sleeping = None;
         }
         match command {
             Command::Run(input, n, mine) => {
-                if mine && !self.mode.can_build() {
+                if mine && !self.session.mode.can_build() {
                     return Err("this game mode cannot break blocks".into());
                 }
                 if mine
@@ -205,97 +185,96 @@ impl Agent {
                 self.remaining = n;
                 self.mining = mine;
                 self.eating = false;
+                self.session.cancel_consumption();
                 self.breaking = None;
             }
             Command::Eat => {
-                let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
-                if !held.item.is_drink() {
-                    held.item.food().ok_or("selected item is not food or a potion")?;
-                    if self.creative || !self.vitals.hunger.can_eat() {
-                        return Err("not hungry".into());
-                    }
-                }
+                let duration = self.session.consumption_duration(self.selected)?;
                 self.input = MoveInput::default();
-                self.remaining = EAT_TICKS;
+                self.remaining = duration;
                 self.mining = false;
                 self.eating = true;
                 self.bite = 0;
+                self.session.cancel_consumption();
             }
             Command::Look(yaw, pitch) => {
-                self.player.yaw = yaw.to_radians();
-                self.player.pitch = pitch.to_radians();
+                self.session.player.yaw = yaw.to_radians();
+                self.session.player.pitch = pitch.to_radians();
                 self.breaking = None;
             }
             Command::Select(slot) => {
                 self.selected = slot;
                 self.breaking = None;
                 self.bite = 0;
+                self.session.cancel_consumption();
             }
             Command::Fly(on) => {
-                if on && !self.mode.can_fly() {
+                if on && !self.session.mode.can_fly() {
                     return Err("flight requires Creative or Spectator mode".into());
                 }
-                self.player.flying = on;
-                self.player.vel = DVec3::ZERO;
+                self.session.player.flying = on;
+                self.session.player.vel = DVec3::ZERO;
             }
             Command::Enchant(e, level) => {
-                let slot = &mut self.inventory.slots[self.selected];
+                let slot = &mut self.session.inventory.slots[self.selected];
                 *slot = Some(crate::enchant::command(*slot, e, level)?);
             }
             Command::Give(item, count) => {
-                let mut inv = self.inventory.clone();
+                let mut inv = self.session.inventory.clone();
                 if inv.add(item, count) > 0 {
                     return Err("inventory full".into());
                 }
-                self.inventory = inv;
+                self.session.inventory = inv;
             }
             Command::Clear => {
-                self.inventory.take_all();
-                self.work.fill(None);
+                self.session.inventory.take_all();
+                self.session.work.fill(None);
             }
             Command::Kill => {
-                if !self.vitals.is_dead() {
-                    self.vitals.damage(f32::MAX, "was killed", false);
+                if !self.session.vitals.is_dead() {
+                    self.session.vitals.damage(f32::MAX, "was killed", false);
                     self.drop_everything(entities);
                     self.remaining = 0;
                 }
             }
             Command::Summon(kind, pos) => {
-                entities.spawn(kind, pos.resolve(self.player.pos)?);
+                entities.spawn(kind, pos.resolve(self.session.player.pos)?);
             }
             Command::Xp(change) => {
-                if let Some(chime) = change.apply(&mut self.vitals.xp) {
+                if let Some(chime) = change.apply(&mut self.session.vitals.xp) {
                     self.emit(Event::Xp(Some(chime)));
                 }
             }
             Command::Effect(change) => {
-                let (damage, _) = change.apply(&mut self.vitals);
+                let (damage, _) = change.apply(&mut self.session.vitals);
                 self.damage(damage, survival::CAUSE_MAGIC);
             }
             Command::Mode(mode) => self.set_mode(mode),
             Command::Teleport(pos) => {
-                let pos = pos.resolve(self.player.pos)?;
-                self.player.pos = pos;
+                let pos = pos.resolve(self.session.player.pos)?;
+                self.session.player.pos = pos;
                 self.previous_pos = pos;
-                self.player.vel = DVec3::ZERO;
-                self.vitals.reset_fall();
+                self.session.player.vel = DVec3::ZERO;
+                self.session.vitals.reset_fall();
             }
             Command::SpawnPoint(pos) => {
-                let pos = pos.resolve(self.player.pos)?.floor().as_ivec3();
-                self.spawn_bed = None;
-                self.spawn_point = Some(pos);
+                let pos = pos.resolve(self.session.player.pos)?.floor().as_ivec3();
+                self.session.spawn_bed = None;
+                self.session.spawn_point = Some(pos);
             }
             Command::SetBlock(pos, block) => {
                 if !world.set_block(pos, block) {
                     return Err("block is unchanged or unloaded".into());
                 }
             }
-            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item.as_armor().is_some()) => {
+            Command::Place
+                if self.session.inventory.get(self.selected).is_some_and(|s| s.item.as_armor().is_some()) =>
+            {
                 if !crate::survival_items::equip_armor(
-                    &self.player,
-                    &mut self.inventory,
+                    &self.session.player,
+                    &mut self.session.inventory,
                     self.selected,
-                    self.mode,
+                    self.session.mode,
                     world,
                 ) {
                     return Err("cannot equip held armor here".into());
@@ -308,26 +287,26 @@ impl Agent {
                     .get(self.selected)
                     .is_some_and(|s| crate::survival_items::bucket::handles(s.item)) =>
             {
-                if !self.mode.can_interact() {
+                if !self.session.mode.can_interact() {
                     return Err("spectators cannot use buckets".into());
                 }
                 // Empty buckets still milk cows before trying a fluid source.
-                if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::BUCKET)
+                if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::BUCKET)
                     && crate::survival_items::use_mob(
-                        &self.player,
-                        &mut self.inventory,
+                        &self.session.player,
+                        &mut self.session.inventory,
                         self.selected,
                         self.creative,
                         world,
                         entities,
-                        self.id,
+                        self.session.id,
                     )
                 {
                     return Ok(());
                 }
                 let Some(effect) = crate::survival_items::bucket::use_bucket(
-                    &self.player,
-                    &mut self.inventory,
+                    &self.session.player,
+                    &mut self.session.inventory,
                     self.selected,
                     self.creative,
                     world,
@@ -338,19 +317,21 @@ impl Agent {
                 };
                 self.emit(Event::Bucket(effect));
             }
-            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD) => {
-                if !self.mode.can_interact() {
+            Command::Place
+                if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD) =>
+            {
+                if !self.session.mode.can_interact() {
                     return Err("spectators cannot use items".into());
                 }
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
                 crate::survival_items::use_rod(
-                    &self.player,
-                    &mut self.inventory,
+                    &self.session.player,
+                    &mut self.session.inventory,
                     self.selected,
                     self.creative,
-                    self.id,
+                    self.session.id,
                     entities,
                 );
                 self.cooldown = 0.22;
@@ -362,56 +343,60 @@ impl Agent {
                     .get(self.selected)
                     .is_some_and(|s| s.item == Item::SNOWBALL || s.item == Item::EGG) =>
             {
-                if !self.mode.can_interact() {
+                if !self.session.mode.can_interact() {
                     return Err("spectators cannot use items".into());
                 }
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
                 crate::survival_items::throw_held(
-                    &self.player,
-                    &mut self.inventory,
+                    &self.session.player,
+                    &mut self.session.inventory,
                     self.selected,
                     self.creative,
-                    self.id,
+                    self.session.id,
                     entities,
                 );
                 self.cooldown = 0.22;
                 self.swings += 1;
             }
-            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::ENDER_PEARL) => {
-                if !self.mode.can_interact() {
+            Command::Place
+                if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::ENDER_PEARL) =>
+            {
+                if !self.session.mode.can_interact() {
                     return Err("spectators cannot use items".into());
                 }
-                if self.vitals.pearl_cooldown > 0.0 {
+                if self.session.vitals.pearl_cooldown > 0.0 {
                     return Err("ender pearl cooling down".into());
                 }
-                self.vitals.pearl_cooldown = crate::entity::pearl::COOLDOWN;
-                let p = &self.player;
+                self.session.vitals.pearl_cooldown = crate::entity::pearl::COOLDOWN;
+                let p = &self.session.player;
                 let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
-                entities.throw_pearl(self.id, p.eye(), p.forward().as_dvec3(), carry);
+                entities.throw_pearl(self.session.id, p.eye(), p.forward().as_dvec3(), carry);
                 self.swings += 1;
                 if !self.creative {
-                    self.inventory.take_one(self.selected);
+                    self.session.inventory.take_one(self.selected);
                 }
             }
             Command::Place
-                if self.inventory.get(self.selected).is_some_and(|s| s.item.as_splash_potion().is_some()) =>
+                if self.session.inventory.get(self.selected).is_some_and(|s| s.item.as_splash_potion().is_some()) =>
             {
-                if !self.mode.can_interact() {
+                if !self.session.mode.can_interact() {
                     return Err("spectators cannot use items".into());
                 }
-                let potion = self.inventory.get(self.selected).and_then(|s| s.item.as_splash_potion()).unwrap();
-                let p = &self.player;
+                let potion = self.session.inventory.get(self.selected).and_then(|s| s.item.as_splash_potion()).unwrap();
+                let p = &self.session.player;
                 let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
-                entities.throw_potion(self.id, potion, p.eye(), p.forward().as_dvec3(), carry);
+                entities.throw_potion(self.session.id, potion, p.eye(), p.forward().as_dvec3(), carry);
                 self.swings += 1;
                 if !self.creative {
-                    self.inventory.take_one(self.selected);
+                    self.session.inventory.take_one(self.selected);
                 }
             }
-            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item == Item::EYE_OF_ENDER) => {
-                if !self.mode.can_interact() {
+            Command::Place
+                if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::EYE_OF_ENDER) =>
+            {
+                if !self.session.mode.can_interact() {
                     return Err("spectators cannot use items".into());
                 }
                 if self.cooldown > 0.0 {
@@ -429,7 +414,7 @@ impl Agent {
                     if world.generator.dimension != crate::world::terrain::Dimension::Overworld {
                         return Err("eyes of ender only find strongholds in the overworld".into());
                     }
-                    let from = self.player.pos + DVec3::Y * (crate::player::SHAPE.height * 0.5);
+                    let from = self.session.player.pos + DVec3::Y * (crate::player::SHAPE.height * 0.5);
                     let target = world.generator.strongholds.nearest(from.floor().as_ivec3()).ok_or("no stronghold")?;
                     entities.release_eye(from, target.as_dvec3());
                     self.emit(Event::EyeThrown(from));
@@ -437,20 +422,20 @@ impl Agent {
                 self.cooldown = 0.22;
                 self.swings += 1;
                 if !self.creative {
-                    self.inventory.take_one(self.selected);
+                    self.session.inventory.take_one(self.selected);
                 }
             }
             Command::Place
-                if self.mode.can_interact()
+                if self.session.mode.can_interact()
                     && self.cooldown <= 0.0
                     && crate::survival_items::use_mob(
-                        &self.player,
-                        &mut self.inventory,
+                        &self.session.player,
+                        &mut self.session.inventory,
                         self.selected,
                         self.creative,
                         world,
                         entities,
-                        self.id,
+                        self.session.id,
                     ) =>
             {
                 self.cooldown = 0.22;
@@ -462,13 +447,15 @@ impl Agent {
                     .is_some_and(|(pos, _)| world.get_block(pos).is_some_and(|b| b.cake_bites().is_some())) =>
             {
                 let (pos, _) = self.target(world).unwrap();
-                if !crate::survival_items::bite_cake(world, pos, &mut self.vitals, self.creative) {
+                if !crate::survival_items::bite_cake(world, pos, &mut self.session.vitals, self.creative) {
                     return Err("not hungry enough to eat cake".into());
                 }
                 self.swings += 1;
             }
-            Command::Place if self.inventory.get(self.selected).is_some_and(|s| s.item.bed_color().is_some()) => {
-                if !self.mode.can_build() {
+            Command::Place
+                if self.session.inventory.get(self.selected).is_some_and(|s| s.item.bed_color().is_some()) =>
+            {
+                if !self.session.mode.can_build() {
                     return Err("this game mode cannot place beds".into());
                 }
                 if self.cooldown > 0.0 {
@@ -476,10 +463,10 @@ impl Agent {
                 }
                 let (pos, normal) = self.target(world).ok_or("no block within reach")?;
                 let at = if world.get_block(pos).is_some_and(|b| b.is_replaceable()) { pos } else { pos + normal };
-                let direction = crate::world::block::Facing::toward(self.player.forward()).opposite().offset();
+                let direction = crate::world::block::Facing::toward(self.session.player.forward()).opposite().offset();
                 let head = at + direction;
-                if self.player.intersects_block(at)
-                    || self.player.intersects_block(head)
+                if self.session.player.intersects_block(at)
+                    || self.session.player.intersects_block(head)
                     || others.iter().any(|&p| {
                         crate::player::Player::new(p).intersects_block(at)
                             || crate::player::Player::new(p).intersects_block(head)
@@ -487,41 +474,50 @@ impl Agent {
                 {
                     return Err("bed intersects a player".into());
                 }
-                let color = self.inventory.get(self.selected).unwrap().item.bed_color().unwrap();
+                let color = self.session.inventory.get(self.selected).unwrap().item.bed_color().unwrap();
                 if !world.place_colored_bed(at, direction, color) {
                     return Err("bed does not fit".into());
                 }
                 if !self.creative {
-                    self.inventory.take_one(self.selected);
+                    self.session.inventory.take_one(self.selected);
                 }
                 self.cooldown = 0.22;
                 self.swings += 1;
             }
             Command::Place => {
-                let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
-                if !self.mode.can_interact() {
+                let (eye, dir) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
+                if !self.session.mode.can_interact() {
                     return Err("this game mode cannot interact".into());
                 }
-                if self.player.vehicle.is_some() {
-                    if entities.boost_mount(self.id, &mut self.inventory, self.selected, self.creative) {
+                if self.session.player.vehicle.is_some() {
+                    if entities.boost_mount(self.session.id, &mut self.session.inventory, self.selected, self.creative)
+                    {
                         return Ok(());
                     }
                     return Err("cannot place while riding".into());
                 }
                 let reach = crate::entity::minecart::interaction_reach(world, eye, dir, 5.0);
-                if entities.use_mount(eye, dir, reach, self.id, &mut self.inventory, self.selected, self.creative) {
-                    if let Some(id) = entities.mount_for_player(self.id) {
-                        self.player.vehicle = Some(id);
+                if entities.use_mount(
+                    eye,
+                    dir,
+                    reach,
+                    self.session.id,
+                    &mut self.session.inventory,
+                    self.selected,
+                    self.creative,
+                ) {
+                    if let Some(id) = entities.mount_for_player(self.session.id) {
+                        self.session.player.vehicle = Some(id);
                     }
                     return Ok(());
                 }
-                if let Some(id) = entities.mount_cart(eye, dir, reach, self.id) {
-                    self.player.vehicle = Some(id);
+                if let Some(id) = entities.mount_cart(eye, dir, reach, self.session.id) {
+                    self.session.player.vehicle = Some(id);
                     self.cooldown = 0.22;
                     self.swings += 1;
                     return Ok(());
                 }
-                if let Some(held) = self.inventory.get(self.selected)
+                if let Some(held) = self.session.inventory.get(self.selected)
                     && let Some(kind) = crate::entity::minecart::CartKind::from_item(held.item)
                     && let Some((pos, normal)) = self.target(world)
                 {
@@ -535,13 +531,13 @@ impl Agent {
                         return Err("minecarts need an empty rail".into());
                     }
                     if !self.creative {
-                        self.inventory.take_one(self.selected);
+                        self.session.inventory.take_one(self.selected);
                     }
                     self.cooldown = 0.22;
                     self.swings += 1;
                     return Ok(());
                 }
-                if !self.mode.can_build() {
+                if !self.session.mode.can_build() {
                     return Err("this game mode cannot place blocks".into());
                 }
                 if self.cooldown > 0.0 {
@@ -557,7 +553,7 @@ impl Agent {
                     world,
                     entities,
                     pos,
-                    &mut self.inventory,
+                    &mut self.session.inventory,
                     self.selected,
                     self.creative,
                 ) {
@@ -566,23 +562,23 @@ impl Agent {
                     return Ok(());
                 }
                 world.touch_redstone_ore(pos);
-                let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+                let held = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
                 let block = held.item.places().ok_or("selected item cannot be placed")?;
                 if block == crate::world::redstone_blocks::IRON_DOOR {
                     let at = pos + normal;
-                    if self.player.intersects_block(at)
-                        || self.player.intersects_block(at + IVec3::Y)
+                    if self.session.player.intersects_block(at)
+                        || self.session.player.intersects_block(at + IVec3::Y)
                         || others.iter().any(|&p| {
                             Player::new(p).intersects_block(at) || Player::new(p).intersects_block(at + IVec3::Y)
                         })
                     {
                         return Err("placement intersects a player".into());
                     }
-                    if !world.place_iron_door(at, crate::world::block::Facing::toward(self.player.forward())) {
+                    if !world.place_iron_door(at, crate::world::block::Facing::toward(self.session.player.forward())) {
                         return Err("placement failed".into());
                     }
                     if !self.creative {
-                        self.inventory.take_one(self.selected);
+                        self.session.inventory.take_one(self.selected);
                     }
                     self.cooldown = 0.22;
                     self.swings += 1;
@@ -600,7 +596,8 @@ impl Agent {
                 }
                 let block =
                     crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal);
-                let block = crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
+                let block =
+                    crate::world::redstone_blocks::placed_with_look(block, normal, self.session.player.forward());
                 let at = pos + normal;
                 let block = crate::world::nether_biome_blocks::placed_vine(
                     block,
@@ -615,7 +612,7 @@ impl Agent {
                 {
                     return Err("block cannot survive here".into());
                 }
-                if (block.is_solid() && self.player.intersects_block(at))
+                if (block.is_solid() && self.session.player.intersects_block(at))
                     || others.iter().any(|&p| Player::new(p).intersects_block(at))
                 {
                     return Err("placement intersects a player".into());
@@ -627,28 +624,28 @@ impl Agent {
                 self.cooldown = 0.22;
                 self.swings += 1;
                 if !self.creative {
-                    self.inventory.take_one(self.selected);
+                    self.session.inventory.take_one(self.selected);
                 }
             }
             Command::Attack => {
-                if !self.mode.can_interact() {
+                if !self.session.mode.can_interact() {
                     return Err("this game mode cannot attack".into());
                 }
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
-                if crate::survival_items::attack_knot(&self.player, world, entities) {
+                if crate::survival_items::attack_knot(&self.session.player, world, entities) {
                     self.cooldown = 0.22;
                     self.swings += 1;
                     return Ok(());
                 }
-                let distance = self
-                    .target(world)
-                    .map_or(6.0, |(p, _)| self.player.eye().distance(p.as_dvec3() + DVec3::splat(0.5)).min(6.0));
-                let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
-                let stack = self.inventory.get(self.selected);
+                let distance = self.target(world).map_or(6.0, |(p, _)| {
+                    self.session.player.eye().distance(p.as_dvec3() + DVec3::splat(0.5)).min(6.0)
+                });
+                let (eye, dir) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
+                let stack = self.session.inventory.get(self.selected);
                 let held = stack.map(|s| s.item);
-                let bonus = self.vitals.effects.attack_bonus();
+                let bonus = self.session.vitals.effects.attack_bonus();
                 let cart_reach = crate::entity::minecart::interaction_reach(world, eye, dir, distance);
                 if entities.hurt_cart(eye, dir, cart_reach, self.creative) {
                     self.cooldown = mining::attack_cooldown(held);
@@ -661,7 +658,7 @@ impl Agent {
                     let enchants = stack.map_or(Default::default(), |s| s.active_enchants());
                     let enchant = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
                     let damage = (mining::attack_damage(held) + bonus).max(0.0) + enchant;
-                    if entities.strike(hit, damage, self.id) && enchant > 0.0 {
+                    if entities.strike(hit, damage, self.session.id) && enchant > 0.0 {
                         let mut burst =
                             crate::particles::Burst::new(crate::particles::Kind::MagicCrit, eye + dir * t.min(4.0), 16);
                         burst.spread = DVec3::splat(0.4);
@@ -669,22 +666,23 @@ impl Agent {
                     }
                 } else {
                     let (i, _) = entities.raycast(eye, dir, distance).ok_or("no mob within reach")?;
-                    let sprint = self.movement_input().sprint && (self.creative || self.vitals.hunger.can_sprint());
-                    let sweep = (self.player.on_ground && !sprint).then_some(self.player.pos);
-                    entities.melee_for(i, dir, stack, bonus, false, sweep, self.id);
+                    let sprint =
+                        self.movement_input().sprint && (self.creative || self.session.vitals.hunger.can_sprint());
+                    let sweep = (self.session.player.on_ground && !sprint).then_some(self.session.player.pos);
+                    entities.melee_for(i, dir, stack, bonus, false, sweep, self.session.id);
                 }
                 if !self.creative
                     && let Some(held) = held
                 {
-                    self.inventory.wear(self.selected, mining::wear(held, true));
+                    self.session.inventory.wear(self.selected, mining::wear(held, true));
                 }
                 self.cooldown = mining::attack_cooldown(held);
                 self.swings += 1;
             }
             Command::Craft(item) => self.craft(item, world)?,
             Command::Chest(take, slot) => {
-                let eye = self.player.eye();
-                let dir = self.player.forward().as_dvec3();
+                let eye = self.session.player.eye();
+                let dir = self.session.player.forward().as_dvec3();
                 let reach = crate::entity::minecart::interaction_reach(world, eye, dir, 5.);
                 let vehicle = self
                     .player
@@ -700,14 +698,14 @@ impl Agent {
                             .vehicle_slots(id)
                             .and_then(|slots| slots.get(slot).copied().flatten())
                             .ok_or("vehicle slot empty or out of range")?;
-                        let left = self.inventory.add_stack(stack);
+                        let left = self.session.inventory.add_stack(stack);
                         entities.vehicle_slots_mut(id).unwrap()[slot] =
                             (left > 0).then_some(Stack { count: left, ..stack });
                         if left == stack.count {
                             return Err("inventory full".into());
                         }
                     } else {
-                        let stack = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+                        let stack = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
                         if !entities.vehicle_accepts(id, slot, stack.item) {
                             return Err("item does not fit this mount slot".into());
                         }
@@ -722,7 +720,7 @@ impl Agent {
                             return Err("vehicle slot full or incompatible".into());
                         }
                         *dest = Some(Stack { count: dest.map_or(0, |s| s.count) + n, ..stack });
-                        self.inventory.slots[self.selected] =
+                        self.session.inventory.slots[self.selected] =
                             (stack.count > n).then_some(Stack { count: stack.count - n, ..stack });
                     }
                     return Ok(());
@@ -734,13 +732,13 @@ impl Agent {
                 let chest = world.chest_mut(pos).ok_or("target is not a chest")?;
                 if take {
                     let stack = chest.slots[slot].ok_or("chest slot empty")?;
-                    let left = self.inventory.add_stack(stack);
+                    let left = self.session.inventory.add_stack(stack);
                     chest.slots[slot] = (left > 0).then_some(Stack { count: left, ..stack });
                     if left == stack.count {
                         return Err("inventory full".into());
                     }
                 } else {
-                    let stack = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+                    let stack = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
                     let dest = &mut chest.slots[slot];
                     let room = match dest {
                         None => stack.max(),
@@ -752,11 +750,11 @@ impl Agent {
                         return Err("chest slot full or incompatible".into());
                     }
                     *dest = Some(Stack { count: dest.map_or(0, |s| s.count) + n, ..stack });
-                    self.inventory.slots[self.selected] =
+                    self.session.inventory.slots[self.selected] =
                         (stack.count > n).then_some(Stack { count: stack.count - n, ..stack });
                 }
                 if world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
-                    entities.piglins_notice(self.id, self.player.pos, true, world);
+                    entities.piglins_notice(self.session.id, self.session.player.pos, true, world);
                 }
             }
             Command::Enchanting(i) => self.enchant_at_table(i, world)?,
@@ -768,32 +766,32 @@ impl Agent {
                 if slot == self.selected {
                     return Err("pick a different slot for the second item".into());
                 }
-                let left = self.inventory.get(self.selected).ok_or("selected slot empty")?;
-                let right = self.inventory.get(slot);
+                let left = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
+                let right = self.session.inventory.get(slot);
                 let r = crate::enchant::anvil_any_cost(left, right, self.creative).ok_or("those don't combine")?;
                 if !self.creative && r.cost >= crate::enchant::TOO_EXPENSIVE {
                     return Err("too expensive".into());
                 }
-                if !self.creative && self.vitals.xp.level < r.cost {
+                if !self.creative && self.session.vitals.xp.level < r.cost {
                     return Err(format!("needs level {}", r.cost));
                 }
-                self.inventory.slots[self.selected] = Some(r.output);
-                self.inventory.slots[slot] = match (r.uses, right) {
+                self.session.inventory.slots[self.selected] = Some(r.output);
+                self.session.inventory.slots[slot] = match (r.uses, right) {
                     (Some(n), Some(s)) if s.count > n => Some(Stack { count: s.count - n, ..s }),
                     _ => None,
                 };
                 if !self.creative {
-                    self.vitals.xp.add_levels(-(r.cost as i64));
+                    self.session.vitals.xp.add_levels(-(r.cost as i64));
                     crate::enchant::wear_anvil(world, pos);
                 }
             }
             Command::Trade(index) => {
                 let id = entities
-                    .target_merchant(world, self.player.eye(), self.player.forward().as_dvec3(), 6.0)
+                    .target_merchant(world, self.session.player.eye(), self.session.player.forward().as_dvec3(), 6.0)
                     .ok_or("no villager within reach")?;
                 if let Some(i) = index {
-                    let xp = entities.trade_for(id, i, &mut self.inventory, self.id)?;
-                    entities.spawn_xp(self.player.pos, xp);
+                    let xp = entities.trade_for(id, i, &mut self.session.inventory, self.session.id)?;
+                    entities.spawn_xp(self.session.player.pos, xp);
                 }
             }
             Command::Grindstone(slot) => {
@@ -804,13 +802,13 @@ impl Agent {
                 if slot == Some(self.selected) {
                     return Err("pick a different second slot".into());
                 }
-                let a = self.inventory.get(self.selected);
-                let b = slot.and_then(|i| self.inventory.get(i));
+                let a = self.session.inventory.get(self.selected);
+                let b = slot.and_then(|i| self.session.inventory.get(i));
                 let result = crate::grindstone::result(a, b).ok_or("those don't grind")?;
                 let xp = crate::grindstone::xp(a, b, crate::enchant::roll());
-                self.inventory.slots[self.selected] = Some(result.output);
+                self.session.inventory.slots[self.selected] = Some(result.output);
                 if let Some(i) = slot {
-                    self.inventory.slots[i] = None;
+                    self.session.inventory.slots[i] = None;
                 }
                 entities.spawn_xp(pos.as_dvec3() + DVec3::splat(0.5), xp);
             }
@@ -819,45 +817,38 @@ impl Agent {
                 if world.get_block(pos) != Some(Block::SMITHING_TABLE) {
                     return Err("target is not a smithing table".into());
                 }
-                let base = self.inventory.get(self.selected).ok_or("selected slot empty")?;
-                let template_slot = self.inventory.find(Item::NETHERITE_UPGRADE).ok_or("no upgrade template")?;
-                let addition_slot = self.inventory.find(Item::NETHERITE_INGOT).ok_or("no Netherite ingot")?;
+                let base = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
+                let template_slot =
+                    self.session.inventory.find(Item::NETHERITE_UPGRADE).ok_or("no upgrade template")?;
+                let addition_slot = self.session.inventory.find(Item::NETHERITE_INGOT).ok_or("no Netherite ingot")?;
                 let result = crate::smithing::upgrade(
-                    self.inventory.get(template_slot).unwrap(),
+                    self.session.inventory.get(template_slot).unwrap(),
                     base,
-                    self.inventory.get(addition_slot).unwrap(),
+                    self.session.inventory.get(addition_slot).unwrap(),
                 )
                 .ok_or("selected item is not diamond gear")?;
-                self.inventory.take_one(template_slot);
-                self.inventory.take_one(addition_slot);
-                self.inventory.slots[self.selected] = Some(result);
+                self.session.inventory.take_one(template_slot);
+                self.session.inventory.take_one(addition_slot);
+                self.session.inventory.slots[self.selected] = Some(result);
             }
             Command::Drop => {
-                let stack = self.inventory.slots[self.selected].take().ok_or("selected slot empty")?;
-                entities.throw(stack, self.player.eye(), self.player.forward().as_dvec3());
+                let stack = self.session.inventory.slots[self.selected].take().ok_or("selected slot empty")?;
+                entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());
             }
             Command::Respawn => {
-                if !self.vitals.is_dead() {
+                if !self.session.vitals.is_dead() {
                     return Err("player is alive".into());
                 }
-                let overworld = world.generator.dimension == Dimension::Overworld;
-                let bed = self
-                    .spawn_bed
-                    .filter(|&b| overworld && world.get_block(b).is_some_and(|b| b.is_bed() && !b.is_bed_head()));
-                if overworld && bed.is_none() {
-                    self.spawn_bed = None; // broken: forget it
-                }
-                let at = match (self.spawn_point.filter(|_| overworld), bed) {
-                    (Some(p), _) => p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5),
-                    (None, Some(b)) => {
-                        DVec3::new(b.x as f64 + 0.5, b.y as f64 + Block::BED_FOOT.height(), b.z as f64 + 0.5)
-                    }
-                    (None, None) => world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5),
-                };
-                self.player = Player::new(at);
-                self.player.can_fly = self.creative || self.mode.can_fly();
-                self.player.noclip = self.mode == GameMode::Spectator;
-                self.vitals = Vitals::default();
+                let at = self
+                    .session
+                    .personal_spawn(world)
+                    .position
+                    .unwrap_or_else(|| world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+                self.session.cancel_consumption();
+                self.session.player = Player::new(at);
+                self.session.player.can_fly = self.creative || self.session.mode.can_fly();
+                self.session.player.noclip = self.session.mode == GameMode::Spectator;
+                self.session.vitals = Vitals::default();
             }
             Command::Observe(_) | Command::Help | Command::XpQuery | Command::Say(_) => {}
             _ => return Err("command requires host console".into()),
@@ -872,7 +863,7 @@ impl Agent {
             .filter(|r| r.result.item == item)
             .find_map(|r| self.crafted(r, at_table))
             .ok_or("missing ingredients, inventory space or targeted crafting table")?;
-        self.inventory = inventory;
+        self.session.inventory = inventory;
         Ok(())
     }
 
@@ -887,7 +878,7 @@ impl Agent {
         if grid.size == 3 && !at_table {
             return None;
         }
-        let mut inventory = self.inventory.clone();
+        let mut inventory = self.session.inventory.clone();
         for i in 0..grid.cells.len() {
             if grid.cells[i].is_none() {
                 continue;
@@ -941,61 +932,67 @@ impl Agent {
         difficulty: crate::simulation::difficulty::Difficulty,
         rules: &crate::rules::GameRules,
     ) {
-        self.previous_pos = self.player.pos;
+        self.previous_pos = self.session.player.pos;
         self.keep_inventory = rules.bool("keepInventory");
         // Movement alone returning early is not enough: survival, mining,
         // pickups and timed commands must also wait for local terrain.
-        let feet = self.player.pos.floor().as_ivec3();
+        let feet = self.session.player.pos.floor().as_ivec3();
         if !world.is_loaded(feet) || !world.is_loaded(feet - IVec3::Y) {
             return;
         }
-        let holding_rod = self.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD);
-        if self.vitals.is_dead() || !holding_rod {
-            entities.drop_bobber(self.id);
+        let holding_rod = self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD);
+        if self.session.vitals.is_dead() || !holding_rod {
+            entities.drop_bobber(self.session.id);
         }
         self.cooldown = (self.cooldown - TICK_SECONDS).max(0.0);
-        if self.vitals.is_dead() {
-            entities.dismount(world, self.id);
-            self.player.vehicle = None;
+        if self.session.vitals.is_dead() {
+            self.session.cancel_consumption();
+            entities.dismount(world, self.session.id);
+            self.session.player.vehicle = None;
             self.remaining = 0;
-            self.sleeping = None;
+            self.session.sleeping = None;
             return;
         }
         let mut input = self.movement_input();
-        input.sprint &= self.creative || self.mode.invulnerable() || self.vitals.hunger.can_sprint();
-        let before = self.player.pos;
-        if self.player.vehicle.is_some()
+        input.sprint &= self.creative || self.session.mode.invulnerable() || self.session.vitals.hunger.can_sprint();
+        let before = self.session.player.pos;
+        if self.session.player.vehicle.is_some()
             && input.descend
-            && let Some(pos) = entities.dismount(world, self.id)
+            && let Some(pos) = entities.dismount(world, self.session.id)
         {
-            self.player.pos = pos;
-            self.player.vehicle = None;
-            self.player.vel = DVec3::ZERO;
+            self.session.player.pos = pos;
+            self.session.player.vehicle = None;
+            self.session.player.vel = DVec3::ZERO;
         }
-        if self.player.vehicle.is_none() {
-            self.player.apply_effects(&self.vitals.effects);
-            self.player.wear_boots(crate::enchant::armor_level(
-                &self.inventory.armor,
+        if self.session.player.vehicle.is_none() {
+            self.session.player.apply_effects(&self.session.vitals.effects);
+            self.session.player.wear_boots(crate::enchant::armor_level(
+                &self.session.inventory.armor,
                 crate::enchant::Enchantment::DepthStrider,
             ));
-            self.player.update(TICK_SECONDS, input, world);
-            crate::particles::water_entry(&self.player, before, world);
+            self.session.player.update(TICK_SECONDS, input, world);
+            crate::particles::water_entry(&self.session.player, before, world);
         } else {
-            entities.mount_input(self.id, &self.player, input, &self.inventory, self.selected);
-            entities.seat_player(&mut self.player, self.id);
+            entities.mount_input(self.session.id, &self.session.player, input, &self.session.inventory, self.selected);
+            entities.seat_player(&mut self.session.player, self.session.id);
         }
-        let moved = (self.player.pos - before).with_y(0.0).length();
+        let moved = (self.session.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
-            respiration: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::Respiration),
-            frost_walker: crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker)
-                > 0,
-            turtle_helmet: self.inventory.armor[0].is_some_and(|s| s.item == Item::TURTLE_HELMET),
-            ..simulation::player_environment(&self.player, world, input, moved)
+            respiration: crate::enchant::armor_level(
+                &self.session.inventory.armor,
+                crate::enchant::Enchantment::Respiration,
+            ),
+            frost_walker: crate::enchant::armor_level(
+                &self.session.inventory.armor,
+                crate::enchant::Enchantment::FrostWalker,
+            ) > 0,
+            turtle_helmet: self.session.inventory.armor[0].is_some_and(|s| s.item == Item::TURTLE_HELMET),
+            ..simulation::player_environment(&self.session.player, world, input, moved)
         };
-        let hurts = self.vitals.tick_rules(
+        let hurts = self.session.vitals.tick_rules(
             TICK_SECONDS as f32,
             &env,
-            self.creative || self.mode.invulnerable(),
+            self.creative || self.session.mode.invulnerable(),
             difficulty,
             rules.bool("naturalRegeneration"),
         );
@@ -1007,10 +1004,10 @@ impl Agent {
             (hurts.starve, "starved to death"),
         ] {
             if damage > 0.0 && self.damage(damage, cause) > 0.0 {
-                self.sleeping = None;
+                self.session.sleeping = None;
             }
         }
-        if self.vitals.is_dead() {
+        if self.session.vitals.is_dead() {
             self.drop_everything(entities);
             self.remaining = 0;
             return;
@@ -1021,13 +1018,13 @@ impl Agent {
             && let Some((pos, face)) = self.target(world)
             && let Some(block) = world.get_block(pos)
         {
-            let held = self.inventory.get(self.selected).map(|s| s.item);
+            let held = self.session.inventory.get(self.selected).map(|s| s.item);
             world.touch_redstone_ore(pos);
             let block = world.get_block(pos).unwrap_or(block);
             let digger = self.digger(world);
             let progress = self.breaking.filter(|(p, b, _)| *p == pos && *b == block).map_or(0.0, |(_, _, n)| n)
                 + TICK_SECONDS
-                    / (mining::dig_time(block, digger) / self.vitals.effects.mining_factor()).max(1e-3) as f64;
+                    / (mining::dig_time(block, digger) / self.session.vitals.effects.mining_factor()).max(1e-3) as f64;
             self.breaking = Some((pos, block, progress));
             if !self.creative && progress < 1.0 {
                 world.particles.push(crate::particles::Request::Hit { cell: pos, block, face });
@@ -1042,7 +1039,7 @@ impl Agent {
                 }
                 world.set_block(pos, Block::AIR);
                 if crate::entity::nether::guarded_by_piglins(block) {
-                    entities.piglins_notice(self.id, self.player.pos, false, world);
+                    entities.piglins_notice(self.session.id, self.session.player.pos, false, world);
                 }
                 self.emit(Event::Broke(pos, block));
                 if !self.creative {
@@ -1054,9 +1051,9 @@ impl Agent {
                         }
                     }
                     if let Some(held) = held {
-                        self.inventory.wear(self.selected, mining::wear(held, false));
+                        self.session.inventory.wear(self.selected, mining::wear(held, false));
                     }
-                    self.vitals.hunger.exhaust(simulation::survival::EXHAUST_MINE);
+                    self.session.vitals.hunger.exhaust(simulation::survival::EXHAUST_MINE);
                 }
                 self.breaking = None;
                 self.cooldown = 0.15;
@@ -1065,19 +1062,25 @@ impl Agent {
             self.breaking = None;
         }
         self.chew(entities);
+        if self.session.vitals.is_dead() {
+            self.drop_everything(entities);
+            self.session.cancel_consumption();
+            self.remaining = 0;
+            return;
+        }
         self.remaining = self.remaining.saturating_sub(1);
         entities.items.retain_mut(|item| {
-            if item.pickup_delay > 0.0 || !item.touches_player(self.player.pos) {
+            if item.pickup_delay > 0.0 || !item.touches_player(self.session.player.pos) {
                 return true;
             }
-            item.stack.count = self.inventory.add_stack(item.stack);
+            item.stack.count = self.session.inventory.add_stack(item.stack);
             item.stack.count > 0
         });
         if let Some(chime) = crate::entity::orb::absorb(
             &mut entities.orbs,
-            self.player.pos,
-            &mut self.vitals.xp,
-            &mut self.inventory,
+            self.session.player.pos,
+            &mut self.session.vitals.xp,
+            &mut self.session.inventory,
             self.selected,
         ) {
             self.emit(Event::Xp(chime));
@@ -1087,15 +1090,15 @@ impl Agent {
     /// Arrives where this agent's ender pearl landed, taking the landing's
     /// 5 damage. Returns whether it teleported (dead or asleep agents don't).
     pub fn pearl_teleport(&mut self, pos: DVec3, entities: &mut Entities) -> bool {
-        if self.vitals.is_dead() || self.sleeping.is_some() {
+        if self.session.vitals.is_dead() || self.session.sleeping.is_some() {
             return false;
         }
-        self.player.pos = pos;
+        self.session.player.pos = pos;
         self.previous_pos = pos;
-        self.player.vel = DVec3::ZERO;
-        self.vitals.reset_fall();
+        self.session.player.vel = DVec3::ZERO;
+        self.session.vitals.reset_fall();
         self.damage(crate::entity::pearl::DAMAGE, "fell from a high place");
-        if self.vitals.is_dead() {
+        if self.session.vitals.is_dead() {
             self.drop_everything(entities);
             self.remaining = 0;
         }
@@ -1108,67 +1111,37 @@ impl Agent {
         if self.keep_inventory {
             return;
         }
-        let stacks = self.inventory.take_all().into_iter().chain(self.work.iter_mut().filter_map(Option::take));
+        let stacks =
+            self.session.inventory.take_all().into_iter().chain(self.session.work.iter_mut().filter_map(Option::take));
         for stack in stacks.filter(|s| !s.active_enchants().has(crate::enchant::Enchantment::VanishingCurse)) {
-            entities.scatter(stack, self.player.pos);
+            entities.scatter(stack, self.session.player.pos);
         }
-        let xp = self.vitals.xp.die();
-        entities.spawn_xp(self.player.pos, xp);
+        let xp = self.session.vitals.xp.die();
+        entities.spawn_xp(self.session.player.pos, xp);
     }
 
-    /// One tick of eating: a bite finishes after [`EAT_TICKS`] of holding
-    /// the same food, like Java. Switching slots restarts it via `select`.
+    /// Advance the shared consumption clock; item-specific duration comes from
+    /// the reference content definition. Switching slots restarts the bite.
     fn chew(&mut self, entities: &mut Entities) {
-        let held = self.inventory.get(self.selected).map(|s| s.item);
-        let milk = held == Some(Item::MILK_BUCKET);
-        let potion = held.and_then(Item::as_potion);
-        let food = held.and_then(|i| i.food()).filter(|_| !self.creative && self.vitals.hunger.can_eat());
-        if self.remaining == 0 || !self.eating || (!milk && potion.is_none() && food.is_none()) {
+        // Controller/LAN hands drive their session's consumption through the desktop
+        // adapter; an idle CLI input must not cancel that other adapter's current tick.
+        if !self.eating || self.remaining == 0 {
             self.bite = 0;
             return;
         }
-        self.bite += 1;
-        // Chewing sounds four times a second.
-        if self.bite % 5 == 1 {
+        let before = self.session.consumption_elapsed();
+        let result = self.session.tick_consumption(self.selected, true, entities);
+        let Ok(step) = result else {
+            self.bite = 0;
+            self.session.cancel_consumption();
+            return;
+        };
+        self.bite = (f64::from(step.progress) * EAT_TICKS as f64) as u32;
+        if ((before / TICK_SECONDS).round() as u32).is_multiple_of(5) {
             self.emit(Event::Chew);
         }
-        if self.bite >= EAT_TICKS {
-            self.bite = 0;
-            if milk {
-                self.vitals.effects.clear();
-                crate::survival_items::exchange(
-                    &mut self.inventory,
-                    self.selected,
-                    Item::BUCKET,
-                    self.creative,
-                    entities,
-                    &self.player,
-                );
-            } else if let Some(potion) = potion {
-                let damage = potion.drink(&mut self.vitals);
-                self.damage(damage, survival::CAUSE_MAGIC);
-                if !self.creative {
-                    self.inventory.slots[self.selected] = Some(Stack::new(Item::GLASS_BOTTLE, 1));
-                }
-            } else if let Some((hunger, saturation)) = food {
-                if let Some(remainder) = held.and_then(Item::remainder) {
-                    crate::survival_items::exchange(
-                        &mut self.inventory,
-                        self.selected,
-                        remainder,
-                        false,
-                        entities,
-                        &self.player,
-                    );
-                } else {
-                    self.inventory.take_one(self.selected);
-                }
-                self.vitals.hunger.eat(hunger, saturation);
-                if let Some((effect, amp, ticks)) = held.and_then(|item| item.food_effect_roll(entities.roll())) {
-                    self.vitals.apply_effect(effect, amp, ticks);
-                }
-            }
-            // A timed `eat` command stops after one bite.
+        if let Some(consumed) = step.completed {
+            self.damage(consumed.magic_damage, survival::CAUSE_MAGIC);
             if self.remaining <= 1 {
                 self.eating = false;
             }
@@ -1194,9 +1167,12 @@ impl Agent {
     /// The targeted enchanting table and its offers for the held item.
     fn table_offers(&self, world: &World) -> Option<(IVec3, [crate::enchant::Offer; 3])> {
         let (pos, _) = self.target(world)?;
-        let held = self.inventory.get(self.selected)?;
+        let held = self.session.inventory.get(self.selected)?;
         (world.get_block(pos) == Some(Block::ENCHANTING_TABLE) && crate::enchant::table_accepts(held)).then(|| {
-            (pos, crate::enchant::offers(self.vitals.xp.seed, held.item, crate::enchant::bookshelves(world, pos)))
+            (
+                pos,
+                crate::enchant::offers(self.session.vitals.xp.seed, held.item, crate::enchant::bookshelves(world, pos)),
+            )
         })
     }
 
@@ -1206,7 +1182,7 @@ impl Agent {
         let (_, offers) =
             self.table_offers(world).ok_or("not aiming at an enchanting table with an enchantable item")?;
         let offer = offers[i];
-        let held = self.inventory.get(self.selected).ok_or("selected slot empty")?;
+        let held = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
         let lapis = self
             .inventory
             .slots
@@ -1215,7 +1191,7 @@ impl Agent {
             .filter(|s| s.item == Item::LAPIS_LAZULI)
             .map(|s| s.count as usize)
             .sum::<usize>();
-        let level = self.vitals.xp.level;
+        let level = self.session.vitals.xp.level;
         if offer.cost == 0 {
             return Err("no offer in that slot".into());
         }
@@ -1226,10 +1202,10 @@ impl Agent {
         if out.item == Item::BOOK {
             out.item = Item::ENCHANTED_BOOK;
         }
-        for (e, l) in crate::enchant::offer_enchants(self.vitals.xp.seed, held.item, i, offer.cost) {
+        for (e, l) in crate::enchant::offer_enchants(self.session.vitals.xp.seed, held.item, i, offer.cost) {
             out.enchants.set(e, l);
         }
-        let mut inv = self.inventory.clone();
+        let mut inv = self.session.inventory.clone();
         inv.take_one(self.selected);
         if !self.creative {
             for _ in 0..=i {
@@ -1243,19 +1219,19 @@ impl Agent {
             return Err("inventory full".into());
         }
         if !self.creative {
-            self.vitals.xp.add_levels(-(i as i64 + 1));
+            self.session.vitals.xp.add_levels(-(i as i64 + 1));
         }
-        self.inventory = inv;
-        self.vitals.xp.seed = (crate::enchant::roll() * u32::MAX as f32) as u32 as i32;
+        self.session.inventory = inv;
+        self.session.vitals.xp.seed = (crate::enchant::roll() * u32::MAX as f32) as u32 as i32;
         Ok(())
     }
 
     /// Damage through protection enchantments (armor points aside).
     fn damage(&mut self, amount: f32, cause: &str) -> f32 {
-        let amount = crate::enchant::protect(amount, &self.inventory.armor, cause);
-        let taken = self.vitals.damage(amount, cause, self.creative || self.mode.invulnerable());
+        let amount = crate::enchant::protect(amount, &self.session.inventory.armor, cause);
+        let taken = self.session.vitals.damage(amount, cause, self.creative || self.session.mode.invulnerable());
         if taken > 0.0 {
-            self.player.animation.hurt_direction = 0.0;
+            self.session.player.animation.hurt_direction = 0.0;
         }
         taken
     }
@@ -1264,7 +1240,7 @@ impl Agent {
     /// with damage (hurt immunity also stops repeated shoves), and a survival
     /// agent killed this way drops everything. Returns the damage taken.
     pub fn hurt(&mut self, amount: f32, cause: &str, knockback: DVec3, entities: &mut Entities) -> f32 {
-        let inv = &self.inventory;
+        let inv = &self.session.inventory;
         let reduced = simulation::survival::armor_reduce(amount, inv.armor_points(), inv.armor_toughness());
         self.hurt_after_armor(reduced, amount, cause, knockback, entities)
     }
@@ -1272,13 +1248,13 @@ impl Agent {
     /// Mounted falls bypass armor points, retaining protection and death/drop rules.
     pub fn hurt_fall(&mut self, amount: f32, entities: &mut Entities) {
         self.damage(amount, simulation::survival::CAUSE_FALL);
-        if self.vitals.is_dead() {
+        if self.session.vitals.is_dead() {
             self.drop_everything(entities);
         }
     }
 
     pub fn hurt_beam(&mut self, physical: f32, magic: f32, entities: &mut Entities) -> f32 {
-        let inv = &self.inventory;
+        let inv = &self.session.inventory;
         let reduced = simulation::survival::armor_reduce(physical, inv.armor_points(), inv.armor_toughness());
         self.hurt_after_armor(reduced + magic, physical, "was slain by a guardian", DVec3::ZERO, entities)
     }
@@ -1295,11 +1271,12 @@ impl Agent {
         if taken <= 0.0 {
             return 0.0;
         }
-        self.player.hurt_from(knockback);
-        self.player.vel += simulation::survival::knockback_taken(knockback, self.inventory.knockback_resistance());
-        self.inventory.wear_armor(wear);
-        self.sleeping = None;
-        if self.vitals.is_dead() {
+        self.session.player.hurt_from(knockback);
+        self.session.player.vel +=
+            simulation::survival::knockback_taken(knockback, self.session.inventory.knockback_resistance());
+        self.session.inventory.wear_armor(wear);
+        self.session.sleeping = None;
+        if self.session.vitals.is_dead() {
             self.drop_everything(entities);
             self.remaining = 0;
         }
@@ -1309,6 +1286,9 @@ impl Agent {
     /// Held device input for the next tick (a local controller). Unlike a
     /// timed `move` or `mine`, this keeps mining progress on the same block.
     pub fn hold(&mut self, input: MoveInput, mining: bool, using: bool) {
+        if self.eating && !using {
+            self.session.cancel_consumption();
+        }
         self.input = input;
         self.mining = mining;
         self.eating = using;
@@ -1332,21 +1312,21 @@ impl Agent {
     /// What this agent mines with, and where it stands (Java's penalties).
     fn digger(&self, world: &World) -> mining::Digger {
         mining::Digger {
-            held: self.inventory.get(self.selected),
-            helmet: self.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
-            eyes_in_water: self.player.head_in_water(world),
-            on_ground: self.player.on_ground || self.player.flying,
+            held: self.session.inventory.get(self.selected),
+            helmet: self.session.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
+            eyes_in_water: self.session.player.head_in_water(world),
+            on_ground: self.session.player.on_ground || self.session.player.flying,
         }
     }
 
     /// Whether hostile mobs may attack this agent.
     pub fn targetable(&self) -> bool {
-        !self.creative && self.mode.targetable() && !self.vitals.is_dead()
+        !self.creative && self.session.mode.targetable() && !self.session.vitals.is_dead()
     }
 
     /// Structured observation includes loaded status, target, inventory and optional nearby cells.
     pub fn observe(&self, world: &World, radius: i32) -> Value {
-        let center = self.player.pos.floor().as_ivec3();
+        let center = self.session.player.pos.floor().as_ivec3();
         let mut blocks = Vec::new();
         if radius > 0 {
             for y in -radius..=radius {
@@ -1376,14 +1356,17 @@ impl Agent {
         let target = self.target(world).map(|(p, n)| {
             json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers})
         });
-        json!({"position":self.player.pos.to_array(),"yaw":self.player.yaw.to_degrees(),"pitch":self.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.vitals.health,"food":self.vitals.hunger.food,"level":self.vitals.xp.level,"xp_progress":self.vitals.xp.progress(),"dead":self.vitals.is_dead(),"mode":self.mode.name(),"creative":self.creative,"flying":self.player.flying,"sleeping":self.sleeping.is_some(),"spawn_bed":self.spawn_bed.map(|p|p.to_array()),"spawn_point":self.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
+        json!({"position":self.session.player.pos.to_array(),"yaw":self.session.player.yaw.to_degrees(),"pitch":self.session.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.session.vitals.health,"food":self.session.vitals.hunger.food,"level":self.session.vitals.xp.level,"xp_progress":self.session.vitals.xp.progress(),"dead":self.session.vitals.is_dead(),"mode":self.session.mode.name(),"creative":self.creative,"flying":self.session.player.flying,"sleeping":self.session.sleeping.is_some(),"spawn_bed":self.session.spawn_bed.map(|p|p.to_array()),"spawn_point":self.session.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::{chunk::ChunkData, terrain::Generator};
+    use crate::world::{
+        chunk::ChunkData,
+        terrain::{Dimension, Generator},
+    };
     use crate::{simulation::effects::Effect, world::terrain::Biome};
     use std::sync::Arc;
     fn world() -> World {

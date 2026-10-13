@@ -111,13 +111,16 @@ light even in headless worlds.
 
 The optional desktop agent host accepts bounded, versioned JSON-lines TCP
 requests. Network workers enqueue commands; the game thread validates and
-executes them. Device-free agent sessions own independent movement, vitals and
-inventory. Streaming, fire and growth use the union of active player ranges;
+executes them. Desktop and device-free agents use the same `PlayerSession` for
+identity, movement, inventory, vitals, mode, workstation inputs and personal
+spawn data. The session owns validated fixed-tick food/drink transactions;
+adapters handle sounds, hand animation and damage/death presentation. Streaming,
+fire and growth use the union of active player ranges;
 agent-only chunks outside the host view stay unmeshed. Named agent profiles
 persist in the root level file. See [the CLI protocol and limitations](agents.md).
 
-Full client/session action extraction, mob target identities, independent
-simultaneous dimensions, authoritative skylight, shape-aware light occlusion
+Full action extraction and removal of controller/LAN state swapping, independent
+simultaneous dimensions, authoritative skylight and shape-aware light occlusion
 remain future work. A first desktop LAN slice uses bounded binary-framed TCP,
 authoritative chunk snapshots and the existing hosted-player actions; see [LAN](lan.md). Split-screen is implemented; all views currently share the
 host's biome fog colour.
@@ -129,6 +132,9 @@ See [the headless smoke run and checks](development.md#headless-simulation-found
 src/
   lib.rs             reusable engine exports (no device dependencies)
   main.rs            desktop argument parsing, event loop
+  session.rs         actor-owned core state, personal spawn selection
+  session/
+    consumption.rs   fixed-tick food/drink validation and transactions
   content/
     mod.rs           shared plank ingredient tag (including explicit Nether fuel exceptions)
     fuel.rs          first furnace fuel definitions, in Java ticks
@@ -140,7 +146,7 @@ src/
     weather.rs       weather state and precipitation queries
   app/
     mod.rs           window, input, fixed game ticks, rendering, damage entry point
-    actions.rs       hotbar selection, mining and eating progress (unit tested)
+    actions.rs       hotbar/mining state and consumption presentation mirror
     recipe_book.rs   recipe navigation, responsive layout and hit testing
     hud.rs           HUD: hotbar, hearts/food/bubbles, containers, death and F3
     menu.rs          pause menu and options screen

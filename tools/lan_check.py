@@ -12,6 +12,8 @@ Needs a display (the host is the normal desktop game). Exits non-zero on failure
 """
 import json
 import math
+import os
+import re
 import shutil
 import socket
 import struct
@@ -22,7 +24,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-EXE = str(ROOT / "target/release/voxelcraft")
+EXE = str(ROOT / Path(os.environ.get("CARGO_TARGET_DIR", "target")) / "release/voxelcraft")
 VERSION = next(
     line.split('"')[1] for line in (ROOT / "Cargo.toml").read_text().splitlines() if line.startswith("version")
 )
@@ -47,6 +49,7 @@ class Host:
         data.mkdir(parents=True, exist_ok=True)
         self.port = port
         self.log = data / "host.log"
+        previous_log_size = self.log.stat().st_size if self.log.exists() else 0
         args = [EXE, "--world", "lancheck", "--rd", "4", "--mute", "--time", "0.25", "--lan-cheats",
                 "--pose", "0.5,151,0.5,0,0", "--data-dir", str(data), "--host-lan", f"127.0.0.1:{port}",
                 "--profile", "Host", "--open-menu", "pause"]
@@ -56,7 +59,30 @@ class Host:
                 for z in range(-8, 9):
                     args += ["--place", f"{x},150,{z},stone"]
         args += list(extra)
-        self.proc = subprocess.Popen(args, stdout=open(self.log, "a"), stderr=subprocess.STDOUT)
+        env = os.environ.copy()
+        env["RUST_LOG"] = "voxelcraft=info"
+        self.proc = subprocess.Popen(args, stdout=open(self.log, "a"), stderr=subprocess.STDOUT, env=env)
+        # Handshake/chunks can precede the asynchronous --place fixture edits.
+        # Wait for this run's marker, including when reusing the restart log.
+        deadline = time.monotonic() + 60
+        try:
+            while True:
+                with self.log.open("rb") as log:
+                    log.seek(previous_log_size)
+                    output = log.read().decode(errors="replace")
+                ready = re.search(r"scripted scene ready: (\d+) placements, (\d+) failures", output)
+                if ready:
+                    if int(ready[2]):
+                        raise RuntimeError(f"fixture placement failed; inspect {self.log}")
+                    break
+                if self.proc.poll() is not None:
+                    raise RuntimeError(f"desktop host exited before fixture readiness; inspect {self.log}")
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"desktop fixture readiness; inspect {self.log}")
+                time.sleep(0.1)
+        except BaseException:
+            self.stop()
+            raise
 
     def stop(self):
         if self.proc.poll() is None:

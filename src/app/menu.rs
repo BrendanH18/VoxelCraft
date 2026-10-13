@@ -193,7 +193,7 @@ impl Game {
         }
         self.menu = Some(Screen::Pause);
         self.clock.advance(std::time::Duration::ZERO, true);
-        self.previous_eye = self.player.eye();
+        self.previous_eye = self.session.player.eye();
         self.mobs.entities.snapshot_positions();
         self.world.snapshot_falling_positions();
         self.menu_drag = None;
@@ -204,6 +204,7 @@ impl Game {
         self.jump_pressed = false;
         self.mine_pressed = false;
         self.actions.reset();
+        self.session.cancel_consumption();
         self.release_attack();
     }
 

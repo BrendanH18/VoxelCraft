@@ -200,12 +200,12 @@ fn fit_state(mut v: Value) -> (Option<Value>, bool) {
 }
 
 fn state(agent: &Agent, name: &str) -> Value {
-    json!({"id":agent.id.0,"name":name,"pos":agent.player.pos.to_array(),"vel":agent.player.vel.to_array(),
-        "yaw":agent.player.yaw,"pitch":agent.player.pitch,"ground":agent.player.on_ground,"flying":agent.player.flying,
-        "mode":agent.mode.name(),"selected":agent.selected,"inventory":agent.inventory.serialize(),
-        "cursor":stack_to_string(agent.inventory.cursor),"health":agent.vitals.health,"air":agent.vitals.air,
-        "food":agent.vitals.hunger.food,"saturation":agent.vitals.hunger.saturation,"exhaustion":agent.vitals.hunger.exhaustion,
-        "death":agent.vitals.death,"xp":agent.vitals.xp.serialize(),"effects":agent.vitals.effects.serialize(),"sleep":agent.sleeping,"vehicle":agent.player.vehicle})
+    json!({"id":agent.session.id.0,"name":name,"pos":agent.session.player.pos.to_array(),"vel":agent.session.player.vel.to_array(),
+        "yaw":agent.session.player.yaw,"pitch":agent.session.player.pitch,"ground":agent.session.player.on_ground,"flying":agent.session.player.flying,
+        "mode":agent.session.mode.name(),"selected":agent.selected,"inventory":agent.session.inventory.serialize(),
+        "cursor":stack_to_string(agent.session.inventory.cursor),"health":agent.session.vitals.health,"air":agent.session.vitals.air,
+        "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
+        "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle})
 }
 /// What clients need of *other* players: pose, held item, armor and health, not their inventory.
 /// Rounds to a millimetre (or a thousandth of a radian): plenty for drawing, far fewer bytes.
@@ -213,61 +213,61 @@ fn r3(x: f64) -> f64 {
     (x * 1000.0).round() / 1000.0
 }
 fn state_lite(agent: &Agent, name: &str, swing: Option<f32>, eating: f32) -> Value {
-    let p = agent.player.pos;
-    json!({"swing":swing.map(|t| r3(t as f64)),"eat":r3(eating as f64),"id":agent.id.0,"name":name,"pos":[r3(p.x), r3(p.y), r3(p.z)],"vel":[0.0, 0.0, 0.0],
-        "yaw":r3(agent.player.yaw as f64),"pitch":r3(agent.player.pitch as f64),"ground":agent.player.on_ground,
-        "flying":agent.player.flying,"sneak":agent.player.sneaking,"mode":agent.mode.name(),"selected":agent.selected,
-        "held":stack_to_string(agent.inventory.get(agent.selected)),
-        "armor":agent.inventory.armor.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),
-        "health":agent.vitals.health,"death":agent.vitals.death,"sleep":agent.sleeping,"vehicle":agent.player.vehicle})
+    let p = agent.session.player.pos;
+    json!({"swing":swing.map(|t| r3(t as f64)),"eat":r3(eating as f64),"id":agent.session.id.0,"name":name,"pos":[r3(p.x), r3(p.y), r3(p.z)],"vel":[0.0, 0.0, 0.0],
+        "yaw":r3(agent.session.player.yaw as f64),"pitch":r3(agent.session.player.pitch as f64),"ground":agent.session.player.on_ground,
+        "flying":agent.session.player.flying,"sneak":agent.session.player.sneaking,"mode":agent.session.mode.name(),"selected":agent.selected,
+        "held":stack_to_string(agent.session.inventory.get(agent.selected)),
+        "armor":agent.session.inventory.armor.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),
+        "health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle})
 }
 fn apply(agent: &mut Agent, v: &Value) {
     if let Some(pos) = vector(&v["pos"]) {
-        agent.previous_pos = agent.player.pos;
-        agent.player.pos = pos;
+        agent.previous_pos = agent.session.player.pos;
+        agent.session.player.pos = pos;
     }
     if let Some(vel) = vector(&v["vel"]) {
-        agent.player.vel = vel;
+        agent.session.player.vel = vel;
     }
     if let Some(mode) = v["mode"].as_str().and_then(GameMode::from_name) {
         agent.set_mode(mode);
     }
-    agent.player.yaw = v["yaw"].as_f64().unwrap_or(0.0) as f32;
-    agent.player.pitch = v["pitch"].as_f64().unwrap_or(0.0) as f32;
-    agent.player.on_ground = v["ground"] == true;
-    agent.player.flying = v["flying"] == true;
+    agent.session.player.yaw = v["yaw"].as_f64().unwrap_or(0.0) as f32;
+    agent.session.player.pitch = v["pitch"].as_f64().unwrap_or(0.0) as f32;
+    agent.session.player.on_ground = v["ground"] == true;
+    agent.session.player.flying = v["flying"] == true;
     agent.selected = v["selected"].as_u64().unwrap_or(0).min(8) as usize;
     if let Some(inv) = v["inventory"].as_str().and_then(crate::inventory::Inventory::deserialize) {
-        agent.inventory = inv;
+        agent.session.inventory = inv;
     }
     if let Some(held) = v["held"].as_str() {
         // Another player's lite state: just what is drawn.
-        agent.inventory = crate::inventory::Inventory::default();
-        agent.inventory.slots[agent.selected] = stack_from_str(held).flatten();
-        for (slot, s) in agent.inventory.armor.iter_mut().zip(v["armor"].as_array().into_iter().flatten()) {
+        agent.session.inventory = crate::inventory::Inventory::default();
+        agent.session.inventory.slots[agent.selected] = stack_from_str(held).flatten();
+        for (slot, s) in agent.session.inventory.armor.iter_mut().zip(v["armor"].as_array().into_iter().flatten()) {
             *slot = s.as_str().and_then(stack_from_str).flatten();
         }
     }
-    agent.player.sneaking = v["sneak"] == true;
-    agent.inventory.cursor = v["cursor"].as_str().and_then(stack_from_str).flatten();
-    agent.vitals = crate::simulation::survival::Vitals::restore(
+    agent.session.player.sneaking = v["sneak"] == true;
+    agent.session.inventory.cursor = v["cursor"].as_str().and_then(stack_from_str).flatten();
+    agent.session.vitals = crate::simulation::survival::Vitals::restore(
         v["health"].as_f64().unwrap_or(20.0) as f32,
         v["air"].as_f64().unwrap_or(15.0) as f32,
         v["death"].as_str().map(str::to_owned),
     );
-    agent.vitals.hunger = crate::simulation::survival::Hunger::restore(
+    agent.session.vitals.hunger = crate::simulation::survival::Hunger::restore(
         v["food"].as_f64().unwrap_or(20.0) as f32,
         v["saturation"].as_f64().unwrap_or(5.0) as f32,
         v["exhaustion"].as_f64().unwrap_or(0.0) as f32,
     );
     if let Some(xp) = v["xp"].as_str().and_then(crate::simulation::experience::Experience::parse) {
-        agent.vitals.xp = xp;
+        agent.session.vitals.xp = xp;
     }
     if let Some(effects) = v["effects"].as_str() {
-        agent.vitals.effects = crate::simulation::effects::Effects::deserialize(effects);
+        agent.session.vitals.effects = crate::simulation::effects::Effects::deserialize(effects);
     }
-    agent.sleeping = v["sleep"].as_f64().map(|f| f as f32);
-    agent.player.vehicle = v["vehicle"].as_u64().and_then(|id| u32::try_from(id).ok());
+    agent.session.sleeping = v["sleep"].as_f64().map(|f| f as f32);
+    agent.session.player.vehicle = v["vehicle"].as_u64().and_then(|id| u32::try_from(id).ok());
 }
 
 impl Game {
@@ -379,13 +379,14 @@ impl Game {
             if let Some(bot) = self.agents.players.get_mut(name) {
                 bot.active = false;
                 bot.agent.hold(Default::default(), false, false);
-                bot.agent.sleeping = None;
-                bot.agent.inventory.return_stacks(peer.grid.take_all());
-                let cursor = bot.agent.inventory.cursor.take();
-                bot.agent.inventory.return_stacks(cursor);
+                bot.agent.session.sleeping = None;
+                bot.agent.session.inventory.return_stacks(peer.grid.take_all());
+                let cursor = bot.agent.session.inventory.cursor.take();
+                bot.agent.session.inventory.return_stacks(cursor);
                 bot.agent
+                    .session
                     .inventory
-                    .return_stacks(bot.agent.work.iter_mut().filter_map(Option::take).collect::<Vec<_>>());
+                    .return_stacks(bot.agent.session.work.iter_mut().filter_map(Option::take).collect::<Vec<_>>());
             }
             self.broadcast_chat(&format!("{name} left the game"));
         }
@@ -470,7 +471,7 @@ impl Game {
                             if self.agents.players.len() >= 32 {
                                 return Err("Player profile limit reached".into());
                             }
-                            let mut a = Agent::new(self.player.pos + DVec3::new(2.0, 0.0, 0.0));
+                            let mut a = Agent::new(self.session.player.pos + DVec3::new(2.0, 0.0, 0.0));
                             a.set_mode(self.lan.mode);
                             if a.creative {
                                 a.inventory = crate::inventory::Inventory::with_hotbar(&super::CREATIVE_HOTBAR);
@@ -547,7 +548,7 @@ impl Game {
     }
     fn with_remote<R>(&mut self, peer: &mut Peer, f: impl FnOnce(&mut Self) -> R) -> Option<R> {
         let name = peer.profile.as_deref()?;
-        self.lan.host_mode = self.mode;
+        self.lan.host_mode = self.session.mode;
         let mut grid = peer.grid;
         let mut open = peer.open;
         let result = self.puppet_body(name, &mut peer.body, |g| {
@@ -599,9 +600,11 @@ impl Game {
             }
             "respawn" => {
                 let name = peer.profile.as_deref().unwrap().to_owned();
-                if self.agents.players[&name].agent.vitals.is_dead() {
-                    let kept_xp =
-                        self.gamerules.bool("keepInventory").then_some(self.agents.players[&name].agent.vitals.xp);
+                if self.agents.players[&name].agent.session.vitals.is_dead() {
+                    let kept_xp = self
+                        .gamerules
+                        .bool("keepInventory")
+                        .then_some(self.agents.players[&name].agent.session.vitals.xp);
                     self.agents.players.get_mut(&name).unwrap().agent.execute(
                         Command::Respawn,
                         &mut self.world,
@@ -609,15 +612,15 @@ impl Game {
                         &[],
                     )?;
                     let at = if self.dimension == Dimension::Overworld {
-                        self.with_remote(peer, |g| g.respawn_point()).unwrap_or(self.player.pos)
+                        self.with_remote(peer, |g| g.respawn_point()).unwrap_or(self.session.player.pos)
                     } else {
                         self.beside_host()
                     };
                     let agent = &mut self.agents.players.get_mut(&name).unwrap().agent;
-                    agent.player.pos = at;
+                    agent.session.player.pos = at;
                     agent.previous_pos = at;
                     if let Some(xp) = kept_xp {
-                        agent.vitals.xp = xp;
+                        agent.session.vitals.xp = xp;
                     }
                     peer.body = Body::default();
                     peer.open = false;
@@ -656,7 +659,7 @@ impl Game {
                     parsed,
                     &mut self.world,
                     &mut self.mobs.entities,
-                    &[self.player.pos],
+                    &[self.session.player.pos],
                 )?;
             }
         }
@@ -672,7 +675,7 @@ impl Game {
     }
     /// Whether the open screen's block, merchant or vehicle is still there and in reach.
     pub(super) fn lan_container_ok(&self) -> bool {
-        let eye = self.player.eye();
+        let eye = self.session.player.eye();
         let near = |p: IVec3, ok: fn(Block) -> bool| {
             eye.distance(p.as_dvec3() + 0.5) <= super::REACH + 1.0 && self.world.get_block(p).is_some_and(ok)
         };
@@ -695,16 +698,16 @@ impl Game {
         }
         if let Some(p) = peer.used_at {
             let Some(bot) = self.agents.players.get(peer.profile.as_deref().unwrap()) else { return };
-            if bot.agent.player.eye().distance(p.as_dvec3() + 0.5) > super::REACH + 1.0 {
+            if bot.agent.session.player.eye().distance(p.as_dvec3() + 0.5) > super::REACH + 1.0 {
                 return;
             }
         }
         self.with_remote(peer, |g| {
-            if !g.lan_container_ok() || g.vitals.is_dead() {
+            if !g.lan_container_ok() || g.session.vitals.is_dead() {
                 return;
             }
-            if let Some(slot) = decode_slot(encoded, g.container, g.mode, g.craft.size) {
-                if shift && g.inventory.cursor.is_none() {
+            if let Some(slot) = decode_slot(encoded, g.container, g.session.mode, g.craft.size) {
+                if shift && g.session.inventory.cursor.is_none() {
                     g.quick_move(slot);
                 } else {
                     g.click_slot(slot, right);
@@ -730,14 +733,14 @@ impl Game {
             } else {
                 Input { sequence: peer.input.sequence, ..Default::default() }
             };
-            bot.agent.player.yaw = input.yaw.rem_euclid(std::f32::consts::TAU);
-            bot.agent.player.pitch = input.pitch.clamp(-1.55, 1.55);
+            bot.agent.session.player.yaw = input.yaw.rem_euclid(std::f32::consts::TAU);
+            bot.agent.session.player.pitch = input.pitch.clamp(-1.55, 1.55);
             bot.agent.selected = input.selected as usize;
-            bot.agent.player.flying = bot.agent.player.can_fly && input.buttons & 32 != 0;
-            if bot.agent.sleeping.is_some() && input.buttons & 1 != 0 {
-                bot.agent.sleeping = None;
+            bot.agent.session.player.flying = bot.agent.session.player.can_fly && input.buttons & 32 != 0;
+            if bot.agent.session.sleeping.is_some() && input.buttons & 1 != 0 {
+                bot.agent.session.sleeping = None;
             }
-            if bot.agent.vitals.is_dead() || peer.open || bot.agent.sleeping.is_some() {
+            if bot.agent.session.vitals.is_dead() || peer.open || bot.agent.session.sleeping.is_some() {
                 bot.agent.hold(Default::default(), false, false);
             } else {
                 bot.agent.hold(input.movement(), false, false);
@@ -746,35 +749,35 @@ impl Game {
                 && peer.grid.size == 3
                 && peer.used_at.is_some_and(|p| {
                     self.world.get_block(p) != Some(Block::CRAFTING_TABLE)
-                        || self.agents.players[&name].agent.player.eye().distance(p.as_dvec3() + 0.5)
+                        || self.agents.players[&name].agent.session.player.eye().distance(p.as_dvec3() + 0.5)
                             > super::REACH + 1.0
                 })
             {
                 self.with_remote(peer, |g| g.toggle_inventory());
             }
-            if self.agents.players[&name].agent.vitals.is_dead() {
+            if self.agents.players[&name].agent.session.vitals.is_dead() {
                 let mut stacks = peer.grid.take_all();
                 let bot = self.agents.players.get_mut(&name).unwrap();
-                stacks.extend(bot.agent.work.iter_mut().filter_map(Option::take));
+                stacks.extend(bot.agent.session.work.iter_mut().filter_map(Option::take));
                 if self.gamerules.bool("keepInventory") {
-                    bot.agent.inventory.return_stacks(stacks);
+                    bot.agent.session.inventory.return_stacks(stacks);
                 } else {
                     for stack in
                         stacks.into_iter().filter(|s| !s.enchants.has(crate::enchant::Enchantment::VanishingCurse))
                     {
-                        self.mobs.entities.throw(stack, bot.agent.player.eye(), DVec3::ZERO);
+                        self.mobs.entities.throw(stack, bot.agent.session.player.eye(), DVec3::ZERO);
                     }
                 }
             }
             // Close destroyed or out-of-reach containers before accepting any more clicks.
             self.with_remote(peer, |g| {
-                if g.inventory_open && (g.vitals.is_dead() || !g.lan_container_ok()) {
+                if g.inventory_open && (g.session.vitals.is_dead() || !g.lan_container_ok()) {
                     g.toggle_inventory();
                 }
             });
             if !peer.open
-                && !self.agents.players[&name].agent.vitals.is_dead()
-                && self.agents.players[&name].agent.sleeping.is_none()
+                && !self.agents.players[&name].agent.session.vitals.is_dead()
+                && self.agents.players[&name].agent.session.sleeping.is_none()
             {
                 let transitions = button_transitions(peer.previous_buttons, &peer.edges, input.buttons);
                 let used = self
@@ -833,7 +836,7 @@ impl Game {
                 }
             }
             if let Some(bot) = self.agents.players.get(&name) {
-                let p = bot.agent.player.pos.floor().as_ivec3();
+                let p = bot.agent.session.player.pos.floor().as_ivec3();
                 if self
                     .world
                     .get_block(p)
@@ -847,8 +850,8 @@ impl Game {
                 }
             }
             if peer.open
-                || self.agents.players[&name].agent.vitals.is_dead()
-                || self.agents.players[&name].agent.sleeping.is_some()
+                || self.agents.players[&name].agent.session.vitals.is_dead()
+                || self.agents.players[&name].agent.session.sleeping.is_some()
             {
                 self.with_remote(peer, |g| {
                     g.attack_button(false);
@@ -875,14 +878,14 @@ impl Game {
             self.lan.effects.clear();
             return;
         }
-        let mut host = Agent::new(self.player.pos);
+        let mut host = Agent::new(self.session.player.pos);
         host.id = voxelcraft::entity::PlayerId::HOST;
-        host.player.yaw = self.player.yaw;
-        host.player.pitch = self.player.pitch;
-        host.set_mode(self.mode);
-        host.inventory = self.inventory.clone();
-        host.vitals = self.vitals.clone();
-        host.sleeping = self.sleeping;
+        host.player.yaw = self.session.player.yaw;
+        host.player.pitch = self.session.player.pitch;
+        host.set_mode(self.session.mode);
+        host.inventory = self.session.inventory.clone();
+        host.vitals = self.session.vitals.clone();
+        host.sleeping = self.session.sleeping;
         let host_eating = (self.actions.eat_timer / super::EAT_TIME) as f32;
         let players: Vec<_> =
             std::iter::once(state_lite(&host, &self.lan.profile, self.hand.swing_time(), host_eating))
@@ -917,7 +920,7 @@ impl Game {
         // Sounds and particles since the last state, replayed by clients near them.
         let sounds = self.audio.tap.replace(Vec::new()).unwrap_or_default();
         let effects = std::mem::take(&mut self.lan.effects);
-        let host_pos = self.player.pos;
+        let host_pos = self.session.player.pos;
         let breaking = self.all_breaking();
         let host_view = self.settings.render_distance.clamp(2, LAN_VIEW_MAX);
         let widest = self.lan.peers.iter().map(|p| p.view.min(host_view)).max().unwrap_or(2);
@@ -940,7 +943,7 @@ impl Game {
                 });
             }
             let view = peer.view.min(host_view);
-            let center = chunk_of(bot.agent.player.pos.floor().as_ivec3());
+            let center = chunk_of(bot.agent.session.player.pos.floor().as_ivec3());
             // Two rings beyond the client's view, so every meshed chunk has all eight
             // horizontal neighbours (diagonals of edge chunks reach about r + 1.42).
             let radius = view + 2;
@@ -975,7 +978,7 @@ impl Game {
                     peer.sent.insert(key, data);
                 }
             }
-            let work: Vec<_> = bot.agent.work.iter().map(|s| stack_to_string(*s)).collect();
+            let work: Vec<_> = bot.agent.session.work.iter().map(|s| stack_to_string(*s)).collect();
             let container = match peer.body.container() {
                 Container::Chest(p) => {
                     json!({"kind":"chest","pos":p.to_array(),"state":self.world.chest(p).map(|c|c.serialize())})
@@ -1015,7 +1018,7 @@ impl Game {
                 .entities
                 .mobs
                 .iter()
-                .filter(|m| m.pos.distance_squared(bot.agent.player.pos) < 160.0 * 160.0)
+                .filter(|m| m.pos.distance_squared(bot.agent.session.player.pos) < 160.0 * 160.0)
                 .take(256)
                 .map(|m| {
                     // Compact pose: uid, kind, position, yaws/pitch, health, hurt, dying (-1 alive), size, baby.
@@ -1035,7 +1038,7 @@ impl Game {
                 })
                 .collect();
             peer.looked = looked;
-            let me = bot.agent.player.pos;
+            let me = bot.agent.session.player.pos;
             let sounds: Vec<_> = sounds
                 .iter()
                 .filter_map(|&(sound, pos, gain, (lo, hi))| {
@@ -1068,12 +1071,12 @@ impl Game {
                 .take(crate::render::MAX_CRACKS)
                 .map(|(p, f)| json!([p.x, p.y, p.z, r3(*f as f64)]))
                 .collect();
-            let extras = self.mobs.entities.replica_extras(bot.agent.player.pos, 160.0);
+            let extras = self.mobs.entities.replica_extras(bot.agent.session.player.pos, 160.0);
             let falling: Vec<_> = self
                 .world
                 .falling_blocks()
                 .iter()
-                .filter(|f| f.pos.distance_squared(bot.agent.player.pos) < 160.0 * 160.0)
+                .filter(|f| f.pos.distance_squared(bot.agent.session.player.pos) < 160.0 * 160.0)
                 .take(256)
                 .map(|f| {
                     json!([f.block.0, f.pos.x, f.pos.y, f.pos.z, f.previous_pos.x, f.previous_pos.y, f.previous_pos.z])
@@ -1084,7 +1087,7 @@ impl Game {
                 .entities
                 .minecarts
                 .iter()
-                .filter(|c| c.pos.distance_squared(bot.agent.player.pos) < 160.0 * 160.0)
+                .filter(|c| c.pos.distance_squared(bot.agent.session.player.pos) < 160.0 * 160.0)
                 .take(64)
                 .map(|c| json!({"cart": c.serialize(), "paddle": c.paddle}))
                 .collect();
@@ -1093,12 +1096,12 @@ impl Game {
                 .entities
                 .items
                 .iter()
-                .filter(|m| m.pos.distance_squared(bot.agent.player.pos) < 160.0 * 160.0)
+                .filter(|m| m.pos.distance_squared(bot.agent.session.player.pos) < 160.0 * 160.0)
                 .take(256)
                 .map(|m| m.serialize())
                 .collect::<Vec<_>>()
                 .join(";");
-            let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
+            let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.session.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical})).collect();
             // Everyone but this client itself (it has its own full state).
             let others: Vec<&Value> = players.iter().filter(|p| p["id"] != bot.id.0).collect();
             let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks});
@@ -1132,8 +1135,8 @@ impl Game {
         self.lan.sequence = self.lan.sequence.wrapping_add(1);
         Input {
             sequence: self.lan.sequence,
-            yaw: self.player.yaw,
-            pitch: self.player.pitch,
+            yaw: self.session.player.yaw,
+            pitch: self.session.player.pitch,
             forward: movement.forward as f32,
             right: movement.right as f32,
             buttons: u8::from(movement.jump)
@@ -1141,7 +1144,7 @@ impl Game {
                 | (u8::from(movement.sprint) * 4)
                 | (u8::from(active && self.left_held) * 8)
                 | (u8::from(active && self.right_held) * 16)
-                | (u8::from(self.player.flying) * 32),
+                | (u8::from(self.session.player.flying) * 32),
             selected: self.actions.selected as u8,
         }
     }
@@ -1159,17 +1162,17 @@ impl Game {
         let input = self.sample_lan_input();
         let movement = input.movement();
         self.lan_send(Packet::Input(input));
-        self.previous_eye = self.player.eye();
+        self.previous_eye = self.session.player.eye();
         // A seated client takes its position from the host; the vehicle moves it.
-        if self.lan.ready && self.player.vehicle.is_some() {
+        if self.lan.ready && self.session.player.vehicle.is_some() {
             self.lan.predictions.push_back(input);
         } else if self.lan.ready {
-            self.player.apply_effects(&self.vitals.effects);
-            self.player.wear_boots(crate::enchant::armor_level(
-                &self.inventory.armor,
+            self.session.player.apply_effects(&self.session.vitals.effects);
+            self.session.player.wear_boots(crate::enchant::armor_level(
+                &self.session.inventory.armor,
                 crate::enchant::Enchantment::DepthStrider,
             ));
-            self.player.update(crate::simulation::TICK_SECONDS, movement, &self.world);
+            self.session.player.update(crate::simulation::TICK_SECONDS, movement, &self.world);
             self.lan.predictions.push_back(input);
         }
         if self.lan.ready {
@@ -1185,7 +1188,7 @@ impl Game {
             self.lan.lost = Some("Headless protocol harness does not serve desktop gameplay".into());
             return;
         }
-        let was_dead = self.vitals.is_dead();
+        let was_dead = self.session.vitals.is_dead();
         if let Some(dimension) = snapshot["dimension"].as_str().and_then(Dimension::from_name)
             && dimension != self.dimension
         {
@@ -1196,30 +1199,30 @@ impl Game {
         while self.lan.predictions.front().is_some_and(|i| i.sequence <= sequence) {
             self.lan.predictions.pop_front();
         }
-        let mut own = Agent::new(self.player.pos);
+        let mut own = Agent::new(self.session.player.pos);
         apply(&mut own, &snapshot["self"]);
-        let (yaw, pitch) = (self.player.yaw, self.player.pitch);
-        self.previous_eye = self.player.eye();
-        self.player = own.player;
-        self.player.yaw = yaw;
-        self.player.pitch = pitch;
-        self.mode = own.mode;
-        self.inventory = own.inventory;
-        self.vitals = own.vitals;
-        self.sleeping = own.sleeping;
+        let (yaw, pitch) = (self.session.player.yaw, self.session.player.pitch);
+        self.previous_eye = self.session.player.eye();
+        self.session.player = own.session.player;
+        self.session.player.yaw = yaw;
+        self.session.player.pitch = pitch;
+        self.session.mode = own.session.mode;
+        self.session.inventory = own.session.inventory;
+        self.session.vitals = own.session.vitals;
+        self.session.sleeping = own.session.sleeping;
         if !self.lan.ready {
             self.actions.selected = own.selected;
-            self.previous_eye = self.player.eye();
+            self.previous_eye = self.session.player.eye();
         }
-        let seated = self.player.vehicle.is_some();
+        let seated = self.session.player.vehicle.is_some();
         for input in self.lan.predictions.iter().filter(|_| !seated) {
-            self.player.yaw = input.yaw;
-            self.player.pitch = input.pitch;
-            self.player.apply_effects(&self.vitals.effects);
-            self.player.update(crate::simulation::TICK_SECONDS, input.movement(), &self.world);
+            self.session.player.yaw = input.yaw;
+            self.session.player.pitch = input.pitch;
+            self.session.player.apply_effects(&self.session.vitals.effects);
+            self.session.player.update(crate::simulation::TICK_SECONDS, input.movement(), &self.world);
         }
-        self.player.yaw = yaw;
-        self.player.pitch = pitch;
+        self.session.player.yaw = yaw;
+        self.session.player.pitch = pitch;
         self.lan.ready = true;
         self.world.release_unloads();
         // View distance: the client's own setting, capped by what the host streams.
@@ -1279,9 +1282,9 @@ impl Game {
             (Some("crafting"), _) => Container::CraftingTable,
             _ => Container::Inventory,
         };
-        self.work = [None; 3];
+        self.session.work = [None; 3];
         if let Some(work) = c["work"].as_array() {
-            for (slot, v) in self.work.iter_mut().zip(work) {
+            for (slot, v) in self.session.work.iter_mut().zip(work) {
                 *slot = v.as_str().and_then(stack_from_str).flatten();
             }
         }
@@ -1296,7 +1299,7 @@ impl Game {
             for p in players.iter().take(40).filter(|p| p["id"] != self.lan.id) {
                 let Some(name) = p["name"].as_str().filter(|n| voxelcraft::control::valid_name(n)) else { continue };
                 if !self.agents.players.contains_key(name) {
-                    self.agents.insert(name.into(), Agent::new(vector(&p["pos"]).unwrap_or(self.player.pos)));
+                    self.agents.insert(name.into(), Agent::new(vector(&p["pos"]).unwrap_or(self.session.player.pos)));
                 }
                 let bot = self.agents.players.get_mut(name).unwrap();
                 bot.active = true;
@@ -1456,7 +1459,7 @@ impl Game {
                 }
             }
         }
-        if self.vitals.is_dead() {
+        if self.session.vitals.is_dead() {
             self.set_grab(false);
         } else if was_dead {
             self.set_grab(self.menu.is_none());
@@ -1576,8 +1579,8 @@ impl Game {
         if self.lan.host.is_none() || !self.lan.pvp {
             return None;
         }
-        let eye = self.player.eye();
-        let dir = self.player.forward().as_dvec3();
+        let eye = self.session.player.eye();
+        let dir = self.session.player.forward().as_dvec3();
         let mut reach = self
             .target()
             .and_then(|(p, _)| crate::physics::ray_aabb(eye, dir, p.as_dvec3(), p.as_dvec3() + DVec3::ONE))
@@ -1592,13 +1595,13 @@ impl Game {
         self.agents
             .players
             .iter()
-            .filter(|(_, b)| b.active && !b.agent.vitals.is_dead())
+            .filter(|(_, b)| b.active && !b.agent.session.vitals.is_dead())
             .filter_map(|(name, b)| {
                 // While puppeting, this profile contains the original host's body.
-                if b.id == self.actor && !self.puppet {
+                if b.id == self.session.id && !self.puppet {
                     return None;
                 }
-                let p = &b.agent.player;
+                let p = &b.agent.session.player;
                 let shape = p.collision_shape();
                 crate::physics::ray_aabb(
                     eye,
@@ -1623,41 +1626,46 @@ impl Game {
         self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
         // Java's player melee: criticals while falling, enchantment bonuses, Knockback (and
         // sprinting) shoves, Fire Aspect, sword sweeps across nearby players and Thorns.
-        let held = self.inventory.get(self.actions.selected);
+        let held = self.session.inventory.get(self.actions.selected);
         let enchants = held.map_or(Default::default(), |s| s.active_enchants());
-        let p = &self.player;
+        let p = &self.session.player;
         let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
         let sprint = if self.puppet {
-            self.agents.players.values().find(|b| b.id == self.actor).is_some_and(|b| b.agent.movement_input().sprint)
+            self.agents
+                .players
+                .values()
+                .find(|b| b.id == self.session.id)
+                .is_some_and(|b| b.agent.movement_input().sprint)
         } else {
             self.movement_input(self.arrival.is_some()).sprint
         };
-        let base = (crate::mining::attack_damage(self.held_item()) + self.vitals.effects.attack_bonus()).max(0.0);
+        let base =
+            (crate::mining::attack_damage(self.held_item()) + self.session.vitals.effects.attack_bonus()).max(0.0);
         let bonus = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
         let damage = base * if critical { 1.5 } else { 1.0 } + bonus;
         let (knock_level, fire) = crate::mining::weapon_extras(held);
-        let dir = self.player.forward().as_dvec3().with_y(0.0).normalize_or_zero();
+        let dir = self.session.player.forward().as_dvec3().with_y(0.0).normalize_or_zero();
         let shove = 0.4 + 0.5 * (knock_level as f64 + if sprint { 1.0 } else { 0.0 });
         let sword = held.and_then(|s| s.item.as_tool()).is_some_and(|(k, _)| k == crate::item::ToolKind::Sword);
-        let sweep = sword && self.player.on_ground && !critical && !sprint;
-        let attacker = self.actor;
+        let sweep = sword && self.session.player.on_ground && !critical && !sprint;
+        let attacker = self.session.id;
         let host_mode = self.lan.host_mode;
         let puppet = self.puppet;
         let hit = |g: &mut Self, target: &str, amount: f32, push: DVec3, fire: f32| -> Option<(DVec3, [u8; 4])> {
             let bot = g.agents.players.get_mut(target)?;
-            let (mode, creative) = (bot.agent.mode, bot.agent.creative);
+            let (mode, creative) = (bot.agent.session.mode, bot.agent.creative);
             if puppet && bot.id == attacker {
-                bot.agent.mode = host_mode;
+                bot.agent.session.mode = host_mode;
                 bot.agent.creative = host_mode.is_creative();
             }
             bot.agent.hurt(amount, "was slain by a player", push, &mut g.mobs.entities);
             if fire > 0.0 {
-                bot.agent.vitals.ignite(fire);
+                bot.agent.session.vitals.ignite(fire);
             }
-            bot.agent.mode = mode;
+            bot.agent.session.mode = mode;
             bot.agent.creative = creative;
-            let thorns = crate::entity::Target::thorns_of(&bot.agent.inventory.armor);
-            Some((bot.agent.player.pos, thorns))
+            let thorns = crate::entity::Target::thorns_of(&bot.agent.session.inventory.armor);
+            Some((bot.agent.session.player.pos, thorns))
         };
         let Some((at, thorns)) = hit(self, &name, damage, dir * shove + DVec3::Y * 0.2, fire) else { return true };
         if sweep {
@@ -1671,9 +1679,9 @@ impl Game {
                     **n != name
                         && b.id != attacker
                         && b.active
-                        && !b.agent.vitals.is_dead()
-                        && b.agent.player.pos.distance_squared(at) < 1.0 + 1.0
-                        && b.agent.player.pos.distance_squared(self.player.pos) < 9.0
+                        && !b.agent.session.vitals.is_dead()
+                        && b.agent.session.player.pos.distance_squared(at) < 1.0 + 1.0
+                        && b.agent.session.player.pos.distance_squared(self.session.player.pos) < 9.0
                 })
                 .map(|(n, _)| n.clone())
                 .collect();
@@ -1703,8 +1711,8 @@ impl Game {
             }
         }
         self.wear_held(true);
-        if self.mode.is_survival() {
-            self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
+        if self.session.mode.is_survival() {
+            self.session.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
         }
         true
     }

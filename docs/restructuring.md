@@ -104,9 +104,13 @@ no unexplained regression.
 
 ## STR-03 — Shared gameplay actions and session ownership
 
-**Status:** Partial: shared bucket/bottle execution and typed presentation effects
-implemented, plus shared held-armor validation; broader actions and session
-ownership remain Planned.
+**Status:** Partial: shared bucket/bottle execution, held-armor validation and
+actor-owned food/drink consumption are implemented. `PlayerSession` now owns
+identity, movement, inventory, vitals, mode, workstation inputs and personal
+respawn data in the client and CLI. [Session evidence](verification/2026-10-13-player-session.md)
+records automated checks and outstanding acceptance. Mining, placement, combat
+and container transactions still need extraction; controller/LAN `Game::puppet`
+still swaps session and presentation state and must be removed.
 **Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.
 **Dependency:** STR-01 regression coverage and review of pending v0.7 changes.
 

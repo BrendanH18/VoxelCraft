@@ -29,8 +29,8 @@ pub(super) struct Bot {
 impl Bot {
     /// Assigns the session's player ID and starts with simulation inactive.
     fn new(id: PlayerId, mut agent: Agent) -> Self {
-        agent.id = id;
-        let (seen_swings, drawn_feet) = (agent.swings, agent.player.pos);
+        agent.session.id = id;
+        let (seen_swings, drawn_feet) = (agent.swings, agent.session.player.pos);
         Self {
             id,
             agent,
@@ -66,31 +66,36 @@ impl Agents {
     /// Active agents as mob targets.
     pub fn targets(&self) -> impl Iterator<Item = Target> + '_ {
         self.players.values().filter(|b| b.active).map(|b| Target {
-            alive: !b.agent.vitals.is_dead(),
-            look: b.agent.player.forward().as_dvec3(),
-            thorns: Target::thorns_of(&b.agent.inventory.armor),
-            held_enchants: b.agent.inventory.get(b.agent.selected).map_or(Default::default(), |s| s.active_enchants()),
-            shape: b.agent.player.collision_shape(),
-            gold_armor: voxelcraft::entity::nether::wears_gold(&b.agent.inventory.armor),
-            held_item: b.agent.inventory.get(b.agent.selected).map(|s| s.item),
-            on_ground: b.agent.player.on_ground,
-            in_water: b.agent.player.in_water,
-            ..Target::new(b.id, b.agent.player.pos, b.agent.targetable())
+            alive: !b.agent.session.vitals.is_dead(),
+            look: b.agent.session.player.forward().as_dvec3(),
+            thorns: Target::thorns_of(&b.agent.session.inventory.armor),
+            held_enchants: b
+                .agent
+                .session
+                .inventory
+                .get(b.agent.selected)
+                .map_or(Default::default(), |s| s.active_enchants()),
+            shape: b.agent.session.player.collision_shape(),
+            gold_armor: voxelcraft::entity::nether::wears_gold(&b.agent.session.inventory.armor),
+            held_item: b.agent.session.inventory.get(b.agent.selected).map(|s| s.item),
+            on_ground: b.agent.session.player.on_ground,
+            in_water: b.agent.session.player.in_water,
+            ..Target::new(b.id, b.agent.session.player.pos, b.agent.targetable())
         })
     }
     pub fn by_id_mut(&mut self, id: PlayerId) -> Option<&mut Bot> {
         self.players.values_mut().find(|b| b.id == id)
     }
     pub fn positions(&self) -> Vec<DVec3> {
-        self.players.values().filter(|b| b.active).map(|b| b.agent.player.pos).collect()
+        self.players.values().filter(|b| b.active).map(|b| b.agent.session.player.pos).collect()
     }
     /// Saves named player profiles, progression and inventory in this dimension.
     pub fn serialize(&self, dimension: &str) -> String {
         let profiles: Vec<_> = self.players.iter().map(|(name, b)| {
-            let mut inventory = b.agent.inventory.clone();
-            inventory.return_stacks(b.agent.work.into_iter().flatten());
-            let mode = if b.agent.creative { voxelcraft::rules::GameMode::Creative } else { b.agent.mode };
-            json!({"name":name,"id":b.id.0,"position":b.agent.player.pos.to_array(),"yaw":b.agent.player.yaw,"pitch":b.agent.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.player.flying,"health":b.agent.vitals.health,"air":b.agent.vitals.air,"food":b.agent.vitals.hunger.food,"saturation":b.agent.vitals.hunger.saturation,"exhaustion":b.agent.vitals.hunger.exhaustion,"xp":b.agent.vitals.xp.serialize(),"effects":b.agent.vitals.effects.serialize(),"inventory":inventory.serialize(),"bed":b.agent.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.spawn_point.map(|p|p.to_array()),"dimension":dimension})
+            let mut inventory = b.agent.session.inventory.clone();
+            inventory.return_stacks(b.agent.session.work.into_iter().flatten());
+            let mode = if b.agent.creative { voxelcraft::rules::GameMode::Creative } else { b.agent.session.mode };
+            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"dimension":dimension})
         }).collect();
         json!(profiles).to_string()
     }
@@ -111,7 +116,7 @@ impl Agents {
                 .filter(|p| p.is_finite() && p.abs().max_element() <= 30_000_000.0)
                 .unwrap_or(spawn);
             let mut agent = Agent::new(if p["dimension"] == dimension { pos } else { spawn });
-            agent.inventory =
+            agent.session.inventory =
                 p["inventory"].as_str().and_then(crate::inventory::Inventory::deserialize).unwrap_or_default();
             let mode = p["mode"].as_str().and_then(voxelcraft::rules::GameMode::from_name).unwrap_or(
                 if p["creative"] == true {
@@ -121,34 +126,34 @@ impl Agents {
                 },
             );
             agent.set_mode(mode);
-            agent.player.flying =
+            agent.session.player.flying =
                 (mode.can_fly() && p["flying"] == true) || mode == voxelcraft::rules::GameMode::Spectator;
-            agent.spawn_bed = p["bed"]
+            agent.session.spawn_bed = p["bed"]
                 .as_array()
                 .filter(|v| v.len() == 3)
                 .and_then(|v| Some(IVec3::new(v[0].as_i64()? as i32, v[1].as_i64()? as i32, v[2].as_i64()? as i32)));
-            agent.spawn_point = p["spawn_point"]
+            agent.session.spawn_point = p["spawn_point"]
                 .as_array()
                 .filter(|v| v.len() == 3)
                 .and_then(|v| Some(IVec3::new(v[0].as_i64()? as i32, v[1].as_i64()? as i32, v[2].as_i64()? as i32)));
             agent.selected = p["selected"].as_u64().filter(|n| *n < 9).unwrap_or(0) as usize;
-            agent.player.yaw = p["yaw"].as_f64().unwrap_or(0.0) as f32;
-            agent.player.pitch = p["pitch"].as_f64().unwrap_or(0.0) as f32;
-            agent.vitals = crate::simulation::survival::Vitals::restore(
+            agent.session.player.yaw = p["yaw"].as_f64().unwrap_or(0.0) as f32;
+            agent.session.player.pitch = p["pitch"].as_f64().unwrap_or(0.0) as f32;
+            agent.session.vitals = crate::simulation::survival::Vitals::restore(
                 p["health"].as_f64().unwrap_or(20.0) as f32,
                 p["air"].as_f64().unwrap_or(15.0) as f32,
                 None,
             );
-            agent.vitals.hunger = crate::simulation::survival::Hunger::restore(
+            agent.session.vitals.hunger = crate::simulation::survival::Hunger::restore(
                 p["food"].as_f64().unwrap_or(20.0) as f32,
                 p["saturation"].as_f64().unwrap_or(5.0) as f32,
                 p["exhaustion"].as_f64().unwrap_or(0.0) as f32,
             );
             if let Some(xp) = p["xp"].as_str().and_then(crate::simulation::experience::Experience::parse) {
-                agent.vitals.xp = xp;
+                agent.session.vitals.xp = xp;
             }
             if let Some(text) = p["effects"].as_str() {
-                agent.vitals.effects = crate::simulation::effects::Effects::deserialize(text);
+                agent.session.vitals.effects = crate::simulation::effects::Effects::deserialize(text);
             }
             // Replacing a profile frees its old ID.
             self.players.remove(name);
@@ -176,7 +181,7 @@ impl Agents {
         for (name, pos) in text.split(';').filter_map(|p| p.split_once('=')) {
             let v: Vec<i32> = pos.split(',').filter_map(|n| n.parse().ok()).collect();
             if let (&[x, y, z], Some(bot)) = (&v[..], self.players.get_mut(name)) {
-                bot.agent.spawn_bed.get_or_insert(IVec3::new(x, y, z));
+                bot.agent.session.spawn_bed.get_or_insert(IVec3::new(x, y, z));
             }
         }
     }
@@ -188,12 +193,17 @@ impl Game {
         state["merchant"] = self
             .mobs
             .entities
-            .target_merchant(&self.world, agent.player.eye(), agent.player.forward().as_dvec3(), super::REACH)
+            .target_merchant(
+                &self.world,
+                agent.session.player.eye(),
+                agent.session.player.forward().as_dvec3(),
+                super::REACH,
+            )
             .and_then(|id| self.mobs.entities.merchant(id))
             .and_then(|m| m.villager.as_ref())
-            .map_or(Value::Null, |v| v.observation_for(agent.id));
+            .map_or(Value::Null, |v| v.observation_for(agent.session.id));
         let overworld = self.dimension == crate::world::terrain::Dimension::Overworld;
-        if let Some(stack) = agent.inventory.get(agent.selected) {
+        if let Some(stack) = agent.session.inventory.get(agent.selected) {
             if stack.item == crate::item::Item::COMPASS {
                 state["compass"] = if overworld {
                     json!({"spawn":[self.world_spawn.x, self.world_spawn.y, self.world_spawn.z],"spinning":false})
@@ -230,7 +240,8 @@ impl Game {
                     if self.agents.players.len() >= 32 {
                         return Err("profile limit reached".into());
                     }
-                    self.agents.insert(req.player.clone(), Agent::new(self.player.pos + DVec3::new(2.0, 0.0, 0.0)));
+                    self.agents
+                        .insert(req.player.clone(), Agent::new(self.session.player.pos + DVec3::new(2.0, 0.0, 0.0)));
                 }
                 let sleep = matches!(command, Command::Sleep);
                 let active = self.agents.players.values().filter(|b| b.active).count();
@@ -257,7 +268,7 @@ impl Game {
                         }
                         Command::Players => {
                             return Ok(Some(
-                                json!({"ok":true,"version":VERSION,"players":self.agents.players.iter().filter(|(_,b)|b.active).map(|(n,b)|json!({"name":n,"id":b.id.0,"position":b.agent.player.pos.to_array()})).chain(std::iter::once(json!({"name":req.player,"id":bot.id.0,"position":bot.agent.player.pos.to_array()}))).collect::<Vec<_>>()}),
+                                json!({"ok":true,"version":VERSION,"players":self.agents.players.iter().filter(|(_,b)|b.active).map(|(n,b)|json!({"name":n,"id":b.id.0,"position":b.agent.session.player.pos.to_array()})).chain(std::iter::once(json!({"name":req.player,"id":bot.id.0,"position":bot.agent.session.player.pos.to_array()}))).collect::<Vec<_>>()}),
                             ));
                         }
                         Command::Leave => {
@@ -266,11 +277,11 @@ impl Game {
                                 let _ = reply.send(json!({"ok":false,"error":"player left"}));
                             }
                             bot.agent.remaining = 0;
-                            bot.agent.sleeping = None;
+                            bot.agent.session.sleeping = None;
                         }
                         // Needs the bot back in the world, as a bed in the
                         // Nether explodes on everyone nearby.
-                        Command::Sleep if bot.agent.vitals.is_dead() => {
+                        Command::Sleep if bot.agent.session.vitals.is_dead() => {
                             return Err("player is dead; respawn first".into());
                         }
                         Command::Sleep => {}
@@ -278,15 +289,15 @@ impl Game {
                         Command::TimeAdd(ticks) => self.add_time_ticks(ticks),
                         Command::Weather(kind) => self.apply_weather(kind),
                         Command::Respawn => {
-                            let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.vitals.xp);
+                            let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.session.vitals.xp);
                             bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[])?;
                             if let Some(xp) = kept_xp {
-                                bot.agent.vitals.xp = xp;
+                                bot.agent.session.vitals.xp = xp;
                             }
                         }
                         _ => {
                             let mut others = self.agents.positions();
-                            others.push(self.player.pos);
+                            others.push(self.session.player.pos);
                             bot.agent.execute(command, &mut self.world, &mut self.mobs.entities, &others)?;
                         }
                     }
@@ -322,18 +333,18 @@ impl Game {
         }
         let mut players = std::mem::take(&mut self.agents.players);
         for (name, bot) in players.iter_mut().filter(|(_, b)| b.active) {
-            let was_dead = bot.agent.vitals.is_dead();
+            let was_dead = bot.agent.session.vitals.is_dead();
             bot.agent.tick_rules(&mut self.world, &mut self.mobs.entities, self.difficulty, &self.gamerules);
-            if !was_dead && bot.agent.vitals.is_dead() && self.gamerules.bool("showDeathMessages") {
-                log::info!("{name} {}", bot.agent.vitals.death.as_deref().unwrap_or("died"));
+            if !was_dead && bot.agent.session.vitals.is_dead() && self.gamerules.bool("showDeathMessages") {
+                log::info!("{name} {}", bot.agent.session.vitals.death.as_deref().unwrap_or("died"));
             }
             if self.hardcore {
                 bot.agent.hardcore_spectate();
-            } else if self.gamerules.bool("doImmediateRespawn") && bot.agent.vitals.is_dead() {
-                let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.vitals.xp);
+            } else if self.gamerules.bool("doImmediateRespawn") && bot.agent.session.vitals.is_dead() {
+                let kept_xp = self.gamerules.bool("keepInventory").then_some(bot.agent.session.vitals.xp);
                 let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
                 if let Some(xp) = kept_xp {
-                    bot.agent.vitals.xp = xp;
+                    bot.agent.session.vitals.xp = xp;
                 }
             }
             if bot.agent.remaining == 0
@@ -347,12 +358,12 @@ impl Game {
     /// This initial host keeps agents in the host's active dimension, retaining inventory across travel.
     pub(super) fn relocate_agents(&mut self) {
         for bot in self.agents.players.values_mut() {
-            bot.agent.player.pos = self.player.pos + DVec3::new(2.0, 0.0, 0.0);
-            bot.agent.previous_pos = bot.agent.player.pos;
-            bot.agent.player.vel = DVec3::ZERO;
-            bot.agent.vitals.reset_fall();
+            bot.agent.session.player.pos = self.session.player.pos + DVec3::new(2.0, 0.0, 0.0);
+            bot.agent.previous_pos = bot.agent.session.player.pos;
+            bot.agent.session.player.vel = DVec3::ZERO;
+            bot.agent.session.vitals.reset_fall();
             bot.agent.remaining = 0;
-            bot.agent.sleeping = None;
+            bot.agent.session.sleeping = None;
             if let Some(reply) = bot.reply.take() {
                 let _ = reply.send(json!({"ok":false,"error":"host changed dimension; observe before continuing"}));
             }
@@ -369,8 +380,8 @@ mod tests {
         use crate::item::Item;
         let mut agents = Agents::default();
         let mut agent = Agent::new(DVec3::ZERO);
-        agent.inventory.slots.fill(Some(Stack::new(Item::STICK, 64)));
-        agent.work = [
+        agent.session.inventory.slots.fill(Some(Stack::new(Item::STICK, 64)));
+        agent.session.work = [
             Some(Stack::new(Item::ENCHANTED_BOOK, 1)),
             Some(Stack::new(Item::LAPIS_LAZULI, 3)),
             Some(Stack::new(Item::NETHERITE_INGOT, 2)),
@@ -379,11 +390,14 @@ mod tests {
         let text = agents.serialize("overworld");
         let mut restored = Agents::default();
         restored.restore(&text, "overworld", DVec3::ZERO);
-        let inv = &mut restored.players.get_mut("Player2").unwrap().agent.inventory;
+        let inv = &mut restored.players.get_mut("Player2").unwrap().agent.session.inventory;
         assert_eq!(inv.slots.iter().flatten().count(), SLOTS);
-        assert_eq!(inv.take_spill(), agents.players["Player2"].agent.work.into_iter().flatten().collect::<Vec<_>>());
-        assert_eq!(restored.players["Player2"].agent.work, [None; 3]);
-        assert!(agents.players["Player2"].agent.work.iter().all(Option::is_some));
+        assert_eq!(
+            inv.take_spill(),
+            agents.players["Player2"].agent.session.work.into_iter().flatten().collect::<Vec<_>>()
+        );
+        assert_eq!(restored.players["Player2"].agent.session.work, [None; 3]);
+        assert!(agents.players["Player2"].agent.session.work.iter().all(Option::is_some));
     }
 
     #[test]
@@ -391,13 +405,13 @@ mod tests {
         let spawn = DVec3::new(1.0, 150.0, 2.0);
         let mut agents = Agents::default();
         let mut agent = Agent::new(DVec3::new(300.0, 100.0, -250.0));
-        agent.inventory.add(crate::item::Item::DIAMOND, 3);
+        agent.session.inventory.add(crate::item::Item::DIAMOND, 3);
         agent.creative = true;
         agent.selected = 2;
-        agent.spawn_bed = Some(IVec3::new(4, 70, -2));
-        agent.player.flying = true;
-        agent.vitals.hunger = crate::simulation::survival::Hunger::restore(8.0, 2.0, 1.0);
-        agent.vitals.xp = crate::simulation::experience::Experience::restore(7, 4, 90);
+        agent.session.spawn_bed = Some(IVec3::new(4, 70, -2));
+        agent.session.player.flying = true;
+        agent.session.vitals.hunger = crate::simulation::survival::Hunger::restore(8.0, 2.0, 1.0);
+        agent.session.vitals.xp = crate::simulation::experience::Experience::restore(7, 4, 90);
         agents.insert("builder".into(), agent);
         agents.players.get_mut("builder").unwrap().active = true;
         let text = agents.serialize("overworld");
@@ -406,15 +420,15 @@ mod tests {
         let bot = &restored.players["builder"];
         assert_eq!(bot.id, PlayerId(1), "stable ID survives saving");
         assert!(!bot.active);
-        assert!(bot.agent.player.flying);
+        assert!(bot.agent.session.player.flying);
         assert_eq!(bot.agent.selected, 2);
-        assert_eq!(bot.agent.player.pos, DVec3::new(300.0, 100.0, -250.0));
-        assert_eq!(bot.agent.inventory.get(0).unwrap().count, 3);
-        assert_eq!(bot.agent.vitals.hunger.food, 8.0);
-        assert_eq!(bot.agent.vitals.xp, crate::simulation::experience::Experience::restore(7, 4, 90));
-        assert_eq!(bot.agent.spawn_bed, Some(IVec3::new(4, 70, -2)));
+        assert_eq!(bot.agent.session.player.pos, DVec3::new(300.0, 100.0, -250.0));
+        assert_eq!(bot.agent.session.inventory.get(0).unwrap().count, 3);
+        assert_eq!(bot.agent.session.vitals.hunger.food, 8.0);
+        assert_eq!(bot.agent.session.vitals.xp, crate::simulation::experience::Experience::restore(7, 4, 90));
+        assert_eq!(bot.agent.session.spawn_bed, Some(IVec3::new(4, 70, -2)));
         restored.restore(&text, "nether", spawn);
-        assert_eq!(restored.players["builder"].agent.player.pos, spawn);
+        assert_eq!(restored.players["builder"].agent.session.player.pos, spawn);
         assert_eq!(restored.players["builder"].id, PlayerId(1));
     }
 
@@ -423,8 +437,8 @@ mod tests {
         let mut agents = Agents::default();
         agents.restore(r#"[{"name":"Player2"},{"name":"Player3","bed":[9,9,9]}]"#, "overworld", DVec3::ZERO);
         agents.restore_pad_beds("Player2=1,-2,3;Player3=4,5,6;Ghost=7,8,9;Player4=a,b,c");
-        assert_eq!(agents.players["Player2"].agent.spawn_bed, Some(IVec3::new(1, -2, 3)));
-        assert_eq!(agents.players["Player3"].agent.spawn_bed, Some(IVec3::new(9, 9, 9)), "newer bed wins");
+        assert_eq!(agents.players["Player2"].agent.session.spawn_bed, Some(IVec3::new(1, -2, 3)));
+        assert_eq!(agents.players["Player3"].agent.session.spawn_bed, Some(IVec3::new(9, 9, 9)), "newer bed wins");
         assert_eq!(agents.players.len(), 2);
     }
 

@@ -57,8 +57,9 @@ impl Game {
     /// Returns whether it went down.
     pub(super) fn place_door(&mut self, at: IVec3, item: Item) -> bool {
         let up = at + IVec3::Y;
-        let free =
-            |p: IVec3| self.world.get_block(p).is_some_and(|b| b.is_replaceable()) && !self.player.intersects_block(p);
+        let free = |p: IVec3| {
+            self.world.get_block(p).is_some_and(|b| b.is_replaceable()) && !self.session.player.intersects_block(p)
+        };
         if up.y >= self.world.max_y()
             || !free(at)
             || !free(up)
@@ -66,7 +67,7 @@ impl Game {
         {
             return false;
         }
-        let facing = Facing::toward(self.player.forward());
+        let facing = Facing::toward(self.session.player.forward());
         let (lower, upper) = if item == Item::OAK_DOOR {
             (Block::door(facing, false, false), Block::door(facing, false, true))
         } else if let Some(block) = item.block()
@@ -109,7 +110,7 @@ impl Game {
         let below = pos - IVec3::Y;
         let Some(lower) = self.world.get_block(below).filter(|b| b.is_door() && !b.is_door_upper()) else { return };
         self.world.set_block(below, Block::AIR);
-        if self.mode.is_survival() {
+        if self.session.mode.is_survival() {
             self.world.spill_block(below, lower);
         }
     }

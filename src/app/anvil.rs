@@ -33,17 +33,17 @@ impl Game {
     /// it's "Too Expensive!" for this player.
     pub(super) fn anvil_preview(&self) -> Option<(AnvilResult, bool)> {
         if matches!(self.container, Container::Grindstone(_)) {
-            return voxelcraft::grindstone::result(self.work[0], self.work[1]).map(|r| (r, false));
+            return voxelcraft::grindstone::result(self.session.work[0], self.session.work[1]).map(|r| (r, false));
         }
-        let creative = self.mode.is_creative();
-        let result = enchant::anvil_any_cost(self.work[0]?, self.work[1], creative)?;
+        let creative = self.session.mode.is_creative();
+        let result = enchant::anvil_any_cost(self.session.work[0]?, self.session.work[1], creative)?;
         Some((result, !creative && result.cost >= enchant::TOO_EXPENSIVE))
     }
 
     /// The result a click can take now: affordable and not too expensive.
     pub(super) fn anvil_result(&self) -> Option<AnvilResult> {
         let (result, too_expensive) = self.anvil_preview()?;
-        let affordable = self.mode.is_creative() || self.vitals.xp.level >= result.cost;
+        let affordable = self.session.mode.is_creative() || self.session.vitals.xp.level >= result.cost;
         (!too_expensive && affordable).then_some(result)
     }
 
@@ -55,16 +55,17 @@ impl Game {
                 let i = (slot == SlotRef::AnvilRight) as usize;
                 if !matches!(self.container, Container::Grindstone(_))
                     || self
+                        .session
                         .inventory
                         .cursor
                         .is_none_or(|s| voxelcraft::grindstone::accepts(s.item) || !s.enchants.is_empty())
                 {
-                    crate::inventory::click_slot(&mut self.work[i], &mut self.inventory.cursor, right);
+                    crate::inventory::click_slot(&mut self.session.work[i], &mut self.session.inventory.cursor, right);
                 }
             }
-            SlotRef::AnvilResult if self.inventory.cursor.is_none() => {
+            SlotRef::AnvilResult if self.session.inventory.cursor.is_none() => {
                 if let Some(out) = self.take_anvil_result() {
-                    self.inventory.cursor = Some(out);
+                    self.session.inventory.cursor = Some(out);
                 }
             }
             _ => {}
@@ -76,9 +77,9 @@ impl Game {
     pub(super) fn take_anvil_result(&mut self) -> Option<Stack> {
         if let Container::Grindstone(pos) = self.container {
             let result = self.anvil_result()?;
-            let xp = voxelcraft::grindstone::xp(self.work[0], self.work[1], enchant::roll());
-            self.work[0] = None;
-            self.work[1] = None;
+            let xp = voxelcraft::grindstone::xp(self.session.work[0], self.session.work[1], enchant::roll());
+            self.session.work[0] = None;
+            self.session.work[1] = None;
             if xp > 0 {
                 self.world.xp_drops.push((pos, xp));
             }
@@ -86,12 +87,12 @@ impl Game {
         }
         let Container::Anvil(pos) = self.container else { return None };
         let result = self.anvil_result()?;
-        let survival = self.mode.is_survival();
+        let survival = self.session.mode.is_survival();
         if survival {
-            self.vitals.xp.add_levels(-(result.cost as i64));
+            self.session.vitals.xp.add_levels(-(result.cost as i64));
         }
-        self.work[0] = None;
-        self.work[1] = match (result.uses, self.work[1]) {
+        self.session.work[0] = None;
+        self.session.work[1] = match (result.uses, self.session.work[1]) {
             (Some(n), Some(s)) if s.count > n => Some(Stack { count: s.count - n, ..s }),
             _ => None,
         };
@@ -110,11 +111,11 @@ impl Game {
     /// Shift-click on the result: into the inventory, if it fits.
     pub(super) fn quick_take_anvil(&mut self) {
         let Some(result) = self.anvil_result() else { return };
-        let mut slots = self.inventory.slots;
+        let mut slots = self.session.inventory.slots;
         if move_into(result.output, &mut slots, &(0..crate::inventory::SLOTS).collect::<Vec<_>>()).is_none()
             && let Some(out) = self.take_anvil_result()
         {
-            self.inventory.add_stack(out);
+            self.session.inventory.add_stack(out);
         }
     }
 
@@ -127,10 +128,10 @@ impl Game {
         {
             return Some(stack);
         }
-        if self.work[0].is_none() {
-            self.work[0] = Some(Stack { count: 1, ..stack });
+        if self.session.work[0].is_none() {
+            self.session.work[0] = Some(Stack { count: 1, ..stack });
             return (stack.count > 1).then_some(Stack { count: stack.count - 1, ..stack });
         }
-        move_into(stack, std::slice::from_mut(&mut self.work[1]), &[0])
+        move_into(stack, std::slice::from_mut(&mut self.session.work[1]), &[0])
     }
 }

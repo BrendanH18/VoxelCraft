@@ -61,8 +61,11 @@ impl Game {
             self.benchmark = Some(run);
             return;
         }
-        if !run.prepared && self.world.pending_jobs() == 0 && self.world.is_loaded(self.player.pos.floor().as_ivec3()) {
-            run.origin = self.player.pos;
+        if !run.prepared
+            && self.world.pending_jobs() == 0
+            && self.world.is_loaded(self.session.player.pos.floor().as_ivec3())
+        {
+            run.origin = self.session.player.pos;
             if run.scene != "survival" && run.scene != "streaming" {
                 let at = run.origin.floor().as_ivec3();
                 // A compact inspection platform, built on the actual seed's surface.
@@ -118,13 +121,13 @@ impl Game {
                     }
                     _ => {}
                 }
-                self.player.pos = run.origin + DVec3::new(0., 10., -18.);
-                self.player.pitch = -0.28;
+                self.session.player.pos = run.origin + DVec3::new(0., 10., -18.);
+                self.session.player.pitch = -0.28;
             }
-            self.player.can_fly = true;
-            self.player.flying = true;
-            self.vitals.health = 10000.;
-            run.origin = self.player.pos;
+            self.session.player.can_fly = true;
+            self.session.player.flying = true;
+            self.session.vitals.health = 10000.;
+            run.origin = self.session.player.pos;
             run.cold_load_ms = run.created.elapsed().as_secs_f64() * 1000.;
             run.prepared = true;
         }
@@ -142,12 +145,13 @@ impl Game {
                 run.discarded_before = self.clock.discarded();
             }
             let route = ready.elapsed().as_secs_f64();
-            self.player.yaw = (route * 0.12) as f32;
+            self.session.player.yaw = (route * 0.12) as f32;
             if run.scene == "streaming" {
                 // 12 blocks/s crosses a Java chunk every 1.33 s; changes streaming centres normally.
-                self.player.pos = run.origin + DVec3::new(route * 12., 0., (route * 0.08).sin() * 32.);
+                self.session.player.pos = run.origin + DVec3::new(route * 12., 0., (route * 0.08).sin() * 32.);
             } else if run.scene == "survival" {
-                self.player.pos = run.origin + DVec3::new((route * 0.1).sin() * 12., 0., (route * 0.1).cos() * 12.);
+                self.session.player.pos =
+                    run.origin + DVec3::new((route * 0.1).sin() * 12., 0., (route * 0.1).cos() * 12.);
             }
             if let Some(start) = run.sample_start {
                 if let Some(previous) = run.previous.replace(now)

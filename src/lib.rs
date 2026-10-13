@@ -24,6 +24,7 @@ pub mod physics;
 pub mod player;
 pub mod potion;
 pub mod rules;
+pub mod session;
 pub mod simulation;
 pub mod smithing;
 pub mod survival_items;

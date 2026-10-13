@@ -136,9 +136,9 @@ impl Game {
 
     /// Sets up a freshly loaded dimension's containers and items.
     pub(super) fn restore_dimension(&mut self, props: &BTreeMap<String, String>) {
-        self.player.vehicle = None;
+        self.session.player.vehicle = None;
         for bot in self.agents.players.values_mut() {
-            bot.agent.player.vehicle = None;
+            bot.agent.session.player.vehicle = None;
         }
         if let Some(r) = props.get("redstone") {
             self.world.load_redstone(r);
@@ -167,14 +167,14 @@ impl Game {
         if let Some(carts) = props.get("minecarts") {
             self.mobs.entities.load_minecarts(carts);
             if let Some(id) = self.mobs.entities.claim_rider(crate::entity::PlayerId::HOST) {
-                self.player.vehicle = Some(id);
+                self.session.player.vehicle = Some(id);
             }
-            let ids: Vec<_> = self.agents.players.values().map(|b| b.agent.id).collect();
+            let ids: Vec<_> = self.agents.players.values().map(|b| b.agent.session.id).collect();
             for id in ids {
                 if let Some(cart) = self.mobs.entities.claim_rider(id)
-                    && let Some(bot) = self.agents.players.values_mut().find(|b| b.agent.id == id)
+                    && let Some(bot) = self.agents.players.values_mut().find(|b| b.agent.session.id == id)
                 {
-                    bot.agent.player.vehicle = Some(cart);
+                    bot.agent.session.player.vehicle = Some(cart);
                 }
             }
         }
@@ -183,11 +183,11 @@ impl Game {
         }
         if let Some(n) = props.get("nether_mobs") {
             self.mobs.entities.load_nether_mobs(n);
-            self.player.vehicle =
-                self.mobs.entities.mount_for_player(crate::entity::PlayerId::HOST).or(self.player.vehicle);
+            self.session.player.vehicle =
+                self.mobs.entities.mount_for_player(crate::entity::PlayerId::HOST).or(self.session.player.vehicle);
             for bot in self.agents.players.values_mut() {
-                bot.agent.player.vehicle =
-                    self.mobs.entities.mount_for_player(bot.agent.id).or(bot.agent.player.vehicle);
+                bot.agent.session.player.vehicle =
+                    self.mobs.entities.mount_for_player(bot.agent.session.id).or(bot.agent.session.player.vehicle);
             }
         }
         self.mobs.entities.fight = self
@@ -218,19 +218,21 @@ impl Game {
         self.restore_dimension(&props);
         self.arrival = Some(arrival);
         self.portal_time = 0.0;
-        self.sleeping = None;
+        self.session.sleeping = None;
         self.actions.reset();
-        self.player.vel = DVec3::ZERO;
-        self.vitals.reset_fall();
+        self.session.cancel_consumption();
+        self.session.player.vel = DVec3::ZERO;
+        self.session.vitals.reset_fall();
     }
 
     /// Goes through the portal the player is standing in.
     fn travel(&mut self) {
         let to = self.dimension.other();
         let scale = if to == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
-        let (x, z) = ((self.player.pos.x * scale).floor() as i32, (self.player.pos.z * scale).floor() as i32);
+        let (x, z) =
+            ((self.session.player.pos.x * scale).floor() as i32, (self.session.player.pos.z * scale).floor() as i32);
         let y = match to {
-            Dimension::Nether => (self.player.pos.y as i32).clamp(40, 100),
+            Dimension::Nether => (self.session.player.pos.y as i32).clamp(40, 100),
             Dimension::End => unreachable!("Nether portals cannot enter the End"),
             Dimension::Overworld => {
                 let ground = Generator::new(self.world.generator.seed).column(x, z).height;
@@ -252,7 +254,7 @@ impl Game {
             // Load where `respawn_point` will put the player: the bed (checked
             // once its chunk is in), else the set spawn point or the
             // `spawnRadius` spot around the world spawn.
-            Arrival::Respawn => self.spawn_bed.unwrap_or_else(|| self.respawn_point().floor().as_ivec3()),
+            Arrival::Respawn => self.session.spawn_bed.unwrap_or_else(|| self.respawn_point().floor().as_ivec3()),
         };
         let r = match arrival {
             Arrival::Portal(_) => SEARCH_RADIUS,
@@ -264,20 +266,20 @@ impl Game {
             .iter()
             .all(|&(dx, dz)| self.world.column_loaded(target.x + dx, target.z + dz));
         if !ready {
-            self.player.pos = target.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
-            self.player.vel = DVec3::ZERO;
+            self.session.player.pos = target.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+            self.session.player.vel = DVec3::ZERO;
             return true;
         }
         // The bed's chunk is in, so `respawn_point` can now check the bed. If
         // it's gone, the bed is forgotten and the fallback spot may be in an
         // unloaded chunk: keep waiting, now targeting that spot.
-        if matches!(arrival, Arrival::Respawn) && self.spawn_bed.is_some() {
+        if matches!(arrival, Arrival::Respawn) && self.session.spawn_bed.is_some() {
             self.respawn_point();
-            if self.spawn_bed.is_none() {
+            if self.session.spawn_bed.is_none() {
                 return true;
             }
         }
-        self.player.pos = match arrival {
+        self.session.player.pos = match arrival {
             Arrival::Portal(p) => {
                 let range = portal_range(self.dimension);
                 let at = self.world.find_portal(p, SEARCH_RADIUS, range);
@@ -288,8 +290,8 @@ impl Game {
                 let along_x = [IVec3::X, IVec3::NEG_X]
                     .iter()
                     .any(|&d| matches!(self.world.get_block(at + d), Some(Block::NETHER_PORTAL | Block::OBSIDIAN)));
-                self.player.yaw = if along_x { std::f32::consts::FRAC_PI_2 } else { 0.0 };
-                self.player.pitch = 0.0;
+                self.session.player.yaw = if along_x { std::f32::consts::FRAC_PI_2 } else { 0.0 };
+                self.session.player.pitch = 0.0;
                 at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
             Arrival::EndSpawn => {
@@ -302,8 +304,8 @@ impl Game {
                         }
                     }
                 }
-                self.player.yaw = std::f32::consts::PI;
-                self.player.pitch = 0.0;
+                self.session.player.yaw = std::f32::consts::PI;
+                self.session.player.pitch = 0.0;
                 spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
             Arrival::Respawn => self.respawn_point(),
@@ -323,9 +325,9 @@ impl Game {
             }
         };
         self.relocate_agents();
-        self.player.vel = DVec3::ZERO;
-        self.player.flying = self.player.flying && self.mode.can_fly();
-        self.vitals.reset_fall();
+        self.session.player.vel = DVec3::ZERO;
+        self.session.player.flying = self.session.player.flying && self.session.mode.can_fly();
+        self.session.vitals.reset_fall();
         self.arrival = None;
         let sound = Sound::Place(Material::Glass);
         self.audio.play(sound, None, 0.8, (0.5, 0.6));
@@ -334,7 +336,7 @@ impl Game {
 
     /// A cell of `block` the player overlaps.
     fn touched(&self, block: Block) -> Option<IVec3> {
-        let (min, max) = self.player.collision_shape().aabb(self.player.pos);
+        let (min, max) = self.session.player.collision_shape().aabb(self.session.player.pos);
         let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
         (lo.y..=hi.y)
             .flat_map(|y| (lo.z..=hi.z).flat_map(move |z| (lo.x..=hi.x).map(move |x| IVec3::new(x, y, z))))
@@ -355,14 +357,14 @@ impl Game {
         };
         self.audio.play(Sound::Teleport, None, 0.8, (0.7, 0.8));
         self.arrival = Some(arrival);
-        self.player.vel = DVec3::ZERO;
-        self.vitals.reset_fall();
+        self.session.player.vel = DVec3::ZERO;
+        self.session.vitals.reset_fall();
     }
 
     /// Whether the player overlaps a `portal` block's slice from `bottom`
     /// to `top` of the way up its cell.
     fn in_portal(&self, portal: Block, (bottom, top): (f64, f64)) -> bool {
-        let (min, max) = self.player.collision_shape().aabb(self.player.pos);
+        let (min, max) = self.session.player.collision_shape().aabb(self.session.player.pos);
         let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
         (lo.y..=hi.y).any(|y| {
             min.y < y as f64 + top
@@ -380,7 +382,7 @@ impl Game {
             return;
         }
         if self.dimension == Dimension::End
-            && !self.vitals.is_dead()
+            && !self.session.vitals.is_dead()
             && let Some(cell) = self.touched(Block::END_GATEWAY)
         {
             self.enter_gateway(cell);
@@ -388,7 +390,7 @@ impl Game {
         }
         // Java's End portal block spans 6..12 sixteenths: coming up from
         // below takes you only once you reach it.
-        if !self.vitals.is_dead() && self.in_portal(Block::END_PORTAL, (6.0 / 16.0, 0.75)) {
+        if !self.session.vitals.is_dead() && self.in_portal(Block::END_PORTAL, (6.0 / 16.0, 0.75)) {
             if self.dimension == Dimension::End && self.begin_credits() {
                 return;
             }
@@ -401,7 +403,7 @@ impl Game {
         }
         if self.dimension == Dimension::End
             || !self.in_portal(Block::NETHER_PORTAL, (0.0, 1.0))
-            || self.vitals.is_dead()
+            || self.session.vitals.is_dead()
         {
             self.portal_locked = false;
             self.portal_time = (self.portal_time - dt as f32 * 2.0).max(0.0);
@@ -421,7 +423,7 @@ impl Game {
     }
 
     pub(super) fn portal_needed(&self) -> f32 {
-        if self.mode.is_creative() { CREATIVE_PORTAL_TIME } else { PORTAL_TIME }
+        if self.session.mode.is_creative() { CREATIVE_PORTAL_TIME } else { PORTAL_TIME }
     }
 
     /// Right-click with flint and steel: primes TNT or lights a portal/fire
@@ -434,7 +436,7 @@ impl Game {
             self.world.set_block(pos, Block::AIR);
             self.mobs.entities.prime_tnt(pos, false);
             self.audio.play(Sound::Fuse, Some(pos.as_dvec3()), 1.0, (0.95, 1.05));
-            if self.mode.is_survival() && self.inventory.wear(self.actions.selected, 1) {
+            if self.session.mode.is_survival() && self.session.inventory.wear(self.actions.selected, 1) {
                 self.show_popup("Flint and steel broke");
             }
             return true;
@@ -444,7 +446,7 @@ impl Game {
             return true;
         }
         self.audio.play(Sound::Place(Material::Stone), Some(pos.as_dvec3()), 0.7, (1.6, 1.9));
-        if self.mode.is_survival() && self.inventory.wear(self.actions.selected, 1) {
+        if self.session.mode.is_survival() && self.session.inventory.wear(self.actions.selected, 1) {
             self.show_popup("Flint and steel broke");
         }
         if self.world.get_block(at) == Some(Block::NETHER_PORTAL) {

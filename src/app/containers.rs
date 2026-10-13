@@ -42,7 +42,7 @@ impl Game {
     /// Java's `angerNearbyPiglins`: piglins around the player turn on them
     /// for opening a chest (only the ones that see it) or breaking gold.
     pub(super) fn piglins_notice(&mut self, only_if_seen: bool) {
-        let (actor, at) = (self.actor, self.player.pos);
+        let (actor, at) = (self.session.id, self.session.player.pos);
         self.mobs.entities.piglins_notice(actor, at, only_if_seen, &self.world);
     }
 
@@ -57,9 +57,9 @@ impl Game {
     pub(super) fn quick_move(&mut self, slot: SlotRef) {
         match slot {
             SlotRef::Inventory(i) => {
-                let Some(stack) = self.inventory.slots[i].take() else { return };
+                let Some(stack) = self.session.inventory.slots[i].take() else { return };
                 let left = self.move_from_inventory(i, stack);
-                self.inventory.slots[i] = left;
+                self.session.inventory.slots[i] = left;
             }
             SlotRef::Chest(i) => {
                 if let Container::Minecart(id) = self.container {
@@ -96,11 +96,11 @@ impl Game {
                 // Craft until the ingredients run out or the result won't fit.
                 let order = to_player_order();
                 while let Some(result) = self.craft.result() {
-                    let mut slots = self.inventory.slots;
+                    let mut slots = self.session.inventory.slots;
                     if move_into(result, &mut slots, &order).is_some() {
                         break;
                     }
-                    self.inventory.slots = slots;
+                    self.session.inventory.slots = slots;
                     self.craft.consume();
                 }
             }
@@ -147,14 +147,14 @@ impl Game {
             }
             SlotRef::EnchantItem | SlotRef::EnchantLapis => {
                 let i = (slot == SlotRef::EnchantLapis) as usize;
-                let Some(stack) = self.work[i].take() else { return };
-                self.work[i] = self.move_to_player(stack);
+                let Some(stack) = self.session.work[i].take() else { return };
+                self.session.work[i] = self.move_to_player(stack);
             }
             SlotRef::EnchantOffer(i) => self.take_offer(i),
             SlotRef::AnvilLeft | SlotRef::AnvilRight => {
                 let i = (slot == SlotRef::AnvilRight) as usize;
-                let Some(stack) = self.work[i].take() else { return };
-                self.work[i] = self.move_to_player(stack);
+                let Some(stack) = self.session.work[i].take() else { return };
+                self.session.work[i] = self.move_to_player(stack);
             }
             SlotRef::AnvilResult => self.quick_take_anvil(),
             SlotRef::SmithTemplate | SlotRef::SmithBase | SlotRef::SmithAddition => {
@@ -163,28 +163,28 @@ impl Game {
                     SlotRef::SmithBase => 1,
                     _ => 2,
                 };
-                let Some(stack) = self.work[i].take() else { return };
-                self.work[i] = self.move_to_player(stack);
+                let Some(stack) = self.session.work[i].take() else { return };
+                self.session.work[i] = self.move_to_player(stack);
             }
             SlotRef::SmithResult => self.quick_take_smithing(),
             SlotRef::Armor(piece) => {
-                if !self.inventory.can_unequip(piece, self.mode.is_creative()) {
+                if !self.session.inventory.can_unequip(piece, self.session.mode.is_creative()) {
                     return;
                 }
-                let Some(stack) = self.inventory.armor[piece as usize].take() else { return };
-                self.inventory.armor[piece as usize] = self.move_to_player(stack);
+                let Some(stack) = self.session.inventory.armor[piece as usize].take() else { return };
+                self.session.inventory.armor[piece as usize] = self.move_to_player(stack);
             }
             SlotRef::Trade(i) => self.buy_trade(i),
             SlotRef::Palette(item) => {
-                if self.mode.is_creative() {
-                    self.inventory.add(item, item.max_stack());
+                if self.session.mode.is_creative() {
+                    self.session.inventory.add(item, item.max_stack());
                 }
             }
         }
     }
 
     fn move_to_player(&mut self, stack: Stack) -> Option<Stack> {
-        move_into(stack, &mut self.inventory.slots, &to_player_order())
+        move_into(stack, &mut self.session.inventory.slots, &to_player_order())
     }
 
     /// Where a shift-clicked inventory stack goes: into the open chest, a
@@ -264,12 +264,12 @@ impl Game {
                     return left;
                 }
             }
-            Container::Inventory if self.mode.is_survival() => {
+            Container::Inventory if self.session.mode.is_survival() => {
                 // Armor goes on, if that slot is free.
                 if let Some((piece, _)) = stack.item.as_armor()
-                    && self.inventory.armor[piece as usize].is_none()
+                    && self.session.inventory.armor[piece as usize].is_none()
                 {
-                    self.inventory.armor[piece as usize] = Some(stack);
+                    self.session.inventory.armor[piece as usize] = Some(stack);
                     return None;
                 }
             }
@@ -277,6 +277,6 @@ impl Game {
         }
         let order: Vec<usize> =
             if from < HOTBAR_SLOTS { (HOTBAR_SLOTS..SLOTS).collect() } else { (0..HOTBAR_SLOTS).collect() };
-        move_into(stack, &mut self.inventory.slots, &order)
+        move_into(stack, &mut self.session.inventory.slots, &order)
     }
 }

@@ -21,10 +21,10 @@ impl Game {
 
     pub(super) fn use_bucket(&mut self) -> bool {
         let Some(effect) = bucket::use_bucket(
-            &self.player,
-            &mut self.inventory,
+            &self.session.player,
+            &mut self.session.inventory,
             self.actions.selected,
-            self.mode.is_creative(),
+            self.session.mode.is_creative(),
             &mut self.world,
             &mut self.mobs.entities,
             REACH,

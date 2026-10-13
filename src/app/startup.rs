@@ -183,7 +183,23 @@ impl Game {
         if let Some(text) = root_props.get("pad_beds") {
             agents.restore_pad_beds(text);
         }
+        let mut session = voxelcraft::session::PlayerSession::from_parts(
+            crate::entity::PlayerId::HOST,
+            player,
+            inventory,
+            vitals,
+            mode,
+        );
+        session.spawn_bed = existing.as_ref().and_then(|l| l.props.get("bed")).and_then(|t| {
+            let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
+            (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
+        });
+        session.spawn_point = existing.as_ref().and_then(|l| l.props.get("spawn_point")).and_then(|text| {
+            let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
+            (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
+        });
         let mut game = Game {
+            session,
             session_lock: None,
             agents,
             lan: lan::Lan::default(),
@@ -191,7 +207,6 @@ impl Game {
             // Screenshot runs never read controllers.
             virtual_pad: args.pad_player.clone(),
             puppet: false,
-            actor: crate::entity::PlayerId::HOST,
             puppet_used: None,
             puppet_merchant: None,
             puppet_vehicle: None,
@@ -210,7 +225,6 @@ impl Game {
             console: console::Console { open: args.open_console, input: "/".into(), ..Default::default() },
             renderer,
             world,
-            player,
             storage,
             keys: FxHashSet::default(),
             modifiers: Default::default(),
@@ -220,14 +234,11 @@ impl Game {
             jump_pressed: false,
             mine_pressed: false,
             action_cooldown: 0.0,
-            mode,
             difficulty,
             hardcore,
             gamerules,
-            inventory,
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
-            work: [None; 3],
             container: Container::Inventory,
             recipe_book: recipe_book::RecipeBook::default(),
             creative_scroll: 0,
@@ -248,17 +259,8 @@ impl Game {
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
                 .unwrap_or(0.08),
             day_count: root_props.get("day_count").and_then(|value| value.parse().ok()).unwrap_or(0),
-            sleeping: None,
             credits_seen: root_props.get("credits_seen").is_some_and(|v| v == "1"),
             credits: None,
-            spawn_bed: existing.as_ref().and_then(|l| l.props.get("bed")).and_then(|t| {
-                let v: Vec<i32> = t.split(',').filter_map(|s| s.parse().ok()).collect();
-                (v.len() == 3).then(|| glam::IVec3::new(v[0], v[1], v[2]))
-            }),
-            spawn_point: existing.as_ref().and_then(|l| l.props.get("spawn_point")).and_then(|text| {
-                let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
-                (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
-            }),
             world_spawn: root_props
                 .get("world_spawn")
                 .and_then(|text| {
@@ -286,7 +288,6 @@ impl Game {
             cpu_ms: 0.0,
             show_debug: args.debug_overlay,
             popup: (String::new(), now - Duration::from_secs(10)),
-            vitals,
             screenshot: args.screenshot.clone(),
             screenshot_state: 0,
             open_trading: args.open_trading,
@@ -330,12 +331,12 @@ impl Game {
         }
         game.renderer.force_offscreen = game.bench_render.is_some();
         game.restore_dimension(&dimension_props);
-        if game.vitals.is_dead() {
+        if game.session.vitals.is_dead() {
             game.on_death();
         } else if game.screenshot.is_none() && game.bench_render.is_none() && !game.console.open {
             game.set_grab(true);
         }
-        game.lan.mode = game.mode;
+        game.lan.mode = game.session.mode;
         game.lan.cheats = args.lan_cheats;
         game.lan.pvp = args.lan_pvp;
         game.lan.profile = args.profile.clone().unwrap_or_else(|| lan::local_profile(saves_dir));

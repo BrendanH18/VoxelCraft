@@ -1,0 +1,36 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.item.component.Consumables",
+    "net.minecraft.world.item.Item$Properties.food",
+    "net.minecraft.world.item.Items"
+  ],
+  "cases": [
+    {
+      "item": "apple",
+      "seconds": 1.6,
+      "ticks": 32
+    },
+    {
+      "item": "mushroom_stew",
+      "seconds": 1.6,
+      "ticks": 32
+    },
+    {
+      "item": "dried_kelp",
+      "seconds": 0.8,
+      "ticks": 16
+    },
+    {
+      "item": "milk_bucket",
+      "seconds": 1.6,
+      "ticks": 32
+    },
+    {
+      "item": "potion",
+      "seconds": 1.6,
+      "ticks": 32
+    }
+  ]
+}

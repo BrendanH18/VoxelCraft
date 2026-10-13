@@ -418,6 +418,9 @@ impl Game {
                     seat.triggers = (false, false);
                     seat.drop_since = None;
                     seat.body.let_go();
+                    if let Some(bot) = self.agents.players.get_mut(&seat.name) {
+                        bot.agent.session.cancel_consumption();
+                    }
                     if seat.menu.take().is_some() {
                         closing.push(seat.name.clone());
                     }
@@ -451,10 +454,10 @@ impl Game {
             for seat in &self.pads.seats {
                 if let Some(bot) = self.agents.players.get_mut(&seat.name)
                     && seat.menu.is_none()
-                    && !bot.agent.vitals.is_dead()
+                    && !bot.agent.session.vitals.is_dead()
                 {
                     let d = look_delta(seat.held.look, dt, self.settings.sensitivity);
-                    bot.agent.player.look(d.x, -d.y);
+                    bot.agent.session.player.look(d.x, -d.y);
                 }
             }
         }
@@ -495,8 +498,8 @@ impl Game {
             .ok_or("No free player profile")?;
         if !self.agents.players.contains_key(&name) {
             let mut agent = Agent::new(self.beside_host());
-            agent.player.yaw = self.player.yaw;
-            agent.set_mode(self.mode);
+            agent.session.player.yaw = self.session.player.yaw;
+            agent.set_mode(self.session.mode);
             self.agents.insert(name.clone(), agent);
         }
         self.agents.players.get_mut(&name).unwrap().active = true;
@@ -513,7 +516,7 @@ impl Game {
     /// A free standing spot next to the host, or the host's own (players
     /// don't collide, but a shared spot puts the camera inside the host).
     pub(super) fn beside_host(&self) -> DVec3 {
-        let host = self.player.pos;
+        let host = self.session.player.pos;
         let open = |p: IVec3| self.world.get_block(p).is_some_and(|b| !b.is_solid());
         [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)]
             .into_iter()
@@ -532,7 +535,8 @@ impl Game {
         self.split.follow.retain(|n| n != name);
         if let Some(bot) = self.agents.players.get_mut(name) {
             bot.active = false;
-            bot.agent.sleeping = None;
+            bot.agent.session.cancel_consumption();
+            bot.agent.session.sleeping = None;
             bot.agent.hold(MoveInput::default(), false, false);
         }
     }
@@ -541,9 +545,9 @@ impl Game {
     /// of the host's inventory, with a screen open.
     pub(super) fn virtual_pad(&mut self, screen: &str) {
         let Ok(name) = self.join_pad(None) else { return };
-        let inventory = self.inventory.clone();
+        let inventory = self.session.inventory.clone();
         if let Some(bot) = self.agents.players.get_mut(&name) {
-            bot.agent.inventory = inventory;
+            bot.agent.session.inventory = inventory;
         }
         let seat = self.pads.seats.last_mut().unwrap();
         match screen {
@@ -586,7 +590,7 @@ impl Game {
     pub(super) fn pad_view(&self, name: &str) -> Option<PadView<'_>> {
         let seat = self.pads.seats.iter().find(|s| s.name == name)?;
         let a = &seat.body.actions;
-        let held = self.agents.players.get(name)?.agent.inventory.get(a.selected).map(|s| s.item);
+        let held = self.agents.players.get(name)?.agent.session.inventory.get(a.selected).map(|s| s.item);
         Some(PadView {
             breaking: a.breaking,
             eating: (a.eat_timer / super::EAT_TIME) as f32,
@@ -600,9 +604,7 @@ impl Game {
     fn swap_body(&mut self, name: &str, body: &mut Body) -> bool {
         use std::mem::swap;
         let Some(bot) = self.agents.players.get_mut(name) else { return false };
-        swap(&mut self.player, &mut bot.agent.player);
-        swap(&mut self.inventory, &mut bot.agent.inventory);
-        swap(&mut self.vitals, &mut bot.agent.vitals);
+        swap(&mut self.session, &mut bot.agent.session);
         swap(&mut self.hand, &mut bot.hand);
         swap(&mut self.actions, &mut body.actions);
         swap(&mut self.action_cooldown, &mut body.action_cooldown);
@@ -611,23 +613,19 @@ impl Game {
         swap(&mut self.mine_pressed, &mut body.mine_pressed);
         swap(&mut self.mobs.attack_held, &mut body.attack_held);
         swap(&mut self.mobs.attack_cooldown, &mut body.attack_cooldown);
-        swap(&mut self.spawn_bed, &mut bot.agent.spawn_bed);
-        // With the bodies: bed occupancy pairs `sleeping` with `player`.
-        swap(&mut self.sleeping, &mut bot.agent.sleeping);
         swap(&mut self.container, &mut body.container);
-        swap(&mut self.work, &mut bot.agent.work);
         true
     }
 
     /// Controller player `name`'s enchanting, anvil or smithing input slots.
     pub(super) fn pad_work(&self, name: &str) -> super::enchanting::WorkSlots {
-        self.agents.players.get(name).map_or([None; 3], |b| b.agent.work)
+        self.agents.players.get(name).map_or([None; 3], |b| b.agent.session.work)
     }
 
     /// Empties controller player `name`'s workstation input slots.
     pub(super) fn take_pad_work(&mut self, name: &str) -> Vec<crate::inventory::Stack> {
         let Some(bot) = self.agents.players.get_mut(name) else { return Vec::new() };
-        bot.agent.work.iter_mut().filter_map(Option::take).collect()
+        bot.agent.session.work.iter_mut().filter_map(Option::take).collect()
     }
 
     /// Runs host interaction code as controller player `i`. While `f` runs,
@@ -649,21 +647,18 @@ impl Game {
     /// Shared desktop action boundary for controller and LAN player bodies.
     pub(super) fn puppet_body<R>(&mut self, name: &str, body: &mut Body, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
         let bot = self.agents.players.get(name)?;
-        let (selected, player_mode, id) = (bot.agent.selected, bot.agent.mode, bot.id);
+        let selected = bot.agent.selected;
         body.actions.select(selected);
         if !self.swap_body(name, body) {
             return None;
         }
-        let mode = std::mem::replace(&mut self.mode, player_mode);
         self.puppet = true;
-        self.actor = id;
         let result = f(self);
         self.puppet = false;
-        self.actor = crate::entity::PlayerId::HOST;
-        self.mode = mode;
         self.swap_body(name, body);
         if let Some(bot) = self.agents.players.get_mut(name) {
             bot.agent.selected = body.actions.selected;
+            bot.agent.creative = bot.agent.session.mode.is_creative();
         }
         Some(result)
     }
@@ -680,8 +675,9 @@ impl Game {
             let agent = &mut bot.agent;
             agent.hold(MoveInput::default(), false, false);
             if let Some(menu) = self.pads.seats[i].menu {
+                agent.session.cancel_consumption();
                 // Screens close on death, and containers when they're gone or out of reach.
-                let eye = agent.player.eye();
+                let eye = agent.session.player.eye();
                 let gone = match menu {
                     Menu::Items {
                         tab:
@@ -696,15 +692,15 @@ impl Game {
                     } => {
                         !self.world.get_block(pos).is_some_and(|b| tab.matches_block(b))
                             || eye.distance(pos.as_dvec3() + 0.5) > super::REACH + 1.0
-                            || agent.vitals.is_dead()
+                            || agent.session.vitals.is_dead()
                     }
                     Menu::Items { tab: Tab::Vehicle(id), .. } => {
-                        agent.vitals.is_dead() || !self.mobs.entities.vehicle_in_reach(id, eye)
+                        agent.session.vitals.is_dead() || !self.mobs.entities.vehicle_in_reach(id, eye)
                     }
                     Menu::Items { tab: Tab::Trading(id), .. } => {
-                        agent.vitals.is_dead() || !self.mobs.entities.merchant_in_reach(id, eye)
+                        agent.session.vitals.is_dead() || !self.mobs.entities.merchant_in_reach(id, eye)
                     }
-                    Menu::Items { .. } => agent.vitals.is_dead(),
+                    Menu::Items { .. } => agent.session.vitals.is_dead(),
                     Menu::Pause { .. } => false,
                 };
                 if gone {
@@ -713,23 +709,27 @@ impl Game {
                 }
                 continue;
             }
-            if agent.vitals.is_dead() {
+            if agent.session.vitals.is_dead() {
                 self.pads.seats[i].body.let_go();
                 if tick.jumped {
                     self.respawn_pad(i);
                 }
                 continue;
             }
-            if agent.sleeping.is_some() {
+            if agent.session.sleeping.is_some() {
                 // Jumping gets up; being hurt wakes you (Agent::hurt).
                 if tick.jumped {
-                    agent.sleeping = None;
+                    agent.session.sleeping = None;
                 }
                 continue;
             }
-            if tick.toggle_flight && agent.player.can_fly {
-                let _ =
-                    agent.execute(Command::Fly(!agent.player.flying), &mut self.world, &mut self.mobs.entities, &[]);
+            if tick.toggle_flight && agent.session.player.can_fly {
+                let _ = agent.execute(
+                    Command::Fly(!agent.session.player.flying),
+                    &mut self.world,
+                    &mut self.mobs.entities,
+                    &[],
+                );
             }
             let mut presses = Vec::new();
             for action in tick.actions {
@@ -809,12 +809,12 @@ impl Game {
         let Some(at) = self.puppet(i, |g| g.bed_rest(pos)).flatten() else { return };
         let seat = &mut self.pads.seats[i];
         let Some(bot) = self.agents.players.get_mut(&seat.name) else { return };
-        let p = &mut bot.agent.player;
+        let p = &mut bot.agent.session.player;
         p.pos = at;
         p.vel = DVec3::ZERO;
         p.flying = false;
         bot.agent.previous_pos = at;
-        bot.agent.sleeping = Some(0.0);
+        bot.agent.session.sleeping = Some(0.0);
         seat.body.let_go();
         let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
         self.audio.play(sound, Some(at), 0.6, (0.8, 0.9));
@@ -834,10 +834,10 @@ impl Game {
         let name = self.pads.seats[i].name.clone();
         let keep_inventory = self.gamerules.bool("keepInventory");
         let Some(bot) = self.agents.players.get_mut(&name) else { return };
-        let kept_xp = keep_inventory.then_some(bot.agent.vitals.xp);
+        let kept_xp = keep_inventory.then_some(bot.agent.session.vitals.xp);
         let _ = bot.agent.execute(Command::Respawn, &mut self.world, &mut self.mobs.entities, &[]);
         if let Some(xp) = kept_xp {
-            bot.agent.vitals.xp = xp;
+            bot.agent.session.vitals.xp = xp;
         }
         let at = if self.dimension == crate::world::terrain::Dimension::Overworld {
             self.puppet(i, |g| g.respawn_point())
@@ -849,7 +849,7 @@ impl Game {
         seat.sneaking = false;
         seat.body = Body::default();
         if let Some(bot) = self.agents.players.get_mut(&name) {
-            bot.agent.player.pos = at;
+            bot.agent.session.player.pos = at;
             bot.agent.previous_pos = at;
         }
     }

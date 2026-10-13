@@ -35,7 +35,7 @@ impl Game {
     /// Right-click with a bow: starts drawing it if there's an arrow to
     /// shoot (creative needs none). Returns whether it did.
     pub(super) fn start_draw(&mut self) -> bool {
-        let has_arrow = self.mode.is_creative() || self.inventory.find(Item::ARROW).is_some();
+        let has_arrow = self.session.mode.is_creative() || self.session.inventory.find(Item::ARROW).is_some();
         if self.aiming_at_usable() {
             return false;
         }
@@ -54,28 +54,28 @@ impl Game {
     /// crossbow (keeping wear and enchantments) and an arrow is used up.
     fn load_crossbow(&mut self) {
         let slot = self.actions.selected;
-        if self.mode.is_survival() {
-            let Some(arrow) = self.inventory.find(Item::ARROW) else { return };
-            self.inventory.take_one(arrow);
+        if self.session.mode.is_survival() {
+            let Some(arrow) = self.session.inventory.find(Item::ARROW) else { return };
+            self.session.inventory.take_one(arrow);
         }
-        if let Some(stack) = &mut self.inventory.slots[slot] {
+        if let Some(stack) = &mut self.session.inventory.slots[slot] {
             stack.item = Item::CHARGED_CROSSBOW;
         }
-        let eye = self.player.eye();
+        let eye = self.session.player.eye();
         self.audio.play(Sound::Bow, Some(eye), 0.5, (0.55, 0.65));
     }
 
     /// Shoots the bolt in a charged crossbow, which then needs loading again.
     fn fire_crossbow(&mut self) {
         let slot = self.actions.selected;
-        let survival = self.mode.is_survival();
-        let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
-        self.mobs.entities.shoot_enchanted_for(eye, dir, CROSSBOW_POWER, survival, Default::default(), self.actor);
+        let survival = self.session.mode.is_survival();
+        let (eye, dir) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
+        self.mobs.entities.shoot_enchanted_for(eye, dir, CROSSBOW_POWER, survival, Default::default(), self.session.id);
         self.audio.play(Sound::Bow, Some(eye), 0.9, (1.25, 1.35));
-        if let Some(stack) = &mut self.inventory.slots[slot] {
+        if let Some(stack) = &mut self.session.inventory.slots[slot] {
             stack.item = Item::CROSSBOW;
         }
-        if survival && self.inventory.wear(slot, 1) {
+        if survival && self.session.inventory.wear(slot, 1) {
             self.show_popup("Crossbow broke");
         }
     }
@@ -103,25 +103,25 @@ impl Game {
         if power < MIN_POWER || self.held_item() != Some(Item::BOW) {
             return;
         }
-        let survival = self.mode.is_survival();
-        let enchants = self.inventory.get(self.actions.selected).map_or(Default::default(), |s| s.enchants);
+        let survival = self.session.mode.is_survival();
+        let enchants = self.session.inventory.get(self.actions.selected).map_or(Default::default(), |s| s.enchants);
         // Infinity needs one arrow but never uses it up (the shot can't be
         // picked up, like creative's).
         let infinite = enchants.has(crate::enchant::Enchantment::Infinity);
         if survival {
-            let Some(slot) = self.inventory.find(Item::ARROW) else { return };
+            let Some(slot) = self.session.inventory.find(Item::ARROW) else { return };
             if !infinite {
-                self.inventory.take_one(slot);
+                self.session.inventory.take_one(slot);
             }
-            if self.inventory.wear(self.actions.selected, 1) {
+            if self.session.inventory.wear(self.actions.selected, 1) {
                 self.show_popup("Bow broke");
             }
         }
-        let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
-        self.mobs.entities.shoot_enchanted_for(eye, dir, power, survival && !infinite, enchants, self.actor);
+        let (eye, dir) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
+        self.mobs.entities.shoot_enchanted_for(eye, dir, power, survival && !infinite, enchants, self.session.id);
         self.audio.play(Sound::Bow, Some(eye), 0.8, (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power)));
         if survival {
-            self.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
+            self.session.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
         }
     }
 

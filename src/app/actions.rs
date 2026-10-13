@@ -9,7 +9,7 @@ pub(super) struct Actions {
     /// Target block and progress toward breaking it (0..1).
     pub breaking: Option<(IVec3, f32)>,
     breaking_block: Option<Block>,
-    /// Seconds spent on the current uninterrupted bite.
+    /// Presentation mirror of the session's normalized consumption progress.
     pub eat_timer: f64,
     /// Seconds the bow has been drawn, while drawing.
     pub bow_draw: Option<f64>,
@@ -44,17 +44,6 @@ impl Actions {
         self.breaking = Some((pos, progress));
         self.breaking_block = Some(block);
         progress
-    }
-
-    /// Advances an uninterrupted bite and reports when it finishes.
-    pub fn eat(&mut self, dt: f64) -> bool {
-        self.eat_timer += dt;
-        if self.eat_timer >= super::EAT_TIME {
-            self.eat_timer = 0.0;
-            true
-        } else {
-            false
-        }
     }
 }
 
@@ -104,28 +93,10 @@ mod tests {
     }
 
     #[test]
-    fn switching_food_requires_a_full_new_bite() {
-        let mut actions = Actions::default();
-        let mut inv = Inventory::default();
-        inv.slots[0] = Some(Stack::new(Item::RAW_BEEF, 1));
-        inv.slots[1] = Some(Stack::new(Item::STEAK, 1));
-        for _ in 0..15 {
-            assert!(!actions.eat(0.1));
-        }
-        actions.select(1);
-        assert!(!actions.eat(0.11));
-        assert!(!actions.eat(1.48));
-        assert!(actions.eat(0.02));
-        assert_eq!(inv.take_one(actions.selected), Some(Item::STEAK));
-        assert_eq!(inv.get(0), Some(Stack::new(Item::RAW_BEEF, 1)));
-        assert_eq!(actions.eat_timer, 0.0);
-    }
-
-    #[test]
     fn reselecting_the_same_slot_keeps_progress() {
         let mut actions = Actions::default();
         actions.mine(IVec3::ZERO, Block::STONE, crate::mining::break_time(Block::STONE, None), 0.1);
-        actions.eat(0.1);
+        actions.eat_timer = 0.1;
         let before = (actions.breaking, actions.eat_timer);
         assert!(!actions.select(0));
         assert_eq!((actions.breaking, actions.eat_timer), before);

@@ -8,10 +8,10 @@ impl Game {
     pub(super) fn tick_particles(&mut self) {
         let setting = self.settings.particles;
         self.particles.tick(&self.world, setting);
-        let mut centers = [self.player.pos; super::split::MAX_VIEWS];
+        let mut centers = [self.session.player.pos; super::split::MAX_VIEWS];
         let mut count = 1;
         for (_, bot) in self.followed() {
-            centers[count] = bot.agent.player.pos;
+            centers[count] = bot.agent.session.player.pos;
             count += 1;
         }
         let centers = &centers[..count];
@@ -57,10 +57,10 @@ impl Game {
             }
         }
         self.particles.entities(&self.world, &self.mobs.entities, centers, setting);
-        self.particles.effects(self.player.pos, &self.vitals.effects, setting);
-        for bot in self.agents.players.values().filter(|b| b.active && !b.agent.vitals.is_dead()) {
-            if centers.iter().any(|p| p.distance_squared(bot.agent.player.pos) <= 32.0 * 32.0) {
-                self.particles.effects(bot.agent.player.pos, &bot.agent.vitals.effects, setting);
+        self.particles.effects(self.session.player.pos, &self.session.vitals.effects, setting);
+        for bot in self.agents.players.values().filter(|b| b.active && !b.agent.session.vitals.is_dead()) {
+            if centers.iter().any(|p| p.distance_squared(bot.agent.session.player.pos) <= 32.0 * 32.0) {
+                self.particles.effects(bot.agent.session.player.pos, &bot.agent.session.vitals.effects, setting);
             }
         }
     }
