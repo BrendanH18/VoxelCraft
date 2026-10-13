@@ -76,7 +76,7 @@ pub fn material(block: Block) -> Material {
         b if matches!(b.0, 1907 | 1908 | 1911 | 1912 | 1940..=1943 | 2029) => Material::Grass,
         b if matches!(b.0, 1910 | 1909) => Material::Snow,
         b if matches!(b.0, 2022..=2028 | 2062..=2076 | 1950) => Material::Wood,
-        b if matches!(b.0, 1924..=1933) => Material::Glass,
+        b if matches!(b.0, 1924..=1933 | 2400..=2415) => Material::Glass,
         Block::TORCH => Material::Wood,
         b if b == Block::GRASS || b == Block::CACTUS || b.kind() == crate::world::block::RenderKind::Cross => {
             Material::Grass

@@ -86,7 +86,9 @@ impl World {
         let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
         out.extend(block.drop().map(|item| Stack::new(item, 1)));
-        if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0) {
+        if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
+            || super::overworld_blocks::bud_facing(block).is_some()
+        {
             self.overworld_drops(block, fortune, &mut out);
         }
         match block.as_stone_ore() {

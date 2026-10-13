@@ -35,6 +35,7 @@ pub mod forms;
 pub mod fortress;
 pub mod furnace;
 pub mod gadgets;
+pub mod geode;
 mod growth;
 pub(crate) mod lighting;
 pub mod mineshaft;

@@ -23,7 +23,7 @@ impl World {
     pub(super) fn update_overworld_plants(&mut self, p: IVec3) {
         for q in [p, p - IVec3::Y, p + IVec3::Y, p + IVec3::X, p - IVec3::X, p + IVec3::Z, p - IVec3::Z] {
             let Some(b) = self.get_block(q) else { continue };
-            if !(ob::FIRST..=ob::LAST).contains(&b.0) && ob::propagule_age(b).is_none() {
+            if !(ob::FIRST..=ob::LAST).contains(&b.0) && ob::propagule_age(b).is_none() && ob::bud_facing(b).is_none() {
                 continue;
             }
             // Ceiling plants: the whole run below drops when unsupported.
@@ -143,21 +143,24 @@ impl World {
                     }
                 }
             }
-            // Budding amethyst grows buds on a free face one tick in five.
+            // Budding amethyst (Java `BuddingAmethystBlock.randomTick`): one
+            // tick in five, a random one of the six faces starts a small bud
+            // facing out of it or grows the bud already facing that way.
             1925 => {
                 if self.one_in(5) {
-                    let face = [IVec3::Y, IVec3::NEG_Y][(self.roll() % 2) as usize];
+                    const FACES: [IVec3; 6] = [IVec3::NEG_Y, IVec3::Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
+                    let face = FACES[(self.roll() % 6) as usize];
                     let q = p + face;
                     match self.get_block(q) {
                         Some(Block::AIR) | Some(Block::WATER) => {
-                            self.edit(q, ob::amethyst_bud(0, face.y < 0), true);
+                            self.edit(q, ob::amethyst_bud_facing(0, face), true);
                         }
                         Some(bud)
-                            if let Some((size, down)) = ob::bud_of(bud)
+                            if let Some((size, facing)) = ob::bud_facing(bud)
                                 && size < 3
-                                && down == (face.y < 0) =>
+                                && facing == face =>
                         {
-                            self.edit(q, ob::amethyst_bud(size + 1, down), true);
+                            self.edit(q, ob::amethyst_bud_facing(size + 1, face), true);
                         }
                         _ => {}
                     }
@@ -395,7 +398,7 @@ impl World {
     pub(super) fn overworld_drops(&mut self, b: Block, fortune: u64, out: &mut Vec<Stack>) {
         match b.0 {
             1910 => out.push(Stack::new(Item::SNOWBALL, 1)),
-            1929 | 1933 => {
+            1929 | 1933 | 2403 | 2407 | 2411 | 2415 => {
                 // Clusters: 4 shards, times Java's ore bonus with fortune.
                 let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1);
                 out.push(Stack::new(Item::AMETHYST_SHARD, (4 * times).min(64) as u8));
@@ -455,7 +458,7 @@ impl World {
     /// Whether a block placed into `at` against `normal` stays: hanging
     /// plants need a ceiling, wall plants a wall, waterlogged plants water.
     pub fn overworld_placement_ok(&self, at: IVec3, block: Block) -> Option<bool> {
-        if !(ob::FIRST..=ob::LAST).contains(&block.0) {
+        if !(ob::FIRST..=ob::LAST).contains(&block.0) && ob::bud_facing(block).is_none() {
             return None;
         }
         if block.is_waterlogged() && self.get_block(at) != Some(Block::WATER) {

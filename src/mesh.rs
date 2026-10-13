@@ -616,6 +616,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 || b.is_door()
                 || b.is_rail()
                 || matches!(b, Block::IRON_BARS | Block::BREWING_STAND)
+                || crate::world::overworld_blocks::bud_facing(b).is_some()
                 || matches!(b.shaped(), Some(crate::world::block::Shaped::Frame { .. }));
             let pass = if see_through { CUTOUT } else { OPAQUE };
             let (x, y, z) = (i % D - MARGIN, i / (D * D) - MARGIN, i / D % D - MARGIN);

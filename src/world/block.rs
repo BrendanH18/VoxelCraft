@@ -2233,7 +2233,7 @@ const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         1800 => ("crying obsidian", Opaque, all(tex::CRYING_OBSIDIAN)),
-        1900..=2076 | 2150..=2157 | 2160..=2164 => match super::overworld_blocks::registry(id) {
+        1900..=2076 | 2150..=2157 | 2160..=2164 | 2400..=2415 => match super::overworld_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
@@ -2551,7 +2551,7 @@ static EMISSION: [u8; STATE_CAPACITY] = {
             812 => 3,                                   // magma
             1600..=1687 => super::nether_biome_blocks::emission(i as u16),
             1800 => 10, // crying obsidian
-            1900..=2076 => super::overworld_blocks::emission(i as u16),
+            1900..=2076 | 2400..=2415 => super::overworld_blocks::emission(i as u16),
             _ => 0,
         };
         i += 1;
@@ -2615,7 +2615,7 @@ mod tests {
                 Some(super::super::redstone_blocks::Component::GlowingOre(_)) => return 9,
                 _ => {}
             }
-            if (1900..=2076).contains(&block.0) {
+            if (1900..=2076).contains(&block.0) || (2400..=2415).contains(&block.0) {
                 return super::super::overworld_blocks::emission(block.0);
             }
             {

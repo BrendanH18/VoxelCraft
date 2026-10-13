@@ -270,6 +270,7 @@ these ranges. Preserve their meanings; do not reuse the unused patterned slots.
 | 2366–2371 | Prismarine stairs/slab/wall |
 | 2372–2377 | Prismarine brick stairs/slab; 2377 is reserved, unregistered |
 | 2378–2383 | Dark prismarine stairs/slab; 2383 is reserved, unregistered |
+| 2400–2415 | Wall amethyst buds/clusters (GEN-02): facing south, north, east, west × small, medium, large, cluster |
 
 Texture layers 1753–1758 append pale oak/bamboo doors and trapdoors; existing
 layer meanings remain intact. These definitions inherit the existing shaped

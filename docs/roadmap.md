@@ -233,6 +233,12 @@ or traced on the baseline above; recheck whether later branch work fixes them.
 - **GEN-02 / BLD-03:** amethyst geodes do not generate; budding amethyst
   incorrectly drops with Silk Touch. Relevant sources: [world/terrain.rs](../src/world/terrain.rs),
   [world/overworld_blocks.rs](../src/world/overworld_blocks.rs).
+  Follow-up: the 26.3 `amethyst_geode` feature now generates (see the
+  [geode evidence](verification/2026-10-13-amethyst-geodes.md)), with six-way
+  bud facings and wall bud states 2400–2415. **Implemented, unverified**: no
+  Java-seed coordinate parity, player acceptance or representative
+  performance acceptance. The Silk Touch drop is already corrected and covered
+  by `tests/plant_integrations.rs`.
 - **FOO-02:** bone meal on mangrove leaves does not create propagules;
   one dark-oak sapling grows a tree without the Java 2x2 requirement.
   Relevant sources: [world/overworld_flora.rs](../src/world/overworld_flora.rs), [world/growth.rs](../src/world/growth.rs).
@@ -311,6 +317,13 @@ implements propagated gameplay skylight, End skylight, full-height ground-monste
 attempts, cave/torch checks and reference clock/weather darkening. ENV-05 and
 MOB-01 remain **Partial**: shape occlusion, growth integration, spawn caps/ranges,
 structure overrides and ordinary player/performance acceptance are still open.
+
+The [amethyst geode follow-up](verification/2026-10-13-amethyst-geodes.md)
+implements the Java 26.3 geode configured/placed feature with order-independent
+chunk painting, adds the missing horizontal bud/cluster states and Java's
+six-way budding growth. GEN-02 remains **Partial** overall; geodes are
+Implemented-unverified (RNG/noise differ from Java, wall buds are drawn as
+boxes, crack fluid ticks and pre-existing structures are not modelled).
 
 The [full initial M5 baseline](verification/2026-10-13-m5-baseline.md) records
 three runs of each of the five 1080p/256-block scenes. All runs fail the frame-time
