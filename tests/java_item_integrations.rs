@@ -79,16 +79,31 @@ fn fast_furnaces_apply_java_integer_fuel_reduction() {
         .unwrap()["ticks"]
         .as_u64()
         .unwrap();
-    for kind in [FurnaceKind::Normal, FurnaceKind::Smoker, FurnaceKind::Blast] {
+    assert_eq!(normal_ticks, 4001);
+    // Java 26.3: blast furnaces and smokers integer-divide the fuel duration by 2,
+    // so one dried kelp block burns for 4001 / 2 = 2000 game ticks there.
+    for (kind, expected_ticks) in [(FurnaceKind::Normal, 4001), (FurnaceKind::Smoker, 2000), (FurnaceKind::Blast, 2000)]
+    {
         let mut furnace = Furnace {
             kind,
-            input: Some(Stack::new(if kind == FurnaceKind::Smoker { Item::COD } else { Item::RAW_IRON }, 1)),
+            input: Some(Stack::new(if kind == FurnaceKind::Smoker { Item::COD } else { Item::RAW_IRON }, 64)),
             fuel: Some(Stack::new(Item::from_name("dried_kelp_block").unwrap(), 1)),
             ..Default::default()
         };
-        furnace.tick(0.05);
-        let effective_ticks = if kind == FurnaceKind::Normal { normal_ticks } else { normal_ticks / 2 * 2 };
-        assert_eq!(furnace.burn_total, effective_ticks as f32 / 20.0);
+        // Count simulated game ticks (0.05 s each) during which the single fuel item burns.
+        let mut burning_ticks = 0;
+        loop {
+            furnace.tick(0.05);
+            if !furnace.is_lit() {
+                break;
+            }
+            burning_ticks += 1;
+            assert!(burning_ticks <= 5000, "{kind:?} never went out");
+        }
+        // The tick that burns the last remainder also extinguishes the fire.
+        burning_ticks += 1;
+        assert_eq!(burning_ticks, expected_ticks, "{kind:?}");
+        assert!(furnace.fuel.is_none());
     }
 }
 

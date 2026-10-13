@@ -5,7 +5,7 @@ use crate::audio::{
 };
 use crate::item::Item;
 use crate::world::block::Block;
-use voxelcraft::survival_items::bucket::{self, Effect};
+use voxelcraft::survival_items::bucket::{self, Effect, Use};
 
 use super::{Game, REACH};
 
@@ -19,12 +19,16 @@ impl Game {
         matches!(self.held_item(), Some(Item::SNOWBALL | Item::EGG | Item::FISHING_ROD))
     }
 
+    /// Runs after entity interactions; a targeted block whose use takes
+    /// priority is left to the caller's block-use path.
     pub(super) fn use_bucket(&mut self) -> bool {
-        let Some(effect) = bucket::use_bucket(
+        let sneaking = self.sneak_building();
+        let Use::Item(Some(effect)) = bucket::use_held(
             &self.session.player,
             &mut self.session.inventory,
             self.actions.selected,
-            self.session.mode.is_creative(),
+            self.session.mode,
+            sneaking,
             &mut self.world,
             &mut self.mobs.entities,
             REACH,

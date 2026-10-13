@@ -768,6 +768,29 @@ impl World {
     }
 
     /// Device-independent right click; callers handle reach and build permission.
+    /// Whether a hand use at `p` acts in Java before the held item's own use:
+    /// note blocks, bells, levers, buttons, wooden trapdoors, daylight
+    /// detectors, repeaters, comparators and toggleable wire. Iron doors and
+    /// trapdoors pass (`useWithoutItem` returns PASS without a redstone signal).
+    pub fn redstone_usable(&self, p: IVec3) -> bool {
+        let Some(b) = self.get_block(p) else { return false };
+        if super::gadgets::is_note(b) || b.base() == Block::BELL {
+            return true;
+        }
+        match r::component(b) {
+            Some(Component::Wire(_)) => matches!(self.wire_connections(p), [1, 1, 1, 1] | [0, 0, 0, 0]),
+            Some(Component::Trapdoor { iron, .. }) => !iron,
+            Some(
+                Component::Daylight { .. }
+                | Component::Lever { .. }
+                | Component::Button { .. }
+                | Component::Repeater { .. }
+                | Component::Comparator { .. },
+            ) => true,
+            _ => false,
+        }
+    }
+
     pub fn use_redstone(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
         if super::gadgets::is_note(b) {

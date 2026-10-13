@@ -98,6 +98,36 @@ impl Agent {
         self.session.block_target(world)
     }
 
+    /// The shared bucket/bottle step, after entity interactions. `None` means
+    /// the held item is not a bucket or the targeted block's use comes first.
+    fn use_held_bucket(&mut self, world: &mut World, entities: &mut Entities) -> Option<Result<(), String>> {
+        use crate::survival_items::bucket::{self, Use};
+        match bucket::use_held(
+            &self.session.player,
+            &mut self.session.inventory,
+            self.selected,
+            self.session.mode,
+            self.session.player.sneaking,
+            world,
+            entities,
+            6.0,
+        ) {
+            Use::NotHeld | Use::Block(_) => None,
+            Use::Item(Some(effect)) => {
+                self.emit(Event::Bucket(effect));
+                Some(Ok(()))
+            }
+            Use::Item(None) if !self.session.mode.can_build() && !self.held_is(Item::GLASS_BOTTLE) => {
+                Some(Err("this game mode cannot use buckets here".into()))
+            }
+            Use::Item(None) => Some(Err("no bucket or bottle interaction within reach".into())),
+        }
+    }
+
+    fn held_is(&self, item: Item) -> bool {
+        self.session.inventory.get(self.selected).is_some_and(|stack| stack.item == item)
+    }
+
     /// Changes abilities together so command, host and controller paths agree.
     pub fn set_mode(&mut self, mode: GameMode) {
         self.session.set_mode(mode);
@@ -268,42 +298,6 @@ impl Agent {
                 self.swings += 1;
             }
             Command::Place
-                if self
-                    .inventory
-                    .get(self.selected)
-                    .is_some_and(|s| crate::survival_items::bucket::handles(s.item)) =>
-            {
-                if !self.session.mode.can_interact() {
-                    return Err("spectators cannot use buckets".into());
-                }
-                // Empty buckets still milk cows before trying a fluid source.
-                if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::BUCKET)
-                    && crate::survival_items::use_mob(
-                        &self.session.player,
-                        &mut self.session.inventory,
-                        self.selected,
-                        self.creative,
-                        world,
-                        entities,
-                        self.session.id,
-                    )
-                {
-                    return Ok(());
-                }
-                let Some(effect) = crate::survival_items::bucket::use_bucket(
-                    &self.session.player,
-                    &mut self.session.inventory,
-                    self.selected,
-                    self.creative,
-                    world,
-                    entities,
-                    6.0,
-                ) else {
-                    return Err("no bucket or bottle interaction within reach".into());
-                };
-                self.emit(Event::Bucket(effect));
-            }
-            Command::Place
                 if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD) =>
             {
                 if !self.session.mode.can_interact() {
@@ -448,6 +442,10 @@ impl Agent {
                     {
                         return Ok(());
                     }
+                    // Riders still use buckets and bottles (Java `Item.use` has no vehicle check).
+                    if let Some(result) = self.use_held_bucket(world, entities) {
+                        return result;
+                    }
                     return Err("cannot place while riding".into());
                 }
                 let reach = crate::entity::minecart::interaction_reach(world, eye, dir, 5.0);
@@ -490,6 +488,10 @@ impl Agent {
                     self.cooldown = 0.22;
                     self.swings += 1;
                     return Ok(());
+                }
+                // Entity interactions have declined; block use or the bucket comes next.
+                if let Some(result) = self.use_held_bucket(world, entities) {
+                    return result;
                 }
                 if !self.session.mode.can_build() {
                     return Err("this game mode cannot place blocks".into());

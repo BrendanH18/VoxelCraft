@@ -1753,6 +1753,13 @@ impl Block {
             || super::overworld_blocks::replaceable(self)
     }
 
+    /// Java `BlockBehaviour.canBeReplaced(state, fluid)`: replaceable, or not
+    /// solid. VoxelCraft approximates the legacy non-solid set with its
+    /// cross-shaped plants and torches (cobwebs are forced solid in Java).
+    pub fn fluid_replaceable(self) -> bool {
+        self.is_replaceable() || (self.kind() == RenderKind::Cross && self != Block::COBWEB)
+    }
+
     /// Colour index of a terracotta block (see [`Block::terracotta`]).
     pub fn terracotta_colour(self) -> Option<u8> {
         (84..=90).contains(&self.0).then(|| (self.0 - 84) as u8)
