@@ -90,10 +90,22 @@ impl Game {
         self.drive_pads(dt);
         self.tick_agents();
         self.ride_minecarts(input);
-        let sky_darken = ((1.0 - ((self.day_time - 0.25) * std::f64::consts::TAU).cos()).clamp(0.0, 1.0) * 11.0
-            + self.weather.strength as f64 * 4.0)
-            .round() as u8;
-        self.world.set_redstone_daylight(self.day_time, sky_darken);
+        // Detectors share Java's skyDarken with spawning, then apply the sun
+        // angle themselves (DaylightDetectorBlock.updateSignalStrength).
+        let ticks = (self.day_time.rem_euclid(1.) * 24000.).floor() as u32;
+        let darken = crate::simulation::lighting::SpawnLight::for_dimension(
+            self.dimension,
+            ticks,
+            self.weather.rain_level(),
+            self.weather.thunder_level(),
+        )
+        .sky_darken;
+        let sun_angle = if self.dimension == crate::world::terrain::Dimension::Overworld {
+            crate::simulation::lighting::sun_angle(ticks)
+        } else {
+            0.0
+        };
+        self.world.set_redstone_daylight(self.day_time, darken, sun_angle);
         let players = std::iter::once((self.session.player.pos, self.session.player.collision_shape()))
             .filter(|_| self.session.mode != GameMode::Spectator && self.session.vitals.health > 0.0)
             .chain(

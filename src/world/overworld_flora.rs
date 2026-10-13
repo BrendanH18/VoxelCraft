@@ -572,7 +572,7 @@ mod tests {
         w.set_block(p - IVec3::Y * 2, Block::STONE);
         w.set_block(p - IVec3::Y, Block::SAND);
         w.set_block(p, ob::turtle_eggs(4));
-        w.set_redstone_daylight(0.92, 11);
+        w.set_redstone_daylight(0.92, 11, 0.0);
         for stage in 1..=2 {
             w.random_tick(p);
             assert_eq!(ob::egg_stage(w.get_block(p).unwrap()), Some(stage));

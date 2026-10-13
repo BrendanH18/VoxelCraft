@@ -49,7 +49,10 @@ pub(super) struct RedstoneState {
     powered: FxHashSet<IVec3>,
     pub last_updates: usize,
     day_time: f64,
+    /// Java's `Level.skyDarken`, shared with spawning.
     sky_darken: u8,
+    /// Java's `visual/sun_angle` in degrees.
+    sun_angle: f32,
 }
 
 fn conductor(b: Block) -> bool {
@@ -588,8 +591,10 @@ impl World {
                 self.edit(p, if deep { Block::DEEPSLATE_REDSTONE_ORE } else { Block::REDSTONE_ORE }, false);
             }
             Some(Component::Daylight { power, inverted }) => {
-                let value = self.daylight_power(p, inverted);
-                if value != power {
+                // Unknown skylight beside unloaded terrain keeps the output.
+                if let Some(value) = self.daylight_power(p, inverted)
+                    && value != power
+                {
                     self.edit(p, r::daylight(value, inverted), false);
                 }
                 self.schedule_redstone(p, 20, 0);
@@ -635,22 +640,19 @@ impl World {
     pub(super) fn turtle_hatching_time(&self) -> bool {
         (0.9..=0.94).contains(&self.redstone.day_time)
     }
-    pub fn set_redstone_daylight(&mut self, time: f64, sky_darken: u8) {
+    /// Clock inputs for detectors and hatching: the day fraction, Java's
+    /// shared `skyDarken` and the `visual/sun_angle` in degrees.
+    pub fn set_redstone_daylight(&mut self, time: f64, sky_darken: u8, sun_angle: f32) {
         self.redstone.day_time = time.rem_euclid(1.0);
         self.redstone.sky_darken = sky_darken.min(15);
+        self.redstone.sun_angle = sun_angle;
     }
 
-    fn daylight_power(&self, p: IVec3, inverted: bool) -> u8 {
-        if !self.generator.dimension.has_sky() {
-            return 0;
-        }
-        let sky = if self.sky_exposed(p) { 15u8.saturating_sub(self.redstone.sky_darken) } else { 0 };
-        if inverted {
-            return 15 - sky;
-        }
-        let angle = (self.redstone.day_time - 0.25).rem_euclid(1.0) * std::f64::consts::TAU;
-        let target = if angle < std::f64::consts::PI { 0.0 } else { std::f64::consts::TAU };
-        (sky as f64 * (angle + (target - angle) * 0.2).cos()).round().clamp(0.0, 15.0) as u8
+    /// Java's `DaylightDetectorBlock.updateSignalStrength` on the gameplay
+    /// skylight at the detector; `None` while that light is unknown.
+    fn daylight_power(&self, p: IVec3, inverted: bool) -> Option<u8> {
+        let effective = self.sky_light(p)?.saturating_sub(self.redstone.sky_darken);
+        Some(crate::simulation::lighting::daylight_detector_power(effective, self.redstone.sun_angle, inverted))
     }
 
     fn redstone_open(&mut self, p: IVec3, b: Block) {
@@ -1232,17 +1234,43 @@ mod tests {
 
     #[test]
     fn daylight_detectors_sample_periodically_and_ore_keeps_mining_rules() {
-        let mut w = world();
-        put(&mut w, AT, r::DAYLIGHT);
-        w.set_redstone_daylight(0.25, 0);
+        use crate::simulation::lighting::{SpawnLight, sun_angle};
+        // Detectors read propagated gameplay skylight, which needs lit columns.
+        let mut w = super::super::lighting::flat_test_world(
+            (-1..=1).flat_map(|x| (-1..=1).map(move |z| glam::IVec2::new(x, z))),
+            63,
+        );
+        let at = IVec3::new(8, 64, 8);
+        put(&mut w, at, r::DAYLIGHT);
+        w.update_block_light();
+        let clock = |w: &mut World, tick: u32| {
+            let darken = SpawnLight::at(tick, 0., 0.).sky_darken;
+            w.set_redstone_daylight(tick as f64 / 24000.0, darken, sun_angle(tick));
+        };
+        clock(&mut w, 6000);
         ticks(&mut w, 21);
-        assert_eq!(w.get_block(AT), Some(r::daylight(15, false)));
-        w.set_redstone_daylight(0.75, 11);
+        assert_eq!(w.get_block(at), Some(r::daylight(15, false)));
+        // At dusk the shared darkening is still 0 (sky 15), but the sun angle
+        // already halves the output: 15 * cos(0.8 * 77.6 degrees) rounds to 7.
+        clock(&mut w, 12000);
         ticks(&mut w, 20);
-        assert_eq!(w.get_block(AT), Some(r::daylight(0, false)));
-        assert!(w.use_redstone(AT));
+        assert_eq!(SpawnLight::at(12000, 0., 0.).sky_darken, 0);
+        assert_eq!(w.get_block(at), Some(r::daylight(7, false)));
+        clock(&mut w, 18000);
         ticks(&mut w, 20);
-        assert_eq!(w.get_block(AT), Some(r::daylight(11, true)));
+        assert_eq!(w.get_block(at), Some(r::daylight(0, false)));
+        assert!(w.use_redstone(at));
+        ticks(&mut w, 20);
+        assert_eq!(w.get_block(at), Some(r::daylight(11, true)), "15 - (15 - 11)");
+        // A roof removes the sky light the inverted detector compares.
+        put(&mut w, at + IVec3::Y * 3, Block::STONE);
+        w.update_block_light();
+        ticks(&mut w, 20);
+        let sky = w.sky_light(at).unwrap();
+        assert!(sky < 15, "{sky}");
+        assert_eq!(w.get_block(at), Some(r::daylight(15 - sky.saturating_sub(11), true)));
+
+        let mut w = world();
         put(&mut w, AT, Block::DEEPSLATE_REDSTONE_ORE);
         assert!(w.touch_redstone_ore(AT));
         let glowing = w.get_block(AT).unwrap();

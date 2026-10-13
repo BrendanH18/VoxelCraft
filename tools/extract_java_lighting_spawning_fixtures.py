@@ -206,6 +206,35 @@ def extract_facts(jar, data):
         "weather_rule": "lerp(rainLevel - thunderLevel, base, rainModifier(base)); then lerp(thunderLevel, base, thunderModifier(base))",
     }
     facts["sky_darken"]["cases"] = sky_darkening_cases(facts["sky_darken"], facts["monster_light"])
+
+    # Daylight detectors share skyDarken but add the sun-angle cosine.
+    detector = method(inspect("net.minecraft.world.level.block.DaylightDetectorBlock"), "private static void updateSignalStrength(")
+    for token in ["Level.getEffectiveSkyBrightness", "EnvironmentAttributes.SUN_ANGLE", "float 0.017453292f", "INVERTED",
+                  "bipush        15", "float 3.1415927f", "float 6.2831855f", "float 0.2f", "Mth.cos:(D)F", "Math.round:(F)I", "Mth.clamp:(III)I"]:
+        require(token in detector, f"daylight detector changed: {token}")
+    effective = method(inspect("net.minecraft.world.level.LevelReader"), "public default int getEffectiveSkyBrightness(")
+    require("LightLayer.SKY" in effective and "getSkyDarken" in effective and "Math.max" in effective, "effective sky brightness changed")
+    mth = inspect("net.minecraft.util.Mth")
+    cos = method(mth, "public static float cos(double)")
+    require("double 10430.378350470453d" in cos and "double 16384.0d" in cos and "long 65535l" in cos, "Mth.cos changed")
+    require("Math.sin:(D)D" in method(mth, "private static void lambda$static$0(float[])"), "Mth sine table changed")
+    bezier = inspect("net.minecraft.util.EasingType$CubicBezier")
+    require("iconst_4" in method(bezier, "private float solveT(") and "float -0.25f" in bezier and "float 1.0E-5f" in bezier,
+            "cubic bezier solver changed")
+    sun = read("data/minecraft/timeline/day.json")["tracks"]["minecraft:visual/sun_angle"]
+    require(list(sun["ease"]) == ["cubic_bezier"] and sun.get("modifier") is None, "sun angle track changed")
+    attrs_default = re.search(r"String visual/sun_angle\n[^\n]*\n[^\n]*\n\s+\d+: fconst_0", attrs)
+    require(attrs_default, "sun angle default changed")
+    facts["daylight_detector"] = {
+        "rule": "effective = max(0, sky light - skyDarken); inverted: 15 - effective; otherwise if effective > 0: "
+                "a = sun_angle * 0.017453292f, a += ((a < 3.1415927f ? 0 : 6.2831855f) - a) * 0.2f, "
+                "round(effective * Mth.cos(a)); clamp 0..15",
+        "mth_cos": "SIN[(long)(x * 10430.378350470453 + 16384.0) & 65535], SIN[i] = (float) sin(i / 10430.378350470453)",
+        "sun_angle_default": 0.0,
+        "sun_angle_keyframes": [[k["ticks"], k["value"]] for k in sun["keyframes"]],
+        "sun_angle_ease": sun["ease"]["cubic_bezier"],
+    }
+    facts["daylight_detector"]["cases"] = detector_cases(facts["daylight_detector"], facts["sky_darken"]["period_ticks"])
     dims = {}
     for dim in ["overworld", "the_nether", "the_end"]:
         d = read(f"data/minecraft/dimension_type/{dim}.json")
@@ -317,6 +346,73 @@ def sky_darkening_cases(facts, monster_light):
             darken = int(f32(15. - level))
             out.append({"tick": tick, "rain": rain, "thunder": thunder, "thundering": thundering,
                         "sky_darken": darken, "monster_darken": thunder_darken if thundering else darken})
+    return out
+
+
+def detector_cases(facts, period):
+    """Detector outputs from the timeline, Java float operations and the sine table."""
+    import math
+    f32 = lambda n: struct.unpack("f", struct.pack("f", n))[0]
+    x1, y1, x2, y2 = (f32(v) for v in facts["sun_angle_ease"])
+
+    def curve(c1, c2):
+        return (f32(f32(f32(3. * c1) - f32(3. * c2)) + 1.), f32(f32(-6. * c1) + f32(3. * c2)), f32(3. * c1))
+
+    xc, yc = curve(x1, x2), curve(y1, y2)
+    sample = lambda c, t: f32(f32(f32(f32(f32(c[0] * t) + c[1]) * t) + c[2]) * t)
+    gradient = lambda c, t: f32(f32(f32(f32(f32(3. * c[0]) * t) + f32(2. * c[1])) * t) + c[2])
+
+    def ease(x):
+        t = x
+        for _ in range(4):
+            err = f32(sample(xc, t) - x)
+            if abs(err) < f32(1e-5):
+                return sample(yc, t)
+            g = gradient(xc, t)
+            if g < f32(1e-5):
+                break
+            t = f32(t - min(0.25, max(-0.25, f32(err / g))))
+        lo, hi = 0., 1.
+        while lo < hi:
+            err = f32(sample(xc, t) - x)
+            if abs(err) < f32(1e-5):
+                break
+            if err < 0:
+                lo = t
+            else:
+                hi = t
+            t = f32(f32(hi + lo) / 2.)
+        return sample(yc, t)
+
+    (start_tick, start), (end_tick, end) = sorted(facts["sun_angle_keyframes"], key=lambda k: k[1])
+    require(start_tick == end_tick and start == 0 and end == 360, "unexpected sun angle keyframes")
+
+    def sun_angle(tick):
+        since = (tick - start_tick) % period
+        if since == 0:
+            return f32(start)
+        return f32(start + f32(ease(f32(f32(since) / f32(period))) * f32(end - start)))
+
+    def cos(x):
+        i = int(x * 10430.378350470453 + 16384.0) & 65535
+        return f32(math.sin(i / 10430.378350470453))
+
+    out = []
+    for tick in [0, 1000, 3000, 5999, 6000, 6001, 9000, 11000, 12000, 12500, 13000, 13500, 17999, 18000, 18001,
+                 22500, 23000, 23500, 23999]:
+        angle_deg = sun_angle(tick)
+        for effective in [15, 12, 4, 0]:
+            for inverted in [False, True]:
+                power = effective
+                if inverted:
+                    power = 15 - power
+                elif power > 0:
+                    a = f32(angle_deg * f32(0.017453292))
+                    target = 0. if a < f32(3.1415927) else f32(6.2831855)
+                    a = f32(a + f32(f32(target - a) * f32(0.2)))
+                    power = math.floor(f32(f32(power) * cos(a)) + 0.5)
+                out.append({"tick": tick, "sun_angle": angle_deg, "effective_sky": effective, "inverted": inverted,
+                            "power": max(0, min(15, power))})
     return out
 
 

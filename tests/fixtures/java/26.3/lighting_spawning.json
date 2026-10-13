@@ -1190,6 +1190,1093 @@
       }
     ]
   },
+  "daylight_detector": {
+    "rule": "effective = max(0, sky light - skyDarken); inverted: 15 - effective; otherwise if effective > 0: a = sun_angle * 0.017453292f, a += ((a < 3.1415927f ? 0 : 6.2831855f) - a) * 0.2f, round(effective * Mth.cos(a)); clamp 0..15",
+    "mth_cos": "SIN[(long)(x * 10430.378350470453 + 16384.0) & 65535], SIN[i] = (float) sin(i / 10430.378350470453)",
+    "sun_angle_default": 0.0,
+    "sun_angle_keyframes": [
+      [
+        6000,
+        360.0
+      ],
+      [
+        6000,
+        0.0
+      ]
+    ],
+    "sun_angle_ease": [
+      0.362,
+      0.241,
+      0.638,
+      0.759
+    ],
+    "cases": [
+      {
+        "tick": 0,
+        "sun_angle": 282.37432861328125,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 7
+      },
+      {
+        "tick": 0,
+        "sun_angle": 282.37432861328125,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 0,
+        "sun_angle": 282.37432861328125,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 6
+      },
+      {
+        "tick": 0,
+        "sun_angle": 282.37432861328125,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 0,
+        "sun_angle": 282.37432861328125,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 2
+      },
+      {
+        "tick": 0,
+        "sun_angle": 282.37432861328125,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 0,
+        "sun_angle": 282.37432861328125,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 0,
+        "sun_angle": 282.37432861328125,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 1000,
+        "sun_angle": 297.54571533203125,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 10
+      },
+      {
+        "tick": 1000,
+        "sun_angle": 297.54571533203125,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 1000,
+        "sun_angle": 297.54571533203125,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 8
+      },
+      {
+        "tick": 1000,
+        "sun_angle": 297.54571533203125,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 1000,
+        "sun_angle": 297.54571533203125,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 3
+      },
+      {
+        "tick": 1000,
+        "sun_angle": 297.54571533203125,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 1000,
+        "sun_angle": 297.54571533203125,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 1000,
+        "sun_angle": 297.54571533203125,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 3000,
+        "sun_angle": 325.4014892578125,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 13
+      },
+      {
+        "tick": 3000,
+        "sun_angle": 325.4014892578125,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 3000,
+        "sun_angle": 325.4014892578125,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 11
+      },
+      {
+        "tick": 3000,
+        "sun_angle": 325.4014892578125,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 3000,
+        "sun_angle": 325.4014892578125,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 4
+      },
+      {
+        "tick": 3000,
+        "sun_angle": 325.4014892578125,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 3000,
+        "sun_angle": 325.4014892578125,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 3000,
+        "sun_angle": 325.4014892578125,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 5999,
+        "sun_angle": 359.9891662597656,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 15
+      },
+      {
+        "tick": 5999,
+        "sun_angle": 359.9891662597656,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 5999,
+        "sun_angle": 359.9891662597656,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 12
+      },
+      {
+        "tick": 5999,
+        "sun_angle": 359.9891662597656,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 5999,
+        "sun_angle": 359.9891662597656,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 4
+      },
+      {
+        "tick": 5999,
+        "sun_angle": 359.9891662597656,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 5999,
+        "sun_angle": 359.9891662597656,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 5999,
+        "sun_angle": 359.9891662597656,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 6000,
+        "sun_angle": 0.0,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 15
+      },
+      {
+        "tick": 6000,
+        "sun_angle": 0.0,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 6000,
+        "sun_angle": 0.0,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 12
+      },
+      {
+        "tick": 6000,
+        "sun_angle": 0.0,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 6000,
+        "sun_angle": 0.0,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 4
+      },
+      {
+        "tick": 6000,
+        "sun_angle": 0.0,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 6000,
+        "sun_angle": 0.0,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 6000,
+        "sun_angle": 0.0,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 6001,
+        "sun_angle": 0.010845519602298737,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 15
+      },
+      {
+        "tick": 6001,
+        "sun_angle": 0.010845519602298737,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 6001,
+        "sun_angle": 0.010845519602298737,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 12
+      },
+      {
+        "tick": 6001,
+        "sun_angle": 0.010845519602298737,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 6001,
+        "sun_angle": 0.010845519602298737,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 4
+      },
+      {
+        "tick": 6001,
+        "sun_angle": 0.010845519602298737,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 6001,
+        "sun_angle": 0.010845519602298737,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 6001,
+        "sun_angle": 0.010845519602298737,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 9000,
+        "sun_angle": 34.59856414794922,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 13
+      },
+      {
+        "tick": 9000,
+        "sun_angle": 34.59856414794922,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 9000,
+        "sun_angle": 34.59856414794922,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 11
+      },
+      {
+        "tick": 9000,
+        "sun_angle": 34.59856414794922,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 9000,
+        "sun_angle": 34.59856414794922,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 4
+      },
+      {
+        "tick": 9000,
+        "sun_angle": 34.59856414794922,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 9000,
+        "sun_angle": 34.59856414794922,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 9000,
+        "sun_angle": 34.59856414794922,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 11000,
+        "sun_angle": 62.45431900024414,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 10
+      },
+      {
+        "tick": 11000,
+        "sun_angle": 62.45431900024414,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 11000,
+        "sun_angle": 62.45431900024414,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 8
+      },
+      {
+        "tick": 11000,
+        "sun_angle": 62.45431900024414,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 11000,
+        "sun_angle": 62.45431900024414,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 3
+      },
+      {
+        "tick": 11000,
+        "sun_angle": 62.45431900024414,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 11000,
+        "sun_angle": 62.45431900024414,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 11000,
+        "sun_angle": 62.45431900024414,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 12000,
+        "sun_angle": 77.62566375732422,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 7
+      },
+      {
+        "tick": 12000,
+        "sun_angle": 77.62566375732422,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 12000,
+        "sun_angle": 77.62566375732422,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 6
+      },
+      {
+        "tick": 12000,
+        "sun_angle": 77.62566375732422,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 12000,
+        "sun_angle": 77.62566375732422,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 2
+      },
+      {
+        "tick": 12000,
+        "sun_angle": 77.62566375732422,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 12000,
+        "sun_angle": 77.62566375732422,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 12000,
+        "sun_angle": 77.62566375732422,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 12500,
+        "sun_angle": 85.48933410644531,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 6
+      },
+      {
+        "tick": 12500,
+        "sun_angle": 85.48933410644531,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 12500,
+        "sun_angle": 85.48933410644531,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 4
+      },
+      {
+        "tick": 12500,
+        "sun_angle": 85.48933410644531,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 12500,
+        "sun_angle": 85.48933410644531,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 1
+      },
+      {
+        "tick": 12500,
+        "sun_angle": 85.48933410644531,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 12500,
+        "sun_angle": 85.48933410644531,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 12500,
+        "sun_angle": 85.48933410644531,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 13000,
+        "sun_angle": 93.52133178710938,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 4
+      },
+      {
+        "tick": 13000,
+        "sun_angle": 93.52133178710938,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 13000,
+        "sun_angle": 93.52133178710938,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 3
+      },
+      {
+        "tick": 13000,
+        "sun_angle": 93.52133178710938,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 13000,
+        "sun_angle": 93.52133178710938,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 1
+      },
+      {
+        "tick": 13000,
+        "sun_angle": 93.52133178710938,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 13000,
+        "sun_angle": 93.52133178710938,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 13000,
+        "sun_angle": 93.52133178710938,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 13500,
+        "sun_angle": 101.70890808105469,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 2
+      },
+      {
+        "tick": 13500,
+        "sun_angle": 101.70890808105469,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 13500,
+        "sun_angle": 101.70890808105469,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 2
+      },
+      {
+        "tick": 13500,
+        "sun_angle": 101.70890808105469,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 13500,
+        "sun_angle": 101.70890808105469,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 1
+      },
+      {
+        "tick": 13500,
+        "sun_angle": 101.70890808105469,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 13500,
+        "sun_angle": 101.70890808105469,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 13500,
+        "sun_angle": 101.70890808105469,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 17999,
+        "sun_angle": 179.98292541503906,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 17999,
+        "sun_angle": 179.98292541503906,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 17999,
+        "sun_angle": 179.98292541503906,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 17999,
+        "sun_angle": 179.98292541503906,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 17999,
+        "sun_angle": 179.98292541503906,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 17999,
+        "sun_angle": 179.98292541503906,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 17999,
+        "sun_angle": 179.98292541503906,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 17999,
+        "sun_angle": 179.98292541503906,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 18000,
+        "sun_angle": 180.0,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 18000,
+        "sun_angle": 180.0,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 18000,
+        "sun_angle": 180.0,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 18000,
+        "sun_angle": 180.0,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 18000,
+        "sun_angle": 180.0,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 18000,
+        "sun_angle": 180.0,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 18000,
+        "sun_angle": 180.0,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 18000,
+        "sun_angle": 180.0,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 18001,
+        "sun_angle": 180.01707458496094,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 18001,
+        "sun_angle": 180.01707458496094,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 18001,
+        "sun_angle": 180.01707458496094,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 18001,
+        "sun_angle": 180.01707458496094,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 18001,
+        "sun_angle": 180.01707458496094,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 18001,
+        "sun_angle": 180.01707458496094,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 18001,
+        "sun_angle": 180.01707458496094,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 18001,
+        "sun_angle": 180.01707458496094,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 22500,
+        "sun_angle": 258.29107666015625,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 2
+      },
+      {
+        "tick": 22500,
+        "sun_angle": 258.29107666015625,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 22500,
+        "sun_angle": 258.29107666015625,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 2
+      },
+      {
+        "tick": 22500,
+        "sun_angle": 258.29107666015625,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 22500,
+        "sun_angle": 258.29107666015625,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 1
+      },
+      {
+        "tick": 22500,
+        "sun_angle": 258.29107666015625,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 22500,
+        "sun_angle": 258.29107666015625,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 22500,
+        "sun_angle": 258.29107666015625,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 23000,
+        "sun_angle": 266.4786682128906,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 4
+      },
+      {
+        "tick": 23000,
+        "sun_angle": 266.4786682128906,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 23000,
+        "sun_angle": 266.4786682128906,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 3
+      },
+      {
+        "tick": 23000,
+        "sun_angle": 266.4786682128906,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 23000,
+        "sun_angle": 266.4786682128906,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 1
+      },
+      {
+        "tick": 23000,
+        "sun_angle": 266.4786682128906,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 23000,
+        "sun_angle": 266.4786682128906,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 23000,
+        "sun_angle": 266.4786682128906,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 23500,
+        "sun_angle": 274.51068115234375,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 6
+      },
+      {
+        "tick": 23500,
+        "sun_angle": 274.51068115234375,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 23500,
+        "sun_angle": 274.51068115234375,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 4
+      },
+      {
+        "tick": 23500,
+        "sun_angle": 274.51068115234375,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 23500,
+        "sun_angle": 274.51068115234375,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 1
+      },
+      {
+        "tick": 23500,
+        "sun_angle": 274.51068115234375,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 23500,
+        "sun_angle": 274.51068115234375,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 23500,
+        "sun_angle": 274.51068115234375,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      },
+      {
+        "tick": 23999,
+        "sun_angle": 282.3587951660156,
+        "effective_sky": 15,
+        "inverted": false,
+        "power": 7
+      },
+      {
+        "tick": 23999,
+        "sun_angle": 282.3587951660156,
+        "effective_sky": 15,
+        "inverted": true,
+        "power": 0
+      },
+      {
+        "tick": 23999,
+        "sun_angle": 282.3587951660156,
+        "effective_sky": 12,
+        "inverted": false,
+        "power": 6
+      },
+      {
+        "tick": 23999,
+        "sun_angle": 282.3587951660156,
+        "effective_sky": 12,
+        "inverted": true,
+        "power": 3
+      },
+      {
+        "tick": 23999,
+        "sun_angle": 282.3587951660156,
+        "effective_sky": 4,
+        "inverted": false,
+        "power": 2
+      },
+      {
+        "tick": 23999,
+        "sun_angle": 282.3587951660156,
+        "effective_sky": 4,
+        "inverted": true,
+        "power": 11
+      },
+      {
+        "tick": 23999,
+        "sun_angle": 282.3587951660156,
+        "effective_sky": 0,
+        "inverted": false,
+        "power": 0
+      },
+      {
+        "tick": 23999,
+        "sun_angle": 282.3587951660156,
+        "effective_sky": 0,
+        "inverted": true,
+        "power": 15
+      }
+    ]
+  },
   "dimensions": {
     "overworld": {
       "has_skylight": true,
