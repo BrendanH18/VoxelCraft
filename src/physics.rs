@@ -206,6 +206,12 @@ pub fn touches_block<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shap
         .any(|y| (lo.z..=hi.z).any(|z| (lo.x..=hi.x).any(|x| world.block(IVec3::new(x, y, z)).is_some_and(test))))
 }
 
+/// Squared distance from `p` to the nearest point of a box (0 inside), as
+/// Java's `AABB.distanceToSqr`.
+pub fn box_distance_squared(p: DVec3, min: DVec3, max: DVec3) -> f64 {
+    p.clamp(min, max).distance_squared(p)
+}
+
 /// Slab test: distance along `dir` (not necessarily normalised; the result
 /// is in units of `dir`) at which the ray enters the box, or `None` if it
 /// misses. A ray starting inside the box hits at 0.

@@ -11,7 +11,7 @@ impl Game {
             &self.world,
             self.session.player.eye(),
             self.session.player.forward().as_dvec3(),
-            super::REACH,
+            self.session.entity_reach(),
         ) else {
             return false;
         };
@@ -34,7 +34,7 @@ impl Game {
     }
     pub(super) fn buy_trade(&mut self, index: usize) {
         let Container::Trading(id) = self.container else { return };
-        if !self.mobs.entities.merchant_in_reach(id, self.session.player.eye()) {
+        if !self.mobs.entities.merchant_in_reach(id, self.session.player.eye(), self.session.entity_screen_range()) {
             return;
         }
         match self.mobs.entities.trade_for(id, index, &mut self.session.inventory, self.session.id) {

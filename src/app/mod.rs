@@ -65,7 +65,6 @@ use voxelcraft::rules::GameRules;
 
 use survival::Vitals;
 
-const REACH: f64 = 6.0;
 /// Placement/use repeat; mining timing is owned by the shared session.
 const ACTION_REPEAT: f64 = 0.22;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
@@ -1260,7 +1259,7 @@ impl Game {
         }
         let eye = self.session.player.eye();
         let dir = self.session.player.forward().as_dvec3();
-        let reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
+        let reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, self.session.entity_reach());
         if let Some(id) = self.mobs.entities.vehicle_container(eye, dir, reach)
             && (self.sneak_building() || self.mobs.entities.cart(id).is_some_and(|c| c.kind.boat().is_none()))
         {
@@ -1556,7 +1555,7 @@ impl Game {
                 &self.world,
                 self.session.player.eye(),
                 self.session.player.forward().as_dvec3(),
-                REACH,
+                self.session.entity_reach(),
             )
             && self
                 .mobs

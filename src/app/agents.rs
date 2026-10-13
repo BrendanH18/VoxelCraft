@@ -197,7 +197,7 @@ impl Game {
                 &self.world,
                 agent.session.player.eye(),
                 agent.session.player.forward().as_dvec3(),
-                super::REACH,
+                agent.session.entity_reach(),
             )
             .and_then(|id| self.mobs.entities.merchant(id))
             .and_then(|m| m.villager.as_ref())

@@ -678,7 +678,7 @@ impl Game {
     pub(super) fn lan_container_ok(&self) -> bool {
         let eye = self.session.player.eye();
         let near = |p: IVec3, ok: fn(Block) -> bool| {
-            eye.distance(p.as_dvec3() + 0.5) <= super::REACH + 1.0 && self.world.get_block(p).is_some_and(ok)
+            self.session.can_keep_using_block(p) && self.world.get_block(p).is_some_and(ok)
         };
         match self.container {
             Container::Inventory | Container::CraftingTable => true,
@@ -689,8 +689,8 @@ impl Game {
             Container::Anvil(p) => near(p, Block::is_anvil),
             Container::Grindstone(p) => near(p, |b| b.base() == Block::GRINDSTONE),
             Container::Smithing(p) => near(p, |b| b == Block::SMITHING_TABLE),
-            Container::Trading(id) => self.mobs.entities.merchant_in_reach(id, eye),
-            Container::Minecart(id) => self.mobs.entities.vehicle_in_reach(id, eye),
+            Container::Trading(id) => self.mobs.entities.merchant_in_reach(id, eye, self.session.entity_screen_range()),
+            Container::Minecart(id) => self.mobs.entities.vehicle_in_reach(id, eye, self.session.entity_screen_range()),
         }
     }
     fn remote_click(&mut self, peer: &mut Peer, encoded: u16, right: bool, shift: bool) {
@@ -699,7 +699,7 @@ impl Game {
         }
         if let Some(p) = peer.used_at {
             let Some(bot) = self.agents.players.get(peer.profile.as_deref().unwrap()) else { return };
-            if bot.agent.session.player.eye().distance(p.as_dvec3() + 0.5) > super::REACH + 1.0 {
+            if !bot.agent.session.can_keep_using_block(p) {
                 return;
             }
         }
@@ -751,8 +751,7 @@ impl Game {
                 && peer.grid.size == 3
                 && peer.used_at.is_some_and(|p| {
                     self.world.get_block(p) != Some(Block::CRAFTING_TABLE)
-                        || self.agents.players[&name].agent.session.player.eye().distance(p.as_dvec3() + 0.5)
-                            > super::REACH + 1.0
+                        || !self.agents.players[&name].agent.session.can_keep_using_block(p)
                 })
             {
                 self.with_remote(peer, |g| g.toggle_inventory());

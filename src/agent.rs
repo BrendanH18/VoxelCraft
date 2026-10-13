@@ -545,14 +545,14 @@ impl Agent {
             Command::Chest(take, slot) => {
                 let eye = self.session.player.eye();
                 let dir = self.session.player.forward().as_dvec3();
-                let reach = crate::entity::minecart::interaction_reach(world, eye, dir, 5.);
+                let reach = crate::entity::minecart::interaction_reach(world, eye, dir, self.session.entity_reach());
                 let vehicle = self
                     .player
                     .vehicle
                     .filter(|id| entities.vehicle_slots(*id).is_some_and(|s| !s.is_empty()))
                     .or_else(|| entities.vehicle_container(eye, dir, reach));
                 if let Some(id) = vehicle {
-                    if !entities.vehicle_in_reach(id, eye) {
+                    if !entities.vehicle_in_reach(id, eye, self.session.entity_screen_range()) {
                         return Err("vehicle out of reach".into());
                     }
                     if take {
@@ -649,7 +649,12 @@ impl Agent {
             }
             Command::Trade(index) => {
                 let id = entities
-                    .target_merchant(world, self.session.player.eye(), self.session.player.forward().as_dvec3(), 6.0)
+                    .target_merchant(
+                        world,
+                        self.session.player.eye(),
+                        self.session.player.forward().as_dvec3(),
+                        self.session.entity_reach(),
+                    )
                     .ok_or("no villager within reach")?;
                 if let Some(i) = index {
                     let xp = entities.trade_for(id, i, &mut self.session.inventory, self.session.id)?;

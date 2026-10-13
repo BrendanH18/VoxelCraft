@@ -463,10 +463,13 @@ impl Entities {
     pub fn merchant(&self, id: u64) -> Option<&Mob> {
         self.mobs.iter().find(|m| m.alive() && m.villager.as_ref().is_some_and(|v| v.id == id))
     }
-    pub fn merchant_in_reach(&self, id: u64, eye: DVec3) -> bool {
+    /// Java `AbstractVillager.stillValid`: alive, able to trade, and its box
+    /// within `range` of the eye.
+    pub fn merchant_in_reach(&self, id: u64, eye: DVec3, range: f64) -> bool {
         self.merchant(id).is_some_and(|m| {
+            let (min, max) = m.aabb();
             matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader)
-                && eye.distance(m.pos + DVec3::Y) < 6.0
+                && crate::physics::box_distance_squared(eye, min, max) < range * range
                 && m.age >= 0
                 && !m.villager.as_ref().unwrap().sleeping
         })

@@ -38,21 +38,27 @@ impl Game {
         if !self.session.vitals.is_dead() {
             self.pick_up_items();
         }
+        let session = &self.session;
+        let far = |pos: glam::IVec3| !session.can_keep_using_block(pos);
         let gone = match self.container {
-            Container::Furnace(pos) => self.world.furnace(pos).is_none(),
-            Container::Chest(pos) => self.world.chest(pos).is_none(),
+            Container::Furnace(pos) => self.world.furnace(pos).is_none() || far(pos),
+            Container::Chest(pos) => self.world.chest(pos).is_none() || far(pos),
             Container::Minecart(id) => {
-                self.mobs.entities.cart(id).is_none_or(|c| c.pos.distance(self.session.player.pos) > 8.0)
+                !self.mobs.entities.vehicle_in_reach(id, session.player.eye(), session.entity_screen_range())
             }
-            Container::Brewing(pos) => self.world.brewing_stand(pos).is_none(),
+            Container::Brewing(pos) => self.world.brewing_stand(pos).is_none() || far(pos),
             Container::Enchanting(pos) => {
-                self.world.get_block(pos) != Some(crate::world::block::Block::ENCHANTING_TABLE)
+                self.world.get_block(pos) != Some(crate::world::block::Block::ENCHANTING_TABLE) || far(pos)
             }
             // An anvil can break in use, or fall away.
-            Container::Anvil(pos) => !self.world.get_block(pos).is_some_and(|b| b.is_anvil()),
-            Container::Grindstone(pos) => self.world.get_block(pos).is_none_or(|b| b.base() != Block::GRINDSTONE),
-            Container::Trading(id) => !self.mobs.entities.merchant_in_reach(id, self.session.player.eye()),
-            Container::Smithing(pos) => self.world.get_block(pos) != Some(Block::SMITHING_TABLE),
+            Container::Anvil(pos) => !self.world.get_block(pos).is_some_and(|b| b.is_anvil()) || far(pos),
+            Container::Grindstone(pos) => {
+                self.world.get_block(pos).is_none_or(|b| b.base() != Block::GRINDSTONE) || far(pos)
+            }
+            Container::Trading(id) => {
+                !self.mobs.entities.merchant_in_reach(id, session.player.eye(), session.entity_screen_range())
+            }
+            Container::Smithing(pos) => self.world.get_block(pos) != Some(Block::SMITHING_TABLE) || far(pos),
             _ => false,
         };
         if gone && self.inventory_open {

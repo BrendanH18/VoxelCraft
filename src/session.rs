@@ -44,6 +44,20 @@ impl PlayerSession {
         self.mode.block_reach()
     }
 
+    /// Java 26.3 `Container.stillValidBlockEntity`: an open block screen stays
+    /// usable while the block's cell is within block reach + 4 of the eye.
+    pub fn can_keep_using_block(&self, pos: IVec3) -> bool {
+        let range = self.block_reach() + 4.0;
+        let min = pos.as_dvec3();
+        crate::physics::box_distance_squared(self.player.eye(), min, min + DVec3::ONE) < range * range
+    }
+
+    /// Java 26.3 range for an open entity screen (vehicle storage, trading):
+    /// entity reach + 4, measured to the entity's box.
+    pub fn entity_screen_range(&self) -> f64 {
+        self.entity_reach() + 4.0
+    }
+
     pub fn block_target(&self, world: &crate::world::World) -> Option<(IVec3, IVec3)> {
         world.raycast(self.player.eye(), self.player.forward().as_dvec3(), self.block_reach())
     }

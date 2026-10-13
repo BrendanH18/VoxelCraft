@@ -691,14 +691,16 @@ impl Game {
                         ..
                     } => {
                         !self.world.get_block(pos).is_some_and(|b| tab.matches_block(b))
-                            || eye.distance(pos.as_dvec3() + 0.5) > super::REACH + 1.0
+                            || !agent.session.can_keep_using_block(pos)
                             || agent.session.vitals.is_dead()
                     }
                     Menu::Items { tab: Tab::Vehicle(id), .. } => {
-                        agent.session.vitals.is_dead() || !self.mobs.entities.vehicle_in_reach(id, eye)
+                        agent.session.vitals.is_dead()
+                            || !self.mobs.entities.vehicle_in_reach(id, eye, agent.session.entity_screen_range())
                     }
                     Menu::Items { tab: Tab::Trading(id), .. } => {
-                        agent.session.vitals.is_dead() || !self.mobs.entities.merchant_in_reach(id, eye)
+                        agent.session.vitals.is_dead()
+                            || !self.mobs.entities.merchant_in_reach(id, eye, agent.session.entity_screen_range())
                     }
                     Menu::Items { .. } => agent.session.vitals.is_dead(),
                     Menu::Pause { .. } => false,

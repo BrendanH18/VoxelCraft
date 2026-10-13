@@ -120,6 +120,12 @@ shared with Java attack-strength charging ([combat evidence](verification/2026-1
 Buckets and bottles share Java's entity-then-block-then-item priority,
 Adventure permission and hit-face pouring on desktop and CLI
 ([bucket review evidence](verification/2026-10-13-review-bucket-fixes.md)).
+Open screens and their targeting use Java 26.3 ranges from the session on every
+input path: block containers stay valid within block reach + 4 of the cell,
+trading and vehicle storage within entity reach + 4 of the entity's box
+(pinned in `combat.json`), and the desktop now closes block screens when the
+player walks out of range. Bucket targeting uses block reach; merchant and
+vehicle targeting use entity reach. The old shared 6.0 reach constant is gone.
 Other item use and container transactions still need extraction; controller/LAN `Game::puppet`
 still swaps session and presentation state and must be removed.
 **Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.

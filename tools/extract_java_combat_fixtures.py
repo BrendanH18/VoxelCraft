@@ -107,6 +107,26 @@ def extract(server):
         attack = method(player, "public void attack(net.minecraft.world.entity.Entity);")
         if float_operands(attack) != [0.5, 0.0, 0.0, 0.9, 1.5, 0.0, 0.5, 0.0, 0.1]:
             raise ValueError("unrecognized Player.attack constants")
+        screens = {}
+        for key, cls, sig, call in [
+            ("block_container", "net.minecraft.world.Container",
+             "public static boolean stillValidBlockEntity(net.minecraft.world.level.block.entity.BlockEntity, "
+             "net.minecraft.world.entity.player.Player);", "stillValidBlockEntity"),
+            ("vehicle_container", "net.minecraft.world.entity.vehicle.ContainerEntity",
+             "public default boolean isChestVehicleStillValid(net.minecraft.world.entity.player.Player);",
+             "isWithinEntityInteractionRange"),
+            ("merchant", "net.minecraft.world.entity.npc.villager.AbstractVillager",
+             "public boolean stillValid(net.minecraft.world.entity.player.Player);", "isWithinEntityInteractionRange"),
+        ]:
+            code = method(inspect(cls), sig)
+            found = re.search(r"ldc(?:2_w|_w)?\s+#\d+\s+// (?:float|double) ([\d.]+)[fd]\n[^\n]*" + call, code)
+            if not found:
+                raise ValueError(f"unrecognized screen range: {key}")
+            screens[key] = float(found[1])
+        block_range = method(player, "public boolean isWithinBlockInteractionRange(net.minecraft.core.BlockPos, double);")
+        entity_range = method(player, "public boolean isWithinEntityInteractionRange(net.minecraft.world.phys.AABB, double);")
+        if not all("dadd" in c and "AABB.distanceToSqr" in c and "dmul" in c for c in (block_range, entity_range)):
+            raise ValueError("unrecognized interaction range check")
         sweep = method(player, "private boolean isSweepAttack(boolean, boolean, boolean);")
         if "double 2.5d" not in sweep or "ItemTags.SWORDS" not in sweep:
             raise ValueError("unrecognized sweep condition")
@@ -123,6 +143,11 @@ def extract(server):
             "sprint_knockback_bonus": 0.5,
             "food_exhaustion": 0.1,
             "sweep_max_speed_factor": 2.5,
+        },
+        "screen_ranges": {
+            "check": "eye-to-box squared distance < (interaction range + extra)^2",
+            "block_interaction_range_extra": {"block_container": screens["block_container"]},
+            "entity_interaction_range_extra": {k: screens[k] for k in ("vehicle_container", "merchant")},
         },
         "materials": {k.lower(): v for k, v in sorted(materials.items())},
         "tools": tools,

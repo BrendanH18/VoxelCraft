@@ -892,9 +892,12 @@ impl Entities {
             (c, m) => c.or(m),
         }
     }
-    pub fn vehicle_in_reach(&self, id: u32, eye: DVec3) -> bool {
-        let pos = self.cart(id).map(|c| c.pos).or_else(|| self.mount(id).map(|m| m.pos));
-        self.vehicle_slots(id).is_some() && pos.is_some_and(|p| p.distance(eye) <= 7.)
+    /// Java `ContainerEntity.isChestVehicleStillValid`/horse inventories: the
+    /// vehicle's box is within `range` of the eye.
+    pub fn vehicle_in_reach(&self, id: u32, eye: DVec3, range: f64) -> bool {
+        let aabb = self.cart(id).map(|c| c.aabb()).or_else(|| self.mount(id).map(|m| m.aabb()));
+        self.vehicle_slots(id).is_some()
+            && aabb.is_some_and(|(min, max)| crate::physics::box_distance_squared(eye, min, max) < range * range)
     }
 }
 

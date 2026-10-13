@@ -352,6 +352,9 @@ share Java's five-tick destroy delay through the session for every adapter,
 key progress on position and held item, restrict Creative swords, destroy
 Creative dragon eggs, suppress lower door/double-plant drops without the
 correct tool or in Creative, gate exhaustion on the correct tool and add Haste.
+Open block screens, trading and vehicle storage now close at Java's interaction
+range + 4 (eye to box) on desktop, controller, LAN and CLI paths, covered by
+`tests/shared_screen_ranges.rs`; ordinary-player acceptance remains.
 PLY-04 remains **Partial**; effect attack-speed modifiers, Conduit Power and
 beacons, server destroy tolerance, a headless desktop-adapter harness and
 remaining cancel-on-item-change sites (pick-block, drop) stay open.

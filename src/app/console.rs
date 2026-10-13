@@ -332,7 +332,7 @@ impl Game {
                         &self.world,
                         self.session.player.eye(),
                         self.session.player.forward().as_dvec3(),
-                        super::REACH,
+                        self.session.entity_reach(),
                     )
                     .ok_or("no villager within reach")?;
                 if let Some(i) = index {

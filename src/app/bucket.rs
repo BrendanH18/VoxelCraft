@@ -7,7 +7,7 @@ use crate::item::Item;
 use crate::world::block::Block;
 use voxelcraft::survival_items::bucket::{self, Effect, Use};
 
-use super::{Game, REACH};
+use super::Game;
 
 impl Game {
     pub(super) fn holding_bucket(&self) -> bool {
@@ -23,6 +23,7 @@ impl Game {
     /// priority is left to the caller's block-use path.
     pub(super) fn use_bucket(&mut self) -> bool {
         let sneaking = self.sneak_building();
+        let reach = self.session.block_reach();
         let Use::Item(Some(effect)) = bucket::use_held(
             &self.session.player,
             &mut self.session.inventory,
@@ -31,7 +32,7 @@ impl Game {
             sneaking,
             &mut self.world,
             &mut self.mobs.entities,
-            REACH,
+            reach,
         ) else {
             return false;
         };

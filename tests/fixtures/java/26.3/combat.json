@@ -18,6 +18,16 @@
     "food_exhaustion": 0.1,
     "sweep_max_speed_factor": 2.5
   },
+  "screen_ranges": {
+    "check": "eye-to-box squared distance < (interaction range + extra)^2",
+    "block_interaction_range_extra": {
+      "block_container": 4.0
+    },
+    "entity_interaction_range_extra": {
+      "vehicle_container": 4.0,
+      "merchant": 4.0
+    }
+  },
   "materials": {
     "copper": {
       "speed": 5.0,
