@@ -31,16 +31,15 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Dated performance investigation](performance-2026-10-07.md).
 - [Initial v0.7 assessment and first correctness fixes](verification/2026-10-12-v0.7-assessment.md):
   tested commits, reference failures, regression/save checks and remaining acceptance work.
-
-## History
-
-[Archived roadmaps and task briefs](archive/README.md) preserve earlier decisions,
-allocations and review reports. They are superseded historical records, not
-current instructions or a second roadmap.
-
 - [Content and original asset integrations](verification/2026-10-12-content-and-assets.md):
   reference-backed building/plant fixes and embedded resource/restart evidence.
 - [Turtle equipment and dual-effect potions](verification/2026-10-12-turtle-equipment.md):
   helmet, brewing, splash geometry and save compatibility; remaining player acceptance.
 - [Complete fuel inventory](verification/2026-10-12-fuel-inventory.md):
   implemented fuel integrations and the explicit missing-registration inventory.
+
+## History
+
+[Archived roadmaps and task briefs](archive/README.md) preserve earlier decisions,
+allocations and review reports. They are superseded historical records, not
+current instructions or a second roadmap.
