@@ -301,26 +301,14 @@ fn parse_args() -> Result<Args, String> {
             "--bench" => args.bench = true,
             "--bench-render" => args.bench_render = true,
             "--benchmark-scene" => {
-                let scene = value("--benchmark-scene")?;
-                if !matches!(scene.as_str(), "survival" | "building" | "entities" | "automation" | "streaming") {
-                    return Err("unknown benchmark scene".into());
-                }
-                args.benchmark_scene = Some(scene);
+                args.benchmark_scene = Some(voxelcraft::performance::parse_scene(&value("--benchmark-scene")?)?);
             }
             "--benchmark-output" => args.benchmark_output = Some(value("--benchmark-output")?.into()),
             "--benchmark-duration" => {
-                args.benchmark_duration = value("--benchmark-duration")?
-                    .parse::<f64>()
-                    .ok()
-                    .filter(|n| n.is_finite() && *n >= 1.0 && *n <= 3600.0)
-                    .ok_or("benchmark duration must be 1..3600 seconds")?;
+                args.benchmark_duration = voxelcraft::performance::parse_duration(&value("--benchmark-duration")?)?;
             }
             "--benchmark-warmup" => {
-                args.benchmark_warmup = value("--benchmark-warmup")?
-                    .parse::<f64>()
-                    .ok()
-                    .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 600.0)
-                    .ok_or("benchmark warm-up must be 0..600 seconds")?;
+                args.benchmark_warmup = voxelcraft::performance::parse_warmup(&value("--benchmark-warmup")?)?;
             }
             "--size" => {
                 let value = value("--size")?;
@@ -593,10 +581,19 @@ fn main() {
         }
     };
     if args.benchmark_scene.is_some()
-        && (args.benchmark_output.is_none() || args.bench_render || args.screenshot.is_some())
+        && (args.benchmark_output.is_none()
+            || args.bench_render
+            || args.screenshot.is_some()
+            || args.open_menu.is_some()
+            || args.open_console
+            || args.join.is_some()
+            || args.host_lan.is_some()
+            || args.agent_listen.is_some()
+            || !args.split_screen.is_empty())
     {
         eprintln!(
-            "live benchmark requires --benchmark-output and cannot combine with screenshot/legacy render benchmark"
+            "live benchmark requires --benchmark-output and cannot combine with screenshots, the legacy render \
+             benchmark, menus, the console, LAN, agents or split screen"
         );
         std::process::exit(2);
     }
