@@ -5,13 +5,6 @@ impl Game {
         self.session.block_target(&self.world)
     }
 
-    /// Creative still breaks on the input edge; execution uses the shared rules.
-    pub(super) fn break_block(&mut self) {
-        if !self.attacking() {
-            self.mine_held(crate::simulation::TICK_SECONDS);
-        }
-    }
-
     /// Sends the dragon egg at `pos` somewhere nearby, with a teleport sound.
     pub(super) fn teleport_egg(&mut self, pos: glam::IVec3) {
         if let Some(to) = self.world.teleport_egg(pos) {
@@ -19,7 +12,9 @@ impl Game {
         }
     }
 
-    /// Fixed-tick mining; the client only presents the shared outcome.
+    /// Fixed-tick mining in every mode, once per tick while the attack input is
+    /// held (a press is consumed on the next tick, as Java handles clicks in
+    /// its tick); the client only presents the shared outcome.
     pub(super) fn continue_breaking(&mut self, dt: f64) {
         if self.attacking() {
             self.session.cancel_mining();
@@ -37,19 +32,17 @@ impl Game {
             Ok(Outcome::Hit { cell, block, .. }) => self.audio.block_hit(block, cell, dt),
             Ok(Outcome::Broken { cell, block, tool_broken, .. }) => {
                 self.audio.block_break(block, cell);
-                if self.session.mode.is_survival() {
-                    self.action_cooldown = BREAK_DELAY;
-                }
                 if let Some(item) = tool_broken {
                     self.show_popup(&format!("{} broke", capitalize(item.name())));
                 }
             }
             Ok(Outcome::TeleportedEgg { destination, .. }) => {
-                self.action_cooldown = BREAK_DELAY;
                 if let Some(to) = destination {
                     self.audio.play(crate::audio::sounds::Sound::Teleport, Some(to.as_dvec3()), 0.6, (0.9, 1.1));
                 }
             }
+            // The session's destroy delay replaces the former adapter repeat cooldowns.
+            Ok(Outcome::Delayed { .. }) => {}
             Err(_) => self.session.cancel_mining(),
         }
         self.actions.breaking = self.session.breaking(&self.world);

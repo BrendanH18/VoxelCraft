@@ -73,9 +73,23 @@ pub fn dig_time(block: Block, digger: Digger) -> f32 {
     block.hardness() * harvest_factor(block, held) / speed
 }
 
+/// Java `Item.canDestroyBlock` in Creative: swords' tool component sets
+/// `can_destroy_blocks_in_creative` false. Trident and mace do too, but are
+/// not registered; spears have no tool component and may break blocks.
+pub fn can_destroy_in_creative(held: Item) -> bool {
+    !matches!(held.as_tool(), Some((ToolKind::Sword, _)))
+}
+
+/// [`dig_progress_with`] without Haste.
+pub fn dig_progress(block: Block, digger: Digger, effect_factor: f32) -> f32 {
+    dig_progress_with(block, digger, 1.0, effect_factor)
+}
+
 /// Java's single-precision progress per gameplay tick: speed / hardness /
 /// 30 with the correct tool, or / 100 otherwise. Keep division order explicit.
-pub fn dig_progress(block: Block, digger: Digger, effect_factor: f32) -> f32 {
+/// `haste` is `Player.getDestroySpeed`'s dig-speed multiplier, applied before
+/// the Mining Fatigue factor; 1.0 multiplies exactly like an absent effect.
+pub fn dig_progress_with(block: Block, digger: Digger, haste: f32, effect_factor: f32) -> f32 {
     let hardness = block.hardness();
     if !hardness.is_finite() || hardness < 0.0 {
         return 0.0;
@@ -85,6 +99,7 @@ pub fn dig_progress(block: Block, digger: Digger, effect_factor: f32) -> f32 {
     if speed > 1.0 {
         speed += enchant::efficiency_bonus(digger.held.map_or(Enchants::NONE, |s| s.active_enchants()));
     }
+    speed *= haste;
     speed *= effect_factor;
     if digger.eyes_in_water && !digger.helmet.has(Enchantment::AquaAffinity) {
         speed *= 0.2;

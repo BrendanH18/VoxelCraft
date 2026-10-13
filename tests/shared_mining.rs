@@ -14,6 +14,7 @@ use voxelcraft::{
         World,
         block::{Block, Facing},
         chunk::ChunkData,
+        overworld_blocks as ob,
         terrain::{Dimension, Generator},
     },
 };
@@ -76,7 +77,7 @@ fn scene(block: Block, dimension: Dimension) -> (World, PlayerSession, Entities)
     (w, s, Entities::new(7))
 }
 fn finish(s: &mut PlayerSession, w: &mut World, e: &mut Entities, rules: &GameRules) -> Outcome {
-    for _ in 0..500 {
+    for _ in 0..2000 {
         let out = s.tick_mining(0, w, e, rules).unwrap();
         if !matches!(out, Outcome::Hit { .. }) {
             return out;
@@ -109,20 +110,47 @@ fn ice_support_matches_every_registered_reference_tag_member_and_reviewed_except
 }
 
 #[test]
-fn replacing_the_target_and_switching_slots_restart_progress_but_idle_controller_rules_preserve_it() {
-    let (mut w, mut s, mut e) = scene(Block::STONE, Dimension::Overworld);
+fn progress_follows_position_and_held_item_not_slot_or_block_state() {
+    let rules = GameRules::default();
+    let (mut w, mut s, mut e) = scene(Block::FURNACE, Dimension::Overworld);
     let pick = Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Wood), 1);
+    let delta = |block| {
+        let digger = voxelcraft::mining::Digger {
+            held: Some(pick),
+            helmet: Enchants::NONE,
+            eyes_in_water: false,
+            on_ground: true,
+        };
+        voxelcraft::mining::dig_progress(block, digger, 1.)
+    };
     s.inventory.slots[0] = Some(pick);
     s.inventory.slots[1] = Some(pick);
-    for _ in 0..5 {
-        s.tick_mining(0, &mut w, &mut e, &GameRules::default()).unwrap();
+    s.inventory.slots[2] = Some(Stack::new(Item::tool(ToolKind::Shovel, Tier::Wood), 1));
+    for _ in 0..3 {
+        s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
     }
     let before = s.breaking(&w).unwrap().1;
-    s.tick_mining(1, &mut w, &mut e, &GameRules::default()).unwrap();
-    assert!(s.breaking(&w).unwrap().1 < before);
-    w.set_block(AT, Block::COBBLESTONE);
+    // The furnace lights at the same position: Java keeps the progress.
+    w.set_block(AT, Block::LIT_FURNACE);
+    assert_eq!(s.breaking(&w), Some((AT, before)));
+    // An identical stack in another slot is the same destroying item.
+    s.tick_mining(1, &mut w, &mut e, &rules).unwrap();
+    let lit = delta(Block::LIT_FURNACE);
+    assert_eq!(s.breaking(&w), Some((AT, before + lit)));
+    // A different item restarts without progress, then accrues its own rate.
+    assert!(matches!(s.tick_mining(2, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
     assert!(s.breaking(&w).is_none());
-    s.tick_mining(1, &mut w, &mut e, &GameRules::default()).unwrap();
+    // The same slot holding a different stack (here, enchanted) also restarts.
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    assert_eq!(s.breaking(&w), Some((AT, lit)));
+    s.inventory.slots[0].as_mut().unwrap().enchants = Enchants::NONE.with(Enchantment::Efficiency, 1);
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
+    s.inventory.slots[0] = Some(pick);
+    s.tick_mining(1, &mut w, &mut e, &rules).unwrap();
+    s.tick_mining(1, &mut w, &mut e, &rules).unwrap();
+    w.set_block(AT, Block::STONE);
+    s.tick_mining(1, &mut w, &mut e, &rules).unwrap();
     let mut controller = Agent::new(s.player.pos);
     controller.session = s;
     controller.selected = 1;
@@ -233,7 +261,7 @@ fn invalid_actions_are_atomic_and_dropped_loot_obeys_the_gamerule() {
     assert_eq!(s.inventory.get(0).unwrap().damage, 1);
 }
 #[test]
-fn creative_breaks_bedrock_and_dragon_egg_attack_teleports_without_a_drop() {
+fn creative_destroys_bedrock_and_the_dragon_egg_while_a_survival_attack_teleports_it() {
     let (mut w, mut s, mut e) = scene(Block::BEDROCK, Dimension::Overworld);
     for _ in 0..100 {
         assert!(matches!(s.tick_mining(0, &mut w, &mut e, &GameRules::default()).unwrap(), Outcome::Hit { .. }));
@@ -243,8 +271,202 @@ fn creative_breaks_bedrock_and_dragon_egg_attack_teleports_without_a_drop() {
     assert!(matches!(s.tick_mining(0, &mut w, &mut e, &GameRules::default()).unwrap(), Outcome::Broken { .. }));
     assert_eq!(w.get_block(AT), Some(Block::AIR));
     assert!(w.drops.is_empty());
+    // Java's instabuild branch destroys before `BlockState.attack`: no teleport.
     w.set_block(AT - IVec3::Y, Block::STONE);
     w.set_block(AT, Block::DRAGON_EGG);
-    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &GameRules::default()).unwrap(), Outcome::TeleportedEgg { .. }));
+    s.cancel_mining();
+    let out = s.tick_mining(0, &mut w, &mut e, &GameRules::default()).unwrap();
+    assert!(matches!(out, Outcome::Broken { block: Block::DRAGON_EGG, .. }), "{out:?}");
+    assert_eq!(w.get_block(AT), Some(Block::AIR));
     assert!(w.drops.is_empty());
+    // Survival start attacks the egg, which jumps away without a drop.
+    let (mut w, mut s, mut e) = scene(Block::AIR, Dimension::Overworld);
+    w.set_block(AT - IVec3::Y, Block::STONE);
+    w.set_block(AT, Block::DRAGON_EGG);
+    let out = s.tick_mining(0, &mut w, &mut e, &GameRules::default()).unwrap();
+    assert!(matches!(out, Outcome::TeleportedEgg { destination: Some(_), .. }), "{out:?}");
+    assert_ne!(w.get_block(AT), Some(Block::DRAGON_EGG));
+    assert!(w.drops.is_empty());
+}
+
+#[test]
+fn iron_doors_drop_only_with_a_pickaxe_from_either_half_and_never_in_creative() {
+    let pick = Some(Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Wood), 1));
+    for (upper, held, mode, drops) in [
+        (true, None, GameMode::Survival, 0),
+        (true, pick, GameMode::Survival, 1),
+        (false, None, GameMode::Survival, 0),
+        (false, pick, GameMode::Survival, 1),
+        (true, None, GameMode::Creative, 0),
+        (true, pick, GameMode::Creative, 0),
+    ] {
+        let target = voxelcraft::world::redstone_blocks::iron_door(Facing::East, false, upper);
+        let (mut w, mut s, mut e) = scene(target, Dimension::Overworld);
+        let partner = if upper { AT - IVec3::Y } else { AT + IVec3::Y };
+        w.set_block(partner, voxelcraft::world::redstone_blocks::iron_door(Facing::East, false, !upper));
+        w.set_block(AT.min(partner) - IVec3::Y, Block::STONE);
+        s.player.pitch = -0.05;
+        s.set_mode(mode);
+        s.inventory.slots[0] = held;
+        assert_eq!(s.block_target(&w).map(|(p, _)| p), Some(AT), "{upper} {mode:?}");
+        finish(&mut s, &mut w, &mut e, &GameRules::default());
+        assert_eq!((w.get_block(AT), w.get_block(partner)), (Some(Block::AIR), Some(Block::AIR)), "{upper} {mode:?}");
+        let dropped: u32 = w.drops.iter().map(|(_, s)| u32::from(s.count)).sum();
+        assert_eq!(dropped, drops, "upper {upper}, pickaxe {}, {mode:?}", held.is_some());
+        assert!(w.drops.iter().all(|(_, s)| s.item == Item::from_name("iron_door").unwrap()));
+    }
+}
+
+#[test]
+fn creative_upper_double_plant_removes_the_lower_half_without_a_drop() {
+    for (mode, drops) in [(GameMode::Creative, 0), (GameMode::Survival, 1)] {
+        let (mut w, mut s, mut e) = scene(Block(ob::SUNFLOWER.0 + 1), Dimension::Overworld);
+        w.set_block(AT - IVec3::Y * 2, Block::DIRT);
+        w.before_overworld_place(AT - IVec3::Y, ob::SUNFLOWER);
+        w.set_block(AT - IVec3::Y, ob::SUNFLOWER);
+        assert_eq!(w.get_block(AT), Some(Block(ob::SUNFLOWER.0 + 1)));
+        s.player.pitch = -0.05;
+        s.set_mode(mode);
+        assert_eq!(s.block_target(&w).map(|(p, _)| p), Some(AT));
+        finish(&mut s, &mut w, &mut e, &GameRules::default());
+        assert_eq!((w.get_block(AT), w.get_block(AT - IVec3::Y)), (Some(Block::AIR), Some(Block::AIR)));
+        assert_eq!(w.drops.iter().map(|(_, s)| u32::from(s.count)).sum::<u32>(), drops, "{mode:?}");
+    }
+}
+
+#[test]
+fn mining_exhaustion_needs_the_correct_tool_but_wear_does_not() {
+    for (held, exhaustion, drops) in [
+        (Some(Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Wood), 1)), 0.005, true),
+        (None, 0., false),
+        (Some(Stack::new(Item::tool(ToolKind::Shovel, Tier::Wood), 1)), 0., false),
+    ] {
+        let (mut w, mut s, mut e) = scene(Block::STONE, Dimension::Overworld);
+        s.inventory.slots[0] = held;
+        finish(&mut s, &mut w, &mut e, &GameRules::default());
+        assert_eq!(w.get_block(AT), Some(Block::AIR));
+        assert_eq!(s.vitals.hunger.exhaustion, exhaustion);
+        assert_eq!(!w.drops.is_empty(), drops);
+        assert_eq!(s.inventory.get(0).map(|s| s.damage), held.map(|_| 1), "wear is unconditional");
+    }
+}
+
+#[test]
+fn creative_swords_cannot_break_blocks_but_other_items_can() {
+    let sword = Stack::new(Item::tool(ToolKind::Sword, Tier::Diamond), 1);
+    let (mut w, mut s, mut e) = scene(Block::STONE, Dimension::Overworld);
+    s.set_mode(GameMode::Creative);
+    s.inventory.slots[0] = Some(sword);
+    s.inventory.slots[1] = Some(Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Wood), 1));
+    assert!(s.tick_mining(0, &mut w, &mut e, &GameRules::default()).is_err());
+    assert_eq!(w.get_block(AT), Some(Block::STONE));
+    assert!(matches!(s.tick_mining(1, &mut w, &mut e, &GameRules::default()).unwrap(), Outcome::Broken { .. }));
+    // Survival swords still mine (and wear twice per block, Java's damage_per_block 2).
+    let (mut w, mut s, mut e) = scene(Block::DIRT, Dimension::Overworld);
+    s.inventory.slots[0] = Some(sword);
+    finish(&mut s, &mut w, &mut e, &GameRules::default());
+    assert_eq!(w.get_block(AT), Some(Block::AIR));
+    assert_eq!(s.inventory.get(0).unwrap().damage, 2);
+}
+
+#[test]
+fn haste_multiplies_dig_speed_before_fatigue_in_reference_float_order_and_persists() {
+    use voxelcraft::simulation::effects::{Effect, Effects};
+    let pick = Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Iron), 1);
+    let digger =
+        voxelcraft::mining::Digger { held: Some(pick), helmet: Enchants::NONE, eyes_in_water: false, on_ground: true };
+    for amplifier in 0..=255u8 {
+        let mut effects = Effects::default();
+        effects.add(Effect::Haste, amplifier, 100);
+        effects.add(Effect::MiningFatigue, 0, 100);
+        // Player.getDestroySpeed: speed * (1.0f + (float)(amp + 1) * 0.2f), then * fatigue.
+        let haste = 1.0f32 + (i32::from(amplifier) + 1) as f32 * 0.2f32;
+        assert_eq!(effects.dig_speed_factor().to_bits(), haste.to_bits());
+        let speed = 6.0f32 * haste * 0.3f64.powf(1.) as f32;
+        let expected = speed / Block::STONE.hardness() / 30.0;
+        let actual = voxelcraft::mining::dig_progress_with(
+            Block::STONE,
+            digger,
+            effects.dig_speed_factor(),
+            effects.mining_factor(),
+        );
+        assert_eq!(actual.to_bits(), expected.to_bits(), "amplifier {amplifier}");
+        assert_eq!(Effects::deserialize(&effects.serialize()), effects);
+    }
+    assert_eq!(Effects::default().dig_speed_factor(), 1.0);
+    assert_eq!(Effect::from_id("minecraft:haste"), Some(Effect::Haste));
+    // Through the shared transaction: Haste II cuts iron-pickaxe stone from 8 ticks to 6.
+    for (amplifier, ticks) in [(None, 8), (Some(1), 6)] {
+        let (mut w, mut s, mut e) = scene(Block::STONE, Dimension::Overworld);
+        s.inventory.slots[0] = Some(pick);
+        if let Some(a) = amplifier {
+            s.vitals.effects.add(Effect::Haste, a, 1000);
+        }
+        let mut n = 0;
+        while !matches!(s.tick_mining(0, &mut w, &mut e, &GameRules::default()).unwrap(), Outcome::Broken { .. }) {
+            n += 1;
+        }
+        assert_eq!(n + 1, ticks, "{amplifier:?}");
+    }
+}
+
+/// Ticks (0 = the press tick) at which a held attack destroys a block.
+fn destroy_ticks(mut step: impl FnMut() -> Option<Outcome>, ticks: usize) -> Vec<usize> {
+    (0..ticks).filter(|_| matches!(step(), Some(Outcome::Broken { .. }))).collect()
+}
+type TimingCase = (GameMode, [Block; 3], Option<Stack>, &'static [usize]);
+
+/// Java `MultiPlayerGameMode` (client; the server jar does not contain it):
+/// Creative destroys on the press, then every sixth tick after a five-tick
+/// `destroyDelay` decremented in the same tick; Survival waits five delay
+/// ticks after a completed timed break, restarts without progress for one
+/// tick, and instant blocks break every tick with no delay.
+#[test]
+fn held_attack_timing_matches_java_destroy_delay_through_session_and_cli() {
+    let pick = Stack::new(Item::tool(ToolKind::Pickaxe, Tier::Iron), 1);
+    let cases: [TimingCase; 4] = [
+        (GameMode::Creative, [Block::STONE; 3], None, &[0, 5, 11]),
+        (GameMode::Survival, [Block::TNT; 3], None, &[0, 1, 2]),
+        (GameMode::Survival, [Block::STONE; 3], Some(pick), &[7, 21, 35]),
+        (GameMode::Survival, [Block::STONE, Block::TNT, Block::TNT], Some(pick), &[7, 13, 14]),
+    ];
+    for (mode, blocks, held, expected) in cases {
+        let setup = || {
+            let (mut w, mut s, e) = scene(blocks[0], Dimension::Overworld);
+            for (i, b) in blocks.into_iter().enumerate() {
+                w.set_block(AT + IVec3::X * i as i32, b);
+            }
+            w.set_block(IVec3::new(5, 144, 4), Block::STONE);
+            s.set_mode(mode);
+            s.player.pos.x = 5.5;
+            s.inventory.slots[0] = held;
+            (w, s, e)
+        };
+        let cleared = |w: &World| (0..3).filter(|i| w.get_block(AT + IVec3::X * *i) == Some(Block::AIR)).count();
+        let (mut w, mut s, mut e) = setup();
+        // Like the adapters, an empty aim releases the input.
+        let step = || match s.tick_mining(0, &mut w, &mut e, &GameRules::default()) {
+            Ok(out) => Some(out),
+            Err(_) => {
+                s.cancel_mining();
+                None
+            }
+        };
+        let direct = destroy_ticks(step, 40);
+        assert_eq!(direct, expected, "session {mode:?} {:?}", blocks.map(|b| b.name()));
+        let (mut w, session, mut e) = setup();
+        let mut cli = Agent::new(session.player.pos);
+        cli.session = session;
+        cli.set_mode(mode);
+        let mut broke = Vec::new();
+        for t in 0..40 {
+            let before = cleared(&w);
+            cli.hold(MoveInput::default(), true, false);
+            cli.tick(&mut w, &mut e);
+            if cleared(&w) > before {
+                broke.push(t);
+            }
+        }
+        assert_eq!(broke, expected, "CLI {mode:?} {:?}", blocks.map(|b| b.name()));
+    }
 }
