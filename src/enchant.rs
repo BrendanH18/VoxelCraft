@@ -442,14 +442,24 @@ fn offer_cost(rng: &mut JavaRandom, slot: usize, bookshelves: u32, item: Item) -
     cost as u32
 }
 
+/// The enchantment set a roll draws from (the `options` holder set).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Options {
+    /// `#minecraft:in_enchanting_table` (= `#non_treasure`).
+    Table,
+    /// `#minecraft:on_random_loot`: `#non_treasure` plus both curses, frost
+    /// walker and mending, i.e. every enchantment VoxelCraft registers.
+    RandomLoot,
+}
+
 /// Java's `getAvailableEnchantmentResults`: the best level of each
-/// table enchantment that a modified level of `power` can roll on `item`.
-fn available(power: u32, item: Item) -> Vec<(Enchantment, u8)> {
+/// enchantment in `options` that a modified level of `power` can roll on `item`.
+fn available(power: u32, item: Item, options: Options) -> Vec<(Enchantment, u8)> {
     let book = item == Item::BOOK;
     let mut out = Vec::new();
     for e in Enchantment::ALL {
         let d = e.def();
-        if d.treasure || !(book || d.primary.accepts(item)) {
+        if (d.treasure && options == Options::Table) || !(book || d.primary.accepts(item)) {
             continue;
         }
         if let Some(level) = (1..=d.max_level).rev().find(|&l| {
@@ -480,7 +490,7 @@ fn weighted_pick(rng: &mut JavaRandom, list: &[(Enchantment, u8)]) -> Option<(En
 
 /// Java's `selectEnchantment`: rolls the enchantments for an offer of
 /// `cost` levels.
-fn select(rng: &mut JavaRandom, item: Item, cost: u32) -> Vec<(Enchantment, u8)> {
+fn select(rng: &mut JavaRandom, item: Item, cost: u32, options: Options) -> Vec<(Enchantment, u8)> {
     let ench = enchantability(item) as i32;
     let mut picked = Vec::new();
     if ench == 0 {
@@ -489,7 +499,7 @@ fn select(rng: &mut JavaRandom, item: Item, cost: u32) -> Vec<(Enchantment, u8)>
     let mut level = cost as i32 + 1 + rng.next_bounded(ench / 4 + 1) + rng.next_bounded(ench / 4 + 1);
     let f = (rng.next_float() + rng.next_float() - 1.0) * 0.15;
     level = ((level as f32 + level as f32 * f + 0.5).floor() as i32).max(1);
-    let mut options = available(level as u32, item);
+    let mut options = available(level as u32, item, options);
     if let Some(first) = weighted_pick(rng, &options) {
         picked.push(first);
         while rng.next_bounded(50) <= level {
@@ -513,11 +523,23 @@ pub fn offer_enchants(seed: i32, item: Item, slot: usize, cost: u32) -> Vec<(Enc
 }
 
 fn offer_list(rng: &mut JavaRandom, item: Item, cost: u32) -> Vec<(Enchantment, u8)> {
-    let mut list = select(rng, item, cost);
+    let mut list = select(rng, item, cost, Options::Table);
     if item == Item::BOOK && list.len() > 1 {
         list.remove(rng.next_bounded(list.len() as i32) as usize);
     }
     list
+}
+
+/// Java's `EnchantWithLevelsFunction` with `options: #minecraft:on_random_loot`
+/// (`EnchantmentHelper.enchantItem`): `selectEnchantment` at `levels`, every
+/// pick applied, and a book turned into an enchanted book. Unlike the table,
+/// no enchantment is removed from a book.
+pub fn enchant_with_levels(rng: &mut JavaRandom, item: Item, levels: u32) -> (Item, Enchants) {
+    let mut enchants = Enchants::NONE;
+    for (e, level) in select(rng, item, levels, Options::RandomLoot) {
+        enchants.set(e, level);
+    }
+    (if item == Item::BOOK { Item::ENCHANTED_BOOK } else { item }, enchants)
 }
 
 /// The table's three offers: level cost (0 = none) and the one

@@ -17,6 +17,7 @@ pub mod aquatic;
 pub mod armor;
 mod bell;
 mod bobber;
+pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
@@ -573,6 +574,10 @@ impl Rng {
 
     pub fn next_f32(&mut self) -> f32 {
         (splitmix64(&mut self.0) >> 40) as f32 / (1u64 << 24) as f32
+    }
+
+    pub fn next_u64(&mut self) -> u64 {
+        splitmix64(&mut self.0)
     }
 
     pub fn range(&mut self, lo: f32, hi: f32) -> f32 {

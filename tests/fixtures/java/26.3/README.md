@@ -147,3 +147,22 @@ cargo test --release --test shared_combat
 ```
 
 Copper tools are recorded but not yet registered by VoxelCraft.
+
+## Fishing loot
+
+`fishing.json` records every entry of `gameplay/fishing` and its junk,
+treasure and fish tables (weights, qualities, conditions, counts, damage
+ranges and enchanting levels) plus the expanded `#on_random_loot` tag. The
+extractor fails on unknown entry types, keys, conditions or loot functions and
+checks the `LootPool.addRandomItem` positive-weight filter,
+`SetItemDamageFunction` formula and `enchantItem` book conversion in bytecode.
+
+```sh
+python3 tools/extract_java_fishing_fixtures.py /path/to/server.jar --output target/java-fishing.json
+diff tests/fixtures/java/26.3/fishing.json target/java-fishing.json
+cargo test --release --test fishing_loot
+```
+
+The fixture proves table contents and the stated formulas. Loot uses
+VoxelCraft's RNG, not Java's random sequence, so individual rolls are not
+reproduced; the tests check shares and ranges.

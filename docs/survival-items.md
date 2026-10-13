@@ -64,9 +64,16 @@ the milk buckets come back. Pumpkin pie is pumpkin, sugar and egg.
 A fishing rod (durability 64, enchantability 1) casts one bobber and reels it
 on the next use. The bite wait is Java's 100–600 ticks, minus 100 per Lure
 level; rain can count a tick twice and a roof can skip one. Reeling during
-the nibble rolls fish (cod 60, salmon 25), junk or treasure. Luck of the Sea
-shifts those weights. Closed water, which fails the 5×4×5 open-water check,
-returns junk only. Cooked cod and salmon smelt from the raw fish. The bobber
-does not hook mobs, and tropical fish, pufferfish, lily pads and the other
-missing junk and treasure drops are left out.
+the nibble rolls Java 26.3's `gameplay/fishing` table: junk (weight 10,
+quality -2), treasure (5, quality 2) and fish (85, quality -1), with Luck of
+the Sea adding quality times its level. Only treasure requires open water, so
+closed water (failing the 5×4×5 check) still yields fish and junk. Fish are
+cod 60, salmon 25, tropical fish 2 and pufferfish 13. Junk is the full
+reference table, including lily pads, ten ink sacs, tripwire hooks, damaged
+leather boots and rods, and bamboo when the hook bit in a jungle biome.
+Treasure bows and rods are worn up to 25% and, with books, enchanted at 30
+levels from `#on_random_loot` (curses, frost walker and mending included).
+Cooked cod and salmon smelt from the raw fish. The bobber does not hook mobs.
+The rows are checked against `tests/fixtures/java/26.3/fishing.json`.
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java
+- Java 26.3 server `data/minecraft/loot_table/gameplay/fishing*.json`

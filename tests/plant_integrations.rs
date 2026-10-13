@@ -77,8 +77,8 @@ fn cocoa_is_three_when_ripe_and_budding_amethyst_never_drops() {
 #[test]
 fn fish_weights_include_tropical_and_pufferfish() {
     for (actual, expected) in voxelcraft::content::fishing::FISH.iter().zip(fixture()["fish"].as_array().unwrap()) {
-        assert_eq!(actual.0, reference_item(expected["item"].as_str().unwrap()));
-        assert_eq!(actual.1, expected["weight"].as_i64().unwrap() as i32);
+        assert_eq!(actual.value.item, reference_item(expected["item"].as_str().unwrap()));
+        assert_eq!(actual.weight, expected["weight"].as_i64().unwrap() as i32);
     }
 }
 #[test]
