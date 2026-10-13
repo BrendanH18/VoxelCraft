@@ -1,0 +1,334 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "data/minecraft/loot_table/gameplay/fishing.json",
+    "data/minecraft/loot_table/gameplay/fishing/junk.json",
+    "data/minecraft/loot_table/gameplay/fishing/treasure.json",
+    "data/minecraft/loot_table/gameplay/fishing/fish.json",
+    "data/minecraft/tags/enchantment/on_random_loot.json (expanded)",
+    "net.minecraft.world.level.storage.loot.LootPool.addRandomItem",
+    "net.minecraft.world.level.storage.loot.functions.SetItemDamageFunction.run",
+    "net.minecraft.world.item.enchantment.EnchantmentHelper.enchantItem"
+  ],
+  "weight": "max(floor(weight + quality * luck), 0); only positive weights are eligible; a lone eligible entry is taken without a roll",
+  "set_damage": "damage = floor((1 - clamp(uniform(min, max), 0, 1)) * max_damage)",
+  "categories": [
+    {
+      "table": "junk",
+      "weight": 10,
+      "quality": -2,
+      "condition": null
+    },
+    {
+      "table": "treasure",
+      "weight": 5,
+      "quality": 2,
+      "condition": "in_open_water"
+    },
+    {
+      "table": "fish",
+      "weight": 85,
+      "quality": -1,
+      "condition": null
+    }
+  ],
+  "tables": {
+    "junk": [
+      {
+        "item": "minecraft:lily_pad",
+        "weight": 17,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:leather_boots",
+        "weight": 10,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": {
+          "min": 0.0,
+          "max": 0.9
+        },
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:leather",
+        "weight": 10,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:bone",
+        "weight": 10,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:potion",
+        "weight": 10,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": "minecraft:water"
+      },
+      {
+        "item": "minecraft:string",
+        "weight": 5,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:fishing_rod",
+        "weight": 2,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": {
+          "min": 0.0,
+          "max": 0.9
+        },
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:bowl",
+        "weight": 10,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:stick",
+        "weight": 5,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:ink_sac",
+        "weight": 1,
+        "quality": 0,
+        "condition": null,
+        "count": 10,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:tripwire_hook",
+        "weight": 10,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:rotten_flesh",
+        "weight": 10,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:bamboo",
+        "weight": 10,
+        "quality": 0,
+        "condition": {
+          "biomes": [
+            "minecraft:jungle",
+            "minecraft:sparse_jungle",
+            "minecraft:bamboo_jungle"
+          ]
+        },
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      }
+    ],
+    "treasure": [
+      {
+        "item": "minecraft:name_tag",
+        "weight": 1,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:saddle",
+        "weight": 1,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:bow",
+        "weight": 1,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": {
+          "min": 0.0,
+          "max": 0.25
+        },
+        "enchant_with_levels": 30,
+        "potion": null
+      },
+      {
+        "item": "minecraft:fishing_rod",
+        "weight": 1,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": {
+          "min": 0.0,
+          "max": 0.25
+        },
+        "enchant_with_levels": 30,
+        "potion": null
+      },
+      {
+        "item": "minecraft:book",
+        "weight": 1,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": 30,
+        "potion": null
+      },
+      {
+        "item": "minecraft:nautilus_shell",
+        "weight": 1,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      }
+    ],
+    "fish": [
+      {
+        "item": "minecraft:cod",
+        "weight": 60,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:salmon",
+        "weight": 25,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:tropical_fish",
+        "weight": 2,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      },
+      {
+        "item": "minecraft:pufferfish",
+        "weight": 13,
+        "quality": 0,
+        "condition": null,
+        "count": 1,
+        "damage": null,
+        "enchant_with_levels": null,
+        "potion": null
+      }
+    ]
+  },
+  "on_random_loot": [
+    "minecraft:protection",
+    "minecraft:fire_protection",
+    "minecraft:feather_falling",
+    "minecraft:blast_protection",
+    "minecraft:projectile_protection",
+    "minecraft:respiration",
+    "minecraft:aqua_affinity",
+    "minecraft:thorns",
+    "minecraft:depth_strider",
+    "minecraft:sharpness",
+    "minecraft:smite",
+    "minecraft:bane_of_arthropods",
+    "minecraft:knockback",
+    "minecraft:fire_aspect",
+    "minecraft:looting",
+    "minecraft:sweeping_edge",
+    "minecraft:efficiency",
+    "minecraft:silk_touch",
+    "minecraft:unbreaking",
+    "minecraft:fortune",
+    "minecraft:power",
+    "minecraft:punch",
+    "minecraft:flame",
+    "minecraft:infinity",
+    "minecraft:luck_of_the_sea",
+    "minecraft:lure",
+    "minecraft:loyalty",
+    "minecraft:impaling",
+    "minecraft:riptide",
+    "minecraft:channeling",
+    "minecraft:multishot",
+    "minecraft:quick_charge",
+    "minecraft:piercing",
+    "minecraft:density",
+    "minecraft:breach",
+    "minecraft:lunge",
+    "minecraft:binding_curse",
+    "minecraft:vanishing_curse",
+    "minecraft:frost_walker",
+    "minecraft:mending"
+  ]
+}

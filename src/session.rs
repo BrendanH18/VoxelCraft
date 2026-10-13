@@ -41,7 +41,7 @@ pub struct PersonalSpawn {
 impl PlayerSession {
     /// Default Java 26.3 block interaction range, including Creative's modifier.
     pub fn block_reach(&self) -> f64 {
-        if self.mode.is_creative() { 5.0 } else { 4.5 }
+        self.mode.block_reach()
     }
 
     pub fn block_target(&self, world: &crate::world::World) -> Option<(IVec3, IVec3)> {

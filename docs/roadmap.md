@@ -218,6 +218,9 @@ or traced on the baseline above; recheck whether later branch work fixes them.
   incomplete. Relevant sources: [world/forms.rs](../src/world/forms.rs), [crafting.rs](../src/crafting.rs).
 - **ENV-04:** dry sponges do not absorb neighboring water. Wet-sponge smelting
   exists. Relevant sources: [world/mod.rs](../src/world/mod.rs), [world/overworld_blocks.rs](../src/world/overworld_blocks.rs).
+  Follow-up: sponges drain waterlogged live coral and continue the search;
+  wet sponges dry only on Nether placement. Sea pickle draining and dry
+  live-coral states need reserved block states.
 - **PRO-02:** pufferfish is not accepted for brewing Water Breathing.
   Relevant source: [world/brewing.rs](../src/world/brewing.rs).
   Follow-up: normal/splash brewing and interrupted brewing-save regressions
@@ -230,6 +233,11 @@ or traced on the baseline above; recheck whether later branch work fixes them.
   and the full fuel catalogue remain incomplete.
 - **FOO-03:** fishing pools still omit existing tropical fish, pufferfish and
   nautilus shells. Relevant source: [entity/bobber.rs](../src/entity/bobber.rs).
+  Follow-up: fishing rolls Java 26.3's complete `gameplay/fishing` tables
+  (fish in closed water, open-water treasure, jungle bamboo, set_damage,
+  enchant_with_levels 30 over `#on_random_loot`), checked against
+  `fishing.json`. Remaining: Java random sequences, the player luck attribute
+  and ordinary-player acceptance.
 - **GEN-02 / BLD-03:** amethyst geodes do not generate; budding amethyst
   incorrectly drops with Silk Touch. Relevant sources: [world/terrain.rs](../src/world/terrain.rs),
   [world/overworld_blocks.rs](../src/world/overworld_blocks.rs).
@@ -242,6 +250,9 @@ or traced on the baseline above; recheck whether later branch work fixes them.
 - **FOO-02:** bone meal on mangrove leaves does not create propagules;
   one dark-oak sapling grows a tree without the Java 2x2 requirement.
   Relevant sources: [world/overworld_flora.rs](../src/world/overworld_flora.rs), [world/growth.rs](../src/world/growth.rs).
+  Follow-up: dark and pale oak saplings need a 2x2 (reference search order);
+  bone meal on a lone one is not consumed. Sapling `stage` and spruce/jungle
+  mega trees remain open.
 - **MOB-03:** baby turtle growth runs while the turtle is unloaded/distant.
   Relevant sources: [entity/aquatic.rs](../src/entity/aquatic.rs), [entity/mod.rs](../src/entity/mod.rs).
 - **PLY-04:** CLI water buckets attempt creature capture without a fallback
@@ -262,7 +273,9 @@ old "done" labels.
 The assessment branch now implements the named building recipes, sponge water
 absorption, composting metadata, fish weights, budding-amethyst loot, cocoa
 count and sapling/propagule fixes. Reference, integration and process-restart
-checks are recorded in the [content/resource report](verification/2026-10-12-content-and-assets.md).
+checks are recorded in the [content/resource report](verification/2026-10-12-content-and-assets.md)
+and the [content review fixes](verification/2026-10-13-review-content-fixes.md).
+Armor-equip block checks use the Java block interaction range.
 These are implemented slices; ordinary-player acceptance, remaining state/
 waterlogging fidelity and other identified mechanics remain open. The [complete reference fuel inventory](verification/2026-10-12-fuel-inventory.md)
 now checks all 176 currently registered reference fuels and 48 non-fuel
@@ -356,11 +369,16 @@ six-way budding growth. GEN-02 remains **Partial** overall; geodes are
 Implemented-unverified (RNG/noise differ from Java, wall buds are drawn as
 boxes, crack fluid ticks and pre-existing structures are not modelled).
 
-The [full initial M5 baseline](verification/2026-10-13-m5-baseline.md) records
-three runs of each of the five 1080p/256-block scenes. All runs fail the frame-time
-gate; streaming p99 is roughly 98–104 ms. Fixed simulation ticks were retained
-in these runs. Native resolution, profiling, hitch budgets and the broader
-encounter matrix remain open; the performance target is not achieved.
+The [first M5 scene recording](verification/2026-10-13-m5-baseline.md) is
+invalid: streaming run 3 was paused (0 ticks), 11 of 12 non-streaming runs
+sampled an occluded window rather than rendering, and the entity scene lost
+its undead to daylight. The [harness fixes](verification/2026-10-13-review-bench-fixes.md)
+reject paused, tick-short, unpresented and population-drifting runs, isolate
+benchmark input and disable saves. The five-scene 1080p/256-block baseline
+must be re-measured; no valid baseline or frame-time result exists yet. A smoke
+run presented frames at exactly 8.333 ms, so a 120 Hz display may cap on-screen
+frame rate below the 240 FPS target. Native resolution, profiling, hitch budgets
+and the broader encounter matrix remain open; the performance target is not achieved.
 
 All groups are in scope unless an individual requirement is explicitly
 deferred or has an maintainer-approved fidelity exception. IDs are stable tracking

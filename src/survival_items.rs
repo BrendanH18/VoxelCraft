@@ -19,8 +19,10 @@ pub fn equip_armor(
     if !mode.is_survival() || inventory.get(slot).is_none_or(|s| s.item.as_armor().is_none()) {
         return false;
     }
+    // Only a block the player could actually use (Java's block interaction
+    // range) takes the click instead of the armor.
     if world
-        .raycast(player.eye(), player.forward().as_dvec3(), 6.0)
+        .raycast(player.eye(), player.forward().as_dvec3(), mode.block_reach())
         .and_then(|(p, _)| world.get_block(p))
         .is_some_and(crate::content::interaction::blocks_item_use)
     {

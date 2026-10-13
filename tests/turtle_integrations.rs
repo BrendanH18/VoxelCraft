@@ -131,6 +131,25 @@ fn cli_and_client_rule_equip_the_same_helmet_and_reject_spectators_without_consu
     assert!(cli.execute(Command::Place, &mut world, &mut Entities::new(7), &[]).is_err());
     assert_eq!(cli.inventory, saved);
 }
+/// A usable block only takes the click within Java's block interaction range
+/// (4.5 in Survival); a crafting table farther away lets the helmet equip.
+#[test]
+fn only_a_usable_block_within_block_reach_prevents_equipping() {
+    let mut world = World::new_remote(Arc::new(Generator::new(7)), 2);
+    world.receive_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+    let mut player = voxelcraft::player::Player::new(DVec3::new(4.5, 145., 4.5));
+    (player.yaw, player.pitch) = (0.0, 0.0);
+    let eye = player.eye();
+    for (x, blocked) in [(8, true), (10, false)] {
+        let table = IVec3::new(x, eye.y.floor() as i32, 4);
+        world.set_block(table, Block::CRAFTING_TABLE);
+        let mut inventory = Inventory::default();
+        inventory.slots[0] = Some(Stack::new(Item::TURTLE_HELMET, 1));
+        let equipped = voxelcraft::survival_items::equip_armor(&player, &mut inventory, 0, GameMode::Survival, &world);
+        assert_eq!(equipped, !blocked, "table {} blocks from the eye", x as f64 - eye.x);
+        world.set_block(table, Block::AIR);
+    }
+}
 #[test]
 fn living_creatures_keep_turtle_master_effects_in_their_persistent_formats() {
     for kind in [MobKind::Horse, MobKind::Villager, MobKind::IronGolem] {

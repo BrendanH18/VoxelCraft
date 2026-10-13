@@ -55,8 +55,10 @@ It exercises the actual level/chunk files and save lock, interrupted fuel and
 pufferfish brewing, scheduled composter readiness, new building IDs and hanging
 propagule age, inventory, saddled donkey ownership/storage, a fox's carried
 berries and baby turtle age. The reader completes the interrupted work without
-re-consuming the inputs. It also checks that a second writer cannot lock an
-already-open world. This complements the retained v0.7 lifecycle/LAN tests;
+re-consuming the inputs. While the writer holds the save lock it starts a
+third, separate process that must fail to lock the same world with
+`WouldBlock` (corrected 2026-10-13: the original check locked twice inside
+one process). This complements the retained v0.7 lifecycle/LAN tests;
 it does not establish all old-version migration or cross-machine acceptance.
 
 ## Original resources

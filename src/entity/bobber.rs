@@ -1,18 +1,17 @@
 //! A fishing bobber. It flies like Java's hook (about 1.1 blocks a tick,
 //! 0.03 gravity, 0.92 drag), bobs in water, and bites after 100–600 ticks
 //! minus 100 per Lure level. Rain can shorten that wait; a roof can stretch
-//! it. Reeling during the bite rolls the fish, junk or treasure table.
+//! it. Reeling during the bite rolls Java 26.3's `gameplay/fishing` loot
+//! table ([`crate::content::fishing`]): junk, fish, and treasure in open water.
 //!
 //! The bob itself is a simplified spring, and the hook does not snag mobs.
-//! Fish and treasure pools include every implemented Java 26.3 catch.
-//! Junk and enchanted treasure still have documented parity limits.
 
 use glam::{DVec3, IVec3};
 
 use super::{Ctx, MobWorld, PlayerId, Rng};
-use crate::enchant::{Enchantment, Enchants};
+use crate::content::fishing::{self, Condition, Entry, Loot};
+use crate::enchant::JavaRandom;
 use crate::inventory::Stack;
-use crate::item::Item;
 use crate::world::block::Block;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,6 +36,9 @@ pub struct Bobber {
     nibble: i32,
     pub biting: bool,
     open_water: bool,
+    /// The biome under the hook was a jungle when the fish bit (the junk
+    /// table's bamboo `location_check`).
+    jungle: bool,
     out_of_water: i32,
     lure: i32,
     luck: i32,
@@ -78,6 +80,7 @@ impl Bobber {
             nibble: 0,
             biting: false,
             open_water: true,
+            jungle: false,
             out_of_water: 0,
             lure: i32::from(lure),
             luck: i32::from(luck),
@@ -180,6 +183,7 @@ impl Bobber {
             if self.time_until_hooked <= 0 {
                 self.nibble = 20 + (rng.next_f32() * 21.0) as i32;
                 self.biting = true;
+                self.jungle = world.cave_biome(cell).is_jungle();
             }
         } else if self.time_until_lured > 0 {
             self.time_until_lured -= step;
@@ -203,7 +207,7 @@ impl Bobber {
         let mut xp = 0;
         if self.biting {
             wear = 1;
-            catch = Some(roll_catch(rng, self.luck, self.open_water));
+            catch = roll_catch(rng, self.luck, CatchContext { open_water: self.open_water, jungle: self.jungle });
             xp = 1 + (rng.next_f32() * 6.0) as u32;
         }
         if self.on_ground {
@@ -217,87 +221,74 @@ fn triangle(rng: &mut Rng, mean: f64, scale: f64) -> f64 {
     mean + (f64::from(rng.next_f32()) - f64::from(rng.next_f32())) * scale
 }
 
-/// Java's `base + quality * luck`, never below zero.
-fn weight(base: i32, quality: i32, luck: i32) -> i32 {
-    (base + quality * luck).max(0)
+/// The loot context a reel is rolled in: the conditions the fishing
+/// tables test.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CatchContext {
+    /// `type_specific/fishing_hook` `in_open_water`.
+    pub open_water: bool,
+    /// The hook's biome is jungle, sparse jungle or bamboo jungle.
+    pub jungle: bool,
 }
 
-/// Fish, junk or treasure. Closed water rolls junk only.
-pub fn roll_catch(rng: &mut Rng, luck: i32, open_water: bool) -> Stack {
-    let fish = if open_water { weight(85, -1, luck) } else { 0 };
-    let junk = weight(10, -2, luck);
-    let treasure = if open_water { weight(5, 2, luck) } else { 0 };
-    let total = fish + junk + treasure;
-    let mut roll = if total == 0 { 0 } else { (rng.next_f32() * total as f32) as i32 };
-    if roll < fish {
-        return Stack::new(pick(rng, &crate::content::fishing::FISH), 1);
-    }
-    roll -= fish;
-    if roll < junk || treasure == 0 {
-        return junk_stack(rng);
-    }
-    let item = pick(
-        rng,
-        &[
-            (Item::ENCHANTED_BOOK, 1),
-            (Item::BOW, 1),
-            (Item::FISHING_ROD, 1),
-            (Item::NAME_TAG, 1),
-            (Item::NAUTILUS_SHELL, 1),
-            (Item::SADDLE, 1),
-        ],
-    );
-    Stack { enchants: treasure_enchants(rng, item), ..Stack::new(item, 1) }
-}
-
-fn pick(rng: &mut Rng, table: &[(Item, i32)]) -> Item {
-    let total: i32 = table.iter().map(|(_, w)| w).sum();
-    let mut roll = (rng.next_f32() * total.max(1) as f32) as i32;
-    for &(item, w) in table {
-        if roll < w {
-            return item;
+impl CatchContext {
+    fn allows(self, condition: Condition) -> bool {
+        match condition {
+            Condition::Always => true,
+            Condition::InOpenWater => self.open_water,
+            Condition::JungleBiome => self.jungle,
         }
-        roll -= w;
     }
-    table.last().map_or(Item::STICK, |t| t.0)
 }
 
-fn junk_stack(rng: &mut Rng) -> Stack {
-    let boots = Item::armor(crate::item::ArmorPiece::Boots, crate::item::ArmorMaterial::Leather);
-    let bottle = Item::potion(crate::potion::Potion::WATER);
-    let table = [
-        (Item::LEATHER, 10),
-        (boots, 10),
-        (Item::BONE, 10),
-        (Item::ROTTEN_FLESH, 10),
-        (Item::STRING, 5),
-        (Item::STICK, 5),
-        (Item::BOWL, 10),
-        (Item::FISHING_ROD, 2),
-        (bottle, 10),
-    ];
-    let item = pick(rng, &table);
-    let mut stack = Stack::new(item, 1);
-    if item == Item::FISHING_ROD {
-        stack.damage = (rng.next_f32() * 63.0) as u16;
+/// Java 26.3 `gameplay/fishing` with `luck` (Luck of the Sea): junk, fish or
+/// (in open water) treasure. Closed water keeps junk and fish; only the
+/// treasure entry is conditioned. `None` when every weight is zero.
+pub fn roll_catch(rng: &mut Rng, luck: i32, ctx: CatchContext) -> Option<Stack> {
+    let category = choose(rng, &fishing::CATEGORIES, luck, ctx)?.value;
+    let loot = choose(rng, category.table(), luck, ctx)?.value;
+    Some(loot_stack(rng, &loot))
+}
+
+/// Java's `LootPool.addRandomItem`: eligible entries with a positive
+/// weight; a lone one is taken without a roll, otherwise `nextInt(total)`.
+fn choose<'a, T>(rng: &mut Rng, entries: &'a [Entry<T>], luck: i32, ctx: CatchContext) -> Option<&'a Entry<T>> {
+    let eligible = |e: &&Entry<T>| ctx.allows(e.condition) && e.weight(luck) > 0;
+    let (count, total) = entries.iter().filter(eligible).fold((0, 0), |(n, t), e| (n + 1, t + e.weight(luck)));
+    if count == 0 {
+        return None;
+    }
+    if count == 1 {
+        return entries.iter().find(eligible);
+    }
+    let mut roll = rng.next_int(total as u32) as i32;
+    for entry in entries.iter().filter(eligible) {
+        roll -= entry.weight(luck);
+        if roll < 0 {
+            return Some(entry);
+        }
+    }
+    None
+}
+
+/// An item entry's stack after `set_count`, `set_damage` and
+/// `enchant_with_levels`.
+fn loot_stack(rng: &mut Rng, loot: &Loot) -> Stack {
+    let mut stack = Stack::new(loot.item, loot.count);
+    if let (Some((min, max)), Some(durability)) = (loot.damage, loot.item.durability()) {
+        stack.damage = set_damage(rng.range(min, max), durability);
+    }
+    if let Some(levels) = loot.enchant_levels {
+        let mut source = JavaRandom::new(rng.next_u64() as i64);
+        (stack.item, stack.enchants) = crate::enchant::enchant_with_levels(&mut source, stack.item, levels);
     }
     stack
 }
 
-fn treasure_enchants(rng: &mut Rng, item: Item) -> Enchants {
-    let mut chosen = None;
-    let mut seen = 0u32;
-    for enchantment in Enchantment::ALL {
-        if enchantment.fits(item) && !enchantment.def().curse {
-            seen += 1;
-            if rng.next_f32() < 1.0 / seen as f32 {
-                chosen = Some(enchantment);
-            }
-        }
-    }
-    let Some(enchantment) = chosen else { return Enchants::NONE };
-    let level = 1 + (rng.next_f32() * enchantment.def().max_level as f32) as u8;
-    Enchants::NONE.with(enchantment, level.min(enchantment.def().max_level).max(1))
+/// Java's `SetItemDamageFunction` (not additive): `fraction` is the
+/// durability *remaining*, so damage is `floor((1 - clamp(fraction)) * max)`.
+pub fn set_damage(fraction: f32, durability: u16) -> u16 {
+    ((1.0 - fraction.clamp(0.0, 1.0)) * f32::from(durability)).floor() as u16
 }
 
 /// Java's 5×4×5 open-water column: two water layers under two of air.
@@ -340,8 +331,8 @@ fn open_water<W: MobWorld + ?Sized>(world: &W, origin: IVec3) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::item::Item;
     use crate::physics::{BlockSource, test_util::Grid};
-    use crate::potion::Potion;
     use crate::world::block::Block;
 
     struct Pond {
@@ -442,58 +433,72 @@ mod tests {
     fn all_four_java_fish_are_obtainable_by_reeling() {
         let mut rng = Rng::new(99);
         let mut seen = [false; 4];
+        let ctx = CatchContext { open_water: true, jungle: false };
         for _ in 0..4000 {
-            let catch = roll_catch(&mut rng, 0, true);
-            for (i, (item, _)) in crate::content::fishing::FISH.iter().enumerate() {
-                seen[i] |= catch.item == *item;
+            let catch = roll_catch(&mut rng, 0, ctx).unwrap();
+            for (i, entry) in fishing::FISH.iter().enumerate() {
+                seen[i] |= catch.item == entry.value.item;
             }
         }
         assert!(seen.into_iter().all(|b| b));
     }
 
     #[test]
-    fn closed_water_is_junk_and_luck_favours_treasure() {
-        assert_eq!(weight(85, -1, 3), 82);
-        assert_eq!(weight(10, -2, 3), 4);
-        assert_eq!(weight(5, 2, 3), 11);
+    fn closed_water_still_catches_fish_but_never_treasure() {
         assert_eq!((Item::COD.food(), Item::COOKED_SALMON.food()), (Some((2, 0.4)), Some((6, 9.6))));
         assert_eq!(Item::FISHING_ROD.durability(), Some(64));
-        assert_eq!(crate::enchant::enchantability(Item::FISHING_ROD), 1);
-        assert!(Enchantment::Lure.fits(Item::FISHING_ROD) && Enchantment::LuckOfTheSea.fits(Item::FISHING_ROD));
-        assert!(!Enchantment::Lure.fits(Item::STICK));
-        assert_eq!(Enchantment::ALL[26], Enchantment::VanishingCurse);
-        assert_eq!(Enchantment::ALL[27], Enchantment::FrostWalker);
-        assert_eq!(Enchantment::ALL[28], Enchantment::Lure);
         assert_eq!(crate::world::furnace::smelt(Item::SALMON), Some(Item::COOKED_SALMON));
-
         let mut rng = Rng::new(9);
-        for _ in 0..80 {
-            let stack = roll_catch(&mut rng, 0, false);
-            assert!(
-                matches!(
-                    stack.item,
-                    Item::LEATHER
-                        | Item::BONE
-                        | Item::ROTTEN_FLESH
-                        | Item::STRING
-                        | Item::STICK
-                        | Item::BOWL
-                        | Item::FISHING_ROD
-                ) || stack.item == Item::armor(crate::item::ArmorPiece::Boots, crate::item::ArmorMaterial::Leather)
-                    || stack.item == Item::potion(Potion::WATER),
-                "{}",
-                stack.item.name()
-            );
+        let mut fish = 0;
+        for _ in 0..2000 {
+            let stack = roll_catch(&mut rng, 0, CatchContext::default()).unwrap();
+            assert!(!fishing::TREASURE.iter().any(|e| e.value.item == stack.item && e.value.enchant_levels.is_none()));
+            assert!(stack.enchants.is_empty() && stack.item != Item::ENCHANTED_BOOK, "{}", stack.item.name());
+            fish += usize::from(fishing::FISH.iter().any(|e| e.value.item == stack.item));
         }
-        let mut treasure = 0;
-        let mut rng = Rng::new(3);
-        for _ in 0..400 {
-            let stack = roll_catch(&mut rng, 3, true);
-            if matches!(stack.item, Item::ENCHANTED_BOOK | Item::BOW | Item::FISHING_ROD) && !stack.enchants.is_empty()
-            {
-                treasure += 1;
+        // Java: 85 of 95 weight in closed water.
+        assert!((1700..1880).contains(&fish), "closed-water fish {fish}");
+        // Luck past both junk and fish weights leaves nothing in closed water.
+        assert_eq!(roll_catch(&mut rng, 85, CatchContext::default()), None);
+        assert_eq!(set_damage(0.0, 64), 64);
+        assert_eq!(set_damage(0.9, 64), 6);
+        assert_eq!(set_damage(1.0, 64), 0);
+    }
+
+    #[test]
+    fn a_bite_records_whether_the_hook_is_in_a_jungle() {
+        struct Jungle(Pond);
+        impl BlockSource for Jungle {
+            fn block(&self, p: IVec3) -> Option<Block> {
+                self.0.block(p)
             }
         }
-        assert!((15..100).contains(&treasure), "luck iii treasure rolls: {treasure}");
+        impl MobWorld for Jungle {
+            fn loaded(&self, p: IVec3) -> bool {
+                self.0.loaded(p)
+            }
+            fn surface(&self, x: i32, z: i32) -> Option<i32> {
+                self.0.surface(x, z)
+            }
+            fn exposed(&self, p: IVec3) -> bool {
+                self.0.exposed(p)
+            }
+            fn biome(&self, _: i32, _: i32) -> crate::world::terrain::Biome {
+                crate::world::terrain::Biome::BambooJungle
+            }
+        }
+        for (jungle, expected) in [(false, false), (true, true)] {
+            let mut rng = Rng::new(5);
+            let mut bobber = Bobber::cast(PlayerId::HOST, DVec3::new(0.5, 1.2, 0.5), DVec3::Y, 0, 0, &mut rng);
+            bobber.state = State::Bobbing;
+            bobber.time_until_hooked = 1;
+            if jungle {
+                bobber.tick_bite(&Jungle(pond()), IVec3::new(0, 1, 0), &mut rng);
+            } else {
+                bobber.tick_bite(&pond(), IVec3::new(0, 1, 0), &mut rng);
+            }
+            assert!(bobber.biting);
+            assert_eq!(bobber.jungle, expected);
+        }
     }
 }

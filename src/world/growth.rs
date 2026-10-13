@@ -30,6 +30,12 @@ const WART_GROWTH: u64 = 10;
 /// One in this many random ticks grows a sapling into a tree.
 const SAPLING_GROWTH: u64 = 7;
 
+/// Java 26.3 `TreeGrower.DARK_OAK` and `PALE_OAK` have only a 2x2 (mega)
+/// feature, so a lone sapling of either can never grow.
+fn needs_two_by_two(sapling: Block) -> bool {
+    sapling == super::overworld_blocks::DARK_OAK_SAPLING || sapling == super::overworld_blocks::PALE_OAK_SAPLING
+}
+
 impl World {
     pub(super) fn roll(&mut self) -> u64 {
         splitmix64(&mut self.rng)
@@ -343,13 +349,8 @@ impl World {
     /// Leaves only fill air, like world generation. Returns whether it grew.
     pub fn grow_tree(&mut self, mut p: IVec3) -> bool {
         let Some(sapling) = self.get_block(p) else { return false };
-        if sapling == super::overworld_blocks::DARK_OAK_SAPLING {
-            let corner = [-1, 0].into_iter().flat_map(|x| [-1, 0].map(move |z| p + IVec3::new(x, 0, z))).find(|&q| {
-                [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z]
-                    .into_iter()
-                    .all(|d| self.get_block(q + d) == Some(sapling))
-            });
-            let Some(corner) = corner else { return false };
+        if needs_two_by_two(sapling) {
+            let Some(corner) = self.two_by_two_corner(p, sapling) else { return false };
             p = corner;
         }
         let v = self.roll() as u32;
@@ -378,6 +379,17 @@ impl World {
         true
     }
 
+    /// Java's `TreeGrower.findTwoByTwoSaplingPos`: the north-west corner of
+    /// the first complete 2x2 of `sapling` containing `p`, trying x and then
+    /// z offsets from 0 down to -1.
+    fn two_by_two_corner(&self, p: IVec3, sapling: Block) -> Option<IVec3> {
+        [0, -1].into_iter().flat_map(|x| [0, -1].map(move |z| p + IVec3::new(x, 0, z))).find(|&q| {
+            [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z]
+                .into_iter()
+                .all(|d| self.get_block(q + d) == Some(sapling))
+        })
+    }
+
     /// Bone meal on the block at `p`: crops grow 2-5 stages, saplings have a
     /// 45% chance to grow, and grass sprouts tall grass and flowers around.
     /// Returns whether the bone meal was used.
@@ -396,7 +408,12 @@ impl World {
                 self.edit(p, Block::crop(crop, stage), true);
                 true
             }
+            // Java's `SaplingBlock.isValidBonemealTarget` is `TreeGrower.canGrow`:
+            // a dark or pale oak sapling outside a 2x2 keeps the bone meal.
             b if b.is_sapling() => {
+                if needs_two_by_two(b) && self.two_by_two_corner(p, b).is_none() {
+                    return false;
+                }
                 if self.roll() % 100 < 45 {
                     self.grow_tree(p);
                 }

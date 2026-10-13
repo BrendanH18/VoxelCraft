@@ -77,8 +77,8 @@ fn cocoa_is_three_when_ripe_and_budding_amethyst_never_drops() {
 #[test]
 fn fish_weights_include_tropical_and_pufferfish() {
     for (actual, expected) in voxelcraft::content::fishing::FISH.iter().zip(fixture()["fish"].as_array().unwrap()) {
-        assert_eq!(actual.0, reference_item(expected["item"].as_str().unwrap()));
-        assert_eq!(actual.1, expected["weight"].as_i64().unwrap() as i32);
+        assert_eq!(actual.value.item, reference_item(expected["item"].as_str().unwrap()));
+        assert_eq!(actual.weight, expected["weight"].as_i64().unwrap() as i32);
     }
 }
 #[test]
@@ -113,6 +113,44 @@ fn sponge_absorbs_connected_water_six_steps_and_respects_walls_and_limit() {
     let mut nether = world(Dimension::Nether);
     nether.set_block(P, ob::WET_SPONGE);
     assert_eq!(nether.get_block(P), Some(ob::SPONGE));
+}
+/// Java 26.3 `SpongeBlock.removeWaterBreadthFirstSearch` tries
+/// `BucketPickup.pickupBlock` first: a waterlogged block loses its water,
+/// counts toward the 64 and the search continues through it.
+#[test]
+fn sponge_drains_waterlogged_coral_and_continues_through_it() {
+    let mut w = world(Dimension::Overworld);
+    let fan = ob::coral(2, 0, false);
+    let plant = ob::coral(1, 3, false);
+    w.set_block(P + IVec3::X, Block::WATER);
+    w.set_block(P + IVec3::X * 2, fan);
+    w.set_block(P + IVec3::X * 3, plant);
+    w.set_block(P + IVec3::X * 4, Block::WATER);
+    w.set_block(P, ob::SPONGE);
+    assert_eq!(w.get_block(P), Some(ob::WET_SPONGE));
+    assert_eq!(w.get_block(P + IVec3::X), Some(Block::AIR));
+    // No dry live-coral state exists, so drained coral takes Java's eventual dead form.
+    assert_eq!(w.get_block(P + IVec3::X * 2), Some(ob::coral(2, 0, true)));
+    assert_eq!(w.get_block(P + IVec3::X * 3), Some(ob::coral(1, 3, true)));
+    assert_eq!(w.get_block(P + IVec3::X * 4), Some(Block::AIR), "the search continues past waterlogged blocks");
+    assert!(w.drops.is_empty(), "drained coral is not broken");
+}
+/// `WetSpongeBlock.onPlace` dries a wet sponge only when it is placed where
+/// water evaporates; neighbour changes do not.
+#[test]
+fn nether_wet_sponge_dries_only_when_placed() {
+    let generator = Generator::for_dimension(7, Dimension::Nether);
+    let mut w = World::new_remote(Arc::new(generator), 2);
+    w.receive_chunk(IVec3::new(0, 3, 0), Arc::new(ChunkData::Uniform(ob::WET_SPONGE)));
+    w.receive_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+    let top = IVec3::new(12, 127, 12);
+    assert_eq!(w.get_block(top), Some(ob::WET_SPONGE));
+    w.set_block(top + IVec3::Y, Block::STONE);
+    w.set_block(top + IVec3::Y, Block::AIR);
+    assert_eq!(w.get_block(top), Some(ob::WET_SPONGE), "a neighbour change does not dry it");
+    w.set_block(top + IVec3::Y, ob::WET_SPONGE);
+    assert_eq!(w.get_block(top + IVec3::Y), Some(ob::SPONGE), "placing one dries it");
+    assert_eq!(w.get_block(top), Some(ob::WET_SPONGE));
 }
 #[test]
 fn dry_sponge_responds_to_water_placed_after_it() {
@@ -155,4 +193,41 @@ fn dark_oak_requires_four_saplings_and_mangrove_propagules_mature_under_leaves()
     w.set_block(P + IVec3::Y, Block::AIR);
     assert_eq!(w.get_block(P), Some(Block::AIR));
     assert_eq!(w.drops, vec![(P, Stack::new(ob::MANGROVE_PROPAGULE, 1))]);
+}
+/// Java 26.3 `TreeGrower.PALE_OAK` has only `PALE_OAK_BONEMEAL` (a 2x2 tree);
+/// `SaplingBlock.isValidBonemealTarget` uses `TreeGrower.canGrow`, and
+/// `findTwoByTwoSaplingPos` tries x then z offsets from 0 down to -1.
+#[test]
+fn pale_and_dark_oak_need_a_two_by_two_and_lone_ones_keep_bone_meal() {
+    for sapling in [ob::DARK_OAK_SAPLING, ob::PALE_OAK_SAPLING] {
+        let mut w = world(Dimension::Overworld);
+        for x in -1..=2 {
+            for z in -1..=2 {
+                w.set_block(P + IVec3::new(x, -1, z), Block::DIRT);
+            }
+        }
+        w.set_block(P, sapling);
+        for _ in 0..64 {
+            assert!(!w.apply_bone_meal(P), "a lone sapling is not a bone-meal target");
+            assert!(!w.grow_tree(P));
+        }
+        assert_eq!(w.get_block(P), Some(sapling));
+        // A 3x3 of saplings: the corner at offset (0, 0) wins over (-1, -1).
+        for x in -1..=1 {
+            for z in -1..=1 {
+                w.set_block(P + IVec3::new(x, 0, z), sapling);
+            }
+        }
+        assert!(w.grow_tree(P));
+        for d in [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z] {
+            assert!(w.get_block(P + d).unwrap().is_log(), "{d}");
+        }
+        for d in [IVec3::new(-1, 0, -1), IVec3::new(-1, 0, 0), IVec3::new(0, 0, -1), IVec3::new(-1, 0, 1)] {
+            assert_eq!(w.get_block(P + d), Some(sapling), "{d}");
+        }
+    }
+    let mut w = world(Dimension::Overworld);
+    w.set_block(P - IVec3::Y, Block::DIRT);
+    w.set_block(P, Block::OAK_SAPLING);
+    assert!(w.apply_bone_meal(P), "a lone oak sapling consumes bone meal");
 }

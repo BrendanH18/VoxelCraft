@@ -59,6 +59,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Amethyst geodes](verification/2026-10-13-amethyst-geodes.md):
   Java 26.3 geode feature parameters, wall bud states 2400–2415, layout/bud/
   chunk-order tests, benchmark and remaining differences.
+- [Content review fixes](verification/2026-10-13-review-content-fixes.md):
+  dark/pale oak 2x2 growth, complete reference fishing loot, sponge draining,
+  armor reach and separate-process lock evidence; remaining differences.
 - [M5 scene baseline](verification/2026-10-13-m5-baseline.md):
   first recording of all five initial scenes and its raw frame samples,
   corrected as invalid (paused, occluded-window and population-loss runs);
