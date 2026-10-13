@@ -54,7 +54,7 @@ acceptance pass; the original branch and uncommitted patch remain preserved.
 
 ## STR-01 — Reference fixtures and performance scenes
 
-**Status:** Reference item/building/plant fixtures, reproduction tools and process-restart checks implemented; the initial five live benchmark scenes are implemented and smoke-tested. Full-length/native baselines and the broader reference inventory remain in progress.
+**Status:** Reference item/building/plant fixtures, reproduction tools and process-restart checks implemented; all five initial live scenes have a full three-run M5 1080p baseline, which fails the frame-time gate ([evidence](verification/2026-10-13-m5-baseline.md)). Native baselines and the broader reference inventory remain in progress.
 **Roadmap:** M0; PLY-01, GEN-07, UX-04/05; performance acceptance.
 
 The [lighting/spawning fixtures and restart report](verification/2026-10-13-lighting-spawning.md)

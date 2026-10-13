@@ -312,6 +312,12 @@ attempts, cave/torch checks and reference clock/weather darkening. ENV-05 and
 MOB-01 remain **Partial**: shape occlusion, growth integration, spawn caps/ranges,
 structure overrides and ordinary player/performance acceptance are still open.
 
+The [full initial M5 baseline](verification/2026-10-13-m5-baseline.md) records
+three runs of each of the five 1080p/256-block scenes. All runs fail the frame-time
+gate; streaming p99 is roughly 98–104 ms. Fixed simulation ticks were retained
+in these runs. Native resolution, profiling, hitch budgets and the broader
+encounter matrix remain open; the performance target is not achieved.
+
 All groups are in scope unless an individual requirement is explicitly
 deferred or has an maintainer-approved fidelity exception. IDs are stable tracking
 keys, not release versions or block/item ID allocations.
