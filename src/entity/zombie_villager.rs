@@ -59,19 +59,24 @@ impl Entities {
             return;
         }
         if self.rng.chance(0.05) {
-            let id = self.next_villager_id;
-            self.next_villager_id = self.next_villager_id.saturating_add(1);
-            let seed = self.rng.next_int(u32::MAX) as u64;
-            let prof = Profession::ALL[1 + self.rng.next_int(14) as usize];
-            let mob = self.mobs.last_mut().unwrap();
-            if mob.baby {
-                mob.age = -24000;
-            }
-            mob.kind = MobKind::ZombieVillager;
-            let mut v = villager::Villager::new(id, seed);
-            v.set_profession(prof);
-            mob.villager = Some(Box::new(v));
+            self.make_zombie_villager();
         }
+    }
+
+    /// Turn the zombie just spawned into a zombie villager with a random profession.
+    pub(super) fn make_zombie_villager(&mut self) {
+        let id = self.next_villager_id;
+        self.next_villager_id = self.next_villager_id.saturating_add(1);
+        let seed = self.rng.next_int(u32::MAX) as u64;
+        let prof = Profession::ALL[1 + self.rng.next_int(14) as usize];
+        let Some(mob) = self.mobs.last_mut() else { return };
+        if mob.baby {
+            mob.age = -24000;
+        }
+        mob.kind = MobKind::ZombieVillager;
+        let mut v = villager::Villager::new(id, seed);
+        v.set_profession(prof);
+        mob.villager = Some(Box::new(v));
     }
 }
 

@@ -1157,6 +1157,7 @@ mod tests {
         }
         let w = world();
         let ctx = super::super::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players: vec![super::super::Target::new(PlayerId::HOST, DVec3::new(0., 140., 0.), false)],
             daylight: 1.,
             spawning: false,

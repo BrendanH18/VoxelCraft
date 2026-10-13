@@ -85,6 +85,12 @@ impl Dimension {
         self == Dimension::Overworld
     }
 
+    /// Java's dimension `has_skylight` flag is separate from weather/daylight.
+    /// The End has a skylight layer even though its visual sky has no sun.
+    pub const fn has_skylight(self) -> bool {
+        !matches!(self, Dimension::Nether)
+    }
+
     /// Lowest block y. Java's Overworld runs from -64; the Nether and the
     /// End start at 0.
     pub const fn min_y(self) -> i32 {

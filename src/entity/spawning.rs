@@ -7,6 +7,13 @@ impl Entities {
         ctx: &Ctx,
         difficulty: crate::simulation::difficulty::Difficulty,
     ) {
+        // Overworld ground monsters follow Java's per-chunk cycle on real
+        // light, caves included (see `monster_spawns`).
+        let java_monsters =
+            ctx.dimension == Dimension::Overworld && difficulty != crate::simulation::difficulty::Difficulty::Peaceful;
+        if java_monsters {
+            self.overworld_monsters(world, ctx);
+        }
         for center in ctx.players.iter().map(|t| t.pos) {
             for kind in MobKind::ALL {
                 let cap = kind.spawn_cap(ctx.dimension);
@@ -15,6 +22,7 @@ impl Entities {
                 if (difficulty == crate::simulation::difficulty::Difficulty::Peaceful && kind.is_hostile())
                     || self.count_near(kind, center) >= cap
                     || (nether && nether_mob(kind).is_none())
+                    || (ctx.dimension == Dimension::Overworld && monster_spawns::cycle_kind(kind))
                     || (!nether
                         && (!kind.spawns_in(ctx.dimension) || !self.rng.chance(kind.spawn_chance(ctx.dimension))))
                 {
@@ -46,7 +54,9 @@ impl Entities {
                         aquatic::spawn_spot(world, kind, x, z, center.y as i32, &mut self.rng)
                     }
                     Dimension::Overworld if kind == MobKind::Drowned => self.drowned_spot(world, x, z, ctx.daylight),
-                    Dimension::Overworld if kind == MobKind::Slime => self.slime_spot(world, x, z, ctx.daylight),
+                    Dimension::Overworld if kind == MobKind::Slime => {
+                        self.slime_spot(world, x, z, ctx.spawn_light.sky_darken)
+                    }
                     Dimension::Overworld => spawn_spot(world, kind, x, z, ctx.daylight),
                     Dimension::Nether if kind == MobKind::Strider => nether::lava_spot(world, x, z),
                     Dimension::Nether => cavern_spot(world, kind, x, z, self.rng.range(40.0, 118.0) as i32),
@@ -124,18 +134,21 @@ impl Entities {
         (dark && wet(0) && wet(1)).then(|| DVec3::new(x as f64 + 0.5, y as f64, z as f64 + 0.5))
     }
 
+    /// Swamp slimes need Java's `getMaxLocalRawBrightness` (darkened sky or
+    /// block light) at most a roll of 0..=7; slime chunks spawn below y 40.
     pub(super) fn slime_spot<W: MobWorld + ?Sized>(
         &mut self,
         world: &W,
         x: i32,
         z: i32,
-        daylight: f32,
+        sky_darken: u8,
     ) -> Option<DVec3> {
         if world.biome(x, z).is_swamp() && self.rng.chance(0.5 * self.moon_brightness) {
             let pos = spawn_spot(world, MobKind::Slime, x, z, 0.0)?;
             let y = pos.y as i32;
-            let raw = (daylight * 15.0) as u8;
-            let light = world.block_light(pos.floor().as_ivec3()).max(raw);
+            let cell = pos.floor().as_ivec3();
+            let sky = world.sky_light_level(cell)?;
+            let light = sky.saturating_sub(sky_darken).max(world.block_light(cell));
             if y > 50 && y < 70 && light <= (self.rng.next_f32() * 8.0) as u8 {
                 return Some(pos);
             }

@@ -314,6 +314,7 @@ mod tests {
         let mut world = Grid::flat(10);
         let at = DVec3::new(6.5, 10.0, 0.5);
         let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, at, true)],
             daylight: 0.0,
             spawning: false,

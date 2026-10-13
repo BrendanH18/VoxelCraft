@@ -57,6 +57,9 @@ acceptance pass; the original branch and uncommitted patch remain preserved.
 **Status:** Reference item/building/plant fixtures, reproduction tools and process-restart checks implemented; the initial five live benchmark scenes are implemented and smoke-tested. Full-length/native baselines and the broader reference inventory remain in progress.
 **Roadmap:** M0; PLY-01, GEN-07, UX-04/05; performance acceptance.
 
+The [lighting/spawning fixtures and restart report](verification/2026-10-13-lighting-spawning.md)
+adds independently reproduced cave/torch/border scenes and day/weather cases.
+
 Extend existing headless integration tests rather than replacing them. Add
 `tests/fixtures/java/<reference-version>/` for expected behavior and selected
 generation outputs. Every fixture records source/provenance, reference version,
@@ -156,6 +159,11 @@ measurements cover the change. Asset provenance is reviewable.
 
 **Status:** Focused command parsing/execution, entity lifecycle/spawning and application startup/save/tick/action modules implemented. Desktop/headless checks pass. Workspace evaluation retains the existing library/client feature boundary; shared action/session extraction continues under STR-03. **Roadmap:** supports M1–M7; PLY-04, UX-04/05.
 **Dependency:** relevant behavior coverage; session extraction informs boundaries.
+
+The [lighting/spawning integration](verification/2026-10-13-lighting-spawning.md)
+separates gameplay brightness inputs from visual daylight and extends the focused
+entity cycle. Existing shape/cap/clock differences and player/performance
+acceptance remain open.
 
 Separate command parsing from execution in `src/agent.rs`, application
 coordination from gameplay rules in `src/app/mod.rs`, and entity lifecycle

@@ -107,6 +107,9 @@ pub struct MeshData {
     /// Packed reference light for checking simulation/mesh agreement.
     #[cfg(test)]
     pub(crate) block_light: Option<crate::world::lighting::BlockLight>,
+    /// The mesh's independently flooded skylight, packed the same way.
+    #[cfg(test)]
+    pub(crate) sky_light: Option<crate::world::lighting::BlockLight>,
 }
 
 impl MeshData {
@@ -184,15 +187,15 @@ impl Region {
         }
     }
 
-    /// The centre chunk's block light, if any of it is lit.
+    /// The centre chunk's levels of one light layer, if any of it is lit.
     #[cfg(test)]
-    fn centre_block_light(&self) -> Option<crate::world::lighting::BlockLight> {
+    fn centre_light(light: &[u8]) -> Option<crate::world::lighting::BlockLight> {
         let mut out = Box::new([0u8; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE / 2]);
         let mut any = 0;
         for y in 0..CHUNK_SIZE {
             for z in 0..CHUNK_SIZE {
                 let row = ridx(MARGIN, y + MARGIN, z + MARGIN);
-                let src = &self.block_light[row..row + CHUNK_SIZE];
+                let src = &light[row..row + CHUNK_SIZE];
                 let dst = (z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE) / 2;
                 for (o, pair) in out[dst..dst + CHUNK_SIZE / 2].iter_mut().zip(src.as_chunks::<2>().0) {
                     *o = pair[0] | pair[1] << 4;
@@ -412,7 +415,11 @@ pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
     region.light(&input.heights, input.base_y);
     let mesh = mesh_region(region, &input.foliage);
     #[cfg(test)]
-    let mesh = MeshData { block_light: region.centre_block_light(), ..mesh };
+    let mesh = MeshData {
+        block_light: Region::centre_light(&region.block_light),
+        sky_light: Region::centre_light(&region.sky),
+        ..mesh
+    };
     mesh
 }
 

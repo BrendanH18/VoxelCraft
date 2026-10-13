@@ -49,6 +49,7 @@ fn main() {
         simulation::tick_player(&mut player, &world, &mut vitals, &[None; 4], MoveInput::default(), true);
         simulation::tick_world(&mut world, player.pos);
         let ctx = Ctx {
+            spawn_light: voxelcraft::simulation::lighting::SpawnLight::DAY,
             players: vec![Target::new(PlayerId::HOST, player.pos, false)],
             daylight: 1.0,
             raining: weather.raining,

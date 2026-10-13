@@ -41,8 +41,14 @@ fn run(kinds: &[MobKind], count: usize) -> f64 {
         // A player in gold at the centre: piglins stay calm, the rest give chase.
         let mut player = Target::new(PlayerId::HOST, DVec3::new(0.5, 10.0, 0.5), true);
         player.gold_armor = true;
-        let ctx =
-            Ctx { players: vec![player], daylight: 0.0, spawning: false, raining: false, dimension: Dimension::Nether };
+        let ctx = Ctx {
+            spawn_light: voxelcraft::simulation::lighting::SpawnLight::NIGHT,
+            players: vec![player],
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Nether,
+        };
         let start = Instant::now();
         for _ in 0..400 {
             std::hint::black_box(e.update(0.05, &Flat, &ctx));

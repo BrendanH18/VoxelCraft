@@ -1,0 +1,5584 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "data/minecraft/worldgen/biome/*.json gameplay/natural_mob_spawns",
+    "data/minecraft/dimension_type/{overworld,the_nether,the_end}.json",
+    "data/minecraft/timeline/day.json gameplay/sky_light_level",
+    "data/minecraft/tags/block/prevent_mob_spawning_inside.json",
+    "net.minecraft.world.level.NaturalSpawner",
+    "net.minecraft.world.entity.monster.Monster.isDarkEnoughToSpawn",
+    "net.minecraft.world.entity.SpawnPlacements and SpawnPlacementTypes",
+    "net.minecraft.world.level.block.Blocks isValidSpawn and lightLevel registrations",
+    "net.minecraft.world.level.block.state.BlockBehaviour light dampening and default isValidSpawn",
+    "net.minecraft.world.level.lighting.LightEngine.getOpacity and ChunkSkyLightSources.isEdgeOccluded",
+    "net.minecraft.world.level.Level.updateSkyBrightness, EnvironmentAttributes and WeatherAttributes",
+    "net.minecraft.world.entity.EntityType.isBlockDangerous, Mob.getMaxSpawnClusterSize"
+  ],
+  "light": {
+    "step_cost": "max(1, light dampening of the cell entered)",
+    "sky_sources": "every cell above the highest block with nonzero light dampening is level 15",
+    "dampening": "15 for solid-render blocks, 0 where skylight propagates down (non-full shape, no fluid, glass), otherwise 1",
+    "max_level": 15,
+    "emission": {
+      "torch": 14,
+      "glowstone": 15,
+      "jack_o_lantern": 15,
+      "magma_block": 3,
+      "lit_redstone_lamp": 15
+    }
+  },
+  "spawn_floor": {
+    "default": "top face sturdy and light emission below 14",
+    "always": [
+      "carved_pumpkin",
+      "jack_o_lantern",
+      "mud",
+      "redstone_lamp",
+      "soul_sand"
+    ],
+    "fire_immune": [
+      "magma_block"
+    ],
+    "never": [
+      "acacia_trapdoor",
+      "air",
+      "bamboo_trapdoor",
+      "barrier",
+      "bedrock",
+      "birch_trapdoor",
+      "cherry_trapdoor",
+      "chorus_flower",
+      "crimson_trapdoor",
+      "dark_oak_trapdoor",
+      "glass",
+      "iron_trapdoor",
+      "jungle_trapdoor",
+      "mangrove_trapdoor",
+      "moving_piston",
+      "oak_trapdoor",
+      "pale_oak_trapdoor",
+      "poplar_trapdoor",
+      "scaffolding",
+      "spruce_trapdoor",
+      "tinted_glass",
+      "warped_trapdoor"
+    ],
+    "ocelot_or_parrot": [
+      "cherry_leaves",
+      "leavesProperties()",
+      "pale_oak_leaves"
+    ],
+    "polar_bear": [
+      "frosted_ice",
+      "ice"
+    ]
+  },
+  "dangerous_blocks": [
+    "burning blocks unless fire immune",
+    "wither_rose",
+    "sweet_berry_bush",
+    "cactus",
+    "powder_snow"
+  ],
+  "prevent_mob_spawning_inside": [
+    "#minecraft:rails"
+  ],
+  "monster_light": {
+    "sky_roll": 32,
+    "rule": "fail if sky > nextInt(32); fail if block light > the dimension's limit (when below 15); pass if max(sky - darken, block) <= the dimension's light test sample",
+    "thunder_darken": 10
+  },
+  "sky_darken": {
+    "rule": "int(15 - gameplay/sky_light_level)",
+    "default_level": 15.0,
+    "period_ticks": 24000,
+    "interpolation": "linear float",
+    "day_multiplier_keyframes": [
+      [
+        133,
+        1.0
+      ],
+      [
+        11867,
+        1.0
+      ],
+      [
+        13670,
+        0.26666668
+      ],
+      [
+        22330,
+        0.26666668
+      ]
+    ],
+    "rain_blend": {
+      "toward": 4.0,
+      "alpha": 0.3125
+    },
+    "thunder_blend": {
+      "toward": 4.0,
+      "alpha": 0.52734375
+    },
+    "weather_rule": "lerp(rainLevel - thunderLevel, base, rainModifier(base)); then lerp(thunderLevel, base, thunderModifier(base))",
+    "cases": [
+      {
+        "tick": 0,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 0,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 0,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 6,
+        "monster_darken": 10
+      },
+      {
+        "tick": 0,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 2,
+        "monster_darken": 2
+      },
+      {
+        "tick": 0,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 0,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      },
+      {
+        "tick": 1,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 1,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 1,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 6,
+        "monster_darken": 10
+      },
+      {
+        "tick": 1,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 2,
+        "monster_darken": 2
+      },
+      {
+        "tick": 1,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 1,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      },
+      {
+        "tick": 132,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 132,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 132,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 5,
+        "monster_darken": 10
+      },
+      {
+        "tick": 132,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 1,
+        "monster_darken": 1
+      },
+      {
+        "tick": 132,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 132,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      },
+      {
+        "tick": 133,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 133,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 133,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 5,
+        "monster_darken": 10
+      },
+      {
+        "tick": 133,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 1,
+        "monster_darken": 1
+      },
+      {
+        "tick": 133,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 133,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      },
+      {
+        "tick": 134,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 134,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 134,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 5,
+        "monster_darken": 10
+      },
+      {
+        "tick": 134,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 1,
+        "monster_darken": 1
+      },
+      {
+        "tick": 134,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 134,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      },
+      {
+        "tick": 6000,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 6000,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 6000,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 5,
+        "monster_darken": 10
+      },
+      {
+        "tick": 6000,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 1,
+        "monster_darken": 1
+      },
+      {
+        "tick": 6000,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 6000,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      },
+      {
+        "tick": 11866,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 11866,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 11866,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 5,
+        "monster_darken": 10
+      },
+      {
+        "tick": 11866,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 1,
+        "monster_darken": 1
+      },
+      {
+        "tick": 11866,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 11866,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      },
+      {
+        "tick": 11867,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 11867,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 11867,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 5,
+        "monster_darken": 10
+      },
+      {
+        "tick": 11867,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 1,
+        "monster_darken": 1
+      },
+      {
+        "tick": 11867,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 11867,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      },
+      {
+        "tick": 11868,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 11868,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 11868,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 5,
+        "monster_darken": 10
+      },
+      {
+        "tick": 11868,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 1,
+        "monster_darken": 1
+      },
+      {
+        "tick": 11868,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 11868,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      },
+      {
+        "tick": 12768,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 12768,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 7,
+        "monster_darken": 7
+      },
+      {
+        "tick": 12768,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 8,
+        "monster_darken": 10
+      },
+      {
+        "tick": 12768,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 6,
+        "monster_darken": 6
+      },
+      {
+        "tick": 12768,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 7,
+        "monster_darken": 7
+      },
+      {
+        "tick": 12768,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 7,
+        "monster_darken": 10
+      },
+      {
+        "tick": 13669,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 13669,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 13669,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 13669,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 13669,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 13669,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 13670,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 13670,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 13670,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 11,
+        "monster_darken": 10
+      },
+      {
+        "tick": 13670,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 13670,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 13670,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 11,
+        "monster_darken": 10
+      },
+      {
+        "tick": 18000,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 18000,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 18000,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 11,
+        "monster_darken": 10
+      },
+      {
+        "tick": 18000,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 18000,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 18000,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 11,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22329,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 22329,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 22329,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 11,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22329,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 22329,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 22329,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 11,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22330,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 22330,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 22330,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 11,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22330,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 22330,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 11,
+        "monster_darken": 11
+      },
+      {
+        "tick": 22330,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 11,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22331,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22331,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22331,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22331,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22331,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 22331,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 10,
+        "monster_darken": 10
+      },
+      {
+        "tick": 23231,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 5,
+        "monster_darken": 5
+      },
+      {
+        "tick": 23231,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 7,
+        "monster_darken": 7
+      },
+      {
+        "tick": 23231,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 8,
+        "monster_darken": 10
+      },
+      {
+        "tick": 23231,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 6,
+        "monster_darken": 6
+      },
+      {
+        "tick": 23231,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 7,
+        "monster_darken": 7
+      },
+      {
+        "tick": 23231,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 7,
+        "monster_darken": 10
+      },
+      {
+        "tick": 23999,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 23999,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 23999,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 6,
+        "monster_darken": 10
+      },
+      {
+        "tick": 23999,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 2,
+        "monster_darken": 2
+      },
+      {
+        "tick": 23999,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 23999,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      },
+      {
+        "tick": 24000,
+        "rain": 0.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 0,
+        "monster_darken": 0
+      },
+      {
+        "tick": 24000,
+        "rain": 1.0,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 24000,
+        "rain": 1.0,
+        "thunder": 1.0,
+        "thundering": true,
+        "sky_darken": 6,
+        "monster_darken": 10
+      },
+      {
+        "tick": 24000,
+        "rain": 0.5,
+        "thunder": 0.0,
+        "thundering": false,
+        "sky_darken": 2,
+        "monster_darken": 2
+      },
+      {
+        "tick": 24000,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": false,
+        "sky_darken": 3,
+        "monster_darken": 3
+      },
+      {
+        "tick": 24000,
+        "rain": 0.7,
+        "thunder": 0.35,
+        "thundering": true,
+        "sky_darken": 3,
+        "monster_darken": 10
+      }
+    ]
+  },
+  "dimensions": {
+    "overworld": {
+      "has_skylight": true,
+      "monster_spawn_block_light_limit": 0,
+      "monster_spawn_light_level": [
+        0,
+        7
+      ],
+      "min_y": -64,
+      "height": 384
+    },
+    "the_nether": {
+      "has_skylight": false,
+      "monster_spawn_block_light_limit": 15,
+      "monster_spawn_light_level": [
+        7,
+        7
+      ],
+      "min_y": 0,
+      "height": 256
+    },
+    "the_end": {
+      "has_skylight": true,
+      "monster_spawn_block_light_limit": 0,
+      "monster_spawn_light_level": [
+        15,
+        15
+      ],
+      "min_y": 0,
+      "height": 256
+    }
+  },
+  "natural_spawner": {
+    "start": "x, z uniform in a 16x16 chunk; y uniform from min_y to WORLD_SURFACE + 1; nothing below min_y + 1",
+    "start_conductor_stops": true,
+    "packs": 3,
+    "first_pack_steps": "ceil(nextFloat() * 4)",
+    "step": "x and z += nextInt(6) - nextInt(6)",
+    "min_player_distance_squared": 576.0,
+    "pack_steps_after_choice": "the chosen entry's count",
+    "max_cluster": 4
+  },
+  "spawn_rules": {
+    "zombie": {
+      "placement": "ON_GROUND",
+      "rule": "Monster.checkMonsterSpawnRules"
+    },
+    "zombie_villager": {
+      "placement": "ON_GROUND",
+      "rule": "Monster.checkMonsterSpawnRules"
+    },
+    "husk": {
+      "placement": "ON_GROUND",
+      "rule": "Monster.checkSurfaceMonstersSpawnRules"
+    },
+    "skeleton": {
+      "placement": "ON_GROUND",
+      "rule": "Monster.checkMonsterSpawnRules"
+    },
+    "creeper": {
+      "placement": "ON_GROUND",
+      "rule": "Monster.checkMonsterSpawnRules"
+    },
+    "spider": {
+      "placement": "ON_GROUND",
+      "rule": "Monster.checkMonsterSpawnRules"
+    },
+    "enderman": {
+      "placement": "ON_GROUND",
+      "rule": "Monster.checkMonsterSpawnRules"
+    },
+    "witch": {
+      "placement": "ON_GROUND",
+      "rule": "Monster.checkMonsterSpawnRules"
+    },
+    "slime": {
+      "placement": "ON_GROUND",
+      "rule": "Slime.checkSlimeSpawnRules"
+    },
+    "drowned": {
+      "placement": "IN_WATER",
+      "rule": "Drowned.checkDrownedSpawnRules"
+    }
+  },
+  "monster_spawns": {
+    "badlands": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "bamboo_jungle": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "ocelot",
+        "weight": 2,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "basalt_deltas": [
+      {
+        "type": "ghast",
+        "weight": 40,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "magma_cube",
+        "weight": 100,
+        "min": 2,
+        "max": 5
+      }
+    ],
+    "beach": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "birch_forest": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "cherry_grove": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "cold_ocean": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "crimson_forest": [
+      {
+        "type": "zombified_piglin",
+        "weight": 1,
+        "min": 2,
+        "max": 4
+      },
+      {
+        "type": "hoglin",
+        "weight": 9,
+        "min": 3,
+        "max": 4
+      },
+      {
+        "type": "piglin",
+        "weight": 5,
+        "min": 3,
+        "max": 4
+      }
+    ],
+    "dappled_forest": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "dark_forest": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "deep_cold_ocean": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "deep_dark": [],
+    "deep_frozen_ocean": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "deep_lukewarm_ocean": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "deep_ocean": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "desert": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 19,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 1,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 50,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "husk",
+        "weight": 80,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "parched",
+        "weight": 50,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "dripstone_caves": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "end_barrens": [
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "end_highlands": [
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "end_midlands": [
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "eroded_badlands": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "flower_forest": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "forest": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "frozen_ocean": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "frozen_peaks": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "frozen_river": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 1,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "grove": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "ice_spikes": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 20,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "stray",
+        "weight": 80,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "jagged_peaks": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "jungle": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "ocelot",
+        "weight": 2,
+        "min": 1,
+        "max": 3
+      }
+    ],
+    "lukewarm_ocean": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "lush_caves": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "mangrove_swamp": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 70,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "slime",
+        "weight": 1,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "bogged",
+        "weight": 30,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "meadow": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "mushroom_fields": [],
+    "nether_wastes": [
+      {
+        "type": "ghast",
+        "weight": 50,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombified_piglin",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "magma_cube",
+        "weight": 2,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 1,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "piglin",
+        "weight": 15,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "ocean": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "old_growth_birch_forest": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "old_growth_pine_taiga": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 25,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "old_growth_spruce_taiga": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "pale_garden": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "plains": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 90,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "zombie_horse",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "river": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "drowned",
+        "weight": 100,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "savanna": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 90,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "zombie_horse",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "savanna_plateau": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 90,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "zombie_horse",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "small_end_islands": [
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "snowy_beach": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "snowy_plains": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 90,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "zombie_horse",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 20,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "stray",
+        "weight": 80,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "snowy_slopes": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "snowy_taiga": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "soul_sand_valley": [
+      {
+        "type": "skeleton",
+        "weight": 20,
+        "min": 5,
+        "max": 5
+      },
+      {
+        "type": "ghast",
+        "weight": 50,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 1,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "sparse_jungle": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "stony_peaks": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "stony_shore": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "sulfur_caves": [
+      {
+        "type": "sulfur_cube",
+        "weight": 100,
+        "min": 2,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 50,
+        "min": 2,
+        "max": 2
+      },
+      {
+        "type": "skeleton",
+        "weight": 50,
+        "min": 2,
+        "max": 2
+      },
+      {
+        "type": "slime",
+        "weight": 25,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "cave_spider",
+        "weight": 20,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "zombie",
+        "weight": 50,
+        "min": 2,
+        "max": 2
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "witch",
+        "weight": 1,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "sunflower_plains": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 90,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "zombie_horse",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "swamp": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 70,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "slime",
+        "weight": 1,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "bogged",
+        "weight": 30,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "taiga": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "the_end": [
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "the_void": [],
+    "warm_ocean": [
+      {
+        "type": "drowned",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "warped_forest": [
+      {
+        "type": "enderman",
+        "weight": 1,
+        "min": 4,
+        "max": 4
+      }
+    ],
+    "windswept_forest": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "windswept_gravelly_hills": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "windswept_hills": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "windswept_savanna": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 90,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "zombie_horse",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "wooded_badlands": [
+      {
+        "type": "spider",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie",
+        "weight": 95,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "zombie_villager",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "type": "skeleton",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "creeper",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "slime",
+        "weight": 100,
+        "min": 4,
+        "max": 4
+      },
+      {
+        "type": "enderman",
+        "weight": 10,
+        "min": 1,
+        "max": 4
+      },
+      {
+        "type": "witch",
+        "weight": 5,
+        "min": 1,
+        "max": 1
+      }
+    ]
+  },
+  "model": "Scenes are original. Each step adds its edits to a flat world (stone up to y = 63, air above) and is reproduced from scratch: light by fixed-point relaxation, spawn odds out of 256 for a zombie with Java's ON_GROUND checks and isDarkEnoughToSpawn at sky darkening 11 (clear night) and 0 (noon).",
+  "scenes": [
+    {
+      "name": "sealed_cave",
+      "steps": [
+        {
+          "edits": [
+            [
+              "air",
+              [
+                8,
+                30,
+                8
+              ],
+              [
+                16,
+                33,
+                16
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                9,
+                30,
+                9
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                12,
+                30,
+                12
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                16,
+                30,
+                16
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                12,
+                33,
+                12
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "torch_suppression_and_removal",
+      "steps": [
+        {
+          "edits": [
+            [
+              "air",
+              [
+                8,
+                30,
+                8
+              ],
+              [
+                16,
+                33,
+                16
+              ]
+            ],
+            [
+              "air",
+              [
+                17,
+                30,
+                12
+              ],
+              [
+                40,
+                31,
+                12
+              ]
+            ],
+            [
+              "torch",
+              [
+                12,
+                30,
+                12
+              ],
+              [
+                12,
+                30,
+                12
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                9,
+                30,
+                9
+              ],
+              "sky": 0,
+              "block": 8,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                16,
+                30,
+                16
+              ],
+              "sky": 0,
+              "block": 6,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                24,
+                30,
+                12
+              ],
+              "sky": 0,
+              "block": 2,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                25,
+                30,
+                12
+              ],
+              "sky": 0,
+              "block": 1,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                26,
+                30,
+                12
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                27,
+                30,
+                12
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                40,
+                30,
+                12
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            }
+          ]
+        },
+        {
+          "edits": [
+            [
+              "air",
+              [
+                12,
+                30,
+                12
+              ],
+              [
+                12,
+                30,
+                12
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                9,
+                30,
+                9
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                16,
+                30,
+                16
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                25,
+                30,
+                12
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                40,
+                30,
+                12
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sky_shaft_and_side_tunnel",
+      "steps": [
+        {
+          "edits": [
+            [
+              "air",
+              [
+                20,
+                40,
+                16
+              ],
+              [
+                20,
+                63,
+                16
+              ]
+            ],
+            [
+              "air",
+              [
+                21,
+                40,
+                16
+              ],
+              [
+                36,
+                41,
+                16
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                20,
+                40,
+                16
+              ],
+              "sky": 15,
+              "block": 0,
+              "zombie_night_of_256": 68,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                20,
+                55,
+                16
+              ],
+              "sky": 15,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                21,
+                40,
+                16
+              ],
+              "sky": 14,
+              "block": 0,
+              "zombie_night_of_256": 90,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                24,
+                40,
+                16
+              ],
+              "sky": 11,
+              "block": 0,
+              "zombie_night_of_256": 168,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                28,
+                40,
+                16
+              ],
+              "sky": 7,
+              "block": 0,
+              "zombie_night_of_256": 200,
+              "zombie_noon_of_256": 25
+            },
+            {
+              "cell": [
+                31,
+                40,
+                16
+              ],
+              "sky": 4,
+              "block": 0,
+              "zombie_night_of_256": 224,
+              "zombie_noon_of_256": 112
+            },
+            {
+              "cell": [
+                34,
+                40,
+                16
+              ],
+              "sky": 1,
+              "block": 0,
+              "zombie_night_of_256": 248,
+              "zombie_noon_of_256": 217
+            },
+            {
+              "cell": [
+                36,
+                40,
+                16
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            }
+          ]
+        },
+        {
+          "edits": [
+            [
+              "glass",
+              [
+                20,
+                63,
+                16
+              ],
+              [
+                20,
+                63,
+                16
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                20,
+                40,
+                16
+              ],
+              "sky": 15,
+              "block": 0,
+              "zombie_night_of_256": 68,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                24,
+                40,
+                16
+              ],
+              "sky": 11,
+              "block": 0,
+              "zombie_night_of_256": 168,
+              "zombie_noon_of_256": 0
+            }
+          ]
+        },
+        {
+          "edits": [
+            [
+              "oak_leaves",
+              [
+                20,
+                63,
+                16
+              ],
+              [
+                20,
+                63,
+                16
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                20,
+                64,
+                16
+              ],
+              "sky": 15,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                20,
+                55,
+                16
+              ],
+              "sky": 6,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                20,
+                50,
+                16
+              ],
+              "sky": 1,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                20,
+                49,
+                16
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                24,
+                40,
+                16
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            }
+          ]
+        },
+        {
+          "edits": [
+            [
+              "stone",
+              [
+                20,
+                63,
+                16
+              ],
+              [
+                20,
+                63,
+                16
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                20,
+                40,
+                16
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                24,
+                40,
+                16
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                34,
+                40,
+                16
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            }
+          ]
+        },
+        {
+          "edits": [
+            [
+              "air",
+              [
+                20,
+                63,
+                16
+              ],
+              [
+                20,
+                63,
+                16
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                20,
+                40,
+                16
+              ],
+              "sky": 15,
+              "block": 0,
+              "zombie_night_of_256": 68,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                28,
+                40,
+                16
+              ],
+              "sky": 7,
+              "block": 0,
+              "zombie_night_of_256": 200,
+              "zombie_noon_of_256": 25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "overhang",
+      "steps": [
+        {
+          "edits": [
+            [
+              "stone",
+              [
+                14,
+                70,
+                14
+              ],
+              [
+                18,
+                70,
+                18
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                16,
+                64,
+                16
+              ],
+              "sky": 12,
+              "block": 0,
+              "zombie_night_of_256": 140,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                15,
+                64,
+                16
+              ],
+              "sky": 13,
+              "block": 0,
+              "zombie_night_of_256": 114,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                14,
+                64,
+                16
+              ],
+              "sky": 14,
+              "block": 0,
+              "zombie_night_of_256": 90,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                13,
+                64,
+                16
+              ],
+              "sky": 15,
+              "block": 0,
+              "zombie_night_of_256": 68,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                16,
+                69,
+                16
+              ],
+              "sky": 12,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "loaded_border_tunnel",
+      "unload_column": [
+        1,
+        0
+      ],
+      "steps": [
+        {
+          "edits": [
+            [
+              "air",
+              [
+                36,
+                50,
+                16
+              ],
+              [
+                36,
+                63,
+                16
+              ]
+            ],
+            [
+              "air",
+              [
+                20,
+                50,
+                16
+              ],
+              [
+                35,
+                51,
+                16
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                36,
+                50,
+                16
+              ],
+              "sky": 15,
+              "block": 0,
+              "zombie_night_of_256": 68,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                31,
+                50,
+                16
+              ],
+              "sky": 10,
+              "block": 0,
+              "zombie_night_of_256": 176,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                28,
+                50,
+                16
+              ],
+              "sky": 7,
+              "block": 0,
+              "zombie_night_of_256": 200,
+              "zombie_noon_of_256": 25
+            },
+            {
+              "cell": [
+                24,
+                50,
+                16
+              ],
+              "sky": 3,
+              "block": 0,
+              "zombie_night_of_256": 232,
+              "zombie_noon_of_256": 145
+            },
+            {
+              "cell": [
+                21,
+                50,
+                16
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "floors_and_occupied_cells",
+      "steps": [
+        {
+          "edits": [
+            [
+              "air",
+              [
+                4,
+                30,
+                8
+              ],
+              [
+                4,
+                31,
+                8
+              ]
+            ],
+            [
+              "stone",
+              [
+                4,
+                29,
+                8
+              ],
+              [
+                4,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                7,
+                30,
+                8
+              ],
+              [
+                7,
+                31,
+                8
+              ]
+            ],
+            [
+              "glass",
+              [
+                7,
+                29,
+                8
+              ],
+              [
+                7,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                10,
+                30,
+                8
+              ],
+              [
+                10,
+                31,
+                8
+              ]
+            ],
+            [
+              "oak_leaves",
+              [
+                10,
+                29,
+                8
+              ],
+              [
+                10,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                13,
+                30,
+                8
+              ],
+              [
+                13,
+                31,
+                8
+              ]
+            ],
+            [
+              "bedrock",
+              [
+                13,
+                29,
+                8
+              ],
+              [
+                13,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                16,
+                30,
+                8
+              ],
+              [
+                16,
+                31,
+                8
+              ]
+            ],
+            [
+              "ice",
+              [
+                16,
+                29,
+                8
+              ],
+              [
+                16,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                19,
+                30,
+                8
+              ],
+              [
+                19,
+                31,
+                8
+              ]
+            ],
+            [
+              "magma_block",
+              [
+                19,
+                29,
+                8
+              ],
+              [
+                19,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                22,
+                30,
+                8
+              ],
+              [
+                22,
+                31,
+                8
+              ]
+            ],
+            [
+              "soul_sand",
+              [
+                22,
+                29,
+                8
+              ],
+              [
+                22,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                25,
+                30,
+                8
+              ],
+              [
+                25,
+                31,
+                8
+              ]
+            ],
+            [
+              "stone_slab",
+              [
+                25,
+                29,
+                8
+              ],
+              [
+                25,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                28,
+                30,
+                8
+              ],
+              [
+                28,
+                31,
+                8
+              ]
+            ],
+            [
+              "stone_brick_stairs",
+              [
+                28,
+                29,
+                8
+              ],
+              [
+                28,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                31,
+                30,
+                8
+              ],
+              [
+                31,
+                31,
+                8
+              ]
+            ],
+            [
+              "farmland",
+              [
+                31,
+                29,
+                8
+              ],
+              [
+                31,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                34,
+                30,
+                8
+              ],
+              [
+                34,
+                31,
+                8
+              ]
+            ],
+            [
+              "glowstone",
+              [
+                34,
+                29,
+                8
+              ],
+              [
+                34,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                37,
+                30,
+                8
+              ],
+              [
+                37,
+                31,
+                8
+              ]
+            ],
+            [
+              "jack_o_lantern",
+              [
+                37,
+                29,
+                8
+              ],
+              [
+                37,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                40,
+                30,
+                8
+              ],
+              [
+                40,
+                31,
+                8
+              ]
+            ],
+            [
+              "redstone_lamp",
+              [
+                40,
+                29,
+                8
+              ],
+              [
+                40,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                43,
+                30,
+                8
+              ],
+              [
+                43,
+                31,
+                8
+              ]
+            ],
+            [
+              "lit_redstone_lamp",
+              [
+                43,
+                29,
+                8
+              ],
+              [
+                43,
+                29,
+                8
+              ]
+            ],
+            [
+              "air",
+              [
+                4,
+                30,
+                20
+              ],
+              [
+                4,
+                31,
+                20
+              ]
+            ],
+            [
+              "rail",
+              [
+                4,
+                30,
+                20
+              ],
+              [
+                4,
+                30,
+                20
+              ]
+            ],
+            [
+              "air",
+              [
+                4,
+                31,
+                20
+              ],
+              [
+                4,
+                31,
+                20
+              ]
+            ],
+            [
+              "air",
+              [
+                7,
+                30,
+                20
+              ],
+              [
+                7,
+                31,
+                20
+              ]
+            ],
+            [
+              "water",
+              [
+                7,
+                30,
+                20
+              ],
+              [
+                7,
+                30,
+                20
+              ]
+            ],
+            [
+              "air",
+              [
+                7,
+                31,
+                20
+              ],
+              [
+                7,
+                31,
+                20
+              ]
+            ],
+            [
+              "air",
+              [
+                10,
+                30,
+                20
+              ],
+              [
+                10,
+                31,
+                20
+              ]
+            ],
+            [
+              "air",
+              [
+                10,
+                30,
+                20
+              ],
+              [
+                10,
+                30,
+                20
+              ]
+            ],
+            [
+              "water",
+              [
+                10,
+                31,
+                20
+              ],
+              [
+                10,
+                31,
+                20
+              ]
+            ]
+          ],
+          "probes": [
+            {
+              "cell": [
+                4,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                7,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                10,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                13,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                16,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                19,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 2,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                22,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                25,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                28,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                31,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                34,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 14,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                37,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 14,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                40,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 256,
+              "zombie_noon_of_256": 256
+            },
+            {
+              "cell": [
+                43,
+                30,
+                8
+              ],
+              "sky": 0,
+              "block": 14,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                4,
+                30,
+                20
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                7,
+                30,
+                20
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            },
+            {
+              "cell": [
+                10,
+                30,
+                20
+              ],
+              "sky": 0,
+              "block": 0,
+              "zombie_night_of_256": 0,
+              "zombie_noon_of_256": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

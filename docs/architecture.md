@@ -103,11 +103,13 @@ independently, with position interpolation for the camera, mobs, arrows,
 smoke, dropped items, falling blocks and primed TNT. Collision substeps remain
 at most 1/120 second. Offline menus pause the game clock.
 
-Gameplay block light belongs to `World`, with incremental removal and
+Gameplay sky and block light belong to `World`, with incremental removal and
 increase queues. Edits, streaming and fixed world steps resolve it without
 waiting for meshes. Render jobs still compute their own light snapshots;
 their results cannot replace gameplay light. Crops and saplings use this
-light even in headless worlds.
+block light even in headless worlds; their skylight integration remains open.
+Complete column heightmaps seed gameplay skylight, including in the End.
+Uncertain light at incomplete loaded borders is explicitly unknown.
 
 The optional desktop agent host accepts bounded, versioned JSON-lines TCP
 requests. Network workers enqueue commands; the game thread validates and
@@ -120,7 +122,7 @@ agent-only chunks outside the host view stay unmeshed. Named agent profiles
 persist in the root level file. See [the CLI protocol and limitations](agents.md).
 
 Full action extraction and removal of controller/LAN state swapping, independent
-simultaneous dimensions, authoritative skylight and shape-aware light occlusion
+simultaneous dimensions and shape-aware light occlusion
 remain future work. A first desktop LAN slice uses bounded binary-framed TCP,
 authoritative chunk snapshots and the existing hosted-player actions; see [LAN](lan.md). Split-screen is implemented; all views currently share the
 host's biome fog colour.
@@ -146,6 +148,7 @@ src/
     mod.rs           fixed 20 Hz clock, world/player steps, interpolation
     survival.rs      health, hunger, exhaustion, regeneration (unit tested)
     weather.rs       weather state and precipitation queries
+    lighting.rs      reference day/weather brightness supplied to entity rules
   app/
     mod.rs           window, input, fixed game ticks, rendering, damage entry point
     actions.rs       hotbar/mining state and consumption presentation mirror

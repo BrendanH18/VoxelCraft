@@ -385,6 +385,7 @@ mod tests {
 
     fn host_ctx() -> Ctx {
         Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players: vec![super::super::Target::new(PlayerId::HOST, DVec3::new(0.5, 2.0, 0.5), true)],
             daylight: 1.0,
             spawning: false,

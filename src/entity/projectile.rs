@@ -341,6 +341,7 @@ mod tests {
         arrow.pos = from;
         arrow.vel = (to - from) / dt + DVec3::Y * GRAVITY * dt;
         let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players: vec![Target::new(PlayerId::HOST, DVec3::new(50.0, 10.0, 0.0), true)],
             daylight: 1.0,
             spawning: false,
@@ -363,6 +364,7 @@ mod tests {
             let mut mobs =
                 if player { Vec::new() } else { vec![Mob::new(MobKind::Cow, DVec3::new(2.0, 10.0, 0.5), 0.0)] };
             let ctx = Ctx {
+                spawn_light: crate::simulation::lighting::SpawnLight::DAY,
                 players: vec![Target::new(
                     PlayerId::HOST,
                     DVec3::new(if player { 2.0 } else { 50.0 }, 10.0, 0.5),

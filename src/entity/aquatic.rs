@@ -627,6 +627,7 @@ mod tests {
     }
     fn ctx(p: DVec3) -> Ctx {
         Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players: vec![Target::new(PlayerId(7), p, true)],
             daylight: 1.0,
             spawning: false,

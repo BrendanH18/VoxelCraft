@@ -15,7 +15,8 @@ def command(*args):
     return subprocess.check_output(args,cwd=ROOT,text=True).strip()
 
 def source():
-    paths=[ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'build.rs']
+    paths=[ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'build.rs',
+           ROOT/'tests/fixtures/java/26.3/mining.json'] # build.rs embeds this gameplay tag
     for directory in ['src','assets']:
         paths.extend(p for p in (ROOT/directory).rglob('*') if p.is_file())
     digest=hashlib.sha256()

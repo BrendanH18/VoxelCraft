@@ -1466,7 +1466,14 @@ mod tests {
     use crate::world::terrain::Dimension;
 
     fn nether(players: Vec<Target>) -> Ctx {
-        Ctx { players, daylight: 0.0, spawning: false, raining: false, dimension: Dimension::Nether }
+        Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            players,
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Nether,
+        }
     }
 
     fn player(at: DVec3) -> Target {
@@ -1892,7 +1899,12 @@ mod tests {
         e.mobs[0].baby = true;
         run(&mut e, &world, &nether(vec![far]), 20.0);
         assert_eq!(e.mobs[0].kind, MobKind::Piglin, "safe in the Nether");
-        let overworld = Ctx { dimension: Dimension::Overworld, daylight: 0.0, ..nether(vec![far]) };
+        let overworld = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            dimension: Dimension::Overworld,
+            daylight: 0.0,
+            ..nether(vec![far])
+        };
         run(&mut e, &world, &overworld, 14.5);
         assert_eq!(e.mobs[0].kind, MobKind::Piglin);
         let pocket_stack = Stack::new(Item::CLOCK, 1).with_name("Kept clock").unwrap();

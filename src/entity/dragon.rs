@@ -1389,7 +1389,14 @@ mod tests {
     }
 
     fn ctx(players: Vec<Target>) -> Ctx {
-        Ctx { players, daylight: 0.0, spawning: false, raining: false, dimension: Dimension::End }
+        Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            players,
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::End,
+        }
     }
 
     #[test]

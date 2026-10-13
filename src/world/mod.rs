@@ -88,6 +88,9 @@ pub struct ChunkSlot {
     mesh_in_flight: bool,
     /// Authoritative block light; dark chunks allocate no light array.
     block_light: Option<lighting::BlockLight>,
+    /// Authoritative skylight below the column heightmap; cells above it are
+    /// implied sources. Absent until the column is lit, and for dark chunks.
+    sky_light: Option<lighting::BlockLight>,
 }
 
 /// Per chunk-column state: skylight heightmap and how many of its chunks
@@ -99,6 +102,8 @@ struct Column {
     foliage: Option<Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>>,
     /// Snow lines (see `Generator::snow_lines`), worked out with the colours.
     snow: Option<Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>>,
+    /// Gameplay skylight has been seeded from the complete heightmap.
+    sky_lit: bool,
 }
 
 pub struct World {
@@ -129,6 +134,7 @@ pub struct World {
     meshes_enabled: bool,
     remote: bool,
     light_updates: lighting::LightUpdates,
+    sky_updates: lighting::LightUpdates,
     fluids: fluid::FluidState,
     fire: fire::FireState,
     redstone: redstone::RedstoneState,
@@ -239,6 +245,8 @@ impl World {
         if !self.remote || !self.generator.dimension.chunk_rows().contains(&pos.y) {
             return;
         }
+        // Replaced data invalidates the column's heightmap and skylight.
+        self.unlight_sky_column(column_of(pos));
         let version = self.chunks.get(&pos).map_or(0, |s| s.version.wrapping_add(1));
         let in_flight = self.chunks.get(&pos).is_some_and(|s| s.mesh_in_flight);
         let existed = self.chunks.contains_key(&pos);
@@ -251,18 +259,25 @@ impl World {
                 meshed_version: None,
                 mesh_in_flight: in_flight,
                 block_light: None,
+                sky_light: None,
             },
         );
         let key = column_of(pos);
         let col = self.columns.entry(key).or_insert_with(|| {
             self.workers.submit(Job::Foliage(key));
-            Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None, snow: None }
+            Column {
+                heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]),
+                loaded: 0,
+                foliage: None,
+                snow: None,
+                sky_lit: false,
+            }
         });
         if !existed {
             col.loaded += 1;
         }
         col.heights.fill(NO_HEIGHT);
-        if self.generator.dimension.has_sky() {
+        if self.generator.dimension.has_skylight() {
             for (p, s) in &self.chunks {
                 if column_of(*p) == key {
                     let heights = mesh::chunk_heights(&s.data, p.y * CHUNK_SIZE_I);
@@ -273,6 +288,7 @@ impl World {
             }
         }
         self.load_block_light(pos);
+        self.light_sky_column(key);
         // A heightmap change affects every vertical chunk of the neighboring
         // columns; a data change also affects their block-light margins.
         let affected: Vec<_> = self
@@ -317,6 +333,7 @@ impl World {
             meshes_enabled,
             remote: false,
             light_updates: Default::default(),
+            sky_updates: Default::default(),
             fluids: Default::default(),
             fire: Default::default(),
             redstone: Default::default(),
@@ -415,6 +432,7 @@ impl World {
             && self.active_fluids() == 0
             && self.falling.is_empty()
             && self.light_updates.is_empty()
+            && self.sky_updates.is_empty()
     }
 
     pub fn pending_jobs(&self) -> usize {
@@ -605,8 +623,12 @@ impl World {
         }
         self.extinguish_unsupported_fire(p);
 
-        // Keep the column heightmap current.
+        // Keep the column heightmap and skylight current.
+        let old_height = self.raw_height(p);
         let (old_h, new_h) = self.update_height(p, block);
+        if let (Some(before), Some(after)) = (old_height, self.raw_height(p)) {
+            self.sky_block_changed(p, old, block, before, after);
+        }
         if !self.meshes_enabled {
             return true;
         }
@@ -648,9 +670,37 @@ impl World {
         true
     }
 
+    /// A column's raw heightmap entry (`NO_HEIGHT` when clear), if the column exists.
+    fn raw_height(&self, p: IVec3) -> Option<i32> {
+        let col = self.columns.get(&column_of(chunk_of(p)))?;
+        let l = local_of(p);
+        Some(col.heights[(l.x + l.z * CHUNK_SIZE_I) as usize] as i32)
+    }
+
+    /// Java's `WORLD_SURFACE` heightmap: the highest non-air block of a fully
+    /// loaded column, `None` when the column is not loaded or holds only air.
+    pub fn world_surface_height(&self, x: i32, z: i32) -> Option<i32> {
+        if !self.column_loaded(x, z) {
+            return None;
+        }
+        let l = local_of(IVec3::new(x, 0, z));
+        for cy in self.generator.dimension.chunk_rows().rev() {
+            let slot = self.chunks.get(&IVec3::new(x >> chunk::CHUNK_BITS, cy, z >> chunk::CHUNK_BITS))?;
+            if slot.data.uniform() == Some(Block::AIR) {
+                continue;
+            }
+            for ly in (0..CHUNK_SIZE).rev() {
+                if slot.data.get(l.x as usize, ly, l.z as usize) != Block::AIR {
+                    return Some(cy * CHUNK_SIZE_I + ly as i32);
+                }
+            }
+        }
+        None
+    }
+
     /// Updates the heightmap for an edited block; returns (old, new) heights.
     fn update_height(&mut self, p: IVec3, block: Block) -> (i32, i32) {
-        if !self.generator.dimension.has_sky() {
+        if !self.generator.dimension.has_skylight() {
             return (p.y, p.y);
         }
         let key = column_of(chunk_of(p));
@@ -830,21 +880,36 @@ impl World {
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
             workers.submit(Job::Foliage(column_of(pos)));
-            Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None, snow: None }
+            Column {
+                heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]),
+                loaded: 0,
+                foliage: None,
+                snow: None,
+                sky_lit: false,
+            }
         });
         col.loaded += 1;
         // Without a sky (the Nether) every cell counts as open: the
         // dimension's dim, even light is daylight at a fixed low level.
-        if self.generator.dimension.has_sky() {
+        if self.generator.dimension.has_skylight() {
             for (h, new) in col.heights.iter_mut().zip(heights) {
                 *h = (*h).max(new);
             }
         }
         self.chunks.insert(
             pos,
-            ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false, block_light: None },
+            ChunkSlot {
+                data,
+                modified,
+                version: 0,
+                meshed_version: None,
+                mesh_in_flight: false,
+                block_light: None,
+                sky_light: None,
+            },
         );
         self.load_block_light(pos);
+        self.light_sky_column(column_of(pos));
         self.load_redstone_chunk(pos);
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
@@ -854,6 +919,7 @@ impl World {
     /// Unload a present chunk, retaining edited data and queuing removal of its outgoing light.
     /// Only graphical worlds emit a renderer removal message.
     fn remove_chunk(&mut self, pos: IVec3) {
+        self.unlight_sky_column(column_of(pos));
         let slot = self.chunks.remove(&pos).unwrap();
         self.village_pois.retain(|p, _| chunk_of(*p) != pos);
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);

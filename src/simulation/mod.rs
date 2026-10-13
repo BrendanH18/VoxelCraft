@@ -4,6 +4,7 @@
 pub mod difficulty;
 pub mod effects;
 pub mod experience;
+pub mod lighting;
 pub mod survival;
 pub mod weather;
 

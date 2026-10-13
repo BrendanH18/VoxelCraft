@@ -148,7 +148,14 @@ mod tests {
     use crate::world::terrain::Dimension;
 
     fn ctx(players: Vec<Target>) -> Ctx {
-        Ctx { players, daylight: 0.0, spawning: false, raining: false, dimension: Dimension::Nether }
+        Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            players,
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Nether,
+        }
     }
 
     #[test]

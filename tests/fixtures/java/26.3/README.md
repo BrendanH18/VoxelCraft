@@ -114,3 +114,20 @@ cargo test --release --test shared_mining --test process_persistence
 
 This proves the stated rules and scenarios, not full block shapes, tool/effect
 metadata or every Creative restriction. See the [mining evidence](../../../../docs/verification/2026-10-13-shared-mining.md).
+
+## Gameplay lighting and spawning
+
+`lighting_spawning.json` records reference biome lists, dimension rules,
+floor/light checks, clock/weather cases and six independently modelled scene
+families. The extractor checks official data and relevant bytecode forms; the
+fixed-point scene model does not inspect Rust output.
+
+```sh
+python3 tools/extract_java_lighting_spawning_fixtures.py /path/to/server.jar --output target/java-lighting-spawning.json
+diff tests/fixtures/java/26.3/lighting_spawning.json target/java-lighting-spawning.json
+cargo test --release entity::monster_spawns::tests
+cargo test --release --test lighting_persistence
+```
+
+These fixtures do not establish full shaped-block occlusion, category caps,
+structure overrides or the complete roster. See the [lighting/spawning evidence](../../../../docs/verification/2026-10-13-lighting-spawning.md).

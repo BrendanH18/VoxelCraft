@@ -306,6 +306,12 @@ Mining Fatigue and ice support, and interruption/process-restart evidence.
 PLY-04 and BLD-03 remain **Partial**; other actions, full shape/tool/timing parity
 and player/performance acceptance remain open.
 
+The [lighting and spawning follow-up](verification/2026-10-13-lighting-spawning.md)
+implements propagated gameplay skylight, End skylight, full-height ground-monster
+attempts, cave/torch checks and reference clock/weather darkening. ENV-05 and
+MOB-01 remain **Partial**: shape occlusion, growth integration, spawn caps/ranges,
+structure overrides and ordinary player/performance acceptance are still open.
+
 All groups are in scope unless an individual requirement is explicitly
 deferred or has an maintainer-approved fidelity exception. IDs are stable tracking
 keys, not release versions or block/item ID allocations.

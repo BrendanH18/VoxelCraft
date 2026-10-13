@@ -233,6 +233,7 @@ mod tests {
 
     fn ctx(players: Vec<Target>) -> Ctx {
         Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players,
             daylight: 1.0,
             spawning: false,

@@ -1876,6 +1876,7 @@ mod tests {
                 a.execute(Command::Chest(true, 0), &mut world, &mut entities, &[]).unwrap();
             }
             let ctx = Ctx {
+                spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
                 players: vec![Target { gold_armor: true, ..Target::new(a.id, a.player.pos, true) }],
                 spawning: false,
                 dimension: Dimension::Nether,

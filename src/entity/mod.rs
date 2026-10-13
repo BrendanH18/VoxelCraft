@@ -30,6 +30,7 @@ pub mod minecart;
 mod mob;
 mod mob_index;
 pub mod model;
+mod monster_spawns;
 pub mod mounts;
 pub mod nether;
 pub mod orb;
@@ -346,6 +347,18 @@ pub trait MobWorld: BlockSource {
     fn block_light(&self, _p: IVec3) -> u8 {
         0
     }
+    /// Skylight in this cell, 0..=15 (Java's `LightLayer.SKY`), or `None`
+    /// where it is not known exactly. This default is exact only for open
+    /// test terrain whose unexposed cells are all enclosed; [`World`]
+    /// answers from its authoritative propagated skylight.
+    fn sky_light_level(&self, p: IVec3) -> Option<u8> {
+        Some(if self.exposed(p) { 15 } else { 0 })
+    }
+    /// Java's `WORLD_SURFACE` heightmap: the highest non-air block of a
+    /// loaded column. Defaults to the light-blocking surface.
+    fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
+        self.surface(x, z)
+    }
     /// Loaded spawner cages and the mob each makes.
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         Vec::new()
@@ -371,8 +384,10 @@ pub trait MobWorld: BlockSource {
     fn structures_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
         Vec::new()
     }
-    fn cave_biome(&self, _p: IVec3) -> crate::world::terrain::Biome {
-        crate::world::terrain::Biome::Plains
+    /// The biome at a block, including underground cave biomes; defaults
+    /// to the column's biome.
+    fn cave_biome(&self, p: IVec3) -> crate::world::terrain::Biome {
+        self.biome(p.x, p.z)
     }
     /// Bastion remnants near `p`, whose residents spawn once.
     fn bastions_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::bastion::Bastion>> {
@@ -404,6 +419,12 @@ impl MobWorld for World {
     }
     fn block_light(&self, p: IVec3) -> u8 {
         World::block_light(self, p)
+    }
+    fn sky_light_level(&self, p: IVec3) -> Option<u8> {
+        World::sky_light(self, p)
+    }
+    fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
+        self.world_surface_height(x, z)
     }
     fn surface(&self, x: i32, z: i32) -> Option<i32> {
         self.surface_height(x, z)
@@ -503,6 +524,8 @@ pub struct Ctx {
     pub players: Vec<Target>,
     /// Skylight multiplier, 1 at noon.
     pub daylight: f32,
+    /// Gameplay light from the reference day clock and weather attributes.
+    pub spawn_light: crate::simulation::lighting::SpawnLight,
     /// Natural spawning on/off.
     pub spawning: bool,
     /// Rain keeps undead mobs from burning in the sun.
@@ -1606,6 +1629,7 @@ mod tests {
 
     fn ctx(player: DVec3) -> Ctx {
         Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players: vec![Target::new(PlayerId::HOST, player, false)],
             daylight: 1.0,
             spawning: false,
@@ -2175,6 +2199,7 @@ mod tests {
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         e.mobs[0].health = 0.5;
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             // Thorns III on all four pieces: a hit back is near certain.
             players: vec![Target {
                 thorns: [3; 4],
@@ -2201,6 +2226,7 @@ mod tests {
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         let player = DVec3::new(1.5, 10.0, 0.5);
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, player, true)],
             daylight: 0.1,
             spawning: false,
@@ -2232,6 +2258,7 @@ mod tests {
         let mut e = Entities::new(8);
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, DVec3::new(8.5, 10.0, 0.5), true)],
             daylight: 0.1,
             spawning: false,
@@ -2275,7 +2302,11 @@ mod tests {
         world.set(at.floor().as_ivec3(), Block::FIRE);
         let mut e = Entities::new(5);
         e.spawn(MobKind::Pig, at);
-        let c = Ctx { daylight: 0.0, ..ctx(DVec3::new(30.0, 10.0, 0.0)) };
+        let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            daylight: 0.0,
+            ..ctx(DVec3::new(30.0, 10.0, 0.0))
+        };
         e.update(1.0 / 60.0, &world, &c);
         assert!(e.mobs[0].burning);
         assert_eq!(e.mobs[0].health, 9.0, "contact hit does not apply every frame");
@@ -2343,6 +2374,7 @@ mod tests {
         let mut e = Entities::new(11);
         let player = DVec3::new(0.0, 64.0, 0.0);
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, player, false)],
             daylight: 0.12,
             spawning: true,
@@ -2438,6 +2470,7 @@ mod tests {
         let mut e = Entities::new(11);
         let (a, b) = (DVec3::new(0.0, 64.0, 0.0), DVec3::new(1000.0, 64.0, 0.0));
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, a, false), Target::new(PlayerId(1), b, false)],
             daylight: 0.12,
             spawning: true,
@@ -2467,6 +2500,7 @@ mod tests {
         let world = Grid::flat(64);
         // A second player stands in the first one's spawn ring.
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![
                 Target::new(PlayerId::HOST, DVec3::new(0.0, 64.0, 0.0), false),
                 Target::new(PlayerId(1), DVec3::new(40.0, 64.0, 0.0), false),
@@ -2493,6 +2527,7 @@ mod tests {
 
     fn night(player: DVec3) -> Ctx {
         Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, player, true)],
             daylight: 0.1,
             spawning: false,
@@ -2621,7 +2656,11 @@ mod tests {
     #[test]
     fn spiders_hunt_at_night_or_when_hit_and_climb_walls() {
         let world = Grid::flat(10);
-        let day = Ctx { daylight: 1.0, ..night(DVec3::new(5.5, 10.0, 0.5)) };
+        let day = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            daylight: 1.0,
+            ..night(DVec3::new(5.5, 10.0, 0.5))
+        };
         let mut e = Entities::new(6);
         e.spawn(MobKind::Spider, DVec3::new(0.5, 10.0, 0.5));
         run(&mut e, &world, &day, 1.0);

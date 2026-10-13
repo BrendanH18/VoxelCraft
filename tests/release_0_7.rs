@@ -35,6 +35,7 @@ impl MobWorld for Flat {
 }
 fn ctx() -> Ctx {
     Ctx {
+        spawn_light: voxelcraft::simulation::lighting::SpawnLight::DAY,
         players: vec![Target::new(PlayerId::HOST, DVec3::new(0., 1., 0.), false)],
         daylight: 1.,
         spawning: false,

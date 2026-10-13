@@ -1,0 +1,101 @@
+# Gameplay skylight and cave spawning — 2026-10-13
+
+[Roadmap](../roadmap.md) · [Restructuring](../restructuring.md) · [Reference fixtures](../../tests/fixtures/java/26.3/README.md)
+
+Scope: ENV-05, MOB-01, STR-01/05, after `41a7290` on
+`work/v0.7-assessment`. Implementation and this record accompany the same commit.
+Reference: official Java Edition 26.3 server SHA-1
+`33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c`; tests ran on the M5 MacBook Pro.
+State: **Partial**. This closes the surface-only ground-monster attempt and
+torch-suppression defects for the implemented Overworld cycle; it does not
+establish complete Java lighting or natural spawning parity.
+
+## Delivered behavior
+
+`World` owns propagated sky and block light independently of render jobs.
+Complete column heightmaps imply direct level-15 sky sources. Separate packed
+nibble arrays store indirect skylight below them only where lit. Removal and
+increase queues resolve edits, streaming replacement, unload and reload without
+waiting for rendering. Unknown sky beside incomplete/unloaded neighboring
+columns returns `None`, preventing a spawn based on guessed darkness.
+
+The dimension skylight flag is separate from the existing visual-sky/weather
+flag: the Overworld and End have a skylight layer; the Nether has none. Saved
+block edits rebuild light in a new process. Light arrays and queues are derived
+state; saved block/item IDs and persistence formats are unchanged.
+
+The registered Overworld ground-monster cycle now samples starts throughout a
+column's height instead of only its sky-exposed surface. Reference biome lists,
+pack walks, floor/occupied-cell checks and the two random light tests determine
+eligible spawns. Dark caves can spawn during daytime; any positive block light
+suppresses these monsters. Replacing/removing torches changes eligibility.
+Swamp slime light checks also read propagated sky and block light.
+
+Gameplay sky darkening uses the reference's 24,000-tick day timeline, linear
+float interpolation and weather modifier/state-change blends. It is supplied
+explicitly through `Ctx::spawn_light`, rather than reconstructed from the
+renderer's visual daylight. Thunder uses the monster test's fixed darkening of
+ten. Existing clock/weather transition durations remain unchanged; this is not
+a claim of complete time/weather parity. Programmatic callers constructing
+`Ctx` must supply `SpawnLight::DAY`, `NIGHT` or `at(...)`; in-repository callers
+and both feature configurations were updated together.
+
+## Independent evidence and recovery checks
+
+`tools/extract_java_lighting_spawning_fixtures.py` verifies the official hash,
+extracts biome/dimension/timeline/tag data and checks relevant bytecode forms.
+Its independent fixed-point light model uses no Rust output. Six scene families
+cover sealed caves, torch removal, shafts/covers/tunnels, overhangs, loaded
+borders and occupied cells/floors. The fixture also records **114** clock/weather
+cases including twilight boundaries, midnight wrap and partial weather levels.
+Reproduction from the pinned artifact is byte-identical.
+
+Recovery of the unfinished delegated patch exposed a real bottom-slab floor
+error: it was treated as a full block. That was corrected. A night expectation
+used double precision where the reference multiplies floats, and a cave test
+required an unsupported absolute spawn count; their expectations were corrected
+without weakening the actual cave/torch/floor rules. The proposed twilight
+mapping was replaced with the independently sourced clock/weather rules.
+
+Tests check reference light levels and spawn probabilities, real daytime cave
+spawns, torch suppression/removal, Peaceful, floor exclusions, biome list values,
+mesh/fresh-rebuild agreement, edit covers, partial loads and unloaded borders.
+One representative unload case recorded a nonzero queue peak below 50,000;
+this is scenario evidence, not a universal work-time budget.
+
+The new two-process storage check covers both the Overworld and End. It saves a
+glass-covered shaft, tunnel and torch using the real disk format. A new process
+restores their sky/block levels; subsequent torch removal, opaque covering and
+reopening remove and restore the appropriate light paths.
+
+The required formatting, strict release Clippy and release-test chain passed:
+**894 passed, zero failed, three ignored**. Strict headless release Clippy/tests
+passed: **812 passed, zero failed, two ignored**. These totals include the prior
+shared-session/mining and retained v0.7 regressions.
+
+The benchmark source fingerprint now includes the mining fixture embedded by
+`build.rs`; changing this runtime input must change the recorded source identity.
+An isolated temporary fixture check confirmed that change and repeatability.
+
+## Remaining differences and acceptance
+
+The existing 24–64-block ring, per-kind caps, quarter-second spawn batching,
+activation/despawn policies and structure overrides still need Java correction.
+Missing roster entries retain their reference selection weight but cannot spawn;
+slime and drowned sampling still use their separate legacy paths. No unsupported
+mob is replaced with a different species. These are open differences, not
+approved fidelity exceptions or a completed MOB-01 claim.
+
+Slabs/stairs retain the prior opaque-cell light treatment; full state/shape
+occlusion is unfinished. Meshes still independently flood snapshots rather than
+consume the authoritative gameplay arrays. Crop/sapling skylight integration,
+other growth light rules, large edit/streaming queue budgets and broader block
+property fidelity remain open. The ten-minute game day and existing weather
+fades also differ from reference timing.
+
+Normal keyboard/controller cave play, visual/audio review, cross-machine LAN,
+representative frame-time comparisons and full M5 1080p/native acceptance remain
+unverified in this record. The earlier native interaction attempt failed with
+`cgWindowNotFound`; automated world and restart checks do not replace player
+acceptance. No version bump, release, main merge or deletion of the original
+v0.7 branch/uncommitted spawning patch is included.

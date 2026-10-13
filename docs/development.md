@@ -51,7 +51,7 @@ This is a foundation for LAN and split-screen. The client still owns the
 singleplayer session, action validation, damage/death handling, dimension
 travel and saves. The example is not a dedicated or multiplayer server.
 
-Gameplay block light is maintained by `World` in both feature configurations.
+Gameplay sky and block light are maintained by `World` in both feature configurations.
 `set_block`, `explode`, terrain streaming and `simulation::tick_world` resolve
 pending light changes before returning. When calling individual batched
 world systems directly, call `update_block_light` before querying their
@@ -60,6 +60,10 @@ byte. Worker meshes carry geometry only and cannot overwrite gameplay light.
 Covered crops require level 9 in their cell; saplings sample the cell above.
 Skylight for growth still uses the existing open-sky approximation, and
 slabs/stairs retain their current opaque-cell lighting approximation.
+`World::sky_light` returns an optional propagated level; incomplete neighboring
+columns are unknown. `Ctx::spawn_light` takes explicit gameplay clock/weather
+brightness from `simulation::lighting::SpawnLight`, separately from visual
+daylight. See the [lighting/spawning evidence](verification/2026-10-13-lighting-spawning.md).
 
 ## Benchmarks
 

@@ -1015,6 +1015,7 @@ mod tests {
         assert_eq!(loaded.count(MobKind::Villager), 1);
         assert_eq!(loaded.mobs[0].villager.as_ref().unwrap().offers, e.mobs[0].villager.as_ref().unwrap().offers);
         let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, DVec3::new(500.0, 0.0, 0.0), false)],
             daylight: 0.0,
             raining: false,
@@ -1113,6 +1114,7 @@ mod tests {
             1.0,
             &w,
             &Ctx {
+                spawn_light: crate::simulation::lighting::SpawnLight::DAY,
                 players: vec![Target::new(PlayerId::HOST, DVec3::ZERO, false)],
                 daylight: 1.0,
                 spawning: false,
@@ -1159,6 +1161,7 @@ mod tests {
             0.05,
             &w,
             &Ctx {
+                spawn_light: crate::simulation::lighting::SpawnLight::DAY,
                 players: vec![],
                 daylight: 1.0,
                 spawning: false,
@@ -1241,6 +1244,7 @@ mod tests {
             0.05,
             &w,
             &Ctx {
+                spawn_light: crate::simulation::lighting::SpawnLight::DAY,
                 players: vec![Target::new(owner, DVec3::ZERO, false)],
                 daylight: 1.0,
                 spawning: false,

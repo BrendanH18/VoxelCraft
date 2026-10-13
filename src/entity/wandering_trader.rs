@@ -337,6 +337,7 @@ mod tests {
         assert_eq!(copy.mobs[0].villager.as_ref().unwrap().offers, e.mobs[0].villager.as_ref().unwrap().offers);
         assert_eq!(copy.mobs[1].trader.as_ref().unwrap().leader, copy.mobs[0].villager.as_ref().unwrap().id);
         let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players: vec![super::super::Target::new(super::super::PlayerId::HOST, DVec3::ZERO, false)],
             daylight: 1.0,
             spawning: false,
