@@ -234,18 +234,16 @@ pub fn use_composter(
     false
 }
 
-/// A fence knot is an entity target in front of its fence block.
-pub fn attack_knot(player: &Player, world: &World, entities: &mut Entities) -> bool {
-    let Some((p, _)) = world.raycast(player.eye(), player.forward().as_dvec3(), 6.0) else { return false };
-    world.get_block(p).is_some_and(crate::entity::leash::fence)
-        && entities
-            .raycast(
-                player.eye(),
-                player.forward().as_dvec3(),
-                player.eye().distance(p.as_dvec3() + glam::DVec3::splat(0.5)),
-            )
-            .is_none()
-        && entities.break_fence_knot(p)
+/// The fence cell whose knot is the first entity target along the look ray
+/// within `reach`, in front of any mob.
+pub fn knot_target(player: &Player, world: &World, entities: &Entities, reach: f64) -> Option<glam::IVec3> {
+    let (eye, dir) = (player.eye(), player.forward().as_dvec3());
+    let (p, _) = world.raycast(eye, dir, reach)?;
+    let distance = eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5));
+    (world.get_block(p).is_some_and(crate::entity::leash::fence)
+        && entities.has_fence_knot(p)
+        && entities.raycast(eye, dir, distance).is_none())
+    .then_some(p)
 }
 
 #[cfg(test)]

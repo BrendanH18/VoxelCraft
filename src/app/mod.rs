@@ -1720,6 +1720,10 @@ impl Game {
     /// Held attack/use buttons for one tick: mining, repeated breaking or
     /// placing, eating and drawing a bow.
     fn act(&mut self, acting: bool, dt: f64) {
+        // Agents (controller/LAN hands) charge in their own tick; this is the host's.
+        if !self.puppet {
+            self.session.tick_attack_strength(self.actions.selected);
+        }
         let mine_pressed = std::mem::take(&mut self.mine_pressed);
         self.action_cooldown -= dt;
         if acting && (self.left_held || mine_pressed) && self.session.mode.is_survival() {

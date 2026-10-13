@@ -312,6 +312,13 @@ low-cube targeting and process-restart evidence. PLY-04 and BLD-02/03 remain
 **Partial**: complete item-use ordering, shape/state/support parity and ordinary
 player/performance acceptance remain open.
 
+The [shared combat follow-up](verification/2026-10-13-shared-combat.md)
+moves player melee into the session, replaces the fixed weapon cooldown with
+Java's attack-strength charge and corrects reach and tool attack attributes
+against a reproducible 26.3 fixture. PLY-04/05 remain **Partial**: other weapon
+families, the attack indicator, container/item-use extraction and player
+acceptance remain open.
+
 The [lighting and spawning follow-up](verification/2026-10-13-lighting-spawning.md)
 implements propagated gameplay skylight, End skylight, full-height ground-monster
 attempts, cave/torch checks and reference clock/weather darkening. ENV-05 and

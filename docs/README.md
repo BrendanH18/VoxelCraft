@@ -46,6 +46,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Shared block placement](verification/2026-10-13-shared-placement.md):
   actor-owned validation, paired blocks, low-cube targeting and process-restart
   checks; remaining shape/state and ordinary-player acceptance.
+- [Shared melee](verification/2026-10-13-shared-combat.md): actor-owned attacks,
+  Java attack-strength charging, reference reach and tool attributes; remaining
+  weapon families, attack indicator and ordinary-player acceptance.
 - [Gameplay skylight and cave spawning](verification/2026-10-13-lighting-spawning.md):
   propagated sky light, cave/torch/reference scenarios, clock/weather inputs and
   Overworld/End process-restart checks; remaining shape and spawn differences.

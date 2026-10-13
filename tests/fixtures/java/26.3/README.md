@@ -131,3 +131,19 @@ cargo test --release --test lighting_persistence
 
 These fixtures do not establish full shaped-block occlusion, category caps,
 structure overrides or the complete roster. See the [lighting/spawning evidence](../../../../docs/verification/2026-10-13-lighting-spawning.md).
+
+## Player melee
+
+`combat.json` records the player's base attack attributes, entity interaction
+ranges, every vanilla tool's attack-damage/speed modifiers with its tool-material
+bonus, and the constants `Player.attack` uses for attack strength, criticals,
+sprint knockback, sweeps and exhaustion. The extractor reads `Items`,
+`ToolMaterial`, `Attributes` and `Player` bytecode and fails on unknown forms.
+
+```sh
+python3 tools/extract_java_combat_fixtures.py /path/to/server.jar --output target/java-combat.json
+diff tests/fixtures/java/26.3/combat.json target/java-combat.json
+cargo test --release --test shared_combat
+```
+
+Copper tools are recorded but not yet registered by VoxelCraft.

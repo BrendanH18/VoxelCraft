@@ -78,7 +78,6 @@ pub(super) struct Body {
     right_held: bool,
     mine_pressed: bool,
     attack_held: bool,
-    attack_cooldown: f64,
     container: Container,
 }
 
@@ -91,7 +90,6 @@ impl Default for Body {
             right_held: false,
             mine_pressed: false,
             attack_held: false,
-            attack_cooldown: 0.0,
             container: Container::Inventory,
         }
     }
@@ -614,7 +612,6 @@ impl Game {
         swap(&mut self.right_held, &mut body.right_held);
         swap(&mut self.mine_pressed, &mut body.mine_pressed);
         swap(&mut self.mobs.attack_held, &mut body.attack_held);
-        swap(&mut self.mobs.attack_cooldown, &mut body.attack_cooldown);
         swap(&mut self.container, &mut body.container);
         true
     }
@@ -758,7 +755,6 @@ impl Game {
                         }
                     }
                     g.act(true, dt);
-                    g.mobs.attack_cooldown -= dt;
                     (g.puppet_used.take(), g.puppet_merchant.take(), g.puppet_vehicle.take())
                 })
                 .unwrap_or_default();

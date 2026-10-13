@@ -115,8 +115,9 @@ records automated checks and outstanding acceptance. Actor-owned mining is also
 implemented ([mining evidence](verification/2026-10-13-shared-mining.md)), including
 reference reach, progress and ice rules. Shared block placement is implemented
 ([placement evidence](verification/2026-10-13-shared-placement.md)), including
-paired-cell validation, inventory spending and low-cube targeting. Combat,
-other item use and container transactions still need extraction; controller/LAN `Game::puppet`
+paired-cell validation, inventory spending and low-cube targeting. Melee is
+shared with Java attack-strength charging ([combat evidence](verification/2026-10-13-shared-combat.md)).
+Other item use and container transactions still need extraction; controller/LAN `Game::puppet`
 still swaps session and presentation state and must be removed.
 **Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.
 **Dependency:** STR-01 regression coverage and review of pending v0.7 changes.

@@ -9,12 +9,10 @@ use crate::audio::sounds::{Call, Sound, Voice};
 use crate::entity::{self, Entities, EntityEvent, MobKind, MobSound, PlayerId, Target};
 use crate::physics;
 
-use super::{Game, REACH};
+use super::Game;
 
 pub(super) struct Mobs {
     pub entities: Entities,
-    /// Seconds until the player can hit again.
-    pub(super) attack_cooldown: f64,
     /// The current left-button hold started on a mob: don't break blocks
     /// until it's released.
     pub(super) attack_held: bool,
@@ -27,14 +25,7 @@ pub(super) struct Mobs {
 
 impl Mobs {
     pub fn new(seed: u64, spawn: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>, wait: f64) -> Self {
-        Self {
-            entities: Entities::new(seed),
-            attack_cooldown: 0.0,
-            attack_held: false,
-            pending: spawn,
-            wait,
-            wait_start: None,
-        }
+        Self { entities: Entities::new(seed), attack_held: false, pending: spawn, wait, wait_start: None }
     }
 
     /// For `--screenshot`: true once `--wait` seconds have passed since the
@@ -54,8 +45,8 @@ impl Game {
         let block_dist = self
             .target()
             .and_then(|(b, _)| physics::ray_aabb(eye, dir, b.as_dvec3(), b.as_dvec3() + DVec3::ONE))
-            .unwrap_or(REACH);
-        self.mobs.entities.raycast(eye, dir, block_dist.min(REACH)).map(|(i, _)| i)
+            .unwrap_or(self.session.entity_reach());
+        self.mobs.entities.raycast(eye, dir, block_dist.min(self.session.entity_reach())).map(|(i, _)| i)
     }
 
     /// Right-click a sheep with dye or shears, shared with gamepad players.
@@ -73,75 +64,46 @@ impl Game {
         true
     }
 
-    /// Left-button press: hits the mob under the crosshair. Returns `true`
-    /// if a mob was targeted, in which case no block should be broken.
+    /// Left-button press: melee through the shared session transaction.
+    /// Returns `true` if something was hit, in which case no block should be broken.
     pub(super) fn attack(&mut self) -> bool {
-        if voxelcraft::survival_items::attack_knot(&self.session.player, &self.world, &mut self.mobs.entities)
-            || self.attack_lan_player()
-        {
+        if self.attack_lan_player() {
             return true;
         }
-        let eye = self.session.player.eye();
-        let dir = self.session.player.forward().as_dvec3();
-        let cart_reach = crate::entity::minecart::interaction_reach(&self.world, eye, dir, REACH);
-        if self.mobs.entities.cart_ray(eye, dir, cart_reach).is_some() {
-            self.mobs.attack_held = true;
-            if self.mobs.attack_cooldown <= 0.0 {
-                self.mobs.entities.hurt_cart(eye, dir, cart_reach, self.session.mode.is_creative());
-                self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
-                self.audio.play(Sound::Hit, Some(eye + dir * 2.0), 0.7, (0.8, 1.0));
-                self.wear_held(true);
-            }
-            return true;
-        }
-        if self.mobs.entities.large_fireball(eye, dir, REACH).is_some() {
-            self.mobs.attack_held = true;
-            if self.mobs.attack_cooldown <= 0.0 {
-                self.mobs.entities.punch_fireball(eye, dir, REACH);
-                self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
-                self.audio.play(Sound::Hit, Some(eye + dir * 2.0), 0.7, (0.6, 0.8));
-                self.wear_held(true);
-                if self.session.mode.is_survival() {
-                    self.session.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
-                }
-            }
-            return true;
-        }
-        if self.strike_fight() {
-            return true;
-        }
-        let Some(i) = self.mob_target() else { return false };
+        let sprinting = self.sprinting_for_attack();
+        let result = self.session.attack(self.actions.selected, &self.world, &mut self.mobs.entities, sprinting);
+        use voxelcraft::session::combat::{Outcome, Target as Hit};
+        let Ok(Outcome::Hit { target, at, critical, tool_broken, .. }) = result else { return false };
         self.mobs.attack_held = true;
-        if self.mobs.attack_cooldown <= 0.0 {
-            self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
-            // A hit while falling is a critical one, like Minecraft.
-            let p = &self.session.player;
-            let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
-            // Controller input belongs to the puppet's agent, not the host's keys.
-            let sprint = if self.puppet {
-                self.agents
-                    .players
-                    .values()
-                    .find(|b| b.id == self.session.id)
-                    .is_some_and(|b| b.agent.movement_input().sprint)
-                    && (self.session.mode.invulnerable() || self.session.vitals.hunger.can_sprint())
-            } else {
-                self.movement_input(self.arrival.is_some()).sprint
-            };
-            let sweep = (p.on_ground && !critical && !sprint).then_some(p.pos);
-            let held = self.session.inventory.get(self.actions.selected);
-            let bonus = self.session.vitals.effects.attack_bonus();
-            let dir = self.session.player.forward().as_dvec3();
-            self.mobs.entities.melee_for(i, dir, held, bonus, critical, sweep, self.session.id);
-            let at = self.mobs.entities.mobs[i].pos + DVec3::Y * 0.5;
-            let pitch = if critical { (1.25, 1.4) } else { (0.9, 1.1) };
-            self.audio.play(Sound::Hit, Some(at), 0.8, pitch);
-            self.wear_held(true);
-            if self.session.mode.is_survival() {
-                self.session.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
-            }
+        let (volume, pitch) = match target {
+            Hit::FenceKnot => (0.0, (1.0, 1.0)),
+            Hit::Cart => (0.7, (0.8, 1.0)),
+            Hit::Fireball => (0.7, (0.6, 0.8)),
+            Hit::Fight => (0.8, (0.9, 1.1)),
+            Hit::Mob(_) if critical => (0.8, (1.25, 1.4)),
+            Hit::Mob(_) => (0.8, (0.9, 1.1)),
+        };
+        if volume > 0.0 {
+            self.audio.play(Sound::Hit, Some(at), volume, pitch);
+        }
+        if let Some(item) = tool_broken {
+            self.tool_broke(item);
         }
         true
+    }
+
+    /// Sprint state of whoever is acting: a controller/LAN hand's own input, or the host's keys.
+    pub(super) fn sprinting_for_attack(&self) -> bool {
+        if self.puppet {
+            self.agents
+                .players
+                .values()
+                .find(|b| b.id == self.session.id)
+                .is_some_and(|b| b.agent.movement_input().sprint)
+                && (self.session.mode.invulnerable() || self.session.vitals.hunger.can_sprint())
+        } else {
+            self.movement_input(self.arrival.is_some()).sprint
+        }
     }
 
     /// The End crystal or dragon part under the crosshair, if it's within
@@ -149,54 +111,12 @@ impl Game {
     fn fight_target(&self) -> Option<crate::entity::dragon::Hit> {
         let eye = self.session.player.eye();
         let dir = self.session.player.forward().as_dvec3();
+        let reach = self.session.entity_reach();
         let block_dist = self
             .target()
             .and_then(|(b, _)| physics::ray_aabb(eye, dir, b.as_dvec3(), b.as_dvec3() + DVec3::ONE))
-            .unwrap_or(REACH);
-        self.mobs.entities.fight_raycast(eye, dir, block_dist.min(REACH)).map(|(hit, _)| hit)
-    }
-
-    /// Melee on an End crystal (it blows up) or the dragon.
-    fn strike_fight(&mut self) -> bool {
-        let Some(hit) = self.fight_target() else { return false };
-        self.mobs.attack_held = true;
-        if self.mobs.attack_cooldown <= 0.0 {
-            self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
-            let p = &self.session.player;
-            let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
-            let base = crate::mining::attack_damage(self.held_item()) + self.session.vitals.effects.attack_bonus();
-            let sharpness =
-                self.session.inventory.get(self.actions.selected).map_or(Default::default(), |s| s.active_enchants());
-            let damage = base.max(0.0) * if critical { 1.5 } else { 1.0 }
-                + crate::enchant::damage_bonus(sharpness, crate::enchant::Creature::Other);
-            let by = self.session.id;
-            if self.mobs.entities.strike(hit, damage, by) {
-                let impact = self.session.player.eye() + self.session.player.forward().as_dvec3() * 2.0;
-                for kind in [
-                    critical.then_some(crate::particles::Kind::Crit),
-                    (crate::enchant::damage_bonus(sharpness, crate::enchant::Creature::Other) > 0.0)
-                        .then_some(crate::particles::Kind::MagicCrit),
-                ]
-                .into_iter()
-                .flatten()
-                {
-                    let mut b = crate::particles::Burst::new(kind, impact, 16);
-                    b.spread = DVec3::splat(0.4);
-                    self.world.particles.push(crate::particles::Request::Tracking(b));
-                }
-                self.audio.play(
-                    Sound::Hit,
-                    Some(self.session.player.eye() + self.session.player.forward().as_dvec3() * 2.0),
-                    0.8,
-                    (0.9, 1.1),
-                );
-                self.wear_held(true);
-            }
-            if self.session.mode.is_survival() {
-                self.session.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
-            }
-        }
-        true
+            .unwrap_or(reach);
+        self.mobs.entities.fight_raycast(eye, dir, block_dist.min(reach)).map(|(hit, _)| hit)
     }
 
     pub(super) fn release_attack(&mut self) {
@@ -261,7 +181,6 @@ impl Game {
         for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
             self.mobs.entities.hatch_turtles(cell, count);
         }
-        self.mobs.attack_cooldown -= dt;
         let mut players = vec![Target {
             alive: !self.session.vitals.is_dead(),
             look: self.session.player.forward().as_dvec3(),

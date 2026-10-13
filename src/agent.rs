@@ -8,7 +8,6 @@ use crate::crafting;
 use crate::entity::Entities;
 use crate::inventory::{Inventory, Stack};
 use crate::item::Item;
-use crate::mining;
 use crate::player::{MoveInput, Player};
 use crate::rules::GameMode;
 use crate::simulation::survival::{self, Vitals};
@@ -530,50 +529,15 @@ impl Agent {
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
-                if crate::survival_items::attack_knot(&self.session.player, world, entities) {
-                    self.cooldown = 0.22;
-                    self.swings += 1;
-                    return Ok(());
-                }
-                let distance = self.target(world).map_or(6.0, |(p, _)| {
-                    self.session.player.eye().distance(p.as_dvec3() + DVec3::splat(0.5)).min(6.0)
-                });
-                let (eye, dir) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
-                let stack = self.session.inventory.get(self.selected);
-                let held = stack.map(|s| s.item);
-                let bonus = self.session.vitals.effects.attack_bonus();
-                let cart_reach = crate::entity::minecart::interaction_reach(world, eye, dir, distance);
-                if entities.hurt_cart(eye, dir, cart_reach, self.creative) {
-                    self.cooldown = mining::attack_cooldown(held);
-                    self.swings += 1;
-                    return Ok(());
-                }
-                if entities.large_fireball(eye, dir, distance).is_some() {
-                    entities.punch_fireball(eye, dir, distance);
-                } else if let Some((hit, t)) = entities.fight_raycast(eye, dir, distance) {
-                    let enchants = stack.map_or(Default::default(), |s| s.active_enchants());
-                    let enchant = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
-                    let damage = (mining::attack_damage(held) + bonus).max(0.0) + enchant;
-                    if entities.strike(hit, damage, self.session.id) && enchant > 0.0 {
-                        let mut burst =
-                            crate::particles::Burst::new(crate::particles::Kind::MagicCrit, eye + dir * t.min(4.0), 16);
-                        burst.spread = DVec3::splat(0.4);
-                        entities.particles.push(crate::particles::Request::Tracking(burst));
-                    }
-                } else {
-                    let (i, _) = entities.raycast(eye, dir, distance).ok_or("no mob within reach")?;
-                    let sprint =
-                        self.movement_input().sprint && (self.creative || self.session.vitals.hunger.can_sprint());
-                    let sweep = (self.session.player.on_ground && !sprint).then_some(self.session.player.pos);
-                    entities.melee_for(i, dir, stack, bonus, false, sweep, self.session.id);
-                }
-                if !self.creative
-                    && let Some(held) = held
-                {
-                    self.session.inventory.wear(self.selected, mining::wear(held, true));
-                }
-                self.cooldown = mining::attack_cooldown(held);
+                let sprinting =
+                    self.movement_input().sprint && (self.creative || self.session.vitals.hunger.can_sprint());
+                let outcome = self.session.attack(self.selected, world, entities, sprinting)?;
+                // Java has no attack cooldown; damage scales with the charge instead.
+                self.cooldown = TICK_SECONDS;
                 self.swings += 1;
+                if let crate::session::combat::Outcome::Missed { .. } = outcome {
+                    return Err("nothing to attack within reach".into());
+                }
             }
             Command::Craft(item) => self.craft(item, world)?,
             Command::Chest(take, slot) => {
@@ -836,6 +800,8 @@ impl Agent {
         if !world.is_loaded(feet) || !world.is_loaded(feet - IVec3::Y) {
             return;
         }
+        // Every agent (CLI, controller and LAN hands) charges here once per tick.
+        self.session.tick_attack_strength(self.selected);
         let holding_rod = self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::FISHING_ROD);
         if self.session.vitals.is_dead() || !holding_rod {
             entities.drop_bobber(self.session.id);
@@ -1176,8 +1142,8 @@ impl Agent {
 
     /// What this agent mines with, and where it stands (Java's penalties).
     #[cfg(test)]
-    fn digger(&self, world: &World) -> mining::Digger {
-        mining::Digger {
+    fn digger(&self, world: &World) -> crate::mining::Digger {
+        crate::mining::Digger {
             held: self.session.inventory.get(self.selected),
             helmet: self.session.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
             eyes_in_water: self.session.player.head_in_water(world),
@@ -1292,7 +1258,7 @@ mod tests {
         a.hold(MoveInput::default(), true, false);
         a.tick(&mut world, &mut Entities::new(1));
         assert_eq!(world.get_block(at), Some(Block::STONE));
-        let expected = (TICK_SECONDS / mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
+        let expected = (TICK_SECONDS / crate::mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
         assert_eq!(a.breaking(&world), Some((at, expected)));
     }
 
@@ -1304,6 +1270,15 @@ mod tests {
             a.player.on_ground = true;
             a.inventory.slots[0] =
                 Some(Stack::new(Item::tool(crate::item::ToolKind::Sword, crate::item::Tier::Wood), 1));
+            // Java sweeps and sprint knockback need a charged (> 0.9) attack.
+            for _ in 0..13 {
+                a.tick(&mut world, &mut Entities::new(1));
+            }
+            assert!(a.session.attack_strength(0, 0.5) > 0.9);
+            // The test world is open air: put the charged player back on its spot.
+            a.player.pos = DVec3::new(1.5, 150.0, 1.5);
+            a.player.vel = DVec3::ZERO;
+            a.player.on_ground = true;
             a.hold(MoveInput { forward: 1.0, sprint, ..Default::default() }, false, false);
             let mut e = Entities::new(1);
             e.spawn(crate::entity::MobKind::Zombie, DVec3::new(3.0, 150.0, 1.5));
@@ -1340,7 +1315,8 @@ mod tests {
         a.hold(MoveInput::default(), true, false);
         a.tick(&mut world, &mut entities);
         let after = a.breaking(&world).unwrap();
-        let expected = before.1 + (TICK_SECONDS / mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
+        let expected =
+            before.1 + (TICK_SECONDS / crate::mining::dig_time(Block::STONE, a.digger(&world)) as f64) as f32;
         assert!((after.1 - expected).abs() < 1e-6);
         assert_eq!(world.get_block(at), Some(Block::STONE), "a faster tool does not retroactively finish the dig");
     }

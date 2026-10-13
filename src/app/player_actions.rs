@@ -128,13 +128,18 @@ impl Game {
         if self.session.mode.is_survival()
             && self.session.inventory.wear(self.actions.selected, crate::mining::wear(held, hitting_mob))
         {
-            self.show_popup(&format!("{} broke", capitalize(held.name())));
-            self.audio.play(
-                crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood),
-                Some(self.session.player.eye()),
-                0.8,
-                (1.3, 1.5),
-            );
+            self.tool_broke(held);
         }
+    }
+
+    /// Popup and sound for a held tool that just broke.
+    pub(super) fn tool_broke(&mut self, held: Item) {
+        self.show_popup(&format!("{} broke", capitalize(held.name())));
+        self.audio.play(
+            crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood),
+            Some(self.session.player.eye()),
+            0.8,
+            (1.3, 1.5),
+        );
     }
 }

@@ -2,6 +2,7 @@
 //!
 //! Desktop, controller, LAN and CLI adapters own one of these for each player.
 //! Camera, hand animation and screen navigation belong to their adapters.
+pub mod combat;
 pub mod consumption;
 pub mod mining;
 pub mod placement;
@@ -26,6 +27,7 @@ pub struct PlayerSession {
     pub sleeping: Option<f32>,
     pub spawn_bed: Option<IVec3>,
     pub spawn_point: Option<IVec3>,
+    combat: combat::State,
     consumption: consumption::State,
     mining: mining::State,
 }
@@ -57,6 +59,7 @@ impl PlayerSession {
             sleeping: None,
             spawn_bed: None,
             spawn_point: None,
+            combat: Default::default(),
             consumption: Default::default(),
             mining: Default::default(),
         }
@@ -73,6 +76,7 @@ impl PlayerSession {
             sleeping: None,
             spawn_bed: None,
             spawn_point: None,
+            combat: Default::default(),
             consumption: Default::default(),
             mining: Default::default(),
         }

@@ -93,6 +93,11 @@ impl Entities {
         }
         tied || self.break_fence_knot(p)
     }
+    /// Whether a mob is tied to a knot on fence `p`.
+    pub fn has_fence_knot(&self, p: IVec3) -> bool {
+        self.mobs.iter().any(|m| m.leash == Some(Leash::Fence(p)))
+    }
+
     pub fn break_fence_knot(&mut self, p: IVec3) -> bool {
         let mut count = 0;
         for m in &mut self.mobs {

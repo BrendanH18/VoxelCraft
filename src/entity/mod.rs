@@ -1348,14 +1348,14 @@ impl Entities {
     /// Player melee hit for `damage` on mob `index`, pushed along `dir`.
     /// Returns the kind of mob if this killed it.
     pub fn attack(&mut self, index: usize, dir: DVec3, damage: f32) -> Option<MobKind> {
-        self.knock(index, dir, damage, 0, PlayerId::HOST)
+        self.knock(index, dir, damage, 0.0, PlayerId::HOST)
     }
 
     /// Hits mob `index` for `damage`, pushing it along `dir` harder for
     /// each `extra` knockback level (Java: 0.4 + 0.5 per level).
-    fn knock(&mut self, index: usize, dir: DVec3, damage: f32, extra: u8, owner: PlayerId) -> Option<MobKind> {
+    fn knock(&mut self, index: usize, dir: DVec3, damage: f32, extra: f64, owner: PlayerId) -> Option<MobKind> {
         let flat = DVec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
-        let knockback = flat * 6.0 * (1.0 + 1.25 * extra as f64) + DVec3::Y * 5.0;
+        let knockback = flat * 6.0 * (1.0 + 1.25 * extra) + DVec3::Y * 5.0;
         let mob = self.mobs.get_mut(index)?;
         let (kind, pos) = (mob.kind, mob.pos);
         mob.player_hit();
@@ -1391,6 +1391,7 @@ impl Entities {
         self.melee_for(index, dir, held, bonus, critical, sweep, PlayerId::HOST)
     }
 
+    /// A fully charged [`Entities::melee`] by player `owner`.
     #[allow(clippy::too_many_arguments)]
     pub fn melee_for(
         &mut self,
@@ -1402,15 +1403,27 @@ impl Entities {
         sweep: Option<DVec3>,
         owner: PlayerId,
     ) -> Option<MobKind> {
+        let hit = PlayerMelee { held, bonus, strength: 1.0, critical, sprint_knockback: false, sweep, owner };
+        self.player_melee(index, dir, hit)
+    }
+
+    /// A player's melee hit following Java 26.3 `Player.attack`: the base
+    /// damage is scaled by `0.2 + 0.8 * strength^2` and the enchantment bonus
+    /// by `strength`; a sprint knockback adds half a Knockback level.
+    pub fn player_melee(&mut self, index: usize, dir: DVec3, hit: PlayerMelee) -> Option<MobKind> {
         use crate::enchant::Enchantment;
+        let PlayerMelee { held, bonus, strength, critical, sprint_knockback, sweep, owner } = hit;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
         let spiked = matches!(target.kind, MobKind::Guardian | MobKind::ElderGuardian)
             && target.aquatic.as_ref().is_some_and(|a| a.beam.is_some() || target.vel.length_squared() < 0.1);
         let (kind, pos, shape) = (target.kind, target.pos, target.shape());
-        let base = (crate::mining::attack_damage(held.map(|s| s.item)) + bonus).max(0.0);
+        let base = (crate::mining::attack_damage(held.map(|s| s.item)) + bonus).max(0.0)
+            * (0.2 + strength * strength * 0.8)
+            * if critical { 1.5 } else { 1.0 };
         let enchants = held.map_or(Default::default(), |s| s.active_enchants());
-        let damage = base * if critical { 1.5 } else { 1.0 } + crate::enchant::damage_bonus(enchants, kind.creature());
+        let damage = base + crate::enchant::damage_bonus(enchants, kind.creature()) * strength;
         let (knockback, fire) = crate::mining::weapon_extras(held);
+        let knockback = f64::from(knockback) + if sprint_knockback { 0.5 } else { 0.0 };
         if fire > 0.0 {
             self.mobs[index].ignite(fire);
         }
@@ -1484,12 +1497,12 @@ impl Entities {
                 })
                 .collect();
             for i in near {
-                let away = self.mobs[i].pos - pos;
-                let damage = swept + crate::enchant::damage_bonus(enchants, self.mobs[i].kind.creature());
+                // Java pushes swept mobs along the attacker's facing.
+                let damage = (swept + crate::enchant::damage_bonus(enchants, self.mobs[i].kind.creature())) * strength;
                 if fire > 0.0 {
                     self.mobs[i].ignite(fire);
                 }
-                let killed = self.knock(i, away, damage, 0, owner);
+                let killed = self.knock(i, dir, damage, 0.0, owner);
                 if let Some(kind) = killed {
                     let at = self.mobs[i].pos;
                     self.drop_loot_with_fire(
@@ -1513,6 +1526,21 @@ impl Entities {
             }
         }
     }
+}
+
+/// A player's melee hit on a mob; see [`Entities::player_melee`].
+#[derive(Clone, Copy, Debug)]
+pub struct PlayerMelee {
+    pub held: Option<crate::inventory::Stack>,
+    /// Strength/Weakness attack-damage change.
+    pub bonus: f32,
+    /// Attack-strength charge, 0..=1.
+    pub strength: f32,
+    pub critical: bool,
+    pub sprint_knockback: bool,
+    /// The player's feet when a sweep is allowed.
+    pub sweep: Option<DVec3>,
+    pub owner: PlayerId,
 }
 
 /// Whether `kind` may spawn standing on `ground` at this daylight level.

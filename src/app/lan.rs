@@ -792,7 +792,6 @@ impl Game {
                             }
                         }
                         g.act(true, dt);
-                        g.mobs.attack_cooldown -= dt;
                         (g.puppet_used.take(), g.puppet_merchant.take(), g.puppet_vehicle.take())
                     })
                     .unwrap_or_default();
@@ -1586,8 +1585,8 @@ impl Game {
         let mut reach = self
             .target()
             .and_then(|(p, _)| crate::physics::ray_aabb(eye, dir, p.as_dvec3(), p.as_dvec3() + DVec3::ONE))
-            .unwrap_or(super::REACH)
-            .min(super::REACH);
+            .unwrap_or(self.session.entity_reach())
+            .min(self.session.entity_reach());
         for mob in &self.mobs.entities.mobs {
             let (min, max) = mob.shape().aabb(mob.pos);
             if let Some(distance) = crate::physics::ray_aabb(eye, dir, min, max) {
@@ -1622,34 +1621,36 @@ impl Game {
             return false;
         };
         self.mobs.attack_held = true;
-        if self.mobs.attack_cooldown > 0.0 {
-            return true;
-        }
-        self.mobs.attack_cooldown = crate::mining::attack_cooldown(self.held_item());
-        // Java's player melee: criticals while falling, enchantment bonuses, Knockback (and
-        // sprinting) shoves, Fire Aspect, sword sweeps across nearby players and Thorns.
+        // Java's player melee: the attack-strength charge scales damage; strong hits allow
+        // criticals while falling, sprint knockback and sword sweeps. Enchantment bonuses,
+        // Knockback, Fire Aspect and Thorns apply.
+        let strength = self.session.attack_strength(self.actions.selected, 0.5);
+        self.session.reset_attack_strength();
+        let strong = strength > 0.9;
         let held = self.session.inventory.get(self.actions.selected);
         let enchants = held.map_or(Default::default(), |s| s.active_enchants());
+        let sprint = self.sprinting_for_attack();
         let p = &self.session.player;
-        let critical = !p.on_ground && p.vel.y < 0.0 && !p.in_water && !p.flying;
-        let sprint = if self.puppet {
-            self.agents
-                .players
-                .values()
-                .find(|b| b.id == self.session.id)
-                .is_some_and(|b| b.agent.movement_input().sprint)
-        } else {
-            self.movement_input(self.arrival.is_some()).sprint
-        };
-        let base =
-            (crate::mining::attack_damage(self.held_item()) + self.session.vitals.effects.attack_bonus()).max(0.0);
-        let bonus = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other);
+        let critical = strong
+            && !p.on_ground
+            && p.vel.y < 0.0
+            && !p.in_water
+            && !p.flying
+            && !p.climbing
+            && p.vehicle.is_none()
+            && !sprint;
+        let base = (crate::mining::attack_damage(self.held_item()) + self.session.vitals.effects.attack_bonus())
+            .max(0.0)
+            * (0.2 + strength * strength * 0.8);
+        let bonus = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other) * strength;
         let damage = base * if critical { 1.5 } else { 1.0 } + bonus;
         let (knock_level, fire) = crate::mining::weapon_extras(held);
         let dir = self.session.player.forward().as_dvec3().with_y(0.0).normalize_or_zero();
-        let shove = 0.4 + 0.5 * (knock_level as f64 + if sprint { 1.0 } else { 0.0 });
+        let sprint_knockback = sprint && strong;
+        let shove = 0.4 + 0.5 * (knock_level as f64 + if sprint_knockback { 0.5 } else { 0.0 });
         let sword = held.and_then(|s| s.item.as_tool()).is_some_and(|(k, _)| k == crate::item::ToolKind::Sword);
-        let sweep = sword && self.session.player.on_ground && !critical && !sprint;
+        let slow = (p.vel.with_y(0.0) / 20.0).length_squared() < 0.25 * 0.25;
+        let sweep = strong && sword && p.on_ground && !critical && !sprint_knockback && slow;
         let attacker = self.session.id;
         let host_mode = self.lan.host_mode;
         let puppet = self.puppet;
@@ -1688,7 +1689,7 @@ impl Game {
                 .map(|(n, _)| n.clone())
                 .collect();
             for other in near {
-                hit(self, &other, swept, dir * 0.4 + DVec3::Y * 0.2, 0.0);
+                hit(self, &other, swept * strength + bonus, dir * 0.4 + DVec3::Y * 0.2, 0.0);
             }
             let mut burst = crate::particles::Burst::new(crate::particles::Kind::Poof, at + DVec3::Y, 3);
             burst.spread = DVec3::splat(0.5);
