@@ -91,6 +91,17 @@ impl Dimension {
         !matches!(self, Dimension::Nether)
     }
 
+    /// The dimension type's `visual/sky_light_factor` attribute (default 1.0):
+    /// how much skylight contributes to what is rendered. It scales the
+    /// shader's sky term only; gameplay skylight (`has_skylight`) is unchanged,
+    /// so the End propagates skylight but renders none of it.
+    pub const fn visual_sky_light_factor(self) -> f32 {
+        match self {
+            Dimension::Overworld => 1.0,
+            Dimension::Nether | Dimension::End => 0.0,
+        }
+    }
+
     /// Lowest block y. Java's Overworld runs from -64; the Nether and the
     /// End start at 0.
     pub const fn min_y(self) -> i32 {

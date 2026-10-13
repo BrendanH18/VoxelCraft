@@ -237,6 +237,32 @@ fn full_collision(b: Block) -> bool {
             || shape::collision(b, |_| Block::AIR, Block::AIR).as_slice().contains(&shape::Box16::FULL))
 }
 
+/// Java's `isRedstoneConductor`. The default is `isCollisionShapeFullBlock`;
+/// `Blocks` overrides it with `never` for glass, ice, leaves, pistons and a few
+/// others, and `always` for soul sand and mud (fixture `redstone_conductor`).
+fn is_redstone_conductor(b: Block) -> bool {
+    conductor_override(b.name()).unwrap_or_else(|| full_collision(b))
+}
+
+/// The registered override for a block name; the list covers the fixture's
+/// `never`/`always` fields plus its stained glass, copper grate/bulb and leaves families.
+fn conductor_override(name: &str) -> Option<bool> {
+    match name {
+        "mud" | "soul sand" => Some(true),
+        "glass" | "tinted glass" | "ice" | "frosted ice" | "glowstone" | "sea lantern" | "redstone block" | "tnt"
+        | "beacon" | "observer" | "piston" | "sticky piston" | "moving piston" | "bamboo" | "scaffolding"
+        | "powder snow" | "chorus flower" | "pointed dripstone" | "sulfur spike" => Some(false),
+        n if n.ends_with("stained glass")
+            || n.ends_with("leaves")
+            || n.contains("copper grate")
+            || n.contains("copper bulb") =>
+        {
+            Some(false)
+        }
+        _ => None,
+    }
+}
+
 /// Java's default `isValidSpawn`: a sturdy top face (a collision box
 /// covering the whole top of the cell) and emission below 14.
 fn sturdy_top(b: Block) -> bool {
@@ -434,8 +460,8 @@ impl Entities {
     /// from `start` in steps of `rand(6) - rand(6)`, each settling on one
     /// list entry at its first position far enough from every player.
     pub(super) fn monster_packs<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, start: IVec3, darken: u8) {
-        // Java's `isRedstoneConductor`: a full opaque start cell ends the attempt.
-        if world.block(start).is_none_or(|b| b.is_opaque() && full_collision(b)) {
+        // Java's `isRedstoneConductor`: a conducting start cell ends the attempt.
+        if world.block(start).is_none_or(is_redstone_conductor) {
             return;
         }
         let mut spawned = 0;
@@ -580,6 +606,61 @@ mod tests {
         assert!(!valid_empty_cell(Block::RAIL, MobKind::Zombie), "rails prevent spawning inside");
         assert!(!valid_empty_cell(Block::WATER, MobKind::Zombie));
         assert!(valid_empty_cell(Block::TORCH, MobKind::Zombie), "a torch is not a collision block");
+    }
+
+    #[test]
+    fn redstone_conductor_start_cells_follow_the_reference_predicates() {
+        let f = fixture();
+        let conductor = &f["redstone_conductor"];
+        assert_eq!(conductor["default"], "BlockStateBase.isCollisionShapeFullBlock");
+        assert_eq!(conductor["call_sites_found"], 26);
+        let mut checked = 0;
+        for (rule, expected) in [("never", false), ("always", true)] {
+            for name in conductor[rule].as_array().unwrap() {
+                let name = name.as_str().unwrap();
+                // Several overrides name blocks VoxelCraft has not added yet.
+                let Some(b) = Block::from_name(name) else { continue };
+                assert_eq!(is_redstone_conductor(b), expected, "{rule} {name}");
+                checked += 1;
+            }
+        }
+        assert!(checked >= 12, "{checked}");
+        // Registered families: every dye color and the leaves helper.
+        for name in ["white stained glass", "lime stained glass", "oak leaves", "birch leaves"] {
+            let b = Block::from_name(name).unwrap_or_else(|| panic!("no block {name}"));
+            assert!(!is_redstone_conductor(b), "{name}");
+        }
+        assert!(conductor["families"].as_object().unwrap().contains_key("stained_glass"));
+        // The default: a full collision shape conducts; slabs, air and water do not.
+        assert!(is_redstone_conductor(Block::STONE));
+        assert!(!is_redstone_conductor(Block::slab_of(Block::STONE).unwrap()));
+        assert!(!is_redstone_conductor(Block::AIR) && !is_redstone_conductor(Block::WATER));
+        // `always` overrides Java's 14/16 shapes (VoxelCraft's soul sand and mud
+        // collision is still a full cube, so the override is checked directly).
+        assert_eq!(conductor_override("soul sand"), Some(true));
+        assert_eq!(conductor_override("mud"), Some(true));
+    }
+
+    #[test]
+    fn a_conducting_start_cell_ends_the_spawn_attempt() {
+        let mut world = flat_test_world((-3..=3).flat_map(|x| (-3..=3).map(move |z| IVec2::new(x, z))), 63);
+        let player = Target::new(PlayerId::HOST, DVec3::new(0.5, 64.0, 0.5), true);
+        let night = ctx(vec![player]);
+        let start = IVec3::new(40, 64, 0);
+        let spawn_count = |world: &World| {
+            let mut e = Entities::new(3);
+            for _ in 0..400 {
+                e.monster_packs(world, &night, start, night.spawn_light.monster_darken);
+            }
+            e.mobs.len()
+        };
+        assert!(spawn_count(&world) > 0, "an open start cell spawns on a dark surface");
+        world.set_block(start, Block::STONE);
+        assert_eq!(spawn_count(&world), 0, "a full block ends the attempt");
+        world.set_block(start, Block::SOUL_SAND);
+        assert_eq!(spawn_count(&world), 0, "soul sand is registered as always conducting");
+        world.set_block(start, Block::GLASS);
+        assert!(spawn_count(&world) > 0, "glass is registered as never conducting");
     }
 
     #[test]

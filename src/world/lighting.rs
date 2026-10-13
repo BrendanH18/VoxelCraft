@@ -867,6 +867,112 @@ mod tests {
         fresh
     }
 
+    /// A LAN replica applies host edits incrementally; its light must match a
+    /// replica that installs the same final chunk as a fresh snapshot.
+    #[test]
+    fn replica_edits_relight_incrementally_like_a_fresh_snapshot() {
+        let replica = |w: &mut World| {
+            for c in square(1) {
+                for cy in w.generator.dimension.chunk_rows() {
+                    w.receive_chunk(IVec3::new(c.x, cy, c.y), World::flat_test_chunk(cy, 63));
+                }
+            }
+            w.update_block_light();
+        };
+        let mut edited = World::new_remote(Arc::new(Generator::new(7)), 2);
+        replica(&mut edited);
+        let pos = IVec3::new(0, 2, 0);
+        let mut cells = Vec::new();
+        let mut cell = |l: IVec3, b: Block| cells.push((index(l.x as usize, l.y as usize, l.z as usize) as u16, b));
+        // Chunk row 2 starts at y 64: a stone roof at y 70 with one glass
+        // cell, and a torch on the ground beneath it.
+        for x in 2..12 {
+            for z in 2..12 {
+                cell(IVec3::new(x, 6, z), if (x, z) == (6, 6) { Block::GLASS } else { Block::STONE });
+            }
+        }
+        cell(IVec3::new(4, 0, 4), Block::TORCH);
+        // 100 cells: past the batch size `receive_edits` applies incrementally.
+        edited.apply_replica_edits(pos, &cells);
+        // Then open the roof again in one place.
+        edited.receive_edits(pos, &[(index(9, 6, 9) as u16, Block::AIR)]);
+
+        let final_data = edited.chunks[&pos].data.clone();
+        let mut fresh = World::new_remote(Arc::new(Generator::new(7)), 2);
+        replica(&mut fresh);
+        fresh.receive_chunk(pos, final_data);
+        fresh.update_block_light();
+        for x in -4..20 {
+            for z in -4..20 {
+                for y in 56..80 {
+                    let p = IVec3::new(x, y, z);
+                    assert_eq!(edited.sky_light(p), fresh.sky_light(p), "sky {p}");
+                    assert_eq!(edited.block_light(p), fresh.block_light(p), "block {p}");
+                }
+            }
+        }
+        assert!(edited.block_light(IVec3::new(4, 64, 4)) >= 14, "the torch lights its cell");
+        assert!(
+            edited.sky_light(IVec3::new(6, 69, 6)).unwrap() > edited.sky_light(IVec3::new(4, 69, 4)).unwrap(),
+            "glass lets sky through"
+        );
+    }
+
+    /// Release-mode cost of skylight work on a replica. Run with
+    /// `cargo test --release --lib skylight_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "timing measurement"]
+    fn skylight_cost() {
+        use std::time::Instant;
+        let replica = || {
+            let mut w = World::new_remote(Arc::new(Generator::new(7)), 2);
+            for c in square(2) {
+                for cy in w.generator.dimension.chunk_rows() {
+                    w.receive_chunk(IVec3::new(c.x, cy, c.y), World::flat_test_chunk(cy, 63));
+                }
+            }
+            w.update_block_light();
+            w
+        };
+        let median = |mut v: Vec<f64>| {
+            v.sort_by(f64::total_cmp);
+            v[v.len() / 2]
+        };
+        let pos = IVec3::new(0, 2, 0);
+        let roof: Vec<_> =
+            (0..CHUNK_SIZE).flat_map(|x| (0..CHUNK_SIZE).map(move |z| (index(x, 6, z) as u16, Block::STONE))).collect();
+        let mut column = vec![];
+        for _ in 0..15 {
+            let mut w = replica();
+            let data = w.chunks[&pos].data.clone();
+            let t = Instant::now();
+            w.receive_chunk(pos, data);
+            w.update_block_light();
+            column.push(t.elapsed().as_secs_f64() * 1e3);
+        }
+        println!("whole-column relight: median {:.3} ms", median(column));
+        for n in [1, 4, 16, 64, 256, 1024] {
+            let (mut snapshot, mut incremental) = (vec![], vec![]);
+            for _ in 0..15 {
+                let mut w = replica();
+                let data = Arc::new(w.chunks[&pos].data.with_edits(&roof[..n]));
+                let t = Instant::now();
+                w.receive_chunk(pos, data);
+                w.update_block_light();
+                snapshot.push(t.elapsed().as_secs_f64() * 1e3);
+                let mut w = replica();
+                let t = Instant::now();
+                w.apply_replica_edits(pos, &roof[..n]);
+                incremental.push(t.elapsed().as_secs_f64() * 1e3);
+            }
+            println!(
+                "{n:>4} roof cells: snapshot {:.3} ms, incremental {:.3} ms",
+                median(snapshot),
+                median(incremental)
+            );
+        }
+    }
+
     #[test]
     fn skylight_fills_shafts_spreads_into_tunnels_and_follows_covers() {
         let mut world = flat(square(2));
@@ -1023,6 +1129,12 @@ mod tests {
             (crate::world::terrain::Dimension::End, "the_end"),
         ] {
             assert_eq!(Some(dimension.has_skylight()), fixture["dimensions"][key]["has_skylight"].as_bool());
+            // Rendered sky contribution follows the visual factor; propagation follows has_skylight.
+            assert_eq!(
+                Some(dimension.visual_sky_light_factor() as f64),
+                fixture["dimensions"][key]["visual_sky_light_factor"].as_f64(),
+                "{key}"
+            );
         }
         let world = flat([IVec2::ZERO]);
         assert_eq!(world.sky_light(IVec3::new(16, 64, 16)), None, "neighbour columns are not loaded");

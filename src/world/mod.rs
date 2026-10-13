@@ -231,13 +231,50 @@ impl World {
         chunks
     }
 
+    /// Largest host edit batch a replica applies cell by cell.
+    const REPLICA_INCREMENTAL_EDITS: usize = 64;
+
     /// Applies a host's cell edits to a chunk this replica already holds.
+    /// Light, heightmaps and meshes update incrementally, as for a local edit,
+    /// without running simulation side effects.
     pub fn receive_edits(&mut self, pos: IVec3, cells: &[(u16, Block)]) {
-        if cells.is_empty() {
+        if !self.remote || cells.is_empty() || !self.chunks.contains_key(&pos) {
             return;
         }
-        let Some(data) = self.chunks.get(&pos).map(|s| s.data.with_edits(cells)) else { return };
-        self.receive_chunk(pos, Arc::new(data));
+        // Measured crossover (`lighting::tests::skylight_cost`): past roughly
+        // a hundred cells, relighting the column from a snapshot is cheaper.
+        if cells.len() > Self::REPLICA_INCREMENTAL_EDITS {
+            let Some(data) = self.chunks.get(&pos).map(|s| s.data.with_edits(cells)) else { return };
+            self.receive_chunk(pos, Arc::new(data));
+        } else {
+            self.apply_replica_edits(pos, cells);
+        }
+    }
+
+    /// Set replica cells one at a time through the shared light, heightmap and
+    /// remesh bookkeeping.
+    pub(crate) fn apply_replica_edits(&mut self, pos: IVec3, cells: &[(u16, Block)]) {
+        let base = pos * CHUNK_SIZE_I;
+        for &(i, block) in cells {
+            let i = i as i32;
+            let l = IVec3::new(
+                i & (CHUNK_SIZE_I - 1),
+                i >> (2 * chunk::CHUNK_BITS),
+                (i >> chunk::CHUNK_BITS) & (CHUNK_SIZE_I - 1),
+            );
+            let p = base + l;
+            let Some(slot) = self.chunks.get_mut(&pos) else { return };
+            let (x, y, z) = (l.x as usize, l.y as usize, l.z as usize);
+            let old = slot.data.get(x, y, z);
+            if old == block {
+                continue;
+            }
+            let old_light = slot.block_light.as_ref().map_or(0, |light| light.get(x, y, z));
+            Arc::make_mut(&mut slot.data).set(x, y, z, block);
+            self.light_block_changed(p, old, block, old_light);
+            self.reheight_and_remesh(p, old, block, false);
+        }
+        self.update_block_light();
     }
 
     /// Install an exact authoritative snapshot, invalidate stale meshes and heightmaps.
@@ -623,15 +660,23 @@ impl World {
             self.log_removed(p);
         }
         self.extinguish_unsupported_fire(p);
+        self.reheight_and_remesh(p, old, block, sync);
+        true
+    }
 
-        // Keep the column heightmap and skylight current.
+    /// Keep the column heightmap and skylight current after a cell changed
+    /// from `old` to `block`, and schedule remeshing of every chunk whose
+    /// geometry or lighting depends on it.
+    fn reheight_and_remesh(&mut self, p: IVec3, old: Block, block: Block, sync: bool) {
+        let cpos = chunk_of(p);
+        let l = local_of(p);
         let old_height = self.raw_height(p);
         let (old_h, new_h) = self.update_height(p, block);
         if let (Some(before), Some(after)) = (old_height, self.raw_height(p)) {
             self.sky_block_changed(p, old, block, before, after);
         }
         if !self.meshes_enabled {
-            return true;
+            return;
         }
 
         // Light reaches 15 blocks, plus 1 for the face-adjacent sample cell;
@@ -668,7 +713,6 @@ impl World {
                 }
             }
         }
-        true
     }
 
     /// A column's raw heightmap entry (`NO_HEIGHT` when clear), if the column exists.

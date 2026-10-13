@@ -361,6 +361,13 @@ implements propagated gameplay skylight, End skylight, full-height ground-monste
 attempts, cave/torch checks and reference clock/weather darkening. ENV-05 and
 MOB-01 remain **Partial**: shape occlusion, growth integration, spawn caps/ranges,
 structure overrides and ordinary player/performance acceptance are still open.
+The [review fixes](verification/2026-10-13-review-lighting-fixes.md) add the
+24-block spawn-point exclusion, thunder (> 0.9) and rain (> 0.2) thresholds,
+reference daylight-detector output, the `isRedstoneConductor` start-cell check
+and incremental LAN replica relighting (measured microbenchmarks only). The End
+renders sky-lit terrain at 0.65 because the shaders lack the reference ambient
+term (`ambient_light` 0.25, sky factor 0); soul sand and mud still collide as
+full cubes.
 
 The [amethyst geode follow-up](verification/2026-10-13-amethyst-geodes.md)
 implements the Java 26.3 geode configured/placed feature with order-independent

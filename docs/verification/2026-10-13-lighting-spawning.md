@@ -43,7 +43,9 @@ and both feature configurations were updated together.
 ## Independent evidence and recovery checks
 
 `tools/extract_java_lighting_spawning_fixtures.py` verifies the official hash,
-extracts biome/dimension/timeline/tag data and checks relevant bytecode forms.
+extracts biome/dimension/timeline/tag data and checks relevant bytecode forms
+(constants and call shapes, not decompiled behavior; see the
+[review fixes](2026-10-13-review-lighting-fixes.md) for the evidence levels).
 Its independent fixed-point light model uses no Rust output. Six scene families
 cover sealed caves, torch removal, shafts/covers/tunnels, overhangs, loaded
 borders and occupied cells/floors. The fixture also records **114** clock/weather

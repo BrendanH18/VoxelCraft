@@ -74,6 +74,63 @@
       "ice"
     ]
   },
+  "redstone_conductor": {
+    "default": "BlockStateBase.isCollisionShapeFullBlock",
+    "never": [
+      "acacia_leaves",
+      "azalea_leaves",
+      "bamboo",
+      "beacon",
+      "birch_leaves",
+      "cherry_leaves",
+      "chorus_flower",
+      "dark_oak_leaves",
+      "flowering_azalea_leaves",
+      "frosted_ice",
+      "glass",
+      "glowstone",
+      "ice",
+      "jungle_leaves",
+      "mangrove_leaves",
+      "moving_piston",
+      "oak_leaves",
+      "observer",
+      "orange_poplar_leaves",
+      "pale_oak_leaves",
+      "piston",
+      "pointed_dripstone",
+      "powder_snow",
+      "red_poplar_leaves",
+      "redstone_block",
+      "scaffolding",
+      "sea_lantern",
+      "spruce_leaves",
+      "sticky_piston",
+      "sulfur_spike",
+      "tinted_glass",
+      "tnt",
+      "yellow_poplar_leaves"
+    ],
+    "always": [
+      "mud",
+      "soul_sand"
+    ],
+    "families": {
+      "stained_glass": {
+        "predicate": "never",
+        "factory": "lambda$static$158"
+      },
+      "copper_grate": {
+        "predicate": "never",
+        "factory": "lambda$static$396"
+      },
+      "copper_bulb": {
+        "predicate": "never",
+        "factory": "lambda$static$399"
+      }
+    },
+    "call_sites_found": 26
+  },
   "dangerous_blocks": [
     "burning blocks unless fire immune",
     "wither_rose",
@@ -2280,6 +2337,7 @@
   "dimensions": {
     "overworld": {
       "has_skylight": true,
+      "visual_sky_light_factor": 1.0,
       "monster_spawn_block_light_limit": 0,
       "monster_spawn_light_level": [
         0,
@@ -2290,6 +2348,7 @@
     },
     "the_nether": {
       "has_skylight": false,
+      "visual_sky_light_factor": 0.0,
       "monster_spawn_block_light_limit": 15,
       "monster_spawn_light_level": [
         7,
@@ -2300,6 +2359,7 @@
     },
     "the_end": {
       "has_skylight": true,
+      "visual_sky_light_factor": 0.0,
       "monster_spawn_block_light_limit": 0,
       "monster_spawn_light_level": [
         15,

@@ -1,13 +1,27 @@
 #!/usr/bin/env python3
 """Extract Java 26.3 lighting and monster-spawn facts, then reproduce scenes.
 
-Facts come from the pinned official server artifact: data JSON plus javap
-checks of the bytecode forms the facts depend on. Unknown forms fail rather
-than regenerating a guessed fixture. Scene expectations are then computed by
-an independent reference model written from those facts: a fixed-point
-relaxation of sky and block light (not VoxelCraft's incremental queues) and
-Java's spawn checks as exact acceptance probabilities out of 256. No
-VoxelCraft source or existing fixture is consulted.
+Evidence levels, so nothing here is claimed beyond what is checked:
+
+* Data JSON facts (biome spawn lists, dimension types, the day timeline, block
+  tags) are read from the pinned official server artifact.
+* Bytecode-checked facts: for each rule the script runs javap and requires
+  specific instruction forms or constants (for example the sky-light
+  dampening default, the 24-block spawn-point distance, and the call sites of
+  `Properties.isRedstoneConductor`). A form it does not recognize fails
+  instead of regenerating a guessed fixture. These checks confirm that the
+  listed constants and call shapes exist; they are not a decompilation or an
+  execution of the Java method.
+* Hand-reproduced facts: the English `rule` strings, the family expansions
+  (all leaves, dye colors, copper weathering/waxing variants), the float
+  arithmetic in `sky_darkening_cases`/`detector_cases`, and the scene model
+  below were written by hand from the bytecode and data. Only the constants
+  they depend on are checked.
+
+Scene expectations come from an independent model: a fixed-point relaxation
+of sky and block light (not VoxelCraft's incremental queues) and Java's spawn
+checks as exact acceptance probabilities out of 256. No VoxelCraft source or
+existing fixture is consulted.
 """
 import argparse
 import hashlib
@@ -49,6 +63,75 @@ def bootstrap_targets(verbose):
         if t:
             targets[m[1]] = (t[1].split("/")[-1], t[2])
     return targets
+
+
+def redstone_conductors(properties, blocks, targets):
+    """Which Blocks fields override the default `isRedstoneConductor`.
+
+    Bytecode-checked: the default predicate, each call site and its
+    predicate (`never` or `always`), and the field assigned after it.
+    Helper methods and per-color lambdas are matched to the fields whose
+    construction calls them; the full per-color family is hand-reproduced.
+    """
+    ptargets = bootstrap_targets(properties)
+    default = re.search(r"InvokeDynamic #(\d+):test:[^\n]*StatePredicate;\n\s+\d+: putfield\s+#\d+\s+// Field isRedstoneConductor:", properties)
+    require(default and ptargets[default[1]] == ("BlockBehaviour$BlockStateBase", "isCollisionShapeFullBlock"),
+            "default isRedstoneConductor changed")
+    for name, value in [("never", "iconst_0"), ("always", "iconst_1")]:
+        require(value in method(blocks, f"private static boolean {name}("), f"{name} predicate changed")
+
+    # Split the code into methods; static initializer windows end at each field store.
+    methods, current = {}, None
+    for line in blocks.splitlines():
+        m = re.match(r"  (?:public|private|protected|static)[^(]*?([\w$]+)\(.*\)(?: throws.*)?;$", line)
+        if m:
+            current = methods.setdefault(m[1], [])
+        elif line.startswith("  static {};"):
+            current = methods.setdefault("<clinit>", [])
+        elif current is not None:
+            current.append(line)
+
+    def predicates(lines):
+        found, last = [], None
+        for line in lines:
+            m = re.search(r"InvokeDynamic #(\d+):test:", line)
+            if m:
+                last = targets[m[1]][1]
+            if "Properties.isRedstoneConductor" in line:
+                require(last in ("never", "always"), f"unknown isRedstoneConductor predicate {last}")
+                found.append(last)
+        return found
+
+    helpers = {name: predicates(lines) for name, lines in methods.items() if name != "<clinit>"}
+    helpers = {name: found for name, found in helpers.items() if found}
+    by_lambda = {k: v[1] for k, v in targets.items() if v[1] in helpers}
+    sites = sum(map(len, helpers.values()))
+    result = {"default": "BlockStateBase.isCollisionShapeFullBlock", "never": [], "always": [], "families": {}}
+    window = []
+    for line in methods["<clinit>"]:
+        window.append(line)
+        field = re.search(r"putstatic .*Field (\w+):", line)
+        if not field:
+            continue
+        direct = predicates(window)
+        sites += len(direct)
+        for p in direct:
+            result[p].append(field[1].lower())
+        for name, found in helpers.items():
+            if re.search(r"Method " + re.escape(name) + ":", "\n".join(window)):
+                require(len(set(found)) == 1, f"mixed predicates in {name}")
+                result[found[0]].append(field[1].lower())
+        for ident in re.findall(r"InvokeDynamic #(\d+):apply:", "\n".join(window)):
+            if ident in by_lambda:
+                name = by_lambda[ident]
+                result["families"][field[1].lower()] = {"predicate": helpers[name][0], "factory": name}
+        window = []
+    result["call_sites_found"] = sites
+    for key in ("never", "always"):
+        result[key] = sorted(set(result[key]))
+    require(result["call_sites_found"] == 26 and result["never"] and result["always"] and result["families"],
+            "isRedstoneConductor registrations changed; update the fixture model")
+    return result
 
 
 def count(value):
@@ -154,6 +237,8 @@ def extract_facts(jar, data):
         "default": "top face sturdy and light emission below 14",
         **{k: sorted(set(v)) for k, v in sorted(overrides.items())},
     }
+    facts["redstone_conductor"] = redstone_conductors(
+        inspect("net.minecraft.world.level.block.state.BlockBehaviour$Properties", True), blocks, targets)
     dangerous = method(inspect("net.minecraft.world.entity.EntityType"), "public boolean isBlockDangerous(")
     facts["dangerous_blocks"] = ["burning blocks unless fire immune"] + [
         b.lower() for b in re.findall(r"Field net/minecraft/world/level/block/Blocks\.(\w+):", dangerous)
@@ -235,12 +320,17 @@ def extract_facts(jar, data):
         "sun_angle_ease": sun["ease"]["cubic_bezier"],
     }
     facts["daylight_detector"]["cases"] = detector_cases(facts["daylight_detector"], facts["sky_darken"]["period_ticks"])
+    attrs_text = inspect("net.minecraft.world.attribute.EnvironmentAttributes")
+    factor = re.search(r"String visual/sky_light_factor\n[^\n]*AttributeTypes\.FLOAT[^\n]*\n[^\n]*\n[^\n]*fconst_1", attrs_text)
+    require(factor, "visual sky light factor default changed")
+    sky_factor_default = 1.0
     dims = {}
     for dim in ["overworld", "the_nether", "the_end"]:
         d = read(f"data/minecraft/dimension_type/{dim}.json")
         level = d["monster_spawn_light_level"]
         dims[dim] = {
             "has_skylight": d["has_skylight"],
+            "visual_sky_light_factor": d.get("attributes", {}).get("minecraft:visual/sky_light_factor", sky_factor_default),
             "monster_spawn_block_light_limit": d["monster_spawn_block_light_limit"],
             "monster_spawn_light_level": list(count(level)),
             "min_y": d["min_y"],
