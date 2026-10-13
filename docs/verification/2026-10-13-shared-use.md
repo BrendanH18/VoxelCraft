@@ -2,9 +2,16 @@
 
 STR-03 step: one actor-owned use chain, `PlayerSession::use_held`
 ([src/session/interact.rs](../../src/session/interact.rs)), replaces the desktop's
-`Game::place_block` body and the CLI's separate `place` handlers. Controller and
-LAN hands reach it through the desktop path (still via `Game::puppet`); the
-headless LAN server reaches it through CLI commands. Nothing here is Verified.
+`Game::place_block` body and the CLI's separate `place` handlers. Desktop,
+controller and LAN hands reach it through `hands::Actor` on each player's own
+session (no state swap); the headless LAN server reaches it through CLI
+commands. Nothing here is Verified.
+
+Moving hands off the swap also fixes a latent defect: a controller player
+killed by consumed magic damage (a harming potion) ran the host's death
+handling. Requests now route damage to that player's own agent. Controller
+drops use the controller player's selected slot rather than the host's
+inventory-cursor state.
 
 ## Behavior
 

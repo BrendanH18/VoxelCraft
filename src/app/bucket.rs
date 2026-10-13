@@ -3,22 +3,8 @@ use crate::audio::{
     Audio,
     sounds::{Material, Sound},
 };
-use crate::item::Item;
 use crate::world::block::Block;
-use voxelcraft::survival_items::bucket::{self, Effect};
-
-use super::Game;
-
-impl Game {
-    pub(super) fn holding_bucket(&self) -> bool {
-        self.held_item().is_some_and(|item| item != Item::GLASS_BOTTLE && bucket::handles(item))
-    }
-
-    /// Snowballs, eggs and the fishing rod act once per click, like buckets.
-    pub(super) fn holding_throwable(&self) -> bool {
-        matches!(self.held_item(), Some(Item::SNOWBALL | Item::EGG | Item::FISHING_ROD))
-    }
-}
+use voxelcraft::survival_items::bucket::Effect;
 
 pub(super) fn feedback(audio: &mut Audio, effect: Effect) {
     let stone = Sound::Place(Material::Stone);

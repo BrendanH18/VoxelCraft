@@ -205,7 +205,7 @@ impl Game {
                         host_dial,
                         self.hand.appearance(
                             &self.session.vitals,
-                            (self.actions.eat_timer / super::EAT_TIME) as f32,
+                            (self.body.actions.eat_timer / super::EAT_TIME) as f32,
                             scene.alpha,
                             self.session.inventory.armor,
                         ),

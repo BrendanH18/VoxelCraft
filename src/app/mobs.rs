@@ -15,7 +15,6 @@ pub(super) struct Mobs {
     pub entities: Entities,
     /// The current left-button hold started on a mob: don't break blocks
     /// until it's released.
-    pub(super) attack_held: bool,
     /// `--spawn` requests, applied once the world has loaded.
     pending: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>,
     /// `--wait`: seconds to keep simulating before a `--screenshot`.
@@ -25,7 +24,7 @@ pub(super) struct Mobs {
 
 impl Mobs {
     pub fn new(seed: u64, spawn: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>, wait: f64) -> Self {
-        Self { entities: Entities::new(seed), attack_held: false, pending: spawn, wait, wait_start: None }
+        Self { entities: Entities::new(seed), pending: spawn, wait, wait_start: None }
     }
 
     /// For `--screenshot`: true once `--wait` seconds have passed since the
@@ -47,34 +46,6 @@ impl Game {
             .and_then(|(b, _)| physics::ray_aabb(eye, dir, b.as_dvec3(), b.as_dvec3() + DVec3::ONE))
             .unwrap_or(self.session.entity_reach());
         self.mobs.entities.raycast(eye, dir, block_dist.min(self.session.entity_reach())).map(|(i, _)| i)
-    }
-
-    /// Left-button press: melee through the shared session transaction.
-    /// Returns `true` if something was hit, in which case no block should be broken.
-    pub(super) fn attack(&mut self) -> bool {
-        if self.attack_lan_player() {
-            return true;
-        }
-        let sprinting = self.sprinting_for_attack();
-        let result = self.session.attack(self.actions.selected, &self.world, &mut self.mobs.entities, sprinting);
-        use voxelcraft::session::combat::{Outcome, Target as Hit};
-        let Ok(Outcome::Hit { target, at, critical, tool_broken, .. }) = result else { return false };
-        self.mobs.attack_held = true;
-        let (volume, pitch) = match target {
-            Hit::FenceKnot => (0.0, (1.0, 1.0)),
-            Hit::Cart => (0.7, (0.8, 1.0)),
-            Hit::Fireball => (0.7, (0.6, 0.8)),
-            Hit::Fight => (0.8, (0.9, 1.1)),
-            Hit::Mob(_) if critical => (0.8, (1.25, 1.4)),
-            Hit::Mob(_) => (0.8, (0.9, 1.1)),
-        };
-        if volume > 0.0 {
-            self.audio.play(Sound::Hit, Some(at), volume, pitch);
-        }
-        if let Some(item) = tool_broken {
-            self.tool_broke(item);
-        }
-        true
     }
 
     /// Sprint state of whoever is acting: a controller/LAN hand's own input, or the host's keys.
@@ -105,16 +76,16 @@ impl Game {
     }
 
     pub(super) fn release_attack(&mut self) {
-        self.mobs.attack_held = false;
+        self.body.attack_held = false;
     }
 
     /// Block breaking is suppressed while aiming at a mob, and for the rest
     /// of a click that started as an attack.
     pub(super) fn attacking(&self) -> bool {
-        self.mobs.attack_held
+        self.body.attack_held
             || self.mob_target().is_some()
             || self.fight_target().is_some()
-            || self.lan_player_target().is_some()
+            || self.lan_player_target(&super::lan::Fighter::Host).is_some()
     }
 
     /// Applies `--spawn` requests (with the other `--place` edits).
@@ -147,8 +118,8 @@ impl Game {
         self.mobs.entities.village_day = self.day_count;
         for m in &mut self.mobs.entities.mobs {
             if let Some(v) = &mut m.villager {
-                v.trading =
-                    self.inventory_open && self.container == super::Container::Trading(v.id) || self.pads.trading(v.id);
+                v.trading = self.inventory_open && self.body.container == super::Container::Trading(v.id)
+                    || self.pads.trading(v.id);
             }
         }
         if self.held_item() != Some(crate::item::Item::FISHING_ROD) || self.session.vitals.is_dead() {
@@ -176,7 +147,7 @@ impl Game {
             held_enchants: self
                 .session
                 .inventory
-                .get(self.actions.selected)
+                .get(self.body.actions.selected)
                 .map_or(Default::default(), |s| s.active_enchants()),
             shape: self.session.player.collision_shape(),
             gold_armor: crate::entity::nether::wears_gold(&self.session.inventory.armor),

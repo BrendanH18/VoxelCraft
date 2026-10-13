@@ -10,10 +10,11 @@
 //! toggles sneaking. X cycles camera perspective. Start opens a pause menu and Y the inventory (see
 //! `pad_menu`); the world keeps running while a player is in a menu.
 //!
-//! Hands use the host's own interaction code: [`Game::puppet`] swaps the
-//! controller player's body, inventory and hand state into the host's fields
-//! for the call, so mining, attacking and every right-click action behave
-//! exactly as they do with a mouse.
+//! Hands run on the controller player's own session, hand animation and
+//! [`Body`] through `hands::Actor`, the same code as the mouse, so mining,
+//! attacking and every right-click action behave identically. Screens, beds
+//! and respawn points still borrow the host's container code through
+//! [`Game::puppet`] until container transactions move into the session.
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
@@ -24,6 +25,7 @@ use glam::{DVec3, IVec3, Vec2};
 use super::actions::Actions;
 use super::pad_menu::{Action, Menu, Nav, Tab};
 use super::{Container, Game};
+use crate::inventory::Stack;
 use crate::player::MoveInput;
 use crate::world::block::Block;
 use voxelcraft::agent::{Agent, Command};
@@ -69,16 +71,18 @@ struct Held {
     jump: bool,
 }
 
-/// The host-shaped hand state of a controller player, swapped into the
-/// host's fields while their actions run.
+/// One player's hand and screen state: the host's own, each controller
+/// seat's and each LAN peer's.
 pub(super) struct Body {
-    actions: Actions,
-    action_cooldown: f64,
-    left_held: bool,
-    right_held: bool,
-    mine_pressed: bool,
-    attack_held: bool,
-    container: Container,
+    pub(super) actions: Actions,
+    pub(super) action_cooldown: f64,
+    pub(super) left_held: bool,
+    pub(super) right_held: bool,
+    /// Preserve mining clicks that begin and end between fixed game ticks.
+    pub(super) mine_pressed: bool,
+    /// The current click started as an attack, so it does not mine.
+    pub(super) attack_held: bool,
+    pub(super) container: Container,
 }
 
 impl Default for Body {
@@ -108,7 +112,7 @@ impl Body {
         (self.actions.eat_timer / super::EAT_TIME) as f32
     }
     /// Lets go of both triggers (opening a screen, sleeping, dying).
-    fn let_go(&mut self) {
+    pub(super) fn let_go(&mut self) {
         self.left_held = false;
         self.right_held = false;
         self.mine_pressed = false;
@@ -606,13 +610,7 @@ impl Game {
         let Some(bot) = self.agents.players.get_mut(name) else { return false };
         swap(&mut self.session, &mut bot.agent.session);
         swap(&mut self.hand, &mut bot.hand);
-        swap(&mut self.actions, &mut body.actions);
-        swap(&mut self.action_cooldown, &mut body.action_cooldown);
-        swap(&mut self.left_held, &mut body.left_held);
-        swap(&mut self.right_held, &mut body.right_held);
-        swap(&mut self.mine_pressed, &mut body.mine_pressed);
-        swap(&mut self.mobs.attack_held, &mut body.attack_held);
-        swap(&mut self.container, &mut body.container);
+        swap(&mut self.body, body);
         true
     }
 
@@ -627,11 +625,10 @@ impl Game {
         bot.agent.session.work.iter_mut().filter_map(Option::take).collect()
     }
 
-    /// Runs host interaction code as controller player `i`. While `f` runs,
-    /// the host's fields hold that player's state (and `puppet` is set), so
-    /// `place_block`, `continue_breaking`, `attack`, the bow, eating and the
-    /// container screens act for them. Popups become their own messages,
-    /// and containers and beds they use land in `puppet_used`.
+    /// Runs host screen code as controller player `i`. While `f` runs, the
+    /// host's fields hold that player's state (and `puppet` is set), so
+    /// container screens, beds and respawn points act for them. Popups become
+    /// their own messages. Hands no longer use this (see `hands::Actor`).
     pub(super) fn puppet<R>(&mut self, i: usize, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
         let name = self.pads.seats[i].name.clone();
         let mut body = std::mem::take(&mut self.pads.seats[i].body);
@@ -643,7 +640,7 @@ impl Game {
         result
     }
 
-    /// Shared desktop action boundary for controller and LAN player bodies.
+    /// Shared desktop screen boundary for controller and LAN player bodies.
     pub(super) fn puppet_body<R>(&mut self, name: &str, body: &mut Body, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
         let bot = self.agents.players.get(name)?;
         let selected = bot.agent.selected;
@@ -743,33 +740,135 @@ impl Game {
                 }
             }
             agent.hold(tick.input, false, false);
-            let (used, merchant, vehicle) = self
-                .puppet(i, |g| {
-                    for press in presses {
-                        match press {
-                            Press::MineDown => g.attack_button(true),
-                            Press::MineUp => g.attack_button(false),
-                            Press::UseDown => g.use_button(true),
-                            Press::UseUp => g.use_button(false),
-                            Press::DropOne => g.drop_selected(false),
-                            Press::DropStack => g.drop_selected(true),
-                            _ => {}
-                        }
+            let mut body = std::mem::take(&mut self.pads.seats[i].body);
+            let fighter = super::lan::Fighter::Agent(name.clone());
+            let mut requests = Vec::new();
+            for press in presses {
+                let done = match press {
+                    Press::MineDown => {
+                        let (slot, sprint, interact) = self.agent_attack_context(&name);
+                        let hit = interact && self.attack_lan_player(&fighter, slot, sprint);
+                        self.agent_hands(&name, &mut body, |h| h.attack_button(true, hit))
                     }
-                    g.act(true, dt);
-                    (g.puppet_used.take(), g.puppet_merchant.take(), g.puppet_vehicle.take())
-                })
-                .unwrap_or_default();
-            if let Some(id) = vehicle {
-                self.pads.seats[i].open(Menu::items(Tab::Vehicle(id)));
+                    Press::MineUp => self.agent_hands(&name, &mut body, |h| h.attack_button(false, false)),
+                    Press::UseDown => self.agent_hands(&name, &mut body, |h| h.use_button(true)),
+                    Press::UseUp => self.agent_hands(&name, &mut body, |h| h.use_button(false)),
+                    Press::DropOne | Press::DropStack => {
+                        self.drop_agent_selected(&name, &mut body, press == Press::DropStack);
+                        None
+                    }
+                    _ => None,
+                };
+                requests.extend(done.map(|(_, r)| r).unwrap_or_default());
             }
-            if let Some(id) = merchant {
-                self.pads.seats[i].open(Menu::items(Tab::Trading(id)));
+            let aiming = self.agent_aiming_at_target(&name, &body);
+            if let Some((_, r)) = self.agent_hands(&name, &mut body, |h| h.act(true, dt, aiming)) {
+                requests.extend(r);
             }
-            if let Some(pos) = used {
-                self.pad_use_block(i, pos);
+            self.pads.seats[i].body = body;
+            for request in requests {
+                self.pad_request(i, request);
             }
         }
+    }
+
+    /// Opens what a controller player's hands requested, or shows their message.
+    fn pad_request(&mut self, i: usize, request: super::hands::Request) {
+        use super::hands::Request;
+        use voxelcraft::session::interact::Used;
+        let name = self.pads.seats[i].name.clone();
+        match request {
+            Request::Popup(text) => self.pads.seats[i].message = Some((text, Instant::now())),
+            Request::Open(Used::OpenVehicle(id)) => self.pads.seats[i].open(Menu::items(Tab::Vehicle(id))),
+            Request::Open(Used::OpenMerchant(id)) => self.pads.seats[i].open(Menu::items(Tab::Trading(id))),
+            Request::Open(Used::Screen { cell, .. } | Used::Bed { cell }) => self.pad_use_block(i, cell),
+            Request::Open(_) => {}
+            Request::MagicDamage(amount) => {
+                if let Some(bot) = self.agents.players.get_mut(&name) {
+                    bot.agent.hurt_magic(amount, &mut self.mobs.entities);
+                }
+            }
+        }
+    }
+
+    /// Runs `f` on agent `name`'s own hands (session, hand animation and
+    /// `body`), returning its result and what it requested.
+    pub(super) fn agent_hands<R>(
+        &mut self,
+        name: &str,
+        body: &mut Body,
+        f: impl FnOnce(&mut super::hands::Actor) -> R,
+    ) -> Option<(R, Vec<super::hands::Request>)> {
+        let bot = self.agents.players.get(name)?;
+        let session = &bot.agent.session;
+        let sneaking = session.player.sneaking;
+        let sprinting =
+            bot.agent.movement_input().sprint && (session.mode.invulnerable() || session.vitals.hunger.can_sprint());
+        let id = bot.id;
+        let others: Vec<glam::DVec3> = std::iter::once(self.session.player.pos)
+            .chain(self.agents.players.values().filter(|b| b.active && b.id != id).map(|b| b.agent.session.player.pos))
+            .collect();
+        body.actions.select(bot.agent.selected);
+        let bot = self.agents.players.get_mut(name)?;
+        let mut actor = super::hands::Actor {
+            session: &mut bot.agent.session,
+            body: &mut *body,
+            hand: &mut bot.hand,
+            world: &mut self.world,
+            entities: &mut self.mobs.entities,
+            audio: &mut self.audio,
+            gamerules: &self.gamerules,
+            sneaking,
+            sprinting,
+            others: &others,
+            requests: Vec::new(),
+        };
+        let result = f(&mut actor);
+        let requests = std::mem::take(&mut actor.requests);
+        bot.agent.selected = body.actions.selected;
+        bot.agent.creative = bot.agent.session.mode.is_creative();
+        Some((result, requests))
+    }
+
+    /// Selected slot, sprint state and whether agent `name` may attack now.
+    pub(super) fn agent_attack_context(&self, name: &str) -> (usize, bool, bool) {
+        let Some(bot) = self.agents.players.get(name) else { return (0, false, false) };
+        let s = &bot.agent.session;
+        let sprint = bot.agent.movement_input().sprint && (s.mode.invulnerable() || s.vitals.hunger.can_sprint());
+        (bot.agent.selected, sprint, s.mode.can_interact())
+    }
+
+    /// Whether a mob, fight part or player is under agent `name`'s crosshair,
+    /// which suppresses mining (the click-started-as-attack flag is in `body`).
+    pub(super) fn agent_aiming_at_target(&self, name: &str, body: &Body) -> bool {
+        let Some(bot) = self.agents.players.get(name) else { return false };
+        let s = &bot.agent.session;
+        body.attack_held
+            || s.mob_target(&self.world, &self.mobs.entities).is_some()
+            || {
+                let (eye, dir) = (s.player.eye(), s.player.forward().as_dvec3());
+                let block = s.block_target(&self.world).and_then(|(b, _)| {
+                    crate::physics::ray_aabb(eye, dir, b.as_dvec3(), b.as_dvec3() + glam::DVec3::ONE)
+                });
+                let reach = block.map_or(s.entity_reach(), |d| d.min(s.entity_reach()));
+                self.mobs.entities.fight_raycast(eye, dir, reach).is_some()
+            }
+            || self.lan_player_target(&super::lan::Fighter::Agent(name.to_string())).is_some()
+    }
+
+    /// Drops one item or the whole selected stack for agent `name`.
+    pub(super) fn drop_agent_selected(&mut self, name: &str, body: &mut Body, whole_stack: bool) {
+        let Some(bot) = self.agents.players.get_mut(name) else { return };
+        let slot = bot.agent.selected;
+        let s = &mut bot.agent.session;
+        let Some(stack) = s.inventory.slots[slot] else { return };
+        let count = if whole_stack { stack.count } else { 1 };
+        s.inventory.slots[slot] = (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
+        body.actions.reset();
+        s.cancel_mining();
+        s.cancel_consumption();
+        let (eye, dir) = (s.player.eye(), s.player.forward().as_dvec3());
+        self.mobs.entities.throw(Stack { count, ..stack }, eye, dir);
     }
 
     /// LT on a container or bed: the controller player's own screen opens,

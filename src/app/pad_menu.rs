@@ -359,7 +359,7 @@ impl Game {
             }
         };
         self.puppet(seat, |g| {
-            g.container = tab.container();
+            g.body.container = tab.container();
             if quick {
                 g.quick_move(slot);
             } else {

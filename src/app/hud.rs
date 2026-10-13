@@ -128,8 +128,8 @@ impl Game {
             let (cx, cy) = ((sw / 2.0).floor(), (sh / 2.0).floor());
             ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
             ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
-            if self.actions.eat_timer > 0.0 && !self.inventory_open && self.menu.is_none() {
-                eating_bar(&mut ui, cx, cy, (self.actions.eat_timer / super::EAT_TIME) as f32);
+            if self.body.actions.eat_timer > 0.0 && !self.inventory_open && self.menu.is_none() {
+                eating_bar(&mut ui, cx, cy, (self.body.actions.eat_timer / super::EAT_TIME) as f32);
             }
             if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && self.menu.is_none()) {
                 bow_bar(&mut ui, cx, cy, power);
@@ -198,7 +198,7 @@ impl Game {
         let hud = HudPlayer {
             inventory: &self.session.inventory,
             vitals: &self.session.vitals,
-            selected: self.actions.selected,
+            selected: self.body.actions.selected,
             survival: self.session.mode.is_survival(),
             underwater: self.session.player.head_in_water(&self.world),
             dial: self.dial_of(&self.session.player),
@@ -563,19 +563,19 @@ impl Game {
     /// Whether the screen has a top section (crafting grid or furnace)
     /// above the inventory; only the creative inventory doesn't.
     fn has_top_section(&self) -> bool {
-        self.session.mode.is_survival() || self.container != Container::Inventory
+        self.session.mode.is_survival() || self.body.container != Container::Inventory
     }
 
     /// Whether the middle grid shows the creative palette instead of the
     /// main inventory.
     fn shows_armor(&self) -> bool {
-        self.session.mode.is_survival() && self.container == Container::Inventory
+        self.session.mode.is_survival() && self.body.container == Container::Inventory
     }
 
     /// Height of the top section: room for the four armor slots in the
     /// survival inventory, three rows of slots otherwise.
     fn top_h(&self) -> f32 {
-        if let Container::Trading(id) = self.container {
+        if let Container::Trading(id) = self.body.container {
             return self
                 .mobs
                 .entities
@@ -599,13 +599,13 @@ impl Game {
     }
 
     fn shows_palette(&self) -> bool {
-        self.session.mode.is_creative() && self.container == Container::Inventory
+        self.session.mode.is_creative() && self.body.container == Container::Inventory
     }
 
     pub(super) fn shows_recipes(&self) -> bool {
         self.has_top_section()
             && !matches!(
-                self.container,
+                self.body.container,
                 Container::Furnace(_)
                     | Container::Chest(_)
                     | Container::Minecart(_)
@@ -620,7 +620,7 @@ impl Game {
     /// Whether the search bar shows: on the inventory and storage screens,
     /// not on workstations where it would only add clutter.
     pub(super) fn shows_search(&self) -> bool {
-        matches!(self.container, Container::Inventory | Container::Chest(_))
+        matches!(self.body.container, Container::Inventory | Container::Chest(_))
     }
 
     fn search_h(&self) -> f32 {
@@ -666,7 +666,7 @@ impl Game {
         let (px, py, _) = self.panel(screen);
         let py = py + self.search_h();
         let mut out = Vec::with_capacity(46);
-        let top = if let Container::Trading(id) = self.container {
+        let top = if let Container::Trading(id) = self.body.container {
             if let Some(v) = self.mobs.entities.merchant(id).and_then(|m| m.villager.as_ref()) {
                 for (i, o) in v.offers.iter().enumerate() {
                     if o.is_some() {
@@ -679,7 +679,7 @@ impl Game {
                 }
             }
             self.top_h()
-        } else if matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
+        } else if matches!(self.body.container, Container::Chest(_) | Container::Minecart(_)) {
             let count = self.open_container_count();
             let cols = if count == 9 { 3 } else { 9 };
             let offset = if count == 9 {
@@ -697,33 +697,33 @@ impl Game {
                 ));
             }
             self.top_h()
-        } else if let Container::Furnace(_) = self.container {
+        } else if let Container::Furnace(_) = self.body.container {
             // Input over fuel (with the flame between), the output past the arrow.
             let x = px + 7.0 + 3.0 * SLOT;
             out.push((SlotRef::FurnaceInput, x, py + 18.0));
             out.push((SlotRef::FurnaceFuel, x, py + 18.0 + 2.0 * SLOT));
             out.push((SlotRef::FurnaceOutput, px + 7.0 + 6.0 * SLOT, py + 18.0 + SLOT));
             CRAFT_H
-        } else if let Container::Enchanting(_) = self.container {
+        } else if let Container::Enchanting(_) = self.body.container {
             // Java's layout: item and lapis bottom left, offers to the right
             // (drawn as buttons; see `enchant_offer_rect`).
             out.push((SlotRef::EnchantItem, px + 14.0, py + 44.0));
             out.push((SlotRef::EnchantLapis, px + 34.0, py + 44.0));
             CRAFT_H
-        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.container {
+        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.body.container {
             // Java's layout: input + input -> result.
             out.push((SlotRef::AnvilLeft, px + 26.0, py + 36.0));
             out.push((SlotRef::AnvilRight, px + 75.0, py + 36.0));
             out.push((SlotRef::AnvilResult, px + 133.0, py + 36.0));
             CRAFT_H
-        } else if let Container::Smithing(_) = self.container {
+        } else if let Container::Smithing(_) = self.body.container {
             // Java 1.21: template, base, addition -> result.
             out.push((SlotRef::SmithTemplate, px + 15.0, py + 48.0));
             out.push((SlotRef::SmithBase, px + 33.0, py + 48.0));
             out.push((SlotRef::SmithAddition, px + 51.0, py + 48.0));
             out.push((SlotRef::SmithResult, px + 105.0, py + 48.0));
             CRAFT_H
-        } else if let Container::Brewing(_) = self.container {
+        } else if let Container::Brewing(_) = self.body.container {
             // Java's layout: fuel top left, the ingredient over three
             // bottles in a fan.
             out.push((SlotRef::BrewFuel, px + 16.0, py + 18.0));
@@ -799,7 +799,7 @@ impl Game {
         {
             return None;
         }
-        if let Container::Enchanting(_) = self.container {
+        if let Container::Enchanting(_) = self.body.container {
             let (px, py, _) = self.panel((w as f32 / scale, h as f32 / scale));
             for i in 0..3 {
                 let (x, y, bw, bh) = enchant_offer_rect(px, py + self.search_h(), i);
@@ -828,7 +828,7 @@ impl Game {
             self.search_ui(ui);
         }
         let py = py + self.search_h();
-        let title = match (self.container, self.session.mode) {
+        let title = match (self.body.container, self.session.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
             (Container::Chest(p), _) => container_title(self.world.get_block(p)),
@@ -849,23 +849,24 @@ impl Game {
             let layout = self.recipe_layout((sw, sh));
             self.recipe_button(ui, layout.toggle, if self.recipe_book.open { "Hide" } else { "Recipes" });
         }
-        if let Container::Trading(id) = self.container {
+        if let Container::Trading(id) = self.body.container {
             self.trading_ui(ui, id, px, py);
-        } else if let Container::Brewing(p) = self.container
+        } else if let Container::Brewing(p) = self.body.container
             && let Some(b) = self.world.brewing_stand(p)
         {
             brewing_ui(ui, b, px, py, (self.started.elapsed().as_secs_f32() * 8.0) as u32);
-        } else if let Container::Enchanting(_) = self.container {
+        } else if let Container::Enchanting(_) = self.body.container {
             self.enchanting_ui(ui, px, py);
-        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.container {
+        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.body.container {
             self.anvil_ui(ui, px, py);
-        } else if let Container::Smithing(_) = self.container {
+        } else if let Container::Smithing(_) = self.body.container {
             self.smithing_ui(ui, px, py);
-        } else if self.has_top_section() && !matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
+        } else if self.has_top_section() && !matches!(self.body.container, Container::Chest(_) | Container::Minecart(_))
+        {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
             let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0);
-            let furnace = match self.container {
+            let furnace = match self.body.container {
                 Container::Furnace(p) => self.world.furnace(p).copied(),
                 _ => None,
             };
@@ -891,7 +892,7 @@ impl Game {
             }
         }
         let py = py + self.top_h();
-        if matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
+        if matches!(self.body.container, Container::Chest(_) | Container::Minecart(_)) {
             ui.text_flat(px + 8.0, py + 6.0, "Inventory", [0.25, 0.25, 0.25, 1.0]);
         }
         if self.shows_palette() {
@@ -932,7 +933,7 @@ impl Game {
                 ui.icon(x + 1.0, y + 1.0, 16.0, layer, [0.0, 0.0, 0.0, 0.25]);
             }
             if let Some(stack) = stack {
-                if matches!(self.container, Container::Trading(_)) {
+                if matches!(self.body.container, Container::Trading(_)) {
                     draw_stack(ui, x, y, stack, true, self.dial_of(&self.session.player));
                 } else {
                     self.stack_ui(ui, x, y, stack);
@@ -1050,13 +1051,13 @@ impl Game {
 
     /// Contents of a furnace or chest slot on the open screen.
     fn container_slot(&self, slot: SlotRef) -> Option<Stack> {
-        if let (Container::Trading(id), SlotRef::Trade(i)) = (self.container, slot) {
+        if let (Container::Trading(id), SlotRef::Trade(i)) = (self.body.container, slot) {
             return self.mobs.entities.merchant(id)?.villager.as_ref()?.offers.get(i)?.map(|o| o.output);
         }
-        if let (Container::Minecart(id), SlotRef::Chest(i)) = (self.container, slot) {
+        if let (Container::Minecart(id), SlotRef::Chest(i)) = (self.body.container, slot) {
             return self.mobs.entities.vehicle_slots(id)?.get(i).copied().flatten();
         }
-        if let (Container::Chest(p), SlotRef::Chest(i)) = (self.container, slot) {
+        if let (Container::Chest(p), SlotRef::Chest(i)) = (self.body.container, slot) {
             return self.world.chest(p)?.slots[i];
         }
         match slot {
@@ -1070,7 +1071,7 @@ impl Game {
             SlotRef::SmithResult => return self.smithing_result(),
             _ => {}
         }
-        if let Container::Brewing(p) = self.container {
+        if let Container::Brewing(p) = self.body.container {
             let b = self.world.brewing_stand(p)?;
             return match slot {
                 SlotRef::BrewBottle(i) => b.bottles[i],
@@ -1079,7 +1080,7 @@ impl Game {
                 _ => None,
             };
         }
-        let Container::Furnace(p) = self.container else { return None };
+        let Container::Furnace(p) = self.body.container else { return None };
         let f = self.world.furnace(p)?;
         match slot {
             SlotRef::FurnaceInput => f.input,
@@ -1151,7 +1152,7 @@ impl Game {
             }
             return;
         };
-        if matches!(self.container, Container::Grindstone(_)) {
+        if matches!(self.body.container, Container::Grindstone(_)) {
             return;
         }
         let (text, colour) = if too_expensive {

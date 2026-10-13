@@ -875,6 +875,12 @@ impl Agent {
         self.hurt_after_armor(reduced, amount, cause, knockback, entities)
     }
 
+    /// Magic damage from something consumed (a harming potion): no armor or
+    /// knockback, with protection and death/drop rules.
+    pub fn hurt_magic(&mut self, amount: f32, entities: &mut Entities) -> f32 {
+        self.hurt_after_armor(amount, 0.0, simulation::survival::CAUSE_MAGIC, DVec3::ZERO, entities)
+    }
+
     /// Mounted falls bypass armor points, retaining protection and death/drop rules.
     pub fn hurt_fall(&mut self, amount: f32, entities: &mut Entities) {
         self.damage(amount, simulation::survival::CAUSE_FALL);

@@ -218,7 +218,7 @@ impl Game {
         self.arrival = Some(arrival);
         self.portal_time = 0.0;
         self.session.sleeping = None;
-        self.actions.reset();
+        self.body.actions.reset();
         self.session.cancel_mining();
         self.session.cancel_consumption();
         self.session.player.vel = DVec3::ZERO;

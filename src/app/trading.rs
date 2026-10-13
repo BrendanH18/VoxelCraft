@@ -8,12 +8,12 @@ impl Game {
         if self.puppet {
             self.puppet_merchant = Some(id);
         } else if !self.inventory_open {
-            self.container = Container::Trading(id);
+            self.body.container = Container::Trading(id);
             self.toggle_inventory();
         }
     }
     pub(super) fn buy_trade(&mut self, index: usize) {
-        let Container::Trading(id) = self.container else { return };
+        let Container::Trading(id) = self.body.container else { return };
         if !self.mobs.entities.merchant_in_reach(id, self.session.player.eye(), self.session.entity_screen_range()) {
             return;
         }

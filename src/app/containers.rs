@@ -19,7 +19,7 @@ fn to_player_order() -> Vec<usize> {
 
 impl Game {
     pub(super) fn open_container_count(&self) -> usize {
-        match self.container {
+        match self.body.container {
             Container::Chest(p) => self.world.container_slots(p),
             Container::Minecart(id) => self.mobs.entities.vehicle_slots(id).map_or(0, |s| s.len()),
             _ => 0,
@@ -31,7 +31,7 @@ impl Game {
         if self.inventory_open || self.world.chest(pos).is_none() {
             return;
         }
-        self.container = Container::Chest(pos);
+        self.body.container = Container::Chest(pos);
         self.toggle_inventory();
         self.chest_sound(pos, 0.65);
         if self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
@@ -62,7 +62,7 @@ impl Game {
                 self.session.inventory.slots[i] = left;
             }
             SlotRef::Chest(i) => {
-                if let Container::Minecart(id) = self.container {
+                if let Container::Minecart(id) = self.body.container {
                     let stack = self
                         .mobs
                         .entities
@@ -78,7 +78,7 @@ impl Game {
                     }
                     return;
                 }
-                let Container::Chest(p) = self.container else { return };
+                let Container::Chest(p) = self.body.container else { return };
                 if i >= self.world.container_slots(p) {
                     return;
                 }
@@ -105,7 +105,7 @@ impl Game {
                 }
             }
             SlotRef::FurnaceInput | SlotRef::FurnaceFuel | SlotRef::FurnaceOutput => {
-                let Container::Furnace(p) = self.container else { return };
+                let Container::Furnace(p) = self.body.container else { return };
                 let Some(f) = self.world.furnace_mut(p) else { return };
                 let cell = match slot {
                     SlotRef::FurnaceInput => &mut f.input,
@@ -128,7 +128,7 @@ impl Game {
                 }
             }
             SlotRef::BrewBottle(_) | SlotRef::BrewIngredient | SlotRef::BrewFuel => {
-                let Container::Brewing(p) = self.container else { return };
+                let Container::Brewing(p) = self.body.container else { return };
                 let Some(b) = self.world.brewing_stand_mut(p) else { return };
                 let cell = match slot {
                     SlotRef::BrewBottle(i) => &mut b.bottles[i],
@@ -191,7 +191,7 @@ impl Game {
     /// furnace's input (smeltables) or fuel slot, or else between the hotbar
     /// and the main grid. Returns what didn't move.
     fn move_from_inventory(&mut self, from: usize, stack: Stack) -> Option<Stack> {
-        match self.container {
+        match self.body.container {
             Container::Minecart(id) => {
                 if self.mobs.entities.vehicle_slots(id).is_none() {
                     return Some(stack);

@@ -40,7 +40,7 @@ impl Game {
         }
         let session = &self.session;
         let far = |pos: glam::IVec3| !session.can_keep_using_block(pos);
-        let gone = match self.container {
+        let gone = match self.body.container {
             Container::Furnace(pos) => self.world.furnace(pos).is_none() || far(pos),
             Container::Chest(pos) => self.world.chest(pos).is_none() || far(pos),
             Container::Minecart(id) => {
@@ -94,7 +94,7 @@ impl Game {
             player,
             &mut self.session.vitals.xp,
             &mut self.session.inventory,
-            self.actions.selected,
+            self.body.actions.selected,
         ) {
             xp_sounds(&mut self.audio, None, chime);
         }
@@ -137,14 +137,14 @@ impl Game {
                 _ => return,
             }
         } else {
-            self.actions.selected
+            self.body.actions.selected
         };
         let Some(stack) = self.session.inventory.slots[slot] else { return };
         let count = if whole_stack { stack.count } else { 1 };
         self.session.inventory.slots[slot] =
             (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
-        if slot == self.actions.selected {
-            self.actions.reset();
+        if slot == self.body.actions.selected {
+            self.body.actions.reset();
             self.session.cancel_mining();
             self.session.cancel_consumption();
         }

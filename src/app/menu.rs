@@ -199,11 +199,11 @@ impl Game {
         self.menu_drag = None;
         self.set_grab(false);
         self.keys.clear();
-        self.left_held = false;
-        self.right_held = false;
+        self.body.left_held = false;
+        self.body.right_held = false;
         self.jump_pressed = false;
-        self.mine_pressed = false;
-        self.actions.reset();
+        self.body.mine_pressed = false;
+        self.body.actions.reset();
         self.session.cancel_mining();
         self.session.cancel_consumption();
         self.release_attack();

@@ -14,7 +14,7 @@ impl Game {
         if self.inventory_open {
             return;
         }
-        self.container = Container::Smithing(pos);
+        self.body.container = Container::Smithing(pos);
         self.toggle_inventory();
     }
 
@@ -44,7 +44,7 @@ impl Game {
     /// Consumes one template, base and addition, returning the copied base
     /// metadata on the Netherite result.
     pub(super) fn take_smithing_result(&mut self) -> Option<Stack> {
-        let Container::Smithing(pos) = self.container else { return None };
+        let Container::Smithing(pos) = self.body.container else { return None };
         let result = self.smithing_result()?;
         for input in &mut self.session.work {
             let stack = input.as_mut().expect("a smithing result has all inputs");

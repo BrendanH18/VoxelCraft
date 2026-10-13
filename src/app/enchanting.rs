@@ -23,13 +23,13 @@ impl Game {
         if self.inventory_open {
             return;
         }
-        self.container = Container::Enchanting(pos);
+        self.body.container = Container::Enchanting(pos);
         self.toggle_inventory();
     }
 
     /// The three offers for what's in the item slot.
     pub(super) fn enchant_offers(&self) -> [Offer; 3] {
-        let Container::Enchanting(pos) = self.container else { return Default::default() };
+        let Container::Enchanting(pos) = self.body.container else { return Default::default() };
         match self.session.work[0] {
             Some(stack) if enchant::table_accepts(stack) => {
                 enchant::offers(self.session.vitals.xp.seed, stack.item, enchant::bookshelves(&self.world, pos))
@@ -81,7 +81,7 @@ impl Game {
     /// offer `i`'s roll, costing `i + 1` levels and lapis, and draws a new
     /// enchantment seed.
     pub(super) fn take_offer(&mut self, i: usize) {
-        let Container::Enchanting(pos) = self.container else { return };
+        let Container::Enchanting(pos) = self.body.container else { return };
         let offer = self.enchant_offers()[i];
         let Some(mut stack) = self.session.work[0] else { return };
         if !self.can_take_offer(i, offer) {

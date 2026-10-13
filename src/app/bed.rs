@@ -34,9 +34,9 @@ impl Game {
         self.session.player.vel = DVec3::ZERO;
         self.session.player.flying = false;
         self.keys.clear();
-        self.left_held = false;
-        self.right_held = false;
-        self.actions.reset();
+        self.body.left_held = false;
+        self.body.right_held = false;
+        self.body.actions.reset();
         self.session.cancel_mining();
         self.session.cancel_consumption();
         self.session.sleeping = Some(0.0);

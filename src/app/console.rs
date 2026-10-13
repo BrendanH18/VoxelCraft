@@ -38,9 +38,9 @@ impl Game {
                     "/".into()
                 };
                 self.keys.clear();
-                self.left_held = false;
-                self.right_held = false;
-                self.actions.reset();
+                self.body.left_held = false;
+                self.body.right_held = false;
+                self.body.actions.reset();
                 self.session.cancel_mining();
                 self.session.cancel_consumption();
                 self.set_grab(false);
@@ -314,7 +314,7 @@ impl Game {
             }
             Command::XpQuery => return Ok(self.xp_summary()),
             Command::Enchant(e, level) => {
-                let slot = &mut self.session.inventory.slots[self.actions.selected];
+                let slot = &mut self.session.inventory.slots[self.body.actions.selected];
                 let stack = crate::enchant::command(*slot, e, level)?;
                 *slot = Some(stack);
                 return Ok(format!("Applied {} to {}", e.describe(level), stack.item.name()));
@@ -339,7 +339,7 @@ impl Game {
                     let xp = self.mobs.entities.trade_for(id, i, &mut self.session.inventory, self.session.id)?;
                     self.mobs.entities.spawn_xp(self.session.player.pos, xp);
                 } else {
-                    self.container = super::Container::Trading(id);
+                    self.body.container = super::Container::Trading(id);
                     self.toggle_inventory();
                 }
             }

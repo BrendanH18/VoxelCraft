@@ -17,6 +17,7 @@ mod farming;
 mod fullscreen;
 mod gamepad;
 mod hand;
+mod hands;
 mod hud;
 mod items;
 mod lan;
@@ -149,12 +150,8 @@ struct Game {
     /// Shift / Ctrl state (shift-click, Ctrl+Q, sneak-placing).
     modifiers: winit::keyboard::ModifiersState,
     mouse_grabbed: bool,
-    left_held: bool,
-    right_held: bool,
     /// Preserve taps that begin and end between fixed game ticks.
     jump_pressed: bool,
-    mine_pressed: bool,
-    action_cooldown: f64,
     /// Shared world difficulty (old saves default to Normal).
     difficulty: Difficulty,
     /// World-wide one-life flag; locks difficulty to Hard.
@@ -164,13 +161,13 @@ struct Game {
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
     /// crafting table. Emptied back into the inventory when it closes.
     craft: crate::crafting::Grid,
-    container: Container,
     recipe_book: recipe_book::RecipeBook,
     /// First visible row of the creative palette.
     creative_scroll: usize,
     /// Mouse position in physical pixels (for the inventory screen).
     cursor_px: (f32, f32),
-    actions: actions::Actions,
+    /// The host player's hands and open screen.
+    body: gamepad::Body,
     show_hud: bool,
     hand: hand::HandAnim,
     last_space: Instant,
@@ -450,10 +447,10 @@ impl ApplicationHandler for App {
                 } else {
                     game.set_grab(false);
                     game.keys.clear();
-                    game.left_held = false;
-                    game.right_held = false;
+                    game.body.left_held = false;
+                    game.body.right_held = false;
                     game.jump_pressed = false;
-                    game.mine_pressed = false;
+                    game.body.mine_pressed = false;
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
@@ -529,7 +526,7 @@ impl ApplicationHandler for App {
                     }
                 } else if dy.abs() >= 0.5 {
                     let step = if dy > 0.0 { 8 } else { 1 };
-                    game.select((game.actions.selected + step) % 9);
+                    game.select((game.body.actions.selected + step) % 9);
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -747,14 +744,14 @@ impl Game {
 
     fn select(&mut self, slot: usize) {
         // Mining progress follows the held item (Java `sameDestroyTarget`), not the slot.
-        if self.actions.select(slot) {
+        if self.body.actions.select(slot) {
             self.session.cancel_consumption();
             self.show_selected_name();
         }
     }
 
     fn show_selected_name(&mut self) {
-        if let Some(s) = self.session.inventory.get(self.actions.selected) {
+        if let Some(s) = self.session.inventory.get(self.body.actions.selected) {
             self.show_popup(s.display_name());
         }
     }
@@ -833,11 +830,11 @@ impl Game {
         }
         self.set_grab(false);
         self.keys.clear();
-        self.left_held = false;
-        self.right_held = false;
+        self.body.left_held = false;
+        self.body.right_held = false;
         self.jump_pressed = false;
-        self.mine_pressed = false;
-        self.actions.reset();
+        self.body.mine_pressed = false;
+        self.body.actions.reset();
         self.session.cancel_mining();
         self.session.cancel_consumption();
         if self.hardcore {
@@ -875,7 +872,7 @@ impl Game {
 
     fn set_mode(&mut self, mode: GameMode) {
         self.session.set_mode(mode);
-        self.actions.reset();
+        self.body.actions.reset();
         self.session.cancel_mining();
         self.session.cancel_consumption();
         self.show_popup(&format!("{} mode", capitalize(mode.name())));
@@ -891,35 +888,36 @@ impl Game {
             return;
         }
         if !self.inventory_open
-            && self.container == Container::Inventory
+            && self.body.container == Container::Inventory
             && let Some(id) = self.session.player.vehicle
             && self.mobs.entities.vehicle_slots(id).is_some_and(|slots| !slots.is_empty())
         {
-            self.container = Container::Minecart(id);
+            self.body.container = Container::Minecart(id);
         }
         self.inventory_open = !self.inventory_open;
         if self.inventory_open {
-            self.search.focused = self.session.mode == GameMode::Creative && self.container == Container::Inventory;
+            self.search.focused =
+                self.session.mode == GameMode::Creative && self.body.container == Container::Inventory;
             self.search.selected = false;
             self.set_grab(false);
             if !self.puppet {
                 self.keys.clear();
             }
-            self.left_held = false;
-            self.right_held = false;
+            self.body.left_held = false;
+            self.body.right_held = false;
             self.jump_pressed = false;
-            self.mine_pressed = false;
-            self.actions.reset();
+            self.body.mine_pressed = false;
+            self.body.actions.reset();
             self.session.cancel_mining();
             self.session.cancel_consumption();
         } else {
-            if let Container::Chest(pos) = self.container {
+            if let Container::Chest(pos) = self.body.container {
                 self.chest_sound(pos, 0.8);
             }
             let table = self.take_work();
             self.session.inventory.return_stacks(self.craft.take_all().into_iter().chain(table));
             self.craft = crate::crafting::Grid::new(2);
-            self.container = Container::Inventory;
+            self.body.container = Container::Inventory;
             self.set_grab(true);
         }
     }
@@ -930,7 +928,7 @@ impl Game {
             return;
         }
         self.craft = crate::crafting::Grid::new(3);
-        self.container = Container::CraftingTable;
+        self.body.container = Container::CraftingTable;
         self.toggle_inventory();
     }
 
@@ -939,7 +937,7 @@ impl Game {
         if self.inventory_open || self.world.furnace(pos).is_none() {
             return;
         }
-        self.container = Container::Furnace(pos);
+        self.body.container = Container::Furnace(pos);
         self.toggle_inventory();
     }
 
@@ -948,7 +946,7 @@ impl Game {
         if self.inventory_open || self.world.brewing_stand(pos).is_none() {
             return;
         }
-        self.container = Container::Brewing(pos);
+        self.body.container = Container::Brewing(pos);
         self.toggle_inventory();
     }
 
@@ -1106,7 +1104,7 @@ impl Game {
                 self.session.inventory.click_armor(piece, right, self.session.mode.is_creative())
             }
             Some(hud::SlotRef::Chest(i)) => {
-                if let Container::Minecart(id) = self.container {
+                if let Container::Minecart(id) = self.body.container {
                     if self.session.inventory.cursor.is_none_or(|s| self.mobs.entities.vehicle_accepts(id, i, s.item))
                         && let Some(slot) = self.mobs.entities.vehicle_slots_mut(id).and_then(|slots| slots.get_mut(i))
                     {
@@ -1114,7 +1112,7 @@ impl Game {
                     }
                     return;
                 }
-                if let Container::Chest(pos) = self.container
+                if let Container::Chest(pos) = self.body.container
                     && i < self.world.container_slots(pos)
                     && let Some(chest) = self.world.chest_mut(pos)
                 {
@@ -1122,12 +1120,12 @@ impl Game {
                 }
             }
             Some(s @ (hud::SlotRef::FurnaceInput | hud::SlotRef::FurnaceFuel | hud::SlotRef::FurnaceOutput)) => {
-                if let Container::Furnace(pos) = self.container {
+                if let Container::Furnace(pos) = self.body.container {
                     self.furnace_click(pos, s, right);
                 }
             }
             Some(s @ (hud::SlotRef::BrewBottle(_) | hud::SlotRef::BrewIngredient | hud::SlotRef::BrewFuel)) => {
-                if let Container::Brewing(pos) = self.container {
+                if let Container::Brewing(pos) = self.body.container {
                     self.brewing_click(pos, s, right);
                 }
             }
@@ -1185,7 +1183,7 @@ impl Game {
             &self.session.player,
             input,
             &self.session.inventory,
-            self.actions.selected,
+            self.body.actions.selected,
         );
         let mut wish = Vec::new();
         if self.session.player.vehicle.is_none() && self.session.mode != GameMode::Spectator {
@@ -1234,86 +1232,21 @@ impl Game {
         if self.puppet {
             self.puppet_vehicle = Some(id);
         } else if !self.inventory_open {
-            self.container = Container::Minecart(id);
+            self.body.container = Container::Minecart(id);
             self.toggle_inventory();
         }
     }
 
-    fn place_block(&mut self) {
-        if !self.session.mode.can_interact() {
-            return;
-        }
-        let others = self.agents.positions();
-        let ctx = voxelcraft::session::interact::UseContext { sneaking: self.sneak_building(), others: &others };
-        let result = self.session.use_held(self.actions.selected, &mut self.world, &mut self.mobs.entities, &ctx);
-        let Ok(Some(done)) = result else { return };
-        if let Some(item) = done.tool_broken {
-            self.tool_broke(item);
-        }
-        self.present_use(done.used);
-    }
-
-    /// Sounds, screens and sleep for a shared use outcome.
+    /// Opens what a use requested: a screen, bed, vehicle store or merchant.
     fn present_use(&mut self, used: voxelcraft::session::interact::Used) {
-        use crate::audio::sounds::{Material, Sound};
         use voxelcraft::session::interact::Used;
-        let centre = |cell: glam::IVec3| cell.as_dvec3() + glam::DVec3::splat(0.5);
-        let throw = |audio: &mut crate::audio::Audio, from: glam::DVec3| {
-            // Java's throw is the bow sound, pitched well down.
-            audio.play(Sound::Bow, Some(from), 0.5, (0.42, 0.62));
-        };
         match used {
             Used::OpenVehicle(id) => self.open_vehicle(id),
             Used::OpenMerchant(id) => self.open_merchant(id),
-            Used::Bucket(effect) => bucket::feedback(&mut self.audio, effect),
-            Used::PearlThrown { from }
-            | Used::PotionThrown { from }
-            | Used::ProjectileThrown { from }
-            | Used::Rod { from, broke: false } => throw(&mut self.audio, from),
-            Used::EyeReleased { from } => items::eye_thrown_sound(&mut self.audio, from),
-            Used::EyeInserted { cell, opened } => items::frame_filled_sounds(&mut self.audio, cell, opened),
             // A controller or LAN player's own screens and bed open instead.
             Used::Screen { cell, .. } | Used::Bed { cell } if self.puppet => self.puppet_used = Some(cell),
             Used::Screen { cell, block } => self.open_block_screen(cell, block),
             Used::Bed { cell } => self.use_bed(cell),
-            Used::EggTeleported { destination: Some(to) } => {
-                self.audio.play(Sound::Teleport, Some(to.as_dvec3()), 0.6, (0.9, 1.1));
-            }
-            Used::Harvested { cell } => {
-                self.audio.play(Sound::Break(Material::Grass), Some(centre(cell)), 0.8, (1.0, 1.2));
-            }
-            Used::Door { cell, open: Some(open) } => {
-                self.audio.play(Sound::Door(open), Some(centre(cell)), 0.8, (0.9, 1.1));
-            }
-            Used::TntPrimed { cell } => self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05)),
-            Used::Ignited { cell, portal } => {
-                self.audio.play(Sound::Place(Material::Stone), Some(cell.as_dvec3()), 0.7, (1.6, 1.9));
-                if portal {
-                    self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.5, 0.6));
-                }
-            }
-            Used::Stripped { cell } => {
-                self.audio.play(Sound::Place(Material::Wood), Some(centre(cell)), 1.0, (0.8, 1.0))
-            }
-            Used::Tilled { cell } => {
-                self.audio.play(Sound::Step(Material::Gravel), Some(centre(cell)), 1.0, (0.8, 0.9))
-            }
-            Used::Carved { cell } => self.audio.play(Sound::Break(Material::Wood), Some(centre(cell)), 0.8, (0.9, 1.1)),
-            Used::BoneMeal { cell } => {
-                self.audio.play(Sound::Place(Material::Grass), Some(centre(cell)), 0.8, (1.2, 1.4));
-            }
-            Used::Placed(placement) => {
-                use voxelcraft::session::placement::{Kind, Outcome};
-                match placement {
-                    Outcome::Placed { cell, block, kind, .. } => {
-                        let sound = if kind == Kind::Bed { Block::WOOL } else { block };
-                        self.audio.block_place(sound, cell);
-                    }
-                    Outcome::WaterEvaporated { cell, .. } => {
-                        self.audio.play(Sound::Fuse, Some(cell.as_dvec3()), 0.6, (1.6, 1.8));
-                    }
-                }
-            }
             _ => {}
         }
     }
@@ -1346,17 +1279,17 @@ impl Game {
         match self.session.inventory.find(item) {
             Some(i) if i < HOTBAR_SLOTS => self.select(i),
             Some(i) => {
-                self.actions.reset();
+                self.body.actions.reset();
                 self.session.cancel_mining();
                 self.session.cancel_consumption();
-                self.session.inventory.slots.swap(i, self.actions.selected);
+                self.session.inventory.slots.swap(i, self.body.actions.selected);
                 self.show_selected_name();
             }
             None if self.session.mode == GameMode::Creative => {
-                self.actions.reset();
+                self.body.actions.reset();
                 self.session.cancel_mining();
                 self.session.cancel_consumption();
-                self.session.inventory.slots[self.actions.selected] = Some(Stack::new(item, item.max_stack()));
+                self.session.inventory.slots[self.body.actions.selected] = Some(Stack::new(item, item.max_stack()));
                 self.show_selected_name();
             }
             None => {}
@@ -1424,7 +1357,7 @@ impl Game {
                 self.session.player.vehicle = Some(id);
                 seat_rider(&self.mobs.entities, &mut self.session.player, crate::entity::PlayerId::HOST);
                 if self.inventory_open {
-                    self.container = Container::Minecart(id);
+                    self.body.container = Container::Minecart(id);
                 }
             } else {
                 log::warn!("--ride: no scripted vehicle named {name}");
@@ -1564,60 +1497,31 @@ impl Game {
     /// Attack/mine button (left click, or a controller's RT) pressed or released.
     fn attack_button(&mut self, pressed: bool) {
         if self.lan.client.is_some() {
-            self.left_held = pressed;
+            self.body.left_held = pressed;
             self.lan_button_edge(true, pressed);
             if pressed {
                 self.hand.swing();
             }
             return;
         }
-        if !self.session.mode.can_interact() {
-            return;
-        }
-        self.left_held = pressed;
-        if pressed {
-            self.hand.swing();
-        }
-        if !pressed {
-            self.actions.breaking = None;
-            self.session.cancel_mining();
-            self.release_attack();
-        } else if self.attack() {
-            self.actions.breaking = None;
-            self.session.cancel_mining();
-        } else {
-            if let Some((p, _)) = self.target() {
-                self.world.strike_note(p);
-            }
-            self.mine_pressed = true;
-        }
+        let sprint = self.sprinting_for_attack();
+        let hit_player = pressed
+            && self.session.mode.can_interact()
+            && self.attack_lan_player(&lan::Fighter::Host, self.body.actions.selected, sprint);
+        self.with_hands(|hands| hands.attack_button(pressed, hit_player));
     }
 
     /// Use button (right click, or a controller's LT) pressed or released.
     fn use_button(&mut self, pressed: bool) {
         if self.lan.client.is_some() {
-            self.right_held = pressed;
+            self.body.right_held = pressed;
             self.lan_button_edge(false, pressed);
             if pressed {
                 self.hand.swing();
             }
             return;
         }
-        if !self.session.mode.can_interact() {
-            return;
-        }
-        self.right_held = pressed;
-        if pressed && !self.equip_held() && !self.start_draw() {
-            if self.held_item().is_none_or(|i| i.food().is_none()) {
-                self.hand.swing();
-            }
-            self.place_block();
-            self.action_cooldown = ACTION_REPEAT;
-        } else if !pressed {
-            self.session.cancel_consumption();
-            self.actions.eat_timer = 0.0;
-            self.release_bow();
-        }
+        self.with_hands(|hands| hands.use_button(pressed));
     }
 
     /// Held attack/use buttons for one tick: mining, repeated breaking or
@@ -1625,33 +1529,41 @@ impl Game {
     fn act(&mut self, acting: bool, dt: f64) {
         // Agents (controller/LAN hands) charge in their own tick; this is the host's.
         if !self.puppet {
-            self.session.tick_attack_strength(self.actions.selected);
+            self.session.tick_attack_strength(self.body.actions.selected);
         }
-        let mine_pressed = std::mem::take(&mut self.mine_pressed);
-        self.action_cooldown -= dt;
-        if acting && (self.left_held || mine_pressed) {
-            // Shared session timing, including Java's destroy delay, in every mode.
-            self.continue_breaking(dt);
-            if self.actions.breaking.is_some() || self.session.mining_delay() > 0 {
-                self.hand.swing();
+        let aiming = self.attacking();
+        self.with_hands(|hands| hands.act(acting, dt, aiming));
+    }
+
+    /// Runs `f` on the acting player's hands and resolves what it requests.
+    fn with_hands<R>(&mut self, f: impl FnOnce(&mut hands::Actor) -> R) -> R {
+        let sneaking = self.sneak_building();
+        let sprinting = self.sprinting_for_attack();
+        let others = self.agents.positions();
+        let mut actor = hands::Actor {
+            session: &mut self.session,
+            body: &mut self.body,
+            hand: &mut self.hand,
+            world: &mut self.world,
+            entities: &mut self.mobs.entities,
+            audio: &mut self.audio,
+            gamerules: &self.gamerules,
+            sneaking,
+            sprinting,
+            others: &others,
+            requests: Vec::new(),
+        };
+        let result = f(&mut actor);
+        for request in std::mem::take(&mut actor.requests) {
+            match request {
+                hands::Request::Popup(text) => self.show_popup(&text),
+                hands::Request::Open(used) => self.present_use(used),
+                hands::Request::MagicDamage(amount) => {
+                    self.damage_player(amount, survival::CAUSE_MAGIC);
+                }
             }
-        } else if acting
-            && self.action_cooldown <= 0.0
-            && self.right_held
-            && !self.session.drawing()
-            // Buckets act once per click.
-            && !(self.holding_bucket() || self.holding_throwable())
-        {
-            self.place_block();
-            self.hand.swing();
-            self.action_cooldown = ACTION_REPEAT;
         }
-        if !self.left_held {
-            self.actions.breaking = None;
-            self.session.cancel_mining();
-        }
-        self.eat(acting, dt);
-        self.update_bow(acting);
+        result
     }
 
     /// Poll streaming, run due fixed gameplay ticks and render interpolated positions.
@@ -1820,7 +1732,7 @@ impl Game {
                     dial,
                     self.hand.appearance(
                         &self.session.vitals,
-                        (self.actions.eat_timer / EAT_TIME) as f32,
+                        (self.body.actions.eat_timer / EAT_TIME) as f32,
                         alpha,
                         self.session.inventory.armor,
                     ),
@@ -1867,7 +1779,7 @@ impl Game {
                 && self.session.sleeping.is_none())
             .then(|| {
                 let eye = self.session.player.eye();
-                let eating = (self.actions.eat_timer / EAT_TIME) as f32;
+                let eating = (self.body.actions.eat_timer / EAT_TIME) as f32;
                 Self::stamp_hand(
                     dial,
                     self.hand.view(eating, crate::entity::sky_light(&self.world, eye), self.torch_light(eye)),
