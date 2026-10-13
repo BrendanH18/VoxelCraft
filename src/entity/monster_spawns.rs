@@ -455,6 +455,10 @@ impl Entities {
                 if d2 <= SPAWN_MIN_DIST * SPAWN_MIN_DIST || d2 > SPAWN_MAX_DIST * SPAWN_MAX_DIST {
                     continue;
                 }
+                // Java also keeps natural spawns 24 blocks from the world spawn.
+                if super::near_world_spawn(self.world_spawn, pos) {
+                    continue;
+                }
                 if !world.loaded(cell) {
                     continue;
                 }
@@ -588,10 +592,10 @@ mod tests {
         let night = darken["day_multiplier_keyframes"][2][1].as_f64().unwrap() as f32 * 15.0;
         let rain = darken["rain_blend"]["alpha"].as_f64().unwrap() as f32;
         let level = crate::simulation::lighting::SpawnLight::at;
-        assert_eq!(level(6000, 0., 0., false).sky_darken, 0);
-        assert_eq!(level(18000, 0., 0., false).sky_darken, (15.0 - night) as u8, "clear night");
-        assert_eq!(level(6000, 1., 0., false).sky_darken, (15.0 - (15.0 + (4.0 - 15.0) * rain)) as u8, "rain at noon");
-        assert_eq!(level(18000, 1., 0., false).sky_darken, 11, "rainy night stays at the night level");
+        assert_eq!(level(6000, 0., 0.).sky_darken, 0);
+        assert_eq!(level(18000, 0., 0.).sky_darken, (15.0 - night) as u8, "clear night");
+        assert_eq!(level(6000, 1., 0.).sky_darken, (15.0 - (15.0 + (4.0 - 15.0) * rain)) as u8, "rain at noon");
+        assert_eq!(level(18000, 1., 0.).sky_darken, 11, "rainy night stays at the night level");
     }
 
     fn ctx(players: Vec<Target>) -> Ctx {
@@ -735,6 +739,31 @@ mod tests {
             }
         }
         assert!(spawned_cells(&mut e, &relit, &day, 30.0).iter().any(|(_, p)| in_room(*p)));
+    }
+
+    #[test]
+    fn natural_spawns_keep_clear_of_the_world_spawn_point() {
+        let f = fixture();
+        let reference = f["natural_spawner"]["spawn_point_min_distance"].as_f64().unwrap();
+        assert_eq!(reference, super::super::SPAWN_POINT_MIN_DIST);
+        // `closerToCenterThan` measures from the spawn block's centre and is strict.
+        let spawn = Some(IVec3::new(0, 64, 0));
+        let near = super::super::near_world_spawn;
+        assert!(!near(spawn, DVec3::new(0.5 + reference, 64.5, 0.5)), "exactly 24 is allowed");
+        assert!(near(spawn, DVec3::new(0.5 + reference - 1e-9, 64.5, 0.5)));
+        assert!(near(spawn, DVec3::new(0.5, 64.5 - 23.9, 0.5)), "vertical distance counts");
+        assert!(!near(None, DVec3::new(0.5, 64.0, 0.5)), "no spawn point in this dimension");
+
+        // The dark cave spawns by day until the world spawn sits inside it.
+        let player = Target::new(PlayerId::HOST, DVec3::new(0.5, 64.0, 0.5), true);
+        let day = Ctx { daylight: 1.0, spawn_light: crate::simulation::lighting::SpawnLight::DAY, ..ctx(vec![player]) };
+        let dark = cave_world(false);
+        let mut free = Entities::new(5);
+        assert!(spawned_cells(&mut free, &dark, &day, 30.0).iter().any(|(_, p)| in_room(*p)));
+        let mut guarded = Entities::new(5);
+        guarded.world_spawn = Some(IVec3::new(40, 41, 0));
+        let spawns = spawned_cells(&mut guarded, &dark, &day, 30.0);
+        assert!(spawns.is_empty(), "every room cell is within 24 blocks of the spawn: {spawns:?}");
     }
 
     #[test]

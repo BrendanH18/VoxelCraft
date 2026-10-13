@@ -164,12 +164,20 @@ def extract_facts(jar, data):
     dark = method(inspect("net.minecraft.world.entity.monster.Monster"), "public static boolean isDarkEnoughToSpawn(")
     for token in ["LightLayer.SKY", "bipush        32", "monsterSpawnBlockLightLimit", "LightLayer.BLOCK", "isThundering", "bipush        10", "monsterSpawnLightTest"]:
         require(token in dark, f"isDarkEnoughToSpawn changed: {token}")
+    level_code = inspect("net.minecraft.world.level.Level")
+    thundering = method(level_code, "public boolean isThundering(")
+    threshold = re.search(r"canHaveWeather[\s\S]*fconst_1[\s\S]*getThunderLevel:\(F\)F\n[^\n]*f2d\n[^\n]*// double ([\d.]+)d\n[^\n]*dcmpl", thundering)
+    require(threshold, "isThundering changed")
+    thunder_level = method(level_code, "public float getThunderLevel(")
+    require(re.search(r"oThunderLevel[\s\S]*thunderLevel[\s\S]*Mth\.lerp[\s\S]*getRainLevel:\(F\)F\n[^\n]*fmul", thunder_level), "thunder level changed")
     facts["monster_light"] = {
         "sky_roll": 32,
         "rule": "fail if sky > nextInt(32); fail if block light > the dimension's limit (when below 15); pass if max(sky - darken, block) <= the dimension's light test sample",
         "thunder_darken": 10,
+        "thundering": "Level.isThundering: canHaveWeather and (double) getThunderLevel(1) > thundering_above; getThunderLevel = lerp(oThunderLevel, thunderLevel) * getRainLevel",
+        "thundering_above": float(threshold[1]),
     }
-    sky = method(inspect("net.minecraft.world.level.Level"), "public void updateSkyBrightness(")
+    sky = method(level_code, "public void updateSkyBrightness(")
     require("float 15.0f" in sky and "SKY_LIGHT_LEVEL" in sky and "f2i" in sky, "sky darkening changed")
     attrs = inspect("net.minecraft.world.attribute.EnvironmentAttributes")
     default_level = re.search(r"String gameplay/sky_light_level\n[^\n]*\n[^\n]*\n\s+\d+: ldc_w?\s+#\d+\s+// float ([\d.]+)f", attrs)
@@ -197,7 +205,36 @@ def extract_facts(jar, data):
         "thunder_blend": {"toward": float(blends[1][0]), "alpha": float(blends[1][1])},
         "weather_rule": "lerp(rainLevel - thunderLevel, base, rainModifier(base)); then lerp(thunderLevel, base, thunderModifier(base))",
     }
-    facts["sky_darken"]["cases"] = sky_darkening_cases(facts["sky_darken"], facts["monster_light"]["thunder_darken"])
+    facts["sky_darken"]["cases"] = sky_darkening_cases(facts["sky_darken"], facts["monster_light"])
+
+    # Daylight detectors share skyDarken but add the sun-angle cosine.
+    detector = method(inspect("net.minecraft.world.level.block.DaylightDetectorBlock"), "private static void updateSignalStrength(")
+    for token in ["Level.getEffectiveSkyBrightness", "EnvironmentAttributes.SUN_ANGLE", "float 0.017453292f", "INVERTED",
+                  "bipush        15", "float 3.1415927f", "float 6.2831855f", "float 0.2f", "Mth.cos:(D)F", "Math.round:(F)I", "Mth.clamp:(III)I"]:
+        require(token in detector, f"daylight detector changed: {token}")
+    effective = method(inspect("net.minecraft.world.level.LevelReader"), "public default int getEffectiveSkyBrightness(")
+    require("LightLayer.SKY" in effective and "getSkyDarken" in effective and "Math.max" in effective, "effective sky brightness changed")
+    mth = inspect("net.minecraft.util.Mth")
+    cos = method(mth, "public static float cos(double)")
+    require("double 10430.378350470453d" in cos and "double 16384.0d" in cos and "long 65535l" in cos, "Mth.cos changed")
+    require("Math.sin:(D)D" in method(mth, "private static void lambda$static$0(float[])"), "Mth sine table changed")
+    bezier = inspect("net.minecraft.util.EasingType$CubicBezier")
+    require("iconst_4" in method(bezier, "private float solveT(") and "float -0.25f" in bezier and "float 1.0E-5f" in bezier,
+            "cubic bezier solver changed")
+    sun = read("data/minecraft/timeline/day.json")["tracks"]["minecraft:visual/sun_angle"]
+    require(list(sun["ease"]) == ["cubic_bezier"] and sun.get("modifier") is None, "sun angle track changed")
+    attrs_default = re.search(r"String visual/sun_angle\n[^\n]*\n[^\n]*\n\s+\d+: fconst_0", attrs)
+    require(attrs_default, "sun angle default changed")
+    facts["daylight_detector"] = {
+        "rule": "effective = max(0, sky light - skyDarken); inverted: 15 - effective; otherwise if effective > 0: "
+                "a = sun_angle * 0.017453292f, a += ((a < 3.1415927f ? 0 : 6.2831855f) - a) * 0.2f, "
+                "round(effective * Mth.cos(a)); clamp 0..15",
+        "mth_cos": "SIN[(long)(x * 10430.378350470453 + 16384.0) & 65535], SIN[i] = (float) sin(i / 10430.378350470453)",
+        "sun_angle_default": 0.0,
+        "sun_angle_keyframes": [[k["ticks"], k["value"]] for k in sun["keyframes"]],
+        "sun_angle_ease": sun["ease"]["cubic_bezier"],
+    }
+    facts["daylight_detector"]["cases"] = detector_cases(facts["daylight_detector"], facts["sky_darken"]["period_ticks"])
     dims = {}
     for dim in ["overworld", "the_nether", "the_end"]:
         d = read(f"data/minecraft/dimension_type/{dim}.json")
@@ -220,6 +257,9 @@ def extract_facts(jar, data):
     require("getMaxSpawnClusterSize" in position and "isMaxGroupSizeReached" in position, "pack limits changed")
     distance = method(spawner, "private static boolean isRightDistanceToPlayerAndSpawnPoint(")
     require("double 576.0d" in distance and "double 24.0d" in distance, "player distance changed")
+    spawn_point = re.search(r"ServerLevel\.getRespawnData[\s\S]*RespawnData\.dimension[\s\S]*ServerLevel\.dimension"
+                            r"[\s\S]*RespawnData\.pos[\s\S]*// double ([\d.]+)d\n[^\n]*BlockPos\.closerToCenterThan", distance)
+    require(spawn_point, "spawn point distance changed")
     chunk = method(spawner, "public static void spawnCategoryForChunk(")
     require("getMinY" in chunk and "iconst_1" in chunk, "minimum start height changed")
     cluster = method(inspect("net.minecraft.world.entity.Mob"), "public int getMaxSpawnClusterSize(")
@@ -231,6 +271,7 @@ def extract_facts(jar, data):
         "first_pack_steps": "ceil(nextFloat() * 4)",
         "step": "x and z += nextInt(6) - nextInt(6)",
         "min_player_distance_squared": 576.0,
+        "spawn_point_min_distance": float(spawn_point[1]),
         "pack_steps_after_choice": "the chosen entry's count",
         "max_cluster": 4,
     }
@@ -271,8 +312,10 @@ def extract_facts(jar, data):
     return facts
 
 
-def sky_darkening_cases(facts, thunder_darken):
-    """Explicit clock/weather scenarios, evaluated in Java float precision."""
+def sky_darkening_cases(facts, monster_light):
+    """Explicit clock/weather scenarios, evaluated in Java float precision.
+    `thunder` is getThunderLevel(1); thundering is derived from it."""
+    thunder_darken = monster_light["thunder_darken"]
     f32 = lambda n: struct.unpack("f", struct.pack("f", n))[0]
     def lerp(alpha, a, b):
         return f32(a + f32(alpha * f32(b - a)))
@@ -290,8 +333,8 @@ def sky_darkening_cases(facts, thunder_darken):
             hi = keys[i + 1] if i + 1 < len(keys) else (keys[0][0] + period, keys[0][1])
         alpha = f32(f32(t - lo[0]) / f32(hi[0] - lo[0]))
         day_level = f32(f32(facts["default_level"]) * lerp(alpha, lo[1], hi[1]))
-        for rain, thunder, thundering in [(0., 0., False), (1., 0., False), (1., 1., True),
-                                           (0.5, 0., False), (0.7, 0.35, False), (0.7, 0.35, True)]:
+        for rain, thunder in [(0., 0.), (1., 0.), (1., 1.), (0.5, 0.), (0.7, 0.35), (1., 0.9), (1., 0.95)]:
+            thundering = f32(thunder) > monster_light["thundering_above"]
             level = day_level
             rain_only = f32(f32(rain) - f32(thunder))
             if rain_only > 0:
@@ -303,6 +346,73 @@ def sky_darkening_cases(facts, thunder_darken):
             darken = int(f32(15. - level))
             out.append({"tick": tick, "rain": rain, "thunder": thunder, "thundering": thundering,
                         "sky_darken": darken, "monster_darken": thunder_darken if thundering else darken})
+    return out
+
+
+def detector_cases(facts, period):
+    """Detector outputs from the timeline, Java float operations and the sine table."""
+    import math
+    f32 = lambda n: struct.unpack("f", struct.pack("f", n))[0]
+    x1, y1, x2, y2 = (f32(v) for v in facts["sun_angle_ease"])
+
+    def curve(c1, c2):
+        return (f32(f32(f32(3. * c1) - f32(3. * c2)) + 1.), f32(f32(-6. * c1) + f32(3. * c2)), f32(3. * c1))
+
+    xc, yc = curve(x1, x2), curve(y1, y2)
+    sample = lambda c, t: f32(f32(f32(f32(f32(c[0] * t) + c[1]) * t) + c[2]) * t)
+    gradient = lambda c, t: f32(f32(f32(f32(f32(3. * c[0]) * t) + f32(2. * c[1])) * t) + c[2])
+
+    def ease(x):
+        t = x
+        for _ in range(4):
+            err = f32(sample(xc, t) - x)
+            if abs(err) < f32(1e-5):
+                return sample(yc, t)
+            g = gradient(xc, t)
+            if g < f32(1e-5):
+                break
+            t = f32(t - min(0.25, max(-0.25, f32(err / g))))
+        lo, hi = 0., 1.
+        while lo < hi:
+            err = f32(sample(xc, t) - x)
+            if abs(err) < f32(1e-5):
+                break
+            if err < 0:
+                lo = t
+            else:
+                hi = t
+            t = f32(f32(hi + lo) / 2.)
+        return sample(yc, t)
+
+    (start_tick, start), (end_tick, end) = sorted(facts["sun_angle_keyframes"], key=lambda k: k[1])
+    require(start_tick == end_tick and start == 0 and end == 360, "unexpected sun angle keyframes")
+
+    def sun_angle(tick):
+        since = (tick - start_tick) % period
+        if since == 0:
+            return f32(start)
+        return f32(start + f32(ease(f32(f32(since) / f32(period))) * f32(end - start)))
+
+    def cos(x):
+        i = int(x * 10430.378350470453 + 16384.0) & 65535
+        return f32(math.sin(i / 10430.378350470453))
+
+    out = []
+    for tick in [0, 1000, 3000, 5999, 6000, 6001, 9000, 11000, 12000, 12500, 13000, 13500, 17999, 18000, 18001,
+                 22500, 23000, 23500, 23999]:
+        angle_deg = sun_angle(tick)
+        for effective in [15, 12, 4, 0]:
+            for inverted in [False, True]:
+                power = effective
+                if inverted:
+                    power = 15 - power
+                elif power > 0:
+                    a = f32(angle_deg * f32(0.017453292))
+                    target = 0. if a < f32(3.1415927) else f32(6.2831855)
+                    a = f32(a + f32(f32(target - a) * f32(0.2)))
+                    power = math.floor(f32(f32(power) * cos(a)) + 0.5)
+                out.append({"tick": tick, "sun_angle": angle_deg, "effective_sky": effective, "inverted": inverted,
+                            "power": max(0, min(15, power))})
     return out
 
 

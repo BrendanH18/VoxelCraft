@@ -63,7 +63,7 @@ impl Entities {
                     Dimension::End => cavern_spot(world, kind, x, z, self.rng.range(30.0, 90.0) as i32),
                 };
                 let Some(pos) = spot else { continue };
-                if !in_spawn_ring(center, pos) || !clear_of_players(ctx, pos) {
+                if !in_spawn_ring(center, pos) || !clear_of_players(ctx, self.world_spawn, pos) {
                     continue;
                 }
                 self.spawn(kind, pos);
@@ -95,7 +95,7 @@ impl Entities {
                         };
                         if self.count_near(kind, center) < cap
                             && let Some(p) = spot
-                            && clear_of_players(ctx, p)
+                            && clear_of_players(ctx, self.world_spawn, p)
                         {
                             self.spawn(kind, p);
                             self.natural_animal(world.biome(x + dx, z + dz));
@@ -184,7 +184,10 @@ impl Entities {
         let z = (center.z + angle.sin() * dist).floor() as i32;
         let top = self.rng.range(48.0, 100.0) as i32;
         let Some(pos) = cavern_spot(world, kind, x, z, top) else { return };
-        if !in_spawn_ring(center, pos) || !clear_of_players(ctx, pos) || !world.in_fortress(pos.floor().as_ivec3()) {
+        if !in_spawn_ring(center, pos)
+            || !clear_of_players(ctx, self.world_spawn, pos)
+            || !world.in_fortress(pos.floor().as_ivec3())
+        {
             return;
         }
         self.spawn(kind, pos);
@@ -194,7 +197,7 @@ impl Entities {
             if self.count_near(kind, center) < cap
                 && let Some(p) = cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 1)
                 && world.in_fortress(p.floor().as_ivec3())
-                && clear_of_players(ctx, p)
+                && clear_of_players(ctx, self.world_spawn, p)
             {
                 self.spawn(kind, p);
             }

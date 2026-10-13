@@ -151,6 +151,9 @@ impl Game {
     pub(super) fn update_mobs(&mut self, dt: f64) {
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
+        // The world spawn (Java's respawn data) is an Overworld position.
+        self.mobs.entities.world_spawn =
+            (self.dimension == crate::world::terrain::Dimension::Overworld).then_some(self.world_spawn);
         self.mobs.entities.trader_spawning =
             self.gamerules.bool("doTraderSpawning") && self.gamerules.bool("doMobSpawning");
         self.mobs.entities.villager_griefing = self.gamerules.bool("mobGriefing");
@@ -206,11 +209,11 @@ impl Game {
             players.extend(self.agents.targets());
         }
         let ctx = entity::Ctx {
-            spawn_light: crate::simulation::lighting::SpawnLight::at(
+            spawn_light: crate::simulation::lighting::SpawnLight::for_dimension(
+                self.dimension,
                 (self.day_time.rem_euclid(1.) * 24000.).floor() as u32,
-                self.weather.strength,
-                if self.weather.thundering { self.weather.strength } else { 0. },
-                self.weather.thundering,
+                self.weather.rain_level(),
+                self.weather.thunder_level(),
             ),
             players,
             // The Nether has no sun to burn the undead.
@@ -219,7 +222,7 @@ impl Game {
             } else {
                 0.0
             },
-            raining: self.weather.raining,
+            raining: self.weather.is_raining() && self.dimension.has_sky(),
             spawning: self.gamerules.bool("doMobSpawning"),
             dimension: self.dimension,
         };
