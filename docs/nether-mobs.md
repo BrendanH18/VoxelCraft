@@ -4,7 +4,7 @@
 
 VoxelCraft v0.5 adds the Nether's living mobs. They follow Java Edition 1.21's
 brains (`PiglinAi`, `PiglinBruteAi`, `HoglinAi`, `Zoglin`, `Strider`) as closely as
-the engine allows. The engine has no pathfinding, riding or breeding, so those parts
+the engine allows. The retained v0.7 implementation adds riding and breeding. Full Java navigation remains open; those remaining parts
 are approximated or left out (see [Known gaps](#known-gaps)).
 
 | Mob | Health | Box | Damage | XP | Drops |
@@ -188,8 +188,7 @@ herd outnumbers the piglins retreats instead.
 3–4); see the spawn table. 20% spawn as babies. Bastion stables also contain
 persistent hoglins.
 
-**Breeding** needs animal breeding support, which is not implemented. Crimson
-fungus exists; `nether::breeding_item` identifies it for future breeding support.
+**Breeding** is implemented through the retained shared animal interactions: feed adult hoglins crimson fungus. See [animals](animals.md) for the lifecycle and current acceptance limits.
 
 ## Striders
 
@@ -267,10 +266,8 @@ different pitches.
 
 ## Known gaps
 
-- **Riding**: there is no riding, so no saddles, warped fungus on a stick, strider
-  steering, strider jockeys, baby striders riding adults or piglins riding hoglins.
-- **Breeding**: none for hoglins or striders (there is no animal breeding yet,
-  though the fungi exist); striders can't be tempted.
+- **Riding**: saddled strider riding and warped-fungus-on-a-stick steering are implemented. Strider jockeys, baby riders and piglins riding hoglins remain unassessed.
+- **Breeding**: hoglins and striders use the retained shared breeding/temptation pipeline. Complete selected-reference acceptance remains under MOB-03.
 - **Bartering**: spectral arrows and Soul Speed don't exist (see the table).
 - **Piglin details**:
   - No celebrating dance after a kill.

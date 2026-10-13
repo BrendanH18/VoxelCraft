@@ -40,6 +40,7 @@ impl World {
     /// if it is an unsupported gravity block, and pops off or drops whatever
     /// rested on it, all the way up.
     pub(super) fn settle(&mut self, mut p: IVec3) {
+        self.update_sponges(p);
         self.drop_unhung_ladders(p);
         self.solidify_nearby_powder(p);
         self.update_nether_vines(p);

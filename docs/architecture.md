@@ -241,3 +241,26 @@ runs silently.
 wgpu and winit (graphics and windowing), cpal (audio output), glam (math),
 bytemuck, crossbeam-channel, rustc-hash, font8x8, png, pollster, log and
 env_logger.
+
+## Assessment branch ID reservations
+
+The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
+these ranges. Preserve their meanings; do not reuse the unused patterned slots.
+
+| Block states | Meaning |
+| --- | --- |
+| 2160–2164 | Hanging mangrove propagule ages 0–4 |
+| 2200–2222 | Pale oak stairs/slab/fence/gate/door states |
+| 2223–2245 | Bamboo stairs/slab/fence/gate/door states |
+| 2246–2268 | Bamboo mosaic layout; only stairs/slab 2246–2250 are registered |
+| 2269–2298 | Pale oak trapdoor/button/pressure plate states |
+| 2299–2328 | Bamboo trapdoor/button/pressure plate states |
+| 2360–2365 | Mud brick stairs/slab/wall |
+| 2366–2371 | Prismarine stairs/slab/wall |
+| 2372–2377 | Prismarine brick stairs/slab; 2377 is reserved, unregistered |
+| 2378–2383 | Dark prismarine stairs/slab; 2383 is reserved, unregistered |
+
+Texture layers 1753–1758 append pale oak/bamboo doors and trapdoors; existing
+layer meanings remain intact. These definitions inherit the existing shaped
+block representation; adding the family is not proof of complete Java state,
+lighting or waterlogging parity. See the [content/resource evidence](verification/2026-10-12-content-and-assets.md).

@@ -20,6 +20,13 @@ pub fn ticks(item: Item) -> Option<u32> {
     if super::burnable_planks(Item::from_block(block)) || block.is_log() {
         return Some(300);
     }
+    if let Some((oak, wood)) = crate::world::nether_biome_blocks::switch_oak(block.0) {
+        return (wood >= 2).then_some(match oak.0 {
+            1437..=1452 => 150,
+            1140..=1151 => 100,
+            _ => 300,
+        });
+    }
     if let Some(form) = forms::wood_form(block.0) {
         let (index, ticks) = match form {
             forms::WoodForm::Slab { index } => (index, 150),
@@ -28,7 +35,7 @@ pub fn ticks(item: Item) -> Option<u32> {
             | forms::WoodForm::Fence { index }
             | forms::WoodForm::Gate { index, .. } => (index, 300),
         };
-        return super::burnable_planks(Item::from_block(forms::wood_planks(index))).then_some(ticks);
+        return (index == 11 || super::burnable_planks(Item::from_block(forms::wood_planks(index)))).then_some(ticks);
     }
     match block {
         ob::BAMBOO => Some(50),

@@ -2,6 +2,8 @@
 //! Start with planks and furnace fuels; other integrations migrate with fixtures.
 use crate::{item::Item, world::block::Block};
 
+pub mod compost;
+pub mod fishing;
 pub mod fuel;
 
 /// All implemented plank ingredients. Oak stays first for recipe-book previews.

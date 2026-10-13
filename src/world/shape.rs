@@ -510,6 +510,16 @@ pub fn collision(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block
 /// dropped): stairs face east, so their profile shows on the left of an
 /// icon, and fences reach out east and west.
 pub fn item_shape(block: Block) -> Boxes {
+    if block == Block::STONE {
+        static MODEL: std::sync::LazyLock<Vec<Box16>> = std::sync::LazyLock::new(|| {
+            crate::assets::model_boxes("voxelcraft:stone_model").expect("invalid original stone model")
+        });
+        let mut out = Boxes::new();
+        for &b in MODEL.iter() {
+            out.push(b);
+        }
+        return out;
+    }
     let block = if block.stairs_base().is_some() { block.with_facing(Facing::East) } else { block };
     shape(block, |f| if f.along_x() { block } else { Block::AIR }, Block::AIR)
 }

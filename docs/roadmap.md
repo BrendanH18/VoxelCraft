@@ -253,6 +253,15 @@ fidelity, turtle reproduction, dripstone/dripleaf behavior and complete
 current-version content. The inventory must inspect these rather than trust
 old "done" labels.
 
+The assessment branch now implements the named building recipes, sponge water
+absorption, composting metadata, fish weights, budding-amethyst loot, cocoa
+count and sapling/propagule fixes. Reference, integration and process-restart
+checks are recorded in the [content/resource report](verification/2026-10-12-content-and-assets.md).
+These are implemented slices; ordinary-player acceptance, remaining state/
+waterlogging fidelity and other identified mechanics remain open. The full
+fuel catalogue still needs reconciliation. Do not interpret the historical
+findings above as either erased evidence or current Verified status.
+
 ### 3.2 Pending v0.7.0 work
 
 The branch `t3/continue-project-build`, inspected at `f5bf0d1` on 2026-10-12,

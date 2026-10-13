@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "license": "MIT OR Apache-2.0",
+  "procedural_fallback": true,
+  "resources": [
+    {
+      "key": "voxelcraft:stone",
+      "kind": "texture",
+      "path": "assets/textures/stone.png",
+      "source": "assets/textures/stone.source.json",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Original VoxelCraft hand-authored 16 x 16 pixel composition, 2026-10-12",
+      "texture_layer": 0,
+      "width": 16,
+      "height": 16
+    },
+    {
+      "key": "voxelcraft:stone_model",
+      "kind": "model",
+      "path": "assets/models/stone.json",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Original VoxelCraft authored box model",
+      "texture": "voxelcraft:stone"
+    },
+    {
+      "key": "voxelcraft:pickup",
+      "kind": "audio",
+      "path": "assets/audio/pickup.wav",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Original VoxelCraft swept resonator composition, no external samples",
+      "sound": "pop",
+      "sample_rate": 48000
+    }
+  ],
+  "procedural_resources": {
+    "textures": "Unmapped texture layers retain the Rust generators",
+    "models": "Unmapped entity/block geometry retains Rust model builders",
+    "audio": "Unmapped sound keys retain Bank synthesis",
+    "music": "Original Rust music compositions remain procedural"
+  }
+}

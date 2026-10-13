@@ -23,7 +23,7 @@ impl World {
     pub(super) fn update_overworld_plants(&mut self, p: IVec3) {
         for q in [p, p - IVec3::Y, p + IVec3::Y, p + IVec3::X, p - IVec3::X, p + IVec3::Z, p - IVec3::Z] {
             let Some(b) = self.get_block(q) else { continue };
-            if !(ob::FIRST..=ob::LAST).contains(&b.0) {
+            if !(ob::FIRST..=ob::LAST).contains(&b.0) && ob::propagule_age(b).is_none() {
                 continue;
             }
             // Ceiling plants: the whole run below drops when unsupported.
@@ -95,6 +95,9 @@ impl World {
     /// belongs here.
     pub(super) fn tick_overworld_flora(&mut self, p: IVec3, b: Block) -> bool {
         match b.0 {
+            2160..=2163 => {
+                self.edit(p, ob::hanging_propagule(ob::propagule_age(b).unwrap() + 1), true);
+            }
             // Kelp grows up through water, 14% of ticks (Java's 0.14).
             1960 => {
                 if self.roll() % 100 < 14
@@ -221,6 +224,16 @@ impl World {
     /// Bone meal on one of this module's blocks (`None`: not ours).
     pub(super) fn overworld_bone_meal(&mut self, p: IVec3, b: Block) -> Option<bool> {
         Some(match b.0 {
+            2011 if self.get_block(p - IVec3::Y) == Some(Block::AIR) => {
+                self.edit(p - IVec3::Y, ob::hanging_propagule(0), true);
+                true
+            }
+            2011 => false,
+            2160..=2163 => {
+                self.edit(p, ob::hanging_propagule(ob::propagule_age(b).unwrap() + 1), true);
+                true
+            }
+            2164 => false,
             // Azaleas grow into azalea trees 45% of the time.
             1940 | 1941 => {
                 if self.roll() % 100 < 45 {
@@ -400,7 +413,7 @@ impl World {
             2058 | 2059 => out.push(Stack::new(Item::SWEET_BERRIES, 1)),
             2062..=2073 => {
                 let (age, _) = ob::cocoa_of(b).unwrap();
-                let n = if age == 2 { 2 + self.roll() % 2 } else { 1 };
+                let n = if age == 2 { 3 } else { 1 };
                 out.push(Stack::new(Item::COCOA_BEANS, n as u8));
             }
             2074 | 2075 => {

@@ -1,0 +1,11 @@
+{
+  "authorship": "Original VoxelCraft swept resonator, no external samples",
+  "rate": 48000,
+  "frames": 4800,
+  "base_hz": 720,
+  "chirp_coefficient": 1800,
+  "decay": 38,
+  "gain": 0.35,
+  "attack_seconds": 0.004,
+  "release_frames": 240
+}

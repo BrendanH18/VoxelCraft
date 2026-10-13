@@ -288,8 +288,8 @@ pub const fn emission(id: u16) -> u8 {
 /// Any part of a crimson or warped tree, or something made from its wood.
 pub fn is_nether_wood(b: Block) -> bool {
     matches!(b.base().0, 1602..=1619)
-        || super::forms::wood_form(b.0).is_some_and(|f| wood_form_index(f) >= 7)
-        || switch_oak(b.0).is_some()
+        || super::forms::wood_form(b.0).is_some_and(|f| matches!(wood_form_index(f), 7 | 8))
+        || switch_oak(b.0).is_some_and(|(_, wood)| wood < 2)
 }
 
 const fn wood_form_index(form: super::forms::WoodForm) -> u16 {
@@ -417,10 +417,14 @@ pub fn stripped(b: Block) -> Option<Block> {
 
 /// The oak redstone state an id mirrors, and its wood (0 crimson, 1 warped).
 pub const fn switch_oak(id: u16) -> Option<(Block, u16)> {
-    if id < SWITCH_ORIGIN || id > LAST {
+    let (wood, local) = if id >= SWITCH_ORIGIN && id <= LAST {
+        ((id - SWITCH_ORIGIN) / SWITCH_STRIDE, (id - SWITCH_ORIGIN) % SWITCH_STRIDE)
+    } else if id >= 2269 && id < 2329 {
+        (2 + (id - 2269) / SWITCH_STRIDE, (id - 2269) % SWITCH_STRIDE)
+    } else {
         return None;
-    }
-    let (wood, local) = ((id - SWITCH_ORIGIN) / SWITCH_STRIDE, (id - SWITCH_ORIGIN) % SWITCH_STRIDE);
+    };
+
     Some((
         Block(match local {
             0..=15 => 1437 + local,
@@ -434,7 +438,7 @@ pub const fn switch_oak(id: u16) -> Option<(Block, u16)> {
 /// The `wood` (0 crimson, 1 warped) twin of an oak trapdoor, button or
 /// plate state; anything else is returned unchanged.
 pub const fn switch_reskin(oak: Block, wood: u16) -> Block {
-    let base = SWITCH_ORIGIN + wood * SWITCH_STRIDE;
+    let base = if wood < 2 { SWITCH_ORIGIN + wood * SWITCH_STRIDE } else { 2269 + (wood - 2) * SWITCH_STRIDE };
     match oak.0 {
         1437..=1452 => Block(base + oak.0 - 1437),
         1140..=1151 => Block(base + 16 + oak.0 - 1140),
@@ -454,12 +458,24 @@ pub const fn keep_wood(from: Block, to: Block) -> Block {
 /// Names and textures of the crimson and warped trapdoors, buttons and plates.
 pub const fn switch_registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     let Some((_, wood)) = switch_oak(id) else { return None };
-    let local = (id - SWITCH_ORIGIN) % SWITCH_STRIDE;
-    let planks = if wood == 0 { tex::CRIMSON_PLANKS } else { tex::WARPED_PLANKS };
+    let origin = if wood < 2 { SWITCH_ORIGIN } else { 2269 };
+    let local = (id - origin) % SWITCH_STRIDE;
+    let planks = [
+        tex::CRIMSON_PLANKS,
+        tex::WARPED_PLANKS,
+        super::overworld_blocks::t::PALE_OAK_PLANKS,
+        super::overworld_blocks::t::BAMBOO_PLANKS,
+    ][wood as usize];
     let (names, layer) = match local {
-        0..=15 => (["crimson trapdoor", "warped trapdoor"], tex::NETHER_TRAPDOORS + wood),
-        16..=27 => (["crimson button", "warped button"], planks),
-        _ => (["crimson pressure plate", "warped pressure plate"], planks),
+        0..=15 => (
+            ["crimson trapdoor", "warped trapdoor", "pale oak trapdoor", "bamboo trapdoor"],
+            if wood < 2 { tex::NETHER_TRAPDOORS + wood } else { tex::BUILDING_TRAPDOORS + wood - 2 },
+        ),
+        16..=27 => (["crimson button", "warped button", "pale oak button", "bamboo button"], planks),
+        _ => (
+            ["crimson pressure plate", "warped pressure plate", "pale oak pressure plate", "bamboo pressure plate"],
+            planks,
+        ),
     };
     Some((names[wood as usize], RenderKind::Shaped, [layer; 6]))
 }

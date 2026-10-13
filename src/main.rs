@@ -175,7 +175,7 @@ voxelcraft [options]
   --mute            start with sound muted (M toggles in game)
   --no-hud          start with the HUD and hand hidden (F1 toggles in game)
   --volume <0..1>   master volume (default: 1, or the saved option)
-  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
+  --export-sounds   write every synthesized sound to target/sounds/*.wav with stats, and exit\n  --validate-assets validate embedded original resources and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
@@ -514,6 +514,20 @@ fn main() {
         match std::env::args().nth(1).as_deref() {
             Some("--version") => {
                 println!("VoxelCraft {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
+            Some("--validate-assets") => {
+                let started = std::time::Instant::now();
+                if let Err(e) = voxelcraft::assets::validate() {
+                    eprintln!("asset validation failed: {e}");
+                    std::process::exit(1);
+                }
+                // Decode the mapped texture as the renderer does, without opening devices.
+                let _ = voxelcraft::assets::texture_pixel(0, 0, 0);
+                println!(
+                    "{}",
+                    serde_json::json!({"resources":voxelcraft::assets::RESOURCES.len(),"embedded_bytes":voxelcraft::assets::RESOURCES.iter().map(|r|r.bytes.len()).sum::<usize>(),"validation_ms":started.elapsed().as_secs_f64()*1000.0})
+                );
                 return;
             }
             Some("--help" | "-h") => {

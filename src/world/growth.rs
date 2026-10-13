@@ -265,7 +265,8 @@ impl World {
             b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
             b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.0)
-                || (2150..=2157).contains(&b.0) =>
+                || (2150..=2157).contains(&b.0)
+                || (2160..=2164).contains(&b.0) =>
             {
                 self.tick_overworld_flora(p, b);
             }
@@ -338,15 +339,27 @@ impl World {
 
     /// Grows the sapling at `p` into a tree if there's room for its trunk.
     /// Leaves only fill air, like world generation. Returns whether it grew.
-    pub fn grow_tree(&mut self, p: IVec3) -> bool {
+    pub fn grow_tree(&mut self, mut p: IVec3) -> bool {
         let Some(sapling) = self.get_block(p) else { return false };
+        if sapling == super::overworld_blocks::DARK_OAK_SAPLING {
+            let corner = [-1, 0].into_iter().flat_map(|x| [-1, 0].map(move |z| p + IVec3::new(x, 0, z))).find(|&q| {
+                [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z]
+                    .into_iter()
+                    .all(|d| self.get_block(q + d) == Some(sapling))
+            });
+            let Some(corner) = corner else { return false };
+            p = corner;
+        }
         let v = self.roll() as u32;
         let mut blocks = Vec::new();
         let ground = p - IVec3::Y;
         let Some(wood) = sapling.wood().filter(|_| sapling.is_sapling()) else { return false };
         super::trees::tree(wood, ground, v, &mut |q, b| blocks.push((q, b)));
         let room = blocks.iter().filter(|(_, b)| b.is_log()).all(|&(q, _)| {
-            q == p || self.get_block(q).is_some_and(|b| b == Block::AIR || b.is_replaceable() || b.is_leaves())
+            q == p
+                || self
+                    .get_block(q)
+                    .is_some_and(|b| b == sapling || b == Block::AIR || b.is_replaceable() || b.is_leaves())
         });
         if !room {
             return false;

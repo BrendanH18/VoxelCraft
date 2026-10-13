@@ -174,6 +174,9 @@ const WOOD_SLAB: Ingredient = &[
     b(crate::world::forms::wood_id(6, 4)),
     b(crate::world::forms::wood_id(7, 4)),
     b(crate::world::forms::wood_id(8, 4)),
+    b(crate::world::forms::wood_id(9, 4)),
+    b(crate::world::forms::wood_id(10, 4)),
+    b(crate::world::forms::wood_id(11, 4)),
 ];
 const FURNACE: Ingredient = &[b(Block::FURNACE)];
 const STONE_SLAB: Ingredient = &[b(Block::STONE_SLAB)];
@@ -942,6 +945,34 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
     const fn one(block: Block) -> Item {
         b(block)
     }
+    for i in 9..12 {
+        let mat = ingredient(b(crate::world::forms::wood_planks(i)));
+        r.push(shaped(&["#  ", "## ", "###"], &[('#', mat)], b(crate::world::forms::wood_id(i, 0)), 4));
+        r.push(shaped(&["###"], &[('#', mat)], b(crate::world::forms::wood_id(i, 4)), 6));
+        if i == 11 {
+            continue;
+        }
+        r.push(shaped(&["#s#", "#s#"], &[('#', mat), ('s', STICK)], b(crate::world::forms::wood_id(i, 5)), 3));
+        r.push(shaped(&["s#s", "s#s"], &[('#', mat), ('s', STICK)], b(crate::world::forms::wood_id(i, 6)), 1));
+        r.push(shaped(&["##", "##", "##"], &[('#', mat)], b(crate::world::forms::wood_id(i, 14)), 3));
+        for (rows, oak, count) in [(&["###", "###"][..], 1437, 2), (&["#"][..], 1140, 1), (&["##"][..], 1215, 1)] {
+            r.push(shaped(
+                rows,
+                &[('#', mat)],
+                b(crate::world::nether_biome_blocks::switch_reskin(Block(oak), i - 7)),
+                count,
+            ));
+        }
+    }
+    for i in 15..19 {
+        let mat = ingredient(b(crate::world::forms::stone_base(i)));
+        r.push(shaped(&["#  ", "## ", "###"], &[('#', mat)], b(crate::world::forms::stone_id(i, 0)), 4));
+        r.push(shaped(&["###"], &[('#', mat)], b(crate::world::forms::stone_id(i, 4)), 6));
+        if i < 17 {
+            r.push(shaped(&["###", "###"], &[('#', mat)], b(crate::world::forms::stone_id(i, 5)), 6));
+        }
+    }
+    r.push(shaped(&["#", "#"], &[('#', ingredient(b(crate::world::forms::wood_id(10, 4))))], b(ob::BAMBOO_MOSAIC), 1));
     r.push(shapeless(&[ingredient(one(ob::PALE_OAK_LOG))], one(ob::PALE_OAK_PLANKS), 4));
     r.push(shapeless(&[ingredient(one(ob::BAMBOO_BLOCK))], one(ob::BAMBOO_PLANKS), 2));
     r.push(shaped(&["###", "###", "###"], &[('#', ingredient(one(ob::BAMBOO)))], one(ob::BAMBOO_BLOCK), 1));

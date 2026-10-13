@@ -219,7 +219,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 d < 4.6 + noise(x / 2, y / 2, 3) * 1.8
             };
             let fleck = noise(x, y, 4) < 0.12;
-            shaded(&lump, x, y, if fleck { [c[0] + 40, c[1] + 40, c[2] + 40] } else { c }, 0.1)
+            shaded(&lump, x, y, if fleck { c.map(|channel| channel.saturating_add(40)) } else { c }, 0.1)
         }
         Sprite::Ingot(c) => {
             // A bar seen from above at an angle: a lighter top face and a
@@ -539,7 +539,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 Some([255, 250, 190, 255])
             } else if p[3] == 0 {
                 None
-            } else if p[1] > p[0] + 30 {
+            } else if u16::from(p[1]) > u16::from(p[0]) + 30 {
                 Some(tint([246, 206, 60], p[1] as f32 / 140.0))
             } else {
                 Some(p)

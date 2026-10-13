@@ -58,6 +58,7 @@ pub mod redstone_blocks;
 mod redstone_contacts;
 pub mod shape;
 mod spawner;
+mod sponge;
 pub mod storage;
 pub mod stronghold;
 pub mod structure;

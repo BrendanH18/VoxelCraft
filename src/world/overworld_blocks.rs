@@ -183,6 +183,13 @@ pub const CHERRY_LEAVES: Block = Block(2012);
 pub const PALE_OAK_LEAVES: Block = Block(2013);
 pub const DARK_OAK_SAPLING: Block = Block(2014);
 pub const MANGROVE_PROPAGULE: Block = Block(2015);
+/// Reserved after the retained v0.7 turtle states: hanging ages 0..4.
+pub fn hanging_propagule(age: u8) -> Block {
+    Block(2160 + age.min(4) as u16)
+}
+pub const fn propagule_age(b: Block) -> Option<u8> {
+    if b.0 >= 2160 && b.0 <= 2164 { Some((b.0 - 2160) as u8) } else { None }
+}
 pub const CHERRY_SAPLING: Block = Block(2016);
 pub const PALE_OAK_SAPLING: Block = Block(2017);
 pub const PALE_OAK_LOG: Block = Block(2018);
@@ -489,6 +496,7 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         2013 => ("pale oak leaves", Cutout, all(t::PALE_OAK_LEAVES)),
         2014 => ("dark oak sapling", Cross, all(t::DARK_OAK_SAPLING)),
         2015 => ("mangrove propagule", Cross, all(t::MANGROVE_PROPAGULE)),
+        2160..=2164 => ("hanging mangrove propagule", Cross, all(t::MANGROVE_PROPAGULE)),
         2016 => ("cherry sapling", Cross, all(t::CHERRY_SAPLING)),
         2017 => ("pale oak sapling", Cross, all(t::PALE_OAK_SAPLING)),
         2018 => ("pale oak log", Opaque, column(t::PALE_OAK_LOG_SIDE, t::PALE_OAK_LOG_TOP, t::PALE_OAK_LOG_TOP)),
@@ -560,6 +568,7 @@ pub const fn base(id: u16) -> Option<Block> {
         2042 | 2044 | 2046 | 2048 | 2050 | 2052 => Block(id - 1),
         2055..=2057 => VINE,
         2059..=2061 => SWEET_BERRY_BUSH,
+        2160..=2164 => MANGROVE_PROPAGULE,
         2063..=2073 => COCOA,
         _ => return None,
     })
@@ -628,6 +637,9 @@ pub fn mining(b: Block) -> Option<(f32, Option<ToolKind>, Option<u8>)> {
 /// `World::spill_mined` such as berries and pickles); `None` for blocks
 /// this module doesn't own.
 pub fn drop(b: Block) -> Option<Option<Item>> {
+    if let Some(age) = propagule_age(b) {
+        return Some((age == 4).then_some(MANGROVE_PROPAGULE.into()));
+    }
     if egg_count(b).is_some() {
         return Some(None);
     }
@@ -637,7 +649,7 @@ pub fn drop(b: Block) -> Option<Option<Item>> {
     let base = b.base();
     Some(match b.0 {
         1900 | 1903 => Some(Block::DIRT.into()),
-        // Blue ice, budding amethyst, buds and turtle eggs need silk touch.
+        // Budding amethyst never drops; ice, buds and eggs require silk touch.
         1909 | 1925 | 1926..=1928 | 1930..=1932 | 1976..=1979 => None,
         // Snow layers give a snowball; clusters shards; both in `spill_mined`.
         1910 | 1929 | 1933 => None,
@@ -683,7 +695,7 @@ pub fn silk_drop(b: Block) -> Option<Item> {
         return Some(TURTLE_EGG.into());
     }
     match b.0 {
-        1900 | 1903 | 1909 | 1925 | 1926..=1933 | 1976..=1979 | 1990..=2009 | 1980..=1984 | 2074..=2076 => {
+        1900 | 1903 | 1909 | 1926..=1933 | 1976..=1979 | 1990..=2009 | 1980..=1984 | 2074..=2076 => {
             Some(b.base().into())
         }
         1910 => Some(SNOW_LAYER.into()),
@@ -768,6 +780,7 @@ pub fn can_stay_on(block: Block, below: Block) -> Option<bool> {
 /// hanging plant).
 pub fn hangs_from(block: Block, above: Block) -> Option<bool> {
     Some(match block.0 {
+        2160..=2164 => above == MANGROVE_LEAVES,
         1919..=1923 => sturdy(above) || matches!(dripstone_of(above), Some((true, _))),
         1930..=1933 => sturdy(above),
         1944..=1947 => sturdy(above) || matches!(above.0, 1944..=1947),

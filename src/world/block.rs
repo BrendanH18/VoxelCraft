@@ -332,7 +332,10 @@ pub mod tex {
     // Nether mobs reserve layers 1400..=1449.
     pub const CRYING_OBSIDIAN: u16 = 1400;
     // v0.6 Overworld blocks use 1450.. (see `world::overworld_blocks::t`).
-    pub const COUNT: u32 = 1753;
+    /// Append-only pale oak and bamboo door/trapdoor textures.
+    pub const BUILDING_DOORS: u16 = 1753;
+    pub const BUILDING_TRAPDOORS: u16 = 1757;
+    pub const COUNT: u32 = 1759;
     const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
@@ -1363,8 +1366,8 @@ impl Block {
         if let Some((hardness, ..)) = super::nether_biome_blocks::mining(self.material()) {
             return if self.is_door() { 3.0 } else { hardness };
         }
-        if let Some((hardness, ..)) = super::overworld_blocks::mining(self) {
-            return hardness;
+        if let Some((hardness, ..)) = super::overworld_blocks::mining(self.material()) {
+            return if self.is_door() { 3.0 } else { hardness };
         }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return match self.material() {
@@ -1506,7 +1509,7 @@ impl Block {
         if let Some((_, tool, _)) = super::nether_biome_blocks::mining(self.material()) {
             return tool;
         }
-        if let Some((_, tool, _)) = super::overworld_blocks::mining(self) {
+        if let Some((_, tool, _)) = super::overworld_blocks::mining(self.material()) {
             return tool;
         }
         if super::nether_blocks::registry(self.material().0).is_some() {
@@ -1642,7 +1645,7 @@ impl Block {
         if let Some((.., level)) = super::nether_biome_blocks::mining(self.material()) {
             return level;
         }
-        if let Some((.., level)) = super::overworld_blocks::mining(self) {
+        if let Some((.., level)) = super::overworld_blocks::mining(self.material()) {
             return level;
         }
         if super::nether_blocks::registry(self.material().0).is_some() {
@@ -2230,7 +2233,7 @@ const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         1800 => ("crying obsidian", Opaque, all(tex::CRYING_OBSIDIAN)),
-        1900..=2076 | 2150..=2157 => match super::overworld_blocks::registry(id) {
+        1900..=2076 | 2150..=2157 | 2160..=2164 => match super::overworld_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },

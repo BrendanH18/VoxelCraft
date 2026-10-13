@@ -4,8 +4,8 @@
 //! it. Reeling during the bite rolls the fish, junk or treasure table.
 //!
 //! The bob itself is a simplified spring, and the hook does not snag mobs.
-//! Tropical fish, pufferfish and several junk and treasure items are absent,
-//! so those weights are left out of the pools.
+//! Fish and treasure pools include every implemented Java 26.3 catch.
+//! Junk and enchanted treasure still have documented parity limits.
 
 use glam::{DVec3, IVec3};
 
@@ -230,7 +230,7 @@ pub fn roll_catch(rng: &mut Rng, luck: i32, open_water: bool) -> Stack {
     let total = fish + junk + treasure;
     let mut roll = if total == 0 { 0 } else { (rng.next_f32() * total as f32) as i32 };
     if roll < fish {
-        return Stack::new(pick(rng, &[(Item::COD, 60), (Item::SALMON, 25)]), 1);
+        return Stack::new(pick(rng, &crate::content::fishing::FISH), 1);
     }
     roll -= fish;
     if roll < junk || treasure == 0 {
@@ -435,6 +435,19 @@ mod tests {
         let mut blocked = pond();
         blocked.grid.set(IVec3::new(0, 0, 0), Block::STONE);
         assert!(!open_water(&blocked, IVec3::new(0, 1, 0)));
+    }
+
+    #[test]
+    fn all_four_java_fish_are_obtainable_by_reeling() {
+        let mut rng = Rng::new(99);
+        let mut seen = [false; 4];
+        for _ in 0..4000 {
+            let catch = roll_catch(&mut rng, 0, true);
+            for (i, (item, _)) in crate::content::fishing::FISH.iter().enumerate() {
+                seen[i] |= catch.item == *item;
+            }
+        }
+        assert!(seen.into_iter().all(|b| b));
     }
 
     #[test]

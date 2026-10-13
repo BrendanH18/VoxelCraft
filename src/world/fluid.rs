@@ -122,6 +122,7 @@ impl World {
         for (p, b) in changes {
             let Some(old) = self.get_block(p).filter(|&cur| cur != b) else { continue };
             if self.edit(p, b, false) {
+                self.update_sponges(p);
                 // Water washes plants and torches away as items; lava burns them.
                 if washes_away(old) && b.is_water() {
                     self.spill_block(p, old);

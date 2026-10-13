@@ -14,40 +14,8 @@ pub const fn level(b: Block) -> Option<u8> {
 pub const fn state(level: u8) -> Block {
     if level == 0 { Block::COMPOSTER } else { Block(960 + level as u16) }
 }
-/// Only families present in this engine are listed. Poisonous potatoes cannot compost.
-pub fn chance(item: Item) -> f32 {
-    if matches!(item, Item::WHEAT_SEEDS | Item::PUMPKIN_SEEDS) {
-        return 0.3;
-    }
-    if matches!(item, Item::MELON_SLICE) {
-        return 0.5;
-    }
-    if matches!(item, Item::APPLE | Item::CARROT | Item::POTATO | Item::BEETROOT | Item::WHEAT | Item::NETHER_WART) {
-        return 0.65;
-    }
-    if matches!(item, Item::BREAD | Item::BAKED_POTATO) {
-        return 0.85;
-    }
-    if item == Item::CAKE {
-        return 1.0;
-    }
-    let Some(b) = item.block() else { return 0.0 };
-    if b.is_leaves() || b.is_sapling() || b == Block::TALL_GRASS {
-        return 0.3;
-    }
-    match b.base() {
-        Block::CACTUS | Block::SUGAR_CANE => 0.5,
-        Block::PUMPKIN
-        | Block::CARVED_PUMPKIN
-        | Block::MELON
-        | Block::BROWN_MUSHROOM
-        | Block::RED_MUSHROOM
-        | Block::DANDELION
-        | Block::POPPY => 0.65,
-        Block::HAY_BALE => 0.85,
-        _ => 0.0,
-    }
-}
+/// Shared, version-specific composting eligibility.
+pub use crate::content::compost::chance;
 impl World {
     /// Consumes one eligible item even on a failed roll. The first level is guaranteed.
     pub fn compost(&mut self, p: IVec3, item: Item) -> bool {
