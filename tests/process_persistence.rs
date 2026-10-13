@@ -46,14 +46,35 @@ fn saved_interrupted_work_and_v07_entities_survive_a_process_restart() {
     }
     std::fs::remove_dir_all(path).unwrap();
 }
+/// Runs only as a child of `persistence_worker`, which holds the save lock.
+#[test]
+fn lock_probe_worker() {
+    let Ok(path) = std::env::var("VOXELCRAFT_LOCK_PROBE_DIR") else {
+        return;
+    };
+    let err = Storage::new(path).lock().unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::WouldBlock);
+    println!("lock probe: WouldBlock (pid {})", std::process::id());
+}
 #[test]
 fn persistence_worker() {
     let Ok(path) = std::env::var("VOXELCRAFT_PERSISTENCE_DIR") else {
         return;
     };
-    let storage = Storage::new(path);
+    let storage = Storage::new(&path);
     let _lock = storage.lock().unwrap();
-    assert_eq!(storage.lock().unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
+    // A genuinely separate writer process cannot lock the open world.
+    let probe = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "lock_probe_worker", "--nocapture"])
+        .env("VOXELCRAFT_LOCK_PROBE_DIR", &path)
+        .output()
+        .unwrap();
+    assert!(
+        probe.status.success() && String::from_utf8_lossy(&probe.stdout).contains("lock probe: WouldBlock"),
+        "lock probe: {}\n{}",
+        String::from_utf8_lossy(&probe.stdout),
+        String::from_utf8_lossy(&probe.stderr)
+    );
     let mut w = World::new_remote(Arc::new(Generator::new(7)), 2);
     if std::env::var("VOXELCRAFT_PERSISTENCE_PHASE").unwrap() == "write" {
         w.receive_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
