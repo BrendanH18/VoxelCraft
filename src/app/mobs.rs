@@ -48,18 +48,9 @@ impl Game {
         self.mobs.entities.raycast(eye, dir, block_dist.min(self.session.entity_reach())).map(|(i, _)| i)
     }
 
-    /// Sprint state of whoever is acting: a controller/LAN hand's own input, or the host's keys.
+    /// The host's sprint state for an attack.
     pub(super) fn sprinting_for_attack(&self) -> bool {
-        if self.puppet {
-            self.agents
-                .players
-                .values()
-                .find(|b| b.id == self.session.id)
-                .is_some_and(|b| b.agent.movement_input().sprint)
-                && (self.session.mode.invulnerable() || self.session.vitals.hunger.can_sprint())
-        } else {
-            self.movement_input(self.arrival.is_some()).sprint
-        }
+        self.movement_input(self.arrival.is_some()).sprint
     }
 
     /// The End crystal or dragon part under the crosshair, if it's within
@@ -85,7 +76,7 @@ impl Game {
         self.body.attack_held
             || self.mob_target().is_some()
             || self.fight_target().is_some()
-            || self.lan_player_target(&super::lan::Fighter::Host).is_some()
+            || self.lan_player_target(&super::lan::PlayerRef::Host).is_some()
     }
 
     /// Applies `--spawn` requests (with the other `--place` edits).

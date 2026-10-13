@@ -130,13 +130,16 @@ The right-click chain is shared ([use evidence](verification/2026-10-13-shared-u
 `PlayerSession::use_held` runs entity, item and block uses for the desktop and
 CLI (and so the headless LAN server), reporting screens, beds, vehicle storage
 and trading for adapters to open. Bows and crossbows are tick-based session
-state. Hands no longer use the state swap: the host, controller seats and LAN
-peers each run attack, mining, use, eating and bow input through `hands::Actor`
-on their own session, hand animation and `Body`, and LAN PvP names its attacker
-and target explicitly (the host is now a target for controller players without
-being swapped into an agent slot). Container screens, controller menu clicks,
-beds and respawn points still borrow host container code through
-`Game::puppet`; extracting container transactions removes it.
+state. `Game::puppet` state swapping is removed
+([evidence](verification/2026-10-13-shared-use.md#no-state-swapping)): the host,
+controller seats and LAN peers run hands through `hands::Actor` and container
+clicks through `screen::Screen` on their own session, `Body`, crafting grid and
+hand animation; beds, respawn points, pick-block, drops and LAN screen
+open/close act on the named player. LAN PvP names its attacker and target.
+Remaining STR-03 work: container transactions are still app-level (`Screen`)
+rather than session-owned, so the CLI keeps its separate chest/anvil/
+grindstone/smithing/trade commands; device/menu presentation and the HUD attack
+indicator remain adapter work.
 **Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.
 **Dependency:** STR-01 regression coverage and review of pending v0.7 changes.
 

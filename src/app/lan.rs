@@ -89,7 +89,6 @@ pub(super) struct Lan {
     pub mode: GameMode,
     pub cheats: bool,
     pub pvp: bool,
-    host_mode: GameMode,
     id: u32,
     sequence: u32,
     predictions: VecDeque<Input>,
@@ -548,22 +547,66 @@ impl Game {
             }
         }
     }
-    fn with_remote<R>(&mut self, peer: &mut Peer, f: impl FnOnce(&mut Self) -> R) -> Option<R> {
-        let name = peer.profile.as_deref()?;
-        self.lan.host_mode = self.session.mode;
-        let mut grid = peer.grid;
-        let mut open = peer.open;
-        let result = self.puppet_body(name, &mut peer.body, |g| {
-            std::mem::swap(&mut g.craft, &mut grid);
-            std::mem::swap(&mut g.inventory_open, &mut open);
-            let result = f(g);
-            std::mem::swap(&mut g.craft, &mut grid);
-            std::mem::swap(&mut g.inventory_open, &mut open);
-            result
-        });
-        peer.grid = grid;
-        peer.open = open;
-        result
+    /// Opens screen `container` for a LAN player, as their click would.
+    fn peer_open(&mut self, peer: &mut Peer, container: Container) {
+        let Some(name) = peer.profile.clone() else { return };
+        if peer.open {
+            return;
+        }
+        let Some(bot) = self.agents.players.get_mut(&name) else { return };
+        let session = &mut bot.agent.session;
+        if !session.mode.can_interact() {
+            return;
+        }
+        let present = match container {
+            Container::Chest(p) => self.world.chest(p).is_some(),
+            Container::Furnace(p) => self.world.furnace(p).is_some(),
+            Container::Brewing(p) => self.world.brewing_stand(p).is_some(),
+            _ => true,
+        };
+        if !present {
+            return;
+        }
+        let container = match (container, session.player.vehicle) {
+            (Container::Inventory, Some(id)) if self.mobs.entities.vehicle_slots(id).is_some_and(|s| !s.is_empty()) => {
+                Container::Minecart(id)
+            }
+            _ => container,
+        };
+        if container == Container::CraftingTable {
+            peer.grid = Grid::new(3);
+        }
+        session.cancel_mining();
+        session.cancel_consumption();
+        let (id, at) = (session.id, session.player.pos);
+        peer.body.let_go();
+        peer.body.container = container;
+        peer.open = true;
+        if let Container::Chest(pos) = container {
+            self.chest_sound(pos, 0.65);
+            if self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
+                self.mobs.entities.piglins_notice(id, at, true, &self.world);
+            }
+        }
+    }
+
+    /// Closes a LAN player's screen, returning its grid and work slots.
+    fn peer_close(&mut self, peer: &mut Peer) {
+        let Some(name) = peer.profile.clone() else { return };
+        if !peer.open {
+            return;
+        }
+        if let Container::Chest(pos) = peer.body.container {
+            self.chest_sound(pos, 0.8);
+        }
+        if let Some(bot) = self.agents.players.get_mut(&name) {
+            let session = &mut bot.agent.session;
+            let work: Vec<_> = session.work.iter_mut().filter_map(Option::take).collect();
+            session.inventory.return_stacks(peer.grid.take_all().into_iter().chain(work));
+        }
+        peer.grid = Grid::new(2);
+        peer.body.container = Container::Inventory;
+        peer.open = false;
     }
     fn remote_command(&mut self, peer: &mut Peer, command: &str) -> Result<(), String> {
         match command {
@@ -577,28 +620,43 @@ impl Game {
                 let view = c[5..].trim().parse::<i32>().map_err(|_| "Bad view distance".to_string())?;
                 peer.view = view.clamp(2, LAN_VIEW_MAX);
             }
-            "inventory" => {
-                self.with_remote(peer, |g| {
-                    if !g.inventory_open {
-                        g.toggle_inventory();
-                    }
-                });
-            }
-            "close" => {
-                self.with_remote(peer, |g| {
-                    if g.inventory_open {
-                        g.toggle_inventory();
-                    }
-                });
-            }
+            "inventory" => self.peer_open(peer, Container::Inventory),
+            "close" => self.peer_close(peer),
             "pick" => {
-                self.with_remote(peer, |g| g.pick_block());
+                let name = peer.profile.clone().unwrap_or_default();
+                if let Some(bot) = self.agents.players.get_mut(&name) {
+                    use voxelcraft::session::interact::Pick;
+                    match bot.agent.session.pick_block(bot.agent.selected, &self.world) {
+                        Some(Pick::Select(i)) => {
+                            bot.agent.selected = i;
+                            if peer.body.actions.select(i) {
+                                bot.agent.session.cancel_consumption();
+                            }
+                        }
+                        Some(Pick::Replaced) => peer.body.actions.reset(),
+                        None => {}
+                    }
+                }
             }
             "toss" | "toss_one" if peer.open => {
-                self.with_remote(peer, |g| g.toss_cursor(command == "toss_one"));
+                let name = peer.profile.clone().unwrap_or_default();
+                if let Some(bot) = self.agents.players.get_mut(&name)
+                    && let Some(stack) = bot.agent.session.inventory.cursor
+                {
+                    let s = &mut bot.agent.session;
+                    let count = if command == "toss_one" { 1 } else { stack.count };
+                    s.inventory.cursor = (stack.count > count)
+                        .then_some(crate::inventory::Stack { count: stack.count - count, ..stack });
+                    self.mobs.entities.throw(
+                        crate::inventory::Stack { count, ..stack },
+                        s.player.eye(),
+                        s.player.forward().as_dvec3(),
+                    );
+                }
             }
             "drop" | "drop_stack" => {
-                self.with_remote(peer, |g| g.drop_selected(command == "drop_stack"));
+                let name = peer.profile.clone().unwrap_or_default();
+                self.drop_agent_selected(&name, &mut peer.body, command == "drop_stack");
             }
             "respawn" => {
                 let name = peer.profile.as_deref().unwrap().to_owned();
@@ -614,7 +672,11 @@ impl Game {
                         &[],
                     )?;
                     let at = if self.dimension == Dimension::Overworld {
-                        self.with_remote(peer, |g| g.respawn_point()).unwrap_or(self.session.player.pos)
+                        let (at, missing) = self.respawn_point_of(&PlayerRef::Agent(name.clone()));
+                        if missing {
+                            let _ = peer.connection.send(Packet::Chat("Your home bed was missing".into()));
+                        }
+                        at
                     } else {
                         self.beside_host()
                     };
@@ -667,21 +729,18 @@ impl Game {
         }
         Ok(())
     }
-    /// Opens screen `container` for the player being puppeted, as their click would.
-    fn open_screen(&mut self, container: Container) {
-        if self.inventory_open {
-            return;
-        }
-        self.body.container = container;
-        self.toggle_inventory();
-    }
-    /// Whether the open screen's block, merchant or vehicle is still there and in reach.
-    pub(super) fn lan_container_ok(&self) -> bool {
-        let eye = self.session.player.eye();
+
+    /// Whether `container` is still there and within `session`'s screen range.
+    pub(super) fn container_still_valid(
+        &self,
+        session: &voxelcraft::session::PlayerSession,
+        container: Container,
+    ) -> bool {
+        let eye = session.player.eye();
         let near = |p: IVec3, ok: fn(Block) -> bool| {
-            self.session.can_keep_using_block(p) && self.world.get_block(p).is_some_and(ok)
+            session.can_keep_using_block(p) && self.world.get_block(p).is_some_and(ok)
         };
-        match self.body.container {
+        match container {
             Container::Inventory | Container::CraftingTable => true,
             Container::Chest(p) => near(p, crate::world::chest::is_chest),
             Container::Furnace(p) => near(p, crate::world::furnace::is_furnace),
@@ -690,8 +749,8 @@ impl Game {
             Container::Anvil(p) => near(p, Block::is_anvil),
             Container::Grindstone(p) => near(p, |b| b.base() == Block::GRINDSTONE),
             Container::Smithing(p) => near(p, |b| b == Block::SMITHING_TABLE),
-            Container::Trading(id) => self.mobs.entities.merchant_in_reach(id, eye, self.session.entity_screen_range()),
-            Container::Minecart(id) => self.mobs.entities.vehicle_in_reach(id, eye, self.session.entity_screen_range()),
+            Container::Trading(id) => self.mobs.entities.merchant_in_reach(id, eye, session.entity_screen_range()),
+            Container::Minecart(id) => self.mobs.entities.vehicle_in_reach(id, eye, session.entity_screen_range()),
         }
     }
     fn remote_click(&mut self, peer: &mut Peer, encoded: u16, right: bool, shift: bool) {
@@ -704,18 +763,21 @@ impl Game {
                 return;
             }
         }
-        self.with_remote(peer, |g| {
-            if !g.lan_container_ok() || g.session.vitals.is_dead() {
-                return;
-            }
-            if let Some(slot) = decode_slot(encoded, g.body.container, g.session.mode, g.craft.size) {
-                if shift && g.session.inventory.cursor.is_none() {
-                    g.quick_move(slot);
-                } else {
-                    g.click_slot(slot, right);
-                }
-            }
+        let Some(name) = peer.profile.clone() else { return };
+        let Some(session) = self.agents.players.get(&name).map(|b| &b.agent.session) else { return };
+        if !self.container_still_valid(session, peer.body.container) || session.vitals.is_dead() {
+            return;
+        }
+        let Some(slot) = decode_slot(encoded, peer.body.container, session.mode, peer.grid.size) else { return };
+        let quick = shift && session.inventory.cursor.is_none();
+        let mut container = peer.body.container;
+        let done = self.agent_screen(&name, &mut container, &mut peer.grid, |s| {
+            if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
         });
+        peer.body.container = container;
+        for super::screen::Request::Popup(text) in done.map(|(_, r)| r).unwrap_or_default() {
+            let _ = peer.connection.send(Packet::Chat(text));
+        }
     }
     pub(super) fn drive_lan(&mut self, dt: f64) {
         self.mobs.entities.pvp = self.lan.host.is_some() && self.lan.pvp;
@@ -755,7 +817,7 @@ impl Game {
                         || !self.agents.players[&name].agent.session.can_keep_using_block(p)
                 })
             {
-                self.with_remote(peer, |g| g.toggle_inventory());
+                self.peer_close(peer);
             }
             if self.agents.players[&name].agent.session.vitals.is_dead() {
                 let mut stacks = peer.grid.take_all();
@@ -772,17 +834,18 @@ impl Game {
                 }
             }
             // Close destroyed or out-of-reach containers before accepting any more clicks.
-            self.with_remote(peer, |g| {
-                if g.inventory_open && (g.session.vitals.is_dead() || !g.lan_container_ok()) {
-                    g.toggle_inventory();
+            if peer.open {
+                let session = &self.agents.players[&name].agent.session;
+                if session.vitals.is_dead() || !self.container_still_valid(session, peer.body.container) {
+                    self.peer_close(peer);
                 }
-            });
+            }
             if !peer.open
                 && !self.agents.players[&name].agent.session.vitals.is_dead()
                 && self.agents.players[&name].agent.session.sleeping.is_none()
             {
                 let transitions = button_transitions(peer.previous_buttons, &peer.edges, input.buttons);
-                let fighter = Fighter::Agent(name.clone());
+                let fighter = PlayerRef::Agent(name.clone());
                 let mut requests = Vec::new();
                 for (bit, pressed) in transitions {
                     let done = if bit == 8 {
@@ -807,10 +870,10 @@ impl Game {
                             let _ = peer.connection.send(Packet::Chat(text));
                         }
                         Request::Open(Used::OpenMerchant(id)) => {
-                            self.with_remote(peer, |g| g.open_screen(Container::Trading(id)));
+                            self.peer_open(peer, Container::Trading(id));
                         }
                         Request::Open(Used::OpenVehicle(id)) => {
-                            self.with_remote(peer, |g| g.open_screen(Container::Minecart(id)));
+                            self.peer_open(peer, Container::Minecart(id));
                         }
                         Request::Open(Used::Screen { cell, .. } | Used::Bed { cell }) => used = Some(cell),
                         Request::Open(_) => {}
@@ -828,28 +891,28 @@ impl Game {
                             let _ = self.agent_sleep(&name);
                         }
                         Some(Block::CRAFTING_TABLE) => {
-                            self.with_remote(peer, |g| g.open_crafting_table());
+                            self.peer_open(peer, Container::CraftingTable);
                         }
                         Some(b) if crate::world::chest::is_chest(b) => {
-                            self.with_remote(peer, |g| g.open_chest(p));
+                            self.peer_open(peer, Container::Chest(p));
                         }
                         Some(b) if crate::world::furnace::is_furnace(b) => {
-                            self.with_remote(peer, |g| g.open_furnace(p));
+                            self.peer_open(peer, Container::Furnace(p));
                         }
                         Some(Block::BREWING_STAND) => {
-                            self.with_remote(peer, |g| g.open_screen(Container::Brewing(p)));
+                            self.peer_open(peer, Container::Brewing(p));
                         }
                         Some(Block::ENCHANTING_TABLE) => {
-                            self.with_remote(peer, |g| g.open_screen(Container::Enchanting(p)));
+                            self.peer_open(peer, Container::Enchanting(p));
                         }
                         Some(b) if b.is_anvil() => {
-                            self.with_remote(peer, |g| g.open_screen(Container::Anvil(p)));
+                            self.peer_open(peer, Container::Anvil(p));
                         }
                         Some(b) if b.base() == Block::GRINDSTONE => {
-                            self.with_remote(peer, |g| g.open_screen(Container::Grindstone(p)));
+                            self.peer_open(peer, Container::Grindstone(p));
                         }
                         Some(Block::SMITHING_TABLE) => {
-                            self.with_remote(peer, |g| g.open_screen(Container::Smithing(p)));
+                            self.peer_open(peer, Container::Smithing(p));
                         }
                         _ => {}
                     }
@@ -883,12 +946,6 @@ impl Game {
             }
             peer.edges.clear();
             peer.applied = input.sequence;
-            self.puppet_used = None;
-            self.puppet_merchant = None;
-            self.puppet_vehicle = None;
-            if let Some(message) = self.puppet_popup.take() {
-                let _ = peer.connection.send(Packet::Chat(message));
-            }
         }
         self.lan.peers = peers;
     }
@@ -1594,36 +1651,37 @@ impl Game {
     }
 }
 
-/// A player who can melee or be meleed over LAN PvP.
+/// A player on the desktop host: the host itself, or a controller or LAN
+/// player by agent profile name.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) enum Fighter {
+pub(super) enum PlayerRef {
     Host,
     /// A controller or LAN player, by agent profile name.
     Agent(String),
 }
 
 impl Game {
-    fn fighter(&self, who: &Fighter) -> Option<&voxelcraft::session::PlayerSession> {
+    fn player(&self, who: &PlayerRef) -> Option<&voxelcraft::session::PlayerSession> {
         match who {
-            Fighter::Host => Some(&self.session),
-            Fighter::Agent(name) => self.agents.players.get(name).map(|b| &b.agent.session),
+            PlayerRef::Host => Some(&self.session),
+            PlayerRef::Agent(name) => self.agents.players.get(name).map(|b| &b.agent.session),
         }
     }
 
-    fn fighter_mut(&mut self, who: &Fighter) -> Option<&mut voxelcraft::session::PlayerSession> {
+    fn player_mut(&mut self, who: &PlayerRef) -> Option<&mut voxelcraft::session::PlayerSession> {
         match who {
-            Fighter::Host => Some(&mut self.session),
-            Fighter::Agent(name) => self.agents.players.get_mut(name).map(|b| &mut b.agent.session),
+            PlayerRef::Host => Some(&mut self.session),
+            PlayerRef::Agent(name) => self.agents.players.get_mut(name).map(|b| &mut b.agent.session),
         }
     }
 
     /// The other player under `attacker`'s crosshair, in reach and in front
     /// of any block or mob, when the host allows PvP.
-    pub(super) fn lan_player_target(&self, attacker: &Fighter) -> Option<Fighter> {
+    pub(super) fn lan_player_target(&self, attacker: &PlayerRef) -> Option<PlayerRef> {
         if self.lan.host.is_none() || !self.lan.pvp {
             return None;
         }
-        let me = self.fighter(attacker)?;
+        let me = self.player(attacker)?;
         let (eye, dir) = (me.player.eye(), me.player.forward().as_dvec3());
         let mut reach = me
             .block_target(&self.world)
@@ -1636,13 +1694,13 @@ impl Game {
                 reach = reach.min(distance);
             }
         }
-        let host = (!self.session.vitals.is_dead()).then_some((Fighter::Host, &self.session));
+        let host = (!self.session.vitals.is_dead()).then_some((PlayerRef::Host, &self.session));
         let agents = self
             .agents
             .players
             .iter()
             .filter(|(_, b)| b.active && !b.agent.session.vitals.is_dead())
-            .map(|(name, b)| (Fighter::Agent(name.clone()), &b.agent.session));
+            .map(|(name, b)| (PlayerRef::Agent(name.clone()), &b.agent.session));
         host.into_iter()
             .chain(agents)
             .filter(|(who, _)| who != attacker)
@@ -1664,22 +1722,22 @@ impl Game {
 
     /// Armored PvP damage with knockback and fire; returns where the target
     /// stands and its armor's Thorns levels if it was found.
-    fn hurt_fighter(&mut self, target: &Fighter, amount: f32, push: DVec3, fire: f32) -> Option<(DVec3, [u8; 4])> {
+    fn hurt_player_ref(&mut self, target: &PlayerRef, amount: f32, push: DVec3, fire: f32) -> Option<(DVec3, [u8; 4])> {
         const CAUSE: &str = "was slain by a player";
         match target {
-            Fighter::Host => {
+            PlayerRef::Host => {
                 if self.damage_player_armored(amount, CAUSE) > 0.0 {
                     self.session.player.hurt_from(push);
                     let resistance = self.session.inventory.knockback_resistance();
                     self.session.player.vel += crate::simulation::survival::knockback_taken(push, resistance);
                 }
             }
-            Fighter::Agent(name) => {
+            PlayerRef::Agent(name) => {
                 let bot = self.agents.players.get_mut(name)?;
                 bot.agent.hurt(amount, CAUSE, push, &mut self.mobs.entities);
             }
         }
-        let s = self.fighter_mut(target)?;
+        let s = self.player_mut(target)?;
         if fire > 0.0 {
             s.vitals.ignite(fire);
         }
@@ -1690,11 +1748,11 @@ impl Game {
     /// scales damage; strong hits allow criticals while falling, sprint
     /// knockback and sword sweeps. Enchantment bonuses, Knockback, Fire Aspect
     /// and Thorns apply. Returns whether a player was hit.
-    pub(super) fn attack_lan_player(&mut self, attacker: &Fighter, slot: usize, sprint: bool) -> bool {
+    pub(super) fn attack_lan_player(&mut self, attacker: &PlayerRef, slot: usize, sprint: bool) -> bool {
         let Some(target) = self.lan_player_target(attacker) else {
             return false;
         };
-        let Some(me) = self.fighter_mut(attacker) else { return false };
+        let Some(me) = self.player_mut(attacker) else { return false };
         let strength = me.attack_strength(slot, 0.5);
         me.reset_attack_strength();
         let strong = strength > 0.9;
@@ -1723,21 +1781,21 @@ impl Game {
         let attacker_pos = p.pos;
         let survival = me.mode.is_survival();
         let held_item = held.map(|s| s.item);
-        let Some((at, thorns)) = self.hurt_fighter(&target, damage, dir * shove + DVec3::Y * 0.2, fire) else {
+        let Some((at, thorns)) = self.hurt_player_ref(&target, damage, dir * shove + DVec3::Y * 0.2, fire) else {
             return true;
         };
         if sweep {
             let level = enchants.level(crate::enchant::Enchantment::SweepingEdge) as f32;
             let swept = 1.0 + level / (level + 1.0) * base;
-            let near_host = (!self.session.vitals.is_dead()).then_some((Fighter::Host, self.session.player.pos));
-            let near: Vec<Fighter> = near_host
+            let near_host = (!self.session.vitals.is_dead()).then_some((PlayerRef::Host, self.session.player.pos));
+            let near: Vec<PlayerRef> = near_host
                 .into_iter()
                 .chain(
                     self.agents
                         .players
                         .iter()
                         .filter(|(_, b)| b.active && !b.agent.session.vitals.is_dead())
-                        .map(|(n, b)| (Fighter::Agent(n.clone()), b.agent.session.player.pos)),
+                        .map(|(n, b)| (PlayerRef::Agent(n.clone()), b.agent.session.player.pos)),
                 )
                 .filter(|(who, pos)| {
                     *who != target
@@ -1748,7 +1806,7 @@ impl Game {
                 .map(|(who, _)| who)
                 .collect();
             for other in near {
-                self.hurt_fighter(&other, swept * strength + bonus, dir * 0.4 + DVec3::Y * 0.2, 0.0);
+                self.hurt_player_ref(&other, swept * strength + bonus, dir * 0.4 + DVec3::Y * 0.2, 0.0);
             }
             let mut burst = crate::particles::Burst::new(crate::particles::Kind::Poof, at + DVec3::Y, 3);
             burst.spread = DVec3::splat(0.5);
@@ -1771,10 +1829,10 @@ impl Game {
                 let back = self.mobs.entities.roll_range(1.0, 5.0);
                 const THORNS: &str = "was killed trying to hurt a player";
                 match attacker {
-                    Fighter::Host => {
+                    PlayerRef::Host => {
                         self.damage_player(back, THORNS);
                     }
-                    Fighter::Agent(name) => {
+                    PlayerRef::Agent(name) => {
                         if let Some(bot) = self.agents.players.get_mut(name) {
                             bot.agent.hurt(back, THORNS, DVec3::ZERO, &mut self.mobs.entities);
                         }
@@ -1782,7 +1840,7 @@ impl Game {
                 }
             }
         }
-        let broke = match (survival, held_item, self.fighter_mut(attacker)) {
+        let broke = match (survival, held_item, self.player_mut(attacker)) {
             (true, Some(item), Some(me)) => {
                 me.vitals.hunger.exhaust(super::survival::EXHAUST_ATTACK);
                 me.inventory.wear(slot, crate::mining::wear(item, true)).then_some(item)
@@ -1791,8 +1849,8 @@ impl Game {
         };
         if let Some(item) = broke {
             match attacker {
-                Fighter::Host => self.tool_broke(item),
-                Fighter::Agent(_) => self.audio.play(
+                PlayerRef::Host => self.tool_broke(item),
+                PlayerRef::Agent(_) => self.audio.play(
                     crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood),
                     Some(attacker_pos + DVec3::Y),
                     0.8,

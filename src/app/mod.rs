@@ -28,6 +28,7 @@ mod particles;
 mod player_actions;
 mod recipe_book;
 mod save;
+mod screen;
 mod search;
 mod settings;
 mod smithing;
@@ -53,7 +54,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, Icon, Window, WindowId};
 
 use crate::Args;
-use crate::inventory::{HOTBAR_SLOTS, Inventory, Stack};
+use crate::inventory::{Inventory, Stack};
 use crate::item::Item;
 use crate::player::{MoveInput, Player};
 use crate::render::{FrameParams, Renderer};
@@ -132,13 +133,6 @@ struct Game {
     pads: gamepad::Pads,
     /// `--pad-player` screen, seated once the world loads.
     virtual_pad: Option<String>,
-    /// A controller player's state is swapped into the host's fields (see
-    /// `Game::puppet`), and the container or bed they used, if any.
-    puppet: bool,
-    puppet_used: Option<glam::IVec3>,
-    puppet_merchant: Option<u64>,
-    puppet_vehicle: Option<u32>,
-    puppet_popup: Option<String>,
     console: console::Console,
     search: search::Search,
     renderer: Renderer,
@@ -620,9 +614,6 @@ impl Game {
     }
 
     fn set_grab(&mut self, grab: bool) {
-        if self.puppet {
-            return;
-        }
         let window = &self.renderer.window;
         if grab {
             let ok = window
@@ -757,17 +748,12 @@ impl Game {
     }
 
     fn show_popup(&mut self, text: &str) {
-        // Messages about a controller player's hands go to their own view.
-        if self.puppet {
-            self.puppet_popup = Some(text.to_string());
-        } else {
-            self.popup = (text.to_string(), Instant::now());
-        }
+        self.popup = (text.to_string(), Instant::now());
     }
 
     /// Sneaking builds against containers and beds instead of using them.
     fn sneak_building(&self) -> bool {
-        if self.puppet { self.session.player.sneaking } else { self.modifiers.shift_key() }
+        self.modifiers.shift_key()
     }
 
     /// The single entry point for hurting the player (falls, drowning,
@@ -900,9 +886,7 @@ impl Game {
                 self.session.mode == GameMode::Creative && self.body.container == Container::Inventory;
             self.search.selected = false;
             self.set_grab(false);
-            if !self.puppet {
-                self.keys.clear();
-            }
+            self.keys.clear();
             self.body.left_held = false;
             self.body.right_held = false;
             self.jump_pressed = false;
@@ -948,92 +932,6 @@ impl Game {
         }
         self.body.container = Container::Brewing(pos);
         self.toggle_inventory();
-    }
-
-    /// A click on a brewing stand slot: bottles take one potion or glass
-    /// bottle each, the ingredient slot only brewing ingredients and the
-    /// fuel slot only blaze powder (Java's slot rules).
-    fn brewing_click(&mut self, pos: IVec3, slot: hud::SlotRef, right: bool) {
-        use crate::world::brewing;
-        let cursor = &mut self.session.inventory.cursor;
-        let Some(b) = self.world.brewing_stand_mut(pos) else { return };
-        match slot {
-            hud::SlotRef::BrewBottle(i) => {
-                let cell = &mut b.bottles[i];
-                match cursor {
-                    None => *cursor = cell.take(),
-                    Some(c) if !brewing::fits_bottle_slot(c.item) => {}
-                    Some(c) if cell.is_none() => {
-                        *cell = Some(Stack::new(c.item, 1));
-                        c.count -= 1;
-                        if c.count == 0 {
-                            *cursor = None;
-                        }
-                    }
-                    Some(c) if c.count == 1 => std::mem::swap(cell, cursor),
-                    Some(_) => {}
-                }
-            }
-            hud::SlotRef::BrewIngredient if cursor.is_none_or(|c| brewing::is_ingredient(c.item)) => {
-                crate::inventory::click_slot(&mut b.ingredient, cursor, right)
-            }
-            hud::SlotRef::BrewFuel if cursor.is_none_or(|c| c.item == Item::BLAZE_POWDER) => {
-                crate::inventory::click_slot(&mut b.fuel, cursor, right)
-            }
-            _ => {}
-        }
-    }
-
-    /// A click on a furnace slot. Fuel only takes things that burn; the
-    /// output can only be taken from.
-    fn furnace_click(&mut self, pos: IVec3, slot: hud::SlotRef, right: bool) {
-        let cursor = &mut self.session.inventory.cursor;
-        let Some(f) = self.world.furnace_mut(pos) else { return };
-        let before = f.output.map_or(0, |s| s.count);
-        match slot {
-            hud::SlotRef::FurnaceInput => f.click_input(cursor, right),
-            hud::SlotRef::FurnaceFuel => {
-                if cursor.is_none_or(|c| crate::world::furnace::burn_time(c.item).is_some()) {
-                    crate::inventory::click_slot(&mut f.fuel, cursor, right)
-                }
-            }
-            hud::SlotRef::FurnaceOutput => match (cursor.as_mut(), f.output) {
-                (None, out) => {
-                    *cursor = out;
-                    f.output = None;
-                }
-                (Some(c), Some(out)) if c.stacks_with(&out) && c.count as u16 + out.count as u16 <= c.max() as u16 => {
-                    c.count += out.count;
-                    f.output = None;
-                }
-                _ => {}
-            },
-            _ => {}
-        }
-        self.award_furnace_xp(pos, before);
-    }
-
-    /// Taking any smelted items (the output held `before` items) releases
-    /// all the experience the furnace stored, as orbs at the player, like
-    /// Java's result slot.
-    pub(super) fn award_furnace_xp(&mut self, pos: IVec3, before: u8) {
-        let roll = self.mobs.entities.roll();
-        let Some(xp) = self.world.furnace_mut(pos).and_then(|f| f.take_output_xp(before, roll)) else { return };
-        self.mobs.entities.spawn_xp(self.session.player.pos, xp);
-    }
-
-    /// Clicking the crafting result: takes one craft onto the cursor (or
-    /// onto a matching held stack, if it fits) and uses up the ingredients.
-    fn take_craft_result(&mut self) {
-        let Some(result) = self.craft.result() else { return };
-        match &mut self.session.inventory.cursor {
-            None => self.session.inventory.cursor = Some(result),
-            Some(c) if c.stacks_with(&result) && c.count as u16 + result.count as u16 <= c.max() as u16 => {
-                c.count += result.count
-            }
-            Some(_) => return,
-        }
-        self.craft.consume();
     }
 
     fn inventory_click(&mut self, right: bool) {
@@ -1091,65 +989,32 @@ impl Game {
         }
     }
 
-    /// A left (or right) click on a slot of the open container screen.
-    fn click_slot(&mut self, slot: hud::SlotRef, right: bool) {
-        match Some(slot) {
-            Some(hud::SlotRef::Inventory(i)) => self.session.inventory.click(i, right),
-            Some(hud::SlotRef::Craft(i)) => {
-                crate::inventory::click_slot(&mut self.craft.cells[i], &mut self.session.inventory.cursor, right)
+    /// Runs `f` on the host's open screen and resolves what it requests.
+    fn with_screen<R>(&mut self, f: impl FnOnce(&mut screen::Screen) -> R) -> R {
+        let mut s = screen::Screen {
+            session: &mut self.session,
+            container: &mut self.body.container,
+            craft: &mut self.craft,
+            world: &mut self.world,
+            entities: &mut self.mobs.entities,
+            audio: &mut self.audio,
+            requests: Vec::new(),
+        };
+        let result = f(&mut s);
+        for request in std::mem::take(&mut s.requests) {
+            match request {
+                screen::Request::Popup(text) => self.show_popup(&text),
             }
-            Some(hud::SlotRef::CraftResult) => self.take_craft_result(),
-            Some(hud::SlotRef::Trade(i)) => self.buy_trade(i),
-            Some(hud::SlotRef::Armor(piece)) => {
-                self.session.inventory.click_armor(piece, right, self.session.mode.is_creative())
-            }
-            Some(hud::SlotRef::Chest(i)) => {
-                if let Container::Minecart(id) = self.body.container {
-                    if self.session.inventory.cursor.is_none_or(|s| self.mobs.entities.vehicle_accepts(id, i, s.item))
-                        && let Some(slot) = self.mobs.entities.vehicle_slots_mut(id).and_then(|slots| slots.get_mut(i))
-                    {
-                        crate::inventory::click_slot(slot, &mut self.session.inventory.cursor, right);
-                    }
-                    return;
-                }
-                if let Container::Chest(pos) = self.body.container
-                    && i < self.world.container_slots(pos)
-                    && let Some(chest) = self.world.chest_mut(pos)
-                {
-                    crate::inventory::click_slot(&mut chest.slots[i], &mut self.session.inventory.cursor, right);
-                }
-            }
-            Some(s @ (hud::SlotRef::FurnaceInput | hud::SlotRef::FurnaceFuel | hud::SlotRef::FurnaceOutput)) => {
-                if let Container::Furnace(pos) = self.body.container {
-                    self.furnace_click(pos, s, right);
-                }
-            }
-            Some(s @ (hud::SlotRef::BrewBottle(_) | hud::SlotRef::BrewIngredient | hud::SlotRef::BrewFuel)) => {
-                if let Container::Brewing(pos) = self.body.container {
-                    self.brewing_click(pos, s, right);
-                }
-            }
-            Some(s @ (hud::SlotRef::EnchantItem | hud::SlotRef::EnchantLapis | hud::SlotRef::EnchantOffer(_))) => {
-                self.table_click(s, right)
-            }
-            Some(s @ (hud::SlotRef::AnvilLeft | hud::SlotRef::AnvilRight | hud::SlotRef::AnvilResult)) => {
-                self.anvil_click(s, right)
-            }
-            Some(
-                s @ (hud::SlotRef::SmithTemplate
-                | hud::SlotRef::SmithBase
-                | hud::SlotRef::SmithAddition
-                | hud::SlotRef::SmithResult),
-            ) => self.smithing_click(s, right),
-            Some(hud::SlotRef::Palette(item)) => {
-                // Creative palette: take a full stack, or trash the held one.
-                self.session.inventory.cursor = match self.session.inventory.cursor {
-                    Some(_) => None,
-                    None => Some(Stack::new(item, item.max_stack())),
-                };
-            }
-            None => {}
         }
+        result
+    }
+
+    fn click_slot(&mut self, slot: hud::SlotRef, right: bool) {
+        self.with_screen(|s| s.click_slot(slot, right));
+    }
+
+    fn quick_move(&mut self, slot: hud::SlotRef) {
+        self.with_screen(|s| s.quick_move(slot));
     }
 
     /// Scrolls the creative palette by whole rows.
@@ -1229,9 +1094,7 @@ impl Game {
     }
 
     fn open_vehicle(&mut self, id: u32) {
-        if self.puppet {
-            self.puppet_vehicle = Some(id);
-        } else if !self.inventory_open {
+        if !self.inventory_open {
             self.body.container = Container::Minecart(id);
             self.toggle_inventory();
         }
@@ -1243,8 +1106,6 @@ impl Game {
         match used {
             Used::OpenVehicle(id) => self.open_vehicle(id),
             Used::OpenMerchant(id) => self.open_merchant(id),
-            // A controller or LAN player's own screens and bed open instead.
-            Used::Screen { cell, .. } | Used::Bed { cell } if self.puppet => self.puppet_used = Some(cell),
             Used::Screen { cell, block } => self.open_block_screen(cell, block),
             Used::Bed { cell } => self.use_bed(cell),
             _ => {}
@@ -1271,25 +1132,11 @@ impl Game {
             self.lan_command("pick");
             return;
         }
-        let Some(b) = self.target().and_then(|(pos, _)| self.world.get_block(pos)) else { return };
-        if b.is_fire() {
-            return;
-        }
-        let item = farming::picked_item(b);
-        match self.session.inventory.find(item) {
-            Some(i) if i < HOTBAR_SLOTS => self.select(i),
-            Some(i) => {
+        use voxelcraft::session::interact::Pick;
+        match self.session.pick_block(self.body.actions.selected, &self.world) {
+            Some(Pick::Select(i)) => self.select(i),
+            Some(Pick::Replaced) => {
                 self.body.actions.reset();
-                self.session.cancel_mining();
-                self.session.cancel_consumption();
-                self.session.inventory.slots.swap(i, self.body.actions.selected);
-                self.show_selected_name();
-            }
-            None if self.session.mode == GameMode::Creative => {
-                self.body.actions.reset();
-                self.session.cancel_mining();
-                self.session.cancel_consumption();
-                self.session.inventory.slots[self.body.actions.selected] = Some(Stack::new(item, item.max_stack()));
                 self.show_selected_name();
             }
             None => {}
@@ -1507,7 +1354,7 @@ impl Game {
         let sprint = self.sprinting_for_attack();
         let hit_player = pressed
             && self.session.mode.can_interact()
-            && self.attack_lan_player(&lan::Fighter::Host, self.body.actions.selected, sprint);
+            && self.attack_lan_player(&lan::PlayerRef::Host, self.body.actions.selected, sprint);
         self.with_hands(|hands| hands.attack_button(pressed, hit_player));
     }
 
@@ -1528,9 +1375,7 @@ impl Game {
     /// placing, eating and drawing a bow.
     fn act(&mut self, acting: bool, dt: f64) {
         // Agents (controller/LAN hands) charge in their own tick; this is the host's.
-        if !self.puppet {
-            self.session.tick_attack_strength(self.body.actions.selected);
-        }
+        self.session.tick_attack_strength(self.body.actions.selected);
         let aiming = self.attacking();
         self.with_hands(|hands| hands.act(acting, dt, aiming));
     }

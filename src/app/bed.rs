@@ -97,11 +97,23 @@ impl Game {
         if self.bed_explodes(pos) {
             return Err("beds explode outside the Overworld".into());
         }
-        let (foot, rest) = self.bed_rules(pos).ok_or("not looking at a bed")?;
-        let agent = &mut self.agents.players.get_mut(name).unwrap().agent;
+        self.agent_sleep_at(name, pos).1
+    }
+
+    /// Agent `name` uses the bed at `pos` (which has not exploded): it becomes
+    /// their respawn point, and they lie down if the bed rules allow. Returns
+    /// whether the respawn point changed, and the sleep result.
+    pub(super) fn agent_sleep_at(&mut self, name: &str, pos: IVec3) -> (bool, Result<(), String>) {
+        let Some((foot, rest)) = self.bed_rules(pos) else { return (false, Err("not looking at a bed".into())) };
+        let Some(bot) = self.agents.players.get_mut(name) else { return (false, Err("no such player".into())) };
+        let agent = &mut bot.agent;
+        let changed = agent.session.spawn_bed != Some(foot);
         agent.session.spawn_bed = Some(foot);
         agent.session.spawn_point = None;
-        let at = rest?;
+        let at = match rest {
+            Ok(at) => at,
+            Err(e) => return (changed, Err(e.into())),
+        };
         agent.session.player.pos = at;
         agent.session.player.vel = DVec3::ZERO;
         agent.session.player.flying = false;
@@ -109,7 +121,7 @@ impl Game {
         agent.remaining = 0;
         agent.session.sleeping = Some(0.0);
         self.audio.play(Sound::Step(Material::Snow), Some(at), 0.6, (0.8, 0.9));
-        Ok(())
+        (changed, Ok(()))
     }
 
     /// Advances sleep. Once every player (the host and each active, living
@@ -167,13 +179,29 @@ impl Game {
     /// Where to respawn: on the bed last slept in if it's still there,
     /// otherwise the world spawn.
     pub(super) fn respawn_point(&mut self) -> DVec3 {
-        let personal = self.session.personal_spawn(&self.world);
-        if personal.missing_bed {
+        let (at, missing_bed) = self.respawn_point_of(&super::lan::PlayerRef::Host);
+        if missing_bed {
             self.show_popup("Your home bed was missing");
         }
-        if let Some(position) = personal.position {
-            return position;
+        at
+    }
+
+    /// Where `who` respawns, and whether their home bed was missing.
+    pub(super) fn respawn_point_of(&mut self, who: &super::lan::PlayerRef) -> (DVec3, bool) {
+        let session = match who {
+            super::lan::PlayerRef::Host => Some(&mut self.session),
+            super::lan::PlayerRef::Agent(name) => self.agents.players.get_mut(name).map(|b| &mut b.agent.session),
+        };
+        let personal = session.map(|s| s.personal_spawn(&self.world));
+        let missing = personal.as_ref().is_some_and(|p| p.missing_bed);
+        if let Some(position) = personal.and_then(|p| p.position) {
+            return (position, missing);
         }
+        (self.world_spawn_point(), missing)
+    }
+
+    /// The world spawn, spread by the `spawnRadius` rule.
+    fn world_spawn_point(&self) -> DVec3 {
         let radius = self.gamerules.int("spawnRadius");
         let offset = spawn_offset(self.world.generator.seed, radius);
         let x = self.world_spawn.x.saturating_add(offset.x);

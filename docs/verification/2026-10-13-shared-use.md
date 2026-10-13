@@ -61,6 +61,28 @@ Adventure-mode gating is unchanged: redstone components and composters still
 require a build-capable mode. Java lets Adventure players use blocks. That is a
 recorded difference, not a fidelity exception.
 
+## No state swapping
+
+`Game::puppet`, which swapped a controller or LAN player's session, hands and
+screen state into the host's fields, is removed. Each player's hands run on
+their own state through `hands::Actor`; container clicks run through
+`screen::Screen` with that player's container and crafting grid (controller
+screens have no grid because controller crafting uses recipe slots). Beds,
+respawn points, pick-block (now `PlayerSession::pick_block`), drops, cursor
+tosses and LAN screen open/close act on the named player.
+
+This also removes swap-only defects: consumed magic damage on a controller
+player ran host death handling; a LAN peer's screen open/close changed the
+host's search focus and key state; LAN and controller drops read the host's
+inventory-cursor state. Controller and LAN players can now hit the host in
+PvP without the host's session sitting in their agent slot.
+
+Validated after the removal: release **967 passed, zero failed**; headless
+**885 passed, zero failed**; desktop LAN harness **13/13**, including the chest
+race (LAN chest open, clicks and screen transactions) and PvP. Controller-path
+screens, beds and respawn have no automated device harness and remain
+unverified with real controllers.
+
 ## Evidence
 
 `tests/shared_use.rs` covers screen outcomes and sneaking placement, door

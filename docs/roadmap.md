@@ -358,6 +358,8 @@ range + 4 (eye to box) on desktop, controller, LAN and CLI paths, covered by
 Right-click use is one shared session chain for the desktop and CLI
 ([use evidence](verification/2026-10-13-shared-use.md)); the CLI gained the
 desktop's entity, door, harvest, flint and tool uses, and riders can use items.
+Controller and LAN players no longer borrow the host's state (`Game::puppet` is
+removed); hands and container clicks run on each player's own session.
 PLY-04 remains **Partial**; effect attack-speed modifiers, Conduit Power and
 beacons, server destroy tolerance, a headless desktop-adapter harness and
 remaining cancel-on-item-change sites (pick-block, drop) stay open.

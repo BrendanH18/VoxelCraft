@@ -1,5 +1,5 @@
 //! Device-free LAN exercise server. Reuses real world streaming, player physics and actions.
-//! The desktop host additionally supplies puppet actions, GUI containers and entity replication.
+//! The desktop host additionally supplies device hands, GUI containers and entity replication.
 use super::{Connection, Input, Listener, Packet, handshake};
 use crate::agent::{Agent, Command};
 use crate::entity::{Entities, PlayerId};

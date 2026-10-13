@@ -12,9 +12,9 @@
 //!
 //! Hands run on the controller player's own session, hand animation and
 //! [`Body`] through `hands::Actor`, the same code as the mouse, so mining,
-//! attacking and every right-click action behave identically. Screens, beds
-//! and respawn points still borrow the host's container code through
-//! [`Game::puppet`] until container transactions move into the session.
+//! attacking and every right-click action behave identically. Screen clicks
+//! run `screen::Screen` the same way; beds and respawn points use the named
+//! player's own session. No player's state is swapped into the host's.
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
@@ -603,17 +603,6 @@ impl Game {
         })
     }
 
-    /// Swaps a hosted player's state with the host's: body, inventory,
-    /// vitals, hand animation and hand state. Calling it twice restores both.
-    fn swap_body(&mut self, name: &str, body: &mut Body) -> bool {
-        use std::mem::swap;
-        let Some(bot) = self.agents.players.get_mut(name) else { return false };
-        swap(&mut self.session, &mut bot.agent.session);
-        swap(&mut self.hand, &mut bot.hand);
-        swap(&mut self.body, body);
-        true
-    }
-
     /// Controller player `name`'s enchanting, anvil or smithing input slots.
     pub(super) fn pad_work(&self, name: &str) -> super::enchanting::WorkSlots {
         self.agents.players.get(name).map_or([None; 3], |b| b.agent.session.work)
@@ -625,44 +614,9 @@ impl Game {
         bot.agent.session.work.iter_mut().filter_map(Option::take).collect()
     }
 
-    /// Runs host screen code as controller player `i`. While `f` runs, the
-    /// host's fields hold that player's state (and `puppet` is set), so
-    /// container screens, beds and respawn points act for them. Popups become
-    /// their own messages. Hands no longer use this (see `hands::Actor`).
-    pub(super) fn puppet<R>(&mut self, i: usize, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
-        let name = self.pads.seats[i].name.clone();
-        let mut body = std::mem::take(&mut self.pads.seats[i].body);
-        let result = self.puppet_body(&name, &mut body, f);
-        self.pads.seats[i].body = body;
-        if let Some(text) = self.puppet_popup.take() {
-            self.pads.seats[i].message = Some((text, Instant::now()));
-        }
-        result
-    }
-
-    /// Shared desktop screen boundary for controller and LAN player bodies.
-    pub(super) fn puppet_body<R>(&mut self, name: &str, body: &mut Body, f: impl FnOnce(&mut Game) -> R) -> Option<R> {
-        let bot = self.agents.players.get(name)?;
-        let selected = bot.agent.selected;
-        body.actions.select(selected);
-        if !self.swap_body(name, body) {
-            return None;
-        }
-        self.puppet = true;
-        let result = f(self);
-        self.puppet = false;
-        self.swap_body(name, body);
-        if let Some(bot) = self.agents.players.get_mut(name) {
-            bot.agent.selected = body.actions.selected;
-            bot.agent.creative = bot.agent.session.mode.is_creative();
-        }
-        Some(result)
-    }
-
     /// Feed one gameplay tick of controller input to each seated player:
-    /// movement to their agent, and button presses and held triggers to the
-    /// host's interaction code (see [`Game::puppet`]). Runs before the
-    /// agents tick.
+    /// movement to their agent, and button presses and held triggers to
+    /// their own hands (`hands::Actor`). Runs before the agents tick.
     pub(super) fn drive_pads(&mut self, dt: f64) {
         for i in 0..self.pads.seats.len() {
             let tick = self.pads.seats[i].tick_input();
@@ -741,7 +695,7 @@ impl Game {
             }
             agent.hold(tick.input, false, false);
             let mut body = std::mem::take(&mut self.pads.seats[i].body);
-            let fighter = super::lan::Fighter::Agent(name.clone());
+            let fighter = super::lan::PlayerRef::Agent(name.clone());
             let mut requests = Vec::new();
             for press in presses {
                 let done = match press {
@@ -830,6 +784,52 @@ impl Game {
         Some((result, requests))
     }
 
+    /// Runs `f` on agent `name`'s open screen: their session with the given
+    /// container and crafting grid. Returns its result and requests.
+    pub(super) fn agent_screen<R>(
+        &mut self,
+        name: &str,
+        container: &mut Container,
+        craft: &mut crate::crafting::Grid,
+        f: impl FnOnce(&mut super::screen::Screen) -> R,
+    ) -> Option<(R, Vec<super::screen::Request>)> {
+        let bot = self.agents.players.get_mut(name)?;
+        let mut screen = super::screen::Screen {
+            session: &mut bot.agent.session,
+            container,
+            craft,
+            world: &mut self.world,
+            entities: &mut self.mobs.entities,
+            audio: &mut self.audio,
+            requests: Vec::new(),
+        };
+        let result = f(&mut screen);
+        let requests = std::mem::take(&mut screen.requests);
+        Some((result, requests))
+    }
+
+    /// A controller player's click (or quick move) on a slot of `container`.
+    pub(super) fn pad_click(
+        &mut self,
+        seat: usize,
+        name: &str,
+        container: Container,
+        slot: super::hud::SlotRef,
+        quick: bool,
+        right: bool,
+    ) {
+        // Controller crafting uses recipe slots, so their screens have no grid of their own.
+        let mut container = container;
+        let mut no_grid = crate::crafting::Grid::new(2);
+        let done = self.agent_screen(name, &mut container, &mut no_grid, |s| {
+            if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
+        });
+        self.pads.seats[seat].body.container = container;
+        for super::screen::Request::Popup(text) in done.map(|(_, r)| r).unwrap_or_default() {
+            self.pads.seats[seat].message = Some((text, Instant::now()));
+        }
+    }
+
     /// Selected slot, sprint state and whether agent `name` may attack now.
     pub(super) fn agent_attack_context(&self, name: &str) -> (usize, bool, bool) {
         let Some(bot) = self.agents.players.get(name) else { return (0, false, false) };
@@ -853,7 +853,7 @@ impl Game {
                 let reach = block.map_or(s.entity_reach(), |d| d.min(s.entity_reach()));
                 self.mobs.entities.fight_raycast(eye, dir, reach).is_some()
             }
-            || self.lan_player_target(&super::lan::Fighter::Agent(name.to_string())).is_some()
+            || self.lan_player_target(&super::lan::PlayerRef::Agent(name.to_string())).is_some()
     }
 
     /// Drops one item or the whole selected stack for agent `name`.
@@ -901,23 +901,19 @@ impl Game {
     /// Lies controller player `i` down in the bed at `pos`, if the host's
     /// bed rules allow (night or rain, no monsters, not in the Nether).
     fn pad_sleep(&mut self, i: usize, pos: IVec3) {
-        // Explode outside the puppet: the blast hurts everyone by their real
-        // bodies, and the host's would be in this player's agent mid-swap.
         if self.bed_explodes(pos) {
             return;
         }
-        let Some(at) = self.puppet(i, |g| g.bed_rest(pos)).flatten() else { return };
+        let name = self.pads.seats[i].name.clone();
+        let (changed, rest) = self.agent_sleep_at(&name, pos);
         let seat = &mut self.pads.seats[i];
-        let Some(bot) = self.agents.players.get_mut(&seat.name) else { return };
-        let p = &mut bot.agent.session.player;
-        p.pos = at;
-        p.vel = DVec3::ZERO;
-        p.flying = false;
-        bot.agent.previous_pos = at;
-        bot.agent.session.sleeping = Some(0.0);
-        seat.body.let_go();
-        let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
-        self.audio.play(sound, Some(at), 0.6, (0.8, 0.9));
+        match rest {
+            Ok(()) => seat.body.let_go(),
+            Err(e) => seat.message = Some((e, Instant::now())),
+        }
+        if changed && seat.message.is_none() {
+            seat.message = Some(("Respawn point set".into(), Instant::now()));
+        }
     }
 
     /// Whether this profile's controller is unplugged: it can't reach a
@@ -940,11 +936,14 @@ impl Game {
             bot.agent.session.vitals.xp = xp;
         }
         let at = if self.dimension == crate::world::terrain::Dimension::Overworld {
-            self.puppet(i, |g| g.respawn_point())
+            let (at, missing) = self.respawn_point_of(&super::lan::PlayerRef::Agent(name.clone()));
+            if missing {
+                self.pads.seats[i].message = Some(("Your home bed was missing".into(), Instant::now()));
+            }
+            at
         } else {
-            Some(self.beside_host())
+            self.beside_host()
         };
-        let Some(at) = at else { return };
         let seat = &mut self.pads.seats[i];
         seat.sneaking = false;
         seat.body = Body::default();

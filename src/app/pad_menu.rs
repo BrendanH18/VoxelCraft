@@ -7,8 +7,8 @@
 //! click (take, place, swap or merge, using the inventory cursor), X like a
 //! right click (half a stack, or one item), and Y like a shift-click. LB/RB
 //! switch between inventory, crafting and (in creative) the palette; B closes.
-//! Slot clicks run the host's own container code as the controller player
-//! (see `Game::puppet`), so every rule matches the mouse.
+//! Slot clicks run the same screen transactions as the mouse
+//! (`screen::Screen`) on the controller player's own session.
 
 use glam::IVec3;
 
@@ -358,14 +358,7 @@ impl Game {
                 return true;
             }
         };
-        self.puppet(seat, |g| {
-            g.body.container = tab.container();
-            if quick {
-                g.quick_move(slot);
-            } else {
-                g.click_slot(slot, right);
-            }
-        });
+        self.pad_click(seat, name, tab.container(), slot, quick, right);
         self.audio.ui_click();
         true
     }

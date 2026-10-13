@@ -206,11 +206,6 @@ impl Game {
             split: split::Split { follow: args.split_screen.clone(), side_by_side: args.split_side },
             // Screenshot runs never read controllers.
             virtual_pad: args.pad_player.clone(),
-            puppet: false,
-            puppet_used: None,
-            puppet_merchant: None,
-            puppet_vehicle: None,
-            puppet_popup: None,
             pads: {
                 let mut pads = if args.screenshot.is_none() { gamepad::Pads::new() } else { Default::default() };
                 let prop = |k: &str| root_props.get(k).map_or("", String::as_str);

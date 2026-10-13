@@ -5,24 +5,9 @@ use crate::render::ui::{Ui, WHITE};
 impl Game {
     /// Opens trading with a targeted merchant that has offers.
     pub(super) fn open_merchant(&mut self, id: u64) {
-        if self.puppet {
-            self.puppet_merchant = Some(id);
-        } else if !self.inventory_open {
+        if !self.inventory_open {
             self.body.container = Container::Trading(id);
             self.toggle_inventory();
-        }
-    }
-    pub(super) fn buy_trade(&mut self, index: usize) {
-        let Container::Trading(id) = self.body.container else { return };
-        if !self.mobs.entities.merchant_in_reach(id, self.session.player.eye(), self.session.entity_screen_range()) {
-            return;
-        }
-        match self.mobs.entities.trade_for(id, index, &mut self.session.inventory, self.session.id) {
-            Ok(xp) => {
-                self.mobs.entities.spawn_xp(self.session.player.pos, xp);
-                self.audio.ui_click();
-            }
-            Err(message) => self.show_popup(message),
         }
     }
     pub(super) fn trading_ui(&self, ui: &mut Ui, id: u64, px: f32, py: f32) {

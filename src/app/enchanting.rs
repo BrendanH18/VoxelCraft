@@ -3,14 +3,11 @@
 //! table. The offers come from the player's enchantment seed, so they stay
 //! the same until something is enchanted.
 
-use glam::{DVec3, IVec3};
+use glam::IVec3;
 
-use crate::audio::sounds::Sound;
 use crate::enchant::{self, Offer};
-use crate::inventory::{Stack, move_into};
-use crate::item::Item;
+use crate::inventory::Stack;
 
-use super::hud::SlotRef;
 use super::{Container, Game};
 
 /// Shared transient inputs. Enchanting and anvils use the first two;
@@ -27,102 +24,14 @@ impl Game {
         self.toggle_inventory();
     }
 
-    /// The three offers for what's in the item slot.
+    /// The three offers for what's in the host's item slot.
     pub(super) fn enchant_offers(&self) -> [Offer; 3] {
-        let Container::Enchanting(pos) = self.body.container else { return Default::default() };
-        match self.session.work[0] {
-            Some(stack) if enchant::table_accepts(stack) => {
-                enchant::offers(self.session.vitals.xp.seed, stack.item, enchant::bookshelves(&self.world, pos))
-            }
-            _ => Default::default(),
-        }
+        super::screen::enchant_offers(self.body.container, &self.session, &self.world)
     }
 
-    /// Whether offer `i` can be taken now: enough levels for its cost and
-    /// lapis for its number (creative needs neither).
+    /// Whether the host can take offer `i` now.
     pub(super) fn can_take_offer(&self, i: usize, offer: Offer) -> bool {
-        let creative = self.session.mode.is_creative();
-        let lapis = self.session.work[1].map_or(0, |s| s.count) as usize;
-        let level = self.session.vitals.xp.level;
-        offer.cost > 0 && (creative || (lapis > i && level >= offer.cost && level > i as u32))
-    }
-
-    /// A click on the table's slots or offers. The item slot holds one
-    /// item, the lapis slot only lapis (Java's slot rules).
-    pub(super) fn table_click(&mut self, slot: SlotRef, right: bool) {
-        let cursor = &mut self.session.inventory.cursor;
-        match slot {
-            SlotRef::EnchantItem => match (*cursor, self.session.work[0]) {
-                (Some(c), None) => {
-                    self.session.work[0] = Some(Stack { count: 1, ..c });
-                    *cursor = (c.count > 1).then_some(Stack { count: c.count - 1, ..c });
-                }
-                (Some(c), Some(held)) if c.count == 1 => {
-                    self.session.work[0] = Some(c);
-                    *cursor = Some(held);
-                }
-                (None, held) => {
-                    *cursor = held;
-                    self.session.work[0] = None;
-                }
-                _ => {}
-            },
-            SlotRef::EnchantLapis => {
-                if cursor.is_none_or(|c| c.item == Item::LAPIS_LAZULI) {
-                    crate::inventory::click_slot(&mut self.session.work[1], cursor, right);
-                }
-            }
-            SlotRef::EnchantOffer(i) => self.take_offer(i),
-            _ => {}
-        }
-    }
-
-    /// Java's `EnchantmentMenu.clickMenuButton`: enchants the item with
-    /// offer `i`'s roll, costing `i + 1` levels and lapis, and draws a new
-    /// enchantment seed.
-    pub(super) fn take_offer(&mut self, i: usize) {
-        let Container::Enchanting(pos) = self.body.container else { return };
-        let offer = self.enchant_offers()[i];
-        let Some(mut stack) = self.session.work[0] else { return };
-        if !self.can_take_offer(i, offer) {
-            return;
-        }
-        let list = enchant::offer_enchants(self.session.vitals.xp.seed, stack.item, i, offer.cost);
-        if list.is_empty() {
-            return;
-        }
-        if stack.item == Item::BOOK {
-            stack.item = Item::ENCHANTED_BOOK;
-        }
-        for (e, level) in list {
-            stack.enchants.set(e, level);
-        }
-        self.session.work[0] = Some(stack);
-        if self.session.mode.is_survival() {
-            self.session.vitals.xp.add_levels(-(i as i64 + 1));
-            if let Some(lapis) = &mut self.session.work[1] {
-                lapis.count -= i as u8 + 1;
-                if lapis.count == 0 {
-                    self.session.work[1] = None;
-                }
-            }
-        }
-        self.session.vitals.xp.seed = (enchant::roll() * u32::MAX as f32) as u32 as i32;
-        let at = pos.as_dvec3() + DVec3::splat(0.5);
-        self.audio.play(Sound::LevelUp, Some(at), 0.6, (1.5, 1.7));
-    }
-
-    /// Shift-click from the inventory onto the table: lapis to its slot,
-    /// anything else into the empty item slot. Returns what didn't move.
-    pub(super) fn move_to_table(&mut self, stack: Stack) -> Option<Stack> {
-        if stack.item == Item::LAPIS_LAZULI {
-            return move_into(stack, std::slice::from_mut(&mut self.session.work[1]), &[0]);
-        }
-        if self.session.work[0].is_some() {
-            return Some(stack);
-        }
-        self.session.work[0] = Some(Stack { count: 1, ..stack });
-        (stack.count > 1).then_some(Stack { count: stack.count - 1, ..stack })
+        super::screen::can_take_offer(&self.session, i, offer)
     }
 
     /// Empties the input slots (closing the screen returns them).
