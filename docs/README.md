@@ -51,6 +51,8 @@ roadmap and recorded checks to assess completeness against the current target.
   weapon families, attack indicator and ordinary-player acceptance.
 - [Bucket review fixes](verification/2026-10-13-review-bucket-fixes.md): shared
   use-priority ordering, Adventure denial and Java hit-face pouring.
+- [Mining review fixes](verification/2026-10-13-review-mining-fixes.md): shared
+  destroy delay, progress keys, door/plant drop rules, Creative egg/sword and Haste.
 - [Gameplay skylight and cave spawning](verification/2026-10-13-lighting-spawning.md):
   propagated sky light, cave/torch/reference scenarios, clock/weather inputs and
   Overworld/End process-restart checks; remaining shape and spawn differences.

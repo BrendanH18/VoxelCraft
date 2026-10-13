@@ -334,6 +334,15 @@ entity and block use priority over bucket actions through one shared ordering
 used by desktop and CLI, deny fluid placement in Adventure, pour on the hit face
 as Java does and drop destroyed plants. PLY-04 remains **Partial**.
 
+The [mining review fixes](verification/2026-10-13-review-mining-fixes.md)
+share Java's five-tick destroy delay through the session for every adapter,
+key progress on position and held item, restrict Creative swords, destroy
+Creative dragon eggs, suppress lower door/double-plant drops without the
+correct tool or in Creative, gate exhaustion on the correct tool and add Haste.
+PLY-04 remains **Partial**; effect attack-speed modifiers, Conduit Power and
+beacons, server destroy tolerance, a headless desktop-adapter harness and
+remaining cancel-on-item-change sites (pick-block, drop) stay open.
+
 The [lighting and spawning follow-up](verification/2026-10-13-lighting-spawning.md)
 implements propagated gameplay skylight, End skylight, full-height ground-monster
 attempts, cave/torch checks and reference clock/weather darkening. ENV-05 and
