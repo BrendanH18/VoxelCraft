@@ -866,13 +866,9 @@ pub struct Mob {
     pub grow: f32,
     pub wool_color: crate::color::DyeColor,
     pub sheared: bool,
-    /// Witch: seconds left drinking, whether it's swiftness, swiftness left,
-    /// and seconds before it may throw slowness or poison again.
+    /// Witch: seconds left drinking, and the potion it is drinking.
     drink_left: f32,
-    drinking_swift: bool,
-    swift_left: f32,
-    slow_cd: f32,
-    poison_cd: f32,
+    drinking: &'static str,
     /// Negative while a baby. Java's chicks start at -24000 and grow one tick at a time.
     pub age: i32,
     /// Seconds until a grown chicken lays an egg (Java's 6000–12000 ticks).
@@ -1004,10 +1000,7 @@ impl Mob {
             wool_color: crate::color::DyeColor::White,
             sheared: false,
             drink_left: 0.0,
-            drinking_swift: false,
-            swift_left: 0.0,
-            slow_cd: 0.0,
-            poison_cd: 0.0,
+            drinking: "",
             age: 0,
             egg_timer: if kind == MobKind::Chicken { 300.0 + yaw.rem_euclid(TAU) / TAU * 300.0 } else { f32::MAX },
             hop_left: 0.0,
@@ -1520,7 +1513,7 @@ impl Mob {
                 return (Some(dir), speed);
             }
         }
-        if self.kind == MobKind::Witch && self.witch_upkeep(dt, rng) {
+        if self.kind == MobKind::Witch && self.witch_upkeep(dt, world, rng) {
             return (None, 0.0);
         }
         if self.nether.is_some()
@@ -1582,7 +1575,7 @@ impl Mob {
                             return stop;
                         }
                     }
-                    MobKind::Witch => return self.witch_tactics(world, target.pos, dir, hdist, rng, events),
+                    MobKind::Witch => return self.witch_tactics(world, &target, dir, hdist, rng, events),
                     MobKind::Ghast => {
                         return self.ghast_tactics(world, target.pos, dir, hdist, events);
                     }
@@ -1989,67 +1982,79 @@ impl Mob {
         }
     }
 
-    /// Java's witch: drinks healing when hurt (1.6 s, standing still), and
-    /// returns whether it is mid-drink. Cooldowns tick here too.
-    fn witch_upkeep(&mut self, dt: f32, rng: &mut Rng) -> bool {
-        self.slow_cd = (self.slow_cd - dt).max(0.0);
-        self.poison_cd = (self.poison_cd - dt).max(0.0);
-        self.swift_left = (self.swift_left - dt).max(0.0);
+    /// Java's witch `aiStep`: each tick it may start drinking Water Breathing
+    /// (15%, eye in water), Fire Resistance (15%, burning) or Healing (5%,
+    /// hurt), and its drink (1.6 s, standing still) applies the potion's
+    /// effects to itself. Returns whether it is mid-drink.
+    fn witch_upkeep<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, rng: &mut Rng) -> bool {
+        use crate::simulation::effects::Effect;
         if self.drink_left > 0.0 {
             self.drink_left -= dt;
-            if self.drink_left <= 0.0 {
-                if self.drinking_swift {
-                    // Swiftness: 3 minutes of +20% speed.
-                    self.swift_left = 180.0;
-                } else {
-                    self.health = (self.health + 4.0).min(self.kind.max_health());
+            if self.drink_left <= 0.0
+                && let Some(potion) = crate::potion::Potion::from_id(self.drinking)
+            {
+                for (effect, amplifier, ticks) in potion.effects() {
+                    let outcome = self.effects.add(effect, amplifier, ticks);
+                    self.health = (self.health + outcome.heal).min(self.kind.max_health());
                 }
             }
             return self.drink_left > 0.0;
         }
-        if self.health < self.kind.max_health() && rng.chance(dt) {
-            self.drink_left = 1.6;
-            self.drinking_swift = false;
-            return true;
-        }
-        false
+        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye_in_water = world.block(eye.floor().as_ivec3()).is_some_and(Block::holds_water);
+        let tick_chance = |rng: &mut Rng, p: f32| rng.chance(1.0 - (1.0 - p).powf(dt * 20.0));
+        let drink = if eye_in_water && !self.effects.has(Effect::WaterBreathing) && tick_chance(rng, 0.15) {
+            "water_breathing"
+        } else if self.burning && !self.effects.has(Effect::FireResistance) && tick_chance(rng, 0.15) {
+            "fire_resistance"
+        } else if self.health < self.kind.max_health() && tick_chance(rng, 0.05) {
+            "healing"
+        } else {
+            return false;
+        };
+        self.drink_left = 1.6;
+        self.drinking = drink;
+        true
     }
 
-    /// Java's witch: lobs a splash potion every three seconds from up to ten
-    /// blocks away (slowness from afar, poison, otherwise harming), standing
-    /// still while it has a clear throw, and drinks swiftness to close a
-    /// long gap. The potion isn't chosen from the target's health or effects.
+    /// Java's witch `performRangedAttack`: a splash potion every three
+    /// seconds from up to ten blocks away, chosen from the target's state
+    /// (Slowness from 8+ blocks, then Poison at 8+ health, Weakness 25% of
+    /// the time within 3 blocks, otherwise Harming). It drinks Swiftness to
+    /// close a gap of more than 11 blocks, and stands still while it has a
+    /// clear throw.
     fn witch_tactics<W: MobWorld + ?Sized>(
         &mut self,
         world: &W,
-        player: DVec3,
+        target: &super::Target,
         dir: DVec3,
         hdist: f64,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
+        use crate::simulation::effects::Effect;
+        let player = target.pos;
         let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
-        let target = player + DVec3::Y * 1.2;
-        let boost = if self.swift_left > 0.0 { 1.2 } else { 1.0 };
-        let sees = line_of_sight(world, eye, target);
-        if self.swift_left <= 0.0 && hdist > 11.0 && rng.chance(0.01) {
+        let aim_at = player + DVec3::Y * 1.2;
+        let sees = line_of_sight(world, eye, aim_at);
+        if !self.effects.has(Effect::Speed) && (player - self.pos).length_squared() > 121.0 && rng.chance(0.5) {
             self.drink_left = 1.6;
-            self.drinking_swift = true;
+            self.drinking = "swiftness";
             return (None, 0.0);
         }
         if hdist <= WITCH_RANGE && sees {
             if self.attack_cooldown <= 0.0 {
-                let id = if hdist >= 8.0 && self.slow_cd <= 0.0 {
-                    self.slow_cd = 30.0;
+                let id = if hdist >= 8.0 && !target.has_effect(Effect::Slowness) {
                     "slowness"
-                } else if self.poison_cd <= 0.0 {
-                    self.poison_cd = 45.0;
+                } else if target.health >= 8.0 && !target.has_effect(Effect::Poison) {
                     "poison"
+                } else if hdist <= 3.0 && !target.has_effect(Effect::Weakness) && rng.chance(0.25) {
+                    "weakness"
                 } else {
                     "harming"
                 };
-                let flat = DVec3::new(target.x - eye.x, 0.0, target.z - eye.z);
-                let aim = DVec3::new(flat.x, target.y - 1.1 - eye.y + flat.length() * 0.2, flat.z).normalize_or(dir);
+                let flat = DVec3::new(aim_at.x - eye.x, 0.0, aim_at.z - eye.z);
+                let aim = DVec3::new(flat.x, aim_at.y - 1.1 - eye.y + flat.length() * 0.2, flat.z).normalize_or(dir);
                 if let Some(potion) = crate::potion::Potion::from_id(id) {
                     events.push(EntityEvent::ThrowPotion { from: eye + dir * 0.4, vel: aim * WITCH_SPEED, potion });
                 }
@@ -2058,7 +2063,7 @@ impl Mob {
             }
             return (None, 0.0);
         }
-        (Some(dir), self.kind.chase_speed() * boost)
+        (Some(dir), self.kind.chase_speed())
     }
 
     /// Creepers stop and hiss when close; returns the movement to use

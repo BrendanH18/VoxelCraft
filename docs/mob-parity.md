@@ -84,12 +84,16 @@ No trident drowned (rare iron/carrot/potato and copper pools are implemented; se
 ## Witch and splash potions
 
 26 health, spawns at night (weight 5/100, boosted in swamps). Throws a splash potion
-every 3 s from up to 10 blocks (slowness from 8+, then poison, else harming; the target's
-health and effects are not inspected), drinks healing when hurt, 85% magic resistance.
+every 3 s from up to 10 blocks, chosen as Java's `performRangedAttack` does (slowness from
+8+ blocks unless slowed, poison at 8+ health unless poisoned, 25% weakness within 3 blocks,
+else harming). Each tick it may drink water breathing (eye in water), fire resistance
+(burning) or healing (hurt), and swiftness against a target beyond 11 blocks; drinks apply
+the potion's effects. 85% magic resistance.
 Splash potions are items 436..=471, made by adding gunpowder to any potion; players
 throw them at 10 b/s aimed 20° high. A splash affects entities within 4 × 2 × 4 with
 `1 - distance / 4` intensity, 75% duration, and Java's instant damage/heal amounts (the
-undead are inverted). Mobs only react to instant effects; water splashes do nothing.
+undead are inverted). Mobs also receive every other splash effect (the undead ignore poison
+and regeneration); water splashes do nothing.
 
 ## Piglins, brutes, hoglins, zoglins and striders
 

@@ -131,9 +131,10 @@ fn instant_amount(base: f32, amplifier: u8, intensity: f64) -> f32 {
 
 /// Splashes `potion` at the impact position. Players get [`EntityEvent::PlayerEffect`] or
 /// [`EntityEvent::PlayerMagic`]; mobs take instant damage and healing (undead
-/// the other way round, witches shrug off most of the harm). Weakness also
-/// lands on zombie villagers so a golden apple can start a cure. Slowness
-/// and Resistance apply to mobs; other non-instant mob effects remain incomplete.
+/// the other way round, witches shrug off most of the harm). Every other
+/// effect is added to mobs with the attenuated duration, except Poison and
+/// Regeneration on the undead. Weakness also lands on zombie villagers so a
+/// golden apple can start a cure.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn splash(
     potion: Potion,
@@ -166,9 +167,12 @@ pub(super) fn splash(
                 }
             }
         }
-        if matches!(effect, Effect::Slowness | Effect::Resistance) {
+        if !effect.is_instant() {
+            // Java's `ThrownSplashPotion` adds every other effect to each
+            // living recipient; the undead ignore Poison and Regeneration.
             for mob in mobs.iter_mut() {
-                if !mob.alive() {
+                let undead = mob.kind.creature() == crate::enchant::Creature::Undead;
+                if !mob.alive() || (undead && matches!(effect, Effect::Poison | Effect::Regeneration)) {
                     continue;
                 }
                 let (min, max) = mob.aabb();
@@ -346,5 +350,24 @@ mod tests {
             &mut Vec::new(),
         );
         assert!(mobs[0].health < MobKind::Zombie.max_health(), "healing hurts the undead");
+    }
+
+    #[test]
+    fn mobs_take_every_splash_effect_except_undead_poison_and_regeneration() {
+        let c = ctx(vec![]);
+        let mut mobs = [
+            Mob::new(MobKind::Cow, DVec3::new(0.5, 10.0, 0.0), 0.0),
+            Mob::new(MobKind::Zombie, DVec3::new(-0.5, 10.0, 0.0), 0.0),
+        ];
+        for id in ["swiftness", "poison", "regeneration", "strength", "fire_resistance"] {
+            let potion = Potion::from_id(id).unwrap();
+            splash(potion, None, DVec3::new(0.0, 10.0, 0.0), 0.0, &c, &mut mobs, &mut Rng::new(1), &mut Vec::new());
+        }
+        let has = |m: &Mob, e| m.effects.has(e);
+        for e in [Effect::Speed, Effect::Poison, Effect::Regeneration, Effect::Strength, Effect::FireResistance] {
+            assert!(has(&mobs[0], e), "{e:?}");
+        }
+        assert!(has(&mobs[1], Effect::Speed) && has(&mobs[1], Effect::Strength));
+        assert!(!has(&mobs[1], Effect::Poison) && !has(&mobs[1], Effect::Regeneration));
     }
 }

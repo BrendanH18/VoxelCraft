@@ -79,6 +79,8 @@ impl Agents {
             gold_armor: voxelcraft::entity::nether::wears_gold(&b.agent.session.inventory.armor),
             held_item: b.agent.session.inventory.get(b.agent.selected).map(|s| s.item),
             on_ground: b.agent.session.player.on_ground,
+            health: b.agent.session.vitals.health,
+            effects: b.agent.session.vitals.effects.mask(),
             in_water: b.agent.session.player.in_water,
             ..Target::new(b.id, b.agent.session.player.pos, b.agent.targetable())
         })

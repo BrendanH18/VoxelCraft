@@ -500,9 +500,18 @@ pub struct Target {
     pub held_item: Option<crate::item::Item>,
     pub on_ground: bool,
     pub in_water: bool,
+    /// Current health in half hearts (witches choose potions from it).
+    pub health: f32,
+    /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
+    pub effects: u32,
 }
 
 impl Target {
+    /// Whether the target has `effect` active.
+    pub fn has_effect(&self, effect: crate::simulation::effects::Effect) -> bool {
+        self.effects & (1 << effect as u32) != 0
+    }
+
     /// A living player; set [`Target::alive`] for one waiting to respawn.
     pub fn new(id: PlayerId, pos: DVec3, targetable: bool) -> Self {
         Self {
@@ -518,6 +527,8 @@ impl Target {
             held_item: None,
             on_ground: true,
             in_water: false,
+            health: crate::simulation::survival::MAX_HEALTH,
+            effects: 0,
         }
     }
 
@@ -636,6 +647,11 @@ pub struct Entities {
     /// Java `doMobLoot`; set by the world before each update.
     pub mob_loot: bool,
     pub moon_brightness: f32,
+    /// The overworld clock in ticks (Java's `getOverworldClockTime`), for local difficulty.
+    pub clock_time: i64,
+    /// The world's difficulty as of the latest update (Java's
+    /// `Level.getDifficulty()`, which equipment rolls read at spawn).
+    pub difficulty: crate::simulation::difficulty::Difficulty,
     pub village_time: f64,
     pub village_day: i64,
     next_villager_id: u64,
@@ -706,6 +722,8 @@ impl Entities {
             fight: None,
             mob_loot: true,
             moon_brightness: 1.0,
+            clock_time: 0,
+            difficulty: Default::default(),
             village_time: 0.25,
             village_day: 0,
             next_villager_id: 1,
@@ -799,7 +817,17 @@ impl Entities {
             }
         }
         if kind.is_zombie() || kind == MobKind::Skeleton {
-            let (armor, glint) = armor::roll_monster_armor(&mut self.rng);
+            // Java's local difficulty at the spawn; chunk inhabited time is not tracked.
+            let special = crate::simulation::difficulty::special_multiplier(self.difficulty.effective(
+                self.clock_time,
+                0,
+                self.moon_brightness,
+            ));
+            let (armor, glint) = armor::roll_monster_armor(
+                &mut self.rng,
+                self.difficulty == crate::simulation::difficulty::Difficulty::Hard,
+                special,
+            );
             mob.armor = armor;
             mob.armor_glint = glint;
         }
@@ -1301,10 +1329,26 @@ impl Entities {
 
     /// Reels this player's bobber, spawning the catch and its experience.
     /// The number is how many uses the rod spends.
-    pub fn reel(&mut self, owner: PlayerId, player_pos: DVec3) -> Option<u16> {
+    /// `owner_luck` is the player's Luck attribute (the Luck and Bad Luck
+    /// effects); the biome at the hook is read now, as Java's loot context does.
+    pub fn reel<W: MobWorld + ?Sized>(
+        &mut self,
+        owner: PlayerId,
+        player_pos: DVec3,
+        owner_luck: i32,
+        world: &W,
+    ) -> Option<u16> {
         let index = self.bobbers.iter().position(|b| b.owner == owner)?;
         let bobber = self.bobbers.swap_remove(index);
-        let got = bobber.retrieve(&mut self.rng);
+        let jungle = world.cave_biome(bobber.pos.floor().as_ivec3()).is_jungle();
+        let got = bobber.retrieve(&mut self.rng, owner_luck, jungle);
+        // Java's `pullEntity`: a snagged mob gains a tenth of the way to the
+        // owner a tick, in blocks a second here.
+        if let Some(uid) = bobber.hooked_mob()
+            && let Some(mob) = self.mobs.iter_mut().find(|m| m.uid == uid && m.alive())
+        {
+            mob.vel += (player_pos - bobber.pos) * 2.0;
+        }
         if let Some(stack) = got.catch {
             let delta = player_pos - bobber.pos;
             let lift = delta.length().sqrt() * 0.08;
@@ -1768,6 +1812,28 @@ mod tests {
     }
 
     #[test]
+    fn spawned_monster_gear_follows_the_local_difficulty() {
+        use crate::simulation::difficulty::Difficulty;
+        let armored = |difficulty: Difficulty, clock: i64| {
+            let mut e = Entities::new(11);
+            e.difficulty = difficulty;
+            e.clock_time = clock;
+            e.moon_brightness = 1.0;
+            for _ in 0..4000 {
+                e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
+            }
+            e.mobs.iter().filter(|m| m.armor.iter().any(Option::is_some)).count()
+        };
+        assert_eq!(armored(Difficulty::Normal, 0), 0, "effective difficulty 1.5 is below Java's threshold");
+        assert_eq!(armored(Difficulty::Peaceful, 10_000_000), 0);
+        // Hard at the start: 3 * 0.75 = 2.25, a special multiplier of 0.125.
+        let hard = armored(Difficulty::Hard, 0) as f64 / 4000.0;
+        assert!((hard - 0.15 * 0.125).abs() < 0.008, "{hard}");
+        let late = armored(Difficulty::Normal, 10_000_000) as f64 / 4000.0;
+        assert!((late - 0.15 * 0.25).abs() < 0.01, "{late}");
+    }
+
+    #[test]
     fn cave_spider_poison_matches_difficulty_and_target_id() {
         use crate::simulation::{difficulty::Difficulty, effects::Effect};
         for (difficulty, ticks) in [(Difficulty::Easy, 0), (Difficulty::Normal, 140), (Difficulty::Hard, 300)] {
@@ -1837,6 +1903,9 @@ mod tests {
                 if let EntityEvent::PlayerMagic { amount, .. } | EntityEvent::PlayerHit { damage: amount, .. } = ev {
                     hits.push(amount);
                 }
+                if let EntityEvent::PlayerEffect { ticks, .. } = ev {
+                    hits.push(ticks as f32);
+                }
             }
         }
         assert!(e.mobs[0].aabb().0.x < 2.0, "witches stand off at range");
@@ -1856,6 +1925,104 @@ mod tests {
         );
         let drops: Vec<_> = (0..50).flat_map(|_| MobKind::Witch.drops(&mut Rng::new(4), 0)).collect();
         assert!(drops.iter().any(|d| d.0 == crate::item::Item::GLASS_BOTTLE || d.0 == crate::item::Item::SUGAR));
+    }
+
+    /// Java's `Witch.performRangedAttack` picks the potion from the target's
+    /// distance, health and effects.
+    /// Java's `FishingHook.onHitEntity`: the hook snags the first mob it
+    /// touches, follows it at 80% of its height, and reeling pulls it in
+    /// (and costs five uses of the rod).
+    #[test]
+    fn a_hook_snags_a_mob_and_reeling_pulls_it_toward_the_player() {
+        let world = Grid::flat(10);
+        let player = DVec3::new(0.5, 10.0, 0.5);
+        let c = ctx(player);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Cow, DVec3::new(0.5, 10.0, 6.5));
+        e.mobs[0].persistent = true;
+        e.update(0.05, &world, &c);
+        let uid = e.mobs[0].uid;
+        assert_ne!(uid, 0);
+        e.cast_bobber(PlayerId::HOST, player + DVec3::Y * 1.62, DVec3::Z, 0, 0);
+        let mut hooked = None;
+        for _ in 0..60 {
+            e.update(0.05, &world, &c);
+            e.mobs[0].vel = DVec3::ZERO;
+            hooked = e.bobbers.first().and_then(|b| b.hooked_mob());
+            if hooked.is_some() {
+                break;
+            }
+        }
+        assert_eq!(hooked, Some(uid), "the cast flew into the cow");
+        let (min, max) = e.mobs[0].aabb();
+        let hook = e.bobbers[0].pos;
+        assert!((hook.y - (min.y + (max.y - min.y) * 0.8)).abs() < 1e-9 && (hook.z - e.mobs[0].pos.z).abs() < 1e-9);
+        let wear = e.reel(PlayerId::HOST, player, 0, &world);
+        assert_eq!(wear, Some(5));
+        assert!(e.mobs[0].vel.z < -0.5, "pulled toward the owner: {:?}", e.mobs[0].vel);
+        assert!(e.bobbers.is_empty());
+    }
+
+    #[test]
+    fn witches_choose_potions_from_the_target_state() {
+        use crate::simulation::effects::{Effect, Effects};
+        let world = Grid::flat(10);
+        let first_throw = |seed: u64, distance: f64, health: f32, have: &[Effect]| {
+            let mut c = ctx(DVec3::new(0.5 + distance, 10.0, 0.5));
+            c.daylight = 0.0;
+            let mut effects = Effects::default();
+            for &e in have {
+                effects.add(e, 0, 600);
+            }
+            c.players[0].targetable = true;
+            c.players[0].health = health;
+            c.players[0].effects = effects.mask();
+            let mut e = Entities::new(seed);
+            e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+            e.mobs[0].effects.add(Effect::Speed, 0, 6000);
+            for _ in 0..80 {
+                e.update(0.05, &world, &c);
+                if let Some(thrown) = e.potions.first() {
+                    return thrown.potion.info().id;
+                }
+            }
+            panic!("no throw")
+        };
+        assert_eq!(first_throw(1, 9.5, 20.0, &[]), "slowness");
+        assert_eq!(first_throw(1, 9.5, 20.0, &[Effect::Slowness]), "poison");
+        assert_eq!(first_throw(1, 9.5, 20.0, &[Effect::Slowness, Effect::Poison]), "harming");
+        assert_eq!(first_throw(1, 6.0, 6.0, &[]), "harming", "low health skips poison");
+        assert_eq!(first_throw(1, 6.0, 20.0, &[Effect::Poison]), "harming");
+        let close: Vec<_> = (0..40).map(|seed| first_throw(seed, 2.0, 6.0, &[])).collect();
+        assert!(close.contains(&"weakness") && close.contains(&"harming"), "{close:?}");
+        assert!((0..40).all(|seed| first_throw(seed, 2.0, 6.0, &[Effect::Weakness]) == "harming"));
+    }
+
+    /// A witch with a far target drinks Swiftness (Java: 50% a tick beyond 11
+    /// blocks); a burning one drinks Fire Resistance.
+    #[test]
+    fn witches_drink_swiftness_and_fire_resistance() {
+        use crate::simulation::effects::Effect;
+        let world = Grid::flat(10);
+        let mut c = ctx(DVec3::new(20.5, 10.0, 0.5));
+        c.daylight = 0.0;
+        c.players[0].targetable = true;
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+        for _ in 0..60 {
+            e.update(0.05, &world, &c);
+        }
+        assert!(e.mobs[0].effects.has(Effect::Speed));
+        assert_eq!(e.mobs[0].effects.get(Effect::Speed).map(|a| a.amplifier), Some(0));
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].burning = true;
+        let far = ctx(DVec3::new(90.5, 10.0, 0.5));
+        for _ in 0..120 {
+            e.mobs[0].burning = true;
+            e.update(0.05, &world, &far);
+        }
+        assert!(e.mobs[0].effects.has(Effect::FireResistance));
     }
 
     #[test]

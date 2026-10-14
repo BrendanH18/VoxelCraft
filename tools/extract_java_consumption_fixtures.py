@@ -23,6 +23,40 @@ def seconds(block):
     return float(matches[0])
 
 
+def push_value(line):
+    match = re.search(r": (?:bipush|sipush)\s+(\d+)|: iconst_(\d)\b|: ldc\s+#\d+\s+// int (\d+)", line)
+    if not match:
+        raise ValueError(f"unrecognized constant: {line.strip()}")
+    return int(next(group for group in match.groups() if group is not None))
+
+
+def food_effects(block):
+    """Status effects `(id, amplifier, ticks)` and probability of one consume effect."""
+    lines = block.split("\n")
+    effects = []
+    for index, line in enumerate(lines):
+        match = re.search(r"Field net/minecraft/world/effect/MobEffects\.(\w+):", line)
+        if match:
+            duration, amplifier = push_value(lines[index + 1]), push_value(lines[index + 2])
+            effects.append({"effect": match.group(1).lower(), "amplifier": amplifier, "ticks": duration})
+    if not effects or len(re.findall(r"onConsume:", block)) != 1:
+        raise ValueError("unrecognized food consume effects")
+    chance = re.search(r"// float ([0-9.]+)f\n\s+\d+: invokespecial[^\n]*ApplyStatusEffectsConsumeEffect.\"<init>\":"
+                       r"\([^)]*;F\)V", block)
+    return {"chance": float(chance.group(1)) if chance else 1.0, "effects": effects}
+
+
+def always_edible(foods):
+    """Foods built with `alwaysEdible()`, in registration order."""
+    names = []
+    start = 0
+    for match in re.finditer(r"putstatic\s+#\d+\s+// Field (\w+):", foods):
+        if "alwaysEdible" in foods[start:match.start()]:
+            names.append(match.group(1).lower())
+        start = match.end()
+    return names
+
+
 def extract(server):
     data = server.read_bytes()
     if hashlib.sha1(data).hexdigest() != SERVER_SHA1:
@@ -55,6 +89,13 @@ def extract(server):
         default_food = properties.split(" food(net.minecraft.world.food.FoodProperties);")[1].split("\n\n")[0]
         if "Consumables.DEFAULT_FOOD:" not in default_food:
             raise ValueError("default food registration changed")
+        food_cases = {}
+        for item, provider in (("SPIDER_EYE", "SPIDER_EYE"), ("POISONOUS_POTATO", "POISONOUS_POTATO"),
+                               ("PUFFERFISH", "PUFFERFISH"), ("ROTTEN_FLESH", "ROTTEN_FLESH"),
+                               ("CHICKEN", "CHICKEN"), ("GOLDEN_APPLE", "GOLDEN_APPLE")):
+            food_cases["raw_chicken" if item == "CHICKEN" else item.lower()] = food_effects(
+                field_initialization(code, provider))
+        edible = always_edible(inspect("net.minecraft.world.food.Foods"))
         for item in ("APPLE", "MUSHROOM_STEW"):
             block = field_initialization(items, item)
             if f"Foods.{item}:" not in block or "Properties.food:(Lnet/minecraft/world/food/FoodProperties;)" not in block:
@@ -64,8 +105,10 @@ def extract(server):
              ("potion", defaults["drink"])]
     return {"reference": "Minecraft Java Edition 26.3", "server_sha1": SERVER_SHA1,
             "sources": ["net.minecraft.world.item.component.Consumables",
-                        "net.minecraft.world.item.Item$Properties.food", "net.minecraft.world.item.Items"],
-            "cases": [{"item": item, "seconds": value, "ticks": round(value * 20)} for item, value in cases]}
+                        "net.minecraft.world.item.Item$Properties.food", "net.minecraft.world.item.Items",
+                        "net.minecraft.world.food.Foods"],
+            "cases": [{"item": item, "seconds": value, "ticks": round(value * 20)} for item, value in cases],
+            "food_effects": food_cases, "always_edible": edible}
 
 
 def main():

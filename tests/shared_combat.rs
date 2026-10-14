@@ -12,6 +12,7 @@ use voxelcraft::{
         PlayerSession,
         combat::{Outcome, Target},
     },
+    simulation::{effects::Effect, survival::Env},
     world::{World, block::Block, chunk::ChunkData, terrain::Generator},
 };
 
@@ -110,19 +111,162 @@ fn damage_scales_with_the_attack_strength_charge() {
     }
 }
 
+/// Drops the scene's player `blocks` onto the stone pad through the real vitals tracking.
+fn fall(s: &mut PlayerSession, blocks: f64) {
+    let ground = s.player.pos.y;
+    let env = |y: f64, on_ground: bool, in_water: bool| Env { y, on_ground, in_water, ..Env::default() };
+    s.vitals.tick(0.05, &env(ground + blocks, true, false), false);
+    s.player.on_ground = false;
+    s.vitals.tick(0.05, &env(ground, false, false), false);
+}
+
 #[test]
 fn criticals_need_a_strong_falling_unsprinted_attack() {
     for (ticks, sprinting, expect_critical) in [(1, false, false), (20, false, true), (20, true, false)] {
         let (w, mut s, mut e) = scene(6.0);
         charge(&mut s, ticks);
-        s.player.on_ground = false;
-        s.player.vel.y = -2.0;
+        fall(&mut s, 2.0);
         let strength = s.attack_strength(0, 0.5);
         let Outcome::Hit { critical, .. } = s.attack(0, &w, &mut e, sprinting).unwrap() else { panic!() };
         assert_eq!(critical, expect_critical, "ticks {ticks} sprinting {sprinting}");
         let expected = MobKind::IronGolem.max_health() - reference_damage(7.0, strength, expect_critical);
         assert!((e.mobs[0].health - expected).abs() < 1e-4);
     }
+}
+
+/// Java 26.3 `Player.canCriticalAttack` reads `fallDistance`, not the vertical velocity.
+#[test]
+fn criticals_follow_fall_distance_and_not_velocity() {
+    let critical = |setup: &dyn Fn(&mut PlayerSession)| {
+        let (w, mut s, mut e) = scene(6.0);
+        charge(&mut s, 20);
+        setup(&mut s);
+        let Outcome::Hit { critical, .. } = s.attack(0, &w, &mut e, false).unwrap() else { panic!() };
+        critical
+    };
+    // Fallen two blocks and momentarily motionless (a bounce apex): still a critical.
+    assert!(critical(&|s| {
+        fall(s, 2.0);
+        s.player.vel.y = 0.0;
+    }));
+    // Rising after a jump has no fall distance, whatever the player's pose.
+    assert!(!critical(&|s| {
+        s.player.on_ground = false;
+        s.vitals.tick(0.05, &Env { y: 145.0, ..Env::default() }, false);
+        s.player.vel.y = 6.0;
+    }));
+    // Fast downward velocity without a fall (teleported, flying) is no critical.
+    assert!(!critical(&|s| {
+        s.player.on_ground = false;
+        s.vitals.reset_fall();
+        s.player.vel.y = -8.0;
+    }));
+    // Landing in water, a ladder or flight clears the fall distance.
+    assert!(!critical(&|s| {
+        fall(s, 3.0);
+        s.vitals.tick(0.05, &Env { y: 145.0, in_water: true, ..Env::default() }, false);
+    }));
+    assert!(!critical(&|s| {
+        fall(s, 3.0);
+        s.vitals.tick(0.05, &Env { y: 145.0, climbing: true, ..Env::default() }, false);
+    }));
+    assert!(!critical(&|s| {
+        fall(s, 3.0);
+        s.player.in_water = true;
+    }));
+    // Passengers never land criticals.
+    assert!(!critical(&|s| {
+        fall(s, 3.0);
+        s.player.vehicle = Some(1);
+    }));
+    assert!(!critical(&|s| {
+        fall(s, 3.0);
+        s.vitals.effects.add(Effect::Blindness, 0, 200);
+    }));
+    assert_eq!(fixture()["criticals"]["needs"][0], "fall_distance > 0");
+}
+
+#[test]
+fn haste_and_mining_fatigue_scale_the_attack_speed_attribute() {
+    let f = fixture();
+    assert_eq!(f["attack_speed_enchantments"], serde_json::json!([]), "Java 26.3 defines none");
+    let amount = |name: &str| f["attack_speed_effects"][name]["amount_per_level"].as_f64().unwrap();
+    let [lo, hi] = [0, 1].map(|i| f["attack_speed_range"][i].as_f64().unwrap());
+    let sword = Some(Item::tool(ToolKind::Sword, Tier::Diamond));
+    let speed = mining::attack_speed(sword);
+    let with = |effects: &[(Effect, u8)]| {
+        let mut e = voxelcraft::simulation::effects::Effects::default();
+        for &(effect, amplifier) in effects {
+            e.add(effect, amplifier, 100);
+        }
+        mining::attack_speed_with(sword, &e)
+    };
+    assert_eq!(with(&[]), speed);
+    for amplifier in 0..5u8 {
+        let level = f64::from(amplifier) + 1.0;
+        let haste = (speed * (1.0 + amount("haste") * level)).clamp(lo, hi);
+        assert_eq!(with(&[(Effect::Haste, amplifier)]), haste, "Haste {level}");
+        let fatigue = (speed * (1.0 + amount("mining_fatigue") * level)).clamp(lo, hi);
+        assert_eq!(with(&[(Effect::MiningFatigue, amplifier)]), fatigue, "Mining Fatigue {level}");
+    }
+    // Opposite modifiers multiply: Haste II with Mining Fatigue I.
+    let both = speed * (1.0 + amount("haste") * 2.0) * (1.0 + amount("mining_fatigue"));
+    assert!((with(&[(Effect::Haste, 1), (Effect::MiningFatigue, 0)]) - both).abs() < 1e-12);
+    // Ten levels of Mining Fatigue remove all of the speed; the attribute floors at zero.
+    assert_eq!(with(&[(Effect::MiningFatigue, 9)]), 0.0);
+    assert_eq!(with(&[(Effect::MiningFatigue, 200)]), 0.0);
+    // The charge, its delay and the crosshair indicator all read the modified speed.
+    let (_, mut s, _) = scene(6.0);
+    charge(&mut s, 1);
+    let plain = s.attack_strength_delay(0);
+    s.vitals.effects.add(Effect::Haste, 1, 1000);
+    let hasty = s.attack_strength_delay(0);
+    assert_eq!(hasty, (1.0 / with(&[(Effect::Haste, 1)]) * 20.0) as f32);
+    assert!(hasty < plain);
+    charge(&mut s, 9);
+    assert!(s.attack_strength(0, 0.5) > 0.9, "Haste II recharges a sword in about ten ticks");
+    s.vitals.effects.add(Effect::MiningFatigue, 9, 1000);
+    assert!(s.attack_strength_delay(0).is_infinite());
+    assert_eq!(s.attack_strength(0, 0.5), 0.0, "a zero attack speed never charges");
+}
+
+#[test]
+fn only_spears_carry_a_minimum_attack_charge() {
+    let f = fixture();
+    let minimum = f["minimum_attack_charge"]["spear_value"].as_f64().unwrap() as f32;
+    // No spear is registered, so every registered item accepts any charge.
+    for spear in f["minimum_attack_charge"]["spear_items"].as_array().unwrap() {
+        assert!(Item::from_name(spear.as_str().unwrap()).is_none(), "{spear} is now registered");
+    }
+    for item in Item::all_items() {
+        assert_eq!(
+            mining::minimum_attack_charge(Some(item)),
+            f["minimum_attack_charge"]["default"].as_f64().unwrap() as f32
+        );
+    }
+    // Java `cannotAttackWithItem`: with the server's five ticks of lead, a charge below the minimum refuses.
+    let lead = f["minimum_attack_charge"]["server_lead_ticks"].as_u64().unwrap() as u32;
+    assert_eq!(lead, 5);
+    assert!(mining::charge_refuses_attack(minimum, 0, lead, 20.0));
+    assert!(mining::charge_refuses_attack(minimum, 14, lead, 20.0));
+    assert!(!mining::charge_refuses_attack(minimum, 15, lead, 20.0));
+    assert!(!mining::charge_refuses_attack(0.0, 0, lead, 20.0), "no minimum never refuses");
+    let (w, mut s, mut e) = scene(6.0);
+    assert!(!s.cannot_attack_with(0, lead));
+    assert!(s.attack(0, &w, &mut e, false).is_ok(), "ordinary weapons attack at any charge");
+}
+
+#[test]
+fn blindness_blocks_sprinting_and_matches_the_reference_effect() {
+    let mut vitals = voxelcraft::simulation::survival::Vitals::default();
+    assert!(vitals.may_sprint(false) && vitals.may_sprint(true));
+    vitals.effects.add(Effect::Blindness, 0, 100);
+    assert!(!vitals.may_sprint(false) && !vitals.may_sprint(true), "even Creative cannot sprint blind");
+    assert_eq!(Effect::from_id("minecraft:blindness"), Some(Effect::Blindness));
+    assert_eq!(Effect::Blindness.colour(), [0x1F, 0x1F, 0x23]);
+    assert!(Effect::Blindness.is_harmful());
+    let restored = voxelcraft::simulation::effects::Effects::deserialize(&vitals.effects.serialize());
+    assert!(restored.mobility_restricted());
 }
 
 #[test]
@@ -203,4 +347,57 @@ fn the_crosshair_indicator_charges_then_marks_a_full_strike_on_a_living_target()
     charge(&mut s, 20);
     assert_eq!(mining::attack_strength_delay(None), 5.0);
     assert_eq!(s.attack_indicator(0, true), None);
+}
+
+#[test]
+fn critical_fall_distance_accumulates_downward_moves_without_subtracting_bounces() {
+    let mut v = voxelcraft::simulation::survival::Vitals::default();
+    let env = |y, on_ground| Env { y, on_ground, ..Env::default() };
+    v.tick(0.05, &env(150.0, true), false);
+    v.tick(0.05, &env(147.0, false), false);
+    assert_eq!(v.fall_distance(147.0), 3.0);
+    v.tick(0.05, &env(148.0, false), false);
+    assert_eq!(v.fall_distance(148.0), 3.0, "rising does not subtract distance");
+    v.tick(0.05, &env(147.0, false), false);
+    assert_eq!(v.fall_distance(147.0), 4.0);
+    v.reset_fall();
+    assert_eq!(v.fall_distance(140.0), 0.0, "teleport forgets the previous movement");
+}
+
+#[test]
+fn non_living_targets_exhaust_but_never_wear_the_weapon() {
+    // Java `Player.attack`: a hurt target costs 0.1 exhaustion, but
+    // `itemAttackInteraction` wears the weapon only against a LivingEntity.
+    let exhaustion = fixture()["attack_strength"]["food_exhaustion"].as_f64().unwrap() as f32;
+    let (w, mut s, mut e) = scene(30.0);
+    e.spawn_cart(voxelcraft::entity::minecart::CartKind::Rideable, DVec3::new(6.0, 146.3, 4.5));
+    charge(&mut s, 20);
+    let before = s.vitals.hunger.exhaustion;
+    let out = s.attack(0, &w, &mut e, false).unwrap();
+    assert!(matches!(out, Outcome::Hit { target: Target::Cart, .. }));
+    assert_eq!(s.vitals.hunger.exhaustion - before, exhaustion);
+    assert_eq!(s.inventory.get(0).unwrap().damage, 0, "a cart is not a LivingEntity");
+
+    // A mob is living: the same swing wears the sword.
+    let (w, mut s, mut e) = scene(6.0);
+    charge(&mut s, 20);
+    s.attack(0, &w, &mut e, false).unwrap();
+    assert!(s.inventory.get(0).unwrap().damage > 0);
+}
+
+#[test]
+fn the_item_swap_scale_restarts_with_attacks_misses_and_item_changes() {
+    // Java `getItemSwapScale`: itemSwapTicker over the current attack delay.
+    let (w, mut s, mut e) = scene(6.0);
+    s.tick_attack_strength(0);
+    charge(&mut s, 30);
+    assert_eq!(s.item_swap_scale(0, 1.0), 1.0);
+    s.attack(0, &w, &mut e, false).unwrap();
+    assert_eq!(s.item_swap_scale(0, 0.0), 0.0, "an attack lowers the hand");
+    charge(&mut s, 6);
+    let delay = mining::attack_strength_delay(Some(Item::tool(ToolKind::Sword, Tier::Diamond)));
+    assert!((s.item_swap_scale(0, 0.5) - 6.5 / delay).abs() < 1e-6);
+    s.inventory.slots[0] = Some(Stack::new(Item::STICK, 1));
+    s.tick_attack_strength(0);
+    assert!(s.item_swap_scale(0, 0.0) < 0.3, "changing the held item restarts it");
 }

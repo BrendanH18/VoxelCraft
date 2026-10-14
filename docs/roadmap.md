@@ -363,7 +363,7 @@ Right-click use is one shared session chain for the desktop and CLI
 desktop's entity, door, harvest, flint and tool uses, and riders can use items.
 Controller and LAN players no longer borrow the host's state (`Game::puppet` is
 removed); hands and container clicks run on each player's own session.
-PLY-04 remains **Partial**; effect attack-speed modifiers, Conduit Power and
+PLY-04 remains **Partial**; Conduit Power and
 beacons, server destroy tolerance, a headless desktop-adapter harness and
 remaining cancel-on-item-change sites (pick-block, drop) stay open.
 
@@ -794,3 +794,35 @@ splash potions, fireballs and bobbers with the Java 26.3 touch column.
 The missing bobber contact and orb/potion box errors are corrected.
 Automated evidence is in the redstone tests; ordinary-player and performance
 acceptance remain open. See [redstone](redstone.md) for scope and reference.
+
+Player defect follow-up (2026-10-13): Creative armor use now follows Java
+26.3 copying/swapping and Binding rules, covered through the shared action.
+Implemented, unverified; no ordinary-player acceptance.
+
+Player combat defect follow-up (2026-10-13): critical eligibility reads tracked
+fall distance in shared melee and LAN PvP, with Java 26.3 bytecode fixtures and
+regression cases. Implemented, unverified; ordinary-player acceptance remains.
+
+Combat charge and its indicator now include Java 26.3 Haste/Mining Fatigue
+attack-speed modifiers. No reference enchantment changes attack speed.
+
+The Java minimum-attack-charge gate is present; all registered items have zero
+minimum. Its only nonzero reference users are the unregistered spears.
+
+Blindness now persists by Java ID and blocks sprinting/criticals across input
+paths, with an appended icon and per-view fog. Ordinary visual acceptance is open.
+
+Player and combat defects (2026-10-13, w2): all implemented and unverified; no
+ordinary-player acceptance. Monster spawn gear scales by local difficulty;
+splash potions add every effect to mobs and effects keep hidden lower instances;
+witches pick potions from the target and drink as Java does; golden apples are
+always edible, Creative eats without using food up, and pufferfish, rotten flesh,
+raw chicken and golden apples give Java's effects (new Nausea, Luck and Bad Luck
+effects have icons only); world-spawn respawns use Java's `PlayerSpawnFinder`;
+the death fall counts from the fatal tick; the fishing hook snags mobs and reads
+luck and biome at the reel; bow and crossbow arm poses exist. Gaps found: no
+Absorption (golden apple), no held spawn weapons for mobs, no abandoned camp,
+copper horse armor, spears or armor equip sounds (so copper gear has no loot or
+equip sound), no `@a`/`@r`/`@e`/`@n` selectors, no LAN jitter buffer, no
+Adventure-world default or world border in the spawn search, hooked item
+entities, and no automated controller-screen/bed/respawn harness.

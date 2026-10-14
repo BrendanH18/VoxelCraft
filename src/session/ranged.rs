@@ -124,6 +124,11 @@ impl PlayerSession {
         Some(self.shot(Ranged::ArrowShot { from: eye, power }, broken))
     }
 
+    /// Ticks the held bow or crossbow has been drawn, while drawing.
+    pub fn draw_ticks(&self) -> Option<u32> {
+        self.ranged.draw.map(|(_, ticks)| ticks)
+    }
+
     pub fn drawing(&self) -> bool {
         self.ranged.draw.is_some()
     }

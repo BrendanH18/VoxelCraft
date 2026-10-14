@@ -389,8 +389,7 @@ impl Agent {
                 if self.cooldown > 0.0 {
                     return Err("action cooling down".into());
                 }
-                let sprinting =
-                    self.movement_input().sprint && (self.creative || self.session.vitals.hunger.can_sprint());
+                let sprinting = self.movement_input().sprint && self.session.vitals.may_sprint(self.creative);
                 let outcome = self.session.attack(self.selected, world, entities, sprinting)?;
                 // Java has no attack cooldown; damage scales with the charge instead.
                 self.cooldown = TICK_SECONDS;
@@ -683,7 +682,7 @@ impl Agent {
             return;
         }
         let mut input = self.movement_input();
-        input.sprint &= self.creative || self.session.mode.invulnerable() || self.session.vitals.hunger.can_sprint();
+        input.sprint &= self.session.vitals.may_sprint(self.creative || self.session.mode.invulnerable());
         let before = self.session.player.pos;
         if self.session.player.vehicle.is_some()
             && input.descend

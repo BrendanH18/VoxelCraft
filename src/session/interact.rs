@@ -329,8 +329,9 @@ impl PlayerSession {
         if survival_items::throw_held(&self.player, &mut self.inventory, slot, creative, self.id, entities) {
             return Ok(Some(Used::ProjectileThrown { from: eye }));
         }
+        let luck = self.vitals.effects.luck();
         if let Some(broke) =
-            survival_items::use_rod(&self.player, &mut self.inventory, slot, creative, self.id, entities)
+            survival_items::use_rod(&self.player, &mut self.inventory, slot, creative, self.id, entities, world, luck)
         {
             return Ok(Some(Used::Rod { from: eye, broke }));
         }

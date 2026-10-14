@@ -417,23 +417,43 @@ def pvp(data):
             a.run(0.8)
             b.until(lambda s: s["self"]["health"] >= 20.0, why=f"Ben at full health ({b.last['self']})")
             start = b.me()["health"]
-            aim = a.aim_at(3.5, 152.0, 4.5)
-            a.control(*aim, buttons=8)
-            a.command("attack_down")
-            a.control(*aim)
-            a.command("attack_up")
-            a.run(0.8, *aim)
-            b.run(0.1)
-            after_sword = b.me()["health"]
+
+            def swing():
+                aim = a.aim_at(3.5, 152.0, 4.5)
+                a.control(*aim, buttons=8)
+                a.command("attack_down")
+                a.control(*aim)
+                a.command("attack_up")
+                a.run(0.8, *aim)
+                b.run(0.1)
+
+            def shoot():
+                aim = a.aim_at(3.5, 152.3, 4.5)
+                a.control(*aim, buttons=16)
+                a.command("use_down")
+                a.run(1.2, *aim, buttons=16)
+                a.command("use_up")
+                a.run(1.0, *aim)
+                b.run(0.1)
+
+            # A real player swings and shoots again after a miss (a spread arrow
+            # or an attack timed inside the cooldown), so allow a few tries
+            # when PvP is on; with it off every attempt must do nothing.
+            tries = 3 if enabled else 1
+            after_sword = start
+            for _ in range(tries):
+                swing()
+                after_sword = b.me()["health"]
+                if after_sword < start:
+                    break
+                a.run(1.0)
             a.selected = 1
-            aim = a.aim_at(3.5, 152.3, 4.5)
-            a.control(*aim, buttons=16)
-            a.command("use_down")
-            a.run(1.2, *aim, buttons=16)
-            a.command("use_up")
-            a.run(1.0, *aim)
-            b.run(0.1)
-            after_bow = b.me()["health"]
+            after_bow = after_sword
+            for _ in range(tries):
+                shoot()
+                after_bow = b.me()["health"]
+                if after_bow < after_sword:
+                    break
             if enabled:
                 check("PvP on: sword and bow hurt another player", start > after_sword > after_bow,
                       f"{start} -> {after_sword:.1f} -> {after_bow:.1f}")

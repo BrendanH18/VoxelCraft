@@ -4,11 +4,14 @@
 //! it. Reeling during the bite rolls Java 26.3's `gameplay/fishing` loot
 //! table ([`crate::content::fishing`]): junk, fish, and treasure in open water.
 //!
-//! The bob itself is a simplified spring, and the hook does not snag mobs.
+//! The hook bobs on Java's per-tick spring against the fluid surface and snags
+//! the first mob it touches, which reeling drags toward the player.
+//! Luck and the jungle biome are read when the line is reeled, as in Java.
 
 use glam::{DVec3, IVec3};
 
-use super::{Ctx, MobWorld, PlayerId, Rng};
+use super::mob_index::MobIndex;
+use super::{Ctx, Mob, MobWorld, PlayerId, Rng};
 use crate::content::fishing::{self, Condition, Entry, Loot};
 use crate::enchant::JavaRandom;
 use crate::inventory::Stack;
@@ -18,6 +21,8 @@ use crate::world::block::Block;
 enum State {
     Flying,
     Bobbing,
+    /// Snagged on a mob (Java's `HOOKED_IN_ENTITY`).
+    Hooked,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -36,12 +41,11 @@ pub struct Bobber {
     nibble: i32,
     pub biting: bool,
     open_water: bool,
-    /// The biome under the hook was a jungle when the fish bit (the junk
-    /// table's bamboo `location_check`).
-    jungle: bool,
     out_of_water: i32,
     lure: i32,
     luck: i32,
+    /// The `uid` of the mob the hook is snagged on.
+    hooked: Option<u32>,
 }
 
 /// What reeling a bobber does to the rod and what it brings back.
@@ -80,14 +84,22 @@ impl Bobber {
             nibble: 0,
             biting: false,
             open_water: true,
-            jungle: false,
             out_of_water: 0,
             lure: i32::from(lure),
             luck: i32::from(luck),
+            hooked: None,
         }
     }
 
-    pub(super) fn update<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, rng: &mut Rng, ctx: &Ctx) -> bool {
+    pub(super) fn update<W: MobWorld + ?Sized>(
+        &mut self,
+        dt: f64,
+        world: &W,
+        rng: &mut Rng,
+        ctx: &Ctx,
+        mobs: &[Mob],
+        index: &MobIndex,
+    ) -> bool {
         let owner = ctx.players.iter().find(|p| p.id == self.owner && p.alive);
         if owner.is_none_or(|p| p.pos.distance_squared(self.pos) > 1024.0) || self.pos.y < -64.0 {
             return false;
@@ -99,13 +111,14 @@ impl Bobber {
             }
         }
         match self.state {
-            State::Flying => self.fly(dt, world),
+            State::Flying => self.fly(dt, world, mobs, index),
             State::Bobbing => self.bob(dt, world, rng),
+            State::Hooked => self.follow(mobs),
         }
         true
     }
 
-    fn fly<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W) {
+    fn fly<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, mobs: &[Mob], index: &MobIndex) {
         let ticks = dt * 20.0;
         self.vel.y -= 12.0 * dt;
         self.vel *= 0.92_f64.powf(ticks);
@@ -114,6 +127,13 @@ impl Bobber {
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             let cell = next.floor().as_ivec3();
+            if let Some(mob) = self.snagged(next, mobs, index) {
+                self.hooked = Some(mob.uid);
+                self.vel = DVec3::ZERO;
+                self.state = State::Hooked;
+                self.follow(mobs);
+                return;
+            }
             if world.block(cell).is_some_and(|b| b.holds_water()) {
                 self.vel.x *= 0.3;
                 self.vel.y *= 0.2;
@@ -132,33 +152,73 @@ impl Bobber {
         }
     }
 
-    fn bob<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, rng: &mut Rng) {
-        let ticks = dt * 20.0;
-        let cell = self.pos.floor().as_ivec3();
-        let in_water = world.block(cell).is_some_and(|b| b.holds_water());
-        if in_water {
-            self.out_of_water = (self.out_of_water - 1).max(0);
-            let surface = cell.y as f64 + 0.85;
-            let mut gap = self.pos.y - surface;
-            if gap.abs() < 0.01 {
-                gap += gap.signum() * 0.1;
+    /// Java's `onHitEntity`: the first living mob whose box, widened by the
+    /// 0.3 projectile margin, holds the hook.
+    fn snagged<'a>(&self, at: DVec3, mobs: &'a [Mob], index: &MobIndex) -> Option<&'a Mob> {
+        let mut hit: Option<usize> = None;
+        index.visit(at - DVec3::Y * 2.0, 4.0, |i| {
+            let m = &mobs[i];
+            let (min, max) = m.aabb();
+            if m.alive()
+                && m.uid != 0
+                && at.cmpge(min - 0.3).all()
+                && at.cmple(max + 0.3).all()
+                && hit.is_none_or(|j| i < j)
+            {
+                hit = Some(i);
             }
-            self.vel.y -= gap * 0.2;
-            self.vel.x *= 0.9_f64.powf(ticks);
-            self.vel.z *= 0.9_f64.powf(ticks);
-            self.tick_acc += dt as f32 * 20.0;
-            let mut steps = 0;
-            while self.tick_acc >= 1.0 && steps < 40 {
-                self.tick_acc -= 1.0;
-                self.tick_bite(world, cell, rng);
-                steps += 1;
+        });
+        hit.map(|i| &mobs[i])
+    }
+
+    /// Hooked: ride the mob at 80% of its height, or fall free if it is gone.
+    fn follow(&mut self, mobs: &[Mob]) {
+        match self.hooked.and_then(|uid| mobs.iter().find(|m| m.uid == uid && m.alive())) {
+            Some(mob) => {
+                let (min, max) = mob.aabb();
+                self.pos = DVec3::new(mob.pos.x, min.y + (max.y - min.y) * 0.8, mob.pos.z);
             }
-        } else {
-            self.out_of_water = (self.out_of_water + 1).min(10);
-            self.vel.y -= 12.0 * dt;
+            None => {
+                self.hooked = None;
+                self.state = State::Flying;
+            }
         }
-        self.vel *= 0.92_f64.powf(ticks);
-        self.pos += self.vel * dt;
+    }
+
+    /// Java's `FishingHook.tick` while bobbing, once per game tick: a spring
+    /// toward the fluid surface weighted by a random factor, 0.9 sideways drag,
+    /// a dip while a fish bites, gravity out of the water and 0.92 drag. The
+    /// velocity is kept in blocks a second.
+    fn bob<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, rng: &mut Rng) {
+        self.tick_acc += dt as f32 * 20.0;
+        let mut steps = 0;
+        while self.tick_acc >= 1.0 && steps < 40 {
+            self.tick_acc -= 1.0;
+            steps += 1;
+            let cell = self.pos.floor().as_ivec3();
+            let in_water = world.block(cell).is_some_and(|b| b.holds_water());
+            let mut vy = self.vel.y / 20.0;
+            if in_water {
+                self.out_of_water = (self.out_of_water - 1).max(0);
+                let mut gap = self.pos.y + vy - f64::from(cell.y) - water_height(world, cell);
+                if gap.abs() < 0.01 {
+                    gap += gap.signum() * 0.1;
+                }
+                self.vel.x *= 0.9;
+                self.vel.z *= 0.9;
+                vy -= gap * f64::from(rng.next_f32()) * 0.2;
+                if self.biting {
+                    vy -= 0.1 * f64::from(rng.next_f32()) * f64::from(rng.next_f32());
+                }
+                self.tick_bite(world, cell, rng);
+            } else {
+                self.out_of_water = (self.out_of_water + 1).min(10);
+                vy -= 0.03;
+            }
+            self.vel.y = vy * 20.0;
+            self.pos += self.vel / 20.0;
+            self.vel *= 0.92;
+        }
     }
 
     /// One Java tick of [`FishingHook.catchingFish`].
@@ -183,7 +243,6 @@ impl Bobber {
             if self.time_until_hooked <= 0 {
                 self.nibble = 20 + (rng.next_f32() * 21.0) as i32;
                 self.biting = true;
-                self.jungle = world.cave_biome(cell).is_jungle();
             }
         } else if self.time_until_lured > 0 {
             self.time_until_lured -= step;
@@ -201,13 +260,19 @@ impl Bobber {
     }
 
     /// Reel in. A bite returns loot; sitting on the ground wears the rod for two.
-    pub fn retrieve(&self, rng: &mut Rng) -> Retrieve {
+    /// `owner_luck` is the player's Luck attribute (Java adds it to the rod's
+    /// Luck of the Sea) and `jungle` whether the hook's biome is a jungle now,
+    /// as the loot table's `location_check` reads it at the reel.
+    pub fn retrieve(&self, rng: &mut Rng, owner_luck: i32, jungle: bool) -> Retrieve {
         let mut wear = 0;
         let mut catch = None;
         let mut xp = 0;
-        if self.biting {
+        if self.hooked.is_some() {
+            // Java: a snagged entity costs five uses and is pulled in (no loot).
+            wear = 5;
+        } else if self.biting {
             wear = 1;
-            catch = roll_catch(rng, self.luck, CatchContext { open_water: self.open_water, jungle: self.jungle });
+            catch = roll_catch(rng, self.luck + owner_luck, CatchContext { open_water: self.open_water, jungle });
             xp = 1 + (rng.next_f32() * 6.0) as u32;
         }
         if self.on_ground {
@@ -215,6 +280,20 @@ impl Bobber {
         }
         Retrieve { wear, catch, xp }
     }
+
+    /// The mob the hook is snagged on, which reeling drags toward the player.
+    pub fn hooked_mob(&self) -> Option<u32> {
+        self.hooked
+    }
+}
+
+/// Java's `FluidState.getHeight`: a full block under more water, otherwise
+/// the fluid amount over nine (8/9 for a source).
+fn water_height<W: MobWorld + ?Sized>(world: &W, cell: IVec3) -> f64 {
+    if world.block(cell + IVec3::Y).is_some_and(|b| b.is_water()) {
+        return 1.0;
+    }
+    world.block(cell).and_then(|b| b.water_level()).map_or(0.0, |level| f64::from(8 - level.min(7)) / 9.0)
 }
 
 fn triangle(rng: &mut Rng, mean: f64, scale: f64) -> f64 {
@@ -420,7 +499,7 @@ mod tests {
             Bobber::cast(PlayerId::HOST, DVec3::new(0.5, 4.0, 0.5), DVec3::new(0.0, -1.0, 0.0), 0, 0, &mut rng);
         let ctx = host_ctx();
         for _ in 0..40 {
-            assert!(bobber.update(1.0 / 20.0, &world, &mut rng, &ctx));
+            assert!(bobber.update(1.0 / 20.0, &world, &mut rng, &ctx, &[], &MobIndex::default()));
         }
         assert_eq!(bobber.state, State::Bobbing, "pos {:?}", bobber.pos);
         assert!(open_water(&world, IVec3::new(0, 1, 0)));
@@ -465,40 +544,63 @@ mod tests {
         assert_eq!(set_damage(1.0, 64), 0);
     }
 
+    /// Java's spring keeps the hook riding the water surface (8/9 of the cell),
+    /// jittering by its random weight, and dips while a fish bites.
     #[test]
-    fn a_bite_records_whether_the_hook_is_in_a_jungle() {
-        struct Jungle(Pond);
-        impl BlockSource for Jungle {
-            fn block(&self, p: IVec3) -> Option<Block> {
-                self.0.block(p)
+    fn the_hook_bobs_around_the_water_surface() {
+        let world = pond();
+        let mut rng = Rng::new(8);
+        let mut bobber = Bobber::cast(PlayerId::HOST, DVec3::new(0.5, 1.5, 0.5), DVec3::NEG_Y, 0, 0, &mut rng);
+        bobber.state = State::Bobbing;
+        bobber.vel = DVec3::new(0.0, -2.0, 0.0);
+        let ctx = host_ctx();
+        let mut heights = Vec::new();
+        for tick in 0..400 {
+            assert!(bobber.update(0.05, &world, &mut rng, &ctx, &[], &MobIndex::default()));
+            if tick >= 100 && !bobber.biting {
+                heights.push(bobber.pos.y);
             }
         }
-        impl MobWorld for Jungle {
-            fn loaded(&self, p: IVec3) -> bool {
-                self.0.loaded(p)
-            }
-            fn surface(&self, x: i32, z: i32) -> Option<i32> {
-                self.0.surface(x, z)
-            }
-            fn exposed(&self, p: IVec3) -> bool {
-                self.0.exposed(p)
-            }
-            fn biome(&self, _: i32, _: i32) -> crate::world::terrain::Biome {
-                crate::world::terrain::Biome::BambooJungle
-            }
-        }
-        for (jungle, expected) in [(false, false), (true, true)] {
-            let mut rng = Rng::new(5);
-            let mut bobber = Bobber::cast(PlayerId::HOST, DVec3::new(0.5, 1.2, 0.5), DVec3::Y, 0, 0, &mut rng);
-            bobber.state = State::Bobbing;
-            bobber.time_until_hooked = 1;
-            if jungle {
-                bobber.tick_bite(&Jungle(pond()), IVec3::new(0, 1, 0), &mut rng);
-            } else {
-                bobber.tick_bite(&pond(), IVec3::new(0, 1, 0), &mut rng);
-            }
-            assert!(bobber.biting);
-            assert_eq!(bobber.jungle, expected);
-        }
+        let mean = heights.iter().sum::<f64>() / heights.len() as f64;
+        assert!((mean - (1.0 + 8.0 / 9.0)).abs() < 0.15, "rides the surface at {mean}");
+        assert!(heights.iter().all(|y| (1.4..2.2).contains(y)), "bounded bob");
+    }
+
+    #[test]
+    fn luck_and_the_jungle_biome_are_read_when_the_line_is_reeled() {
+        let mut rng = Rng::new(5);
+        let mut bobber = Bobber::cast(PlayerId::HOST, DVec3::new(0.5, 1.2, 0.5), DVec3::Y, 0, 0, &mut rng);
+        bobber.biting = true;
+        bobber.open_water = true;
+        let junk_bamboo = |jungle: bool, luck: i32| {
+            let mut rng = Rng::new(21);
+            (0..6000)
+                .filter(|_| {
+                    bobber
+                        .retrieve(&mut rng, luck, jungle)
+                        .catch
+                        .is_some_and(|s| s.item == Item::from_block(crate::world::overworld_blocks::BAMBOO))
+                })
+                .count()
+        };
+        assert_eq!(junk_bamboo(false, 0), 0);
+        assert!(junk_bamboo(true, 0) > 0);
+        // Bad Luck (-1 per level) shifts weight from treasure to junk; Luck does the opposite.
+        let treasure = |luck: i32| {
+            let mut rng = Rng::new(22);
+            (0..6000)
+                .filter(|_| {
+                    let catch = bobber.retrieve(&mut rng, luck, false).catch.unwrap();
+                    fishing::TREASURE.iter().any(|e| e.value.item == catch.item)
+                })
+                .count()
+        };
+        assert!(
+            treasure(2) > treasure(0) && treasure(0) > treasure(-2),
+            "{} {} {}",
+            treasure(2),
+            treasure(0),
+            treasure(-2)
+        );
     }
 }

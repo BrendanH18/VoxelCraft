@@ -16,7 +16,7 @@ pub fn equip_armor(
     mode: crate::rules::GameMode,
     world: &World,
 ) -> bool {
-    if !mode.is_survival() || inventory.get(slot).is_none_or(|s| s.item.as_armor().is_none()) {
+    if !mode.can_interact() || inventory.get(slot).is_none_or(|s| s.item.as_armor().is_none()) {
         return false;
     }
     // Only a block the player could actually use (Java's block interaction
@@ -28,7 +28,7 @@ pub fn equip_armor(
     {
         return false;
     }
-    inventory.equip(slot)
+    inventory.equip_in_mode(slot, mode.is_creative())
 }
 
 /// Fence knots, leads, name tags and animal feeding/taming/sitting under the crosshair.
@@ -121,6 +121,7 @@ pub fn use_mob(
 
 /// Casts or reels a fishing rod. `Some` means the rod was used; the bool is
 /// whether that use broke it.
+#[allow(clippy::too_many_arguments)]
 pub fn use_rod(
     player: &Player,
     inventory: &mut Inventory,
@@ -128,13 +129,15 @@ pub fn use_rod(
     creative: bool,
     owner: PlayerId,
     entities: &mut Entities,
+    world: &crate::world::World,
+    owner_luck: i32,
 ) -> Option<bool> {
     let held = inventory.get(slot)?;
     if held.item != Item::FISHING_ROD {
         return None;
     }
     if entities.has_bobber(owner) {
-        let wear = entities.reel(owner, player.pos).unwrap_or(0);
+        let wear = entities.reel(owner, player.pos, owner_luck, world).unwrap_or(0);
         let broke = !creative && inventory.wear(slot, wear);
         return Some(broke);
     }

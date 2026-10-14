@@ -24,15 +24,23 @@ still allocates its player/view lists.
 
 Known approximations: body yaw follows view yaw with Java-style smoothing
 and an 85-degree head limit, rather than LivingEntity's full movement/
-attack-dependent body control. Item use raises the right arm; specialized
-bow/crossbow, offhand and left-handed poses are not yet represented.
+attack-dependent body control. Item use raises the right arm. A drawn bow, a crossbow
+being loaded and a loaded crossbow use Java's `ArmPose` angles (`Aim` in
+`player_model.rs`, from the session's draw ticks; the client model source is not
+in the server reference jar, so the constants follow the documented client
+behavior). Only the held crossbow was captured in a front-camera screenshot, with
+both arms converging in front of the chest; the drawing states are checked by pose
+tests only, and other LAN peers do not replicate the draw state. Offhand and
+left-handed poses are not represented.
 Held shaped blocks use a cube and flat items a thin textured box rather
 than the resource-pack display transforms and full silhouette extrusion.
-Death time currently derives from Vitals.since_damage; fatal hits during
-an existing immunity window can start partway into the fall. Sprint-swim, forced crawl (swim hitbox on land), and Java 1.14+ crouch
+Death time is `Vitals::death_time`, counted from the fatal tick as Java's
+`deathTime` is (it used to derive from the last hit, so a fatal hit during an
+immunity window started the fall partway in). Sprint-swim, forced crawl (swim hitbox on land), and Java 1.14+ crouch
 hitbox/eye height are shared via `entity/player_pose.rs` and drive physics,
-camera bob suppression and HumanoidModel-style swimAmount animation. Riding
-and elytra poses remain separate roadmap work.
+camera bob suppression and HumanoidModel-style swimAmount animation. The riding
+pose (seated legs, forward-leaning arms) exists; elytra poses remain separate
+roadmap work.
 
 Reference client source (decompiled Java; these model/camera constants are
 stable across the modern Java humanoid renderer):
@@ -74,10 +82,12 @@ Walking bob uses GameRenderer.bobView's phase
 `sin(phase)*bob*3` degrees and X rotation
 `abs(cos(phase-0.2)*bob)*5` degrees. walkDist advances by horizontal
 movement *0.6. Bob strength approaches a target capped at 0.1 with 0.4
-smoothing per 20 Hz tick, decaying in flight/air. The target uses actual
-horizontal displacement per tick rather than Java's velocity (the engine's
-velocity has different physics units); swimming suppression awaits the
-separate swimming pose work.
+smoothing per 20 Hz tick, decaying in flight/air. Java bobs toward
+`min(0.1, |deltaMovement|)`, the velocity left after a ground tick's 0.6 x 0.91
+friction; the engine's velocity has different physics units, so the target is
+the per-tick displacement scaled by that 0.546 (other block frictions, such as
+ice, are not distinguished). Swimming suppression is handled by the shared
+swimming pose.
 
 Hurt tilt uses a ten-tick interval and `-sin(remaining^4*pi)*14` degrees,
 conjugated by the damage-source yaw. Mob, projectile and explosion
@@ -89,7 +99,8 @@ uses Java's default 100%; a separate strength slider is not implemented.
 Each view supplies the combined hurt/bob matrix before its view rotation.
 The hand cancels and reapplies the same matrix around its FOV correction,
 so it bobs exactly once in its fixed 70-degree projection at all FOVs.
-Equip, attack and eating animation remain. View Bobbing is saved in options,
+The hand has swing, equip/dip (Java's item swap scale, including the attack
+cooldown) and eating animations. View Bobbing is saved in options,
 defaults on, and affects both world and hand; hurt tilt remains when it is
 off. The options layout contracts spacing to fit split-screen views.
 
@@ -103,8 +114,11 @@ overlay, and chainmail, iron, gold, diamond and netherite are generic
 panel patterns. Chainmail is rolled onto zombies and skeletons; it is not
 a player item. Netherite helmets, chestplates, leggings and boots use
 the same path. Enchanted pieces add a scrolling glint in the entity fragment
-shader. Monster equipment follows Java's feet-first 15% roll at regional
-difficulty 1, without held weapons or local-difficulty scaling.
+shader. Monster equipment follows Java's feet-first roll, scaled by the local
+difficulty (`DifficultyInstance` from the overworld clock and moon phase; chunk
+inhabited time is not tracked, so a fresh Normal world spawns plain mobs). Each
+worn piece is enchanted with probability `0.5 * special multiplier`. Mobs have
+no held-item slot, so spawn weapons and weapon enchantments are not modelled.
 
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/client/renderer/entity/layers/HumanoidArmorLayer.java
 

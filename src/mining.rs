@@ -195,10 +195,36 @@ pub fn attack_speed(held: Option<Item>) -> f64 {
     4.0 + f64::from(modifier as f32)
 }
 
+/// Attack speed with the player's effects: Haste and Mining Fatigue scale
+/// the attribute, which Java keeps within `0..=1024`.
+pub fn attack_speed_with(held: Option<Item>, effects: &crate::simulation::effects::Effects) -> f64 {
+    (attack_speed(held) * effects.attack_speed_factor()).clamp(0.0, 1024.0)
+}
+
 /// Ticks for a full attack-strength charge with `held` (Java's
 /// `getCurrentItemAttackStrengthDelay`, `1 / speed * 20` as a float).
 pub fn attack_strength_delay(held: Option<Item>) -> f32 {
     (1.0 / attack_speed(held) * 20.0) as f32
+}
+
+/// [`attack_strength_delay`] under the player's effects (a zero attack
+/// speed never finishes charging).
+pub fn attack_strength_delay_with(held: Option<Item>, effects: &crate::simulation::effects::Effects) -> f32 {
+    (1.0 / attack_speed_with(held, effects) * 20.0) as f32
+}
+
+/// Java's `minimum_attack_charge` item component: the charge an attack with
+/// the item needs before the server accepts it at all
+/// (`Player.cannotAttackWithItem`). In 26.3 only spears carry it (1.0), and
+/// spears are not registered, so every registered item accepts any charge.
+pub fn minimum_attack_charge(_held: Option<Item>) -> f32 {
+    0.0
+}
+
+/// Java's `Player.cannotAttackWithItem` arithmetic: a positive `minimum`
+/// refuses the attack while `(ticker + lead) / delay` is still below it.
+pub fn charge_refuses_attack(minimum: f32, ticker: u32, lead: u32, delay: f32) -> bool {
+    minimum > 0.0 && ticker.saturating_add(lead) as f32 / delay < minimum
 }
 
 /// Experience a harvested block drops (Java's ore ranges; silk touch

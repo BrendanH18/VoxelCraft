@@ -22,8 +22,12 @@ The transitional controller/LAN bridge swaps the entire session. Previously it
 swapped beds but left the host's command-set spawn point behind; a controller
 respawn could consequently use the host's point. Personal spawn selection now
 uses the current actor's session through the same helper in client and CLI.
-Existing world-spawn fallbacks remain in adapters; this is not a claim of full
-Java safe-standing-position or spawn-radius parity.
+World-spawn fallbacks remain in adapters, but since the v0.7 fixes they use
+`world::spawn_finder` (Java 26.3 `PlayerSpawnFinder`): a random start and fixed
+stride over the `spawnRadius` square, the first dry column with a full top face
+and room for the player, then Java's lift-and-drop fallback. The world border and
+an Adventure world default are not modelled, and bed stand-up positions are not
+searched, so this is not a claim of full Java respawn parity.
 
 Food/drink validation, fixed-tick progress, inventory exchange, hunger and
 effects now run through `PlayerSession::tick_consumption`. Requests validate
@@ -85,9 +89,13 @@ still swaps session, actions and presentation fields. Its removal is unfinished.
 Crafting-screen state also remains outside the core session.
 
 This extraction retains existing food/effect policies except the documented
-timing and death fixes. Always-edible food rules, complete food side effects
-(including all pufferfish effects), Creative food use and unregistered reference
-consumables still require separate fidelity work. It does not mark FOO-01 complete.
+timing and death fixes. Since the v0.7 fixes, golden apples are always edible,
+Creative players may eat anything without using the stack up (`Player.canEat`
+with the invulnerable ability), and pufferfish, rotten flesh, raw chicken and
+golden apples give Java's effects (new Nausea effect, icon only: no screen warp;
+Absorption is not implemented). Unregistered reference consumables (honey, chorus
+fruit, suspicious stew, enchanted golden apple) still require separate fidelity
+work. It does not mark FOO-01 complete.
 
 Physical keyboard/controller interaction, hand/audio review, cross-machine LAN,
 representative frame-time comparisons and full M5 1080p/native performance

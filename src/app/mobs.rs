@@ -98,6 +98,8 @@ impl Game {
     pub(super) fn update_mobs(&mut self, dt: f64) {
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
+        self.mobs.entities.clock_time =
+            self.day_count.saturating_mul(24_000) + (self.day_time * 24_000.0).round() as i64;
         // The world spawn (Java's respawn data) is an Overworld position.
         self.mobs.entities.world_spawn =
             (self.dimension == crate::world::terrain::Dimension::Overworld).then_some(self.world_spawn);
@@ -144,6 +146,8 @@ impl Game {
             gold_armor: crate::entity::nether::wears_gold(&self.session.inventory.armor),
             held_item: self.held_item(),
             on_ground: self.session.player.on_ground,
+            health: self.session.vitals.health,
+            effects: self.session.vitals.effects.mask(),
             in_water: self.session.player.in_water,
             ..Target::new(
                 PlayerId::HOST,

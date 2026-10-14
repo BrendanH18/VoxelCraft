@@ -160,8 +160,8 @@ enum was appended, and effects persist by string ID.
   - Spawn protection, `mayInteract`, `blockActionRestricted` and game-master
     blocks are not applicable or not registered.
 - **Effects:**
-  - Haste's attack-speed attribute modifier (+10% per level) is not applied.
-    Mining Fatigue's modifier is not applied either.
+  - Haste (+10% per level) and Mining Fatigue (-10%) now modify shared
+    attack speed; see the shared-combat defect follow-up.
   - Conduit Power is not registered.
   - No beacon is available to grant Haste.
 - **Block and tool details:**

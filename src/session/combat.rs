@@ -18,6 +18,9 @@ use glam::{DVec3, IVec3};
 #[derive(Default)]
 pub(super) struct State {
     ticker: u32,
+    /// Java's `itemSwapTicker`: the client-side count the first-person hand
+    /// lowers by; it restarts with the charge (attack, miss, item change).
+    swap_ticker: u32,
     last_held: Option<Item>,
 }
 
@@ -67,16 +70,36 @@ impl PlayerSession {
     pub fn tick_attack_strength(&mut self, slot: usize) {
         let held = self.inventory.get(slot).map(|s| s.item);
         self.combat.ticker = self.combat.ticker.saturating_add(1);
+        self.combat.swap_ticker = self.combat.swap_ticker.saturating_add(1);
         if held != self.combat.last_held {
             self.combat.ticker = 0;
+            self.combat.swap_ticker = 0;
             self.combat.last_held = held;
         }
     }
 
+    /// Java's `getCurrentItemAttackStrengthDelay` for the item in `slot`,
+    /// including Haste and Mining Fatigue.
+    pub fn attack_strength_delay(&self, slot: usize) -> f32 {
+        mining::attack_strength_delay_with(self.inventory.get(slot).map(|s| s.item), &self.vitals.effects)
+    }
+
     /// Java's `getAttackStrengthScale(partial)` for the item in `slot`.
     pub fn attack_strength(&self, slot: usize, partial: f32) -> f32 {
-        let held = self.inventory.get(slot).map(|s| s.item);
-        ((self.combat.ticker as f32 + partial) / mining::attack_strength_delay(held)).clamp(0.0, 1.0)
+        ((self.combat.ticker as f32 + partial) / self.attack_strength_delay(slot)).clamp(0.0, 1.0)
+    }
+
+    /// Java's `getItemSwapScale(partial)`: how far the first-person hand has
+    /// risen again since the last attack, miss or item change.
+    pub fn item_swap_scale(&self, slot: usize, partial: f32) -> f32 {
+        ((self.combat.swap_ticker as f32 + partial) / self.attack_strength_delay(slot)).clamp(0.0, 1.0)
+    }
+
+    /// Java's `cannotAttackWithItem(stack, lead)`: an item with a minimum
+    /// attack charge refuses attacks until the charge, `lead` ticks ahead, reaches it.
+    pub fn cannot_attack_with(&self, slot: usize, lead: u32) -> bool {
+        let minimum = mining::minimum_attack_charge(self.inventory.get(slot).map(|s| s.item));
+        mining::charge_refuses_attack(minimum, self.combat.ticker, lead, self.attack_strength_delay(slot))
     }
 
     /// Java's crosshair attack indicator: a filling bar while the charge is
@@ -84,8 +107,7 @@ impl PlayerSession {
     /// fully charged weapon slower than 5 ticks. `None` when neither shows.
     pub fn attack_indicator(&self, slot: usize, aiming_at_living: bool) -> Option<AttackIndicator> {
         let scale = self.attack_strength(slot, 0.0);
-        let held = self.inventory.get(slot).map(|s| s.item);
-        if aiming_at_living && scale >= 1.0 && mining::attack_strength_delay(held) > 5.0 {
+        if aiming_at_living && scale >= 1.0 && self.attack_strength_delay(slot) > 5.0 {
             Some(AttackIndicator::Full)
         } else if scale < 1.0 {
             Some(AttackIndicator::Charging(scale))
@@ -94,9 +116,26 @@ impl PlayerSession {
         }
     }
 
+    /// Java's `Player.canCriticalAttack`: the player has fallen some distance
+    /// since the ground (`fallDistance > 0`, which Water, ladders, flight and
+    /// Slow Falling clear), is airborne, not riding, not sprinting
+    /// and hits a living target. The charge check is the caller's.
+    pub fn can_critical_attack(&self, living: bool, sprinting: bool) -> bool {
+        let p = &self.player;
+        self.vitals.fall_distance(p.pos.y) > 0.0
+            && !p.on_ground
+            && !p.climbing
+            && !p.in_water
+            && !self.vitals.effects.mobility_restricted()
+            && p.vehicle.is_none()
+            && living
+            && !sprinting
+    }
+
     /// Restart the charge, as an attack or a swing at nothing does.
     pub fn reset_attack_strength(&mut self) {
         self.combat.ticker = 0;
+        self.combat.swap_ticker = 0;
     }
 
     /// Melee whatever is under the crosshair within entity reach and in front
@@ -120,6 +159,10 @@ impl PlayerSession {
         let stack = self.inventory.get(slot);
         if stack.is_some_and(|s| s.count == 0 || s.count > s.item.max_stack()) {
             return Err("invalid held stack");
+        }
+        // The server refuses attacks with an item that needs a minimum charge.
+        if self.cannot_attack_with(slot, 5) {
+            return Err("the held item is not charged enough to attack");
         }
         let held = stack.map(|s| s.item);
         let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
@@ -151,9 +194,8 @@ impl PlayerSession {
         let strong = strength > 0.9;
         let sprint_knockback = sprinting && strong;
         let p = &self.player;
-        let falling = !p.on_ground && p.vel.y < 0.0 && !p.flying;
         let living = matches!(target, Target::Mob(_));
-        let critical = strong && falling && !p.climbing && !p.in_water && p.vehicle.is_none() && living && !sprinting;
+        let critical = strong && self.can_critical_attack(living, sprinting);
         // Java compares last-tick horizontal movement with 2.5x movement speed (0.1).
         let slow = (p.vel.with_y(0.0) / 20.0).length_squared() < (0.1f64 * 2.5).powi(2);
         let sword = held.and_then(Item::as_tool).is_some_and(|(k, _)| k == ToolKind::Sword);
@@ -168,6 +210,9 @@ impl PlayerSession {
 
         let mut killed = None;
         let mut landed = true;
+        // Java `itemAttackInteraction` wears the weapon only against a
+        // LivingEntity (a dragon part counts as its dragon), never a crystal or cart.
+        let mut living_hit = false;
         let at = match target {
             Target::FenceKnot => {
                 let knot = crate::survival_items::knot_target(&self.player, world, entities, reach);
@@ -185,6 +230,7 @@ impl PlayerSession {
             }
             Target::Fight => {
                 let (hit, t) = entities.fight_raycast(eye, dir, reach).ok_or("target vanished")?;
+                living_hit = matches!(hit, crate::entity::dragon::Hit::Dragon(_));
                 landed = entities.strike(hit, base + other, self.id);
                 if landed && other > 0.0 {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::MagicCrit, eye + dir * t, 16);
@@ -205,16 +251,18 @@ impl PlayerSession {
                     owner: self.id,
                 };
                 killed = entities.player_melee(i, dir, hit);
+                living_hit = true;
                 at
             }
         };
         let mut tool_broken = None;
         if landed && self.mode.is_survival() {
-            if matches!(target, Target::Mob(_) | Target::Fight | Target::Fireball) {
+            // A fireball is only deflected (Java returns before exhaustion).
+            if matches!(target, Target::Mob(_) | Target::Fight | Target::Cart) {
                 self.vitals.hunger.exhaust(survival::EXHAUST_ATTACK);
             }
             if let Some(item) = held
-                && target != Target::FenceKnot
+                && living_hit
                 && self.inventory.wear(slot, mining::wear(item, true))
             {
                 tool_broken = Some(item);

@@ -13,7 +13,7 @@ committed.
 | 1 | Pale oak grew from one sapling; bone meal was always consumed on saplings | `TreeGrower.<clinit>`: `PALE_OAK` has only `TreeFeatures.PALE_OAK_BONEMEAL` as its mega feature (like `DARK_OAK`). `TreeGrower.canGrow` returns `findTwoByTwoSaplingPos(...).isPresent()` when there is no single-tree feature; `SaplingBlock.isValidBonemealTarget` uses it | `src/world/growth.rs`: dark and pale oak require a 2x2; bone meal on a lone one returns unused. A duplicate overworld sapling arm in `src/world/overworld_flora.rs` was removed so every sapling uses the shared check |
 | 2 | 2x2 search order | `findTwoByTwoSaplingPos`: outer x from 0 to -1, inner z from 0 to -1 → (0,0), (0,-1), (-1,0), (-1,-1) | Same order in `World::two_by_two_corner` |
 | 3 | Closed water caught only junk | `gameplay/fishing.json`: junk 10/q-2, treasure 5/q2 with `in_open_water`, fish 85/q-1; only treasure is conditioned. `LootPool.addRandomItem` keeps entries with positive weight, takes a lone entry without a roll, returns nothing when total is 0 | `src/entity/bobber.rs` rolls the typed tables with that algorithm |
-| 4 | Junk table incomplete; wrong rod damage | `fishing/junk.json` (13 entries incl. lily pad 17, ink sac ×10, tripwire hook, jungle-only bamboo). `SetItemDamageFunction.run`: `setDamageValue(floor((1 - clamp(value + 0, 0, 1)) * max))` | `src/content/fishing.rs` typed rows; damage via `set_damage`. The bobber records whether its biome (including cave biomes) is a jungle when the fish bites |
+| 4 | Junk table incomplete; wrong rod damage | `fishing/junk.json` (13 entries incl. lily pad 17, ink sac ×10, tripwire hook, jungle-only bamboo). `SetItemDamageFunction.run`: `setDamageValue(floor((1 - clamp(value + 0, 0, 1)) * max))` | `src/content/fishing.rs` typed rows; damage via `set_damage`. The bobber reads whether its biome (including cave biomes) is a jungle when the line is reeled |
 | 5 | Treasure enchantment ignored levels and curses | `fishing/treasure.json`: bow/rod `set_damage` 0–0.25 then `enchant_with_levels` 30, book `enchant_with_levels` 30, options `#on_random_loot` (non-treasure + both curses, frost walker, mending). `EnchantmentHelper.enchantItem` applies every `selectEnchantment` pick and turns a book into an enchanted book | `enchant::enchant_with_levels` reuses the existing Java `selectEnchantment` port with a random-loot option set |
 | 6 | Sponge skipped waterlogged blocks; wet sponges dried on neighbour change | `SpongeBlock.lambda$removeWaterBreadthFirstSearch$1`: water fluid required; `BucketPickup.pickupBlock` non-empty → ACCEPT; else `LiquidBlock` → air; kelp/seagrass → drop + air. `WetSpongeBlock.onPlace` only | `src/world/sponge.rs`: live coral plants/fans drain, count and continue the search; wet sponges dry only when placed in the Nether |
 | 7 | Armor equip blocked by usable blocks 6 blocks away | Block interaction range 4.5 (Creative 5.0), as recorded in `mining.json` | `equip_armor` uses `GameMode::block_reach`, shared with `PlayerSession::block_reach` |
@@ -41,7 +41,8 @@ committed.
 - `tests/process_persistence.rs`: the writer process spawns `lock_probe_worker`
   as a separate process while holding the lock; it must observe `WouldBlock`.
 - `src/entity/bobber.rs` unit tests: fish obtainable, closed water yields fish
-  but never treasure, `set_damage` endpoints, jungle flag recorded at the bite.
+  but never treasure, `set_damage` endpoints, luck and the jungle biome read at the reel;
+  the hook bobs and snags mobs (`a_hook_snags_a_mob_and_reeling_pulls_it_toward_the_player`).
 
 Each new regression would fail on `ab568fc` (lone-pale-oak growth, (-1,-1)
 corner, junk-only closed water, sponge stopping at coral, Nether drying on
@@ -57,10 +58,11 @@ with `--no-default-features`.
   shares and ranges match but individual rolls do not. The enchantment
   candidate order follows VoxelCraft's enum order rather than tag order, which
   changes which roll maps to which pick but not the distribution.
-- Fishing luck is the Luck of the Sea level only; the player `luck` attribute
-  (Luck/Unluck effects) is not added.
-- The bamboo condition uses the biome at the hook when the fish bites, not
-  when the line is reeled.
+- Since the v0.7 fixes the reel adds the player's Luck attribute (the new Luck
+  and Bad Luck effects, ±1 per level; ids `luck`/`unluck`) to Luck of the Sea and
+  reads the hook's biome for the bamboo `location_check` at the reel, as Java's
+  loot context does. Both effects are appended to the effect registry and icon
+  array; they have no other gameplay yet (chest loot ignores the attribute).
 - Sea pickles are `BucketPickup` in Java but have no unwaterlogged state here,
   so the sponge still stops at them. Drained live coral becomes dead coral at
   once unless water still touches it. In Java it stays live but dry and dies
@@ -68,8 +70,10 @@ with `--no-default-features`.
 - Saplings have no `stage` property: one successful bone meal grows the tree,
   where Java first advances stage 0→1. Spruce and jungle 2x2 mega trees are
   not implemented.
-- Creative players still cannot equip armor by use (an existing rule outside
-  this change).
+- Creative armor use is fixed in this branch: empty slots receive a copy,
+  occupied slots return their old piece, and Binding is bypassed only in
+  Creative (`Equippable.swapWithEquipmentSlot`, pinned 26.3 bytecode).
+  A shared-action regression covers copying, swapping, Binding and Spectator.
 - No ordinary-player playtest or performance measurement was run for these
   fixes; none of them is marked Verified.
 

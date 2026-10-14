@@ -1346,7 +1346,7 @@ impl Game {
                 descend: held(KeyCode::ShiftLeft),
                 // Too hungry to sprint at 6 food or less (survival).
                 sprint: (held(KeyCode::ControlLeft) || held(KeyCode::KeyR))
-                    && (self.session.mode.invulnerable() || self.session.vitals.hunger.can_sprint()),
+                    && self.session.vitals.may_sprint(self.session.mode.invulnerable()),
             }
         } else {
             MoveInput::default()
@@ -1502,7 +1502,12 @@ impl Game {
         let eye = crate::simulation::interpolated_eye(self.previous_eye, self.session.player.eye(), alpha);
         self.rendered_eye = eye;
         let (camera, forward) = self.camera.view(&self.world, eye, self.session.player.forward());
-        self.hand.update(dt as f32, self.held_item());
+        self.hand.update(
+            dt as f32,
+            self.held_item(),
+            self.session.item_swap_scale(self.body.actions.selected, 1.0),
+            self.session.draw_ticks(),
+        );
         self.animate_hands(dt as f32, alpha, paused);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);
@@ -1535,15 +1540,17 @@ impl Game {
             alpha,
             now,
         };
-        let split::Fog { color: fog_color, zenith, start: fog_start, end: fog_end, .. } = self.fog(&scene, 0, camera);
+        let split::Fog { color: fog_color, zenith, start: fog_start, end: fog_end, .. } =
+            self.fog(&scene, 0, camera).blinded(
+                self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
+                self.settings.render_distance as f32 * 32.0,
+            );
         let dial = self.dial_of(&self.session.player);
         let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)> = self
             .agents
             .players
             .iter()
-            .filter(|(_, b)| {
-                b.active && (!b.agent.session.vitals.is_dead() || b.agent.session.vitals.since_damage() < 1.0)
-            })
+            .filter(|(_, b)| b.active && b.agent.session.vitals.visible())
             .map(|(name, b)| {
                 let pose =
                     dial.at(b.agent.session.player.yaw, b.agent.session.player.pos.x, b.agent.session.player.pos.z);

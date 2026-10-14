@@ -109,16 +109,18 @@ pub fn worn_pieces(armor: [Option<ArmorKind>; 4], glint: u8) -> [Option<Worn>; 4
     std::array::from_fn(|i| armor[i].map(|kind| Worn { kind, glint: glint & (1 << i) != 0 }))
 }
 
-/// Java 26.3 Mob.populateDefaultEquipmentSlots at regional difficulty 1,
-/// without a held weapon. Feet are equipped first; each later piece is
-/// skipped 25% of the time (Java's non-Hard chance). The tier starts at
-/// leather, copper or gold and climbs toward diamond.
-pub fn roll_monster_armor(rng: &mut super::Rng) -> ([Option<ArmorKind>; 4], u8) {
+/// Java 26.3 Mob.populateDefaultEquipmentSlots: the 15% roll scales with the
+/// local difficulty's special multiplier `special`, and each piece is then
+/// enchanted (glint) with probability `0.5 * special`. Feet are equipped first; each later piece is
+/// skipped 25% of the time, or 10% on Hard (Java reads
+/// `Level.getDifficulty()`). The tier starts at leather, copper or gold and
+/// climbs toward diamond.
+pub fn roll_monster_armor(rng: &mut super::Rng, hard: bool, special: f32) -> ([Option<ArmorKind>; 4], u8) {
     const TIERS: [ArmorKind; 6] =
         [ArmorKind::Leather, ArmorKind::Copper, ArmorKind::Gold, ArmorKind::Chain, ArmorKind::Iron, ArmorKind::Diamond];
     let mut armor = [None; 4];
     let mut glint = 0u8;
-    if !rng.chance(0.15) {
+    if !rng.chance(0.15 * special) {
         return (armor, glint);
     }
     let mut tier = rng.next_int(3) as usize;
@@ -128,15 +130,20 @@ pub fn roll_monster_armor(rng: &mut super::Rng) -> ([Option<ArmorKind>; 4], u8) 
         }
     }
     let kind = TIERS[tier.min(TIERS.len() - 1)];
+    let skip = if hard { 0.1 } else { 0.25 };
     let mut first = true;
     for slot in [ArmorPiece::Boots, ArmorPiece::Leggings, ArmorPiece::Chestplate, ArmorPiece::Helmet] {
-        if !first && rng.chance(0.25) {
+        if !first && rng.chance(skip) {
             break;
         }
         first = false;
         let i = slot as usize;
         armor[i] = Some(kind);
-        if rng.chance(0.25) {
+    }
+    // `populateDefaultEquipmentEnchantments` runs after every slot is filled.
+    for piece in [ArmorPiece::Boots, ArmorPiece::Leggings, ArmorPiece::Chestplate, ArmorPiece::Helmet] {
+        let i = piece as usize;
+        if armor[i].is_some() && rng.chance(0.5 * special) {
             glint |= 1 << i;
         }
     }
@@ -341,7 +348,7 @@ mod tests {
         let mut counts = [0; ArmorKind::ALL.len()];
         for seed in 0..2000 {
             let mut rng = super::super::Rng::new(seed);
-            let (armor, glint) = roll_monster_armor(&mut rng);
+            let (armor, glint) = roll_monster_armor(&mut rng, false, 1.0);
             let equipped: Vec<_> = armor.iter().enumerate().filter_map(|(i, k)| k.map(|k| (i, k))).collect();
             if equipped.is_empty() {
                 assert_eq!(glint, 0);
@@ -362,5 +369,44 @@ mod tests {
         assert!(counts[ArmorKind::Chain as usize] > 0);
         assert!(counts[ArmorKind::Copper as usize] > 0, "26.3 monsters roll copper armor");
         assert_eq!(counts[ArmorKind::Netherite as usize], 0);
+    }
+
+    /// `Mob.populateDefaultEquipmentSlots`: after the boots, each further piece is
+    /// skipped with probability 0.25, or 0.1 when the level difficulty is Hard.
+    #[test]
+    fn hard_difficulty_skips_later_pieces_one_time_in_ten() {
+        let full_sets = |hard: bool| {
+            let (mut armored, mut full) = (0u32, 0u32);
+            for seed in 0..60000 {
+                let (armor, _) = roll_monster_armor(&mut super::super::Rng::new(seed), hard, 1.0);
+                let pieces = armor.iter().flatten().count();
+                armored += u32::from(pieces > 0);
+                full += u32::from(pieces == 4);
+            }
+            f64::from(full) / f64::from(armored)
+        };
+        // Four pieces need three passed checks: 0.75^3 = 0.422 against 0.9^3 = 0.729.
+        assert!((full_sets(false) - 0.422).abs() < 0.05, "{}", full_sets(false));
+        assert!((full_sets(true) - 0.729).abs() < 0.05, "{}", full_sets(true));
+    }
+
+    /// The 15% roll and the per-piece enchantment scale with the special multiplier.
+    #[test]
+    fn local_difficulty_scales_spawn_gear() {
+        let rate = |special: f32| {
+            let (mut armored, mut pieces, mut glints) = (0u32, 0u32, 0u32);
+            for seed in 0..40000 {
+                let (armor, glint) = roll_monster_armor(&mut super::super::Rng::new(seed), false, special);
+                armored += u32::from(armor.iter().any(Option::is_some));
+                pieces += armor.iter().flatten().count() as u32;
+                glints += glint.count_ones();
+            }
+            (f64::from(armored) / 40000.0, f64::from(glints) / f64::from(pieces.max(1)))
+        };
+        assert_eq!(rate(0.0), (0.0, 0.0), "a new Normal world spawns plain mobs");
+        let (armored, glinted) = rate(0.5);
+        assert!((armored - 0.075).abs() < 0.01, "{armored}");
+        assert!((glinted - 0.25).abs() < 0.03, "{glinted}");
+        assert!((rate(1.0).1 - 0.5).abs() < 0.03);
     }
 }

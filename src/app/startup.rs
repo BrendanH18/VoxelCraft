@@ -334,6 +334,7 @@ impl Game {
         game.lan.mode = game.session.mode;
         game.lan.cheats = args.lan_cheats;
         game.lan.pvp = args.lan_pvp;
+        game.lan.restore_rules(root_props.get("lan_rules").map(String::as_str));
         game.lan.profile = args.profile.clone().unwrap_or_else(|| lan::local_profile(saves_dir));
         if let Some(address) = args.host_lan
             && let Err(e) = game.open_lan(address)

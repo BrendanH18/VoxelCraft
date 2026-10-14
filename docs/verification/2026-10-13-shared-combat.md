@@ -84,7 +84,8 @@ toughness or knockback resistance, copper-ingot repair and the reference armor
 recipes; it has its own worn-armor sheet (array layers 17-18) and melts to a
 copper nugget. Monster armor now rolls Java 26.3's tiers (start `nextInt(3)`
 over leather/copper/gold, three 0.1087 climbs toward chainmail, iron and
-diamond); the Hard-difficulty 10% piece-skip chance is still the non-Hard 25%.
+diamond); the later-piece skip chance is Java's 25%, or 10% on Hard (read from
+`Entities::difficulty`, set by each update; covered by a statistical test).
 `combat.json` pins every armor material and slot durability unit, and
 `tests/copper_tools.rs` checks every tool and armor material against it plus
 copper harvesting, recipes, repair and nugget smelting. Loot-table copper gear,
@@ -96,24 +97,86 @@ passed, zero failed**. The desktop LAN harness failed once on "PvP on" (the
 sword hit missed: 20.0 -> 20.0, the bow then hit) and passed 13/13 on the next
 two runs. The players stand about 2.7 blocks apart against a 3.0 survival reach,
 and any mob crossing the ray blocks a PvP hit, so the check is timing- and
-mob-sensitive; it is recorded as intermittent, not fixed.
+mob-sensitive. `tools/lan_check.py` now allows up to three swings and three shots
+when PvP is on (a player would try again after a miss) and still requires none
+to land when it is off; ten consecutive harness runs have passed since.
 
 ## Remaining differences
 
-- Fall distance is approximated as downward velocity while airborne; Blindness
-  does not exist, so it cannot block criticals.
-- Java's per-item `minimum_attack_charge`, spear/mace/trident and other
-  kinetic/piercing weapon components and attack-speed attribute modifiers from
-  effects/enchantments are not implemented. Copper tools and armor are now
+- Spear/mace/trident and other
+  kinetic/piercing weapon components are not implemented. Haste and Mining
+  Fatigue attack-speed modifiers are now applied; Java 26.3 has no attack-speed
+  enchantment definitions. Copper tools and armor are now
   registered (see below); spears are not.
 - Damage to non-living targets (crystals, dragon parts) uses the scaled base
   plus scaled generic enchantment bonus; dragon-part damage routing is the
-  existing fight model.
-- The HUD has no attack-strength indicator yet; first-person hand cooldown
-  animation is unchanged.
+  existing fight model (head full, other parts a quarter plus up to one, with
+  the ten-tick window).
 - Container, vehicle and block-interaction ranges still use the adapters' older
   six-block constant; other item use and containers remain outside the shared
   session, and `Game::puppet` still swaps state.
 
 State: **Partial** for STR-03, PLY-04 and PLY-05. Ordinary keyboard/controller
 play, visual/audio feedback and performance comparison remain unverified.
+
+## v0.7 defect fixes
+
+Criticals now read the session's accumulated fall distance instead of vertical
+velocity, including the LAN PvP path. The pinned `Player.canCriticalAttack`
+bytecode and regenerated `combat.json` establish its predicates. Regression
+cases cover momentarily zero velocity after a fall, teleport/reset, water,
+climbing and passengers. Ordinary-player acceptance remains outstanding.
+
+Critical-fix checks: required fmt/strict release Clippy/release tests passed
+(977 passed, zero failed, four ignored); fixture regeneration matched exactly.
+
+Haste and Mining Fatigue scale attack speed by their reference total multipliers
+(+10%/-10% per level, float constants widened to doubles). Charge, damage and
+the indicator read the modified attribute, clamped to 0..1024. The fixture
+extractor scans all reference enchantment data: none modifies attack speed.
+Tests cover each effect, combined modifiers, zero speed and charge timing.
+
+Attack-speed-fix checks: required fmt/strict release Clippy/release tests passed
+(978 passed, zero failed, four ignored); expanded fixture reproduced exactly.
+
+Critical distance additionally accumulates downward movement without subtracting
+rising motion after a bounce (`Entity.checkFallDamage`/fallDistance); a regression
+distinguishes this from the retained apex-height fall-damage tracker. Teleports,
+water, climbing, flight, ground contact and Slow Falling clear the tracker.
+
+The server's `cannotAttackWithItem` gate is shared by melee and LAN PvP, with
+five lead ticks. Java 26.3 sets `minimum_attack_charge = 1` only on spears; all
+registered items use the default zero and accept every charge. The regression
+checks every registered item and the reference gate arithmetic. Spears remain
+out of scope, with no item IDs allocated for them.
+
+Fog regression covers terrain start/end, the final-second fade, underwater
+priority and lava priority. Separate Java sky/cloud distance and screen
+darkening are not represented by the existing renderer; visual acceptance is
+still open, so this closes combat/sprint eligibility only.
+
+Blindness is appended to the effect registry and icon array; save IDs remain
+strings. It blocks criticals and sprinting through the shared session/vitals
+for keyboard, controller, CLI and LAN players. Tests cover persistence and
+Creative sprint blocking. The visual fog follows the hash-pinned 26.3 client
+`BlindnessFogEnvironment`, with five-block distance and the last-20-tick fade;
+client jar SHA-1 `e877b6a07acd633fb3bb475002175cec036e7b87`.
+
+Non-living target routing now follows `Player.attack`/`itemAttackInteraction`
+(javap of the pinned `Player`): a hurt target costs 0.1 exhaustion, a deflected
+fireball returns before any, and the weapon wears only when the target is a
+`LivingEntity` (a dragon part counts as its dragon). Crystals and carts cost
+exhaustion but no durability; fireballs cost neither. Regression:
+`non_living_targets_exhaust_but_never_wear_the_weapon`.
+
+First-person hand cooldown: the 26.3 client (`FirstPersonHandsAndItems.tick`,
+client jar SHA-1 `e877b6a07acd633fb3bb475002175cec036e7b87`) eases
+`mainHandHeight` toward `getItemSwapScale(1)^3` (or 0 while the shown item differs) by at
+most 0.4 per tick, swapping the shown item below 0.1. `Player.itemSwapTicker`
+restarts on item change and, client side, on every attack and miss
+(`MultiPlayerGameMode.attack`, `Minecraft.startAttack`); the server's `onAttack`
+resets only the attack ticker. `PlayerSession` keeps that swap ticker and
+`HandAnim` runs the 20 Hz filter with partial-tick interpolation, so the hand
+dips on each swing and rises as the charge returns, for the host and split-screen
+hands. Not ported: `stopDestroyBlock`'s reset and `isHandsBusy`. Visual
+acceptance remains open.

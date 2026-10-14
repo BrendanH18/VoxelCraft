@@ -44,13 +44,29 @@ fn view_haze(
     samplers[view].sample(camera, biome)
 }
 
-/// Fog for an eye: colour, sky overhead, start and end.
+/// Fog for an eye: colour, sky overhead, start and end, and whether it's under a fluid.
+#[derive(Clone, Copy)]
 pub(super) struct Fog {
     pub color: [f32; 3],
     /// Sky colour overhead, which follows the fog under a fluid.
     pub zenith: [f32; 3],
     pub start: f32,
     pub end: f32,
+    pub underwater: bool,
+}
+
+impl Fog {
+    /// Java 26.3 BlindnessFogEnvironment: five blocks, fading over the final second.
+    /// Lava's own environmental fog has priority over mob-effect fog.
+    pub(super) fn blinded(self, ticks: Option<u32>, view_distance: f32) -> Self {
+        let Some(ticks) = ticks else { return self };
+        if !self.underwater && self.end <= 3.0 {
+            return self;
+        }
+        let strength = (ticks as f32 / 20.0).min(1.0);
+        let end = view_distance + (5.0 - view_distance) * strength;
+        Self { color: self.color.map(|c| c * (1.0 - strength).powi(2)), start: end * 0.25, end, ..self }
+    }
 }
 
 impl Game {
@@ -163,7 +179,7 @@ impl Game {
         } else {
             (horizon, view_dist * 0.55, view_dist * 0.95)
         };
-        Fog { color, zenith: if underwater { color } else { zenith }, start, end }
+        Fog { color, zenith: if underwater { color } else { zenith }, start, end, underwater }
     }
 
     /// Plays what agents did since last frame: breaking, placing, chewing.
@@ -202,7 +218,12 @@ impl Game {
                 bot.seen_swings = a.swings;
                 bot.hand.swing();
             }
-            bot.hand.update(dt, a.inventory.get(a.selected).map(|s| s.item));
+            bot.hand.update(
+                dt,
+                a.inventory.get(a.selected).map(|s| s.item),
+                a.session.item_swap_scale(a.selected, 1.0),
+                a.session.draw_ticks(),
+            );
         }
     }
 
@@ -217,7 +238,10 @@ impl Game {
             let feet = a.previous_pos.lerp(a.player.pos, scene.alpha);
             let eye = feet + (a.player.eye() - a.player.pos);
             let (camera, forward) = bot.camera.view(&self.world, eye, a.player.forward());
-            let fog = self.fog(scene, view + 1, camera);
+            let fog = self.fog(scene, view + 1, camera).blinded(
+                a.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
+                self.settings.render_distance as f32 * 32.0,
+            );
             let models = self.block_models(scene.alpha);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
@@ -233,7 +257,7 @@ impl Game {
             // Everyone else is visible from this view, the host included.
             let mut others: Vec<(&crate::player::Player, DVec3, crate::entity::model::PlayerAppearance, &str)> =
                 Vec::new();
-            if !self.session.vitals.is_dead() || self.session.vitals.since_damage() < 1.0 {
+            if self.session.vitals.visible() {
                 others.push((
                     &self.session.player,
                     host_feet,
@@ -250,10 +274,7 @@ impl Game {
                 ));
             }
             for (other, b) in &self.agents.players {
-                if other != name
-                    && b.active
-                    && (!b.agent.session.vitals.is_dead() || b.agent.session.vitals.since_damage() < 1.0)
-                {
+                if other != name && b.active && b.agent.session.vitals.visible() {
                     others.push((
                         &b.agent.session.player,
                         b.agent.previous_pos.lerp(b.agent.session.player.pos, scene.alpha),
@@ -428,5 +449,22 @@ mod tests {
         assert_eq!(follower, NetherBiome::CrimsonForest.fog_color());
         // The host's reading is unchanged by the follower sampling elsewhere in the same frame.
         assert_eq!(view_haze(&mut samplers, 0, DVec3::new(-200.0, 70.0, 0.0), biome), host);
+    }
+}
+
+#[cfg(test)]
+mod blindness_tests {
+    use super::Fog;
+    #[test]
+    fn blindness_uses_reference_terrain_distance_and_last_second_fade() {
+        let f = Fog { color: [0.5; 3], zenith: [0.5; 3], start: 200.0, end: 256.0, underwater: false };
+        let full = f.blinded(Some(100), 256.0);
+        assert_eq!((full.start, full.end, full.color), (1.25, 5.0, [0.0; 3]));
+        let fading = f.blinded(Some(10), 256.0);
+        assert_eq!((fading.start, fading.end, fading.color), (32.625, 130.5, [0.125; 3]));
+        assert_eq!(f.blinded(None, 256.0).end, f.end);
+        let lava = Fog { end: 1.0, ..f };
+        assert_eq!(lava.blinded(Some(100), 256.0).end, 1.0);
+        assert_eq!(Fog { underwater: true, ..f }.blinded(Some(100), 256.0).end, 5.0);
     }
 }
