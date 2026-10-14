@@ -1755,10 +1755,21 @@ impl Block {
     }
 
     /// Java `BlockBehaviour.canBeReplaced(state, fluid)`: replaceable, or not
-    /// solid. VoxelCraft approximates the legacy non-solid set with its
-    /// cross-shaped plants and torches (cobwebs are forced solid in Java).
+    /// solid. The retained non-solid set includes plants, rails and fragile
+    /// redstone controls (cobwebs are forced solid in Java).
     pub fn fluid_replaceable(self) -> bool {
-        self.is_replaceable() || (self.kind() == RenderKind::Cross && self != Block::COBWEB)
+        self.is_replaceable()
+            || (self.kind() == RenderKind::Cross && self != Block::COBWEB)
+            || self.is_rail()
+            || matches!(
+                super::redstone_blocks::component(self),
+                Some(
+                    super::redstone_blocks::Component::Wire(_)
+                        | super::redstone_blocks::Component::Lever { .. }
+                        | super::redstone_blocks::Component::Button { .. }
+                        | super::redstone_blocks::Component::Plate { .. }
+                )
+            )
     }
 
     /// Colour index of a terracotta block (see [`Block::terracotta`]).

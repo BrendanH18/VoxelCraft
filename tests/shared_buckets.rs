@@ -390,3 +390,31 @@ fn water_fills_water_holding_plants_in_place_but_lava_and_sneaking_use_the_face(
     assert_eq!(direct(&mut world, &mut agent, &mut entities), Some(Effect::Poured { at: POUR, fluid: Block::WATER }));
     assert_eq!(world.get_block(POUR), Some(Block::WATER));
 }
+
+#[test]
+fn poured_fluids_destroy_rails_and_fragile_redstone_with_their_loot() {
+    let r = redstone_blocks::WOOD_PLATE;
+    for block in [
+        Block::RAIL,
+        redstone_blocks::WIRE,
+        redstone_blocks::lever(0, false),
+        redstone_blocks::button(0, false, false),
+        r,
+    ] {
+        for fluid in [Block::WATER, Block::LAVA] {
+            let (mut w, _, _) = scene(Dimension::Overworld);
+            w.set_block(POUR - IVec3::Y, Block::STONE);
+            w.set_block(POUR, block);
+            w.drops.clear();
+            let expected = block.drop().unwrap();
+            assert_eq!(
+                bucket::empty_contents(&mut w, HIT, IVec3::NEG_Z, fluid, false),
+                Some(Effect::Poured { at: POUR, fluid })
+            );
+            assert_eq!(w.get_block(POUR), Some(fluid));
+            assert_eq!(w.drops.iter().map(|(_, s)| (s.item, s.count)).collect::<Vec<_>>(), vec![(expected, 1)]);
+        }
+    }
+    assert!(!Block::COBWEB.fluid_replaceable());
+    assert!(!redstone_blocks::IRON_TRAPDOOR.fluid_replaceable());
+}

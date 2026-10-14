@@ -51,8 +51,9 @@ target choice and `emptyContents`. Water and lava buckets and fish-bucket
 releases all use the fluid-ignoring raycast. Fish releases previously stopped
 at fluid sources; `MobBucketItem` has water content, so Java uses
 `ClipContext.Fluid.NONE`. `Block::fluid_replaceable` approximates
-`canBeReplaced(fluid)` as `is_replaceable()` plus cross-shaped non-cobweb blocks.
-Cobwebs are forced solid in Java. A replaced non-fluid block spills its loot
+`canBeReplaced(fluid)` as `is_replaceable()`, cross-shaped non-cobweb blocks,
+rails, redstone wire, levers, buttons and pressure plates (the non-solid set
+that matters in VoxelCraft). Cobwebs are forced solid in Java. A replaced non-fluid block spills its loot
 through `World::spill_block`.
 
 VoxelCraft's `LiquidBlockContainer` blocks are kelp, seagrass, waterlogged sea
@@ -109,9 +110,9 @@ lookup per bucket click and does not touch per-frame paths.
 
 ## Remaining differences
 
-- `fluid_replaceable` covers only replaceable and cross-shaped blocks. Java's
-  non-solid set also includes rails, redstone wire, buttons, levers and
-  pressure plates. Poured fluid does not destroy those here.
+- `fluid_replaceable` now covers rails, redstone wire, levers, buttons and
+  pressure plates (fixed; `tests/shared_buckets.rs`). Other Java non-solid
+  shapes with no VoxelCraft block are not enumerated.
 - VoxelCraft targets cross-shaped plants as full cells, so a player ray always
   hits the plant rather than the block behind it. The destroy-with-drops path
   is reachable through `empty_contents` but not yet through ordinary aiming.
