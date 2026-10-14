@@ -278,7 +278,7 @@ these ranges. Preserve their meanings; do not reuse the unused patterned slots.
 | 1040 | Turtle helmet |
 | 1041–1046 | Audit potion and splash-potion slots |
 | 1047–1049 | Unallocated; keep free |
-| 1050–1069 | Java 26.3 copper equipment: tools 1050–1054 (pickaxe, shovel, axe, hoe, sword), copper nugget 1055; 1056–1069 reserved for copper armor and spears |
+| 1050–1069 | Java 26.3 copper equipment: tools 1050–1054 (pickaxe, shovel, axe, hoe, sword), copper nugget 1055, armor 1056–1059 (helmet, chestplate, leggings, boots); 1060–1069 reserved (spears) |
 
 Texture layers 1753–1758 append pale oak/bamboo doors and trapdoors; existing
 layer meanings remain intact. These definitions inherit the existing shaped

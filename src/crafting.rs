@@ -499,8 +499,9 @@ pub fn recipes() -> &'static [Recipe] {
             r.push(shaped(&["s#s", "s#s"], &[('#', mat), ('s', STICK)], b(crate::world::forms::wood_id(i, 6)), 1));
             r.push(shaped(&["##", "##", "##"], &[('#', mat)], b(crate::world::forms::wood_id(i, 14)), 3));
         }
-        const ARMOR: [(ArmorMaterial, Ingredient); 4] = [
+        const ARMOR: [(ArmorMaterial, Ingredient); 5] = [
             (ArmorMaterial::Leather, &[Item::LEATHER]),
+            (ArmorMaterial::Copper, &[Item::COPPER_INGOT]),
             (ArmorMaterial::Iron, &[Item::IRON_INGOT]),
             (ArmorMaterial::Gold, &[Item::GOLD_INGOT]),
             (ArmorMaterial::Diamond, &[Item::DIAMOND]),

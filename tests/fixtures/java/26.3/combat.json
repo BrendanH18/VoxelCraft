@@ -109,6 +109,141 @@
       ]
     }
   },
+  "armor_durability_units": {
+    "helmet": 11,
+    "chestplate": 16,
+    "leggings": 15,
+    "boots": 13,
+    "body": 16
+  },
+  "armor_materials": {
+    "armadillo_scute": {
+      "durability_multiplier": 4,
+      "defense": {
+        "helmet": 3,
+        "chestplate": 8,
+        "leggings": 6,
+        "boots": 3,
+        "body": 11
+      },
+      "enchantability": 10,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_wolf_armor"
+    },
+    "chainmail": {
+      "durability_multiplier": 15,
+      "defense": {
+        "helmet": 2,
+        "chestplate": 5,
+        "leggings": 4,
+        "boots": 1,
+        "body": 4
+      },
+      "enchantability": 12,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_chain_armor"
+    },
+    "copper": {
+      "durability_multiplier": 11,
+      "defense": {
+        "helmet": 2,
+        "chestplate": 4,
+        "leggings": 3,
+        "boots": 1,
+        "body": 4
+      },
+      "enchantability": 8,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_copper_armor"
+    },
+    "diamond": {
+      "durability_multiplier": 33,
+      "defense": {
+        "helmet": 3,
+        "chestplate": 8,
+        "leggings": 6,
+        "boots": 3,
+        "body": 11
+      },
+      "enchantability": 10,
+      "toughness": 2.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_diamond_armor"
+    },
+    "gold": {
+      "durability_multiplier": 7,
+      "defense": {
+        "helmet": 2,
+        "chestplate": 5,
+        "leggings": 3,
+        "boots": 1,
+        "body": 7
+      },
+      "enchantability": 25,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_gold_armor"
+    },
+    "iron": {
+      "durability_multiplier": 15,
+      "defense": {
+        "helmet": 2,
+        "chestplate": 6,
+        "leggings": 5,
+        "boots": 2,
+        "body": 5
+      },
+      "enchantability": 9,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_iron_armor"
+    },
+    "leather": {
+      "durability_multiplier": 5,
+      "defense": {
+        "helmet": 1,
+        "chestplate": 3,
+        "leggings": 2,
+        "boots": 1,
+        "body": 3
+      },
+      "enchantability": 15,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_leather_armor"
+    },
+    "netherite": {
+      "durability_multiplier": 37,
+      "defense": {
+        "helmet": 3,
+        "chestplate": 8,
+        "leggings": 6,
+        "boots": 3,
+        "body": 19
+      },
+      "enchantability": 15,
+      "toughness": 3.0,
+      "knockback_resistance": 0.1,
+      "repair_items": "repairs_netherite_armor"
+    },
+    "turtle_scute": {
+      "durability_multiplier": 25,
+      "defense": {
+        "helmet": 2,
+        "chestplate": 6,
+        "leggings": 5,
+        "boots": 2,
+        "body": 5
+      },
+      "enchantability": 9,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_turtle_helmet"
+    }
+  },
   "tools": [
     {
       "id": "wooden_sword",

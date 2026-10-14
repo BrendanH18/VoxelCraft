@@ -78,10 +78,18 @@ patterns, `copper_nugget` (one ingot to nine) and `copper_ingot_from_nuggets`.
 Iron, golden and copper tools, armor and horse armor now smelt and blast to one
 nugget (0.1 experience), as in `*_nugget_from_smelting`/`_blasting`; Java's
 spears, chainmail and nautilus armor in those lists are not registered.
-`tests/copper_tools.rs` checks every tool material against the fixture, copper
-harvesting, recipes, repair and nugget smelting. Loot-table copper tools,
-copper armor, spears and ordinary-player acceptance remain open; icons use the
-procedural tool sprites in copper colour.
+Copper armor (1056..=1059) follows `ArmorMaterials.COPPER`: durability
+multiplier 11 (121/176/165/143), defense 2/4/3/1, enchantability 8, no
+toughness or knockback resistance, copper-ingot repair and the reference armor
+recipes; it has its own worn-armor sheet (array layers 17-18) and melts to a
+copper nugget. Monster armor now rolls Java 26.3's tiers (start `nextInt(3)`
+over leather/copper/gold, three 0.1087 climbs toward chainmail, iron and
+diamond); the Hard-difficulty 10% piece-skip chance is still the non-Hard 25%.
+`combat.json` pins every armor material and slot durability unit, and
+`tests/copper_tools.rs` checks every tool and armor material against it plus
+copper harvesting, recipes, repair and nugget smelting. Loot-table copper gear,
+the copper equip sound, spears and ordinary-player acceptance remain open;
+icons use the procedural sprites in copper colour.
 
 Validation with copper: release **972 passed, zero failed**; headless **890
 passed, zero failed**. The desktop LAN harness failed once on "PvP on" (the
@@ -96,8 +104,8 @@ mob-sensitive; it is recorded as intermittent, not fixed.
   does not exist, so it cannot block criticals.
 - Java's per-item `minimum_attack_charge`, spear/mace/trident and other
   kinetic/piercing weapon components and attack-speed attribute modifiers from
-  effects/enchantments are not implemented. Copper tools are now registered
-  (see below); copper armor and every spear tier are not.
+  effects/enchantments are not implemented. Copper tools and armor are now
+  registered (see below); spears are not.
 - Damage to non-living targets (crystals, dragon parts) uses the scaled base
   plus scaled generic enchantment bonus; dragon-part damage routing is the
   existing fight model.

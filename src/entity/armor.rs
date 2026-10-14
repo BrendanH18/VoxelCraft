@@ -18,10 +18,11 @@ pub enum ArmorKind {
     Diamond = 4,
     Netherite = 5,
     Turtle = 6,
+    Copper = 7,
 }
 
 impl ArmorKind {
-    pub const ALL: [ArmorKind; 7] = [
+    pub const ALL: [ArmorKind; 8] = [
         ArmorKind::Leather,
         ArmorKind::Chain,
         ArmorKind::Iron,
@@ -29,6 +30,7 @@ impl ArmorKind {
         ArmorKind::Diamond,
         ArmorKind::Netherite,
         ArmorKind::Turtle,
+        ArmorKind::Copper,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -40,6 +42,7 @@ impl ArmorKind {
             "diamond" => Self::Diamond,
             "netherite" => Self::Netherite,
             "turtle" => Self::Turtle,
+            "copper" => Self::Copper,
             _ => return None,
         })
     }
@@ -52,6 +55,7 @@ impl ArmorKind {
             ArmorMaterial::Diamond => Self::Diamond,
             ArmorMaterial::Netherite => Self::Netherite,
             ArmorMaterial::Turtle => Self::Turtle,
+            ArmorMaterial::Copper => Self::Copper,
         }
     }
 }
@@ -74,10 +78,14 @@ pub struct Equipped {
 pub const LEATHER_DYE: [u8; 3] = [160, 101, 64];
 
 /// Skin occupies array layer 0. Two sheets per material, then leather overlays.
-pub const ARRAY_LAYERS: u32 = 17;
+pub const ARRAY_LAYERS: u32 = 19;
 
 pub fn layer(kind: ArmorKind, inner: bool) -> u16 {
-    if kind == ArmorKind::Turtle { 15 + u16::from(inner) } else { 1 + kind as u16 * 2 + u16::from(inner) }
+    match kind {
+        ArmorKind::Turtle => 15 + u16::from(inner),
+        ArmorKind::Copper => 17 + u16::from(inner),
+        _ => 1 + kind as u16 * 2 + u16::from(inner),
+    }
 }
 
 pub fn leather_overlay(inner: bool) -> u16 {
@@ -101,20 +109,21 @@ pub fn worn_pieces(armor: [Option<ArmorKind>; 4], glint: u8) -> [Option<Worn>; 4
     std::array::from_fn(|i| armor[i].map(|kind| Worn { kind, glint: glint & (1 << i) != 0 }))
 }
 
-/// Java Mob.populateDefaultEquipmentSlots at regional difficulty 1, without
-/// a held weapon. Feet are equipped first; each later piece is skipped 25%
-/// of the time. The tier starts at leather or gold and climbs toward diamond.
+/// Java 26.3 Mob.populateDefaultEquipmentSlots at regional difficulty 1,
+/// without a held weapon. Feet are equipped first; each later piece is
+/// skipped 25% of the time (Java's non-Hard chance). The tier starts at
+/// leather, copper or gold and climbs toward diamond.
 pub fn roll_monster_armor(rng: &mut super::Rng) -> ([Option<ArmorKind>; 4], u8) {
-    const TIERS: [ArmorKind; 5] =
-        [ArmorKind::Leather, ArmorKind::Gold, ArmorKind::Chain, ArmorKind::Iron, ArmorKind::Diamond];
+    const TIERS: [ArmorKind; 6] =
+        [ArmorKind::Leather, ArmorKind::Copper, ArmorKind::Gold, ArmorKind::Chain, ArmorKind::Iron, ArmorKind::Diamond];
     let mut armor = [None; 4];
     let mut glint = 0u8;
     if !rng.chance(0.15) {
         return (armor, glint);
     }
-    let mut tier = usize::from(!rng.chance(0.5));
+    let mut tier = rng.next_int(3) as usize;
     for _ in 0..3 {
-        if rng.chance(0.095) {
+        if rng.chance(0.1087) {
             tier += 1;
         }
     }
@@ -251,6 +260,7 @@ fn texel(kind: ArmorKind, part: Part, overlay: bool, face: usize, at: [usize; 2]
         }
         ArmorKind::Turtle => plate([58, 140, 83], [32, 82, 51], [101, 172, 94], edge, face),
         ArmorKind::Netherite => plate([48, 40, 44], [24, 18, 22], [96, 52, 56], edge, face),
+        ArmorKind::Copper => plate([196, 112, 76], [128, 64, 40], [232, 156, 112], edge, face),
     })
 }
 
@@ -293,7 +303,7 @@ mod tests {
             seen[i] = true;
         }
         assert!(seen.iter().all(|s| *s));
-        assert_eq!(layer_pixels().len(), 16 * 64 * 64 * 4);
+        assert_eq!(layer_pixels().len(), 18 * 64 * 64 * 4);
         assert_eq!((leather_overlay(false), leather_overlay(true)), (13, 14));
         assert_eq!((layer(ArmorKind::Turtle, false), layer(ArmorKind::Turtle, true)), (15, 16));
     }
@@ -328,7 +338,7 @@ mod tests {
     #[test]
     fn monster_rolls_match_java_slot_order() {
         let mut any = 0;
-        let mut counts = [0; 6];
+        let mut counts = [0; ArmorKind::ALL.len()];
         for seed in 0..2000 {
             let mut rng = super::super::Rng::new(seed);
             let (armor, glint) = roll_monster_armor(&mut rng);
@@ -350,6 +360,7 @@ mod tests {
         }
         assert!((200..450).contains(&any), "{any}");
         assert!(counts[ArmorKind::Chain as usize] > 0);
+        assert!(counts[ArmorKind::Copper as usize] > 0, "26.3 monsters roll copper armor");
         assert_eq!(counts[ArmorKind::Netherite as usize], 0);
     }
 }

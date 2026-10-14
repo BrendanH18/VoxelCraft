@@ -108,7 +108,7 @@ fn nugget_of(item: Item) -> Option<Item> {
     Some(match (tier, material, item.name()) {
         (Some(Tier::Iron), ..) | (_, Some(ArmorMaterial::Iron), _) | (.., "iron horse armor") => Item::IRON_NUGGET,
         (Some(Tier::Gold), ..) | (_, Some(ArmorMaterial::Gold), _) | (.., "golden horse armor") => Item::GOLD_NUGGET,
-        (Some(Tier::Copper), ..) => Item::COPPER_NUGGET,
+        (Some(Tier::Copper), ..) | (_, Some(ArmorMaterial::Copper), _) => Item::COPPER_NUGGET,
         _ => return None,
     })
 }

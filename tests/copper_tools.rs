@@ -109,3 +109,68 @@ fn metal_gear_smelts_and_blasts_to_nuggets_as_in_java() {
         }
     }
 }
+
+fn armor_material(name: &str) -> Option<ArmorMaterial> {
+    Some(match name {
+        "leather" => ArmorMaterial::Leather,
+        "copper" => ArmorMaterial::Copper,
+        "iron" => ArmorMaterial::Iron,
+        "gold" => ArmorMaterial::Gold,
+        "diamond" => ArmorMaterial::Diamond,
+        "netherite" => ArmorMaterial::Netherite,
+        "turtle_scute" => ArmorMaterial::Turtle,
+        // Chainmail is a monster-only look here; wolf armor is not registered.
+        "chainmail" | "armadillo_scute" => return None,
+        other => panic!("unknown reference armor material {other}"),
+    })
+}
+
+#[test]
+fn every_armor_material_matches_the_reference_material() {
+    let f = fixture();
+    let units = &f["armor_durability_units"];
+    let pieces = [
+        (ArmorPiece::Helmet, "helmet"),
+        (ArmorPiece::Chestplate, "chestplate"),
+        (ArmorPiece::Leggings, "leggings"),
+        (ArmorPiece::Boots, "boots"),
+    ];
+    let mut checked = 0;
+    for (name, facts) in f["armor_materials"].as_object().unwrap() {
+        let Some(material) = armor_material(name) else { continue };
+        for (piece, key) in pieces {
+            // The turtle material only has a helmet.
+            if material == ArmorMaterial::Turtle && piece != ArmorPiece::Helmet {
+                continue;
+            }
+            let durability = facts["durability_multiplier"].as_u64().unwrap() * units[key].as_u64().unwrap();
+            assert_eq!(u64::from(material.durability(piece)), durability, "{name} {key} durability");
+            assert_eq!(u64::from(material.defense(piece)), facts["defense"][key].as_u64().unwrap(), "{name} {key}");
+            let enchantable = enchant::enchantability(Item::armor(piece, material));
+            assert_eq!(u64::from(enchantable), facts["enchantability"].as_u64().unwrap(), "{name} {key}");
+        }
+        assert_eq!(material.toughness(), facts["toughness"].as_f64().unwrap() as f32, "{name}");
+        assert_eq!(material.knockback_resistance(), facts["knockback_resistance"].as_f64().unwrap() as f32, "{name}");
+        checked += 1;
+    }
+    assert_eq!(checked, 7);
+}
+
+#[test]
+fn copper_armor_is_crafted_repaired_worn_and_melted_down() {
+    let c = Item::COPPER_INGOT;
+    // copper_chestplate: X X / XXX / XXX
+    let chest = craft(3, &[(0, c), (2, c), (3, c), (4, c), (5, c), (6, c), (7, c), (8, c)]);
+    assert_eq!(chest, Some(Stack::new(Item::armor(ArmorPiece::Chestplate, ArmorMaterial::Copper), 1)));
+    for piece in ArmorPiece::ALL {
+        let item = Item::armor(piece, ArmorMaterial::Copper);
+        assert_eq!(item.as_armor(), Some((piece, ArmorMaterial::Copper)));
+        assert_eq!(Item::from_name(item.name()), Some(item));
+        assert!(enchant::repairs(item, c));
+        assert_eq!(FurnaceKind::Blast.smelt(item), Some(Item::COPPER_NUGGET));
+    }
+    assert_eq!(
+        voxelcraft::entity::armor::ArmorKind::of(ArmorMaterial::Copper),
+        voxelcraft::entity::armor::ArmorKind::Copper
+    );
+}

@@ -82,6 +82,29 @@ def extract(server):
                 tag = json.loads(inner.read(f"data/minecraft/tags/block/{facts['incorrect_blocks']}.json"))
                 facts["incorrect_block_tag_values"] = tag["values"]
 
+        armor_types = {}
+        block = inspect("net.minecraft.world.item.equipment.ArmorType").split("  static {};")[1]
+        for name, units in re.findall(r"String ([A-Z]+)\n[^\n]*\n[^\n]*EquipmentSlot\.\w+:[^\n]*\n[^\n]*bipush\s+(\d+)", block):
+            armor_types[name.lower()] = int(units)
+        if set(armor_types) < {"helmet", "chestplate", "leggings", "boots"}:
+            raise ValueError("unrecognized armor type durability units")
+        armor = {}
+        block = inspect("net.minecraft.world.item.equipment.ArmorMaterials").split("  static {};")[1]
+        pieces = re.split(r"putstatic\s+#\d+\s+// Field ([A-Z_]+):Lnet/minecraft/world/item/equipment/ArmorMaterial;", block)
+        for code, name in zip(pieces[0::2], pieces[1::2]):
+            ints, floats = int_operands(code), float_operands(code)
+            repair = re.search(r"ItemTags\.(\w+):", code)
+            if "makeDefense" not in code or len(ints) != 7 or len(floats) != 2 or not repair:
+                raise ValueError(f"unrecognized armor material initialization: {name}")
+            boots, leggings, chestplate, helmet, body = ints[1:6]
+            armor[name.lower()] = {"durability_multiplier": ints[0],
+                                   "defense": {"helmet": helmet, "chestplate": chestplate, "leggings": leggings,
+                                               "boots": boots, "body": body},
+                                   "enchantability": ints[6], "toughness": floats[0],
+                                   "knockback_resistance": floats[1], "repair_items": repair[1].lower()}
+        if not {"leather", "copper", "iron", "gold", "diamond", "netherite", "turtle_scute"} <= set(armor):
+            raise ValueError(f"missing armor materials: {sorted(armor)}")
+
         items = inspect("net.minecraft.world.item.Items").split("  static {};")[1]
         tools = []
         pattern = (r"// Field net/minecraft/references/ItemIds\.([A-Z_]+):[^\n]*\n((?:(?![^\n]*ItemIds\.)[^\n]*\n)*?)"
@@ -169,6 +192,8 @@ def extract(server):
             "entity_interaction_range_extra": {k: screens[k] for k in ("vehicle_container", "merchant")},
         },
         "materials": {k.lower(): v for k, v in sorted(materials.items())},
+        "armor_durability_units": armor_types,
+        "armor_materials": dict(sorted(armor.items())),
         "tools": tools,
     }
 

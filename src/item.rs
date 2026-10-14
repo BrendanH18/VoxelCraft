@@ -107,21 +107,25 @@ pub enum ArmorMaterial {
     Diamond,
     Netherite,
     Turtle,
+    /// Java 26.3 copper armor (appended; ids in the copper equipment range).
+    Copper,
 }
 
 impl ArmorMaterial {
-    pub const ALL: [ArmorMaterial; 5] = [
+    pub const ALL: [ArmorMaterial; 6] = [
         ArmorMaterial::Leather,
         ArmorMaterial::Iron,
         ArmorMaterial::Gold,
         ArmorMaterial::Diamond,
         ArmorMaterial::Netherite,
+        ArmorMaterial::Copper,
     ];
 
     /// Armor points (half chestplates on the HUD) per piece, as in Minecraft.
     pub fn defense(self, piece: ArmorPiece) -> u8 {
         let points = match self {
             ArmorMaterial::Leather => [1, 3, 2, 1],
+            ArmorMaterial::Copper => [2, 4, 3, 1],
             ArmorMaterial::Gold => [2, 5, 3, 1],
             ArmorMaterial::Turtle => [2, 6, 5, 2],
             ArmorMaterial::Iron => [2, 6, 5, 2],
@@ -135,6 +139,7 @@ impl ArmorMaterial {
         let base = match self {
             ArmorMaterial::Leather => 5,
             ArmorMaterial::Gold => 7,
+            ArmorMaterial::Copper => 11,
             ArmorMaterial::Iron => 15,
             ArmorMaterial::Diamond => 33,
             ArmorMaterial::Netherite => 37,
@@ -301,6 +306,11 @@ const fn netherite_tool(name: &'static str, kind: ToolKind) -> ItemInfo {
         max_stack: 1,
         sprite: Sprite::Tool(kind, Tier::Netherite),
     }
+}
+
+const fn copper_armor(name: &'static str, piece: ArmorPiece) -> ItemInfo {
+    let (kind, sprite) = (ItemKind::Armor(piece, ArmorMaterial::Copper), Sprite::Armor(piece, ArmorMaterial::Copper));
+    ItemInfo { name, kind, max_stack: 1, sprite }
 }
 
 const fn netherite_armor(name: &'static str, piece: ArmorPiece) -> ItemInfo {
@@ -631,6 +641,10 @@ const COPPER_ITEMS: &[ItemInfo] = &[
     copper_tool("copper hoe", ToolKind::Hoe),
     copper_tool("copper sword", ToolKind::Sword),
     item("copper nugget", Sprite::Nugget([200, 118, 86])),
+    copper_armor("copper helmet", ArmorPiece::Helmet),
+    copper_armor("copper chestplate", ArmorPiece::Chestplate),
+    copper_armor("copper leggings", ArmorPiece::Leggings),
+    copper_armor("copper boots", ArmorPiece::Boots),
 ];
 const _: () = assert!(COPPER_ITEM as usize + COPPER_ITEMS.len() <= 1070);
 const AUDIT_SPLASH_POTION: u16 = 1044;
@@ -809,6 +823,7 @@ impl Item {
     pub const fn armor(piece: ArmorPiece, material: ArmorMaterial) -> Item {
         match material {
             ArmorMaterial::Netherite => Item(NETHERITE_ARMOR + piece as u16),
+            ArmorMaterial::Copper => Item(COPPER_ITEM + 6 + piece as u16),
             ArmorMaterial::Turtle => {
                 assert!(matches!(piece, ArmorPiece::Helmet), "turtle material has only a helmet");
                 Self::TURTLE_HELMET
