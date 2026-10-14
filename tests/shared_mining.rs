@@ -531,3 +531,34 @@ fn continued_mining_does_not_relight_ore_after_a_random_tick() {
     assert_eq!(w.get_block(AT), Some(Block::REDSTONE_ORE));
     assert!(s.breaking(&w).is_some());
 }
+
+#[test]
+fn server_rejects_a_stop_destroy_below_the_tolerance_and_destroys_when_its_own_progress_reaches_one() {
+    let rules = GameRules::default();
+    let (mut w, mut s, mut e) = scene(Block::DIRT, Dimension::Overworld);
+    let mut shovel = Stack::new(Item::tool(ToolKind::Shovel, Tier::Diamond), 1);
+    shovel.enchants = Enchants::NONE.with(Enchantment::Efficiency, 2);
+    s.inventory.slots[0] = Some(shovel);
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { .. }));
+    // The player leaves the ground: the client still completes (0.87 + 0.17) but the
+    // server's `rate * (ticks + 1)` is 0.35, below `STOP_DESTROY_BLOCK`'s 0.7.
+    s.player.on_ground = false;
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
+    assert_eq!(w.get_block(AT), Some(Block::DIRT));
+    // Java's delayed destroy fires once `0.17 * (elapsed + 1) >= 1`.
+    let mut ticks = 0;
+    let broken = loop {
+        ticks += 1;
+        let out = s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+        if matches!(out, Outcome::Broken { .. }) || ticks > 20 {
+            break out;
+        }
+    };
+    assert!(matches!(broken, Outcome::Broken { cell: AT, .. }), "{broken:?}");
+    assert_eq!(ticks, 4);
+    assert_eq!(w.get_block(AT), Some(Block::AIR));
+    // A steady rate always passes: 1.0 >= 0.7.
+    let (mut w, mut s, mut e) = scene(Block::DIRT, Dimension::Overworld);
+    s.inventory.slots[0] = Some(shovel);
+    assert!(matches!(finish(&mut s, &mut w, &mut e, &rules), Outcome::Broken { .. }));
+}

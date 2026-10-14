@@ -24,6 +24,10 @@ use glam::IVec3;
 /// Java's `MultiPlayerGameMode.destroyDelay` after a Creative or completed timed destruction.
 pub const DESTROY_DELAY_TICKS: u8 = 5;
 
+/// Java `ServerPlayerGameMode.handleBlockBreakAction` accepts a stop-destroy
+/// only when the server's own progress (`getDestroyProgress * (ticks + 1)`) reaches this.
+pub const SERVER_DESTROY_TOLERANCE: f32 = 0.7;
+
 #[derive(Default)]
 pub(super) struct State {
     /// Java's `destroyBlockPos` and `destroyingItem`; the block state is not part of the key.
@@ -33,6 +37,10 @@ pub(super) struct State {
     held: bool,
     /// Remaining destroy-delay ticks; survives release like Java's field.
     delay: u8,
+    /// Server `gameTicks - destroyProgressStart`: held ticks since the target started.
+    age: u32,
+    /// Server `hasDelayedDestroy`: a rejected stop-destroy and its elapsed ticks.
+    delayed: Option<(IVec3, u32)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -73,7 +81,7 @@ impl PlayerSession {
     /// Releases the attack input (Java `stopDestroyBlock`): progress is lost,
     /// but a pending destroy delay is kept.
     pub fn cancel_mining(&mut self) {
-        self.mining = State { delay: self.mining.delay, ..State::default() };
+        self.mining = State { delay: self.mining.delay, delayed: self.mining.delayed, ..State::default() };
     }
 
     /// Remaining destroy-delay ticks.
@@ -115,6 +123,9 @@ impl PlayerSession {
         let held = self.inventory.get(slot);
         if held.is_some_and(|s| s.count == 0 || s.count > s.item.max_stack()) {
             return Err("invalid held stack");
+        }
+        if let Some(out) = self.tick_delayed_destroy(held, slot, world, entities, rules) {
+            return Ok(out);
         }
         // Held input survives a missed ray or adapter error. Re-aiming is a
         // continue, not a new press; a changed target starts at zero.
@@ -158,16 +169,60 @@ impl PlayerSession {
             on_ground: self.player.on_ground || self.player.flying,
         };
         let effects = &self.vitals.effects;
-        self.mining.progress +=
-            mining::dig_progress_with(block, digger, effects.dig_speed_factor(), effects.mining_factor());
+        let rate = mining::dig_progress_with(block, digger, effects.dig_speed_factor(), effects.mining_factor());
+        self.mining.progress += rate;
+        let age = self.mining.age;
+        self.mining.age += 1;
         if self.mining.progress < 1. {
             world.particles.push(Request::Hit { cell: pos, block, face });
             return Ok(Outcome::Hit { player: self.id, cell: pos, block, progress: self.mining.progress });
         }
-        let out = self.destroy(pos, block, slot, world, entities, rules);
         self.mining.progress = 0.;
         self.mining.delay = DESTROY_DELAY_TICKS;
-        Ok(out)
+        if rate * ((age + 1) as f32) < SERVER_DESTROY_TOLERANCE {
+            // The server disagrees (the rate fell since the start): the block
+            // stays, and the server destroys it once its own progress reaches 1.
+            if self.mining.delayed.is_none() {
+                self.mining.delayed = Some((pos, age));
+            }
+            self.mining.target = None;
+            return Ok(Outcome::Hit { player: self.id, cell: pos, block, progress: 0. });
+        }
+        Ok(self.destroy(pos, block, slot, world, entities, rules))
+    }
+
+    /// Server `tick` with `hasDelayedDestroy`: destroy the rejected block once
+    /// the current rate over the elapsed ticks reaches one. Runs on every
+    /// mining tick, as adapters call no other per-tick session hook.
+    fn tick_delayed_destroy(
+        &mut self,
+        held: Option<Stack>,
+        slot: usize,
+        world: &mut World,
+        entities: &mut Entities,
+        rules: &GameRules,
+    ) -> Option<Outcome> {
+        let (pos, elapsed) = self.mining.delayed?;
+        let elapsed = elapsed + 1;
+        let block = world.get_block(pos).filter(|&b| b != Block::AIR);
+        let Some(block) = block else {
+            self.mining.delayed = None;
+            return None;
+        };
+        let digger = mining::Digger {
+            held,
+            helmet: self.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
+            eyes_in_water: self.player.head_in_water(world),
+            on_ground: self.player.on_ground || self.player.flying,
+        };
+        let effects = &self.vitals.effects;
+        let rate = mining::dig_progress_with(block, digger, effects.dig_speed_factor(), effects.mining_factor());
+        if rate * ((elapsed + 1) as f32) < 1. {
+            self.mining.delayed = Some((pos, elapsed));
+            return None;
+        }
+        self.mining.delayed = None;
+        Some(self.destroy(pos, block, slot, world, entities, rules))
     }
 
     fn same_target(&self, pos: IVec3, held: Option<Stack>) -> bool {
@@ -210,6 +265,7 @@ impl PlayerSession {
         }
         self.mining.target = Some((pos, held));
         self.mining.progress = 0.;
+        self.mining.age = 0;
         None
     }
 

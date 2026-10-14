@@ -156,9 +156,14 @@ enum was appended, and effects persist by string ID.
     a partly dropped stack continues. Opening a menu and dying still release
     mining, which matches Java's key release when a screen opens.
 - **Server rules:**
-  - The server's tolerance check is not modeled. This includes
-    `STOP_DESTROY_BLOCK` requiring ≥ 0.7 and delayed destruction.
-  - Single-player accumulation follows the client.
+  - Implemented with automated evidence: `STOP_DESTROY_BLOCK` requires the
+    server's `getDestroyProgress * (ticks + 1)` ≥ 0.7
+    (`SERVER_DESTROY_TOLERANCE`). A rejected stop leaves the block and records
+    Java's `hasDelayedDestroy`; the destroy happens once the same product
+    reaches 1. VoxelCraft runs that delayed check on each mining tick (adapters
+    have no other per-tick session hook), so it does not advance while no
+    attack input is held.
+  - Single-player accumulation otherwise follows the client.
   - Spawn protection, `mayInteract`, `blockActionRestricted` and game-master
     blocks are not applicable or not registered.
 - **Effects:**
