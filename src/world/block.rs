@@ -926,7 +926,8 @@ impl Block {
 
     /// The kind of wood a log, leaves, planks or sapling block is made of.
     pub fn wood(self) -> Option<Wood> {
-        Wood::ALL.into_iter().find(|w| [w.log(), w.leaves(), w.planks(), w.sapling()].contains(&self))
+        let block = self.base();
+        Wood::ALL.into_iter().find(|w| [w.log(), w.leaves(), w.planks(), w.sapling()].contains(&block))
     }
 
     pub fn is_log(self) -> bool {
@@ -2256,6 +2257,14 @@ const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
+        super::overworld_blocks::SAPLING_STAGE_ONE..=super::overworld_blocks::SAPLING_STAGE_ONE_LAST => {
+            // The same sapling, stage 1: identical name and textures.
+            let stage_zero = make(match super::overworld_blocks::sapling_stage_zero(id) {
+                Some(b) => b.0,
+                None => 0,
+            });
+            (stage_zero.name, stage_zero.kind, stage_zero.tex)
+        }
         #[cfg(test)]
         4095 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]

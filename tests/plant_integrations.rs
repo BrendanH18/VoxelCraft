@@ -231,3 +231,75 @@ fn pale_and_dark_oak_need_a_two_by_two_and_lone_ones_keep_bone_meal() {
     w.set_block(P, Block::OAK_SAPLING);
     assert!(w.apply_bone_meal(P), "a lone oak sapling consumes bone meal");
 }
+
+/// `SaplingBlock.advanceTree`: stage 0 becomes stage 1, and only a stage-1
+/// sapling grows its tree. Bone meal (45% to succeed) and random ticks both
+/// call it. Stage-1 states are appended at 2508..=2515 and behave as the plain
+/// sapling for items, drops and soil.
+#[test]
+fn saplings_advance_through_stage_one_before_growing() {
+    let mut w = world(Dimension::Overworld);
+    for x in -1..=2 {
+        for z in -1..=2 {
+            w.set_block(P + IVec3::new(x, -1, z), Block::DIRT);
+        }
+    }
+    let saplings = [
+        Block::OAK_SAPLING,
+        Block::SPRUCE_SAPLING,
+        Block::BIRCH_SAPLING,
+        Block::JUNGLE_SAPLING,
+        Block::ACACIA_SAPLING,
+        ob::CHERRY_SAPLING,
+    ];
+    for sapling in saplings {
+        w.set_block(P, sapling);
+        assert!(!w.advance_tree(P), "{} only advances its stage first", sapling.name());
+        let staged = w.get_block(P).unwrap();
+        assert_ne!(staged, sapling, "{}", sapling.name());
+        assert!((2508..=2515).contains(&staged.0), "{staged:?}");
+        assert_eq!((staged.name(), staged.base(), staged.is_sapling()), (sapling.name(), sapling, true));
+        assert_eq!(staged.info().tex, sapling.info().tex);
+        assert_eq!(staged.drop(), Some(sapling.into()), "{}", sapling.name());
+        assert!(staged.can_stay_on(Block::DIRT) && !staged.can_stay_on(Block::STONE));
+        // Bone meal on the stage-1 sapling eventually grows the tree.
+        let mut grown = false;
+        for _ in 0..200 {
+            w.apply_bone_meal(P);
+            if w.get_block(P).is_some_and(|b| !b.is_sapling()) {
+                grown = true;
+                break;
+            }
+        }
+        assert!(grown, "{} never grew from stage 1", sapling.name());
+        assert!(w.get_block(P).unwrap().is_log(), "{}", sapling.name());
+        // Clear the tree for the next sapling.
+        for dy in 0..30 {
+            for dz in -6..=6 {
+                for dx in -6..=6 {
+                    w.set_block(P + IVec3::new(dx, dy, dz), Block::AIR);
+                }
+            }
+        }
+    }
+    // Dark and pale oak need their 2x2 at either stage.
+    for sapling in [ob::DARK_OAK_SAPLING, ob::PALE_OAK_SAPLING] {
+        for d in [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z] {
+            w.set_block(P + d, sapling);
+        }
+        assert!(!w.advance_tree(P));
+        assert_eq!(w.get_block(P).unwrap().base(), sapling);
+        assert_ne!(w.get_block(P), Some(sapling), "the corner advanced to stage 1");
+        assert!(w.advance_tree(P), "mixed stages still count as one sapling kind");
+        for d in [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z] {
+            assert!(w.get_block(P + d).unwrap().is_log(), "{d}");
+        }
+        for dy in 0..30 {
+            for dz in -8..=8 {
+                for dx in -8..=8 {
+                    w.set_block(P + IVec3::new(dx, dy, dz), Block::AIR);
+                }
+            }
+        }
+    }
+}

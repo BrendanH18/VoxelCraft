@@ -33,6 +33,7 @@ const SAPLING_GROWTH: u64 = 7;
 /// Java 26.3 `TreeGrower.DARK_OAK` and `PALE_OAK` have only a 2x2 (mega)
 /// feature, so a lone sapling of either can never grow.
 fn needs_two_by_two(sapling: Block) -> bool {
+    let sapling = sapling.base();
     sapling == super::overworld_blocks::DARK_OAK_SAPLING || sapling == super::overworld_blocks::PALE_OAK_SAPLING
 }
 
@@ -273,7 +274,7 @@ impl World {
             Block::FARMLAND | Block::WET_FARMLAND => self.tick_farmland(p, b),
             b if b.is_sapling() => {
                 if self.grows_here(p) && self.one_in(SAPLING_GROWTH) {
-                    self.grow_tree(p);
+                    self.advance_tree(p);
                 }
             }
             // `RedStoneOreBlock.randomTick`: a lit ore goes dark.
@@ -360,6 +361,17 @@ impl World {
         }
     }
 
+    /// Java's `SaplingBlock.advanceTree`: a stage-0 sapling becomes stage 1,
+    /// and a stage-1 sapling grows its tree. Returns whether a tree grew.
+    pub fn advance_tree(&mut self, p: IVec3) -> bool {
+        let Some(sapling) = self.get_block(p) else { return false };
+        if let Some(next) = super::overworld_blocks::sapling_stage_one(sapling) {
+            self.edit(p, next, false);
+            return false;
+        }
+        self.grow_tree(p)
+    }
+
     /// Grows the sapling at `p` into a tree if there's room for its trunk.
     /// Leaves only fill air, like world generation. Returns whether it grew.
     pub fn grow_tree(&mut self, mut p: IVec3) -> bool {
@@ -372,12 +384,13 @@ impl World {
         let mut blocks = Vec::new();
         let ground = p - IVec3::Y;
         let Some(wood) = sapling.wood().filter(|_| sapling.is_sapling()) else { return false };
+        let sapling = sapling.base();
         super::trees::tree(wood, ground, v, &mut |q, b| blocks.push((q, b)));
         let room = blocks.iter().filter(|(_, b)| b.is_log()).all(|&(q, _)| {
             q == p
                 || self
                     .get_block(q)
-                    .is_some_and(|b| b == sapling || b == Block::AIR || b.is_replaceable() || b.is_leaves())
+                    .is_some_and(|b| b.base() == sapling || b == Block::AIR || b.is_replaceable() || b.is_leaves())
         });
         if !room {
             return false;
@@ -401,7 +414,7 @@ impl World {
         [0, -1].into_iter().flat_map(|x| [0, -1].map(move |z| p + IVec3::new(x, 0, z))).find(|&q| {
             [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z]
                 .into_iter()
-                .all(|d| self.get_block(q + d) == Some(sapling))
+                .all(|d| self.get_block(q + d).is_some_and(|b| b.base() == sapling.base()))
         })
     }
 
@@ -430,7 +443,7 @@ impl World {
                     return false;
                 }
                 if self.roll() % 100 < 45 {
-                    self.grow_tree(p);
+                    self.advance_tree(p);
                 }
                 true
             }

@@ -11,6 +11,7 @@
 //! | 1980..=2009 | coral blocks, coral and coral fans, live then dead, five colours each |
 //! | 2010..=2031 | dark oak, mangrove, cherry and pale oak leaves and saplings; pale oak wood; roots; bamboo; petals; hanging moss |
 //! | 2032..=2076 | flowers, double plants, lily pad, vines, sweet berries, cocoa, mushroom blocks |
+//! | 2508..=2515 | saplings at `stage` 1 (oak, spruce, birch, jungle, acacia, dark oak, cherry, pale oak) |
 //! | 2400..=2415 | wall amethyst buds and clusters (GEN-02): facing south, north, east, west, four sizes each |
 //!
 //! Aquatic plants (kelp, seagrass, sea pickles, live coral and fans) are
@@ -610,6 +611,7 @@ pub const fn base(id: u16) -> Option<Block> {
         2055..=2057 => VINE,
         2059..=2061 => SWEET_BERRY_BUSH,
         2160..=2164 => MANGROVE_PROPAGULE,
+        SAPLING_STAGE_ONE..=SAPLING_STAGE_ONE_LAST => STAGE_ZERO[(id - SAPLING_STAGE_ONE) as usize],
         2063..=2073 => COCOA,
         _ => return None,
     })
@@ -764,7 +766,38 @@ pub fn is_leaves(b: Block) -> bool {
 }
 
 pub fn is_sapling(b: Block) -> bool {
-    matches!(b.0, 2014..=2017)
+    matches!(b.0, 2014..=2017 | SAPLING_STAGE_ONE..=SAPLING_STAGE_ONE_LAST)
+}
+
+/// First id of the saplings with Java's `stage` property set to 1; the plain
+/// saplings are stage 0. Appended in the reserved 2500..=2599 range.
+pub const SAPLING_STAGE_ONE: u16 = 2508;
+pub const SAPLING_STAGE_ONE_LAST: u16 = 2515;
+/// The stage-0 saplings, in the order of their stage-1 states.
+const STAGE_ZERO: [Block; 8] = [
+    Block::OAK_SAPLING,
+    Block::SPRUCE_SAPLING,
+    Block::BIRCH_SAPLING,
+    Block::JUNGLE_SAPLING,
+    Block::ACACIA_SAPLING,
+    DARK_OAK_SAPLING,
+    CHERRY_SAPLING,
+    PALE_OAK_SAPLING,
+];
+
+/// The stage-0 sapling a stage-1 id belongs to.
+pub const fn sapling_stage_zero(id: u16) -> Option<Block> {
+    if id >= SAPLING_STAGE_ONE && id <= SAPLING_STAGE_ONE_LAST {
+        Some(STAGE_ZERO[(id - SAPLING_STAGE_ONE) as usize])
+    } else {
+        None
+    }
+}
+
+/// `SaplingBlock.advanceTree`'s first step: the stage-1 state of a stage-0
+/// sapling (`None` for anything else, including stage-1 saplings).
+pub fn sapling_stage_one(b: Block) -> Option<Block> {
+    STAGE_ZERO.iter().position(|&s| s == b).map(|i| Block(SAPLING_STAGE_ONE + i as u16))
 }
 
 /// Soil for grass-like plants (Java's `BlockTags.DIRT` plus farmland).
