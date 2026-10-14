@@ -318,6 +318,9 @@ impl Game {
                     );
                     let (sound, gain) = match sound {
                         MobSound::Bell => (Sound::Bell, 1.0),
+                        // Procedural stand-ins for Java's `wandering_trader.disappeared`/`reappeared`.
+                        MobSound::TraderDrink(true) => (Sound::Teleport, 0.5),
+                        MobSound::TraderDrink(false) => (Sound::Pop, 0.8),
                         MobSound::BoatPaddle(water) => (
                             Sound::Step(if water {
                                 crate::audio::sounds::Material::Water

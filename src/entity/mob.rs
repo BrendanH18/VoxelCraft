@@ -1282,8 +1282,10 @@ impl Mob {
                 events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
             }
         }
-        if self.alive() {
-            self.update_trader(dtf, self.trader_night);
+        if self.alive()
+            && let Some(vanished) = self.update_trader(dtf, self.trader_night)
+        {
+            events.push(EntityEvent::Sound { sound: MobSound::TraderDrink(vanished), pos: self.pos + DVec3::Y });
         }
         self.hurt = (self.hurt - dtf).max(0.0);
         self.provoked = (self.provoked - dtf).max(0.0);

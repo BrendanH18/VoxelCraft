@@ -230,7 +230,9 @@ Traders offer five distinct common and one rare supported Java 1.21 offer,
 with exact quantities/prices/stock caps, no leveling or restocking, through
 the shared merchant UI/controller/CLI transaction. They disappear after
 48000 loaded ticks (paused while trading), drink for 32 ticks to become
-invisible at night, and drink milk to reappear by day. Offers, remaining
+invisible when it is dark (Invisibility lasts 3600 ticks, after which they drink
+again), and drink milk to reappear by day (Java `UseItemGoal`; the finish sounds are
+procedural stand-ins). Offers, remaining
 lifetime, destination, potion state, llama links and attempt progression
 survive saves. Models and robes are original procedural geometry.
 
@@ -238,8 +240,9 @@ Remaining simplifications: trade pools filter absent items, shared resident
 navigation, merchant-linked trader llamas now render the existing procedural lead rope
 (including after save/reload and through mob replicas); physical merchant-lead
 breaking remains simplified. Trader llamas have no
-spitting/taming/riding, and no held potion/milk model or drinking sound.
-Biome exclusions await the unsupported void/deep-dark biome tags. A trader
+spitting/taming/riding, and no held potion/milk model.
+Java 26.3's only excluded trader biome is `the_void` (`without_wandering_trader_spawns`),
+which cannot generate here, so no exclusion is needed. A trader
 can remain frozen in a loaded chunk beyond the common 128-block activation
 radius, as other persistent village entities currently do.
 

@@ -101,6 +101,8 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
     Bell,
+    /// A wandering trader finished its Invisibility potion (true) or milk (false).
+    TraderDrink(bool),
     BoatPaddle(bool),
     /// A creeper lit its fuse.
     Fuse,
