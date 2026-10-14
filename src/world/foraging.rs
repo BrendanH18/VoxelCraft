@@ -47,6 +47,11 @@ impl World {
         ) || (below.is_opaque() && self.raw_brightness(p, 0).is_some_and(|light| light < 13))
     }
     pub(super) fn tick_mushroom(&mut self, p: IVec3, mushroom: Block) {
+        // Unknown skylight (an unlit neighbour column at the loaded edge) is
+        // not yet decidable, so leave the mushroom rather than destroy it.
+        if self.raw_brightness(p, 0).is_none() {
+            return;
+        }
         if !self.mushroom_survives(p) {
             self.edit(p, Block::AIR, false);
             self.spill_block(p, mushroom);

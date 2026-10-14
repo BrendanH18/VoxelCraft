@@ -289,6 +289,10 @@ impl World {
         }
         // Replaced data invalidates the column's heightmap and skylight.
         self.unlight_sky_column(column_of(pos));
+        // Light the old data spread into neighbours must be removed as on unload,
+        // or it floods back into the replacement from their border cells.
+        let old_light = self.chunks.get_mut(&pos).and_then(|s| s.block_light.take());
+        self.unload_block_light(pos, old_light.as_ref());
         let version = self.chunks.get(&pos).map_or(0, |s| s.version.wrapping_add(1));
         let in_flight = self.chunks.get(&pos).is_some_and(|s| s.mesh_in_flight);
         let existed = self.chunks.contains_key(&pos);

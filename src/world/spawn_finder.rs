@@ -68,6 +68,13 @@ pub fn find_spawn<W: BlockSource + ?Sized>(
     top: impl Fn(i32, i32) -> Option<i32>,
     (min_y, max_y): (i32, i32),
 ) -> DVec3 {
+    // Unloaded cells count as solid, so with the spawn area unloaded (a death
+    // far from spawn) the fixup would climb to build height. Use the column
+    // height instead; the arrival streams the area in around the player.
+    if world.block(suggestion).is_none() {
+        let y = top(suggestion.x, suggestion.z).map_or(suggestion.y, |t| t + 1);
+        return bottom_centre(suggestion.with_y(y));
+    }
     if !adventure {
         let radius = i64::from(radius.max(0));
         let width = radius * 2 + 1;
@@ -96,6 +103,18 @@ mod tests {
 
     fn top_of(grid: &Grid) -> impl Fn(i32, i32) -> Option<i32> + '_ {
         move |x, z| (-40..40).rev().find(|&y| grid.block(IVec3::new(x, y, z)).is_some_and(|b| b != Block::AIR))
+    }
+
+    #[test]
+    fn an_unloaded_spawn_area_uses_the_column_height_not_build_height() {
+        struct Unloaded;
+        impl BlockSource for Unloaded {
+            fn block(&self, _: IVec3) -> Option<Block> {
+                None
+            }
+        }
+        let at = find_spawn(&Unloaded, IVec3::new(8, 70, -3), 10, 5, false, |_, _| Some(66), (-64, 320));
+        assert_eq!(at, DVec3::new(8.5, 67.0, -2.5));
     }
 
     #[test]

@@ -995,6 +995,30 @@ mod tests {
         assert!(world.light_settled());
     }
 
+    /// A snapshot that removes a torch at a chunk border clears the light it
+    /// had spread into the neighbouring chunk instead of leaving ghost light.
+    #[test]
+    fn replica_snapshots_remove_light_spread_into_neighbours() {
+        let mut w = World::new_remote(Arc::new(Generator::new(7)), 2);
+        for c in square(1) {
+            for cy in w.generator.dimension.chunk_rows() {
+                w.receive_chunk(IVec3::new(c.x, cy, c.y), World::flat_test_chunk(cy, 63));
+            }
+        }
+        // Torch in chunk (0, 2, 0) one cell from its +x border; (32, 64, 5) is in the next chunk.
+        let pos = IVec3::new(0, 2, 0);
+        let torch = (index(31, 0, 5) as u16, Block::TORCH);
+        w.apply_replica_edits(pos, &[torch]);
+        let beyond = IVec3::new(32, 64, 5);
+        assert!(w.block_light(beyond) > 0, "torch light crosses the border");
+        // The host removes it, and the change arrives as a full snapshot.
+        let data = Arc::new(w.chunks[&pos].data.with_edits(&[(torch.0, Block::AIR)]));
+        w.receive_chunk(pos, data);
+        w.update_block_light();
+        assert_eq!(w.block_light(beyond), 0, "no ghost light in the neighbour");
+        assert_eq!(w.block_light(IVec3::new(31, 64, 5)), 0, "nor flooding back into the snapshot");
+    }
+
     /// A LAN replica applies host edits incrementally; its light must match a
     /// replica that installs the same final chunk as a fresh snapshot.
     #[test]

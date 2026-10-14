@@ -1024,7 +1024,8 @@ impl super::Entities {
         // A lit TNT cart explodes and is gone.
         let mut i = 0;
         while i < self.minecarts.len() {
-            if self.minecarts[i].kind.boat().is_some() && self.minecarts[i].damage > 40.0 {
+            let void = self.minecarts[i].pos.y < -64.0;
+            if self.minecarts[i].kind.boat().is_some() && self.minecarts[i].damage > 40.0 && !void {
                 let cart = self.minecarts.swap_remove(i);
                 self.clear_cart(cart.id);
                 if let Some((wood, _)) = cart.kind.boat() {
@@ -1047,7 +1048,10 @@ impl super::Entities {
                 }
                 continue;
             }
-            if self.minecarts[i].fuse == Some(0) || self.minecarts[i].damage > 40.0 && self.minecarts[i].pos.y < -64.0 {
+            // Carts mark themselves broken below the world; boats never take
+            // that damage, so remove any vehicle that fell into the void.
+            let boat = self.minecarts[i].kind.boat().is_some();
+            if self.minecarts[i].fuse == Some(0) || void && (boat || self.minecarts[i].damage > 40.0) {
                 let cart = self.minecarts.swap_remove(i);
                 self.clear_cart(cart.id);
                 if cart.fuse == Some(0) {
@@ -1173,6 +1177,17 @@ mod tests {
         c.rider = Some(super::super::PlayerId(u32::MAX));
         assert_eq!(Minecart::deserialize(&c.serialize()).unwrap().rider, c.rider);
     }
+    #[test]
+    fn boats_that_fall_below_the_world_are_removed_like_carts() {
+        let mut w = world();
+        let mut e = super::super::Entities::new(1);
+        e.minecarts.push(Minecart::new(7, CartKind::Boat { wood: 0, chest: true }, DVec3::new(5., -70., 5.)));
+        e.minecarts.push(Minecart::new(8, CartKind::Rideable, DVec3::new(9., -70., 9.)));
+        e.tick_minecarts(&mut w, &[]);
+        assert!(e.minecarts.is_empty(), "both vehicles are gone");
+        assert!(e.items.is_empty(), "nothing drops into the void");
+    }
+
     #[test]
     fn java_26_3_boats_survive_hard_landings_with_riders_and_cargo() {
         let mut w = world();
