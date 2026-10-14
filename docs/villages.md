@@ -57,7 +57,8 @@ chest; farms have wheat/carrot/potato rows, irrigation, hay and composters.
 Generated containers register immediately; saved entries override seeded
 loot, including empty looted chests. House loot follows Java 1.21 biome
 weights, 3–8 rolls and item counts. Unsupported loot remains weighted
-empty rolls (berries, some seeds, saddles, signs, blue ice, beetroot soup).
+empty rolls (berries, some seeds, signs, blue ice, beetroot soup). Saddles are
+registered and the existing loot resolver includes them.
 
 The compact house/street/farm/meeting pools are original geometry inspired
 by Java's jigsaw pools. They do not reproduce the full vanilla NBT template
@@ -232,7 +233,9 @@ lifetime, destination, potion state, llama links and attempt progression
 survive saves. Models and robes are original procedural geometry.
 
 Remaining simplifications: trade pools filter absent items, shared resident
-navigation, llama following without physical/rendered leads, no llama
+navigation, merchant-linked trader llamas now render the existing procedural lead rope
+(including after save/reload and through mob replicas); physical merchant-lead
+breaking remains simplified. Trader llamas have no
 spitting/taming/riding, and no held potion/milk model or drinking sound.
 Biome exclusions await the unsupported void/deep-dark biome tags. A trader
 can remain frozen in a loaded chunk beyond the common 128-block activation

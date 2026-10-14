@@ -231,13 +231,21 @@ impl Entities {
             }
         }
         for m in &mut self.mobs {
-            if m.kind == MobKind::TraderLlama
-                && let Some(t) = &mut m.trader
-                && let Some(&(pos, despawn, _)) = self.trader_leaders.get(&t.leader)
-            {
+            if m.kind != MobKind::TraderLlama {
+                continue;
+            }
+            let Some(t) = &mut m.trader else { continue };
+            if let Some(&(pos, despawn, _)) = self.trader_leaders.get(&t.leader) {
                 t.despawn = despawn;
                 t.destination = pos;
                 m.hunt = (m.pos.distance_squared(pos) > 4.0).then_some(pos);
+                // Use the existing lead renderer and replica projection. An
+                // explicit player/fence lead takes precedence over the merchant.
+                if m.leash.is_none() {
+                    m.leash_pos = Some(pos + DVec3::Y * 1.2);
+                }
+            } else if m.leash.is_none() {
+                m.leash_pos = None;
             }
         }
     }
@@ -278,6 +286,26 @@ impl Mob {
 mod tests {
     use super::*;
     use crate::physics::test_util::Grid;
+    #[test]
+    fn merchant_leads_render_after_reload_and_clear_when_the_merchant_is_gone() {
+        let mut e = Entities::new(6);
+        let w = Grid::flat(0);
+        assert!(e.spawn_trader(&w, DVec3::ZERO));
+        let saved = e.villagers_to_string();
+        let mut loaded = Entities::new(7);
+        loaded.load_villagers(&saved);
+        loaded.trader_upkeep();
+        let trader = loaded.mobs.iter().find(|m| m.kind == MobKind::WanderingTrader).unwrap();
+        let anchor = trader.pos + DVec3::Y * 1.2;
+        for llama in loaded.mobs.iter().filter(|m| m.kind == MobKind::TraderLlama) {
+            assert_eq!(llama.leash_pos, Some(anchor));
+            assert_eq!(llama.look()["leash"], serde_json::json!(anchor.to_array()));
+        }
+        loaded.mobs.retain(|m| m.kind != MobKind::WanderingTrader);
+        loaded.trader_upkeep();
+        assert!(loaded.mobs.iter().all(|m| m.leash_pos.is_none()));
+    }
+
     #[test]
     fn chance_progresses_daily_and_caps() {
         let mut s = Spawner::default();
