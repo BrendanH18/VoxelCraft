@@ -28,8 +28,9 @@ attack-dependent body control. Item use raises the right arm; specialized
 bow/crossbow, offhand and left-handed poses are not yet represented.
 Held shaped blocks use a cube and flat items a thin textured box rather
 than the resource-pack display transforms and full silhouette extrusion.
-Death time currently derives from Vitals.since_damage; fatal hits during
-an existing immunity window can start partway into the fall. Sprint-swim, forced crawl (swim hitbox on land), and Java 1.14+ crouch
+Death time is `Vitals::death_time`, counted from the fatal tick as Java's
+`deathTime` is (it used to derive from the last hit, so a fatal hit during an
+immunity window started the fall partway in). Sprint-swim, forced crawl (swim hitbox on land), and Java 1.14+ crouch
 hitbox/eye height are shared via `entity/player_pose.rs` and drive physics,
 camera bob suppression and HumanoidModel-style swimAmount animation. Riding
 and elytra poses remain separate roadmap work.

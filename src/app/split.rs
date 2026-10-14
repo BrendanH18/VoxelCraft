@@ -219,7 +219,7 @@ impl Game {
             // Everyone else is visible from this view, the host included.
             let mut others: Vec<(&crate::player::Player, DVec3, crate::entity::model::PlayerAppearance, &str)> =
                 Vec::new();
-            if !self.session.vitals.is_dead() || self.session.vitals.since_damage() < 1.0 {
+            if self.session.vitals.visible() {
                 others.push((
                     &self.session.player,
                     host_feet,
@@ -236,10 +236,7 @@ impl Game {
                 ));
             }
             for (other, b) in &self.agents.players {
-                if other != name
-                    && b.active
-                    && (!b.agent.session.vitals.is_dead() || b.agent.session.vitals.since_damage() < 1.0)
-                {
+                if other != name && b.active && b.agent.session.vitals.visible() {
                     others.push((
                         &b.agent.session.player,
                         b.agent.previous_pos.lerp(b.agent.session.player.pos, scene.alpha),

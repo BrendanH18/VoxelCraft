@@ -1543,9 +1543,7 @@ impl Game {
             .agents
             .players
             .iter()
-            .filter(|(_, b)| {
-                b.active && (!b.agent.session.vitals.is_dead() || b.agent.session.vitals.since_damage() < 1.0)
-            })
+            .filter(|(_, b)| b.active && b.agent.session.vitals.visible())
             .map(|(name, b)| {
                 let pose =
                     dial.at(b.agent.session.player.yaw, b.agent.session.player.pos.x, b.agent.session.player.pos.z);

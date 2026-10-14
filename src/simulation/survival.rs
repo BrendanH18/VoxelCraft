@@ -235,6 +235,8 @@ pub struct Vitals {
     pub effects: super::effects::Effects,
     /// Seconds since the last damage (drives the hurt flash).
     since_damage: f32,
+    /// Seconds since health reached zero (Java's `deathTime`, in seconds).
+    death_time: f32,
     drown_timer: f32,
     fire_left: f32,
     fire_timer: f32,
@@ -261,6 +263,7 @@ impl Default for Vitals {
             pearl_cooldown: 0.0,
             effects: Default::default(),
             since_damage: 1e3,
+            death_time: 0.0,
             drown_timer: 0.0,
             fire_left: 0.0,
             fire_timer: 0.0,
@@ -304,6 +307,18 @@ impl Vitals {
     /// Seconds since the hit that started the immunity window; stronger hits within it do not reset this.
     pub fn since_damage(&self) -> f32 {
         self.since_damage
+    }
+
+    /// Seconds since this player died (Java's `deathTime`, which drives the
+    /// fall and camera roll), or `None` while alive. Unlike `since_damage`, a
+    /// fatal hit during an immunity window does not start it partway in.
+    pub fn death_time(&self) -> Option<f32> {
+        self.is_dead().then_some(self.death_time)
+    }
+
+    /// Whether the body is still visible: alive, or in the first second of death.
+    pub fn visible(&self) -> bool {
+        self.death_time().is_none_or(|t| t < 1.0)
     }
 
     /// Air bubbles to show, 0..=AIR_BUBBLES.
@@ -366,6 +381,7 @@ impl Vitals {
     ) -> Hurts {
         let mut hurts = Hurts::default();
         self.since_damage = (self.since_damage + dt).min(1e3);
+        self.death_time = if self.is_dead() { (self.death_time + dt).min(1e3) } else { 0.0 };
         self.xp.tick(dt);
         self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
         if self.is_dead() {
@@ -544,6 +560,34 @@ mod tests {
     use super::*;
 
     const DT: f32 = 1.0 / 60.0;
+
+    /// Java's `deathTime` starts at the fatal tick, not at the hit that opened
+    /// the immunity window.
+    #[test]
+    fn death_animation_starts_when_the_player_dies() {
+        let mut v = Vitals::default();
+        let env = Env::default();
+        v.damage(2.0, "test", false);
+        for _ in 0..8 {
+            v.tick(0.05, &env, false);
+        }
+        assert_eq!(v.death_time(), None);
+        assert!(v.damage(40.0, "test", false) > 0.0 && v.is_dead());
+        assert!(v.since_damage() > 0.35, "the fatal hit rode on an older immunity window");
+        assert_eq!(v.death_time(), Some(0.0));
+        for _ in 0..10 {
+            v.tick(0.05, &env, false);
+        }
+        assert!((v.death_time().unwrap() - 0.5).abs() < 1e-4);
+        assert!(v.visible());
+        for _ in 0..10 {
+            v.tick(0.05, &env, false);
+        }
+        assert!(!v.visible());
+        v.respawn();
+        assert_eq!(v.death_time(), None);
+        assert!(v.visible());
+    }
 
     #[test]
     fn magma_hurts_without_igniting_and_frost_walker_protects() {
