@@ -1816,7 +1816,7 @@ mod tests {
         assert_eq!(a.session.player.vehicle, None);
         assert!(entities.cart(cart).unwrap().seat_for(a.session.id).is_none());
         let off = a.session.player.pos - DVec3::new(3.5, 151.0, 1.5);
-        assert!(off.x.hypot(off.z) >= 0.9, "the player steps out beside the cart: {off:?}");
+        assert!(off.x.hypot(off.z) >= 0.9, "the player steps out beside the cart");
     }
 
     #[test]
