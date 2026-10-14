@@ -21,11 +21,14 @@ pub fn equip_armor(
     }
     // Only a block the player could actually use (Java's block interaction
     // range) takes the click instead of the armor.
-    if world
-        .raycast(player.eye(), player.forward().as_dvec3(), mode.block_reach())
-        .and_then(|(p, _)| world.get_block(p))
-        .is_some_and(crate::content::interaction::blocks_item_use)
-    {
+    if world.raycast(player.eye(), player.forward().as_dvec3(), mode.block_reach()).is_some_and(|(pos, _)| {
+        crate::content::interaction::block_use_precedes_item(
+            world,
+            pos,
+            inventory.get(slot).map(|s| s.item),
+            player.sneaking,
+        )
+    }) {
         return false;
     }
     inventory.equip(slot)

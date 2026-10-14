@@ -57,9 +57,10 @@ yet.
   Block use while riding remains unavailable on every path.
 - **Ignition sound** plays at the lit cell instead of the clicked block.
 
-Adventure-mode gating is unchanged: redstone components and composters still
-require a build-capable mode. Java lets Adventure players use blocks. That is a
-recorded difference, not a fidelity exception.
+Implemented with automated evidence on `work/fix-w1-building`: Adventure
+players can use redstone components and composters. All held items and bow
+drawing defer to the shared block-use predicate; cake claims use only when
+edible and otherwise passes to item use. Ordinary-player acceptance is open.
 
 ## No state swapping
 

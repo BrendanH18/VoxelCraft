@@ -245,6 +245,9 @@ impl Actor<'_> {
     /// unless aimed at a container. Returns whether it did.
     fn equip_held(&mut self) -> bool {
         let slot = self.body.actions.selected;
+        if self.session.block_takes_use(slot, self.world, self.sneaking) {
+            return false;
+        }
         let s = &mut *self.session;
         if !voxelcraft::survival_items::equip_armor(&s.player, &mut s.inventory, slot, s.mode, self.world) {
             return false;

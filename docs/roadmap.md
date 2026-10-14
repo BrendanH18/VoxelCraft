@@ -784,3 +784,7 @@ this single-player acceptance milestone. They are not prerequisites for 1.0.
 Implemented with automated evidence on `work/fix-w1-building`: mining input
 continues through missed rays and adapter errors; a new re-aimed target starts
 at zero. Ordinary-player input and visual acceptance remain open.
+
+Shared item and bow actions defer to usable blocks (including hunger-dependent
+cake), and Adventure redstone/composter use is implemented with automated
+evidence. Normal input-path acceptance remains open.

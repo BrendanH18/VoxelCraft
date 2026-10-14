@@ -8,7 +8,7 @@ use crate::{
 pub fn blocks_item_use(b: Block) -> bool {
     b == Block::CRAFTING_TABLE
         || b.is_bed()
-        || b.is_door()
+        || (b.is_door() && b.base() != crate::world::redstone_blocks::IRON_DOOR)
         || b.is_gate()
         || furnace::is_furnace(b)
         || chest::is_chest(b)
@@ -16,6 +16,7 @@ pub fn blocks_item_use(b: Block) -> bool {
         || b == Block::ENCHANTING_TABLE
         || b.is_anvil()
         || b == Block::SMITHING_TABLE
+        || b.base() == Block::GRINDSTONE
 }
 
 /// Java 26.3 `ServerPlayerGameMode.useItemOn` runs the targeted block's

@@ -121,16 +121,13 @@ lookup per bucket click and does not touch per-frame paths.
   to the hit face.
 - `Level.mayInteract` (spawn protection, world border) and the Adventure
   `can_place_on` component are not modeled.
-- Both adapters still require build permission for redstone and composter use.
-  Java lets Adventure players use levers, buttons and doors. The CLI also has
-  no wooden door/gate toggle or container opening. A bucket aimed at those
-  blocks is left unused and the CLI command returns an error.
-- Cake is not in the shared predicate because it needs hunger. The CLI cake
-  arm still precedes item use and errors when full; Java passes to `Item.use`.
+- Implemented with automated evidence on `work/fix-w1-building`: Adventure
+  uses redstone components and composters; the shared block-use predicate covers
+  every held item and drawing bows. Hungry players bite cake before item use;
+  full players pass through to the held item. CLI door use was already moved
+  into the shared session chain. Ordinary-player acceptance remains open.
 - The desktop blocks bucket use while riding (boost or vehicle inventory). The
   CLI now allows it, as Java does.
-- Pearls, throwables, rods, bows and armor on desktop still use the narrower
-  `aiming_at_usable` container list, not the new block-use predicate.
 - Bells ring from any face. Fish releases play the pour sound, not
   `BUCKET_EMPTY_FISH`. `use_held` uses a 6-block raycast for block priority;
   the CLI's own block target uses the session reach.

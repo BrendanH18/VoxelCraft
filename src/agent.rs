@@ -255,7 +255,8 @@ impl Agent {
                 }
             }
             Command::Place
-                if self.session.inventory.get(self.selected).is_some_and(|s| s.item.as_armor().is_some()) =>
+                if self.session.inventory.get(self.selected).is_some_and(|s| s.item.as_armor().is_some())
+                    && !self.session.block_takes_use(self.selected, world, self.session.player.sneaking) =>
             {
                 if !crate::survival_items::equip_armor(
                     &self.session.player,

@@ -135,6 +135,17 @@ pub struct UseContext<'a> {
 }
 
 impl PlayerSession {
+    /// Whether the aimed block consumes use before the held item. Cake is
+    /// conditional on hunger; sneaking with an item skips block interaction.
+    pub fn block_takes_use(&self, slot: usize, world: &World, sneaking: bool) -> bool {
+        let held = self.inventory.get(slot).map(|s| s.item);
+        let Some((pos, _)) = self.block_target(world) else { return false };
+        crate::content::interaction::block_use_precedes_item(world, pos, held, sneaking)
+            || (!(sneaking && held.is_some())
+                && world.get_block(pos).is_some_and(|b| b.cake_bites().is_some())
+                && (self.mode.is_creative() || self.vitals.hunger.can_eat()))
+    }
+
     /// The mob under the crosshair within entity reach and in front of the targeted block.
     pub fn mob_target(&self, world: &World, entities: &Entities) -> Option<usize> {
         let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
@@ -278,7 +289,7 @@ impl PlayerSession {
         ctx: &UseContext,
     ) -> Result<Option<Used>, &'static str> {
         let target = self.block_target(world);
-        if target.and_then(|(pos, _)| world.get_block(pos)).is_some_and(crate::content::interaction::blocks_item_use) {
+        if self.block_takes_use(slot, world, ctx.sneaking) {
             return Ok(None);
         }
         let creative = self.mode.is_creative();
@@ -358,14 +369,11 @@ impl PlayerSession {
             }
             return Ok(Some(Used::EyeInserted { cell: pos, opened }));
         }
-        if !ctx.sneaking && can_build && world.use_redstone(pos) {
+        if !ctx.sneaking && world.use_redstone(pos) {
             return Ok(Some(Used::Redstone { cell: pos }));
         }
         world.touch_redstone_ore(pos);
-        if !ctx.sneaking
-            && can_build
-            && survival_items::use_composter(world, entities, pos, &mut self.inventory, slot, creative)
-        {
+        if !ctx.sneaking && survival_items::use_composter(world, entities, pos, &mut self.inventory, slot, creative) {
             return Ok(Some(Used::Composter { cell: pos }));
         }
         // Containers open on right-click; sneaking builds against them.
@@ -388,7 +396,7 @@ impl PlayerSession {
                 }
                 Some(b) if b.cake_bites().is_some() => {
                     if !survival_items::bite_cake(world, pos, &mut self.vitals, creative) {
-                        return Err("not hungry enough to eat cake");
+                        return Ok(None);
                     }
                     return Ok(Some(Used::CakeBitten { cell: pos }));
                 }

@@ -170,3 +170,54 @@ fn crossbows_load_after_twenty_five_ticks_and_fire_on_the_next_use() {
     assert_eq!(s.inventory.get(0).unwrap().item, Item::CROSSBOW);
     assert_eq!(e.arrows.len(), 1);
 }
+
+/// Solid neighbors on every side of `WALL` but the player's, so a mounted block stays attached.
+fn support_all_but_the_viewer_side(w: &mut World) {
+    for d in [IVec3::X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z] {
+        w.set_block(WALL + d, Block::STONE);
+    }
+}
+
+#[test]
+fn adventure_uses_redstone_and_composters_without_build_permission() {
+    use voxelcraft::world::{composter, redstone_blocks as r};
+    let mount = (1..7).find(|m| r::support(*m) == IVec3::X).unwrap();
+    for block in [r::lever(mount, false), r::button(mount, false, false), composter::state(8)] {
+        let (mut w, mut s, mut e) = scene(None);
+        support_all_but_the_viewer_side(&mut w);
+        w.set_block(WALL, block);
+        s.set_mode(GameMode::Adventure);
+        assert!(
+            matches!(use_held(&mut s, &mut w, &mut e, false), Some(Used::Redstone { .. } | Used::Composter { .. })),
+            "{block:?}"
+        );
+    }
+}
+
+#[test]
+fn blocks_claim_throwables_and_bow_use_but_full_cake_passes_to_items() {
+    use voxelcraft::world::redstone_blocks as r;
+    let (mut w, mut s, mut e) = scene(Some(Item::SNOWBALL));
+    support_all_but_the_viewer_side(&mut w);
+    let mount = (1..7).find(|m| r::support(*m) == IVec3::X).unwrap();
+    w.set_block(WALL, r::lever(mount, false));
+    assert!(matches!(use_held(&mut s, &mut w, &mut e, false), Some(Used::Redstone { .. })));
+    assert_eq!(s.inventory.get(0).unwrap().count, 1);
+    s.inventory.slots[0] = Some(Stack::new(Item::BOW, 1));
+    s.inventory.slots[1] = Some(Stack::new(Item::ARROW, 1));
+    assert!(s.start_draw(0, &w, &mut e).is_none());
+    s.player.sneaking = true;
+    assert!(s.start_draw(0, &w, &mut e).is_some());
+    s.cancel_draw();
+    s.player.sneaking = false;
+    w.set_block(WALL - IVec3::Y, Block::STONE);
+    w.set_block(WALL, Block::cake(0));
+    s.player.pos.y = 144.5;
+    s.inventory.slots[0] = Some(Stack::new(Item::SNOWBALL, 2));
+    s.vitals.hunger.food = 18.;
+    assert!(matches!(use_held(&mut s, &mut w, &mut e, false), Some(Used::CakeBitten { .. })));
+    assert_eq!(s.inventory.get(0).unwrap().count, 2);
+    assert!(matches!(use_held(&mut s, &mut w, &mut e, false), Some(Used::ProjectileThrown { .. })));
+    assert_eq!(s.inventory.get(0).unwrap().count, 1);
+    assert_eq!(w.get_block(WALL), Some(Block::cake(1)));
+}

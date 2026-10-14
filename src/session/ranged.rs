@@ -57,11 +57,7 @@ impl PlayerSession {
         if !self.mode.can_interact() || self.vitals.is_dead() || self.sleeping.is_some() {
             return None;
         }
-        if self
-            .block_target(world)
-            .and_then(|(pos, _)| world.get_block(pos))
-            .is_some_and(crate::content::interaction::blocks_item_use)
-        {
+        if self.block_takes_use(slot, world, self.player.sneaking) {
             return None;
         }
         let held = self.inventory.get(slot).map(|s| s.item);
