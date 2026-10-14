@@ -97,7 +97,9 @@ passed, zero failed**. The desktop LAN harness failed once on "PvP on" (the
 sword hit missed: 20.0 -> 20.0, the bow then hit) and passed 13/13 on the next
 two runs. The players stand about 2.7 blocks apart against a 3.0 survival reach,
 and any mob crossing the ray blocks a PvP hit, so the check is timing- and
-mob-sensitive; it is recorded as intermittent, not fixed.
+mob-sensitive. `tools/lan_check.py` now allows up to three swings and three shots
+when PvP is on (a player would try again after a miss) and still requires none
+to land when it is off; ten consecutive harness runs have passed since.
 
 ## Remaining differences
 
