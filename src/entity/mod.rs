@@ -17,6 +17,7 @@ pub mod aquatic;
 pub mod armor;
 mod bell;
 mod bobber;
+pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod dragon;
 mod dragon_model;

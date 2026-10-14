@@ -264,8 +264,7 @@ clusters per 16×16 cell and layer) are fixed.
   overlay (the Java client code is not in the reference jar to check) and wall
   torches are absent. Every mob inside a ladder or vine slides at most 0.15
   blocks per tick and climbs at 0.2 while pressing a wall (Java
-  `LivingEntity.handleOnClimbable`); mobs still have no pathfinding to seek
-  vines.
+  `LivingEntity.handleOnClimbable`); ground paths don't route up vines.
 - Worlds saved before v0.5 keep their generated Nether chunks; chunks
   generated next to them use the biomes, so old areas meet new terrain at a
   seam.

@@ -131,8 +131,9 @@ animation is not interpolated, and the render is covered by a pose test, not a s
 Villager-opened doors close again one second after no villager is within 1.6 blocks.
 
 Simplifications: procedural house templates/resident ages rather than vanilla
-NBT assets; straight-line navigation with obstacle sidesteps rather than full
-brain/pathfinding. Trade selection uses an independent deterministic seed
+NBT assets; residents walk Java ground paths to their walk targets and open
+the doors on them (see the [navigation record](verification/2026-10-14-mob-navigation.md)),
+but the full villager brain is not ported. Trade selection uses an independent deterministic seed
 stream and the
 restock interval is a fixed day-time interval. Item families absent from the
 engine are filtered from trade pools, so some tiers offer fewer than two trades
@@ -203,8 +204,8 @@ beetroot crops and farmer harvesting are not implemented yet. Food pickup
 obeys mobGriefing. Residents share excess stacks using Java's above-32 half
 stack / above-24 excess rule, directly into a nearby hungry resident's
 inventory instead of throwing an item entity.
-Navigation uses the existing resident obstacle sidesteps; a complete Java
-path-reachability test for beds is still absent.
+Residents walk Java ground paths; a complete Java path-reachability test for
+claiming beds is still absent.
 
 ## Composters
 

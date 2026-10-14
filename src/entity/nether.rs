@@ -2419,8 +2419,9 @@ mod tests {
         e.mobs.push(Mob::new(MobKind::Cow, DVec3::new(3.5, 10.0, 0.5), 0.0));
         e.mobs.push(Mob::new(MobKind::Creeper, DVec3::new(-2.5, 10.0, 0.5), 0.0));
         run(&mut e, &world, &overworld, 4.0);
-        let cow = e.mobs.iter().find(|m| m.kind == MobKind::Cow).unwrap();
-        assert!(cow.health < MobKind::Cow.max_health(), "the cow was gored");
+        // Gored, or gored to death and gone once its death animation ended.
+        let cow = e.mobs.iter().find(|m| m.kind == MobKind::Cow);
+        assert!(cow.is_none_or(|cow| cow.health < MobKind::Cow.max_health()), "the cow was gored");
         let creeper = e.mobs.iter().find(|m| m.kind == MobKind::Creeper).unwrap();
         assert_eq!(creeper.health, MobKind::Creeper.max_health(), "creepers are left alone");
     }

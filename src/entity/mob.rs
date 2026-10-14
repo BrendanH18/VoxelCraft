@@ -9,8 +9,9 @@ use crate::physics::{self, BlockSource, Shape};
 use crate::world::block::Block;
 use crate::world::terrain::Dimension;
 
-use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng};
+use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
+mod navigate;
 mod nether_ai;
 
 const GRAVITY: f64 = 28.0;
@@ -977,6 +978,18 @@ pub struct Mob {
     /// A zombified piglin's main hand: `None` is the spawn default (a golden
     /// sword); a converted piglin keeps its crossbow, axe or empty hand.
     pub held: Option<super::nether::Weapon>,
+    /// Java ground navigation: the path being walked (never saved).
+    pub(super) nav: super::path::Navigation,
+    /// Ticks until a pursuit may plan again, and where its goal was then.
+    pub(super) repath_in: i32,
+    pub(super) pathed: Option<DVec3>,
+    /// `MoveControl` asked for a jump this tick.
+    pub(super) jump: bool,
+    /// This tick's movement follows a path, which already judged its drops.
+    pub(super) pathing: bool,
+    /// The current stroll or panic walks a planned path (Java's
+    /// `RandomStrollGoal`/`PanicGoal`) rather than a heading.
+    pub(super) path_move: bool,
 }
 
 impl Mob {
@@ -1073,6 +1086,12 @@ impl Mob {
             held: None,
             trader: matches!(kind, MobKind::WanderingTrader | MobKind::TraderLlama)
                 .then(|| Box::new(super::wandering_trader::Trader::new(pos))),
+            nav: Default::default(),
+            repath_in: 0,
+            pathed: None,
+            jump: false,
+            pathing: false,
+            path_move: false,
         }
     }
 
@@ -1216,10 +1235,21 @@ impl Mob {
             self.vel.z = kb.z;
             self.vel.y = self.vel.y.max(kb.y);
         }
-        if !self.kind.is_hostile() && self.kind != MobKind::IronGolem {
+        // Java's panic goals react to any `PANIC_CAUSES` damage, except wolves
+        // (`PANIC_ENVIRONMENTAL_CAUSES` only: an attack doesn't scare them)
+        // and golems, which have none.
+        let attacked = knockback.is_some();
+        let scared = match self.kind {
+            MobKind::IronGolem | MobKind::SnowGolem => false,
+            MobKind::Wolf => !attacked,
+            k => !k.is_hostile(),
+        };
+        if scared {
             self.ai = Ai::Panic;
             self.ai_timer = rng.range(3.0, 5.0);
             self.move_yaw = rng.range(0.0, TAU);
+            self.stop_navigation();
+            self.path_move = true;
         }
         if self.kind == MobKind::IronGolem && !self.built && self.player_hit_left > 0.0 {
             self.player_hit_left = self.player_hit_left.max(15.0);
@@ -1324,6 +1354,7 @@ impl Mob {
             self.age = (self.age + ticks).min(0);
             self.baby = self.age < 0;
         }
+        self.pathing = false;
         let (wish, speed) = if let Some(t) = &mut self.dying {
             *t += dtf;
             (None, 0.0)
@@ -1333,8 +1364,9 @@ impl Mob {
 
         // Don't walk off tall drops; wanderers pick another direction.
         let controlled = self.mount.as_ref().is_some_and(|s| s.controlled());
+        let pathing = self.pathing;
         let wish = wish.filter(|&dir| {
-            if controlled {
+            if controlled || pathing {
                 return true;
             }
             let safe = match self.lava_step(world, dir) {
@@ -1354,6 +1386,9 @@ impl Mob {
             self.yaw = turn_toward(self.yaw, target, 8.0 * dtf);
         }
 
+        if std::mem::take(&mut self.jump) && self.on_ground && wish.is_some() && !controlled && self.alive() {
+            self.vel.y = JUMP_VELOCITY;
+        }
         let steps = (dt / MAX_STEP).ceil().max(1.0) as u32;
         let h = dt / steps as f64;
         if self.riding.is_some() || self.animal.as_ref().is_some_and(|a| a.perched.is_some()) {
@@ -1474,28 +1509,41 @@ impl Mob {
                 return (None, 0.0);
             }
             if let Some(goal) = v.goal {
-                let dir = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
-                if dir.length_squared() < 1.0 {
+                let speed = if v.fleeing { 4.0 } else { 2.0 };
+                let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
+                if flat.length_squared() < 1.0 {
+                    self.stop_navigation();
                     return (None, 0.0);
                 }
-                let mut dir = dir.normalize();
-                for dy in 0..2 {
-                    let cell = (self.pos + dir * 1.1).floor().as_ivec3() + IVec3::Y * dy;
-                    if world.block(cell).is_some_and(|b| {
-                        matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: false, upper: false, .. }))
-                    }) {
-                        events.push(EntityEvent::VillagerDoor { cell });
+                // `MoveToTargetSink`: plan when the walk target changes or the
+                // last path is used up, and walk it.
+                let cell = goal.floor().as_ivec3();
+                if self.nav.is_done() || self.nav.target() != Some(path::surface_target(world, cell)) {
+                    self.repath_in -= 1;
+                    if self.repath_in <= 0 {
+                        self.repath_in = if self.walk_to(world, cell, 0, speed, false) { 0 } else { 20 };
                     }
                 }
-                self.detour -= dt;
-                if self.blocked && self.on_ground && self.detour <= 0.0 && !self.can_step_up(world, dir) {
-                    self.detour = 0.8;
-                    self.detour_side = if rng.chance(0.5) { 1.0 } else { -1.0 };
+                // `InteractWithDoor`: open the closed wooden doors on the
+                // previous and next nodes of the path.
+                if let Some(p) = &self.nav.path {
+                    for node in [p.previous_node(), p.next_node()].into_iter().flatten() {
+                        if node.ty == path::PathType::WalkableDoor || node.ty == path::PathType::DoorWoodClosed {
+                            for dy in 0..2 {
+                                let cell = node.pos + IVec3::Y * dy;
+                                if world.block(cell).is_some_and(|b| {
+                                    matches!(
+                                        b.shaped(),
+                                        Some(crate::world::block::Shaped::Door { open: false, upper: false, .. })
+                                    )
+                                }) {
+                                    events.push(EntityEvent::VillagerDoor { cell });
+                                }
+                            }
+                        }
+                    }
                 }
-                if self.detour > 0.0 {
-                    dir = (DVec3::new(-dir.z, 0.0, dir.x) * self.detour_side + dir * 0.35).normalize();
-                }
-                return (Some(dir), if v.fleeing { 4.0 } else { 2.0 });
+                return (self.follow_path(world, speed, false), speed);
             }
         }
         if self.trader.as_ref().is_some_and(|t| t.drink > 0.0) {
@@ -1518,7 +1566,8 @@ impl Mob {
                     return (None, 0.0);
                 }
                 let speed = if self.kind == MobKind::IronGolem { 1.5 } else { self.kind.chase_speed() };
-                return (Some(dir), speed);
+                let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.85), goal + DVec3::Y);
+                return (self.pursue(world, goal, speed, sees, rng), speed);
             }
         }
         if self.kind == MobKind::Witch && self.witch_upkeep(dt, world, rng) {
@@ -1554,6 +1603,7 @@ impl Mob {
             } else if self.ai == Ai::Chase {
                 self.ai = Ai::Idle;
                 self.ai_timer = 1.0;
+                self.stop_navigation();
             }
         }
         if self.ai != Ai::Chase {
@@ -1666,32 +1716,48 @@ impl Mob {
                 if hdist <= 0.8 {
                     return (None, 0.0);
                 }
-                // No pathfinding: head straight for the player, and if a
-                // wall we can't jump is in the way, sidestep for a moment.
-                self.detour -= dt;
-                if self.detour <= 0.0 && self.blocked && self.on_ground && !self.can_step_up(world, dir) {
-                    self.detour = rng.range(0.6, 1.2);
-                    self.detour_side = if rng.chance(0.5) { 1.0 } else { -1.0 };
-                }
-                let dir = if self.detour > 0.0 {
-                    let side = DVec3::new(-dir.z, 0.0, dir.x) * self.detour_side;
-                    (side + dir * 0.35).normalize()
-                } else {
-                    dir
-                };
-                (Some(dir), self.kind.chase_speed() * if self.baby { 1.5 } else { 1.0 })
+                // Java's `MeleeAttackGoal`: walk a path to the target, planned
+                // again as it moves. Only spiders follow unseen targets.
+                let speed = self.kind.chase_speed() * if self.baby { 1.5 } else { 1.0 };
+                let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+                let sees = matches!(self.kind, MobKind::Spider | MobKind::CaveSpider)
+                    || line_of_sight(world, eye, target.pos + DVec3::Y * 1.62);
+                (self.pursue(world, target.pos, speed, sees, rng), speed)
             }
             Ai::Panic => {
                 if self.ai_timer <= 0.0 {
                     self.ai = Ai::Idle;
                     self.ai_timer = rng.range(1.0, 3.0);
+                    self.path_move = false;
+                    self.stop_navigation();
                     return (None, 0.0);
+                }
+                if self.path_move && self.kind.walks_paths() {
+                    self.panic_target(world, ctx, rng, 3.4);
+                    if let Some(dir) = self.follow_path(world, 3.4, false) {
+                        self.head_target = (0.0, 0.0);
+                        return (Some(dir), 3.4);
+                    }
                 }
                 if rng.chance(dt * 1.2) || self.blocked && rng.chance(dt * 4.0) {
                     self.move_yaw = rng.range(0.0, TAU);
                 }
                 self.head_target = (0.0, 0.0);
                 (Some(yaw_dir(self.move_yaw)), 3.4)
+            }
+            Ai::Wander if self.path_move => {
+                self.head_target = (0.0, 0.0);
+                let speed = self.kind.wander_speed();
+                match self.follow_path(world, speed, false) {
+                    Some(dir) if self.ai_timer > 0.0 => (Some(dir), speed),
+                    _ => {
+                        self.ai = Ai::Idle;
+                        self.ai_timer = rng.range(2.0, 6.0);
+                        self.path_move = false;
+                        self.stop_navigation();
+                        (None, 0.0)
+                    }
+                }
             }
             Ai::Wander => {
                 // Turn away from walls we can't hop over.
@@ -1714,7 +1780,13 @@ impl Mob {
                     self.head_target =
                         if rng.chance(0.6) { (rng.range(-1.1, 1.1), rng.range(-0.35, 0.3)) } else { (0.0, 0.0) };
                 }
-                if self.ai_timer <= 0.0 {
+                if self.kind.walks_paths() {
+                    // `WaterAvoidingRandomStrollGoal`: a 1-in-120 chance a
+                    // tick (1 in 60 per goal update, every other tick).
+                    if rng.chance(dt * 20.0 / 120.0) && self.try_stroll(world, ctx, rng) {
+                        self.path_move = true;
+                    }
+                } else if self.ai_timer <= 0.0 {
                     if rng.chance(0.7) {
                         self.ai = Ai::Wander;
                         self.ai_timer = rng.range(2.0, 5.0);
@@ -1982,7 +2054,9 @@ impl Mob {
         }
         let side = DVec3::new(-dir.z, 0.0, dir.x) * self.detour_side;
         if hdist > SKELETON_FAR {
-            (Some(dir), self.kind.chase_speed())
+            let speed = self.kind.chase_speed();
+            let sees = line_of_sight(world, eye, target);
+            (self.pursue(world, player, speed, sees, rng), speed)
         } else if hdist < SKELETON_NEAR {
             (Some((-dir + side * 0.3).normalize()), 2.0)
         } else {
@@ -2164,13 +2238,21 @@ impl Mob {
             let k = (dt * 4.0).min(1.0);
             self.vel.x += (target.x * 0.6 - self.vel.x) * k;
             self.vel.z += (target.z * 0.6 - self.vel.z) * k;
-            // Buoyant below ~0.6 blocks of depth, so mobs bob at the surface.
-            if physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.6, 0.0)) {
-                self.vel.y = (self.vel.y + 22.0 * dt).min(2.0);
+            if self.kind.floats() {
+                // Buoyant below ~0.6 blocks of depth, so swimmers bob at the
+                // surface (Java's `FloatGoal` and brain `Swim` jumps).
+                if physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.6, 0.0)) {
+                    self.vel.y = (self.vel.y + 22.0 * dt).min(2.0);
+                } else {
+                    self.vel.y -= GRAVITY * 0.25 * dt;
+                }
+                self.vel.y = self.vel.y.max(-4.0);
             } else {
-                self.vel.y -= GRAVITY * 0.25 * dt;
+                // Java `travelInWater` without a float goal: gravity / 16 a
+                // tick against 0.8 drag sinks at most 0.02 blocks a tick, so
+                // zombies, skeletons, piglins and golems walk the bottom.
+                self.vel.y += (-0.4 - self.vel.y) * (dt * 4.0).min(1.0);
             }
-            self.vel.y = self.vel.y.max(-4.0);
             // Climb out onto the shore.
             if self.blocked && wish.is_some() {
                 self.vel.y = self.vel.y.max(4.5);

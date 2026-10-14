@@ -156,7 +156,7 @@ impl Entities {
 impl Mob {
     pub(super) fn leash_think<W: MobWorld + ?Sized>(
         &mut self,
-        dt: f32,
+        _dt: f32,
         w: &W,
         rng: &mut Rng,
     ) -> Option<(Option<DVec3>, f64)> {
@@ -169,7 +169,7 @@ impl Mob {
             return None;
         }
         self.look_at(at, 1.2);
-        Some((Some(self.steer(delta.normalize_or(DVec3::X), dt, w, rng)), 2.5))
+        Some((self.pursue(w, at, 2.5, true, rng), 2.5))
     }
 }
 pub(super) fn save(m: &Mob) -> Value {
