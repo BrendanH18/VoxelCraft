@@ -68,8 +68,10 @@ with `--no-default-features`.
 - Saplings have no `stage` property: one successful bone meal grows the tree,
   where Java first advances stage 0→1. Spruce and jungle 2x2 mega trees are
   not implemented.
-- Creative players still cannot equip armor by use (an existing rule outside
-  this change).
+- Creative armor use is fixed in this branch: empty slots receive a copy,
+  occupied slots return their old piece, and Binding is bypassed only in
+  Creative (`Equippable.swapWithEquipmentSlot`, pinned 26.3 bytecode).
+  A shared-action regression covers copying, swapping, Binding and Spectator.
 - No ordinary-player playtest or performance measurement was run for these
   fixes; none of them is marked Verified.
 

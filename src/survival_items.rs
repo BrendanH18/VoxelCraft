@@ -16,7 +16,7 @@ pub fn equip_armor(
     mode: crate::rules::GameMode,
     world: &World,
 ) -> bool {
-    if !mode.is_survival() || inventory.get(slot).is_none_or(|s| s.item.as_armor().is_none()) {
+    if !mode.can_interact() || inventory.get(slot).is_none_or(|s| s.item.as_armor().is_none()) {
         return false;
     }
     // Only a block the player could actually use (Java's block interaction
@@ -28,7 +28,7 @@ pub fn equip_armor(
     {
         return false;
     }
-    inventory.equip(slot)
+    inventory.equip_in_mode(slot, mode.is_creative())
 }
 
 /// Fence knots, leads, name tags and animal feeding/taming/sitting under the crosshair.

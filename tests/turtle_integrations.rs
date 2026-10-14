@@ -172,3 +172,23 @@ fn living_creatures_keep_turtle_master_effects_in_their_persistent_formats() {
         assert!((hp - restored.mobs[0].health - 4.0).abs() < 1e-5);
     }
 }
+
+#[test]
+fn creative_use_copies_armor_and_can_replace_binding_but_spectators_cannot() {
+    let mut world = World::new_remote(Arc::new(Generator::new(7)), 2);
+    world.receive_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+    let player = voxelcraft::player::Player::new(DVec3::new(4.5, 145., 4.5));
+    let mut inventory = Inventory::default();
+    let helmet = Stack::new(Item::TURTLE_HELMET, 1);
+    inventory.slots[0] = Some(helmet);
+    assert!(voxelcraft::survival_items::equip_armor(&player, &mut inventory, 0, GameMode::Creative, &world));
+    assert_eq!((inventory.slots[0], inventory.armor[0]), (Some(helmet), Some(helmet)));
+    assert!(!voxelcraft::survival_items::equip_armor(&player, &mut inventory, 0, GameMode::Creative, &world));
+    let mut bound = Stack::new(Item::armor(ArmorPiece::Helmet, ArmorMaterial::Iron), 1);
+    bound.enchants = bound.enchants.with(Enchantment::BindingCurse, 1);
+    inventory.armor[0] = Some(bound);
+    assert!(!voxelcraft::survival_items::equip_armor(&player, &mut inventory, 0, GameMode::Survival, &world));
+    assert!(voxelcraft::survival_items::equip_armor(&player, &mut inventory, 0, GameMode::Creative, &world));
+    assert_eq!((inventory.slots[0], inventory.armor[0]), (Some(bound), Some(helmet)));
+    assert!(!voxelcraft::survival_items::equip_armor(&player, &mut inventory, 0, GameMode::Spectator, &world));
+}

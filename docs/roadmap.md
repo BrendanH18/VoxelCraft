@@ -778,3 +778,7 @@ reviewable alongside implementation changes and release notes.
 
 Multiplayer and additional side features receive their own roadmap after
 this single-player acceptance milestone. They are not prerequisites for 1.0.
+
+Player defect follow-up (2026-10-13): Creative armor use now follows Java
+26.3 copying/swapping and Binding rules, covered through the shared action.
+Implemented, unverified; no ordinary-player acceptance.
