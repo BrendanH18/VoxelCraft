@@ -73,6 +73,7 @@ impl Mob {
         }
         if let Some(n) = &self.nether {
             v["weapon"] = json!(n.weapon.name());
+            v["dancing"] = json!(n.dancing);
         }
         v
     }
@@ -153,6 +154,7 @@ impl Mob {
         }
         if let (Some(n), Some(w)) = (self.nether.as_mut(), v["weapon"].as_str()) {
             n.weapon = Weapon::from_name(w);
+            n.dancing = v["dancing"] == true;
         }
     }
 

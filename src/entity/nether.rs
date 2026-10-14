@@ -44,6 +44,10 @@ const AVOID_ZOMBIFIED: f64 = 6.0;
 /// Seconds between a nether mob's looks around (Java's sensors run every
 /// 20 ticks; this is a little quicker so thrown gold is noticed promptly).
 const SENSE_INTERVAL: f32 = 0.5;
+/// Java `PiglinAi.CELEBRATION_TIME`: 300 ticks.
+const CELEBRATION_TIME: f32 = 15.0;
+/// Java `PROBABILITY_OF_CELEBRATION_DANCE`.
+const DANCE_CHANCE: f32 = 0.1;
 /// Chance of each piece of golden armor (Java's 0.1), of a baby (0.2) and
 /// of a crossbow instead of a sword (0.5).
 const ARMOR_CHANCE: f32 = 0.1;
@@ -186,6 +190,13 @@ pub struct NetherMob {
     pub(super) convert: bool,
     /// This corpse's carried items have already been emitted by death loot.
     loot_dropped: bool,
+    /// Java's `CELEBRATE_LOCATION` memory: seconds left (300 ticks), and where the foe fell.
+    pub(super) celebrate_left: f32,
+    pub(super) celebrate_at: DVec3,
+    /// Java's `DANCING` memory (hoglin kills only, one in ten): the piglin dances there.
+    pub dancing: bool,
+    /// Where the last target stood and whether it was a hoglin, to tell if it died.
+    pub(super) prey: Option<(DVec3, bool)>,
 }
 
 impl NetherMob {
@@ -220,6 +231,10 @@ impl NetherMob {
                     barter: false,
                     convert: false,
                     loot_dropped: false,
+                    celebrate_left: 0.0,
+                    celebrate_at: DVec3::ZERO,
+                    dancing: false,
+                    prey: None,
                 })
             })
     }
@@ -662,6 +677,9 @@ impl Entities {
         if is_piglin_kind(attacker) {
             return;
         }
+        // Java `wasHurtBy` erases `CELEBRATE_LOCATION` and `DANCING`.
+        n.celebrate_left = 0.0;
+        n.dancing = false;
         // Outnumbered by the hoglin's herd, a piglin backs off instead.
         if attacker == Some(MobKind::Hoglin) && !baby {
             let (piglins, hoglins) = adult_counts(&self.nether_view, pos);
@@ -1129,6 +1147,30 @@ fn sense<W: MobWorld + ?Sized>(
     let eye = pos + DVec3::Y * (m.shape().height * 0.9);
     let n = m.nether.as_mut()?;
     let locate = |foe: Foe| locate(foe, view, ctx);
+    // Java's `StartCelebratingIfTargetDead`: a dead attack target sets the celebrate
+    // location for 300 ticks; hoglin kills sometimes start a dance.
+    if let Goal::Attack { foe, pos: last } = n.goal
+        && !brute
+    {
+        match locate(foe) {
+            Some(at) => {
+                let hoglin = matches!(foe, Foe::Mob(u) if view.iter().any(|s| s.uid == u && s.kind == MobKind::Hoglin));
+                n.prey = Some((at, hoglin));
+            }
+            None => {
+                let (at, hoglin) = n.prey.take().unwrap_or((last, false));
+                let gone = match foe {
+                    Foe::Player(id) => ctx.players.iter().any(|t| t.id == id && !t.alive),
+                    Foe::Mob(_) => true,
+                };
+                if gone && at.distance_squared(pos) <= 32.0 * 32.0 {
+                    n.celebrate_left = CELEBRATION_TIME;
+                    n.celebrate_at = at;
+                    n.dancing = hoglin && rng.chance(DANCE_CHANCE);
+                }
+            }
+        }
+    }
     // Grudges end when the foe is gone or far away.
     if let Some(foe) = n.foe
         && locate(foe).is_none_or(|p| p.distance_squared(pos) > 32.0 * 32.0)
@@ -1209,6 +1251,13 @@ fn sense<W: MobWorld + ?Sized>(
             n.goal = Goal::Attack { foe: Foe::Mob(s.uid), pos: s.pos };
             return Some(s.uid);
         }
+    }
+    // The celebrate activity: walk to where the foe fell (2 blocks of slack, 4 while dancing).
+    if n.celebrate_left > 0.0 && !brute {
+        let slack = if n.dancing { 4.0 } else { 2.0 };
+        n.goal =
+            if n.celebrate_at.distance_squared(pos) > slack * slack { Goal::Walk(n.celebrate_at) } else { Goal::None };
+        return None;
     }
     n.goal = match n.home {
         Some(home) if home.distance_squared(pos) > HOME_RANGE * HOME_RANGE => Goal::Walk(home),
@@ -1418,6 +1467,7 @@ fn save_mob(m: &Mob) -> Value {
         "immune": n.is_some_and(|n| n.immune),
         "cannot_hunt": n.is_some_and(|n| n.cannot_hunt),
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
+        "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     })
 }
 
@@ -1487,6 +1537,18 @@ fn load_mob(v: &Value) -> Option<Mob> {
         n.zombify = v["zombify"].as_f64().unwrap_or(0.0) as f32;
         n.immune = v["immune"].as_bool().unwrap_or(false);
         n.cannot_hunt = v["cannot_hunt"].as_bool().unwrap_or(false);
+        if let Some(c) = v["celebrate"].as_array()
+            && let (Some(left), Some(at)) = (c.first().and_then(Value::as_f64), c.get(1).and_then(Value::as_array))
+            && at.len() == 3
+        {
+            let at =
+                DVec3::new(at[0].as_f64().unwrap_or(0.0), at[1].as_f64().unwrap_or(0.0), at[2].as_f64().unwrap_or(0.0));
+            if at.is_finite() {
+                n.celebrate_left = (left as f32).clamp(0.0, CELEBRATION_TIME);
+                n.celebrate_at = at;
+                n.dancing = n.celebrate_left > 0.0 && c.get(2).and_then(Value::as_bool).unwrap_or(false);
+            }
+        }
         n.home = v["home"].as_array().and_then(|h| {
             let h = DVec3::new(h.first()?.as_f64()?, h.get(1)?.as_f64()?, h.get(2)?.as_f64()?);
             h.is_finite().then_some(h)
@@ -2035,6 +2097,9 @@ mod tests {
         n.pocket = vec![Stack::new(Item::GOLD_NUGGET, 12), Stack::new(Item::CLOCK, 1)];
         n.zombify = 4.0;
         n.cannot_hunt = true;
+        n.celebrate_left = 9.0;
+        n.celebrate_at = DVec3::new(3.5, 10.0, -2.5);
+        n.dancing = true;
         let text = e.nether_mobs_to_string();
         let mut loaded = Entities::new(4);
         loaded.load_nether_mobs(&text);
@@ -2047,6 +2112,11 @@ mod tests {
             (nb.weapon, nb.offhand, nb.admire_left, &nb.pocket, nb.zombify, nb.cannot_hunt)
         );
         assert!(b.persistent);
+        assert_eq!(
+            (nb.celebrate_left, nb.celebrate_at, nb.dancing),
+            (9.0, DVec3::new(3.5, 10.0, -2.5), true),
+            "the celebration is saved"
+        );
         // Old levels without the key, and junk, load nothing.
         loaded.load_nether_mobs("");
         loaded.load_nether_mobs("{\"mobs\":[{\"kind\":\"dragon\"},{\"kind\":\"piglin\",\"pos\":[1,\"x\",2]}]}");
@@ -2294,6 +2364,44 @@ mod tests {
         assert_eq!(e.mobs[c].nether.as_ref().unwrap().foe, None, "babies aren't rallied");
         e.attack(c, DVec3::X, 1.0);
         assert!(e.mobs[c].nether.as_ref().unwrap().flee_left >= RETREAT.0);
+    }
+
+    #[test]
+    fn piglins_celebrate_where_their_target_fell_and_hoglin_kills_may_start_a_dance() {
+        let world = Grid::flat(10);
+        let mut far = player(DVec3::new(60.0, 10.0, 0.5));
+        far.targetable = false;
+        let ctx = nether(vec![far]);
+        let mut dances = 0;
+        for seed in 0..60 {
+            let mut e = Entities::new(seed);
+            let piglin = swordsman(&mut e);
+            e.spawn(MobKind::Hoglin, DVec3::new(8.5, 10.0, 0.5));
+            let prey = e.mobs.len() - 1;
+            e.ensure_mob_ids();
+            let uid = e.mobs[prey].uid;
+            e.mobs[piglin].nether.as_mut().unwrap().anger(Foe::Mob(uid));
+            e.nether_sense(0.0, &world, &ctx);
+            assert!(matches!(e.mobs[piglin].nether.as_ref().unwrap().goal, Goal::Attack { .. }));
+            e.mobs[piglin].nether.as_mut().unwrap().sense_timer = 0.0;
+            e.nether_sense(0.0, &world, &ctx);
+            // The hoglin dies; the next look finds the target gone.
+            e.mobs[prey].health = 0.0;
+            e.mobs[prey].dying = Some(0.0);
+            e.mobs[piglin].nether.as_mut().unwrap().sense_timer = 0.0;
+            e.nether_sense(0.0, &world, &ctx);
+            let n = e.mobs[piglin].nether.as_ref().unwrap();
+            assert_eq!(n.celebrate_left, 15.0);
+            assert!(n.celebrate_at.distance(DVec3::new(8.5, 10.0, 0.5)) < 1.0);
+            assert!(matches!(n.goal, Goal::Walk(_)), "walks to the spot where it fell");
+            dances += n.dancing as u32;
+            // Being hurt by anything but another piglin ends the party.
+            let mut hurt = e;
+            hurt.nether_hurt(piglin, Foe::Player(PlayerId::HOST));
+            let n = hurt.mobs[piglin].nether.as_ref().unwrap();
+            assert!(n.celebrate_left == 0.0 && !n.dancing);
+        }
+        assert!((1..=20).contains(&dances), "about one hoglin kill in ten starts a dance: {dances}/60");
     }
 
     #[test]

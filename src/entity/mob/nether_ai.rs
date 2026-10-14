@@ -51,6 +51,8 @@ impl Mob {
         n.admire_disabled = (n.admire_disabled - dt).max(0.0);
         n.hunt_cooldown = (n.hunt_cooldown - dt).max(0.0);
         n.ate = (n.ate - dt).max(0.0);
+        n.celebrate_left = (n.celebrate_left - dt).max(0.0);
+        n.dancing &= n.celebrate_left > 0.0;
         n.flee_left = (n.flee_left - dt).max(0.0);
         n.foe_left -= dt;
         if n.foe_left <= 0.0 {

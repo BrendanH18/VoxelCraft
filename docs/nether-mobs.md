@@ -274,7 +274,13 @@ different pitches.
 - **Breeding**: hoglins and striders use the retained shared breeding/temptation pipeline. Complete selected-reference acceptance remains under MOB-03.
 - **Bartering**: spectral arrows and Soul Speed don't exist (see the table).
 - **Piglin details**:
-  - No celebrating dance after a kill.
+  - Celebration (Java `StartCelebratingIfTargetDead`, `CELEBRATION_TIME` 300 ticks): when
+    a piglin's attack target dies it walks to where the target fell (2 blocks of slack, 4 while
+    dancing), and a dead hoglin starts a dance one time in ten (`wantsToDance`). Being hurt
+    ends it, as `wasHurtBy` erases the memories. The location and dance state are saved. Java's
+    dance pose lives in the client model, which the reference server jar lacks, so the arms-up
+    bob and ear flap are an original approximation; the other celebrate-activity behaviours
+    (look at nearby piglins, stroll, hostile-player scan) use the retained idle code.
   - Crossbow piglins now use the existing ranged behavior against mob targets,
     and mob arrows resolve through shared mob-hit retaliation/loot handling.
     Java 26.3 `CrossbowAttack` consumes any living attack target; it has no
