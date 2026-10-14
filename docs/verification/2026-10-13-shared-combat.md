@@ -101,8 +101,7 @@ mob-sensitive; it is recorded as intermittent, not fixed.
 
 ## Remaining differences
 
-- Fall distance is approximated as downward velocity while airborne; Blindness
-  does not exist, so it cannot block criticals.
+- Blindness is not yet represented, so it cannot block criticals.
 - Java's per-item `minimum_attack_charge`, spear/mace/trident and other
   kinetic/piercing weapon components and attack-speed attribute modifiers from
   effects/enchantments are not implemented. Copper tools and armor are now
@@ -118,3 +117,14 @@ mob-sensitive; it is recorded as intermittent, not fixed.
 
 State: **Partial** for STR-03, PLY-04 and PLY-05. Ordinary keyboard/controller
 play, visual/audio feedback and performance comparison remain unverified.
+
+## v0.7 defect fixes
+
+Criticals now read the session's accumulated fall distance instead of vertical
+velocity, including the LAN PvP path. The pinned `Player.canCriticalAttack`
+bytecode and regenerated `combat.json` establish its predicates. Regression
+cases cover momentarily zero velocity after a fall, teleport/reset, water,
+climbing and passengers. Ordinary-player acceptance remains outstanding.
+
+Critical-fix checks: required fmt/strict release Clippy/release tests passed
+(973 passed, zero failed, three ignored); fixture regeneration matched exactly.

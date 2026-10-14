@@ -12,6 +12,7 @@ use voxelcraft::{
         PlayerSession,
         combat::{Outcome, Target},
     },
+    simulation::survival::Env,
     world::{World, block::Block, chunk::ChunkData, terrain::Generator},
 };
 
@@ -110,19 +111,75 @@ fn damage_scales_with_the_attack_strength_charge() {
     }
 }
 
+/// Drops the scene's player `blocks` onto the stone pad through the real vitals tracking.
+fn fall(s: &mut PlayerSession, blocks: f64) {
+    let ground = s.player.pos.y;
+    let env = |y: f64, on_ground: bool, in_water: bool| Env { y, on_ground, in_water, ..Env::default() };
+    s.vitals.tick(0.05, &env(ground + blocks, true, false), false);
+    s.player.on_ground = false;
+    s.vitals.tick(0.05, &env(ground, false, false), false);
+}
+
 #[test]
 fn criticals_need_a_strong_falling_unsprinted_attack() {
     for (ticks, sprinting, expect_critical) in [(1, false, false), (20, false, true), (20, true, false)] {
         let (w, mut s, mut e) = scene(6.0);
         charge(&mut s, ticks);
-        s.player.on_ground = false;
-        s.player.vel.y = -2.0;
+        fall(&mut s, 2.0);
         let strength = s.attack_strength(0, 0.5);
         let Outcome::Hit { critical, .. } = s.attack(0, &w, &mut e, sprinting).unwrap() else { panic!() };
         assert_eq!(critical, expect_critical, "ticks {ticks} sprinting {sprinting}");
         let expected = MobKind::IronGolem.max_health() - reference_damage(7.0, strength, expect_critical);
         assert!((e.mobs[0].health - expected).abs() < 1e-4);
     }
+}
+
+/// Java 26.3 `Player.canCriticalAttack` reads `fallDistance`, not the vertical velocity.
+#[test]
+fn criticals_follow_fall_distance_and_not_velocity() {
+    let critical = |setup: &dyn Fn(&mut PlayerSession)| {
+        let (w, mut s, mut e) = scene(6.0);
+        charge(&mut s, 20);
+        setup(&mut s);
+        let Outcome::Hit { critical, .. } = s.attack(0, &w, &mut e, false).unwrap() else { panic!() };
+        critical
+    };
+    // Fallen two blocks and momentarily motionless (a bounce apex): still a critical.
+    assert!(critical(&|s| {
+        fall(s, 2.0);
+        s.player.vel.y = 0.0;
+    }));
+    // Rising after a jump has no fall distance, whatever the player's pose.
+    assert!(!critical(&|s| {
+        s.player.on_ground = false;
+        s.vitals.tick(0.05, &Env { y: 145.0, ..Env::default() }, false);
+        s.player.vel.y = 6.0;
+    }));
+    // Fast downward velocity without a fall (teleported, flying) is no critical.
+    assert!(!critical(&|s| {
+        s.player.on_ground = false;
+        s.vitals.reset_fall();
+        s.player.vel.y = -8.0;
+    }));
+    // Landing in water, a ladder or flight clears the fall distance.
+    assert!(!critical(&|s| {
+        fall(s, 3.0);
+        s.vitals.tick(0.05, &Env { y: 145.0, in_water: true, ..Env::default() }, false);
+    }));
+    assert!(!critical(&|s| {
+        fall(s, 3.0);
+        s.vitals.tick(0.05, &Env { y: 145.0, climbing: true, ..Env::default() }, false);
+    }));
+    assert!(!critical(&|s| {
+        fall(s, 3.0);
+        s.player.in_water = true;
+    }));
+    // Passengers never land criticals.
+    assert!(!critical(&|s| {
+        fall(s, 3.0);
+        s.player.vehicle = Some(1);
+    }));
+    assert_eq!(fixture()["criticals"]["needs"][0], "fall_distance > 0");
 }
 
 #[test]

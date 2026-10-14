@@ -149,6 +149,60 @@ def extract(server):
         attack = method(player, "public void attack(net.minecraft.world.entity.Entity);")
         if float_operands(attack) != [0.5, 0.0, 0.0, 0.9, 1.5, 0.0, 0.5, 0.0, 0.1]:
             raise ValueError("unrecognized Player.attack constants")
+        # Criticals read `fallDistance` and mobility restriction, not velocity.
+        critical = method(player, "private boolean canCriticalAttack(net.minecraft.world.entity.Entity);")
+        for needed in ("Field fallDistance:D", "Player.onGround", "Player.onClimbable", "Player.isInWater",
+                       "Player.isMobilityRestricted", "Player.isPassenger", "instanceof    #173",
+                       "Player.isSprinting"):
+            if needed.replace("Player.", "") not in critical:
+                raise ValueError(f"unrecognized critical condition: {needed}")
+        restricted = method(player, "public boolean isMobilityRestricted();")
+        if "MobEffects.BLINDNESS" not in restricted:
+            raise ValueError("mobility restriction is no longer Blindness")
+        # `minimum_attack_charge` is only ever set by `Item$Properties.spear`.
+        properties = inspect("net.minecraft.world.item.Item$Properties")
+        spear = method(properties, "public net.minecraft.world.item.Item$Properties spear(net.minecraft.world.item.ToolMaterial, "
+                                   + ", ".join(["float"] * 9) + ");")
+        charge = re.search(r"MINIMUM_ATTACK_CHARGE:[^\n]*\n[^\n]*(fconst_1|ldc\w*\s+#\d+\s+// float ([\d.]+)f)", spear)
+        if not charge or properties.count("MINIMUM_ATTACK_CHARGE") != 1 or "MINIMUM_ATTACK_CHARGE" in items:
+            raise ValueError("unrecognized minimum attack charge component")
+        spears = [m[1].lower() for m in re.finditer(
+            r"// Field net/minecraft/references/ItemIds\.([A-Z_]+):[^\n]*\n(?:(?![^\n]*ItemIds\.)[^\n]*\n)*?"
+            r"[^\n]*Item\$Properties\.spear:", items)]
+        if not spears:
+            raise ValueError("no spear registrations")
+        gate = method(player, "public boolean cannotAttackWithItem(net.minecraft.world.item.ItemStack, int);")
+        if "MINIMUM_ATTACK_CHARGE" not in gate or "getCurrentItemAttackStrengthDelay" not in gate:
+            raise ValueError("unrecognized cannotAttackWithItem")
+        effects = inspect("net.minecraft.world.effect.MobEffects").split("  static {};")[1]
+        effect_modifiers = {}
+        previous = 0
+        for end in re.finditer(r"putstatic\s+#\d+\s+// Field ([A-Z_]+):Lnet/minecraft/core/Holder;", effects):
+            code = effects[previous:end.start()]
+            previous = end.end()
+            found = re.search(r"Attributes\.ATTACK_SPEED:[^\n]*\n[^\n]*\n[^\n]*\n[^\n]*double (-?[\d.]+)d\n"
+                              r"[^\n]*Operation\.(\w+):", code)
+            if found and end[1] in ("HASTE", "MINING_FATIGUE"):
+                effect_modifiers[end[1].lower()] = {"attribute": "attack_speed", "amount_per_level": float(found[1]),
+                                                    "operation": found[2].lower()}
+        if set(effect_modifiers) != {"haste", "mining_fatigue"}:
+            raise ValueError(f"unrecognized attack speed effects: {effect_modifiers}")
+        bounds = re.search(r"String attribute\.name\.attack_speed\n[^\n]*double [\d.]+d\n[^\n]*(dconst_0)\n[^\n]*double ([\d.]+)d", registry)
+        if not bounds:
+            raise ValueError("unrecognized attack speed attribute range")
+        speed_range = [0.0, float(bounds[2])]
+        # Vehicles take `damage * 10` and break above 40; dragon parts other than head and neck take a quarter + min(damage, 1).
+        vehicle = method(inspect("net.minecraft.world.entity.vehicle.VehicleEntity"),
+                         "public boolean hurtServer(net.minecraft.server.level.ServerLevel, "
+                         "net.minecraft.world.damagesource.DamageSource, float);")
+        if float_operands(vehicle) != [10.0, 40.0]:
+            raise ValueError(f"unrecognized vehicle damage: {float_operands(vehicle)}")
+        dragon = inspect("net.minecraft.world.entity.boss.enderdragon.EnderDragon")
+        part_hurt = method(dragon, "public boolean hurt(net.minecraft.server.level.ServerLevel, "
+                                   "net.minecraft.world.entity.boss.enderdragon.EnderDragonPart, "
+                                   "net.minecraft.world.damagesource.DamageSource, float);")
+        if "Field head:" not in part_hurt or "Field neck:" not in part_hurt or float_operands(part_hurt)[:3] != [4.0, 1.0, 0.01]:
+            raise ValueError("unrecognized dragon part damage")
         screens = {}
         for key, cls, sig, call in [
             ("block_container", "net.minecraft.world.Container",
@@ -186,6 +240,23 @@ def extract(server):
             "food_exhaustion": 0.1,
             "sweep_max_speed_factor": 2.5,
         },
+        "criticals": {
+            "needs": ["fall_distance > 0", "not on ground", "not on climbable", "not in water",
+                      "not mobility restricted (Blindness)", "not a passenger", "living target", "not sprinting"],
+            "strong_threshold": 0.9,
+        },
+        "minimum_attack_charge": {
+            "default": 0.0,
+            "set_only_by": "Item$Properties.spear",
+            "spear_value": float(charge[2] or 1.0),
+            "spear_items": sorted(spears),
+            "server_lead_ticks": 5,
+        },
+        "attack_speed_effects": effect_modifiers,
+        "attack_speed_range": speed_range,
+        "vehicle_hurt": {"damage_factor": 10.0, "destroy_above": 40.0},
+        "dragon_part_hurt": {"full_damage_parts": ["head", "neck"], "other_parts": "damage / 4 + min(damage, 1)",
+                              "minimum_damage": 0.01},
         "screen_ranges": {
             "check": "eye-to-box squared distance < (interaction range + extra)^2",
             "block_interaction_range_extra": {"block_container": screens["block_container"]},

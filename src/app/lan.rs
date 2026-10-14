@@ -1759,14 +1759,7 @@ impl Game {
         let held = me.inventory.get(slot);
         let enchants = held.map_or(Default::default(), |s| s.active_enchants());
         let p = &me.player;
-        let critical = strong
-            && !p.on_ground
-            && p.vel.y < 0.0
-            && !p.in_water
-            && !p.flying
-            && !p.climbing
-            && p.vehicle.is_none()
-            && !sprint;
+        let critical = strong && me.can_critical_attack(true, sprint);
         let base = (crate::mining::attack_damage(held.map(|s| s.item)) + me.vitals.effects.attack_bonus()).max(0.0)
             * (0.2 + strength * strength * 0.8);
         let bonus = crate::enchant::damage_bonus(enchants, crate::enchant::Creature::Other) * strength;

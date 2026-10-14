@@ -18,6 +18,62 @@
     "food_exhaustion": 0.1,
     "sweep_max_speed_factor": 2.5
   },
+  "criticals": {
+    "needs": [
+      "fall_distance > 0",
+      "not on ground",
+      "not on climbable",
+      "not in water",
+      "not mobility restricted (Blindness)",
+      "not a passenger",
+      "living target",
+      "not sprinting"
+    ],
+    "strong_threshold": 0.9
+  },
+  "minimum_attack_charge": {
+    "default": 0.0,
+    "set_only_by": "Item$Properties.spear",
+    "spear_value": 1.0,
+    "spear_items": [
+      "copper_spear",
+      "diamond_spear",
+      "golden_spear",
+      "iron_spear",
+      "netherite_spear",
+      "stone_spear",
+      "wooden_spear"
+    ],
+    "server_lead_ticks": 5
+  },
+  "attack_speed_effects": {
+    "haste": {
+      "attribute": "attack_speed",
+      "amount_per_level": 0.10000000149011612,
+      "operation": "add_multiplied_total"
+    },
+    "mining_fatigue": {
+      "attribute": "attack_speed",
+      "amount_per_level": -0.10000000149011612,
+      "operation": "add_multiplied_total"
+    }
+  },
+  "attack_speed_range": [
+    0.0,
+    1024.0
+  ],
+  "vehicle_hurt": {
+    "damage_factor": 10.0,
+    "destroy_above": 40.0
+  },
+  "dragon_part_hurt": {
+    "full_damage_parts": [
+      "head",
+      "neck"
+    ],
+    "other_parts": "damage / 4 + min(damage, 1)",
+    "minimum_damage": 0.01
+  },
   "screen_ranges": {
     "check": "eye-to-box squared distance < (interaction range + extra)^2",
     "block_interaction_range_extra": {

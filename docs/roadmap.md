@@ -782,3 +782,7 @@ this single-player acceptance milestone. They are not prerequisites for 1.0.
 Player defect follow-up (2026-10-13): Creative armor use now follows Java
 26.3 copying/swapping and Binding rules, covered through the shared action.
 Implemented, unverified; no ordinary-player acceptance.
+
+Player combat defect follow-up (2026-10-13): critical eligibility reads tracked
+fall distance in shared melee and LAN PvP, with Java 26.3 bytecode fixtures and
+regression cases. Implemented, unverified; ordinary-player acceptance remains.

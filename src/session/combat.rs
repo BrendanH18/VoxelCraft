@@ -94,6 +94,21 @@ impl PlayerSession {
         }
     }
 
+    /// Java's `Player.canCriticalAttack`: the player has fallen some distance
+    /// since the ground (`fallDistance > 0`, which Water, ladders, flight and
+    /// Slow Falling clear), is airborne, not riding, not sprinting
+    /// and hits a living target. The charge check is the caller's.
+    pub fn can_critical_attack(&self, living: bool, sprinting: bool) -> bool {
+        let p = &self.player;
+        self.vitals.fall_distance(p.pos.y) > 0.0
+            && !p.on_ground
+            && !p.climbing
+            && !p.in_water
+            && p.vehicle.is_none()
+            && living
+            && !sprinting
+    }
+
     /// Restart the charge, as an attack or a swing at nothing does.
     pub fn reset_attack_strength(&mut self) {
         self.combat.ticker = 0;
@@ -151,9 +166,8 @@ impl PlayerSession {
         let strong = strength > 0.9;
         let sprint_knockback = sprinting && strong;
         let p = &self.player;
-        let falling = !p.on_ground && p.vel.y < 0.0 && !p.flying;
         let living = matches!(target, Target::Mob(_));
-        let critical = strong && falling && !p.climbing && !p.in_water && p.vehicle.is_none() && living && !sprinting;
+        let critical = strong && self.can_critical_attack(living, sprinting);
         // Java compares last-tick horizontal movement with 2.5x movement speed (0.1).
         let slow = (p.vel.with_y(0.0) / 20.0).length_squared() < (0.1f64 * 2.5).powi(2);
         let sword = held.and_then(Item::as_tool).is_some_and(|(k, _)| k == ToolKind::Sword);

@@ -500,6 +500,13 @@ impl Vitals {
         out.damage
     }
 
+    /// Java's `fallDistance` for a player now at feet height `y`: how far
+    /// below the highest point since the ground (zero while flying,
+    /// swimming or climbing, after Slow Falling's reset or a teleport).
+    pub fn fall_distance(&self, y: f64) -> f64 {
+        self.fall_peak.map_or(0.0, |peak| (peak - y).max(0.0))
+    }
+
     /// Forgets the height a fall started from (after a teleport).
     pub fn reset_fall(&mut self) {
         self.fall_peak = None;
