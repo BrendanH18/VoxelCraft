@@ -133,8 +133,11 @@ restock interval is a fixed day-time interval. Item families absent from the
 engine are filtered from trade pools, so some tiers offer fewer than two trades
 (or none): fish/buckets, campfires, maps, banners, item frames, suspicious stew,
 glazed terracotta, tipped arrows, and unavailable foods/stone variants. The
-leatherworker has no cauldron job site yet. Raids and farmer harvesting remain
-gaps; round 2 implements breeding, gossip, reputation, golems, zombie
+leatherworker has no cauldron job site yet (there is no cauldron block). Raids remain
+a gap; farmers on shift walk to ripe wheat, carrot or potato crops within five blocks of their
+composter and cut and replant them (Java `HarvestFarmland`, gated by mobGriefing; replanting
+is free instead of using seeds from the villager's inventory, and they do not compost or
+use bone meal); round 2 implements breeding, gossip, reputation, golems, zombie
 villagers and wandering traders below. Profession
 aprons share an original base model across biomes; level badges are in the UI.
 

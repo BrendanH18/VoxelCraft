@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 fn hash(mut seed: u64) -> u64 {
     crate::world::noise::splitmix64(&mut seed)
 }
-use super::{Entities, Mob, MobKind, MobWorld};
+use super::{Entities, EntityEvent, Mob, MobKind, MobWorld};
 #[path = "villager_trades.rs"]
 mod tables;
 
@@ -486,6 +486,30 @@ impl Villager {
     }
 }
 
+/// How close (blocks) a farmer must be to cut a crop.
+const HARVEST_REACH: f64 = 1.5;
+/// Farmers look for ripe crops this far from their job site.
+const HARVEST_RADIUS: i32 = 5;
+/// The ripe crop closest to `from` around a farmer's job site (wheat, carrots, potatoes; stage 7).
+fn ripe_crop<W: MobWorld + ?Sized>(world: &W, job: IVec3, from: DVec3) -> Option<IVec3> {
+    let mut best: Option<(f64, IVec3)> = None;
+    for dy in -1..=1 {
+        for dz in -HARVEST_RADIUS..=HARVEST_RADIUS {
+            for dx in -HARVEST_RADIUS..=HARVEST_RADIUS {
+                let cell = job + IVec3::new(dx, dy, dz);
+                let ripe = world.block(cell).is_some_and(|b| b.as_crop().is_some_and(|(_, stage)| stage == 7));
+                if ripe && world.block(cell - IVec3::Y).is_some_and(|b| b.is_farmland()) {
+                    let d = (cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)).distance_squared(from);
+                    if best.is_none_or(|(bd, _)| d < bd) {
+                        best = Some((d, cell));
+                    }
+                }
+            }
+        }
+    }
+    best.map(|(_, cell)| cell)
+}
+
 /// Where a sleeping villager lies: the head half's centre on top of the mattress, turned so
 /// the body stretches toward the foot (Java's `SLEEPING` pose; the renderer lays the head
 /// toward the pillow). `None` if the bed's foot half cannot be found.
@@ -695,6 +719,26 @@ impl Entities {
             } else {
                 None
             };
+            // Java's `HarvestFarmland`: farmers on shift cut ripe crops near their composter.
+            if v.profession == Profession::Farmer
+                && self.villager_griefing
+                && m.age >= 0
+                && !v.fleeing
+                && !v.trading
+                && v.bell_hide <= 0.0
+                && (2000..9000).contains(&tick)
+                && let Some(job) = v.job
+                && let Some(cell) = ripe_crop(world, job, m.pos)
+            {
+                let at = cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+                if ((at - m.pos) * DVec3::new(1.0, 0.0, 1.0)).length_squared() < HARVEST_REACH * HARVEST_REACH
+                    && (at.y - m.pos.y).abs() < 2.0
+                {
+                    self.pending_sounds.push(EntityEvent::VillagerHarvest { cell });
+                } else {
+                    v.goal = Some(at);
+                }
+            }
             if tick >= 12000
                 && !v.fleeing
                 && v.bell_hide <= 0.0
@@ -1064,6 +1108,37 @@ mod tests {
         e.village_time = 0.25;
         step(&mut e, &w);
         assert!(!e.mobs[0].villager.as_ref().unwrap().sleeping);
+    }
+    #[test]
+    fn farmers_walk_to_ripe_crops_near_their_composter_and_harvest_them() {
+        let mut w = grid();
+        let job = IVec3::new(0, 1, 0);
+        w.blocks.insert(job, Block::COMPOSTER);
+        let ripe = IVec3::new(4, 1, 1);
+        let young = IVec3::new(-3, 1, 0);
+        for (cell, stage) in [(ripe, 7), (young, 3)] {
+            w.blocks.insert(cell - IVec3::Y, Block::FARMLAND);
+            w.blocks.insert(cell, Block::wheat(stage));
+        }
+        let mut e = Entities::new(1);
+        e.spawn(MobKind::Villager, DVec3::new(0.5, 1.0, 0.5));
+        e.village_time = 0.2;
+        let events = |e: &mut Entities| {
+            step(e, &w);
+            std::mem::take(&mut e.pending_sounds)
+        };
+        assert!(events(&mut e).is_empty(), "claims the composter first; the crop is out of reach");
+        let v = e.mobs[0].villager.as_ref().unwrap();
+        assert_eq!(v.profession, Profession::Farmer);
+        assert_eq!(v.goal, Some(ripe.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)), "heads for the ripe wheat only");
+        e.mobs[0].pos = DVec3::new(3.7, 1.0, 1.5);
+        assert!(matches!(events(&mut e)[..], [EntityEvent::VillagerHarvest { cell }] if cell == ripe));
+        // Off shift or with mobGriefing off, the crops are left alone.
+        e.village_time = 0.6;
+        assert!(events(&mut e).is_empty());
+        e.village_time = 0.2;
+        e.villager_griefing = false;
+        assert!(events(&mut e).is_empty());
     }
     #[test]
     fn sleeping_villagers_lie_on_the_head_half_with_their_head_on_the_pillow() {

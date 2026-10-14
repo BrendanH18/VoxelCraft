@@ -379,6 +379,14 @@ impl Game {
                         self.toggle_door(cell, glam::Vec3::ZERO);
                     }
                 }
+                EntityEvent::VillagerHarvest { cell } => {
+                    if let Some(block) = self.world.get_block(cell)
+                        && let Some((crop, 7)) = block.as_crop()
+                    {
+                        self.world.spill_block(cell, block);
+                        self.world.set_block(cell, crate::world::block::Block::crop(crop, 0));
+                    }
+                }
                 EntityEvent::VillagerDoorClose { cell } => {
                     if self.world.get_block(cell).is_some_and(|b| {
                         matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: true, upper: false, .. }))

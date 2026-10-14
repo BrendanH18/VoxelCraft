@@ -268,6 +268,10 @@ pub enum EntityEvent {
     VillagerDoor {
         cell: IVec3,
     },
+    /// A farmer villager harvests the ripe crop at `cell` and replants it (Java `HarvestFarmland`).
+    VillagerHarvest {
+        cell: IVec3,
+    },
     /// No villager is near a door they opened any more: close it again.
     VillagerDoorClose {
         cell: IVec3,
