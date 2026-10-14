@@ -25,8 +25,11 @@ only tiny slimes drop 0–2 slimeballs (item 610, shared with bastions), with Lo
 The chunk formula uses the world seed and Java's 16-block chunks, signed
 integer overflow and 48-bit RNG. Underground Y < 40 follows the world's
 compressed Java height map. Swamps check mapped Y 50–70, random light 0–7,
-50% chance and saved day-count moon brightness. The green cube model is
-opaque because the current entity pass has no translucency.
+50% chance and saved day-count moon brightness. The model is an opaque core with
+its face inside a translucent shell (alpha 0.62, as Java's `SlimeOuterLayer`), drawn in a
+second blended entity pass that is depth-tested but does not write depth; the shell
+alpha and colours are original approximations, and the blended pass is not
+GPU-verified in this change. Other entities stay opaque.
 
 Sources: [Slime](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/Slime.java),
 [WorldgenRandom](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/levelgen/WorldgenRandom.java).

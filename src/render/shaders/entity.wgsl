@@ -167,5 +167,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let stripe = abs(fract(in.uv.x * 0.11 - in.uv.y * 0.11 + g.sun.w * 0.35) - 0.5);
         c += vec3<f32>(0.55, 0.42, 0.9) * smoothstep(0.40, 0.50, 0.5 - stripe);
     }
-    return vec4<f32>(apply_fog(c, in.dist), 1.0);
+    // Material 4 (slime shell) is drawn blended; everything else is opaque.
+    let alpha = select(1.0, 0.62, in.material == 4u);
+    return vec4<f32>(apply_fog(c, in.dist), alpha);
 }
