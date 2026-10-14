@@ -334,13 +334,16 @@ impl Villager {
     pub fn priced(&self, offer: Offer) -> Stack {
         self.priced_for(offer, super::PlayerId::HOST)
     }
+    /// Java `getPlayerReputation`: the gossip total (plus the host-only legacy discount).
+    pub fn reputation_of(&self, owner: super::PlayerId) -> i16 {
+        self.gossip.reputation(owner) + if owner == super::PlayerId::HOST { self.reputation } else { 0 }
+    }
     pub fn priced_for(&self, offer: Offer, owner: super::PlayerId) -> Stack {
         if self.wandering {
             return offer.price();
         }
         let base = offer.price();
-        let reputation =
-            self.gossip.reputation(owner) + if owner == super::PlayerId::HOST { self.reputation } else { 0 };
+        let reputation = self.reputation_of(owner);
         let cut = (reputation as f32 * offer.multiplier).floor() as i32;
         Stack { count: (base.count as i32 - cut).clamp(1, offer.cost.item.max_stack() as i32) as u8, ..base }
     }

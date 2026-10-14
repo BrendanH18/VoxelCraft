@@ -217,6 +217,14 @@ impl Entities {
                     if kind == MobKind::ZombifiedPiglin {
                         self.anger_piglins(pos);
                     }
+                    // Java's `VILLAGER_HURT`/`VILLAGER_KILLED` reputation events fire for any
+                    // damage a player causes, including arrows and splash potions.
+                    if kind == MobKind::Villager
+                        && let Some(owner) = owner
+                        && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos)
+                    {
+                        self.note_villager_hurt(i, owner, killed);
+                    }
                     if let Some(owner) = owner
                         && let Some(i) =
                             self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.nether.is_some())

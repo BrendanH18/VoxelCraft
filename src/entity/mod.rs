@@ -2751,6 +2751,21 @@ mod tests {
     }
 
     #[test]
+    fn arrows_a_player_looses_at_villagers_cost_reputation() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Villager, DVec3::new(10.5, 10.0, 0.5));
+        e.spawn(MobKind::Villager, DVec3::new(10.5, 10.0, 6.5));
+        let c = night(DVec3::new(0.5, 10.0, 0.5));
+        e.shoot_arrow(DVec3::new(0.5, 11.6, 0.5), DVec3::X, 1.0, true);
+        run(&mut e, &world, &c, 0.5);
+        let rep = |e: &Entities, i: usize| e.mobs[i].villager.as_ref().unwrap().gossip.reputation(PlayerId::HOST);
+        assert!(e.mobs[0].health < MobKind::Villager.max_health());
+        assert_eq!(rep(&e, 0), -25, "minor negative gossip for the villager that was hurt");
+        assert_eq!(rep(&e, 1), 0, "a bystander only learns of kills");
+    }
+
+    #[test]
     fn player_arrows_hit_mobs_and_can_be_collected() {
         let world = Grid::flat(10);
         let mut e = Entities::new(4);

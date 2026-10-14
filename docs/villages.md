@@ -262,8 +262,11 @@ cure gossip. Host, controller and CLI prices/payments use the same player's
 reputation, and gossip/cure identity survive saves. Older single-number
 reputation migrates as a host-only legacy discount. Sharing currently visits
 the closest resident and transfers all eligible entries rather than Java's
-weighted selection of ten. Golem reputation-based hostility and gossip from
-projectile/magic damage are still absent.
+weighted selection of ten. Arrow and splash-potion damage from a player adds the same
+hurt/kill gossip as melee (Java `VILLAGER_HURT`/`VILLAGER_KILLED`). A wild iron golem
+targets a player within its `inflate(10, 8, 10)` box whom a villager in that box rates
+at -100 or worse (`DefendVillageTargetGoal`); player-built golems still never do.
+Gossip sensors keep the retained spherical radii.
 
 Round 2 Java references:
 - [Breeding behavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java)
