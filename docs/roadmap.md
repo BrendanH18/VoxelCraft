@@ -795,3 +795,18 @@ minimum. Its only nonzero reference users are the unregistered spears.
 
 Blindness now persists by Java ID and blocks sprinting/criticals across input
 paths, with an appended icon and per-view fog. Ordinary visual acceptance is open.
+
+Player and combat defects (2026-10-13, w2): all implemented and unverified; no
+ordinary-player acceptance. Monster spawn gear scales by local difficulty;
+splash potions add every effect to mobs and effects keep hidden lower instances;
+witches pick potions from the target and drink as Java does; golden apples are
+always edible, Creative eats without using food up, and pufferfish, rotten flesh,
+raw chicken and golden apples give Java's effects (new Nausea, Luck and Bad Luck
+effects have icons only); world-spawn respawns use Java's `PlayerSpawnFinder`;
+the death fall counts from the fatal tick; the fishing hook snags mobs and reads
+luck and biome at the reel; bow and crossbow arm poses exist. Gaps found: no
+Absorption (golden apple), no held spawn weapons for mobs, no abandoned camp,
+copper horse armor, spears or armor equip sounds (so copper gear has no loot or
+equip sound), no `@a`/`@r`/`@e`/`@n` selectors, no LAN jitter buffer, no
+Adventure-world default or world border in the spawn search, hooked item
+entities, and no automated controller-screen/bed/respawn harness.
