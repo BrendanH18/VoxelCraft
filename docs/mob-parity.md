@@ -108,3 +108,14 @@ populated bastions are saved under `nether_mobs`. Crying obsidian (block 1800)
 exists for bartering and bastion loot. Strider riding and hoglin/strider breeding
 use the shared mount and animal paths; spectral arrows and Soul Speed do not
 exist. Details, the bartering table and sources are in [Nether mobs](nether-mobs.md).
+
+## Java 26.3 undead rare-pool correction — 2026-10-13
+
+Player kills of zombies, husks and zombie villagers roll one rare pool at
+2.5% + 1% per Looting level, choosing exactly one equally weighted iron ingot,
+carrot or potato. Burning potatoes smelt to baked potatoes. Drowned roll one
+copper ingot at 11% + 2% per Looting level. Environment and mob kills receive
+neither rare pool. `undead_loot.json` is extracted from the pinned 26.3 server
+loot tables; tests cover exclusivity, probabilities, credit and smelting.
+Tridents, drowned trident equipment and projectile behavior require new content
+and remain outside this defect-only change. Java loot RNG sequence parity remains open.

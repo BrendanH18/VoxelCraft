@@ -912,6 +912,16 @@ impl Entities {
             ));
         }
         for (item, count) in drops {
+            if !player_kill
+                && (matches!(kind, MobKind::Zombie | MobKind::Husk | MobKind::ZombieVillager)
+                    && matches!(
+                        item,
+                        crate::item::Item::IRON_INGOT | crate::item::Item::CARROT | crate::item::Item::POTATO
+                    )
+                    || kind == MobKind::Drowned && item == crate::item::Item::COPPER_INGOT)
+            {
+                continue;
+            }
             let item = if let Some((color, sheared)) = sheep {
                 if item == crate::item::Item::from(Block::WOOL) {
                     if sheared {
@@ -947,6 +957,7 @@ impl Entities {
                     crate::item::Item::RAW_CHICKEN => crate::item::Item::COOKED_CHICKEN,
                     crate::item::Item::COD => crate::item::Item::COOKED_COD,
                     crate::item::Item::SALMON => crate::item::Item::COOKED_SALMON,
+                    crate::item::Item::POTATO => crate::item::Item::BAKED_POTATO,
                     i => i,
                 }
             } else {
@@ -2045,6 +2056,60 @@ mod tests {
     }
 
     #[test]
+    fn undead_rare_loot_uses_one_reference_pool_and_requires_player_credit() {
+        use crate::item::Item;
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/undead_loot.json")).unwrap();
+        for kind in [MobKind::Zombie, MobKind::Husk, MobKind::ZombieVillager, MobKind::Drowned] {
+            let pool = &fixture["rare_pools"][kind.name().replace(' ', "_")];
+            let items: Vec<Item> = pool["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| Item::from_name(v.as_str().unwrap()).unwrap())
+                .collect();
+            assert_eq!(pool["rolls"], 1);
+            assert_eq!(pool["requires_player_kill"], true);
+            let mut rng = Rng::new(72);
+            for looting in [0, 3] {
+                let mut counts = vec![0; items.len()];
+                let samples = 20000;
+                for _ in 0..samples {
+                    let rare: Vec<_> =
+                        kind.drops(&mut rng, looting).into_iter().filter(|(i, _)| items.contains(i)).collect();
+                    assert!(rare.len() <= 1, "{kind:?} produces at most one rare drop");
+                    for (item, count) in rare {
+                        assert_eq!(count, 1);
+                        counts[items.iter().position(|i| *i == item).unwrap()] += 1;
+                    }
+                }
+                let chance =
+                    pool["chance"].as_f64().unwrap() + looting as f64 * pool["looting_per_level"].as_f64().unwrap();
+                for count in counts {
+                    let observed = count as f64 / samples as f64;
+                    assert!((observed - chance / items.len() as f64).abs() < 0.01, "{kind:?}: {observed}, {chance}");
+                }
+            }
+            let mut e = Entities::new(13);
+            for _ in 0..40 {
+                e.drop_loot_with_fire(kind, DVec3::ZERO, 255, true, false);
+            }
+            assert!(e.items.iter().all(|i| i.stack.item == Item::ROTTEN_FLESH), "environment kills have no rare pool");
+            e.items.clear();
+            for _ in 0..80 {
+                e.drop_loot_with_fire(kind, DVec3::ZERO, 255, true, true);
+            }
+            if kind != MobKind::Drowned {
+                assert!(e.items.iter().any(|i| i.stack.item == Item::BAKED_POTATO));
+                assert!(e.items.iter().any(|i| i.stack.item == Item::IRON_INGOT));
+                assert!(e.items.iter().all(|i| i.stack.item != Item::POTATO));
+            } else {
+                assert!(e.items.iter().any(|i| i.stack.item == Item::COPPER_INGOT));
+            }
+        }
+    }
+
+    #[test]
     fn huge_looting_saturates_drop_counts() {
         // Before the clamp, 255 levels overflowed the u8 count.
         let mut rng = Rng::new(3);
@@ -2053,17 +2118,12 @@ mod tests {
             let extra = (u8::MAX as f32 * expected_rng.next_f32()).round() as u32;
             let base = (expected_rng.next_f32() * 3.0) as u32;
             let drops = MobKind::Zombie.drops(&mut rng, u8::MAX);
-            // Looting 255 makes the separate carrot and potato rolls certain.
-            let _ = (expected_rng.next_f32(), expected_rng.next_f32());
+            // Looting 255 guarantees one entry from the single rare pool.
+            let _ = expected_rng.next_f32();
+            let rare = [crate::item::Item::IRON_INGOT, crate::item::Item::CARROT, crate::item::Item::POTATO]
+                [expected_rng.next_int(3) as usize];
             assert!(!drops.is_empty(), "maximum looting produces a drop for these rolls");
-            assert_eq!(
-                drops,
-                vec![
-                    (crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8),
-                    (crate::item::Item::CARROT, 1),
-                    (crate::item::Item::POTATO, 1),
-                ]
-            );
+            assert_eq!(drops, vec![(crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8), (rare, 1),]);
         }
     }
 

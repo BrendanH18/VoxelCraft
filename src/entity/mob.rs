@@ -804,15 +804,15 @@ impl MobKind {
                 ));
             }
         }
-        if self == MobKind::Zombie {
-            // Java: 2.5% plus 1% per looting level, rolled separately.
-            let chance = 0.025 + 0.01 * looting as f32;
-            if rng.next_f32() < chance {
-                out.push((Item::CARROT, 1));
-            }
-            if rng.next_f32() < chance {
-                out.push((Item::POTATO, 1));
-            }
+        if matches!(self, MobKind::Zombie | MobKind::Husk | MobKind::ZombieVillager)
+            && rng.chance(0.025 + 0.01 * looting as f32)
+        {
+            // One equally weighted entry from a single rare pool, not
+            // independent vegetable rolls. Player-kill gating is at the drop sink.
+            out.push(([Item::IRON_INGOT, Item::CARROT, Item::POTATO][rng.next_int(3) as usize], 1));
+        }
+        if self == MobKind::Drowned && rng.chance(0.11 + 0.02 * looting as f32) {
+            out.push((Item::COPPER_INGOT, 1));
         }
         if self == MobKind::WitherSkeleton && rng.chance(0.025 + 0.01 * looting as f32) {
             out.push((Item::WITHER_SKULL, 1));
