@@ -1736,6 +1736,32 @@ mod tests {
     }
 
     #[test]
+    fn controller_and_cli_agents_ride_carts_and_sneak_to_dismount() {
+        // Controller seats and CLI agents are agents: the shared use path mounts a rideable
+        // cart and sneaking steps out to a cell Java's dismount search accepts.
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let kind = crate::entity::minecart::CartKind::from_item(crate::item::Item::MINECART).unwrap();
+        for x in 0..7 {
+            for z in 0..4 {
+                world.set_block(IVec3::new(x, 150, z), Block::STONE);
+            }
+        }
+        let cart = entities.spawn_cart(kind, DVec3::new(3.5, 151.0, 1.5));
+        a.execute(Command::Place, &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.session.player.vehicle, Some(cart));
+        assert!(entities.cart(cart).unwrap().seat_for(a.session.id).is_some());
+        a.input.descend = true;
+        a.remaining = 1;
+        a.tick(&mut world, &mut entities);
+        assert_eq!(a.session.player.vehicle, None);
+        assert!(entities.cart(cart).unwrap().seat_for(a.session.id).is_none());
+        let off = a.session.player.pos - DVec3::new(3.5, 151.0, 1.5);
+        assert!(off.x.hypot(off.z) >= 0.9, "the player steps out beside the cart: {off:?}");
+    }
+
+    #[test]
     fn cart_placement_off_rails_or_while_riding_reports_an_error() {
         let mut world = world();
         let mut entities = Entities::new(1);

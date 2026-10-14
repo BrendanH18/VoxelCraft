@@ -253,11 +253,15 @@ A TNT cart lit by fire or lava gets Java's `nextInt(20) + nextInt(20)` fuse.
 Known gaps: waterlogged rails, exact Java cart collision
 alignment, saved mob passengers, rolling
 cart audio, textured cargo models and TNT's special rail/support blast
-protection are not implemented. Split-screen controller riding and cart
-container menus have not been completed. Burning projectiles do not yet hit
-carts.
+protection are not implemented. Burning projectiles do not yet hit carts.
 The existing explosion system determines visibility and block destruction.
 No experimental minecart-improvements behaviour is enabled.
+
+Controller seats and CLI agents are agents: they mount a rideable cart through the
+shared use path, follow its seat, and the descend/sneak input steps them out
+(`agent::tests::controller_and_cli_agents_ride_carts_and_sneak_to_dismount`).
+Controller menus open chest and hopper carts as `Tab::Vehicle`. Real-controller
+play on a cart has not been checked on hardware.
 
 Research used the Java implementations
 [RailState](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/RailState.java),
