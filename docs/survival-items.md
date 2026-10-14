@@ -23,10 +23,11 @@ ingredients are absent.
 
 Brown/red mushrooms generate in caves, covered ground and swamps via an
 isolated decoration pass. Random ticks spread with Java's 1/25 chance,
-five-mushroom density limit and four-step random walk. They require a solid
-surface and brightness below 13. Sky brightness uses the engine's vertical
-exposure approximation, so outdoor shade is conservative and exposed swamp
-mushrooms disappear. Huge mushrooms/mycelium/podzol are deferred.
+five-mushroom density limit and four-step random walk. `MushroomBlock.canSurvive`
+is mirrored: mycelium, podzol and the nylium blocks (`overrides_mushroom_light_requirement`,
+pinned in `building.json`) always allow a mushroom; otherwise it needs a solid
+surface and `getRawBrightness(pos, 0)` below 13 from the propagated skylight
+and block light, independent of time of day. Huge mushrooms are deferred.
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/MilkBucketItem.java
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/MushroomBlock.java
 

@@ -33,12 +33,18 @@ pub(super) fn decorate(generator: &Generator, cpos: IVec3, data: &mut ChunkData)
 }
 
 impl World {
-    /// Skylight uses the engine's vertical exposure approximation; block light is authoritative.
+    /// Java `MushroomBlock.canSurvive`: raw brightness with zero sky darkening,
+    /// or an override substrate, independently of the clock and weather.
     pub fn mushroom_survives(&mut self, p: IVec3) -> bool {
         self.update_block_light();
-        self.get_block(p - IVec3::Y).is_some_and(Block::is_opaque)
-            && (!self.generator.dimension.has_sky() || !self.sky_exposed(p))
-            && self.block_light(p) < 13
+        let Some(below) = self.get_block(p - IVec3::Y) else { return false };
+        matches!(
+            below,
+            super::overworld_blocks::MYCELIUM
+                | super::overworld_blocks::PODZOL
+                | super::nether_biome_blocks::CRIMSON_NYLIUM
+                | super::nether_biome_blocks::WARPED_NYLIUM
+        ) || (below.is_opaque() && self.raw_brightness(p, 0).is_some_and(|light| light < 13))
     }
     pub(super) fn tick_mushroom(&mut self, p: IVec3, mushroom: Block) {
         if !self.mushroom_survives(p) {
@@ -88,14 +94,11 @@ mod tests {
     use super::*;
     use crate::item::Item;
     use crate::world::terrain::Generator;
-    use std::sync::Arc;
 
+    /// Fully loaded flat columns, so skylight is known around the origin.
     fn flat() -> World {
-        let mut world = World::new_headless(Arc::new(Generator::new(3)), Default::default(), 2);
-        for y in world.generator.dimension.chunk_rows() {
-            world.insert_chunk(IVec3::new(0, y, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
-        }
-        world
+        let columns = (-1..=1).flat_map(|z| (-1..=1).map(move |x| glam::IVec2::new(x, z)));
+        crate::world::lighting::flat_test_world(columns, 63)
     }
 
     #[test]
@@ -110,7 +113,11 @@ mod tests {
         assert_eq!(world.drops.last().map(|(_, stack)| stack.item), Some(Item::from_block(Block::BROWN_MUSHROOM)));
 
         let roof = IVec3::new(8, 80, 8);
-        world.set_block(roof + IVec3::Y * 2, Block::STONE);
+        for x in -7..=7 {
+            for z in -7..=7 {
+                world.set_block(roof + IVec3::new(x, 2, z), Block::STONE);
+            }
+        }
         for (dx, dz) in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)] {
             let p = roof + IVec3::new(dx, 0, dz);
             world.set_block(p - IVec3::Y, Block::STONE);
@@ -123,6 +130,25 @@ mod tests {
         }
         assert_eq!(world.drops.len(), before, "five mushrooms in range refuse to spread");
         assert_eq!(world.get_block(roof), Some(Block::RED_MUSHROOM));
+    }
+
+    #[test]
+    fn mushroom_light_uses_propagated_sky_and_reference_override_substrates() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/building.json")).unwrap();
+        let mut world = flat();
+        let p = IVec3::new(16, 80, 16);
+        world.set_block(p - IVec3::Y, Block::STONE);
+        world.set_block(p + IVec3::Y * 2, Block::STONE);
+        assert!(!world.sky_exposed(p));
+        assert!(world.raw_brightness(p, 0).unwrap() >= fixture["mushroom_brightness_limit"].as_u64().unwrap() as u8);
+        assert!(!world.mushroom_survives(p), "a narrow overhang still receives lateral skylight");
+        world.set_block(p + IVec3::Y * 2, Block::AIR);
+        for name in fixture["mushroom_light_overrides"].as_array().unwrap() {
+            world.set_block(p - IVec3::Y, Block::from_name(name.as_str().unwrap()).unwrap());
+            assert_eq!(world.raw_brightness(p, 0), Some(15));
+            assert!(world.mushroom_survives(p), "{name}");
+        }
     }
 
     #[test]
