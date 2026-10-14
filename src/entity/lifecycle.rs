@@ -149,6 +149,7 @@ impl Entities {
             i += 1;
         }
         self.mob_index.rebuild(&self.mobs);
+        self.watch_doors(dt as f32, &mut events);
         self.resolve_strikes(ctx, &mut events);
         self.separate(dt);
         self.nether_upkeep(ctx, &mut events);

@@ -123,7 +123,8 @@ Older saves without the additive `villagers` property remain valid.
 Simplifications: procedural house templates/resident ages rather than vanilla
 NBT assets; straight-line navigation with obstacle sidesteps rather than full
 brain/pathfinding; sleep near a bed rather than snapping to its exact facing;
-doors remain open. Trade selection uses an independent deterministic seed
+villager-opened doors close again one second after no villager is within 1.6 blocks.
+Trade selection uses an independent deterministic seed
 stream and the
 restock interval is a fixed day-time interval. Item families absent from the
 engine are filtered from trade pools, so some tiers offer fewer than two trades

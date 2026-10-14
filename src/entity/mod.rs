@@ -268,6 +268,10 @@ pub enum EntityEvent {
     VillagerDoor {
         cell: IVec3,
     },
+    /// No villager is near a door they opened any more: close it again.
+    VillagerDoorClose {
+        cell: IVec3,
+    },
     /// A chicken laid an egg at its feet.
     LaidEgg {
         pos: DVec3,
@@ -632,6 +636,8 @@ pub struct Entities {
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
     claimed_jobs: rustc_hash::FxHashSet<IVec3>,
     pending_sounds: Vec<EntityEvent>,
+    /// Doors villagers opened, with seconds since a villager was last close by.
+    door_watch: Vec<(IVec3, f32)>,
     trader_spawner: wandering_trader::Spawner,
     trader_leaders: rustc_hash::FxHashMap<u64, (DVec3, f32, bool)>,
     pub trader_spawning: bool,
@@ -700,6 +706,7 @@ impl Entities {
             claimed_beds: Default::default(),
             claimed_jobs: Default::default(),
             pending_sounds: Vec::new(),
+            door_watch: Vec::new(),
             trader_spawner: Default::default(),
             trader_leaders: Default::default(),
             trader_spawning: true,

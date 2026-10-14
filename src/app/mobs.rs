@@ -379,6 +379,13 @@ impl Game {
                         self.toggle_door(cell, glam::Vec3::ZERO);
                     }
                 }
+                EntityEvent::VillagerDoorClose { cell } => {
+                    if self.world.get_block(cell).is_some_and(|b| {
+                        matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: true, upper: false, .. }))
+                    }) {
+                        self.toggle_door(cell, glam::Vec3::ZERO);
+                    }
+                }
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
                     if self.session.mode.is_survival() && !self.session.vitals.is_dead() {
