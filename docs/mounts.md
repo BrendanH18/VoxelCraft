@@ -82,12 +82,20 @@ Camels live in desert villages and need no taming: saddle one to steer it.
 Two players can ride; the rear rider moves forward when the front one gets
 off. Hold and release jump to dash forward (2.75 s cooldown; sprinting adds
 speed while the dash is ready). Camels step up 1.5 blocks, sit down now and
-then when idle, take 2.6 s to stand when mounted, eat and breed on cactus.
+then when idle, take 2.6 s to stand after a rider presses forward, eat and breed on cactus.
 
-Current parity gaps: camels can't be told to sit, and undead horses are not
+Camels already sit automatically. Java 26.3 has no right-click sit command
+(`Camel.mobInteract`); merely mounting now keeps them seated, and forward
+input starts the 52-tick stand transition (`Camel.tickRidden`). Sitting and
+standing timers survive mount save/reload; old saves default to standing.
+Random sitting still uses the retained simplified idle schedule, and exact
+pose-transition animation, collision height and input acceptance remain open.
+
+Current parity gaps: undead horses are not
 implemented (skeleton horses come from lightning traps, and there is no lightning yet);
-horse coats/armor and sounds are procedural approximations; horse herd coats
-are independently selected. Water-current steering/bubble columns and exact
+horse coats/armor and sounds are procedural approximations; horse herds now share the first
+member's coat while keeping independent markings, as Java 26.3
+`Horse.finalizeSpawn`/`HorseGroupData` do. Saved coat/marking IDs are unchanged. Water-current steering/bubble columns and exact
 Java land-status fall quirks for boats remain future work. Offhand controls
 await a player offhand system. Horse armor dyeing and Java's dedicated horse
 inventory layout are not yet implemented.

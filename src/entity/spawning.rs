@@ -68,6 +68,7 @@ impl Entities {
                 }
                 self.spawn(kind, pos);
                 self.natural_animal(world.biome(x, z));
+                let herd_coat = self.natural_horse_coat(None);
                 self.note_zombie_villager(kind);
                 // Animals come in small herds, zombified piglins and End
                 // endermen in packs.
@@ -99,6 +100,7 @@ impl Entities {
                         {
                             self.spawn(kind, p);
                             self.natural_animal(world.biome(x + dx, z + dz));
+                            self.natural_horse_coat(herd_coat);
                             self.note_zombie_villager(kind);
                         }
                     }
