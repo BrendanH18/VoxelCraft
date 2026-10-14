@@ -188,7 +188,6 @@ impl Agent {
             Command::Look(yaw, pitch) => {
                 self.session.player.yaw = yaw.to_radians();
                 self.session.player.pitch = pitch.to_radians();
-                self.session.cancel_mining();
             }
             Command::Select(slot) => {
                 // Java keeps progress while the held stack is the same item and components.
@@ -688,7 +687,7 @@ impl Agent {
                     self.emit(Event::Broke(cell, block));
                 }
                 Ok(_) => self.swings += 1,
-                Err(_) => self.session.cancel_mining(),
+                Err(_) => {}
             }
         }
         self.chew(entities);

@@ -470,3 +470,27 @@ fn held_attack_timing_matches_java_destroy_delay_through_session_and_cli() {
         assert_eq!(broke, expected, "CLI {mode:?} {:?}", blocks.map(|b| b.name()));
     }
 }
+
+#[test]
+fn missed_rays_preserve_held_input_and_reaiming_a_new_target_starts_at_zero() {
+    let (mut w, mut s, mut e) = scene(Block::STONE, Dimension::Overworld);
+    let rules = GameRules::default();
+    s.player.yaw = std::f32::consts::PI;
+    assert!(s.tick_mining(0, &mut w, &mut e, &rules).is_err());
+    s.player.yaw = 0.;
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    let before = s.breaking(&w).unwrap();
+    s.player.yaw = std::f32::consts::PI;
+    assert!(s.tick_mining(0, &mut w, &mut e, &rules).is_err());
+    assert_eq!(s.breaking(&w), Some(before));
+    s.player.yaw = 0.;
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    assert!(s.breaking(&w).unwrap().1 > before.1);
+    w.set_block(AT - IVec3::X, Block::STONE);
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
+    s.cancel_mining();
+    assert!(
+        matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress, .. } if progress > 0.)
+    );
+}

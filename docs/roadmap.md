@@ -778,3 +778,9 @@ reviewable alongside implementation changes and release notes.
 
 Multiplayer and additional side features receive their own roadmap after
 this single-player acceptance milestone. They are not prerequisites for 1.0.
+
+### v0.7 building defect follow-up (2026-10-13)
+
+Implemented with automated evidence on `work/fix-w1-building`: mining input
+continues through missed rays and adapter errors; a new re-aimed target starts
+at zero. Ordinary-player input and visual acceptance remain open.

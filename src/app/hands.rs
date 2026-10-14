@@ -197,7 +197,7 @@ impl Actor<'_> {
             }
             // The session's destroy delay replaces the former adapter repeat cooldowns.
             Ok(Outcome::Delayed { .. }) => {}
-            Err(_) => self.session.cancel_mining(),
+            Err(_) => {}
         }
         self.body.actions.breaking = self.session.breaking(self.world);
     }

@@ -145,10 +145,11 @@ enum was appended, and effects persist by string ID.
     checked by hand.
   - No automated test drives the desktop `Game` adapter.
 - **Releases and aim:**
-  - An adapter error, such as aiming at nothing, is treated as a release.
-  - When the player aims again at a *different* block while still holding the
-    button, that tick adds progress. Java starts without progress in this case.
-    Aiming again at the same block matches Java.
+  - Implemented with automated evidence: adapter errors preserve held input and
+    progress; only an explicit release resets them.
+  - Implemented with automated evidence: re-aiming at a different block while
+    held starts at zero, including a first press that missed; re-aiming at the
+    same block continues. CLI look no longer synthesizes a release.
   - Desktop pick-block, dropping from the selected slot, menus, mode changes
     and death still release mining. Java keeps progress when the held stack
     remains the same item and components, for example after dropping part of a

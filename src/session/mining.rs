@@ -116,6 +116,9 @@ impl PlayerSession {
         if held.is_some_and(|s| s.count == 0 || s.count > s.item.max_stack()) {
             return Err("invalid held stack");
         }
+        // Held input survives a missed ray or adapter error. Re-aiming is a
+        // continue, not a new press; a changed target starts at zero.
+        let started = !std::mem::replace(&mut self.mining.held, true);
         let (pos, face) = self.block_target(world).ok_or("no block in reach")?;
         let block = world.get_block(pos).ok_or("target is unloaded")?;
         let creative = self.mode.is_creative();
@@ -123,7 +126,7 @@ impl PlayerSession {
         if creative && held.is_some_and(|s| !mining::can_destroy_in_creative(s.item)) {
             return Err("held item cannot break blocks in Creative");
         }
-        if !std::mem::replace(&mut self.mining.held, true) {
+        if started {
             // `startDestroyBlock`, then `continueDestroyBlock` in the same tick.
             if creative {
                 let out = self.destroy(pos, block, slot, world, entities, rules);
