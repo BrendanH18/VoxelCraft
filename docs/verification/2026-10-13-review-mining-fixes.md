@@ -150,10 +150,11 @@ enum was appended, and effects persist by string ID.
   - Implemented with automated evidence: re-aiming at a different block while
     held starts at zero, including a first press that missed; re-aiming at the
     same block continues. CLI look no longer synthesizes a release.
-  - Desktop pick-block, dropping from the selected slot, menus, mode changes
-    and death still release mining. Java keeps progress when the held stack
-    remains the same item and components, for example after dropping part of a
-    stack.
+  - Implemented with automated evidence: pick-block, dropping from the selected
+    slot and mode changes no longer release mining; progress is keyed on the
+    position and the held item and components, so a changed stack restarts and
+    a partly dropped stack continues. Opening a menu and dying still release
+    mining, which matches Java's key release when a screen opens.
 - **Server rules:**
   - The server's tolerance check is not modeled. This includes
     `STOP_DESTROY_BLOCK` requiring ≥ 0.7 and delayed destruction.

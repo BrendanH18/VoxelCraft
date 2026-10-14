@@ -1,0 +1,25 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.level.block.SoulSandBlock",
+    "net.minecraft.world.level.block.MudBlock",
+    "net.minecraft.world.level.block.HayBlock",
+    "net.minecraft.world.level.block.RedStoneOreBlock",
+    "net.minecraft.world.level.block.MushroomBlock",
+    "data/minecraft/tags/block/overrides_mushroom_light_requirement.json"
+  ],
+  "collision_height": {
+    "soul_sand": 0.875,
+    "mud": 0.875
+  },
+  "hay_fall_multiplier": 0.2,
+  "redstone_ore_extinguishes_on_random_tick": true,
+  "mushroom_brightness_limit": 13,
+  "mushroom_light_overrides": [
+    "mycelium",
+    "podzol",
+    "crimson_nylium",
+    "warped_nylium"
+  ]
+}

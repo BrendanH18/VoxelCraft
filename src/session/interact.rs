@@ -559,13 +559,11 @@ impl PlayerSession {
         match self.inventory.find(item) {
             Some(i) if i < HOTBAR_SLOTS => Some(Pick::Select(i)),
             Some(i) => {
-                self.cancel_mining();
                 self.cancel_consumption();
                 self.inventory.slots.swap(i, selected);
                 Some(Pick::Replaced)
             }
             None if self.mode == crate::rules::GameMode::Creative => {
-                self.cancel_mining();
                 self.cancel_consumption();
                 self.inventory.slots[selected] = Some(crate::inventory::Stack::new(item, item.max_stack()));
                 Some(Pick::Replaced)

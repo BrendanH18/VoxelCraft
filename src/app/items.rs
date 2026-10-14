@@ -145,7 +145,6 @@ impl Game {
             (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
         if slot == self.body.actions.selected {
             self.body.actions.reset();
-            self.session.cancel_mining();
             self.session.cancel_consumption();
         }
         self.throw(Stack { count, ..stack });

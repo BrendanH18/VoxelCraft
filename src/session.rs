@@ -104,7 +104,6 @@ impl PlayerSession {
     /// Keep the mode and its movement abilities together for every adapter.
     pub fn set_mode(&mut self, mode: GameMode) {
         self.cancel_consumption();
-        self.cancel_mining();
         self.mode = mode;
         self.player.can_fly = mode.can_fly();
         self.player.noclip = mode == GameMode::Spectator;

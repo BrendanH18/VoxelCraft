@@ -494,3 +494,27 @@ fn missed_rays_preserve_held_input_and_reaiming_a_new_target_starts_at_zero() {
         matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress, .. } if progress > 0.)
     );
 }
+
+#[test]
+fn progress_survives_dropping_part_of_the_stack_a_mode_change_and_picking_the_same_item() {
+    use voxelcraft::session::interact::Pick;
+    let rules = GameRules::default();
+    let (mut w, mut s, mut e) = scene(Block::FURNACE, Dimension::Overworld);
+    let pick = Item::tool(ToolKind::Pickaxe, Tier::Wood);
+    s.inventory.slots[0] = Some(Stack::new(Item::from_block(Block::STONE), 4));
+    for _ in 0..3 {
+        s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    }
+    let before = s.breaking(&w).unwrap().1;
+    // Dropping one of four keeps the same item and components.
+    s.inventory.slots[0] = Some(Stack::new(Item::from_block(Block::STONE), 3));
+    s.set_mode(GameMode::Survival);
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    assert!(s.breaking(&w).unwrap().1 > before);
+    // Picking the block replaces the held slot with a different item: restart.
+    s.inventory.slots[0] = Some(Stack::new(pick, 1));
+    s.inventory.slots[12] = Some(Stack::new(Item::from_block(Block::FURNACE), 1));
+    assert_eq!(s.pick_block(0, &w), Some(Pick::Replaced));
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
+    assert_eq!(s.breaking(&w), None);
+}
