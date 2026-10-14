@@ -269,6 +269,14 @@ impl World {
                     self.grow_tree(p);
                 }
             }
+            // `RedStoneOreBlock.randomTick`: a lit ore goes dark.
+            b if matches!(
+                super::redstone_blocks::component(b),
+                Some(super::redstone_blocks::Component::GlowingOre(_))
+            ) =>
+            {
+                self.extinguish_ore(p, b);
+            }
             Block::SUGAR_CANE => self.tick_cane(p),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),

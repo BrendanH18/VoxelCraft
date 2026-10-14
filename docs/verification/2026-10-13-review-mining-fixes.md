@@ -167,9 +167,10 @@ enum was appended, and effects persist by string ID.
   - Conduit Power is not registered.
   - No beacon is available to grant Haste.
 - **Block and tool details:**
-  - Lit redstone ore is retouched on every progress tick. This retains the
-    earlier lit-duration approximation instead of Java's random-tick
-    extinguishing.
+  - Implemented with automated evidence: lit redstone ore is no longer
+    rescheduled by each touch and no longer expires after a fixed 30 ticks; it
+    goes dark on a random tick (`RedStoneOreBlock.randomTick`), pinned in
+    `tests/fixtures/java/26.3/building.json`.
   - Neighbor drops are suppressed while an upper half is removed silently.
     Java suppresses only the lower half. No registered block is affected.
   - Survival double-plant loot with shears and tool context in neighbor

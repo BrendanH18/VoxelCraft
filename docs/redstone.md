@@ -84,8 +84,9 @@ operation and respond to power edges. Arrow hits activate target blocks for 20
 ticks, other callers' projectile hits for 8; face-centre distance gives 1–15
 power and hits during the active pulse are ignored. Arrows clip shaped models
 instead of the entire occupied cell. Ore illuminates to level 9 when mined,
-used, stepped on or hit by arrows. Its 30-tick expiry is a simplification of
-Java random-tick expiry; stone/deepslate ore harvest and fortune rules remain.
+used, stepped on or hit by arrows, and goes dark on a random tick like Java's
+`RedStoneOreBlock.randomTick` (no fixed expiry; lighting a lit ore schedules
+nothing); stone/deepslate ore harvest and fortune rules remain.
 
 Daylight detectors update every 20 ticks and invert on use. They use VoxelCraft's
 existing day clock and heightmap exposure; sun-angle easing and diffuse sky
