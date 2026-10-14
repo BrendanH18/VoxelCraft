@@ -335,6 +335,11 @@ pub(super) struct PadView<'a> {
     pub message: Option<&'a str>,
 }
 
+/// Start and the face button that jumps skip the end credits, like Escape and Space.
+fn skips_credits(button: Button) -> bool {
+    matches!(button, Button::Start | Button::South | Button::East)
+}
+
 fn press_for(button: Button) -> Option<Press> {
     Some(match button {
         Button::South => Press::Jump,
@@ -389,7 +394,15 @@ impl Game {
         let mut popups = Vec::new();
         let mut navs = Vec::new();
         let mut closing = Vec::new();
+        let mut skip_credits = false;
         while let Some(event) = gilrs.next_event() {
+            if self.credits.is_some() {
+                // The credits swallow every press, like the keyboard's Escape/Space/Enter.
+                skip_credits |= matches!(event.event, EventType::ButtonPressed(button, _) if skips_credits(button));
+                if matches!(event.event, EventType::ButtonPressed(..) | EventType::ButtonReleased(..)) {
+                    continue;
+                }
+            }
             let seat = self.pads.seats.iter_mut().find(|s| s.id == Some(event.id));
             match (event.event, seat) {
                 (EventType::ButtonPressed(Button::Start, _), None) => joins.push(event.id),
@@ -463,6 +476,9 @@ impl Game {
                     bot.agent.session.player.look(d.x, -d.y);
                 }
             }
+        }
+        if skip_credits {
+            self.skip_credits();
         }
         for id in joins {
             match self.join_pad(Some(id)) {
@@ -1041,6 +1057,12 @@ mod tests {
         // Garbage is skipped rather than failing the load.
         restored.restore("zz=Player2;abcd=Player5;=;");
         assert_eq!(restored.assigned.len(), 1);
+    }
+
+    #[test]
+    fn start_and_the_face_buttons_skip_the_credits() {
+        assert!(skips_credits(Button::Start) && skips_credits(Button::South) && skips_credits(Button::East));
+        assert!(!skips_credits(Button::LeftTrigger) && !skips_credits(Button::DPadUp));
     }
 
     #[test]
