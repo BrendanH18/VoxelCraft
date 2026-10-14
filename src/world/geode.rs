@@ -135,6 +135,8 @@ pub struct Geode {
     pub origin: IVec3,
     pub bounds: Bounds,
     pub cells: Box<[(IVec3, Block)]>,
+    /// Fluid cells beside crack air: where Java schedules fluid ticks.
+    pub fluid_ticks: Box<[IVec3]>,
 }
 
 impl Geode {
@@ -277,6 +279,7 @@ impl Geodes {
         };
         let inv_dist = |a: IVec3, b: IVec3, offset: i32| 1.0 / ((a - b).length_squared() as f64 + offset as f64).sqrt();
         let mut sites = Vec::new();
+        let mut fluid_ticks: Vec<IVec3> = Vec::new();
         // `BlockPos.betweenClosed` order: x fastest, then y, then z.
         for dz in -GEN_OFFSET..=GEN_OFFSET {
             for dy in -GEN_OFFSET..=GEN_OFFSET {
@@ -300,8 +303,20 @@ impl Geodes {
                     }
                     let d2: f64 = cracks.iter().map(|&c| inv_dist(p, c, CRACK_POINT_OFFSET) + s).sum();
                     if crack && d2 >= crack_size {
-                        // Java also schedules fluid ticks beside crack air.
                         safe_set(&mut layout, p, Block::AIR);
+                        // Java schedules a fluid tick on each fluid beside crack
+                        // air so water and lava pour into the opening.
+                        for dir in DIRECTIONS {
+                            let q = p + dir;
+                            let here = match layout.get(q) {
+                                Some(b) => b,
+                                None if !in_world(q) => Block::AIR,
+                                None => terrain(q),
+                            };
+                            if here.is_fluid() && !fluid_ticks.contains(&q) {
+                                fluid_ticks.push(q);
+                            }
+                        }
                     } else if d >= inner {
                         let alternate = rng.unit() < USE_ALTERNATE_LAYER0_CHANCE;
                         safe_set(&mut layout, p, if alternate { ob::BUDDING_AMETHYST } else { ob::AMETHYST_BLOCK });
@@ -343,7 +358,7 @@ impl Geodes {
             bounds.min = bounds.min.min(p);
             bounds.max = bounds.max.max(p);
         }
-        Some(Geode { origin, bounds, cells })
+        Some(Geode { origin, bounds, cells, fluid_ticks: fluid_ticks.into() })
     }
 
     /// The geodes placed from the Java chunks of one 32×32 column.
@@ -392,6 +407,17 @@ impl Geodes {
             }
         }
         out.sort_by_key(|g| (g.origin.x, g.origin.y, g.origin.z));
+        out
+    }
+
+    /// Fluid cells in the chunk at `base` that Java schedules ticks on
+    /// because crack air opened beside them.
+    pub fn fluid_ticks(&self, generator: &Generator, base: IVec3) -> Vec<IVec3> {
+        let chunk = Bounds { min: base, max: base + IVec3::splat(CHUNK_SIZE_I - 1) };
+        let mut out = Vec::new();
+        for geode in self.near(generator, base) {
+            out.extend(geode.fluid_ticks.iter().copied().filter(|&p| chunk.contains(p)));
+        }
         out
     }
 
@@ -569,6 +595,27 @@ mod tests {
         }
         let share = budding as f64 / inner as f64;
         assert!((share - USE_ALTERNATE_LAYER0_CHANCE).abs() < 0.015, "{budding} of {inner}: {share}");
+    }
+
+    #[test]
+    fn crack_air_beside_fluid_schedules_fluid_ticks() {
+        let (g, geodes, _) = sample(5, 12);
+        let wet: Vec<_> = geodes.iter().filter(|g| !g.fluid_ticks.is_empty()).collect();
+        assert!(!wet.is_empty(), "some geode's crack opens beside water or lava");
+        for geode in &wet {
+            let cells: FxHashMap<IVec3, Block> = geode.cells.iter().copied().collect();
+            for &q in geode.fluid_ticks.iter() {
+                // Some geode air cell touches it (a later layer may overwrite the tick cell itself).
+                assert!(
+                    DIRECTIONS.iter().any(|d| cells.get(&(q + *d)) == Some(&Block::AIR)),
+                    "{q} has no crack air beside it"
+                );
+            }
+            // The chunk holding a tick cell reports it.
+            let q = geode.fluid_ticks[0];
+            let base = q.div_euclid(IVec3::splat(CHUNK_SIZE_I)) * CHUNK_SIZE_I;
+            assert!(g.geodes.fluid_ticks(&g, base).contains(&q));
+        }
     }
 
     #[test]
