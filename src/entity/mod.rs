@@ -789,9 +789,10 @@ impl Entities {
         self.mobs.push(mob);
     }
 
-    /// Removes monsters which Java does not allow to exist on Peaceful.
+    /// Removes the mobs Java discards on Peaceful (`Mob.checkDespawn` with a
+    /// `notInPeaceful` entity type); piglins stay.
     pub fn despawn_hostiles(&mut self) {
-        self.mobs.retain(|mob| !mob.kind.is_hostile());
+        self.mobs.retain(|mob| !mob.kind.despawns_in_peaceful());
     }
 
     /// Snapshot positions and advance entity simulation on Normal difficulty.
@@ -2881,6 +2882,23 @@ mod tests {
         assert_eq!(e.count(MobKind::Cow), 1);
         assert!(e.mobs.iter().all(|mob| !mob.kind.is_hostile()));
         assert!(e.spawner_delays.is_empty());
+    }
+
+    #[test]
+    fn peaceful_keeps_piglins_but_discards_brutes_hoglins_and_zoglins() {
+        // Java 26.3 registers piglin brutes, hoglins and zoglins `notInPeaceful()`
+        // and plain piglins without it.
+        let world = Grid::flat(10);
+        let mut e = Entities::new(5);
+        for kind in [MobKind::Piglin, MobKind::PiglinBrute, MobKind::Hoglin, MobKind::Zoglin, MobKind::Zombie] {
+            e.spawn(kind, DVec3::new(2.5, 11.0, 0.5));
+        }
+        let c = ctx(DVec3::new(10.5, 10.0, 0.5));
+        e.update_difficulty(0.05, &world, &c, crate::simulation::difficulty::Difficulty::Peaceful);
+        assert_eq!(e.count(MobKind::Piglin), 1);
+        for kind in [MobKind::PiglinBrute, MobKind::Hoglin, MobKind::Zoglin, MobKind::Zombie] {
+            assert_eq!(e.count(kind), 0, "{kind:?}");
+        }
     }
 
     #[test]

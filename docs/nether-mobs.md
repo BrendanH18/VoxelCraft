@@ -280,8 +280,11 @@ different pitches.
     zombified piglin sword model; crossbows and brute axes are not retained.
 - **Zoglins** only pick mob targets within 4 blocks of height, so they don't chase
   ghasts they could never reach.
-- **Peaceful**: Java keeps piglins and hoglins on Peaceful; here every hostile mob
-  is removed, as before.
+- **Peaceful**: `Mob.checkDespawn` discards entity types registered `notInPeaceful()`.
+  In Java 26.3 those are piglin brutes, hoglins and zoglins; plain piglins are
+  *not* in the list and stay. Peaceful here follows that list (a regression test
+  pins it). Natural spawning of the Monster category, spawners and bastion
+  residents are still skipped on Peaceful, including piglins.
 - **Bastion residents** are spread over each piece's floor rather than placed at
   Java's exact jigsaw spots. Treasure-room magma cube spawners are still absent.
 - **Crossbow**: crafted with Java's recipe and supports existing durability

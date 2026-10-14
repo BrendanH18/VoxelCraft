@@ -435,6 +435,14 @@ impl MobKind {
         )
     }
 
+    /// Java 26.3 `EntityType.isAllowedInPeaceful` is false for `Mob.checkDespawn`
+    /// to discard these on Peaceful. Hostile here, except the piglin: its type
+    /// is not registered with `notInPeaceful()` (piglin brutes, hoglins and
+    /// zoglins are).
+    pub fn despawns_in_peaceful(self) -> bool {
+        self.is_hostile() && self != MobKind::Piglin
+    }
+
     /// Unharmed by fire and lava.
     pub fn fire_immune(self) -> bool {
         matches!(
