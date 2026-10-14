@@ -210,7 +210,11 @@ nearest survival player, host or agent; melee, skeleton arrows and explosions
 hurt agents with armor, knockback and death drops. Mobs spawn around every
 player with per-player caps and stay loaded while any player is near.
 Environmental survival damage, death drops and pickups work.
-The first CLI supports block placement, crafting, chests, eating and sleeping; doors/ladders,
-bows, buckets, furnaces, armor controls and portal interactions still
-require the desktop player or a controller player. Agents cannot mine
-multi-cell doors/beds.
+The CLI shares the desktop use path for `place`: blocks, doors, levers and other
+usable blocks, buckets and bottles, ender pearls, splash potions, eyes of ender,
+and equipping held armor. It also has crafting, chest and storage-vehicle
+transfers, anvil, enchanting, grindstone, trade, smithing, eating and sleeping
+commands. Blocks that open a screen without a command (furnaces, brewing
+stands, beacons and the like), bows and crossbows, riding controls, the
+inventory screen and portal travel by walking still require the desktop player
+or a controller player. Agents cannot mine multi-cell doors/beds.

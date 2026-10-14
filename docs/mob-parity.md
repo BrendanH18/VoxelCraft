@@ -40,8 +40,8 @@ Only sizes 2/4 drop magma cream using Java's -2..1 roll plus Looting (item 608, 
 Slimeball + blaze powder crafts cream; awkward + cream brews 3:00 fire resistance;
 redstone extends eligible potions, including fire resistance to 8:00. Water plus
 either ingredient becomes mundane. Natural attempts use nether-wastes weight 2
-(chance 0.02) in groups of 4; fortress pieces use Java's weight 3, group 4.
-There is no basalt-deltas biome, so that weight-100 pool is absent.
+(chance 0.02) in groups of 4, and basalt deltas weight 100 in groups of 2–5; fortress
+pieces use Java's weight 3, group 4.
 
 Sources: [MagmaCube](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/MagmaCube.java),
 [loot table](https://raw.githubusercontent.com/misode/mcmeta/1.21.5-data/data/minecraft/loot_table/entities/magma_cube.json).
@@ -49,14 +49,13 @@ Sources: [MagmaCube](https://raw.githubusercontent.com/mahtomedi/minecraft/main/
 ## Ghast
 
 10 health, 4 × 4 hitbox, follow range 100, flying speed 14 blocks/s (Java's 0.7
-per tick), fire immune. Nether wastes weight 50 (chance 0.5) in groups of 4,
-cap 4. Charges one second, then shoots one large fireball and rests two seconds.
+per tick), fire immune. Nether wastes and soul sand valleys weight 50 in groups of 4,
+basalt deltas weight 40 alone; cap 4. Charges one second, then shoots one large fireball and rests two seconds.
 The fireball explodes at power 1, can be punched back by the host or an agent,
 and a deflected blast credits the player so the kill drops loot. Block breaking
 follows `mobGriefing`, same as creepers. Drops 0–2 gunpowder and, on a player
 kill, 0–1 ghast tears (item 640). Awkward + tear brews regeneration; redstone
-and glowstone make the long and strong variants. Soul sand valleys are not a
-separate biome, so ghasts share the single Nether cavern.
+and glowstone make the long and strong variants.
 
 Sources: [Ghast](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/Ghast.java).
 
@@ -106,7 +105,7 @@ other zoglins. Piglins hunt baby hoglins.
 Striders walk on lava, shiver on land and drop string. A crossbow item (840/841)
 arms piglins and the player.
 
-The Nether spawn table is keyed by biome for the biome work. Persistent mobs and
+The Nether spawn lists are per biome, as in Java (see [Nether mobs](nether-mobs.md)). Persistent mobs and
 populated bastions are saved under `nether_mobs`. Crying obsidian (block 1800) now
 exists for bartering and bastion loot. Riding, breeding, spectral arrows and Soul
 Speed are gaps. Details, the bartering table and sources
