@@ -58,11 +58,20 @@ supply, treasure and map-room chests; ruins have small and large chest
 variants. Monuments contain flooded halls, two wings, a central tower,
 sea lanterns, optional sponge rooms and an eight-block gold core.
 
-Supported loot entries preserve Java's pool weights, roll ranges, counts,
-and random enchantment/damage flags. Separate pools stay separate.
-Unavailable entries retain their original weight as an empty result:
-maps, horse armor, saddles, armor trim templates, enchanted golden apples,
-experience bottles, goat horns and suspicious stew are still pending.
+Structure chests use the Java 26.3 loot tables, pinned in
+`tests/fixtures/java/26.3/world_defects.json` and checked entry by entry
+(pool rolls, weights, counts, enchantment modifiers) by
+`loot_tables_match_the_java_26_3_fixture`. Separate pools stay separate.
+26.3 differs from 1.21.5: desert pyramids drop leather and copper horse armor
+instead of saddles, ocean ruins and the jungle temple/shipwreck tables gained
+the copper/spear/nautilus entries, and shipwrecks and ruins roll an extra
+nautilus-armor pool. The jungle temple book is a 30-level enchant, not a random
+single enchantment; outpost goat horns are one of the four regular horns
+(ponder, sing, seek, feel).
+Entries whose item does not exist yet keep their original weight as an empty
+result: buried treasure and plain maps, trim templates, copper horse armor,
+nautilus armor, spears, enchanted golden apples, experience bottles and
+suspicious stew.
 Heart of the sea belongs in buried treasure and is not substituted into
 shipwreck loot. The shared loot helper uses VoxelCraft's seeded layout RNG
 and enchantment selection, rather than Java's exact loot random sequences

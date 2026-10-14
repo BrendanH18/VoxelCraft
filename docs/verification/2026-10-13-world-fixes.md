@@ -146,3 +146,24 @@ Tests: `entity::monster_spawns::tests::{swamp_slimes_follow_the_moon_phase_and_l
 slime_chunks_spawn_slimes_below_y_40_one_try_in_ten,
 drowned_spawn_in_water_one_try_in_40_when_deep_and_one_in_15_in_rivers,
 slimes_and_drowned_belong_to_the_biome_pack_cycle}`.
+
+## Structure and bastion loot
+
+Source: `data/minecraft/loot_table/chests/*` of the pinned server, already extracted into
+`world_defects.json`. The engine's tables were the 1.21.5 shapes; they are replaced with
+the 26.3 pools (desert pyramid has leather and copper horse armor, no saddle; jungle temple
+adds leather and copper horse armor; stone spears replace/extend axes in ruins; shipwreck and
+ruin chests roll an extra nautilus-armor pool). `enchant_with_levels` (30 levels, the jungle book)
+uses `enchant::enchant_with_levels`; `set_instrument` picks among the first four goat horns of
+`#minecraft:regular_goat_horns`. Missing-item entries remain empty at Java's weight. In the bastion
+tables the saddle, golden apple, golden carrot, crimson nylium/fungus/roots and bone block
+entries that were left empty are now real items.
+
+Loot still uses VoxelCraft's RNG, not Java's loot random sequences (v0.8 item).
+Tests: `world::temples::tests::{loot_tables_match_the_java_26_3_fixture,
+outpost_horns_are_regular_instruments_and_temple_books_use_thirty_levels}` and
+`world::bastion::tests::stable_and_other_chests_hold_saddles_apples_carrots_and_nylium`.
+
+## Geode crack fluid ticks
+
+See [amethyst geodes](2026-10-13-amethyst-geodes.md#v070-defect-fix-crack-fluid-ticks).
