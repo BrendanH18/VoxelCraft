@@ -24,16 +24,23 @@ still allocates its player/view lists.
 
 Known approximations: body yaw follows view yaw with Java-style smoothing
 and an 85-degree head limit, rather than LivingEntity's full movement/
-attack-dependent body control. Item use raises the right arm; specialized
-bow/crossbow, offhand and left-handed poses are not yet represented.
+attack-dependent body control. Item use raises the right arm. A drawn bow, a crossbow
+being loaded and a loaded crossbow use Java's `ArmPose` angles (`Aim` in
+`player_model.rs`, from the session's draw ticks; the client model source is not
+in the server reference jar, so the constants follow the documented client
+behavior). Only the held crossbow was captured in a front-camera screenshot, with
+both arms converging in front of the chest; the drawing states are checked by pose
+tests only, and other LAN peers do not replicate the draw state. Offhand and
+left-handed poses are not represented.
 Held shaped blocks use a cube and flat items a thin textured box rather
 than the resource-pack display transforms and full silhouette extrusion.
 Death time is `Vitals::death_time`, counted from the fatal tick as Java's
 `deathTime` is (it used to derive from the last hit, so a fatal hit during an
 immunity window started the fall partway in). Sprint-swim, forced crawl (swim hitbox on land), and Java 1.14+ crouch
 hitbox/eye height are shared via `entity/player_pose.rs` and drive physics,
-camera bob suppression and HumanoidModel-style swimAmount animation. Riding
-and elytra poses remain separate roadmap work.
+camera bob suppression and HumanoidModel-style swimAmount animation. The riding
+pose (seated legs, forward-leaning arms) exists; elytra poses remain separate
+roadmap work.
 
 Reference client source (decompiled Java; these model/camera constants are
 stable across the modern Java humanoid renderer):

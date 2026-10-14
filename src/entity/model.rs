@@ -1341,7 +1341,7 @@ pub(super) fn push_cuboid(
     }
 }
 
-pub use super::player_model::{PlayerAppearance, build_player};
+pub use super::player_model::{Aim, PlayerAppearance, build_player};
 
 /// A player's name tag above their head, as Java shows within 64 blocks (hidden while sneaking).
 pub fn build_player_name(

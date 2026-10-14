@@ -20,6 +20,8 @@ pub(super) struct HandAnim {
     tick_time: f32,
     /// The item drawn in the hand: it only changes while lowered.
     shown: Option<Item>,
+    /// Ticks the bow or crossbow has been drawn (third-person arm pose).
+    draw: Option<u32>,
 }
 
 impl HandAnim {
@@ -43,7 +45,8 @@ impl HandAnim {
     /// Advances equip/swing animation. Walking bob is shared with the camera.
     /// `swap_scale` is the session's `getItemSwapScale`: the hand dips on an
     /// item switch and after every attack or miss, rising as the charge returns.
-    pub(super) fn update(&mut self, dt: f32, held: Option<Item>, swap_scale: f32) {
+    pub(super) fn update(&mut self, dt: f32, held: Option<Item>, swap_scale: f32, draw: Option<u32>) {
+        self.draw = draw;
         if let Some(t) = &mut self.swing {
             *t += dt;
             if *t >= SWING_TIME {
@@ -85,6 +88,21 @@ impl HandAnim {
             alpha: alpha as f32,
             armor: crate::entity::armor::from_stacks(&worn),
             held_icon: None,
+            aim: self.aim(),
+        }
+    }
+
+    /// Java's `HumanoidModel.ArmPose` for the item in the hand: a drawn bow, a
+    /// crossbow being loaded, or a loaded crossbow held out.
+    fn aim(&self) -> crate::entity::model::Aim {
+        use crate::entity::model::Aim;
+        match (self.shown, self.draw) {
+            (Some(Item::BOW), Some(_)) => Aim::Bow,
+            (Some(Item::CROSSBOW), Some(ticks)) => {
+                Aim::CrossbowCharge((ticks as f32 / voxelcraft::session::ranged::CROSSBOW_CHARGE_TICKS as f32).min(1.0))
+            }
+            (Some(Item::CHARGED_CROSSBOW), _) => Aim::CrossbowHold,
+            _ => Aim::None,
         }
     }
 
@@ -108,7 +126,7 @@ mod tests {
 
     fn run(h: &mut HandAnim, ticks: u32, held: Option<Item>, scale: f32) {
         for _ in 0..ticks {
-            h.update(TICK, held, scale);
+            h.update(TICK, held, scale, None);
         }
     }
 
@@ -127,9 +145,9 @@ mod tests {
         assert_eq!((h.height, h.equip()), (1.0, 0.0));
         h.swing();
         assert!(h.view(0.0, 1.0, 0.0).swing == 0.0);
-        h.update(0.15, stick, 1.0);
+        h.update(0.15, stick, 1.0, None);
         assert!((h.view(0.0, 1.0, 0.0).swing - 0.5).abs() < 1e-5);
-        h.update(0.2, stick, 1.0);
+        h.update(0.2, stick, 1.0, None);
         assert_eq!(h.view(0.0, 1.0, 0.0).swing, 0.0, "done");
     }
 

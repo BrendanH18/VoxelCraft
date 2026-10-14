@@ -185,6 +185,7 @@ impl Game {
                 dt,
                 a.inventory.get(a.selected).map(|s| s.item),
                 a.session.item_swap_scale(a.selected, 1.0),
+                a.session.draw_ticks(),
             );
         }
     }
