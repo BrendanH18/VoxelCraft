@@ -145,7 +145,7 @@ pub(super) fn equipment(m: &Mob, p: &mut Parts) {
 const LLAMA_COATS: [[u8; 3]; 4] = [[221, 207, 178], [233, 233, 228], [128, 92, 60], [130, 128, 124]];
 /// The trader llama's head and legs are drawn in this colour; wild llamas recolour it.
 const LLAMA_FUR: [u8; 3] = [221, 207, 178];
-/// Placeholder recoloured to the worn carpet.
+/// Sentinel recoloured from the equipped carpet before emitting vertices.
 const CARPET: [u8; 3] = [1, 2, 3];
 const LY: f32 = super::trader_model::LLAMA_Y;
 const LLAMA_BODY: &[Cuboid] = &[cube([-4.5, 14.0 * LY, -7.0], [4.5, 23.0 * LY, 7.0], LLAMA_FUR, 20)];
@@ -238,5 +238,32 @@ pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
             .and_then(|stack| stack.item.block())
             .and_then(|b| b.carpet_color())
             .map_or([200, 200, 200], |d| d.sheep_rgb());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{color::DyeColor, entity::Rng, inventory::Stack, world::block::Block};
+
+    #[test]
+    fn every_llama_carpet_recolours_the_sentinel_after_equipment_reload() {
+        let mut mob = Mob::new(MobKind::Llama, glam::DVec3::ZERO, 0.);
+        mob.mount = Some(crate::entity::mounts::State::new(MobKind::Llama, &mut Rng::new(1)).into());
+        mob.mount.as_mut().unwrap().tame = true;
+        for dye in DyeColor::ALL {
+            mob.mount.as_mut().unwrap().slots[1] = Some(Stack::new(Block::carpet(dye), 1));
+            mob.mount = Some(
+                crate::entity::mounts::State::load(MobKind::Llama, &mob.mount.as_ref().unwrap().save()).unwrap().into(),
+            );
+            let parts = llama(&mob);
+            assert!(parts.iter().any(|p| std::ptr::eq(p.boxes, LLAMA_DECOR)));
+            for &source in LLAMA_DECOR {
+                let mut emitted = source;
+                colour(&mob, &mut emitted);
+                assert_eq!(emitted.color, dye.sheep_rgb());
+                assert_ne!(emitted.color, CARPET);
+            }
+        }
     }
 }
