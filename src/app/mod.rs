@@ -1094,6 +1094,15 @@ impl Game {
             let hz = crate::world::gadgets::pitch_hz(pitch);
             self.audio.play(sound, Some(pos.as_dvec3() + glam::DVec3::splat(0.5)), 1.0, (hz, hz));
         }
+        for (pos, sound) in std::mem::take(&mut self.world.trip_sounds) {
+            // The existing click, at Java's volume 0.4 and the hook's pitch.
+            self.audio.play(
+                crate::audio::sounds::Sound::Click,
+                Some(pos.as_dvec3() + glam::DVec3::splat(0.5)),
+                0.4,
+                sound.pitch(),
+            );
+        }
     }
 
     fn open_vehicle(&mut self, id: u32) {

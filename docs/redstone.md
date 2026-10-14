@@ -294,8 +294,15 @@ shears disarm before removal and suppress that pulse. String always drops as
 string. Hook facing, wire attachment/disarmed state, note pitch and powered
 state are block states; pending alarm deadlines survive redstone saves.
 
-Known gaps: note particles, mob-head instruments above the note block, and
-tripwire attach/click sounds are absent. Procedural instruments are original
+A played note releases Java's `NoteParticle` 1.2 blocks above the block, tinted by
+`note / 24` (three sines 120 degrees apart); a hook line plays Java's
+`TripWireHookBlock.playSound` events at volume 0.4 (click on 0.6, click off 0.5,
+attach 0.7, detach about 1.2) through the existing procedural click. The particle
+class and tripwire sounds are client resources absent from the server jar, so
+the note colour and lifetime follow the documented client behaviour.
+
+Known gaps: mob-head instruments above the note block are absent (there are no
+mob heads). Procedural instruments are original
 approximations of the Java timbres. Substrate mapping covers the sixteen
 canonical blocks and common existing wood/stone forms, but is not a complete
 Java block-tag table. Tripwire geometry does not yet visibly sag when detached.
