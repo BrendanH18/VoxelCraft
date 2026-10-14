@@ -674,6 +674,18 @@ impl World {
             );
             return;
         }
+        if !dropper && stack.item == Item::BONE_MEAL {
+            // Java `BoneMealDispenseItemBehavior`: it fertilises the block in front and is only
+            // used up when that grew something; otherwise the stack stays in the slot.
+            if self.apply_bone_meal(front) {
+                self.set_container_stack(
+                    p,
+                    slot,
+                    (stack.count > 1).then_some(Stack { count: stack.count - 1, ..stack }),
+                );
+            }
+            return;
+        }
         self.set_container_stack(
             p,
             slot,
@@ -1147,6 +1159,29 @@ mod tests {
         w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::from_block(Block::TNT), 1));
         w.dispense(P, 2, false);
         assert_eq!(w.primed_tnt.len(), 1);
+    }
+    #[test]
+    fn dispensers_fertilise_the_block_in_front_and_keep_unused_bone_meal() {
+        let mut w = world();
+        put(&mut w, P, r::dispenser(2, false));
+        w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::BONE_MEAL, 2));
+        let crop = P + IVec3::X;
+        put(&mut w, crop - IVec3::Y, Block::FARMLAND);
+        put(&mut w, crop, Block::crop(crate::world::block::Crop::Wheat, 0));
+        w.dispense(P, 2, false);
+        assert!(w.get_block(crop).unwrap().crop_stage().unwrap() > 0, "the wheat grew");
+        assert_eq!(w.chest(P).unwrap().slots[0], Some(Stack::new(Item::BONE_MEAL, 1)));
+        // Fully grown wheat takes no bone meal: nothing is dispensed or spent.
+        put(&mut w, crop, Block::crop(crate::world::block::Crop::Wheat, 7));
+        w.dispense(P, 2, false);
+        assert_eq!(w.chest(P).unwrap().slots[0], Some(Stack::new(Item::BONE_MEAL, 1)));
+        let mut e = crate::entity::Entities::new(1);
+        w.tick_automation_entities(&mut e);
+        assert!(e.items.is_empty());
+        // A dropper still just drops it.
+        put(&mut w, P, r::dispenser(2, true));
+        w.dispense(P, 2, true);
+        assert!(w.chest(P).unwrap().slots[0].is_none());
     }
     #[test]
     fn dispensed_projectiles_and_items_follow_java_position_speed_and_inaccuracy() {

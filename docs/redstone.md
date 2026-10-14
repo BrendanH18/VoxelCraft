@@ -168,10 +168,11 @@ tick plus `triangle(0.0172275 * 6)` noise per axis with a 10-tick pickup delay.
 with the same noise and no upward bias. `FireChargeItem` launches a small
 fireball one block out with a `triangle(0.11485)` noise heading; it no longer
 ignites the front cell directly (the fireball ignites where it lands). Other
-special behaviours (equipment, bone meal, spawn eggs and the remaining
-projectile items such as eggs, snowballs and potions) fall back to item drops:
-bone meal use and spawn eggs do not exist yet, and equipping a player needs a
-session adapter.
+behaviours (equipment, spawn eggs and the remaining projectile items such as
+eggs, snowballs and potions) fall back to item drops: spawn eggs do not exist
+yet and equipping a player or mob needs a session adapter. A dispensed bone
+meal fertilises the block in front exactly like hand use and is only spent when
+it grew something (`BoneMealDispenseItemBehavior`).
 
 Hoppers push one item, then pull one from the container above in the same
 eligible cycle, followed by eight game ticks of cooldown. An emptied
