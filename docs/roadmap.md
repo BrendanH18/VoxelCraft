@@ -377,8 +377,7 @@ The [review fixes](verification/2026-10-13-review-lighting-fixes.md) add the
 reference daylight-detector output, the `isRedstoneConductor` start-cell check
 and incremental LAN replica relighting (measured microbenchmarks only). The End
 renders sky-lit terrain at 0.65 because the shaders lack the reference ambient
-term (`ambient_light` 0.25, sky factor 0); soul sand and mud still collide as
-full cubes.
+term (`ambient_light` 0.25, sky factor 0); soul sand and mud use Java's 14/16 collision height (regression evidence, player acceptance open).
 
 The [amethyst geode follow-up](verification/2026-10-13-amethyst-geodes.md)
 implements the Java 26.3 geode configured/placed feature with order-independent
@@ -788,3 +787,7 @@ at zero. Ordinary-player input and visual acceptance remain open.
 Shared item and bow actions defer to usable blocks (including hunger-dependent
 cake), and Adventure redstone/composter use is implemented with automated
 evidence. Normal input-path acceptance remains open.
+
+Mud collision now uses the pinned Java 14/16 height, matching the existing
+soul-sand shape. Physics landing regression checks pass; ordinary-player and
+performance acceptance remain open.

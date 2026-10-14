@@ -74,9 +74,10 @@ evidence; representative scene measurement waits for a valid M5 baseline.
   ambient term; setting the factor alone would render the islands lit only by
   block light. A faithful change needs an ambient lightmap term (Nether
   `ambient_light` 0.1 as well) and visual review.
-- **Collision shapes.** VoxelCraft's soul sand and mud collide as full cubes; Java
-  uses 14/16-high shapes. Spawn conduction follows the registered overrides, so
-  this does not affect the start-cell check, but movement and floor checks differ.
+- **Collision shapes.** Soul sand and mud collide with Java's 14/16-high column
+  (pinned in `tests/fixtures/java/26.3/building.json`; soul sand already used it
+  and mud now does, as tested through the physics step). Spawn conduction
+  follows the registered overrides, so it does not affect the start-cell check.
 - Conductor overrides naming blocks VoxelCraft has not registered are skipped.
 
 ## Validation

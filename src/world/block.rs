@@ -1226,8 +1226,9 @@ impl Block {
 
     /// Height of the block's collision box.
     pub fn height(self) -> f64 {
-        // Soul sand looks like a full block, but you sink into it a little.
-        let sink = if self == Block::SOUL_SAND { 2.0 } else { 0.0 };
+        // Soul sand and mud look like full blocks, but you sink into them: Java
+        // collides with a 14/16 column.
+        let sink = if self == Block::SOUL_SAND || self == super::overworld_blocks::MUD { 2.0 } else { 0.0 };
         1.0 - (self.top_drop() as f64 + sink) / 16.0
     }
 
