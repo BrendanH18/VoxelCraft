@@ -140,6 +140,9 @@ pub fn player_environment(player: &Player, world: &World, input: MoveInput, move
             && !player.sneaking
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3())
                 == Some(crate::world::block::Block::MAGMA),
+        on_hay: player.on_ground
+            && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3()).map(|b| b.base())
+                == Some(crate::world::block::Block::HAY_BALE),
         frost_walker: false,
         wet: world.rains_on(player.eye().floor().as_ivec3()),
         moved: if player.flying { 0.0 } else { moved },
@@ -158,6 +161,26 @@ pub fn interpolated_eye(previous: DVec3, current: DVec3, alpha: f64) -> DVec3 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_hay_axis_cushions_only_grounded_players() {
+        use crate::world::{block::Block, chunk::ChunkData, terrain::Generator};
+        use glam::IVec3;
+        let mut world = World::new_remote(std::sync::Arc::new(Generator::new(7)), 2);
+        world.receive_chunk(IVec3::new(0, 4, 0), std::sync::Arc::new(ChunkData::Uniform(Block::AIR)));
+        let cell = IVec3::new(4, 145, 4);
+        let mut player = Player::new(cell.as_dvec3() + DVec3::new(0.5, 1.0, 0.5));
+        for id in 901..=903 {
+            world.set_block(cell, Block(id));
+            player.on_ground = true;
+            assert!(player_environment(&player, &world, MoveInput::default(), 0.0).on_hay);
+            player.on_ground = false;
+            assert!(!player_environment(&player, &world, MoveInput::default(), 0.0).on_hay);
+        }
+        world.set_block(cell, Block::STONE);
+        player.on_ground = true;
+        assert!(!player_environment(&player, &world, MoveInput::default(), 0.0).on_hay);
+    }
 
     #[test]
     fn clock_is_independent_of_frame_rate() {

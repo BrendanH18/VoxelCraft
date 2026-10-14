@@ -791,3 +791,7 @@ evidence. Normal input-path acceptance remains open.
 Mud collision now uses the pinned Java 14/16 height, matching the existing
 soul-sand shape. Physics landing regression checks pass; ordinary-player and
 performance acceptance remain open.
+
+Hay bales now apply Java 26.3's 0.2f fall multiplier before flooring, through
+the shared player environment for all three bale axes. Reference threshold
+and shared landing regressions cover the calculation; player acceptance is open.

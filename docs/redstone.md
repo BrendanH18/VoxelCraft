@@ -98,8 +98,11 @@ use the mutable world accessor to issue those notifications.
 Every core component has its vanilla shaped/shapeless recipe; target crafting
 adds hay bales (nine wheat, reversible). Only oak wooden buttons, plates and
 trapdoors currently exist. Door hinges, waterlogging and floor/ceiling switch
-horizontal orientation are simplified. Hay bale fall-damage reduction is not
-yet added. Bare block-item IDs use the existing encoded block-item namespace;
+horizontal orientation are simplified. Hay bales multiply landing damage by
+0.2f before flooring, as in Java 26.3 `HayBlock.fallOn` and
+`LivingEntity.calculateFallDamage` (pinned in `building.json`, including threshold
+cases; all three placement axes are covered by the shared player environment).
+Ordinary-player and performance acceptance remain open. Bare block-item IDs use the existing encoded block-item namespace;
 no material item IDs are reassigned.
 
 Additional sources: [ButtonBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ButtonBlock.java),

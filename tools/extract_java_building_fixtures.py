@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import math
+import struct
 import tempfile
 import zipfile
 from extract_java_item_fixtures import SERVER_SHA1
@@ -47,6 +49,14 @@ def extract(server):
         if "Entity.causeFallDamage:(DF" not in hay:
             raise ValueError("hay fall call changed")
         multiplier = float(re.findall(r"// float ([0-9.]+)f", hay)[0])
+        living = inspect("net.minecraft.world.entity.LivingEntity")
+        fall = living.split(" calculateFallDamage(")[1].split("\n\n")[0]
+        power = living.split(" calculateFallPower(")[1].split("\n\n")[0]
+        if "Mth.floor:(D)I" not in fall or "f2d" not in fall or "double 1.0E-6d" not in power:
+            raise ValueError("fall rounding changed")
+        as_float = struct.unpack("f", struct.pack("f", multiplier))[0]
+        cases = [{"distance": distance, "damage": max(0, math.floor((distance + 1e-6 - 3) * as_float))}
+                 for distance in [3, 3.99, 7.99, 8, 20, 23, 23.5]]
         ore = inspect("net.minecraft.world.level.block.RedStoneOreBlock")
         tick = ore.split(" randomTick(")[1].split("\n\n")[0]
         if "iconst_0" not in tick or "BlockState.setValue:" not in tick or "ServerLevel.setBlockAndUpdate:" not in tick:
@@ -61,6 +71,7 @@ def extract(server):
         sources.append(tag_path)
     return {"reference": "Minecraft Java Edition 26.3", "server_sha1": SERVER_SHA1,
             "sources": sources, "collision_height": heights, "hay_fall_multiplier": multiplier,
+            "hay_fall_cases": cases,
             "redstone_ore_extinguishes_on_random_tick": True,
             "mushroom_brightness_limit": threshold,
             "mushroom_light_overrides": [v.removeprefix("minecraft:") for v in overrides]}

@@ -18,11 +18,12 @@ Taking the result consumes inputs once and releases XP orbs.
 
 Craftable: job sites, hay bales and fast furnaces. Bells are village loot /
 creative only, as in Java. A shovel makes dirt paths; paths are 15/16 high
-and drop dirt. Hay bales support three placement axes.
+and drop dirt. Hay bales support three placement axes and multiply fall damage
+by Java 26.3's 0.2f before flooring (shared player environment and landing tests).
 
 Current simplifications: lectern books, loom banners, cartography maps,
-stonecutter UI, wall/ceiling grindstones, vertical barrel facings and
-hay-bale fall cushioning are not implemented.
+stonecutter UI, wall/ceiling grindstones and vertical barrel facings are
+not implemented. Hay-bale player and performance acceptance remain open.
 Blast-furnace equipment recycling is not yet implemented.
 
 ## Java references
