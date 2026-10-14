@@ -1490,7 +1490,7 @@ impl Game {
         let eye = crate::simulation::interpolated_eye(self.previous_eye, self.session.player.eye(), alpha);
         self.rendered_eye = eye;
         let (camera, forward) = self.camera.view(&self.world, eye, self.session.player.forward());
-        self.hand.update(dt as f32, self.held_item());
+        self.hand.update(dt as f32, self.held_item(), self.session.item_swap_scale(self.body.actions.selected, 1.0));
         self.animate_hands(dt as f32, alpha, paused);
         for (pos, mesh) in self.world.mesh_uploads.drain(..) {
             self.renderer.upload_mesh(pos, mesh);

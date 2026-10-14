@@ -384,3 +384,20 @@ fn non_living_targets_exhaust_but_never_wear_the_weapon() {
     s.attack(0, &w, &mut e, false).unwrap();
     assert!(s.inventory.get(0).unwrap().damage > 0);
 }
+
+#[test]
+fn the_item_swap_scale_restarts_with_attacks_misses_and_item_changes() {
+    // Java `getItemSwapScale`: itemSwapTicker over the current attack delay.
+    let (w, mut s, mut e) = scene(6.0);
+    s.tick_attack_strength(0);
+    charge(&mut s, 30);
+    assert_eq!(s.item_swap_scale(0, 1.0), 1.0);
+    s.attack(0, &w, &mut e, false).unwrap();
+    assert_eq!(s.item_swap_scale(0, 0.0), 0.0, "an attack lowers the hand");
+    charge(&mut s, 6);
+    let delay = mining::attack_strength_delay(Some(Item::tool(ToolKind::Sword, Tier::Diamond)));
+    assert!((s.item_swap_scale(0, 0.5) - 6.5 / delay).abs() < 1e-6);
+    s.inventory.slots[0] = Some(Stack::new(Item::STICK, 1));
+    s.tick_attack_strength(0);
+    assert!(s.item_swap_scale(0, 0.0) < 0.3, "changing the held item restarts it");
+}

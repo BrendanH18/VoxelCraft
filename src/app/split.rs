@@ -181,7 +181,11 @@ impl Game {
                 bot.seen_swings = a.swings;
                 bot.hand.swing();
             }
-            bot.hand.update(dt, a.inventory.get(a.selected).map(|s| s.item));
+            bot.hand.update(
+                dt,
+                a.inventory.get(a.selected).map(|s| s.item),
+                a.session.item_swap_scale(a.selected, 1.0),
+            );
         }
     }
 

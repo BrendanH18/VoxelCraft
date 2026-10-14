@@ -110,8 +110,6 @@ mob-sensitive; it is recorded as intermittent, not fixed.
   plus scaled generic enchantment bonus; dragon-part damage routing is the
   existing fight model (head full, other parts a quarter plus up to one, with
   the ten-tick window).
-- The HUD has no attack-strength indicator yet; first-person hand cooldown
-  animation is unchanged.
 - Container, vehicle and block-interaction ranges still use the adapters' older
   six-block constant; other item use and containers remain outside the shared
   session, and `Game::puppet` still swaps state.
@@ -168,3 +166,15 @@ fireball returns before any, and the weapon wears only when the target is a
 `LivingEntity` (a dragon part counts as its dragon). Crystals and carts cost
 exhaustion but no durability; fireballs cost neither. Regression:
 `non_living_targets_exhaust_but_never_wear_the_weapon`.
+
+First-person hand cooldown: the 26.3 client (`FirstPersonHandsAndItems.tick`,
+client jar SHA-1 `e877b6a07acd633fb3bb475002175cec036e7b87`) eases
+`mainHandHeight` toward `getItemSwapScale(1)^3` (or 0 while the shown item differs) by at
+most 0.4 per tick, swapping the shown item below 0.1. `Player.itemSwapTicker`
+restarts on item change and, client side, on every attack and miss
+(`MultiPlayerGameMode.attack`, `Minecraft.startAttack`); the server's `onAttack`
+resets only the attack ticker. `PlayerSession` keeps that swap ticker and
+`HandAnim` runs the 20 Hz filter with partial-tick interpolation, so the hand
+dips on each swing and rises as the charge returns, for the host and split-screen
+hands. Not ported: `stopDestroyBlock`'s reset and `isHandsBusy`. Visual
+acceptance remains open.

@@ -18,6 +18,9 @@ use glam::{DVec3, IVec3};
 #[derive(Default)]
 pub(super) struct State {
     ticker: u32,
+    /// Java's `itemSwapTicker`: the client-side count the first-person hand
+    /// lowers by; it restarts with the charge (attack, miss, item change).
+    swap_ticker: u32,
     last_held: Option<Item>,
 }
 
@@ -67,8 +70,10 @@ impl PlayerSession {
     pub fn tick_attack_strength(&mut self, slot: usize) {
         let held = self.inventory.get(slot).map(|s| s.item);
         self.combat.ticker = self.combat.ticker.saturating_add(1);
+        self.combat.swap_ticker = self.combat.swap_ticker.saturating_add(1);
         if held != self.combat.last_held {
             self.combat.ticker = 0;
+            self.combat.swap_ticker = 0;
             self.combat.last_held = held;
         }
     }
@@ -82,6 +87,12 @@ impl PlayerSession {
     /// Java's `getAttackStrengthScale(partial)` for the item in `slot`.
     pub fn attack_strength(&self, slot: usize, partial: f32) -> f32 {
         ((self.combat.ticker as f32 + partial) / self.attack_strength_delay(slot)).clamp(0.0, 1.0)
+    }
+
+    /// Java's `getItemSwapScale(partial)`: how far the first-person hand has
+    /// risen again since the last attack, miss or item change.
+    pub fn item_swap_scale(&self, slot: usize, partial: f32) -> f32 {
+        ((self.combat.swap_ticker as f32 + partial) / self.attack_strength_delay(slot)).clamp(0.0, 1.0)
     }
 
     /// Java's `cannotAttackWithItem(stack, lead)`: an item with a minimum
@@ -124,6 +135,7 @@ impl PlayerSession {
     /// Restart the charge, as an attack or a swing at nothing does.
     pub fn reset_attack_strength(&mut self) {
         self.combat.ticker = 0;
+        self.combat.swap_ticker = 0;
     }
 
     /// Melee whatever is under the crosshair within entity reach and in front
