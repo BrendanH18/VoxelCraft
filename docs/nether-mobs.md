@@ -290,7 +290,6 @@ different pitches.
 - **Line of sight** uses the existing block raycast, which treats every solid block
   as opaque.
 - **Visibility**: anger and hunting counts check distance, not sight lines.
-- **Split-screen fog**: all views share the host camera's blended biome fog.
 
 ## What to check visually
 

@@ -174,7 +174,8 @@ block; coal or charcoal + stick + soul sand or soil → 4 soul torches;
 
 The fog colour is blended like Java's `FogRenderer`: a cubic Gaussian
 (`CubicSampler`, kernel 1-4-6-4-1) over the 6×6 quarts around the camera,
-cached until the camera changes quart. Particles follow Java's providers
+cached until the camera changes quart. Every split-screen view keeps its own cache and
+samples around its own eye. Particles follow Java's providers
 (see [particles](particles.md)); soul torches burn with the blue soul fire
 flame. Music uses the existing procedural Nether palettes.
 

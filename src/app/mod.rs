@@ -170,7 +170,8 @@ struct Game {
     previous_eye: DVec3,
     rendered_eye: DVec3,
     /// Biome-blended Nether fog colour (Java's cubic Gaussian sampler).
-    nether_fog: crate::world::nether_biome::FogSampler,
+    /// One sampler per split-screen view.
+    nether_fog: std::cell::RefCell<Vec<crate::world::nether_biome::FogSampler>>,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     day_time: f64,
     /// Completed daylight cycles for `/time query day`.
@@ -1514,17 +1515,7 @@ impl Game {
         if nether {
             // No sun, no weather: a steady dim glow in a red haze.
             sky.daylight = if self.dimension == Dimension::End { 0.65 } else { dimension::NETHER_LIGHT };
-            let fog = match self.world.generator.dimension {
-                Dimension::Nether => {
-                    let generator = &self.world.generator;
-                    self.nether_fog.sample(camera, |qx, qz| {
-                        generator
-                            .nether_biome(qx * 4, qz * 4)
-                            .unwrap_or(crate::world::nether_biome::NetherBiome::NetherWastes)
-                    })
-                }
-                _ => dimension::NETHER_FOG,
-            };
+            let fog = self.nether_haze(0, camera);
             sky.horizon = if self.dimension == Dimension::End { [0.045, 0.025, 0.065] } else { fog };
             sky.zenith = if self.dimension == Dimension::End { [0.018, 0.009, 0.03] } else { fog };
         }
@@ -1535,7 +1526,7 @@ impl Game {
             alpha,
             now,
         };
-        let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } = self.fog(&scene, camera);
+        let split::Fog { color: fog_color, zenith, start: fog_start, end: fog_end, .. } = self.fog(&scene, 0, camera);
         let dial = self.dial_of(&self.session.player);
         let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)> = self
             .agents
@@ -1609,7 +1600,7 @@ impl Game {
             fog_start,
             fog_end,
             daylight: scene.sky.daylight,
-            zenith_color: if underwater { fog_color } else { scene.sky.zenith },
+            zenith_color: zenith,
             sun_dir: scene.sky.sun_dir,
             dimension: self.dimension,
             enhanced_graphics: self.settings.enhanced_graphics,
