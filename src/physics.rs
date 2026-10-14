@@ -77,6 +77,14 @@ fn cell_boxes<W: BlockSource + ?Sized>(world: &W, p: IVec3, mut f: impl FnMut(DV
     }
 }
 
+/// Height of the highest collision box in cell `p`, relative to the cell's floor
+/// (`None` when the cell has no collision; unloaded cells count as full blocks).
+pub fn collision_top<W: BlockSource + ?Sized>(world: &W, p: IVec3) -> Option<f64> {
+    let mut top: Option<f64> = None;
+    cell_boxes(world, p, |_, max| top = Some(top.map_or(max.y, |t| t.max(max.y))));
+    top.map(|t| t - p.y as f64)
+}
+
 /// Calls `f` with every solid box that could touch the box (min, max):
 /// those in the cells it covers, and in the row below (fences reach up
 /// into the next cell).

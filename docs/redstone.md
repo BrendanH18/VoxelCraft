@@ -203,7 +203,9 @@ Sources: [HopperBlockEntity](https://raw.githubusercontent.com/mahtomedi/minecra
 ## Rails and minecarts (round 2)
 
 Normal rails retain ids 500–509. Powered, detector and activator rail states
-use 1471–1506; 1469 is untouched. Special rails cannot curve. Rail neighbour
+use 1471–1506; 1469 is untouched. Special rails are straight or ascending only, as in
+Java 26.3 (`PoweredRailBlock` and the detector/activator rails use `RAIL_SHAPE_STRAIGHT`;
+only plain rails curve). Rail neighbour
 updates choose straight, corner and ascending connections, remove unsupported
 rails, and switch normal junction preference when powered. Both powered and
 activator rails propagate along their own rail kind for eight additional rails
@@ -221,8 +223,13 @@ Java's 0.4-block/tick movement cap, track projection, curve direction changes,
 slope gravity, occupied/empty/container friction, powered acceleration and
 unpowered braking. Walking players and mobs push carts; nearby moving empty
 rideable carts collect mobs; carts exchange momentum on contact. Right-click
-enters a rideable cart, the camera follows its seat, and sneak dismounts to a
-nearby collision-free position. Survival punches break carts into their variant
+enters a rideable cart, the camera follows its seat, and sneak dismounts using
+Java's `getDismountLocationForPassenger`: the eight cells around the cart in
+`DismountHelper.offsetsForDirection` order (sideways first, relative to the rail
+axis), at the heights 0, +1 and -1 for standing, crouching and swimming poses,
+taking the first valid floor with a free player box. A cart in water (`isInWater`)
+is capped at 0.2 blocks per tick, climbs slopes at one fifth of the pull and
+loses a further 5% of its speed per tick (`OldMinecartBehavior`). Survival punches break carts into their variant
 item and spill contents; creative removes the cart without dropping its item.
 
 Chest carts expose 27 slots and hopper carts five slots through the existing
@@ -241,12 +248,14 @@ fuse and player rider. Loading older worlds without it works. `--cart
 x,y,z,rideable|chest|hopper|tnt` places a test cart after `--place` edits, for
 visual verification.
 
-Known gaps: waterlogged rails/water cart slowdown, exact Java cart collision
-alignment and safe dismount floor selection, saved mob passengers, rolling
+A TNT cart lit by fire or lava gets Java's `nextInt(20) + nextInt(20)` fuse.
+
+Known gaps: waterlogged rails, exact Java cart collision
+alignment, saved mob passengers, rolling
 cart audio, textured cargo models and TNT's special rail/support blast
 protection are not implemented. Split-screen controller riding and cart
 container menus have not been completed. Burning projectiles do not yet hit
-carts. Fire uses a deterministic short fuse rather than Java's random sum.
+carts.
 The existing explosion system determines visibility and block destruction.
 No experimental minecart-improvements behaviour is enabled.
 
