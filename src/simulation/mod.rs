@@ -21,6 +21,10 @@ pub const TICK_SECONDS: f64 = 0.05;
 /// Bound catch-up after a stall so the desktop client remains responsive.
 /// Time beyond this budget is discarded, never passed as a large physics step.
 pub const MAX_CATCH_UP_TICKS: u32 = 5;
+/// Wall-clock allowance for resolving queued light in each of a tick's two
+/// light passes (a tick is 50 ms). A backlog from streaming or a large edit
+/// finishes over several ticks; the next call resumes it.
+pub const LIGHT_TICK_BUDGET: std::time::Duration = std::time::Duration::from_millis(2);
 /// Java's day is 24000 ticks, 20 minutes at 20 ticks a second. The saved
 /// `time` is the day fraction, so changing this needs no save migration.
 pub const DAY_LENGTH: f64 = 1200.0;
@@ -90,10 +94,10 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     if fire_tick {
         world.tick_fire(TICK_SECONDS, player);
     }
-    world.update_block_light();
+    world.update_block_light_within(LIGHT_TICK_BUDGET);
     world.tick_random_rules(TICK_SECONDS, player, random_tick_speed, fire_tick);
     world.tick_leaf_decay(TICK_SECONDS);
-    world.update_block_light();
+    world.update_block_light_within(LIGHT_TICK_BUDGET);
 }
 
 pub struct PlayerStep {

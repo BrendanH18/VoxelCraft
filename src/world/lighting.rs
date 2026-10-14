@@ -89,7 +89,12 @@ pub(super) enum Layer {
 #[derive(Default)]
 pub(super) struct LightUpdates {
     remove: Vec<(IVec3, u8)>,
+    /// Seeds: cells that recompute their level from their neighbours.
     increase: Vec<IVec3>,
+    /// Cells already raised whose neighbours still need to be considered,
+    /// consumed from `flood_head` so a time-boxed update can pause in the middle.
+    flood: Vec<IVec3>,
+    flood_head: usize,
     /// Most entries both queues held at once since the last [`World::take_light_peak`].
     peak: usize,
 }
@@ -97,7 +102,7 @@ pub(super) struct LightUpdates {
 impl LightUpdates {
     /// Whether all pending light removals and increases have been resolved.
     pub fn is_empty(&self) -> bool {
-        self.remove.is_empty() && self.increase.is_empty()
+        self.remove.is_empty() && self.increase.is_empty() && self.flood_head == self.flood.len()
     }
 
     fn note_peak(&mut self) {
@@ -574,13 +579,33 @@ impl World {
 
     /// Resolve batched block and sky light changes before gameplay queries.
     /// Called after edits, streaming, and world simulation steps; no workers
-    /// or meshes required.
+    /// or meshes required. Always completes; see [`World::update_block_light_within`]
+    /// for the time-boxed form the per-tick path uses.
     pub fn update_block_light(&mut self) {
-        self.run_light(Layer::Block);
-        self.run_light(Layer::Sky);
+        let mut budget = Budget::unlimited();
+        self.run_light(Layer::Block, &mut budget);
+        self.run_light(Layer::Sky, &mut budget);
     }
 
-    fn run_light(&mut self, layer: Layer) {
+    /// Resolve pending light for roughly `budget` of wall time, then stop with the
+    /// rest still queued (the next call resumes it, and edits made meanwhile are
+    /// merged correctly). Each call does at least [`LIGHT_MIN_VISITS`] cell visits
+    /// so a backlog always drains. Returns whether everything is resolved.
+    /// Queries made before then read levels that have not caught up; spawning
+    /// waits on [`World::light_settled`].
+    pub fn update_block_light_within(&mut self, budget: std::time::Duration) -> bool {
+        let mut budget = Budget::until(std::time::Instant::now() + budget);
+        self.run_light(Layer::Block, &mut budget);
+        self.run_light(Layer::Sky, &mut budget);
+        self.light_settled()
+    }
+
+    /// Whether no block or sky light work is queued.
+    pub fn light_settled(&self) -> bool {
+        self.light_updates.is_empty() && self.sky_updates.is_empty()
+    }
+
+    fn run_light(&mut self, layer: Layer, budget: &mut Budget) {
         let mut queue = std::mem::take(self.updates(layer));
         while let Some((p, level)) = queue.remove.pop() {
             for d in SIDES {
@@ -603,16 +628,27 @@ impl World {
                 }
             }
             queue.note_peak();
+            // Removals finish before any increase starts, so a pause here
+            // resumes with the removal phase.
+            if budget.spent() {
+                break;
+            }
         }
         // Queued seeds recompute their level from every neighbour; cells
         // queued during the flood already hold the level that reached them.
-        let seeds = queue.increase.len();
-        let mut head = 0;
-        while head < queue.increase.len() {
-            let p = queue.increase[head];
-            head += 1;
+        while queue.remove.is_empty() && !budget.spent_now() {
+            let seed = queue.increase.pop();
+            let Some(p) = seed.or_else(|| {
+                let p = queue.flood.get(queue.flood_head).copied()?;
+                queue.flood_head += 1;
+                Some(p)
+            }) else {
+                break;
+            };
+            let from_flood = seed.is_none();
+            budget.visit();
             let Some((b, mut level)) = self.light_cell(layer, p) else { continue };
-            if head <= seeds {
+            if !from_flood {
                 if layer == Layer::Block {
                     level = level.max(b.emission());
                 }
@@ -631,11 +667,18 @@ impl World {
             for &(n, next) in &brighter[..found] {
                 // Below 15, so never an implied sky source.
                 self.store_raw(layer, n, next);
-                queue.increase.push(n);
+                queue.flood.push(n);
             }
-            queue.peak = queue.peak.max(queue.increase.len() - head + queue.remove.len());
+            queue.peak =
+                queue.peak.max(queue.increase.len() + queue.flood.len() - queue.flood_head + queue.remove.len());
         }
-        queue.increase.clear();
+        if queue.flood_head == queue.flood.len() {
+            queue.flood.clear();
+            queue.flood_head = 0;
+        } else if queue.flood_head >= 4096 && queue.flood_head * 2 >= queue.flood.len() {
+            queue.flood.drain(..queue.flood_head);
+            queue.flood_head = 0;
+        }
         let peak = queue.peak;
         let slot = self.updates(layer);
         // Edits made while resolving (none today) would have queued here.
@@ -643,6 +686,43 @@ impl World {
         slot.peak = slot.peak.max(peak);
         slot.remove = queue.remove;
         slot.increase = queue.increase;
+        slot.flood = queue.flood;
+        slot.flood_head = queue.flood_head;
+    }
+}
+
+/// Fewest cell visits one time-boxed light update makes before it may stop.
+pub const LIGHT_MIN_VISITS: u32 = 512;
+
+/// Wall-clock allowance of a light update; `None` never runs out.
+struct Budget {
+    deadline: Option<std::time::Instant>,
+    visits: u32,
+}
+
+impl Budget {
+    fn unlimited() -> Self {
+        Self { deadline: None, visits: 0 }
+    }
+
+    fn until(deadline: std::time::Instant) -> Self {
+        Self { deadline: Some(deadline), visits: 0 }
+    }
+
+    fn visit(&mut self) {
+        self.visits = self.visits.wrapping_add(1);
+    }
+
+    /// Counts a visit and checks the clock every 128th one, once the minimum is done.
+    fn spent(&mut self) -> bool {
+        self.visit();
+        self.spent_now()
+    }
+
+    fn spent_now(&self) -> bool {
+        self.visits >= LIGHT_MIN_VISITS
+            && self.visits.is_multiple_of(128)
+            && self.deadline.is_some_and(|d| std::time::Instant::now() >= d)
     }
 }
 
@@ -865,6 +945,54 @@ mod tests {
         }
         fresh.update_block_light();
         fresh
+    }
+
+    /// A backlog from a big edit resolves in time-boxed slices to the same light
+    /// a fresh full update produces, even with more edits arriving between slices.
+    #[test]
+    fn time_boxed_updates_resume_and_match_a_full_relight() {
+        use std::time::Duration;
+        let mut world = flat(square(2));
+        let roof = |world: &mut World, block: Block| {
+            for x in 0..30 {
+                for z in 0..30 {
+                    world.edit(IVec3::new(x, 70, z), block, true);
+                }
+            }
+        };
+        // Cover a plot and light it: removal of skylight under the roof plus torch floods.
+        roof(&mut world, Block::STONE);
+        for (x, z) in [(3, 3), (15, 15), (26, 4), (8, 25)] {
+            world.edit(IVec3::new(x, 64, z), Block::TORCH, true);
+        }
+        assert!(!world.light_settled(), "edits queue work");
+        let mut calls = 0;
+        while !world.update_block_light_within(Duration::ZERO) {
+            calls += 1;
+            if calls == 2 {
+                // More edits while paused: open a hole, light another cell, darken one.
+                world.edit(IVec3::new(10, 70, 10), Block::AIR, true);
+                world.edit(IVec3::new(20, 64, 20), Block::TORCH, true);
+                world.edit(IVec3::new(15, 64, 15), Block::AIR, true);
+            }
+            assert!(calls < 10_000, "the backlog must drain");
+        }
+        assert!(calls >= 3, "a 900-cell roof cannot resolve in one {LIGHT_MIN_VISITS}-visit slice: {calls}");
+        assert!(world.light_settled() && world.light_updates.is_empty() && world.sky_updates.is_empty());
+        let fresh = rebuilt(&world);
+        for x in -20..50 {
+            for z in -20..50 {
+                for y in 56..80 {
+                    let p = IVec3::new(x, y, z);
+                    assert_eq!(world.sky_light(p), fresh.sky_light(p), "sky {p}");
+                    assert_eq!(world.block_light(p), fresh.block_light(p), "block {p}");
+                }
+            }
+        }
+        // The unbounded form still drains in one call.
+        roof(&mut world, Block::AIR);
+        world.update_block_light();
+        assert!(world.light_settled());
     }
 
     /// A LAN replica applies host edits incrementally; its light must match a

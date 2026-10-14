@@ -355,6 +355,11 @@ pub trait MobWorld: BlockSource {
     fn sky_light_level(&self, p: IVec3) -> Option<u8> {
         Some(if self.exposed(p) { 15 } else { 0 })
     }
+    /// Whether queued light work is finished; natural spawning waits for it
+    /// because unresolved cells would read darker than they are.
+    fn light_settled(&self) -> bool {
+        true
+    }
     /// Java's `WORLD_SURFACE` heightmap: the highest non-air block of a
     /// loaded column. Defaults to the light-blocking surface.
     fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
@@ -426,6 +431,9 @@ impl MobWorld for World {
     }
     fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
         self.world_surface_height(x, z)
+    }
+    fn light_settled(&self) -> bool {
+        World::light_settled(self)
     }
     fn surface(&self, x: i32, z: i32) -> Option<i32> {
         self.surface_height(x, z)

@@ -476,6 +476,11 @@ impl Entities {
     /// per Java tick, uniform in the chunk and in height from the bottom of
     /// the world to just above its `WORLD_SURFACE` block.
     pub(super) fn overworld_monsters<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx) {
+        // Light still being resolved after streaming or a large edit would
+        // read darker than it is and let monsters into lit areas.
+        if !world.light_settled() {
+            return;
+        }
         let mut chunks: Vec<(i32, i32)> = Vec::new();
         let reach = SPAWN_MAX_DIST;
         for t in &ctx.players {
@@ -1073,5 +1078,20 @@ mod tests {
         assert_eq!(J::Slime.kind(), Some(MobKind::Slime));
         assert_eq!(J::Drowned.kind(), Some(MobKind::Drowned));
         assert!(J::ZombieHorse.kind().is_none() && J::Stray.kind().is_none() && J::Ocelot.kind().is_none());
+    }
+
+    #[test]
+    fn spawning_waits_for_queued_light_to_settle() {
+        let player = Target::new(PlayerId::HOST, DVec3::new(0.5, 64.0, 0.5), true);
+        let day = Ctx { daylight: 1.0, spawn_light: crate::simulation::lighting::SpawnLight::DAY, ..ctx(vec![player]) };
+        let mut world = cave_world(false);
+        let mut e = Entities::new(5);
+        assert!(!spawned_cells(&mut e, &world, &day, 30.0).is_empty(), "the settled dark cave spawns");
+        // A torch edit leaves queued light until it is resolved.
+        world.edit(IVec3::new(41, 40, 0), Block::TORCH, true);
+        assert!(!world.light_settled());
+        assert!(spawned_cells(&mut e, &world, &day, 30.0).is_empty(), "no spawns on unresolved light");
+        assert!(world.update_block_light_within(std::time::Duration::from_secs(1)));
+        assert!(world.light_settled());
     }
 }

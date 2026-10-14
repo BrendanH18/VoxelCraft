@@ -624,7 +624,7 @@ impl World {
 
     /// Changes a block and schedules remeshing of every chunk whose geometry
     /// or lighting depends on it (synchronously for geometry if `sync`).
-    fn edit(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
+    pub(crate) fn edit(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
         if !self.contains_y(p.y) {
             return false;
         }

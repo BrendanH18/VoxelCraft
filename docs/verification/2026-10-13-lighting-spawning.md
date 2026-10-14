@@ -63,7 +63,7 @@ Tests check reference light levels and spawn probabilities, real daytime cave
 spawns, torch suppression/removal, Peaceful, floor exclusions, biome list values,
 mesh/fresh-rebuild agreement, edit covers, partial loads and unloaded borders.
 One representative unload case recorded a nonzero queue peak below 50,000;
-this is scenario evidence, not a universal work-time budget.
+this is scenario evidence; the per-tick time box is described below.
 
 The new two-process storage check covers both the Overworld and End. It saves a
 glass-covered shaft, tunnel and torch using the real disk format. A new process
@@ -97,10 +97,24 @@ approved fidelity exceptions or a completed MOB-01 claim.
 
 Slabs/stairs retain the prior opaque-cell light treatment; full state/shape
 occlusion is unfinished. Meshes still independently flood snapshots rather than
-consume the authoritative gameplay arrays. Crop/sapling skylight integration,
-other growth light rules, large edit/streaming queue budgets and broader block
-property fidelity remain open. The ten-minute game day and existing weather
-fades also differ from reference timing.
+consume the authoritative gameplay arrays. Broader block property fidelity
+remains open.
+
+v0.7.0 defect fixes recorded here: crops, saplings, grass and berries read
+gameplay light; entities and particles sample propagated skylight; the day is
+24000 ticks with independent rain/thunder timers; slimes and drowned use their
+own Java spawn rules; Nether and End lightmaps include Java's ambient term.
+
+Light work is now time-boxed per tick. `World::update_block_light_within` gives
+each of a tick's two light passes 2 ms (`LIGHT_TICK_BUDGET`) after at least 512
+cell visits, so a streaming or large-edit backlog drains over several ticks
+instead of stalling one. Pending flood entries live in `LightUpdates::flood`, so
+a pause resumes mid-flood and edits made meanwhile merge correctly (a test
+compares a sliced backlog against a fresh full relight). Natural overworld
+spawning waits on `World::light_settled` so unresolved cells never read darker
+than they are. Edits, block placement and streaming still resolve fully; only
+the per-tick simulation passes are bounded. The budget is a fixed wall-clock
+value, not tuned against a measured scene.
 
 Normal keyboard/controller cave play, visual/audio review, cross-machine LAN,
 representative frame-time comparisons and full M5 1080p/native acceptance remain
