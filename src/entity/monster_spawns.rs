@@ -880,7 +880,13 @@ mod tests {
         assert!(spawns.iter().all(|(k, p)| cycle_kind(*k) && p.y == 40), "monsters stand on the cave floor");
         let night_spawns = spawned_cells(&mut e, &dark, &night, 30.0);
         assert!(night_spawns.iter().any(|(_, p)| p.y == 64), "night opens the surface");
-        assert!(night_spawns.iter().any(|(_, p)| in_room(*p)), "and the cave keeps spawning");
+        // Cave packs are a few percent of night spawns, so pool several random
+        // sequences rather than depend on one (any change in RNG use shifts it).
+        let cave_by_night: usize = (1..=4)
+            .map(|seed| spawned_cells(&mut Entities::new(seed), &dark, &night, 30.0))
+            .map(|spawns| spawns.iter().filter(|(_, p)| in_room(*p)).count())
+            .sum();
+        assert!(cave_by_night > 0, "and the cave keeps spawning");
 
         let lit = cave_world(true);
         assert!((34..=46).all(|x| (-6..=6).all(|z| lit.block_light(IVec3::new(x, 40, z)) > 0)));
