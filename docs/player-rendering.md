@@ -75,10 +75,12 @@ Walking bob uses GameRenderer.bobView's phase
 `sin(phase)*bob*3` degrees and X rotation
 `abs(cos(phase-0.2)*bob)*5` degrees. walkDist advances by horizontal
 movement *0.6. Bob strength approaches a target capped at 0.1 with 0.4
-smoothing per 20 Hz tick, decaying in flight/air. The target uses actual
-horizontal displacement per tick rather than Java's velocity (the engine's
-velocity has different physics units); swimming suppression awaits the
-separate swimming pose work.
+smoothing per 20 Hz tick, decaying in flight/air. Java bobs toward
+`min(0.1, |deltaMovement|)`, the velocity left after a ground tick's 0.6 x 0.91
+friction; the engine's velocity has different physics units, so the target is
+the per-tick displacement scaled by that 0.546 (other block frictions, such as
+ice, are not distinguished). Swimming suppression is handled by the shared
+swimming pose.
 
 Hurt tilt uses a ten-tick interval and `-sin(remaining^4*pi)*14` degrees,
 conjugated by the damage-source yaw. Mob, projectile and explosion
@@ -90,7 +92,8 @@ uses Java's default 100%; a separate strength slider is not implemented.
 Each view supplies the combined hurt/bob matrix before its view rotation.
 The hand cancels and reapplies the same matrix around its FOV correction,
 so it bobs exactly once in its fixed 70-degree projection at all FOVs.
-Equip, attack and eating animation remain. View Bobbing is saved in options,
+The hand has swing, equip/dip (Java's item swap scale, including the attack
+cooldown) and eating animations. View Bobbing is saved in options,
 defaults on, and affects both world and hand; hurt tilt remains when it is
 off. The options layout contracts spacing to fit split-screen views.
 

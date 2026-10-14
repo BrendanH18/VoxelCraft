@@ -9,6 +9,10 @@ use crate::entity::model::PlayerPose;
 use crate::item::Item;
 use crate::player::Player;
 
+/// Default block friction (0.6) times the 0.91 air drag Java applies to
+/// `deltaMovement` at the end of a ground `travel`.
+const GROUND_FRICTION: f32 = 0.6 * 0.91;
+
 #[derive(Default, Debug)]
 pub struct WalkAnimation {
     pub position: f32,
@@ -32,7 +36,10 @@ impl WalkAnimation {
         self.previous_walk_dist = self.walk_dist;
         self.walk_dist += distance * 0.6;
         self.previous_bob = self.bob;
-        let bob_target = if on_ground && !flying { (distance / ticks.max(1e-4)).min(0.1) } else { 0.0 };
+        // Java's `Player.aiStep` bobs toward min(0.1, |deltaMovement|), and a ground
+        // tick leaves deltaMovement at the move scaled by the 0.6 x 0.91 friction.
+        let bob_target =
+            if on_ground && !flying { (distance / ticks.max(1e-4) * GROUND_FRICTION).min(0.1) } else { 0.0 };
         self.bob += (bob_target - self.bob) * (1.0 - 0.6f32.powf(ticks));
         self.previous_speed = self.speed;
         let target = if flying { 0.0 } else { (distance * 4.0 / ticks.max(1e-4)).min(1.0) };
@@ -472,6 +479,17 @@ mod tests {
         assert!((w.walk_dist - 0.12).abs() < 1e-6);
         w.update(0., 0.05, 0., false, true);
         assert!((w.speed - 0.192).abs() < 1e-6);
+    }
+    /// Sneaking covers about 0.065 blocks a tick, but Java's bob reads the
+    /// post-friction velocity (0.035), not the displacement.
+    #[test]
+    fn bob_target_is_the_post_friction_velocity() {
+        let mut w = WalkAnimation::default();
+        w.update(0.0655, 0.05, 0., false, true);
+        assert!((w.bob - 0.4 * 0.0655 * 0.546).abs() < 1e-6, "{}", w.bob);
+        let mut airborne = WalkAnimation::default();
+        airborne.update(0.2, 0.05, 0., false, false);
+        assert_eq!(airborne.bob, 0.0);
     }
     #[test]
     fn opposing_limbs_and_sneak_pivots_match_java() {
