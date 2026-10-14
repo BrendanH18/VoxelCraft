@@ -48,6 +48,11 @@ Pyramids contain four treasure chests and a pressure-plate TNT trap.
 Jungle temples contain two treasure chests and a tripwire arrow trap.
 Igloos have a bed, crafting table and furnace; half have a basement with
 an accessible ladder, brewing stand and a chest containing a golden apple.
+The basement shaft follows Java's `IglooPieces.addPieces` (bytecode-checked):
+half of igloos get `nextInt(8) + 4` three-block pieces, so the laboratory floor is
+12 to 33 blocks under the igloo floor. This changes the basement depth of
+existing seeds (7 in 8 basement igloos lie deeper than before); surface layout
+and non-basement igloos are unchanged.
 Outposts have a climbable lookout tower and a loot chest. Shipwrecks have
 supply, treasure and map-room chests; ruins have small and large chest
 variants. Monuments contain flooded halls, two wings, a central tower,
@@ -91,7 +96,8 @@ See [aquatic mobs](aquatic-mobs.md) for swimming, buckets and combat.
 ## Remaining parity work
 
 - Outpost ancillary pieces, generated golems/allays, patrols and raids.
-- Variable igloo basement depth; bed orientation rendering.
+- Igloo bed orientation rendering: beds carry no facing state in the block ID,
+  so every bed draws the same way; rotated igloos keep the pair's geometry only.
 - Jungle temple lever/piston puzzle and Minecraft's full trap layout.
 - Shipwreck template variants, all floor orientations, buried treasure
   and exploration maps; `ocean_ruin` currently combines warm/cold variants.

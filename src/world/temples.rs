@@ -661,6 +661,12 @@ fn swamp_hut(g: &Generator, centre: IVec2, ground: i32, rot: u8) -> Built {
     b.finish(Kind::SwampHut, 2)
 }
 
+/// Extra shaft depth below the original four-piece laboratory: Java's
+/// `nextInt(8) + 4` pieces of three blocks each, minus the four already built.
+fn igloo_basement_drop(rng: &mut Rng) -> i32 {
+    (rng.below(8) as i32) * 3
+}
+
 fn igloo(g: &Generator, centre: IVec2, ground: i32, rot: u8, seed: u64, rng: &mut Rng) -> Built {
     let origin = IVec3::new(centre.x - 4, ground + 1, centre.y - 4);
     let mut b = Builder::new(origin, IVec2::new(9, 9), rot);
@@ -699,31 +705,36 @@ fn igloo(g: &Generator, centre: IVec2, ground: i32, rot: u8, seed: u64, rng: &mu
     }
     if rng.below(2) == 0 {
         // The secret basement: a trapdoor under the carpet, a ladder down
-        // to a stone brick room with a chest and a brewing stand.
+        // to a stone brick room with a chest and a brewing stand. Java's
+        // `IglooPieces.addPieces` stacks `nextInt(8) + 4` three-block shaft
+        // pieces, so the laboratory floor sits `depth * 3` blocks down
+        // (12..=33); `drop` is how far below the original four-piece room.
+        let drop = igloo_basement_drop(rng);
         b.set(4, -1, 4, super::redstone_blocks::WOOD_TRAPDOOR);
         let ladder = b.facing(Block::LADDER, Facing::South);
-        for y in -9..=-2 {
+        for y in (-9 - drop)..=-2 {
             b.set(4, y, 4, ladder);
             b.set(4, y, 3, Block::STONE_BRICKS);
         }
-        b.room(1, -12, 4, 7, -9, 10, Block::STONE_BRICKS, Block::AIR);
-        b.fill(1, -13, 4, 7, -13, 10, Block::STONE_BRICKS);
-        b.fill(1, -8, 4, 7, -8, 10, Block::STONE_BRICKS);
+        b.room(1, -12 - drop, 4, 7, -9 - drop, 10, Block::STONE_BRICKS, Block::AIR);
+        b.fill(1, -13 - drop, 4, 7, -13 - drop, 10, Block::STONE_BRICKS);
+        b.fill(1, -8 - drop, 4, 7, -8 - drop, 10, Block::STONE_BRICKS);
         // Reopen the shaft after the room walls and ceiling have been
         // painted; otherwise two wall blocks seal the basement entrance.
-        b.fill(4, -12, 4, 4, -8, 4, ladder);
-        b.fill(4, -12, 3, 4, -2, 3, Block::STONE_BRICKS);
-        b.chest(2, -12, 9, Facing::North, seed, LootTable::Igloo);
-        b.set(6, -12, 9, Block::BREWING_STAND);
-        b.features.push((b.world(6, -12, 9), Feature::IglooBrewing));
-        b.set(4, -12, 9, Block::TORCH);
-        b.residents.push((crate::entity::MobKind::Villager, b.world(2, -12, 5)));
-        b.residents.push((crate::entity::MobKind::ZombieVillager, b.world(6, -12, 5)));
+        b.fill(4, -12 - drop, 4, 4, -8 - drop, 4, ladder);
+        b.fill(4, -12 - drop, 3, 4, -2, 3, Block::STONE_BRICKS);
+        let floor = -12 - drop;
+        b.chest(2, floor, 9, Facing::North, seed, LootTable::Igloo);
+        b.set(6, floor, 9, Block::BREWING_STAND);
+        b.features.push((b.world(6, floor, 9), Feature::IglooBrewing));
+        b.set(4, floor, 9, Block::TORCH);
+        b.residents.push((crate::entity::MobKind::Villager, b.world(2, floor, 5)));
+        b.residents.push((crate::entity::MobKind::ZombieVillager, b.world(6, floor, 5)));
         for (x0, x1) in [(1, 3), (5, 7)] {
-            b.fill(x0, -12, 6, x1, -10, 6, Block::IRON_BARS);
+            b.fill(x0, floor, 6, x1, floor + 2, 6, Block::IRON_BARS);
         }
-        b.fill(3, -12, 4, 3, -10, 6, Block::IRON_BARS);
-        b.fill(5, -12, 4, 5, -10, 6, Block::IRON_BARS);
+        b.fill(3, floor, 4, 3, floor + 2, 6, Block::IRON_BARS);
+        b.fill(5, floor, 4, 5, floor + 2, 6, Block::IRON_BARS);
     }
     b.finish(Kind::Igloo, 0)
 }
@@ -1432,6 +1443,36 @@ mod tests {
             let p = IVec3::new(0, y, 0);
             assert_eq!(built.blocks.iter().find(|(q, _)| *q == p).unwrap().1.base(), Block::LADDER);
         }
+    }
+
+    #[test]
+    fn igloo_basement_depth_follows_java_piece_stacking() {
+        // `IglooPieces.addPieces`: half of igloos stack `nextInt(8) + 4` shaft
+        // pieces of three blocks, so the laboratory floor is 12..=33 blocks
+        // below the igloo floor (local y 0, world 71 here), all eight depths
+        // occurring.
+        let g = Generator::new(1);
+        let mut depths = std::collections::BTreeSet::new();
+        let mut basements = 0;
+        for seed in 0..400 {
+            let built = igloo(&g, IVec2::ZERO, 70, 0, seed, &mut Rng(seed));
+            let Some(&(chest, _)) = built.features.iter().find(|(_, f)| matches!(f, Feature::TempleChest(..))) else {
+                continue;
+            };
+            basements += 1;
+            let depth = (71 - chest.y) / 3;
+            assert_eq!(71 - chest.y, depth * 3, "floor is a whole number of pieces down");
+            depths.insert(depth);
+            // The ladder runs unbroken from just under the trapdoor to the
+            // laboratory ceiling, and the brewing stand shares the chest's floor.
+            for y in (chest.y + 4)..=69 {
+                let p = IVec3::new(0, y, 0);
+                assert_eq!(built.blocks.iter().find(|(q, _)| *q == p).unwrap().1.base(), Block::LADDER, "{seed} {y}");
+            }
+            assert!(built.features.iter().any(|&(p, f)| p.y == chest.y && matches!(f, Feature::IglooBrewing)));
+        }
+        assert!((150..250).contains(&basements), "{basements} basements of 400");
+        assert_eq!(depths.into_iter().collect::<Vec<_>>(), (4..=11).collect::<Vec<_>>());
     }
 
     #[test]
