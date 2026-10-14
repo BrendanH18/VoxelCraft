@@ -21,8 +21,9 @@ pub const TICK_SECONDS: f64 = 0.05;
 /// Bound catch-up after a stall so the desktop client remains responsive.
 /// Time beyond this budget is discarded, never passed as a large physics step.
 pub const MAX_CATCH_UP_TICKS: u32 = 5;
-/// Preserve the existing ten-minute VoxelCraft day during extraction.
-pub const DAY_LENGTH: f64 = 600.0;
+/// Java's day is 24000 ticks, 20 minutes at 20 ticks a second. The saved
+/// `time` is the day fraction, so changing this needs no save migration.
+pub const DAY_LENGTH: f64 = 1200.0;
 
 #[derive(Default)]
 pub struct FixedClock {

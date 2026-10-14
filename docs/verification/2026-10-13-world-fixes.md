@@ -75,3 +75,25 @@ distance zero). See [Nether biomes](../nether-biomes.md#spawn-costs). Test:
 Spawn-cost values are now independently extracted into `world_defects.json`;
 `spawn_cost_tables_match_java_26_3` covers all implemented Nether mob types
 in all five biomes. Fortress pack members apply the same check as leaders.
+
+## Day and weather timing
+
+Java sources: `ServerLevel.advanceWeatherCycle`, `RAIN_DELAY` (12000-180000 ticks),
+`RAIN_DURATION` (12000-24000), `THUNDER_DELAY` (12000-180000), `THUNDER_DURATION` (3600-15600),
+levels moving 0.01 per tick; the day timeline is 24000 ticks.
+
+- `DAY_LENGTH` is 1200 s (20 minutes). The saved `time` is the day *fraction*, so old
+  worlds keep their time of day with no migration; saved weather timers are seconds and
+  stay valid.
+- Rain and thunder cycle on independent timers with the ranges above (the old model was
+  one toggle scaled by the ten-minute day); fades take 5 s instead of 10. The level file
+  entry gains a fourth field (thunder seconds); older entries get a fresh thunder spell.
+- Not modelled: `/weather` durations, the `advance_weather` gamerule, and `clearWeatherTime`.
+
+Tests: `simulation::weather::tests::{spells_alternate_and_fade,
+durations_and_fades_follow_the_reference_tick_ranges, rain_and_thunder_cycle_on_independent_timers}`.
+
+Spell durations are sampled in inclusive integer ticks. Timer expiration flips
+the corresponding flag; its next duration is sampled on the next update, as in
+`ServerLevel.advanceWeatherCycle`. Weather timers retain their public seconds
+interface and are quantized to ticks when advanced.

@@ -116,3 +116,12 @@ heightmap fallback. A wide roof regression checks the open edge and a centre
 13 blocks from open sky; unknown-border fallback is also covered. See the
 [world-fix record](2026-10-13-world-fixes.md#entity-and-particle-skylight).
 Visual/player acceptance remains outstanding.
+
+## v0.7 day and weather timing follow-up
+
+The day is now 24000 ticks (20 minutes). Independent rain and thunder timers
+use the extracted Java 26.3 ranges and levels fade by 0.01 per 50 ms tick.
+Old day fractions and two/three-field weather entries still load; the optional
+fourth weather field retains the independent thunder timer. See the
+[world-fix record](2026-10-13-world-fixes.md#day-and-weather-timing) for tests
+and remaining weather-command/gamerule limitations.

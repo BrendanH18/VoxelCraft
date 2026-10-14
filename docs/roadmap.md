@@ -390,6 +390,11 @@ members and fortress attempts: soul sand valley charges and warped forest
 enderman spacing are covered by extracted data and potential-field tests.
 Ordinary-player and representative scene acceptance remain open.
 
+The day now lasts 24000 ticks (20 minutes), and rain/thunder use independent
+Java 26.3 timer ranges and five-second fades. Saved day fractions and older
+weather entries still load. Reference range, fade and reload regressions pass;
+ordinary-player weather acceptance remains open.
+
 The [amethyst geode follow-up](verification/2026-10-13-amethyst-geodes.md)
 implements the Java 26.3 geode configured/placed feature with order-independent
 chunk painting, adds the missing horizontal bud/cluster states and Java's
