@@ -308,6 +308,17 @@ impl Effects {
         self.get(Effect::Haste).map_or(1.0, |a| 1.0 + (i32::from(a.amplifier) + 1) as f32 * 0.2)
     }
 
+    /// The player's attack-speed attribute multiplier: Haste adds 10% per
+    /// level and Mining Fatigue removes 10% per level, each an
+    /// `ADD_MULTIPLIED_TOTAL` modifier of `amount * (amplifier + 1)` whose
+    /// amount is a float widened to a double, as in `MobEffects`.
+    pub fn attack_speed_factor(&self) -> f64 {
+        let modifier = |effect, amount: f32| {
+            self.get(effect).map_or(1.0, |a| 1.0 + f64::from(amount) * (f64::from(a.amplifier) + 1.0))
+        };
+        modifier(Effect::Haste, 0.1) * modifier(Effect::MiningFatigue, -0.1)
+    }
+
     pub fn mining_factor(&self) -> f32 {
         self.get(Effect::MiningFatigue).map_or(1.0, |a| 0.3f64.powf(f64::from(a.amplifier) + 1.) as f32)
     }

@@ -363,7 +363,7 @@ Right-click use is one shared session chain for the desktop and CLI
 desktop's entity, door, harvest, flint and tool uses, and riders can use items.
 Controller and LAN players no longer borrow the host's state (`Game::puppet` is
 removed); hands and container clicks run on each player's own session.
-PLY-04 remains **Partial**; effect attack-speed modifiers, Conduit Power and
+PLY-04 remains **Partial**; Conduit Power and
 beacons, server destroy tolerance, a headless desktop-adapter harness and
 remaining cancel-on-item-change sites (pick-block, drop) stay open.
 
@@ -786,3 +786,6 @@ Implemented, unverified; no ordinary-player acceptance.
 Player combat defect follow-up (2026-10-13): critical eligibility reads tracked
 fall distance in shared melee and LAN PvP, with Java 26.3 bytecode fixtures and
 regression cases. Implemented, unverified; ordinary-player acceptance remains.
+
+Combat charge and its indicator now include Java 26.3 Haste/Mining Fatigue
+attack-speed modifiers. No reference enchantment changes attack speed.

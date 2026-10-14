@@ -62,6 +62,7 @@
     0.0,
     1024.0
   ],
+  "attack_speed_enchantments": [],
   "vehicle_hurt": {
     "damage_factor": 10.0,
     "destroy_above": 40.0

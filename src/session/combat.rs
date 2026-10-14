@@ -73,10 +73,15 @@ impl PlayerSession {
         }
     }
 
+    /// Java's `getCurrentItemAttackStrengthDelay` for the item in `slot`,
+    /// including Haste and Mining Fatigue.
+    pub fn attack_strength_delay(&self, slot: usize) -> f32 {
+        mining::attack_strength_delay_with(self.inventory.get(slot).map(|s| s.item), &self.vitals.effects)
+    }
+
     /// Java's `getAttackStrengthScale(partial)` for the item in `slot`.
     pub fn attack_strength(&self, slot: usize, partial: f32) -> f32 {
-        let held = self.inventory.get(slot).map(|s| s.item);
-        ((self.combat.ticker as f32 + partial) / mining::attack_strength_delay(held)).clamp(0.0, 1.0)
+        ((self.combat.ticker as f32 + partial) / self.attack_strength_delay(slot)).clamp(0.0, 1.0)
     }
 
     /// Java's crosshair attack indicator: a filling bar while the charge is
@@ -84,8 +89,7 @@ impl PlayerSession {
     /// fully charged weapon slower than 5 ticks. `None` when neither shows.
     pub fn attack_indicator(&self, slot: usize, aiming_at_living: bool) -> Option<AttackIndicator> {
         let scale = self.attack_strength(slot, 0.0);
-        let held = self.inventory.get(slot).map(|s| s.item);
-        if aiming_at_living && scale >= 1.0 && mining::attack_strength_delay(held) > 5.0 {
+        if aiming_at_living && scale >= 1.0 && self.attack_strength_delay(slot) > 5.0 {
             Some(AttackIndicator::Full)
         } else if scale < 1.0 {
             Some(AttackIndicator::Charging(scale))

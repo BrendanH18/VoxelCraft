@@ -103,8 +103,9 @@ mob-sensitive; it is recorded as intermittent, not fixed.
 
 - Blindness is not yet represented, so it cannot block criticals.
 - Java's per-item `minimum_attack_charge`, spear/mace/trident and other
-  kinetic/piercing weapon components and attack-speed attribute modifiers from
-  effects/enchantments are not implemented. Copper tools and armor are now
+  kinetic/piercing weapon components are not implemented. Haste and Mining
+  Fatigue attack-speed modifiers are now applied; Java 26.3 has no attack-speed
+  enchantment definitions. Copper tools and armor are now
   registered (see below); spears are not.
 - Damage to non-living targets (crystals, dragon parts) uses the scaled base
   plus scaled generic enchantment bonus; dragon-part damage routing is the
@@ -127,4 +128,13 @@ cases cover momentarily zero velocity after a fall, teleport/reset, water,
 climbing and passengers. Ordinary-player acceptance remains outstanding.
 
 Critical-fix checks: required fmt/strict release Clippy/release tests passed
-(973 passed, zero failed, three ignored); fixture regeneration matched exactly.
+(977 passed, zero failed, four ignored); fixture regeneration matched exactly.
+
+Haste and Mining Fatigue scale attack speed by their reference total multipliers
+(+10%/-10% per level, float constants widened to doubles). Charge, damage and
+the indicator read the modified attribute, clamped to 0..1024. The fixture
+extractor scans all reference enchantment data: none modifies attack speed.
+Tests cover each effect, combined modifiers, zero speed and charge timing.
+
+Attack-speed-fix checks: required fmt/strict release Clippy/release tests passed
+(978 passed, zero failed, four ignored); expanded fixture reproduced exactly.

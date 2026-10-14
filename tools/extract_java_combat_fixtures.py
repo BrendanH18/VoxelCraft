@@ -191,6 +191,10 @@ def extract(server):
         if not bounds:
             raise ValueError("unrecognized attack speed attribute range")
         speed_range = [0.0, float(bounds[2])]
+        with zipfile.ZipFile(path) as inner:
+            speed_enchantments = sorted(name.rsplit("/", 1)[1][:-5] for name in inner.namelist()
+                                        if name.startswith("data/minecraft/enchantment/") and name.endswith(".json")
+                                        and "attack_speed" in inner.read(name).decode())
         # Vehicles take `damage * 10` and break above 40; dragon parts other than head and neck take a quarter + min(damage, 1).
         vehicle = method(inspect("net.minecraft.world.entity.vehicle.VehicleEntity"),
                          "public boolean hurtServer(net.minecraft.server.level.ServerLevel, "
@@ -254,6 +258,7 @@ def extract(server):
         },
         "attack_speed_effects": effect_modifiers,
         "attack_speed_range": speed_range,
+        "attack_speed_enchantments": speed_enchantments,
         "vehicle_hurt": {"damage_factor": 10.0, "destroy_above": 40.0},
         "dragon_part_hurt": {"full_damage_parts": ["head", "neck"], "other_parts": "damage / 4 + min(damage, 1)",
                               "minimum_damage": 0.01},

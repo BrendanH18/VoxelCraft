@@ -195,10 +195,22 @@ pub fn attack_speed(held: Option<Item>) -> f64 {
     4.0 + f64::from(modifier as f32)
 }
 
+/// Attack speed with the player's effects: Haste and Mining Fatigue scale
+/// the attribute, which Java keeps within `0..=1024`.
+pub fn attack_speed_with(held: Option<Item>, effects: &crate::simulation::effects::Effects) -> f64 {
+    (attack_speed(held) * effects.attack_speed_factor()).clamp(0.0, 1024.0)
+}
+
 /// Ticks for a full attack-strength charge with `held` (Java's
 /// `getCurrentItemAttackStrengthDelay`, `1 / speed * 20` as a float).
 pub fn attack_strength_delay(held: Option<Item>) -> f32 {
     (1.0 / attack_speed(held) * 20.0) as f32
+}
+
+/// [`attack_strength_delay`] under the player's effects (a zero attack
+/// speed never finishes charging).
+pub fn attack_strength_delay_with(held: Option<Item>, effects: &crate::simulation::effects::Effects) -> f32 {
+    (1.0 / attack_speed_with(held, effects) * 20.0) as f32
 }
 
 /// Experience a harvested block drops (Java's ore ranges; silk touch

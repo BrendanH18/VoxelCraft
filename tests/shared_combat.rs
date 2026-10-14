@@ -12,7 +12,7 @@ use voxelcraft::{
         PlayerSession,
         combat::{Outcome, Target},
     },
-    simulation::survival::Env,
+    simulation::{effects::Effect, survival::Env},
     world::{World, block::Block, chunk::ChunkData, terrain::Generator},
 };
 
@@ -180,6 +180,50 @@ fn criticals_follow_fall_distance_and_not_velocity() {
         s.player.vehicle = Some(1);
     }));
     assert_eq!(fixture()["criticals"]["needs"][0], "fall_distance > 0");
+}
+
+#[test]
+fn haste_and_mining_fatigue_scale_the_attack_speed_attribute() {
+    let f = fixture();
+    assert_eq!(f["attack_speed_enchantments"], serde_json::json!([]), "Java 26.3 defines none");
+    let amount = |name: &str| f["attack_speed_effects"][name]["amount_per_level"].as_f64().unwrap();
+    let [lo, hi] = [0, 1].map(|i| f["attack_speed_range"][i].as_f64().unwrap());
+    let sword = Some(Item::tool(ToolKind::Sword, Tier::Diamond));
+    let speed = mining::attack_speed(sword);
+    let with = |effects: &[(Effect, u8)]| {
+        let mut e = voxelcraft::simulation::effects::Effects::default();
+        for &(effect, amplifier) in effects {
+            e.add(effect, amplifier, 100);
+        }
+        mining::attack_speed_with(sword, &e)
+    };
+    assert_eq!(with(&[]), speed);
+    for amplifier in 0..5u8 {
+        let level = f64::from(amplifier) + 1.0;
+        let haste = (speed * (1.0 + amount("haste") * level)).clamp(lo, hi);
+        assert_eq!(with(&[(Effect::Haste, amplifier)]), haste, "Haste {level}");
+        let fatigue = (speed * (1.0 + amount("mining_fatigue") * level)).clamp(lo, hi);
+        assert_eq!(with(&[(Effect::MiningFatigue, amplifier)]), fatigue, "Mining Fatigue {level}");
+    }
+    // Opposite modifiers multiply: Haste II with Mining Fatigue I.
+    let both = speed * (1.0 + amount("haste") * 2.0) * (1.0 + amount("mining_fatigue"));
+    assert!((with(&[(Effect::Haste, 1), (Effect::MiningFatigue, 0)]) - both).abs() < 1e-12);
+    // Ten levels of Mining Fatigue remove all of the speed; the attribute floors at zero.
+    assert_eq!(with(&[(Effect::MiningFatigue, 9)]), 0.0);
+    assert_eq!(with(&[(Effect::MiningFatigue, 200)]), 0.0);
+    // The charge, its delay and the crosshair indicator all read the modified speed.
+    let (_, mut s, _) = scene(6.0);
+    charge(&mut s, 1);
+    let plain = s.attack_strength_delay(0);
+    s.vitals.effects.add(Effect::Haste, 1, 1000);
+    let hasty = s.attack_strength_delay(0);
+    assert_eq!(hasty, (1.0 / with(&[(Effect::Haste, 1)]) * 20.0) as f32);
+    assert!(hasty < plain);
+    charge(&mut s, 9);
+    assert!(s.attack_strength(0, 0.5) > 0.9, "Haste II recharges a sword in about ten ticks");
+    s.vitals.effects.add(Effect::MiningFatigue, 9, 1000);
+    assert!(s.attack_strength_delay(0).is_infinite());
+    assert_eq!(s.attack_strength(0, 0.5), 0.0, "a zero attack speed never charges");
 }
 
 #[test]
