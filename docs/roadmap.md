@@ -778,3 +778,11 @@ reviewable alongside implementation changes and release notes.
 
 Multiplayer and additional side features receive their own roadmap after
 this single-player acceptance milestone. They are not prerequisites for 1.0.
+
+### v0.7 redstone defect follow-up (2026-10-13)
+
+Wooden pressure-plate contact regressions now cover XP orbs, primed TNT,
+splash potions, fireballs and bobbers with the Java 26.3 touch column.
+The missing bobber contact and orb/potion box errors are corrected.
+Automated evidence is in the redstone tests; ordinary-player and performance
+acceptance remain open. See [redstone](redstone.md) for scope and reference.

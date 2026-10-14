@@ -34,71 +34,42 @@ impl World {
             }
         }
         for item in &entities.items {
-            self.redstone_contact_box(
-                (item.pos - DVec3::splat(0.125), item.pos + DVec3::splat(0.125)),
-                false,
-                false,
-                false,
-            );
+            self.redstone_contact_box(crate::physics::Shape::new(0.125, 0.25).aabb(item.pos), false, false, false);
         }
         for arrow in &entities.arrows {
-            self.redstone_contact_box(
-                (arrow.pos - DVec3::splat(0.05), arrow.pos + DVec3::splat(0.05)),
-                false,
-                true,
-                false,
-            );
+            self.redstone_contact_box(crate::physics::Shape::new(0.25, 0.5).aabb(arrow.pos), false, true, false);
         }
         for orb in &entities.orbs {
-            self.redstone_contact_box(
-                (orb.pos - DVec3::splat(0.125), orb.pos + DVec3::splat(0.125)),
-                false,
-                false,
-                false,
-            );
+            self.redstone_contact_box(orb.aabb(), false, false, false);
         }
         for tnt in &entities.tnt {
             self.redstone_contact_box(crate::physics::Shape::new(0.49, 0.98).aabb(tnt.pos), false, false, false);
         }
         for pearl in &entities.pearls {
-            self.redstone_contact_box(
-                (pearl.pos - DVec3::splat(0.125), pearl.pos + DVec3::splat(0.125)),
-                false,
-                false,
-                false,
-            );
+            self.redstone_contact_box(crate::physics::Shape::new(0.125, 0.25).aabb(pearl.pos), false, false, false);
         }
+        // Splash potions stand on their position like Java's 0.25-block entity box.
         for potion in &entities.potions {
-            self.redstone_contact_box(
-                (potion.pos - DVec3::splat(0.125), potion.pos + DVec3::splat(0.125)),
-                false,
-                false,
-                false,
-            );
+            self.redstone_contact_box(crate::physics::Shape::new(0.125, 0.25).aabb(potion.pos), false, false, false);
+        }
+        // Fishing bobbers are 0.25-block entities too, so a wooden plate feels them.
+        for bobber in &entities.bobbers {
+            self.redstone_contact_box(crate::physics::Shape::new(0.125, 0.25).aabb(bobber.pos), false, false, false);
         }
         for thrown in &entities.thrown {
-            self.redstone_contact_box(
-                (thrown.pos - DVec3::splat(0.125), thrown.pos + DVec3::splat(0.125)),
-                false,
-                false,
-                false,
-            );
+            self.redstone_contact_box(crate::physics::Shape::new(0.125, 0.25).aabb(thrown.pos), false, false, false);
         }
         for fireball in &entities.fireballs {
+            let width = if fireball.is_large() { 1.0 } else { 0.3125 };
             self.redstone_contact_box(
-                (fireball.pos - DVec3::splat(0.25), fireball.pos + DVec3::splat(0.25)),
+                crate::physics::Shape::new(width / 2.0, width).aabb(fireball.pos),
                 false,
                 false,
                 false,
             );
         }
         for eye in &entities.eyes {
-            self.redstone_contact_box(
-                (eye.pos - DVec3::splat(0.125), eye.pos + DVec3::splat(0.125)),
-                false,
-                false,
-                false,
-            );
+            self.redstone_contact_box(crate::physics::Shape::new(0.125, 0.25).aabb(eye.pos), false, false, false);
         }
         for cart in &entities.minecarts {
             self.redstone_contact_box(cart.aabb(), false, false, true);
@@ -155,7 +126,7 @@ impl World {
                     let Some(b) = self.get_block(p) else { continue };
                     let bounds = match r::component(b) {
                         Some(Component::Plate { .. }) => {
-                            Some((DVec3::new(0.125, 0.0, 0.125), DVec3::new(0.875, 0.25, 0.875)))
+                            Some((DVec3::new(0.0625, 0.0, 0.0625), DVec3::new(0.9375, 0.25, 0.9375)))
                         }
                         Some(Component::Button { wood: true, .. }) if arrow => {
                             super::shape::shape(b, |_| super::block::Block::AIR, super::block::Block::AIR).bounds().map(

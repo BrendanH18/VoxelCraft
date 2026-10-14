@@ -90,6 +90,11 @@ impl XpOrb {
         true
     }
 
+    /// Java's 0.5 x 0.5 collision box.
+    pub fn aabb(&self) -> (DVec3, DVec3) {
+        SHAPE.aabb(self.pos)
+    }
+
     /// Whether the player's box (feet at `player`) grown by Java's pickup
     /// margin touches this orb.
     pub fn touches_player(&self, player: DVec3) -> bool {

@@ -76,8 +76,17 @@ stack counts as one entity. Binary plates recheck after 20 ticks, weighted ones
 after 10. Wooden buttons stay pressed while an arrow overlaps their shape,
 rechecking after 30 ticks; stone buttons ignore arrows and release after 20.
 Contact inputs reuse a map and query only entity bounding-box cells. Spectators,
-dead and inactive players are excluded. Entities such as XP orbs, TNT and
-projectiles other than arrows are not yet included in plate counts.
+dead and inactive players are excluded. Wooden and weighted plates also count
+XP orbs (0.5 box), primed TNT, minecarts, thrown items, ender pearls and eyes,
+splash potions, fireballs and fishing bobbers, as Java's `Entity` query does;
+the touch box is Java's 1/16-inset column (x and z 1/16 to 15/16, height 0.25).
+Bats (not implemented) would be excluded by `isIgnoringBlockTriggers`.
+Reference: pinned Java 26.3 `BasePressurePlateBlock` static initializer
+(`Block.column(14, 0, 4)`) and `PressurePlateBlock.getSignalStrength`;
+wood uses `Entity`, stone uses `LivingEntity`. Regression coverage includes
+orb edge overlap, TNT, potions, bobbers and fireballs. Entity contact boxes
+use the bottom-centred sizes in 26.3 `EntityTypes` (arrows/orbs 0.5, small
+fireballs 0.3125, large fireballs 1, other implemented projectiles/items 0.25).
 
 Iron doors and iron trapdoors open only with power. Oak trapdoors permit manual
 operation and respond to power edges. Arrow hits activate target blocks for 20

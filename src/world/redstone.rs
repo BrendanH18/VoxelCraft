@@ -1171,6 +1171,73 @@ mod tests {
     }
 
     #[test]
+    fn wooden_plates_feel_orbs_tnt_potions_bobbers_and_other_projectiles_but_stone_plates_do_not() {
+        use crate::entity::{Entities, PlayerId, Rng, fireball::Fireball, orb::XpOrb, potion::ThrownPotion};
+        let mid = AT.as_dvec3() + glam::DVec3::new(0.5, 0.0, 0.5);
+        let mut rng = Rng::new(3);
+        type AddEntity = Box<dyn Fn(&mut Entities, &mut Rng)>;
+        let cases: [(&str, AddEntity); 5] = [
+            ("orb", Box::new(move |e, r| e.orbs.push(XpOrb::new(3, mid + glam::DVec3::Y * 0.1, r)))),
+            ("tnt", Box::new(move |e, _| e.tnt.push(crate::entity::tnt::PrimedTnt::new(mid, glam::DVec3::ZERO, 4.0)))),
+            (
+                "potion",
+                Box::new(move |e, _| {
+                    e.potions.push(ThrownPotion::new(
+                        crate::potion::Potion::from_id("harming").unwrap(),
+                        None,
+                        mid,
+                        glam::DVec3::ZERO,
+                    ))
+                }),
+            ),
+            (
+                "bobber",
+                Box::new(move |e, _| {
+                    e.cast_bobber(PlayerId::HOST, mid + glam::DVec3::Y * 0.1, glam::DVec3::ZERO, 0, 0);
+                    e.bobbers[0].pos = mid + glam::DVec3::Y * 0.1;
+                }),
+            ),
+            (
+                "fireball",
+                Box::new(move |e, _| e.fireballs.push(Fireball::new(mid + glam::DVec3::Y * 0.1, glam::DVec3::X))),
+            ),
+        ];
+        for (name, add) in &cases {
+            let mut entities = Entities::new(7);
+            add(&mut entities, &mut rng);
+            let mut w = world();
+            supported(&mut w, AT, r::WOOD_PLATE);
+            w.redstone_contacts([], &entities);
+            assert_eq!(w.get_block(AT), Some(r::plate(1, 15)), "wooden plate ignores {name}");
+            let mut w = world();
+            supported(&mut w, AT, r::STONE_PLATE);
+            w.redstone_contacts([], &entities);
+            assert_eq!(w.get_block(AT), Some(r::STONE_PLATE), "stone plate counts {name}");
+        }
+        let reference: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/redstone_contacts.json")).unwrap();
+        let orb_width = reference["entity_sizes"]["experience_orb"][0].as_f64().unwrap();
+        let touch_edge = reference["touch_max"][0].as_f64().unwrap();
+        // Place an orb 0.01 blocks inside/outside the reference's far overlap edge.
+        // Java's touch box runs x 1/16..15/16: a 0.5-wide orb centred at 1.15 touches it, at 1.2 it does not.
+        let mut entities = Entities::new(7);
+        entities.orbs.push(XpOrb::new(
+            3,
+            AT.as_dvec3() + glam::DVec3::new(touch_edge + orb_width / 2.0 - 0.01, 0.1, 0.5),
+            &mut rng,
+        ));
+        let mut w = world();
+        supported(&mut w, AT, r::WOOD_PLATE);
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::plate(1, 15)));
+        entities.orbs[0].pos = AT.as_dvec3() + glam::DVec3::new(touch_edge + orb_width / 2.0 + 0.01, 0.1, 0.5);
+        let mut w = world();
+        supported(&mut w, AT, r::WOOD_PLATE);
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::WOOD_PLATE));
+    }
+
+    #[test]
     fn pressure_plates_filter_living_entities_and_count_item_entities_not_stack_size() {
         let mut w = world();
         let mut entities = crate::entity::Entities::new(7);
