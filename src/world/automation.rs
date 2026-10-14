@@ -27,6 +27,8 @@ pub(super) struct AutomationState {
     finished: Vec<IVec3>,
     powered: FxHashSet<IVec3>,
     cooldown: FxHashMap<IVec3, u64>,
+    /// Redstone tick on which each hopper last ran its transfer tick (Java `tickedGameTime`).
+    hopper_ticked: FxHashMap<IVec3, u64>,
     pickups: Vec<IVec3>,
     output: Vec<(IVec3, u8, bool, Stack)>,
     creatures: Vec<(IVec3, Stack)>,
@@ -48,6 +50,7 @@ impl World {
         if r::base(old) != r::base(new) {
             self.automation.powered.remove(&p);
             self.automation.cooldown.remove(&p);
+            self.automation.hopper_ticked.remove(&p);
         }
         // An observer watches state changes on precisely its front face.
         for d in SIDES {
@@ -535,6 +538,18 @@ impl World {
 
     /// Returns the remaining stack; merges components exactly like inventories.
     fn insert_container(&mut self, p: IVec3, stack: Stack, side: IVec3) -> Option<Stack> {
+        self.insert_container_from(p, stack, side, None)
+    }
+
+    /// `source_hopper` is the hopper pushing into `p`: Java gives an emptied destination hopper
+    /// cooldown `8 - k`, where `k` is 1 when the destination already ticked this game tick.
+    fn insert_container_from(
+        &mut self,
+        p: IVec3,
+        stack: Stack,
+        side: IVec3,
+        source_hopper: Option<IVec3>,
+    ) -> Option<Stack> {
         if self.get_block(p).and_then(super::composter::level).is_some() {
             if side == IVec3::Y && self.compost(p, stack.item) {
                 return (stack.count > 1).then_some(Stack { count: stack.count.saturating_sub(1), ..stack });
@@ -561,7 +576,9 @@ impl World {
                 && (0..count).all(|i| self.container_stack(p, i).is_none());
             self.set_container_stack(p, slot, Some(Stack { count: old.map_or(0, |s| s.count) + n, ..left }));
             if empty_hopper {
-                self.automation.cooldown.insert(p, self.redstone.tick + 8);
+                let ticked = source_hopper.is_some()
+                    && self.automation.hopper_ticked.get(&p).is_some_and(|&t| t >= self.redstone.tick);
+                self.automation.cooldown.insert(p, self.redstone.tick + 8 - ticked as u64);
             }
             left.count -= n;
             if left.count == 0 {
@@ -582,7 +599,9 @@ impl World {
             if !self.can_extract(from, slot, out_side) {
                 continue;
             }
-            if self.insert_container(to, Stack { count: 1, ..stack }, in_side).is_none() {
+            let source_hopper =
+                matches!(self.get_block(from).and_then(r::component), Some(Component::Hopper { .. })).then_some(from);
+            if self.insert_container_from(to, Stack { count: 1, ..stack }, in_side, source_hopper).is_none() {
                 self.set_container_stack(
                     from,
                     slot,
@@ -595,6 +614,7 @@ impl World {
     }
 
     fn hopper_tick(&mut self, p: IVec3, facing: u8) {
+        self.automation.hopper_ticked.insert(p, self.redstone.tick);
         if let Some(&due) = self.automation.cooldown.get(&p)
             && due > self.redstone.tick
         {
@@ -1169,5 +1189,31 @@ mod tests {
         w.tick_automation_entities(&mut e);
         assert!(e.items.is_empty());
         assert!(e.cart(id).unwrap().slots.contains(&Some(stack)));
+    }
+    #[test]
+    fn emptied_destination_hopper_cooldown_is_seven_when_it_already_ticked_this_tick() {
+        // Java HopperBlockEntity.tryMoveInItem: cooldown 8 - k, k = 1 when the destination
+        // hopper's tickedGameTime >= the source hopper's (and only a hopper source counts).
+        let mut w = world();
+        put(&mut w, P, r::hopper(2, false));
+        put(&mut w, P + IVec3::X, r::hopper(4, false));
+        w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::DIAMOND, 4));
+        ticks(&mut w, 1);
+        let now = w.redstone.tick;
+        w.automation.cooldown.remove(&(P + IVec3::X));
+        w.automation.hopper_ticked.insert(P + IVec3::X, now - 1);
+        assert!(w.transfer_one(P, P + IVec3::X, IVec3::X, IVec3::NEG_X));
+        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 8)));
+        w.chest_mut(P + IVec3::X).unwrap().slots[0] = None;
+        w.automation.hopper_ticked.insert(P + IVec3::X, now);
+        assert!(w.transfer_one(P, P + IVec3::X, IVec3::X, IVec3::NEG_X));
+        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 7)));
+        // A non-hopper source never gets the optimization.
+        w.chest_mut(P + IVec3::X).unwrap().slots[0] = None;
+        put(&mut w, P - IVec3::X, Block::CHEST);
+        w.chest_mut(P - IVec3::X).unwrap().slots[0] = Some(Stack::new(Item::DIAMOND, 1));
+        w.automation.hopper_ticked.insert(P + IVec3::X, now);
+        assert!(w.insert_container_from(P + IVec3::X, Stack::new(Item::DIAMOND, 1), IVec3::Y, None).is_none());
+        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 8)));
     }
 }

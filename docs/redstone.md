@@ -152,9 +152,12 @@ fireball and Java dispenser inaccuracy are not implemented. Other special
 behaviours such as equipment, bonemeal and spawn eggs fall back to item drops.
 
 Hoppers push one item, then pull one from the container above in the same
-eligible cycle, followed by eight game ticks of cooldown. Empty destination
-hoppers receive a cooldown; Java's directional seven-tick optimization is
-simplified to eight. Power disables transfer and pickup. Furnace insertion
+eligible cycle, followed by eight game ticks of cooldown. An emptied
+destination hopper receives cooldown `8 - k` as in Java's `tryMoveInItem`: seven
+when a hopper source pushes into a hopper that already ran its tick this game
+tick, otherwise eight. The scheduled-tick order stands in for Java's
+block-entity ticker order, and a destination idling on cooldown is not
+re-ticked, so it counts as not yet ticked. Power disables transfer and pickup. Furnace insertion
 uses top input/side fuel and bottom extraction uses output or empty buckets;
 brewing insertion uses top ingredient/side bottle or blaze powder. Stack
 components survive transfer, and full/incompatible destinations consume
