@@ -1,6 +1,9 @@
-VoxelCraft 0.7.0 is about company. Open your world to LAN and play with
-friends on the same network, tame and breed animals, saddle up horses, camels
-and pigs, load llamas with chests, and sail boats across the sea.
+VoxelCraft 0.7.0 is about company and correctness. Open your world to LAN and
+play with friends on the same network, tame and breed animals, saddle up horses,
+camels and pigs, load llamas with chests, and sail boats across the sea. This
+release also fixes more than ninety places where existing features behaved
+differently from Minecraft Java Edition 26.3, from combat timing to cave
+lighting, villagers and redstone.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -50,8 +53,8 @@ Choose your download:
   and mimic nearby monsters.
 - **New animals:** wolves, foxes (sleep by day, steal items), parrots,
   rabbits and goats (watch out for rams).
-- **Leads** (four string and a slimeball) walk animals around and tie them to
-  fences. **Name tags**, renamed at an anvil, name a mob and keep it from
+- **Leads** (five string make two, as in Java 26.3) walk animals around and tie
+  them to fences. **Name tags**, renamed at an anvil, name a mob and keep it from
   despawning.
 
 ### Ride
@@ -78,6 +81,50 @@ cookie, goat horns, and melon and beetroot seeds. Saddles, name tags and horse
 armor turn up in dungeon, temple and fortress chests; saddles and name tags are
 also fishing treasure.
 
+### Copper gear
+
+- **Copper tools** (pickaxe, shovel, axe, hoe and sword) and **copper armor**,
+  crafted from copper ingots, with Java 26.3's durability, speed and defense.
+- **Copper nuggets**: nine make an ingot. Iron, golden and copper tools, armor
+  and horse armor melt down to a nugget in a furnace or blast furnace.
+- Zombies and skeletons can now spawn wearing copper armor.
+
+### Fixes: playing like Java 26.3
+
+- **Combat:** attacks now charge up like Java's. Hitting before the charge
+  finishes does less damage, and the crosshair shows the charge. Criticals,
+  sweeps, sprint knockback, Haste and Mining Fatigue follow Java's rules, and
+  entity reach is 3 blocks (5 in Creative). Crossbows gain Multishot, Piercing
+  and Quick Charge, and bows and crossbows show arm poses.
+- **Mining and building:** mining progress, tool speeds and correct tools follow
+  Java's tool rules; shears drop the right loot; snow comes in layers one to
+  eight high; saplings grow in two stages; barrels can face up or down; hay bales
+  soften falls; Adventure players can use doors, buttons, levers and composters.
+- **Lighting and spawning:** sky light now spreads properly into caves, so
+  monsters spawn in dark caves by day and never in torch light, and crops and
+  saplings grow from real light. Thunderstorms, daylight detectors and the
+  spawn-point exclusion match Java, and the End and Nether have their proper
+  ambient light.
+- **Containers and reach:** chests, furnaces, trading and vehicle storage close
+  when you walk out of range, and right-click actions work the same with a
+  mouse, a controller, over LAN and for command agents.
+- **Mobs and villagers:** villagers sleep in their beds, close doors behind them,
+  farmers harvest and replant crops, and promotions take Java's short delay.
+  Iron golems turn on players villagers dislike. Piglins celebrate a kill and
+  zombified piglins keep their weapons; witches choose and drink potions like
+  Java's; camels sit; horses in a herd share a coat; every mob can climb ladders
+  and vines.
+- **Fishing and food:** fishing uses Java 26.3's full loot tables, with luck;
+  the hook can snag mobs; pufferfish and other foods give their full effects.
+- **Redstone:** hoppers, pressure plates, dispensers (fire charges, bone meal),
+  minecarts in water, note block particles and tripwire sounds follow Java more
+  closely.
+- **World:** jungle temples now have their lever puzzle and traps, strongholds
+  use iron doors, structure chests use Java 26.3's loot tables, amethyst geodes
+  generate, and Nether biome edges blend as in Java.
+- **Performance:** large mob groups and basalt delta generation are faster, and
+  lighting work is spread across ticks.
+
 ### Known limitations
 
 - LAN is for VoxelCraft players on a trusted local network: there are no
@@ -88,11 +135,12 @@ also fishing treasure.
 - Undead horses aren't in yet (they need lightning, which isn't in yet either).
 - Surface terrain has no overhangs or floating islands, and there is no deep
   dark, ancient city, glow lichen or cave spring yet.
-- Turtle helmets and Turtle Master potions aren't in yet, and buried treasure
-  isn't generated, so there's no way to find the heart of the sea.
+- Buried treasure isn't generated, so there's no way to find the heart of the
+  sea.
 - Big dripleaves don't tilt, and pointed dripstone doesn't fall or drip.
-- There are no soul lanterns, soul campfires or Soul Speed, and crossbows have
-  no Multishot, Piercing or Quick Charge.
+- There are no soul lanterns, soul campfires, Soul Speed or spears, and no
+  wither skeleton skull block, item frames, frosted ice (Frost Walker) or
+  cauldrons.
 - Raids aren't in yet. Lecterns, looms, cartography tables and stonecutters are
   decorative.
 - Complex redstone contraptions that depend on Java's exact update order may
@@ -100,6 +148,19 @@ also fishing treasure.
 - The Ender Dragon can't be respawned, and the End has no chorus trees, cities,
   shulkers or elytra. The Wither can't be summoned yet.
 - Commands accept `@s` and `@p` only.
+- Mobs steer in straight lines with sidesteps rather than Java's pathfinding,
+  and outposts, Nether fossils and bastions use VoxelCraft's own layouts.
+- Light passes through slabs and stairs as if they were full blocks, and slabs,
+  stairs and fences can't be waterlogged.
+- Doors have no hinge side, buttons and levers can't go on floors or ceilings,
+  and grindstones only stand on the floor.
+- Spruce and jungle saplings don't grow 2x2 giant trees, and melon, pumpkin and
+  beetroot crops aren't in yet.
+- Bells don't swing, horse armor can't be dyed, strider jockeys don't spawn,
+  boats ignore currents and bubble columns, and minecarts can't carry mobs
+  across a save.
+- Controller menus, beds and respawning, and LAN between different machines,
+  haven't had a full manual test pass.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
   Minecraft.
 

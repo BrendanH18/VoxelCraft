@@ -57,6 +57,8 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Gameplay skylight and cave spawning](verification/2026-10-13-lighting-spawning.md):
   propagated sky light, cave/torch/reference scenarios, clock/weather inputs and
   Overworld/End process-restart checks; remaining shape and spawn differences.
+- [v0.7.0 play-test checklist](verification/2026-10-14-v0.7.0-playtest.md):
+  the manual pass to run before tagging v0.7.0.
 - [v0.7.0 defect inventory](verification/2026-10-13-v0.7-defect-inventory.md):
   the release checklist of every known defect and Java difference in existing
   features, with sizes and sources.
