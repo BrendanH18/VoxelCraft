@@ -1230,7 +1230,9 @@ impl Block {
         // Soul sand and mud look like full blocks, but you sink into them: Java
         // collides with a 14/16 column.
         let sink = if self == Block::SOUL_SAND || self == super::overworld_blocks::MUD { 2.0 } else { 0.0 };
-        1.0 - (self.top_drop() as f64 + sink) / 16.0
+        // `SnowLayerBlock.getCollisionShape` is one layer lower than its outline.
+        let layer = super::overworld_blocks::snow_layers(self).map_or(0.0, |_| 2.0);
+        1.0 - (self.top_drop() as f64 + sink + layer) / 16.0
     }
 
     /// What breaking this block yields in survival.
@@ -2253,10 +2255,12 @@ const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         1800 => ("crying obsidian", Opaque, all(tex::CRYING_OBSIDIAN)),
-        1900..=2076 | 2150..=2157 | 2160..=2164 | 2400..=2415 => match super::overworld_blocks::registry(id) {
-            Some(info) => info,
-            None => ("unknown", Invisible, all(0)),
-        },
+        1900..=2076 | 2150..=2157 | 2160..=2164 | 2400..=2415 | 2516..=2522 => {
+            match super::overworld_blocks::registry(id) {
+                Some(info) => info,
+                None => ("unknown", Invisible, all(0)),
+            }
+        }
         super::overworld_blocks::SAPLING_STAGE_ONE..=super::overworld_blocks::SAPLING_STAGE_ONE_LAST => {
             // The same sapling, stage 1: identical name and textures.
             let stage_zero = make(match super::overworld_blocks::sapling_stage_zero(id) {

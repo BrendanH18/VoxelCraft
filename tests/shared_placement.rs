@@ -277,3 +277,71 @@ fn combining_slabs_and_blocked_double_plants_preserve_resource_accounting() {
     assert_eq!(world.get_block(AT + IVec3::Y), Some(Block::STONE));
     assert_eq!(session.inventory.serialize(), inventory);
 }
+
+/// Java `SnowLayerBlock`: one to eight layers of two sixteenths each, collision
+/// one layer lower than the outline, `canBeReplaced` stacking from the top face,
+/// loot of one snowball (or silk-touched layer) per layer, and a melt above
+/// block light 11. Stages append at 2516..=2522.
+#[test]
+fn snow_layers_stack_to_eight_and_have_java_heights() {
+    let layer = Item::from_block(ob::SNOW_LAYER);
+    for n in 1..=8u8 {
+        let b = ob::snow_layer(n);
+        assert_eq!(ob::snow_layers(b), Some(n));
+        assert_eq!((b.base(), b.name(), b.top_drop()), (ob::SNOW_LAYER, "snow layer", 16 - 2 * n));
+        let collision = if n == 1 { 0.0 } else { f64::from(n - 1) / 8.0 };
+        assert_eq!(b.height(), collision, "{n} layers");
+        assert_eq!(b.drop(), None, "snowballs come from the layer count");
+    }
+    let (mut world, mut session, _) = scene(layer);
+    world.set_block(WALL, Block::AIR);
+    world.set_block(WALL - IVec3::Y, Block::STONE);
+    session.player.pos = DVec3::new(7.5, 148., 4.5);
+    session.player.pitch = -std::f32::consts::FRAC_PI_2;
+    session.inventory.slots[0] = Some(Stack::new(Item::from_block(ob::SNOW_LAYER), 20));
+    for n in 1..=8u8 {
+        let outcome = session.place_held(0, &mut world, &[]).unwrap();
+        assert!(matches!(outcome, Outcome::Placed { cell: WALL, .. }), "{outcome:?}");
+        assert_eq!(world.get_block(WALL), Some(ob::snow_layer(n)));
+    }
+    assert_eq!(session.inventory.get(0).map(|s| s.count), Some(12));
+    // A full eight-layer snow block is solid ground: the ninth layer starts a new block above.
+    session.place_held(0, &mut world, &[]).unwrap();
+    assert_eq!(world.get_block(WALL), Some(ob::snow_layer(8)));
+    assert_eq!(world.get_block(WALL + IVec3::Y), Some(ob::SNOW_LAYER));
+    // Clicking the side of a snow block places beside it instead of stacking.
+    let (mut world, mut session, _) = scene(layer);
+    world.set_block(WALL, ob::snow_layer(3));
+    world.set_block(WALL - IVec3::Y, Block::STONE);
+    session.player.pos = DVec3::new(4.5, 144.5, 4.5);
+    session.player.yaw = 0.0;
+    session.player.pitch = 0.0;
+    world.set_block(AT - IVec3::Y, Block::STONE);
+    session.place_held(0, &mut world, &[]).unwrap();
+    assert_eq!(world.get_block(WALL), Some(ob::snow_layer(3)), "side clicks do not stack");
+    assert_eq!(world.get_block(AT), Some(ob::SNOW_LAYER));
+}
+
+#[test]
+fn snow_layers_drop_by_count_melt_in_light_and_keep_every_layer_with_silk_touch() {
+    use voxelcraft::enchant::{Enchantment, Enchants};
+    let (mut world, _, _) = scene(Item::SNOWBALL);
+    for n in 1..=8u8 {
+        world.drops.clear();
+        world.spill_mined(AT, ob::snow_layer(n), Enchants::NONE);
+        assert_eq!(
+            world.drops.iter().map(|(_, s)| (s.item, s.count)).collect::<Vec<_>>(),
+            [(Item::SNOWBALL, n)],
+            "{n}"
+        );
+        world.drops.clear();
+        let mut silk = Enchants::NONE;
+        silk.set(Enchantment::SilkTouch, 1);
+        world.spill_mined(AT, ob::snow_layer(n), silk);
+        assert_eq!(
+            world.drops.iter().map(|(_, s)| (s.item, s.count)).collect::<Vec<_>>(),
+            [(Item::from_block(ob::SNOW_LAYER), n)],
+            "{n}"
+        );
+    }
+}

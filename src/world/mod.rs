@@ -1124,7 +1124,9 @@ impl World {
                 return (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
             }
         }
-        ([0.0; 3], [1.0, b.height() as f32, 1.0])
+        // The outline follows the visual top, not the collision height (snow
+        // layers collide one layer lower, soul sand and mud sink under their top).
+        ([0.0; 3], [1.0, 1.0 - f32::from(b.top_drop()) / 16.0, 1.0])
     }
 
     /// Like [`World::raycast`], but also stops at water and lava sources
@@ -1711,6 +1713,36 @@ mod tests {
         assert_eq!(world.get_block(IVec3::new(0, y + 1, 0)), Some(Block::AIR));
         let falling = world.falling_blocks().len();
         assert!((3..=4).contains(&falling), "{falling} sand blocks falling");
+    }
+
+    #[test]
+    fn snow_layers_melt_only_in_bright_block_light() {
+        use super::overworld_blocks as ob;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let y = 200;
+        for x in -8..=8 {
+            for z in -8..=8 {
+                world.edit(IVec3::new(x, y, z), Block::DIRT, false);
+            }
+        }
+        // Far from any torch the layers stay put.
+        let far = IVec3::new(-6, y + 1, -6);
+        world.set_block(far, ob::snow_layer(3));
+        for _ in 0..50 {
+            world.random_tick(far);
+        }
+        assert_eq!(world.get_block(far), Some(ob::snow_layer(3)));
+        // Beside a torch (block light 13 > 11) they melt and drop their snowballs.
+        let near = IVec3::new(2, y + 1, 2);
+        world.set_block(near, ob::snow_layer(3));
+        world.set_block(near + IVec3::X, Block::TORCH);
+        world.drops.clear();
+        world.random_tick(near);
+        assert_eq!(world.get_block(near), Some(Block::AIR));
+        assert_eq!(
+            world.drops.iter().map(|(_, s)| (s.item, s.count)).collect::<Vec<_>>(),
+            [(crate::item::Item::SNOWBALL, 3)]
+        );
     }
 
     #[test]

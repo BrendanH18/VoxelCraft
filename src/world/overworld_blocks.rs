@@ -11,6 +11,7 @@
 //! | 1980..=2009 | coral blocks, coral and coral fans, live then dead, five colours each |
 //! | 2010..=2031 | dark oak, mangrove, cherry and pale oak leaves and saplings; pale oak wood; roots; bamboo; petals; hanging moss |
 //! | 2032..=2076 | flowers, double plants, lily pad, vines, sweet berries, cocoa, mushroom blocks |
+//! | 2516..=2522 | snow layers 2..=8 (1910 is the single layer) |
 //! | 2508..=2515 | saplings at `stage` 1 (oak, spruce, birch, jungle, acacia, dark oak, cherry, pale oak) |
 //! | 2400..=2415 | wall amethyst buds and clusters (GEN-02): facing south, north, east, west, four sizes each |
 //!
@@ -457,7 +458,7 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
         1907 => ("moss block", Opaque, all(t::MOSS)),
         1908 => ("pale moss block", Opaque, all(t::PALE_MOSS)),
         1909 => ("blue ice", Opaque, all(t::BLUE_ICE)),
-        1910 => ("snow layer", Cutout, all(t::SNOW_LAYER)),
+        1910 | SNOW_LAYERS_2..=SNOW_LAYERS_8 => ("snow layer", Cutout, all(t::SNOW_LAYER)),
         1911 => ("moss carpet", Cutout, all(t::MOSS)),
         1912 => ("pale moss carpet", Cutout, all(t::PALE_MOSS)),
         1913 => ("dripstone block", Opaque, all(t::DRIPSTONE)),
@@ -612,6 +613,7 @@ pub const fn base(id: u16) -> Option<Block> {
         2059..=2061 => SWEET_BERRY_BUSH,
         2160..=2164 => MANGROVE_PROPAGULE,
         SAPLING_STAGE_ONE..=SAPLING_STAGE_ONE_LAST => STAGE_ZERO[(id - SAPLING_STAGE_ONE) as usize],
+        SNOW_LAYERS_2..=SNOW_LAYERS_8 => SNOW_LAYER,
         2063..=2073 => COCOA,
         _ => return None,
     })
@@ -691,6 +693,10 @@ pub fn drop(b: Block) -> Option<Option<Item>> {
     if is_wall_bud(b.0) {
         return Some(None);
     }
+    // Snow drops snowballs by layer count (see `spill_mined`).
+    if snow_layers(b).is_some() {
+        return Some(None);
+    }
     if !(FIRST..=LAST).contains(&b.0) {
         return None;
     }
@@ -746,7 +752,7 @@ pub fn silk_drop(b: Block) -> Option<Item> {
         1900 | 1903 | 1909 | 1926..=1933 | 2400..=2415 | 1976..=1979 | 1990..=2009 | 1980..=1984 | 2074..=2076 => {
             Some(b.base().into())
         }
-        1910 => Some(SNOW_LAYER.into()),
+        1910 | SNOW_LAYERS_2..=SNOW_LAYERS_8 => Some(SNOW_LAYER.into()),
         _ => sheared_drop(b),
     }
 }
@@ -794,6 +800,28 @@ pub const fn sapling_stage_zero(id: u16) -> Option<Block> {
     }
 }
 
+/// Snow with `layers` 2..=8 (Java `SnowLayerBlock.LAYERS`); one layer is 1910.
+pub const SNOW_LAYERS_2: u16 = 2516;
+pub const SNOW_LAYERS_8: u16 = 2522;
+
+/// How many layers a snow block holds (1..=8), `None` for other blocks.
+pub const fn snow_layers(b: Block) -> Option<u8> {
+    match b.0 {
+        1910 => Some(1),
+        SNOW_LAYERS_2..=SNOW_LAYERS_8 => Some((b.0 - SNOW_LAYERS_2) as u8 + 2),
+        _ => None,
+    }
+}
+
+/// The snow block holding `layers` (clamped to 1..=8).
+pub const fn snow_layer(layers: u8) -> Block {
+    match layers {
+        0 | 1 => SNOW_LAYER,
+        n if n >= 8 => Block(SNOW_LAYERS_8),
+        n => Block(SNOW_LAYERS_2 + n as u16 - 2),
+    }
+}
+
 /// `SaplingBlock.advanceTree`'s first step: the stage-1 state of a stage-0
 /// sapling (`None` for anything else, including stage-1 saplings).
 pub fn sapling_stage_one(b: Block) -> Option<Block> {
@@ -818,11 +846,16 @@ pub fn can_stay_on(block: Block, below: Block) -> Option<bool> {
     if egg_count(block).is_some() {
         return Some(true);
     }
+    // `SnowLayerBlock.canSurvive`: any layer count stands on a full face, and
+    // on a snow block of eight layers.
+    if let Some(layers) = snow_layers(block) {
+        let _ = layers;
+        return Some(sturdy(below) || below.is_leaves() || snow_layers(below) == Some(8));
+    }
     if !(FIRST..=LAST).contains(&id) {
         return None;
     }
     Some(match id {
-        1910 => sturdy(below) || below.is_leaves(),
         1911 | 1912 | 2029 => below.is_solid() && below.kind() != RenderKind::Cross,
         1914..=1918 => sturdy(below) || matches!(dripstone_of(below), Some((false, _))),
         1926..=1929 => sturdy(below),
@@ -1003,7 +1036,8 @@ pub fn collision(b: Block) -> Option<&'static [super::shape::Box16]> {
 /// Height (in 1/16) a low block's top sits under the cell's top.
 pub fn top_drop(b: Block) -> Option<u8> {
     Some(match b.0 {
-        1910 => 14,
+        // Two sixteenths per layer; eight layers fill the cell.
+        1910 | SNOW_LAYERS_2..=SNOW_LAYERS_8 => 16 - 2 * snow_layers(b).unwrap_or(1),
         1911 | 1912 | 2029 | 2053 => 15,
         _ => return None,
     })

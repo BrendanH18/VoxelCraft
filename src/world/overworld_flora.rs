@@ -393,7 +393,7 @@ impl World {
     /// saplings from the new leaves). Pushes onto `out`.
     pub(super) fn overworld_drops(&mut self, b: Block, fortune: u64, out: &mut Vec<Stack>) {
         match b.0 {
-            1910 => out.push(Stack::new(Item::SNOWBALL, 1)),
+            1910 | 2516..=2522 => out.push(Stack::new(Item::SNOWBALL, ob::snow_layers(b).unwrap_or(1))),
             1929 | 1933 | 2403 | 2407 | 2411 | 2415 => {
                 // Clusters: 4 shards, times Java's ore bonus with fortune.
                 let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1);

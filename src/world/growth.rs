@@ -94,13 +94,16 @@ impl World {
         if tool.has(Enchantment::SilkTouch)
             && let Some(item) = crate::mining::silk_drop(block)
         {
-            self.drops.push((p, Stack::new(item, 1)));
+            // A silk-touched snow block keeps every layer.
+            let count = super::overworld_blocks::snow_layers(block).unwrap_or(1);
+            self.drops.push((p, Stack::new(item, count)));
             return;
         }
         let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
         out.extend(block.drop().map(|item| Stack::new(item, 1)));
         if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
+            || super::overworld_blocks::snow_layers(block).is_some()
             || super::overworld_blocks::bud_facing(block).is_some()
         {
             self.overworld_drops(block, fortune, &mut out);
@@ -275,6 +278,14 @@ impl World {
             b if b.is_sapling() => {
                 if self.grows_here(p) && self.one_in(SAPLING_GROWTH) {
                     self.advance_tree(p);
+                }
+            }
+            // `SnowLayerBlock.randomTick`: block light above 11 melts it, with drops.
+            b if super::overworld_blocks::snow_layers(b).is_some() => {
+                self.update_block_light();
+                if self.block_light(p) > 11 {
+                    self.spill_block(p, b);
+                    self.edit(p, Block::AIR, true);
                 }
             }
             // `RedStoneOreBlock.randomTick`: a lit ore goes dark.

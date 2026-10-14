@@ -64,7 +64,7 @@ The compact house/street/farm/meeting pools are original geometry inspired
 by Java's jigsaw pools. They do not reproduce the full vanilla NBT template
 catalogue, pool weights, processor lists, abandoned variants, decorative
 pools, terrain beard blending or specialized profession chest tables.
-Snow roofs currently use full snow blocks because snow layers are absent.
+Snow roofs still use full snow blocks; snow layers now exist (1 to 8) but the village pieces have not been changed to place them.
 
 Baseline on Apple M5, `--bench --rd 4`: 0.228 ms/generated chunk,
 0.678 ms/dense chunk for light+mesh. Overlap painting, signed placement,
