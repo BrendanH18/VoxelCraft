@@ -518,3 +518,16 @@ fn progress_survives_dropping_part_of_the_stack_a_mode_change_and_picking_the_sa
     assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
     assert_eq!(s.breaking(&w), None);
 }
+
+#[test]
+fn continued_mining_does_not_relight_ore_after_a_random_tick() {
+    let (mut w, mut s, mut e) = scene(Block::REDSTONE_ORE, Dimension::Overworld);
+    let rules = GameRules::default();
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    assert_eq!(w.get_block(AT), Some(Block(1435)));
+    // Java's random tick can extinguish the ore during a held attack.
+    w.set_block(AT, Block::REDSTONE_ORE);
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    assert_eq!(w.get_block(AT), Some(Block::REDSTONE_ORE));
+    assert!(s.breaking(&w).is_some());
+}

@@ -160,8 +160,6 @@ impl PlayerSession {
         let effects = &self.vitals.effects;
         self.mining.progress +=
             mining::dig_progress_with(block, digger, effects.dig_speed_factor(), effects.mining_factor());
-        // Lit redstone ore is retained while it is being mined.
-        world.touch_redstone_ore(pos);
         if self.mining.progress < 1. {
             world.particles.push(Request::Hit { cell: pos, block, face });
             return Ok(Outcome::Hit { player: self.id, cell: pos, block, progress: self.mining.progress });
