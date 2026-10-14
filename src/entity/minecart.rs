@@ -323,9 +323,8 @@ impl Minecart {
             self.fall_distance += (from - self.pos.y).max(0.0);
         }
         if hit.on_ground {
-            if self.fall_distance > 3.0 {
-                self.damage = 100.0;
-            }
+            // Java 26.3 AbstractBoat.checkFallDamage only resets the
+            // distance on landing; boats no longer break from a hard fall.
             self.fall_distance = 0.0;
         }
     }
@@ -1102,6 +1101,36 @@ mod tests {
         c.rider = Some(super::super::PlayerId(u32::MAX));
         assert_eq!(Minecart::deserialize(&c.serialize()).unwrap().rider, c.rider);
     }
+    #[test]
+    fn java_26_3_boats_survive_hard_landings_with_riders_and_cargo() {
+        let mut w = world();
+        for x in 0..16 {
+            for z in 0..16 {
+                w.set_block(IVec3::new(x, 139, z), Block::STONE);
+            }
+        }
+        for wood in [0, 9] {
+            for chest in [false, true] {
+                let mut boat = Minecart::new(1, CartKind::Boat { wood, chest }, DVec3::new(5., 158., 5.));
+                boat.rider = Some(super::super::PlayerId::HOST);
+                boat.slots[0] = chest.then(|| Stack::new(Item::DIAMOND, 3));
+                for _ in 0..200 {
+                    boat.step(&w, DVec3::ZERO, false);
+                    if boat.on_ground {
+                        break;
+                    }
+                }
+                assert!(boat.on_ground && boat.pos.y < 141., "landed from eighteen blocks");
+                assert_eq!(boat.damage, 0.);
+                assert_eq!(boat.fall_distance, 0.);
+                assert_eq!(boat.rider, Some(super::super::PlayerId::HOST));
+                let loaded = Minecart::deserialize(&boat.serialize()).unwrap();
+                assert_eq!(loaded.slots[0], chest.then(|| Stack::new(Item::DIAMOND, 3)));
+                assert_eq!(loaded.kind, boat.kind);
+            }
+        }
+    }
+
     #[test]
     fn blue_ice_retains_more_boat_momentum_than_packed_ice_or_land() {
         let mut w = world();

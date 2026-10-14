@@ -14,8 +14,11 @@ controller riders. Hulls, wood colours and animated paddles are procedural.
 
 Water gives buoyancy and momentum; ice and packed ice keep more momentum,
 and blue ice keeps the most. Land travel is slow. Submerged boats eject
-players. Punching breaks a boat into its item; a hard fall over three blocks
-breaks it into three matching planks and two sticks, spilling its contents.
+players. Punching breaks a boat into its item. Java 26.3 boats and rafts survive
+hard falls: `AbstractBoat.checkFallDamage` resets the accumulated distance on
+landing without a damage/destroy/drop call. Ordinary and chest variants now
+retain riders and cargo through hard landings; landing/save tests cover both
+boat and raft forms.
 
 Reference rules: [boats](https://minecraft.wiki/w/Boat),
 [chest boats](https://minecraft.wiki/w/Boat_with_Chest),
