@@ -614,6 +614,8 @@ pub struct Entities {
     /// Java `doMobLoot`; set by the world before each update.
     pub mob_loot: bool,
     pub moon_brightness: f32,
+    /// The overworld clock in ticks (Java's `getOverworldClockTime`), for local difficulty.
+    pub clock_time: i64,
     /// The world's difficulty as of the latest update (Java's
     /// `Level.getDifficulty()`, which equipment rolls read at spawn).
     pub difficulty: crate::simulation::difficulty::Difficulty,
@@ -685,6 +687,7 @@ impl Entities {
             fight: None,
             mob_loot: true,
             moon_brightness: 1.0,
+            clock_time: 0,
             difficulty: Default::default(),
             village_time: 0.25,
             village_day: 0,
@@ -778,9 +781,16 @@ impl Entities {
             }
         }
         if kind.is_zombie() || kind == MobKind::Skeleton {
+            // Java's local difficulty at the spawn; chunk inhabited time is not tracked.
+            let special = crate::simulation::difficulty::special_multiplier(self.difficulty.effective(
+                self.clock_time,
+                0,
+                self.moon_brightness,
+            ));
             let (armor, glint) = armor::roll_monster_armor(
                 &mut self.rng,
                 self.difficulty == crate::simulation::difficulty::Difficulty::Hard,
+                special,
             );
             mob.armor = armor;
             mob.armor_glint = glint;
@@ -1696,6 +1706,28 @@ mod tests {
             raining: false,
             dimension: Dimension::Overworld,
         }
+    }
+
+    #[test]
+    fn spawned_monster_gear_follows_the_local_difficulty() {
+        use crate::simulation::difficulty::Difficulty;
+        let armored = |difficulty: Difficulty, clock: i64| {
+            let mut e = Entities::new(11);
+            e.difficulty = difficulty;
+            e.clock_time = clock;
+            e.moon_brightness = 1.0;
+            for _ in 0..4000 {
+                e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
+            }
+            e.mobs.iter().filter(|m| m.armor.iter().any(Option::is_some)).count()
+        };
+        assert_eq!(armored(Difficulty::Normal, 0), 0, "effective difficulty 1.5 is below Java's threshold");
+        assert_eq!(armored(Difficulty::Peaceful, 10_000_000), 0);
+        // Hard at the start: 3 * 0.75 = 2.25, a special multiplier of 0.125.
+        let hard = armored(Difficulty::Hard, 0) as f64 / 4000.0;
+        assert!((hard - 0.15 * 0.125).abs() < 0.008, "{hard}");
+        let late = armored(Difficulty::Normal, 10_000_000) as f64 / 4000.0;
+        assert!((late - 0.15 * 0.25).abs() < 0.01, "{late}");
     }
 
     #[test]

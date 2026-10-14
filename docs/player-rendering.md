@@ -103,8 +103,11 @@ overlay, and chainmail, iron, gold, diamond and netherite are generic
 panel patterns. Chainmail is rolled onto zombies and skeletons; it is not
 a player item. Netherite helmets, chestplates, leggings and boots use
 the same path. Enchanted pieces add a scrolling glint in the entity fragment
-shader. Monster equipment follows Java's feet-first 15% roll at regional
-difficulty 1, without held weapons or local-difficulty scaling.
+shader. Monster equipment follows Java's feet-first roll, scaled by the local
+difficulty (`DifficultyInstance` from the overworld clock and moon phase; chunk
+inhabited time is not tracked, so a fresh Normal world spawns plain mobs). Each
+worn piece is enchanted with probability `0.5 * special multiplier`. Mobs have
+no held-item slot, so spawn weapons and weapon enchantments are not modelled.
 
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/client/renderer/entity/layers/HumanoidArmorLayer.java
 
