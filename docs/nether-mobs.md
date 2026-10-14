@@ -286,7 +286,8 @@ different pitches.
   Java's exact jigsaw spots. Treasure-room magma cube spawners are still absent.
 - **Crossbow**: crafted with Java's recipe and supports existing durability
   enchantments, but no Multishot, Piercing or Quick Charge, and no first-person
-  loading pose. Device-free agents have no bow or crossbow use command.
+  loading pose. Device-free agents use the `draw [ticks]` command, which holds use through
+  the shared session.
 - **Line of sight** uses the existing block raycast, which treats every solid block
   as opaque.
 - **Visibility**: anger and hunting counts check distance, not sight lines.

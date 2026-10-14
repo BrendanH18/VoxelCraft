@@ -14,7 +14,7 @@ use crate::simulation::survival::{self, Vitals};
 use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -23,6 +23,8 @@ pub enum Event {
     Placed(IVec3, Block),
     Bucket(crate::survival_items::bucket::Effect),
     Chew,
+    /// Drew, loaded, fired or shot a bow or crossbow.
+    Shot(crate::session::ranged::Shot),
     /// Absorbed an experience orb; with the level-up chime volume when it
     /// reached a multiple of five levels.
     Xp(Option<f32>),
@@ -56,6 +58,8 @@ pub struct Agent {
     /// Holding "use" eats held food; `bite` counts the ticks chewed.
     eating: bool,
     bite: u32,
+    /// Holding "use" with a bow or crossbow until `remaining` ticks run out.
+    drawing: bool,
     cooldown: f64,
     /// The world's `keepInventory` rule, refreshed every tick so deaths
     /// outside `tick_rules` (mobs, pearls, `kill`) honour it too.
@@ -89,6 +93,7 @@ impl Agent {
             mining: false,
             eating: false,
             bite: 0,
+            drawing: false,
             cooldown: 0.0,
             keep_inventory: false,
         }
@@ -185,6 +190,31 @@ impl Agent {
                 self.bite = 0;
                 self.session.cancel_consumption();
             }
+            Command::Draw(duration) => {
+                if !self.session.mode.can_interact() {
+                    return Err("this game mode cannot use items".into());
+                }
+                if self.cooldown > 0.0 {
+                    return Err("action cooling down".into());
+                }
+                let Some(shot) = self.session.start_draw(self.selected, world, entities) else {
+                    return Err("hold a bow or crossbow with an arrow, away from a block that takes use".into());
+                };
+                self.emit(Event::Shot(shot));
+                if shot.ranged == crate::session::ranged::Ranged::Drawing {
+                    self.input = MoveInput::default();
+                    self.remaining = duration;
+                    self.mining = false;
+                    self.eating = false;
+                    self.drawing = true;
+                    self.session.cancel_consumption();
+                    self.session.cancel_mining();
+                } else {
+                    // A charged crossbow fired at once.
+                    self.cooldown = 0.22;
+                    self.swings += 1;
+                }
+            }
             Command::Look(yaw, pitch) => {
                 self.session.player.yaw = yaw.to_radians();
                 self.session.player.pitch = pitch.to_radians();
@@ -194,6 +224,8 @@ impl Agent {
                 self.selected = slot;
                 self.bite = 0;
                 self.session.cancel_consumption();
+                self.drawing = false;
+                self.session.cancel_draw();
             }
             Command::Fly(on) => {
                 if on && !self.session.mode.can_fly() {
@@ -691,6 +723,7 @@ impl Agent {
                 Err(_) => {}
             }
         }
+        self.draw(entities);
         self.chew(entities);
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);
@@ -774,6 +807,32 @@ impl Agent {
             self.damage(consumed.magic_damage, survival::CAUSE_MAGIC);
             if self.remaining <= 1 {
                 self.eating = false;
+            }
+        }
+    }
+
+    /// One tick of holding use with a bow or crossbow: a crossbow loads when
+    /// its charge completes; a bow shoots when the requested ticks have passed.
+    fn draw(&mut self, entities: &mut Entities) {
+        if !self.drawing {
+            return;
+        }
+        if self.remaining == 0 || self.session.vitals.is_dead() {
+            self.drawing = false;
+            self.session.cancel_draw();
+            return;
+        }
+        if let Some(shot) = self.session.tick_draw(self.selected, true) {
+            self.emit(Event::Shot(shot));
+        }
+        if !self.session.drawing() {
+            // Loaded, or the draw ended (the slot changed, the arrows ran out).
+            self.drawing = false;
+        } else if self.remaining <= 1 {
+            self.drawing = false;
+            if let Some(shot) = self.session.release_draw(self.selected, entities) {
+                self.emit(Event::Shot(shot));
+                self.swings += 1;
             }
         }
     }

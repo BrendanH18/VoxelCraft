@@ -272,3 +272,63 @@ fn animal_clicks_use_the_entity_interaction_range() {
         s.use_held(0, &mut w, &mut e, &UseContext { sneaking: false, others: &[] }).ok().flatten().map(|u| u.used);
     assert_ne!(used, Some(Used::Animal));
 }
+
+/// The CLI's `draw [ticks]` holds use through fixed ticks: a bow shoots at the
+/// requested draw, a crossbow loads after 25 ticks, and a charged crossbow fires
+/// at once, all through the shared session.
+#[test]
+fn the_cli_draw_command_shoots_bows_loads_crossbows_and_fires_charged_ones() {
+    use voxelcraft::agent::{Agent, Command, Event};
+    use voxelcraft::session::ranged::{Ranged, power};
+    let run = |agent: &mut Agent, w: &mut World, e: &mut Entities, ticks: u32| {
+        for _ in 0..ticks {
+            agent.tick(w, e);
+        }
+    };
+    let (mut w, s, mut e) = scene(Some(Item::BOW));
+    let mut agent = Agent::new(s.player.pos);
+    agent.session.player.on_ground = true;
+    agent.session.inventory.slots[0] = Some(Stack::new(Item::BOW, 1));
+    agent.session.inventory.slots[1] = Some(Stack::new(Item::ARROW, 3));
+    agent.execute(Command::Draw(12), &mut w, &mut e, &[]).unwrap();
+    run(&mut agent, &mut w, &mut e, 12);
+    let shot = agent.events.iter().find_map(|ev| match ev {
+        Event::Shot(shot) => match shot.ranged {
+            Ranged::ArrowShot { power, .. } => Some(power),
+            _ => None,
+        },
+        _ => None,
+    });
+    assert_eq!(shot, Some(power(12)), "events: {:?}", agent.events);
+    assert_eq!(e.arrows.len(), 1);
+    assert_eq!(agent.session.inventory.get(1).unwrap().count, 2);
+    assert_eq!(agent.session.inventory.get(0).unwrap().damage, 1);
+    // No more shots after the requested ticks.
+    run(&mut agent, &mut w, &mut e, 30);
+    assert_eq!(e.arrows.len(), 1);
+
+    // A crossbow loads once and fires on the next command.
+    agent.events.clear();
+    agent.session.inventory.slots[0] = Some(Stack::new(Item::CROSSBOW, 1));
+    agent.execute(Command::Draw(25), &mut w, &mut e, &[]).unwrap();
+    run(&mut agent, &mut w, &mut e, 25);
+    assert_eq!(agent.session.inventory.get(0).unwrap().item, Item::CHARGED_CROSSBOW);
+    assert_eq!(agent.session.inventory.get(1).unwrap().count, 1, "loading spends one arrow");
+    assert!(
+        agent.events.iter().any(|ev| matches!(ev, Event::Shot(s) if matches!(s.ranged, Ranged::CrossbowLoaded { .. })))
+    );
+    agent.execute(Command::Draw(1), &mut w, &mut e, &[]).unwrap();
+    assert_eq!(agent.session.inventory.get(0).unwrap().item, Item::CROSSBOW);
+    assert_eq!(e.arrows.len(), 2);
+
+    // A short crossbow draw just lowers it, and a bow needs an arrow.
+    run(&mut agent, &mut w, &mut e, 6);
+    agent.execute(Command::Draw(10), &mut w, &mut e, &[]).unwrap();
+    run(&mut agent, &mut w, &mut e, 10);
+    assert_eq!(agent.session.inventory.get(0).unwrap().item, Item::CROSSBOW);
+    assert_eq!(agent.session.inventory.get(1).unwrap().count, 1);
+    agent.session.inventory.slots[1] = None;
+    assert!(agent.execute(Command::Draw(5), &mut w, &mut e, &[]).is_err());
+    agent.session.inventory.slots[0] = Some(Stack::new(Item::STICK, 1));
+    assert!(agent.execute(Command::Draw(5), &mut w, &mut e, &[]).is_err());
+}

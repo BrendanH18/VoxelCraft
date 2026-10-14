@@ -19,7 +19,7 @@ use voxelcraft::rules::GameRules;
 use voxelcraft::session::{
     PlayerSession,
     interact::{UseContext, Used},
-    ranged::{Ranged, Shot},
+    ranged::Shot,
 };
 
 use super::gamepad::Body;
@@ -263,15 +263,7 @@ impl Actor<'_> {
     }
 
     fn present_shot(&mut self, shot: Shot) {
-        match shot.ranged {
-            Ranged::Drawing => {}
-            Ranged::CrossbowLoaded { from } => self.audio.play(Sound::Bow, Some(from), 0.5, (0.55, 0.65)),
-            Ranged::CrossbowFired { from } => self.audio.play(Sound::Bow, Some(from), 0.9, (1.25, 1.35)),
-            Ranged::ArrowShot { from, power } => {
-                let pitch = (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power));
-                self.audio.play(Sound::Bow, Some(from), 0.8, pitch);
-            }
-        }
+        items::shot_sound(self.audio, shot.ranged);
         if let Some(item) = shot.tool_broken {
             self.popup(format!("{} broke", capitalize(item.name())));
         }

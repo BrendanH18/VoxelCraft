@@ -249,6 +249,20 @@ pub(super) fn xp_sounds(audio: &mut Audio, at: Option<DVec3>, chime: Option<f32>
     }
 }
 
+/// A bow or crossbow being loaded or loosed (shared by every input path).
+pub(super) fn shot_sound(audio: &mut Audio, ranged: voxelcraft::session::ranged::Ranged) {
+    use voxelcraft::session::ranged::Ranged;
+    match ranged {
+        Ranged::Drawing => {}
+        Ranged::CrossbowLoaded { from } => audio.play(Sound::Bow, Some(from), 0.5, (0.55, 0.65)),
+        Ranged::CrossbowFired { from } => audio.play(Sound::Bow, Some(from), 0.9, (1.25, 1.35)),
+        Ranged::ArrowShot { from, power } => {
+            let pitch = (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power));
+            audio.play(Sound::Bow, Some(from), 0.8, pitch);
+        }
+    }
+}
+
 /// Java's eye launch whoosh, pitched down like a thrown pearl.
 pub(super) fn eye_thrown_sound(audio: &mut Audio, from: DVec3) {
     audio.play(Sound::Bow, Some(from), 0.5, (0.42, 0.62));

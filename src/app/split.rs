@@ -143,6 +143,7 @@ impl Game {
                         let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
                         self.audio.play(sound, Some(bot.agent.session.player.eye()), 0.7, (1.4, 1.7));
                     }
+                    Event::Shot(shot) => super::items::shot_sound(&mut self.audio, shot.ranged),
                     Event::Xp(chime) => {
                         super::items::xp_sounds(&mut self.audio, Some(bot.agent.session.player.eye()), chime)
                     }

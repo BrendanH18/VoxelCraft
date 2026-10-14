@@ -39,8 +39,9 @@ Bows and crossbows are session state too ([src/session/ranged.rs](../../src/sess
 drawing counts fixed ticks (20 for full power, 25 to load a crossbow) with
 Java's `BowItem.getPowerForTime` curve. The desktop already advanced them once
 per tick, so timing is unchanged. A draw belongs to its hotbar slot; selecting
-another slot lets the string go for every player. The CLI has no draw command
-yet.
+another slot lets the string go for every player. The CLI's `draw [ticks]`
+command (added on `work/fix-w1-building`) holds use through this state and is
+covered by `the_cli_draw_command_shoots_bows_loads_crossbows_and_fires_charged_ones`.
 
 ## Behavior changes
 
