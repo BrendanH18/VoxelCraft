@@ -34,9 +34,14 @@ cause a 160-tick restart delay. Burnout history is bounded per torch.
 Wire power, facing, delay and on/off states are in VXC2 block data. A versioned
 `redstone` dimension property preserves queued work, pending deadlines,
 comparator output, torch history/burnout, and powered door/gate edges. Replaced
-blocks invalidate their old ticks. Unloaded scheduled blocks wait for loading;
-this currently retries their deadlines every tick instead of Java chunk tick
-containers. Old saves without the property remain readable. Connections are
+blocks invalidate their old ticks. Due ticks for unloaded blocks are parked by
+chunk and resume on its load, retaining deadline, priority and insertion order
+without a per-tick retry. Parked ticks still use the existing v1 relative-deadline
+save records; overdue work runs on the next simulation tick after loading. The
+pinned Java 26.3 `LevelTicks.removeContainer` removes chunks from active
+scheduling while `LevelChunkTicks` retains their pending work; VoxelCraft keeps
+its in-memory absolute deadlines rather than persisting a separate chunk ticker.
+Old saves without the property remain readable. Connections are
 recomputed from neighbours rather than saved.
 
 Comparators use Java inventory fullness (floor(14 × average normalized slot

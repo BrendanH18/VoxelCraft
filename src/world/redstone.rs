@@ -39,6 +39,8 @@ pub(super) struct RedstoneState {
     queued: FxHashSet<IVec3>,
     pending: FxHashMap<IVec3, (u64, u16, u64)>,
     scheduled: BinaryHeap<ScheduledTick>,
+    /// Due work in unloaded chunks. Woken only by a chunk load, never retried each tick.
+    suspended: FxHashMap<IVec3, Vec<ScheduledTick>>,
     /// Detector-rail comparator output, filled by the minecart tick.
     pub(super) cart_signal: FxHashMap<IVec3, u8>,
     pub(super) trip_pulse: FxHashMap<IVec3, u64>,
@@ -103,6 +105,9 @@ impl World {
     }
 
     pub(super) fn load_redstone_chunk(&mut self, c: IVec3) {
+        if let Some(ticks) = self.redstone.suspended.remove(&c) {
+            self.redstone.scheduled.extend(ticks);
+        }
         // Saved state needs its connections refreshed once when loaded, including
         // adjacent chunks. Generation never places redstone components.
         let Some(slot) = self.chunks.get(&c) else { return };
@@ -624,13 +629,17 @@ impl World {
             if self.redstone.pending.get(&p) != Some(&(due, family, sequence)) {
                 continue;
             }
-            self.redstone.pending.remove(&p);
+            self.redstone.last_updates += 1;
             if self.get_block(p).is_none() {
-                let next = self.redstone.tick + 1;
-                self.redstone.pending.insert(p, (next, family, sequence));
-                self.redstone.scheduled.push(Reverse((next, priority, sequence, xyz, family)));
-            } else if self.get_block(p).map(self::family) == Some(Block(family)) {
-                self.redstone.last_updates += 1;
+                self.redstone
+                    .suspended
+                    .entry(super::chunk::chunk_of(p))
+                    .or_default()
+                    .push(Reverse((due, priority, sequence, xyz, family)));
+                continue;
+            }
+            self.redstone.pending.remove(&p);
+            if self.get_block(p).map(self::family) == Some(Block(family)) {
                 self.redstone_scheduled_tick(p);
                 self.drain_redstone_updates();
             }
@@ -836,6 +845,7 @@ impl World {
             .redstone
             .scheduled
             .iter()
+            .chain(self.redstone.suspended.values().flatten())
             .filter(|Reverse((due, _, seq, xyz, family))| {
                 self.redstone.pending.get(&IVec3::from_array(*xyz)) == Some(&(*due, *family, *seq))
             })
@@ -1062,6 +1072,41 @@ mod tests {
         assert!(on(&w, AT), "scheduled rising edges survive short input pulses");
         ticks(&mut w, 6);
         assert!(!on(&w, AT));
+    }
+
+    #[test]
+    fn unloaded_due_ticks_sleep_until_chunk_load_and_keep_v1_saves() {
+        let mut w = world();
+        supported(&mut w, AT, r::STONE_BUTTON);
+        assert!(w.use_redstone(AT));
+        let chunk = super::super::chunk::chunk_of(AT);
+        let data = w.chunks[&chunk].data.clone();
+        let deadline = w.redstone.pending[&AT];
+        w.remove_chunk(chunk);
+        ticks(&mut w, 20);
+        assert_eq!(w.redstone.pending[&AT], deadline);
+        assert!(w.redstone.scheduled.is_empty());
+        assert_eq!(w.redstone.suspended[&chunk].len(), 1);
+        ticks(&mut w, 100);
+        assert_eq!(w.redstone.last_updates, 0, "idle unloaded ticks do no work");
+        assert_eq!(w.redstone.pending[&AT], deadline);
+        let saved = w.redstone_to_string();
+        assert!(saved.contains("t,8,145,8,0,0,"), "overdue work retains the old save encoding: {saved}");
+        let mut restored = world();
+        restored.remove_chunk(chunk);
+        restored.load_redstone(&saved);
+        ticks(&mut restored, 50);
+        assert!(restored.redstone.scheduled.is_empty());
+        restored.insert_chunk(chunk, data.clone(), true);
+        ticks(&mut restored, 1);
+        assert_eq!(restored.get_block(AT), Some(r::STONE_BUTTON));
+        assert!(!restored.redstone.pending.contains_key(&AT));
+        assert!(restored.redstone.suspended.is_empty());
+        w.insert_chunk(chunk, data, true);
+        // Replacing the button invalidates the suspended tick's family/sequence.
+        put(&mut w, AT, r::LAMP);
+        ticks(&mut w, 1);
+        assert_eq!(w.get_block(AT), Some(r::LAMP));
     }
 
     #[test]
