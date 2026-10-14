@@ -14,6 +14,7 @@ impl Entities {
         difficulty: crate::simulation::difficulty::Difficulty,
     ) -> Vec<EntityEvent> {
         self.snapshot_positions();
+        self.difficulty = difficulty;
         let mut events = Vec::new();
         events.append(&mut self.pending_sounds);
         if difficulty == crate::simulation::difficulty::Difficulty::Peaceful {

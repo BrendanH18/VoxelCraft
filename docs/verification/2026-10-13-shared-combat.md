@@ -84,7 +84,8 @@ toughness or knockback resistance, copper-ingot repair and the reference armor
 recipes; it has its own worn-armor sheet (array layers 17-18) and melts to a
 copper nugget. Monster armor now rolls Java 26.3's tiers (start `nextInt(3)`
 over leather/copper/gold, three 0.1087 climbs toward chainmail, iron and
-diamond); the Hard-difficulty 10% piece-skip chance is still the non-Hard 25%.
+diamond); the later-piece skip chance is Java's 25%, or 10% on Hard (read from
+`Entities::difficulty`, set by each update; covered by a statistical test).
 `combat.json` pins every armor material and slot durability unit, and
 `tests/copper_tools.rs` checks every tool and armor material against it plus
 copper harvesting, recipes, repair and nugget smelting. Loot-table copper gear,

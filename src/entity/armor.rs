@@ -111,9 +111,10 @@ pub fn worn_pieces(armor: [Option<ArmorKind>; 4], glint: u8) -> [Option<Worn>; 4
 
 /// Java 26.3 Mob.populateDefaultEquipmentSlots at regional difficulty 1,
 /// without a held weapon. Feet are equipped first; each later piece is
-/// skipped 25% of the time (Java's non-Hard chance). The tier starts at
-/// leather, copper or gold and climbs toward diamond.
-pub fn roll_monster_armor(rng: &mut super::Rng) -> ([Option<ArmorKind>; 4], u8) {
+/// skipped 25% of the time, or 10% on Hard (Java reads
+/// `Level.getDifficulty()`). The tier starts at leather, copper or gold and
+/// climbs toward diamond.
+pub fn roll_monster_armor(rng: &mut super::Rng, hard: bool) -> ([Option<ArmorKind>; 4], u8) {
     const TIERS: [ArmorKind; 6] =
         [ArmorKind::Leather, ArmorKind::Copper, ArmorKind::Gold, ArmorKind::Chain, ArmorKind::Iron, ArmorKind::Diamond];
     let mut armor = [None; 4];
@@ -128,9 +129,10 @@ pub fn roll_monster_armor(rng: &mut super::Rng) -> ([Option<ArmorKind>; 4], u8) 
         }
     }
     let kind = TIERS[tier.min(TIERS.len() - 1)];
+    let skip = if hard { 0.1 } else { 0.25 };
     let mut first = true;
     for slot in [ArmorPiece::Boots, ArmorPiece::Leggings, ArmorPiece::Chestplate, ArmorPiece::Helmet] {
-        if !first && rng.chance(0.25) {
+        if !first && rng.chance(skip) {
             break;
         }
         first = false;
@@ -341,7 +343,7 @@ mod tests {
         let mut counts = [0; ArmorKind::ALL.len()];
         for seed in 0..2000 {
             let mut rng = super::super::Rng::new(seed);
-            let (armor, glint) = roll_monster_armor(&mut rng);
+            let (armor, glint) = roll_monster_armor(&mut rng, false);
             let equipped: Vec<_> = armor.iter().enumerate().filter_map(|(i, k)| k.map(|k| (i, k))).collect();
             if equipped.is_empty() {
                 assert_eq!(glint, 0);
@@ -362,5 +364,24 @@ mod tests {
         assert!(counts[ArmorKind::Chain as usize] > 0);
         assert!(counts[ArmorKind::Copper as usize] > 0, "26.3 monsters roll copper armor");
         assert_eq!(counts[ArmorKind::Netherite as usize], 0);
+    }
+
+    /// `Mob.populateDefaultEquipmentSlots`: after the boots, each further piece is
+    /// skipped with probability 0.25, or 0.1 when the level difficulty is Hard.
+    #[test]
+    fn hard_difficulty_skips_later_pieces_one_time_in_ten() {
+        let full_sets = |hard: bool| {
+            let (mut armored, mut full) = (0u32, 0u32);
+            for seed in 0..60000 {
+                let (armor, _) = roll_monster_armor(&mut super::super::Rng::new(seed), hard);
+                let pieces = armor.iter().flatten().count();
+                armored += u32::from(pieces > 0);
+                full += u32::from(pieces == 4);
+            }
+            f64::from(full) / f64::from(armored)
+        };
+        // Four pieces need three passed checks: 0.75^3 = 0.422 against 0.9^3 = 0.729.
+        assert!((full_sets(false) - 0.422).abs() < 0.05, "{}", full_sets(false));
+        assert!((full_sets(true) - 0.729).abs() < 0.05, "{}", full_sets(true));
     }
 }

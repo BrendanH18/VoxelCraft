@@ -614,6 +614,9 @@ pub struct Entities {
     /// Java `doMobLoot`; set by the world before each update.
     pub mob_loot: bool,
     pub moon_brightness: f32,
+    /// The world's difficulty as of the latest update (Java's
+    /// `Level.getDifficulty()`, which equipment rolls read at spawn).
+    pub difficulty: crate::simulation::difficulty::Difficulty,
     pub village_time: f64,
     pub village_day: i64,
     next_villager_id: u64,
@@ -682,6 +685,7 @@ impl Entities {
             fight: None,
             mob_loot: true,
             moon_brightness: 1.0,
+            difficulty: Default::default(),
             village_time: 0.25,
             village_day: 0,
             next_villager_id: 1,
@@ -774,7 +778,10 @@ impl Entities {
             }
         }
         if kind.is_zombie() || kind == MobKind::Skeleton {
-            let (armor, glint) = armor::roll_monster_armor(&mut self.rng);
+            let (armor, glint) = armor::roll_monster_armor(
+                &mut self.rng,
+                self.difficulty == crate::simulation::difficulty::Difficulty::Hard,
+            );
             mob.armor = armor;
             mob.armor_glint = glint;
         }
