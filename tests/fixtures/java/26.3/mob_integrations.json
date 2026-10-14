@@ -6,6 +6,152 @@
     "SnowGolem.aiStep",
     "worldgen/biome/*.json"
   ],
+  "nether_spawns": {
+    "basalt_deltas": {
+      "monster": [
+        [
+          "ghast",
+          40,
+          1,
+          1
+        ],
+        [
+          "magma_cube",
+          100,
+          2,
+          5
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "crimson_forest": {
+      "monster": [
+        [
+          "zombified_piglin",
+          1,
+          2,
+          4
+        ],
+        [
+          "hoglin",
+          9,
+          3,
+          4
+        ],
+        [
+          "piglin",
+          5,
+          3,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "nether_wastes": {
+      "monster": [
+        [
+          "ghast",
+          50,
+          4,
+          4
+        ],
+        [
+          "zombified_piglin",
+          100,
+          4,
+          4
+        ],
+        [
+          "magma_cube",
+          2,
+          4,
+          4
+        ],
+        [
+          "enderman",
+          1,
+          4,
+          4
+        ],
+        [
+          "piglin",
+          15,
+          4,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "soul_sand_valley": {
+      "monster": [
+        [
+          "skeleton",
+          20,
+          5,
+          5
+        ],
+        [
+          "ghast",
+          50,
+          4,
+          4
+        ],
+        [
+          "enderman",
+          1,
+          4,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "warped_forest": {
+      "monster": [
+        [
+          "enderman",
+          1,
+          4,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    }
+  },
   "dragon_egg": {
     "attempts": 1000,
     "draw_bounds_xyz": [

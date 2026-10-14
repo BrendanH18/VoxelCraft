@@ -11,6 +11,15 @@ import zipfile
 from extract_java_item_fixtures import SERVER_SHA1
 
 
+NETHER_BIOMES = ('nether_wastes', 'soul_sand_valley', 'crimson_forest', 'warped_forest', 'basalt_deltas')
+
+
+def count_range(count):
+    if isinstance(count, int):
+        return count, count
+    return count['min_inclusive'], count['max_inclusive']
+
+
 def extract(server, scratch):
     data = server.read_bytes()
     if hashlib.sha1(data).hexdigest() != SERVER_SHA1:
@@ -34,13 +43,21 @@ def extract(server, scratch):
     if 'EnvironmentAttributes.SNOW_GOLEM_MELTS:' not in snow:
         raise ValueError('snow golem heat check changed')
     biomes = {}
+    nether_spawns = {}
     with zipfile.ZipFile(io.BytesIO(inner)) as jar:
         for name in sorted(jar.namelist()):
             if name.startswith('data/minecraft/worldgen/biome/') and name.endswith('.json'):
                 attrs = json.loads(jar.read(name)).get('attributes', {})
                 biomes[Path(name).stem] = attrs.get('minecraft:gameplay/snow_golem_melts', False)
+                if Path(name).stem in NETHER_BIOMES:
+                    spawns = attrs['minecraft:gameplay/natural_mob_spawns']['argument']['spawns_by_category']
+                    nether_spawns[Path(name).stem] = {
+                        category: [[e['type'].removeprefix('minecraft:'), e['weight'], *count_range(e['count'])]
+                                   for e in spawns.get(category, [])]
+                        for category in ('monster', 'creature')}
     return {'reference': 'Minecraft Java Edition 26.3', 'server_sha1': SERVER_SHA1,
             'sources': ['DragonEggBlock.teleport', 'SnowGolem.aiStep', 'worldgen/biome/*.json'],
+            'nether_spawns': nether_spawns,
             'dragon_egg': {'attempts': attempts, 'draw_bounds_xyz': bounds, 'requires_non_air_below': True},
             'snow_golem_melts': biomes}
 
