@@ -9,13 +9,16 @@
 //! `gameplay/natural_mob_spawns` attribute (see
 //! `tests/fixtures/java/26.3/lighting_spawning.json`).
 //!
+//! Slimes (`Slime.checkSlimeSpawnRules`) and drowned (`IN_WATER` placement and
+//! `Drowned.checkDrownedSpawnRules`) walk the same packs with their own
+//! spawn rules.
+//!
 //! Remaining VoxelCraft limits, recorded in the lighting/spawning report:
 //! positions stay within the existing 24..64 block spawn ring (Java samples
 //! every chunk within 128 blocks), per-kind caps replace Java's local
 //! monster cap of 70, structure spawn overrides (swamp huts, monuments,
-//! outposts) are not applied, and list entries VoxelCraft spawns elsewhere
-//! (slimes, drowned) or lacks (strays, bogged, parched, zombie horses,
-//! ocelots) end their pack.
+//! outposts) are not applied, and list entries for mobs VoxelCraft lacks
+//! (strays, bogged, parched, zombie horses, ocelots) end their pack.
 
 use super::*;
 use crate::world::terrain::Biome;
@@ -63,8 +66,8 @@ impl JavaMonster {
         }
     }
 
-    /// The kind this cycle spawns for the entry. Slimes and drowned keep
-    /// their own spawn paths; the rest are not in VoxelCraft yet.
+    /// The kind this cycle spawns for the entry; zombie horses, strays,
+    /// bogged, parched and ocelots are not in VoxelCraft yet.
     pub(super) fn kind(self) -> Option<MobKind> {
         Some(match self {
             JavaMonster::Spider => MobKind::Spider,
@@ -75,6 +78,8 @@ impl JavaMonster {
             JavaMonster::Enderman => MobKind::Enderman,
             JavaMonster::Witch => MobKind::Witch,
             JavaMonster::Husk => MobKind::Husk,
+            JavaMonster::Slime => MobKind::Slime,
+            JavaMonster::Drowned => MobKind::Drowned,
             _ => return None,
         })
     }
@@ -360,16 +365,66 @@ pub(super) fn dark_enough<W: MobWorld + ?Sized>(world: &W, cell: IVec3, sky_dark
     u32::from(raw) <= rng.next_int(8)
 }
 
+/// The light and weather inputs of the spawn rules.
+#[derive(Clone, Copy)]
+pub(super) struct SpawnRules {
+    /// `Level.skyDarken` and the thunder-adjusted darkening of `Monster.isDarkEnoughToSpawn`.
+    pub light: crate::simulation::lighting::SpawnLight,
+    /// `Level.getMoonBrightness` (`surface_slime_spawn_chance` is half of it).
+    pub moon: f32,
+}
+
+/// `Slime.checkSlimeSpawnRules` for natural spawns, after the `ON_GROUND`
+/// floor checks: swamps between y 50 and 70 in dim light (chance from the
+/// moon phase), or a slime chunk below y 40 on one attempt in ten.
+fn slime_rules<W: MobWorld + ?Sized>(world: &W, cell: IVec3, rules: SpawnRules, rng: &mut Rng) -> bool {
+    if world.cave_biome(cell).is_swamp() && cell.y > 50 && cell.y < 70 && rng.next_f32() < 0.5 * rules.moon {
+        let Some(sky) = world.sky_light_level(cell) else { return false };
+        let light = sky.saturating_sub(rules.light.sky_darken).max(world.block_light(cell));
+        if u32::from(light) <= rng.next_int(8) {
+            return true;
+        }
+    }
+    let slime_chunk = super::slime::slime_chunk(world.seed(), cell.x.div_euclid(16), cell.z.div_euclid(16));
+    rng.next_int(10) == 0 && slime_chunk && cell.y < 40
+}
+
+/// `SpawnPlacementTypes.IN_WATER` and `Drowned.checkDrownedSpawnRules`: water
+/// in the cell and below it, no conducting block above, dark enough, then
+/// one attempt in 15 in rivers or one in 40 in deep water elsewhere.
+fn drowned_spot_ok<W: MobWorld + ?Sized>(world: &W, cell: IVec3, rules: SpawnRules, rng: &mut Rng) -> bool {
+    use crate::world::terrain::SEA_LEVEL;
+    let (Some(below), Some(at), Some(above)) =
+        (world.block(cell - IVec3::Y), world.block(cell), world.block(cell + IVec3::Y))
+    else {
+        return false;
+    };
+    if !at.holds_water() || is_redstone_conductor(above) || !below.holds_water() {
+        return false;
+    }
+    let can_spawn = dark_enough(world, cell, rules.light.monster_darken, rng);
+    if world.cave_biome(cell).is_river() {
+        rng.next_int(15) == 0 && can_spawn
+    } else {
+        rng.next_int(40) == 0 && cell.y < SEA_LEVEL - 5 && can_spawn
+    }
+}
+
 /// Every check Java makes on a natural monster spawn position (feet cell
-/// `cell`) after distance: `ON_GROUND` placement, the type's spawn rules and
-/// a clear, dry spawn box.
+/// `cell`) after distance: the placement type, the type's spawn rules and
+/// a clear spawn box (dry unless the mob swims).
 pub(super) fn monster_spot_ok<W: MobWorld + ?Sized>(
     world: &W,
     kind: MobKind,
     cell: IVec3,
-    sky_darken: u8,
+    rules: SpawnRules,
     rng: &mut Rng,
 ) -> bool {
+    let pos = cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+    if kind == MobKind::Drowned {
+        // `Drowned.checkSpawnObstruction` is only `isUnobstructed`: water is fine.
+        return drowned_spot_ok(world, cell, rules, rng) && !physics::overlaps_solid(world, pos, kind.shape());
+    }
     let (Some(below), Some(at), Some(above)) =
         (world.block(cell - IVec3::Y), world.block(cell), world.block(cell + IVec3::Y))
     else {
@@ -378,14 +433,17 @@ pub(super) fn monster_spot_ok<W: MobWorld + ?Sized>(
     if !valid_spawn_floor(below, kind) || !valid_empty_cell(at, kind) || !valid_empty_cell(above, kind) {
         return false;
     }
-    if !dark_enough(world, cell, sky_darken, rng) {
+    if kind == MobKind::Slime {
+        if !slime_rules(world, cell, rules, rng) {
+            return false;
+        }
+    } else if !dark_enough(world, cell, rules.light.monster_darken, rng) {
         return false;
     }
     // Husks use `checkSurfaceMonstersSpawnRules`: they also need to see the sky.
     if kind == MobKind::Husk && world.sky_light_level(cell) != Some(15) {
         return false;
     }
-    let pos = cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
     !physics::overlaps_solid(world, pos, kind.shape())
         && !physics::touches_block(world, pos, kind.shape(), |b| b.is_fluid() || b.is_waterlogged())
 }
@@ -402,6 +460,8 @@ pub(super) fn cycle_kind(kind: MobKind) -> bool {
             | MobKind::Spider
             | MobKind::Enderman
             | MobKind::Witch
+            | MobKind::Slime
+            | MobKind::Drowned
     )
 }
 
@@ -416,6 +476,11 @@ impl Entities {
     /// per Java tick, uniform in the chunk and in height from the bottom of
     /// the world to just above its `WORLD_SURFACE` block.
     pub(super) fn overworld_monsters<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx) {
+        // Light still being resolved after streaming or a large edit would
+        // read darker than it is and let monsters into lit areas.
+        if !world.light_settled() {
+            return;
+        }
         let mut chunks: Vec<(i32, i32)> = Vec::new();
         let reach = SPAWN_MAX_DIST;
         for t in &ctx.players {
@@ -436,7 +501,7 @@ impl Entities {
         }
         chunks.sort_unstable();
         chunks.dedup();
-        let darken = ctx.spawn_light.monster_darken;
+        let rules = SpawnRules { light: ctx.spawn_light, moon: self.moon_brightness };
         for _ in 0..TICKS_PER_ROUND {
             for &(cx, cz) in &chunks {
                 let x = cx * SPAWN_CHUNK + self.rng.next_int(SPAWN_CHUNK as u32) as i32;
@@ -451,7 +516,7 @@ impl Entities {
                 if y < min_y + 1 {
                     continue;
                 }
-                self.monster_packs(world, ctx, IVec3::new(x, y, z), darken);
+                self.monster_packs(world, ctx, IVec3::new(x, y, z), rules);
             }
         }
     }
@@ -459,7 +524,13 @@ impl Entities {
     /// Java's `spawnCategoryForPosition` for monsters: three packs walking
     /// from `start` in steps of `rand(6) - rand(6)`, each settling on one
     /// list entry at its first position far enough from every player.
-    pub(super) fn monster_packs<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, start: IVec3, darken: u8) {
+    pub(super) fn monster_packs<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        ctx: &Ctx,
+        start: IVec3,
+        rules: SpawnRules,
+    ) {
         // Java's `isRedstoneConductor`: a conducting start cell ends the attempt.
         if world.block(start).is_none_or(is_redstone_conductor) {
             return;
@@ -506,7 +577,7 @@ impl Entities {
                 if self.count_near(kind, near) >= kind.spawn_cap(Dimension::Overworld) {
                     break;
                 }
-                if !monster_spot_ok(world, kind, cell, darken, &mut self.rng) {
+                if !monster_spot_ok(world, kind, cell, rules, &mut self.rng) {
                     continue;
                 }
                 self.spawn_natural_monster(kind, pos);
@@ -650,7 +721,7 @@ mod tests {
         let spawn_count = |world: &World| {
             let mut e = Entities::new(3);
             for _ in 0..400 {
-                e.monster_packs(world, &night, start, night.spawn_light.monster_darken);
+                e.monster_packs(world, &night, start, rules(night.spawn_light, 1.0));
             }
             e.mobs.len()
         };
@@ -690,9 +761,14 @@ mod tests {
         }
     }
 
+    fn rules(light: crate::simulation::lighting::SpawnLight, moon: f32) -> SpawnRules {
+        SpawnRules { light, moon }
+    }
+
     /// Accepted spawns out of `trials` for a zombie at `cell`.
     fn accepted(world: &World, cell: IVec3, darken: u8, trials: u32, rng: &mut Rng) -> u32 {
-        (0..trials).filter(|_| monster_spot_ok(world, MobKind::Zombie, cell, darken, rng)).count() as u32
+        let light = crate::simulation::lighting::SpawnLight { sky_darken: darken, monster_darken: darken };
+        (0..trials).filter(|_| monster_spot_ok(world, MobKind::Zombie, cell, rules(light, 1.0), rng)).count() as u32
     }
 
     fn check_probes(world: &World, probes: &Value, scene: &str, rng: &mut Rng) {
@@ -860,5 +936,162 @@ mod tests {
             quiet.update_difficulty(0.05, &world, &night, crate::simulation::difficulty::Difficulty::Peaceful);
         }
         assert!(quiet.mobs.iter().all(|m| !m.kind.is_hostile()));
+    }
+
+    /// A headless world whose generator has `biome` near the origin; returns
+    /// it with a cell in that biome. Columns are loaded flat around the cell
+    /// (stone up to `ground`), so the generator only supplies biomes and the seed.
+    fn biome_world(biome: Biome, ground: i32, slime_chunk: bool) -> Option<(World, IVec3)> {
+        use crate::world::chunk::CHUNK_SIZE_I;
+        for seed in 1..40 {
+            let generator = std::sync::Arc::new(crate::world::terrain::Generator::new(seed));
+            for k in 0..8 {
+                let Some(found) = generator.nearest_biome(IVec2::new(k * 900, 0), biome, 2500) else { continue };
+                let (cx, cz) = (found.x.div_euclid(16), found.z.div_euclid(16));
+                if super::super::slime::slime_chunk(seed, cx, cz) != slime_chunk {
+                    continue;
+                }
+                let mut world = World::new_headless(generator.clone(), Default::default(), 2);
+                let column = IVec2::new(found.x.div_euclid(CHUNK_SIZE_I), found.z.div_euclid(CHUNK_SIZE_I));
+                for dz in -1..=1 {
+                    for dx in -1..=1 {
+                        world.load_test_column(column + IVec2::new(dx, dz), ground);
+                    }
+                }
+                world.update_block_light();
+                return Some((world, IVec3::new(found.x, ground + 1, found.z)));
+            }
+        }
+        None
+    }
+
+    fn night_rules(moon: f32) -> SpawnRules {
+        rules(crate::simulation::lighting::SpawnLight::NIGHT, moon)
+    }
+
+    fn slime_rate(world: &World, cell: IVec3, moon: f32, trials: u32) -> f64 {
+        let mut rng = Rng::new(31);
+        let hits = (0..trials).filter(|_| monster_spot_ok(world, MobKind::Slime, cell, night_rules(moon), &mut rng));
+        hits.count() as f64 / trials as f64
+    }
+
+    #[test]
+    fn swamp_slimes_follow_the_moon_phase_and_light_roll() {
+        // Slime.checkSlimeSpawnRules: swamp, 50 < y < 70, nextFloat < moon / 2
+        // (`surface_slime_spawn_chance` 0.5 at a full moon, 0 at a new moon),
+        // then brightness 4 (sky 15 - night darkening 11) <= nextInt(8): 1/2.
+        let Some((world, cell)) = biome_world(Biome::Swamp, 63, false) else { panic!("no swamp near an origin") };
+        let near = |got: f64, want: f64| assert!((got - want).abs() < 0.03, "{got} vs {want}");
+        near(slime_rate(&world, cell, 1.0, 8192), 0.25);
+        near(slime_rate(&world, cell, 0.5, 8192), 0.125);
+        assert_eq!(slime_rate(&world, cell, 0.0, 2048), 0.0, "no surface slimes at a new moon");
+        // Out of the 50..70 band, or in daylight, only slime chunks can spawn them.
+        let low = cell - IVec3::Y * 20;
+        assert_eq!(slime_rate(&world, low, 1.0, 2048), 0.0);
+        let day = rules(crate::simulation::lighting::SpawnLight::DAY, 1.0);
+        let mut rng = Rng::new(5);
+        assert!((0..2048).all(|_| !monster_spot_ok(&world, MobKind::Slime, cell, day, &mut rng)));
+    }
+
+    #[test]
+    fn slime_chunks_spawn_slimes_below_y_40_one_try_in_ten() {
+        let Some((mut world, cell)) = biome_world(Biome::Plains, 33, true) else { panic!("no slime chunk plains") };
+        let cell = IVec3::new(cell.x, 34, cell.z);
+        // The ground is at y 33: a slime chunk below y 40, in a non-swamp biome.
+        let rate = slime_rate(&world, cell, 1.0, 20_000);
+        assert!((rate - 0.1).abs() < 0.015, "{rate}");
+        // Light does not matter for slime chunks.
+        let day = rules(crate::simulation::lighting::SpawnLight::DAY, 1.0);
+        let mut rng = Rng::new(9);
+        let by_day = (0..20_000).filter(|_| monster_spot_ok(&world, MobKind::Slime, cell, day, &mut rng)).count();
+        assert!((by_day as f64 / 20_000.0 - 0.1).abs() < 0.015, "{by_day}");
+        // y 40 and above is excluded.
+        world.set_block(cell + IVec3::Y * 6, Block::STONE);
+        for y in 34..=41 {
+            world.set_block(IVec3::new(cell.x, y, cell.z), Block::AIR);
+        }
+        world.set_block(IVec3::new(cell.x, 40, cell.z) - IVec3::Y, Block::STONE);
+        assert_eq!(slime_rate(&world, IVec3::new(cell.x, 40, cell.z), 1.0, 2048), 0.0);
+        // A chunk that is not a slime chunk spawns none in plains.
+        let Some((plain, c)) = biome_world(Biome::Plains, 33, false) else { panic!("no ordinary chunk") };
+        assert_eq!(slime_rate(&plain, IVec3::new(c.x, 34, c.z), 1.0, 2048), 0.0);
+    }
+
+    fn flood(world: &mut World, cell: IVec3, down: i32, up: i32) {
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                for y in cell.y - down..=cell.y + up {
+                    world.set_block(cell + IVec3::new(dx, y - cell.y, dz), Block::WATER);
+                }
+            }
+        }
+    }
+
+    fn roof(world: &mut World, cell: IVec3) {
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                world.set_block(cell + IVec3::new(dx, 0, dz), Block::STONE);
+            }
+        }
+    }
+
+    fn drowned_rate(world: &World, cell: IVec3, trials: u32) -> f64 {
+        let mut rng = Rng::new(77);
+        let hits = (0..trials).filter(|_| monster_spot_ok(world, MobKind::Drowned, cell, night_rules(1.0), &mut rng));
+        hits.count() as f64 / trials as f64
+    }
+
+    #[test]
+    fn drowned_spawn_in_water_one_try_in_40_when_deep_and_one_in_15_in_rivers() {
+        use crate::world::terrain::SEA_LEVEL;
+        // Dark, flooded cells carved into solid stone, sealed from the sky.
+        let Some((mut ocean, cell)) = biome_world(Biome::Ocean, 70, false) else { panic!("no ocean") };
+        let deep = IVec3::new(cell.x, SEA_LEVEL - 10, cell.z);
+        flood(&mut ocean, deep, 6, 3);
+        roof(&mut ocean, deep + IVec3::Y * 4);
+        let near = |got: f64, want: f64| assert!((got - want).abs() < 0.012, "{got} vs {want}");
+        near(drowned_rate(&ocean, deep, 20_000), 1.0 / 40.0);
+        // Shallower than sea level - 5 is refused outside rivers.
+        let shallow = IVec3::new(deep.x, SEA_LEVEL - 4, deep.z);
+        flood(&mut ocean, shallow, 4, 1);
+        roof(&mut ocean, shallow + IVec3::Y * 2);
+        assert_eq!(drowned_rate(&ocean, shallow, 4096), 0.0);
+        // The cell below must be water too: the bottom of the flooded column is not.
+        assert_eq!(drowned_rate(&ocean, IVec3::new(deep.x, deep.y - 6, deep.z), 4096), 0.0);
+        // A conducting block above refuses (the roof sits above the water column).
+        ocean.set_block(deep + IVec3::Y, Block::STONE);
+        assert_eq!(drowned_rate(&ocean, deep, 4096), 0.0);
+        // Dry land never qualifies.
+        let dry = deep + IVec3::Y * 40;
+        assert_eq!(drowned_rate(&ocean, dry, 2048), 0.0);
+
+        let Some((mut river, cell)) = biome_world(Biome::River, 70, false) else { panic!("no river") };
+        let shallow = IVec3::new(cell.x, SEA_LEVEL - 1, cell.z);
+        flood(&mut river, shallow, 4, 3);
+        roof(&mut river, shallow + IVec3::Y * 4);
+        near(drowned_rate(&river, shallow, 20_000), 1.0 / 15.0);
+    }
+
+    #[test]
+    fn slimes_and_drowned_belong_to_the_biome_pack_cycle() {
+        assert!(cycle_kind(MobKind::Slime) && cycle_kind(MobKind::Drowned));
+        assert_eq!(J::Slime.kind(), Some(MobKind::Slime));
+        assert_eq!(J::Drowned.kind(), Some(MobKind::Drowned));
+        assert!(J::ZombieHorse.kind().is_none() && J::Stray.kind().is_none() && J::Ocelot.kind().is_none());
+    }
+
+    #[test]
+    fn spawning_waits_for_queued_light_to_settle() {
+        let player = Target::new(PlayerId::HOST, DVec3::new(0.5, 64.0, 0.5), true);
+        let day = Ctx { daylight: 1.0, spawn_light: crate::simulation::lighting::SpawnLight::DAY, ..ctx(vec![player]) };
+        let mut world = cave_world(false);
+        let mut e = Entities::new(5);
+        assert!(!spawned_cells(&mut e, &world, &day, 30.0).is_empty(), "the settled dark cave spawns");
+        // A torch edit leaves queued light until it is resolved.
+        world.edit(IVec3::new(41, 40, 0), Block::TORCH, true);
+        assert!(!world.light_settled());
+        assert!(spawned_cells(&mut e, &world, &day, 30.0).is_empty(), "no spawns on unresolved light");
+        assert!(world.update_block_light_within(std::time::Duration::from_secs(1)));
+        assert!(world.light_settled());
     }
 }

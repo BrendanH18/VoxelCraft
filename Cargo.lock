@@ -2442,6 +2442,7 @@ dependencies = [
  "glam",
  "log",
  "naga",
+ "objc2-metal 0.3.2",
  "png",
  "pollster",
  "rustc-hash 2.1.3",

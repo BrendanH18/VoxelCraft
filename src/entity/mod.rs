@@ -365,6 +365,11 @@ pub trait MobWorld: BlockSource {
     fn sky_light_level(&self, p: IVec3) -> Option<u8> {
         Some(if self.exposed(p) { 15 } else { 0 })
     }
+    /// Whether queued light work is finished; natural spawning waits for it
+    /// because unresolved cells would read darker than they are.
+    fn light_settled(&self) -> bool {
+        true
+    }
     /// Java's `WORLD_SURFACE` heightmap: the highest non-air block of a
     /// loaded column. Defaults to the light-blocking surface.
     fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
@@ -386,6 +391,10 @@ pub trait MobWorld: BlockSource {
     /// nether wastes by Nether spawning).
     fn nether_biome(&self, _x: i32, _z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
         None
+    }
+    /// The Nether biome at a block with Java's fuzzy zoom (`getBiome`).
+    fn nether_biome_at(&self, p: IVec3) -> Option<crate::world::nether_biome::NetherBiome> {
+        self.nether_biome(p.x, p.z)
     }
     /// Java moon brightness; clients set this from their saved day count.
     /// Inside a Nether fortress piece, where fortress mobs spawn.
@@ -429,6 +438,9 @@ impl MobWorld for World {
     fn nether_biome(&self, x: i32, z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
         self.generator.nether_biome(x, z)
     }
+    fn nether_biome_at(&self, p: IVec3) -> Option<crate::world::nether_biome::NetherBiome> {
+        self.generator.nether_biome_at(p)
+    }
     fn rains_on(&self, p: IVec3) -> bool {
         World::rains_on(self, p)
     }
@@ -443,6 +455,9 @@ impl MobWorld for World {
     }
     fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
         self.world_surface_height(x, z)
+    }
+    fn light_settled(&self) -> bool {
+        World::light_settled(self)
     }
     fn surface(&self, x: i32, z: i32) -> Option<i32> {
         self.surface_height(x, z)
@@ -658,6 +673,7 @@ pub struct Entities {
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
     mob_index: mob_index::MobIndex,
+    separation: mob_index::Separation,
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
     claimed_jobs: rustc_hash::FxHashSet<IVec3>,
     pending_sounds: Vec<EntityEvent>,
@@ -730,6 +746,7 @@ impl Entities {
             villager_births: Default::default(),
             village_timer: 0.0,
             mob_index: Default::default(),
+            separation: Default::default(),
             claimed_beds: Default::default(),
             claimed_jobs: Default::default(),
             pending_sounds: Vec::new(),
@@ -842,9 +859,10 @@ impl Entities {
         self.mobs.push(mob);
     }
 
-    /// Removes monsters which Java does not allow to exist on Peaceful.
+    /// Removes the mobs Java discards on Peaceful (`Mob.checkDespawn` with a
+    /// `notInPeaceful` entity type); piglins stay.
     pub fn despawn_hostiles(&mut self) {
-        self.mobs.retain(|mob| !mob.kind.is_hostile());
+        self.mobs.retain(|mob| !mob.kind.despawns_in_peaceful());
     }
 
     /// Snapshot positions and advance entity simulation on Normal difficulty.
@@ -1125,32 +1143,7 @@ impl Entities {
 
     /// Gently pushes overlapping mobs apart.
     fn separate(&mut self, dt: f64) {
-        let n = self.mobs.len();
-        for i in 0..n {
-            if self.mobs[i].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
-                continue;
-            }
-            self.mob_index.visit(self.mobs[i].pos, 4.0, |j| {
-                if j <= i {
-                    return;
-                }
-                if self.mobs[j].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
-                    return;
-                }
-                let (a, b) = (&self.mobs[i], &self.mobs[j]);
-                let d = DVec3::new(b.pos.x - a.pos.x, 0.0, b.pos.z - a.pos.z);
-                let min = a.shape().half_width + b.shape().half_width;
-                let overlap_y = a.pos.y < b.pos.y + b.shape().height && b.pos.y < a.pos.y + a.shape().height;
-                let dist = d.length();
-                if !overlap_y || dist >= min {
-                    return;
-                }
-                let dir = if dist > 1e-4 { d / dist } else { DVec3::X };
-                let push = dir * ((min - dist) * 8.0 * dt).min(0.2) / dt.max(1e-3);
-                self.mobs[i].vel -= push * 0.5;
-                self.mobs[j].vel += push * 0.5;
-            });
-        }
+        self.separation.run(&mut self.mobs, dt);
     }
 
     /// One spawn attempt per mob type around each player whose local cap
@@ -1752,15 +1745,42 @@ fn nether_spawn<W: MobWorld + ?Sized>(
     world: &W,
     kind: MobKind,
     x: i32,
+    y: i32,
     z: i32,
 ) -> Option<(crate::world::nether_biome::Spawn, f32)> {
     use crate::world::nether_biome::NetherBiome;
-    let biome = world.nether_biome(x, z).unwrap_or(NetherBiome::NetherWastes);
+    let biome = world.nether_biome_at(IVec3::new(x, y, z)).unwrap_or(NetherBiome::NetherWastes);
     let mob = nether_mob(kind)?;
     if let Some(s) = biome.creatures().iter().find(|s| s.mob == mob) {
         return Some((*s, s.weight as f32 / 100.0));
     }
     biome.monster_spawn(mob)
+}
+
+impl Entities {
+    /// Java's `NaturalSpawner.SpawnState.canSpawn` spawn-cost test. Every
+    /// non-persistent mob whose biome has a cost for its type contributes
+    /// `charge / distance` to the potential at `at`; a new mob with a cost of
+    /// its own may spawn only if its charge times that potential stays within
+    /// the biome's energy budget. This is what spaces out soul sand valley
+    /// skeletons, ghasts, endermen and striders (and warped forest endermen).
+    fn nether_cost_allows<W: MobWorld + ?Sized>(&self, world: &W, kind: MobKind, at: IVec3) -> bool {
+        use crate::world::nether_biome::NetherBiome;
+        let biome_at = |p: IVec3| world.nether_biome_at(p).unwrap_or(NetherBiome::NetherWastes);
+        let Some(cost) = nether_mob(kind).and_then(|mob| biome_at(at).spawn_cost(mob)) else { return true };
+        let mut potential = 0.0;
+        for m in &self.mobs {
+            if m.persistent {
+                continue;
+            }
+            let p = m.pos.floor().as_ivec3();
+            let Some(other) = nether_mob(m.kind).and_then(|mob| biome_at(p).spawn_cost(mob)) else { continue };
+            let d = p - at;
+            let d2 = f64::from(d.x).powi(2) + f64::from(d.y).powi(2) + f64::from(d.z).powi(2);
+            potential += if d2 == 0.0 { f64::INFINITY } else { other.charge / d2.sqrt() };
+        }
+        potential * cost.charge <= cost.energy_budget
+    }
 }
 
 fn cavern_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, top: i32) -> Option<DVec3> {
@@ -3250,6 +3270,23 @@ mod tests {
     }
 
     #[test]
+    fn peaceful_keeps_piglins_but_discards_brutes_hoglins_and_zoglins() {
+        // Java 26.3 registers piglin brutes, hoglins and zoglins `notInPeaceful()`
+        // and plain piglins without it.
+        let world = Grid::flat(10);
+        let mut e = Entities::new(5);
+        for kind in [MobKind::Piglin, MobKind::PiglinBrute, MobKind::Hoglin, MobKind::Zoglin, MobKind::Zombie] {
+            e.spawn(kind, DVec3::new(2.5, 11.0, 0.5));
+        }
+        let c = ctx(DVec3::new(10.5, 10.0, 0.5));
+        e.update_difficulty(0.05, &world, &c, crate::simulation::difficulty::Difficulty::Peaceful);
+        assert_eq!(e.count(MobKind::Piglin), 1);
+        for kind in [MobKind::PiglinBrute, MobKind::Hoglin, MobKind::Zoglin, MobKind::Zombie] {
+            assert_eq!(e.count(kind), 0, "{kind:?}");
+        }
+    }
+
+    #[test]
     fn spawners_work_near_players_up_to_six_mobs() {
         // A closed room around the cage, so nothing wanders off.
         let mut room = Grid::flat(10);
@@ -3355,6 +3392,44 @@ mod tests {
         fn nether_biome(&self, _: i32, _: i32) -> Option<crate::world::nether_biome::NetherBiome> {
             Some(self.1)
         }
+    }
+
+    #[test]
+    fn spawn_costs_space_out_soul_sand_valley_and_warped_forest_mobs() {
+        // Java `SpawnState.canSpawn`: the new mob's charge times the sum of
+        // charge / distance over existing mobs must stay within the energy
+        // budget (soul sand valley 0.7 against 0.15, warped forest endermen 1.0
+        // against 0.12). The values come from the biome JSON pinned in the
+        // Nether biome source.
+        use crate::world::nether_biome::{NetherBiome, NetherMob};
+        let at = |x: i32| IVec3::new(x, 41, 0);
+        let valley = Biomed(Grid::flat(41), NetherBiome::SoulSandValley);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Skeleton, DVec3::new(0.5, 41.0, 0.5));
+        // 0.7 * 0.7 / 3 = 0.163 is over budget; at four blocks 0.1225 is within it.
+        assert!(!e.nether_cost_allows(&valley, MobKind::Ghast, at(3)));
+        assert!(e.nether_cost_allows(&valley, MobKind::Ghast, at(4)));
+        // A third charged mob at eight blocks tips a spot four blocks from the first.
+        e.spawn(MobKind::Strider, DVec3::new(8.5, 41.0, 0.5));
+        e.spawn(MobKind::Enderman, DVec3::new(-8.5, 41.0, 0.5));
+        assert!(!e.nether_cost_allows(&valley, MobKind::Skeleton, at(4)));
+        // Mobs with no cost in the biome are never refused, nor are persistent ones counted.
+        assert!(e.nether_cost_allows(&valley, MobKind::ZombifiedPiglin, at(0)));
+        let mut persistent = Entities::new(4);
+        persistent.spawn(MobKind::Skeleton, DVec3::new(0.5, 41.0, 0.5));
+        persistent.mobs[0].persistent = true;
+        assert!(persistent.nether_cost_allows(&valley, MobKind::Ghast, at(1)));
+        // The wastes charge nothing.
+        let wastes = Biomed(Grid::flat(41), NetherBiome::NetherWastes);
+        assert!(e.nether_cost_allows(&wastes, MobKind::Skeleton, at(1)));
+        // Warped forests only charge endermen: 1.0 / d <= 0.12 needs nine blocks.
+        let warped = Biomed(Grid::flat(41), NetherBiome::WarpedForest);
+        let mut w = Entities::new(5);
+        w.spawn(MobKind::Enderman, DVec3::new(0.5, 41.0, 0.5));
+        assert!(!w.nether_cost_allows(&warped, MobKind::Enderman, at(8)));
+        assert!(w.nether_cost_allows(&warped, MobKind::Enderman, at(9)));
+        assert!(w.nether_cost_allows(&warped, MobKind::Hoglin, at(1)));
+        assert_eq!(NetherBiome::SoulSandValley.spawn_cost(NetherMob::Piglin), None);
     }
 
     #[test]

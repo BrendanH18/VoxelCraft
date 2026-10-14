@@ -658,6 +658,11 @@ impl World {
         self.redstone.sun_angle = sun_angle;
     }
 
+    /// Java's `Level.skyDarken` as last supplied by the clock.
+    pub(super) fn sky_darken(&self) -> u8 {
+        self.redstone.sky_darken
+    }
+
     /// Java's `DaylightDetectorBlock.updateSignalStrength` on the gameplay
     /// skylight at the detector; `None` while that light is unknown.
     fn daylight_power(&self, p: IVec3, inverted: bool) -> Option<u8> {

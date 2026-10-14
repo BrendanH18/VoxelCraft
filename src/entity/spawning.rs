@@ -43,7 +43,7 @@ impl Entities {
                 }
                 let mut group = None;
                 if nether {
-                    let Some((spawn, chance)) = nether_spawn(world, kind, x, z) else { continue };
+                    let Some((spawn, chance)) = nether_spawn(world, kind, x, center.y as i32, z) else { continue };
                     if !self.rng.chance(chance) {
                         continue;
                     }
@@ -53,10 +53,6 @@ impl Entities {
                     Dimension::Overworld if kind.is_aquatic() => {
                         aquatic::spawn_spot(world, kind, x, z, center.y as i32, &mut self.rng)
                     }
-                    Dimension::Overworld if kind == MobKind::Drowned => self.drowned_spot(world, x, z, ctx.daylight),
-                    Dimension::Overworld if kind == MobKind::Slime => {
-                        self.slime_spot(world, x, z, ctx.spawn_light.sky_darken)
-                    }
                     Dimension::Overworld => spawn_spot(world, kind, x, z, ctx.daylight),
                     Dimension::Nether if kind == MobKind::Strider => nether::lava_spot(world, x, z),
                     Dimension::Nether => cavern_spot(world, kind, x, z, self.rng.range(40.0, 118.0) as i32),
@@ -64,6 +60,9 @@ impl Entities {
                 };
                 let Some(pos) = spot else { continue };
                 if !in_spawn_ring(center, pos) || !clear_of_players(ctx, self.world_spawn, pos) {
+                    continue;
+                }
+                if nether && !self.nether_cost_allows(world, kind, pos.floor().as_ivec3()) {
                     continue;
                 }
                 self.spawn(kind, pos);
@@ -82,7 +81,7 @@ impl Entities {
                     for _ in 0..extra {
                         let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
                         // A group straddling a biome edge stays within its spawn list.
-                        if nether && nether_spawn(world, kind, x + dx, z + dz).is_none() {
+                        if nether && nether_spawn(world, kind, x + dx, pos.y as i32, z + dz).is_none() {
                             continue;
                         }
                         let spot = if kind.is_aquatic() {
@@ -97,6 +96,7 @@ impl Entities {
                         if self.count_near(kind, center) < cap
                             && let Some(p) = spot
                             && clear_of_players(ctx, self.world_spawn, p)
+                            && (!nether || self.nether_cost_allows(world, kind, p.floor().as_ivec3()))
                         {
                             self.spawn(kind, p);
                             self.natural_animal(world.biome(x + dx, z + dz));
@@ -109,56 +109,6 @@ impl Entities {
             if ctx.dimension == Dimension::Nether && difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
                 self.fortress_spawn(world, ctx, center);
             }
-        }
-    }
-
-    /// Java's drowned rules: in water, in rivers one attempt in 15, in oceans
-    /// one in 40 and only deeper than five blocks below sea level. Deep water
-    /// is dark enough in daylight; shallow water needs night.
-    pub(super) fn drowned_spot<W: MobWorld + ?Sized>(
-        &mut self,
-        world: &W,
-        x: i32,
-        z: i32,
-        daylight: f32,
-    ) -> Option<DVec3> {
-        use crate::world::terrain::SEA_LEVEL;
-        let river = world.biome(x, z).is_river();
-        if !self.rng.chance(if river { 1.0 / 15.0 } else { 1.0 / 40.0 }) {
-            return None;
-        }
-        let top = (SEA_LEVEL - 8..=SEA_LEVEL + 1)
-            .rev()
-            .find(|&y| world.block(IVec3::new(x, y, z)).is_some_and(Block::holds_water))?;
-        let y = if river { top } else { top - 5 - (self.rng.next_f32() * 6.0) as i32 };
-        let dark = daylight < HOSTILE_SPAWN_DAYLIGHT || top - y >= 4;
-        let wet = |dy: i32| world.block(IVec3::new(x, y + dy, z)).is_some_and(Block::holds_water);
-        (dark && wet(0) && wet(1)).then(|| DVec3::new(x as f64 + 0.5, y as f64, z as f64 + 0.5))
-    }
-
-    /// Swamp slimes need Java's `getMaxLocalRawBrightness` (darkened sky or
-    /// block light) at most a roll of 0..=7; slime chunks spawn below y 40.
-    pub(super) fn slime_spot<W: MobWorld + ?Sized>(
-        &mut self,
-        world: &W,
-        x: i32,
-        z: i32,
-        sky_darken: u8,
-    ) -> Option<DVec3> {
-        if world.biome(x, z).is_swamp() && self.rng.chance(0.5 * self.moon_brightness) {
-            let pos = spawn_spot(world, MobKind::Slime, x, z, 0.0)?;
-            let y = pos.y as i32;
-            let cell = pos.floor().as_ivec3();
-            let sky = world.sky_light_level(cell)?;
-            let light = sky.saturating_sub(sky_darken).max(world.block_light(cell));
-            if y > 50 && y < 70 && light <= (self.rng.next_f32() * 8.0) as u8 {
-                return Some(pos);
-            }
-        }
-        if slime::slime_chunk(world.seed(), x.div_euclid(16), z.div_euclid(16)) && self.rng.chance(0.1) {
-            cavern_spot(world, MobKind::Slime, x, z, 39).filter(|p| p.y < 40.0)
-        } else {
-            None
         }
     }
 
@@ -189,6 +139,7 @@ impl Entities {
         if !in_spawn_ring(center, pos)
             || !clear_of_players(ctx, self.world_spawn, pos)
             || !world.in_fortress(pos.floor().as_ivec3())
+            || !self.nether_cost_allows(world, kind, pos.floor().as_ivec3())
         {
             return;
         }
@@ -200,6 +151,7 @@ impl Entities {
                 && let Some(p) = cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 1)
                 && world.in_fortress(p.floor().as_ivec3())
                 && clear_of_players(ctx, self.world_spawn, p)
+                && self.nether_cost_allows(world, kind, p.floor().as_ivec3())
             {
                 self.spawn(kind, p);
             }

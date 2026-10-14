@@ -63,7 +63,7 @@ Tests check reference light levels and spawn probabilities, real daytime cave
 spawns, torch suppression/removal, Peaceful, floor exclusions, biome list values,
 mesh/fresh-rebuild agreement, edit covers, partial loads and unloaded borders.
 One representative unload case recorded a nonzero queue peak below 50,000;
-this is scenario evidence, not a universal work-time budget.
+this is scenario evidence; the per-tick time box is described below.
 
 The new two-process storage check covers both the Overworld and End. It saves a
 glass-covered shaft, tunnel and torch using the real disk format. A new process
@@ -89,17 +89,32 @@ An isolated temporary fixture check confirmed that change and repeatability.
 
 The existing 24–64-block ring, per-kind caps, quarter-second spawn batching,
 activation/despawn policies and structure overrides still need Java correction.
-Missing roster entries retain their reference selection weight but cannot spawn;
-slime and drowned sampling still use their separate legacy paths. No unsupported
+Missing roster entries (zombie horse, stray, bogged, parched, ocelot) retain their
+reference selection weight but cannot spawn; slimes and drowned now walk the same
+pack cycle (see the v0.7 follow-up below). No unsupported
 mob is replaced with a different species. These are open differences, not
 approved fidelity exceptions or a completed MOB-01 claim.
 
 Slabs/stairs retain the prior opaque-cell light treatment; full state/shape
 occlusion is unfinished. Meshes still independently flood snapshots rather than
-consume the authoritative gameplay arrays. Crop/sapling skylight integration,
-other growth light rules, large edit/streaming queue budgets and broader block
-property fidelity remain open. The ten-minute game day and existing weather
-fades also differ from reference timing.
+consume the authoritative gameplay arrays. Broader block property fidelity
+remains open.
+
+v0.7.0 defect fixes recorded here: crops, saplings, grass and berries read
+gameplay light; entities and particles sample propagated skylight; the day is
+24000 ticks with independent rain/thunder timers; slimes and drowned use their
+own Java spawn rules; Nether and End lightmaps include Java's ambient term.
+
+Light work is now time-boxed per tick. `World::update_block_light_within` gives
+each of a tick's two light passes 2 ms (`LIGHT_TICK_BUDGET`) after at least 512
+cell visits, so a streaming or large-edit backlog drains over several ticks
+instead of stalling one. Pending flood entries live in `LightUpdates::flood`, so
+a pause resumes mid-flood and edits made meanwhile merge correctly (a test
+compares a sliced backlog against a fresh full relight). Natural overworld
+spawning waits on `World::light_settled` so unresolved cells never read darker
+than they are. Edits, block placement and streaming still resolve fully; only
+the per-tick simulation passes are bounded. The budget is a fixed wall-clock
+value, not tuned against a measured scene.
 
 Normal keyboard/controller cave play, visual/audio review, cross-machine LAN,
 representative frame-time comparisons and full M5 1080p/native acceptance remain
@@ -107,3 +122,34 @@ unverified in this record. The earlier native interaction attempt failed with
 `cgWindowNotFound`; automated world and restart checks do not replace player
 acceptance. No version bump, release, main merge or deletion of the original
 v0.7 branch/uncommitted spawning patch is included.
+
+## v0.7 entity and particle follow-up
+
+`entity::sky_light`, shared by entities, held items and particles, now samples
+propagated gameplay skylight. Only cells with unknown skylight use the existing
+heightmap fallback. A wide roof regression checks the open edge and a centre
+13 blocks from open sky; unknown-border fallback is also covered. See the
+[world-fix record](2026-10-13-world-fixes.md#entity-and-particle-skylight).
+Visual/player acceptance remains outstanding.
+
+## v0.7 day and weather timing follow-up
+
+The day is now 24000 ticks (20 minutes). Independent rain and thunder timers
+use the extracted Java 26.3 ranges and levels fade by 0.01 per 50 ms tick.
+Old day fractions and two/three-field weather entries still load; the optional
+fourth weather field retains the independent thunder timer. See the
+[world-fix record](2026-10-13-world-fixes.md#day-and-weather-timing) for tests
+and remaining weather-command/gamerule limitations.
+
+## v0.7 slime and drowned follow-up
+
+Slimes and drowned no longer sample positions on their own legacy paths; they are
+entries of the biome list like the other monsters (the legacy `slime_spot` and
+`drowned_spot` are removed). Java sources: `Slime.checkSlimeSpawnRules`,
+`Drowned.checkDrownedSpawnRules` and `isDeepEnoughToSpawn`, `SpawnPlacementTypes`
+(`ON_GROUND`, `IN_WATER`), the `moon` timeline's `surface_slime_spawn_chance`
+(0.5 at a full moon down to 0 at a new moon, equal to the old `0.5 * moonBrightness`),
+and the `allows_surface_slime_spawns` (swamp, mangrove swamp) and
+`more_frequent_drowned_spawns` (rivers) biome tags. See the
+[world-fix record](2026-10-13-world-fixes.md#slime-and-drowned-spawn-rules).
+The roster still lacks the mobs VoxelCraft does not have; adding them is new content.

@@ -435,6 +435,14 @@ impl MobKind {
         )
     }
 
+    /// Java 26.3 `EntityType.isAllowedInPeaceful` is false for `Mob.checkDespawn`
+    /// to discard these on Peaceful. Hostile here, except the piglin: its type
+    /// is not registered with `notInPeaceful()` (piglin brutes, hoglins and
+    /// zoglins are).
+    pub fn despawns_in_peaceful(self) -> bool {
+        self.is_hostile() && self != MobKind::Piglin
+    }
+
     /// Unharmed by fire and lava.
     pub fn fire_immune(self) -> bool {
         matches!(
@@ -2344,10 +2352,23 @@ pub fn is_cliff<W: BlockSource + ?Sized>(world: &W, pos: DVec3, dir: DVec3, shap
     true
 }
 
-/// Rough sky light (0..1) at a point: 1 in the open, dimmed under water or
-/// leaves, and falling off with distance from the nearest open column
-/// under overhangs; 0 deep underground.
+/// Sky light (0..1) at a point for lighting entities, items and particles:
+/// the authoritative propagated skylight of its cell (so caves, tunnels and
+/// shafts light as the light engine says). Only where that light is not exact
+/// yet (a partly loaded border, or a world without a light engine) does it
+/// fall back to [`estimate_sky_light`].
 pub fn sky_light<W: MobWorld + ?Sized>(world: &W, p: DVec3) -> f32 {
+    let cell = p.floor().as_ivec3();
+    match world.sky_light_level(cell) {
+        Some(level) => f32::from(level) / 15.0,
+        None => estimate_sky_light(world, p),
+    }
+}
+
+/// Rough sky light (0..1) at a point from the heightmap: 1 in the open,
+/// dimmed under water or leaves, and falling off with distance from the
+/// nearest open column under overhangs; 0 deep underground.
+fn estimate_sky_light<W: MobWorld + ?Sized>(world: &W, p: DVec3) -> f32 {
     let cell = p.floor().as_ivec3();
     if world.exposed(cell) {
         return 1.0;
@@ -2463,6 +2484,80 @@ fn wrap(a: f32) -> f32 {
 fn turn_toward(from: f32, to: f32, max: f32) -> f32 {
     let d = wrap(to - from);
     wrap(from + d.clamp(-max, max))
+}
+
+#[cfg(test)]
+mod skylight_tests {
+    use super::*;
+    use crate::world::block::Block;
+
+    #[test]
+    fn entities_and_particles_light_from_propagated_skylight() {
+        // A wide roof: the cells beneath it keep only the light that spread
+        // in from the open edge, which the old heightmap probe (a fixed
+        // four-block search for an open column) could not see.
+        let mut world = crate::world::lighting::flat_test_world(
+            (-1..=1).flat_map(|x| (-1..=1).map(move |z| glam::IVec2::new(x, z))),
+            63,
+        );
+        for x in 4..=28 {
+            for z in 4..=28 {
+                world.set_block(IVec3::new(x, 67, z), Block::STONE);
+            }
+        }
+        world.update_block_light();
+        let at = |x: f64, y: f64| DVec3::new(x, y, 16.5);
+        assert_eq!(sky_light(&world, at(40.5, 66.5)), 1.0, "open sky");
+        // Two cells in from the edge: 15 spreads in horizontally, losing one a step.
+        let lip = world.sky_light(at(5.5, 66.5).floor().as_ivec3()).unwrap();
+        assert!(lip < 15 && lip > 9, "{lip}");
+        assert_eq!(sky_light(&world, at(5.5, 66.5)), f32::from(lip) / 15.0);
+        // Thirteen steps from open air, light 2 has spread in at every height
+        // under the roof; the old probe, which searched four columns, saw none.
+        assert_eq!(world.sky_light(at(16.5, 64.5).floor().as_ivec3()), Some(2));
+        assert_eq!(sky_light(&world, at(16.5, 64.5)), 2.0 / 15.0);
+        assert_eq!(estimate_sky_light(&world, at(16.5, 64.5)), 0.0);
+    }
+
+    /// `cargo test --release --lib skylight_probe_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore = "timing measurement"]
+    fn skylight_probe_cost() {
+        let world = crate::world::lighting::flat_test_world(
+            (-1..=1).flat_map(|x| (-1..=1).map(move |z| glam::IVec2::new(x, z))),
+            63,
+        );
+        let points: Vec<DVec3> = (0..4096)
+            .map(|i| DVec3::new(8.0 + (i % 64) as f64 * 0.25, 60.0 + (i / 64 % 16) as f64, 8.0 + (i / 1024) as f64))
+            .collect();
+        let time = |f: &dyn Fn(&crate::world::World, DVec3) -> f32| {
+            let mut runs: Vec<f64> = (0..15)
+                .map(|_| {
+                    let start = std::time::Instant::now();
+                    let mut sum = 0.0;
+                    for _ in 0..25 {
+                        for &p in &points {
+                            sum += f(&world, p);
+                        }
+                    }
+                    std::hint::black_box(sum);
+                    start.elapsed().as_secs_f64() * 1e9 / (25.0 * points.len() as f64)
+                })
+                .collect();
+            runs.sort_by(f64::total_cmp);
+            runs[runs.len() / 2]
+        };
+        println!("heightmap estimate: {:.0} ns/query", time(&|w, p| estimate_sky_light(w, p)));
+        println!("propagated skylight: {:.0} ns/query", time(&|w, p| sky_light(w, p)));
+    }
+
+    #[test]
+    fn unknown_skylight_falls_back_to_the_heightmap_estimate() {
+        // One lone column: its neighbours are unloaded, so skylight is unknown.
+        let world = crate::world::lighting::flat_test_world([glam::IVec2::ZERO], 63);
+        assert_eq!(world.sky_light(IVec3::new(16, 70, 16)), None);
+        assert_eq!(sky_light(&world, DVec3::new(16.5, 70.5, 16.5)), 1.0);
+    }
 }
 
 #[cfg(test)]

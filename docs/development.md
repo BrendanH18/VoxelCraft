@@ -45,7 +45,8 @@ mouse look and the hand animation update each frame. Jump and mining taps
 are retained until the next game tick. Offline pause clears
 fractional clock time. Catch-up is bounded to five ticks per frame; a longer
 stall discards excess elapsed time instead of taking one large physics step.
-The existing ten-minute VoxelCraft day is preserved.
+A day is Java's 24000 ticks, 20 minutes (the saved `time` is a day fraction, so older
+ten-minute-day worlds load at the same time of day).
 
 This is a foundation for LAN and split-screen. The client still owns the
 singleplayer session, action validation, damage/death handling, dimension
@@ -58,7 +59,7 @@ world systems directly, call `update_block_light` before querying their
 light. Dark chunks allocate no light arrays; lit chunks store two levels per
 byte. Worker meshes carry geometry only and cannot overwrite gameplay light.
 Covered crops require level 9 in their cell; saplings sample the cell above.
-Skylight for growth still uses the existing open-sky approximation, and
+Growth reads propagated gameplay skylight, and
 slabs/stairs retain their current opaque-cell lighting approximation.
 `World::sky_light` returns an optional propagated level; incomplete neighboring
 columns are unknown. `Ctx::spawn_light` takes explicit gameplay clock/weather

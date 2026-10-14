@@ -126,7 +126,6 @@ without changing results (the normalised noise stays below 2; tested).
   the lava level are). Java reads the live world, including other features.
 - Overlapping geodes: each is laid out against terrain, and overlaps paint in
   origin order. Java's result depends on its chunk decoration order.
-- Crack air does not schedule fluid ticks for adjacent water/lava.
 - Buds are not waterlogged (no bud waterlogging states exist).
 - Wall buds render as their Java outline box textured with the bud sprite
   rather than rotated crossed planes; upright/hanging buds keep crosses and
@@ -135,3 +134,20 @@ without changing results (the normalised noise stays below 2; tested).
   deepslate, trial spawner, vault) are absent from the check.
 - No ordinary-player exploration, visual capture review or representative
   frame-time scene has been run.
+
+## v0.7.0 defect fix: crack fluid ticks
+
+`GeodeFeature.place` bytecode: after each crack-air `safeSetBlock`, every
+`Direction` neighbour with a non-empty fluid state gets
+`scheduleTick(pos, fluid, 0)`. Each laid-out geode now records those fluid cells
+(`Geode::fluid_ticks`, read from the layout or pristine terrain at the moment the
+air is placed). `World::insert_chunk` wakes them when a freshly generated
+Overworld chunk is installed, so water and lava beside a crack pour in without a
+player edit. Tests: `world::geode::tests::crack_air_beside_fluid_schedules_fluid_ticks`
+and `world::tests::installing_a_chunk_wakes_fluid_beside_geode_cracks`.
+
+Still open from this record (not fixed in v0.7.0): Java xoroshiro decoration
+seeding/`NormalNoise` and live-world terrain reads (the same chunk-pipeline
+rewrite as the other decoration RNG gaps), chunk-decoration overlap order, and
+rotated crossed-plane wall bud models (the cross quads are fixed-geometry shader
+faces; wall buds need new shader faces that could not be reviewed visually).

@@ -379,6 +379,29 @@ and incremental LAN replica relighting (measured microbenchmarks only). The End
 renders sky-lit terrain at 0.65 because the shaders lack the reference ambient
 term (`ambient_light` 0.25, sky factor 0); soul sand and mud use Java's 14/16 collision height (regression evidence, player acceptance open).
 
+and incremental LAN replica relighting (measured microbenchmarks only). The
+chunk, entity, block-model and particle shaders now take the dimension's
+`ambient_light` (Nether 0.1, End 0.25) and `visual/ambient_light_color`, and the
+End and Nether use `visual/sky_light_factor` 0 instead of the old 0.65/0.42
+stand-ins; this is **unverified visually** (see the
+[world fixes](verification/2026-10-13-world-fixes.md#ambient-light-in-the-nether-and-end)).
+Soul sand and mud still collide as full cubes.
+
+Entities, held items and particles now sample propagated gameplay skylight,
+with the old heightmap estimate restricted to unknown light cells. Wide-roof
+and partly loaded border regressions cover the query; visual/player acceptance
+remains open. See the [world fixes](verification/2026-10-13-world-fixes.md).
+
+Natural Nether spawns now apply Java 26.3 biome spawn costs, including pack
+members and fortress attempts: soul sand valley charges and warped forest
+enderman spacing are covered by extracted data and potential-field tests.
+Ordinary-player and representative scene acceptance remain open.
+
+The day now lasts 24000 ticks (20 minutes), and rain/thunder use independent
+Java 26.3 timer ranges and five-second fades. Saved day fractions and older
+weather entries still load. Reference range, fade and reload regressions pass;
+ordinary-player weather acceptance remains open.
+
 The [amethyst geode follow-up](verification/2026-10-13-amethyst-geodes.md)
 implements the Java 26.3 geode configured/placed feature with order-independent
 chunk painting, adds the missing horizontal bud/cluster states and Java's

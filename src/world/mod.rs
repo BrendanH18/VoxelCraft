@@ -16,6 +16,7 @@ mod automation;
 pub mod bastion;
 pub mod bell;
 pub mod biome;
+pub mod biome_zoom;
 pub mod block;
 pub mod brewing;
 pub mod caves;
@@ -628,7 +629,7 @@ impl World {
 
     /// Changes a block and schedules remeshing of every chunk whose geometry
     /// or lighting depends on it (synchronously for geometry if `sync`).
-    fn edit(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
+    pub(crate) fn edit(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
         if !self.contains_y(p.y) {
             return false;
         }
@@ -923,6 +924,11 @@ impl World {
             self.load_fires(pos, &data);
         } else {
             self.register_structure_features(pos, &data);
+            if self.generator.dimension == terrain::Dimension::Overworld {
+                for p in self.generator.geodes.fluid_ticks(&self.generator, pos * CHUNK_SIZE_I) {
+                    self.wake_fluids(p);
+                }
+            }
         }
         self.register_village_life(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
@@ -1238,6 +1244,28 @@ mod tests {
             assert!(Instant::now() < deadline, "world never settled");
             std::thread::sleep(Duration::from_millis(1));
         }
+    }
+
+    #[test]
+    fn installing_a_chunk_wakes_fluid_beside_geode_cracks() {
+        let generator = Arc::new(Generator::new(5));
+        let mut wet = None;
+        'find: for cz in -12..12 {
+            for cx in -12..12 {
+                for g in generator.geodes.source(&generator, IVec2::new(cx, cz)).iter() {
+                    if let Some(&p) = g.fluid_ticks.first() {
+                        wet = Some(p);
+                        break 'find;
+                    }
+                }
+            }
+        }
+        let p = wet.expect("a geode cracked open beside fluid");
+        let cpos = chunk_of(p);
+        let mut world = World::new_headless(generator.clone(), Default::default(), 4);
+        assert_eq!(world.active_fluids(), 0);
+        world.insert_chunk(cpos, Arc::new(generator.generate(cpos)), false);
+        assert!(world.active_fluids() > 0, "the cracked geode's fluid is scheduled to tick");
     }
 
     #[test]

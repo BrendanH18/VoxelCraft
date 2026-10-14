@@ -38,10 +38,22 @@ regions are large: in tests the mean run along a line is roughly a
 kilometre, wastes are the most common biome and warped forests the rarest.
 
 Lookups: `Generator::nether_biome(x, z)` (gameplay), `/locate biome
-<name>` (32-block ring search like Java, keeping the caller's height), the
+<name>` (32-block ring search like Java; the result keeps the caller's height, which is what Java's 3D search returns here because the Nether noise router sets `y_scale` 0 for temperature and vegetation, pinned in the lighting fixture), the
 F3 screen (`Biome: minecraft:crimson_forest (nether)`) and per-biome music
 (`Situation::nether`). Bastion remnants skip regions whose start chunk
 centre is in a basalt delta (`#has_structure/bastion_remnant`).
+
+## Spawn costs
+
+Java biomes carry `spawn_costs` (the `natural_mob_spawns` attribute): soul sand
+valleys charge 0.7 with a budget of 0.15 for endermen, ghasts, skeletons and
+striders, and warped forests charge endermen 1.0 against 0.12. `Entities` applies
+`NaturalSpawner.SpawnState.canSpawn` to natural Nether spawns (pack leaders, pack
+members and fortress spawns): each non-persistent mob with a cost in its own biome
+adds `charge / distance`, and a new mob needs `charge x potential <= budget`.
+A skeleton therefore keeps other charged mobs about 3.3 blocks away in a soul sand
+valley, and warped forest endermen need nine blocks. Java rebuilds the field once
+per spawn pass from every loaded mob; VoxelCraft sums the live mobs per attempt.
 
 ## Surfaces
 
@@ -215,11 +227,32 @@ The patches were centered at (-2560, -4480), (-4096, -4480),
 12345. Biome lookup was outside the timer. Basalt feature generation is
 a performance hotspot; the ordinary benchmark origin understates its cost.
 
+v0.7.0 fix: a profile (macOS `sample`) of the delta patch put nearly all decoration time in
+`Probe::terrain` reads: 117k reads and 214 feature runs per chunk, 71% of the reads from
+large basalt columns. Features still replay for every chunk they can reach, but now skip
+work that only decides blocks outside the chunk being painted: a column cell outside the
+chunk's x/z range is skipped (it reads and writes only its own column) and a delta cell
+is skipped unless the chain `p, p + r, p + 2r, …` of its rim/pool writes reaches the chunk
+(a cell's outcome depends on earlier cells having written those blocks). A test
+(`culling_features_to_the_chunk_changes_nothing`) paints 56 chunks in the delta patches and
+other biomes with and without the culling and compares every block. Reads per delta chunk fell
+from 11.7M to under 5M per 100 chunks, and `cargo run --release --example nether_patch_bench`
+(same patches as the table above, seven fresh generators each) measured the delta patch 1.7–1.9×
+faster than the previous build, interleaved on the same loaded machine (best of seven: 4.7 → 2.6,
+4.8 → 2.9 and 5.4 → 3.2 ms/chunk at load average ~20; the unloaded figure was 2.16 ms before
+and ≈1.2 ms after on an earlier quiet run). The other four biomes are unchanged. Basalt deltas
+remain the most expensive biome because Java's feature counts (40 deltas and 6 column
+clusters per 16×16 cell and layer) are fixed.
+
 ## Known gaps
 
-- Biome layouts are statistically Java's but not seed-for-seed copies;
-  Java's fuzzy biome zoom is not applied, so borders follow the 4×4 quart
-  grid.
+- Biome layouts are statistically Java's but not seed-for-seed copies.
+  Java's fuzzy biome zoom (`BiomeManager.getBiome`: the nearest of the eight
+  surrounding quarts after a seed-hashed jitter) is applied to gameplay
+  queries (mob spawn lists and costs, the F3 biome line, music). Terrain
+  surfaces, feature placement, fog (Java's fog reads plain quarts) and the
+  ambient-particle window still use the plain 4×4 quart grid, so a nylium
+  border and the spawn-list border can differ by a few blocks.
 - Features see only undecorated terrain, so later features don't react to
   earlier ones as in Java (painting order keeps fungi and vines whole).
 - Fossils are procedural skeletons, not Java's fourteen templates.
@@ -233,8 +266,6 @@ a performance hotspot; the ordinary benchmark origin understates its cost.
   blocks per tick and climbs at 0.2 while pressing a wall (Java
   `LivingEntity.handleOnClimbable`); mobs still have no pathfinding to seek
   vines.
-- `/locate biome` keeps the caller's height rather than searching in 3D.
-- Java's spawn costs (soul sand valley's charge per mob) aren't modelled.
 - Worlds saved before v0.5 keep their generated Nether chunks; chunks
   generated next to them use the biomes, so old areas meet new terrain at a
   seam.

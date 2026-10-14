@@ -331,12 +331,39 @@ def extract_facts(jar, data):
         dims[dim] = {
             "has_skylight": d["has_skylight"],
             "visual_sky_light_factor": d.get("attributes", {}).get("minecraft:visual/sky_light_factor", sky_factor_default),
+            "ambient_light": d["ambient_light"],
+            "visual_ambient_light_color": d.get("attributes", {}).get("minecraft:visual/ambient_light_color"),
             "monster_spawn_block_light_limit": d["monster_spawn_block_light_limit"],
             "monster_spawn_light_level": list(count(level)),
             "min_y": d["min_y"],
             "height": d["height"],
         }
     facts["dimensions"] = dims
+
+    # The Nether's climate noise ignores height (`y_scale` 0), so Java's 3D
+    # `/locate biome` search finds the same columns a flat search does.
+    nether_router = read("data/minecraft/worldgen/noise_settings/nether.json")["noise_router"]
+    facts["nether_climate"] = {
+        name: {"xz_scale": nether_router[name]["xz_scale"], "y_scale": nether_router[name]["y_scale"]}
+        for name in ("temperature", "vegetation")
+    }
+
+    # Weather cycle: `ServerLevel.advanceWeatherCycle` samples these uniform
+    # tick ranges and moves each level by 0.01 per tick (bytecode-checked).
+    level_class = inspect("net.minecraft.server.level.ServerLevel")
+    static_init = level_class.split("  static {};")[1]
+    weather = {}
+    for field in ("RAIN_DELAY", "RAIN_DURATION", "THUNDER_DELAY", "THUNDER_DURATION"):
+        end = re.search(r"putstatic\s+#\d+\s+// Field " + field + ":", static_init)
+        require(end, f"missing weather range {field}")
+        head = static_init[: end.start()].rsplit("invokestatic", 1)[0]
+        ints = re.findall(r"(?:sipush|bipush)\s+(\d+)|ldc(?:_w)?\s+#\d+\s+// int (\d+)", head)
+        lo, hi = [int(a or b) for a, b in ints[-2:]]
+        weather[field.lower()] = [lo, hi]
+    advance = method(level_class, "private void advanceWeatherCycle(")
+    require(advance.count("ldc_w         #") >= 4 and "0.01f" in advance, "weather fade step changed")
+    weather["level_step_per_tick"] = 0.01
+    facts["weather_ticks"] = weather
 
     # The natural spawn cycle.
     spawner = inspect("net.minecraft.world.level.NaturalSpawner")

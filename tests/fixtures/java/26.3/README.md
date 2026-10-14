@@ -178,3 +178,7 @@ cargo test --release --test fishing_loot
 The fixture proves table contents and the stated formulas. Loot uses
 VoxelCraft's RNG, not Java's random sequence, so individual rolls are not
 reproduced; the tests check shares and ranges.
+
+`world_defects.json` extracts Nether spawn costs and structure loot pool
+weights/counts/modifier names from the pinned server data, independently of
+engine code. Reproduce with `tools/extract_java_world_defect_fixtures.py`.

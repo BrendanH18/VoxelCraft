@@ -1,7 +1,7 @@
 struct Globals {
     view_proj: mat4x4<f32>, inv_view_proj: mat4x4<f32>, fog_color: vec4<f32>,
     zenith_color: vec4<f32>, sun: vec4<f32>, params: vec4<f32>, clouds: vec4<f32>,
-    environment: vec4<f32>, effects: vec4<f32>,
+    environment: vec4<f32>, effects: vec4<f32>, ambient: vec4<f32>,
 };
 struct Axes { right: vec4<f32>, up: vec4<f32> };
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -55,6 +55,15 @@ struct Output {
     return out;
 }
 fn curve(l: f32) -> f32 { return l / (4. - 3. * l); }
+// Java 26.3 adds the environment ambient colour to sky and block light.
+// The Overworld retains its existing daylight presentation in this scoped fix.
+fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
+    if g.ambient.w > 0.0 {
+        return clamp(g.ambient.rgb + sky + torch, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    return max(sky, torch) * 0.96 + 0.04;
+}
+
 @fragment fn fs_main(in: Output) -> @location(0) vec4<f32> {
     var texel: vec4<f32>;
     if (in.light.w % 2.) > 0.5 {
@@ -69,7 +78,7 @@ fn curve(l: f32) -> f32 { return l / (4. - 3. * l); }
     if in.color.a < threshold { discard; }
     let sky = curve(in.light.x) * g.params.z;
     let torch = curve(in.light.y) * vec3<f32>(1., 0.86, 0.66);
-    var lit = max(vec3<f32>(sky), torch) * 0.96 + 0.04;
+    var lit = dimension_light(vec3<f32>(sky), torch);
     if in.light.w > 1.5 { lit = vec3<f32>(1.); }
     let peak = max(max(lit.r, lit.g), max(lit.b, 0.001));
     lit = mix(lit, lit / peak, g.effects.x);

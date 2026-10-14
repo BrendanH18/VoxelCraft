@@ -49,6 +49,15 @@ pub struct Spawn {
     pub group: (u8, u8),
 }
 
+/// A biome's `spawn_costs` entry (Java `MobSpawnSettings.MobSpawnCost`): the
+/// charge each mob of the type adds to the shared potential field, and the
+/// energy budget a new mob of the type must stay within.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct SpawnCost {
+    pub charge: f64,
+    pub energy_budget: f64,
+}
+
 const fn spawn(mob: NetherMob, weight: u32, min: u8, max: u8) -> Spawn {
     Spawn { mob, weight, group: (min, max) }
 }
@@ -169,6 +178,21 @@ impl NetherBiome {
             NetherBiome::CrimsonForest => &CRIMSON_FOREST_MONSTERS,
             NetherBiome::WarpedForest => &WARPED_FOREST_MONSTERS,
             NetherBiome::BasaltDeltas => &BASALT_DELTAS_MONSTERS,
+        }
+    }
+
+    /// Java's `spawn_costs` for the biome (`natural_mob_spawns` attribute):
+    /// soul sand valleys charge 0.7 against a budget of 0.15 for endermen,
+    /// ghasts, skeletons and striders, and warped forests charge endermen 1.0
+    /// against 0.12. Other mobs and biomes have none.
+    pub const fn spawn_cost(self, mob: NetherMob) -> Option<SpawnCost> {
+        match (self, mob) {
+            (
+                NetherBiome::SoulSandValley,
+                NetherMob::Enderman | NetherMob::Ghast | NetherMob::Skeleton | NetherMob::Strider,
+            ) => Some(SpawnCost { charge: 0.7, energy_budget: 0.15 }),
+            (NetherBiome::WarpedForest, NetherMob::Enderman) => Some(SpawnCost { charge: 1.0, energy_budget: 0.12 }),
+            _ => None,
         }
     }
 
@@ -308,6 +332,7 @@ pub struct NetherBiomeSource {
     temperature: NormalNoise,
     vegetation: NormalNoise,
     shift: NormalNoise,
+    zoom: super::biome_zoom::BiomeZoom,
 }
 
 impl NetherBiomeSource {
@@ -319,6 +344,7 @@ impl NetherBiomeSource {
             temperature: NormalNoise::new(s(1), -10, &[1.5, 0.0, 1.0, 0.0, 0.0, 0.0]),
             vegetation: NormalNoise::new(s(2), -8, &[1.0, 1.0, 0.0, 0.0, 0.0, 0.0]),
             shift: NormalNoise::new(s(3), -3, &[1.0, 1.0, 1.0, 0.0]),
+            zoom: super::biome_zoom::BiomeZoom::new(seed as i64),
         }
     }
 
@@ -343,6 +369,14 @@ impl NetherBiomeSource {
     /// The biome of the block column `(x, z)`.
     pub fn biome(&self, x: i32, z: i32) -> NetherBiome {
         self.quart(x >> 2, z >> 2)
+    }
+
+    /// The biome `BiomeManager.getBiome(x, y, z)` returns for a block: the
+    /// quart chosen by Java's fuzzy zoom. Gameplay queries (spawning, the
+    /// debug screen, music) use this; terrain and fog read the plain quarts.
+    pub fn zoomed(&self, x: i32, y: i32, z: i32) -> NetherBiome {
+        let (qx, _, qz) = self.zoom.quart(x, y, z);
+        self.quart(qx, qz)
     }
 
     /// Biomes of the quart grid covering `[x0, x0 + 4 * N)` × `[z0, z0 + 4 * N)`
@@ -386,6 +420,68 @@ impl NetherBiomeSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `BiomeManager.getBiome` reads one of the eight quarts around the block, so
+    /// the zoomed biome is always a neighbour's, differs from the plain quart
+    /// at some borders, and is a pure function of the seed.
+    #[test]
+    fn zoomed_biomes_roughen_borders_without_leaving_the_neighbouring_quarts() {
+        let source = NetherBiomeSource::new(12345);
+        let (mut differing, mut border) = (0, 0);
+        for x in (-4000..4000).step_by(37) {
+            for z in (-4000..4000).step_by(41) {
+                let plain = source.biome(x, z);
+                let zoomed = source.zoomed(x, 64, z);
+                assert_eq!(zoomed, source.zoomed(x, 64, z));
+                let (qx, qz) = ((x - 2) >> 2, (z - 2) >> 2);
+                let near = [(0, 0), (1, 0), (0, 1), (1, 1)].map(|(dx, dz)| source.quart(qx + dx, qz + dz));
+                assert!(near.contains(&zoomed), "{x},{z}: {zoomed:?} is not among {near:?}");
+                if near.iter().any(|&b| b != near[0]) {
+                    border += 1;
+                    differing += (plain != zoomed) as u32;
+                }
+            }
+        }
+        assert!(border > 100 && differing > 0, "{differing} of {border} border samples moved");
+    }
+
+    #[test]
+    fn spawn_cost_tables_match_java_26_3() {
+        let facts: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/world_defects.json")).unwrap();
+        for biome in NetherBiome::ALL {
+            for mob in [
+                NetherMob::Ghast,
+                NetherMob::ZombifiedPiglin,
+                NetherMob::MagmaCube,
+                NetherMob::Enderman,
+                NetherMob::Piglin,
+                NetherMob::Skeleton,
+                NetherMob::Hoglin,
+                NetherMob::Strider,
+            ] {
+                let name = format!(
+                    "minecraft:{}",
+                    match mob {
+                        NetherMob::Ghast => "ghast",
+                        NetherMob::ZombifiedPiglin => "zombified_piglin",
+                        NetherMob::MagmaCube => "magma_cube",
+                        NetherMob::Enderman => "enderman",
+                        NetherMob::Piglin => "piglin",
+                        NetherMob::Skeleton => "skeleton",
+                        NetherMob::Hoglin => "hoglin",
+                        NetherMob::Strider => "strider",
+                    }
+                );
+                let reference = &facts["spawn_costs"][biome.name()][&name];
+                let expected = reference.as_object().map(|_| SpawnCost {
+                    charge: reference["charge"].as_f64().unwrap(),
+                    energy_budget: reference["energy_budget"].as_f64().unwrap(),
+                });
+                assert_eq!(biome.spawn_cost(mob), expected, "{biome:?} {mob:?}");
+            }
+        }
+    }
 
     #[test]
     fn parameter_points_select_their_own_biome() {
@@ -541,5 +637,24 @@ mod tests {
         }
         let here = src.biome(origin.x, origin.z);
         assert_eq!(src.nearest(origin, here, 64), Some(origin));
+    }
+
+    #[test]
+    fn locate_matches_javas_height_independent_three_dimensional_search() {
+        // Java's `/locate biome` samples several heights, starting at the
+        // caller's. The Nether's climate noise has `y_scale` 0, so every height
+        // yields the same columns and the first hit is at the caller's height.
+        let facts: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/lighting_spawning.json")).unwrap();
+        for noise in ["temperature", "vegetation"] {
+            assert_eq!(facts["nether_climate"][noise]["y_scale"], 0.0, "{noise}");
+        }
+        let src = NetherBiomeSource::new(7);
+        for b in NetherBiome::ALL {
+            let low = src.nearest(IVec3::new(100, 20, -40), b, 6400).unwrap();
+            let high = src.nearest(IVec3::new(100, 120, -40), b, 6400).unwrap();
+            assert_eq!((low.x, low.z), (high.x, high.z), "{b:?}");
+            assert_eq!((low.y, high.y), (20, 120), "{b:?}");
+        }
     }
 }

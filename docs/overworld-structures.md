@@ -56,19 +56,44 @@ names. Searching is restricted to the Overworld and the specified radius,
 and accounts for nearer candidates across region boundaries.
 
 Pyramids contain four treasure chests and a pressure-plate TNT trap.
-Jungle temples contain two treasure chests and a tripwire arrow trap.
+Jungle temples are a port of Java's `JungleTemplePiece` (bytecode-read from the
+pinned server): a 12×10×15 piece on a 12×5×15 block of cobblestone that is
+mossy 60% of the time, anchored at the start chunk's corner in a random
+orientation with Java's piece frame (`getWorldX/Z`, mirror and rotation per
+orientation). Inside are the stair-fed basement with the main chest behind
+the first of two tripwire arrow traps, and a lever and sticky piston puzzle
+(three levers, three pistons, a repeater and wire) guarding the hidden chest;
+chests face as `StructurePiece.reorient` chooses. Differences: its three
+chiseled stone bricks are stone bricks (the block does not exist yet), the
+average ground height is taken over the whole footprint (Java averages only
+the chunk being generated), and the puzzle's redstone is the engine's, so it
+has not been played through.
 Igloos have a bed, crafting table and furnace; half have a basement with
 an accessible ladder, brewing stand and a chest containing a golden apple.
+The basement shaft follows Java's `IglooPieces.addPieces` (bytecode-checked):
+half of igloos get `nextInt(8) + 4` three-block pieces, so the laboratory floor is
+12 to 33 blocks under the igloo floor. This changes the basement depth of
+existing seeds (7 in 8 basement igloos lie deeper than before); surface layout
+and non-basement igloos are unchanged.
 Outposts have a climbable lookout tower and a loot chest. Shipwrecks have
 supply, treasure and map-room chests; ruins have small and large chest
 variants. Monuments contain flooded halls, two wings, a central tower,
 sea lanterns, optional sponge rooms and an eight-block gold core.
 
-Supported loot entries preserve Java's pool weights, roll ranges, counts,
-and random enchantment/damage flags. Separate pools stay separate.
-Unavailable entries retain their original weight as an empty result:
-maps, horse armor, saddles, armor trim templates, enchanted golden apples,
-experience bottles, goat horns and suspicious stew are still pending.
+Structure chests use the Java 26.3 loot tables, pinned in
+`tests/fixtures/java/26.3/world_defects.json` and checked entry by entry
+(pool rolls, weights, counts, enchantment modifiers) by
+`loot_tables_match_the_java_26_3_fixture`. Separate pools stay separate.
+26.3 differs from 1.21.5: desert pyramids drop leather and copper horse armor
+instead of saddles, ocean ruins and the jungle temple/shipwreck tables gained
+the copper/spear/nautilus entries, and shipwrecks and ruins roll an extra
+nautilus-armor pool. The jungle temple book is a 30-level enchant, not a random
+single enchantment; outpost goat horns are one of the four regular horns
+(ponder, sing, seek, feel).
+Entries whose item does not exist yet keep their original weight as an empty
+result: buried treasure and plain maps, trim templates, copper horse armor,
+nautilus armor, spears, enchanted golden apples, experience bottles and
+suspicious stew.
 Heart of the sea belongs in buried treasure and is not substituted into
 shipwreck loot. The shared loot helper uses VoxelCraft's seeded layout RNG
 and enchantment selection, rather than Java's exact loot random sequences
@@ -102,8 +127,8 @@ See [aquatic mobs](aquatic-mobs.md) for swimming, buckets and combat.
 ## Remaining parity work
 
 - Outpost ancillary pieces, generated golems/allays, patrols and raids.
-- Variable igloo basement depth; bed orientation rendering.
-- Jungle temple lever/piston puzzle and Minecraft's full trap layout.
+- Igloo bed orientation rendering: beds carry no facing state in the block ID,
+  so every bed draws the same way; rotated igloos keep the pair's geometry only.
 - Shipwreck template variants, all floor orientations, buried treasure
   and exploration maps; `ocean_ruin` currently combines warm/cold variants.
 - Ocean ruin clusters and archaeology; exact monument room graphs and
