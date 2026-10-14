@@ -221,3 +221,54 @@ fn blocks_claim_throwables_and_bow_use_but_full_cake_passes_to_items() {
     assert_eq!(s.inventory.get(0).unwrap().count, 1);
     assert_eq!(w.get_block(WALL), Some(Block::cake(1)));
 }
+
+/// Java `BellBlock.isProperHit`: no ring from the top or bottom face, nor from
+/// the beam above 0.8124; the click then passes on to the held item.
+#[test]
+fn bells_ring_only_for_proper_hits_and_other_clicks_pass_to_the_held_item() {
+    let (mut w, mut s, mut e) = scene(Some(Item::from_block(Block::STONE)));
+    w.set_block(WALL, Block::BELL);
+    // Level with the bell body (eye 0.62 into the cell).
+    assert_eq!(use_held(&mut s, &mut w, &mut e, false), Some(Used::Redstone { cell: WALL }));
+    // Eye at 0.92 of the cell: the beam, so the stone is placed instead.
+    s.player.pos.y += 0.3;
+    assert!(matches!(use_held(&mut s, &mut w, &mut e, false), Some(Used::Placed(_))));
+    assert_eq!(w.get_block(WALL), Some(Block::BELL));
+    // Looking down onto the top face.
+    let (mut w, mut s, mut e) = scene(Some(Item::from_block(Block::STONE)));
+    w.set_block(WALL, Block::BELL);
+    s.player.pos = DVec3::new(7.5, 148., 4.5);
+    s.player.pitch = -std::f32::consts::FRAC_PI_2 + 0.01;
+    s.player.on_ground = true;
+    assert!(matches!(use_held(&mut s, &mut w, &mut e, false), Some(Used::Placed(_))));
+    assert_eq!(w.get_block(WALL), Some(Block::BELL));
+}
+
+/// Entity clicks use the entity interaction range (3, or 5 in Creative), not the
+/// block range, and a nearer block still hides the animal.
+#[test]
+fn animal_clicks_use_the_entity_interaction_range() {
+    use voxelcraft::entity::MobKind;
+    for (mode, x, fed) in [
+        (GameMode::Survival, 7.5, true),
+        (GameMode::Survival, 9.5, false),
+        (GameMode::Creative, 9.5, true),
+        (GameMode::Creative, 11.5, false),
+    ] {
+        let (mut w, mut s, mut e) = scene(Some(Item::WHEAT));
+        w.set_block(WALL, Block::AIR);
+        s.set_mode(mode);
+        e.spawn(MobKind::Cow, DVec3::new(x, 145.5, 4.5));
+        let used =
+            s.use_held(0, &mut w, &mut e, &UseContext { sneaking: false, others: &[] }).ok().flatten().map(|u| u.used);
+        assert_eq!(used == Some(Used::Animal), fed, "{mode:?} at {x}: {used:?}");
+    }
+    // A wall closer than the cow stops the click.
+    let (mut w, mut s, mut e) = scene(Some(Item::WHEAT));
+    e.spawn(MobKind::Cow, DVec3::new(7.5, 145.5, 4.5));
+    w.set_block(WALL - IVec3::X * 2, Block::STONE);
+    w.set_block(WALL - IVec3::X * 2 - IVec3::Y, Block::STONE);
+    let used =
+        s.use_held(0, &mut w, &mut e, &UseContext { sneaking: false, others: &[] }).ok().flatten().map(|u| u.used);
+    assert_ne!(used, Some(Used::Animal));
+}

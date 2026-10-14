@@ -16,10 +16,24 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Effect {
-    Filled { at: IVec3, fluid: Block },
-    Poured { at: IVec3, fluid: Block },
-    Evaporated { at: IVec3 },
-    BottleFilled { at: IVec3 },
+    Filled {
+        at: IVec3,
+        fluid: Block,
+    },
+    Poured {
+        at: IVec3,
+        fluid: Block,
+    },
+    /// A fish bucket's water and creature were released (`BUCKET_EMPTY_FISH`).
+    Released {
+        at: IVec3,
+    },
+    Evaporated {
+        at: IVec3,
+    },
+    BottleFilled {
+        at: IVec3,
+    },
     Creature,
 }
 
@@ -58,7 +72,7 @@ pub fn use_held(
         return Use::NotHeld;
     };
     if let Some((pos, _)) = world.raycast(player.eye(), player.forward().as_dvec3(), reach)
-        && block_use_precedes_item(world, pos, Some(held), sneaking)
+        && block_use_precedes_item(world, pos, Some(held), sneaking, (player.eye(), player.forward().as_dvec3()))
     {
         return Use::Block(pos);
     }
@@ -119,8 +133,9 @@ pub fn use_bucket(
         }
         _ if creature => {
             let effect = pour(world, eye, dir, reach, Block::WATER, player.sneaking)?;
-            let at = match effect {
-                Effect::Poured { at, .. } | Effect::Evaporated { at } => at,
+            let (at, evaporated) = match effect {
+                Effect::Poured { at, .. } => (at, false),
+                Effect::Evaporated { at } => (at, true),
                 _ => unreachable!("pouring only reports poured or evaporated fluid"),
             };
             // `MobBucketItem.checkExtraContent` spawns even where the water evaporated.
@@ -128,7 +143,8 @@ pub fn use_bucket(
             if !creative {
                 super::exchange(inventory, slot, Item::BUCKET, false, entities, player);
             }
-            Some(effect)
+            // `BucketItem.emptyContents` plays the empty sound only when the water stays.
+            Some(if evaporated { effect } else { Effect::Released { at } })
         }
         _ => None,
     }

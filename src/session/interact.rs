@@ -140,10 +140,15 @@ impl PlayerSession {
     pub fn block_takes_use(&self, slot: usize, world: &World, sneaking: bool) -> bool {
         let held = self.inventory.get(slot).map(|s| s.item);
         let Some((pos, _)) = self.block_target(world) else { return false };
-        crate::content::interaction::block_use_precedes_item(world, pos, held, sneaking)
-            || (!(sneaking && held.is_some())
-                && world.get_block(pos).is_some_and(|b| b.cake_bites().is_some())
-                && (self.mode.is_creative() || self.vitals.hunger.can_eat()))
+        crate::content::interaction::block_use_precedes_item(
+            world,
+            pos,
+            held,
+            sneaking,
+            (self.player.eye(), self.player.forward().as_dvec3()),
+        ) || (!(sneaking && held.is_some())
+            && world.get_block(pos).is_some_and(|b| b.cake_bites().is_some())
+            && (self.mode.is_creative() || self.vitals.hunger.can_eat()))
     }
 
     /// The mob under the crosshair within entity reach and in front of the targeted block.
@@ -198,6 +203,7 @@ impl PlayerSession {
         tool_broken: &mut Option<Item>,
     ) -> Result<Option<Used>, &'static str> {
         let creative = self.mode.is_creative();
+        let clicks = survival_items::Reach { block: self.block_reach(), entity: self.entity_reach() };
         if let Some(id) = self.player.vehicle {
             if entities.boost_mount(self.id, &mut self.inventory, slot, creative) {
                 return Ok(Some(Used::Boosted));
@@ -223,6 +229,7 @@ impl PlayerSession {
             world,
             entities,
             self.id,
+            clicks,
         ) {
             return Ok(Some(Used::Animal));
         }
@@ -273,7 +280,8 @@ impl PlayerSession {
             }
             return Ok(Some(Used::Sheep { sheared }));
         }
-        if survival_items::use_mob(&self.player, &mut self.inventory, slot, creative, world, entities, self.id) {
+        if survival_items::use_mob(&self.player, &mut self.inventory, slot, creative, world, entities, self.id, clicks)
+        {
             return Ok(Some(Used::Mob));
         }
         Ok(None)
@@ -369,7 +377,10 @@ impl PlayerSession {
             }
             return Ok(Some(Used::EyeInserted { cell: pos, opened }));
         }
-        if !ctx.sneaking && world.use_redstone(pos) {
+        // A bell rings only for a proper hit; otherwise the click passes on.
+        let rings = world.get_block(pos).is_none_or(|b| b.base() != Block::BELL)
+            || world.bell_hit_rings(pos, self.player.eye(), self.player.forward().as_dvec3());
+        if !ctx.sneaking && rings && world.use_redstone(pos) {
             return Ok(Some(Used::Redstone { cell: pos }));
         }
         world.touch_redstone_ore(pos);

@@ -129,9 +129,18 @@ lookup per bucket click and does not touch per-frame paths.
   into the shared session chain. Ordinary-player acceptance remains open.
 - The desktop blocks bucket use while riding (boost or vehicle inventory). The
   CLI now allows it, as Java does.
-- Bells ring from any face. Fish releases play the pour sound, not
-  `BUCKET_EMPTY_FISH`. `use_held` uses a 6-block raycast for block priority;
-  the CLI's own block target uses the session reach.
+- Implemented on `work/fix-w1-building`: bells ring only for a proper hit.
+  `BellBlock.isProperHit` rejects the top and bottom faces and hits above
+  0.8124 of the block; those clicks pass to the held item. VoxelCraft has one
+  bell state (no facing or attachment), so the side-face axis rules are not
+  modelled and the ray tests the whole cell. Releasing a fish bucket reports
+  `Effect::Released` (Java's `BUCKET_EMPTY_FISH`) when the water stays, and the
+  client plays a higher splash; evaporation keeps the extinguish effect. Animal,
+  lead and mob clicks used a 6-block ray for both block priority and entity
+  range; they now use the block interaction range for the block test and the
+  entity interaction range (3, or 5 in Creative) for the entity, shortened to a
+  nearer block, as `mob_target` does. Bucket and block-priority rays already
+  used the session's block reach.
 
 ## Proposed roadmap updates
 

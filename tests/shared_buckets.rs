@@ -374,7 +374,7 @@ fn water_fills_water_holding_plants_in_place_but_lava_and_sneaking_use_the_face(
 
     let (mut world, mut agent, mut entities) = setup();
     agent.inventory.slots[0] = Some(Stack::new(Item::COD_BUCKET, 1));
-    assert_eq!(direct(&mut world, &mut agent, &mut entities), Some(Effect::Poured { at: HIT, fluid: Block::WATER }));
+    assert_eq!(direct(&mut world, &mut agent, &mut entities), Some(Effect::Released { at: HIT }));
     assert_eq!(world.get_block(HIT), Some(seagrass));
     assert_eq!(entities.mobs.len(), 1);
     assert_eq!(entities.mobs[0].pos.floor().as_ivec3(), HIT);
@@ -417,4 +417,18 @@ fn poured_fluids_destroy_rails_and_fragile_redstone_with_their_loot() {
     }
     assert!(!Block::COBWEB.fluid_replaceable());
     assert!(!redstone_blocks::IRON_TRAPDOOR.fluid_replaceable());
+}
+
+/// Java's `MobBucketItem.playEmptySound` plays `BUCKET_EMPTY_FISH` when the
+/// water stays; where it evaporates `BucketItem.emptyContents` plays only the
+/// extinguish sound, so the effect stays `Evaporated`.
+#[test]
+fn releasing_a_fish_reports_the_fish_sound_but_evaporation_does_not() {
+    let (mut world, mut agent, mut entities) = scene(Dimension::Overworld);
+    agent.inventory.slots[0] = Some(Stack::new(Item::COD_BUCKET, 1));
+    assert_eq!(direct(&mut world, &mut agent, &mut entities), Some(Effect::Released { at: POUR }));
+    assert_eq!(agent.inventory.get(0).unwrap().item, Item::BUCKET);
+    let (mut world, mut agent, mut entities) = scene(Dimension::Nether);
+    agent.inventory.slots[0] = Some(Stack::new(Item::COD_BUCKET, 1));
+    assert_eq!(direct(&mut world, &mut agent, &mut entities), Some(Effect::Evaporated { at: POUR }));
 }
