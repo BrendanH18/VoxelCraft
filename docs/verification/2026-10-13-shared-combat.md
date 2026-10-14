@@ -101,8 +101,7 @@ mob-sensitive; it is recorded as intermittent, not fixed.
 
 ## Remaining differences
 
-- Blindness is not yet represented, so it cannot block criticals.
-- Java's per-item `minimum_attack_charge`, spear/mace/trident and other
+- Spear/mace/trident and other
   kinetic/piercing weapon components are not implemented. Haste and Mining
   Fatigue attack-speed modifiers are now applied; Java 26.3 has no attack-speed
   enchantment definitions. Copper tools and armor are now
@@ -138,3 +137,26 @@ Tests cover each effect, combined modifiers, zero speed and charge timing.
 
 Attack-speed-fix checks: required fmt/strict release Clippy/release tests passed
 (978 passed, zero failed, four ignored); expanded fixture reproduced exactly.
+
+Critical distance additionally accumulates downward movement without subtracting
+rising motion after a bounce (`Entity.checkFallDamage`/fallDistance); a regression
+distinguishes this from the retained apex-height fall-damage tracker. Teleports,
+water, climbing, flight, ground contact and Slow Falling clear the tracker.
+
+The server's `cannotAttackWithItem` gate is shared by melee and LAN PvP, with
+five lead ticks. Java 26.3 sets `minimum_attack_charge = 1` only on spears; all
+registered items use the default zero and accept every charge. The regression
+checks every registered item and the reference gate arithmetic. Spears remain
+out of scope, with no item IDs allocated for them.
+
+Fog regression covers terrain start/end, the final-second fade, underwater
+priority and lava priority. Separate Java sky/cloud distance and screen
+darkening are not represented by the existing renderer; visual acceptance is
+still open, so this closes combat/sprint eligibility only.
+
+Blindness is appended to the effect registry and icon array; save IDs remain
+strings. It blocks criticals and sprinting through the shared session/vitals
+for keyboard, controller, CLI and LAN players. Tests cover persistence and
+Creative sprint blocking. The visual fog follows the hash-pinned 26.3 client
+`BlindnessFogEnvironment`, with five-block distance and the last-20-tick fade;
+client jar SHA-1 `e877b6a07acd633fb3bb475002175cec036e7b87`.

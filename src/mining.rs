@@ -213,6 +213,20 @@ pub fn attack_strength_delay_with(held: Option<Item>, effects: &crate::simulatio
     (1.0 / attack_speed_with(held, effects) * 20.0) as f32
 }
 
+/// Java's `minimum_attack_charge` item component: the charge an attack with
+/// the item needs before the server accepts it at all
+/// (`Player.cannotAttackWithItem`). In 26.3 only spears carry it (1.0), and
+/// spears are not registered, so every registered item accepts any charge.
+pub fn minimum_attack_charge(_held: Option<Item>) -> f32 {
+    0.0
+}
+
+/// Java's `Player.cannotAttackWithItem` arithmetic: a positive `minimum`
+/// refuses the attack while `(ticker + lead) / delay` is still below it.
+pub fn charge_refuses_attack(minimum: f32, ticker: u32, lead: u32, delay: f32) -> bool {
+    minimum > 0.0 && ticker.saturating_add(lead) as f32 / delay < minimum
+}
+
 /// Experience a harvested block drops (Java's ore ranges; silk touch
 /// skips it: see [`mined_xp`]).
 pub fn ore_xp(block: Block, rng: &mut crate::entity::Rng) -> u32 {

@@ -179,6 +179,10 @@ fn criticals_follow_fall_distance_and_not_velocity() {
         fall(s, 3.0);
         s.player.vehicle = Some(1);
     }));
+    assert!(!critical(&|s| {
+        fall(s, 3.0);
+        s.vitals.effects.add(Effect::Blindness, 0, 200);
+    }));
     assert_eq!(fixture()["criticals"]["needs"][0], "fall_distance > 0");
 }
 
@@ -224,6 +228,45 @@ fn haste_and_mining_fatigue_scale_the_attack_speed_attribute() {
     s.vitals.effects.add(Effect::MiningFatigue, 9, 1000);
     assert!(s.attack_strength_delay(0).is_infinite());
     assert_eq!(s.attack_strength(0, 0.5), 0.0, "a zero attack speed never charges");
+}
+
+#[test]
+fn only_spears_carry_a_minimum_attack_charge() {
+    let f = fixture();
+    let minimum = f["minimum_attack_charge"]["spear_value"].as_f64().unwrap() as f32;
+    // No spear is registered, so every registered item accepts any charge.
+    for spear in f["minimum_attack_charge"]["spear_items"].as_array().unwrap() {
+        assert!(Item::from_name(spear.as_str().unwrap()).is_none(), "{spear} is now registered");
+    }
+    for item in Item::all_items() {
+        assert_eq!(
+            mining::minimum_attack_charge(Some(item)),
+            f["minimum_attack_charge"]["default"].as_f64().unwrap() as f32
+        );
+    }
+    // Java `cannotAttackWithItem`: with the server's five ticks of lead, a charge below the minimum refuses.
+    let lead = f["minimum_attack_charge"]["server_lead_ticks"].as_u64().unwrap() as u32;
+    assert_eq!(lead, 5);
+    assert!(mining::charge_refuses_attack(minimum, 0, lead, 20.0));
+    assert!(mining::charge_refuses_attack(minimum, 14, lead, 20.0));
+    assert!(!mining::charge_refuses_attack(minimum, 15, lead, 20.0));
+    assert!(!mining::charge_refuses_attack(0.0, 0, lead, 20.0), "no minimum never refuses");
+    let (w, mut s, mut e) = scene(6.0);
+    assert!(!s.cannot_attack_with(0, lead));
+    assert!(s.attack(0, &w, &mut e, false).is_ok(), "ordinary weapons attack at any charge");
+}
+
+#[test]
+fn blindness_blocks_sprinting_and_matches_the_reference_effect() {
+    let mut vitals = voxelcraft::simulation::survival::Vitals::default();
+    assert!(vitals.may_sprint(false) && vitals.may_sprint(true));
+    vitals.effects.add(Effect::Blindness, 0, 100);
+    assert!(!vitals.may_sprint(false) && !vitals.may_sprint(true), "even Creative cannot sprint blind");
+    assert_eq!(Effect::from_id("minecraft:blindness"), Some(Effect::Blindness));
+    assert_eq!(Effect::Blindness.colour(), [0x1F, 0x1F, 0x23]);
+    assert!(Effect::Blindness.is_harmful());
+    let restored = voxelcraft::simulation::effects::Effects::deserialize(&vitals.effects.serialize());
+    assert!(restored.mobility_restricted());
 }
 
 #[test]
@@ -304,4 +347,19 @@ fn the_crosshair_indicator_charges_then_marks_a_full_strike_on_a_living_target()
     charge(&mut s, 20);
     assert_eq!(mining::attack_strength_delay(None), 5.0);
     assert_eq!(s.attack_indicator(0, true), None);
+}
+
+#[test]
+fn critical_fall_distance_accumulates_downward_moves_without_subtracting_bounces() {
+    let mut v = voxelcraft::simulation::survival::Vitals::default();
+    let env = |y, on_ground| Env { y, on_ground, ..Env::default() };
+    v.tick(0.05, &env(150.0, true), false);
+    v.tick(0.05, &env(147.0, false), false);
+    assert_eq!(v.fall_distance(147.0), 3.0);
+    v.tick(0.05, &env(148.0, false), false);
+    assert_eq!(v.fall_distance(148.0), 3.0, "rising does not subtract distance");
+    v.tick(0.05, &env(147.0, false), false);
+    assert_eq!(v.fall_distance(147.0), 4.0);
+    v.reset_fall();
+    assert_eq!(v.fall_distance(140.0), 0.0, "teleport forgets the previous movement");
 }

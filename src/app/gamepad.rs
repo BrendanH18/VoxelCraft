@@ -756,8 +756,7 @@ impl Game {
         let bot = self.agents.players.get(name)?;
         let session = &bot.agent.session;
         let sneaking = session.player.sneaking;
-        let sprinting =
-            bot.agent.movement_input().sprint && (session.mode.invulnerable() || session.vitals.hunger.can_sprint());
+        let sprinting = bot.agent.movement_input().sprint && session.vitals.may_sprint(session.mode.invulnerable());
         let id = bot.id;
         let others: Vec<glam::DVec3> = std::iter::once(self.session.player.pos)
             .chain(self.agents.players.values().filter(|b| b.active && b.id != id).map(|b| b.agent.session.player.pos))
@@ -834,7 +833,7 @@ impl Game {
     pub(super) fn agent_attack_context(&self, name: &str) -> (usize, bool, bool) {
         let Some(bot) = self.agents.players.get(name) else { return (0, false, false) };
         let s = &bot.agent.session;
-        let sprint = bot.agent.movement_input().sprint && (s.mode.invulnerable() || s.vitals.hunger.can_sprint());
+        let sprint = bot.agent.movement_input().sprint && s.vitals.may_sprint(s.mode.invulnerable());
         (bot.agent.selected, sprint, s.mode.can_interact())
     }
 

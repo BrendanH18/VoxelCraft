@@ -1753,6 +1753,9 @@ impl Game {
             return false;
         };
         let Some(me) = self.player_mut(attacker) else { return false };
+        if me.cannot_attack_with(slot, 5) {
+            return false;
+        }
         let strength = me.attack_strength(slot, 0.5);
         me.reset_attack_strength();
         let strong = strength > 0.9;

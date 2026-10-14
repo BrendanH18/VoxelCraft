@@ -32,11 +32,26 @@ pub(super) struct Scene {
 }
 
 /// Fog for an eye: colour, start and end, and whether it's under a fluid.
+#[derive(Clone, Copy)]
 pub(super) struct Fog {
     pub color: [f32; 3],
     pub start: f32,
     pub end: f32,
     pub underwater: bool,
+}
+
+impl Fog {
+    /// Java 26.3 BlindnessFogEnvironment: five blocks, fading over the final second.
+    /// Lava's own environmental fog has priority over mob-effect fog.
+    pub(super) fn blinded(self, ticks: Option<u32>, view_distance: f32) -> Self {
+        let Some(ticks) = ticks else { return self };
+        if !self.underwater && self.end <= 3.0 {
+            return self;
+        }
+        let strength = (ticks as f32 / 20.0).min(1.0);
+        let end = view_distance + (5.0 - view_distance) * strength;
+        Self { color: self.color.map(|c| c * (1.0 - strength).powi(2)), start: end * 0.25, end, ..self }
+    }
 }
 
 impl Game {
@@ -181,7 +196,10 @@ impl Game {
             let feet = a.previous_pos.lerp(a.player.pos, scene.alpha);
             let eye = feet + (a.player.eye() - a.player.pos);
             let (camera, forward) = bot.camera.view(&self.world, eye, a.player.forward());
-            let fog = self.fog(scene, camera);
+            let fog = self.fog(scene, camera).blinded(
+                a.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
+                self.settings.render_distance as f32 * 32.0,
+            );
             let models = self.block_models(scene.alpha);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
@@ -373,5 +391,22 @@ impl Game {
         ui.rect(0.0, 0.0, sw, 1.0, [0.0, 0.0, 0.0, 0.8]);
         ui.rect(0.0, 0.0, 1.0, sh, [0.0, 0.0, 0.0, 0.8]);
         ui.verts
+    }
+}
+
+#[cfg(test)]
+mod blindness_tests {
+    use super::Fog;
+    #[test]
+    fn blindness_uses_reference_terrain_distance_and_last_second_fade() {
+        let f = Fog { color: [0.5; 3], start: 200.0, end: 256.0, underwater: false };
+        let full = f.blinded(Some(100), 256.0);
+        assert_eq!((full.start, full.end, full.color), (1.25, 5.0, [0.0; 3]));
+        let fading = f.blinded(Some(10), 256.0);
+        assert_eq!((fading.start, fading.end, fading.color), (32.625, 130.5, [0.125; 3]));
+        assert_eq!(f.blinded(None, 256.0).end, f.end);
+        let lava = Fog { end: 1.0, ..f };
+        assert_eq!(lava.blinded(Some(100), 256.0).end, 1.0);
+        assert_eq!(Fog { underwater: true, ..f }.blinded(Some(100), 256.0).end, 5.0);
     }
 }

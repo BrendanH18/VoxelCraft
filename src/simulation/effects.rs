@@ -29,10 +29,11 @@ pub enum Effect {
     Resistance,
     /// Appended: effects persist by Java id, but icon layers follow this order.
     Haste,
+    Blindness,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 19] = [
+    pub const ALL: [Effect; 20] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -52,6 +53,7 @@ impl Effect {
         Effect::DolphinsGrace,
         Effect::Resistance,
         Effect::Haste,
+        Effect::Blindness,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -76,6 +78,7 @@ impl Effect {
             Effect::DolphinsGrace => "dolphins_grace",
             Effect::Resistance => "resistance",
             Effect::Haste => "haste",
+            Effect::Blindness => "blindness",
         }
     }
 
@@ -106,6 +109,7 @@ impl Effect {
             Effect::DolphinsGrace => "Dolphin’s Grace",
             Effect::Resistance => "Resistance",
             Effect::Haste => "Haste",
+            Effect::Blindness => "Blindness",
         }
     }
 
@@ -131,6 +135,7 @@ impl Effect {
             Effect::DolphinsGrace => 0x88A3BE,
             Effect::Resistance => 0x9146F0,
             Effect::Haste => 0xD9C043,
+            Effect::Blindness => 0x1F1F23,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
@@ -151,6 +156,7 @@ impl Effect {
                 | Effect::Wither
                 | Effect::Hunger
                 | Effect::MiningFatigue
+                | Effect::Blindness
         )
     }
 }
@@ -306,6 +312,11 @@ impl Effects {
     /// shares the formula, is not registered.
     pub fn dig_speed_factor(&self) -> f32 {
         self.get(Effect::Haste).map_or(1.0, |a| 1.0 + (i32::from(a.amplifier) + 1) as f32 * 0.2)
+    }
+
+    /// Java's `Player.isMobilityRestricted`: Blindness stops criticals and sprinting.
+    pub fn mobility_restricted(&self) -> bool {
+        self.has(Effect::Blindness)
     }
 
     /// The player's attack-speed attribute multiplier: Haste adds 10% per

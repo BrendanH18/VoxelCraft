@@ -789,3 +789,9 @@ regression cases. Implemented, unverified; ordinary-player acceptance remains.
 
 Combat charge and its indicator now include Java 26.3 Haste/Mining Fatigue
 attack-speed modifiers. No reference enchantment changes attack speed.
+
+The Java minimum-attack-charge gate is present; all registered items have zero
+minimum. Its only nonzero reference users are the unregistered spears.
+
+Blindness now persists by Java ID and blocks sprinting/criticals across input
+paths, with an appended icon and per-view fog. Ordinary visual acceptance is open.

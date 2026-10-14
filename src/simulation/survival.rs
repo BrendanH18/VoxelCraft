@@ -243,6 +243,9 @@ pub struct Vitals {
     /// Highest feet Y since last standing on the ground (None while
     /// flying or swimming).
     fall_peak: Option<f64>,
+    /// Java fallDistance accumulates every downward movement until reset.
+    critical_fall_distance: f64,
+    previous_fall_y: Option<f64>,
     /// Set while dead: what killed the player.
     pub death: Option<String>,
     peaceful_timer: f32,
@@ -263,6 +266,8 @@ impl Default for Vitals {
             fire_timer: 0.0,
             last_damage: 0.0,
             fall_peak: None,
+            critical_fall_distance: 0.0,
+            previous_fall_y: None,
             death: None,
             peaceful_timer: 0.0,
         }
@@ -390,6 +395,15 @@ impl Vitals {
         }
         let jump_levels = self.effects.jump_boost() as f64;
 
+        // Java accumulates downward moves, even if a bounce rises in between.
+        // Keep the retained fall-damage peak separately from critical eligibility.
+        if env.on_ground || env.flying || env.in_water || env.climbing || self.effects.has(Effect::SlowFalling) {
+            self.critical_fall_distance = 0.0;
+        } else if let Some(y) = self.previous_fall_y {
+            self.critical_fall_distance += f64::from((y - env.y).max(0.0) as f32);
+        }
+        self.previous_fall_y = Some(env.y);
+
         // Falling: remember the highest point since standing on the ground
         // (including the ground itself, so stepping off a ledge counts
         // the full drop).
@@ -500,16 +514,23 @@ impl Vitals {
         out.damage
     }
 
-    /// Java's `fallDistance` for a player now at feet height `y`: how far
-    /// below the highest point since the ground (zero while flying,
-    /// swimming or climbing, after Slow Falling's reset or a teleport).
+    /// Whether the player may sprint: not Blind (Java's mobility
+    /// restriction), and fed enough unless `ignores_hunger` (Creative).
+    pub fn may_sprint(&self, ignores_hunger: bool) -> bool {
+        !self.effects.mobility_restricted() && (ignores_hunger || self.hunger.can_sprint())
+    }
+
+    /// Java's accumulated `fallDistance`, including a downward move since
+    /// the last vitals tick. Rising movement does not subtract from it.
     pub fn fall_distance(&self, y: f64) -> f64 {
-        self.fall_peak.map_or(0.0, |peak| (peak - y).max(0.0))
+        self.critical_fall_distance + self.previous_fall_y.map_or(0.0, |last| f64::from((last - y).max(0.0) as f32))
     }
 
     /// Forgets the height a fall started from (after a teleport).
     pub fn reset_fall(&mut self) {
         self.fall_peak = None;
+        self.critical_fall_distance = 0.0;
+        self.previous_fall_y = None;
     }
 
     /// Full health and air, alive, no experience, nothing pending.

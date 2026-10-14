@@ -84,6 +84,13 @@ impl PlayerSession {
         ((self.combat.ticker as f32 + partial) / self.attack_strength_delay(slot)).clamp(0.0, 1.0)
     }
 
+    /// Java's `cannotAttackWithItem(stack, lead)`: an item with a minimum
+    /// attack charge refuses attacks until the charge, `lead` ticks ahead, reaches it.
+    pub fn cannot_attack_with(&self, slot: usize, lead: u32) -> bool {
+        let minimum = mining::minimum_attack_charge(self.inventory.get(slot).map(|s| s.item));
+        mining::charge_refuses_attack(minimum, self.combat.ticker, lead, self.attack_strength_delay(slot))
+    }
+
     /// Java's crosshair attack indicator: a filling bar while the charge is
     /// below full, or the "full" mark when aimed at a living target with a
     /// fully charged weapon slower than 5 ticks. `None` when neither shows.
@@ -108,6 +115,7 @@ impl PlayerSession {
             && !p.on_ground
             && !p.climbing
             && !p.in_water
+            && !self.vitals.effects.mobility_restricted()
             && p.vehicle.is_none()
             && living
             && !sprinting
@@ -139,6 +147,10 @@ impl PlayerSession {
         let stack = self.inventory.get(slot);
         if stack.is_some_and(|s| s.count == 0 || s.count > s.item.max_stack()) {
             return Err("invalid held stack");
+        }
+        // The server refuses attacks with an item that needs a minimum charge.
+        if self.cannot_attack_with(slot, 5) {
+            return Err("the held item is not charged enough to attack");
         }
         let held = stack.map(|s| s.item);
         let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());

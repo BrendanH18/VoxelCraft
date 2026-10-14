@@ -1334,7 +1334,7 @@ impl Game {
                 descend: held(KeyCode::ShiftLeft),
                 // Too hungry to sprint at 6 food or less (survival).
                 sprint: (held(KeyCode::ControlLeft) || held(KeyCode::KeyR))
-                    && (self.session.mode.invulnerable() || self.session.vitals.hunger.can_sprint()),
+                    && self.session.vitals.may_sprint(self.session.mode.invulnerable()),
             }
         } else {
             MoveInput::default()
@@ -1533,7 +1533,11 @@ impl Game {
             alpha,
             now,
         };
-        let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } = self.fog(&scene, camera);
+        let split::Fog { color: fog_color, start: fog_start, end: fog_end, underwater } =
+            self.fog(&scene, camera).blinded(
+                self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
+                self.settings.render_distance as f32 * 32.0,
+            );
         let dial = self.dial_of(&self.session.player);
         let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)> = self
             .agents
