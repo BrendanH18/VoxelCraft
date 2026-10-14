@@ -162,7 +162,8 @@ crack stages and 25-health ingot repairs. Player-built golems never attack
 players; other golems retaliate. They target nearby hostiles except creepers.
 Creepers do not flee golems in Java. Snow golems throw snowballs that leave
 their source correctly and do not award player-kill loot/XP; they suffer water
-and heat damage. Snow-layer trails await a snow-layer block implementation.
+and heat damage. Snow layers now exist (1 to 8), but snow golems do not yet
+leave snow-layer trails.
 
 Village summoning requires recent sleep, three eligible villagers panicking
 or five on a gossip check, no nearby golem, and a supported unobstructed spawn

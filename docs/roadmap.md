@@ -427,7 +427,9 @@ implements actor ownership for core player state and one fixed-tick food/drink
 transaction path across client and CLI adapters. Dried kelp timing and CLI
 harming-potion death drops were corrected. PLY-03/04 remain **Partial**: full
 food/effect parity, other shared actions, controller/LAN state-swap removal and
-ordinary player/performance acceptance are still open.
+ordinary player/performance acceptance were still open at the time; the shared
+actions and the state-swap removal later landed in v0.7.0 (see the
+[delivery record](#33-v070-delivery-record--2026-10-14)).
 
 The [shared mining follow-up](verification/2026-10-13-shared-mining.md) adds one
 actor-owned destruction path, reference block reach and float progress, corrected
@@ -481,17 +483,14 @@ structure overrides and ordinary player/performance acceptance are still open.
 The [review fixes](verification/2026-10-13-review-lighting-fixes.md) add the
 24-block spawn-point exclusion, thunder (> 0.9) and rain (> 0.2) thresholds,
 reference daylight-detector output, the `isRedstoneConductor` start-cell check
-and incremental LAN replica relighting (measured microbenchmarks only). The End
-renders sky-lit terrain at 0.65 because the shaders lack the reference ambient
-term (`ambient_light` 0.25, sky factor 0); soul sand and mud use Java's 14/16 collision height (regression evidence, player acceptance open).
-
 and incremental LAN replica relighting (measured microbenchmarks only). The
 chunk, entity, block-model and particle shaders now take the dimension's
 `ambient_light` (Nether 0.1, End 0.25) and `visual/ambient_light_color`, and the
 End and Nether use `visual/sky_light_factor` 0 instead of the old 0.65/0.42
 stand-ins; this is **unverified visually** (see the
 [world fixes](verification/2026-10-13-world-fixes.md#ambient-light-in-the-nether-and-end)).
-Soul sand and mud still collide as full cubes.
+Soul sand and mud use Java's 14/16 collision height (regression evidence,
+player acceptance open).
 
 Entities, held items and particles now sample propagated gameplay skylight,
 with the old heightmap estimate restricted to unknown light cells. Wide-roof

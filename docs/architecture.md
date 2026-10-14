@@ -106,8 +106,8 @@ at most 1/120 second. Offline menus pause the game clock.
 Gameplay sky and block light belong to `World`, with incremental removal and
 increase queues. Edits, streaming and fixed world steps resolve it without
 waiting for meshes. Render jobs still compute their own light snapshots;
-their results cannot replace gameplay light. Crops and saplings use this
-block light even in headless worlds; their skylight integration remains open.
+their results cannot replace gameplay light. Crops, saplings and other growth
+read this gameplay sky and block light, including in headless worlds.
 Complete column heightmaps seed gameplay skylight, including in the End.
 Uncertain light at incomplete loaded borders is explicitly unknown.
 
@@ -121,11 +121,13 @@ fire and growth use the union of active player ranges;
 agent-only chunks outside the host view stay unmeshed. Named agent profiles
 persist in the root level file. See [the CLI protocol and limitations](agents.md).
 
-Full action extraction and removal of controller/LAN state swapping, independent
-simultaneous dimensions and shape-aware light occlusion
-remain future work. A first desktop LAN slice uses bounded binary-framed TCP,
-authoritative chunk snapshots and the existing hosted-player actions; see [LAN](lan.md). Split-screen is implemented; all views currently share the
-host's biome fog colour.
+Controller and LAN players run the shared actions on their own session
+(`hands::Actor` for hands, `screen::Screen` for container clicks); no player's
+state is swapped into the host's. Independent simultaneous dimensions and
+shape-aware light occlusion remain future work. A first desktop LAN slice uses
+bounded binary-framed TCP and authoritative chunk snapshots; see [LAN](lan.md).
+Split-screen is implemented, and each view blends Nether biome fog around its
+own eye.
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
 
 ## Code layout

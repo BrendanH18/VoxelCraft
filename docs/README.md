@@ -47,8 +47,8 @@ roadmap and recorded checks to assess completeness against the current target.
   actor-owned validation, paired blocks, low-cube targeting and process-restart
   checks; remaining shape/state and ordinary-player acceptance.
 - [Shared melee](verification/2026-10-13-shared-combat.md): actor-owned attacks,
-  Java attack-strength charging, reference reach and tool attributes; remaining
-  crosshair attack indicator, copper tools, armor and nuggets; spears and
+  Java attack-strength charging, reference reach and tool attributes, the
+  crosshair attack indicator, and copper tools, armor and nuggets; spears and
   ordinary-player acceptance remain.
 - [Bucket review fixes](verification/2026-10-13-review-bucket-fixes.md): shared
   use-priority ordering, Adventure denial and Java hit-face pouring.
