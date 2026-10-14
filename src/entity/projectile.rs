@@ -144,13 +144,13 @@ impl Arrow {
             // and hides anything behind it.
             let block = first_solid(world, from, step);
             let reach = block.unwrap_or(1.0);
-            if self.from_player || self.pickup {
+            if self.from_player || self.pickup || self.shooter.is_some() {
                 // Whatever the step enters first: a mob, or a crystal or
                 // dragon part (fractions of the step).
                 let mob = mobs
                     .iter()
                     .enumerate()
-                    .filter(|(_, m)| m.alive())
+                    .filter(|(_, m)| m.alive() && self.shooter != Some(m.uid))
                     .filter_map(|(i, m)| {
                         let (min, max) = m.aabb();
                         crate::physics::ray_aabb(from, step, min, max).filter(|&t| t <= reach).map(|t| (i, t))
@@ -189,6 +189,17 @@ impl Arrow {
                         }
                         if self.from_player {
                             mob.player_hit();
+                        }
+                        if let Some(attacker) = self.shooter {
+                            // Resolve through the shared mob-on-mob path so
+                            // retaliation and loot attribution retain the shooter.
+                            events.push(EntityEvent::MobHit {
+                                target: mob.uid,
+                                attacker,
+                                damage: (speed / SPEED * 3.0).ceil() as f32,
+                                knockback: push,
+                            });
+                            return false;
                         }
                         let killed = mob.damage(damage, Some(push), rng);
                         events.push(EntityEvent::MobShot {
@@ -323,6 +334,41 @@ mod tests {
     use crate::world::block::Block;
     use crate::world::terrain::Dimension;
     use glam::IVec3;
+
+    #[test]
+    fn mob_arrows_hit_other_mobs_skip_the_shooter_and_keep_mob_credit() {
+        let world = Grid::flat(0);
+        let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![],
+            daylight: 1.,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Nether,
+        };
+        let mut e = crate::entity::Entities::new(3);
+        e.spawn(MobKind::Piglin, DVec3::new(0.5, 1., 0.5));
+        e.spawn(MobKind::Cow, DVec3::new(5.5, 1., 0.5));
+        e.ensure_mob_ids();
+        let (shooter, victim) = (e.mobs[0].uid, e.mobs[1].uid);
+        let before = e.mobs[0].health;
+        let mut arrow =
+            Arrow::aimed(e.mobs[0].pos + DVec3::Y, e.mobs[1].pos + DVec3::Y, "was shot by a piglin", &mut e.rng);
+        arrow.shooter = Some(shooter);
+        let mut events = Vec::new();
+        for _ in 0..20 {
+            if !arrow.update(0.05, &world, &ctx, &mut e.mobs, None, &mut e.rng, &mut events) {
+                break;
+            }
+        }
+        assert!(events.iter().any(
+            |ev| matches!(ev, EntityEvent::MobHit { target, attacker, .. } if *target == victim && *attacker == shooter)
+        ));
+        e.resolve_mob_hits(&mut events);
+        assert_eq!(e.mobs[0].health, before);
+        assert!(e.mobs[1].health < MobKind::Cow.max_health());
+        assert!(e.orbs.is_empty(), "mob shots award no player kill XP");
+    }
 
     #[test]
     fn a_clipped_block_corner_stops_the_arrow_before_a_mob_behind_it() {

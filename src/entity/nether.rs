@@ -550,6 +550,31 @@ impl Entities {
     /// After the mobs have moved: mob-on-mob hits, finished admiring,
     /// item pickups and zombification.
     pub(super) fn nether_upkeep(&mut self, ctx: &Ctx, events: &mut Vec<EntityEvent>) {
+        self.resolve_mob_hits(events);
+        if self.nether_view.is_empty() {
+            return;
+        }
+        let mut i = 0;
+        while i < self.mobs.len() {
+            let Some(n) = self.mobs[i].nether.as_mut() else {
+                i += 1;
+                continue;
+            };
+            if std::mem::take(&mut n.convert) {
+                self.zombify(i, events);
+            }
+            if self.mobs[i].nether.as_ref().is_some_and(|n| n.barter) {
+                self.finish_admiring(i, ctx);
+            }
+            if self.mobs[i].alive() && self.mobs[i].nether.as_ref().is_some_and(|n| matches!(n.goal, Goal::Fetch(_))) {
+                self.pick_up(i, events);
+            }
+            i += 1;
+        }
+    }
+
+    /// Mob melee and projectile hits share retaliation and kill attribution.
+    pub(super) fn resolve_mob_hits(&mut self, events: &mut Vec<EntityEvent>) {
         let hits: Vec<_> = events
             .iter()
             .filter_map(|e| match *e {
@@ -576,26 +601,6 @@ impl Entities {
                     self.drop_loot_with_fire(kind, pos, 0, burning, wolf_kill);
                 }
             }
-        }
-        if self.nether_view.is_empty() {
-            return;
-        }
-        let mut i = 0;
-        while i < self.mobs.len() {
-            let Some(n) = self.mobs[i].nether.as_mut() else {
-                i += 1;
-                continue;
-            };
-            if std::mem::take(&mut n.convert) {
-                self.zombify(i, events);
-            }
-            if self.mobs[i].nether.as_ref().is_some_and(|n| n.barter) {
-                self.finish_admiring(i, ctx);
-            }
-            if self.mobs[i].alive() && self.mobs[i].nether.as_ref().is_some_and(|n| matches!(n.goal, Goal::Fetch(_))) {
-                self.pick_up(i, events);
-            }
-            i += 1;
         }
     }
 

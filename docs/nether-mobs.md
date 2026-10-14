@@ -275,11 +275,15 @@ different pitches.
 - **Bartering**: spectral arrows and Soul Speed don't exist (see the table).
 - **Piglin details**:
   - No celebrating dance after a kill.
-  - Crossbow piglins melee mobs instead of shooting them, because mob arrows only
-    hit players.
+  - Crossbow piglins now use the existing ranged behavior against mob targets,
+    and mob arrows resolve through shared mob-hit retaliation/loot handling.
+    Java 26.3 `CrossbowAttack` consumes any living attack target; it has no
+    player-only restriction. AI and arrow regression tests cover the change.
   - Piglins don't pick up and equip better weapons or armor, or golden axes for
     brutes.
-  - Their pocket holds 8 stacks.
+  - Their pocket already has Java's eight slots, merging compatible stacks
+    and throwing overflow. Existing regression tests cover saved components
+    and full inventories; this inventory size is not a parity gap.
 - **Peaceful**: Java keeps piglins and hoglins on Peaceful; here every hostile mob
   is removed, as before.
 - **Bastion residents** are spread over each piece's floor rather than placed at
@@ -287,8 +291,11 @@ different pitches.
 - **Crossbow**: crafted with Java's recipe and supports existing durability
   enchantments, but no Multishot, Piercing or Quick Charge, and no first-person
   loading pose. Device-free agents have no bow or crossbow use command.
-- **Line of sight** uses the existing block raycast, which treats every solid block
-  as opaque.
+- **Line of sight** clips the existing collision boxes via bounded voxel traversal,
+  matching Java 26.3 `LivingEntity.hasLineOfSight` (COLLIDER, Fluid.NONE, 128 blocks).
+  Slab gaps and open gates no longer obscure targets; glass still does, as in Java.
+  Thin/corner intersections and over-height fences have regression coverage.
+  The underlying original block-shape catalogue remains an approximation.
 - **Visibility**: anger and hunting counts check distance, not sight lines.
 - **Split-screen fog**: all views share the host camera's blended biome fog.
 

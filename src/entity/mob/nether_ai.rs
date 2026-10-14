@@ -111,7 +111,7 @@ impl Mob {
     }
 
     /// Fights `foe`, whose feet are at `at`: crossbow piglins keep between 5
-    /// and 8 blocks and shoot players they can see; everyone else closes in
+    /// and 8 blocks and shoot living targets they can see; other weapons close in
     /// and strikes once a second.
     #[allow(clippy::too_many_arguments)]
     fn nether_attack<W: MobWorld + ?Sized>(
@@ -134,7 +134,7 @@ impl Mob {
         let weapon = self.nether.as_ref().map_or(Weapon::None, |n| n.weapon);
         let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
         let aim = at + DVec3::Y * 1.2;
-        if weapon == Weapon::Crossbow && matches!(foe, Foe::Player(_)) {
+        if weapon == Weapon::Crossbow {
             let sees = hdist <= CROSSBOW_RANGE && line_of_sight(world, eye, aim);
             let n = self.nether.as_mut().unwrap();
             if sees {
@@ -308,6 +308,29 @@ mod tests {
     use super::*;
     use crate::entity::{PlayerId, Target};
     use crate::physics::test_util::Grid;
+
+    #[test]
+    fn crossbow_piglins_shoot_mob_targets_instead_of_switching_to_melee() {
+        let world = Grid::flat(0);
+        let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![],
+            daylight: 1.,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Nether,
+        };
+        let mut piglin = Mob::new(MobKind::Piglin, DVec3::new(0.5, 1., 0.5), 0.);
+        piglin.uid = 1;
+        piglin.nether.as_mut().unwrap().weapon = Weapon::Crossbow;
+        let mut rng = Rng::new(7);
+        let mut events = Vec::new();
+        for _ in 0..80 {
+            piglin.nether_attack(Foe::Mob(2), DVec3::new(6., 1., 0.5), 2., 0.05, &world, &ctx, &mut rng, &mut events);
+        }
+        assert!(events.iter().any(|e| matches!(e, EntityEvent::Shoot { shooter: 1, .. })));
+        assert!(events.iter().all(|e| !matches!(e, EntityEvent::MobHit { .. })));
+    }
 
     #[test]
     fn crossbow_samples_one_aim_delay_per_shot_and_keeps_it_when_sight_is_lost() {

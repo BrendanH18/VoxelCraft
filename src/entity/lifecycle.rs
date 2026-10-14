@@ -206,6 +206,7 @@ impl Entities {
             }
         }
         self.update_eyes(dt, &mut events);
+        self.resolve_mob_hits(&mut events);
         for e in &events {
             match *e {
                 EntityEvent::MobShot { kind, pos, killed, burning, player_kill, owner } => {
