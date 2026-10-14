@@ -90,6 +90,16 @@ impl Weapon {
         }
     }
 
+    /// Attack added to the holder's base (Java's `minecraft:attack_damage`
+    /// modifier: sword 3, axe 6; a crossbow adds nothing).
+    pub(super) fn attack_bonus(self) -> f32 {
+        match self {
+            Weapon::GoldenSword => 3.0,
+            Weapon::GoldenAxe => 6.0,
+            Weapon::None | Weapon::Crossbow => 0.0,
+        }
+    }
+
     pub(super) fn name(self) -> &'static str {
         match self {
             Weapon::None => "none",
@@ -833,6 +843,10 @@ impl Entities {
         mob.vel = old.vel;
         mob.previous_pos = old.previous_pos;
         mob.armor = old.armor;
+        // `convertTo` copies every equipment slot: a crossbow or axe stays.
+        if into == MobKind::ZombifiedPiglin {
+            mob.held = old.nether.as_ref().map(|n| n.weapon);
+        }
         events.push(EntityEvent::Sound { sound: MobSound::Ambient(into), pos: old.pos + DVec3::Y * 1.6 });
         self.mobs[index] = mob;
         for stack in carried {
@@ -1316,8 +1330,9 @@ pub(super) fn lava_spot<W: MobWorld + ?Sized>(world: &W, x: i32, z: i32) -> Opti
     (!crate::physics::overlaps_solid(world, pos, MobKind::Strider.shape())).then_some(pos)
 }
 
-/// One look around for the zoglin `m`: anything alive nearby but creepers
-/// and other zoglins is a target (Java's `Zoglin.isTargetable`).
+/// One look around for the zoglin `m`: anything alive within the 16-block
+/// follow range (in all three axes, as the nearest-entities sensor boxes it)
+/// but creepers and other zoglins is a target (Java's `Zoglin.isTargetable`).
 fn sense_zoglin<W: MobWorld + ?Sized>(m: &mut Mob, view: &[Seen], world: &W, ctx: &Ctx) {
     let (pos, uid) = (m.pos, m.uid);
     let eye = pos + DVec3::Y * (m.shape().height * 0.8);
@@ -1375,6 +1390,7 @@ fn save_mob(m: &Mob) -> Value {
         "identity": super::leash::save(m),
         "armor": armor,
         "weapon": n.map_or("none", |n| n.weapon.name()),
+        "held": m.held.map(Weapon::name),
         "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
         "admire": n.map_or(0.0, |n| n.admire_left),
         "pocket": n.map_or(String::new(), |n| {
@@ -1428,6 +1444,9 @@ fn load_mob(v: &Value) -> Option<Mob> {
         for (slot, worn) in m.armor.iter_mut().zip(armor) {
             *slot = worn.as_bool().unwrap_or(false).then_some(super::armor::ArmorKind::Gold);
         }
+    }
+    if kind == MobKind::ZombifiedPiglin {
+        m.held = v["held"].as_str().map(Weapon::from_name);
     }
     if let Some(n) = m.nether.as_mut() {
         n.weapon = Weapon::from_name(v["weapon"].as_str().unwrap_or("none"));
@@ -1923,6 +1942,39 @@ mod tests {
         e.mobs[0].nether.as_mut().unwrap().immune = true;
         run(&mut e, &world, &overworld, 20.0);
         assert_eq!(e.mobs[0].kind, MobKind::Piglin, "immune piglins stay");
+    }
+
+    #[test]
+    fn zombified_piglins_keep_the_converted_main_hand_and_its_damage() {
+        let world = Grid::flat(10);
+        let overworld = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            dimension: Dimension::Overworld,
+            daylight: 0.0,
+            ..nether(vec![player(DVec3::new(60.0, 10.0, 0.5))])
+        };
+        // Java's convertTo copies equipment: a crossbow adds no attack, an
+        // axe adds 6 and the spawn sword 3, all on the base 5.
+        for (weapon, attack) in [(Weapon::Crossbow, 5.0), (Weapon::GoldenAxe, 11.0), (Weapon::GoldenSword, 8.0)] {
+            let mut e = Entities::new(2);
+            swordsman(&mut e);
+            let n = e.mobs[0].nether.as_mut().unwrap();
+            n.weapon = weapon;
+            n.zombify = ZOMBIFY_TIME - 0.01;
+            run(&mut e, &world, &overworld, 1.0);
+            assert_eq!(e.mobs[0].kind, MobKind::ZombifiedPiglin);
+            assert_eq!(e.mobs[0].held, Some(weapon));
+            assert_eq!(e.mobs[0].melee_attack().0, attack, "{weapon:?}");
+            e.mobs[0].persistent = true;
+            let text = e.nether_mobs_to_string();
+            let mut back = Entities::new(2);
+            back.load_nether_mobs(&text);
+            assert_eq!(back.mobs[0].held, Some(weapon), "saved with the level");
+        }
+        // Natural zombified piglins (and old saves) default to the sword.
+        let natural = Mob::new(MobKind::ZombifiedPiglin, DVec3::ZERO, 0.0);
+        assert_eq!(natural.held, None);
+        assert_eq!(natural.melee_attack().0, 8.0);
     }
 
     #[test]

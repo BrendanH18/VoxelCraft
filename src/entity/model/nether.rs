@@ -27,13 +27,13 @@ const LEG: &[Cuboid] = &[
     cube([-2.05, -12.0, -2.05], [2.05, -8.0, 2.05], LEATHER_DARK, 24),
 ];
 const ARM: &[Cuboid] = &[cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36)];
-const SWORD_ARM: &[Cuboid] = &[
+pub(super) const SWORD_ARM: &[Cuboid] = &[
     cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36),
     cube([-0.5, -10.0, 1.0], [0.5, -9.0, 3.0], [100, 70, 30], 10),
     cube([-1.5, -10.0, 3.0], [1.5, -9.0, 3.5], GOLD, 10),
     cube([-0.5, -10.0, 3.5], [0.5, -9.0, 11.0], GOLD, 10),
 ];
-const CROSSBOW_ARM: &[Cuboid] = &[
+pub(super) const CROSSBOW_ARM: &[Cuboid] = &[
     cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36),
     // Stock along the forearm, limbs across its far end.
     cube([-0.75, -10.5, -1.0], [0.75, -9.0, 8.0], [137, 103, 39], 14),
@@ -70,7 +70,7 @@ const BRUTE_LEG: &[Cuboid] = &[
     cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], SKIN, 36),
     cube([-2.05, -12.0, -2.05], [2.05, -7.0, 2.05], BRUTE_CLOTH, 22),
 ];
-const AXE_ARM: &[Cuboid] = &[
+pub(super) const AXE_ARM: &[Cuboid] = &[
     cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36),
     // A golden axe: handle forward from the fist, head on top.
     cube([-0.5, -10.0, -1.0], [0.5, -9.0, 10.0], [137, 103, 39], 10),

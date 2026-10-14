@@ -83,7 +83,10 @@ It picks one ingot off a stack and holds it for 119 ticks (`ADMIRE_DURATION`):
   overflow back into the world, keeping the items already stored.
 
 **Zombification.** Outside the Nether, after 300 ticks, a piglin becomes a zombified
-piglin. It keeps its age, armor, persistence and uid. Immune piglins
+piglin. It keeps its age, armor, main-hand weapon (a crossbow or a brute's golden axe
+too, as `convertTo` copies equipment), persistence and uid. A zombified piglin's
+melee is Java's base 5 plus the held item's attack modifier (sword +3, axe +6); a
+natural one holds the spawn golden sword (the 1-in-20 golden spear is a sword here). Immune piglins
 (`IsImmuneToZombification`) stay. The existing zombified piglin carries on: it is
 neutral, angers its whole pack within 32 blocks for 30 s when one is hit, and spawns
 in Nether packs. Conversion drops the pocket contents and the item being admired.
@@ -276,8 +279,6 @@ different pitches.
   - Piglins don't pick up and equip better weapons or armor, or golden axes for
     brutes.
   - Their pocket holds 8 stacks.
-  - Zombification retains armor but replaces the main-hand weapon with the existing
-    zombified piglin sword model; crossbows and brute axes are not retained.
 - **Zoglins** only pick mob targets within 4 blocks of height, so they don't chase
   ghasts they could never reach.
 - **Peaceful**: Java keeps piglins and hoglins on Peaceful; here every hostile mob

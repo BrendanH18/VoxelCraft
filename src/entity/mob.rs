@@ -970,6 +970,9 @@ pub struct Mob {
     pub(super) trader_night: bool,
     pub(super) convert_by: Option<super::PlayerId>,
     pub(super) angry_player: Option<super::PlayerId>,
+    /// A zombified piglin's main hand: `None` is the spawn default (a golden
+    /// sword); a converted piglin keeps its crossbow, axe or empty hand.
+    pub held: Option<super::nether::Weapon>,
 }
 
 impl Mob {
@@ -1066,6 +1069,7 @@ impl Mob {
             trader_night: false,
             convert_by: None,
             angry_player: None,
+            held: None,
             trader: matches!(kind, MobKind::WanderingTrader | MobKind::TraderLlama)
                 .then(|| Box::new(super::wandering_trader::Trader::new(pos))),
         }
@@ -1075,7 +1079,14 @@ impl Mob {
         let (base, cause) = self.kind.melee();
         let strength = if self.convert_left > 0.0 { 3.0 } else { 0.0 };
         let weakness = if self.weakness_left > 0.0 { 4.0 } else { 0.0 };
-        ((base + strength - weakness).max(0.0), cause)
+        // Java adds the main-hand item's attack modifier to the zombified
+        // piglin's base 5.
+        let held = if self.kind == MobKind::ZombifiedPiglin {
+            self.held.unwrap_or(super::nether::Weapon::GoldenSword).attack_bonus()
+        } else {
+            0.0
+        };
+        ((base + strength + held - weakness).max(0.0), cause)
     }
 
     /// Retaliation from the armor worn by a player struck in melee.

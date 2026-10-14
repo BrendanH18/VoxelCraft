@@ -13,6 +13,7 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use glam::{DVec3, Quat, Vec3};
 
 use super::mob::{Ai, FUSE_TIME, HURT_TIME, Mob, MobKind};
+use super::nether::Weapon;
 use super::{Arrow, Puff, XpOrb};
 use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
@@ -746,16 +747,25 @@ fn pose(m: &Mob, time: f32) -> Parts {
             parts
         }
         MobKind::ZombifiedPiglin => {
-            // Sword raised while angry, swinging down to strike; arms at
-            // the sides otherwise.
+            // Raised while angry, swinging down to strike; arms at the
+            // sides otherwise. A converted piglin keeps its own main hand.
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.9 } else { 0.0 };
-            let sword = if m.ai == Ai::Chase { rx(-1.1 + chop) } else { rx(-0.4 - swing * 0.5) };
+            let fighting = m.ai == Ai::Chase;
+            let (right, right_rot) = match m.held.unwrap_or(Weapon::GoldenSword) {
+                Weapon::GoldenSword if fighting => (PIGLIN_SWORD_ARM, rx(-1.1 + chop)),
+                Weapon::GoldenSword => (PIGLIN_SWORD_ARM, rx(-0.4 - swing * 0.5)),
+                Weapon::GoldenAxe if fighting => (nether::AXE_ARM, rx(-1.1 + chop)),
+                Weapon::GoldenAxe => (nether::AXE_ARM, rx(-0.4 - swing * 0.5)),
+                Weapon::Crossbow if fighting => (nether::CROSSBOW_ARM, rx(-PI / 2.0 - m.head_pitch)),
+                Weapon::Crossbow => (nether::CROSSBOW_ARM, rx(-0.3 - swing * 0.5)),
+                Weapon::None => (PIGLIN_ARM, rx(-swing * 0.6)),
+            };
             parts![
                 part(PIGLIN_BODY, [0.0; 3], Quat::IDENTITY),
                 part(PIGLIN_LEG, [-2.0, 12.0, 0.0], rx(swing)),
                 part(PIGLIN_LEG, [2.0, 12.0, 0.0], rx(-swing)),
                 part(PIGLIN_ARM, [-6.0, 22.0, 0.0], rx(swing * 0.6)),
-                part(PIGLIN_SWORD_ARM, [6.0, 22.0, 0.0], sword),
+                part(right, [6.0, 22.0, 0.0], right_rot),
                 part(PIGLIN_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
