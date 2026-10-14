@@ -112,7 +112,9 @@ and price multipliers. Two distinct supported offers unlock per tier where
 available. Novice/Apprentice/Journeyman/Expert/Master thresholds are 0/10/70/150/250
 XP. Enchanted gear and librarian books use Java enchantment levels and price
 ranges; treasure books cost double. Successful trades release 3–6 player XP,
-plus 5 on a promotion. At most two restocks occur per day, while near the job
+plus 5 on a promotion. The new tier unlocks 40 ticks (2 s) after the
+trade that crosses the XP threshold, paused while a screen is open, and then
+grants Regeneration for 200 ticks (Java `updateMerchantTimer`). At most two restocks occur per day, while near the job
 site during work hours, separated by 2400 day ticks. Restocking updates Java's
 supply/demand term and resets uses. Offers, enchantments, demand, stock, rank,
 XP, bed/job claims, age, identity and restock counters survive dimension saves.
@@ -122,7 +124,7 @@ Simplifications: procedural house templates/resident ages rather than vanilla
 NBT assets; straight-line navigation with obstacle sidesteps rather than full
 brain/pathfinding; sleep near a bed rather than snapping to its exact facing;
 doors remain open. Trade selection uses an independent deterministic seed
-stream, promotions unlock immediately rather than after 40 ticks, and the
+stream and the
 restock interval is a fixed day-time interval. Item families absent from the
 engine are filtered from trade pools, so some tiers offer fewer than two trades
 (or none): fish/buckets, campfires, maps, banners, item frames, suspicious stew,

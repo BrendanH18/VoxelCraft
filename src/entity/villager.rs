@@ -250,6 +250,9 @@ pub struct Villager {
     restock_day: i64,
     restocks: u8,
     last_restock: u32,
+    /// Java `updateMerchantTimer`: seconds until a pending promotion lands.
+    promote_left: f32,
+    promote_pending: bool,
 }
 impl Mob {
     /// What a LAN client's trading screen shows: merchant id, profession, level, xp and offers.
@@ -310,6 +313,8 @@ impl Villager {
             restock_day: -1,
             restocks: 0,
             last_restock: 0,
+            promote_left: 0.0,
+            promote_pending: false,
         }
     }
     pub fn observation(&self) -> Value {
@@ -369,6 +374,23 @@ impl Villager {
             let slot = (self.level as usize - 1) * 2 + i;
             self.offers[slot] = d.and_then(|d| d.offer(hash(seed ^ slot as u64)));
         }
+    }
+    /// Counts the merchant timer down (paused while trading); true when it ends,
+    /// which also grants Java's Regeneration. A pending promotion lands first.
+    pub(super) fn tick_promotion(&mut self, dt: f32) -> bool {
+        if self.trading || self.promote_left <= 0.0 {
+            return false;
+        }
+        self.promote_left -= dt;
+        if self.promote_left > 0.0 {
+            return false;
+        }
+        self.promote_left = 0.0;
+        if std::mem::take(&mut self.promote_pending) && self.level < 5 {
+            self.level += 1;
+            self.unlock();
+        }
+        true
     }
     pub fn restock(&mut self, day: i64, tick: u32, at_work: bool) -> bool {
         if self.restock_day != day {
@@ -449,10 +471,12 @@ impl Villager {
         }
         self.gossip.add(owner, 4, 2);
         self.xp = self.xp.saturating_add(offer.xp);
+        // Java `rewardTradeXp`: the 5 bonus XP is immediate, the new tier waits for the
+        // 40-tick merchant timer (`customServerAiStep`).
         let promoted = self.level < 5 && self.xp >= [0, 10, 70, 150, 250][self.level as usize];
         if promoted {
-            self.level += 1;
-            self.unlock();
+            self.promote_left = 2.0;
+            self.promote_pending = true;
         }
         Ok(3 + (hash(self.seed ^ self.xp as u64 ^ self.offers[index].unwrap().uses as u64) % 4) as u32
             + if promoted { 5 } else { 0 })
@@ -515,6 +539,15 @@ impl Entities {
         (matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader) && m.age >= 0 && !v.sleeping).then_some(v.id)
     }
     pub(super) fn village_upkeep<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W) {
+        for m in &mut self.mobs {
+            if let Some(v) = &mut m.villager
+                && v.promote_left > 0.0
+                && m.kind == MobKind::Villager
+                && v.tick_promotion(dt)
+            {
+                m.effects.add(crate::simulation::effects::Effect::Regeneration, 0, 200);
+            }
+        }
         self.village_timer -= dt;
         if self.village_timer > 0.0 {
             return;
@@ -677,7 +710,7 @@ impl Entities {
                     "health":m.health,"effects":m.effects.serialize(),"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
-                    "last":v.last_restock,"slept":v.last_slept,"golem_seen":v.golem_seen,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_tick":m.convert_tick,"convert_by":m.convert_by.map(|p|p.0)}))
+                    "last":v.last_restock,"slept":v.last_slept,"golem_seen":v.golem_seen,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"promote":v.promote_left,"promote_pending":v.promote_pending,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_tick":m.convert_tick,"convert_by":m.convert_by.map(|p|p.0)}))
                 }
                 _ => None,
             })
@@ -786,6 +819,8 @@ impl Entities {
                 v.golem_seen = a["golem_seen"].as_f64().unwrap_or(0.0).clamp(0.0, 30.0) as f32;
                 v.gossip = super::villager_gossip::Gossip::load(&a["gossip"]);
                 v.reputation = i16::try_from(a["reputation"].as_i64().unwrap_or(0)).unwrap_or(0);
+                v.promote_left = a["promote"].as_f64().unwrap_or(0.0).clamp(0.0, 2.0) as f32;
+                v.promote_pending = a["promote_pending"].as_bool().unwrap_or(false) && v.promote_left > 0.0;
                 let mut m = Mob::new(kind, p, yaw);
                 m.health = health.min(kind.max_health());
                 m.age = i32::try_from(a["age"].as_i64()?).ok()?.clamp(-24000, 6000);
@@ -894,7 +929,15 @@ mod tests {
             let xp = v.trade(0, &mut inv).unwrap();
             assert!((3..=6).contains(&xp) || i == 4 && (8..=11).contains(&xp));
         }
-        assert_eq!((v.level, v.xp), (2, 10));
+        assert_eq!((v.level, v.xp), (1, 10), "promotion waits for the 40-tick timer");
+        assert!(v.offers[2].is_none());
+        v.trading = true;
+        assert!(!v.tick_promotion(5.0), "the timer pauses while trading");
+        v.trading = false;
+        assert!(!v.tick_promotion(1.9) && v.level == 1);
+        assert!(v.tick_promotion(0.2), "40 ticks later the tier unlocks and Regeneration is due");
+        assert_eq!(v.level, 2);
+        assert!(!v.tick_promotion(1.0));
         assert_eq!(v.offers[0].unwrap().uses, 5);
         assert!(v.offers[2].is_some());
         assert_eq!(
