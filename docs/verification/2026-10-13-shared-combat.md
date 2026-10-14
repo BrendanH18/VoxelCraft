@@ -108,7 +108,8 @@ mob-sensitive; it is recorded as intermittent, not fixed.
   registered (see below); spears are not.
 - Damage to non-living targets (crystals, dragon parts) uses the scaled base
   plus scaled generic enchantment bonus; dragon-part damage routing is the
-  existing fight model.
+  existing fight model (head full, other parts a quarter plus up to one, with
+  the ten-tick window).
 - The HUD has no attack-strength indicator yet; first-person hand cooldown
   animation is unchanged.
 - Container, vehicle and block-interaction ranges still use the adapters' older
@@ -160,3 +161,10 @@ for keyboard, controller, CLI and LAN players. Tests cover persistence and
 Creative sprint blocking. The visual fog follows the hash-pinned 26.3 client
 `BlindnessFogEnvironment`, with five-block distance and the last-20-tick fade;
 client jar SHA-1 `e877b6a07acd633fb3bb475002175cec036e7b87`.
+
+Non-living target routing now follows `Player.attack`/`itemAttackInteraction`
+(javap of the pinned `Player`): a hurt target costs 0.1 exhaustion, a deflected
+fireball returns before any, and the weapon wears only when the target is a
+`LivingEntity` (a dragon part counts as its dragon). Crystals and carts cost
+exhaustion but no durability; fireballs cost neither. Regression:
+`non_living_targets_exhaust_but_never_wear_the_weapon`.

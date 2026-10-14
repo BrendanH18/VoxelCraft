@@ -198,6 +198,9 @@ impl PlayerSession {
 
         let mut killed = None;
         let mut landed = true;
+        // Java `itemAttackInteraction` wears the weapon only against a
+        // LivingEntity (a dragon part counts as its dragon), never a crystal or cart.
+        let mut living_hit = false;
         let at = match target {
             Target::FenceKnot => {
                 let knot = crate::survival_items::knot_target(&self.player, world, entities, reach);
@@ -215,6 +218,7 @@ impl PlayerSession {
             }
             Target::Fight => {
                 let (hit, t) = entities.fight_raycast(eye, dir, reach).ok_or("target vanished")?;
+                living_hit = matches!(hit, crate::entity::dragon::Hit::Dragon(_));
                 landed = entities.strike(hit, base + other, self.id);
                 if landed && other > 0.0 {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::MagicCrit, eye + dir * t, 16);
@@ -235,16 +239,18 @@ impl PlayerSession {
                     owner: self.id,
                 };
                 killed = entities.player_melee(i, dir, hit);
+                living_hit = true;
                 at
             }
         };
         let mut tool_broken = None;
         if landed && self.mode.is_survival() {
-            if matches!(target, Target::Mob(_) | Target::Fight | Target::Fireball) {
+            // A fireball is only deflected (Java returns before exhaustion).
+            if matches!(target, Target::Mob(_) | Target::Fight | Target::Cart) {
                 self.vitals.hunger.exhaust(survival::EXHAUST_ATTACK);
             }
             if let Some(item) = held
-                && target != Target::FenceKnot
+                && living_hit
                 && self.inventory.wear(slot, mining::wear(item, true))
             {
                 tool_broken = Some(item);

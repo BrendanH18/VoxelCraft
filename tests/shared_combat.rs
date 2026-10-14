@@ -363,3 +363,24 @@ fn critical_fall_distance_accumulates_downward_moves_without_subtracting_bounces
     v.reset_fall();
     assert_eq!(v.fall_distance(140.0), 0.0, "teleport forgets the previous movement");
 }
+
+#[test]
+fn non_living_targets_exhaust_but_never_wear_the_weapon() {
+    // Java `Player.attack`: a hurt target costs 0.1 exhaustion, but
+    // `itemAttackInteraction` wears the weapon only against a LivingEntity.
+    let exhaustion = fixture()["attack_strength"]["food_exhaustion"].as_f64().unwrap() as f32;
+    let (w, mut s, mut e) = scene(30.0);
+    e.spawn_cart(voxelcraft::entity::minecart::CartKind::Rideable, DVec3::new(6.0, 146.3, 4.5));
+    charge(&mut s, 20);
+    let before = s.vitals.hunger.exhaustion;
+    let out = s.attack(0, &w, &mut e, false).unwrap();
+    assert!(matches!(out, Outcome::Hit { target: Target::Cart, .. }));
+    assert_eq!(s.vitals.hunger.exhaustion - before, exhaustion);
+    assert_eq!(s.inventory.get(0).unwrap().damage, 0, "a cart is not a LivingEntity");
+
+    // A mob is living: the same swing wears the sword.
+    let (w, mut s, mut e) = scene(6.0);
+    charge(&mut s, 20);
+    s.attack(0, &w, &mut e, false).unwrap();
+    assert!(s.inventory.get(0).unwrap().damage > 0);
+}
