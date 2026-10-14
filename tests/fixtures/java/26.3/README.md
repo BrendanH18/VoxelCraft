@@ -102,9 +102,11 @@ diff tests/fixtures/java/26.3/consumption.json target/java-consumption.json
 cargo test --release --test session_consumption --test process_persistence
 ```
 
-The fixture proves these timing facts, not complete food/effect parity. Honey
-and other unregistered consumables, always-edible foods and multiple food side
-effects remain explicit scope gaps in the session report.
+It also pins the status effects and chance of the registered foods (spider eye,
+poisonous potato, pufferfish, rotten flesh, raw chicken, golden apple) and the
+`alwaysEdible` set from `Foods`. The fixture proves these facts, not complete
+food/effect parity: honey, chorus fruit, suspicious stew and the enchanted golden
+apple are unregistered, and Absorption (golden apple) has no hearts yet.
 
 ## Mining rules and ice support
 

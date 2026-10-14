@@ -208,7 +208,7 @@ impl Actor<'_> {
         let milk = held == Some(Item::MILK_BUCKET);
         let potion = held.and_then(|i| i.as_potion());
         let food = held.and_then(|i| i.food());
-        let hungry = self.session.mode.is_survival() && self.session.vitals.hunger.can_eat();
+        let hungry = held.is_some_and(|item| self.session.can_eat(item));
         // Right-clicking a composter fills it instead, as in Java.
         let composting = !self.sneaking
             && self

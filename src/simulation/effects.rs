@@ -30,10 +30,11 @@ pub enum Effect {
     /// Appended: effects persist by Java id, but icon layers follow this order.
     Haste,
     Blindness,
+    Nausea,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 20] = [
+    pub const ALL: [Effect; 21] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -54,6 +55,7 @@ impl Effect {
         Effect::Resistance,
         Effect::Haste,
         Effect::Blindness,
+        Effect::Nausea,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -79,6 +81,7 @@ impl Effect {
             Effect::Resistance => "resistance",
             Effect::Haste => "haste",
             Effect::Blindness => "blindness",
+            Effect::Nausea => "nausea",
         }
     }
 
@@ -110,6 +113,7 @@ impl Effect {
             Effect::Resistance => "Resistance",
             Effect::Haste => "Haste",
             Effect::Blindness => "Blindness",
+            Effect::Nausea => "Nausea",
         }
     }
 
@@ -136,6 +140,7 @@ impl Effect {
             Effect::Resistance => 0x9146F0,
             Effect::Haste => 0xD9C043,
             Effect::Blindness => 0x1F1F23,
+            Effect::Nausea => 0x551D4A,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
@@ -157,6 +162,7 @@ impl Effect {
                 | Effect::Hunger
                 | Effect::MiningFatigue
                 | Effect::Blindness
+                | Effect::Nausea
         )
     }
 }

@@ -55,10 +55,16 @@ impl PlayerSession {
             return Err("invalid held stack");
         }
         let duration = crate::content::consumption::ticks(held.item).ok_or("selected item is not food or a drink")?;
-        if !held.item.is_drink() && (!self.mode.is_survival() || !self.vitals.hunger.can_eat()) {
+        if !held.item.is_drink() && !self.can_eat(held.item) {
             return Err("not hungry");
         }
         Ok(duration)
+    }
+
+    /// Java's `Player.canEat`: hungry, always-edible food, or Creative
+    /// (the invulnerable ability) may eat `food`.
+    pub fn can_eat(&self, food: Item) -> bool {
+        self.mode.is_creative() || food.always_edible() || self.vitals.hunger.can_eat()
     }
 
     /// Advance one authoritative gameplay tick, never a caller-supplied duration.
@@ -101,15 +107,25 @@ impl PlayerSession {
             }
             magic_damage = potion.drink(&mut self.vitals);
         } else if let Some((food, saturation)) = held.item.food() {
-            let effect = held.item.food_effect_roll(entities.roll());
-            if let Some(remainder) = held.item.remainder() {
-                crate::survival_items::exchange(&mut self.inventory, slot, remainder, false, entities, &self.player);
-            } else {
-                self.inventory.take_one(slot);
+            let effects = held.item.food_effect_roll(entities.roll());
+            // Creative (infinite materials) keeps the stack and its remainder untouched.
+            if !self.mode.is_creative() {
+                if let Some(remainder) = held.item.remainder() {
+                    crate::survival_items::exchange(
+                        &mut self.inventory,
+                        slot,
+                        remainder,
+                        false,
+                        entities,
+                        &self.player,
+                    );
+                } else {
+                    self.inventory.take_one(slot);
+                }
             }
             self.vitals.hunger.eat(food, saturation);
-            if let Some((effect, amplifier, ticks)) = effect {
-                self.vitals.apply_effect(effect, amplifier, ticks);
+            for &(effect, amplifier, ticks) in effects {
+                magic_damage += self.vitals.apply_effect(effect, amplifier, ticks);
             }
         }
         Ok(Step { progress: 0., completed: Some(Consumed { player: self.id, item: held.item, magic_damage }) })

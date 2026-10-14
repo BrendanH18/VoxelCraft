@@ -1118,23 +1118,40 @@ impl Item {
         }
     }
 
-    /// The status effect eating this gives (Java's spider eye: Poison I for
-    /// 5 s).
-    pub fn food_effect(self) -> Option<(crate::simulation::effects::Effect, u8, u32)> {
+    /// The status effects eating this can give, as Java 26.3 `Consumables`
+    /// registers them (pinned in `consumption.json`). Golden apples also give
+    /// Absorption, which the game has no hearts for yet.
+    pub fn food_effects(self) -> &'static [(crate::simulation::effects::Effect, u8, u32)] {
+        use crate::simulation::effects::Effect;
         match self {
-            Item::SPIDER_EYE | Item::POISONOUS_POTATO => Some((crate::simulation::effects::Effect::Poison, 0, 100)),
-            // Java's pufferfish also brings nausea and hunger; poison is the dangerous part.
-            Item::PUFFERFISH => Some((crate::simulation::effects::Effect::Poison, 1, 1200)),
-            _ => None,
+            Item::SPIDER_EYE | Item::POISONOUS_POTATO => &[(Effect::Poison, 0, 100)],
+            Item::PUFFERFISH => &[(Effect::Poison, 1, 1200), (Effect::Hunger, 2, 300), (Effect::Nausea, 0, 300)],
+            Item::ROTTEN_FLESH | Item::RAW_CHICKEN => &[(Effect::Hunger, 0, 600)],
+            Item::GOLDEN_APPLE => &[(Effect::Regeneration, 1, 100)],
+            _ => &[],
         }
     }
 
-    /// Applies the food effect when `unit` (0..1) falls under its chance.
-    /// A poisonous potato poisons 60% of the time; a spider eye always does.
-    pub fn food_effect_roll(self, unit: f32) -> Option<(crate::simulation::effects::Effect, u8, u32)> {
-        let effect = self.food_effect()?;
-        let chance = if self == Item::POISONOUS_POTATO { 0.6 } else { 1.0 };
-        (unit < chance).then_some(effect)
+    /// Probability that eating applies [`Item::food_effects`] (one roll for all).
+    pub fn food_effect_chance(self) -> f32 {
+        match self {
+            Item::POISONOUS_POTATO => 0.6,
+            Item::ROTTEN_FLESH => 0.8,
+            Item::RAW_CHICKEN => 0.3,
+            _ => 1.0,
+        }
+    }
+
+    /// The food effects when `unit` (0..1) falls under their chance.
+    pub fn food_effect_roll(self, unit: f32) -> &'static [(crate::simulation::effects::Effect, u8, u32)] {
+        if unit < self.food_effect_chance() { self.food_effects() } else { &[] }
+    }
+
+    /// Java's `FoodProperties.canAlwaysEat`: edible even when full. The
+    /// reference also lists chorus fruit, the enchanted golden apple, honey
+    /// bottles and suspicious stew, none of which are registered here.
+    pub fn always_edible(self) -> bool {
+        self == Item::GOLDEN_APPLE
     }
 
     pub fn remainder(self) -> Option<Item> {

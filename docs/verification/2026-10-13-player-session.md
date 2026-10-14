@@ -85,9 +85,13 @@ still swaps session, actions and presentation fields. Its removal is unfinished.
 Crafting-screen state also remains outside the core session.
 
 This extraction retains existing food/effect policies except the documented
-timing and death fixes. Always-edible food rules, complete food side effects
-(including all pufferfish effects), Creative food use and unregistered reference
-consumables still require separate fidelity work. It does not mark FOO-01 complete.
+timing and death fixes. Since the v0.7 fixes, golden apples are always edible,
+Creative players may eat anything without using the stack up (`Player.canEat`
+with the invulnerable ability), and pufferfish, rotten flesh, raw chicken and
+golden apples give Java's effects (new Nausea effect, icon only: no screen warp;
+Absorption is not implemented). Unregistered reference consumables (honey, chorus
+fruit, suspicious stew, enchanted golden apple) still require separate fidelity
+work. It does not mark FOO-01 complete.
 
 Physical keyboard/controller interaction, hand/audio review, cross-machine LAN,
 representative frame-time comparisons and full M5 1080p/native performance

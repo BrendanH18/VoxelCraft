@@ -4,7 +4,8 @@
   "sources": [
     "net.minecraft.world.item.component.Consumables",
     "net.minecraft.world.item.Item$Properties.food",
-    "net.minecraft.world.item.Items"
+    "net.minecraft.world.item.Items",
+    "net.minecraft.world.food.Foods"
   ],
   "cases": [
     {
@@ -32,5 +33,89 @@
       "seconds": 1.6,
       "ticks": 32
     }
+  ],
+  "food_effects": {
+    "spider_eye": {
+      "chance": 1.0,
+      "effects": [
+        {
+          "effect": "poison",
+          "amplifier": 0,
+          "ticks": 100
+        }
+      ]
+    },
+    "poisonous_potato": {
+      "chance": 0.6,
+      "effects": [
+        {
+          "effect": "poison",
+          "amplifier": 0,
+          "ticks": 100
+        }
+      ]
+    },
+    "pufferfish": {
+      "chance": 1.0,
+      "effects": [
+        {
+          "effect": "poison",
+          "amplifier": 1,
+          "ticks": 1200
+        },
+        {
+          "effect": "hunger",
+          "amplifier": 2,
+          "ticks": 300
+        },
+        {
+          "effect": "nausea",
+          "amplifier": 0,
+          "ticks": 300
+        }
+      ]
+    },
+    "rotten_flesh": {
+      "chance": 0.8,
+      "effects": [
+        {
+          "effect": "hunger",
+          "amplifier": 0,
+          "ticks": 600
+        }
+      ]
+    },
+    "raw_chicken": {
+      "chance": 0.3,
+      "effects": [
+        {
+          "effect": "hunger",
+          "amplifier": 0,
+          "ticks": 600
+        }
+      ]
+    },
+    "golden_apple": {
+      "chance": 1.0,
+      "effects": [
+        {
+          "effect": "regeneration",
+          "amplifier": 1,
+          "ticks": 100
+        },
+        {
+          "effect": "absorption",
+          "amplifier": 0,
+          "ticks": 2400
+        }
+      ]
+    }
+  },
+  "always_edible": [
+    "chorus_fruit",
+    "enchanted_golden_apple",
+    "golden_apple",
+    "honey_bottle",
+    "suspicious_stew"
   ]
 }

@@ -257,3 +257,68 @@ fn personal_respawn_uses_each_players_point_and_forgets_only_their_broken_bed() 
     assert_eq!(host.personal_spawn(&w).position, Some(DVec3::new(2.5, 145., 2.5)));
     assert_eq!(host.spawn_point, Some(IVec3::new(2, 145, 2)));
 }
+#[test]
+fn food_effects_chances_and_always_edible_foods_match_the_reference() {
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/java/26.3/consumption.json")).unwrap();
+    for (name, case) in fixture["food_effects"].as_object().unwrap() {
+        let item = Item::from_name(name).unwrap();
+        assert_eq!(item.food_effect_chance(), case["chance"].as_f64().unwrap() as f32, "{name}");
+        // The game has no Absorption hearts, so that reference effect is the only one left out.
+        let expected: Vec<_> = case["effects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["effect"] != "absorption")
+            .map(|e| (e["effect"].as_str().unwrap(), e["amplifier"].as_u64().unwrap(), e["ticks"].as_u64().unwrap()))
+            .collect();
+        let actual: Vec<_> =
+            item.food_effects().iter().map(|&(e, a, t)| (e.id(), u64::from(a), u64::from(t))).collect();
+        assert_eq!(actual, expected, "{name}");
+    }
+    // Only registered foods can be checked; the others remain unregistered.
+    let registered: Vec<_> = fixture["always_edible"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|n| Item::from_name(n.as_str().unwrap()))
+        .collect();
+    assert_eq!(registered, vec![Item::GOLDEN_APPLE]);
+    assert!(registered.iter().all(|i| i.always_edible()));
+    assert!(!Item::APPLE.always_edible());
+}
+#[test]
+fn full_players_eat_golden_apples_and_creative_players_eat_anything_without_using_it_up() {
+    let mut e = Entities::new(7);
+    let mut golden = session(Item::GOLDEN_APPLE);
+    golden.vitals.hunger.food = 20.;
+    for _ in 0..32 {
+        golden.tick_consumption(0, true, &mut e).unwrap();
+    }
+    assert!(golden.inventory.get(0).is_none());
+    assert_eq!(golden.vitals.effects.get(Effect::Regeneration).map(|a| (a.amplifier, a.ticks)), Some((1, 100)));
+
+    let mut full = session(Item::BREAD);
+    full.vitals.hunger.food = 20.;
+    assert!(full.tick_consumption(0, true, &mut e).is_err(), "full survival players cannot eat bread");
+    full.set_mode(GameMode::Adventure);
+    assert!(full.tick_consumption(0, true, &mut e).is_err(), "Adventure still needs hunger");
+    full.vitals.hunger.food = 8.;
+    assert!(full.tick_consumption(0, true, &mut e).is_ok(), "Adventure players eat when hungry");
+
+    let mut creative = session(Item::PUFFERFISH);
+    creative.set_mode(GameMode::Creative);
+    creative.vitals.hunger.food = 20.;
+    for _ in 0..32 {
+        creative.tick_consumption(0, true, &mut e).unwrap();
+    }
+    assert_eq!(creative.inventory.get(0), Some(Stack::new(Item::PUFFERFISH, 1)), "infinite materials");
+    for (effect, amplifier) in [(Effect::Poison, 1), (Effect::Hunger, 2), (Effect::Nausea, 0)] {
+        assert_eq!(creative.vitals.effects.get(effect).map(|a| a.amplifier), Some(amplifier), "{effect:?}");
+    }
+    let mut stew = session(Item::MUSHROOM_STEW);
+    stew.set_mode(GameMode::Creative);
+    for _ in 0..32 {
+        stew.tick_consumption(0, true, &mut e).unwrap();
+    }
+    assert_eq!(stew.inventory.get(0), Some(Stack::new(Item::MUSHROOM_STEW, 1)), "no bowl exchange either");
+}
