@@ -1378,25 +1378,61 @@ pub struct Dial {
     pub overworld: bool,
     /// 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     pub day_time: f32,
-    /// Seconds since the view started, so a lost compass can spin.
+    /// Wobbling needle turn (0..1) a compass shows where it has no natural target.
     pub spin: f32,
+    /// Wobbling dial turn (0..1) a clock shows outside natural dimensions.
+    pub clock_spin: f32,
+}
+
+/// The client's `NeedleDirectionHelper.Wobbler`: eases a needle toward a target turn once
+/// per game tick. A compass or clock outside the Overworld chases a fresh random target
+/// every tick, which makes it jitter around the dial.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Wobbler {
+    rotation: f64,
+    velocity: f64,
+    tick: Option<u64>,
+}
+
+impl Wobbler {
+    /// Steps once for game tick `tick` (later reads in the same tick change nothing) and
+    /// returns the current turn in `0..1`.
+    pub fn update(&mut self, tick: u64, target: f64) -> f64 {
+        if self.tick != Some(tick) {
+            self.tick = Some(tick);
+            let toward = (target - self.rotation + 0.5).rem_euclid(1.0) - 0.5;
+            self.velocity = (self.velocity + toward * 0.1) * 0.8;
+            self.rotation = (self.rotation + self.velocity).rem_euclid(1.0);
+        }
+        self.rotation
+    }
+}
+
+/// A uniform random number in `0..1` for visual-only effects (`Math.random()` on the client).
+pub fn visual_random() -> f64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static STATE: AtomicU64 = AtomicU64::new(0x9E37_79B9_7F4A_7C15);
+    let mut z = STATE.fetch_add(0x9E37_79B9_7F4A_7C15, Ordering::Relaxed).wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    ((z ^ (z >> 31)) >> 11) as f64 / (1u64 << 53) as f64
 }
 
 impl Dial {
-    /// Java's compass angle, as one of 32 frames. Outside the overworld it spins.
+    /// Java's compass angle, as one of 32 frames. Outside the overworld it wobbles at random.
     pub fn compass_frame(self) -> u16 {
         if !self.overworld {
-            return (self.spin * 8.0).rem_euclid(COMPASS_FRAMES as f32) as u16 % COMPASS_FRAMES;
+            return (self.spin.rem_euclid(1.0) * COMPASS_FRAMES as f32).round() as u16 % COMPASS_FRAMES;
         }
         let bearing = (self.spawn_z - self.z).atan2(self.spawn_x - self.x) as f32;
         let relative = (self.yaw - bearing).rem_euclid(std::f32::consts::TAU);
         ((relative / std::f32::consts::TAU) * COMPASS_FRAMES as f32).round() as u16 % COMPASS_FRAMES
     }
 
-    /// Java's celestial angle: frame 0 is noon. Outside the overworld it spins.
+    /// Java's celestial angle: frame 0 is noon. Outside the overworld it wobbles at random.
     pub fn clock_frame(self) -> u16 {
         if !self.overworld {
-            return (self.spin * 8.0).rem_euclid(CLOCK_FRAMES as f32) as u16 % CLOCK_FRAMES;
+            return (self.clock_spin.rem_euclid(1.0) * CLOCK_FRAMES as f32).round() as u16 % CLOCK_FRAMES;
         }
         let celestial = (self.day_time - 0.25).rem_euclid(1.0);
         (celestial * CLOCK_FRAMES as f32).round() as u16 % CLOCK_FRAMES
@@ -1606,19 +1642,51 @@ mod tests {
 
     #[test]
     fn compass_points_at_spawn_and_clock_reads_noon() {
-        let looking =
-            Dial { yaw: 0.0, x: 0.0, z: 0.0, spawn_x: 10.0, spawn_z: 0.0, overworld: true, day_time: 0.25, spin: 0.0 };
+        let looking = Dial {
+            yaw: 0.0,
+            x: 0.0,
+            z: 0.0,
+            spawn_x: 10.0,
+            spawn_z: 0.0,
+            overworld: true,
+            day_time: 0.25,
+            spin: 0.0,
+            clock_spin: 0.0,
+        };
         assert_eq!(looking.compass_frame(), 0, "yaw 0 looks +X, where the spawn is");
         assert_eq!(Item::COMPASS.dial_layer(looking), Some(tex::item_layer(icon_count() as u16)));
         let right = Dial { spawn_z: -10.0, spawn_x: 0.0, ..looking };
         assert_eq!(right.compass_frame(), 8, "spawn on the right is a quarter turn");
-        let lost = Dial { overworld: false, spin: 1.0, ..looking };
-        assert_ne!(lost.compass_frame(), looking.compass_frame());
+        let lost = Dial { overworld: false, spin: 0.5, clock_spin: 0.25, ..looking };
+        assert_eq!(lost.compass_frame(), 16);
+        assert_eq!(lost.clock_frame(), 16);
         assert_eq!(looking.clock_frame(), 0, "noon is frame 0");
         let sunrise = Dial { day_time: 0.0, ..looking };
         assert_eq!(sunrise.clock_frame(), 48);
         assert_eq!(Item::from_name("compass"), Some(Item::COMPASS));
         assert_eq!(Item::from_name("clock"), Some(Item::CLOCK));
         assert_eq!(Item::COMPASS.max_stack(), 64);
+    }
+
+    #[test]
+    fn wobbler_eases_toward_each_new_random_target_once_per_tick() {
+        // Client `Wobbler.update`: velocity = (velocity + shortest_delta * 0.1) * 0.8 per tick.
+        let mut w = Wobbler::default();
+        let a = w.update(1, 0.25);
+        assert!((a - 0.02).abs() < 1e-12, "first step {a}");
+        assert_eq!(w.update(1, 0.9), a, "the same tick does not step again");
+        let mut still = Wobbler::default();
+        assert_eq!(still.update(1, 0.0), 0.0);
+        // The shortest way round: from 0.95 toward 0.05 moves forward across the wrap.
+        let mut wrap = Wobbler { rotation: 0.95, ..Wobbler::default() };
+        assert!(wrap.update(1, 0.05) > 0.95);
+        let mut spread = std::collections::BTreeSet::new();
+        let mut lost = Wobbler::default();
+        for tick in 0..400 {
+            let r = lost.update(tick, visual_random());
+            assert!((0.0..1.0).contains(&r));
+            spread.insert((r * 8.0) as u8);
+        }
+        assert!(spread.len() >= 3, "a lost needle moves around the dial: {spread:?}");
     }
 }

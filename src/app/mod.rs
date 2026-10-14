@@ -184,6 +184,8 @@ struct Game {
     weather: weather::Weather,
     weather_verts: Vec<crate::render::weather::WeatherVertex>,
     started: Instant,
+    /// Compass and clock needles wobbling outside the Overworld.
+    dial_wobble: std::cell::Cell<(crate::item::Wobbler, crate::item::Wobbler)>,
     last_save: Instant,
     // HUD/F3 stats, refreshed twice a second using presented frames.
     stats_since: Instant,
