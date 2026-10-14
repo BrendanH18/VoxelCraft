@@ -232,5 +232,10 @@
     "windswept_hills": false,
     "windswept_savanna": true,
     "wooded_badlands": true
+  },
+  "snow_golem_dimension_melts": {
+    "overworld": false,
+    "the_nether": true,
+    "the_end": false
   }
 }

@@ -390,6 +390,10 @@ pub trait MobWorld: BlockSource {
     fn cave_biome(&self, p: IVec3) -> crate::world::terrain::Biome {
         self.biome(p.x, p.z)
     }
+    /// Java 26.3's gameplay/snow_golem_melts environment attribute.
+    fn snow_golem_melts(&self, p: IVec3) -> bool {
+        self.nether_biome(p.x, p.z).is_some() || self.cave_biome(p).snow_golem_melts()
+    }
     /// Bastion remnants near `p`, whose residents spawn once.
     fn bastions_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::bastion::Bastion>> {
         Vec::new()
@@ -408,6 +412,9 @@ impl MobWorld for World {
     }
     fn biome(&self, x: i32, z: i32) -> crate::world::terrain::Biome {
         self.generator.column(x, z).biome
+    }
+    fn snow_golem_melts(&self, p: IVec3) -> bool {
+        self.generator.dimension == Dimension::Nether || self.generator.biome_at(p).snow_golem_melts()
     }
     fn nether_biome(&self, x: i32, z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
         self.generator.nether_biome(x, z)

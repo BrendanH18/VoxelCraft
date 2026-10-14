@@ -147,15 +147,18 @@ crack stages and 25-health ingot repairs. Player-built golems never attack
 players; other golems retaliate. They target nearby hostiles except creepers.
 Creepers do not flee golems in Java. Snow golems throw snowballs that leave
 their source correctly and do not award player-kill loot/XP; they suffer water
-and desert damage. Snow-layer trails await a snow-layer block implementation.
+and heat damage. Snow-layer trails await a snow-layer block implementation.
 
 Village summoning requires recent sleep, three eligible villagers panicking
 or five on a gossip check, no nearby golem, and a supported unobstructed spawn
 position. Each resident remembers detecting a golem for 30 seconds; the
 memory survives saves and distant villages summon independently. Remaining
 simplifications: spherical sensors and minute gossip checks rather than the complete Java
-brain memory/sensor scheduling. Snow golems' heat damage currently uses the
-desert biome rather than the complete biome temperature system.
+brain memory/sensor scheduling. Snow golem melting now follows Java 26.3's biome environment attribute: deserts,
+all badlands and savanna variants, plus the Nether dimension. Cave biomes override
+the surface biome. The extracted `mob_integrations.json` fixture and damage tests
+cover the heat locations; the retained once-a-second heat damage cadence still
+differs from Java's per-tick hurt attempts.
 
 Zombies/husks/drowned attack villagers. Fatal attacks infect on Normal (50%)
 and Hard (100%); Easy/Peaceful never infect. Natural zombies everywhere have

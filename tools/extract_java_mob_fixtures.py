@@ -44,7 +44,11 @@ def extract(server, scratch):
         raise ValueError('snow golem heat check changed')
     biomes = {}
     nether_spawns = {}
+    dimension_melts = {}
     with zipfile.ZipFile(io.BytesIO(inner)) as jar:
+        for dimension in ('overworld', 'the_nether', 'the_end'):
+            attrs = json.loads(jar.read(f'data/minecraft/dimension_type/{dimension}.json')).get('attributes', {})
+            dimension_melts[dimension] = attrs.get('minecraft:gameplay/snow_golem_melts', False)
         for name in sorted(jar.namelist()):
             if name.startswith('data/minecraft/worldgen/biome/') and name.endswith('.json'):
                 attrs = json.loads(jar.read(name)).get('attributes', {})
@@ -59,7 +63,7 @@ def extract(server, scratch):
             'sources': ['DragonEggBlock.teleport', 'SnowGolem.aiStep', 'worldgen/biome/*.json'],
             'nether_spawns': nether_spawns,
             'dragon_egg': {'attempts': attempts, 'draw_bounds_xyz': bounds, 'requires_non_air_below': True},
-            'snow_golem_melts': biomes}
+            'snow_golem_melts': biomes, 'snow_golem_dimension_melts': dimension_melts}
 
 
 def main():

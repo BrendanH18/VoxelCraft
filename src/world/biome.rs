@@ -227,6 +227,11 @@ impl Biome {
         self.temperature() > 1.0 && self != Biome::StonyPeaks
     }
 
+    /// Java 26.3 biome environment attribute, independent of altitude.
+    pub fn snow_golem_melts(self) -> bool {
+        self == Biome::Desert || self.is_badlands() || self.is_savanna()
+    }
+
     /// Temperature at a height: Java cools biomes above y = 80 by 0.05 per
     /// 40 blocks, so high mountains get snow.
     pub fn temperature_at(self, y: i32) -> f32 {
@@ -553,6 +558,15 @@ mod tests {
         assert!(Desert.is_dry() && !StonyPeaks.is_dry());
         assert!(Plains.temperature_at(64) > Plains.temperature_at(300));
         assert!(WindsweptHills.temperature_at(140) < 0.15, "snowy hill tops");
+    }
+
+    #[test]
+    fn snow_golem_heat_matches_every_java_26_3_biome_attribute() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/mob_integrations.json")).unwrap();
+        for b in Biome::ALL {
+            assert_eq!(Some(b.snow_golem_melts()), fixture["snow_golem_melts"][b.name()].as_bool(), "{b:?}");
+        }
     }
 
     #[test]

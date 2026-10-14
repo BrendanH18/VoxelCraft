@@ -308,7 +308,7 @@ impl Entities {
             }
             let pos = self.mobs[i].pos;
             let p = pos.floor().as_ivec3();
-            if world.biome(p.x, p.z) == crate::world::terrain::Biome::Desert {
+            if world.snow_golem_melts(p) {
                 let at = self.mobs[i].pos;
                 if self.mobs[i].damage(1.0, None, &mut self.rng) {
                     self.drop_loot_with_fire(MobKind::SnowGolem, at, 0, false, false);
@@ -373,6 +373,59 @@ mod tests {
             for p in &self.beds {
                 visit(*p, Block::BED_HEAD);
             }
+        }
+    }
+
+    #[test]
+    fn snow_golems_melt_in_hot_biomes_and_the_nether_but_not_cave_biomes() {
+        use crate::world::terrain::Biome;
+        struct ClimateWorld {
+            grid: Grid,
+            surface: Biome,
+            cave: Biome,
+            nether: bool,
+        }
+        impl BlockSource for ClimateWorld {
+            fn block(&self, p: IVec3) -> Option<Block> {
+                self.grid.block(p)
+            }
+        }
+        impl MobWorld for ClimateWorld {
+            fn loaded(&self, _: IVec3) -> bool {
+                true
+            }
+            fn surface(&self, _: i32, _: i32) -> Option<i32> {
+                Some(0)
+            }
+            fn exposed(&self, _: IVec3) -> bool {
+                true
+            }
+            fn biome(&self, _: i32, _: i32) -> Biome {
+                self.surface
+            }
+            fn cave_biome(&self, _: IVec3) -> Biome {
+                self.cave
+            }
+            fn nether_biome(&self, _: i32, _: i32) -> Option<crate::world::nether_biome::NetherBiome> {
+                self.nether.then_some(crate::world::nether_biome::NetherBiome::NetherWastes)
+            }
+        }
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/mob_integrations.json")).unwrap();
+        assert_eq!(fixture["snow_golem_dimension_melts"]["the_nether"], true);
+        for (biome, nether, melts) in [
+            (Biome::Desert, false, true),
+            (Biome::Savanna, false, true),
+            (Biome::WoodedBadlands, false, true),
+            (Biome::LushCaves, false, false),
+            (Biome::StonyPeaks, false, false),
+            (Biome::Plains, true, true),
+        ] {
+            let world = ClimateWorld { grid: Grid::flat(0), surface: Biome::Desert, cave: biome, nether };
+            let mut e = Entities::new(1);
+            e.spawn(MobKind::SnowGolem, DVec3::new(0.5, 1., 0.5));
+            e.snow_golems(&world);
+            assert_eq!(e.mobs[0].health, if melts { 3. } else { 4. }, "{biome:?}, nether={nether}");
         }
     }
 
