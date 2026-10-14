@@ -159,11 +159,19 @@ its contents once and creates empty storage.
 Dispensers/droppers fire four game ticks after a rising power edge and select a
 nonempty slot uniformly. Holding power does not repeatedly dispense. Droppers
 insert one item into the front container (retaining it if full) or eject it.
-Dispensers eject ordinary items, shoot recoverable unowned arrows, place or
-collect water/lava source buckets, and prime TNT. Fire charge item 760 has its
-vanilla three-item recipe and ignites the front cell; a travelling small
-fireball and Java dispenser inaccuracy are not implemented. Other special
-behaviours such as equipment, bonemeal and spawn eggs fall back to item drops.
+Dispensers eject ordinary items, shoot recoverable unowned arrows and fire
+charges, place or collect water/lava source buckets, and prime TNT. Following
+Java 26.3 `DefaultDispenseItemBehavior.spawnItem`, dispensed and dropped items
+appear 0.7 blocks out (0.15625 lower, 0.125 vertically) at 0.2-0.3 blocks per
+tick plus `triangle(0.0172275 * 6)` noise per axis with a 10-tick pickup delay.
+`ProjectileDispenseBehavior` arrows start 0.7 out and 0.1 up at power 1.1
+with the same noise and no upward bias. `FireChargeItem` launches a small
+fireball one block out with a `triangle(0.11485)` noise heading; it no longer
+ignites the front cell directly (the fireball ignites where it lands). Other
+special behaviours (equipment, bone meal, spawn eggs and the remaining
+projectile items such as eggs, snowballs and potions) fall back to item drops:
+bone meal use and spawn eggs do not exist yet, and equipping a player needs a
+session adapter.
 
 Hoppers push one item, then pull one from the container above in the same
 eligible cycle, followed by eight game ticks of cooldown. An emptied

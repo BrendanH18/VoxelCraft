@@ -713,13 +713,11 @@ impl World {
                 self.primed_tnt.push((front, false));
                 return;
             }
-            if stack.item == Item::FIRE_CHARGE {
-                // Practical fire-charge support until small fireballs exist.
-                self.ignite(front);
-                return;
-            }
         }
-        self.automation.output.push((p, facing, !dropper && stack.item == Item::ARROW, one));
+        // The flag marks a dispenser-shot projectile (arrow or fire charge); everything
+        // else, including a dropper's fire charge, is spawned as an item.
+        let shot = !dropper && matches!(stack.item, Item::ARROW | Item::FIRE_CHARGE);
+        self.automation.output.push((p, facing, shot, one));
     }
 
     /// Consume entity work after shared world rules and before entity physics.
@@ -736,12 +734,13 @@ impl World {
         self.bell_rings = rings;
         let mut output = std::mem::take(&mut self.automation.output);
         for &(p, facing, arrow, stack) in &output {
-            let d = r::direction(facing).as_dvec3();
-            let origin = p.as_dvec3() + DVec3::splat(0.5) + d * 0.7;
-            if arrow {
-                entities.arrows.push(crate::entity::Arrow::dispensed(origin, (d + DVec3::Y * 0.1).normalize()));
+            let step = r::direction(facing);
+            if arrow && stack.item == Item::FIRE_CHARGE {
+                entities.dispense_fire_charge(p, step);
+            } else if arrow {
+                entities.dispense_arrow(p, step);
             } else {
-                entities.throw(stack, origin + DVec3::Y * 0.3, d);
+                entities.dispense_item(stack, p, step);
             }
         }
         output.clear();
@@ -1139,14 +1138,64 @@ mod tests {
         assert_eq!(e.arrows.len(), 1);
         assert!(e.items.is_empty());
         assert_eq!(w.chest(P).unwrap().slots[0].unwrap().count, 1);
-        put(&mut w, P + IVec3::X - IVec3::Y, Block::STONE);
         w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::FIRE_CHARGE, 1));
         w.dispense(P, 2, false);
-        assert!(w.get_block(P + IVec3::X).unwrap().is_fire());
         assert!(w.chest(P).unwrap().slots[0].is_none());
+        w.tick_automation_entities(&mut e);
+        assert_eq!(e.fireballs.len(), 1, "a dispensed fire charge is a travelling small fireball");
+        assert!(w.get_block(P + IVec3::X).is_some_and(|b| !b.is_fire()), "it does not light the front cell");
         w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::from_block(Block::TNT), 1));
         w.dispense(P, 2, false);
         assert_eq!(w.primed_tnt.len(), 1);
+    }
+    #[test]
+    fn dispensed_projectiles_and_items_follow_java_position_speed_and_inaccuracy() {
+        let mut e = crate::entity::Entities::new(11);
+        // Java 26.3: arrows leave 0.7 out and 0.1 up at power 1.1 with triangle(0.0172275 * 6)
+        // noise per axis; the fire charge leaves 1.0 out and ignores power (normalised heading).
+        let bound = 0.0172275 * 6.0;
+        for _ in 0..200 {
+            e.dispense_arrow(P, IVec3::X);
+            e.dispense_fire_charge(P, IVec3::X);
+        }
+        let centre = P.as_dvec3() + DVec3::splat(0.5);
+        for (arrow, fireball) in e.arrows.iter().zip(&e.fireballs) {
+            assert_eq!(arrow.pos, centre + DVec3::new(0.7, 0.1, 0.0));
+            assert_eq!(fireball.pos, centre + DVec3::X);
+            let speed = arrow.velocity() / 20.0;
+            assert!(
+                (speed.x - 1.1).abs() <= 1.1 * bound * 2.0
+                    && speed.y.abs() <= 1.1 * bound
+                    && speed.z.abs() <= 1.1 * bound
+            );
+            assert!(fireball.heading().x > 0.97);
+        }
+        assert!(e.arrows.iter().any(|a| a.velocity().y > 0.5), "noise spreads the shots in both directions");
+        assert!(e.arrows.iter().any(|a| a.velocity().y < -0.5));
+        assert!(e.arrows.iter().all(|a| !a.is_stuck()));
+        // The default item spawn: 0.7 out, 0.15625 below the centre, 0.2-0.3 blocks per tick.
+        e.items.clear();
+        for _ in 0..200 {
+            e.dispense_item(Stack::new(Item::DIAMOND, 1), P, IVec3::X);
+        }
+        for item in &e.items {
+            assert_eq!(item.pos, centre + DVec3::new(0.7, -0.15625, 0.0));
+            let v = item.vel / 20.0;
+            assert!((0.2 - bound..=0.3 + bound).contains(&v.x), "{v:?}");
+            assert!((0.2 - bound..=0.2 + bound).contains(&v.y) && v.z.abs() <= bound, "{v:?}");
+        }
+        e.items.clear();
+        e.dispense_item(Stack::new(Item::DIAMOND, 1), P, IVec3::NEG_Y);
+        assert_eq!(e.items[0].pos, centre + DVec3::new(0.0, -0.7 - 0.125, 0.0));
+        // Droppers never shoot a fire charge: it is an ordinary item.
+        let mut w = world();
+        put(&mut w, P, r::dispenser(2, true));
+        w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::FIRE_CHARGE, 1));
+        w.dispense(P, 2, true);
+        let mut e = crate::entity::Entities::new(3);
+        w.tick_automation_entities(&mut e);
+        assert!(e.fireballs.is_empty());
+        assert_eq!(e.items.len(), 1);
     }
     #[test]
     fn breaking_piston_heads_removes_the_base_without_duplicate_drops() {

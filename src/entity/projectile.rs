@@ -96,10 +96,14 @@ impl Arrow {
         }
     }
 
-    /// A recoverable dispenser arrow has no player owner and travels at Java's
-    /// 1.1 blocks per game tick before drag/gravity.
-    pub fn dispensed(pos: DVec3, dir: DVec3) -> Self {
-        let mut arrow = Self::shot(pos - dir * 0.3, dir, (22.0 / BOW_SPEED) as f32, true);
+    /// A recoverable dispenser arrow has no player owner. `vel` is its launch velocity in
+    /// blocks per second (Java's 1.1 blocks per game tick plus the dispenser's inaccuracy).
+    pub fn dispensed(pos: DVec3, vel: DVec3) -> Self {
+        let mut arrow = Self::shot(pos, vel, 0.0, true);
+        arrow.pos = pos;
+        arrow.previous_pos = pos;
+        arrow.vel = vel;
+        arrow.critical = false;
         arrow.from_player = false;
         arrow.owner = None;
         arrow
@@ -278,6 +282,11 @@ impl Arrow {
         self.age < MAX_FLIGHT && self.pos.y > -64.0
     }
 
+    /// Current velocity in blocks per second.
+    pub fn velocity(&self) -> DVec3 {
+        self.vel
+    }
+
     pub fn is_stuck(&self) -> bool {
         self.stuck
     }
@@ -359,7 +368,7 @@ mod tests {
     fn dispenser_arrows_hurt_mobs_and_players_without_player_kill_credit() {
         let world = Grid::flat(10);
         for player in [false, true] {
-            let mut arrow = Arrow::dispensed(DVec3::new(0.5, 11.0, 0.5), DVec3::X);
+            let mut arrow = Arrow::dispensed(DVec3::new(0.5, 11.0, 0.5), DVec3::X * 22.0);
             assert!((arrow.vel.length() - 22.0).abs() < 0.001);
             let mut mobs =
                 if player { Vec::new() } else { vec![Mob::new(MobKind::Cow, DVec3::new(2.0, 10.0, 0.5), 0.0)] };
