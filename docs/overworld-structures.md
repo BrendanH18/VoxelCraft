@@ -45,7 +45,18 @@ names. Searching is restricted to the Overworld and the specified radius,
 and accounts for nearer candidates across region boundaries.
 
 Pyramids contain four treasure chests and a pressure-plate TNT trap.
-Jungle temples contain two treasure chests and a tripwire arrow trap.
+Jungle temples are a port of Java's `JungleTemplePiece` (bytecode-read from the
+pinned server): a 12×10×15 piece on a 12×5×15 block of cobblestone that is
+mossy 60% of the time, anchored at the start chunk's corner in a random
+orientation with Java's piece frame (`getWorldX/Z`, mirror and rotation per
+orientation). Inside are the stair-fed basement with the main chest behind
+the first of two tripwire arrow traps, and a lever and sticky piston puzzle
+(three levers, three pistons, a repeater and wire) guarding the hidden chest;
+chests face as `StructurePiece.reorient` chooses. Differences: its three
+chiseled stone bricks are stone bricks (the block does not exist yet), the
+average ground height is taken over the whole footprint (Java averages only
+the chunk being generated), and the puzzle's redstone is the engine's, so it
+has not been played through.
 Igloos have a bed, crafting table and furnace; half have a basement with
 an accessible ladder, brewing stand and a chest containing a golden apple.
 The basement shaft follows Java's `IglooPieces.addPieces` (bytecode-checked):
@@ -107,7 +118,6 @@ See [aquatic mobs](aquatic-mobs.md) for swimming, buckets and combat.
 - Outpost ancillary pieces, generated golems/allays, patrols and raids.
 - Igloo bed orientation rendering: beds carry no facing state in the block ID,
   so every bed draws the same way; rotated igloos keep the pair's geometry only.
-- Jungle temple lever/piston puzzle and Minecraft's full trap layout.
 - Shipwreck template variants, all floor orientations, buried treasure
   and exploration maps; `ocean_ruin` currently combines warm/cold variants.
 - Ocean ruin clusters and archaeology; exact monument room graphs and

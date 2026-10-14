@@ -181,6 +181,19 @@ ambient particles keep their cached window.
 Spawn selection chooses its list before the final height is known, so it
 jitters at the player's height. Test: `world::nether_biome::tests::zoomed_biomes_roughen_borders_without_leaving_the_neighbouring_quarts`.
 
+## Jungle temple (piece port)
+
+`JungleTemplePiece.postProcess`, `ScatteredFeaturePiece.updateAverageGroundHeight`,
+`StructurePiece.{makeBoundingBox, getWorldX/Y/Z, setOrientation, placeBlock, generateBox, generateAirBox,
+createChest, reorient, createDispenser}` and `JungleTemplePiece$MossStoneSelector` were disassembled and the piece
+reproduced operation by operation (about 110 box fills and placements, the same order, so later writes
+overwrite earlier ones as in Java). The old layout was an original build with the selector backwards (40% mossy).
+Directions are written in Java's frame and converted: stairs and repeaters point the other way in this engine
+(the engine's stair facing is its low side, its repeater facing the output side). Differences: chiseled stone
+bricks are stone bricks, the footprint-wide ground average, and the old random vines are gone (Java's piece has
+three fixed ones). Tests: `scattered_pieces_use_javas_orientation_frame`, `jungle_temple_follows_the_java_piece`,
+the existing tripwire-fires-dispenser test, and the rotated-build/locate tests.
+
 ## Geode crack fluid ticks
 
 See [amethyst geodes](2026-10-13-amethyst-geodes.md#v070-defect-fix-crack-fluid-ticks).
