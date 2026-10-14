@@ -120,11 +120,14 @@ supply/demand term and resets uses. Offers, enchantments, demand, stock, rank,
 XP, bed/job claims, age, identity and restock counters survive dimension saves.
 Older saves without the additive `villagers` property remain valid.
 
+Villagers that reach their bed snap onto the head half, face along it and lie with the
+head on the pillow (Java's sleeping pose: feet slid back `eyeHeight - 0.1`; the lying-down
+animation is not interpolated, and the render is covered by a pose test, not a screenshot).
+Villager-opened doors close again one second after no villager is within 1.6 blocks.
+
 Simplifications: procedural house templates/resident ages rather than vanilla
 NBT assets; straight-line navigation with obstacle sidesteps rather than full
-brain/pathfinding; sleep near a bed rather than snapping to its exact facing;
-villager-opened doors close again one second after no villager is within 1.6 blocks.
-Trade selection uses an independent deterministic seed
+brain/pathfinding. Trade selection uses an independent deterministic seed
 stream and the
 restock interval is a fixed day-time interval. Item families absent from the
 engine are filtered from trade pools, so some tiers offer fewer than two trades

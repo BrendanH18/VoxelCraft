@@ -54,6 +54,8 @@ pub(super) const fn cube(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) ->
 }
 
 /// A box Java draws through the translucent entity layer, like the slime shell.
+/// Distance from a sleeping villager's pillow-block centre back to its feet.
+const SLEEP_FEET_BACK: f32 = 1.52;
 const fn glass(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
     Cuboid { min, max, color, noise, translucent: true }
 }
@@ -914,6 +916,13 @@ pub fn build(
             } else {
                 1.0
             };
+        // Java's `LivingEntityRenderer` slides a sleeper's feet back from the pillow by
+        // `eyeHeight - 0.1` (villager eyes: 1.62) so the head ends up on the pillow block.
+        let origin = if asleep {
+            origin - Vec3::new(-m.yaw.sin(), 0.0, m.yaw.cos()) * (SLEEP_FEET_BACK * scale)
+        } else {
+            origin
+        };
         let tint = if m.fuse > 0.0 {
             ([255.0; 3], ((m.fuse * (8.0 + 16.0 * fuse)).sin() * 0.5 + 0.5) * 0.7)
         } else if m.kind == MobKind::CaveSpider {

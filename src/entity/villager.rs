@@ -483,6 +483,24 @@ impl Villager {
     }
 }
 
+/// Where a sleeping villager lies: the head half's centre on top of the mattress, turned so
+/// the body stretches toward the foot (Java's `SLEEPING` pose; the renderer lays the head
+/// toward the pillow). `None` if the bed's foot half cannot be found.
+fn bed_pose<W: MobWorld + ?Sized>(world: &W, head: IVec3) -> Option<(DVec3, f32)> {
+    let color = world.block(head)?.bed_color()?;
+    let foot = crate::world::block::Block::colored_bed(color, false);
+    let toward = crate::world::block::Facing::ALL
+        .into_iter()
+        .map(crate::world::block::Facing::offset)
+        .find(|o| o.y == 0 && world.block(head + *o) == Some(foot))?;
+    let at = DVec3::new(
+        head.x as f64 + 0.5,
+        head.y as f64 + crate::world::block::Block::BED_FOOT.height(),
+        head.z as f64 + 0.5,
+    );
+    // The model lies with its head along (-sin yaw, cos yaw); the pillow end is away from the foot.
+    Some((at, (toward.x as f32).atan2(-(toward.z as f32))))
+}
 impl Entities {
     pub fn merchant(&self, id: u64) -> Option<&Mob> {
         self.mobs.iter().find(|m| m.alive() && m.villager.as_ref().is_some_and(|v| v.id == id))
@@ -684,6 +702,14 @@ impl Entities {
             }
             if v.sleeping {
                 v.last_slept = Some(self.village_day * 24000 + tick as i64);
+                if let Some(bed) = v.home
+                    && let Some((at, yaw)) = bed_pose(world, bed)
+                {
+                    m.pos = at;
+                    m.previous_pos = at;
+                    m.yaw = yaw;
+                    m.vel = DVec3::ZERO;
+                }
             }
             v.restock(
                 self.village_day,
@@ -1035,6 +1061,25 @@ mod tests {
         e.village_time = 0.25;
         step(&mut e, &w);
         assert!(!e.mobs[0].villager.as_ref().unwrap().sleeping);
+    }
+    #[test]
+    fn sleeping_villagers_lie_on_the_head_half_with_their_head_on_the_pillow() {
+        let color = crate::color::DyeColor::Red;
+        for (foot, pillow) in [(IVec3::Z, DVec3::NEG_Z), (IVec3::NEG_X, DVec3::X), (IVec3::X, DVec3::NEG_X)] {
+            let mut w = grid();
+            w.blocks.insert(IVec3::ZERO, Block::colored_bed(color, true));
+            w.blocks.insert(foot, Block::colored_bed(color, false));
+            let mut e = Entities::new(1);
+            e.spawn(MobKind::Villager, DVec3::new(0.7, 0.6, 0.4));
+            e.village_time = 0.6;
+            step(&mut e, &w);
+            let m = &e.mobs[0];
+            assert!(m.villager.as_ref().unwrap().sleeping);
+            assert_eq!(m.pos, DVec3::new(0.5, Block::BED_FOOT.height(), 0.5));
+            // The model's head points along (-sin yaw, cos yaw) once laid down.
+            let head = DVec3::new(-m.yaw.sin() as f64, 0.0, m.yaw.cos() as f64);
+            assert!((head - pillow).length() < 1e-5, "{foot:?}: {head:?}");
+        }
     }
     #[test]
     fn saved_stock_claims_and_natural_birth_receipts_survive_unloading() {
