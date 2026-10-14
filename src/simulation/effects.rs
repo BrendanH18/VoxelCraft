@@ -246,6 +246,11 @@ impl Effects {
         self.get(effect).is_some()
     }
 
+    /// Bit set of the active effects, indexed by `Effect as u32`.
+    pub fn mask(&self) -> u32 {
+        self.active.iter().fold(0, |m, a| m | 1 << a.effect as u32)
+    }
+
     /// Amplifier + 1 of `effect`, or 0 without it.
     fn levels(&self, effect: Effect) -> u32 {
         self.get(effect).map_or(0, |a| a.amplifier as u32 + 1)

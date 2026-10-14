@@ -146,6 +146,8 @@ impl Game {
             gold_armor: crate::entity::nether::wears_gold(&self.session.inventory.armor),
             held_item: self.held_item(),
             on_ground: self.session.player.on_ground,
+            health: self.session.vitals.health,
+            effects: self.session.vitals.effects.mask(),
             in_water: self.session.player.in_water,
             ..Target::new(
                 PlayerId::HOST,

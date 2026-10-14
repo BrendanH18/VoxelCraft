@@ -483,9 +483,18 @@ pub struct Target {
     pub held_item: Option<crate::item::Item>,
     pub on_ground: bool,
     pub in_water: bool,
+    /// Current health in half hearts (witches choose potions from it).
+    pub health: f32,
+    /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
+    pub effects: u32,
 }
 
 impl Target {
+    /// Whether the target has `effect` active.
+    pub fn has_effect(&self, effect: crate::simulation::effects::Effect) -> bool {
+        self.effects & (1 << effect as u32) != 0
+    }
+
     /// A living player; set [`Target::alive`] for one waiting to respawn.
     pub fn new(id: PlayerId, pos: DVec3, targetable: bool) -> Self {
         Self {
@@ -501,6 +510,8 @@ impl Target {
             held_item: None,
             on_ground: true,
             in_water: false,
+            health: crate::simulation::survival::MAX_HEALTH,
+            effects: 0,
         }
     }
 
@@ -1800,6 +1811,9 @@ mod tests {
                 if let EntityEvent::PlayerMagic { amount, .. } | EntityEvent::PlayerHit { damage: amount, .. } = ev {
                     hits.push(amount);
                 }
+                if let EntityEvent::PlayerEffect { ticks, .. } = ev {
+                    hits.push(ticks as f32);
+                }
             }
         }
         assert!(e.mobs[0].aabb().0.x < 2.0, "witches stand off at range");
@@ -1819,6 +1833,70 @@ mod tests {
         );
         let drops: Vec<_> = (0..50).flat_map(|_| MobKind::Witch.drops(&mut Rng::new(4), 0)).collect();
         assert!(drops.iter().any(|d| d.0 == crate::item::Item::GLASS_BOTTLE || d.0 == crate::item::Item::SUGAR));
+    }
+
+    /// Java's `Witch.performRangedAttack` picks the potion from the target's
+    /// distance, health and effects.
+    #[test]
+    fn witches_choose_potions_from_the_target_state() {
+        use crate::simulation::effects::{Effect, Effects};
+        let world = Grid::flat(10);
+        let first_throw = |seed: u64, distance: f64, health: f32, have: &[Effect]| {
+            let mut c = ctx(DVec3::new(0.5 + distance, 10.0, 0.5));
+            c.daylight = 0.0;
+            let mut effects = Effects::default();
+            for &e in have {
+                effects.add(e, 0, 600);
+            }
+            c.players[0].targetable = true;
+            c.players[0].health = health;
+            c.players[0].effects = effects.mask();
+            let mut e = Entities::new(seed);
+            e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+            e.mobs[0].effects.add(Effect::Speed, 0, 6000);
+            for _ in 0..80 {
+                e.update(0.05, &world, &c);
+                if let Some(thrown) = e.potions.first() {
+                    return thrown.potion.info().id;
+                }
+            }
+            panic!("no throw")
+        };
+        assert_eq!(first_throw(1, 9.5, 20.0, &[]), "slowness");
+        assert_eq!(first_throw(1, 9.5, 20.0, &[Effect::Slowness]), "poison");
+        assert_eq!(first_throw(1, 9.5, 20.0, &[Effect::Slowness, Effect::Poison]), "harming");
+        assert_eq!(first_throw(1, 6.0, 6.0, &[]), "harming", "low health skips poison");
+        assert_eq!(first_throw(1, 6.0, 20.0, &[Effect::Poison]), "harming");
+        let close: Vec<_> = (0..40).map(|seed| first_throw(seed, 2.0, 6.0, &[])).collect();
+        assert!(close.contains(&"weakness") && close.contains(&"harming"), "{close:?}");
+        assert!((0..40).all(|seed| first_throw(seed, 2.0, 6.0, &[Effect::Weakness]) == "harming"));
+    }
+
+    /// A witch with a far target drinks Swiftness (Java: 50% a tick beyond 11
+    /// blocks); a burning one drinks Fire Resistance.
+    #[test]
+    fn witches_drink_swiftness_and_fire_resistance() {
+        use crate::simulation::effects::Effect;
+        let world = Grid::flat(10);
+        let mut c = ctx(DVec3::new(20.5, 10.0, 0.5));
+        c.daylight = 0.0;
+        c.players[0].targetable = true;
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+        for _ in 0..60 {
+            e.update(0.05, &world, &c);
+        }
+        assert!(e.mobs[0].effects.has(Effect::Speed));
+        assert_eq!(e.mobs[0].effects.get(Effect::Speed).map(|a| a.amplifier), Some(0));
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].burning = true;
+        let far = ctx(DVec3::new(90.5, 10.0, 0.5));
+        for _ in 0..120 {
+            e.mobs[0].burning = true;
+            e.update(0.05, &world, &far);
+        }
+        assert!(e.mobs[0].effects.has(Effect::FireResistance));
     }
 
     #[test]
