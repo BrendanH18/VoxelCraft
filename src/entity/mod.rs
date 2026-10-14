@@ -1253,10 +1253,19 @@ impl Entities {
 
     /// Reels this player's bobber, spawning the catch and its experience.
     /// The number is how many uses the rod spends.
-    pub fn reel(&mut self, owner: PlayerId, player_pos: DVec3) -> Option<u16> {
+    /// `owner_luck` is the player's Luck attribute (the Luck and Bad Luck
+    /// effects); the biome at the hook is read now, as Java's loot context does.
+    pub fn reel<W: MobWorld + ?Sized>(
+        &mut self,
+        owner: PlayerId,
+        player_pos: DVec3,
+        owner_luck: i32,
+        world: &W,
+    ) -> Option<u16> {
         let index = self.bobbers.iter().position(|b| b.owner == owner)?;
         let bobber = self.bobbers.swap_remove(index);
-        let got = bobber.retrieve(&mut self.rng);
+        let jungle = world.cave_biome(bobber.pos.floor().as_ivec3()).is_jungle();
+        let got = bobber.retrieve(&mut self.rng, owner_luck, jungle);
         if let Some(stack) = got.catch {
             let delta = player_pos - bobber.pos;
             let lift = delta.length().sqrt() * 0.08;

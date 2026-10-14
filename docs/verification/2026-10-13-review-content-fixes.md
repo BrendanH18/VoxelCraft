@@ -57,10 +57,11 @@ with `--no-default-features`.
   shares and ranges match but individual rolls do not. The enchantment
   candidate order follows VoxelCraft's enum order rather than tag order, which
   changes which roll maps to which pick but not the distribution.
-- Fishing luck is the Luck of the Sea level only; the player `luck` attribute
-  (Luck/Unluck effects) is not added.
-- The bamboo condition uses the biome at the hook when the fish bites, not
-  when the line is reeled.
+- Since the v0.7 fixes the reel adds the player's Luck attribute (the new Luck
+  and Bad Luck effects, ±1 per level; ids `luck`/`unluck`) to Luck of the Sea and
+  reads the hook's biome for the bamboo `location_check` at the reel, as Java's
+  loot context does. Both effects are appended to the effect registry and icon
+  array; they have no other gameplay yet (chest loot ignores the attribute).
 - Sea pickles are `BucketPickup` in Java but have no unwaterlogged state here,
   so the sponge still stops at them. Drained live coral becomes dead coral at
   once unless water still touches it. In Java it stays live but dry and dies

@@ -5,6 +5,7 @@
 //! table ([`crate::content::fishing`]): junk, fish, and treasure in open water.
 //!
 //! The bob itself is a simplified spring, and the hook does not snag mobs.
+//! Luck and the jungle biome are read when the line is reeled, as in Java.
 
 use glam::{DVec3, IVec3};
 
@@ -36,9 +37,6 @@ pub struct Bobber {
     nibble: i32,
     pub biting: bool,
     open_water: bool,
-    /// The biome under the hook was a jungle when the fish bit (the junk
-    /// table's bamboo `location_check`).
-    jungle: bool,
     out_of_water: i32,
     lure: i32,
     luck: i32,
@@ -80,7 +78,6 @@ impl Bobber {
             nibble: 0,
             biting: false,
             open_water: true,
-            jungle: false,
             out_of_water: 0,
             lure: i32::from(lure),
             luck: i32::from(luck),
@@ -183,7 +180,6 @@ impl Bobber {
             if self.time_until_hooked <= 0 {
                 self.nibble = 20 + (rng.next_f32() * 21.0) as i32;
                 self.biting = true;
-                self.jungle = world.cave_biome(cell).is_jungle();
             }
         } else if self.time_until_lured > 0 {
             self.time_until_lured -= step;
@@ -201,13 +197,16 @@ impl Bobber {
     }
 
     /// Reel in. A bite returns loot; sitting on the ground wears the rod for two.
-    pub fn retrieve(&self, rng: &mut Rng) -> Retrieve {
+    /// `owner_luck` is the player's Luck attribute (Java adds it to the rod's
+    /// Luck of the Sea) and `jungle` whether the hook's biome is a jungle now,
+    /// as the loot table's `location_check` reads it at the reel.
+    pub fn retrieve(&self, rng: &mut Rng, owner_luck: i32, jungle: bool) -> Retrieve {
         let mut wear = 0;
         let mut catch = None;
         let mut xp = 0;
         if self.biting {
             wear = 1;
-            catch = roll_catch(rng, self.luck, CatchContext { open_water: self.open_water, jungle: self.jungle });
+            catch = roll_catch(rng, self.luck + owner_luck, CatchContext { open_water: self.open_water, jungle });
             xp = 1 + (rng.next_f32() * 6.0) as u32;
         }
         if self.on_ground {
@@ -466,39 +465,40 @@ mod tests {
     }
 
     #[test]
-    fn a_bite_records_whether_the_hook_is_in_a_jungle() {
-        struct Jungle(Pond);
-        impl BlockSource for Jungle {
-            fn block(&self, p: IVec3) -> Option<Block> {
-                self.0.block(p)
-            }
-        }
-        impl MobWorld for Jungle {
-            fn loaded(&self, p: IVec3) -> bool {
-                self.0.loaded(p)
-            }
-            fn surface(&self, x: i32, z: i32) -> Option<i32> {
-                self.0.surface(x, z)
-            }
-            fn exposed(&self, p: IVec3) -> bool {
-                self.0.exposed(p)
-            }
-            fn biome(&self, _: i32, _: i32) -> crate::world::terrain::Biome {
-                crate::world::terrain::Biome::BambooJungle
-            }
-        }
-        for (jungle, expected) in [(false, false), (true, true)] {
-            let mut rng = Rng::new(5);
-            let mut bobber = Bobber::cast(PlayerId::HOST, DVec3::new(0.5, 1.2, 0.5), DVec3::Y, 0, 0, &mut rng);
-            bobber.state = State::Bobbing;
-            bobber.time_until_hooked = 1;
-            if jungle {
-                bobber.tick_bite(&Jungle(pond()), IVec3::new(0, 1, 0), &mut rng);
-            } else {
-                bobber.tick_bite(&pond(), IVec3::new(0, 1, 0), &mut rng);
-            }
-            assert!(bobber.biting);
-            assert_eq!(bobber.jungle, expected);
-        }
+    fn luck_and_the_jungle_biome_are_read_when_the_line_is_reeled() {
+        let mut rng = Rng::new(5);
+        let mut bobber = Bobber::cast(PlayerId::HOST, DVec3::new(0.5, 1.2, 0.5), DVec3::Y, 0, 0, &mut rng);
+        bobber.biting = true;
+        bobber.open_water = true;
+        let junk_bamboo = |jungle: bool, luck: i32| {
+            let mut rng = Rng::new(21);
+            (0..6000)
+                .filter(|_| {
+                    bobber
+                        .retrieve(&mut rng, luck, jungle)
+                        .catch
+                        .is_some_and(|s| s.item == Item::from_block(crate::world::overworld_blocks::BAMBOO))
+                })
+                .count()
+        };
+        assert_eq!(junk_bamboo(false, 0), 0);
+        assert!(junk_bamboo(true, 0) > 0);
+        // Bad Luck (-1 per level) shifts weight from treasure to junk; Luck does the opposite.
+        let treasure = |luck: i32| {
+            let mut rng = Rng::new(22);
+            (0..6000)
+                .filter(|_| {
+                    let catch = bobber.retrieve(&mut rng, luck, false).catch.unwrap();
+                    fishing::TREASURE.iter().any(|e| e.value.item == catch.item)
+                })
+                .count()
+        };
+        assert!(
+            treasure(2) > treasure(0) && treasure(0) > treasure(-2),
+            "{} {} {}",
+            treasure(2),
+            treasure(0),
+            treasure(-2)
+        );
     }
 }

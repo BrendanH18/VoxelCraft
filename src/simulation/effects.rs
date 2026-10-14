@@ -31,10 +31,12 @@ pub enum Effect {
     Haste,
     Blindness,
     Nausea,
+    Luck,
+    BadLuck,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 21] = [
+    pub const ALL: [Effect; 23] = [
         Effect::Speed,
         Effect::Slowness,
         Effect::Strength,
@@ -56,6 +58,8 @@ impl Effect {
         Effect::Haste,
         Effect::Blindness,
         Effect::Nausea,
+        Effect::Luck,
+        Effect::BadLuck,
     ];
 
     /// Java's id, as `/effect` and saves use it.
@@ -82,6 +86,8 @@ impl Effect {
             Effect::Haste => "haste",
             Effect::Blindness => "blindness",
             Effect::Nausea => "nausea",
+            Effect::Luck => "luck",
+            Effect::BadLuck => "unluck",
         }
     }
 
@@ -114,6 +120,8 @@ impl Effect {
             Effect::Haste => "Haste",
             Effect::Blindness => "Blindness",
             Effect::Nausea => "Nausea",
+            Effect::Luck => "Luck",
+            Effect::BadLuck => "Bad Luck",
         }
     }
 
@@ -141,6 +149,8 @@ impl Effect {
             Effect::Haste => 0xD9C043,
             Effect::Blindness => 0x1F1F23,
             Effect::Nausea => 0x551D4A,
+            Effect::Luck => 0x59C106,
+            Effect::BadLuck => 0xC0A44D,
         };
         [(c >> 16) as u8, (c >> 8) as u8, c as u8]
     }
@@ -163,6 +173,7 @@ impl Effect {
                 | Effect::MiningFatigue
                 | Effect::Blindness
                 | Effect::Nausea
+                | Effect::BadLuck
         )
     }
 }
@@ -365,6 +376,11 @@ impl Effects {
     /// shares the formula, is not registered.
     pub fn dig_speed_factor(&self) -> f32 {
         self.get(Effect::Haste).map_or(1.0, |a| 1.0 + (i32::from(a.amplifier) + 1) as f32 * 0.2)
+    }
+
+    /// The Luck attribute the effects add: +1 per Luck level, -1 per Bad Luck level.
+    pub fn luck(&self) -> i32 {
+        self.levels(Effect::Luck) as i32 - self.levels(Effect::BadLuck) as i32
     }
 
     /// Java's `Player.isMobilityRestricted`: Blindness stops criticals and sprinting.
