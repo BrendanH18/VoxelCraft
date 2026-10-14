@@ -279,8 +279,11 @@ different pitches.
     and mob arrows resolve through shared mob-hit retaliation/loot handling.
     Java 26.3 `CrossbowAttack` consumes any living attack target; it has no
     player-only restriction. AI and arrow regression tests cover the change.
-  - Piglins don't pick up and equip better weapons or armor, or golden axes for
-    brutes.
+  - Adult piglins now equip an admired piece of golden armor into an empty slot
+    (Java `stopHoldingOffHandItem` → `equipItemIfPossible`); otherwise it goes to
+    the pocket. Replacing worn gear by `Mob.canReplaceCurrentItem` comparison, taking a
+    preferred crossbow while armed, and golden axes for brutes are not implemented;
+    piglins always spawn armed, so the crossbow pickup is unreachable in play.
   - Their pocket already has Java's eight slots, merging compatible stacks
     and throwing overflow. Existing regression tests cover saved components
     and full inventories; this inventory size is not a parity gap.
@@ -296,7 +299,9 @@ different pitches.
   Slab gaps and open gates no longer obscure targets; glass still does, as in Java.
   Thin/corner intersections and over-height fences have regression coverage.
   The underlying original block-shape catalogue remains an approximation.
-- **Visibility**: anger and hunting counts check distance, not sight lines.
+- **Visibility**: hoglin hunts and wither-skeleton targets need a sight line (Java's
+  `NEAREST_VISIBLE_*` memories). Nearby-adult piglin anger counts stay distance-based,
+  as Java's nearby-adult sensor lists are.
 - **Split-screen fog**: all views share the host camera's blended biome fog.
 
 ## What to check visually

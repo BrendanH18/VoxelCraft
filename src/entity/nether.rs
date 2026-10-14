@@ -744,6 +744,17 @@ impl Entities {
         let Some(n) = m.nether.as_mut() else { return };
         n.barter = false;
         let Some(stack) = n.offhand.take() else { return };
+        // Java `stopHoldingOffHandItem`: an adult equips an admired item that
+        // fits an empty slot (`equipItemIfPossible`) before pocketing it.
+        if !baby
+            && let Some((piece, ArmorMaterial::Gold)) = stack.item.as_armor()
+            && let Some(slot) = ArmorPiece::ALL.iter().position(|&p| p == piece)
+            && m.armor[slot].is_none()
+        {
+            m.armor[slot] = Some(super::armor::ArmorKind::Gold);
+            return;
+        }
+        let n = m.nether.as_mut().unwrap();
         if baby || !is_barter_currency(stack.item) {
             if let Some(overflow) = pocket(n, stack) {
                 self.throw_from_mob(overflow, pos, None);
@@ -1179,7 +1190,9 @@ fn sense<W: MobWorld + ?Sized>(
             return None;
         }
         // Wither skeletons are piglins' nemesis.
-        if let Some(s) = view.iter().find(|s| s.kind == MobKind::WitherSkeleton && near(s, ANGER_RANGE)) {
+        // Java reads `NEAREST_VISIBLE_*` memories: both need a clear sight line.
+        let sees = |s: &&Seen| super::mob::line_of_sight(world, eye, s.pos + DVec3::Y * 1.0);
+        if let Some(s) = view.iter().find(|s| s.kind == MobKind::WitherSkeleton && near(s, ANGER_RANGE) && sees(s)) {
             n.goal = Goal::Attack { foe: Foe::Mob(s.uid), pos: s.pos };
             return None;
         }
@@ -1187,8 +1200,9 @@ fn sense<W: MobWorld + ?Sized>(
         if !brute
             && !n.cannot_hunt
             && n.hunt_cooldown <= 0.0
-            && let Some(s) =
-                view.iter().find(|s| s.kind == MobKind::Hoglin && !s.baby && s.huntable && near(s, ANGER_RANGE))
+            && let Some(s) = view
+                .iter()
+                .find(|s| s.kind == MobKind::Hoglin && !s.baby && s.huntable && near(s, ANGER_RANGE) && sees(s))
         {
             n.anger(Foe::Mob(s.uid));
             n.hunt_cooldown = rng.range(30.0, 120.0);
@@ -1810,6 +1824,30 @@ mod tests {
     }
 
     #[test]
+    fn adults_equip_admired_gold_armor_into_empty_slots_only() {
+        let mut e = Entities::new(23);
+        let i = swordsman(&mut e);
+        e.mobs[i].armor = [None; 4];
+        let boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Gold), 1);
+        e.mobs[i].nether.as_mut().unwrap().offhand = Some(boots);
+        e.finish_admiring(i, &nether(vec![]));
+        let boots_slot = ArmorPiece::ALL.iter().position(|&p| p == ArmorPiece::Boots).unwrap();
+        assert_eq!(e.mobs[i].armor[boots_slot], Some(super::super::armor::ArmorKind::Gold));
+        assert!(e.mobs[i].nether.as_ref().unwrap().pocket.is_empty() && e.items.is_empty());
+        // The slot is now taken: a second pair goes to the pocket.
+        e.mobs[i].nether.as_mut().unwrap().offhand = Some(boots);
+        e.finish_admiring(i, &nether(vec![]));
+        assert_eq!(e.mobs[i].nether.as_ref().unwrap().pocket, vec![boots]);
+        // Babies never equip.
+        let b = swordsman(&mut e);
+        e.mobs[b].baby = true;
+        e.mobs[b].armor = [None; 4];
+        e.mobs[b].nether.as_mut().unwrap().offhand = Some(boots);
+        e.finish_admiring(b, &nether(vec![]));
+        assert!(e.mobs[b].armor.iter().all(Option::is_none));
+    }
+
+    #[test]
     fn full_piglin_pockets_throw_overflow_without_destroying_older_items() {
         let mut e = Entities::new(22);
         let i = swordsman(&mut e);
@@ -2338,6 +2376,41 @@ mod tests {
         run(&mut e, &world, &ctx, 2.0);
         assert_eq!(e.mobs[hunter].nether.as_ref().unwrap().foe, None);
         assert_eq!(e.mobs[prey].health, 40.0);
+    }
+
+    #[test]
+    fn piglin_hoglin_hunts_and_wither_skeleton_targets_need_a_sight_line() {
+        let mut world = Grid::flat(10);
+        let mut gold = player(DVec3::new(40.0, 10.0, 0.5));
+        gold.gold_armor = true;
+        let ctx = nether(vec![gold]);
+        let mut e = Entities::new(9);
+        let hunter = swordsman(&mut e);
+        // A stone wall between the piglin (x 0.5) and prey (x 6.5).
+        for y in 10..14 {
+            for z in -2..=3 {
+                world.set(IVec3::new(3, y, z), Block::STONE);
+            }
+        }
+        let prey = hoglin_at(&mut e, 6.5, false);
+        run(&mut e, &world, &ctx, 1.0);
+        assert_eq!(e.mobs[hunter].nether.as_ref().unwrap().foe, None, "walled-off hoglin is not hunted");
+        let skeleton = {
+            e.mobs.push(Mob::new(MobKind::WitherSkeleton, DVec3::new(6.5, 10.0, 0.5), 0.0));
+            e.mobs.len() - 1
+        };
+        e.nether_sense(1.0, &world, &ctx);
+        assert_ne!(
+            e.mobs[hunter].nether.as_ref().unwrap().goal,
+            Goal::Attack { foe: Foe::Mob(e.mobs[skeleton].uid), pos: e.mobs[skeleton].pos },
+            "walled-off wither skeleton is not targeted"
+        );
+        let open = Grid::flat(10);
+        e.nether_sense(1.0, &open, &ctx);
+        let uid = e.mobs[skeleton].uid;
+        assert!(
+            matches!(e.mobs[hunter].nether.as_ref().unwrap().goal, Goal::Attack { foe: Foe::Mob(u), .. } if u == uid || u == e.mobs[prey].uid)
+        );
     }
 
     #[test]
