@@ -1,0 +1,52 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "rare_pools": {
+    "zombie": {
+      "rolls": 1,
+      "requires_player_kill": true,
+      "chance": 0.025,
+      "looting_per_level": 0.01,
+      "entries": [
+        "iron_ingot",
+        "carrot",
+        "potato"
+      ],
+      "smelts_potato": true
+    },
+    "husk": {
+      "rolls": 1,
+      "requires_player_kill": true,
+      "chance": 0.025,
+      "looting_per_level": 0.01,
+      "entries": [
+        "iron_ingot",
+        "carrot",
+        "potato"
+      ],
+      "smelts_potato": true
+    },
+    "zombie_villager": {
+      "rolls": 1,
+      "requires_player_kill": true,
+      "chance": 0.025,
+      "looting_per_level": 0.01,
+      "entries": [
+        "iron_ingot",
+        "carrot",
+        "potato"
+      ],
+      "smelts_potato": true
+    },
+    "drowned": {
+      "rolls": 1,
+      "requires_player_kill": true,
+      "chance": 0.11,
+      "looting_per_level": 0.02,
+      "entries": [
+        "copper_ingot"
+      ],
+      "smelts_potato": false
+    }
+  }
+}

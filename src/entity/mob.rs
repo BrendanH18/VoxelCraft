@@ -804,15 +804,15 @@ impl MobKind {
                 ));
             }
         }
-        if self == MobKind::Zombie {
-            // Java: 2.5% plus 1% per looting level, rolled separately.
-            let chance = 0.025 + 0.01 * looting as f32;
-            if rng.next_f32() < chance {
-                out.push((Item::CARROT, 1));
-            }
-            if rng.next_f32() < chance {
-                out.push((Item::POTATO, 1));
-            }
+        if matches!(self, MobKind::Zombie | MobKind::Husk | MobKind::ZombieVillager)
+            && rng.chance(0.025 + 0.01 * looting as f32)
+        {
+            // One equally weighted entry from a single rare pool, not
+            // independent vegetable rolls. Player-kill gating is at the drop sink.
+            out.push(([Item::IRON_INGOT, Item::CARROT, Item::POTATO][rng.next_int(3) as usize], 1));
+        }
+        if self == MobKind::Drowned && rng.chance(0.11 + 0.02 * looting as f32) {
+            out.push((Item::COPPER_INGOT, 1));
         }
         if self == MobKind::WitherSkeleton && rng.chance(0.025 + 0.01 * looting as f32) {
             out.push((Item::WITHER_SKULL, 1));
@@ -970,6 +970,9 @@ pub struct Mob {
     pub(super) trader_night: bool,
     pub(super) convert_by: Option<super::PlayerId>,
     pub(super) angry_player: Option<super::PlayerId>,
+    /// A zombified piglin's main hand: `None` is the spawn default (a golden
+    /// sword); a converted piglin keeps its crossbow, axe or empty hand.
+    pub held: Option<super::nether::Weapon>,
 }
 
 impl Mob {
@@ -1066,6 +1069,7 @@ impl Mob {
             trader_night: false,
             convert_by: None,
             angry_player: None,
+            held: None,
             trader: matches!(kind, MobKind::WanderingTrader | MobKind::TraderLlama)
                 .then(|| Box::new(super::wandering_trader::Trader::new(pos))),
         }
@@ -1075,7 +1079,14 @@ impl Mob {
         let (base, cause) = self.kind.melee();
         let strength = if self.convert_left > 0.0 { 3.0 } else { 0.0 };
         let weakness = if self.weakness_left > 0.0 { 4.0 } else { 0.0 };
-        ((base + strength - weakness).max(0.0), cause)
+        // Java adds the main-hand item's attack modifier to the zombified
+        // piglin's base 5.
+        let held = if self.kind == MobKind::ZombifiedPiglin {
+            self.held.unwrap_or(super::nether::Weapon::GoldenSword).attack_bonus()
+        } else {
+            0.0
+        };
+        ((base + strength + held - weakness).max(0.0), cause)
     }
 
     /// Retaliation from the armor worn by a player struck in melee.
@@ -1271,8 +1282,10 @@ impl Mob {
                 events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
             }
         }
-        if self.alive() {
-            self.update_trader(dtf, self.trader_night);
+        if self.alive()
+            && let Some(vanished) = self.update_trader(dtf, self.trader_night)
+        {
+            events.push(EntityEvent::Sound { sound: MobSound::TraderDrink(vanished), pos: self.pos + DVec3::Y });
         }
         self.hurt = (self.hurt - dtf).max(0.0);
         self.provoked = (self.provoked - dtf).max(0.0);
@@ -2354,14 +2367,72 @@ pub fn sky_light<W: MobWorld + ?Sized>(world: &W, p: DVec3) -> f32 {
     level.max(0) as f32 / 15.0
 }
 
-/// Whether nothing solid lies on the straight line between two points.
+/// Java 26.3 LivingEntity.hasLineOfSight clips collision shapes with
+/// Fluid.NONE, capped at 128 blocks. DDA visits each crossed cell once;
+/// the old quarter-block samples missed thin/corner hits and filled slab gaps.
 pub(super) fn line_of_sight<W: BlockSource + ?Sized>(world: &W, from: DVec3, to: DVec3) -> bool {
+    if !from.is_finite() || !to.is_finite() || from.distance_squared(to) > 128.0 * 128.0 {
+        return false;
+    }
     let d = to - from;
-    let steps = (d.length() * 4.0).ceil().max(1.0) as i32;
-    (1..steps).all(|i| {
-        let p = from + d * (i as f64 / steps as f64);
-        !world.block(p.floor().as_ivec3()).is_some_and(|b| b.is_solid())
-    })
+    if d == DVec3::ZERO {
+        return true;
+    }
+    let mut cell = from.floor().as_ivec3();
+    let step = IVec3::from_array(d.to_array().map(|v| {
+        if v > 0. {
+            1
+        } else if v < 0. {
+            -1
+        } else {
+            0
+        }
+    }));
+    let inv = DVec3::from_array(d.to_array().map(|v| if v == 0. { f64::INFINITY } else { 1. / v.abs() }));
+    let frac = from - from.floor();
+    let mut next = DVec3::from_array(std::array::from_fn(|axis| {
+        if step[axis] == 0 {
+            f64::INFINITY
+        } else {
+            (if step[axis] > 0 { 1. - frac[axis] } else { frac[axis] }) * inv[axis]
+        }
+    }));
+    // <= 225 cell crossings for a 128-block segment, plus tied-plane cells.
+    let bound = d.abs().ceil().element_sum() as usize + 4;
+    for _ in 0..bound {
+        let blocks = |p| world.block(p).is_some() && physics::ray_collision(world, p, from, d).is_some_and(|t| t < 1.0);
+        if blocks(cell) {
+            return false;
+        }
+        // Fence, wall and closed-gate collision extends into the row above.
+        let below = cell - IVec3::Y;
+        if world.block(below).is_some_and(|b| {
+            matches!(
+                b.shaped(),
+                Some(
+                    crate::world::block::Shaped::Fence
+                        | crate::world::block::Shaped::Wall
+                        | crate::world::block::Shaped::Gate { .. }
+                )
+            )
+        }) && blocks(below)
+        {
+            return false;
+        }
+        let axis = if next.x < next.y && next.x < next.z {
+            0
+        } else if next.y < next.z {
+            1
+        } else {
+            2
+        };
+        if next[axis] > 1.0 {
+            return true;
+        }
+        cell[axis] += step[axis];
+        next[axis] += inv[axis];
+    }
+    false
 }
 
 pub fn yaw_dir(yaw: f32) -> DVec3 {
@@ -2383,6 +2454,34 @@ fn turn_toward(from: f32, to: f32, max: f32) -> f32 {
 mod equipment_effect_tests {
     use super::*;
     use crate::{physics::test_util::Grid, simulation::effects::Effect};
+
+    #[test]
+    fn java_sight_clips_collision_shapes_and_ignores_fluids() {
+        let mut world = Grid::flat(0);
+        let p = IVec3::new(0, 2, 0);
+        let ray = |y| (DVec3::new(-1., y, 0.5), DVec3::new(2., y, 0.5));
+        world.set(p, Block::STONE_SLAB);
+        let (from, to) = ray(2.75);
+        assert!(line_of_sight(&world, from, to), "above the slab");
+        let (from, to) = ray(2.25);
+        assert!(!line_of_sight(&world, from, to), "through the slab");
+        world.set(p, Block::gate(crate::world::block::Facing::South, true));
+        assert!(line_of_sight(&world, from, to), "open gate has no collision");
+        world.set(p, Block::GLASS);
+        assert!(!line_of_sight(&world, from, to), "Java collider sight is blocked by glass");
+        world.set(p, Block::WATER);
+        assert!(line_of_sight(&world, from, to), "Fluid.NONE");
+        world.set(p, Block::STONE);
+        assert!(
+            !line_of_sight(&world, DVec3::new(-0.04, 2.5, 0.92), DVec3::new(0.06, 2.5, 1.02)),
+            "corner crossing missed by point sampling"
+        );
+        world.set(p, Block::OAK_FENCE);
+        let (from, to) = ray(3.25);
+        assert!(!line_of_sight(&world, from, to), "fence extends into the next cell");
+        assert!(!line_of_sight(&world, DVec3::new(0., 4., 0.), DVec3::new(129., 4., 0.)));
+        assert!(line_of_sight(&world, DVec3::new(0., 4., 0.), DVec3::new(128., 4., 0.)));
+    }
 
     #[test]
     fn turtle_master_slowness_reaches_walking_and_hopping_physics() {

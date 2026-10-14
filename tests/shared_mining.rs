@@ -279,8 +279,14 @@ fn creative_destroys_bedrock_and_the_dragon_egg_while_a_survival_attack_teleport
     assert!(matches!(out, Outcome::Broken { block: Block::DRAGON_EGG, .. }), "{out:?}");
     assert_eq!(w.get_block(AT), Some(Block::AIR));
     assert!(w.drops.is_empty());
-    // Survival start attacks the egg, which jumps away without a drop.
+    // Survival start attacks the egg. Java 26.3 requires non-air below
+    // the destination; provide a floor, rather than unsupported empty air.
     let (mut w, mut s, mut e) = scene(Block::AIR, Dimension::Overworld);
+    for x in -8..=8 {
+        for z in -8..=8 {
+            w.set_block(AT + IVec3::new(x, -1, z), Block::STONE);
+        }
+    }
     w.set_block(AT - IVec3::Y, Block::STONE);
     w.set_block(AT, Block::DRAGON_EGG);
     let out = s.tick_mining(0, &mut w, &mut e, &GameRules::default()).unwrap();

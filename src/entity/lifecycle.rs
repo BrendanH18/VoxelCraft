@@ -149,6 +149,7 @@ impl Entities {
             i += 1;
         }
         self.mob_index.rebuild(&self.mobs);
+        self.watch_doors(dt as f32, &mut events);
         self.resolve_strikes(ctx, &mut events);
         self.separate(dt);
         self.nether_upkeep(ctx, &mut events);
@@ -206,6 +207,7 @@ impl Entities {
             }
         }
         self.update_eyes(dt, &mut events);
+        self.resolve_mob_hits(&mut events);
         for e in &events {
             match *e {
                 EntityEvent::MobShot { kind, pos, killed, burning, player_kill, owner } => {
@@ -214,6 +216,14 @@ impl Entities {
                     }
                     if kind == MobKind::ZombifiedPiglin {
                         self.anger_piglins(pos);
+                    }
+                    // Java's `VILLAGER_HURT`/`VILLAGER_KILLED` reputation events fire for any
+                    // damage a player causes, including arrows and splash potions.
+                    if kind == MobKind::Villager
+                        && let Some(owner) = owner
+                        && let Some(i) = self.mobs.iter().position(|m| m.kind == kind && m.pos == pos)
+                    {
+                        self.note_villager_hurt(i, owner, killed);
                     }
                     if let Some(owner) = owner
                         && let Some(i) =

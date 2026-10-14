@@ -223,6 +223,12 @@ impl State {
         held: Option<Item>,
         offhand: Option<Item>,
     ) {
+        // Java 26.3 Camel.tickRidden: mounting alone keeps a camel seated;
+        // positive forward input requests the 52-tick standing transition.
+        if kind == MobKind::Camel && input.forward > 0.0 && self.sit_ticks > 0 {
+            self.sit_ticks = 0;
+            self.stand_ticks = 52;
+        }
         self.wish = player.ride_push(input) / 0.22;
         self.yaw = player.yaw;
         self.sprinting = input.sprint;
@@ -249,6 +255,7 @@ impl State {
         json!({"tame":self.tame,"temper":self.temper,"owner":self.owner.map(|p|p.0),"rider":self.rider.map(|p|p.0),
             "health":self.max_health,"speed":self.speed,"jump":self.jump,"variant":self.variant,"marking":self.marking,
             "chest":self.chest,"strength":self.strength,"passenger":self.passenger.map(|p|p.0),
+            "sit_ticks":self.sit_ticks,"stand_ticks":self.stand_ticks,
             "slots":self.slots.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>()})
     }
     pub fn load(kind: MobKind, v: &Value) -> Option<Self> {
@@ -272,6 +279,10 @@ impl State {
         s.chest = v["chest"].as_bool().unwrap_or(false) && chested(kind);
         s.strength = v["strength"].as_u64().map_or(s.strength, |n| n.clamp(1, 5) as u8);
         s.passenger = v["passenger"].as_u64().and_then(|p| u32::try_from(p).ok()).map(PlayerId);
+        if kind == MobKind::Camel {
+            s.sit_ticks = v["sit_ticks"].as_u64().unwrap_or(0).min(1200) as u32;
+            s.stand_ticks = v["stand_ticks"].as_u64().unwrap_or(0).min(52) as u16;
+        }
         if kind == MobKind::Llama {
             s.variant = s.variant.min(3);
         }
@@ -364,11 +375,8 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
     }
     s.dash_cooldown = s.dash_cooldown.saturating_sub(ticks as u16);
     if mob.kind == MobKind::Camel {
-        // Idle camels sit down now and then; a rider makes one stand, which takes 2.6 s.
-        if s.rider.is_some() && s.sit_ticks > 0 {
-            s.sit_ticks = 0;
-            s.stand_ticks = 52;
-        }
+        // Idle camels already sit automatically. Ridden camels stand on
+        // forward input (in State::input), rather than simply on mounting.
         if s.rider.is_none() && s.sit_ticks == 0 && !mob.baby && mob.on_ground && rng.chance(ticks as f32 / 2400.) {
             s.sit_ticks = 600 + rng.next_int(600);
         }
@@ -648,6 +656,20 @@ impl Entities {
             s.input(m.kind, player, input, inventory.get(selected).map(|s| s.item), None);
         }
     }
+    /// Java Horse.finalizeSpawn shares the coat through HorseGroupData,
+    /// while each herd member independently rolls its markings.
+    pub(super) fn natural_horse_coat(&mut self, herd_coat: Option<u8>) -> Option<u8> {
+        let m = self.mobs.last_mut()?;
+        if m.kind != MobKind::Horse {
+            return None;
+        }
+        let s = m.mount.as_mut()?;
+        if let Some(coat) = herd_coat {
+            s.variant = coat;
+        }
+        Some(s.variant)
+    }
+
     /// Use saddle/armor/chest/food or mount an adult under the crosshair.
     /// Returns true when the interaction was handled; callers attach via mount_for_player.
     #[allow(clippy::too_many_arguments)]
@@ -919,6 +941,28 @@ mod tests {
         }
         w
     }
+    #[test]
+    fn natural_horse_herds_share_coats_but_keep_independent_markings_and_saved_ids() {
+        let mut e = Entities::new(94);
+        e.spawn(MobKind::Horse, DVec3::ZERO);
+        let coat = e.natural_horse_coat(None).unwrap();
+        for _ in 0..24 {
+            e.spawn(MobKind::Horse, DVec3::ZERO);
+            assert_eq!(e.natural_horse_coat(Some(coat)), Some(coat));
+        }
+        let first = e.mobs[0].mount.as_ref().unwrap().marking;
+        assert!(e.mobs.iter().any(|m| m.mount.as_ref().unwrap().marking != first));
+        for m in &e.mobs {
+            let state = m.mount.as_ref().unwrap();
+            assert_eq!(state.variant, coat);
+            let reloaded = State::load(MobKind::Horse, &state.save()).unwrap();
+            assert_eq!((reloaded.variant, reloaded.marking), (coat, state.marking));
+        }
+        e.spawn(MobKind::Donkey, DVec3::ZERO);
+        assert_eq!(e.natural_horse_coat(Some(coat)), None);
+        assert_eq!(e.mobs.last().unwrap().mount.as_ref().unwrap().variant, 0);
+    }
+
     #[test]
     fn java_horse_distributions_and_fixed_pack_animal_attributes() {
         let mut rng = Rng::new(17);
@@ -1202,6 +1246,56 @@ mod tests {
         let saved = State::load(MobKind::Llama, &s.save()).unwrap();
         assert_eq!((saved.strength, saved.chest), (2, true));
     }
+    #[test]
+    fn camels_sit_automatically_persist_and_wait_for_forward_input_to_stand() {
+        let mut e = Entities::new(43);
+        e.spawn(MobKind::Camel, DVec3::new(5., 140., 5.));
+        let m = &mut e.mobs[0];
+        m.on_ground = true;
+        for _ in 0..20000 {
+            control(m, 0.05, &mut e.rng);
+            if m.mount.as_ref().unwrap().sit_ticks > 0 {
+                break;
+            }
+        }
+        assert!(m.mount.as_ref().unwrap().sit_ticks > 0, "automatic sitting already exists");
+        m.mount = Some(State::load(MobKind::Camel, &m.mount.as_ref().unwrap().save()).unwrap().into());
+        let mut inv = Inventory::default();
+        let eye = DVec3::new(5., 141.5, 2.);
+        assert!(e.use_mount(eye, DVec3::Z, 5., PlayerId::HOST, &mut inv, 0, false));
+        let m = &mut e.mobs[0];
+        let seated = m.mount.as_ref().unwrap().sit_ticks;
+        control(m, 0.05, &mut e.rng);
+        assert_eq!(m.mount.as_ref().unwrap().sit_ticks, seated - 1, "mounting leaves it seated");
+        let player = Player::new(DVec3::ZERO);
+        for input in [
+            MoveInput::default(),
+            MoveInput { right: 1., ..Default::default() },
+            MoveInput { forward: -1., ..Default::default() },
+        ] {
+            m.mount.as_mut().unwrap().input(MobKind::Camel, &player, input, None, None);
+            assert!(m.mount.as_ref().unwrap().sit_ticks > 0);
+        }
+        m.mount.as_mut().unwrap().input(
+            MobKind::Camel,
+            &player,
+            MoveInput { forward: 1., ..Default::default() },
+            None,
+            None,
+        );
+        assert_eq!((m.mount.as_ref().unwrap().sit_ticks, m.mount.as_ref().unwrap().stand_ticks), (0, 52));
+        m.mount = Some(State::load(MobKind::Camel, &m.mount.as_ref().unwrap().save()).unwrap().into());
+        for _ in 0..52 {
+            assert_eq!(control(m, 0.05, &mut e.rng), Some((None, 0.)));
+        }
+        assert_eq!(m.mount.as_ref().unwrap().stand_ticks, 0);
+        // Old additive mount data loads standing, preserving save compatibility.
+        let mut old = m.mount.as_ref().unwrap().save();
+        old.as_object_mut().unwrap().remove("sit_ticks");
+        old.as_object_mut().unwrap().remove("stand_ticks");
+        assert_eq!(State::load(MobKind::Camel, &old).unwrap().sit_ticks, 0);
+    }
+
     #[test]
     fn camels_need_no_taming_seat_two_and_dash_on_cooldown() {
         let mut e = Entities::new(3);

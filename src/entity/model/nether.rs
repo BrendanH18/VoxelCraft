@@ -27,13 +27,13 @@ const LEG: &[Cuboid] = &[
     cube([-2.05, -12.0, -2.05], [2.05, -8.0, 2.05], LEATHER_DARK, 24),
 ];
 const ARM: &[Cuboid] = &[cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36)];
-const SWORD_ARM: &[Cuboid] = &[
+pub(super) const SWORD_ARM: &[Cuboid] = &[
     cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36),
     cube([-0.5, -10.0, 1.0], [0.5, -9.0, 3.0], [100, 70, 30], 10),
     cube([-1.5, -10.0, 3.0], [1.5, -9.0, 3.5], GOLD, 10),
     cube([-0.5, -10.0, 3.5], [0.5, -9.0, 11.0], GOLD, 10),
 ];
-const CROSSBOW_ARM: &[Cuboid] = &[
+pub(super) const CROSSBOW_ARM: &[Cuboid] = &[
     cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36),
     // Stock along the forearm, limbs across its far end.
     cube([-0.75, -10.5, -1.0], [0.75, -9.0, 8.0], [137, 103, 39], 14),
@@ -70,7 +70,7 @@ const BRUTE_LEG: &[Cuboid] = &[
     cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], SKIN, 36),
     cube([-2.05, -12.0, -2.05], [2.05, -7.0, 2.05], BRUTE_CLOTH, 22),
 ];
-const AXE_ARM: &[Cuboid] = &[
+pub(super) const AXE_ARM: &[Cuboid] = &[
     cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36),
     // A golden axe: handle forward from the fist, head on top.
     cube([-0.5, -10.0, -1.0], [0.5, -9.0, 10.0], [137, 103, 39], 10),
@@ -160,6 +160,7 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             let n = m.nether.as_deref();
             let weapon = n.map_or(Weapon::None, |n| n.weapon);
             let admiring = n.is_some_and(|n| n.is_admiring());
+            let dancing = n.is_some_and(|n| n.dancing);
             let fighting = m.ai == Ai::Chase;
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.9 } else { 0.0 };
             let (right, right_rot) = match weapon {
@@ -180,19 +181,32 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
                 (ARM, rx(swing * 0.6))
             };
             // Ears flop with the walk.
-            let flop = 0.45 + (time * 3.0 + m.limb_phase).sin() * 0.08 * (0.3 + m.limb_amp);
+            let mut flop = 0.45 + (time * 3.0 + m.limb_phase).sin() * 0.08 * (0.3 + m.limb_amp);
+            // The celebration dance: arms thrown up and out, the body bobbing, ears flapping.
+            // Java drives this from the client model (`PiglinArmPose.DANCING`), which the
+            // reference server jar lacks, so the motion is an original approximation.
+            let mut bob = 0.0;
+            let (mut left, mut left_rot, mut right, mut right_rot) = (left, left_rot, right, right_rot);
+            if dancing {
+                let beat = time * 6.0;
+                bob = beat.sin() * 0.6;
+                flop = 0.5 + (beat * 2.0).cos() * 0.25;
+                (left, right) = (ARM, ARM);
+                left_rot = Quat::from_rotation_z(1.2 + (beat * 2.0).cos() * 0.15) * rx(PI);
+                right_rot = Quat::from_rotation_z(-1.2 - (beat * 2.0).cos() * 0.15) * rx(PI);
+            }
             let mut parts = Parts::new();
-            parts.push(part(BODY, [0.0; 3], Quat::IDENTITY));
+            parts.push(part(BODY, [0.0, bob, 0.0], Quat::IDENTITY));
             parts.push(part(LEG, [-2.0, 12.0, 0.0], rx(swing)));
             parts.push(part(LEG, [2.0, 12.0, 0.0], rx(-swing)));
-            parts.push(part(left, [-6.0, 22.0, 0.0], left_rot));
-            parts.push(part(right, [6.0, 22.0, 0.0], right_rot));
-            parts.push(part(HEAD, [0.0, 24.0, 0.0], head));
+            parts.push(part(left, [-6.0, 22.0 + bob, 0.0], left_rot));
+            parts.push(part(right, [6.0, 22.0 + bob, 0.0], right_rot));
+            parts.push(part(HEAD, [0.0, 24.0 + bob, 0.0], head));
             let ear = |side: f32| head * glam::Vec3::new(5.0 * side, 6.0, 0.0);
             let e = ear(-1.0);
-            parts.push(part(EAR, [e.x, 24.0 + e.y, e.z], head * Quat::from_rotation_z(-flop)));
+            parts.push(part(EAR, [e.x, 24.0 + bob + e.y, e.z], head * Quat::from_rotation_z(-flop)));
             let e = ear(1.0);
-            parts.push(part(EAR, [e.x, 24.0 + e.y, e.z], head * Quat::from_rotation_z(flop)));
+            parts.push(part(EAR, [e.x, 24.0 + bob + e.y, e.z], head * Quat::from_rotation_z(flop)));
             parts
         }
         MobKind::PiglinBrute => {

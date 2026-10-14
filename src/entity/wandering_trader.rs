@@ -9,17 +9,28 @@ use crate::{
 };
 use glam::{DVec3, IVec3};
 
+/// Java's Invisibility potion: 3600 ticks.
+const HIDE_TIME: f32 = 180.0;
 #[derive(Clone, Copy)]
 pub struct Trader {
     pub despawn: f32,
     pub invisible: bool,
+    /// Seconds of the potion's Invisibility left (Java: 3600 ticks); expiry makes it drink again.
+    pub hide_left: f32,
     pub drink: f32,
     pub leader: u64,
     pub destination: DVec3,
 }
 impl Trader {
     pub(super) fn save(&self) -> serde_json::Value {
-        serde_json::json!([self.despawn, self.invisible, self.drink, self.leader, self.destination.to_array()])
+        serde_json::json!([
+            self.despawn,
+            self.invisible,
+            self.drink,
+            self.leader,
+            self.destination.to_array(),
+            self.hide_left
+        ])
     }
     pub(super) fn load(v: &serde_json::Value, pos: DVec3) -> Option<Self> {
         let mut t = Self::new(pos);
@@ -32,10 +43,13 @@ impl Trader {
             return None;
         }
         t.destination = DVec3::new(p[0].as_f64()?, p[1].as_f64()?, p[2].as_f64()?);
+        // Older saves hold no timer: an invisible trader gets a fresh potion's worth.
+        t.hide_left =
+            if t.invisible { v[5].as_f64().map_or(HIDE_TIME, |s| (s as f32).clamp(0.0, HIDE_TIME)) } else { 0.0 };
         t.destination.is_finite().then_some(t)
     }
     pub fn new(pos: DVec3) -> Self {
-        Self { despawn: 2400.0, invisible: false, drink: 0.0, leader: 0, destination: pos }
+        Self { despawn: 2400.0, invisible: false, hide_left: 0.0, drink: 0.0, leader: 0, destination: pos }
     }
 }
 #[derive(Clone, Copy)]
@@ -231,36 +245,56 @@ impl Entities {
             }
         }
         for m in &mut self.mobs {
-            if m.kind == MobKind::TraderLlama
-                && let Some(t) = &mut m.trader
-                && let Some(&(pos, despawn, _)) = self.trader_leaders.get(&t.leader)
-            {
+            if m.kind != MobKind::TraderLlama {
+                continue;
+            }
+            let Some(t) = &mut m.trader else { continue };
+            if let Some(&(pos, despawn, _)) = self.trader_leaders.get(&t.leader) {
                 t.despawn = despawn;
                 t.destination = pos;
                 m.hunt = (m.pos.distance_squared(pos) > 4.0).then_some(pos);
+                // Use the existing lead renderer and replica projection. An
+                // explicit player/fence lead takes precedence over the merchant.
+                if m.leash.is_none() {
+                    m.leash_pos = Some(pos + DVec3::Y * 1.2);
+                }
+            } else if m.leash.is_none() {
+                m.leash_pos = None;
             }
         }
     }
 }
 impl Mob {
-    pub(super) fn update_trader(&mut self, dt: f32, night: bool) {
-        let Some(t) = &mut self.trader else {
-            return;
-        };
+    /// Returns `Some(vanished)` when a drink finishes: Java's `UseItemGoal` sound.
+    pub(super) fn update_trader(&mut self, dt: f32, night: bool) -> Option<bool> {
+        let t = self.trader.as_mut()?;
         let trading = self.villager.as_ref().is_some_and(|v| v.trading);
         if !trading {
             t.despawn = (t.despawn - dt).max(0.0);
         }
         if self.kind != MobKind::WanderingTrader {
-            return;
+            return None;
         }
-        if t.invisible != night && !trading {
+        // The potion's effect runs out on its own; milk clears it early.
+        if t.invisible {
+            t.hide_left -= dt;
+        }
+        if t.invisible && t.hide_left <= 0.0 {
+            t.invisible = false;
+            t.hide_left = 0.0;
+        }
+        // Java: drink Invisibility when dark and visible, milk when bright and invisible.
+        let wants = if night { !t.invisible } else { t.invisible };
+        let mut drank = None;
+        if wants && !trading {
             if t.drink == 0.0 {
                 t.drink = 1.6;
             }
             t.drink = (t.drink - dt).max(0.0);
             if t.drink == 0.0 {
                 t.invisible = night;
+                t.hide_left = if night { HIDE_TIME } else { 0.0 };
+                drank = Some(night);
             }
         } else {
             t.drink = 0.0;
@@ -272,12 +306,60 @@ impl Mob {
                 self.hunt.or_else(|| (self.pos.distance_squared(t.destination) > 4.0).then_some(t.destination))
             };
         }
+        drank
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::physics::test_util::Grid;
+    #[test]
+    fn merchant_leads_render_after_reload_and_clear_when_the_merchant_is_gone() {
+        let mut e = Entities::new(6);
+        let w = Grid::flat(0);
+        assert!(e.spawn_trader(&w, DVec3::ZERO));
+        let saved = e.villagers_to_string();
+        let mut loaded = Entities::new(7);
+        loaded.load_villagers(&saved);
+        loaded.trader_upkeep();
+        let trader = loaded.mobs.iter().find(|m| m.kind == MobKind::WanderingTrader).unwrap();
+        let anchor = trader.pos + DVec3::Y * 1.2;
+        for llama in loaded.mobs.iter().filter(|m| m.kind == MobKind::TraderLlama) {
+            assert_eq!(llama.leash_pos, Some(anchor));
+            assert_eq!(llama.look()["leash"], serde_json::json!(anchor.to_array()));
+        }
+        loaded.mobs.retain(|m| m.kind != MobKind::WanderingTrader);
+        loaded.trader_upkeep();
+        assert!(loaded.mobs.iter().all(|m| m.leash_pos.is_none()));
+    }
+
+    #[test]
+    fn invisibility_lasts_three_minutes_then_the_trader_drinks_again() {
+        let mut e = Entities::new(6);
+        e.spawn(MobKind::WanderingTrader, DVec3::ZERO);
+        let m = &mut e.mobs[0];
+        let drank: Vec<_> = (0..33).filter_map(|_| m.update_trader(0.05, true)).collect();
+        assert_eq!(drank, [true], "one Invisibility drink, announced once");
+        assert!(m.trader.as_ref().unwrap().invisible);
+        // 3600 ticks later the effect lapses; it is still night, so the potion is drunk again.
+        assert_eq!(m.update_trader(179.0, true), None);
+        assert!(m.trader.as_ref().unwrap().invisible);
+        assert_eq!(m.update_trader(1.0, true), None);
+        assert!(!m.trader.as_ref().unwrap().invisible);
+        let again: Vec<_> = (0..33).filter_map(|_| m.update_trader(0.05, true)).collect();
+        assert_eq!(again, [true]);
+        // Milk at daybreak clears it early and announces the reappearance.
+        let milk: Vec<_> = (0..33).filter_map(|_| m.update_trader(0.05, false)).collect();
+        assert_eq!(milk, [false]);
+        assert!(!m.trader.as_ref().unwrap().invisible);
+        // The remaining time survives a save.
+        for _ in 0..33 {
+            m.update_trader(0.05, true);
+        }
+        m.update_trader(60.0, true);
+        let t = Trader::load(&m.trader.as_ref().unwrap().save(), DVec3::ZERO).unwrap();
+        assert!(t.invisible && (t.hide_left - 120.0).abs() < 0.2, "{}", t.hide_left);
+    }
     #[test]
     fn chance_progresses_daily_and_caps() {
         let mut s = Spawner::default();

@@ -251,6 +251,18 @@ pub fn ray_aabb_face(origin: DVec3, dir: DVec3, min: DVec3, max: DVec3) -> Optio
     Some((t_near, normal))
 }
 
+/// First hit on a cell's collision boxes, in units of `dir`.
+/// Shares the exact low-block and shaped collision boxes used by movement.
+pub fn ray_collision<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DVec3, dir: DVec3) -> Option<f64> {
+    let mut first: Option<f64> = None;
+    cell_boxes(world, cell, |min, max| {
+        if let Some(t) = ray_aabb(origin, dir, min, max) {
+            first = Some(first.map_or(t, |f| f.min(t)));
+        }
+    });
+    first
+}
+
 /// Where a ray first hits the boxes of the shaped block at `cell`: the
 /// distance (in units of `dir`) and the face normal.
 pub fn ray_shape<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DVec3, dir: DVec3) -> Option<(f64, IVec3)> {

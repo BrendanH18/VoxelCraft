@@ -13,6 +13,7 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use glam::{DVec3, Quat, Vec3};
 
 use super::mob::{Ai, FUSE_TIME, HURT_TIME, Mob, MobKind};
+use super::nether::Weapon;
 use super::{Arrow, Puff, XpOrb};
 use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
@@ -44,10 +45,19 @@ pub(super) struct Cuboid {
     color: Rgb,
     /// Per-texel brightness noise, 0..255 (255 = ±50%).
     noise: u8,
+    /// Drawn alpha-blended after the opaque pass (entity material 4).
+    translucent: bool,
 }
 
 pub(super) const fn cube(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
-    Cuboid { min, max, color, noise }
+    Cuboid { min, max, color, noise, translucent: false }
+}
+
+/// A box Java draws through the translucent entity layer, like the slime shell.
+/// Distance from a sleeping villager's pillow-block centre back to its feet.
+const SLEEP_FEET_BACK: f32 = 1.52;
+const fn glass(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
+    Cuboid { min, max, color, noise, translucent: true }
 }
 
 const MAGMA_BODY: &[Cuboid] = &[cube([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [50, 28, 25], 80)];
@@ -65,11 +75,14 @@ const GHAST_BODY: &[Cuboid] = &[
     cube([-3.5, 34.0, 18.0], [3.5, 38.0, 18.4], [120, 36, 40], 0),
 ];
 const GHAST_TENTACLE: &[Cuboid] = &[cube([-2.0, -24.0, -2.0], [2.0, 0.0, 2.0], [214, 214, 214], 12)];
+// Java's slime: an opaque 6-unit core with the face, inside a translucent
+// 8-unit shell (`SlimeOuterLayer`).
 const SLIME_BODY: &[Cuboid] = &[
-    cube([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [105, 180, 78], 55),
-    cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [29, 60, 24], 0),
-    cube([1.1, 4.5, 4.1], [2.6, 6.0, 4.15], [29, 60, 24], 0),
-    cube([-1.1, 2.4, 4.1], [1.1, 3.4, 4.15], [29, 60, 24], 0),
+    cube([-3.06, 1.02, -3.06], [3.06, 7.14, 3.06], [76, 134, 56], 55),
+    cube([-2.0, 4.0, 3.0], [-0.6, 5.4, 3.1], [20, 44, 16], 0),
+    cube([0.6, 4.0, 3.0], [2.0, 5.4, 3.1], [20, 44, 16], 0),
+    cube([-0.4, 2.2, 3.0], [0.4, 3.0, 3.1], [20, 44, 16], 0),
+    glass([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [105, 180, 78], 55),
 ];
 
 // ---------------------------------------------------------------- pig
@@ -746,16 +759,25 @@ fn pose(m: &Mob, time: f32) -> Parts {
             parts
         }
         MobKind::ZombifiedPiglin => {
-            // Sword raised while angry, swinging down to strike; arms at
-            // the sides otherwise.
+            // Raised while angry, swinging down to strike; arms at the
+            // sides otherwise. A converted piglin keeps its own main hand.
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.9 } else { 0.0 };
-            let sword = if m.ai == Ai::Chase { rx(-1.1 + chop) } else { rx(-0.4 - swing * 0.5) };
+            let fighting = m.ai == Ai::Chase;
+            let (right, right_rot) = match m.held.unwrap_or(Weapon::GoldenSword) {
+                Weapon::GoldenSword if fighting => (PIGLIN_SWORD_ARM, rx(-1.1 + chop)),
+                Weapon::GoldenSword => (PIGLIN_SWORD_ARM, rx(-0.4 - swing * 0.5)),
+                Weapon::GoldenAxe if fighting => (nether::AXE_ARM, rx(-1.1 + chop)),
+                Weapon::GoldenAxe => (nether::AXE_ARM, rx(-0.4 - swing * 0.5)),
+                Weapon::Crossbow if fighting => (nether::CROSSBOW_ARM, rx(-PI / 2.0 - m.head_pitch)),
+                Weapon::Crossbow => (nether::CROSSBOW_ARM, rx(-0.3 - swing * 0.5)),
+                Weapon::None => (PIGLIN_ARM, rx(-swing * 0.6)),
+            };
             parts![
                 part(PIGLIN_BODY, [0.0; 3], Quat::IDENTITY),
                 part(PIGLIN_LEG, [-2.0, 12.0, 0.0], rx(swing)),
                 part(PIGLIN_LEG, [2.0, 12.0, 0.0], rx(-swing)),
                 part(PIGLIN_ARM, [-6.0, 22.0, 0.0], rx(swing * 0.6)),
-                part(PIGLIN_SWORD_ARM, [6.0, 22.0, 0.0], sword),
+                part(right, [6.0, 22.0, 0.0], right_rot),
                 part(PIGLIN_HEAD, [0.0, 24.0, 0.0], head),
             ]
         }
@@ -894,6 +916,13 @@ pub fn build(
             } else {
                 1.0
             };
+        // Java's `LivingEntityRenderer` slides a sleeper's feet back from the pillow by
+        // `eyeHeight - 0.1` (villager eyes: 1.62) so the head ends up on the pillow block.
+        let origin = if asleep {
+            origin - Vec3::new(-m.yaw.sin(), 0.0, m.yaw.cos()) * (SLEEP_FEET_BACK * scale)
+        } else {
+            origin
+        };
         let tint = if m.fuse > 0.0 {
             ([255.0; 3], ((m.fuse * (8.0 + 16.0 * fuse)).sin() * 0.5 + 0.5) * 0.7)
         } else if m.kind == MobKind::CaveSpider {
@@ -999,6 +1028,7 @@ fn flames(out: &mut Vec<EntityVertex>, m: &Mob, rel: Vec3, time: f32) {
             max: (center + Vec3::splat(size / 2.0)).to_array(),
             color,
             noise: 0,
+            translucent: false,
         };
         push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([255, 255, 0, 255], 0), (FIRE, 0.0), 0.0);
     }
@@ -1130,7 +1160,7 @@ pub fn build_puffs(puffs: &[Puff], camera: DVec3, alpha: f64, out: &mut Vec<Enti
         let t = p.age / p.life;
         let size = p.size * 16.0 * (t * 4.0).min(1.0) * (1.0 - t);
         let grey = (230.0 - 120.0 * t) as u8;
-        let c = Cuboid { min: [-size / 2.0; 3], max: [size / 2.0; 3], color: [grey; 3], noise: 30 };
+        let c = Cuboid { min: [-size / 2.0; 3], max: [size / 2.0; 3], color: [grey; 3], noise: 30, translucent: false };
         let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
         // Emissive while hot, so the flash reads at night too.
         let glow = ((1.0 - t * 3.0).max(0.0) * 255.0) as u8;
@@ -1160,7 +1190,13 @@ pub fn build_orbs(orbs: &[XpOrb], camera: DVec3, max_dist: f32, time: f32, alpha
         // Java's colour: red follows a sine, green stays full.
         let h = time * 10.0 + o.phase;
         let red = ((h.sin() + 1.0) * 0.5 * 200.0 + 55.0) as u8;
-        let c = Cuboid { min: [-size / 2.0; 3], max: [size / 2.0; 3], color: [red, 255, 40], noise: 40 };
+        let c = Cuboid {
+            min: [-size / 2.0; 3],
+            max: [size / 2.0; 3],
+            color: [red, 255, 40],
+            noise: 40,
+            translucent: false,
+        };
         // Bob a little above the ground, and spin.
         let lift = 0.15 + 0.03 * (time * 3.0 + o.phase).sin();
         let rel = (pos - camera).as_vec3() + Vec3::Y * lift;
@@ -1334,7 +1370,7 @@ pub(super) fn push_cuboid(
                     uv: [p[u] + offset[0], p[v] + offset[1]],
                     color,
                     light: l,
-                    torch: [torch, 0, 0, 0],
+                    torch: [torch, if c.translucent { 4 } else { 0 }, 0, 0],
                 });
             }
         }
@@ -1381,6 +1417,23 @@ mod tests {
         }
         assert_eq!(mob.pos, DVec3::new(12.0, 64.0, 0.0));
         assert_eq!(mob.previous_pos, DVec3::new(10.0, 64.0, 0.0));
+    }
+
+    #[test]
+    fn slime_shells_are_the_only_translucent_entity_faces_and_follow_the_core() {
+        let build_one = |kind| {
+            let mob = Mob::new(kind, DVec3::new(3.0, 0.0, 0.0), 0.0);
+            let mut out = Vec::new();
+            build(std::slice::from_ref(&mob), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
+            out
+        };
+        let slime = build_one(MobKind::Slime);
+        let first = slime.iter().position(|v| v.torch[1] == 4).expect("slime shell is translucent");
+        assert_eq!(slime.len() - first, 36, "one six-face shell box");
+        assert!(slime[first..].iter().all(|v| v.torch[1] == 4), "shell is emitted after the core and face");
+        for kind in [MobKind::MagmaCube, MobKind::Pig, MobKind::Zombie] {
+            assert!(build_one(kind).iter().all(|v| v.torch[1] != 4), "{kind:?}");
+        }
     }
 
     #[test]

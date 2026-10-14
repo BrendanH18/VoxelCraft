@@ -83,7 +83,10 @@ It picks one ingot off a stack and holds it for 119 ticks (`ADMIRE_DURATION`):
   overflow back into the world, keeping the items already stored.
 
 **Zombification.** Outside the Nether, after 300 ticks, a piglin becomes a zombified
-piglin. It keeps its age, armor, persistence and uid. Immune piglins
+piglin. It keeps its age, armor, main-hand weapon (a crossbow or a brute's golden axe
+too, as `convertTo` copies equipment), persistence and uid. A zombified piglin's
+melee is Java's base 5 plus the held item's attack modifier (sword +3, axe +6); a
+natural one holds the spawn golden sword (the 1-in-20 golden spear is a sword here). Immune piglins
 (`IsImmuneToZombification`) stay. The existing zombified piglin carries on: it is
 neutral, angers its whole pack within 32 blocks for 30 s when one is hit, and spawns
 in Nether packs. Conversion drops the pocket contents and the item being admired.
@@ -180,8 +183,9 @@ attack, and none of them hunt again for 30–120 s. A piglin hit by a hoglin who
 herd outnumbers the piglins retreats instead.
 
 **Zoglins** are fire immune and undead, so Smite works on them.
-- They attack the nearest mob or player in reach and sight, except creepers and
-  other zoglins (`Zoglin.isTargetable`).
+- They attack the nearest mob or player within 16 blocks in every axis (the
+  follow-range sensor box) and in sight, except creepers and other zoglins
+  (`Zoglin.isTargetable`).
 - They use the hoglin's tusk attack and throw.
 
 **Spawning.** Hoglins spawn only from the crimson-forest entry (weight 9, groups of
@@ -270,16 +274,25 @@ different pitches.
 - **Breeding**: hoglins and striders use the retained shared breeding/temptation pipeline. Complete selected-reference acceptance remains under MOB-03.
 - **Bartering**: spectral arrows and Soul Speed don't exist (see the table).
 - **Piglin details**:
-  - No celebrating dance after a kill.
-  - Crossbow piglins melee mobs instead of shooting them, because mob arrows only
-    hit players.
-  - Piglins don't pick up and equip better weapons or armor, or golden axes for
-    brutes.
-  - Their pocket holds 8 stacks.
-  - Zombification retains armor but replaces the main-hand weapon with the existing
-    zombified piglin sword model; crossbows and brute axes are not retained.
-- **Zoglins** only pick mob targets within 4 blocks of height, so they don't chase
-  ghasts they could never reach.
+  - Celebration (Java `StartCelebratingIfTargetDead`, `CELEBRATION_TIME` 300 ticks): when
+    a piglin's attack target dies it walks to where the target fell (2 blocks of slack, 4 while
+    dancing), and a dead hoglin starts a dance one time in ten (`wantsToDance`). Being hurt
+    ends it, as `wasHurtBy` erases the memories. The location and dance state are saved. Java's
+    dance pose lives in the client model, which the reference server jar lacks, so the arms-up
+    bob and ear flap are an original approximation; the other celebrate-activity behaviours
+    (look at nearby piglins, stroll, hostile-player scan) use the retained idle code.
+  - Crossbow piglins now use the existing ranged behavior against mob targets,
+    and mob arrows resolve through shared mob-hit retaliation/loot handling.
+    Java 26.3 `CrossbowAttack` consumes any living attack target; it has no
+    player-only restriction. AI and arrow regression tests cover the change.
+  - Adult piglins now equip an admired piece of golden armor into an empty slot
+    (Java `stopHoldingOffHandItem` → `equipItemIfPossible`); otherwise it goes to
+    the pocket. Replacing worn gear by `Mob.canReplaceCurrentItem` comparison, taking a
+    preferred crossbow while armed, and golden axes for brutes are not implemented;
+    piglins always spawn armed, so the crossbow pickup is unreachable in play.
+  - Their pocket already has Java's eight slots, merging compatible stacks
+    and throwing overflow. Existing regression tests cover saved components
+    and full inventories; this inventory size is not a parity gap.
 - **Peaceful**: Java keeps piglins and hoglins on Peaceful; here every hostile mob
   is removed, as before.
 - **Bastion residents** are spread over each piece's floor rather than placed at
@@ -287,9 +300,14 @@ different pitches.
 - **Crossbow**: crafted with Java's recipe and supports existing durability
   enchantments, but no Multishot, Piercing or Quick Charge, and no first-person
   loading pose. Device-free agents have no bow or crossbow use command.
-- **Line of sight** uses the existing block raycast, which treats every solid block
-  as opaque.
-- **Visibility**: anger and hunting counts check distance, not sight lines.
+- **Line of sight** clips the existing collision boxes via bounded voxel traversal,
+  matching Java 26.3 `LivingEntity.hasLineOfSight` (COLLIDER, Fluid.NONE, 128 blocks).
+  Slab gaps and open gates no longer obscure targets; glass still does, as in Java.
+  Thin/corner intersections and over-height fences have regression coverage.
+  The underlying original block-shape catalogue remains an approximation.
+- **Visibility**: hoglin hunts and wither-skeleton targets need a sight line (Java's
+  `NEAREST_VISIBLE_*` memories). Nearby-adult piglin anger counts stay distance-based,
+  as Java's nearby-adult sensor lists are.
 - **Split-screen fog**: all views share the host camera's blended biome fog.
 
 ## What to check visually

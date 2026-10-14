@@ -25,8 +25,11 @@ only tiny slimes drop 0–2 slimeballs (item 610, shared with bastions), with Lo
 The chunk formula uses the world seed and Java's 16-block chunks, signed
 integer overflow and 48-bit RNG. Underground Y < 40 follows the world's
 compressed Java height map. Swamps check mapped Y 50–70, random light 0–7,
-50% chance and saved day-count moon brightness. The green cube model is
-opaque because the current entity pass has no translucency.
+50% chance and saved day-count moon brightness. The model is an opaque core with
+its face inside a translucent shell (alpha 0.62, as Java's `SlimeOuterLayer`), drawn in a
+second blended entity pass that is depth-tested but does not write depth; the shell
+alpha and colours are original approximations, and the blended pass is not
+GPU-verified in this change. Other entities stay opaque.
 
 Sources: [Slime](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/Slime.java),
 [WorldgenRandom](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/levelgen/WorldgenRandom.java).
@@ -39,9 +42,9 @@ fire/lava immunity, flame bursts on landing, dark segmented model and squish voi
 Only sizes 2/4 drop magma cream using Java's -2..1 roll plus Looting (item 608, shared with bastions).
 Slimeball + blaze powder crafts cream; awkward + cream brews 3:00 fire resistance;
 redstone extends eligible potions, including fire resistance to 8:00. Water plus
-either ingredient becomes mundane. Natural attempts use nether-wastes weight 2
-(chance 0.02) in groups of 4; fortress pieces use Java's weight 3, group 4.
-There is no basalt-deltas biome, so that weight-100 pool is absent.
+either ingredient becomes mundane. Natural attempts follow each Nether biome's own
+list: nether wastes weight 2 (chance 0.02) in groups of 4, basalt deltas weight 100
+in groups of 2–5; fortress pieces use Java's weight 3, group 4.
 
 Sources: [MagmaCube](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/MagmaCube.java),
 [loot table](https://raw.githubusercontent.com/misode/mcmeta/1.21.5-data/data/minecraft/loot_table/entities/magma_cube.json).
@@ -49,14 +52,15 @@ Sources: [MagmaCube](https://raw.githubusercontent.com/mahtomedi/minecraft/main/
 ## Ghast
 
 10 health, 4 × 4 hitbox, follow range 100, flying speed 14 blocks/s (Java's 0.7
-per tick), fire immune. Nether wastes weight 50 (chance 0.5) in groups of 4,
-cap 4. Charges one second, then shoots one large fireball and rests two seconds.
+per tick), fire immune. Spawns follow the biome's own list (pinned to the 26.3 biome
+data in `tests/fixtures/java/26.3/mob_integrations.json`): nether wastes weight 50
+(chance 0.5 against zombified piglins' 100) and soul sand valleys weight 50, both in
+groups of 4; basalt deltas weight 40 in groups of 1; crimson and warped forests none. Charges one second, then shoots one large fireball and rests two seconds.
 The fireball explodes at power 1, can be punched back by the host or an agent,
 and a deflected blast credits the player so the kill drops loot. Block breaking
 follows `mobGriefing`, same as creepers. Drops 0–2 gunpowder and, on a player
 kill, 0–1 ghast tears (item 640). Awkward + tear brews regeneration; redstone
-and glowstone make the long and strong variants. Soul sand valleys are not a
-separate biome, so ghasts share the single Nether cavern.
+and glowstone make the long and strong variants.
 
 Sources: [Ghast](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/monster/Ghast.java).
 
@@ -75,7 +79,7 @@ Husks (desert, replacing most zombies: weight 80 vs 19) don't burn and apply Hun
 for 140 ticks × difficulty (1/2/3, instead of regional difficulty). Drowned spawn in
 water in rivers (1 in 15 attempts) and oceans (1 in 40, deeper than 5 below sea level)
 and still burn on land. All three have a 5% baby chance (half size, +50% speed, 12 xp).
-No trident drowned, no rare zombie drops.
+No trident drowned (rare iron/carrot/potato and copper pools are implemented; see below).
 
 ## Witch and splash potions
 
@@ -92,18 +96,29 @@ undead are inverted). Mobs only react to instant effects; water splashes do noth
 Piglins (16 health) barter for gold with Java 1.21's table: 459 weight, about 6 s
 of admiring. They attack players without golden armor and are angered by chests
 and broken gold. Hit piglins alert the adults nearby, and piglins zombify after 15 s
-outside the Nether. Brutes (50 health, golden axe for 13) guard bastions, which now
-get persistent residents.
+outside the Nether. Brutes (50 health, golden axe for 13) guard bastions, which get persistent
+residents.
 
 Hoglins (40 health) charge and toss players, avoid portals and outnumbering piglins,
 and become zoglins outside the Nether. Zoglins attack everything but creepers and
-other zoglins. Piglins hunt baby hoglins.
+other zoglins. Piglins hunt adult hoglins.
 
 Striders walk on lava, shiver on land and drop string. A crossbow item (840/841)
 arms piglins and the player.
 
 The Nether spawn table is keyed by biome for the biome work. Persistent mobs and
-populated bastions are saved under `nether_mobs`. Crying obsidian (block 1800) now
-exists for bartering and bastion loot. Riding, breeding, spectral arrows and Soul
-Speed are gaps. Details, the bartering table and sources
-are in [Nether mobs](nether-mobs.md).
+populated bastions are saved under `nether_mobs`. Crying obsidian (block 1800)
+exists for bartering and bastion loot. Strider riding and hoglin/strider breeding
+use the shared mount and animal paths; spectral arrows and Soul Speed do not
+exist. Details, the bartering table and sources are in [Nether mobs](nether-mobs.md).
+
+## Java 26.3 undead rare-pool correction — 2026-10-13
+
+Player kills of zombies, husks and zombie villagers roll one rare pool at
+2.5% + 1% per Looting level, choosing exactly one equally weighted iron ingot,
+carrot or potato. Burning potatoes smelt to baked potatoes. Drowned roll one
+copper ingot at 11% + 2% per Looting level. Environment and mob kills receive
+neither rare pool. `undead_loot.json` is extracted from the pinned 26.3 server
+loot tables; tests cover exclusivity, probabilities, credit and smelting.
+Tridents, drowned trident equipment and projectile behavior require new content
+and remain outside this defect-only change. Java loot RNG sequence parity remains open.

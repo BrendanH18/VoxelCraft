@@ -101,6 +101,8 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
     Bell,
+    /// A wandering trader finished its Invisibility potion (true) or milk (false).
+    TraderDrink(bool),
     BoatPaddle(bool),
     /// A creeper lit its fuse.
     Fuse,
@@ -266,6 +268,14 @@ pub enum EntityEvent {
     VillagerDoor {
         cell: IVec3,
     },
+    /// A farmer villager harvests the ripe crop at `cell` and replants it (Java `HarvestFarmland`).
+    VillagerHarvest {
+        cell: IVec3,
+    },
+    /// No villager is near a door they opened any more: close it again.
+    VillagerDoorClose {
+        cell: IVec3,
+    },
     /// A chicken laid an egg at its feet.
     LaidEgg {
         pos: DVec3,
@@ -390,6 +400,10 @@ pub trait MobWorld: BlockSource {
     fn cave_biome(&self, p: IVec3) -> crate::world::terrain::Biome {
         self.biome(p.x, p.z)
     }
+    /// Java 26.3's gameplay/snow_golem_melts environment attribute.
+    fn snow_golem_melts(&self, p: IVec3) -> bool {
+        self.nether_biome(p.x, p.z).is_some() || self.cave_biome(p).snow_golem_melts()
+    }
     /// Bastion remnants near `p`, whose residents spawn once.
     fn bastions_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::bastion::Bastion>> {
         Vec::new()
@@ -408,6 +422,9 @@ impl MobWorld for World {
     }
     fn biome(&self, x: i32, z: i32) -> crate::world::terrain::Biome {
         self.generator.column(x, z).biome
+    }
+    fn snow_golem_melts(&self, p: IVec3) -> bool {
+        self.generator.dimension == Dimension::Nether || self.generator.biome_at(p).snow_golem_melts()
     }
     fn nether_biome(&self, x: i32, z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
         self.generator.nether_biome(x, z)
@@ -623,6 +640,8 @@ pub struct Entities {
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
     claimed_jobs: rustc_hash::FxHashSet<IVec3>,
     pending_sounds: Vec<EntityEvent>,
+    /// Doors villagers opened, with seconds since a villager was last close by.
+    door_watch: Vec<(IVec3, f32)>,
     trader_spawner: wandering_trader::Spawner,
     trader_leaders: rustc_hash::FxHashMap<u64, (DVec3, f32, bool)>,
     pub trader_spawning: bool,
@@ -691,6 +710,7 @@ impl Entities {
             claimed_beds: Default::default(),
             claimed_jobs: Default::default(),
             pending_sounds: Vec::new(),
+            door_watch: Vec::new(),
             trader_spawner: Default::default(),
             trader_leaders: Default::default(),
             trader_spawning: true,
@@ -905,6 +925,16 @@ impl Entities {
             ));
         }
         for (item, count) in drops {
+            if !player_kill
+                && (matches!(kind, MobKind::Zombie | MobKind::Husk | MobKind::ZombieVillager)
+                    && matches!(
+                        item,
+                        crate::item::Item::IRON_INGOT | crate::item::Item::CARROT | crate::item::Item::POTATO
+                    )
+                    || kind == MobKind::Drowned && item == crate::item::Item::COPPER_INGOT)
+            {
+                continue;
+            }
             let item = if let Some((color, sheared)) = sheep {
                 if item == crate::item::Item::from(Block::WOOL) {
                     if sheared {
@@ -940,6 +970,7 @@ impl Entities {
                     crate::item::Item::RAW_CHICKEN => crate::item::Item::COOKED_CHICKEN,
                     crate::item::Item::COD => crate::item::Item::COOKED_COD,
                     crate::item::Item::SALMON => crate::item::Item::COOKED_SALMON,
+                    crate::item::Item::POTATO => crate::item::Item::BAKED_POTATO,
                     i => i,
                 }
             } else {
@@ -2038,6 +2069,60 @@ mod tests {
     }
 
     #[test]
+    fn undead_rare_loot_uses_one_reference_pool_and_requires_player_credit() {
+        use crate::item::Item;
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/undead_loot.json")).unwrap();
+        for kind in [MobKind::Zombie, MobKind::Husk, MobKind::ZombieVillager, MobKind::Drowned] {
+            let pool = &fixture["rare_pools"][kind.name().replace(' ', "_")];
+            let items: Vec<Item> = pool["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| Item::from_name(v.as_str().unwrap()).unwrap())
+                .collect();
+            assert_eq!(pool["rolls"], 1);
+            assert_eq!(pool["requires_player_kill"], true);
+            let mut rng = Rng::new(72);
+            for looting in [0, 3] {
+                let mut counts = vec![0; items.len()];
+                let samples = 20000;
+                for _ in 0..samples {
+                    let rare: Vec<_> =
+                        kind.drops(&mut rng, looting).into_iter().filter(|(i, _)| items.contains(i)).collect();
+                    assert!(rare.len() <= 1, "{kind:?} produces at most one rare drop");
+                    for (item, count) in rare {
+                        assert_eq!(count, 1);
+                        counts[items.iter().position(|i| *i == item).unwrap()] += 1;
+                    }
+                }
+                let chance =
+                    pool["chance"].as_f64().unwrap() + looting as f64 * pool["looting_per_level"].as_f64().unwrap();
+                for count in counts {
+                    let observed = count as f64 / samples as f64;
+                    assert!((observed - chance / items.len() as f64).abs() < 0.01, "{kind:?}: {observed}, {chance}");
+                }
+            }
+            let mut e = Entities::new(13);
+            for _ in 0..40 {
+                e.drop_loot_with_fire(kind, DVec3::ZERO, 255, true, false);
+            }
+            assert!(e.items.iter().all(|i| i.stack.item == Item::ROTTEN_FLESH), "environment kills have no rare pool");
+            e.items.clear();
+            for _ in 0..80 {
+                e.drop_loot_with_fire(kind, DVec3::ZERO, 255, true, true);
+            }
+            if kind != MobKind::Drowned {
+                assert!(e.items.iter().any(|i| i.stack.item == Item::BAKED_POTATO));
+                assert!(e.items.iter().any(|i| i.stack.item == Item::IRON_INGOT));
+                assert!(e.items.iter().all(|i| i.stack.item != Item::POTATO));
+            } else {
+                assert!(e.items.iter().any(|i| i.stack.item == Item::COPPER_INGOT));
+            }
+        }
+    }
+
+    #[test]
     fn huge_looting_saturates_drop_counts() {
         // Before the clamp, 255 levels overflowed the u8 count.
         let mut rng = Rng::new(3);
@@ -2046,17 +2131,12 @@ mod tests {
             let extra = (u8::MAX as f32 * expected_rng.next_f32()).round() as u32;
             let base = (expected_rng.next_f32() * 3.0) as u32;
             let drops = MobKind::Zombie.drops(&mut rng, u8::MAX);
-            // Looting 255 makes the separate carrot and potato rolls certain.
-            let _ = (expected_rng.next_f32(), expected_rng.next_f32());
+            // Looting 255 guarantees one entry from the single rare pool.
+            let _ = expected_rng.next_f32();
+            let rare = [crate::item::Item::IRON_INGOT, crate::item::Item::CARROT, crate::item::Item::POTATO]
+                [expected_rng.next_int(3) as usize];
             assert!(!drops.is_empty(), "maximum looting produces a drop for these rolls");
-            assert_eq!(
-                drops,
-                vec![
-                    (crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8),
-                    (crate::item::Item::CARROT, 1),
-                    (crate::item::Item::POTATO, 1),
-                ]
-            );
+            assert_eq!(drops, vec![(crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8), (rare, 1),]);
         }
     }
 
@@ -2672,6 +2752,21 @@ mod tests {
             arrow.update(1.0 / 60.0, &world, &c, &mut [], None, &mut Rng::new(1), &mut Vec::new());
         }
         assert!(arrow.is_stuck() && (9.5..10.5).contains(&arrow.pos.y), "{:?}", arrow.pos);
+    }
+
+    #[test]
+    fn arrows_a_player_looses_at_villagers_cost_reputation() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Villager, DVec3::new(10.5, 10.0, 0.5));
+        e.spawn(MobKind::Villager, DVec3::new(10.5, 10.0, 6.5));
+        let c = night(DVec3::new(0.5, 10.0, 0.5));
+        e.shoot_arrow(DVec3::new(0.5, 11.6, 0.5), DVec3::X, 1.0, true);
+        run(&mut e, &world, &c, 0.5);
+        let rep = |e: &Entities, i: usize| e.mobs[i].villager.as_ref().unwrap().gossip.reputation(PlayerId::HOST);
+        assert!(e.mobs[0].health < MobKind::Villager.max_health());
+        assert_eq!(rep(&e, 0), -25, "minor negative gossip for the villager that was hurt");
+        assert_eq!(rep(&e, 1), 0, "a bystander only learns of kills");
     }
 
     #[test]

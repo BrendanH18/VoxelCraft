@@ -476,6 +476,41 @@ mod tests {
     }
 
     #[test]
+    fn each_biome_spawn_list_matches_the_java_26_3_biome_data() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/mob_integrations.json")).unwrap();
+        let name = |m: NetherMob| match m {
+            NetherMob::ZombifiedPiglin => "zombified_piglin",
+            NetherMob::Ghast => "ghast",
+            NetherMob::MagmaCube => "magma_cube",
+            NetherMob::Enderman => "enderman",
+            NetherMob::Skeleton => "skeleton",
+            NetherMob::Piglin => "piglin",
+            NetherMob::Hoglin => "hoglin",
+            NetherMob::Strider => "strider",
+        };
+        let rows = |list: &[Spawn]| {
+            serde_json::json!(
+                list.iter()
+                    .map(|s| serde_json::json!([name(s.mob), s.weight, s.group.0, s.group.1]))
+                    .collect::<Vec<_>>()
+            )
+        };
+        for b in NetherBiome::ALL {
+            let java = &fixture["nether_spawns"][b.name()];
+            assert_eq!(rows(b.monsters()), java["monster"], "{b:?} monsters");
+            assert_eq!(rows(b.creatures()), java["creature"], "{b:?} creatures");
+        }
+        // Ghasts are not one shared pool: only these three biomes list them.
+        let ghast = |b: NetherBiome| b.monster_spawn(NetherMob::Ghast).map(|(s, _)| s.weight);
+        assert_eq!(
+            NetherBiome::ALL.map(ghast),
+            [Some(50), Some(50), None, None, Some(40)],
+            "wastes, valley, crimson, warped, deltas"
+        );
+    }
+
+    #[test]
     fn fog_blends_smoothly_between_biome_colours() {
         let mut fog = FogSampler::default();
         // Crimson for negative x, warped for positive: a soft blend across x = 0.
