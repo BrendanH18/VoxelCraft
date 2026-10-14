@@ -146,6 +146,7 @@ impl PlayerSession {
                     )
                     .with_facing(facing);
                     let block = crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
+                    let block = crate::world::village_blocks::placed_with_look(block, self.player.forward());
                     if !free(world, at) {
                         return Err("destination occupied or unloaded");
                     }

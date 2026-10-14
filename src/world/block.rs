@@ -2238,7 +2238,7 @@ const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
-        900..=952 | 961..=968 => match super::village_blocks::registry(id) {
+        900..=952 | 961..=968 | 2523 | 2524 => match super::village_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },

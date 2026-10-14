@@ -21,9 +21,13 @@ creative only, as in Java. A shovel makes dirt paths; paths are 15/16 high
 and drop dirt. Hay bales support three placement axes and multiply fall damage
 by Java 26.3's 0.2f before flooring (shared player environment and landing tests).
 
+Barrels face `getNearestLookingDirection().getOpposite()`, so placing one while
+looking mostly down or up opens it upward or downward (ids 2523 and 2524,
+`barrels_open_vertically_when_placed_looking_up_or_down`).
+
 Current simplifications: lectern books, loom banners, cartography maps,
-stonecutter UI, wall/ceiling grindstones and vertical barrel facings are
-not implemented. Hay-bale player and performance acceptance remain open.
+stonecutter UI and wall/ceiling grindstones (twelve attach/facing states and
+rotated shapes) are not implemented. Hay-bale player and performance acceptance remain open.
 Blast-furnace equipment recycling is not yet implemented.
 
 ## Java references

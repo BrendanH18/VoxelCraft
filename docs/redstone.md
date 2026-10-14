@@ -96,9 +96,9 @@ on player mutations and processing completion. Container UI slot changes must
 use the mutable world accessor to issue those notifications.
 
 Every core component has its vanilla shaped/shapeless recipe; target crafting
-adds hay bales (nine wheat, reversible). Only oak wooden buttons, plates and
-trapdoors currently exist. Door hinges, waterlogging and floor/ceiling switch
-horizontal orientation are simplified. Hay bales multiply landing damage by
+adds hay bales (nine wheat, reversible). Oak, pale oak, bamboo, crimson and warped
+buttons, plates and trapdoors exist; the other overworld woods' do not. Door hinges,
+waterlogging and floor/ceiling switch horizontal orientation are simplified. Hay bales multiply landing damage by
 0.2f before flooring, as in Java 26.3 `HayBlock.fallOn` and
 `LivingEntity.calculateFallDamage` (pinned in `building.json`, including threshold
 cases; all three placement axes are covered by the shared player environment).

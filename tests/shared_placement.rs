@@ -345,3 +345,44 @@ fn snow_layers_drop_by_count_melt_in_light_and_keep_every_layer_with_silk_touch(
         );
     }
 }
+
+/// Java's barrel faces `getNearestLookingDirection().getOpposite()`, so looking
+/// down opens it upward and looking up opens it downward (`BarrelBlock.FACING`).
+#[test]
+fn barrels_open_vertically_when_placed_looking_up_or_down() {
+    use voxelcraft::world::village_blocks as vb;
+    let barrel = Item::from_block(Block::BARREL);
+    for (pitch, expected) in [
+        (-std::f32::consts::FRAC_PI_2, Some(vb::BARREL_UP)),
+        (std::f32::consts::FRAC_PI_2, Some(vb::BARREL_DOWN)),
+        (-0.05, None),
+    ] {
+        let (mut world, mut session, _) = scene(barrel);
+        world.set_block(WALL, Block::AIR);
+        // Aim down at a floor from above, up at a ceiling from below, or level at a wall.
+        if pitch < -1.0 {
+            world.set_block(IVec3::new(7, 145, 4), Block::STONE);
+            session.player.pos = DVec3::new(7.5, 148., 4.5);
+        } else if pitch > 1.0 {
+            world.set_block(IVec3::new(7, 148, 4), Block::STONE);
+            session.player.pos = DVec3::new(7.5, 145., 4.5);
+        } else {
+            world.set_block(WALL, Block::STONE);
+        }
+        session.player.pitch = pitch;
+        let Outcome::Placed { cell, block, .. } = session.place_held(0, &mut world, &[]).unwrap() else { panic!() };
+        assert_eq!(world.get_block(cell), Some(block));
+        match expected {
+            Some(vertical) => {
+                assert_eq!(block, vertical);
+                assert_eq!((block.base(), block.name()), (Block::BARREL, "barrel"));
+                assert_eq!(block.drop(), Some(barrel));
+                assert!(voxelcraft::world::chest::is_chest(block), "vertical barrels still hold items");
+                let tex = block.info().tex;
+                let open = if vertical == vb::BARREL_UP { 2 } else { 3 };
+                assert!(tex.iter().enumerate().all(|(face, &t)| (t == tex[open]) == (face == open)), "{tex:?}");
+            }
+            None => assert!(block.oriented().is_some(), "level looks keep the horizontal facing"),
+        }
+    }
+}
