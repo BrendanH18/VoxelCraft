@@ -24,6 +24,10 @@ use glam::IVec3;
 /// Java's `MultiPlayerGameMode.destroyDelay` after a Creative or completed timed destruction.
 pub const DESTROY_DELAY_TICKS: u8 = 5;
 
+/// Java `ServerPlayerGameMode.handleBlockBreakAction` accepts a stop-destroy
+/// only when the server's own progress (`getDestroyProgress * (ticks + 1)`) reaches this.
+pub const SERVER_DESTROY_TOLERANCE: f32 = 0.7;
+
 #[derive(Default)]
 pub(super) struct State {
     /// Java's `destroyBlockPos` and `destroyingItem`; the block state is not part of the key.
@@ -33,6 +37,10 @@ pub(super) struct State {
     held: bool,
     /// Remaining destroy-delay ticks; survives release like Java's field.
     delay: u8,
+    /// Server `gameTicks - destroyProgressStart`: held ticks since the target started.
+    age: u32,
+    /// Server `hasDelayedDestroy`: a rejected stop-destroy and its elapsed ticks.
+    delayed: Option<(IVec3, u32)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -73,7 +81,7 @@ impl PlayerSession {
     /// Releases the attack input (Java `stopDestroyBlock`): progress is lost,
     /// but a pending destroy delay is kept.
     pub fn cancel_mining(&mut self) {
-        self.mining = State { delay: self.mining.delay, ..State::default() };
+        self.mining = State { delay: self.mining.delay, delayed: self.mining.delayed, ..State::default() };
     }
 
     /// Remaining destroy-delay ticks.
@@ -116,6 +124,12 @@ impl PlayerSession {
         if held.is_some_and(|s| s.count == 0 || s.count > s.item.max_stack()) {
             return Err("invalid held stack");
         }
+        if let Some(out) = self.tick_delayed_destroy(held, slot, world, entities, rules) {
+            return Ok(out);
+        }
+        // Held input survives a missed ray or adapter error. Re-aiming is a
+        // continue, not a new press; a changed target starts at zero.
+        let started = !std::mem::replace(&mut self.mining.held, true);
         let (pos, face) = self.block_target(world).ok_or("no block in reach")?;
         let block = world.get_block(pos).ok_or("target is unloaded")?;
         let creative = self.mode.is_creative();
@@ -123,7 +137,7 @@ impl PlayerSession {
         if creative && held.is_some_and(|s| !mining::can_destroy_in_creative(s.item)) {
             return Err("held item cannot break blocks in Creative");
         }
-        if !std::mem::replace(&mut self.mining.held, true) {
+        if started {
             // `startDestroyBlock`, then `continueDestroyBlock` in the same tick.
             if creative {
                 let out = self.destroy(pos, block, slot, world, entities, rules);
@@ -155,18 +169,60 @@ impl PlayerSession {
             on_ground: self.player.on_ground || self.player.flying,
         };
         let effects = &self.vitals.effects;
-        self.mining.progress +=
-            mining::dig_progress_with(block, digger, effects.dig_speed_factor(), effects.mining_factor());
-        // Lit redstone ore is retained while it is being mined.
-        world.touch_redstone_ore(pos);
+        let rate = mining::dig_progress_with(block, digger, effects.dig_speed_factor(), effects.mining_factor());
+        self.mining.progress += rate;
+        let age = self.mining.age;
+        self.mining.age += 1;
         if self.mining.progress < 1. {
             world.particles.push(Request::Hit { cell: pos, block, face });
             return Ok(Outcome::Hit { player: self.id, cell: pos, block, progress: self.mining.progress });
         }
-        let out = self.destroy(pos, block, slot, world, entities, rules);
         self.mining.progress = 0.;
         self.mining.delay = DESTROY_DELAY_TICKS;
-        Ok(out)
+        if rate * ((age + 1) as f32) < SERVER_DESTROY_TOLERANCE {
+            // The server disagrees (the rate fell since the start): the block
+            // stays, and the server destroys it once its own progress reaches 1.
+            if self.mining.delayed.is_none() {
+                self.mining.delayed = Some((pos, age));
+            }
+            self.mining.target = None;
+            return Ok(Outcome::Hit { player: self.id, cell: pos, block, progress: 0. });
+        }
+        Ok(self.destroy(pos, block, slot, world, entities, rules))
+    }
+
+    /// Server `tick` with `hasDelayedDestroy`: destroy the rejected block once
+    /// the current rate over the elapsed ticks reaches one. Runs on every
+    /// mining tick, as adapters call no other per-tick session hook.
+    fn tick_delayed_destroy(
+        &mut self,
+        held: Option<Stack>,
+        slot: usize,
+        world: &mut World,
+        entities: &mut Entities,
+        rules: &GameRules,
+    ) -> Option<Outcome> {
+        let (pos, elapsed) = self.mining.delayed?;
+        let elapsed = elapsed + 1;
+        let block = world.get_block(pos).filter(|&b| b != Block::AIR);
+        let Some(block) = block else {
+            self.mining.delayed = None;
+            return None;
+        };
+        let digger = mining::Digger {
+            held,
+            helmet: self.inventory.armor[0].map_or(Default::default(), |s| s.enchants),
+            eyes_in_water: self.player.head_in_water(world),
+            on_ground: self.player.on_ground || self.player.flying,
+        };
+        let effects = &self.vitals.effects;
+        let rate = mining::dig_progress_with(block, digger, effects.dig_speed_factor(), effects.mining_factor());
+        if rate * ((elapsed + 1) as f32) < 1. {
+            self.mining.delayed = Some((pos, elapsed));
+            return None;
+        }
+        self.mining.delayed = None;
+        Some(self.destroy(pos, block, slot, world, entities, rules))
     }
 
     fn same_target(&self, pos: IVec3, held: Option<Stack>) -> bool {
@@ -209,6 +265,7 @@ impl PlayerSession {
         }
         self.mining.target = Some((pos, held));
         self.mining.progress = 0.;
+        self.mining.age = 0;
         None
     }
 
@@ -242,8 +299,14 @@ impl PlayerSession {
             .filter(|&(base, upper)| upper && lower == Some(base))
             .map(|(base, _)| base);
         let silent_lower = (door_lower.is_some() && (!survival || !harvest)) || (plant_lower.is_some() && !survival);
+        // `preventDropFromBottomPart` removes the lower half first with flags 35
+        // (suppress drops); only that removal's neighbor updates are silent.
+        if silent_lower {
+            world.set_tile_drops(false);
+            world.set_block(below, Block::AIR);
+        }
         // Neighbor drops use the same gamerule.
-        world.set_tile_drops(rules.bool("doTileDrops") && !silent_lower);
+        world.set_tile_drops(rules.bool("doTileDrops"));
         if held.is_some_and(|s| s.item == Item::SHEARS) {
             world.disarm_tripwire(pos);
         }
@@ -258,11 +321,10 @@ impl PlayerSession {
             && world.get_block(below) == Some(lower)
         {
             world.set_block(below, Block::AIR);
-            if drops && !silent_lower {
+            if drops {
                 world.spill_with_item(below, lower, held);
             }
         }
-        world.set_tile_drops(rules.bool("doTileDrops"));
         if drops && harvest {
             world.spill_with_item(pos, block, held);
             entities.drop_mined_xp(block, pos, tool);

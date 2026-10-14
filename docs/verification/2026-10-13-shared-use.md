@@ -39,8 +39,9 @@ Bows and crossbows are session state too ([src/session/ranged.rs](../../src/sess
 drawing counts fixed ticks (20 for full power, 25 to load a crossbow) with
 Java's `BowItem.getPowerForTime` curve. The desktop already advanced them once
 per tick, so timing is unchanged. A draw belongs to its hotbar slot; selecting
-another slot lets the string go for every player. The CLI has no draw command
-yet.
+another slot lets the string go for every player. The CLI's `draw [ticks]`
+command (added on `work/fix-w1-building`) holds use through this state and is
+covered by `the_cli_draw_command_shoots_bows_loads_crossbows_and_fires_charged_ones`.
 
 ## Behavior changes
 
@@ -57,9 +58,10 @@ yet.
   Block use while riding remains unavailable on every path.
 - **Ignition sound** plays at the lit cell instead of the clicked block.
 
-Adventure-mode gating is unchanged: redstone components and composters still
-require a build-capable mode. Java lets Adventure players use blocks. That is a
-recorded difference, not a fidelity exception.
+Implemented with automated evidence on `work/fix-w1-building`: Adventure
+players can use redstone components and composters. All held items and bow
+drawing defer to the shared block-use predicate; cake claims use only when
+edible and otherwise passes to item use. Ordinary-player acceptance is open.
 
 ## No state swapping
 

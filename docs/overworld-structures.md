@@ -6,6 +6,17 @@ Existing villages, monster rooms, mineshafts and strongholds remain in
 place. Structures use original layouts with Minecraft's recognizable
 materials and major rooms; these are not copies of Mojang's templates.
 
+## Stronghold doors
+
+Java's `randomSmallDoor` draws `nextInt(5)`: 0-1 an opening, 2 a wooden door,
+3 iron-bar grates and 4 an iron door with a stone button on each side. The
+draw sequence is unchanged, so layouts are identical; entry value 4 and the
+prison hall's two cells now place iron doors (`StrongholdPieces`
+`generateSmallDoor` and `PrisonHall`). `placeBlock` does not rotate block
+states, so the door buttons face world north and south whatever the piece's
+orientation and may float, as in Java. Covered by
+`entry_doors_include_iron_doors_with_buttons`.
+
 ## Placement and generation
 
 Placement uses Java's 48-bit random source, region seeding constants,

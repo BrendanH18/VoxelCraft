@@ -59,7 +59,17 @@ impl PlayerSession {
         }
         let (hit, normal) = self.block_target(world).ok_or("no block within reach")?;
         let clicked = world.get_block(hit).ok_or("target is unloaded")?;
-        let at = if clicked.is_replaceable() { hit } else { hit + normal };
+        // `SnowLayerBlock.canBeReplaced`: a snow layer item stacks onto a snow
+        // block of fewer than eight layers, from its top face or in the cell
+        // beside it; another face of a snow block places next to it.
+        let snow = ob::snow_layers(clicked).filter(|_| held.item.places() == Some(ob::SNOW_LAYER));
+        let at = if snow.is_some() {
+            if normal == IVec3::Y && snow < Some(8) { hit } else { hit + normal }
+        } else if clicked.is_replaceable() {
+            hit
+        } else {
+            hit + normal
+        };
         // Horizontal placement follows yaw even when looking straight down/up.
         let facing = Facing::toward(glam::Vec3::new(self.player.yaw.cos(), 0., self.player.yaw.sin()));
         let blocked =
@@ -114,39 +124,58 @@ impl PlayerSession {
                 }
                 (hit, full, None, Kind::CombinedSlab)
             } else {
-                let block = ob::placed(raw, normal).unwrap_or(raw);
-                let block =
-                    crate::world::village_blocks::placed(crate::world::nether_blocks::placed(block, normal), normal)
-                        .with_facing(facing);
-                let block = crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
-                if !free(world, at) {
-                    return Err("destination occupied or unloaded");
-                }
-                let below = world.get_block(at - IVec3::Y);
-                let support = world
-                    .overworld_placement_ok(at, block)
-                    .unwrap_or_else(|| below.is_some_and(|b| block.can_stay_on(b)))
-                    && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || world.cane_has_water(at))
-                    && (!block.is_mushroom() || world.mushroom_survives(at));
-                if !support || !world.redstone_supported(at, block) {
-                    return Err("block cannot survive here");
-                }
-                let partner = if let Some((lower, false)) = ob::double_of(block) {
-                    Some((at + IVec3::Y, Block(lower.0 + 1)))
-                } else if block == ob::TALL_SEAGRASS {
-                    Some((at + IVec3::Y, ob::TALL_SEAGRASS_TOP))
-                } else {
-                    None
-                };
-                if (block.is_solid() && blocked(at))
-                    || partner.is_some_and(|(p, b)| !free(world, p) || (b.is_solid() && blocked(p)))
+                let mut raw = raw;
+                if raw == ob::SNOW_LAYER
+                    && let Some(layers) = world.get_block(at).and_then(ob::snow_layers).filter(|&n| n < 8)
                 {
-                    return Err("placement intersects a player or occupied partner cell");
+                    // Stacking replaces the existing snow block with one more layer.
+                    raw = ob::snow_layer(layers + 1);
+                    if blocked(at) && raw.height() > 0.0 {
+                        return Err("placement intersects a player");
+                    }
+                    let below = world.get_block(at - IVec3::Y);
+                    if !below.is_some_and(|b| ob::can_stay_on(raw, b).unwrap_or(true)) {
+                        return Err("block cannot survive here");
+                    }
+                    (at, raw, None, Kind::Block)
+                } else {
+                    let block = ob::placed(raw, normal).unwrap_or(raw);
+                    let block = crate::world::village_blocks::placed(
+                        crate::world::nether_blocks::placed(block, normal),
+                        normal,
+                    )
+                    .with_facing(facing);
+                    let block = crate::world::redstone_blocks::placed_with_look(block, normal, self.player.forward());
+                    let block = crate::world::village_blocks::placed_with_look(block, self.player.forward());
+                    if !free(world, at) {
+                        return Err("destination occupied or unloaded");
+                    }
+                    let below = world.get_block(at - IVec3::Y);
+                    let support = world
+                        .overworld_placement_ok(at, block)
+                        .unwrap_or_else(|| below.is_some_and(|b| block.can_stay_on(b)))
+                        && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || world.cane_has_water(at))
+                        && (!block.is_mushroom() || world.mushroom_survives(at));
+                    if !support || !world.redstone_supported(at, block) {
+                        return Err("block cannot survive here");
+                    }
+                    let partner = if let Some((lower, false)) = ob::double_of(block) {
+                        Some((at + IVec3::Y, Block(lower.0 + 1)))
+                    } else if block == ob::TALL_SEAGRASS {
+                        Some((at + IVec3::Y, ob::TALL_SEAGRASS_TOP))
+                    } else {
+                        None
+                    };
+                    if (block.is_solid() && blocked(at))
+                        || partner.is_some_and(|(p, b)| !free(world, p) || (b.is_solid() && blocked(p)))
+                    {
+                        return Err("placement intersects a player or occupied partner cell");
+                    }
+                    if block.is_water() && world.generator.dimension == Dimension::Nether {
+                        return Ok(Outcome::WaterEvaporated { player: self.id, cell: at });
+                    }
+                    (at, block, partner, Kind::Block)
                 }
-                if block.is_water() && world.generator.dimension == Dimension::Nether {
-                    return Ok(Outcome::WaterEvaporated { player: self.id, cell: at });
-                }
-                (at, block, partner, Kind::Block)
             }
         };
         // Complete validation before rolling vine age or changing neighbor/drop rules.

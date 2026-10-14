@@ -377,8 +377,7 @@ The [review fixes](verification/2026-10-13-review-lighting-fixes.md) add the
 reference daylight-detector output, the `isRedstoneConductor` start-cell check
 and incremental LAN replica relighting (measured microbenchmarks only). The End
 renders sky-lit terrain at 0.65 because the shaders lack the reference ambient
-term (`ambient_light` 0.25, sky factor 0); soul sand and mud still collide as
-full cubes.
+term (`ambient_light` 0.25, sky factor 0); soul sand and mud use Java's 14/16 collision height (regression evidence, player acceptance open).
 
 The [amethyst geode follow-up](verification/2026-10-13-amethyst-geodes.md)
 implements the Java 26.3 geode configured/placed feature with order-independent
@@ -826,3 +825,21 @@ copper horse armor, spears or armor equip sounds (so copper gear has no loot or
 equip sound), no `@a`/`@r`/`@e`/`@n` selectors, no LAN jitter buffer, no
 Adventure-world default or world border in the spawn search, hooked item
 entities, and no automated controller-screen/bed/respawn harness.
+
+### v0.7 building defect follow-up (2026-10-13)
+
+Implemented with automated evidence on `work/fix-w1-building`: mining input
+continues through missed rays and adapter errors; a new re-aimed target starts
+at zero. Ordinary-player input and visual acceptance remain open.
+
+Shared item and bow actions defer to usable blocks (including hunger-dependent
+cake), and Adventure redstone/composter use is implemented with automated
+evidence. Normal input-path acceptance remains open.
+
+Mud collision now uses the pinned Java 14/16 height, matching the existing
+soul-sand shape. Physics landing regression checks pass; ordinary-player and
+performance acceptance remain open.
+
+Hay bales now apply Java 26.3's 0.2f fall multiplier before flooring, through
+the shared player environment for all three bale axes. Reference threshold
+and shared landing regressions cover the calculation; player acceptance is open.

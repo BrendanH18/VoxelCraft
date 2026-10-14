@@ -145,18 +145,25 @@ enum was appended, and effects persist by string ID.
     checked by hand.
   - No automated test drives the desktop `Game` adapter.
 - **Releases and aim:**
-  - An adapter error, such as aiming at nothing, is treated as a release.
-  - When the player aims again at a *different* block while still holding the
-    button, that tick adds progress. Java starts without progress in this case.
-    Aiming again at the same block matches Java.
-  - Desktop pick-block, dropping from the selected slot, menus, mode changes
-    and death still release mining. Java keeps progress when the held stack
-    remains the same item and components, for example after dropping part of a
-    stack.
+  - Implemented with automated evidence: adapter errors preserve held input and
+    progress; only an explicit release resets them.
+  - Implemented with automated evidence: re-aiming at a different block while
+    held starts at zero, including a first press that missed; re-aiming at the
+    same block continues. CLI look no longer synthesizes a release.
+  - Implemented with automated evidence: pick-block, dropping from the selected
+    slot and mode changes no longer release mining; progress is keyed on the
+    position and the held item and components, so a changed stack restarts and
+    a partly dropped stack continues. Opening a menu and dying still release
+    mining, which matches Java's key release when a screen opens.
 - **Server rules:**
-  - The server's tolerance check is not modeled. This includes
-    `STOP_DESTROY_BLOCK` requiring ≥ 0.7 and delayed destruction.
-  - Single-player accumulation follows the client.
+  - Implemented with automated evidence: `STOP_DESTROY_BLOCK` requires the
+    server's `getDestroyProgress * (ticks + 1)` ≥ 0.7
+    (`SERVER_DESTROY_TOLERANCE`). A rejected stop leaves the block and records
+    Java's `hasDelayedDestroy`; the destroy happens once the same product
+    reaches 1. VoxelCraft runs that delayed check on each mining tick (adapters
+    have no other per-tick session hook), so it does not advance while no
+    attack input is held.
+  - Single-player accumulation otherwise follows the client.
   - Spawn protection, `mayInteract`, `blockActionRestricted` and game-master
     blocks are not applicable or not registered.
 - **Effects:**
@@ -165,15 +172,33 @@ enum was appended, and effects persist by string ID.
   - Conduit Power is not registered.
   - No beacon is available to grant Haste.
 - **Block and tool details:**
-  - Lit redstone ore is retouched on every progress tick. This retains the
-    earlier lit-duration approximation instead of Java's random-tick
-    extinguishing.
-  - Neighbor drops are suppressed while an upper half is removed silently.
-    Java suppresses only the lower half. No registered block is affected.
-  - Survival double-plant loot with shears and tool context in neighbor
-    destruction are unchanged and not newly verified.
-  - Full `Tool` component rules, such as per-block speeds and correct-tool
-    tags, still use the engine's tool tables.
+  - Implemented with automated evidence: lit redstone ore is no longer
+    rescheduled by each touch and no longer expires after a fixed 30 ticks; it
+    goes dark on a random tick (`RedStoneOreBlock.randomTick`), pinned in
+    `tests/fixtures/java/26.3/building.json`.
+  - Implemented: the silent lower-half removal runs first with drops
+    suppressed (flags 35) and the upper half is then removed with the normal
+    gamerule, as Java's `preventDropFromBottomPart` does. No registered block
+    depends on a door or tall plant, so the Creative double-plant test is the
+    only observable evidence (a wrong order would pop the lower half).
+  - Implemented: tool speeds and correct-tool matching follow the reference
+    `Tool` rules instead of the engine's single-kind table. A tool digs every
+    block in its `mineable/<kind>` tag at tier speed (so hoes dig leaves,
+    pickaxes dig stone buttons and dead coral, axes dig wooden buttons);
+    swords use cobweb 15, `sword_instantly_mines` and `sword_efficient` 1.5;
+    shears use cobweb and leaves 15, wool 5, vines and glow lichen 2. The tags
+    are expanded by `tools/extract_java_mining_fixtures.py` into
+    `tests/fixtures/java/26.3/mining.json` (`tool_rules`) and embedded at build
+    time; blocks with no reference counterpart keep the engine table. The
+    drop-tier requirement (`requires correct tool`) is still the engine's
+    `harvest_level`, which agrees with the `needs_*_tool` tags for every
+    registered name.
+  - Implemented: shears give the loot table's item and count: short grass,
+    fern and dead bush drop themselves, and tall grass, large fern and tall
+    seagrass drop two. Java's `DoublePlantBlock.playerWillDestroy` drops the
+    broken half with the player's tool before removal, and the partner half is
+    destroyed with an empty tool (`Level.destroyBlock` passes `ItemStack.EMPTY`),
+    so the partner adds no drop.
 - **Egg teleport correction (fixed in this branch):** Java 26.3 draws X/Y/Z
   in that order, with bounds 16/8/16, at most 1000 attempts. It requires air
   at the destination, non-air below, build height and world-border bounds.

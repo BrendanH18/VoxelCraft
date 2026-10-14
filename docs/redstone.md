@@ -98,8 +98,9 @@ operation and respond to power edges. Arrow hits activate target blocks for 20
 ticks, other callers' projectile hits for 8; face-centre distance gives 1–15
 power and hits during the active pulse are ignored. Arrows clip shaped models
 instead of the entire occupied cell. Ore illuminates to level 9 when mined,
-used, stepped on or hit by arrows. Its 30-tick expiry is a simplification of
-Java random-tick expiry; stone/deepslate ore harvest and fortune rules remain.
+used, stepped on or hit by arrows, and goes dark on a random tick like Java's
+`RedStoneOreBlock.randomTick` (no fixed expiry; lighting a lit ore schedules
+nothing); stone/deepslate ore harvest and fortune rules remain.
 
 Daylight detectors update every 20 ticks and invert on use. They use VoxelCraft's
 existing day clock and heightmap exposure; sun-angle easing and diffuse sky
@@ -109,10 +110,13 @@ on player mutations and processing completion. Container UI slot changes must
 use the mutable world accessor to issue those notifications.
 
 Every core component has its vanilla shaped/shapeless recipe; target crafting
-adds hay bales (nine wheat, reversible). Only oak wooden buttons, plates and
-trapdoors currently exist. Door hinges, waterlogging and floor/ceiling switch
-horizontal orientation are simplified. Hay bale fall-damage reduction is not
-yet added. Bare block-item IDs use the existing encoded block-item namespace;
+adds hay bales (nine wheat, reversible). Oak, pale oak, bamboo, crimson and warped
+buttons, plates and trapdoors exist; the other overworld woods' do not. Door hinges,
+waterlogging and floor/ceiling switch horizontal orientation are simplified. Hay bales multiply landing damage by
+0.2f before flooring, as in Java 26.3 `HayBlock.fallOn` and
+`LivingEntity.calculateFallDamage` (pinned in `building.json`, including threshold
+cases; all three placement axes are covered by the shared player environment).
+Ordinary-player and performance acceptance remain open. Bare block-item IDs use the existing encoded block-item namespace;
 no material item IDs are reassigned.
 
 Additional sources: [ButtonBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ButtonBlock.java),

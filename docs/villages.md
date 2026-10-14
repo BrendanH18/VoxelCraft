@@ -18,11 +18,16 @@ Taking the result consumes inputs once and releases XP orbs.
 
 Craftable: job sites, hay bales and fast furnaces. Bells are village loot /
 creative only, as in Java. A shovel makes dirt paths; paths are 15/16 high
-and drop dirt. Hay bales support three placement axes.
+and drop dirt. Hay bales support three placement axes and multiply fall damage
+by Java 26.3's 0.2f before flooring (shared player environment and landing tests).
+
+Barrels face `getNearestLookingDirection().getOpposite()`, so placing one while
+looking mostly down or up opens it upward or downward (ids 2523 and 2524,
+`barrels_open_vertically_when_placed_looking_up_or_down`).
 
 Current simplifications: lectern books, loom banners, cartography maps,
-stonecutter UI, wall/ceiling grindstones, vertical barrel facings and
-hay-bale fall cushioning are not implemented.
+stonecutter UI and wall/ceiling grindstones (twelve attach/facing states and
+rotated shapes) are not implemented. Hay-bale player and performance acceptance remain open.
 Blast-furnace equipment recycling is not yet implemented.
 
 ## Java references
@@ -64,7 +69,7 @@ The compact house/street/farm/meeting pools are original geometry inspired
 by Java's jigsaw pools. They do not reproduce the full vanilla NBT template
 catalogue, pool weights, processor lists, abandoned variants, decorative
 pools, terrain beard blending or specialized profession chest tables.
-Snow roofs currently use full snow blocks because snow layers are absent.
+Snow roofs still use full snow blocks; snow layers now exist (1 to 8) but the village pieces have not been changed to place them.
 
 Baseline on Apple M5, `--bench --rd 4`: 0.228 ms/generated chunk,
 0.678 ms/dense chunk for light+mesh. Overlap painting, signed placement,

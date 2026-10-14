@@ -67,9 +67,14 @@ with `--no-default-features`.
   so the sponge still stops at them. Drained live coral becomes dead coral at
   once unless water still touches it. In Java it stays live but dry and dies
   60–100 ticks later. Both need new, separately reserved block states.
-- Saplings have no `stage` property: one successful bone meal grows the tree,
-  where Java first advances stage 0→1. Spruce and jungle 2x2 mega trees are
-  not implemented.
+- Saplings now carry Java's `stage`: `SaplingBlock.advanceTree` turns a stage-0
+  sapling into stage 1 and only a stage-1 sapling grows its tree, for random
+  ticks and for a successful (45%) bone meal. Stage-1 states are appended at
+  ids 2508..=2515 (oak, spruce, birch, jungle, acacia, dark oak, cherry, pale
+  oak) and map to the plain sapling through `base()`; mangrove propagules keep
+  their own age. Spruce and jungle 2x2 mega trees are not implemented: they
+  need Java's giant trunk and mega-pine/jungle foliage placers, and VoxelCraft's
+  tree layouts are approximations (tracked separately).
 - Creative armor use is fixed in this branch: empty slots receive a copy,
   occupied slots return their old piece, and Binding is bypassed only in
   Creative (`Equippable.swapWithEquipmentSlot`, pinned 26.3 bytecode).

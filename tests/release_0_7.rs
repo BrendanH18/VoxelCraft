@@ -70,8 +70,16 @@ fn tamed(kind: MobKind) -> Entities {
 /// The click order desktop, controller and LAN players use: animal interactions, then mounting.
 fn use_on(e: &mut Entities, inv: &mut Inventory) -> bool {
     let (w, p) = (world(), player());
-    voxelcraft::survival_items::use_animal_target(&p, inv, 0, false, &w, e, PlayerId::HOST)
-        || e.use_mount(p.eye(), p.forward().as_dvec3(), 5., PlayerId::HOST, inv, 0, false)
+    voxelcraft::survival_items::use_animal_target(
+        &p,
+        inv,
+        0,
+        false,
+        &w,
+        e,
+        PlayerId::HOST,
+        voxelcraft::survival_items::Reach { block: 4.5, entity: 3.0 },
+    ) || e.use_mount(p.eye(), p.forward().as_dvec3(), 5., PlayerId::HOST, inv, 0, false)
 }
 
 #[test]

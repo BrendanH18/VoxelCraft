@@ -33,6 +33,7 @@ const SAPLING_GROWTH: u64 = 7;
 /// Java 26.3 `TreeGrower.DARK_OAK` and `PALE_OAK` have only a 2x2 (mega)
 /// feature, so a lone sapling of either can never grow.
 fn needs_two_by_two(sapling: Block) -> bool {
+    let sapling = sapling.base();
     sapling == super::overworld_blocks::DARK_OAK_SAPLING || sapling == super::overworld_blocks::PALE_OAK_SAPLING
 }
 
@@ -64,18 +65,25 @@ impl World {
     pub fn spill_with_item(&mut self, p: IVec3, block: Block, held: Option<Stack>) {
         if self.tile_drops
             && held.is_some_and(|s| s.item == Item::SHEARS)
-            && (block.is_leaves()
-                || block == Block::COBWEB
-                || super::nether_biome_blocks::sheared_drop(block).is_some()
-                || super::overworld_blocks::sheared_drop(block).is_some())
+            && let Some(stack) = Self::shear_loot(block)
         {
-            let item = super::nether_biome_blocks::sheared_drop(block)
-                .or_else(|| super::overworld_blocks::sheared_drop(block))
-                .unwrap_or(block.base().into());
-            self.drops.push((p, Stack::new(item, 1)));
+            self.drops.push((p, stack));
         } else {
             self.spill_mined(p, block, held.map_or(Default::default(), |s| s.active_enchants()));
         }
+    }
+
+    /// What Java's loot tables give `block` under `tool/can_shear` instead of
+    /// the usual roll: the plant or leaf itself, and two for the tall grass,
+    /// large fern and tall seagrass pools (`tests/fixtures/java/26.3/mining.json`).
+    fn shear_loot(block: Block) -> Option<Stack> {
+        let count = if matches!(block.0, 1963 | 1964 | 2049..=2052) { 2 } else { 1 };
+        let item = match block {
+            Block::TALL_GRASS | Block::FERN | Block::DEAD_BUSH | Block::COBWEB => block.into(),
+            b if b.is_leaves() => b.base().into(),
+            b => super::nether_biome_blocks::sheared_drop(b).or_else(|| super::overworld_blocks::sheared_drop(b))?,
+        };
+        Some(Stack::new(item, count))
     }
 
     pub fn spill_mined(&mut self, p: IVec3, block: Block, tool: crate::enchant::Enchants) {
@@ -86,13 +94,16 @@ impl World {
         if tool.has(Enchantment::SilkTouch)
             && let Some(item) = crate::mining::silk_drop(block)
         {
-            self.drops.push((p, Stack::new(item, 1)));
+            // A silk-touched snow block keeps every layer.
+            let count = super::overworld_blocks::snow_layers(block).unwrap_or(1);
+            self.drops.push((p, Stack::new(item, count)));
             return;
         }
         let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
         out.extend(block.drop().map(|item| Stack::new(item, 1)));
         if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
+            || super::overworld_blocks::snow_layers(block).is_some()
             || super::overworld_blocks::bud_facing(block).is_some()
         {
             self.overworld_drops(block, fortune, &mut out);
@@ -266,8 +277,24 @@ impl World {
             Block::FARMLAND | Block::WET_FARMLAND => self.tick_farmland(p, b),
             b if b.is_sapling() => {
                 if self.grows_here(p) && self.one_in(SAPLING_GROWTH) {
-                    self.grow_tree(p);
+                    self.advance_tree(p);
                 }
+            }
+            // `SnowLayerBlock.randomTick`: block light above 11 melts it, with drops.
+            b if super::overworld_blocks::snow_layers(b).is_some() => {
+                self.update_block_light();
+                if self.block_light(p) > 11 {
+                    self.spill_block(p, b);
+                    self.edit(p, Block::AIR, true);
+                }
+            }
+            // `RedStoneOreBlock.randomTick`: a lit ore goes dark.
+            b if matches!(
+                super::redstone_blocks::component(b),
+                Some(super::redstone_blocks::Component::GlowingOre(_))
+            ) =>
+            {
+                self.extinguish_ore(p, b);
             }
             Block::SUGAR_CANE => self.tick_cane(p),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
@@ -345,6 +372,17 @@ impl World {
         }
     }
 
+    /// Java's `SaplingBlock.advanceTree`: a stage-0 sapling becomes stage 1,
+    /// and a stage-1 sapling grows its tree. Returns whether a tree grew.
+    pub fn advance_tree(&mut self, p: IVec3) -> bool {
+        let Some(sapling) = self.get_block(p) else { return false };
+        if let Some(next) = super::overworld_blocks::sapling_stage_one(sapling) {
+            self.edit(p, next, false);
+            return false;
+        }
+        self.grow_tree(p)
+    }
+
     /// Grows the sapling at `p` into a tree if there's room for its trunk.
     /// Leaves only fill air, like world generation. Returns whether it grew.
     pub fn grow_tree(&mut self, mut p: IVec3) -> bool {
@@ -357,12 +395,13 @@ impl World {
         let mut blocks = Vec::new();
         let ground = p - IVec3::Y;
         let Some(wood) = sapling.wood().filter(|_| sapling.is_sapling()) else { return false };
+        let sapling = sapling.base();
         super::trees::tree(wood, ground, v, &mut |q, b| blocks.push((q, b)));
         let room = blocks.iter().filter(|(_, b)| b.is_log()).all(|&(q, _)| {
             q == p
                 || self
                     .get_block(q)
-                    .is_some_and(|b| b == sapling || b == Block::AIR || b.is_replaceable() || b.is_leaves())
+                    .is_some_and(|b| b.base() == sapling || b == Block::AIR || b.is_replaceable() || b.is_leaves())
         });
         if !room {
             return false;
@@ -386,7 +425,7 @@ impl World {
         [0, -1].into_iter().flat_map(|x| [0, -1].map(move |z| p + IVec3::new(x, 0, z))).find(|&q| {
             [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z]
                 .into_iter()
-                .all(|d| self.get_block(q + d) == Some(sapling))
+                .all(|d| self.get_block(q + d).is_some_and(|b| b.base() == sapling.base()))
         })
     }
 
@@ -415,7 +454,7 @@ impl World {
                     return false;
                 }
                 if self.roll() % 100 < 45 {
-                    self.grow_tree(p);
+                    self.advance_tree(p);
                 }
                 true
             }

@@ -111,7 +111,8 @@ column and every feature reaching it scan each column once.
 |---|---|
 | 1600–1601 | crimson and warped nylium |
 | 1602–1613 | crimson, warped and stripped stems (Y, X, Z axes) |
-| 1614–1617 | crimson, warped and stripped hyphae |
+| 1614–1617 | crimson, warped and stripped hyphae (Y axis) |
+| 2500–2507 | the same four hyphae on the X then Z axis (reserved range; bark on every face, so they look alike) |
 | 1618–1622 | crimson and warped planks, nether and warped wart blocks, shroomlight |
 | 1623–1627 | crimson and warped fungus and roots, nether sprouts |
 | 1628–1633 | soul soil, soul fire, soul torch, bone block (3 axes) |
@@ -219,8 +220,6 @@ a performance hotspot; the ordinary benchmark origin understates its cost.
 - Biome layouts are statistically Java's but not seed-for-seed copies;
   Java's fuzzy biome zoom is not applied, so borders follow the 4×4 quart
   grid.
-- Hyphae store no axis (their bark texture is the same on every face here,
-  as textures are never rotated).
 - Features see only undecorated terrain, so later features don't react to
   earlier ones as in Java (painting order keeps fungi and vines whole).
 - Fossils are procedural skeletons, not Java's fourteen templates.

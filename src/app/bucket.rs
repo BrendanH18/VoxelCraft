@@ -13,6 +13,7 @@ pub(super) fn feedback(audio: &mut Audio, effect: Effect) {
         Effect::Poured { at, fluid } => {
             (if fluid == Block::WATER { Sound::Splash } else { stone }, at, 0.6, (0.9, 1.0))
         }
+        Effect::Released { at } => (Sound::Splash, at, 0.5, (1.2, 1.35)),
         Effect::Evaporated { at } => (Sound::Fuse, at, 0.6, (1.6, 1.8)),
         Effect::BottleFilled { at } => (Sound::Swim, at, 0.6, (1.3, 1.5)),
         Effect::Creature => return,

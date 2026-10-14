@@ -385,6 +385,43 @@ mod tests {
         assert!(!c.horizontal);
     }
 
+    /// `SnowLayerBlock.getCollisionShape` is `SHAPES[layers - 1]`: a single layer
+    /// is walked through and each further layer stands two sixteenths taller.
+    #[test]
+    fn snow_layers_are_stood_on_one_layer_below_their_outline() {
+        use crate::world::overworld_blocks::snow_layer;
+        let shape = Shape::new(0.3, 1.8);
+        for layers in 1..=8u8 {
+            let mut grid = Grid::flat(10);
+            grid.set(IVec3::new(0, 10, 0), snow_layer(layers));
+            let (mut pos, mut vel) = (DVec3::new(0.5, 12.0, 0.5), DVec3::ZERO);
+            for _ in 0..50 {
+                move_box(&grid, &mut pos, &mut vel, DVec3::new(0.0, -0.1, 0.0), shape);
+            }
+            // `Grid::flat(10)` fills y < 10, so the floor is y = 10.
+            let expected = 10.0 + f64::from(layers - 1) * 0.125;
+            assert!((pos.y - expected).abs() < 1e-3, "{layers} layers: y = {}", pos.y);
+        }
+    }
+
+    #[test]
+    fn soul_sand_and_mud_are_stood_on_at_java_collision_height() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/java/26.3/building.json")).unwrap();
+        let shape = Shape::new(0.3, 1.8);
+        for (name, block) in [("soul_sand", Block::SOUL_SAND), ("mud", crate::world::overworld_blocks::MUD)] {
+            let expected = fixture["collision_height"][name].as_f64().unwrap();
+            assert_eq!(block.height(), expected, "{name}");
+            let mut grid = Grid::flat(10);
+            grid.set(IVec3::new(0, 10, 0), block);
+            let (mut pos, mut vel) = (DVec3::new(0.5, 12.0, 0.5), DVec3::ZERO);
+            for _ in 0..50 {
+                move_box(&grid, &mut pos, &mut vel, DVec3::new(0.0, -0.1, 0.0), shape);
+            }
+            assert!((pos.y - (10.0 + expected)).abs() < 1e-3, "{name} y = {}", pos.y);
+        }
+    }
+
     #[test]
     fn walking_steps_up_slabs_and_stairs_but_not_blocks() {
         use crate::world::block::Facing;

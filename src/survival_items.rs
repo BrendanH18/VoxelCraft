@@ -21,19 +21,42 @@ pub fn equip_armor(
     }
     // Only a block the player could actually use (Java's block interaction
     // range) takes the click instead of the armor.
-    if world
-        .raycast(player.eye(), player.forward().as_dvec3(), mode.block_reach())
-        .and_then(|(p, _)| world.get_block(p))
-        .is_some_and(crate::content::interaction::blocks_item_use)
-    {
+    if world.raycast(player.eye(), player.forward().as_dvec3(), mode.block_reach()).is_some_and(|(pos, _)| {
+        crate::content::interaction::block_use_precedes_item(
+            world,
+            pos,
+            inventory.get(slot).map(|s| s.item),
+            player.sneaking,
+            (player.eye(), player.forward().as_dvec3()),
+        )
+    }) {
         return false;
     }
     inventory.equip_in_mode(slot, mode.is_creative())
 }
 
+/// How far a player's clicks reach: Java's block interaction range and the
+/// (shorter) entity interaction range, which a nearer block also bounds.
+#[derive(Clone, Copy, Debug)]
+pub struct Reach {
+    pub block: f64,
+    pub entity: f64,
+}
+
+impl Reach {
+    /// The distance an entity can be clicked at along a ray: its range,
+    /// shortened to a block that is hit first.
+    fn entity_distance(self, world: &World, eye: glam::DVec3, dir: glam::DVec3) -> f64 {
+        world
+            .raycast(eye, dir, self.block)
+            .map_or(self.entity, |(p, _)| eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5)).min(self.entity))
+    }
+}
+
 /// Fence knots, leads, name tags and animal feeding/taming/sitting under the crosshair.
 /// Every input path (desktop, controller, LAN, CLI agent) runs this before mounting, so
 /// a carrot breeds a saddled pig and a name tag names a tamed horse instead of seating you.
+#[allow(clippy::too_many_arguments)]
 pub fn use_animal_target(
     player: &Player,
     inventory: &mut Inventory,
@@ -42,19 +65,20 @@ pub fn use_animal_target(
     world: &World,
     entities: &mut Entities,
     owner: PlayerId,
+    reach: Reach,
 ) -> bool {
     let held = inventory.get(slot);
     let eye = player.eye();
     let dir = player.forward().as_dvec3();
-    let reach = world.raycast(eye, dir, 6.0).map_or(6.0, |(p, _)| eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5)));
-    if let Some((p, _)) = world.raycast(eye, dir, 6.0)
+    let range = reach.entity_distance(world, eye, dir);
+    if let Some((p, _)) = world.raycast(eye, dir, reach.block)
         && world.get_block(p).is_some_and(crate::entity::leash::fence)
-        && entities.raycast(eye, dir, reach).is_none()
+        && entities.raycast(eye, dir, range).is_none()
         && entities.use_fence_knot(owner, p)
     {
         return true;
     }
-    let Some((index, _)) = entities.raycast(eye, dir, reach) else { return false };
+    let Some((index, _)) = entities.raycast(eye, dir, range) else { return false };
     let Some(result) = entities.use_animal(index, held, owner) else { return false };
     if result && !creative {
         if held.is_some_and(|s| s.item == Item::TROPICAL_FISH_BUCKET) {
@@ -66,6 +90,7 @@ pub fn use_animal_target(
     true
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn use_mob(
     player: &Player,
     inventory: &mut Inventory,
@@ -74,15 +99,15 @@ pub fn use_mob(
     world: &World,
     entities: &mut Entities,
     owner: PlayerId,
+    reach: Reach,
 ) -> bool {
-    if use_animal_target(player, inventory, slot, creative, world, entities, owner) {
+    if use_animal_target(player, inventory, slot, creative, world, entities, owner, reach) {
         return true;
     }
     let held = inventory.get(slot);
     let eye = player.eye();
     let dir = player.forward().as_dvec3();
-    let reach = world.raycast(eye, dir, 6.0).map_or(6.0, |(p, _)| eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5)));
-    let Some((index, _)) = entities.raycast(eye, dir, reach) else { return false };
+    let Some((index, _)) = entities.raycast(eye, dir, reach.entity_distance(world, eye, dir)) else { return false };
     let Some(held) = held else { return false };
     if (held.item.dye_color().is_some() || held.item == Item::SHEARS)
         && let Some(shears) = entities.use_on_sheep(index, held.item)

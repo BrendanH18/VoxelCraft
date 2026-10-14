@@ -476,3 +476,224 @@ fn held_attack_timing_matches_java_destroy_delay_through_session_and_cli() {
         assert_eq!(broke, expected, "CLI {mode:?} {:?}", blocks.map(|b| b.name()));
     }
 }
+
+#[test]
+fn missed_rays_preserve_held_input_and_reaiming_a_new_target_starts_at_zero() {
+    let (mut w, mut s, mut e) = scene(Block::STONE, Dimension::Overworld);
+    let rules = GameRules::default();
+    s.player.yaw = std::f32::consts::PI;
+    assert!(s.tick_mining(0, &mut w, &mut e, &rules).is_err());
+    s.player.yaw = 0.;
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    let before = s.breaking(&w).unwrap();
+    s.player.yaw = std::f32::consts::PI;
+    assert!(s.tick_mining(0, &mut w, &mut e, &rules).is_err());
+    assert_eq!(s.breaking(&w), Some(before));
+    s.player.yaw = 0.;
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    assert!(s.breaking(&w).unwrap().1 > before.1);
+    w.set_block(AT - IVec3::X, Block::STONE);
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
+    s.cancel_mining();
+    assert!(
+        matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress, .. } if progress > 0.)
+    );
+}
+
+#[test]
+fn progress_survives_dropping_part_of_the_stack_a_mode_change_and_picking_the_same_item() {
+    use voxelcraft::session::interact::Pick;
+    let rules = GameRules::default();
+    let (mut w, mut s, mut e) = scene(Block::FURNACE, Dimension::Overworld);
+    let pick = Item::tool(ToolKind::Pickaxe, Tier::Wood);
+    s.inventory.slots[0] = Some(Stack::new(Item::from_block(Block::STONE), 4));
+    for _ in 0..3 {
+        s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    }
+    let before = s.breaking(&w).unwrap().1;
+    // Dropping one of four keeps the same item and components.
+    s.inventory.slots[0] = Some(Stack::new(Item::from_block(Block::STONE), 3));
+    s.set_mode(GameMode::Survival);
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    assert!(s.breaking(&w).unwrap().1 > before);
+    // Picking the block replaces the held slot with a different item: restart.
+    s.inventory.slots[0] = Some(Stack::new(pick, 1));
+    s.inventory.slots[12] = Some(Stack::new(Item::from_block(Block::FURNACE), 1));
+    assert_eq!(s.pick_block(0, &w), Some(Pick::Replaced));
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
+    assert_eq!(s.breaking(&w), None);
+}
+
+#[test]
+fn continued_mining_does_not_relight_ore_after_a_random_tick() {
+    let (mut w, mut s, mut e) = scene(Block::REDSTONE_ORE, Dimension::Overworld);
+    let rules = GameRules::default();
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    assert_eq!(w.get_block(AT), Some(Block(1435)));
+    // Java's random tick can extinguish the ore during a held attack.
+    w.set_block(AT, Block::REDSTONE_ORE);
+    s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+    assert_eq!(w.get_block(AT), Some(Block::REDSTONE_ORE));
+    assert!(s.breaking(&w).is_some());
+}
+
+#[test]
+fn server_rejects_a_stop_destroy_below_the_tolerance_and_destroys_when_its_own_progress_reaches_one() {
+    let rules = GameRules::default();
+    let (mut w, mut s, mut e) = scene(Block::DIRT, Dimension::Overworld);
+    let mut shovel = Stack::new(Item::tool(ToolKind::Shovel, Tier::Diamond), 1);
+    shovel.enchants = Enchants::NONE.with(Enchantment::Efficiency, 2);
+    s.inventory.slots[0] = Some(shovel);
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { .. }));
+    // The player leaves the ground: the client still completes (0.87 + 0.17) but the
+    // server's `rate * (ticks + 1)` is 0.35, below `STOP_DESTROY_BLOCK`'s 0.7.
+    s.player.on_ground = false;
+    assert!(matches!(s.tick_mining(0, &mut w, &mut e, &rules).unwrap(), Outcome::Hit { progress: 0., .. }));
+    assert_eq!(w.get_block(AT), Some(Block::DIRT));
+    // Java's delayed destroy fires once `0.17 * (elapsed + 1) >= 1`.
+    let mut ticks = 0;
+    let broken = loop {
+        ticks += 1;
+        let out = s.tick_mining(0, &mut w, &mut e, &rules).unwrap();
+        if matches!(out, Outcome::Broken { .. }) || ticks > 20 {
+            break out;
+        }
+    };
+    assert!(matches!(broken, Outcome::Broken { cell: AT, .. }), "{broken:?}");
+    assert_eq!(ticks, 4);
+    assert_eq!(w.get_block(AT), Some(Block::AIR));
+    // A steady rate always passes: 1.0 >= 0.7.
+    let (mut w, mut s, mut e) = scene(Block::DIRT, Dimension::Overworld);
+    s.inventory.slots[0] = Some(shovel);
+    assert!(matches!(finish(&mut s, &mut w, &mut e, &rules), Outcome::Broken { .. }));
+}
+
+/// Engine labels for reference names that differ.
+fn engine_name(reference: &str) -> String {
+    match reference {
+        "short grass" => "tall grass".into(),
+        "tall grass" => "tall grass plant".into(),
+        "vine" => "vines".into(),
+        name => name.into(),
+    }
+}
+
+#[test]
+fn tool_rules_follow_the_reference_mineable_tags_for_every_registered_name() {
+    use voxelcraft::content::mining::{mineable_by, sword_speed};
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/java/26.3/mining.json")).unwrap();
+    let rules = &fixture["tool_rules"];
+    let kinds =
+        [("pickaxe", ToolKind::Pickaxe), ("axe", ToolKind::Axe), ("shovel", ToolKind::Shovel), ("hoe", ToolKind::Hoe)];
+    let name_set = |v: &serde_json::Value| -> Vec<String> {
+        v.as_array().unwrap().iter().map(|n| n.as_str().unwrap().replace('_', " ")).collect()
+    };
+    let mut checked = 0;
+    for (tag, kind) in kinds {
+        for name in name_set(&rules["mineable"][tag]) {
+            if let Some(b) = Block::from_name(&engine_name(&name)) {
+                assert!(mineable_by(b, kind), "{name} should be mineable by {tag}");
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 250, "reference coverage unexpectedly dropped: {checked}");
+    // Every other kind is rejected for names that exist in the reference.
+    let mut rejected = 0;
+    for name in name_set(&rules["all_blocks"]) {
+        let Some(b) = Block::from_name(&engine_name(&name)) else { continue };
+        for (tag, kind) in kinds {
+            if !name_set(&rules["mineable"][tag]).contains(&name) {
+                assert!(!mineable_by(b, kind), "{name} must not be mineable by {tag}");
+                rejected += 1;
+            }
+        }
+    }
+    assert!(rejected > 1000, "negative coverage unexpectedly dropped: {rejected}");
+    // Rules the old engine table lacked: a hoe digs leaves, a pickaxe digs
+    // stone buttons and dead coral, an axe digs wooden buttons.
+    for (name, kind) in [
+        ("oak leaves", ToolKind::Hoe),
+        ("spruce leaves", ToolKind::Hoe),
+        ("stone button", ToolKind::Pickaxe),
+        ("dead tube coral", ToolKind::Pickaxe),
+        ("dead tube coral fan", ToolKind::Pickaxe),
+        ("oak button", ToolKind::Axe),
+        ("warped button", ToolKind::Axe),
+    ] {
+        let b = Block::from_name(name).unwrap_or_else(|| panic!("{name}"));
+        assert!(mineable_by(b, kind), "{name}");
+    }
+    // Sword rules: cobweb 15, instant bamboo, 1.5 for the efficient tag.
+    assert_eq!(sword_speed(Block::COBWEB), Some(15.0));
+    assert_eq!(sword_speed(Block::from_name("oak leaves").unwrap()), Some(1.5));
+    assert_eq!(sword_speed(Block::from_name("melon").unwrap()), Some(1.5));
+    assert_eq!(sword_speed(Block::STONE), None);
+}
+
+#[test]
+fn hoes_swords_and_shears_dig_at_their_reference_rule_speeds() {
+    use voxelcraft::mining::break_time;
+    let leaves = Block::from_name("oak leaves").unwrap();
+    let hand = break_time(leaves, None);
+    let iron_hoe = break_time(leaves, Some(Item::tool(ToolKind::Hoe, Tier::Iron)));
+    assert!((hand / iron_hoe - 6.0).abs() < 1e-4, "iron hoe speed 6 on leaves: {hand} {iron_hoe}");
+    let sword = break_time(leaves, Some(Item::tool(ToolKind::Sword, Tier::Iron)));
+    assert!((hand / sword - 1.5).abs() < 1e-4, "sword_efficient is 1.5: {hand} {sword}");
+    assert_eq!(break_time(leaves, Some(Item::SHEARS)), hand / 15.0);
+    // Shears: vines and glow lichen dig at 2, wool at 5, carpets are not wool.
+    let vines = Block::from_name("vines").unwrap();
+    assert_eq!(break_time(vines, Some(Item::SHEARS)), break_time(vines, None) / 2.0);
+    let wool = Block::from_name("white wool").unwrap();
+    assert_eq!(break_time(wool, Some(Item::SHEARS)), break_time(wool, None) / 5.0);
+    // A hand cannot harvest stone and a stone button needs no tool for drops.
+    assert!(!voxelcraft::mining::can_harvest(Block::STONE, None));
+    let button = Block::from_name("stone button").unwrap();
+    assert!(voxelcraft::mining::can_harvest(button, None));
+    assert!(break_time(button, Some(Item::tool(ToolKind::Pickaxe, Tier::Iron))) < break_time(button, None));
+}
+
+#[test]
+fn shear_drops_match_the_reference_loot_tables() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/java/26.3/mining.json")).unwrap();
+    let mut w = World::new_remote(Arc::new(Generator::for_dimension(7, Dimension::Overworld)), 2);
+    w.receive_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+    let mut checked = 0;
+    for (name, entries) in fixture["tool_rules"]["shear_loot"].as_object().unwrap() {
+        let entry = &entries[0];
+        let Some(count) = entry["count"].as_u64() else { continue };
+        let reference = name.replace('_', " ");
+        let item = engine_name(&entry["item"].as_str().unwrap().replace('_', " "));
+        for id in 0..voxelcraft::world::block::STATE_CAPACITY as u16 {
+            let b = Block(id);
+            if b.base() != b || b.name() != engine_name(&reference) {
+                continue;
+            }
+            w.drops.clear();
+            w.spill_with_item(AT, b, Some(Stack::new(Item::SHEARS, 1)));
+            let got: Vec<_> = w.drops.iter().map(|(_, s)| (s.item.name().to_string(), u64::from(s.count))).collect();
+            assert_eq!(got, vec![(item.clone(), count)], "{name} (block {id})");
+            checked += 1;
+        }
+    }
+    assert!(checked >= 20, "shear coverage unexpectedly dropped: {checked}");
+}
+
+#[test]
+fn a_player_breaking_either_half_of_tall_grass_with_shears_gets_two_blades() {
+    for upper in [false, true] {
+        let (mut w, mut s, mut e) = scene(Block(ob::DOUBLE_TALL_GRASS.0 + upper as u16), Dimension::Overworld);
+        let low = if upper { AT - IVec3::Y } else { AT };
+        w.set_block(low - IVec3::Y, Block::DIRT);
+        w.set_block(low + IVec3::Y, Block(ob::DOUBLE_TALL_GRASS.0 + 1));
+        w.before_overworld_place(low, ob::DOUBLE_TALL_GRASS);
+        w.set_block(low, ob::DOUBLE_TALL_GRASS);
+        s.inventory.slots[0] = Some(Stack::new(Item::SHEARS, 1));
+        s.player.pitch = -0.05;
+        s.set_mode(GameMode::Survival);
+        finish(&mut s, &mut w, &mut e, &GameRules::default());
+        let got: Vec<_> = w.drops.iter().map(|(_, s)| (s.item.name().to_string(), s.count)).collect();
+        assert_eq!(got, vec![("tall grass".to_string(), 2)], "upper half: {upper}");
+    }
+}

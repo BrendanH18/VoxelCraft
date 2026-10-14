@@ -42,8 +42,10 @@ pub struct Arrow {
     pub pickup: bool,
     /// A fully drawn shot: deals a random bonus on hit.
     pub critical: bool,
-    /// The bow's enchantments: power, punch and flame.
+    /// The bow's enchantments: power, punch and flame; a crossbow's piercing.
     pub enchants: crate::enchant::Enchants,
+    /// Mobs (`Mob::uid`) this piercing arrow already passed through.
+    pierced: Vec<u32>,
 }
 
 impl Arrow {
@@ -70,6 +72,7 @@ impl Arrow {
             pickup: false,
             critical: false,
             enchants: Default::default(),
+            pierced: Vec::new(),
         }
     }
 
@@ -93,6 +96,7 @@ impl Arrow {
             pickup,
             critical: power >= 1.0,
             enchants: Default::default(),
+            pierced: Vec::new(),
         }
     }
 
@@ -154,7 +158,7 @@ impl Arrow {
                 let mob = mobs
                     .iter()
                     .enumerate()
-                    .filter(|(_, m)| m.alive() && self.shooter != Some(m.uid))
+                    .filter(|(_, m)| m.alive() && self.shooter != Some(m.uid) && !self.pierced.contains(&m.uid))
                     .filter_map(|(i, m)| {
                         let (min, max) = m.aabb();
                         crate::physics::ray_aabb(from, step, min, max).filter(|&t| t <= reach).map(|t| (i, t))
@@ -179,6 +183,15 @@ impl Arrow {
                         mob.teleport_pending = true;
                     } else {
                         use crate::enchant::Enchantment;
+                        // `AbstractArrow.onHitEntity`: a piercing arrow passes through
+                        // `pierce level + 1` mobs, and the next one discards it unhurt.
+                        let pierce = usize::from(self.enchants.level(Enchantment::Piercing));
+                        if pierce > 0 {
+                            if self.pierced.len() > pierce {
+                                return false;
+                            }
+                            self.pierced.push(mob.uid);
+                        }
                         let speed = self.vel.length();
                         let mut damage = (speed / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
                         if self.critical {
@@ -214,7 +227,9 @@ impl Arrow {
                             player_kill: self.from_player,
                             owner: self.owner,
                         });
-                        return false;
+                        if pierce == 0 {
+                            return false;
+                        }
                     }
                 }
             }
@@ -296,6 +311,11 @@ impl Arrow {
     /// Current velocity in blocks per second.
     pub fn velocity(&self) -> DVec3 {
         self.vel
+    }
+
+    /// A piercing arrow needs the mobs' ids to remember what it passed through.
+    pub(super) fn piercing(&self) -> bool {
+        self.enchants.has(crate::enchant::Enchantment::Piercing)
     }
 
     pub fn is_stuck(&self) -> bool {

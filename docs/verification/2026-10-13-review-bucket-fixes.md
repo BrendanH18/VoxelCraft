@@ -51,8 +51,9 @@ target choice and `emptyContents`. Water and lava buckets and fish-bucket
 releases all use the fluid-ignoring raycast. Fish releases previously stopped
 at fluid sources; `MobBucketItem` has water content, so Java uses
 `ClipContext.Fluid.NONE`. `Block::fluid_replaceable` approximates
-`canBeReplaced(fluid)` as `is_replaceable()` plus cross-shaped non-cobweb blocks.
-Cobwebs are forced solid in Java. A replaced non-fluid block spills its loot
+`canBeReplaced(fluid)` as `is_replaceable()`, cross-shaped non-cobweb blocks,
+rails, redstone wire, levers, buttons and pressure plates (the non-solid set
+that matters in VoxelCraft). Cobwebs are forced solid in Java. A replaced non-fluid block spills its loot
 through `World::spill_block`.
 
 VoxelCraft's `LiquidBlockContainer` blocks are kelp, seagrass, waterlogged sea
@@ -109,9 +110,9 @@ lookup per bucket click and does not touch per-frame paths.
 
 ## Remaining differences
 
-- `fluid_replaceable` covers only replaceable and cross-shaped blocks. Java's
-  non-solid set also includes rails, redstone wire, buttons, levers and
-  pressure plates. Poured fluid does not destroy those here.
+- `fluid_replaceable` now covers rails, redstone wire, levers, buttons and
+  pressure plates (fixed; `tests/shared_buckets.rs`). Other Java non-solid
+  shapes with no VoxelCraft block are not enumerated.
 - VoxelCraft targets cross-shaped plants as full cells, so a player ray always
   hits the plant rather than the block behind it. The destroy-with-drops path
   is reachable through `empty_contents` but not yet through ordinary aiming.
@@ -121,19 +122,25 @@ lookup per bucket click and does not touch per-frame paths.
   to the hit face.
 - `Level.mayInteract` (spawn protection, world border) and the Adventure
   `can_place_on` component are not modeled.
-- Both adapters still require build permission for redstone and composter use.
-  Java lets Adventure players use levers, buttons and doors. The CLI also has
-  no wooden door/gate toggle or container opening. A bucket aimed at those
-  blocks is left unused and the CLI command returns an error.
-- Cake is not in the shared predicate because it needs hunger. The CLI cake
-  arm still precedes item use and errors when full; Java passes to `Item.use`.
+- Implemented with automated evidence on `work/fix-w1-building`: Adventure
+  uses redstone components and composters; the shared block-use predicate covers
+  every held item and drawing bows. Hungry players bite cake before item use;
+  full players pass through to the held item. CLI door use was already moved
+  into the shared session chain. Ordinary-player acceptance remains open.
 - The desktop blocks bucket use while riding (boost or vehicle inventory). The
   CLI now allows it, as Java does.
-- Pearls, throwables, rods, bows and armor on desktop still use the narrower
-  `aiming_at_usable` container list, not the new block-use predicate.
-- Bells ring from any face. Fish releases play the pour sound, not
-  `BUCKET_EMPTY_FISH`. `use_held` uses a 6-block raycast for block priority;
-  the CLI's own block target uses the session reach.
+- Implemented on `work/fix-w1-building`: bells ring only for a proper hit.
+  `BellBlock.isProperHit` rejects the top and bottom faces and hits above
+  0.8124 of the block; those clicks pass to the held item. VoxelCraft has one
+  bell state (no facing or attachment), so the side-face axis rules are not
+  modelled and the ray tests the whole cell. Releasing a fish bucket reports
+  `Effect::Released` (Java's `BUCKET_EMPTY_FISH`) when the water stays, and the
+  client plays a higher splash; evaporation keeps the extinguish effect. Animal,
+  lead and mob clicks used a 6-block ray for both block priority and entity
+  range; they now use the block interaction range for the block test and the
+  entity interaction range (3, or 5 in Creative) for the entity, shortened to a
+  nearer block, as `mob_target` does. Bucket and block-priority rays already
+  used the session's block reach.
 
 ## Proposed roadmap updates
 

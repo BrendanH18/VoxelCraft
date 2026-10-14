@@ -1,6 +1,7 @@
 //! What the held item does to blocks and mobs: mining speed, whether a
 //! block drops anything, tool wear and melee damage. Minecraft's rules.
 
+use crate::content;
 use crate::enchant::{self, Enchantment, Enchants};
 use crate::inventory::Stack;
 use crate::item::{Item, Tier, ToolKind};
@@ -13,7 +14,9 @@ pub fn can_harvest(block: Block, held: Option<Item>) -> bool {
     }
     let Some(level) = block.harvest_level() else { return true };
     match held.and_then(Item::as_tool) {
-        Some((kind, tier)) => Some(kind) == block.best_tool() && tier.level() >= level,
+        // Swords mine and harvest cobwebs through their own Tool rule.
+        Some((ToolKind::Sword, _)) => block == Block::COBWEB,
+        Some((kind, tier)) => content::mining::mineable_by(block, kind) && tier.level() >= level,
         None => false,
     }
 }
@@ -24,19 +27,16 @@ pub fn break_time(block: Block, held: Option<Item>) -> f32 {
 }
 
 /// How fast the held item digs `block` (1 for a hand or the wrong tool).
+///
+/// Java's `Tool` rules: shears and swords list their own blocks, and every
+/// other tool digs the blocks in its `mineable/<kind>` tag at tier speed.
 fn tool_speed(block: Block, held: Option<Item>) -> f32 {
     if held == Some(Item::SHEARS) {
-        if block.wool_color().is_some() {
-            return 5.0;
-        }
-        if block.is_leaves() || block == Block::COBWEB {
-            return 15.0;
-        }
+        return content::mining::shears_speed(block).unwrap_or(1.0);
     }
     match held.and_then(Item::as_tool) {
-        // Swords cut cobwebs fifteen times as fast (Java).
-        Some((ToolKind::Sword, _)) if block == Block::COBWEB => 15.0,
-        Some((kind, tier)) if Some(kind) == block.best_tool() => tier.speed(),
+        Some((ToolKind::Sword, _)) => content::mining::sword_speed(block).unwrap_or(1.0),
+        Some((kind, tier)) if content::mining::mineable_by(block, kind) => tier.speed(),
         _ => 1.0,
     }
 }

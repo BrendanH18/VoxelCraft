@@ -189,6 +189,9 @@ impl Entities {
             let mobs = &self.mobs;
             self.fireballs.retain_mut(|f| f.update(dt, world, ctx, mobs, &mut events));
         }
+        if self.arrows.iter().any(|a| a.piercing()) {
+            self.ensure_mob_ids();
+        }
         {
             let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
             self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));

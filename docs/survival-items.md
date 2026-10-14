@@ -23,15 +23,20 @@ ingredients are absent.
 
 Brown/red mushrooms generate in caves, covered ground and swamps via an
 isolated decoration pass. Random ticks spread with Java's 1/25 chance,
-five-mushroom density limit and four-step random walk. They require a solid
-surface and brightness below 13. Sky brightness uses the engine's vertical
-exposure approximation, so outdoor shade is conservative and exposed swamp
-mushrooms disappear. Huge mushrooms/mycelium/podzol are deferred.
+five-mushroom density limit and four-step random walk. `MushroomBlock.canSurvive`
+is mirrored: mycelium, podzol and the nylium blocks (`overrides_mushroom_light_requirement`,
+pinned in `building.json`) always allow a mushroom; otherwise it needs a solid
+surface and `getRawBrightness(pos, 0)` below 13 from the propagated skylight
+and block light, independent of time of day. Huge mushrooms are deferred.
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/item/MilkBucketItem.java
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/MushroomBlock.java
 
-Snowballs stack to 16. The full snow block stands in for snow layers and drops
-four snowballs; silk touch keeps the block, and four snowballs craft it back.
+Snowballs stack to 16. Snow is the Java `snow` block with 1 to 8 layers
+(`SnowLayerBlock`): ids 1910 and 2516..=2522, outline two sixteenths per layer
+and collision one layer lower. A shovel breaks it for one snowball per layer
+(silk touch keeps every layer as snow items), placing a layer on the top of a
+snow block of fewer than eight stacks, and block light above 11 melts it on a
+random tick. Four snowballs craft the full snow block.
 Thrown snowballs and eggs use Java's 1.5 blocks/tick, 0.03 gravity and a small
 inaccuracy. They knock mobs back. A snowball deals 3 damage only to blazes.
 Eggs hatch with Java's 1/8 chance, and 1/32 of those hatch four chicks. Chicks

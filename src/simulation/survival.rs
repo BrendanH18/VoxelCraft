@@ -73,6 +73,15 @@ pub fn fall_damage(distance: f64) -> f32 {
     (distance - SAFE_FALL + 1e-4).floor().max(0.0) as f32
 }
 
+/// Java `HayBlock.fallOn` damage multiplier for a fall onto a hay bale.
+pub const HAY_FALL_MULTIPLIER: f32 = 0.2;
+
+/// Damage for landing on hay after falling `distance` blocks: Java's
+/// `floor((distance + 1e-6 - 3) * (double)0.2f)`.
+pub fn hay_fall_damage(distance: f64) -> f32 {
+    ((distance + 1e-6 - SAFE_FALL) * f64::from(HAY_FALL_MULTIPLIER)).floor().max(0.0) as f32
+}
+
 /// What the player is touching this frame.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Env {
@@ -97,6 +106,8 @@ pub struct Env {
     /// Touching soul fire, which burns twice as hard (Java's 2 damage).
     pub in_soul_fire: bool,
     pub on_magma: bool,
+    /// Standing on a hay bale, which cushions a landing.
+    pub on_hay: bool,
     pub frost_walker: bool,
     /// Exposed to rain: extinguishes the player like body water does.
     pub wet: bool,
@@ -430,7 +441,8 @@ impl Vitals {
         } else if env.on_ground {
             if let Some(peak) = self.fall_peak {
                 hurts.landed = peak - env.y;
-                hurts.fall = fall_damage(peak - env.y - jump_levels);
+                let distance = peak - env.y - jump_levels;
+                hurts.fall = if env.on_hay { hay_fall_damage(distance) } else { fall_damage(distance) };
             }
             self.fall_peak = Some(env.y);
         } else {
@@ -690,6 +702,20 @@ mod tests {
         assert_eq!(fall_damage(4.0), 1.0);
         assert_eq!(fall_damage(10.5), 7.0);
         assert_eq!(fall_damage(-5.0), 0.0);
+    }
+
+    #[test]
+    fn hay_bales_scale_landing_damage_by_the_pinned_java_multiplier() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/building.json")).unwrap();
+        assert_eq!(HAY_FALL_MULTIPLIER, fixture["hay_fall_multiplier"].as_f64().unwrap() as f32);
+        for case in fixture["hay_fall_cases"].as_array().unwrap() {
+            assert_eq!(hay_fall_damage(case["distance"].as_f64().unwrap()), case["damage"].as_f64().unwrap() as f32);
+        }
+        let mut v = Vitals::default();
+        let hay = Env { on_hay: true, ..ground(64.0) };
+        assert_eq!(fall(&mut v, 84.0, 64.0, hay).fall, 3.0, "20 blocks onto hay vs 17 on stone");
+        assert_eq!(fall(&mut v, 84.0, 64.0, ground(64.0)).fall, 17.0);
     }
 
     #[test]

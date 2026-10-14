@@ -592,6 +592,7 @@ impl World {
             Some(Component::Target(_)) => {
                 self.edit(p, r::TARGET, false);
             }
+            // Older saves scheduled the former fixed expiry; Java extinguishes on a random tick.
             Some(Component::GlowingOre(deep)) => {
                 self.edit(p, if deep { Block::DEEPSLATE_REDSTONE_ORE } else { Block::REDSTONE_ORE }, false);
             }
@@ -693,6 +694,12 @@ impl World {
         }
     }
 
+    pub(super) fn extinguish_ore(&mut self, p: IVec3, b: Block) {
+        if let Some(Component::GlowingOre(deep)) = r::component(b) {
+            self.edit(p, if deep { Block::DEEPSLATE_REDSTONE_ORE } else { Block::REDSTONE_ORE }, false);
+        }
+    }
+
     pub fn touch_redstone_ore(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
         let deep = b.base() == Block::DEEPSLATE_REDSTONE_ORE;
@@ -702,7 +709,6 @@ impl World {
         if !matches!(r::component(b), Some(Component::GlowingOre(_))) {
             self.edit(p, Block(if deep { 1436 } else { 1435 }), false);
         }
-        self.schedule_redstone(p, 30, 0);
         true
     }
 
@@ -1420,8 +1426,16 @@ mod tests {
         assert_eq!(glowing.emission(), 9);
         assert_eq!(glowing.harvest_level(), Some(2));
         assert_eq!(glowing.as_stone_ore(), Block::REDSTONE_ORE);
-        ticks(&mut w, 30);
+        // Java: no fixed expiry, and re-touching a lit ore schedules nothing.
+        assert!(w.touch_redstone_ore(AT));
+        ticks(&mut w, 100);
+        assert_eq!(w.get_block(AT), Some(glowing));
+        // `RedStoneOreBlock.randomTick` turns LIT off.
+        w.random_tick(AT);
         assert_eq!(w.get_block(AT), Some(Block::DEEPSLATE_REDSTONE_ORE));
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/building.json")).unwrap();
+        assert_eq!(fixture["redstone_ore_extinguishes_on_random_tick"], true);
     }
 
     #[test]

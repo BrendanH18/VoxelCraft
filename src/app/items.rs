@@ -145,7 +145,6 @@ impl Game {
             (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
         if slot == self.body.actions.selected {
             self.body.actions.reset();
-            self.session.cancel_mining();
             self.session.cancel_consumption();
         }
         self.throw(Stack { count, ..stack });
@@ -247,6 +246,20 @@ pub(super) fn xp_sounds(audio: &mut Audio, at: Option<DVec3>, chime: Option<f32>
     audio.play(Sound::Orb, at, 0.3, (0.55, 1.25));
     if let Some(volume) = chime {
         audio.play(Sound::LevelUp, at, volume, (1.0, 1.0));
+    }
+}
+
+/// A bow or crossbow being loaded or loosed (shared by every input path).
+pub(super) fn shot_sound(audio: &mut Audio, ranged: voxelcraft::session::ranged::Ranged) {
+    use voxelcraft::session::ranged::Ranged;
+    match ranged {
+        Ranged::Drawing => {}
+        Ranged::CrossbowLoaded { from } => audio.play(Sound::Bow, Some(from), 0.5, (0.55, 0.65)),
+        Ranged::CrossbowFired { from } => audio.play(Sound::Bow, Some(from), 0.9, (1.25, 1.35)),
+        Ranged::ArrowShot { from, power } => {
+            let pitch = (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power));
+            audio.play(Sound::Bow, Some(from), 0.8, pitch);
+        }
     }
 }
 

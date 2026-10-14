@@ -18,6 +18,9 @@ pub enum Command {
     Look(f32, f32),
     Run(MoveInput, u32, bool),
     Eat,
+    /// Holds use with a bow or crossbow for this many ticks (Java's draw and
+    /// release, or load), or fires a charged crossbow at once.
+    Draw(u32),
     Sleep,
     Place,
     Attack,
@@ -395,6 +398,8 @@ impl Command {
                 )
             }
             ["eat"] => Self::Eat,
+            ["draw"] => Self::Draw(25),
+            ["draw", n] => Self::Draw(ticks(n)?),
             ["sleep"] => Self::Sleep,
             ["place"] => Self::Place,
             ["attack"] => Self::Attack,

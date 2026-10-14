@@ -23,6 +23,7 @@ use super::chest::Chest;
 use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::fortress::Feature;
 use super::noise::hash3;
+use super::redstone_blocks;
 use super::structure::{Bounds, LootEntry, Oriented, Paint, Rng, fill_chest};
 use crate::entity::MobKind;
 use crate::item::{ArmorMaterial, ArmorPiece, Item, Tier, ToolKind};
@@ -76,13 +77,13 @@ impl Kind {
     }
 }
 
-/// What fills a piece's entry doorway (Java's `SmallDoorType`; iron doors
-/// are wooden until iron doors exist).
+/// What fills a piece's entry doorway (Java's `SmallDoorType`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Door {
     Opening,
     Wood,
     Grates,
+    Iron,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -187,8 +188,9 @@ impl Builder {
         }
         let door = match self.rng.below(5) {
             0 | 1 => Door::Opening,
-            2 | 4 => Door::Wood,
-            _ => Door::Grates,
+            2 => Door::Wood,
+            3 => Door::Grates,
+            _ => Door::Iron,
         };
         let flags = match kind {
             Kind::Straight => self.rng.below(2) as u8 | (self.rng.below(2) as u8) << 1,
@@ -319,8 +321,9 @@ impl Stronghold {
             let start = Bounds { min, max: min + IVec3::new(4, 10, 4) };
             let door = match rng.below(5) {
                 0 | 1 => Door::Opening,
-                2 | 4 => Door::Wood,
-                _ => Door::Grates,
+                2 => Door::Wood,
+                3 => Door::Grates,
+                _ => Door::Iron,
             };
             let first = Piece {
                 kind: Kind::StairsDown,
@@ -585,6 +588,19 @@ impl Paint<'_, Piece> {
                 self.set(x + 1, y, z, Block::door(facing, false, false));
                 self.set(x + 1, y + 1, z, Block::door(facing, false, true));
             }
+            Door::Iron => {
+                self.fill(x, y, z, x, y + 2, z, BRICKS);
+                self.fill(x + 2, y, z, x + 2, y + 2, z, BRICKS);
+                self.set(x + 1, y + 2, z, BRICKS);
+                let facing = self.piece.turn(Facing::South);
+                self.set(x + 1, y, z, redstone_blocks::iron_door(facing, false, false));
+                self.set(x + 1, y + 1, z, redstone_blocks::iron_door(facing, false, true));
+                // `placeBlock` does not rotate block states, so Java's buttons
+                // face world north and south whatever the piece's orientation.
+                let button = |facing: Facing| redstone_blocks::button(facing as u8 + 1, false, false);
+                self.set(x + 2, y + 1, z + 1, button(Facing::North));
+                self.set(x + 2, y + 1, z - 1, button(Facing::South));
+            }
             Door::Grates => {
                 self.fill(x + 1, y, z, x + 1, y + 1, z, AIR);
                 self.fill(x, y, z, x, y + 1, z, BARS);
@@ -703,7 +719,7 @@ impl Paint<'_, Piece> {
         }
     }
 
-    /// Cells behind iron bars, with wooden doors (Java's iron ones).
+    /// Cells behind iron bars, with iron doors.
     fn prison_hall(&mut self) {
         self.shell(0, 0, 0, 8, 4, 10, true);
         self.door(self.piece.door, 1, 1, 0);
@@ -717,8 +733,8 @@ impl Paint<'_, Piece> {
         self.set(4, 3, 8, BARS);
         let facing = self.piece.turn(Facing::West);
         for z in [2, 8] {
-            self.set(4, 1, z, Block::door(facing, false, false));
-            self.set(4, 2, z, Block::door(facing, false, true));
+            self.set(4, 1, z, redstone_blocks::iron_door(facing, false, false));
+            self.set(4, 2, z, redstone_blocks::iron_door(facing, false, true));
         }
     }
 
@@ -892,6 +908,54 @@ mod tests {
             let to = s.nearest(IVec3::new(start.x + 5, 70, start.y - 5)).unwrap();
             assert_eq!((to.x, to.z), (start.x + 2, start.y + 2));
         }
+    }
+
+    /// Java's `randomSmallDoor` draws `nextInt(5)`: 0-1 opening, 2 wooden
+    /// door, 3 grates and 4 the iron door with a stone button on each side.
+    #[test]
+    fn entry_doors_include_iron_doors_with_buttons() {
+        use crate::world::redstone_blocks::{self, Component};
+        let s = Strongholds::new(5);
+        let mut seen = [0u32; 4];
+        for i in 0..8 {
+            let sh = s.get(i);
+            for piece in &sh.pieces {
+                if piece.kind == Kind::PortalRoom {
+                    continue; // Java fixes its entry as grates
+                }
+                let (base, top) = (piece.bounds.min - IVec3::new(2, 0, 2), piece.bounds.max + IVec3::new(2, 0, 2));
+                let size = top - base + IVec3::ONE;
+                let mut blocks = vec![AIR; (size.x * size.y * size.z) as usize];
+                let solid = |_: i32, _: i32, _: i32, _: i32| false;
+                Paint { blocks: &mut blocks, base, top, piece, open: &solid, pillar: Block::STONE_BRICKS }.piece();
+                let count = |f: &dyn Fn(Block) -> bool| blocks.iter().filter(|&&b| f(b)).count();
+                let iron = count(&|b| matches!(redstone_blocks::component(b), Some(Component::IronDoor { .. })));
+                let buttons =
+                    count(&|b| matches!(redstone_blocks::component(b), Some(Component::Button { wood: false, .. })));
+                let wood = count(&|b| {
+                    b.is_door() && !matches!(redstone_blocks::component(b), Some(Component::IronDoor { .. }))
+                });
+                // The prison hall's two cells add two iron doors of their own.
+                let cells = if piece.kind == Kind::PrisonHall { 4 } else { 0 };
+                assert_eq!(wood, if piece.door == Door::Wood { 2 } else { 0 }, "{piece:?}");
+                match piece.door {
+                    Door::Iron => {
+                        assert_eq!(iron, 2 + cells, "{piece:?}");
+                        assert!(buttons >= 1, "{piece:?}");
+                        seen[3] += 1;
+                    }
+                    Door::Wood => {
+                        assert_eq!(iron, cells, "{piece:?}");
+                        seen[1] += 1;
+                    }
+                    Door::Opening | Door::Grates => {
+                        assert_eq!((iron, buttons), (cells, 0), "{piece:?}");
+                        seen[if piece.door == Door::Opening { 0 } else { 2 }] += 1;
+                    }
+                }
+            }
+        }
+        assert!(seen.iter().all(|&n| n > 5), "every door type occurs: {seen:?}");
     }
 
     #[test]

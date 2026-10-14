@@ -862,7 +862,6 @@ impl Game {
     fn set_mode(&mut self, mode: GameMode) {
         self.session.set_mode(mode);
         self.body.actions.reset();
-        self.session.cancel_mining();
         self.session.cancel_consumption();
         self.show_popup(&format!("{} mode", capitalize(mode.name())));
     }

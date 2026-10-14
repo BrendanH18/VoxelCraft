@@ -19,7 +19,7 @@ use voxelcraft::rules::GameRules;
 use voxelcraft::session::{
     PlayerSession,
     interact::{UseContext, Used},
-    ranged::{Ranged, Shot},
+    ranged::Shot,
 };
 
 use super::gamepad::Body;
@@ -197,7 +197,7 @@ impl Actor<'_> {
             }
             // The session's destroy delay replaces the former adapter repeat cooldowns.
             Ok(Outcome::Delayed { .. }) => {}
-            Err(_) => self.session.cancel_mining(),
+            Err(_) => {}
         }
         self.body.actions.breaking = self.session.breaking(self.world);
     }
@@ -245,6 +245,9 @@ impl Actor<'_> {
     /// unless aimed at a container. Returns whether it did.
     fn equip_held(&mut self) -> bool {
         let slot = self.body.actions.selected;
+        if self.session.block_takes_use(slot, self.world, self.sneaking) {
+            return false;
+        }
         let s = &mut *self.session;
         if !voxelcraft::survival_items::equip_armor(&s.player, &mut s.inventory, slot, s.mode, self.world) {
             return false;
@@ -260,15 +263,7 @@ impl Actor<'_> {
     }
 
     fn present_shot(&mut self, shot: Shot) {
-        match shot.ranged {
-            Ranged::Drawing => {}
-            Ranged::CrossbowLoaded { from } => self.audio.play(Sound::Bow, Some(from), 0.5, (0.55, 0.65)),
-            Ranged::CrossbowFired { from } => self.audio.play(Sound::Bow, Some(from), 0.9, (1.25, 1.35)),
-            Ranged::ArrowShot { from, power } => {
-                let pitch = (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power));
-                self.audio.play(Sound::Bow, Some(from), 0.8, pitch);
-            }
-        }
+        items::shot_sound(self.audio, shot.ranged);
         if let Some(item) = shot.tool_broken {
             self.popup(format!("{} broke", capitalize(item.name())));
         }
