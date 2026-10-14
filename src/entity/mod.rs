@@ -635,6 +635,7 @@ pub struct Entities {
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
     mob_index: mob_index::MobIndex,
+    separation: mob_index::Separation,
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
     claimed_jobs: rustc_hash::FxHashSet<IVec3>,
     pending_sounds: Vec<EntityEvent>,
@@ -703,6 +704,7 @@ impl Entities {
             villager_births: Default::default(),
             village_timer: 0.0,
             mob_index: Default::default(),
+            separation: Default::default(),
             claimed_beds: Default::default(),
             claimed_jobs: Default::default(),
             pending_sounds: Vec::new(),
@@ -1037,32 +1039,7 @@ impl Entities {
 
     /// Gently pushes overlapping mobs apart.
     fn separate(&mut self, dt: f64) {
-        let n = self.mobs.len();
-        for i in 0..n {
-            if self.mobs[i].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
-                continue;
-            }
-            self.mob_index.visit(self.mobs[i].pos, 4.0, |j| {
-                if j <= i {
-                    return;
-                }
-                if self.mobs[j].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
-                    return;
-                }
-                let (a, b) = (&self.mobs[i], &self.mobs[j]);
-                let d = DVec3::new(b.pos.x - a.pos.x, 0.0, b.pos.z - a.pos.z);
-                let min = a.shape().half_width + b.shape().half_width;
-                let overlap_y = a.pos.y < b.pos.y + b.shape().height && b.pos.y < a.pos.y + a.shape().height;
-                let dist = d.length();
-                if !overlap_y || dist >= min {
-                    return;
-                }
-                let dir = if dist > 1e-4 { d / dist } else { DVec3::X };
-                let push = dir * ((min - dist) * 8.0 * dt).min(0.2) / dt.max(1e-3);
-                self.mobs[i].vel -= push * 0.5;
-                self.mobs[j].vel += push * 0.5;
-            });
-        }
+        self.separation.run(&mut self.mobs, dt);
     }
 
     /// One spawn attempt per mob type around each player whose local cap

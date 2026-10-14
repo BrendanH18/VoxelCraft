@@ -334,8 +334,15 @@ agent container:
 | 300 | 0.58 ms/update | 0.60–0.68 ms/update |
 
 Sensing costs about as much as a zombie's per-tick player search. The superlinear
-growth from 100 to 300 mobs comes from the existing pairwise mob separation, which
-both kinds pay.
+growth from 100 to 300 mobs came from the pairwise mob separation, which both kinds
+paid: it scanned 8-block buckets within 4 blocks of every mob and recomputed each mob's
+shape per pair. Separation now runs on its own grid sized to the widest mob (cell =
+twice the largest half-width, nine cells per mob, per-mob data gathered once). On the
+same bench on the 10-core Apple M5 (other agents were running) the medians moved from 0.055 → 0.055 (100 zombies),
+0.71 → 0.21 (300 zombies), 0.22 → 0.09 (100 nether mobs) and 0.75 → 0.25 ms/update
+(300 nether mobs), so the 100→300 growth is about 3× instead of 4–12×. The pushes
+equal an all-pairs scan (`separation_matches_an_all_pairs_scan`). A pile of mobs on one
+point is still quadratic, as in Java's `pushEntities`.
 
 `cargo run --release -- --bench --rd 8` (headless terrain) is unaffected: none of
 this runs during generation or meshing, and the quad output is identical. Medians
