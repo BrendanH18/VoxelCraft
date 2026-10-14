@@ -2786,6 +2786,39 @@ mod tests {
     }
 
     #[test]
+    fn mobs_climb_vines_and_ladders_but_only_while_pushing_against_a_wall() {
+        // Java `LivingEntity.onClimbable`: any mob in a CLIMBABLE block climbs at 0.2 blocks per
+        // tick while it presses a wall and otherwise slides at no more than 0.15.
+        let mut world = Grid::flat(10);
+        for y in 10..14 {
+            for z in -3..=3 {
+                world.set(IVec3::new(3, y, z), Block::STONE);
+                world.set(IVec3::new(2, y, z), crate::world::overworld_blocks::VINE);
+            }
+        }
+        let pig = walk_east(&world, Mob::new(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5), 0.0), 3.0);
+        assert!(pig.pos.y > 13.0, "a pig climbs the vines: {:?}", pig.pos);
+        let mut bare = Grid::flat(10);
+        for y in 10..14 {
+            for z in -3..=3 {
+                bare.set(IVec3::new(3, y, z), Block::STONE);
+            }
+        }
+        let pig = walk_east(&bare, Mob::new(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5), 0.0), 3.0);
+        assert!(pig.pos.y < 11.5, "without vines it only hops at the wall: {:?}", pig.pos);
+        // Falling through a vine column is slowed to 3 blocks per second.
+        let mut fall = Grid::flat(10);
+        for y in 10..30 {
+            fall.set(IVec3::new(0, y, 0), crate::world::overworld_blocks::VINE);
+        }
+        let mut pig = Mob::new(MobKind::Pig, DVec3::new(0.5, 29.0, 0.5), 0.0);
+        for _ in 0..40 {
+            pig.physics_step(0.05, &fall, None, 0.0);
+        }
+        assert!(pig.vel.y >= -3.0 - 1e-9, "sliding speed {}", pig.vel.y);
+    }
+
+    #[test]
     fn zombified_piglins_ignore_you_until_one_is_hit() {
         let world = Grid::flat(10);
         let mut e = Entities::new(12);
