@@ -176,8 +176,11 @@ enum was appended, and effects persist by string ID.
     rescheduled by each touch and no longer expires after a fixed 30 ticks; it
     goes dark on a random tick (`RedStoneOreBlock.randomTick`), pinned in
     `tests/fixtures/java/26.3/building.json`.
-  - Neighbor drops are suppressed while an upper half is removed silently.
-    Java suppresses only the lower half. No registered block is affected.
+  - Implemented: the silent lower-half removal runs first with drops
+    suppressed (flags 35) and the upper half is then removed with the normal
+    gamerule, as Java's `preventDropFromBottomPart` does. No registered block
+    depends on a door or tall plant, so the Creative double-plant test is the
+    only observable evidence (a wrong order would pop the lower half).
   - Survival double-plant loot with shears and tool context in neighbor
     destruction are unchanged and not newly verified.
   - Full `Tool` component rules, such as per-block speeds and correct-tool

@@ -299,8 +299,14 @@ impl PlayerSession {
             .filter(|&(base, upper)| upper && lower == Some(base))
             .map(|(base, _)| base);
         let silent_lower = (door_lower.is_some() && (!survival || !harvest)) || (plant_lower.is_some() && !survival);
+        // `preventDropFromBottomPart` removes the lower half first with flags 35
+        // (suppress drops); only that removal's neighbor updates are silent.
+        if silent_lower {
+            world.set_tile_drops(false);
+            world.set_block(below, Block::AIR);
+        }
         // Neighbor drops use the same gamerule.
-        world.set_tile_drops(rules.bool("doTileDrops") && !silent_lower);
+        world.set_tile_drops(rules.bool("doTileDrops"));
         if held.is_some_and(|s| s.item == Item::SHEARS) {
             world.disarm_tripwire(pos);
         }
@@ -315,11 +321,10 @@ impl PlayerSession {
             && world.get_block(below) == Some(lower)
         {
             world.set_block(below, Block::AIR);
-            if drops && !silent_lower {
+            if drops {
                 world.spill_with_item(below, lower, held);
             }
         }
-        world.set_tile_drops(rules.bool("doTileDrops"));
         if drops && harvest {
             world.spill_with_item(pos, block, held);
             entities.drop_mined_xp(block, pos, tool);
