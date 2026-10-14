@@ -1084,8 +1084,9 @@ mod tests {
         for seed in 0..100 {
             let offer = def.offer(seed).unwrap();
             assert_eq!(offer.output.item, Item::CROSSBOW);
-            assert!(offer.output.enchants.has(Enchantment::Unbreaking));
-            assert!(offer.output.enchants.iter().all(|(e, _)| e == Enchantment::Unbreaking));
+            // `enchant_with_levels` over `#on_traded_equipment`, discarded unless enchanted.
+            assert!(!offer.output.enchants.is_empty());
+            assert!(offer.output.enchants.iter().all(|(e, _)| e.fits(Item::CROSSBOW)));
         }
     }
 

@@ -2650,6 +2650,32 @@ mod tests {
         assert_eq!(fight.crystals.len(), 10, "the crystal behind the cow survives");
     }
 
+    /// `AbstractArrow.onHitEntity`: a piercing arrow passes through `level + 1`
+    /// mobs, and the next one discards it without damage.
+    #[test]
+    fn piercing_arrows_pass_through_level_plus_one_mobs() {
+        use crate::enchant::{Enchantment, Enchants};
+        let world = Grid::flat(10);
+        let c = night(DVec3::new(0.5, 10.0, 0.5));
+        for (level, hurt) in [(0u8, 1usize), (1, 2), (2, 3), (4, 4)] {
+            let mut e = Entities::new(4);
+            for x in [4.5, 6.5, 8.5, 10.5] {
+                e.spawn(MobKind::Cow, DVec3::new(x, 10.0, 0.5));
+            }
+            e.shoot_enchanted_for(
+                DVec3::new(0.5, 11.0, 0.5),
+                DVec3::X,
+                1.0,
+                false,
+                Enchants::NONE.with(Enchantment::Piercing, level),
+                PlayerId::HOST,
+            );
+            run(&mut e, &world, &c, 0.5);
+            let damaged = e.mobs.iter().filter(|m| m.health < MobKind::Cow.max_health()).count();
+            assert_eq!(damaged, hurt, "piercing {level}");
+        }
+    }
+
     #[test]
     fn skeleton_arrows_hit_the_player() {
         let world = Grid::flat(10);

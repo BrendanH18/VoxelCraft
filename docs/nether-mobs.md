@@ -229,7 +229,18 @@ range.
 - A crossbow has Java's 465 uses.
 - Holding use for 25 ticks loads it. That spends an arrow and turns the held stack
   into the charged form, keeping wear, enchantments and name.
-- Using a charged crossbow shoots at 3.15 blocks a tick and wears it by one.
+- Using a charged crossbow shoots at 3.15 blocks a tick and wears it by one per arrow.
+- Quick Charge (weight 5, levels I-III) shortens loading to `floor((1.25 - 0.25 L) * 20)`
+  ticks: 25, 20, 15 and 10. Multishot (weight 2, one level) looses three arrows, straight
+  ahead and turned 10 degrees to each side about the shooter's up vector
+  (`ProjectileWeaponItem.shoot`); loading still spends one arrow, only the straight one
+  can be picked up, and each arrow wears the crossbow, so the volley stops if it breaks.
+  Piercing (weight 10, levels I-IV) lets an arrow pass through level + 1 mobs and discards
+  it unhurt at the next (`AbstractArrow.onHitEntity`); it applies to mobs, not to PvP hits
+  on players. Multishot and piercing are exclusive. Values come from
+  `data/minecraft/enchantment/{multishot,piercing,quick_charge}.json`; the enchantments
+  append to the save bits (ids 30..=32) and roll on the enchanting table, anvils, books,
+  the master fletcher's crossbow and bastion chests like any other.
 - Piglins drop crossbows as gear, bastion chests that list one now hold it
   (with the table's wear and enchantment roll), and fletcher trades naming the
   crossbow now resolve.
@@ -284,9 +295,9 @@ different pitches.
   is removed, as before.
 - **Bastion residents** are spread over each piece's floor rather than placed at
   Java's exact jigsaw spots. Treasure-room magma cube spawners are still absent.
-- **Crossbow**: crafted with Java's recipe and supports existing durability
-  enchantments, but no Multishot, Piercing or Quick Charge, and no first-person
-  loading pose. Device-free agents use the `draw [ticks]` command, which holds use through
+- **Crossbow**: crafted with Java's recipe with Multishot, Piercing, Quick Charge and
+  durability enchantments, but no first-person
+  loading pose (client presentation, not implemented). Device-free agents use the `draw [ticks]` command, which holds use through
   the shared session.
 - **Line of sight** uses the existing block raycast, which treats every solid block
   as opaque.

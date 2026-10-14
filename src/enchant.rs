@@ -43,6 +43,9 @@ pub enum Enchantment {
     FrostWalker,
     Lure,
     LuckOfTheSea,
+    Multishot,
+    Piercing,
+    QuickCharge,
 }
 
 /// Which items an enchantment goes on (Java's item tags).
@@ -58,6 +61,7 @@ enum Fits {
     /// Pickaxes, shovels, axes and hoes.
     Mining,
     Bow,
+    Crossbow,
     FishingRod,
     /// Anything that wears out.
     Durable,
@@ -74,6 +78,7 @@ impl Fits {
             (Fits::Weapon, ItemKind::Tool(k, _)) => matches!(k, ToolKind::Sword | ToolKind::Axe),
             (Fits::Mining, ItemKind::Tool(k, _)) => k != ToolKind::Sword,
             (Fits::Bow, ItemKind::Bow) => true,
+            (Fits::Crossbow, _) => matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW),
             (Fits::FishingRod, ItemKind::FishingRod) => true,
             (Fits::Durable, _) => item.durability().is_some(),
             _ => false,
@@ -89,6 +94,8 @@ enum Group {
     Damage,
     Mining,
     Bow,
+    /// Multishot and piercing (`#exclusive_set/crossbow`).
+    Crossbow,
 }
 
 /// One enchantment's definition (Java's `Enchantment.definition`).
@@ -184,10 +191,14 @@ static DEFS: [Def; Enchantment::COUNT] = [
     treasure(def("frost walker", 2, 2, (10, 10), (25, 10), 4, Fits::Feet)),
     def("lure", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
     def("luck of the sea", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
+    // Java 26.3 `data/minecraft/enchantment/{multishot,piercing,quick_charge}.json`.
+    in_group(def("multishot", 1, 2, (20, 0), (50, 0), 4, Fits::Crossbow), Group::Crossbow),
+    in_group(def("piercing", 4, 10, (1, 10), (50, 0), 1, Fits::Crossbow), Group::Crossbow),
+    def("quick charge", 3, 5, (12, 20), (50, 0), 2, Fits::Crossbow),
 ];
 
 impl Enchantment {
-    pub const COUNT: usize = 30;
+    pub const COUNT: usize = 33;
     pub const ALL: [Enchantment; Enchantment::COUNT] = {
         let mut all = [Enchantment::Protection; Enchantment::COUNT];
         let mut i = 0;
@@ -928,26 +939,34 @@ mod tests {
     }
 
     #[test]
-    fn crossbows_enchant_as_durable_gear_without_bow_enchantments() {
+    fn crossbows_enchant_with_crossbow_and_durability_enchantments_without_bow_ones() {
         for item in [Item::CROSSBOW, Item::CHARGED_CROSSBOW] {
             assert!(table_accepts(Stack::new(item, 1)));
             assert!(!table_accepts(Stack {
                 enchants: Enchants::NONE.with(Enchantment::Unbreaking, 1),
                 ..Stack::new(item, 1)
             }));
-            let mut saw_unbreaking = false;
-            for seed in 0..100 {
-                for (slot, offer) in offers(seed, item, 15).into_iter().enumerate() {
+            let mut seen = std::collections::BTreeSet::new();
+            for seed in 0..400 {
+                for (slot, offer) in offers(seed, item, 30).into_iter().enumerate() {
                     if let Some((clue, _)) = offer.clue {
-                        assert_eq!(clue, Enchantment::Unbreaking);
+                        assert!(clue.fits(item), "{clue:?}");
                         let list = offer_enchants(seed, item, slot, offer.cost);
                         assert!(!list.is_empty());
-                        assert!(list.iter().all(|(e, _)| *e == Enchantment::Unbreaking));
-                        saw_unbreaking = true;
+                        assert!(list.iter().all(|(e, _)| e.fits(item)));
+                        // Multishot and piercing never share a crossbow.
+                        assert!(
+                            !(list.iter().any(|(e, _)| *e == Enchantment::Multishot)
+                                && list.iter().any(|(e, _)| *e == Enchantment::Piercing))
+                        );
+                        seen.extend(list.iter().map(|(e, _)| *e as u8));
                     }
                 }
             }
-            assert!(saw_unbreaking);
+            for e in [Enchantment::Unbreaking, Enchantment::Multishot, Enchantment::Piercing, Enchantment::QuickCharge]
+            {
+                assert!(seen.contains(&(e as u8)), "{e:?} never rolled on {item:?}");
+            }
             for e in [Enchantment::Power, Enchantment::Punch, Enchantment::Flame, Enchantment::Infinity] {
                 assert!(!e.fits(item));
             }

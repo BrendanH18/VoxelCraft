@@ -332,3 +332,61 @@ fn the_cli_draw_command_shoots_bows_loads_crossbows_and_fires_charged_ones() {
     agent.session.inventory.slots[0] = Some(Stack::new(Item::STICK, 1));
     assert!(agent.execute(Command::Draw(5), &mut w, &mut e, &[]).is_err());
 }
+
+/// Quick Charge shortens loading, Multishot looses three arrows (only the first
+/// recoverable) and every arrow wears the crossbow (`ProjectileWeaponItem.shoot`).
+#[test]
+fn crossbow_enchantments_change_loading_volley_wear_and_pickup() {
+    use voxelcraft::enchant::{Enchantment, Enchants};
+    use voxelcraft::session::ranged::{Ranged, crossbow_charge_ticks};
+    let enchanted = |quick: u8, multi: u8, pierce: u8| Stack {
+        enchants: Enchants::NONE
+            .with(Enchantment::QuickCharge, quick)
+            .with(Enchantment::Multishot, multi)
+            .with(Enchantment::Piercing, pierce),
+        ..Stack::new(Item::CROSSBOW, 1)
+    };
+    // Quick Charge III loads in ten ticks and keeps its enchantments on the charged item.
+    let (w, mut s, mut e) = scene(None);
+    s.inventory.slots[0] = Some(enchanted(3, 1, 0));
+    s.inventory.slots[1] = Some(Stack::new(Item::ARROW, 4));
+    assert_eq!(crossbow_charge_ticks(s.inventory.get(0).unwrap().enchants), 10);
+    s.start_draw(0, &w, &mut e).unwrap();
+    for _ in 0..9 {
+        assert_eq!(s.tick_draw(0, true), None);
+    }
+    assert!(matches!(s.tick_draw(0, true).unwrap().ranged, Ranged::CrossbowLoaded { .. }));
+    assert_eq!(s.inventory.get(0).unwrap().item, Item::CHARGED_CROSSBOW);
+    assert_eq!(s.inventory.get(1).unwrap().count, 3, "multishot still spends one arrow");
+    // Firing looses three arrows, one recoverable, and wears the crossbow three times.
+    let shot = s.start_draw(0, &w, &mut e).unwrap();
+    assert!(matches!(shot.ranged, Ranged::CrossbowFired { .. }));
+    assert_eq!(e.arrows.len(), 3);
+    assert_eq!(e.arrows.iter().filter(|a| a.pickup).count(), 1);
+    assert_eq!(s.inventory.get(0).unwrap().damage, 3);
+    assert_eq!(s.inventory.get(0).unwrap().item, Item::CROSSBOW);
+
+    // Without Multishot: one arrow, one wear, and no Quick Charge means 25 ticks.
+    let (w, mut s, mut e) = scene(None);
+    s.inventory.slots[0] = Some(enchanted(0, 0, 2));
+    s.inventory.slots[1] = Some(Stack::new(Item::ARROW, 2));
+    s.start_draw(0, &w, &mut e).unwrap();
+    for _ in 0..24 {
+        assert_eq!(s.tick_draw(0, true), None);
+    }
+    assert!(s.tick_draw(0, true).is_some());
+    s.start_draw(0, &w, &mut e).unwrap();
+    assert_eq!((e.arrows.len(), s.inventory.get(0).unwrap().damage), (1, 1));
+    assert!(e.arrows[0].pickup && e.arrows[0].enchants.level(Enchantment::Piercing) == 2);
+
+    // A nearly broken multishot crossbow stops after the arrow that breaks it.
+    let (w, mut s, mut e) = scene(None);
+    s.inventory.slots[0] = Some(Stack {
+        item: Item::CHARGED_CROSSBOW,
+        damage: Item::CROSSBOW.durability().unwrap() - 1,
+        ..enchanted(0, 1, 0)
+    });
+    let shot = s.start_draw(0, &w, &mut e).unwrap();
+    assert_eq!(shot.tool_broken, Some(Item::CROSSBOW));
+    assert_eq!(e.arrows.len(), 1, "the break ends the volley");
+}
