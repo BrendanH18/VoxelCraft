@@ -270,6 +270,7 @@ impl Game {
             },
             weather_verts: Vec::new(),
             started: now,
+            dial_wobble: Default::default(),
             last_save: now,
             stats_since: now,
             frames: 0,

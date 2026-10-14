@@ -308,7 +308,7 @@ different pitches.
 - **Visibility**: hoglin hunts and wither-skeleton targets need a sight line (Java's
   `NEAREST_VISIBLE_*` memories). Nearby-adult piglin anger counts stay distance-based,
   as Java's nearby-adult sensor lists are.
-- **Split-screen fog**: all views share the host camera's blended biome fog.
+- **Split-screen fog**: each view blends Nether biome fog around its own eye.
 
 ## What to check visually
 

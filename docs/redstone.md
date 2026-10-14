@@ -34,9 +34,14 @@ cause a 160-tick restart delay. Burnout history is bounded per torch.
 Wire power, facing, delay and on/off states are in VXC2 block data. A versioned
 `redstone` dimension property preserves queued work, pending deadlines,
 comparator output, torch history/burnout, and powered door/gate edges. Replaced
-blocks invalidate their old ticks. Unloaded scheduled blocks wait for loading;
-this currently retries their deadlines every tick instead of Java chunk tick
-containers. Old saves without the property remain readable. Connections are
+blocks invalidate their old ticks. Due ticks for unloaded blocks are parked by
+chunk and resume on its load, retaining deadline, priority and insertion order
+without a per-tick retry. Parked ticks still use the existing v1 relative-deadline
+save records; overdue work runs on the next simulation tick after loading. The
+pinned Java 26.3 `LevelTicks.removeContainer` removes chunks from active
+scheduling while `LevelChunkTicks` retains their pending work; VoxelCraft keeps
+its in-memory absolute deadlines rather than persisting a separate chunk ticker.
+Old saves without the property remain readable. Connections are
 recomputed from neighbours rather than saved.
 
 Comparators use Java inventory fullness (floor(14 × average normalized slot
@@ -76,8 +81,17 @@ stack counts as one entity. Binary plates recheck after 20 ticks, weighted ones
 after 10. Wooden buttons stay pressed while an arrow overlaps their shape,
 rechecking after 30 ticks; stone buttons ignore arrows and release after 20.
 Contact inputs reuse a map and query only entity bounding-box cells. Spectators,
-dead and inactive players are excluded. Entities such as XP orbs, TNT and
-projectiles other than arrows are not yet included in plate counts.
+dead and inactive players are excluded. Wooden and weighted plates also count
+XP orbs (0.5 box), primed TNT, minecarts, thrown items, ender pearls and eyes,
+splash potions, fireballs and fishing bobbers, as Java's `Entity` query does;
+the touch box is Java's 1/16-inset column (x and z 1/16 to 15/16, height 0.25).
+Bats (not implemented) would be excluded by `isIgnoringBlockTriggers`.
+Reference: pinned Java 26.3 `BasePressurePlateBlock` static initializer
+(`Block.column(14, 0, 4)`) and `PressurePlateBlock.getSignalStrength`;
+wood uses `Entity`, stone uses `LivingEntity`. Regression coverage includes
+orb edge overlap, TNT, potions, bobbers and fireballs. Entity contact boxes
+use the bottom-centred sizes in 26.3 `EntityTypes` (arrows/orbs 0.5, small
+fireballs 0.3125, large fireballs 1, other implemented projectiles/items 0.25).
 
 Iron doors and iron trapdoors open only with power. Oak trapdoors permit manual
 operation and respond to power edges. Arrow hits activate target blocks for 20
@@ -145,16 +159,28 @@ its contents once and creates empty storage.
 Dispensers/droppers fire four game ticks after a rising power edge and select a
 nonempty slot uniformly. Holding power does not repeatedly dispense. Droppers
 insert one item into the front container (retaining it if full) or eject it.
-Dispensers eject ordinary items, shoot recoverable unowned arrows, place or
-collect water/lava source buckets, and prime TNT. Fire charge item 760 has its
-vanilla three-item recipe and ignites the front cell; a travelling small
-fireball and Java dispenser inaccuracy are not implemented. Other special
-behaviours such as equipment, bonemeal and spawn eggs fall back to item drops.
+Dispensers eject ordinary items, shoot recoverable unowned arrows and fire
+charges, place or collect water/lava source buckets, and prime TNT. Following
+Java 26.3 `DefaultDispenseItemBehavior.spawnItem`, dispensed and dropped items
+appear 0.7 blocks out (0.15625 lower, 0.125 vertically) at 0.2-0.3 blocks per
+tick plus `triangle(0.0172275 * 6)` noise per axis with a 10-tick pickup delay.
+`ProjectileDispenseBehavior` arrows start 0.7 out and 0.1 up at power 1.1
+with the same noise and no upward bias. `FireChargeItem` launches a small
+fireball one block out with a `triangle(0.11485)` noise heading; it no longer
+ignites the front cell directly (the fireball ignites where it lands). Other
+behaviours (equipment, spawn eggs and the remaining projectile items such as
+eggs, snowballs and potions) fall back to item drops: spawn eggs do not exist
+yet and equipping a player or mob needs a session adapter. A dispensed bone
+meal fertilises the block in front exactly like hand use and is only spent when
+it grew something (`BoneMealDispenseItemBehavior`).
 
 Hoppers push one item, then pull one from the container above in the same
-eligible cycle, followed by eight game ticks of cooldown. Empty destination
-hoppers receive a cooldown; Java's directional seven-tick optimization is
-simplified to eight. Power disables transfer and pickup. Furnace insertion
+eligible cycle, followed by eight game ticks of cooldown. An emptied
+destination hopper receives cooldown `8 - k` as in Java's `tryMoveInItem`: seven
+when a hopper source pushes into a hopper that already ran its tick this game
+tick, otherwise eight. The scheduled-tick order stands in for Java's
+block-entity ticker order, and a destination idling on cooldown is not
+re-ticked, so it counts as not yet ticked. Power disables transfer and pickup. Furnace insertion
 uses top input/side fuel and bottom extraction uses output or empty buckets;
 brewing insertion uses top ingredient/side bottle or blaze powder. Stack
 components survive transfer, and full/incompatible destinations consume
@@ -178,7 +204,9 @@ Sources: [HopperBlockEntity](https://raw.githubusercontent.com/mahtomedi/minecra
 ## Rails and minecarts (round 2)
 
 Normal rails retain ids 500–509. Powered, detector and activator rail states
-use 1471–1506; 1469 is untouched. Special rails cannot curve. Rail neighbour
+use 1471–1506; 1469 is untouched. Special rails are straight or ascending only, as in
+Java 26.3 (`PoweredRailBlock` and the detector/activator rails use `RAIL_SHAPE_STRAIGHT`;
+only plain rails curve). Rail neighbour
 updates choose straight, corner and ascending connections, remove unsupported
 rails, and switch normal junction preference when powered. Both powered and
 activator rails propagate along their own rail kind for eight additional rails
@@ -196,8 +224,13 @@ Java's 0.4-block/tick movement cap, track projection, curve direction changes,
 slope gravity, occupied/empty/container friction, powered acceleration and
 unpowered braking. Walking players and mobs push carts; nearby moving empty
 rideable carts collect mobs; carts exchange momentum on contact. Right-click
-enters a rideable cart, the camera follows its seat, and sneak dismounts to a
-nearby collision-free position. Survival punches break carts into their variant
+enters a rideable cart, the camera follows its seat, and sneak dismounts using
+Java's `getDismountLocationForPassenger`: the eight cells around the cart in
+`DismountHelper.offsetsForDirection` order (sideways first, relative to the rail
+axis), at the heights 0, +1 and -1 for standing, crouching and swimming poses,
+taking the first valid floor with a free player box. A cart in water (`isInWater`)
+is capped at 0.2 blocks per tick, climbs slopes at one fifth of the pull and
+loses a further 5% of its speed per tick (`OldMinecartBehavior`). Survival punches break carts into their variant
 item and spill contents; creative removes the cart without dropping its item.
 
 Chest carts expose 27 slots and hopper carts five slots through the existing
@@ -216,14 +249,20 @@ fuse and player rider. Loading older worlds without it works. `--cart
 x,y,z,rideable|chest|hopper|tnt` places a test cart after `--place` edits, for
 visual verification.
 
-Known gaps: waterlogged rails/water cart slowdown, exact Java cart collision
-alignment and safe dismount floor selection, saved mob passengers, rolling
+A TNT cart lit by fire or lava gets Java's `nextInt(20) + nextInt(20)` fuse.
+
+Known gaps: waterlogged rails, exact Java cart collision
+alignment, saved mob passengers, rolling
 cart audio, textured cargo models and TNT's special rail/support blast
-protection are not implemented. Split-screen controller riding and cart
-container menus have not been completed. Burning projectiles do not yet hit
-carts. Fire uses a deterministic short fuse rather than Java's random sum.
+protection are not implemented. Burning projectiles do not yet hit carts.
 The existing explosion system determines visibility and block destruction.
 No experimental minecart-improvements behaviour is enabled.
+
+Controller seats and CLI agents are agents: they mount a rideable cart through the
+shared use path, follow its seat, and the descend/sneak input steps them out
+(`agent::tests::controller_and_cli_agents_ride_carts_and_sneak_to_dismount`).
+Controller menus open chest and hopper carts as `Tab::Vehicle`. Real-controller
+play on a cart has not been checked on hardware.
 
 Research used the Java implementations
 [RailState](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/RailState.java),
@@ -256,8 +295,15 @@ shears disarm before removal and suppress that pulse. String always drops as
 string. Hook facing, wire attachment/disarmed state, note pitch and powered
 state are block states; pending alarm deadlines survive redstone saves.
 
-Known gaps: note particles, mob-head instruments above the note block, and
-tripwire attach/click sounds are absent. Procedural instruments are original
+A played note releases Java's `NoteParticle` 1.2 blocks above the block, tinted by
+`note / 24` (three sines 120 degrees apart); a hook line plays Java's
+`TripWireHookBlock.playSound` events at volume 0.4 (click on 0.6, click off 0.5,
+attach 0.7, detach about 1.2) through the existing procedural click. The particle
+class and tripwire sounds are client resources absent from the server jar, so
+the note colour and lifetime follow the documented client behaviour.
+
+Known gaps: mob-head instruments above the note block are absent (there are no
+mob heads). Procedural instruments are original
 approximations of the Java timbres. Substrate mapping covers the sixteen
 canonical blocks and common existing wood/stone forms, but is not a complete
 Java block-tag table. Tripwire geometry does not yet visibly sag when detached.

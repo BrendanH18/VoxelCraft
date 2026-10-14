@@ -2191,6 +2191,16 @@ impl Mob {
                 && self.alive()
             {
                 self.vel.y = self.vel.y.max(3.0); // climbs walls
+            } else if self.alive()
+                && !matches!(self.kind, MobKind::Ghast | MobKind::Blaze | MobKind::Parrot)
+                && world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_climbable)
+            {
+                // Java `LivingEntity.handleOnClimbable`: a mob inside a ladder or vine slides at
+                // most 0.15 blocks per tick and climbs at 0.2 while pushing against a wall.
+                self.vel.y = self.vel.y.max(-3.0);
+                if self.blocked && wish.is_some() {
+                    self.vel.y = 4.0;
+                }
             } else if let Some(dir) = wish
                 && self.on_ground
                 && self.blocked

@@ -877,6 +877,11 @@ impl Block {
         matches!(self.shaped(), Some(Shaped::Ladder(_)))
     }
 
+    /// Java's `BlockTags.CLIMBABLE`: ladders and every kind of vine.
+    pub fn is_climbable(self) -> bool {
+        self.is_ladder() || super::nether_biome_blocks::climbable(self) || super::overworld_blocks::climbable(self)
+    }
+
     pub fn is_door(self) -> bool {
         matches!(self.shaped(), Some(Shaped::Door { .. }))
     }

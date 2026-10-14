@@ -604,6 +604,11 @@ impl Rng {
     pub fn chance(&mut self, p: f32) -> bool {
         self.next_f32() < p
     }
+
+    /// Java's `RandomSource.triangle(center, deviation)`.
+    pub fn triangle(&mut self, center: f64, deviation: f64) -> f64 {
+        center + deviation * (self.next_f32() as f64 - self.next_f32() as f64)
+    }
 }
 
 pub struct Entities {
@@ -994,6 +999,46 @@ impl Entities {
         let vel = dir * 6.0 + DVec3::Y * 2.0 + spread;
         let pos = eye - DVec3::Y * 0.3;
         self.items.push(ItemEntity::new(stack, pos, vel, item::THROWN_PICKUP_DELAY, &mut self.rng));
+    }
+
+    /// Java 26.3 `DefaultDispenseItemBehavior.spawnItem` for a dispenser or dropper at
+    /// `block` facing `step`: an item 0.7 blocks out (dropped 0.125/0.15625 lower), pushed
+    /// at 0.2-0.3 blocks per tick along the facing with `triangle` noise of
+    /// `0.0172275 * 6` on every axis, and Java's ordinary 10-tick pickup delay.
+    pub fn dispense_item(&mut self, stack: crate::inventory::Stack, block: IVec3, step: IVec3) {
+        let d = step.as_dvec3();
+        let pos = block.as_dvec3() + DVec3::splat(0.5) + d * 0.7 - DVec3::Y * if step.y != 0 { 0.125 } else { 0.15625 };
+        const NOISE: f64 = 0.0172275 * 6.0;
+        let g = self.rng.next_f32() as f64 * 0.1 + 0.2;
+        let vel = DVec3::new(
+            self.rng.triangle(d.x * g, NOISE),
+            self.rng.triangle(0.2, NOISE),
+            self.rng.triangle(d.z * g, NOISE),
+        ) * 20.0;
+        self.items.push(ItemEntity::new(stack, pos, vel, 0.5, &mut self.rng));
+    }
+
+    /// Java 26.3 `ProjectileDispenseBehavior` for an arrow: spawned at the block centre
+    /// plus 0.7 along the facing and 0.1 up, flying at power 1.1 blocks per tick along the
+    /// facing perturbed by `triangle` noise of `0.0172275 * 6` per axis (no upward bias).
+    pub fn dispense_arrow(&mut self, block: IVec3, step: IVec3) {
+        let heading = self.dispense_heading(step, 6.0);
+        let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3() * 0.7 + DVec3::Y * 0.1;
+        self.arrows.push(Arrow::dispensed(pos, heading * 1.1 * 20.0));
+    }
+
+    /// Java 26.3 `FireChargeItem.asProjectile`: a small fireball one block out whose
+    /// heading is the facing plus `triangle(0.11485)` noise, then normalized.
+    pub fn dispense_fire_charge(&mut self, block: IVec3, step: IVec3) {
+        let heading = self.dispense_heading(step, 6.6666665);
+        let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3();
+        self.fireballs.push(fireball::Fireball::new(pos, heading));
+    }
+
+    fn dispense_heading(&mut self, step: IVec3, uncertainty: f64) -> DVec3 {
+        let noise = 0.0172275 * uncertainty;
+        let d = step.as_dvec3();
+        DVec3::new(self.rng.triangle(d.x, noise), self.rng.triangle(d.y, noise), self.rng.triangle(d.z, noise))
     }
 
     /// Scatters a stack around `pos` in a random direction (a dying
@@ -2833,6 +2878,39 @@ mod tests {
         assert!(spider.pos.y > 13.9 && spider.pos.x > 2.5, "spider at {:?}", spider.pos);
         let pig = walk_east(&world, Mob::new(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5), 0.0), 4.0);
         assert!(pig.pos.x < 3.0);
+    }
+
+    #[test]
+    fn mobs_climb_vines_and_ladders_but_only_while_pushing_against_a_wall() {
+        // Java `LivingEntity.onClimbable`: any mob in a CLIMBABLE block climbs at 0.2 blocks per
+        // tick while it presses a wall and otherwise slides at no more than 0.15.
+        let mut world = Grid::flat(10);
+        for y in 10..14 {
+            for z in -3..=3 {
+                world.set(IVec3::new(3, y, z), Block::STONE);
+                world.set(IVec3::new(2, y, z), crate::world::overworld_blocks::VINE);
+            }
+        }
+        let pig = walk_east(&world, Mob::new(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5), 0.0), 3.0);
+        assert!(pig.pos.y > 13.0, "a pig climbs the vines: {:?}", pig.pos);
+        let mut bare = Grid::flat(10);
+        for y in 10..14 {
+            for z in -3..=3 {
+                bare.set(IVec3::new(3, y, z), Block::STONE);
+            }
+        }
+        let pig = walk_east(&bare, Mob::new(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5), 0.0), 3.0);
+        assert!(pig.pos.y < 11.5, "without vines it only hops at the wall: {:?}", pig.pos);
+        // Falling through a vine column is slowed to 3 blocks per second.
+        let mut fall = Grid::flat(10);
+        for y in 10..30 {
+            fall.set(IVec3::new(0, y, 0), crate::world::overworld_blocks::VINE);
+        }
+        let mut pig = Mob::new(MobKind::Pig, DVec3::new(0.5, 29.0, 0.5), 0.0);
+        for _ in 0..40 {
+            pig.physics_step(0.05, &fall, None, 0.0);
+        }
+        assert!(pig.vel.y >= -3.0 - 1e-9, "sliding speed {}", pig.vel.y);
     }
 
     #[test]

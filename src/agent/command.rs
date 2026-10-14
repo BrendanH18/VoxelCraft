@@ -25,6 +25,7 @@ pub enum Command {
     Fly(bool),
     Craft(Item),
     Chest(bool, usize),
+    Furnace(bool, usize),
     Drop,
     Respawn,
     Leave,
@@ -115,6 +116,7 @@ const COMMAND_NAMES: &[&str] = &[
     "trade",
     "players",
     "catalog",
+    "furnace",
 ];
 
 /// One Java command coordinate: absolute, or relative to the executor.
@@ -400,6 +402,15 @@ impl Command {
             ["fly", "on"] => Self::Fly(true),
             ["fly", "off"] => Self::Fly(false),
             ["craft", name] => Self::Craft(item(name)?),
+            ["furnace", action @ ("take" | "put"), slot] => Self::Furnace(
+                *action == "take",
+                match *slot {
+                    "input" => 0,
+                    "fuel" => 1,
+                    "output" => 2,
+                    _ => return Err(bad()),
+                },
+            ),
             ["chest", action @ ("take" | "put"), slot] => {
                 Self::Chest(*action == "take", slot.parse::<usize>().ok().filter(|n| *n < 27).ok_or_else(bad)?)
             }

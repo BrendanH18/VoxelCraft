@@ -98,7 +98,9 @@ hit. Explosions replace cube smoke with six fullbright billboards per tick
 for eight ticks (or a single small explosion below power 2).
 
 Providers also exist for flame, smoke, lava, lava drip, splash, bubble,
-portal, enchantment glyph, colored effect, dragon breath, heart and angry.
+portal, enchantment glyph, colored effect, dragon breath, heart, angry and the
+note block's `NoteParticle` (a quaver tinted by `note / 24`, six ticks, friction
+0.66; procedural sprite 15 of the particle sheet).
 The provider lifetimes, friction, gravity and color curves follow the Java
 classes. Water drops remove themselves on about half of ground contacts, matching
 `WaterDropParticle`. Heart and angry are ready for future breeding and

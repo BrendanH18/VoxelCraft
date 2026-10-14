@@ -17,6 +17,10 @@ use crate::world::rails::{self, RailKind};
 pub const SHAPE: Shape = Shape::new(0.49, 0.7);
 /// Blocks per tick. 0.4 × 20 = 8 m/s.
 const MAX_SPEED: f64 = 0.4;
+/// Java `OldMinecartBehavior.getMaxSpeed`: half speed while the cart is in water.
+const WATER_MAX_SPEED: f64 = 0.2;
+/// Java `AbstractMinecart.WATER_SLOWDOWN_FACTOR`, applied to the natural slowdown.
+const WATER_SLOWDOWN: f64 = 0.95;
 const SLOPE: f64 = 0.0078125;
 const SEAT: f64 = 0.1875;
 
@@ -117,6 +121,8 @@ pub struct Minecart {
     pub slots: [Option<Stack>; 27],
     /// TNT fuse in game ticks. `None` until an activator rail ignites it.
     pub fuse: Option<u16>,
+    /// Fire or lava just lit this TNT cart; the caller rolls Java's random fuse.
+    pub ignited_by_fire: bool,
     /// Hopper cart on a powered activator rail.
     pub disabled: bool,
     /// Set while the cart sat on a powered activator last tick (rising edge).
@@ -148,6 +154,7 @@ impl Minecart {
             underwater_ticks: 0,
             slots: [None; 27],
             fuse: None,
+            ignited_by_fire: false,
             disabled: false,
             activator: false,
             damage: 0.0,
@@ -235,20 +242,23 @@ impl Minecart {
             && self.fuse.is_none()
             && physics::touches_block(world, self.pos, SHAPE, |b| b.is_fire() || b.is_lava())
         {
-            self.fuse = Some(20);
+            // Java `MinecartTNT.destroy`: the fuse becomes `nextInt(20) + nextInt(20)`.
+            self.fuse = Some(40);
+            self.ignited_by_fire = true;
         }
         if self.kind.boat().is_some() {
             self.step_boat(world, passenger);
             return;
         }
         self.vel.y -= 0.04;
+        let in_water = physics::touches_block(world, self.pos, SHAPE, |b| b.is_water());
         let on_rail = rail_cell(world, self.pos);
         if let Some((cell, block)) = on_rail {
             self.fall_distance = 0.0;
-            self.move_along(world, cell, block, passenger, mob_passenger);
+            self.move_along(world, cell, block, passenger, mob_passenger, in_water);
             self.on_ground = false;
         } else {
-            self.come_off(world);
+            self.come_off(world, in_water);
             self.activator = false;
         }
         let dx = self.previous_pos.x - self.pos.x;
@@ -329,7 +339,17 @@ impl Minecart {
         }
     }
 
-    fn move_along(&mut self, world: &World, cell: IVec3, block: Block, passenger: DVec3, mob_passenger: bool) {
+    fn move_along(
+        &mut self,
+        world: &World,
+        cell: IVec3,
+        block: Block,
+        passenger: DVec3,
+        mob_passenger: bool,
+        in_water: bool,
+    ) {
+        let max_speed = if in_water { WATER_MAX_SPEED } else { MAX_SPEED };
+        let slope = if in_water { SLOPE * 0.2 } else { SLOPE };
         let shape = block.rail_shape().unwrap_or(RailShape::NorthSouth);
         let kind = rails::kind(block);
         let powered = kind == Some(RailKind::Powered) && rails::is_powered(block);
@@ -349,19 +369,19 @@ impl Minecart {
         let mut y = cell.y as f64;
         match shape {
             RailShape::AscendingEast => {
-                self.vel.x -= SLOPE;
+                self.vel.x -= slope;
                 y += 1.0;
             }
             RailShape::AscendingWest => {
-                self.vel.x += SLOPE;
+                self.vel.x += slope;
                 y += 1.0;
             }
             RailShape::AscendingNorth => {
-                self.vel.z += SLOPE;
+                self.vel.z += slope;
                 y += 1.0;
             }
             RailShape::AscendingSouth => {
-                self.vel.z -= SLOPE;
+                self.vel.z -= slope;
                 y += 1.0;
             }
             _ => {}
@@ -407,9 +427,9 @@ impl Minecart {
         self.pos.z = z0 + lz * t;
         let scale = if self.rider.is_some() || mob_passenger { 0.75 } else { 1.0 };
         let delta = DVec3::new(
-            (scale * self.vel.x).clamp(-MAX_SPEED, MAX_SPEED),
+            (scale * self.vel.x).clamp(-max_speed, max_speed),
             0.0,
-            (scale * self.vel.z).clamp(-MAX_SPEED, MAX_SPEED),
+            (scale * self.vel.z).clamp(-max_speed, max_speed),
         );
         let mut velocity = self.vel * 20.0;
         let speed = self.vel.x.hypot(self.vel.z);
@@ -433,6 +453,7 @@ impl Minecart {
         } else {
             0.96
         };
+        let drag = if in_water { drag * WATER_SLOWDOWN } else { drag };
         self.vel.x *= drag;
         self.vel.y = 0.0;
         self.vel.z *= drag;
@@ -468,9 +489,65 @@ impl Minecart {
         }
     }
 
-    fn come_off(&mut self, world: &World) {
-        self.vel.x = self.vel.x.clamp(-MAX_SPEED, MAX_SPEED);
-        self.vel.z = self.vel.z.clamp(-MAX_SPEED, MAX_SPEED);
+    /// Java `AbstractMinecart.getMotionDirection`: the horizontal axis the cart rolls along,
+    /// as a unit step (the clockwise neighbour of the yaw direction, opposite when flipped).
+    fn motion_direction(&self) -> IVec3 {
+        // `Direction.fromYRot` over south, west, north, east; yaw is a Java-style y rotation.
+        const AROUND: [IVec3; 4] = [IVec3::Z, IVec3::NEG_X, IVec3::NEG_Z, IVec3::X];
+        let quadrant = ((self.yaw.to_degrees() as f64 / 90.0 + 0.5).floor() as i64).rem_euclid(4) as usize;
+        let clockwise = AROUND[(quadrant + 1) % 4];
+        if self.flipped { AROUND[(quadrant + 3) % 4] } else { clockwise }
+    }
+
+    /// Java `AbstractMinecart.getDismountLocationForPassenger` for a standing, crouching or
+    /// swimming player: the first of the eight cells around the cart (sideways first), at
+    /// the heights 0, +1, -1 (0, +1 swimming), whose floor is valid and whose box is free.
+    fn dismount_position(&self, world: &World) -> DVec3 {
+        let motion = self.motion_direction();
+        let clockwise = IVec3::new(-motion.z, 0, motion.x);
+        let offsets = [
+            clockwise,
+            -clockwise,
+            -motion + clockwise,
+            -motion - clockwise,
+            motion + clockwise,
+            motion - clockwise,
+            -motion,
+            motion,
+        ];
+        let cell = self.pos.floor().as_ivec3();
+        let player_half = crate::player::SHAPE.half_width;
+        // Standing, crouching, swimming: height and the cell rows tried for each.
+        let poses: [(f64, &[i32]); 3] = [(1.8, &[0, 1, -1]), (1.5, &[0, 1, -1]), (0.6, &[0, 1])];
+        for (height, rows) in poses {
+            let shape = Shape::new(player_half, height);
+            for &dy in rows {
+                for offset in offsets {
+                    let at = cell + IVec3::new(offset.x, dy, offset.z);
+                    let floor = match physics::collision_top(world, at) {
+                        Some(top) => top,
+                        None => match physics::collision_top(world, at - IVec3::Y) {
+                            Some(below) if below >= 1.0 => below - 1.0,
+                            _ => continue,
+                        },
+                    };
+                    if floor >= 1.0 {
+                        continue;
+                    }
+                    let pos = DVec3::new(at.x as f64 + 0.5, at.y as f64 + floor, at.z as f64 + 0.5);
+                    if !physics::overlaps_solid(world, pos, shape) {
+                        return pos;
+                    }
+                }
+            }
+        }
+        DVec3::new(self.pos.x, self.aabb().1.y, self.pos.z)
+    }
+
+    fn come_off(&mut self, world: &World, in_water: bool) {
+        let max_speed = if in_water { WATER_MAX_SPEED } else { MAX_SPEED };
+        self.vel.x = self.vel.x.clamp(-max_speed, max_speed);
+        self.vel.z = self.vel.z.clamp(-max_speed, max_speed);
         if self.on_ground {
             self.vel *= 0.5;
         }
@@ -804,16 +881,7 @@ impl super::Entities {
         } else {
             cart.second_rider = None;
         }
-        let side = DVec3::new(cart.yaw.cos() as f64, 0.0, -(cart.yaw.sin() as f64));
-        for offset in
-            [side * 1.2, -side * 1.2, DVec3::X * 1.2, DVec3::NEG_X * 1.2, DVec3::Z * 1.2, DVec3::NEG_Z * 1.2, DVec3::Y]
-        {
-            let pos = cart.pos + offset;
-            if !physics::overlaps_solid(world, pos, crate::player::SHAPE) {
-                return Some(pos);
-            }
-        }
-        Some(cart.pos + DVec3::Y)
+        Some(cart.dismount_position(world))
     }
 
     /// Contact push from a walking player or mob; velocity is in blocks/tick.
@@ -858,6 +926,10 @@ impl super::Entities {
             self.minecarts[i].previous_pos = self.minecarts[i].pos;
             let paddle = self.minecarts[i].paddle;
             self.minecarts[i].step(world, passenger.unwrap_or(DVec3::ZERO), mob_passenger);
+            if std::mem::take(&mut self.minecarts[i].ignited_by_fire) {
+                let fuse = self.rng.next_int(20) + self.rng.next_int(20);
+                self.minecarts[i].fuse = Some(fuse as u16);
+            }
             let cart = &self.minecarts[i];
             if (paddle / std::f32::consts::PI).floor() < (cart.paddle / std::f32::consts::PI).floor() {
                 self.pending_sounds.push(super::EntityEvent::Sound {
@@ -1223,6 +1295,53 @@ mod tests {
     }
 
     #[test]
+    fn carts_in_water_move_at_half_speed_and_slow_down_more_like_java() {
+        // Java OldMinecartBehavior: max speed 0.2 and the 0.95 water slowdown while in water.
+        let mut w = world();
+        track(&mut w, 0, 8);
+        w.tick_redstone();
+        let start = DVec3::new(1.5, 140.4, 0.5);
+        let mut dry = Minecart::new(1, CartKind::Rideable, start);
+        dry.vel.x = 0.35;
+        dry.step(&w, DVec3::ZERO, false);
+        w.set_block(IVec3::new(1, 141, 0), Block::WATER);
+        let mut wet = Minecart::new(2, CartKind::Rideable, start);
+        wet.vel.x = 0.35;
+        wet.step(&w, DVec3::ZERO, false);
+        assert!(dry.pos.x - start.x > 0.3, "dry displacement {}", dry.pos.x - start.x);
+        assert!(wet.pos.x - start.x <= WATER_MAX_SPEED + 1e-6, "wet displacement {}", wet.pos.x - start.x);
+        assert!((wet.vel.x / dry.vel.x - WATER_SLOWDOWN).abs() < 1e-9, "{} vs {}", wet.vel.x, dry.vel.x);
+    }
+
+    #[test]
+    fn dismounting_prefers_the_cart_sides_and_a_valid_floor_like_java() {
+        let mut w = world();
+        track(&mut w, 8, 8);
+        for x in 0..8 {
+            for z in 6..11 {
+                w.set_block(IVec3::new(x, 139, z), Block::STONE);
+            }
+        }
+        // A cart rolling east (yaw pi, as `step` derives it): sideways is +z (south) first.
+        let mut cart = Minecart::new(1, CartKind::Rideable, DVec3::new(3.5, 140.0625, 8.5));
+        cart.yaw = std::f32::consts::PI;
+        assert_eq!(cart.motion_direction(), IVec3::X);
+        assert_eq!(cart.dismount_position(&w), DVec3::new(3.5, 140.0, 9.5));
+        cart.flipped = true;
+        assert_eq!(cart.motion_direction(), IVec3::NEG_X);
+        assert_eq!(cart.dismount_position(&w), DVec3::new(3.5, 140.0, 7.5));
+        cart.flipped = false;
+        // A wall to the south pushes the player to the north side.
+        w.set_block(IVec3::new(3, 140, 9), Block::STONE);
+        w.set_block(IVec3::new(3, 141, 9), Block::STONE);
+        assert_eq!(cart.dismount_position(&w), DVec3::new(3.5, 140.0, 7.5));
+        // Java tries every side at one height before the next height, so a free level cell
+        // on the north side beats stepping up onto the one-block ledge to the south.
+        w.set_block(IVec3::new(3, 141, 9), Block::AIR);
+        assert_eq!(cart.dismount_position(&w), DVec3::new(3.5, 140.0, 7.5));
+    }
+
+    #[test]
     fn a_slope_adds_downhill_speed() {
         let mut w = world();
         // Rail at x=2 climbs east onto the rail at x=3,y=141.
@@ -1385,6 +1504,25 @@ mod tests {
             w.tick_redstone();
         }
         assert_eq!(w.container_signal(p), Some(0));
+    }
+
+    #[test]
+    fn fire_lights_a_tnt_cart_with_javas_random_fuse() {
+        let mut w = world();
+        let p = IVec3::new(8, 140, 8);
+        w.set_block(p - IVec3::Y, Block::STONE);
+        w.set_block(p, Block::LAVA);
+        let mut entities = crate::entity::Entities::new(5);
+        let id = entities.spawn_cart(CartKind::Tnt, p.as_dvec3() + DVec3::new(0.5, 0.1, 0.5));
+        let mut fuses = std::collections::BTreeSet::new();
+        for _ in 0..30 {
+            entities.cart_mut(id).unwrap().fuse = None;
+            entities.tick_minecarts(&mut w, &[]);
+            let fuse = entities.cart(id).and_then(|c| c.fuse).expect("lava lights the cart");
+            assert!(fuse <= 38, "nextInt(20) + nextInt(20) is at most 38, got {fuse}");
+            fuses.insert(fuse);
+        }
+        assert!(fuses.len() > 3, "fuses vary: {fuses:?}");
     }
 
     #[test]

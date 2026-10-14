@@ -4,10 +4,11 @@
 //! comes from the block below, as in Java. Tripwire string is placed by the
 //! string item; hooks span up to 40 intervening string blocks.
 
-use glam::{IVec3, Vec3};
+use glam::{DVec3, IVec3, Vec3};
 
 use super::World;
 use super::block::{Block, Facing, RenderKind};
+use crate::particles::{Burst, Kind, Request};
 
 pub const NOTE: Block = Block(1507);
 pub const HOOK: Block = Block(1557);
@@ -122,6 +123,49 @@ pub fn note_powered(b: Block) -> bool {
 
 pub fn hook(facing: Facing, attached: bool, powered: bool) -> Block {
     Block(HOOK_FIRST + facing as u16 + u16::from(attached) * 4 + u16::from(powered) * 8)
+}
+
+/// Java `NoteParticle` colour for a note: three phase-shifted sines of `note / 24`.
+pub fn note_color(pitch: u8) -> [f32; 4] {
+    let turn = pitch as f32 / 24.0;
+    let channel = |shift: f32| ((turn + shift) * std::f32::consts::TAU).sin().mul_add(0.65, 0.35).max(0.0);
+    [channel(0.0), channel(0.333_333_34), channel(0.666_666_7), 1.0]
+}
+
+/// What a tripwire hook sounds when its line changes (Java `TripWireHookBlock.playSound`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TripSound {
+    ClickOn,
+    ClickOff,
+    Attach,
+    Detach,
+}
+
+impl TripSound {
+    /// The first change that applies, in Java's order: power edges before attach edges.
+    pub fn of_change(attached: bool, powered: bool, was_attached: bool, was_powered: bool) -> Option<Self> {
+        if powered && !was_powered {
+            Some(Self::ClickOn)
+        } else if !powered && was_powered {
+            Some(Self::ClickOff)
+        } else if attached && !was_attached {
+            Some(Self::Attach)
+        } else if !attached && was_attached {
+            Some(Self::Detach)
+        } else {
+            None
+        }
+    }
+
+    /// Playback pitch range at volume 0.4: 0.6, 0.5, 0.7, and `1.2 / (0.9..1.1)` for detaching.
+    pub fn pitch(self) -> (f32, f32) {
+        match self {
+            Self::ClickOn => (0.6, 0.6),
+            Self::ClickOff => (0.5, 0.5),
+            Self::Attach => (0.7, 0.7),
+            Self::Detach => (1.2 / 1.1, 1.2 / 0.9),
+        }
+    }
 }
 
 pub fn hook_state(b: Block) -> Option<(Facing, bool, bool)> {
@@ -273,6 +317,10 @@ impl World {
         }
         let instrument = instrument(below) as u8;
         self.notes.push((p, pitch, instrument));
+        // Java `NoteBlock.triggerEvent`: a note particle 1.2 blocks up, tinted by `note / 24`.
+        let mut burst = Burst::new(Kind::Note, p.as_dvec3() + DVec3::new(0.5, 1.2, 0.5), 1);
+        burst.color = Some(note_color(pitch));
+        self.particles.push(Request::Burst(burst));
     }
 
     /// Recompute both ends and all intermediate string cells. A Java line
@@ -302,6 +350,11 @@ impl World {
         let pulse = self.redstone.trip_pulse.get(&p).is_some_and(|&due| due > self.redstone.tick);
         let attached = (complete || pulse) && end.is_some() && !wires.is_empty();
         let on = attached && power || pulse;
+        if let Some((_, was_attached, was_on)) = self.get_block(p).and_then(hook_state)
+            && let Some(sound) = TripSound::of_change(attached, on, was_attached, was_on)
+        {
+            self.trip_sounds.push((p, sound));
+        }
         let next = hook(facing, attached, on);
         if self.get_block(p) != Some(next) {
             self.edit(p, next, false);
@@ -445,6 +498,68 @@ mod tests {
         w.notes.clear();
         w.tick_redstone();
         assert!(w.notes.is_empty(), "holding power does not replay");
+    }
+
+    #[test]
+    fn tripwire_hooks_click_and_attach_like_java() {
+        use TripSound::*;
+        // `TripWireHookBlock.playSound`: power edges win over attach edges.
+        assert_eq!(TripSound::of_change(true, true, true, false), Some(ClickOn));
+        assert_eq!(TripSound::of_change(true, false, true, true), Some(ClickOff));
+        assert_eq!(TripSound::of_change(true, false, false, false), Some(Attach));
+        assert_eq!(TripSound::of_change(false, false, true, false), Some(Detach));
+        assert_eq!(TripSound::of_change(false, true, false, true), None);
+        assert_eq!(TripSound::of_change(true, true, true, true), None);
+        assert_eq!((ClickOn.pitch(), ClickOff.pitch(), Attach.pitch()), ((0.6, 0.6), (0.5, 0.5), (0.7, 0.7)));
+        let mut w = world();
+        let a = IVec3::new(2, 140, 4);
+        let b = IVec3::new(5, 140, 4);
+        w.set_block(a - IVec3::X, Block::STONE);
+        w.set_block(b + IVec3::X, Block::STONE);
+        w.set_block(a, hook(Facing::East, false, false));
+        w.set_block(b, hook(Facing::West, false, false));
+        for x in 3..5 {
+            w.set_block(IVec3::new(x, 140, 4), TRIPWIRE);
+        }
+        w.tick_redstone();
+        let sounds: Vec<_> = w.trip_sounds.drain(..).map(|(_, s)| s).collect();
+        assert_eq!(sounds, [Attach], "one attach sound for the whole line");
+        w.redstone.contacts.insert(IVec3::new(3, 140, 4), Default::default());
+        w.redstone.contacts.get_mut(&IVec3::new(3, 140, 4)).unwrap().all = 1;
+        w.refresh_tripwires();
+        w.tick_redstone();
+        assert_eq!(w.trip_sounds.drain(..).map(|(_, s)| s).collect::<Vec<_>>(), [ClickOn]);
+        w.redstone.contacts.clear();
+        w.tripwire_tick(IVec3::new(3, 140, 4));
+        w.tick_redstone();
+        assert_eq!(w.trip_sounds.drain(..).map(|(_, s)| s).collect::<Vec<_>>(), [ClickOff]);
+        // Cutting an armed line pulses the hooks on (a click), then off again.
+        w.set_block(IVec3::new(4, 140, 4), Block::AIR);
+        w.tick_redstone();
+        assert_eq!(w.trip_sounds.drain(..).map(|(_, s)| s).collect::<Vec<_>>(), [ClickOn]);
+        for _ in 0..11 {
+            w.tick_redstone();
+        }
+        assert_eq!(w.trip_sounds.drain(..).map(|(_, s)| s).collect::<Vec<_>>(), [ClickOff]);
+    }
+
+    #[test]
+    fn playing_a_note_releases_a_pitch_tinted_note_particle() {
+        let mut w = world();
+        let p = IVec3::new(2, 140, 4);
+        w.set_block(p, note(0, false));
+        w.strike_note(p);
+        let Some(Request::Burst(burst)) = w.particles.pop() else { panic!("no note particle") };
+        assert_eq!(burst.kind, Kind::Note);
+        assert_eq!(burst.pos, p.as_dvec3() + DVec3::new(0.5, 1.2, 0.5));
+        // Java: channel = max(0, sin((note / 24 + shift) * tau) * 0.65 + 0.35).
+        let c = note_color(0);
+        assert!((c[0] - 0.35).abs() < 1e-6 && (c[1] - 0.913).abs() < 1e-3 && c[2] == 0.0 && c[3] == 1.0, "{c:?}");
+        assert_eq!(burst.color, Some(note_color(0)));
+        // A block above silences the note and its particle.
+        w.set_block(p + IVec3::Y, Block::STONE);
+        w.strike_note(p);
+        assert!(w.particles.pop().is_none());
     }
 
     #[test]

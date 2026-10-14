@@ -39,6 +39,8 @@ pub(super) struct RedstoneState {
     queued: FxHashSet<IVec3>,
     pending: FxHashMap<IVec3, (u64, u16, u64)>,
     scheduled: BinaryHeap<ScheduledTick>,
+    /// Due work in unloaded chunks. Woken only by a chunk load, never retried each tick.
+    suspended: FxHashMap<IVec3, Vec<ScheduledTick>>,
     /// Detector-rail comparator output, filled by the minecart tick.
     pub(super) cart_signal: FxHashMap<IVec3, u8>,
     pub(super) trip_pulse: FxHashMap<IVec3, u64>,
@@ -103,6 +105,9 @@ impl World {
     }
 
     pub(super) fn load_redstone_chunk(&mut self, c: IVec3) {
+        if let Some(ticks) = self.redstone.suspended.remove(&c) {
+            self.redstone.scheduled.extend(ticks);
+        }
         // Saved state needs its connections refreshed once when loaded, including
         // adjacent chunks. Generation never places redstone components.
         let Some(slot) = self.chunks.get(&c) else { return };
@@ -624,13 +629,17 @@ impl World {
             if self.redstone.pending.get(&p) != Some(&(due, family, sequence)) {
                 continue;
             }
-            self.redstone.pending.remove(&p);
+            self.redstone.last_updates += 1;
             if self.get_block(p).is_none() {
-                let next = self.redstone.tick + 1;
-                self.redstone.pending.insert(p, (next, family, sequence));
-                self.redstone.scheduled.push(Reverse((next, priority, sequence, xyz, family)));
-            } else if self.get_block(p).map(self::family) == Some(Block(family)) {
-                self.redstone.last_updates += 1;
+                self.redstone
+                    .suspended
+                    .entry(super::chunk::chunk_of(p))
+                    .or_default()
+                    .push(Reverse((due, priority, sequence, xyz, family)));
+                continue;
+            }
+            self.redstone.pending.remove(&p);
+            if self.get_block(p).map(self::family) == Some(Block(family)) {
                 self.redstone_scheduled_tick(p);
                 self.drain_redstone_updates();
             }
@@ -836,6 +845,7 @@ impl World {
             .redstone
             .scheduled
             .iter()
+            .chain(self.redstone.suspended.values().flatten())
             .filter(|Reverse((due, _, seq, xyz, family))| {
                 self.redstone.pending.get(&IVec3::from_array(*xyz)) == Some(&(*due, *family, *seq))
             })
@@ -1065,6 +1075,41 @@ mod tests {
     }
 
     #[test]
+    fn unloaded_due_ticks_sleep_until_chunk_load_and_keep_v1_saves() {
+        let mut w = world();
+        supported(&mut w, AT, r::STONE_BUTTON);
+        assert!(w.use_redstone(AT));
+        let chunk = super::super::chunk::chunk_of(AT);
+        let data = w.chunks[&chunk].data.clone();
+        let deadline = w.redstone.pending[&AT];
+        w.remove_chunk(chunk);
+        ticks(&mut w, 20);
+        assert_eq!(w.redstone.pending[&AT], deadline);
+        assert!(w.redstone.scheduled.is_empty());
+        assert_eq!(w.redstone.suspended[&chunk].len(), 1);
+        ticks(&mut w, 100);
+        assert_eq!(w.redstone.last_updates, 0, "idle unloaded ticks do no work");
+        assert_eq!(w.redstone.pending[&AT], deadline);
+        let saved = w.redstone_to_string();
+        assert!(saved.contains("t,8,145,8,0,0,"), "overdue work retains the old save encoding: {saved}");
+        let mut restored = world();
+        restored.remove_chunk(chunk);
+        restored.load_redstone(&saved);
+        ticks(&mut restored, 50);
+        assert!(restored.redstone.scheduled.is_empty());
+        restored.insert_chunk(chunk, data.clone(), true);
+        ticks(&mut restored, 1);
+        assert_eq!(restored.get_block(AT), Some(r::STONE_BUTTON));
+        assert!(!restored.redstone.pending.contains_key(&AT));
+        assert!(restored.redstone.suspended.is_empty());
+        w.insert_chunk(chunk, data, true);
+        // Replacing the button invalidates the suspended tick's family/sequence.
+        put(&mut w, AT, r::LAMP);
+        ticks(&mut w, 1);
+        assert_eq!(w.get_block(AT), Some(r::LAMP));
+    }
+
+    #[test]
     fn comparators_compare_subtract_and_read_container_fullness() {
         let mut w = world();
         supported(&mut w, AT, r::comparator(Facing::East, false, false));
@@ -1153,6 +1198,14 @@ mod tests {
         ticks(&mut w, 1);
         assert_eq!(w.get_block(AT), Some(r::STONE_BUTTON));
         put(&mut w, AT, r::WOOD_BUTTON);
+        // An arrow inside the cell but above the thin button model does not touch it.
+        let high = AT.as_dvec3() + glam::DVec3::new(0.5, 0.6, 0.5);
+        entities.arrows.push(crate::entity::Arrow::shot(high, glam::DVec3::X, 0.1, false));
+        entities.arrows[0].pos = high;
+        w.redstone_contacts([], &entities);
+        ticks(&mut w, 2);
+        assert_eq!(w.get_block(AT), Some(r::WOOD_BUTTON));
+        entities.arrows.clear();
         let pos = AT.as_dvec3() + glam::DVec3::new(0.5, 0.04, 0.5);
         entities.arrows.push(crate::entity::Arrow::shot(pos, glam::DVec3::X, 0.1, false));
         entities.arrows[0].pos = pos;
@@ -1168,6 +1221,73 @@ mod tests {
         entities.arrows[0].pos = pos;
         w.redstone_contacts([], &entities);
         assert_eq!(w.get_block(AT), Some(r::STONE_BUTTON));
+    }
+
+    #[test]
+    fn wooden_plates_feel_orbs_tnt_potions_bobbers_and_other_projectiles_but_stone_plates_do_not() {
+        use crate::entity::{Entities, PlayerId, Rng, fireball::Fireball, orb::XpOrb, potion::ThrownPotion};
+        let mid = AT.as_dvec3() + glam::DVec3::new(0.5, 0.0, 0.5);
+        let mut rng = Rng::new(3);
+        type AddEntity = Box<dyn Fn(&mut Entities, &mut Rng)>;
+        let cases: [(&str, AddEntity); 5] = [
+            ("orb", Box::new(move |e, r| e.orbs.push(XpOrb::new(3, mid + glam::DVec3::Y * 0.1, r)))),
+            ("tnt", Box::new(move |e, _| e.tnt.push(crate::entity::tnt::PrimedTnt::new(mid, glam::DVec3::ZERO, 4.0)))),
+            (
+                "potion",
+                Box::new(move |e, _| {
+                    e.potions.push(ThrownPotion::new(
+                        crate::potion::Potion::from_id("harming").unwrap(),
+                        None,
+                        mid,
+                        glam::DVec3::ZERO,
+                    ))
+                }),
+            ),
+            (
+                "bobber",
+                Box::new(move |e, _| {
+                    e.cast_bobber(PlayerId::HOST, mid + glam::DVec3::Y * 0.1, glam::DVec3::ZERO, 0, 0);
+                    e.bobbers[0].pos = mid + glam::DVec3::Y * 0.1;
+                }),
+            ),
+            (
+                "fireball",
+                Box::new(move |e, _| e.fireballs.push(Fireball::new(mid + glam::DVec3::Y * 0.1, glam::DVec3::X))),
+            ),
+        ];
+        for (name, add) in &cases {
+            let mut entities = Entities::new(7);
+            add(&mut entities, &mut rng);
+            let mut w = world();
+            supported(&mut w, AT, r::WOOD_PLATE);
+            w.redstone_contacts([], &entities);
+            assert_eq!(w.get_block(AT), Some(r::plate(1, 15)), "wooden plate ignores {name}");
+            let mut w = world();
+            supported(&mut w, AT, r::STONE_PLATE);
+            w.redstone_contacts([], &entities);
+            assert_eq!(w.get_block(AT), Some(r::STONE_PLATE), "stone plate counts {name}");
+        }
+        let reference: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/redstone_contacts.json")).unwrap();
+        let orb_width = reference["entity_sizes"]["experience_orb"][0].as_f64().unwrap();
+        let touch_edge = reference["touch_max"][0].as_f64().unwrap();
+        // Place an orb 0.01 blocks inside/outside the reference's far overlap edge.
+        // Java's touch box runs x 1/16..15/16: a 0.5-wide orb centred at 1.15 touches it, at 1.2 it does not.
+        let mut entities = Entities::new(7);
+        entities.orbs.push(XpOrb::new(
+            3,
+            AT.as_dvec3() + glam::DVec3::new(touch_edge + orb_width / 2.0 - 0.01, 0.1, 0.5),
+            &mut rng,
+        ));
+        let mut w = world();
+        supported(&mut w, AT, r::WOOD_PLATE);
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::plate(1, 15)));
+        entities.orbs[0].pos = AT.as_dvec3() + glam::DVec3::new(touch_edge + orb_width / 2.0 + 0.01, 0.1, 0.5);
+        let mut w = world();
+        supported(&mut w, AT, r::WOOD_PLATE);
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::WOOD_PLATE));
     }
 
     #[test]

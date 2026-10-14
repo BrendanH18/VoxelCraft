@@ -174,7 +174,8 @@ block; coal or charcoal + stick + soul sand or soil → 4 soul torches;
 
 The fog colour is blended like Java's `FogRenderer`: a cubic Gaussian
 (`CubicSampler`, kernel 1-4-6-4-1) over the 6×6 quarts around the camera,
-cached until the camera changes quart. Particles follow Java's providers
+cached until the camera changes quart. Every split-screen view keeps its own cache and
+samples around its own eye. Particles follow Java's providers
 (see [particles](particles.md)); soul torches burn with the blue soul fire
 flame. Music uses the existing procedural Nether palettes.
 
@@ -228,8 +229,11 @@ a performance hotspot; the ordinary benchmark origin understates its cost.
   block yet), and the gravel and lava edges of soul sand valley and delta
   floors near the lava sea.
 - Soul lanterns (no lanterns yet), signs, Soul Speed, the soul fire HUD
-  overlay and wall torches are absent; vines are climbable for players
-  only.
+  overlay (the Java client code is not in the reference jar to check) and wall
+  torches are absent. Every mob inside a ladder or vine slides at most 0.15
+  blocks per tick and climbs at 0.2 while pressing a wall (Java
+  `LivingEntity.handleOnClimbable`); mobs still have no pathfinding to seek
+  vines.
 - `/locate biome` keeps the caller's height rather than searching in 3D.
 - Java's spawn costs (soul sand valley's charge per mob) aren't modelled.
 - Worlds saved before v0.5 keep their generated Nether chunks; chunks

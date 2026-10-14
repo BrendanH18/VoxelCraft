@@ -390,7 +390,8 @@ impl Game {
             spawn_z: self.world_spawn.z as f64 + 0.5,
             overworld: self.dimension == crate::world::terrain::Dimension::Overworld,
             day_time: self.day_time as f32,
-            spin: self.started.elapsed().as_secs_f32(),
+            spin: self.lost_dials().0,
+            clock_spin: self.lost_dials().1,
         };
         let (tab, col, row) = match menu {
             Menu::Pause { choice } => {

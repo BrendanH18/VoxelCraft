@@ -31,12 +31,26 @@ pub(super) struct Scene {
     pub now: Instant,
 }
 
-/// Fog for an eye: colour, start and end, and whether it's under a fluid.
+/// The blended biome fog around `camera`, from the sampler that belongs to `view`.
+fn view_haze(
+    samplers: &mut Vec<crate::world::nether_biome::FogSampler>,
+    view: usize,
+    camera: DVec3,
+    biome: impl Fn(i32, i32) -> crate::world::nether_biome::NetherBiome,
+) -> [f32; 3] {
+    if samplers.len() <= view {
+        samplers.resize_with(view + 1, Default::default);
+    }
+    samplers[view].sample(camera, biome)
+}
+
+/// Fog for an eye: colour, sky overhead, start and end.
 pub(super) struct Fog {
     pub color: [f32; 3],
+    /// Sky colour overhead, which follows the fog under a fluid.
+    pub zenith: [f32; 3],
     pub start: f32,
     pub end: f32,
-    pub underwater: bool,
 }
 
 impl Game {
@@ -104,8 +118,30 @@ impl Game {
         }
     }
 
-    /// Fog seen by `player`, in the frame's sky.
-    pub(super) fn fog(&self, scene: &Scene, camera: DVec3) -> Fog {
+    /// The Nether's haze at `camera` for view `view` (0 is the host's): Java's `FogRenderer`
+    /// blends the biome fog around each eye, so every split-screen view has its own sampler.
+    pub(super) fn nether_haze(&self, view: usize, camera: DVec3) -> [f32; 3] {
+        let generator = &self.world.generator;
+        if generator.dimension != crate::world::terrain::Dimension::Nether {
+            return super::dimension::NETHER_FOG;
+        }
+        view_haze(&mut self.nether_fog.borrow_mut(), view, camera, |qx, qz| {
+            generator.nether_biome(qx * 4, qz * 4).unwrap_or(crate::world::nether_biome::NetherBiome::NetherWastes)
+        })
+    }
+
+    /// Horizon and zenith colours seen from `camera` in view `view`.
+    fn view_sky(&self, scene: &Scene, view: usize, camera: DVec3) -> ([f32; 3], [f32; 3]) {
+        if self.dimension == crate::world::terrain::Dimension::Nether {
+            let haze = self.nether_haze(view, camera);
+            (haze, haze)
+        } else {
+            (scene.sky.horizon, scene.sky.zenith)
+        }
+    }
+
+    /// Fog seen from `camera` in view `view`, in the frame's sky.
+    pub(super) fn fog(&self, scene: &Scene, view: usize, camera: DVec3) -> Fog {
         let cell = camera.floor().as_ivec3();
         let fluid = self.world.get_block(cell).filter(|b| b.is_water() || b.is_lava()).filter(|b| {
             let above = self.world.get_block(cell + glam::IVec3::Y);
@@ -115,7 +151,7 @@ impl Game {
         let in_lava = fluid.is_some_and(|b| b.is_lava());
         let underwater = fluid.is_some();
         let view_dist = (self.world.render_distance() * 32) as f32;
-        let horizon = scene.sky.horizon;
+        let (horizon, zenith) = self.view_sky(scene, view, camera);
         let (color, start, end) = if in_lava {
             (super::LAVA_FOG, 0.0, 2.0)
         } else if underwater {
@@ -127,7 +163,7 @@ impl Game {
         } else {
             (horizon, view_dist * 0.55, view_dist * 0.95)
         };
-        Fog { color, start, end, underwater }
+        Fog { color, zenith: if underwater { color } else { zenith }, start, end }
     }
 
     /// Plays what agents did since last frame: breaking, placing, chewing.
@@ -175,13 +211,13 @@ impl Game {
         let names: Vec<String> = self.followed().map(|(n, _)| n.clone()).collect();
         let host_feet = self.rendered_eye - (self.session.player.eye() - self.session.player.pos);
         let host_dial = self.dial_of(&self.session.player);
-        for (name, &vp) in names.iter().zip(&viewports[1..]) {
+        for (view, (name, &vp)) in names.iter().zip(&viewports[1..]).enumerate() {
             let bot = &self.agents.players[name];
             let a = &bot.agent;
             let feet = a.previous_pos.lerp(a.player.pos, scene.alpha);
             let eye = feet + (a.player.eye() - a.player.pos);
             let (camera, forward) = bot.camera.view(&self.world, eye, a.player.forward());
-            let fog = self.fog(scene, camera);
+            let fog = self.fog(scene, view + 1, camera);
             let models = self.block_models(scene.alpha);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
@@ -275,7 +311,7 @@ impl Game {
                 fog_start: fog.start,
                 fog_end: fog.end,
                 daylight: scene.sky.daylight,
-                zenith_color: if fog.underwater { fog.color } else { scene.sky.zenith },
+                zenith_color: fog.zenith,
                 sun_dir: scene.sky.sun_dir,
                 dimension: self.dimension,
                 enhanced_graphics: self.settings.enhanced_graphics,
@@ -373,5 +409,24 @@ impl Game {
         ui.rect(0.0, 0.0, sw, 1.0, [0.0, 0.0, 0.0, 0.8]);
         ui.rect(0.0, 0.0, 1.0, sh, [0.0, 0.0, 0.0, 0.8]);
         ui.verts
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::nether_biome::NetherBiome;
+
+    #[test]
+    fn each_split_screen_view_blends_the_fog_around_its_own_eye() {
+        // Soul sand valley to the west of x = 0 and crimson forest to the east.
+        let biome = |qx: i32, _qz: i32| if qx < 0 { NetherBiome::SoulSandValley } else { NetherBiome::CrimsonForest };
+        let mut samplers = Vec::new();
+        let host = view_haze(&mut samplers, 0, DVec3::new(-200.0, 70.0, 0.0), biome);
+        let follower = view_haze(&mut samplers, 1, DVec3::new(200.0, 70.0, 0.0), biome);
+        assert_eq!(host, NetherBiome::SoulSandValley.fog_color());
+        assert_eq!(follower, NetherBiome::CrimsonForest.fog_color());
+        // The host's reading is unchanged by the follower sampling elsewhere in the same frame.
+        assert_eq!(view_haze(&mut samplers, 0, DVec3::new(-200.0, 70.0, 0.0), biome), host);
     }
 }
