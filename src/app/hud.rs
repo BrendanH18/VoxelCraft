@@ -1302,7 +1302,7 @@ impl Game {
             ),
             match self.dimension {
                 crate::world::terrain::Dimension::Overworld => format!("Biome: {biome:?}"),
-                d if let Some(nether) = self.world.generator.nether_biome(b.x, b.z) => {
+                d if let Some(nether) = self.world.generator.nether_biome_at(b) => {
                     format!("Biome: minecraft:{} ({})", nether.name(), d.name())
                 }
                 d => format!("Dimension: {}", d.name()),

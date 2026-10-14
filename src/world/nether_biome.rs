@@ -332,6 +332,7 @@ pub struct NetherBiomeSource {
     temperature: NormalNoise,
     vegetation: NormalNoise,
     shift: NormalNoise,
+    zoom: super::biome_zoom::BiomeZoom,
 }
 
 impl NetherBiomeSource {
@@ -343,6 +344,7 @@ impl NetherBiomeSource {
             temperature: NormalNoise::new(s(1), -10, &[1.5, 0.0, 1.0, 0.0, 0.0, 0.0]),
             vegetation: NormalNoise::new(s(2), -8, &[1.0, 1.0, 0.0, 0.0, 0.0, 0.0]),
             shift: NormalNoise::new(s(3), -3, &[1.0, 1.0, 1.0, 0.0]),
+            zoom: super::biome_zoom::BiomeZoom::new(seed as i64),
         }
     }
 
@@ -367,6 +369,14 @@ impl NetherBiomeSource {
     /// The biome of the block column `(x, z)`.
     pub fn biome(&self, x: i32, z: i32) -> NetherBiome {
         self.quart(x >> 2, z >> 2)
+    }
+
+    /// The biome `BiomeManager.getBiome(x, y, z)` returns for a block: the
+    /// quart chosen by Java's fuzzy zoom. Gameplay queries (spawning, the
+    /// debug screen, music) use this; terrain and fog read the plain quarts.
+    pub fn zoomed(&self, x: i32, y: i32, z: i32) -> NetherBiome {
+        let (qx, _, qz) = self.zoom.quart(x, y, z);
+        self.quart(qx, qz)
     }
 
     /// Biomes of the quart grid covering `[x0, x0 + 4 * N)` × `[z0, z0 + 4 * N)`
@@ -410,6 +420,30 @@ impl NetherBiomeSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `BiomeManager.getBiome` reads one of the eight quarts around the block, so
+    /// the zoomed biome is always a neighbour's, differs from the plain quart
+    /// at some borders, and is a pure function of the seed.
+    #[test]
+    fn zoomed_biomes_roughen_borders_without_leaving_the_neighbouring_quarts() {
+        let source = NetherBiomeSource::new(12345);
+        let (mut differing, mut border) = (0, 0);
+        for x in (-4000..4000).step_by(37) {
+            for z in (-4000..4000).step_by(41) {
+                let plain = source.biome(x, z);
+                let zoomed = source.zoomed(x, 64, z);
+                assert_eq!(zoomed, source.zoomed(x, 64, z));
+                let (qx, qz) = ((x - 2) >> 2, (z - 2) >> 2);
+                let near = [(0, 0), (1, 0), (0, 1), (1, 1)].map(|(dx, dz)| source.quart(qx + dx, qz + dz));
+                assert!(near.contains(&zoomed), "{x},{z}: {zoomed:?} is not among {near:?}");
+                if near.iter().any(|&b| b != near[0]) {
+                    border += 1;
+                    differing += (plain != zoomed) as u32;
+                }
+            }
+        }
+        assert!(border > 100 && differing > 0, "{differing} of {border} border samples moved");
+    }
 
     #[test]
     fn spawn_cost_tables_match_java_26_3() {

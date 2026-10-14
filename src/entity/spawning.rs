@@ -43,7 +43,7 @@ impl Entities {
                 }
                 let mut group = None;
                 if nether {
-                    let Some((spawn, chance)) = nether_spawn(world, kind, x, z) else { continue };
+                    let Some((spawn, chance)) = nether_spawn(world, kind, x, center.y as i32, z) else { continue };
                     if !self.rng.chance(chance) {
                         continue;
                     }
@@ -80,7 +80,7 @@ impl Entities {
                     for _ in 0..extra {
                         let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
                         // A group straddling a biome edge stays within its spawn list.
-                        if nether && nether_spawn(world, kind, x + dx, z + dz).is_none() {
+                        if nether && nether_spawn(world, kind, x + dx, pos.y as i32, z + dz).is_none() {
                             continue;
                         }
                         let spot = if kind.is_aquatic() {

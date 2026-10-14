@@ -227,9 +227,13 @@ a performance hotspot; the ordinary benchmark origin understates its cost.
 
 ## Known gaps
 
-- Biome layouts are statistically Java's but not seed-for-seed copies;
-  Java's fuzzy biome zoom is not applied, so borders follow the 4×4 quart
-  grid.
+- Biome layouts are statistically Java's but not seed-for-seed copies.
+  Java's fuzzy biome zoom (`BiomeManager.getBiome`: the nearest of the eight
+  surrounding quarts after a seed-hashed jitter) is applied to gameplay
+  queries (mob spawn lists and costs, the F3 biome line, music). Terrain
+  surfaces, feature placement, fog (Java's fog reads plain quarts) and the
+  ambient-particle window still use the plain 4×4 quart grid, so a nylium
+  border and the spawn-list border can differ by a few blocks.
 - Hyphae store no axis (their bark texture is the same on every face here,
   as textures are never rotated).
 - Features see only undecorated terrain, so later features don't react to

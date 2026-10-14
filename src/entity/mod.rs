@@ -382,6 +382,10 @@ pub trait MobWorld: BlockSource {
     fn nether_biome(&self, _x: i32, _z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
         None
     }
+    /// The Nether biome at a block with Java's fuzzy zoom (`getBiome`).
+    fn nether_biome_at(&self, p: IVec3) -> Option<crate::world::nether_biome::NetherBiome> {
+        self.nether_biome(p.x, p.z)
+    }
     /// Java moon brightness; clients set this from their saved day count.
     /// Inside a Nether fortress piece, where fortress mobs spawn.
     fn in_fortress(&self, _p: IVec3) -> bool {
@@ -416,6 +420,9 @@ impl MobWorld for World {
     }
     fn nether_biome(&self, x: i32, z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
         self.generator.nether_biome(x, z)
+    }
+    fn nether_biome_at(&self, p: IVec3) -> Option<crate::world::nether_biome::NetherBiome> {
+        self.generator.nether_biome_at(p)
     }
     fn rains_on(&self, p: IVec3) -> bool {
         World::rains_on(self, p)
@@ -1641,10 +1648,11 @@ fn nether_spawn<W: MobWorld + ?Sized>(
     world: &W,
     kind: MobKind,
     x: i32,
+    y: i32,
     z: i32,
 ) -> Option<(crate::world::nether_biome::Spawn, f32)> {
     use crate::world::nether_biome::NetherBiome;
-    let biome = world.nether_biome(x, z).unwrap_or(NetherBiome::NetherWastes);
+    let biome = world.nether_biome_at(IVec3::new(x, y, z)).unwrap_or(NetherBiome::NetherWastes);
     let mob = nether_mob(kind)?;
     if let Some(s) = biome.creatures().iter().find(|s| s.mob == mob) {
         return Some((*s, s.weight as f32 / 100.0));
@@ -1661,7 +1669,7 @@ impl Entities {
     /// skeletons, ghasts, endermen and striders (and warped forest endermen).
     fn nether_cost_allows<W: MobWorld + ?Sized>(&self, world: &W, kind: MobKind, at: IVec3) -> bool {
         use crate::world::nether_biome::NetherBiome;
-        let biome_at = |p: IVec3| world.nether_biome(p.x, p.z).unwrap_or(NetherBiome::NetherWastes);
+        let biome_at = |p: IVec3| world.nether_biome_at(p).unwrap_or(NetherBiome::NetherWastes);
         let Some(cost) = nether_mob(kind).and_then(|mob| biome_at(at).spawn_cost(mob)) else { return true };
         let mut potential = 0.0;
         for m in &self.mobs {

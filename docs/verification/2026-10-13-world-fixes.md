@@ -164,6 +164,23 @@ Tests: `world::temples::tests::{loot_tables_match_the_java_26_3_fixture,
 outpost_horns_are_regular_instruments_and_temple_books_use_thirty_levels}` and
 `world::bastion::tests::stable_and_other_chests_hold_saddles_apples_carrots_and_nylium`.
 
+## Nether biome fuzzy zoom
+
+Source: `BiomeManager.getBiome`, `getFiddledDistance`, `getFiddle`,
+`LinearCongruentialGenerator.next` (bytecode) and `obfuscateSeed`
+(Guava SHA-256 `hashLong`). `world::biome_zoom::BiomeZoom` ports them; a Java
+transcription run on a JDK produced the pinned values for two seeds and seven
+positions (`fuzzy_quarts_match_the_java_bytecode_transcription`, plus SHA-256
+standard vectors). `Generator::nether_biome_at(IVec3)` is the zoomed lookup used by
+Nether mob spawning (list, chance and spawn cost), the F3 biome line and music, which
+Java reads through `level.getBiome`. Fog and the biome fog blend use `getNoiseBiome`
+(plain quarts) in Java and stay on quarts. Not changed: terrain surface and feature gating
+still use the plain quart grid (Java's surface builder also goes through the
+zoomed manager), because the column grid cache stores one biome per 4×4 column;
+ambient particles keep their cached window.
+Spawn selection chooses its list before the final height is known, so it
+jitters at the player's height. Test: `world::nether_biome::tests::zoomed_biomes_roughen_borders_without_leaving_the_neighbouring_quarts`.
+
 ## Geode crack fluid ticks
 
 See [amethyst geodes](2026-10-13-amethyst-geodes.md#v070-defect-fix-crack-fluid-ticks).

@@ -16,6 +16,7 @@ mod automation;
 pub mod bastion;
 pub mod bell;
 pub mod biome;
+pub mod biome_zoom;
 pub mod block;
 pub mod brewing;
 pub mod caves;

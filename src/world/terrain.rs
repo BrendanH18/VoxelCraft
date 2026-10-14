@@ -263,6 +263,12 @@ impl Generator {
         Some(self.nether.as_ref()?.biomes.biome(x, z))
     }
 
+    /// The Nether biome at block `p` as `BiomeManager.getBiome` returns it
+    /// (fuzzy zoom), for gameplay queries.
+    pub fn nether_biome_at(&self, p: IVec3) -> Option<super::nether_biome::NetherBiome> {
+        Some(self.nether.as_ref()?.biomes.zoomed(p.x, p.y, p.z))
+    }
+
     /// Nearest column of a Nether biome (`/locate biome` in the Nether).
     pub fn nearest_nether_biome(
         &self,

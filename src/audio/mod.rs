@@ -211,7 +211,7 @@ impl Audio {
             biome: column.biome,
             nether: world
                 .generator
-                .nether_biome(player.pos.x.floor() as i32, player.pos.z.floor() as i32)
+                .nether_biome_at(player.pos.floor().as_ivec3())
                 .map_or(voxelcraft::music::Situation::NetherWastes, voxelcraft::music::Situation::nether),
             dragon,
         });
