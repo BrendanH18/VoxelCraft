@@ -119,9 +119,9 @@ impl World {
                     self.edit(p, if b.0 == 1945 { ob::CAVE_VINES_PLANT_LIT } else { ob::CAVE_VINES_PLANT }, true);
                 }
             }
-            // Sweet berry bushes age 20% of ticks in light 9 or more.
+            // Sweet berry bushes age 20% of ticks in light 9 or more in the cell above.
             2058..=2060 => {
-                if self.roll().is_multiple_of(5) && self.lit_enough(p) {
+                if self.roll().is_multiple_of(5) && self.lit_enough(p + IVec3::Y) {
                     self.edit(p, ob::berry_bush(ob::berry_age(b).unwrap() + 1), true);
                 }
             }
@@ -177,14 +177,8 @@ impl World {
                     self.edit(p, ob::coral(kind, colour, true), true);
                 }
             }
-            // Mycelium spreads like grass onto lit dirt.
-            1903 => {
-                let r = self.roll();
-                let q = p + IVec3::new((r % 3) as i32 - 1, (r / 3 % 5) as i32 - 3, (r / 15 % 3) as i32 - 1);
-                if self.get_block(q) == Some(Block::DIRT) && self.get_block(q + IVec3::Y) == Some(Block::AIR) {
-                    self.edit(q, ob::MYCELIUM, false);
-                }
-            }
+            // Mycelium is a `SpreadingSnowyBlock` like grass.
+            1903 => self.tick_spreader(p, ob::MYCELIUM),
             // Java: three random-tick stages, always progressing in the
             // narrow pre-dawn window (21600..22560), otherwise 1/500.
             1976..=1979 | 2150..=2157 => {
@@ -205,9 +199,10 @@ impl World {
         true
     }
 
-    fn lit_enough(&mut self, p: IVec3) -> bool {
-        self.update_block_light();
-        self.sky_exposed(p) || self.block_light(p) >= 9
+    /// Java `getRawBrightness(p, 0) >= 9`, as bamboo and sweet berries test
+    /// the cell above them.
+    pub(super) fn lit_enough(&mut self, p: IVec3) -> bool {
+        self.growth_light(p, false) >= 9
     }
 
     /// Adds one stalk on top of the bamboo at `p`, moving its leaves up.

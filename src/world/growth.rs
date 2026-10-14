@@ -293,27 +293,66 @@ impl World {
         }
     }
 
-    /// Java crops need light >=9 in their cell; saplings sample above it.
-    /// Preserve the current open-sky approximation for skylight.
-    fn grows_here(&mut self, p: IVec3) -> bool {
+    /// Brightness for growth rules on the gameplay light arrays (block light
+    /// and propagated skylight), not the heightmap. `darkened` selects Java's
+    /// `getMaxLocalRawBrightness(p)`, which subtracts the time-of-day and
+    /// weather `skyDarken`; otherwise `getRawBrightness(p, 0)`, the stored
+    /// skylight at any hour. Where skylight is not exact yet (a partly loaded
+    /// border) only block light counts.
+    pub(super) fn growth_light(&mut self, p: IVec3, darkened: bool) -> u8 {
         self.update_block_light();
-        let light_at = if self.get_block(p).is_some_and(Block::is_sapling) { p + IVec3::Y } else { p };
-        self.sky_exposed(light_at) || self.block_light(light_at) >= 9
+        let darken = if darkened { self.sky_darken() } else { 0 };
+        self.raw_brightness(p, darken).unwrap_or_else(|| self.block_light(p))
     }
 
-    /// Grass dies under opaque blocks and spreads to lit dirt nearby (one
-    /// block across, three down or one up).
-    fn tick_grass(&mut self, p: IVec3) {
-        let covered = |w: &World, q: IVec3| w.get_block(q + IVec3::Y).is_some_and(|a| a.is_opaque() || a.is_fluid());
-        if covered(self, p) {
+    /// Java `CropBlock.randomTick`: `getRawBrightness(pos, 0) >= 9` in the
+    /// crop's cell, so open sky counts at night too. `SaplingBlock.randomTick`
+    /// instead samples `getMaxLocalRawBrightness(pos.above())`, which night
+    /// and storms darken.
+    fn grows_here(&mut self, p: IVec3) -> bool {
+        if self.get_block(p).is_some_and(Block::is_sapling) {
+            self.growth_light(p + IVec3::Y, true) >= 9
+        } else {
+            self.growth_light(p, false) >= 9
+        }
+    }
+
+    /// Whether a grass-like block under `above` survives: Java's
+    /// `SpreadingSnowyBlock.canStayAlive` (a full fluid kills it; otherwise
+    /// the block above must not dampen light completely).
+    fn spreader_stays(&self, above: Option<Block>) -> bool {
+        above.is_none_or(|a| a.light_opacity() < 15 && !a.is_fluid())
+    }
+
+    /// Java `SpreadingSnowyBlock.randomTick` for grass and mycelium: it dies
+    /// to dirt when covered; otherwise, if `getMaxLocalRawBrightness(above)`
+    /// is at least 9, four attempts pick a cell in x/z -1..=1 and y -3..=1
+    /// and turn dirt there into `spread` when it could stay alive and has no
+    /// water above.
+    pub(super) fn tick_spreader(&mut self, p: IVec3, spread: Block) {
+        if !self.spreader_stays(self.get_block(p + IVec3::Y)) {
             self.edit(p, Block::DIRT, false);
             return;
         }
-        let r = self.roll();
-        let q = p + IVec3::new((r % 3) as i32 - 1, (r / 3 % 5) as i32 - 3, (r / 15 % 3) as i32 - 1);
-        if self.get_block(q) == Some(Block::DIRT) && !covered(self, q) && self.sky_exposed(q + IVec3::Y) {
-            self.edit(q, Block::GRASS, false);
+        if self.growth_light(p + IVec3::Y, true) < 9 {
+            return;
         }
+        for _ in 0..4 {
+            let r = self.roll();
+            let q = p + IVec3::new((r % 3) as i32 - 1, (r / 3 % 5) as i32 - 3, (r / 15 % 3) as i32 - 1);
+            let above = self.get_block(q + IVec3::Y);
+            if self.get_block(q) == Some(Block::DIRT)
+                && self.spreader_stays(above)
+                && !above.is_some_and(Block::is_water)
+            {
+                self.edit(q, spread, false);
+            }
+        }
+    }
+
+    /// Grass spreads like Java's `SpreadingSnowyBlock` (see [`World::tick_spreader`]).
+    fn tick_grass(&mut self, p: IVec3) {
+        self.tick_spreader(p, Block::GRASS);
     }
 
     /// Farmland is wet with water within 4 blocks across (at its level or
@@ -634,17 +673,33 @@ mod tests {
         assert_eq!(union.rng, overlapping.rng, "overlapping regions must tick once");
     }
 
+    /// Three by three lit flat columns (stone to y 63) with the player-modified
+    /// chunks the gameplay light arrays need, optionally under a stone roof
+    /// wide enough that its centre is more than six steps from open sky.
+    fn growth_world(roofed: bool) -> World {
+        let mut world = crate::world::lighting::flat_test_world(
+            (-1..=1).flat_map(|x| (-1..=1).map(move |z| glam::IVec2::new(x, z))),
+            63,
+        );
+        if roofed {
+            for x in 4..=28 {
+                for z in 4..=28 {
+                    world.set_block(IVec3::new(x, 67, z), Block::STONE);
+                }
+            }
+        }
+        world.update_block_light();
+        world
+    }
+
     #[test]
     fn covered_crops_need_nine_block_light_and_saplings_sample_above() {
-        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
-        for y in world.generator.dimension.chunk_rows() {
-            world.insert_chunk(IVec3::new(0, y, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
-        }
-        let crop = IVec3::new(15, 150, 16);
+        let mut world = growth_world(true);
+        let crop = IVec3::new(16, 64, 16);
         world.set_block(crop - IVec3::Y, Block::WET_FARMLAND);
         world.set_block(crop, Block::wheat(0));
-        world.set_block(crop + IVec3::Y * 2, Block::STONE);
-        assert!(!world.sky_exposed(crop));
+        world.update_block_light();
+        assert!(world.sky_light(crop).unwrap() < 9, "{:?}", world.sky_light(crop));
         assert!(!world.grows_here(crop));
         let near = crop - IVec3::X * 5;
         let far = crop - IVec3::X * 6;
@@ -672,6 +727,79 @@ mod tests {
         world.set_block(near + IVec3::Y, Block::GLOWSTONE);
         assert!(world.grows_here(crop));
         assert!(world.mesh_uploads.is_empty());
+    }
+
+    #[test]
+    fn crops_read_stored_skylight_at_night_and_saplings_the_darkened_value() {
+        // Java: CropBlock uses getRawBrightness(pos, 0) (no time of day) while
+        // SaplingBlock uses getMaxLocalRawBrightness(pos.above()), which
+        // subtracts skyDarken (11 at midnight, 5 on a clear dusk).
+        let mut world = growth_world(false);
+        let crop = IVec3::new(16, 64, 16);
+        world.set_block(crop - IVec3::Y, Block::WET_FARMLAND);
+        world.set_block(crop, Block::wheat(0));
+        world.update_block_light();
+        assert_eq!(world.sky_light(crop), Some(15));
+        world.set_redstone_daylight(0.75, 11, 0.0);
+        assert!(world.grows_here(crop), "wheat grows under a night sky");
+        world.set_block(crop - IVec3::Y, Block::DIRT);
+        world.set_block(crop, Block::OAK_SAPLING);
+        assert!(!world.grows_here(crop), "15 - 11 = 4 darkens the sapling's sample");
+        world.set_redstone_daylight(0.52, 6, 0.0);
+        assert!(world.grows_here(crop), "15 - 6 = 9 is enough");
+        world.set_redstone_daylight(0.55, 7, 0.0);
+        assert!(!world.grows_here(crop));
+        // A lamp beside it counts at any hour.
+        world.set_block(crop + IVec3::new(1, 1, 0), Block::GLOWSTONE);
+        assert!(world.grows_here(crop));
+    }
+
+    #[test]
+    fn berries_and_bamboo_test_the_cell_above_with_stored_skylight() {
+        let mut world = growth_world(true);
+        let bush = IVec3::new(16, 64, 16);
+        world.set_block(bush - IVec3::Y, Block::DIRT);
+        world.update_block_light();
+        assert!(!world.lit_enough(bush + IVec3::Y), "dark under the wide roof");
+        let mut open = growth_world(false);
+        open.update_block_light();
+        assert!(open.lit_enough(bush + IVec3::Y));
+        open.set_redstone_daylight(0.75, 11, 0.0);
+        assert!(open.lit_enough(bush + IVec3::Y), "stored skylight, no night darkening");
+    }
+
+    #[test]
+    fn grass_spreads_only_with_brightness_nine_above_and_dies_when_covered() {
+        // Java SpreadingSnowyBlock.randomTick: getMaxLocalRawBrightness(above) >= 9
+        // (skyDarken applies) before four spread attempts at dirt; a
+        // light-opaque block above turns it to dirt.
+        let spread = |darken: u8, roofed: bool| {
+            let mut world = growth_world(roofed);
+            let grass = IVec3::new(16, 63, 16);
+            world.set_block(grass, Block::GRASS);
+            for d in [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z] {
+                world.set_block(grass + d, Block::DIRT);
+            }
+            world.update_block_light();
+            world.set_redstone_daylight(0.5, darken, 0.0);
+            for _ in 0..600 {
+                world.random_tick(grass);
+            }
+            let n = [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
+                .into_iter()
+                .filter(|&d| world.get_block(grass + d) == Some(Block::GRASS))
+                .count();
+            (n, world.get_block(grass))
+        };
+        assert_eq!(spread(0, false), (4, Some(Block::GRASS)), "day spreads");
+        assert_eq!(spread(11, false), (0, Some(Block::GRASS)), "15 - 11 < 9: night does not");
+        assert_eq!(spread(0, true), (0, Some(Block::GRASS)), "dark under a roof, but not covered");
+        let mut world = growth_world(false);
+        let grass = IVec3::new(16, 63, 16);
+        world.set_block(grass, Block::GRASS);
+        world.set_block(grass + IVec3::Y, Block::STONE);
+        world.random_tick(grass);
+        assert_eq!(world.get_block(grass), Some(Block::DIRT));
     }
 
     #[test]
