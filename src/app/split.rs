@@ -44,7 +44,7 @@ fn view_haze(
     samplers[view].sample(camera, biome)
 }
 
-/// Fog for an eye: colour, sky overhead, start and end, and whether it's under a fluid.
+/// Fog for an eye: colour, sky overhead, start and end.
 #[derive(Clone, Copy)]
 pub(super) struct Fog {
     pub color: [f32; 3],
@@ -52,7 +52,6 @@ pub(super) struct Fog {
     pub zenith: [f32; 3],
     pub start: f32,
     pub end: f32,
-    pub underwater: bool,
 }
 
 impl Fog {
@@ -60,7 +59,9 @@ impl Fog {
     /// Lava's own environmental fog has priority over mob-effect fog.
     pub(super) fn blinded(self, ticks: Option<u32>, view_distance: f32) -> Self {
         let Some(ticks) = ticks else { return self };
-        if !self.underwater && self.end <= 3.0 {
+        // Only lava's fog is this short (it ends at 2); water fog ends at 28
+        // and still yields to blindness.
+        if self.end <= 3.0 {
             return self;
         }
         let strength = (ticks as f32 / 20.0).min(1.0);
@@ -179,7 +180,7 @@ impl Game {
         } else {
             (horizon, view_dist * 0.55, view_dist * 0.95)
         };
-        Fog { color, zenith: if underwater { color } else { zenith }, start, end, underwater }
+        Fog { color, zenith: if underwater { color } else { zenith }, start, end }
     }
 
     /// Plays what agents did since last frame: breaking, placing, chewing.
@@ -458,14 +459,16 @@ mod blindness_tests {
     use super::Fog;
     #[test]
     fn blindness_uses_reference_terrain_distance_and_last_second_fade() {
-        let f = Fog { color: [0.5; 3], zenith: [0.5; 3], start: 200.0, end: 256.0, underwater: false };
+        let f = Fog { color: [0.5; 3], zenith: [0.5; 3], start: 200.0, end: 256.0 };
         let full = f.blinded(Some(100), 256.0);
         assert_eq!((full.start, full.end, full.color), (1.25, 5.0, [0.0; 3]));
         let fading = f.blinded(Some(10), 256.0);
         assert_eq!((fading.start, fading.end, fading.color), (32.625, 130.5, [0.125; 3]));
         assert_eq!(f.blinded(None, 256.0).end, f.end);
-        let lava = Fog { end: 1.0, ..f };
-        assert_eq!(lava.blinded(Some(100), 256.0).end, 1.0);
-        assert_eq!(Fog { underwater: true, ..f }.blinded(Some(100), 256.0).end, 5.0);
+        // Real lava fog, as `Game::fog` builds it: from 0 to 2 blocks.
+        let lava = Fog { start: 0.0, end: 2.0, ..f };
+        assert_eq!(lava.blinded(Some(100), 256.0).end, 2.0);
+        let water = Fog { start: 0.0, end: 28.0, ..f };
+        assert_eq!(water.blinded(Some(100), 256.0).end, 5.0, "blindness overrides water fog");
     }
 }
