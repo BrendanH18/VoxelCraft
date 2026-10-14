@@ -22,8 +22,12 @@ The transitional controller/LAN bridge swaps the entire session. Previously it
 swapped beds but left the host's command-set spawn point behind; a controller
 respawn could consequently use the host's point. Personal spawn selection now
 uses the current actor's session through the same helper in client and CLI.
-Existing world-spawn fallbacks remain in adapters; this is not a claim of full
-Java safe-standing-position or spawn-radius parity.
+World-spawn fallbacks remain in adapters, but since the v0.7 fixes they use
+`world::spawn_finder` (Java 26.3 `PlayerSpawnFinder`): a random start and fixed
+stride over the `spawnRadius` square, the first dry column with a full top face
+and room for the player, then Java's lift-and-drop fallback. The world border and
+an Adventure world default are not modelled, and bed stand-up positions are not
+searched, so this is not a claim of full Java respawn parity.
 
 Food/drink validation, fixed-tick progress, inventory exchange, hunger and
 effects now run through `PlayerSession::tick_consumption`. Requests validate

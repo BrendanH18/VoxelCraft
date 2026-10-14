@@ -200,14 +200,22 @@ impl Game {
         (self.world_spawn_point(), missing)
     }
 
-    /// The world spawn, spread by the `spawnRadius` rule.
+    /// The world spawn, found as Java's `PlayerSpawnFinder` does within the
+    /// `spawnRadius` rule (the world border and a world default of Adventure
+    /// are not modelled).
     fn world_spawn_point(&self) -> DVec3 {
         let radius = self.gamerules.int("spawnRadius");
-        let offset = spawn_offset(self.world.generator.seed, radius);
-        let x = self.world_spawn.x.saturating_add(offset.x);
-        let z = self.world_spawn.z.saturating_add(offset.z);
-        let y = if offset == IVec3::ZERO { self.world_spawn.y } else { self.world.generator.column(x, z).height + 1 };
-        DVec3::new(x as f64 + 0.5, y as f64, z as f64 + 0.5)
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let generator = &self.world.generator;
+        crate::world::spawn_finder::find_spawn(
+            &self.world,
+            self.world_spawn,
+            radius,
+            (nanos >> 4) as u32,
+            false,
+            |x, z| self.world.surface_height(x, z).or_else(|| Some(generator.column(x, z).height)),
+            (self.world.min_y(), self.world.max_y()),
+        )
     }
 }
 
@@ -217,23 +225,6 @@ fn required_sleepers(players: usize, percentage: i32) -> usize {
     }
     let percent = percentage.max(0) as usize;
     (players.saturating_mul(percent).div_ceil(100)).max(1)
-}
-
-fn spawn_offset(seed: u64, radius: i32) -> IVec3 {
-    let radius = radius.max(0) as u64;
-    if radius == 0 {
-        return IVec3::ZERO;
-    }
-    let mix = |mut n: u64| {
-        n ^= n >> 30;
-        n = n.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        n ^= n >> 27;
-        n = n.wrapping_mul(0x94d0_49bb_1331_11eb);
-        n ^ (n >> 31)
-    };
-    let width = radius.saturating_mul(2).saturating_add(1);
-    let coordinate = |n| (mix(n) % width) as i64 - radius as i64;
-    IVec3::new(coordinate(seed) as i32, 0, coordinate(seed ^ 0x9e37_79b9_7f4a_7c15) as i32)
 }
 
 #[cfg(test)]
@@ -256,14 +247,5 @@ mod tests {
         assert_eq!(required_sleepers(10, 0), 1);
         assert_eq!(required_sleepers(3, 101), 4);
         assert_eq!(required_sleepers(0, 100), 0);
-    }
-
-    #[test]
-    fn spawn_radius_zero_is_exact_and_offsets_stay_in_range() {
-        assert_eq!(spawn_offset(7, 0), IVec3::ZERO);
-        for seed in 0..100 {
-            let p = spawn_offset(seed, 10);
-            assert!(p.x.abs() <= 10 && p.z.abs() <= 10);
-        }
     }
 }
