@@ -2247,7 +2247,7 @@ const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         id if super::colors::definition(id).is_some() => super::colors::definition(id).unwrap(),
-        1600..=1687 => match super::nether_biome_blocks::registry(id) {
+        1600..=1687 | 2500..=2507 => match super::nether_biome_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },

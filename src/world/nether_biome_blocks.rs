@@ -4,13 +4,15 @@
 //! |---|---|
 //! | 1600..=1601 | crimson and warped nylium |
 //! | 1602..=1613 | crimson, warped and their stripped stems, three axis states each (Y, X, Z) |
-//! | 1614..=1617 | crimson, warped and stripped hyphae (bark on every face, so one state) |
+//! | 1614..=1617 | crimson, warped and stripped hyphae, Y axis |
 //! | 1618..=1622 | crimson and warped planks, nether and warped wart blocks, shroomlight |
 //! | 1623..=1627 | crimson and warped fungus and roots, nether sprouts |
 //! | 1628..=1633 | soul soil, soul fire, soul torch, bone block (three axes) |
 //! | 1634..=1687 | weeping vines (ages 0..=25, then the plant), twisting vines likewise |
 //! | 1688..=1733 | crimson and warped stairs, slab, fence, gate and door (`world::forms` woods 7 and 8) |
 //! | 1734..=1793 | crimson then warped trapdoor (16), button (12) and pressure plate (2) |
+//!
+//! | 2500..=2507 | the same four hyphae on the X then Z axis (bark on every face, so they look alike) |
 //!
 //! The trapdoors, buttons and plates mirror the oak redstone states: their
 //! `redstone_blocks::Component` is the oak twin's, so every redstone rule
@@ -172,31 +174,48 @@ impl Vine {
     }
 }
 
-/// Stems and bone blocks: Y, X and Z axis states.
-const fn axial(id: u16) -> Option<u16> {
+/// Stems, hyphae and bone blocks: the Y-axis state of the block and the axis
+/// (0 Y, 1 X, 2 Z) of `id`.
+const fn axis_of(id: u16) -> Option<(u16, u16)> {
     match id {
-        1602..=1613 => Some(1602 + (id - 1602) / 3 * 3),
-        1631..=1633 => Some(1631),
+        1602..=1613 => Some((1602 + (id - 1602) / 3 * 3, (id - 1602) % 3)),
+        1614..=1617 => Some((id, 0)),
+        1631..=1633 => Some((1631, id - 1631)),
+        2500..=2507 => Some((1614 + (id - 2500) / 2, 1 + (id - 2500) % 2)),
         _ => None,
+    }
+}
+
+/// The Y-axis state of an axial block.
+const fn axial(id: u16) -> Option<u16> {
+    match axis_of(id) {
+        Some((base, _)) => Some(base),
+        None => None,
+    }
+}
+
+/// `base` (a Y-axis state) turned to `axis` (0 Y, 1 X, 2 Z).
+const fn with_axis(base: u16, axis: u16) -> u16 {
+    match base {
+        1614..=1617 if axis != 0 => 2500 + (base - 1614) * 2 + axis - 1,
+        1614..=1617 => base,
+        _ => base + axis,
     }
 }
 
 /// Textures for an axis state: `end` on the two faces the axis points out of.
 const fn pillar(id: u16, side: u16, end: u16) -> [u16; 6] {
-    match (id
-        - match axial(id) {
-            Some(b) => b,
-            None => id,
-        })
-        % 3
-    {
+    match match axis_of(id) {
+        Some((_, axis)) => axis,
+        None => 0,
+    } {
         1 => [end, end, side, side, side, side],
         2 => [side, side, side, side, end, end],
         _ => [side, side, end, end, side, side],
     }
 }
 
-/// Name, render kind and face textures of ids 1600..=1687.
+/// Name, render kind and face textures of ids 1600..=1687 and 2500..=2507.
 pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     use RenderKind::*;
     const fn all(t: u16) -> [u16; 6] {
@@ -213,10 +232,10 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
             let kind = (id - 1602) / 3;
             (NAMES[kind as usize], Opaque, pillar(id, tex::NETHER_STEM_SIDE + kind, tex::NETHER_STEM_TOP + kind))
         }
-        1614..=1617 => {
+        1614..=1617 | 2500..=2507 => {
             const NAMES: [&str; 4] =
                 ["crimson hyphae", "warped hyphae", "stripped crimson hyphae", "stripped warped hyphae"];
-            let kind = id - 1614;
+            let kind = if id >= 2500 { (id - 2500) / 2 } else { id - 1614 };
             (NAMES[kind as usize], Opaque, all(tex::NETHER_STEM_SIDE + kind))
         }
         1618 => ("crimson planks", Opaque, all(tex::CRIMSON_PLANKS)),
@@ -254,18 +273,19 @@ pub const fn base(id: u16) -> Option<Block> {
     }
 }
 
-/// Stems and bone blocks take the axis of the clicked face, like logs in Java.
+/// Stems, hyphae and bone blocks take the axis of the clicked face, like logs in Java.
 pub fn axis_placed(block: Block, normal: IVec3) -> Option<Block> {
     let base = axial(block.0)?;
-    Some(Block(
-        base + if normal.x != 0 {
+    Some(Block(with_axis(
+        base,
+        if normal.x != 0 {
             1
         } else if normal.z != 0 {
             2
         } else {
             0
         },
-    ))
+    )))
 }
 
 /// Java places a vine head with a random age below the maximum.
@@ -411,6 +431,7 @@ pub fn stripped(b: Block) -> Option<Block> {
     match b.0 {
         1602..=1607 => Some(Block(b.0 + 6)),
         1614 | 1615 => Some(Block(b.0 + 2)),
+        2500..=2503 => Some(Block(b.0 + 4)),
         _ => None,
     }
 }
@@ -570,6 +591,32 @@ mod tests {
         assert_eq!(stripped(Block(CRIMSON_STEM.0 + 2)), Some(Block(STRIPPED_CRIMSON_STEM.0 + 2)));
         assert_eq!(stripped(WARPED_HYPHAE), Some(STRIPPED_WARPED_HYPHAE));
         assert_eq!(stripped(STRIPPED_WARPED_STEM), None);
+    }
+
+    /// Java's hyphae are `RotatedPillarBlock`s with bark on every face: the
+    /// axis is state only (ids 2500..=2507 append the X and Z states).
+    #[test]
+    fn hyphae_store_the_clicked_axis_and_stripping_keeps_it() {
+        let hyphae = [CRIMSON_HYPHAE, WARPED_HYPHAE, STRIPPED_CRIMSON_HYPHAE, STRIPPED_WARPED_HYPHAE];
+        let mut ids = std::collections::HashSet::new();
+        for (kind, base) in hyphae.into_iter().enumerate() {
+            for (n, axis) in [(IVec3::Y, 0), (IVec3::X, 1), (IVec3::NEG_Z, 2), (IVec3::Z, 2)] {
+                let b = axis_placed(base, n).unwrap();
+                assert_eq!(b.0, if axis == 0 { base.0 } else { 2500 + kind as u16 * 2 + axis - 1 });
+                assert_eq!((b.base(), b.name(), b.drop()), (base, base.name(), Some(base.into())));
+                assert_eq!((b.hardness(), b.best_tool(), b.is_opaque()), (base.hardness(), base.best_tool(), true));
+                assert_eq!(b.info().tex, base.info().tex, "bark on every face");
+                ids.insert(b.0);
+                assert_eq!(NetherWood::of(b), NetherWood::of(base));
+                if kind < 2 {
+                    // Stripping keeps the axis, and the result is the stripped hyphae state.
+                    assert_eq!(stripped(b), axis_placed(hyphae[kind + 2], n), "{}", b.name());
+                } else {
+                    assert_eq!(stripped(b), None);
+                }
+            }
+        }
+        assert_eq!(ids.len(), 12);
     }
 
     #[test]
