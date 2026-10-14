@@ -1644,6 +1644,32 @@ fn nether_spawn<W: MobWorld + ?Sized>(
     biome.monster_spawn(mob)
 }
 
+impl Entities {
+    /// Java's `NaturalSpawner.SpawnState.canSpawn` spawn-cost test. Every
+    /// non-persistent mob whose biome has a cost for its type contributes
+    /// `charge / distance` to the potential at `at`; a new mob with a cost of
+    /// its own may spawn only if its charge times that potential stays within
+    /// the biome's energy budget. This is what spaces out soul sand valley
+    /// skeletons, ghasts, endermen and striders (and warped forest endermen).
+    fn nether_cost_allows<W: MobWorld + ?Sized>(&self, world: &W, kind: MobKind, at: IVec3) -> bool {
+        use crate::world::nether_biome::NetherBiome;
+        let biome_at = |p: IVec3| world.nether_biome(p.x, p.z).unwrap_or(NetherBiome::NetherWastes);
+        let Some(cost) = nether_mob(kind).and_then(|mob| biome_at(at).spawn_cost(mob)) else { return true };
+        let mut potential = 0.0;
+        for m in &self.mobs {
+            if m.persistent {
+                continue;
+            }
+            let p = m.pos.floor().as_ivec3();
+            let Some(other) = nether_mob(m.kind).and_then(|mob| biome_at(p).spawn_cost(mob)) else { continue };
+            let d = p - at;
+            let d2 = f64::from(d.x).powi(2) + f64::from(d.y).powi(2) + f64::from(d.z).powi(2);
+            potential += if d2 == 0.0 { f64::INFINITY } else { other.charge / d2.sqrt() };
+        }
+        potential * cost.charge <= cost.energy_budget
+    }
+}
+
 fn cavern_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, top: i32) -> Option<DVec3> {
     let floor = (top - 24..=top).rev().find(|&y| {
         world.block(IVec3::new(x, y, z)).is_some_and(|b| b.is_solid() && b.is_opaque())
@@ -3007,6 +3033,44 @@ mod tests {
         fn nether_biome(&self, _: i32, _: i32) -> Option<crate::world::nether_biome::NetherBiome> {
             Some(self.1)
         }
+    }
+
+    #[test]
+    fn spawn_costs_space_out_soul_sand_valley_and_warped_forest_mobs() {
+        // Java `SpawnState.canSpawn`: the new mob's charge times the sum of
+        // charge / distance over existing mobs must stay within the energy
+        // budget (soul sand valley 0.7 against 0.15, warped forest endermen 1.0
+        // against 0.12). The values come from the biome JSON pinned in the
+        // Nether biome source.
+        use crate::world::nether_biome::{NetherBiome, NetherMob};
+        let at = |x: i32| IVec3::new(x, 41, 0);
+        let valley = Biomed(Grid::flat(41), NetherBiome::SoulSandValley);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Skeleton, DVec3::new(0.5, 41.0, 0.5));
+        // 0.7 * 0.7 / 3 = 0.163 is over budget; at four blocks 0.1225 is within it.
+        assert!(!e.nether_cost_allows(&valley, MobKind::Ghast, at(3)));
+        assert!(e.nether_cost_allows(&valley, MobKind::Ghast, at(4)));
+        // A third charged mob at eight blocks tips a spot four blocks from the first.
+        e.spawn(MobKind::Strider, DVec3::new(8.5, 41.0, 0.5));
+        e.spawn(MobKind::Enderman, DVec3::new(-8.5, 41.0, 0.5));
+        assert!(!e.nether_cost_allows(&valley, MobKind::Skeleton, at(4)));
+        // Mobs with no cost in the biome are never refused, nor are persistent ones counted.
+        assert!(e.nether_cost_allows(&valley, MobKind::ZombifiedPiglin, at(0)));
+        let mut persistent = Entities::new(4);
+        persistent.spawn(MobKind::Skeleton, DVec3::new(0.5, 41.0, 0.5));
+        persistent.mobs[0].persistent = true;
+        assert!(persistent.nether_cost_allows(&valley, MobKind::Ghast, at(1)));
+        // The wastes charge nothing.
+        let wastes = Biomed(Grid::flat(41), NetherBiome::NetherWastes);
+        assert!(e.nether_cost_allows(&wastes, MobKind::Skeleton, at(1)));
+        // Warped forests only charge endermen: 1.0 / d <= 0.12 needs nine blocks.
+        let warped = Biomed(Grid::flat(41), NetherBiome::WarpedForest);
+        let mut w = Entities::new(5);
+        w.spawn(MobKind::Enderman, DVec3::new(0.5, 41.0, 0.5));
+        assert!(!w.nether_cost_allows(&warped, MobKind::Enderman, at(8)));
+        assert!(w.nether_cost_allows(&warped, MobKind::Enderman, at(9)));
+        assert!(w.nether_cost_allows(&warped, MobKind::Hoglin, at(1)));
+        assert_eq!(NetherBiome::SoulSandValley.spawn_cost(NetherMob::Piglin), None);
     }
 
     #[test]

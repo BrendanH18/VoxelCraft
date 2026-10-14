@@ -385,6 +385,11 @@ with the old heightmap estimate restricted to unknown light cells. Wide-roof
 and partly loaded border regressions cover the query; visual/player acceptance
 remains open. See the [world fixes](verification/2026-10-13-world-fixes.md).
 
+Natural Nether spawns now apply Java 26.3 biome spawn costs, including pack
+members and fortress attempts: soul sand valley charges and warped forest
+enderman spacing are covered by extracted data and potential-field tests.
+Ordinary-player and representative scene acceptance remain open.
+
 The [amethyst geode follow-up](verification/2026-10-13-amethyst-geodes.md)
 implements the Java 26.3 geode configured/placed feature with order-independent
 chunk painting, adds the missing horizontal bud/cluster states and Java's

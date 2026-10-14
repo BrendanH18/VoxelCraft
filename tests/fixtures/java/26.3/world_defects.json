@@ -1,0 +1,1829 @@
+{
+  "reference": "Java 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "spawn_costs": {
+    "nether_wastes": {},
+    "soul_sand_valley": {
+      "minecraft:enderman": {
+        "charge": 0.7,
+        "energy_budget": 0.15
+      },
+      "minecraft:ghast": {
+        "charge": 0.7,
+        "energy_budget": 0.15
+      },
+      "minecraft:skeleton": {
+        "charge": 0.7,
+        "energy_budget": 0.15
+      },
+      "minecraft:strider": {
+        "charge": 0.7,
+        "energy_budget": 0.15
+      }
+    },
+    "crimson_forest": {},
+    "warped_forest": {
+      "minecraft:enderman": {
+        "charge": 1.0,
+        "energy_budget": 0.12
+      }
+    },
+    "basalt_deltas": {}
+  },
+  "structure_loot": {
+    "desert_pyramid": [
+      {
+        "rolls": [
+          2,
+          4
+        ],
+        "entries": [
+          {
+            "name": "minecraft:diamond",
+            "weight": 5,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:iron_ingot",
+            "weight": 15,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:gold_ingot",
+            "weight": 15,
+            "count": [
+              2,
+              7
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:emerald",
+            "weight": 15,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:bone",
+            "weight": 25,
+            "count": [
+              4,
+              6
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:spider_eye",
+            "weight": 25,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:rotten_flesh",
+            "weight": 25,
+            "count": [
+              3,
+              7
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:leather",
+            "weight": 20,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:copper_horse_armor",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:iron_horse_armor",
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:golden_horse_armor",
+            "weight": 10,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:diamond_horse_armor",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:book",
+            "weight": 20,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:golden_apple",
+            "weight": 20,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:enchanted_golden_apple",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": null,
+            "weight": 15,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          4,
+          4
+        ],
+        "entries": [
+          {
+            "name": "minecraft:bone",
+            "weight": 10,
+            "count": [
+              1,
+              8
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:gunpowder",
+            "weight": 10,
+            "count": [
+              1,
+              8
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:rotten_flesh",
+            "weight": 10,
+            "count": [
+              1,
+              8
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:string",
+            "weight": 10,
+            "count": [
+              1,
+              8
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:sand",
+            "weight": 10,
+            "count": [
+              1,
+              8
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 6,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:dune_armor_trim_smithing_template",
+            "weight": 1,
+            "count": [
+              2,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      }
+    ],
+    "jungle_temple": [
+      {
+        "rolls": [
+          2,
+          6
+        ],
+        "entries": [
+          {
+            "name": "minecraft:diamond",
+            "weight": 3,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:iron_ingot",
+            "weight": 10,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:gold_ingot",
+            "weight": 15,
+            "count": [
+              2,
+              7
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:bamboo",
+            "weight": 15,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:emerald",
+            "weight": 2,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:bone",
+            "weight": 20,
+            "count": [
+              4,
+              6
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:rotten_flesh",
+            "weight": 16,
+            "count": [
+              3,
+              7
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:leather",
+            "weight": 3,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:copper_horse_armor",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:iron_horse_armor",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:golden_horse_armor",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:diamond_horse_armor",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:book",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_with_levels"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:wild_armor_trim_smithing_template",
+            "weight": 1,
+            "count": [
+              2,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      }
+    ],
+    "igloo_chest": [
+      {
+        "rolls": [
+          2,
+          8
+        ],
+        "entries": [
+          {
+            "name": "minecraft:apple",
+            "weight": 15,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:coal",
+            "weight": 15,
+            "count": [
+              1,
+              4
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:gold_nugget",
+            "weight": 10,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:stone_axe",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:rotten_flesh",
+            "weight": 10,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:emerald",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:wheat",
+            "weight": 10,
+            "count": [
+              2,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": "minecraft:golden_apple",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          }
+        ],
+        "modifier": null
+      }
+    ],
+    "pillager_outpost": [
+      {
+        "rolls": [
+          0,
+          1
+        ],
+        "entries": [
+          {
+            "name": "minecraft:crossbow",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          2,
+          3
+        ],
+        "entries": [
+          {
+            "name": "minecraft:wheat",
+            "weight": 7,
+            "count": [
+              3,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:potato",
+            "weight": 5,
+            "count": [
+              2,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:carrot",
+            "weight": 5,
+            "count": [
+              3,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          3
+        ],
+        "entries": [
+          {
+            "name": "minecraft:dark_oak_log",
+            "weight": 1,
+            "count": [
+              2,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          2,
+          3
+        ],
+        "entries": [
+          {
+            "name": "minecraft:experience_bottle",
+            "weight": 7,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:string",
+            "weight": 4,
+            "count": [
+              1,
+              6
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:arrow",
+            "weight": 4,
+            "count": [
+              2,
+              7
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:tripwire_hook",
+            "weight": 3,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:iron_ingot",
+            "weight": 3,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:book",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          0,
+          1
+        ],
+        "entries": [
+          {
+            "name": "minecraft:goat_horn",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          }
+        ],
+        "modifier": {
+          "type": "minecraft:set_instrument",
+          "options": "#minecraft:regular_goat_horns"
+        }
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 3,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:sentry_armor_trim_smithing_template",
+            "weight": 1,
+            "count": [
+              2,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      }
+    ],
+    "shipwreck_supply": [
+      {
+        "rolls": [
+          3,
+          10
+        ],
+        "entries": [
+          {
+            "name": "minecraft:paper",
+            "weight": 8,
+            "count": [
+              1,
+              12
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:potato",
+            "weight": 7,
+            "count": [
+              2,
+              6
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:moss_block",
+            "weight": 7,
+            "count": [
+              1,
+              4
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:poisonous_potato",
+            "weight": 7,
+            "count": [
+              2,
+              6
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:carrot",
+            "weight": 7,
+            "count": [
+              4,
+              8
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:wheat",
+            "weight": 7,
+            "count": [
+              8,
+              21
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:suspicious_stew",
+            "weight": 10,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_stew_effect"
+            ]
+          },
+          {
+            "name": "minecraft:coal",
+            "weight": 6,
+            "count": [
+              2,
+              8
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:rotten_flesh",
+            "weight": 5,
+            "count": [
+              5,
+              24
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:pumpkin",
+            "weight": 2,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:bamboo",
+            "weight": 2,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:gunpowder",
+            "weight": 3,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:tnt",
+            "weight": 1,
+            "count": [
+              1,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:leather_helmet",
+            "weight": 3,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:leather_chestplate",
+            "weight": 3,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:leather_leggings",
+            "weight": 3,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:leather_boots",
+            "weight": 3,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:coast_armor_trim_smithing_template",
+            "weight": 1,
+            "count": [
+              2,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 148,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:copper_nautilus_armor",
+            "weight": 20,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:iron_nautilus_armor",
+            "weight": 10,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:golden_nautilus_armor",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:diamond_nautilus_armor",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      }
+    ],
+    "shipwreck_treasure": [
+      {
+        "rolls": [
+          3,
+          6
+        ],
+        "entries": [
+          {
+            "name": "minecraft:iron_ingot",
+            "weight": 90,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:gold_ingot",
+            "weight": 10,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:emerald",
+            "weight": 40,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:diamond",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:experience_bottle",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          2,
+          5
+        ],
+        "entries": [
+          {
+            "name": "minecraft:iron_nugget",
+            "weight": 50,
+            "count": [
+              1,
+              10
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:gold_nugget",
+            "weight": 10,
+            "count": [
+              1,
+              10
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:lapis_lazuli",
+            "weight": 20,
+            "count": [
+              1,
+              10
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:coast_armor_trim_smithing_template",
+            "weight": 1,
+            "count": [
+              2,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 148,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:copper_nautilus_armor",
+            "weight": 20,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:iron_nautilus_armor",
+            "weight": 10,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:golden_nautilus_armor",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:diamond_nautilus_armor",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      }
+    ],
+    "shipwreck_map": [
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": "minecraft:buried_treasure_map",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:exploration_map",
+              "minecraft:filtered"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          3,
+          3
+        ],
+        "entries": [
+          {
+            "name": "minecraft:compass",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:map",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:clock",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:paper",
+            "weight": 20,
+            "count": [
+              1,
+              10
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:feather",
+            "weight": 10,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:book",
+            "weight": 5,
+            "count": [
+              1,
+              5
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:coast_armor_trim_smithing_template",
+            "weight": 1,
+            "count": [
+              2,
+              2
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 148,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:copper_nautilus_armor",
+            "weight": 20,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:iron_nautilus_armor",
+            "weight": 10,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:golden_nautilus_armor",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:diamond_nautilus_armor",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      }
+    ],
+    "underwater_ruin_small": [
+      {
+        "rolls": [
+          2,
+          8
+        ],
+        "entries": [
+          {
+            "name": "minecraft:coal",
+            "weight": 10,
+            "count": [
+              1,
+              4
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:stone_axe",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:stone_spear",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:rotten_flesh",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:emerald",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:wheat",
+            "weight": 10,
+            "count": [
+              2,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": "minecraft:leather_chestplate",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:golden_helmet",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:fishing_rod",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:buried_treasure_map",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:exploration_map",
+              "minecraft:filtered"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 148,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:copper_nautilus_armor",
+            "weight": 20,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:iron_nautilus_armor",
+            "weight": 10,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:golden_nautilus_armor",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:diamond_nautilus_armor",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      }
+    ],
+    "underwater_ruin_big": [
+      {
+        "rolls": [
+          2,
+          8
+        ],
+        "entries": [
+          {
+            "name": "minecraft:coal",
+            "weight": 10,
+            "count": [
+              1,
+              4
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:gold_nugget",
+            "weight": 10,
+            "count": [
+              1,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:emerald",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:stone_spear",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:wheat",
+            "weight": 10,
+            "count": [
+              2,
+              3
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": "minecraft:golden_apple",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:book",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:leather_chestplate",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:golden_helmet",
+            "weight": 1,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:fishing_rod",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:enchant_randomly"
+            ]
+          },
+          {
+            "name": "minecraft:buried_treasure_map",
+            "weight": 10,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:exploration_map",
+              "minecraft:filtered"
+            ]
+          }
+        ],
+        "modifier": null
+      },
+      {
+        "rolls": [
+          1,
+          1
+        ],
+        "entries": [
+          {
+            "name": null,
+            "weight": 148,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": []
+          },
+          {
+            "name": "minecraft:copper_nautilus_armor",
+            "weight": 20,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:iron_nautilus_armor",
+            "weight": 10,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:golden_nautilus_armor",
+            "weight": 5,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          },
+          {
+            "name": "minecraft:diamond_nautilus_armor",
+            "weight": 2,
+            "count": [
+              1,
+              1
+            ],
+            "modifiers": [
+              "minecraft:set_count"
+            ]
+          }
+        ],
+        "modifier": null
+      }
+    ]
+  },
+  "regular_goat_horns": [
+    "minecraft:ponder_goat_horn",
+    "minecraft:sing_goat_horn",
+    "minecraft:seek_goat_horn",
+    "minecraft:feel_goat_horn"
+  ]
+}

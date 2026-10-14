@@ -66,6 +66,9 @@ impl Entities {
                 if !in_spawn_ring(center, pos) || !clear_of_players(ctx, self.world_spawn, pos) {
                     continue;
                 }
+                if nether && !self.nether_cost_allows(world, kind, pos.floor().as_ivec3()) {
+                    continue;
+                }
                 self.spawn(kind, pos);
                 self.natural_animal(world.biome(x, z));
                 self.note_zombie_villager(kind);
@@ -96,6 +99,7 @@ impl Entities {
                         if self.count_near(kind, center) < cap
                             && let Some(p) = spot
                             && clear_of_players(ctx, self.world_spawn, p)
+                            && (!nether || self.nether_cost_allows(world, kind, p.floor().as_ivec3()))
                         {
                             self.spawn(kind, p);
                             self.natural_animal(world.biome(x + dx, z + dz));
@@ -187,6 +191,7 @@ impl Entities {
         if !in_spawn_ring(center, pos)
             || !clear_of_players(ctx, self.world_spawn, pos)
             || !world.in_fortress(pos.floor().as_ivec3())
+            || !self.nether_cost_allows(world, kind, pos.floor().as_ivec3())
         {
             return;
         }
@@ -198,6 +203,7 @@ impl Entities {
                 && let Some(p) = cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 1)
                 && world.in_fortress(p.floor().as_ivec3())
                 && clear_of_players(ctx, self.world_spawn, p)
+                && self.nether_cost_allows(world, kind, p.floor().as_ivec3())
             {
                 self.spawn(kind, p);
             }

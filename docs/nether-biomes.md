@@ -43,6 +43,18 @@ F3 screen (`Biome: minecraft:crimson_forest (nether)`) and per-biome music
 (`Situation::nether`). Bastion remnants skip regions whose start chunk
 centre is in a basalt delta (`#has_structure/bastion_remnant`).
 
+## Spawn costs
+
+Java biomes carry `spawn_costs` (the `natural_mob_spawns` attribute): soul sand
+valleys charge 0.7 with a budget of 0.15 for endermen, ghasts, skeletons and
+striders, and warped forests charge endermen 1.0 against 0.12. `Entities` applies
+`NaturalSpawner.SpawnState.canSpawn` to natural Nether spawns (pack leaders, pack
+members and fortress spawns): each non-persistent mob with a cost in its own biome
+adds `charge / distance`, and a new mob needs `charge x potential <= budget`.
+A skeleton therefore keeps other charged mobs about 3.3 blocks away in a soul sand
+valley, and warped forest endermen need nine blocks. Java rebuilds the field once
+per spawn pass from every loaded mob; VoxelCraft sums the live mobs per attempt.
+
 ## Surfaces
 
 `NetherGen::classify` applies the biome's surface rules (after Java's
@@ -230,7 +242,6 @@ a performance hotspot; the ordinary benchmark origin understates its cost.
 - Soul lanterns (no lanterns yet), signs, Soul Speed, the soul fire HUD
   overlay and wall torches are absent; vines are climbable for players
   only.
-- Java's spawn costs (soul sand valley's charge per mob) aren't modelled.
 - Worlds saved before v0.5 keep their generated Nether chunks; chunks
   generated next to them use the biomes, so old areas meet new terrain at a
   seam.

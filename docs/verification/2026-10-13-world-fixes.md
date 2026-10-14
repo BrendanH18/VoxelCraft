@@ -4,7 +4,7 @@
 
 Branch `work/fix-w5-world` (worker 5 of the v0.7.0 defect fixes). Reference:
 official Java 26.3 server, SHA-1 `33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c`.
-Nothing here is **Verified**: there was no ordinary-player testing. Each section
+Ordinary-player acceptance is outstanding for the behavior recorded here. Each section
 names the Java source read (classes were disassembled with `javap`; data JSON read
 directly), what changed, and what stays different.
 
@@ -62,3 +62,16 @@ states (new block IDs and models), so it is left open.
 `entity::sky_light` (used for mobs, items, the hand and particles) now returns the
 propagated skylight of the cell; the previous heightmap estimate remains as the fallback
 where `World::sky_light` is `None`. Particle docs updated.
+
+## Nether spawn costs
+
+Java sources: biome `natural_mob_spawns` `spawn_costs` (soul sand valley: enderman,
+ghast, skeleton, strider at charge 0.7, budget 0.15; warped forest: enderman at 1.0,
+0.12; every other biome none), `NaturalSpawner$SpawnState.canSpawn/afterSpawn`,
+`PotentialCalculator.getPotentialEnergyChange` (sum of `charge / sqrt(distSqr)`, infinite at
+distance zero). See [Nether biomes](../nether-biomes.md#spawn-costs). Test:
+`entity::tests::spawn_costs_space_out_soul_sand_valley_and_warped_forest_mobs`.
+
+Spawn-cost values are now independently extracted into `world_defects.json`;
+`spawn_cost_tables_match_java_26_3` covers all implemented Nether mob types
+in all five biomes. Fortress pack members apply the same check as leaders.

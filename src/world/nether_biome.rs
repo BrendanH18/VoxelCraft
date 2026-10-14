@@ -49,6 +49,15 @@ pub struct Spawn {
     pub group: (u8, u8),
 }
 
+/// A biome's `spawn_costs` entry (Java `MobSpawnSettings.MobSpawnCost`): the
+/// charge each mob of the type adds to the shared potential field, and the
+/// energy budget a new mob of the type must stay within.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct SpawnCost {
+    pub charge: f64,
+    pub energy_budget: f64,
+}
+
 const fn spawn(mob: NetherMob, weight: u32, min: u8, max: u8) -> Spawn {
     Spawn { mob, weight, group: (min, max) }
 }
@@ -169,6 +178,21 @@ impl NetherBiome {
             NetherBiome::CrimsonForest => &CRIMSON_FOREST_MONSTERS,
             NetherBiome::WarpedForest => &WARPED_FOREST_MONSTERS,
             NetherBiome::BasaltDeltas => &BASALT_DELTAS_MONSTERS,
+        }
+    }
+
+    /// Java's `spawn_costs` for the biome (`natural_mob_spawns` attribute):
+    /// soul sand valleys charge 0.7 against a budget of 0.15 for endermen,
+    /// ghasts, skeletons and striders, and warped forests charge endermen 1.0
+    /// against 0.12. Other mobs and biomes have none.
+    pub const fn spawn_cost(self, mob: NetherMob) -> Option<SpawnCost> {
+        match (self, mob) {
+            (
+                NetherBiome::SoulSandValley,
+                NetherMob::Enderman | NetherMob::Ghast | NetherMob::Skeleton | NetherMob::Strider,
+            ) => Some(SpawnCost { charge: 0.7, energy_budget: 0.15 }),
+            (NetherBiome::WarpedForest, NetherMob::Enderman) => Some(SpawnCost { charge: 1.0, energy_budget: 0.12 }),
+            _ => None,
         }
     }
 
@@ -386,6 +410,44 @@ impl NetherBiomeSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spawn_cost_tables_match_java_26_3() {
+        let facts: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/world_defects.json")).unwrap();
+        for biome in NetherBiome::ALL {
+            for mob in [
+                NetherMob::Ghast,
+                NetherMob::ZombifiedPiglin,
+                NetherMob::MagmaCube,
+                NetherMob::Enderman,
+                NetherMob::Piglin,
+                NetherMob::Skeleton,
+                NetherMob::Hoglin,
+                NetherMob::Strider,
+            ] {
+                let name = format!(
+                    "minecraft:{}",
+                    match mob {
+                        NetherMob::Ghast => "ghast",
+                        NetherMob::ZombifiedPiglin => "zombified_piglin",
+                        NetherMob::MagmaCube => "magma_cube",
+                        NetherMob::Enderman => "enderman",
+                        NetherMob::Piglin => "piglin",
+                        NetherMob::Skeleton => "skeleton",
+                        NetherMob::Hoglin => "hoglin",
+                        NetherMob::Strider => "strider",
+                    }
+                );
+                let reference = &facts["spawn_costs"][biome.name()][&name];
+                let expected = reference.as_object().map(|_| SpawnCost {
+                    charge: reference["charge"].as_f64().unwrap(),
+                    energy_budget: reference["energy_budget"].as_f64().unwrap(),
+                });
+                assert_eq!(biome.spawn_cost(mob), expected, "{biome:?} {mob:?}");
+            }
+        }
+    }
 
     #[test]
     fn parameter_points_select_their_own_biome() {
