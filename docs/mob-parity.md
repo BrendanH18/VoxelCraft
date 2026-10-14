@@ -79,7 +79,7 @@ Husks (desert, replacing most zombies: weight 80 vs 19) don't burn and apply Hun
 for 140 ticks × difficulty (1/2/3, instead of regional difficulty). Drowned spawn in
 water in rivers (1 in 15 attempts) and oceans (1 in 40, deeper than 5 below sea level)
 and still burn on land. All three have a 5% baby chance (half size, +50% speed, 12 xp).
-No trident drowned, no rare zombie drops.
+No trident drowned (rare iron/carrot/potato and copper pools are implemented; see below).
 
 ## Witch and splash potions
 
