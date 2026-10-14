@@ -507,4 +507,23 @@ mod tests {
         let here = src.biome(origin.x, origin.z);
         assert_eq!(src.nearest(origin, here, 64), Some(origin));
     }
+
+    #[test]
+    fn locate_matches_javas_height_independent_three_dimensional_search() {
+        // Java's `/locate biome` samples several heights, starting at the
+        // caller's. The Nether's climate noise has `y_scale` 0, so every height
+        // yields the same columns and the first hit is at the caller's height.
+        let facts: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/lighting_spawning.json")).unwrap();
+        for noise in ["temperature", "vegetation"] {
+            assert_eq!(facts["nether_climate"][noise]["y_scale"], 0.0, "{noise}");
+        }
+        let src = NetherBiomeSource::new(7);
+        for b in NetherBiome::ALL {
+            let low = src.nearest(IVec3::new(100, 20, -40), b, 6400).unwrap();
+            let high = src.nearest(IVec3::new(100, 120, -40), b, 6400).unwrap();
+            assert_eq!((low.x, low.z), (high.x, high.z), "{b:?}");
+            assert_eq!((low.y, high.y), (20, 120), "{b:?}");
+        }
+    }
 }

@@ -2338,6 +2338,8 @@
     "overworld": {
       "has_skylight": true,
       "visual_sky_light_factor": 1.0,
+      "ambient_light": 0.0,
+      "visual_ambient_light_color": "#0a0a0a",
       "monster_spawn_block_light_limit": 0,
       "monster_spawn_light_level": [
         0,
@@ -2349,6 +2351,8 @@
     "the_nether": {
       "has_skylight": false,
       "visual_sky_light_factor": 0.0,
+      "ambient_light": 0.1,
+      "visual_ambient_light_color": "#302821",
       "monster_spawn_block_light_limit": 15,
       "monster_spawn_light_level": [
         7,
@@ -2360,6 +2364,8 @@
     "the_end": {
       "has_skylight": true,
       "visual_sky_light_factor": 0.0,
+      "ambient_light": 0.25,
+      "visual_ambient_light_color": "#3f473f",
       "monster_spawn_block_light_limit": 0,
       "monster_spawn_light_level": [
         15,
@@ -2368,6 +2374,35 @@
       "min_y": 0,
       "height": 256
     }
+  },
+  "nether_climate": {
+    "temperature": {
+      "xz_scale": 0.25,
+      "y_scale": 0.0
+    },
+    "vegetation": {
+      "xz_scale": 0.25,
+      "y_scale": 0.0
+    }
+  },
+  "weather_ticks": {
+    "rain_delay": [
+      12000,
+      180000
+    ],
+    "rain_duration": [
+      12000,
+      24000
+    ],
+    "thunder_delay": [
+      12000,
+      180000
+    ],
+    "thunder_duration": [
+      3600,
+      15600
+    ],
+    "level_step_per_tick": 0.01
   },
   "natural_spawner": {
     "start": "x, z uniform in a 16x16 chunk; y uniform from min_y to WORLD_SURFACE + 1; nothing below min_y + 1",

@@ -38,7 +38,7 @@ regions are large: in tests the mean run along a line is roughly a
 kilometre, wastes are the most common biome and warped forests the rarest.
 
 Lookups: `Generator::nether_biome(x, z)` (gameplay), `/locate biome
-<name>` (32-block ring search like Java, keeping the caller's height), the
+<name>` (32-block ring search like Java; the result keeps the caller's height, which is what Java's 3D search returns here because the Nether noise router sets `y_scale` 0 for temperature and vegetation, pinned in the lighting fixture), the
 F3 screen (`Biome: minecraft:crimson_forest (nether)`) and per-biome music
 (`Situation::nether`). Bastion remnants skip regions whose start chunk
 centre is in a basalt delta (`#has_structure/bastion_remnant`).
@@ -230,7 +230,6 @@ a performance hotspot; the ordinary benchmark origin understates its cost.
 - Soul lanterns (no lanterns yet), signs, Soul Speed, the soul fire HUD
   overlay and wall torches are absent; vines are climbable for players
   only.
-- `/locate biome` keeps the caller's height rather than searching in 3D.
 - Java's spawn costs (soul sand valley's charge per mob) aren't modelled.
 - Worlds saved before v0.5 keep their generated Nether chunks; chunks
   generated next to them use the biomes, so old areas meet new terrain at a
