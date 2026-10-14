@@ -118,3 +118,31 @@ terms, clamped), not a disassembly.
 rendered plausible, non-black terrain, but the reference
 brightness of Nether and End terrain still needs a side-by-side look.
 Test: `world::terrain::tests::dimension_light_attributes_match_the_reference_dimension_types`.
+
+## Slime and drowned spawn rules
+
+Java sources (`javap` of `Slime`, `Drowned`, `SpawnPlacementTypes`, `NaturalSpawner`):
+
+- Slimes: `ON_GROUND` placement, then `checkSlimeSpawnRules`, which has *no*
+  `isDarkEnoughToSpawn` test. A swamp or mangrove swamp cell with `50 < y < 70` passes
+  when `nextFloat() < surface_slime_spawn_chance` (0.5 at a full moon, 0.375, 0.25,
+  0.125, 0 at a new moon) and raw brightness (sky minus `skyDarken`, or block light)
+  is at most `nextInt(8)`. Otherwise a slime chunk (the existing Java seed function)
+  at `y < 40` passes one attempt in ten.
+- Drowned: `IN_WATER` placement (water in the cell, no redstone conductor above),
+  then `checkDrownedSpawnRules`: water below too, `isDarkEnoughToSpawn` (the same
+  monster light roll), and `nextInt(15) == 0` in river biomes or
+  `nextInt(40) == 0` below sea level - 5 elsewhere. `checkSpawnObstruction` is only
+  `isUnobstructed`, so the spawn box may be wet.
+- Both walk the biome list's packs (slime weight 100 in four, the swamp's extra weight-1
+  single slime, drowned weights per biome) through the ordinary cycle; before, they
+  rolled position, light and rarity independently outside it.
+
+Not changed: zombie horses, strays, bogged, parched and ocelots are absent mobs, so
+their list entries still end a pack (adding them is new content). The 24-64 block ring,
+per-kind caps and structure overrides are unchanged.
+
+Tests: `entity::monster_spawns::tests::{swamp_slimes_follow_the_moon_phase_and_light_roll,
+slime_chunks_spawn_slimes_below_y_40_one_try_in_ten,
+drowned_spawn_in_water_one_try_in_40_when_deep_and_one_in_15_in_rivers,
+slimes_and_drowned_belong_to_the_biome_pack_cycle}`.

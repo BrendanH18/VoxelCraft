@@ -89,8 +89,9 @@ An isolated temporary fixture check confirmed that change and repeatability.
 
 The existing 24–64-block ring, per-kind caps, quarter-second spawn batching,
 activation/despawn policies and structure overrides still need Java correction.
-Missing roster entries retain their reference selection weight but cannot spawn;
-slime and drowned sampling still use their separate legacy paths. No unsupported
+Missing roster entries (zombie horse, stray, bogged, parched, ocelot) retain their
+reference selection weight but cannot spawn; slimes and drowned now walk the same
+pack cycle (see the v0.7 follow-up below). No unsupported
 mob is replaced with a different species. These are open differences, not
 approved fidelity exceptions or a completed MOB-01 claim.
 
@@ -125,3 +126,16 @@ Old day fractions and two/three-field weather entries still load; the optional
 fourth weather field retains the independent thunder timer. See the
 [world-fix record](2026-10-13-world-fixes.md#day-and-weather-timing) for tests
 and remaining weather-command/gamerule limitations.
+
+## v0.7 slime and drowned follow-up
+
+Slimes and drowned no longer sample positions on their own legacy paths; they are
+entries of the biome list like the other monsters (the legacy `slime_spot` and
+`drowned_spot` are removed). Java sources: `Slime.checkSlimeSpawnRules`,
+`Drowned.checkDrownedSpawnRules` and `isDeepEnoughToSpawn`, `SpawnPlacementTypes`
+(`ON_GROUND`, `IN_WATER`), the `moon` timeline's `surface_slime_spawn_chance`
+(0.5 at a full moon down to 0 at a new moon, equal to the old `0.5 * moonBrightness`),
+and the `allows_surface_slime_spawns` (swamp, mangrove swamp) and
+`more_frequent_drowned_spawns` (rivers) biome tags. See the
+[world-fix record](2026-10-13-world-fixes.md#slime-and-drowned-spawn-rules).
+The roster still lacks the mobs VoxelCraft does not have; adding them is new content.
