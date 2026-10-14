@@ -77,7 +77,10 @@ no physical keyboard/controller evidence is claimed.
 State: **Implemented, unverified** for the recorded turtle equipment slice.
 Ordinary keyboard/controller play, visual/audio inspection and representative
 performance checks remain necessary. This does not establish every potion,
-projectile or effect mechanic: other non-instant mob splash effects, exact
-projectile collision/motion, hidden lower-priority effect restoration and
-broader damage-type tagging still need their own parity assessment. Turtle
+projectile or effect mechanic: exact projectile collision/motion and broader
+damage-type tagging still need their own parity assessment. Since the v0.7
+fixes, splash potions add every non-instant effect to mobs (the undead ignore
+Poison and Regeneration, per `ignores_poison_and_regen`) and `Effects` keeps
+Java's hidden-effect chains: a stronger, shorter effect hides the weaker one,
+which returns when it expires and persists in the save string. Turtle
 breeding/nesting and complete MOB-03 acceptance remain separately tracked.

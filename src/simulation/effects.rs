@@ -196,9 +196,35 @@ pub struct Outcome {
     pub exhaustion: f32,
 }
 
+/// Java's `MobEffectInstance.update` on the chain `[active, hidden...]` of one
+/// effect, starting at `at`. A stronger newcomer replaces the instance (which
+/// stays hidden if it lasts longer); a weaker, longer one is kept hidden.
+fn merge(chain: &mut Vec<Active>, at: usize, new: Active) {
+    let cur = chain[at];
+    if new.amplifier > cur.amplifier {
+        if new.ticks < cur.ticks {
+            chain.insert(at + 1, cur);
+        }
+        chain[at].amplifier = new.amplifier;
+        chain[at].ticks = new.ticks;
+    } else if cur.ticks < new.ticks {
+        if new.amplifier == cur.amplifier {
+            chain[at].ticks = new.ticks;
+        } else if at + 1 == chain.len() {
+            chain.push(new);
+        } else {
+            merge(chain, at + 1, new);
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Effects {
     active: Vec<Active>,
+    /// Java's `MobEffectInstance.hiddenEffect` chains: weaker or shorter
+    /// instances of an active effect, nearest first, kept in order per effect
+    /// and restored when the one above them runs out.
+    hidden: Vec<Active>,
     /// Seconds not yet spent on whole ticks.
     carry: f32,
 }
@@ -239,12 +265,17 @@ impl Effects {
                 _ => Outcome { damage: amount, ..Outcome::default() },
             };
         }
-        match self.active.iter_mut().find(|a| a.effect == effect) {
-            Some(a) if amplifier > a.amplifier || (amplifier == a.amplifier && ticks > a.ticks) => {
-                *a = Active { effect, amplifier, ticks };
+        let new = Active { effect, amplifier, ticks };
+        match self.active.iter().position(|a| a.effect == effect) {
+            Some(head) => {
+                let mut chain = vec![self.active[head]];
+                chain.extend(self.hidden.iter().filter(|a| a.effect == effect));
+                merge(&mut chain, 0, new);
+                self.active[head] = chain[0];
+                self.hidden.retain(|a| a.effect != effect);
+                self.hidden.extend(chain.into_iter().skip(1));
             }
-            Some(_) => {}
-            None => self.active.push(Active { effect, amplifier, ticks }),
+            None => self.active.push(new),
         }
         self.active.sort_by_key(|a| a.effect);
         Outcome::default()
@@ -253,11 +284,13 @@ impl Effects {
     pub fn remove(&mut self, effect: Effect) -> bool {
         let before = self.active.len();
         self.active.retain(|a| a.effect != effect);
+        self.hidden.retain(|a| a.effect != effect);
         self.active.len() != before
     }
 
     pub fn clear(&mut self) {
         self.active.clear();
+        self.hidden.clear();
     }
 
     /// Advances `dt` seconds: regeneration heals 1 every 50 >> level ticks
@@ -288,8 +321,17 @@ impl Effects {
                     }
                 }
             }
-            for a in &mut self.active {
+            for a in self.active.iter_mut().chain(&mut self.hidden) {
                 a.ticks = a.ticks.saturating_sub(1);
+            }
+            // Java's `downgradeToHiddenEffect`: an expired effect gives way to
+            // the next hidden instance of itself.
+            for a in &mut self.active {
+                if a.ticks == 0
+                    && let Some(at) = self.hidden.iter().position(|h| h.effect == a.effect)
+                {
+                    *a = self.hidden.remove(at);
+                }
             }
             self.active.retain(|a| a.ticks > 0);
         }
@@ -358,6 +400,7 @@ impl Effects {
     pub fn serialize(&self) -> String {
         self.active
             .iter()
+            .chain(&self.hidden)
             .map(|a| format!("{}:{}:{}", a.effect.id(), a.amplifier, a.ticks))
             .collect::<Vec<_>>()
             .join("|")
@@ -396,6 +439,35 @@ mod tests {
         assert!((e.speed_factor() - 1.4).abs() < 1e-9);
         e.add(Effect::Slowness, 0, 100);
         assert!((e.speed_factor() - 1.25).abs() < 1e-9);
+    }
+
+    /// Java's `MobEffectInstance.hiddenEffect`: a stronger, shorter effect
+    /// hides the weaker one, which comes back when the stronger one ends.
+    #[test]
+    fn a_weaker_longer_effect_returns_after_the_stronger_one_expires() {
+        let mut e = Effects::default();
+        e.add(Effect::Speed, 0, 600);
+        e.add(Effect::Speed, 1, 100);
+        assert_eq!(e.get(Effect::Speed).map(|a| (a.amplifier, a.ticks)), Some((1, 100)));
+        for _ in 0..99 {
+            e.tick(0.05);
+        }
+        assert_eq!(e.get(Effect::Speed).map(|a| (a.amplifier, a.ticks)), Some((1, 1)));
+        e.tick(0.05);
+        assert_eq!(e.get(Effect::Speed).map(|a| (a.amplifier, a.ticks)), Some((0, 500)));
+        // Saves keep the hidden instance.
+        e.add(Effect::Speed, 2, 50);
+        let copy = Effects::deserialize(&e.serialize());
+        assert_eq!(copy, e);
+        e.remove(Effect::Speed);
+        assert!(e.is_empty() && e.serialize().is_empty());
+        // A stronger, longer effect simply replaces: nothing to restore.
+        e.add(Effect::Speed, 0, 100);
+        e.add(Effect::Speed, 1, 600);
+        for _ in 0..600 {
+            e.tick(0.05);
+        }
+        assert!(e.is_empty());
     }
 
     #[test]
