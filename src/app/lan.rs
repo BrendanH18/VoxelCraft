@@ -96,6 +96,19 @@ pub(super) struct Lan {
     messages: VecDeque<String>,
 }
 impl Lan {
+    /// The world's remembered session rules, `cheats,pvp` as `0` or `1`.
+    pub(super) fn rules_text(&self) -> String {
+        format!("{},{}", u8::from(self.cheats), u8::from(self.pvp))
+    }
+
+    /// Restores [`Lan::rules_text`] as the next session's defaults; command
+    /// line flags can still switch rules on. Malformed text keeps both off.
+    pub(super) fn restore_rules(&mut self, text: Option<&str>) {
+        let mut parts = text.unwrap_or("").split(',').map(|v| v == "1");
+        self.cheats |= parts.next().unwrap_or(false);
+        self.pvp |= parts.next().unwrap_or(false);
+    }
+
     pub(super) fn has_peers(&self) -> bool {
         !self.peers.is_empty()
     }
@@ -1892,6 +1905,31 @@ mod tests {
         assert!(serde_json::to_vec(&fitted).unwrap().len() < voxelcraft::lan::MAX_FRAME);
         let small = json!({"self": {}, "mobs": [{"uid": 1, "look": {}}]});
         assert_eq!(fit_state(small.clone()), (Some(small), false));
+    }
+    #[test]
+    fn session_rules_are_remembered_for_the_next_time_the_world_opens_to_lan() {
+        let mut lan = Lan::default();
+        lan.cheats = true;
+        let saved = lan.rules_text();
+        assert_eq!(saved, "1,0");
+        let mut next = Lan::default();
+        next.restore_rules(Some(&saved));
+        assert!(next.cheats && !next.pvp);
+        lan.pvp = true;
+        let mut again = Lan::default();
+        again.restore_rules(Some(&lan.rules_text()));
+        assert!(again.cheats && again.pvp);
+        // A world saved before this was remembered, or with damaged text, keeps both off.
+        for text in [None, Some(""), Some("x"), Some("0,0")] {
+            let mut fresh = Lan::default();
+            fresh.restore_rules(text);
+            assert!(!fresh.cheats && !fresh.pvp, "{text:?}");
+        }
+        // Command line flags still switch a rule on.
+        let mut flagged = Lan::default();
+        flagged.pvp = true;
+        flagged.restore_rules(Some("0,0"));
+        assert!(flagged.pvp);
     }
     #[test]
     fn button_edges_preserve_taps_and_do_not_reopen_a_closed_container() {

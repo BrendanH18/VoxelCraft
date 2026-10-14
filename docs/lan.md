@@ -211,8 +211,8 @@ Measured on an Apple M5 (macOS, release build, 2026-10-12, loopback):
   VoxelCraft to VoxelCraft only, not to Minecraft servers.
 - Input is coalesced per server tick with correction and replay rather than a
   jitter buffer, so high-latency links (beyond a home LAN) will feel rubbery.
-- Session rules (cheats, PvP, game mode) are chosen again each time a world is
-  opened to LAN.
+- Cheats and PvP are remembered in the world's save (`lan_rules`) and are the
+  defaults the next time it opens; the game mode is the host's own saved mode.
 - Automated checks run separate processes on one Mac; play across real
   Windows, macOS and Linux machines on a home network still needs a hands-on
   pass.

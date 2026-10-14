@@ -14,6 +14,7 @@ impl Game {
         props.insert("difficulty".to_string(), self.difficulty.name().to_string());
         props.insert("hardcore".to_string(), self.hardcore.to_string());
         props.insert("gamerules".to_string(), self.gamerules.serialize());
+        props.insert("lan_rules".to_string(), self.lan.rules_text());
         props.insert(
             "world_spawn".to_string(),
             format!("{},{},{}", self.world_spawn.x, self.world_spawn.y, self.world_spawn.z),
