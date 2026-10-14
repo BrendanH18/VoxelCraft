@@ -59,7 +59,8 @@ impl FurnaceKind {
                     | Block::QUARTZ_ORE
                     | Block::ANCIENT_DEBRIS
             )
-        }) || matches!(item, Item::RAW_IRON | Item::RAW_GOLD | Item::RAW_COPPER);
+        }) || matches!(item, Item::RAW_IRON | Item::RAW_GOLD | Item::RAW_COPPER)
+            || nugget_of(item).is_some();
         (self == Self::Normal || self == Self::Smoker && food || self == Self::Blast && ore).then_some(out)
     }
     pub fn cook_time(self) -> f32 {
@@ -98,8 +99,25 @@ fn ore_of(item: Item) -> Option<Block> {
 }
 
 /// What smelting `item` produces.
+/// Java's `*_nugget_from_smelting`/`_blasting`: iron, golden and copper
+/// tools, armor and horse armor melt down to one nugget.
+fn nugget_of(item: Item) -> Option<Item> {
+    use crate::item::{ArmorMaterial, Tier};
+    let tier = item.as_tool().map(|(_, t)| t);
+    let material = item.as_armor().map(|(_, m)| m);
+    Some(match (tier, material, item.name()) {
+        (Some(Tier::Iron), ..) | (_, Some(ArmorMaterial::Iron), _) | (.., "iron horse armor") => Item::IRON_NUGGET,
+        (Some(Tier::Gold), ..) | (_, Some(ArmorMaterial::Gold), _) | (.., "golden horse armor") => Item::GOLD_NUGGET,
+        (Some(Tier::Copper), ..) => Item::COPPER_NUGGET,
+        _ => return None,
+    })
+}
+
 pub fn smelt(item: Item) -> Option<Item> {
     let b = Item::from_block;
+    if let Some(nugget) = nugget_of(item) {
+        return Some(nugget);
+    }
     Some(match item {
         i if ore_of(i) == Some(Block::IRON_ORE) || i == Item::RAW_IRON => Item::IRON_INGOT,
         i if ore_of(i) == Some(Block::GOLD_ORE) || i == Item::RAW_GOLD => Item::GOLD_INGOT,

@@ -146,7 +146,7 @@ pub fn attack_damage(held: Option<Item>) -> f32 {
     let Some((kind, tier)) = held.and_then(Item::as_tool) else { return 1.0 };
     let bonus = match tier {
         Tier::Wood | Tier::Gold => 0.0,
-        Tier::Stone => 1.0,
+        Tier::Stone | Tier::Copper => 1.0,
         Tier::Iron => 2.0,
         Tier::Diamond => 3.0,
         Tier::Netherite => 4.0,
@@ -157,12 +157,12 @@ pub fn attack_damage(held: Option<Item>) -> f32 {
         ToolKind::Pickaxe => 1.0,
         ToolKind::Axe => match tier {
             Tier::Wood | Tier::Iron | Tier::Gold => 6.0,
-            Tier::Stone => 7.0,
+            Tier::Stone | Tier::Copper => 7.0,
             Tier::Diamond | Tier::Netherite => 5.0,
         },
         ToolKind::Hoe => match tier {
             Tier::Wood | Tier::Gold => 0.0,
-            Tier::Stone => -1.0,
+            Tier::Stone | Tier::Copper => -1.0,
             Tier::Iron => -2.0,
             Tier::Diamond => -3.0,
             Tier::Netherite => -4.0,
@@ -180,13 +180,13 @@ pub fn attack_speed(held: Option<Item>) -> f64 {
         ToolKind::Shovel => -3.0,
         ToolKind::Pickaxe => -2.8,
         ToolKind::Axe => match tier {
-            Tier::Wood | Tier::Stone => -3.2,
+            Tier::Wood | Tier::Stone | Tier::Copper => -3.2,
             Tier::Iron => -3.1,
             Tier::Gold | Tier::Diamond | Tier::Netherite => -3.0,
         },
         ToolKind::Hoe => match tier {
             Tier::Wood | Tier::Gold => -3.0,
-            Tier::Stone => -2.0,
+            Tier::Stone | Tier::Copper => -2.0,
             Tier::Iron => -1.0,
             Tier::Diamond | Tier::Netherite => 0.0,
         },

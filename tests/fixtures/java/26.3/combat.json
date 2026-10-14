@@ -31,31 +31,82 @@
   "materials": {
     "copper": {
       "speed": 5.0,
-      "attack_damage_bonus": 1.0
+      "attack_damage_bonus": 1.0,
+      "durability": 190,
+      "enchantability": 13,
+      "incorrect_blocks": "incorrect_for_copper_tool",
+      "repair_items": "copper_tool_materials",
+      "incorrect_block_tag_values": [
+        "#minecraft:needs_diamond_tool",
+        "#minecraft:needs_iron_tool"
+      ]
     },
     "diamond": {
       "speed": 8.0,
-      "attack_damage_bonus": 3.0
+      "attack_damage_bonus": 3.0,
+      "durability": 1561,
+      "enchantability": 10,
+      "incorrect_blocks": "incorrect_for_diamond_tool",
+      "repair_items": "diamond_tool_materials",
+      "incorrect_block_tag_values": []
     },
     "gold": {
       "speed": 12.0,
-      "attack_damage_bonus": 0.0
+      "attack_damage_bonus": 0.0,
+      "durability": 32,
+      "enchantability": 22,
+      "incorrect_blocks": "incorrect_for_gold_tool",
+      "repair_items": "gold_tool_materials",
+      "incorrect_block_tag_values": [
+        "#minecraft:needs_diamond_tool",
+        "#minecraft:needs_iron_tool",
+        "#minecraft:needs_stone_tool"
+      ]
     },
     "iron": {
       "speed": 6.0,
-      "attack_damage_bonus": 2.0
+      "attack_damage_bonus": 2.0,
+      "durability": 250,
+      "enchantability": 14,
+      "incorrect_blocks": "incorrect_for_iron_tool",
+      "repair_items": "iron_tool_materials",
+      "incorrect_block_tag_values": [
+        "#minecraft:needs_diamond_tool"
+      ]
     },
     "netherite": {
       "speed": 9.0,
-      "attack_damage_bonus": 4.0
+      "attack_damage_bonus": 4.0,
+      "durability": 2031,
+      "enchantability": 15,
+      "incorrect_blocks": "incorrect_for_netherite_tool",
+      "repair_items": "netherite_tool_materials",
+      "incorrect_block_tag_values": []
     },
     "stone": {
       "speed": 4.0,
-      "attack_damage_bonus": 1.0
+      "attack_damage_bonus": 1.0,
+      "durability": 131,
+      "enchantability": 5,
+      "incorrect_blocks": "incorrect_for_stone_tool",
+      "repair_items": "stone_tool_materials",
+      "incorrect_block_tag_values": [
+        "#minecraft:needs_diamond_tool",
+        "#minecraft:needs_iron_tool"
+      ]
     },
     "wood": {
       "speed": 2.0,
-      "attack_damage_bonus": 0.0
+      "attack_damage_bonus": 0.0,
+      "durability": 59,
+      "enchantability": 15,
+      "incorrect_blocks": "incorrect_for_wooden_tool",
+      "repair_items": "wooden_tool_materials",
+      "incorrect_block_tag_values": [
+        "#minecraft:needs_diamond_tool",
+        "#minecraft:needs_iron_tool",
+        "#minecraft:needs_stone_tool"
+      ]
     }
   },
   "tools": [

@@ -414,6 +414,8 @@ pub fn recipes() -> &'static [Recipe] {
         r.push(shapeless(&[GOLD_BLOCK], Item::GOLD_INGOT, 9));
         r.push(shaped(&["###", "###", "###"], &[('#', &[Item::IRON_NUGGET])], Item::IRON_INGOT, 1));
         r.push(shapeless(&[IRON], Item::IRON_NUGGET, 9));
+        r.push(shaped(&["###", "###", "###"], &[('#', &[Item::COPPER_NUGGET])], Item::COPPER_INGOT, 1));
+        r.push(shapeless(&[&[Item::COPPER_INGOT]], Item::COPPER_NUGGET, 9));
         for (i, mat) in [BLACK, POLISHED, BLACK_BRICKS].into_iter().enumerate() {
             r.push(shaped(&["#  ", "## ", "###"], &[('#', mat)], b(crate::world::nether_blocks::shape_id(i, 0)), 4));
             r.push(shaped(&["###"], &[('#', mat)], b(crate::world::nether_blocks::shape_id(i, 4)), 6));
@@ -423,9 +425,10 @@ pub fn recipes() -> &'static [Recipe] {
         for (i, (log, planks)) in LOGS.into_iter().enumerate() {
             r.insert(i, shapeless(&[log], b(planks), 4));
         }
-        const MATERIALS: [(Tier, Ingredient); 5] = [
+        const MATERIALS: [(Tier, Ingredient); 6] = [
             (Tier::Wood, PLANKS),
             (Tier::Stone, STONE_CRAFTING),
+            (Tier::Copper, &[Item::COPPER_INGOT]),
             (Tier::Iron, &[Item::IRON_INGOT]),
             (Tier::Gold, &[Item::GOLD_INGOT]),
             (Tier::Diamond, &[Item::DIAMOND]),

@@ -37,17 +37,21 @@ pub enum Tier {
     Gold,
     Diamond,
     Netherite,
+    /// Java 26.3 copper tools (appended; not in the original `FIRST_TOOL` block).
+    Copper,
 }
 
 impl Tier {
-    pub const ALL: [Tier; 6] = [Tier::Wood, Tier::Stone, Tier::Iron, Tier::Gold, Tier::Diamond, Tier::Netherite];
+    pub const ALL: [Tier; 7] =
+        [Tier::Wood, Tier::Stone, Tier::Iron, Tier::Gold, Tier::Diamond, Tier::Netherite, Tier::Copper];
 
     /// Which blocks the tier can harvest: 0 wood/gold, 1 stone, 2 iron, 3
     /// diamond, 4 Netherite (everything diamond can).
     pub fn level(self) -> u8 {
         match self {
             Tier::Wood | Tier::Gold => 0,
-            Tier::Stone => 1,
+            // Java's `incorrect_for_copper_tool` matches the stone tag.
+            Tier::Stone | Tier::Copper => 1,
             Tier::Iron => 2,
             Tier::Diamond => 3,
             Tier::Netherite => 4,
@@ -59,6 +63,7 @@ impl Tier {
         match self {
             Tier::Wood => 2.0,
             Tier::Stone => 4.0,
+            Tier::Copper => 5.0,
             Tier::Iron => 6.0,
             Tier::Diamond => 8.0,
             Tier::Netherite => 9.0,
@@ -71,6 +76,7 @@ impl Tier {
         match self {
             Tier::Wood => 59,
             Tier::Stone => 131,
+            Tier::Copper => 190,
             Tier::Iron => 250,
             Tier::Diamond => 1561,
             Tier::Netherite => 2031,
@@ -282,6 +288,10 @@ const fn item(name: &'static str, sprite: Sprite) -> ItemInfo {
 
 const fn food(name: &'static str, hunger: u8, saturation: f32, sprite: Sprite) -> ItemInfo {
     ItemInfo { name, kind: ItemKind::Food { hunger, saturation }, max_stack: 64, sprite }
+}
+
+const fn copper_tool(name: &'static str, kind: ToolKind) -> ItemInfo {
+    ItemInfo { name, kind: ItemKind::Tool(kind, Tier::Copper), max_stack: 1, sprite: Sprite::Tool(kind, Tier::Copper) }
 }
 
 const fn netherite_tool(name: &'static str, kind: ToolKind) -> ItemInfo {
@@ -611,6 +621,18 @@ const NETHERITE_ARMOR: u16 = NETHERITE_TOOLS + TOOL_KINDS.len() as u16;
 const FIRST_POTION: u16 = 400;
 const LEGACY_POTION_COUNT: u16 = 36;
 const AUDIT_POTION: u16 = 1041;
+/// Java 26.3 copper equipment. Reserved ids 1050..=1069 (tools, nugget, and
+/// later copper armor and spears); 1047..=1049 stay free.
+const COPPER_ITEM: u16 = 1050;
+const COPPER_ITEMS: &[ItemInfo] = &[
+    copper_tool("copper pickaxe", ToolKind::Pickaxe),
+    copper_tool("copper shovel", ToolKind::Shovel),
+    copper_tool("copper axe", ToolKind::Axe),
+    copper_tool("copper hoe", ToolKind::Hoe),
+    copper_tool("copper sword", ToolKind::Sword),
+    item("copper nugget", Sprite::Nugget([200, 118, 86])),
+];
+const _: () = assert!(COPPER_ITEM as usize + COPPER_ITEMS.len() <= 1070);
 const AUDIT_SPLASH_POTION: u16 = 1044;
 /// Raw metals and gems. 360 is diamond boots (`FIRST_ARMOR` ends there),
 /// so these start at 361.
@@ -761,6 +783,7 @@ impl Item {
     pub const TURTLE_SCUTE: Item = Item(907);
     /// Standalone append-only audit gear ID; v0.7 reserves 1000..1039.
     pub const TURTLE_HELMET: Item = Item(1040);
+    pub const COPPER_NUGGET: Item = Item(COPPER_ITEM + 5);
     pub const NAUTILUS_SHELL: Item = Item(908);
     pub const HEART_OF_THE_SEA: Item = Item(909);
     pub const INK_SAC: Item = Item(910);
@@ -778,6 +801,7 @@ impl Item {
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         match tier {
             Tier::Netherite => Item(NETHERITE_TOOLS + kind as u16),
+            Tier::Copper => Item(COPPER_ITEM + kind as u16),
             _ => Item(FIRST_TOOL + tier as u16 * 5 + kind as u16),
         }
     }
@@ -990,6 +1014,9 @@ impl Item {
         if let Some(info) = self.0.checked_sub(SURVIVAL_ITEM).and_then(|i| SURVIVAL_ITEMS.get(i as usize)) {
             return *info;
         }
+        if let Some(info) = self.0.checked_sub(COPPER_ITEM).and_then(|i| COPPER_ITEMS.get(i as usize)) {
+            return *info;
+        }
         // Saves from the integration branch stored shears at 607.
         if self.0 == 607 {
             return SURVIVAL_ITEMS[0];
@@ -1174,6 +1201,7 @@ impl Item {
             .chain((0..MOUNT_ITEMS.len() as u16).map(|i| Item(MOUNT_ITEM + i)))
             .chain((0..ANIMAL_ITEMS.len() as u16).map(|i| Item(ANIMAL_ITEM + i)))
             .chain([Self::TURTLE_HELMET])
+            .chain((0..COPPER_ITEMS.len() as u16).map(|i| Item(COPPER_ITEM + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1210,7 +1238,10 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
-        1040 => Some(icon_count() as u16 - 1),
+        1040 => Some(turtle_icon()),
+        i if (COPPER_ITEM..COPPER_ITEM + COPPER_ITEMS.len() as u16).contains(&i) => {
+            Some(turtle_icon() + 1 + i - COPPER_ITEM)
+        }
         i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some(i - FIRST_ITEM),
         i if item.as_tool().is_some() || item.as_armor().is_some() => Some(materials + i - FIRST_TOOL),
         _ if item.as_potion().is_some() => {
@@ -1288,7 +1319,12 @@ fn sprite_index(item: Item) -> Option<u16> {
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    base_icon_count() + OVERWORLD_ITEMS.len() as u32 + MOUNT_ITEMS.len() as u32 + ANIMAL_ITEMS.len() as u32 + 1
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32
+}
+
+/// The turtle helmet's icon follows the animal items; copper equipment follows it.
+const fn turtle_icon() -> u16 {
+    (base_icon_count() + OVERWORLD_ITEMS.len() as u32 + MOUNT_ITEMS.len() as u32 + ANIMAL_ITEMS.len() as u32) as u16
 }
 
 /// Icons up to and including the Nether-mob items.

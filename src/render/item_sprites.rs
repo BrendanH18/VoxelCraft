@@ -56,6 +56,7 @@ fn tier_colour(tier: Tier) -> [u8; 3] {
         Tier::Gold => [246, 208, 62],
         Tier::Diamond => [70, 222, 210],
         Tier::Netherite => [104, 94, 102],
+        Tier::Copper => [200, 118, 86],
     }
 }
 

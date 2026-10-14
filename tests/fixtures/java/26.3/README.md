@@ -143,17 +143,20 @@ structure overrides or the complete roster. See the [lighting/spawning evidence]
 
 `combat.json` records the player's base attack attributes, entity interaction
 ranges, every vanilla tool's attack-damage/speed modifiers with its tool-material
-bonus, and the constants `Player.attack` uses for attack strength, criticals,
-sprint knockback, sweeps and exhaustion. The extractor reads `Items`,
-`ToolMaterial`, `Attributes` and `Player` bytecode and fails on unknown forms.
+bonus, each tool material's durability, speed, enchantability and
+incorrect-block/repair tags (with the incorrect tag's contents), the open-screen
+range extras, and the constants `Player.attack` uses for attack strength,
+criticals, sprint knockback, sweeps and exhaustion. The extractor reads `Items`,
+`ToolMaterial`, `Attributes`, `Player`, `Container`, `ContainerEntity` and
+`AbstractVillager` bytecode plus block tag data, and fails on unknown forms.
 
 ```sh
 python3 tools/extract_java_combat_fixtures.py /path/to/server.jar --output target/java-combat.json
 diff tests/fixtures/java/26.3/combat.json target/java-combat.json
-cargo test --release --test shared_combat
+cargo test --release --test shared_combat --test copper_tools --test shared_screen_ranges
 ```
 
-Copper tools are recorded but not yet registered by VoxelCraft.
+All 35 reference tools, including copper, are registered.
 
 ## Fishing loot
 

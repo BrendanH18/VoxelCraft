@@ -67,8 +67,8 @@ fn every_registered_tool_has_reference_attack_attributes() {
         assert_eq!(mining::attack_speed(Some(item)), speed, "{id} speed");
         checked += 1;
     }
-    assert_eq!(checked, 30, "registered reference tools; unregistered: {missing:?}");
-    assert!(missing.iter().all(|id| id.starts_with("copper_")), "{missing:?}");
+    assert_eq!(checked, 35, "every reference tool is registered; unregistered: {missing:?}");
+    assert!(missing.is_empty(), "{missing:?}");
 }
 
 #[test]

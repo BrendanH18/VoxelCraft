@@ -2,7 +2,8 @@
 """Extract player melee facts from the pinned official Java 26.3 artifact.
 
 Requires javap. Records tool attack attributes (`Item$Properties` sword/axe/...
-registrations plus `ToolMaterial` damage bonuses), player base attributes and
+registrations plus `ToolMaterial` damage bonuses), each material's durability,
+speed, enchantability and incorrect-block/repair tags, player base attributes and
 interaction ranges, and the attack-strength constants used by `Player.attack`.
 Unknown bytecode forms fail rather than regenerating a guessed fixture.
 No VoxelCraft source or existing fixture is consulted.
@@ -28,6 +29,15 @@ def float_operands(code):
         match = re.search(r"\d+: (?:fconst_([0-2])|ldc(?:_w)?\s+#\d+\s+// float (-?[\d.]+)f)", line)
         if match:
             values.append(float(match[1] if match[1] is not None else match[2]))
+    return values
+
+
+def int_operands(code):
+    values = []
+    for line in code.splitlines():
+        match = re.search(r"\d+: (?:iconst_([0-5])|bipush\s+(-?\d+)|sipush\s+(-?\d+))\s*$", line)
+        if match:
+            values.append(int(next(g for g in match.groups() if g is not None)))
     return values
 
 
@@ -57,11 +67,20 @@ def extract(server):
         pieces = re.split(r"putstatic\s+#\d+\s+// Field ([A-Z_]+):Lnet/minecraft/world/item/ToolMaterial;", block)
         for code, name in zip(pieces[0::2], pieces[1::2]):
             floats = float_operands(code)
-            if len(floats) != 2:
+            ints = int_operands(code)
+            incorrect = re.search(r"BlockTags\.(\w+):", code)
+            repair = re.search(r"ItemTags\.(\w+):", code)
+            if len(floats) != 2 or len(ints) != 2 or not incorrect or not repair:
                 raise ValueError(f"unrecognized tool material initialization: {name}")
-            materials[name] = {"speed": floats[0], "attack_damage_bonus": floats[1]}
+            materials[name] = {"speed": floats[0], "attack_damage_bonus": floats[1], "durability": ints[0],
+                               "enchantability": ints[1], "incorrect_blocks": incorrect[1].lower(),
+                               "repair_items": repair[1].lower()}
         if set(MATERIALS) - set(materials):
             raise ValueError("missing tool materials")
+        with zipfile.ZipFile(path) as inner:
+            for facts in materials.values():
+                tag = json.loads(inner.read(f"data/minecraft/tags/block/{facts['incorrect_blocks']}.json"))
+                facts["incorrect_block_tag_values"] = tag["values"]
 
         items = inspect("net.minecraft.world.item.Items").split("  static {};")[1]
         tools = []

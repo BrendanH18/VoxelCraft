@@ -379,6 +379,7 @@ pub fn enchantability(item: Item) -> u32 {
         ItemKind::Tool(_, tier) => match tier {
             Tier::Wood => 15,
             Tier::Stone => 5,
+            Tier::Copper => 13,
             Tier::Iron => 14,
             Tier::Gold => 22,
             Tier::Diamond => 10,
@@ -696,6 +697,7 @@ pub fn repairs(item: Item, material: Item) -> bool {
             }),
             Tier::Stone => material == Item::from(Block::COBBLESTONE),
             Tier::Iron => material == Item::IRON_INGOT,
+            Tier::Copper => material == Item::COPPER_INGOT,
             Tier::Gold => material == Item::GOLD_INGOT,
             Tier::Diamond => material == Item::DIAMOND,
             Tier::Netherite => material == Item::NETHERITE_INGOT,

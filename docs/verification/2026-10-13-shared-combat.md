@@ -66,13 +66,38 @@ The required formatting, strict release Clippy and release tests passed:
 passed strict Clippy and **830 tests, zero failed, two ignored**. The real
 desktop LAN harness passed **13/13** checks, including PvP with sword and bow.
 
+## Copper tools and nuggets
+
+Item ids 1050..=1069 are reserved for Java 26.3 copper equipment: the five
+copper tools take 1050..=1054 and the copper nugget 1055. `Tier::Copper` is
+appended (it is not saved by ordinal). From `combat.json`: durability 190,
+speed 5.0, enchantability 13, attack bonus 1 (the axe deals 7 at -3.2, the hoe
+-1 at -2.0), stone's harvest level (`incorrect_for_copper_tool` holds the same
+tags as stone's), repair with copper ingots. Recipes follow the reference tool
+patterns, `copper_nugget` (one ingot to nine) and `copper_ingot_from_nuggets`.
+Iron, golden and copper tools, armor and horse armor now smelt and blast to one
+nugget (0.1 experience), as in `*_nugget_from_smelting`/`_blasting`; Java's
+spears, chainmail and nautilus armor in those lists are not registered.
+`tests/copper_tools.rs` checks every tool material against the fixture, copper
+harvesting, recipes, repair and nugget smelting. Loot-table copper tools,
+copper armor, spears and ordinary-player acceptance remain open; icons use the
+procedural tool sprites in copper colour.
+
+Validation with copper: release **972 passed, zero failed**; headless **890
+passed, zero failed**. The desktop LAN harness failed once on "PvP on" (the
+sword hit missed: 20.0 -> 20.0, the bow then hit) and passed 13/13 on the next
+two runs. The players stand about 2.7 blocks apart against a 3.0 survival reach,
+and any mob crossing the ray blocks a PvP hit, so the check is timing- and
+mob-sensitive; it is recorded as intermittent, not fixed.
+
 ## Remaining differences
 
 - Fall distance is approximated as downward velocity while airborne; Blindness
   does not exist, so it cannot block criticals.
 - Java's per-item `minimum_attack_charge`, spear/mace/trident and other
-  kinetic/piercing weapon components, copper tools and attack-speed attribute
-  modifiers from effects/enchantments are not implemented.
+  kinetic/piercing weapon components and attack-speed attribute modifiers from
+  effects/enchantments are not implemented. Copper tools are now registered
+  (see below); copper armor and every spear tier are not.
 - Damage to non-living targets (crystals, dragon parts) uses the scaled base
   plus scaled generic enchantment bonus; dragon-part damage routing is the
   existing fight model.
