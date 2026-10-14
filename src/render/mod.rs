@@ -274,6 +274,9 @@ pub struct Renderer {
     vsync: bool,
     pub stats: RenderStats,
     pub gpu_name: String,
+    /// The name wgpu reports for the adapter, used to match it to its Metal device.
+    adapter_name: String,
+    backend: wgpu::Backend,
     /// (distance², chunk, camera-relative origin, faces that can face the camera).
     visible: Vec<(f32, IVec3, [f32; 3], u8)>,
     capture: Option<std::path::PathBuf>,
@@ -302,10 +305,32 @@ pub fn resolve_present_mode(requested: wgpu::PresentMode, supported: &[wgpu::Pre
 /// GPU memory a report can state; unavailable values are `None`, never zero.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GpuMemory {
-    /// Device allocator totals (allocated, reserved) where the backend reports them.
-    pub device: Option<(u64, u64)>,
+    /// Bytes the device has allocated, where the backend reports them: the
+    /// wgpu allocator report (Vulkan, DX12) or `MTLDevice.currentAllocatedSize`.
+    pub device_allocated: Option<u64>,
+    /// Bytes the allocator has reserved from the driver; Metal has no such figure.
+    pub device_reserved: Option<u64>,
     /// The chunk quad arena's (used, reserved) bytes, tracked by this renderer.
     pub chunk_arena: (u64, u64),
+}
+
+/// `MTLDevice.currentAllocatedSize` of the adapter wgpu selected. wgpu 30
+/// has no allocator report on Metal and its HAL keeps the raw device
+/// private, so this looks the system's Metal device up by name; it returns
+/// `None` unless that device is the adapter in use.
+#[cfg(target_vendor = "apple")]
+fn metal_allocated_bytes(backend: wgpu::Backend, adapter_name: &str) -> Option<u64> {
+    use objc2_metal::{MTLCreateSystemDefaultDevice, MTLDevice};
+    if backend != wgpu::Backend::Metal {
+        return None;
+    }
+    let device = MTLCreateSystemDefaultDevice()?;
+    (device.name().to_string() == adapter_name).then(|| device.currentAllocatedSize() as u64)
+}
+
+#[cfg(not(target_vendor = "apple"))]
+fn metal_allocated_bytes(_: wgpu::Backend, _: &str) -> Option<u64> {
+    None
 }
 
 /// Specialize away paging branches on adapters that can hold all block layers.
@@ -801,6 +826,8 @@ impl Renderer {
             vsync,
             stats: RenderStats::default(),
             gpu_name,
+            adapter_name: info.name.clone(),
+            backend: info.backend,
             visible: Vec::new(),
             capture: None,
             offscreen: None,
@@ -818,8 +845,13 @@ impl Renderer {
 
     /// Current GPU memory telemetry; device totals are absent on backends without an allocator report.
     pub fn gpu_memory(&self) -> GpuMemory {
+        let report = self.device.generate_allocator_report();
         GpuMemory {
-            device: self.device.generate_allocator_report().map(|r| (r.total_allocated_bytes, r.total_reserved_bytes)),
+            device_allocated: report
+                .as_ref()
+                .map(|r| r.total_allocated_bytes)
+                .or_else(|| metal_allocated_bytes(self.backend, &self.adapter_name)),
+            device_reserved: report.map(|r| r.total_reserved_bytes),
             chunk_arena: (self.arena.used_bytes(), self.arena.capacity_bytes()),
         }
     }
@@ -1371,6 +1403,18 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_vendor = "apple")]
+    #[test]
+    fn metal_allocation_is_reported_only_for_the_matching_adapter() {
+        use objc2_metal::{MTLCreateSystemDefaultDevice, MTLDevice};
+        let Some(device) = MTLCreateSystemDefaultDevice() else { return };
+        let name = device.name().to_string();
+        let bytes = metal_allocated_bytes(wgpu::Backend::Metal, &name);
+        assert!(bytes.is_some(), "the default Metal device reports its allocation");
+        assert_eq!(metal_allocated_bytes(wgpu::Backend::Vulkan, &name), None);
+        assert_eq!(metal_allocated_bytes(wgpu::Backend::Metal, "some other gpu"), None);
+    }
 
     #[test]
     fn auto_present_modes_resolve_like_wgpu() {

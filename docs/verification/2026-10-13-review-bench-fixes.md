@@ -46,6 +46,20 @@ correctly marked invalid for its protocol length and for a 1.34 s load hitch:
 `Immediate` on this display. Check this during the real run, because a
 120 Hz present cap would make the 240 FPS gate unreachable.
 
+## Metal memory telemetry (v0.7.0 fix)
+
+wgpu 30 returns no allocator report on Metal and its HAL keeps the raw device
+private, so `gpu_memory_allocated_bytes` was `null` there. The renderer now
+reads `MTLDevice.currentAllocatedSize` from the system default Metal device
+(via the `objc2-metal` crate, Apple targets with the `client` feature only),
+and only when that device's name equals the adapter wgpu selected, so a
+different GPU never supplies the number. Metal has no equivalent of the
+allocator's "reserved" figure, so `gpu_memory_reserved_bytes` stays `null`;
+absent values are never reported as zero. Covered by
+`render::tests::metal_allocation_is_reported_only_for_the_matching_adapter`
+(skipped on machines without a Metal device). Not exercised in a benchmark
+run: that needs the owner's idle machine.
+
 ## Remaining measurement
 
 Re-measure on an otherwise idle M5. No concurrent builds or GPU work should run,
