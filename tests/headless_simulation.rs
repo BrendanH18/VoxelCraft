@@ -17,6 +17,8 @@ fn settle(world: &mut World, at: DVec3) {
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         world.update(at);
+        // Generated geode cracks leave water and lava to flow in.
+        world.tick_fluids(0.25);
         assert!(world.mesh_uploads.is_empty());
         assert!(world.mesh_removals.is_empty());
         if world.loaded_chunks() > 0 && world.is_idle() {
