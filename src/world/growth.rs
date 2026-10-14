@@ -64,18 +64,25 @@ impl World {
     pub fn spill_with_item(&mut self, p: IVec3, block: Block, held: Option<Stack>) {
         if self.tile_drops
             && held.is_some_and(|s| s.item == Item::SHEARS)
-            && (block.is_leaves()
-                || block == Block::COBWEB
-                || super::nether_biome_blocks::sheared_drop(block).is_some()
-                || super::overworld_blocks::sheared_drop(block).is_some())
+            && let Some(stack) = Self::shear_loot(block)
         {
-            let item = super::nether_biome_blocks::sheared_drop(block)
-                .or_else(|| super::overworld_blocks::sheared_drop(block))
-                .unwrap_or(block.base().into());
-            self.drops.push((p, Stack::new(item, 1)));
+            self.drops.push((p, stack));
         } else {
             self.spill_mined(p, block, held.map_or(Default::default(), |s| s.active_enchants()));
         }
+    }
+
+    /// What Java's loot tables give `block` under `tool/can_shear` instead of
+    /// the usual roll: the plant or leaf itself, and two for the tall grass,
+    /// large fern and tall seagrass pools (`tests/fixtures/java/26.3/mining.json`).
+    fn shear_loot(block: Block) -> Option<Stack> {
+        let count = if matches!(block.0, 1963 | 1964 | 2049..=2052) { 2 } else { 1 };
+        let item = match block {
+            Block::TALL_GRASS | Block::FERN | Block::DEAD_BUSH | Block::COBWEB => block.into(),
+            b if b.is_leaves() => b.base().into(),
+            b => super::nether_biome_blocks::sheared_drop(b).or_else(|| super::overworld_blocks::sheared_drop(b))?,
+        };
+        Some(Stack::new(item, count))
     }
 
     pub fn spill_mined(&mut self, p: IVec3, block: Block, tool: crate::enchant::Enchants) {

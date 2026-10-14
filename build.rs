@@ -28,19 +28,38 @@ fn embed_mining_tags() {
     let fixture: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(PATH).expect("read reference mining tags"))
             .expect("parse reference mining tags");
-    let mut names: Vec<String> = fixture["ice_support_blocks"]
-        .as_array()
-        .expect("ice support tag")
-        .iter()
-        .map(|v| v.as_str().expect("reference block ID").replace('_', " "))
-        .collect();
-    names.sort_unstable();
-    assert!(names.windows(2).all(|pair| pair[0] != pair[1]), "duplicate reference mining tag name");
-    let mut generated = String::from("const ICE_SUPPORT_NAMES: &[&str] = &[\n");
-    for name in names {
-        generated.push_str(&format!("{name:?},\n"));
+    let list = |value: &serde_json::Value| -> Vec<String> {
+        let mut names: Vec<String> = value
+            .as_array()
+            .expect("reference tag")
+            .iter()
+            .map(|v| v.as_str().expect("reference block ID").replace('_', " "))
+            .collect();
+        names.sort_unstable();
+        assert!(names.windows(2).all(|pair| pair[0] != pair[1]), "duplicate reference mining tag name");
+        names
+    };
+    let rules = &fixture["tool_rules"];
+    let mut generated = String::new();
+    for (constant, value) in [
+        ("ICE_SUPPORT_NAMES", &fixture["ice_support_blocks"]),
+        ("MINEABLE_PICKAXE", &rules["mineable"]["pickaxe"]),
+        ("MINEABLE_AXE", &rules["mineable"]["axe"]),
+        ("MINEABLE_SHOVEL", &rules["mineable"]["shovel"]),
+        ("MINEABLE_HOE", &rules["mineable"]["hoe"]),
+        ("SWORD_EFFICIENT", &rules["sword_efficient"]),
+        ("SWORD_INSTANTLY_MINES", &rules["sword_instantly_mines"]),
+        ("SHEARS_EXTREME", &rules["shears"]["extreme"]),
+        ("SHEARS_MAJOR", &rules["shears"]["major"]),
+        ("SHEARS_MINOR", &rules["shears"]["minor"]),
+        ("TOOL_RULE_BLOCKS", &rules["all_blocks"]),
+    ] {
+        generated.push_str(&format!("const {constant}: &[&str] = &[\n"));
+        for name in list(value) {
+            generated.push_str(&format!("{name:?},\n"));
+        }
+        generated.push_str("];\n");
     }
-    generated.push_str("];\n");
     fs::write(PathBuf::from(std::env::var("OUT_DIR").expect("build output")).join("mining_tags.rs"), generated)
         .expect("write static mining tags");
 }

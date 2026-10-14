@@ -181,10 +181,24 @@ enum was appended, and effects persist by string ID.
     gamerule, as Java's `preventDropFromBottomPart` does. No registered block
     depends on a door or tall plant, so the Creative double-plant test is the
     only observable evidence (a wrong order would pop the lower half).
-  - Survival double-plant loot with shears and tool context in neighbor
-    destruction are unchanged and not newly verified.
-  - Full `Tool` component rules, such as per-block speeds and correct-tool
-    tags, still use the engine's tool tables.
+  - Implemented: tool speeds and correct-tool matching follow the reference
+    `Tool` rules instead of the engine's single-kind table. A tool digs every
+    block in its `mineable/<kind>` tag at tier speed (so hoes dig leaves,
+    pickaxes dig stone buttons and dead coral, axes dig wooden buttons);
+    swords use cobweb 15, `sword_instantly_mines` and `sword_efficient` 1.5;
+    shears use cobweb and leaves 15, wool 5, vines and glow lichen 2. The tags
+    are expanded by `tools/extract_java_mining_fixtures.py` into
+    `tests/fixtures/java/26.3/mining.json` (`tool_rules`) and embedded at build
+    time; blocks with no reference counterpart keep the engine table. The
+    drop-tier requirement (`requires correct tool`) is still the engine's
+    `harvest_level`, which agrees with the `needs_*_tool` tags for every
+    registered name.
+  - Implemented: shears give the loot table's item and count: short grass,
+    fern and dead bush drop themselves, and tall grass, large fern and tall
+    seagrass drop two. Java's `DoublePlantBlock.playerWillDestroy` drops the
+    broken half with the player's tool before removal, and the partner half is
+    destroyed with an empty tool (`Level.destroyBlock` passes `ItemStack.EMPTY`),
+    so the partner adds no drop.
 - **Not yet verified:** the retained egg teleport algorithm and full raycast
   shape fidelity.
 

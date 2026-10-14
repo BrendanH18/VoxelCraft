@@ -42,6 +42,44 @@ def extract(server):
             return values
 
         blocks = sorted(expand("ice_melts_when_destroyed_above"))
+        # Tool component inputs: ToolMaterial.applyToolProperties denies drops with
+        # incorrect_for_<tier>_tool and mines mineable/<kind>; SwordItem and
+        # ShearsItem rules use the speed tags. Names are expanded and sorted.
+        def shear_entries(node, out, inherited=""):
+            if isinstance(node, dict):
+                condition = inherited + json.dumps(node.get("condition", ""))
+                if node.get("type") == "minecraft:item" and "can_shear" in condition and "minecraft:inverted" not in condition:
+                    count = 1
+                    for modifier in ([node["modifier"]] if isinstance(node.get("modifier"), dict) else node.get("modifier", [])):
+                        if modifier.get("type") == "minecraft:set_count":
+                            count = modifier["count"] if isinstance(modifier["count"], int) else None
+                    out.append({"item": node["name"].removeprefix("minecraft:"), "count": count,
+                                "silk_touch": "can_silk_touch" in condition})
+                for value in node.values():
+                    shear_entries(value, out, condition)
+            elif isinstance(node, list):
+                for value in node:
+                    shear_entries(value, out, inherited)
+
+        shear_loot = {}
+        for path in sorted(jar.namelist()):
+            if path.startswith("data/minecraft/loot_table/blocks/") and path.endswith(".json"):
+                found = []
+                shear_entries(json.loads(jar.read(path)), found)
+                if found:
+                    shear_loot[path.removeprefix("data/minecraft/loot_table/blocks/").removesuffix(".json")] = found
+        tool_rules = {
+            "shear_loot": shear_loot,
+            "mineable": {kind: sorted(expand(f"mineable/{kind}")) for kind in ("pickaxe", "axe", "shovel", "hoe")},
+            "needs": {tier: sorted(expand(f"needs_{tier}_tool")) for tier in ("stone", "iron", "diamond")},
+            "sword_efficient": sorted(expand("sword_efficient")),
+            "sword_instantly_mines": sorted(expand("sword_instantly_mines")),
+            "shears": {kind: sorted(expand(f"shears_{kind}_breaking_speed")) for kind in ("extreme", "major", "minor")},
+            "all_blocks": sorted(
+                n.removeprefix("data/minecraft/loot_table/blocks/").removesuffix(".json")
+                for n in jar.namelist()
+                if n.startswith("data/minecraft/loot_table/blocks/") and n.endswith(".json")),
+        }
         enchantment_path = "data/minecraft/tags/enchantment/prevents_ice_melting.json"
         enchantments = json.loads(jar.read(enchantment_path))["values"]
         dimensions = {}
@@ -112,7 +150,7 @@ def extract(server):
                         "BlockBehaviour.getDestroyProgress", "Player.getDestroySpeed", "Attributes.SUBMERGED_MINING_SPEED",
                         "Attributes.BLOCK_INTERACTION_RANGE", "ServerPlayer.CREATIVE_BLOCK_INTERACTION_RANGE_MODIFIER",
                         *sorted(visited), enchantment_path],
-            "ice_support_blocks": blocks, "ice_melting_prevented_by": [v.removeprefix("minecraft:") for v in enchantments],
+            "ice_support_blocks": blocks, "tool_rules": tool_rules, "ice_melting_prevented_by": [v.removeprefix("minecraft:") for v in enchantments],
             "water_evaporates": dimensions, "fatigue_factors": factors, "progress_cases": cases,
             "block_reach": {"survival": block_range, "creative": block_range + creative_bonus}}
 
