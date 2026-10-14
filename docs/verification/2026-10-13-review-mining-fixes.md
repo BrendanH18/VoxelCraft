@@ -174,8 +174,14 @@ enum was appended, and effects persist by string ID.
     destruction are unchanged and not newly verified.
   - Full `Tool` component rules, such as per-block speeds and correct-tool
     tags, still use the engine's tool tables.
-- **Not yet verified:** the retained egg teleport algorithm and full raycast
-  shape fidelity.
+- **Egg teleport correction (fixed in this branch):** Java 26.3 draws X/Y/Z
+  in that order, with bounds 16/8/16, at most 1000 attempts. It requires air
+  at the destination, non-air below, build height and world-border bounds.
+  The retained implementation omitted support and bounds and drew X/Z/Y.
+  `mob_integrations.json` pins the bytecode checks; unit and End-world tests
+  cover draw order and supported destinations. The engine RNG and loaded-only
+  world access remain; ordinary-player/particle acceptance is unverified.
+- **Not yet verified:** full raycast shape fidelity.
 
 ## Proposed roadmap updates
 

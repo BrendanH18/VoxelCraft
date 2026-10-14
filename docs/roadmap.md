@@ -778,3 +778,11 @@ reviewable alongside implementation changes and release notes.
 
 Multiplayer and additional side features receive their own roadmap after
 this single-player acceptance milestone. They are not prerequisites for 1.0.
+
+### v0.7 mob worker corrections — 2026-10-13
+
+Dragon-egg teleport attempts now match Java 26.3's XYZ draw order and require
+non-air support, dimension build height and the default world-border bounds.
+Bytecode fixture and automated End-world coverage are implemented; player,
+particles and Java RNG sequence parity remain unverified. See the
+[mining review](verification/2026-10-13-review-mining-fixes.md).

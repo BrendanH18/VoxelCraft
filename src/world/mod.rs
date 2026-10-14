@@ -1279,6 +1279,12 @@ mod tests {
         let to = world.teleport_egg(egg).expect("the egg should find room");
         assert_eq!(world.get_block(egg), Some(Block::AIR));
         assert!((to - egg).abs().max_element() <= 15);
+        assert!((to.y - egg.y).abs() <= 7);
+        assert!(
+            world.get_block(to - IVec3::Y).is_some_and(|b| b != Block::AIR),
+            "Java 26.3 rejects unsupported destinations"
+        );
+        assert!(world.contains_y(to.y));
     }
 
     fn surface_y(world: &World, x: i32, z: i32) -> i32 {
