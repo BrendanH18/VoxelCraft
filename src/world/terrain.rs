@@ -102,6 +102,30 @@ impl Dimension {
         }
     }
 
+    /// Legacy dimension type ambient factor, retained as reference metadata.
+    /// Java 26.3's client uses the environment `visual/ambient_light_color`
+    /// directly instead of lifting each light level with this scalar.
+    pub const fn ambient_light(self) -> f32 {
+        match self {
+            Dimension::Overworld => 0.0,
+            Dimension::Nether => 0.1,
+            Dimension::End => 0.25,
+        }
+    }
+
+    /// The dimension type's `visual/ambient_light_color` (`#0a0a0a`,
+    /// `#302821`, `#3f473f`) as RGB fractions: added to the sky and block light in Java 26.3.
+    pub const fn ambient_light_color(self) -> [f32; 3] {
+        const fn rgb(r: u8, g: u8, b: u8) -> [f32; 3] {
+            [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
+        }
+        match self {
+            Dimension::Overworld => rgb(0x0a, 0x0a, 0x0a),
+            Dimension::Nether => rgb(0x30, 0x28, 0x21),
+            Dimension::End => rgb(0x3f, 0x47, 0x3f),
+        }
+    }
+
     /// Lowest block y. Java's Overworld runs from -64; the Nether and the
     /// End start at 0.
     pub const fn min_y(self) -> i32 {
@@ -1593,5 +1617,25 @@ mod tests {
         let s = g.find_spawn();
         let c = g.column(s.x, s.z);
         assert!(c.height >= SEA_LEVEL && !c.biome.is_watery(), "{s} {:?}", c.biome);
+    }
+
+    #[test]
+    fn dimension_light_attributes_match_the_reference_dimension_types() {
+        let facts: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/lighting_spawning.json")).unwrap();
+        for (dimension, name) in
+            [(Dimension::Overworld, "overworld"), (Dimension::Nether, "the_nether"), (Dimension::End, "the_end")]
+        {
+            let reference = &facts["dimensions"][name];
+            assert_eq!(dimension.ambient_light(), reference["ambient_light"].as_f64().unwrap() as f32, "{name}");
+            assert_eq!(
+                dimension.visual_sky_light_factor(),
+                reference["visual_sky_light_factor"].as_f64().unwrap() as f32,
+                "{name}"
+            );
+            let hex = reference["visual_ambient_light_color"].as_str().unwrap().trim_start_matches('#');
+            let channels = [0, 2, 4].map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap());
+            assert_eq!(dimension.ambient_light_color(), channels.map(|c| f32::from(c) / 255.0), "{name}");
+        }
     }
 }

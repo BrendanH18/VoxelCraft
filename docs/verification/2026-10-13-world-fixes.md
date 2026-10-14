@@ -97,3 +97,24 @@ Spell durations are sampled in inclusive integer ticks. Timer expiration flips
 the corresponding flag; its next duration is sampled on the next update, as in
 `ServerLevel.advanceWeatherCycle`. Weather timers retain their public seconds
 interface and are quantized to ticks when advanced.
+
+## Ambient light in the Nether and End
+
+Sources: the dimension type JSON (`ambient_light` 0.1 Nether, 0.25 End; environment
+`visual/ambient_light_color` `#0a0a0a`, `#302821`, `#3f473f`; `visual/sky_light_factor`
+1, 0, 0), pinned in `lighting_spawning.json`. The lightmap shader is client-only and is
+not in the server jar, so the way the colour combines with sky and block light
+follows the documented client behavior (ambient colour added to the sky and block
+terms, clamped), not a disassembly.
+
+- The chunk, block-model, entity and particle shaders take `visual/ambient_light_color`
+  through a new `Globals.ambient` uniform (w = skyless dimension). In the Nether and End the
+  light is `clamp(ambient + sky + block)`. The Overworld keeps its existing path.
+- The End and Nether sky factor is 0 (was a 0.65 / 0.42 stand-in "daylight"), so the End's
+  sky-lit islands are no longer rendered as 65% sunlight.
+- Not changed: gameplay skylight propagation (the End still propagates skylight).
+
+**Unverified visually**: `--screenshot` smoke runs in the Nether and End compiled the shaders and
+rendered plausible, non-black terrain, but the reference
+brightness of Nether and End terrain still needs a side-by-side look.
+Test: `world::terrain::tests::dimension_light_attributes_match_the_reference_dimension_types`.

@@ -1510,8 +1510,10 @@ impl Game {
         sky.zenith = self.weather.overcast(sky.zenith);
         let nether = !self.dimension.has_sky();
         if nether {
-            // No sun, no weather: a steady dim glow in a red haze.
-            sky.daylight = if self.dimension == Dimension::End { 0.65 } else { dimension::NETHER_LIGHT };
+            // No sun, no weather. Both dimension types set `visual/sky_light_factor`
+            // to 0, so terrain is lit by block light and the dimension's
+            // ambient light term only (see `Dimension::ambient_light`).
+            sky.daylight = self.dimension.visual_sky_light_factor();
             let fog = match self.world.generator.dimension {
                 Dimension::Nether => {
                     let generator = &self.world.generator;

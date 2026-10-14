@@ -16,6 +16,8 @@ struct Globals {
     environment: vec4<f32>,
     // x: night vision strength 0..1.
     effects: vec4<f32>,
+    // rgb: visual/ambient_light_color; w: use the skyless dimension lightmap.
+    ambient: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -182,7 +184,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
     return out;
 }
 
-// Minecraft-like light curve: dim levels fall off quickly.
+// Lightmap brightness curve (Java 26.3 lightmap.fsh).
 fn curve(l: vec2<f32>) -> vec2<f32> {
     return l / (4.0 - 3.0 * l);
 }
@@ -191,7 +193,7 @@ fn lighting(in: VsOut) -> vec3<f32> {
     let l = curve(in.light);
     let sky = l.x * g.params.z * daylight_tint(in.normal);
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
-    return night_vision(max(sky, torch) * 0.96 + 0.04) * in.shade;
+    return night_vision(dimension_light(sky, torch)) * in.shade;
 }
 
 fn apply_fog(color: vec3<f32>, dist: f32) -> vec3<f32> {
@@ -213,6 +215,15 @@ fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
     let tint = select(warm, vec3<f32>(0.72, 0.82, 1.05), moon);
     let diffuse = max(dot(normal, dir), 0.0);
     return mix(tint * (0.62 + 0.38 * diffuse), vec3<f32>(0.85), g.params.w);
+}
+
+// Java 26.3 adds the environment ambient colour to sky and block light.
+// The Overworld retains its existing daylight presentation in this scoped fix.
+fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
+    if g.ambient.w > 0.0 {
+        return clamp(g.ambient.rgb + sky + torch, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    return max(sky, torch) * 0.96 + 0.04;
 }
 
 @fragment

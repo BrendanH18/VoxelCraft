@@ -55,6 +55,8 @@ struct Globals {
     environment: [f32; 4],
     /// x: night vision strength 0..1.
     effects: [f32; 4],
+    /// rgb: `visual/ambient_light_color`; w: use the skyless dimension lightmap.
+    ambient: [f32; 4],
 }
 
 const CLOUD_HEIGHT: f64 = 192.0;
@@ -1232,6 +1234,10 @@ impl Renderer {
             sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
             params: [p.fog_start, p.fog_end, p.daylight, p.rain],
             effects: [p.night_vision, 0.0, 0.0, 0.0],
+            ambient: {
+                let [r, g, b] = p.dimension.ambient_light_color();
+                [r, g, b, if p.dimension.has_sky() { 0.0 } else { 1.0 }]
+            },
             clouds: [
                 cloud_origin.x as f32,
                 cloud_origin.z as f32,

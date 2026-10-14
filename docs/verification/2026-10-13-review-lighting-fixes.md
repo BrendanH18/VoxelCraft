@@ -68,7 +68,9 @@ evidence; representative scene measurement waits for a valid M5 baseline.
 
 ## Remaining differences
 
-- **End visual sky.** The End's `visual/sky_light_factor` is 0.0, but it has
+- **End visual sky (since changed).** The renderer now has the ambient term; see
+  [world fixes](2026-10-13-world-fixes.md#ambient-light-in-the-nether-and-end).
+  The original gap, for the record: the End's `visual/sky_light_factor` is 0.0, but it has
   `ambient_light` 0.25 and `visual/ambient_light_color` `#3f473f`. The renderer
   approximates End lighting as skylight times 0.65 because the shaders have no
   ambient term; setting the factor alone would render the islands lit only by

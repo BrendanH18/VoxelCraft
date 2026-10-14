@@ -43,8 +43,6 @@ const PORTAL_TIME: f32 = 4.0;
 const CREATIVE_PORTAL_TIME: f32 = 0.5;
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
-/// Steady light level of the sky-less Nether (the shader's daylight).
-pub(super) const NETHER_LIGHT: f32 = 0.42;
 pub(super) const NETHER_FOG: [f32; 3] = [0.20, 0.035, 0.025];
 
 /// Where the player is headed while the destination streams in.
