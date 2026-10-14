@@ -990,6 +990,9 @@ pub struct Mob {
     /// The current stroll or panic walks a planned path (Java's
     /// `RandomStrollGoal`/`PanicGoal`) rather than a heading.
     pub(super) path_move: bool,
+    /// Seconds since it was hurt or a player came within 32 blocks (Java's
+    /// `noActionTime`): idle mobs stop strolling and may despawn.
+    pub(super) idle: f32,
 }
 
 impl Mob {
@@ -1092,6 +1095,7 @@ impl Mob {
             jump: false,
             pathing: false,
             path_move: false,
+            idle: 0.0,
         }
     }
 
@@ -1228,6 +1232,7 @@ impl Mob {
             self.aquatic.as_mut().unwrap().play_dead = 10.0;
         }
         self.hurt = HURT_TIME;
+        self.idle = 0.0;
         if let Some(kb) = knockback.map(|kb| kb * self.knockback_taken())
             && self.kind != MobKind::IronGolem
         {
@@ -1288,6 +1293,7 @@ impl Mob {
     ) {
         let event_start = events.len();
         let dtf = dt as f32;
+        self.idle += dtf;
         if self.alive() {
             let outcome = self.effects.tick(dtf);
             if outcome.heal > 0.0 {

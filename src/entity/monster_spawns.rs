@@ -13,13 +13,16 @@
 //! `Drowned.checkDrownedSpawnRules`) walk the same packs with their own
 //! spawn rules.
 //!
+//! Caps follow Java's monster category (see [`super::category`]): 70 per
+//! 289 spawnable chunks globally and 70 per player locally, over chunks
+//! within 128 blocks.
+//!
 //! Remaining VoxelCraft limits, recorded in the lighting/spawning report:
-//! positions stay within the existing 24..64 block spawn ring (Java samples
-//! every chunk within 128 blocks), per-kind caps replace Java's local
-//! monster cap of 70, structure spawn overrides (swamp huts, monuments,
-//! outposts) are not applied, and list entries for mobs VoxelCraft lacks
-//! (strays, bogged, parched, zombie horses, ocelots) end their pack.
+//! structure spawn overrides (swamp huts, monuments, outposts) are not
+//! applied, and list entries for mobs VoxelCraft lacks (strays, bogged,
+//! parched, zombie horses, ocelots) end their pack.
 
+use super::category::{self, MobCategory};
 use super::*;
 use crate::world::terrain::Biome;
 
@@ -471,41 +474,39 @@ const TICKS_PER_ROUND: u32 = (SPAWN_INTERVAL * 20.0 + 0.5) as u32;
 const SPAWN_CHUNK: i32 = 16;
 
 impl Entities {
-    /// One natural spawn round of Overworld monsters: for every 16x16
-    /// chunk that reaches the spawn ring of a player, one start position
-    /// per Java tick, uniform in the chunk and in height from the bottom of
-    /// the world to just above its `WORLD_SURFACE` block.
+    /// One natural spawn round of Overworld monsters (Java's
+    /// `ServerChunkCache.tickChunks` for the monster category): every loaded
+    /// chunk whose centre is within 128 blocks of a player, in a fresh random
+    /// order each tick, while the category is under its global cap (70 per
+    /// 289 spawnable chunks) and some nearby player is under their local
+    /// cap of 70. Each tries one start, uniform in the chunk and in height
+    /// from the bottom of the world to just above its `WORLD_SURFACE` block.
     pub(super) fn overworld_monsters<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx) {
         // Light still being resolved after streaming or a large edit would
         // read darker than it is and let monsters into lit areas.
         if !world.light_settled() {
             return;
         }
-        let mut chunks: Vec<(i32, i32)> = Vec::new();
-        let reach = SPAWN_MAX_DIST;
-        for t in &ctx.players {
-            let lo = ((t.pos.x - reach).floor() as i32).div_euclid(SPAWN_CHUNK);
-            let hi = ((t.pos.x + reach).floor() as i32).div_euclid(SPAWN_CHUNK);
-            let zlo = ((t.pos.z - reach).floor() as i32).div_euclid(SPAWN_CHUNK);
-            let zhi = ((t.pos.z + reach).floor() as i32).div_euclid(SPAWN_CHUNK);
-            for cz in zlo..=zhi {
-                for cx in lo..=hi {
-                    // Nearest point of the chunk to the player, horizontally.
-                    let nx = t.pos.x.clamp((cx * SPAWN_CHUNK) as f64, (cx * SPAWN_CHUNK + SPAWN_CHUNK) as f64);
-                    let nz = t.pos.z.clamp((cz * SPAWN_CHUNK) as f64, (cz * SPAWN_CHUNK + SPAWN_CHUNK) as f64);
-                    if (nx - t.pos.x).powi(2) + (nz - t.pos.z).powi(2) <= reach * reach {
-                        chunks.push((cx, cz));
-                    }
-                }
-            }
-        }
-        chunks.sort_unstable();
-        chunks.dedup();
+        let players: Vec<DVec3> = ctx.players.iter().map(|t| t.pos).collect();
+        let loaded =
+            |c: category::ChunkPos| world.world_surface(c.x * SPAWN_CHUNK + 8, c.y * SPAWN_CHUNK + 8).is_some();
+        let mut state = category::SpawnState::new(&players, &self.mobs, loaded);
         let rules = SpawnRules { light: ctx.spawn_light, moon: self.moon_brightness };
+        let mut order = state.chunks.clone();
         for _ in 0..TICKS_PER_ROUND {
-            for &(cx, cz) in &chunks {
-                let x = cx * SPAWN_CHUNK + self.rng.next_int(SPAWN_CHUNK as u32) as i32;
-                let z = cz * SPAWN_CHUNK + self.rng.next_int(SPAWN_CHUNK as u32) as i32;
+            // `getFilteredSpawningCategories` checks the global cap once a tick.
+            if !state.global_room(MobCategory::Monster) {
+                break;
+            }
+            for i in (1..order.len()).rev() {
+                order.swap(i, self.rng.next_int(i as u32 + 1) as usize);
+            }
+            for &c in &order {
+                if !state.local_room(MobCategory::Monster, c) {
+                    continue;
+                }
+                let x = c.x * SPAWN_CHUNK + self.rng.next_int(SPAWN_CHUNK as u32) as i32;
+                let z = c.y * SPAWN_CHUNK + self.rng.next_int(SPAWN_CHUNK as u32) as i32;
                 let Some(surface) = world.world_surface(x, z) else { continue };
                 let min_y = Dimension::Overworld.min_y();
                 let top = surface + 1;
@@ -516,7 +517,7 @@ impl Entities {
                 if y < min_y + 1 {
                     continue;
                 }
-                self.monster_packs(world, ctx, IVec3::new(x, y, z), rules);
+                self.monster_packs(world, ctx, IVec3::new(x, y, z), rules, &mut state);
             }
         }
     }
@@ -530,6 +531,7 @@ impl Entities {
         ctx: &Ctx,
         start: IVec3,
         rules: SpawnRules,
+        state: &mut category::SpawnState,
     ) {
         // Java's `isRedstoneConductor`: a conducting start cell ends the attempt.
         if world.block(start).is_none_or(is_redstone_conductor) {
@@ -548,8 +550,8 @@ impl Entities {
                 let cell = IVec3::new(x, start.y, z);
                 let pos = cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
                 let Some(d2) = ctx.nearest_player_dist2(pos) else { continue };
-                // Java rejects 24 blocks or closer; VoxelCraft's ring also ends at 64.
-                if d2 <= SPAWN_MIN_DIST * SPAWN_MIN_DIST || d2 > SPAWN_MAX_DIST * SPAWN_MAX_DIST {
+                // Java rejects 24 blocks or closer.
+                if d2 <= SPAWN_MIN_DIST * SPAWN_MIN_DIST {
                     continue;
                 }
                 // Java also keeps natural spawns 24 blocks from the world spawn.
@@ -569,18 +571,17 @@ impl Entities {
                     }
                 };
                 let Some(kind) = e.mob.kind() else { break };
-                let near = ctx
-                    .players
-                    .iter()
-                    .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)))
-                    .map_or(pos, |t| t.pos);
-                if self.count_near(kind, near) >= kind.spawn_cap(Dimension::Overworld) {
-                    break;
+                // `isValidSpawnPostitionForType`: no monster spawns where it
+                // would despawn at once.
+                let far = kind.category().despawn_distance();
+                if d2 > far * far {
+                    continue;
                 }
                 if !monster_spot_ok(world, kind, cell, rules, &mut self.rng) {
                     continue;
                 }
                 self.spawn_natural_monster(kind, pos);
+                state.add(MobCategory::Monster, pos);
                 spawned += 1;
                 // Java's default `getMaxSpawnClusterSize` is 4 for these monsters.
                 if spawned >= 4 {
@@ -720,8 +721,9 @@ mod tests {
         let start = IVec3::new(40, 64, 0);
         let spawn_count = |world: &World| {
             let mut e = Entities::new(3);
+            let mut state = category::SpawnState::new(&[night.players[0].pos], std::iter::empty(), |_| true);
             for _ in 0..400 {
-                e.monster_packs(world, &night, start, rules(night.spawn_light, 1.0));
+                e.monster_packs(world, &night, start, rules(night.spawn_light, 1.0), &mut state);
             }
             e.mobs.len()
         };

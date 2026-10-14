@@ -340,11 +340,10 @@ impl Mob {
     }
 
     /// Start a stroll (`RandomStrollGoal.start`): pick a target and set off.
-    /// Mobs more than 32 blocks from every player stop strolling, as Java's
-    /// `noActionTime` does, unless they are persistent.
+    /// Mobs idle for 100 ticks (`noActionTime`: no player within 32 blocks
+    /// and unhurt) stop strolling.
     pub(crate) fn try_stroll<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng) -> bool {
-        let idle_far = !self.persistent && ctx.nearest_player_dist2(self.pos).is_none_or(|d| d > 32.0 * 32.0);
-        if idle_far || !self.on_ground && !self.in_water {
+        if self.idle >= 5.0 || !self.on_ground && !self.in_water {
             return false;
         }
         let Some(goal) = self.stroll_target(world, ctx, rng) else { return false };

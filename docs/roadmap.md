@@ -747,6 +747,10 @@ pass. Work items, each with Java 26.3 fixtures and acceptance cases:
 3. **MOB-01 spawn rules:** Java's `NaturalSpawner` placement, 24/128-block
    ring, per-category caps scaled by loaded chunks, despawn distances and
    persistence, structure spawn overrides, and the slime/drowned paths folded in.
+   *Monster category and despawning implemented, unverified*
+   ([evidence](verification/2026-10-14-natural-spawning.md)): spawnable chunks,
+   global and per-player caps, the 128-block disc and `checkDespawn`. Creature
+   and water categories, chunk-generation spawning and structure overrides remain.
 4. **ENV-05 / PLY-02 block shapes:** shape-aware light occlusion (slabs,
    stairs, snow layers), meshes lit from the authoritative gameplay light
    arrays, and raycasts/placement against full collision and outline shapes

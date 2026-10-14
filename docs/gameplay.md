@@ -463,15 +463,16 @@ covered in [animals](animals.md); horses, donkeys, mules, llamas, camels,
 saddled pigs and striders, and boats in [boats and riding](mounts.md);
 fish, dolphins, axolotls, turtles and guardians in [aquatic mobs](aquatic-mobs.md).
 
-Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
-hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to
-4 zombies and 3 of the others). Inside Nether fortress pieces, Java's
-fortress list also spawns blazes, packs of zombified piglins and groups
-of skeletons, in any light. Like Java Edition's per-player mob caps,
-these limits count mobs within 96 blocks of each player, so players far apart
-each get their own. Mobs spawn 24–64 blocks from a player (never closer to
-any player), despawn once every player is more than 96 blocks away or when
-their chunk unloads, and hostile mobs chase the nearest survival player. Every mob burns
+Animals spawn on sky-exposed grass in herds (up to 4 of each kind). Overworld
+monsters spawn as Java Edition's do: wherever it is dark enough, caves included,
+in packs from chunks whose centre is within 128 blocks of a player, never within
+24 blocks of one. They share Java's monster cap of 70 (per 289 chunks near
+players, and per player), so players far apart each get their own. Inside
+Nether fortress pieces, Java's fortress list also spawns blazes, packs of
+zombified piglins and groups of skeletons, in any light. A mob that may despawn
+goes once every player is more than 128 blocks away (64 for fish), or at random
+once it has stood more than 32 blocks from everyone for 30 seconds; hostile mobs
+chase the nearest survival player. Every mob burns
 in lava. Player hits deal damage based on the held item, with knockback, at most
 every 0.5 s: a fist deals 1, and swords deal 4–7 depending on their tier.
 Hostile mobs ignore creative players.
