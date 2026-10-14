@@ -196,10 +196,10 @@ impl Entities {
             self.thrown.retain_mut(|t| t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events));
         }
         {
-            let rng = &mut self.rng;
+            let (rng, mobs, index) = (&mut self.rng, &self.mobs, &self.mob_index);
             let mut i = 0;
             while i < self.bobbers.len() {
-                if self.bobbers[i].update(dt, world, rng, ctx) {
+                if self.bobbers[i].update(dt, world, rng, ctx, mobs, index) {
                     i += 1;
                 } else {
                     self.bobbers.swap_remove(i);

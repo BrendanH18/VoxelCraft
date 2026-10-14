@@ -70,10 +70,13 @@ the Sea adding quality times its level. Only treasure requires open water, so
 closed water (failing the 5×4×5 check) still yields fish and junk. Fish are
 cod 60, salmon 25, tropical fish 2 and pufferfish 13. Junk is the full
 reference table, including lily pads, ten ink sacs, tripwire hooks, damaged
-leather boots and rods, and bamboo when the hook bit in a jungle biome.
+leather boots and rods, and bamboo when the hook is in a jungle biome as the line is reeled.
 Treasure bows and rods are worn up to 25% and, with books, enchanted at 30
 levels from `#on_random_loot` (curses, frost walker and mending included).
-Cooked cod and salmon smelt from the raw fish. The bobber does not hook mobs.
+Cooked cod and salmon smelt from the raw fish. The hook bobs on Java's per-tick
+spring and snags the first mob it touches (box widened by 0.3); it then rides the
+mob at 80% of its height and reeling pulls the mob a tenth of the way to the
+player per tick and costs five uses (items on the ground are not hookable yet).
 The rows are checked against `tests/fixtures/java/26.3/fishing.json`.
 - https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/projectile/FishingHook.java
 - Java 26.3 server `data/minecraft/loot_table/gameplay/fishing*.json`

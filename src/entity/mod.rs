@@ -1266,6 +1266,13 @@ impl Entities {
         let bobber = self.bobbers.swap_remove(index);
         let jungle = world.cave_biome(bobber.pos.floor().as_ivec3()).is_jungle();
         let got = bobber.retrieve(&mut self.rng, owner_luck, jungle);
+        // Java's `pullEntity`: a snagged mob gains a tenth of the way to the
+        // owner a tick, in blocks a second here.
+        if let Some(uid) = bobber.hooked_mob()
+            && let Some(mob) = self.mobs.iter_mut().find(|m| m.uid == uid && m.alive())
+        {
+            mob.vel += (player_pos - bobber.pos) * 2.0;
+        }
         if let Some(stack) = got.catch {
             let delta = player_pos - bobber.pos;
             let lift = delta.length().sqrt() * 0.08;
@@ -1846,6 +1853,40 @@ mod tests {
 
     /// Java's `Witch.performRangedAttack` picks the potion from the target's
     /// distance, health and effects.
+    /// Java's `FishingHook.onHitEntity`: the hook snags the first mob it
+    /// touches, follows it at 80% of its height, and reeling pulls it in
+    /// (and costs five uses of the rod).
+    #[test]
+    fn a_hook_snags_a_mob_and_reeling_pulls_it_toward_the_player() {
+        let world = Grid::flat(10);
+        let player = DVec3::new(0.5, 10.0, 0.5);
+        let c = ctx(player);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Cow, DVec3::new(0.5, 10.0, 6.5));
+        e.mobs[0].persistent = true;
+        e.update(0.05, &world, &c);
+        let uid = e.mobs[0].uid;
+        assert_ne!(uid, 0);
+        e.cast_bobber(PlayerId::HOST, player + DVec3::Y * 1.62, DVec3::Z, 0, 0);
+        let mut hooked = None;
+        for _ in 0..60 {
+            e.update(0.05, &world, &c);
+            e.mobs[0].vel = DVec3::ZERO;
+            hooked = e.bobbers.first().and_then(|b| b.hooked_mob());
+            if hooked.is_some() {
+                break;
+            }
+        }
+        assert_eq!(hooked, Some(uid), "the cast flew into the cow");
+        let (min, max) = e.mobs[0].aabb();
+        let hook = e.bobbers[0].pos;
+        assert!((hook.y - (min.y + (max.y - min.y) * 0.8)).abs() < 1e-9 && (hook.z - e.mobs[0].pos.z).abs() < 1e-9);
+        let wear = e.reel(PlayerId::HOST, player, 0, &world);
+        assert_eq!(wear, Some(5));
+        assert!(e.mobs[0].vel.z < -0.5, "pulled toward the owner: {:?}", e.mobs[0].vel);
+        assert!(e.bobbers.is_empty());
+    }
+
     #[test]
     fn witches_choose_potions_from_the_target_state() {
         use crate::simulation::effects::{Effect, Effects};
