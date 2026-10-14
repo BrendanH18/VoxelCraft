@@ -66,6 +66,9 @@ roadmap and recorded checks to assess completeness against the current target.
 - [Lighting and spawning review fixes](verification/2026-10-13-review-lighting-fixes.md):
   spawn-point exclusion, thunder/rain thresholds, detectors, conductor start
   cells, incremental LAN replica relight with measured cost; End ambient gap.
+- [World, lighting and structure fixes](verification/2026-10-13-world-fixes.md):
+  growth light, igloo depth, entity/particle skylight and v0.7.0 follow-ups,
+  each with its outstanding acceptance checks.
 - [Amethyst geodes](verification/2026-10-13-amethyst-geodes.md):
   Java 26.3 geode feature parameters, wall bud states 2400–2415, layout/bud/
   chunk-order tests, benchmark and remaining differences.

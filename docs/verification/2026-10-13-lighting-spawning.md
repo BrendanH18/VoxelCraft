@@ -107,3 +107,12 @@ unverified in this record. The earlier native interaction attempt failed with
 `cgWindowNotFound`; automated world and restart checks do not replace player
 acceptance. No version bump, release, main merge or deletion of the original
 v0.7 branch/uncommitted spawning patch is included.
+
+## v0.7 entity and particle follow-up
+
+`entity::sky_light`, shared by entities, held items and particles, now samples
+propagated gameplay skylight. Only cells with unknown skylight use the existing
+heightmap fallback. A wide roof regression checks the open edge and a centre
+13 blocks from open sky; unknown-border fallback is also covered. See the
+[world-fix record](2026-10-13-world-fixes.md#entity-and-particle-skylight).
+Visual/player acceptance remains outstanding.
