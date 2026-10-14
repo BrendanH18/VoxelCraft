@@ -1349,7 +1349,6 @@ fn sense_zoglin<W: MobWorld + ?Sized>(m: &mut Mob, view: &[Seen], world: &W, ctx
         .filter(|s| {
             s.uid != uid
                 && !matches!(s.kind, MobKind::Zoglin | MobKind::Creeper)
-                && (s.pos.y - pos.y).abs() < 4.0
                 && s.pos.distance_squared(pos) <= ANGER_RANGE * ANGER_RANGE
         })
         .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)))
@@ -2273,6 +2272,29 @@ mod tests {
         assert!(cow.health < MobKind::Cow.max_health(), "the cow was gored");
         let creeper = e.mobs.iter().find(|m| m.kind == MobKind::Creeper).unwrap();
         assert_eq!(creeper.health, MobKind::Creeper.max_health(), "creepers are left alone");
+    }
+
+    #[test]
+    fn zoglins_target_mobs_anywhere_in_the_sensor_box_not_just_four_blocks_up() {
+        let world = Grid::flat(10);
+        let mut far = player(DVec3::new(60.0, 10.0, 0.5));
+        far.targetable = false;
+        let ctx = Ctx { dimension: Dimension::Overworld, ..nether(vec![far]) };
+        let mut e = Entities::new(8);
+        e.mobs.push(Mob::new(MobKind::Zoglin, DVec3::new(0.5, 10.0, 0.5), 0.0));
+        for (x, y) in [(2.5, 18.0), (2.5, 30.0)] {
+            e.mobs.push(Mob::new(MobKind::Cow, DVec3::new(x, y, 0.5), 0.0));
+        }
+        e.nether_sense(0.0, &world, &ctx);
+        let uid = e.mobs[1].uid;
+        // Eight blocks above is inside the 16-block follow range.
+        assert!(matches!(
+            e.mobs[0].nether.as_ref().unwrap().goal,
+            Goal::Attack { foe: Foe::Mob(id), .. } if id == uid
+        ));
+        e.mobs.remove(1);
+        e.nether_sense(1.0, &world, &ctx);
+        assert_eq!(e.mobs[0].nether.as_ref().unwrap().goal, Goal::None, "twenty blocks up is out of range");
     }
 
     #[test]

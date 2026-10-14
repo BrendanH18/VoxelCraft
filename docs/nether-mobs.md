@@ -183,8 +183,9 @@ attack, and none of them hunt again for 30–120 s. A piglin hit by a hoglin who
 herd outnumbers the piglins retreats instead.
 
 **Zoglins** are fire immune and undead, so Smite works on them.
-- They attack the nearest mob or player in reach and sight, except creepers and
-  other zoglins (`Zoglin.isTargetable`).
+- They attack the nearest mob or player within 16 blocks in every axis (the
+  follow-range sensor box) and in sight, except creepers and other zoglins
+  (`Zoglin.isTargetable`).
 - They use the hoglin's tusk attack and throw.
 
 **Spawning.** Hoglins spawn only from the crimson-forest entry (weight 9, groups of
@@ -279,8 +280,6 @@ different pitches.
   - Piglins don't pick up and equip better weapons or armor, or golden axes for
     brutes.
   - Their pocket holds 8 stacks.
-- **Zoglins** only pick mob targets within 4 blocks of height, so they don't chase
-  ghasts they could never reach.
 - **Peaceful**: Java keeps piglins and hoglins on Peaceful; here every hostile mob
   is removed, as before.
 - **Bastion residents** are spread over each piece's floor rather than placed at
