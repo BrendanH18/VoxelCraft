@@ -138,8 +138,8 @@ hand animation; beds, respawn points, pick-block, drops and LAN screen
 open/close act on the named player. LAN PvP names its attacker and target.
 Remaining STR-03 work: container transactions are still app-level (`Screen`)
 rather than session-owned, so the CLI keeps its separate chest/anvil/
-grindstone/smithing/trade commands; device/menu presentation and the HUD attack
-indicator remain adapter work.
+grindstone/smithing/trade commands. Device and menu presentation stay adapter
+work by design; the crosshair attack indicator reads the session charge.
 **Roadmap:** M1; PLY-01/04, AUT-04/05, UX-04/05.
 **Dependency:** STR-01 regression coverage and review of pending v0.7 changes.
 

@@ -185,3 +185,22 @@ fn the_cli_adapter_uses_the_same_charged_transaction() {
     cli.execute(Command::Attack, &mut w, &mut e3, &[]).unwrap();
     assert_eq!(e3.mobs[0].health, session_health);
 }
+
+#[test]
+fn the_crosshair_indicator_charges_then_marks_a_full_strike_on_a_living_target() {
+    use voxelcraft::session::combat::AttackIndicator;
+    let (_, mut s, _) = scene(6.0);
+    charge(&mut s, 1);
+    assert_eq!(s.attack_indicator(0, true), Some(AttackIndicator::Charging(0.0)));
+    charge(&mut s, 6);
+    let Some(AttackIndicator::Charging(scale)) = s.attack_indicator(0, false) else { panic!() };
+    assert!(scale > 0.0 && scale < 1.0);
+    charge(&mut s, 20);
+    assert_eq!(s.attack_indicator(0, false), None, "a full charge shows nothing without a target");
+    assert_eq!(s.attack_indicator(0, true), Some(AttackIndicator::Full));
+    // Fists recharge in 5 ticks, which Java treats as too fast for the full mark.
+    s.inventory.slots[0] = None;
+    charge(&mut s, 20);
+    assert_eq!(mining::attack_strength_delay(None), 5.0);
+    assert_eq!(s.attack_indicator(0, true), None);
+}

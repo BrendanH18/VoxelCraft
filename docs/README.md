@@ -48,7 +48,8 @@ roadmap and recorded checks to assess completeness against the current target.
   checks; remaining shape/state and ordinary-player acceptance.
 - [Shared melee](verification/2026-10-13-shared-combat.md): actor-owned attacks,
   Java attack-strength charging, reference reach and tool attributes; remaining
-  weapon families, attack indicator and ordinary-player acceptance.
+  crosshair attack indicator; copper tools, weapon families and ordinary-player
+  acceptance remain.
 - [Bucket review fixes](verification/2026-10-13-review-bucket-fixes.md): shared
   use-priority ordering, Adventure denial and Java hit-face pouring.
 - [Mining review fixes](verification/2026-10-13-review-mining-fixes.md): shared

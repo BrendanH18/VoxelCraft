@@ -37,6 +37,18 @@ Corrected reference values:
   non-Netherite tool attacked twice a second and axes/shovels had wrong damage.
 - CLI melee previously had no criticals, no exhaustion and six-block reach.
 
+### Crosshair attack indicator
+
+`PlayerSession::attack_indicator` reports what Java's default crosshair attack
+indicator shows: while the charge (`getAttackStrengthScale(0)`) is below 1, a
+16-pixel bar under the crosshair fills in 17ths; when aimed at a living target
+with a full charge and a weapon slower than 5 ticks (so not bare hands), a
+small full mark replaces it. The desktop HUD draws it (not while drawing a bow,
+in screens or as a spectator) with original sprites. Source limit: the client
+`Gui` class is not in the pinned server artifact, so this follows the
+documented client behavior rather than extracted bytecode. Controller views do
+not show it yet.
+
 ## Evidence
 
 `tools/extract_java_combat_fixtures.py` derives `combat.json` from `Items`,

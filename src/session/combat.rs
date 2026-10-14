@@ -31,6 +31,15 @@ pub enum Target {
     Mob(usize),
 }
 
+/// What the crosshair attack indicator shows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AttackIndicator {
+    /// The charge, 0..1, as a filling bar.
+    Charging(f32),
+    /// Aimed at a living target with a full charge.
+    Full,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Outcome {
     Hit {
@@ -68,6 +77,21 @@ impl PlayerSession {
     pub fn attack_strength(&self, slot: usize, partial: f32) -> f32 {
         let held = self.inventory.get(slot).map(|s| s.item);
         ((self.combat.ticker as f32 + partial) / mining::attack_strength_delay(held)).clamp(0.0, 1.0)
+    }
+
+    /// Java's crosshair attack indicator: a filling bar while the charge is
+    /// below full, or the "full" mark when aimed at a living target with a
+    /// fully charged weapon slower than 5 ticks. `None` when neither shows.
+    pub fn attack_indicator(&self, slot: usize, aiming_at_living: bool) -> Option<AttackIndicator> {
+        let scale = self.attack_strength(slot, 0.0);
+        let held = self.inventory.get(slot).map(|s| s.item);
+        if aiming_at_living && scale >= 1.0 && mining::attack_strength_delay(held) > 5.0 {
+            Some(AttackIndicator::Full)
+        } else if scale < 1.0 {
+            Some(AttackIndicator::Charging(scale))
+        } else {
+            None
+        }
     }
 
     /// Restart the charge, as an attack or a swing at nothing does.

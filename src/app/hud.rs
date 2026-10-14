@@ -133,6 +133,12 @@ impl Game {
             }
             if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && self.menu.is_none()) {
                 bow_bar(&mut ui, cx, cy, power);
+            } else if !self.inventory_open && self.menu.is_none() && self.session.mode != GameMode::Spectator {
+                let living =
+                    self.mob_target().is_some() || self.lan_player_target(&super::lan::PlayerRef::Host).is_some();
+                if let Some(indicator) = self.session.attack_indicator(self.body.actions.selected, living) {
+                    attack_indicator(&mut ui, cx, cy, indicator);
+                }
             }
         }
 
@@ -1381,6 +1387,25 @@ pub(super) fn eating_bar(ui: &mut Ui, cx: f32, cy: f32, progress: f32) {
     ui.text(cx - Ui::text_width("Eating") / 2.0, cy + 14.0, "Eating", WHITE);
     ui.rect(cx - 30.0, cy + 25.0, 60.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
     ui.rect(cx - 29.0, cy + 26.0, 58.0 * progress.clamp(0.0, 1.0), 3.0, [0.96, 0.72, 0.3, 1.0]);
+}
+
+/// Java's crosshair attack indicator, 16 pixels wide just below the
+/// crosshair at (cx, cy): a bar filling in 17ths, or a small full mark.
+pub(super) fn attack_indicator(ui: &mut Ui, cx: f32, cy: f32, indicator: voxelcraft::session::combat::AttackIndicator) {
+    use voxelcraft::session::combat::AttackIndicator;
+    let (x, y) = (cx - 8.0, cy + 9.0);
+    match indicator {
+        AttackIndicator::Charging(scale) => {
+            let filled = (scale * 17.0).floor().min(16.0);
+            ui.rect(x, y, 16.0, 4.0, [0.15, 0.15, 0.15, 0.7]);
+            ui.rect(x, y, filled, 4.0, [1.0, 1.0, 1.0, 0.85]);
+        }
+        AttackIndicator::Full => {
+            // Original mark: a short bar with a raised centre.
+            ui.rect(x + 2.0, y + 2.0, 12.0, 2.0, [1.0, 1.0, 1.0, 0.85]);
+            ui.rect(x + 7.0, y - 1.0, 2.0, 3.0, [1.0, 1.0, 1.0, 0.85]);
+        }
+    }
 }
 
 /// Bow draw strength under the crosshair at (cx, cy); gold when full.

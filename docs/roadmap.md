@@ -338,9 +338,10 @@ player/performance acceptance remain open.
 The [shared combat follow-up](verification/2026-10-13-shared-combat.md)
 moves player melee into the session, replaces the fixed weapon cooldown with
 Java's attack-strength charge and corrects reach and tool attack attributes
-against a reproducible 26.3 fixture. PLY-04/05 remain **Partial**: other weapon
-families, the attack indicator, container/item-use extraction and player
-acceptance remain open.
+against a reproducible 26.3 fixture. The desktop shows Java's crosshair attack
+indicator from the session charge, and right-click use is shared. PLY-04/05
+remain **Partial**: copper tools, other weapon families, session-owned container
+transactions and player acceptance remain open.
 
 The [bucket review fixes](verification/2026-10-13-review-bucket-fixes.md) give
 entity and block use priority over bucket actions through one shared ordering
