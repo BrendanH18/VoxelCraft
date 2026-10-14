@@ -46,8 +46,12 @@ That mistake is corrected rather than changing the fixture.
 
 Shared typed fuel classes now define exact normal-furnace ticks. Existing
 furnaces, desktop/controller GUI transfer eligibility and hopper insertion
-read the same fuel function. The CLI engine shares furnace simulation but does
-not yet expose a dedicated furnace-slot command; that adapter gap belongs to
+read the same fuel function. The CLI now exposes `furnace take|put input|fuel|output` through aimed
+furnace slots. Fuel eligibility uses the shared catalogue; output is take-only,
+capacity failures retain items and XP, and successful output removal releases
+stored XP as orbs at the player. Input changes reset cooking progress. The
+regression resumes a half-finished serialized smelt through this command.
+Ordinary-player acceptance still belongs to
 the shared transaction work under STR-03. Boats burn for 1200; carpets burn for 67. Fast
 cooking integer-divides the odd provider values before burning. Nether woods,
 leaves, moss carpets, muddy roots and the selected version's beds remain

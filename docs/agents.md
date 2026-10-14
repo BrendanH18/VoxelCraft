@@ -66,6 +66,7 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `place`, `attack`, `drop` | Place selected block, hit a targeted mob, or drop selected stack |
 | `craft item` | Craft once with available recipe alternatives; larger recipes require targeting a crafting table |
 | `chest take/put slot` | Transfer a stack using chest slot 0–26; put uses selected hotbar slot |
+| `furnace take/put slot` | Slot is `input`, `fuel` or `output`; move items through the aimed furnace; put uses the selected hotbar slot, output is take-only and taking releases stored XP |
 | `anvil 1..9` | On the targeted anvil, combine the selected stack with that hotbar slot (repair with material, merge two of an item, or apply an enchanted book), paying levels; the result replaces the selected stack |
 | `enchanting 1..3` | Take that offer of the targeted enchanting table for one of the selected item, paying 1–3 levels and lapis from the inventory; `observe` lists the offers (cost and clue) under `target.enchanting_offers` |
 | `smithing` | At the targeted smithing table, upgrade the selected diamond tool or armor using one Netherite upgrade template and one Netherite ingot from the inventory |

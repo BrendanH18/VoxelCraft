@@ -14,7 +14,7 @@ use crate::simulation::survival::{self, Vitals};
 use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, or puts the eye in a targeted End portal frame) | attack | select 1..9 | fly on/off | craft item | chest take/put slot | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp [~] x y z, spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -115,6 +115,69 @@ impl Agent {
             self.remaining = 0;
             self.session.sleeping = None;
         }
+    }
+
+    fn furnace_transfer(
+        &mut self,
+        take: bool,
+        slot: usize,
+        world: &mut World,
+        entities: &mut Entities,
+    ) -> Result<(), String> {
+        if slot > 2 {
+            return Err("furnace slot out of range".into());
+        }
+        let (pos, _) = self.target(world).ok_or("no furnace within reach")?;
+        let f = world.furnace(pos).ok_or("target is not a furnace")?;
+        let before_output = f.output.map_or(0, |s| s.count);
+        let existing = [f.input, f.fuel, f.output][slot];
+        let next = if take {
+            let stack = existing.ok_or("furnace slot empty")?;
+            let left = self.session.inventory.add_stack(stack);
+            if left == stack.count {
+                return Err("inventory full".into());
+            }
+            (left > 0).then_some(Stack { count: left, ..stack })
+        } else {
+            if slot == 2 {
+                return Err("furnace output only permits taking items".into());
+            }
+            let stack = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
+            if slot == 1 && crate::world::furnace::burn_time(stack.item).is_none() {
+                return Err("item is not furnace fuel".into());
+            }
+            let room = match existing {
+                None => stack.max(),
+                Some(s) if s.stacks_with(&stack) => s.max() - s.count,
+                _ => 0,
+            };
+            let count = room.min(stack.count);
+            if count == 0 {
+                return Err("furnace slot full or incompatible".into());
+            }
+            self.session.inventory.slots[self.selected] =
+                (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
+            Some(Stack { count: existing.map_or(0, |s| s.count) + count, ..stack })
+        };
+        let f = world.furnace_mut(pos).unwrap();
+        match slot {
+            0 => {
+                // Reuse desktop/controller input-change timer handling.
+                let mut cursor = next;
+                f.input = None;
+                f.click_input(&mut cursor, false);
+                f.cook = 0.0;
+            }
+            1 => f.fuel = next,
+            _ => f.output = next,
+        }
+        if take && slot == 2 {
+            let roll = entities.roll();
+            if let Some(xp) = world.furnace_mut(pos).unwrap().take_output_xp(before_output, roll) {
+                entities.spawn_xp(self.session.player.pos, xp);
+            }
+        }
+        Ok(())
     }
 
     /// Execute immediate actions on the authority; timed inputs complete after real game ticks.
@@ -337,6 +400,7 @@ impl Agent {
                 }
             }
             Command::Craft(item) => self.craft(item, world)?,
+            Command::Furnace(take, slot) => self.furnace_transfer(take, slot, world, entities)?,
             Command::Chest(take, slot) => {
                 let eye = self.session.player.eye();
                 let dir = self.session.player.forward().as_dvec3();
@@ -1584,6 +1648,49 @@ mod tests {
                 "the angry piglin attacks even a player wearing gold; mining={mining}"
             );
         }
+    }
+
+    #[test]
+    fn furnace_commands_validate_slots_fuels_capacity_xp_and_saved_processing() {
+        for (slot, index) in [("input", 0), ("fuel", 1), ("output", 2)] {
+            assert!(
+                matches!(Command::parse(&format!("furnace take {slot}")).unwrap(), Command::Furnace(true, i) if i == index)
+            );
+        }
+        assert!(Command::parse("furnace put 27").is_err());
+        let mut w = world();
+        let mut e = Entities::new(1);
+        let p = IVec3::new(4, 151, 1);
+        w.set_block(p, Block::FURNACE);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.slots[0] = Some(Stack::new(Item::DIAMOND, 3));
+        assert!(a.execute(Command::Furnace(false, 1), &mut w, &mut e, &[]).is_err());
+        assert!(a.execute(Command::Furnace(false, 2), &mut w, &mut e, &[]).is_err());
+        assert!(w.furnace(p).unwrap().fuel.is_none());
+        assert_eq!(a.inventory.get(0), Some(Stack::new(Item::DIAMOND, 3)));
+        a.inventory.slots[0] = Some(Stack::new(Item::RAW_IRON, 2));
+        a.execute(Command::Furnace(false, 0), &mut w, &mut e, &[]).unwrap();
+        a.inventory.slots[0] = Some(Stack::new(Item::COAL, 1));
+        a.execute(Command::Furnace(false, 1), &mut w, &mut e, &[]).unwrap();
+        w.tick_furnaces(5.0);
+        let save = w.furnaces_to_string();
+        let mut restored = world();
+        restored.set_block(p, Block::FURNACE);
+        restored.load_furnaces(&save);
+        restored.tick_furnaces(5.0);
+        assert!(restored.furnace(p).unwrap().xp > 0.0);
+        restored.furnace_mut(p).unwrap().xp = 3.0; // whole points, independent of the fraction roll
+        a.execute(Command::Furnace(true, 2), &mut restored, &mut e, &[]).unwrap();
+        assert_eq!(a.inventory.get(0), Some(Stack::new(Item::IRON_INGOT, 1)));
+        assert_eq!(restored.furnace(p).unwrap().xp, 0.0);
+        assert!(!e.orbs.is_empty());
+        // A full player cannot drain slots or earn stored XP.
+        a.inventory.slots.fill(Some(Stack::new(Item::DIAMOND, 64)));
+        restored.furnace_mut(p).unwrap().output = Some(Stack::new(Item::IRON_INGOT, 1));
+        restored.furnace_mut(p).unwrap().xp = 4.0;
+        assert!(a.execute(Command::Furnace(true, 2), &mut restored, &mut e, &[]).is_err());
+        assert_eq!(restored.furnace(p).unwrap().xp, 4.0);
+        assert_eq!(restored.furnace(p).unwrap().output, Some(Stack::new(Item::IRON_INGOT, 1)));
     }
 
     #[test]
