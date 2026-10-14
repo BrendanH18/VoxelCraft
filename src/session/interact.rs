@@ -560,6 +560,17 @@ pub enum Pick {
 }
 
 impl PlayerSession {
+    /// The hotbar slot already holding the targeted block's item, if any: the
+    /// part of pick-block that only changes the selection. Read-only, so a LAN
+    /// client can select locally while the host performs any swap.
+    pub fn pick_hotbar_slot(&self, world: &World) -> Option<usize> {
+        let b = self.block_target(world).and_then(|(pos, _)| world.get_block(pos))?;
+        if b.is_fire() {
+            return None;
+        }
+        self.inventory.find(picked_item(b)).filter(|&i| i < HOTBAR_SLOTS)
+    }
+
     /// Middle click on the targeted block: find its item in the inventory,
     /// or conjure a stack in Creative.
     pub fn pick_block(&mut self, selected: usize, world: &World) -> Option<Pick> {

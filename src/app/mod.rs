@@ -1140,6 +1140,12 @@ impl Game {
 
     fn pick_block(&mut self) {
         if self.lan.client.is_some() {
+            // The client's selected slot is authoritative in every input update,
+            // so apply a hotbar pick here; the host still performs swaps and
+            // Creative stacks for "pick".
+            if let Some(i) = self.session.pick_hotbar_slot(&self.world) {
+                self.select(i);
+            }
             self.lan_command("pick");
             return;
         }

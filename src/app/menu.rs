@@ -327,7 +327,9 @@ impl Game {
     /// Pushes the settings to the world, renderer and audio.
     pub(super) fn apply_settings(&mut self) {
         if self.lan.client.is_some() {
-            self.settings.render_distance = 2;
+            // Keep the negotiated LAN distance within the range the host serves;
+            // the player's own setting is restored on leaving (`offline_render_distance`).
+            self.settings.render_distance = self.settings.render_distance.clamp(2, super::lan::LAN_VIEW_MAX);
         }
         let s = self.settings;
         if self.world.render_distance() != s.render_distance {

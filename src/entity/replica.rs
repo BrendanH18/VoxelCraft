@@ -52,7 +52,9 @@ impl Entities {
             .into_iter()
             .filter_map(|e| {
                 let (p, q) = unpair(&e["at"])?;
-                let potion = crate::potion::Potion(e["potion"].as_u64()?.min(255) as u8);
+                // Untrusted host data: only registered potions index the table.
+                let index = e["potion"].as_u64().filter(|&i| (i as usize) < crate::potion::Potion::COUNT)?;
+                let potion = crate::potion::Potion(index as u8);
                 Some(ThrownPotion::replica(potion, p, q))
             })
             .collect();

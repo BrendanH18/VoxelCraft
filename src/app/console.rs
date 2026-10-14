@@ -56,7 +56,7 @@ impl Game {
             KeyCode::Enter | KeyCode::NumpadEnter => {
                 let input = std::mem::replace(&mut self.console.input, "/".into());
                 self.console.history_index = None;
-                if input.trim() != "/" {
+                if !input.trim().is_empty() && input.trim() != "/" {
                     if self.console.history.len() == 64 {
                         self.console.history.remove(0);
                     }

@@ -390,3 +390,14 @@ fn crossbow_enchantments_change_loading_volley_wear_and_pickup() {
     assert_eq!(shot.tool_broken, Some(Item::CROSSBOW));
     assert_eq!(e.arrows.len(), 1, "the break ends the volley");
 }
+
+#[test]
+fn pick_block_reports_the_hotbar_slot_without_changing_anything() {
+    let (w, mut s, _) = scene(None);
+    s.inventory.slots[4] = Some(Stack::new(Item::from_block(Block::STONE), 7));
+    let before = s.inventory.clone();
+    assert_eq!(s.pick_hotbar_slot(&w), Some(4), "the wall is stone");
+    assert_eq!(s.inventory.slots, before.slots, "read-only");
+    s.inventory.slots[4] = None;
+    assert_eq!(s.pick_hotbar_slot(&w), None, "not in the hotbar");
+}
