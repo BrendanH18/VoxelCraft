@@ -1,0 +1,68 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "EntityTypes static sized registrations",
+    "BasePressurePlateBlock TOUCH_AABB = Block.column(14, 0, 4)"
+  ],
+  "touch_min": [
+    0.0625,
+    0,
+    0.0625
+  ],
+  "touch_max": [
+    0.9375,
+    0.25,
+    0.9375
+  ],
+  "entity_sizes": {
+    "arrow": [
+      0.5,
+      0.5
+    ],
+    "egg": [
+      0.25,
+      0.25
+    ],
+    "ender_pearl": [
+      0.25,
+      0.25
+    ],
+    "experience_orb": [
+      0.5,
+      0.5
+    ],
+    "eye_of_ender": [
+      0.25,
+      0.25
+    ],
+    "fireball": [
+      1.0,
+      1.0
+    ],
+    "item": [
+      0.25,
+      0.25
+    ],
+    "splash_potion": [
+      0.25,
+      0.25
+    ],
+    "small_fireball": [
+      0.3125,
+      0.3125
+    ],
+    "snowball": [
+      0.25,
+      0.25
+    ],
+    "tnt": [
+      0.98,
+      0.98
+    ],
+    "fishing_bobber": [
+      0.25,
+      0.25
+    ]
+  }
+}

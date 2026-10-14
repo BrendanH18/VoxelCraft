@@ -7,6 +7,11 @@ pub use crate::entity::model::EntityVertex;
 
 pub(super) struct EntityPass {
     pipeline: wgpu::RenderPipeline,
+    /// Alpha-blended, depth-tested but not depth-written (slime shells).
+    translucent: wgpu::RenderPipeline,
+    scratch: Vec<EntityVertex>,
+    /// Vertices before this index are opaque.
+    opaque: u32,
     skin: wgpu::BindGroup,
     buffer: wgpu::Buffer,
     capacity: usize,
@@ -72,41 +77,54 @@ impl EntityPass {
             label: Some("entity shader"),
             source: super::block_shader(include_str!("shaders/entity.wgsl"), paged_blocks),
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("entities"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<EntityVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![
-                        0 => Float32x3, 1 => Float32x2, 2 => Unorm8x4, 3 => Unorm8x4, 4 => Unorm8x4
-                    ],
-                })],
-            },
-            primitive: wgpu::PrimitiveState { cull_mode: Some(wgpu::Face::Back), ..Default::default() },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::Greater),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: Default::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let make = |label, depth_write, blend| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<EntityVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &wgpu::vertex_attr_array![
+                            0 => Float32x3, 1 => Float32x2, 2 => Unorm8x4, 3 => Unorm8x4, 4 => Unorm8x4
+                        ],
+                    })],
+                },
+                primitive: wgpu::PrimitiveState { cull_mode: Some(wgpu::Face::Back), ..Default::default() },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(depth_write),
+                    depth_compare: Some(wgpu::CompareFunction::Greater),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState { format, blend, write_mask: wgpu::ColorWrites::ALL })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let pipeline = make("entities", true, None);
+        let translucent = make("translucent entities", false, Some(wgpu::BlendState::ALPHA_BLENDING));
         let capacity = 4096;
-        Self { pipeline, skin, buffer: Self::create_buffer(device, capacity), capacity, count: 0 }
+        Self {
+            pipeline,
+            translucent,
+            scratch: Vec::new(),
+            opaque: 0,
+            skin,
+            buffer: Self::create_buffer(device, capacity),
+            capacity,
+            count: 0,
+        }
     }
 
     fn create_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
@@ -125,7 +143,11 @@ impl EntityPass {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(2, &self.skin, &[]);
         pass.set_vertex_buffer(0, self.buffer.slice(..));
-        pass.draw(0..self.count, 0..1);
+        pass.draw(0..self.opaque, 0..1);
+        if self.opaque < self.count {
+            pass.set_pipeline(&self.translucent);
+            pass.draw(self.opaque..self.count, 0..1);
+        }
     }
 }
 
@@ -134,6 +156,17 @@ impl Renderer {
     /// next `FrameParams::camera`).
     pub fn set_entities(&mut self, verts: &[EntityVertex]) {
         let e = &mut self.entities;
+        // Translucent faces (material 4) go last so they blend over the opaque pass.
+        let verts = if verts.iter().any(|v| v.torch[1] == 4) {
+            e.scratch.clear();
+            e.scratch.extend(verts.iter().filter(|v| v.torch[1] != 4));
+            e.opaque = e.scratch.len() as u32;
+            e.scratch.extend(verts.iter().filter(|v| v.torch[1] == 4));
+            &e.scratch[..]
+        } else {
+            e.opaque = verts.len() as u32;
+            verts
+        };
         if verts.len() > e.capacity {
             e.capacity = verts.len().next_power_of_two();
             e.buffer = EntityPass::create_buffer(&self.device, e.capacity);

@@ -101,8 +101,11 @@ full performance display instead of duplicating the compact counter.
   drawn as two crossed planes, break instantly, need soil (torches a full
   block) beneath them and pop off when it goes, and are washed away by
   water. Clicking tall grass with a block replaces it
-- Weather, like Minecraft: clear spells of one to five days alternate with
-  rain lasting half a day to a day and a half. Rain falls as snow in cold
+- Weather, like Minecraft: rain and thunder run on independent timers with
+  Java's `ServerLevel` ranges (clear spells of 10 to 150 minutes, rain of 10
+  to 20 minutes, storms of 3 to 13 minutes, a thunder level that only shows
+  while it rains) and fade in or out over 5 seconds. The day lasts Java's
+  24000 ticks (20 minutes). Rain falls as snow in cold
   biomes and on high ground (biomes cool above y = 80, as in Java), and not at all in deserts, savannas and
   badlands. It greys and darkens the sky, hides the sun, moon and stars
   behind thicker clouds, stops at the first block overhead, waters
@@ -454,6 +457,11 @@ session there, as if you had just come through a portal.
 | Hoglin | 40 | crimson forests and bastion stables; charges players every 2 s for 3-8 and tosses them, avoids nether portals and outnumbering piglins, becomes a zoglin outside the Nether | 2-4 porkchops, 0-1 leather |
 | Zoglin | 40 | a zombified hoglin: attacks every mob and player but creepers and zoglins; immune to fire | 1-3 rotten flesh |
 | Strider | 20 | walks on the lava seas; shivers, slows and heads for lava on dry land; hurt by water | 2-5 string |
+
+Wolves, cats, parrots, foxes, rabbits and goats, breeding and leads are
+covered in [animals](animals.md); horses, donkeys, mules, llamas, camels,
+saddled pigs and striders, and boats in [boats and riding](mounts.md);
+fish, dolphins, axolotls, turtles and guardians in [aquatic mobs](aquatic-mobs.md).
 
 Animals spawn on sky-exposed grass in herds (up to 4 of each kind);
 hostile mobs spawn on sky-exposed solid ground when daylight < 0.35 (up to

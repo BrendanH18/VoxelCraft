@@ -78,6 +78,7 @@ pub(super) struct HudPlayer<'a> {
     pub survival: bool,
     pub underwater: bool,
     pub dial: crate::item::Dial,
+    pub vehicle: Option<u32>,
 }
 
 impl Game {
@@ -86,11 +87,11 @@ impl Game {
         let mut ui = Ui::with_scale(w as f32, h as f32, self.ui_scale());
         let (sw, sh) = ui.size();
 
-        if self.player.head_in_water(&self.world) {
+        if self.session.player.head_in_water(&self.world) {
             ui.rect(0.0, 0.0, sw, sh, [0.05, 0.15, 0.4, 0.3]);
         }
 
-        if self.vitals.burning() {
+        if self.session.vitals.burning() {
             let frame = ((now - self.started).as_secs_f32() * 10.0) as u32 % tex::FIRE_FRAMES as u32;
             for (x, tilt) in [(-sw * 0.1, -sw * 0.12), (sw * 0.55, sw * 0.12)] {
                 ui.quad(
@@ -117,32 +118,38 @@ impl Game {
             ui.text(((sw - Ui::text_width(msg)) / 2.0).floor(), (sh / 2.0).floor(), msg, WHITE);
         }
 
-        let hurt = self.vitals.since_damage();
+        let hurt = self.session.vitals.since_damage();
         if hurt < HURT_FLASH {
             ui.rect(0.0, 0.0, sw, sh, [0.8, 0.0, 0.0, 0.35 * (1.0 - hurt / HURT_FLASH)]);
         }
 
         // Crosshair.
-        if !self.vitals.is_dead() {
+        if !self.session.vitals.is_dead() {
             let (cx, cy) = ((sw / 2.0).floor(), (sh / 2.0).floor());
             ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
             ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
-            if self.actions.eat_timer > 0.0 && !self.inventory_open && self.menu.is_none() {
-                eating_bar(&mut ui, cx, cy, (self.actions.eat_timer / super::EAT_TIME) as f32);
+            if self.body.actions.eat_timer > 0.0 && !self.inventory_open && self.menu.is_none() {
+                eating_bar(&mut ui, cx, cy, (self.body.actions.eat_timer / super::EAT_TIME) as f32);
             }
             if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && self.menu.is_none()) {
                 bow_bar(&mut ui, cx, cy, power);
+            } else if !self.inventory_open && self.menu.is_none() && self.session.mode != GameMode::Spectator {
+                let living =
+                    self.mob_target().is_some() || self.lan_player_target(&super::lan::PlayerRef::Host).is_some();
+                if let Some(indicator) = self.session.attack_indicator(self.body.actions.selected, living) {
+                    attack_indicator(&mut ui, cx, cy, indicator);
+                }
             }
         }
 
         self.hotbar_ui(&mut ui, now);
-        if let Some(health) = self.mobs.entities.fight.as_ref().and_then(|f| f.boss_bar(self.player.pos)) {
+        if let Some(health) = self.mobs.entities.fight.as_ref().and_then(|f| f.boss_bar(self.session.player.pos)) {
             boss_bar_ui(&mut ui, "Ender Dragon", health, sw);
         }
         if self.show_debug {
             self.debug_ui(&mut ui);
         }
-        if let Some(t) = self.sleeping {
+        if let Some(t) = self.session.sleeping {
             // Falling asleep: the screen fades to black.
             let k = (t / super::bed::SLEEP_TIME).min(1.0);
             ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.02, 0.97 * k]);
@@ -154,7 +161,7 @@ impl Game {
                 ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), (sh / 2.0 + 4.0).floor(), hint, WHITE);
             }
         }
-        if let Some(cause) = &self.vitals.death {
+        if let Some(cause) = &self.session.vitals.death {
             // Blending is in linear space: it takes a high alpha to look dark.
             ui.rect(0.0, 0.0, sw, sh, [0.18, 0.0, 0.0, 0.9]);
             let title = "You died!";
@@ -163,11 +170,11 @@ impl Game {
             ui.text_scaled(((sw - Ui::text_width(title) * k) / 2.0).floor(), y, title, WHITE, k);
             let msg = format!("Player {cause}");
             ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), y + 36.0, &msg, WHITE);
-            let score = format!("Score: {}", self.vitals.xp.total);
+            let score = format!("Score: {}", self.session.vitals.xp.total);
             let x = ((sw - Ui::text_width(&score)) / 2.0).floor();
             let n = x + Ui::text_width("Score: ") + 1.0;
             ui.text(x, y + 48.0, "Score: ", WHITE);
-            ui.text(n, y + 48.0, &self.vitals.xp.total.to_string(), [1.0, 1.0, 0.33, 1.0]);
+            ui.text(n, y + 48.0, &self.session.vitals.xp.total.to_string(), [1.0, 1.0, 0.33, 1.0]);
             let hint = "Click to respawn";
             ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), y + 64.0, hint, [1.0, 1.0, 0.6, 1.0]);
         } else if self.menu.is_some() {
@@ -179,6 +186,7 @@ impl Game {
             let msg = "Click to play  -  Esc for the menu";
             ui.text((sw - Ui::text_width(msg)) / 2.0, sh / 2.0 - 24.0, msg, WHITE);
         }
+        self.lan_ui(&mut ui);
         if self.console.open {
             self.console_ui(&mut ui);
         }
@@ -194,12 +202,13 @@ impl Game {
 
     fn hotbar_ui(&self, ui: &mut Ui, now: Instant) {
         let hud = HudPlayer {
-            inventory: &self.inventory,
-            vitals: &self.vitals,
-            selected: self.actions.selected,
-            survival: self.mode.is_survival(),
-            underwater: self.player.head_in_water(&self.world),
-            dial: self.dial_of(&self.player),
+            inventory: &self.session.inventory,
+            vitals: &self.session.vitals,
+            selected: self.body.actions.selected,
+            survival: self.session.mode.is_survival(),
+            underwater: self.session.player.head_in_water(&self.world),
+            dial: self.dial_of(&self.session.player),
+            vehicle: self.session.player.vehicle,
         };
         let y0 = self.bar_ui(ui, &hud, now);
         let survival = hud.survival;
@@ -245,7 +254,15 @@ impl Game {
             }
         }
         if hud.survival {
-            xp_bar_ui(ui, hud.vitals.xp, x0, y0 - 7.0, total);
+            if let Some(m) = hud.vehicle.and_then(|id| self.mobs.entities.mount(id))
+                && crate::entity::mounts::jumps(m.kind)
+                && let Some(s) = &m.mount
+            {
+                ui.rect(x0, y0 - 7., total, 5., [0.15, 0.15, 0.2, 1.]);
+                ui.rect(x0 + 1., y0 - 6., (total - 2.) * s.jump_charge, 3., [0.3, 0.6, 1., 1.]);
+            } else {
+                xp_bar_ui(ui, hud.vitals.xp, x0, y0 - 7.0, total);
+            }
             self.vitals_ui(ui, hud, x0, x0 + total, y0 - 17.0, now);
         }
         effects_ui(ui, &hud.vitals.effects);
@@ -288,17 +305,37 @@ impl Game {
             }
         }
 
-        // Hunger, right to left; drumsticks shiver when nearly empty.
-        let half_food = v.hunger.food.ceil() as u32;
-        let starving = v.hunger.food <= 0.0;
-        for i in 0..(survival::MAX_FOOD as u32 / 2) {
-            let layer = match half_food.saturating_sub(i * 2) {
-                0 => tex::FOOD_EMPTY,
-                1 => tex::FOOD_HALF,
-                _ => tex::FOOD_FULL,
-            };
-            let jitter = if half_food <= 6 || starving { (hash(i + 50, tick) % 3) as f32 - 1.0 } else { 0.0 };
-            ui.icon(right - 1.0 - ICON - i as f32 * STEP, y + jitter, ICON, layer, WHITE);
+        if let Some(m) = hud.vehicle.and_then(|id| self.mobs.entities.mount(id))
+            && crate::entity::mounts::equine(m.kind)
+            && let Some(s) = &m.mount
+        {
+            for i in 0..(s.max_health / 2.).floor() as u32 {
+                let layer = match (m.health.ceil() as u32).saturating_sub(i * 2) {
+                    0 => tex::HEART_EMPTY,
+                    1 => tex::HEART_HALF,
+                    _ => tex::HEART_FULL,
+                };
+                ui.icon(
+                    right - 1. - ICON - (i % 10) as f32 * STEP,
+                    y - (i / 10) as f32 * 10.,
+                    ICON,
+                    layer,
+                    [1., 0.75, 0.55, 1.],
+                );
+            }
+        } else {
+            // Hunger, right to left; drumsticks shiver when nearly empty.
+            let half_food = v.hunger.food.ceil() as u32;
+            let starving = v.hunger.food <= 0.0;
+            for i in 0..(survival::MAX_FOOD as u32 / 2) {
+                let layer = match half_food.saturating_sub(i * 2) {
+                    0 => tex::FOOD_EMPTY,
+                    1 => tex::FOOD_HALF,
+                    _ => tex::FOOD_FULL,
+                };
+                let jitter = if half_food <= 6 || starving { (hash(i + 50, tick) % 3) as f32 - 1.0 } else { 0.0 };
+                ui.icon(right - 1.0 - ICON - i as f32 * STEP, y + jitter, ICON, layer, WHITE);
+            }
         }
 
         // Air bubbles sit above the hunger bar.
@@ -319,8 +356,22 @@ impl Game {
             spawn_z: self.world_spawn.z as f64 + 0.5,
             overworld: self.dimension == crate::world::terrain::Dimension::Overworld,
             day_time: self.day_time as f32,
-            spin: self.started.elapsed().as_secs_f32(),
+            spin: self.lost_dials().0,
+            clock_spin: self.lost_dials().1,
         }
+    }
+
+    /// Wobbling turns of a compass and a clock outside the Overworld. Like Java's client,
+    /// each steps once per game tick toward a fresh random target.
+    pub(super) fn lost_dials(&self) -> (f32, f32) {
+        let tick = self.clock.ticks();
+        let (mut compass, mut clock) = self.dial_wobble.get();
+        let turns = (
+            compass.update(tick, crate::item::visual_random()) as f32,
+            clock.update(tick, crate::item::visual_random()) as f32,
+        );
+        self.dial_wobble.set((compass, clock));
+        turns
     }
 
     pub(super) fn stamp_hand(
@@ -341,7 +392,7 @@ impl Game {
 
     /// Item icon, durability bar and stack count in an 18x18 slot at (x, y).
     fn stack_ui(&self, ui: &mut Ui, x: f32, y: f32, stack: Stack) {
-        draw_stack(ui, x, y, stack, self.mode.is_survival(), self.dial_of(&self.player));
+        draw_stack(ui, x, y, stack, self.session.mode.is_survival(), self.dial_of(&self.session.player));
     }
 }
 
@@ -532,19 +583,19 @@ impl Game {
     /// Whether the screen has a top section (crafting grid or furnace)
     /// above the inventory; only the creative inventory doesn't.
     fn has_top_section(&self) -> bool {
-        self.mode.is_survival() || self.container != Container::Inventory
+        self.session.mode.is_survival() || self.body.container != Container::Inventory
     }
 
     /// Whether the middle grid shows the creative palette instead of the
     /// main inventory.
     fn shows_armor(&self) -> bool {
-        self.mode.is_survival() && self.container == Container::Inventory
+        self.session.mode.is_survival() && self.body.container == Container::Inventory
     }
 
     /// Height of the top section: room for the four armor slots in the
     /// survival inventory, three rows of slots otherwise.
     fn top_h(&self) -> f32 {
-        if let Container::Trading(id) = self.container {
+        if let Container::Trading(id) = self.body.container {
             return self
                 .mobs
                 .entities
@@ -568,13 +619,13 @@ impl Game {
     }
 
     fn shows_palette(&self) -> bool {
-        self.mode.is_creative() && self.container == Container::Inventory
+        self.session.mode.is_creative() && self.body.container == Container::Inventory
     }
 
     pub(super) fn shows_recipes(&self) -> bool {
         self.has_top_section()
             && !matches!(
-                self.container,
+                self.body.container,
                 Container::Furnace(_)
                     | Container::Chest(_)
                     | Container::Minecart(_)
@@ -589,7 +640,7 @@ impl Game {
     /// Whether the search bar shows: on the inventory and storage screens,
     /// not on workstations where it would only add clutter.
     pub(super) fn shows_search(&self) -> bool {
-        matches!(self.container, Container::Inventory | Container::Chest(_))
+        matches!(self.body.container, Container::Inventory | Container::Chest(_))
     }
 
     fn search_h(&self) -> f32 {
@@ -635,7 +686,7 @@ impl Game {
         let (px, py, _) = self.panel(screen);
         let py = py + self.search_h();
         let mut out = Vec::with_capacity(46);
-        let top = if let Container::Trading(id) = self.container {
+        let top = if let Container::Trading(id) = self.body.container {
             if let Some(v) = self.mobs.entities.merchant(id).and_then(|m| m.villager.as_ref()) {
                 for (i, o) in v.offers.iter().enumerate() {
                     if o.is_some() {
@@ -648,7 +699,7 @@ impl Game {
                 }
             }
             self.top_h()
-        } else if matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
+        } else if matches!(self.body.container, Container::Chest(_) | Container::Minecart(_)) {
             let count = self.open_container_count();
             let cols = if count == 9 { 3 } else { 9 };
             let offset = if count == 9 {
@@ -666,33 +717,33 @@ impl Game {
                 ));
             }
             self.top_h()
-        } else if let Container::Furnace(_) = self.container {
+        } else if let Container::Furnace(_) = self.body.container {
             // Input over fuel (with the flame between), the output past the arrow.
             let x = px + 7.0 + 3.0 * SLOT;
             out.push((SlotRef::FurnaceInput, x, py + 18.0));
             out.push((SlotRef::FurnaceFuel, x, py + 18.0 + 2.0 * SLOT));
             out.push((SlotRef::FurnaceOutput, px + 7.0 + 6.0 * SLOT, py + 18.0 + SLOT));
             CRAFT_H
-        } else if let Container::Enchanting(_) = self.container {
+        } else if let Container::Enchanting(_) = self.body.container {
             // Java's layout: item and lapis bottom left, offers to the right
             // (drawn as buttons; see `enchant_offer_rect`).
             out.push((SlotRef::EnchantItem, px + 14.0, py + 44.0));
             out.push((SlotRef::EnchantLapis, px + 34.0, py + 44.0));
             CRAFT_H
-        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.container {
+        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.body.container {
             // Java's layout: input + input -> result.
             out.push((SlotRef::AnvilLeft, px + 26.0, py + 36.0));
             out.push((SlotRef::AnvilRight, px + 75.0, py + 36.0));
             out.push((SlotRef::AnvilResult, px + 133.0, py + 36.0));
             CRAFT_H
-        } else if let Container::Smithing(_) = self.container {
+        } else if let Container::Smithing(_) = self.body.container {
             // Java 1.21: template, base, addition -> result.
             out.push((SlotRef::SmithTemplate, px + 15.0, py + 48.0));
             out.push((SlotRef::SmithBase, px + 33.0, py + 48.0));
             out.push((SlotRef::SmithAddition, px + 51.0, py + 48.0));
             out.push((SlotRef::SmithResult, px + 105.0, py + 48.0));
             CRAFT_H
-        } else if let Container::Brewing(_) = self.container {
+        } else if let Container::Brewing(_) = self.body.container {
             // Java's layout: fuel top left, the ingredient over three
             // bottles in a fan.
             out.push((SlotRef::BrewFuel, px + 16.0, py + 18.0));
@@ -768,7 +819,7 @@ impl Game {
         {
             return None;
         }
-        if let Container::Enchanting(_) = self.container {
+        if let Container::Enchanting(_) = self.body.container {
             let (px, py, _) = self.panel((w as f32 / scale, h as f32 / scale));
             for i in 0..3 {
                 let (x, y, bw, bh) = enchant_offer_rect(px, py + self.search_h(), i);
@@ -787,7 +838,7 @@ impl Game {
         let (sw, sh) = ui.size();
         ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.45]);
         let (px, py, panel_h) = self.panel((sw, sh));
-        effect_list_ui(ui, &self.vitals.effects, px, py);
+        effect_list_ui(ui, &self.session.vitals.effects, px, py);
         ui.rect(px, py, PANEL_W, panel_h, [0.78, 0.78, 0.78, 1.0]);
         ui.rect(px, py, PANEL_W, 1.0, WHITE);
         ui.rect(px, py, 1.0, panel_h, WHITE);
@@ -797,17 +848,11 @@ impl Game {
             self.search_ui(ui);
         }
         let py = py + self.search_h();
-        let title = match (self.container, self.mode) {
+        let title = match (self.body.container, self.session.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
             (Container::Chest(p), _) => container_title(self.world.get_block(p)),
-            (Container::Minecart(id), _) => {
-                if self.mobs.entities.cart(id).is_some_and(|c| c.slot_count() == 5) {
-                    "Minecart with Hopper"
-                } else {
-                    "Minecart with Chest"
-                }
-            }
+            (Container::Minecart(id), _) => self.mobs.entities.vehicle_title(id),
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
             (Container::Anvil(_), _) => "Anvil",
@@ -824,23 +869,24 @@ impl Game {
             let layout = self.recipe_layout((sw, sh));
             self.recipe_button(ui, layout.toggle, if self.recipe_book.open { "Hide" } else { "Recipes" });
         }
-        if let Container::Trading(id) = self.container {
+        if let Container::Trading(id) = self.body.container {
             self.trading_ui(ui, id, px, py);
-        } else if let Container::Brewing(p) = self.container
+        } else if let Container::Brewing(p) = self.body.container
             && let Some(b) = self.world.brewing_stand(p)
         {
             brewing_ui(ui, b, px, py, (self.started.elapsed().as_secs_f32() * 8.0) as u32);
-        } else if let Container::Enchanting(_) = self.container {
+        } else if let Container::Enchanting(_) = self.body.container {
             self.enchanting_ui(ui, px, py);
-        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.container {
+        } else if let Container::Anvil(_) | Container::Grindstone(_) = self.body.container {
             self.anvil_ui(ui, px, py);
-        } else if let Container::Smithing(_) = self.container {
+        } else if let Container::Smithing(_) = self.body.container {
             self.smithing_ui(ui, px, py);
-        } else if self.has_top_section() && !matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
+        } else if self.has_top_section() && !matches!(self.body.container, Container::Chest(_) | Container::Minecart(_))
+        {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
             let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0);
-            let furnace = match self.container {
+            let furnace = match self.body.container {
                 Container::Furnace(p) => self.world.furnace(p).copied(),
                 _ => None,
             };
@@ -866,7 +912,7 @@ impl Game {
             }
         }
         let py = py + self.top_h();
-        if matches!(self.container, Container::Chest(_) | Container::Minecart(_)) {
+        if matches!(self.body.container, Container::Chest(_) | Container::Minecart(_)) {
             ui.text_flat(px + 8.0, py + 6.0, "Inventory", [0.25, 0.25, 0.25, 1.0]);
         }
         if self.shows_palette() {
@@ -887,11 +933,11 @@ impl Game {
             ui.rect(x, y, SLOT, SLOT, [0.55, 0.55, 0.55, 1.0]);
             ui.rect(x + 1.0, y + 1.0, SLOT - 1.0, SLOT - 1.0, [0.45, 0.45, 0.45, 1.0]);
             let stack = match r {
-                SlotRef::Inventory(i) => self.inventory.get(i),
+                SlotRef::Inventory(i) => self.session.inventory.get(i),
                 SlotRef::Palette(b) => Some(Stack::new(b, 1)),
                 SlotRef::Craft(i) => self.craft.cells[i],
                 SlotRef::CraftResult => self.craft.result(),
-                SlotRef::Armor(p) => self.inventory.armor[p as usize],
+                SlotRef::Armor(p) => self.session.inventory.armor[p as usize],
                 f => self.container_slot(f),
             };
             // Faint outline of what goes in an empty armor or lapis slot.
@@ -907,8 +953,8 @@ impl Game {
                 ui.icon(x + 1.0, y + 1.0, 16.0, layer, [0.0, 0.0, 0.0, 0.25]);
             }
             if let Some(stack) = stack {
-                if matches!(self.container, Container::Trading(_)) {
-                    draw_stack(ui, x, y, stack, true, self.dial_of(&self.player));
+                if matches!(self.body.container, Container::Trading(_)) {
+                    draw_stack(ui, x, y, stack, true, self.dial_of(&self.session.player));
                 } else {
                     self.stack_ui(ui, x, y, stack);
                 }
@@ -929,11 +975,11 @@ impl Game {
             }
         }
         let hovered_stack = match hovered {
-            Some(SlotRef::Inventory(i)) => self.inventory.get(i),
+            Some(SlotRef::Inventory(i)) => self.session.inventory.get(i),
             Some(SlotRef::Palette(item)) => Some(Stack::new(item, 1)),
             Some(SlotRef::Craft(i)) => self.craft.cells[i],
             Some(SlotRef::CraftResult) => self.craft.result(),
-            Some(SlotRef::Armor(p)) => self.inventory.armor[p as usize],
+            Some(SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
             Some(f) => self.container_slot(f),
             None => None,
         };
@@ -950,7 +996,7 @@ impl Game {
             }
         }
         // The held stack follows the mouse.
-        if let Some(stack) = self.inventory.cursor {
+        if let Some(stack) = self.session.inventory.cursor {
             let scale = ui.scale;
             self.stack_ui(ui, self.cursor_px.0 / scale - 9.0, self.cursor_px.1 / scale - 9.0, stack);
         }
@@ -1025,28 +1071,27 @@ impl Game {
 
     /// Contents of a furnace or chest slot on the open screen.
     fn container_slot(&self, slot: SlotRef) -> Option<Stack> {
-        if let (Container::Trading(id), SlotRef::Trade(i)) = (self.container, slot) {
+        if let (Container::Trading(id), SlotRef::Trade(i)) = (self.body.container, slot) {
             return self.mobs.entities.merchant(id)?.villager.as_ref()?.offers.get(i)?.map(|o| o.output);
         }
-        if let (Container::Minecart(id), SlotRef::Chest(i)) = (self.container, slot) {
-            let cart = self.mobs.entities.cart(id)?;
-            return (i < cart.slot_count()).then(|| cart.slots[i]).flatten();
+        if let (Container::Minecart(id), SlotRef::Chest(i)) = (self.body.container, slot) {
+            return self.mobs.entities.vehicle_slots(id)?.get(i).copied().flatten();
         }
-        if let (Container::Chest(p), SlotRef::Chest(i)) = (self.container, slot) {
+        if let (Container::Chest(p), SlotRef::Chest(i)) = (self.body.container, slot) {
             return self.world.chest(p)?.slots[i];
         }
         match slot {
-            SlotRef::EnchantItem => return self.work[0],
-            SlotRef::EnchantLapis | SlotRef::AnvilRight => return self.work[1],
-            SlotRef::AnvilLeft => return self.work[0],
+            SlotRef::EnchantItem => return self.session.work[0],
+            SlotRef::EnchantLapis | SlotRef::AnvilRight => return self.session.work[1],
+            SlotRef::AnvilLeft => return self.session.work[0],
             SlotRef::AnvilResult => return self.anvil_preview().map(|(r, _)| r.output),
-            SlotRef::SmithTemplate => return self.work[0],
-            SlotRef::SmithBase => return self.work[1],
-            SlotRef::SmithAddition => return self.work[2],
+            SlotRef::SmithTemplate => return self.session.work[0],
+            SlotRef::SmithBase => return self.session.work[1],
+            SlotRef::SmithAddition => return self.session.work[2],
             SlotRef::SmithResult => return self.smithing_result(),
             _ => {}
         }
-        if let Container::Brewing(p) = self.container {
+        if let Container::Brewing(p) = self.body.container {
             let b = self.world.brewing_stand(p)?;
             return match slot {
                 SlotRef::BrewBottle(i) => b.bottles[i],
@@ -1055,7 +1100,7 @@ impl Game {
                 _ => None,
             };
         }
-        let Container::Furnace(p) = self.container else { return None };
+        let Container::Furnace(p) = self.body.container else { return None };
         let f = self.world.furnace(p)?;
         match slot {
             SlotRef::FurnaceInput => f.input,
@@ -1100,7 +1145,7 @@ impl Game {
             for p in 0..=i {
                 ui.rect(x + 4.0 + 4.0 * p as f32, y + 8.0, 3.0, 3.0, [0.85, 0.9, 1.0, 1.0]);
             }
-            let words = super::enchanting::rune_words(self.vitals.xp.seed, i);
+            let words = super::enchanting::rune_words(self.session.vitals.xp.seed, i);
             let ink = if usable { [0.42, 0.36, 0.25, 1.0] } else { [0.4, 0.37, 0.33, 1.0] };
             ui.text_flat(x + 20.0, y + 6.0, &clip_text(&words, w - 44.0), ink);
             let cost = offer.cost.to_string();
@@ -1121,18 +1166,18 @@ impl Game {
             ui.rect(px + 120.0 + i as f32, py + 41.0 + i as f32, 1.0, 9.0 - 2.0 * i as f32, dark);
         }
         let Some((result, too_expensive)) = self.anvil_preview() else {
-            if self.work[0].is_some() && self.work[1].is_some() {
+            if self.session.work[0].is_some() && self.session.work[1].is_some() {
                 // Inputs that can't combine: Java crosses out the arrow.
                 ui.rect(px + 104.0, py + 38.0, 14.0, 2.0, [0.75, 0.2, 0.2, 1.0]);
             }
             return;
         };
-        if matches!(self.container, Container::Grindstone(_)) {
+        if matches!(self.body.container, Container::Grindstone(_)) {
             return;
         }
         let (text, colour) = if too_expensive {
             ("Too Expensive!".to_string(), [1.0, 0.38, 0.38, 1.0])
-        } else if self.mode.is_survival() && self.vitals.xp.level < result.cost {
+        } else if self.session.mode.is_survival() && self.session.vitals.xp.level < result.cost {
             (format!("Enchantment Cost: {}", result.cost), [1.0, 0.38, 0.38, 1.0])
         } else {
             (format!("Enchantment Cost: {}", result.cost), [0.5, 1.0, 0.13, 1.0])
@@ -1151,7 +1196,7 @@ impl Game {
         for i in 0..5 {
             ui.rect(px + 94.0 + i as f32, py + 53.0 + i as f32, 1.0, 9.0 - 2.0 * i as f32, dark);
         }
-        if self.work.iter().all(Option::is_some) && self.smithing_result().is_none() {
+        if self.session.work.iter().all(Option::is_some) && self.smithing_result().is_none() {
             ui.rect(px + 79.0, py + 49.0, 14.0, 2.0, [0.75, 0.2, 0.2, 1.0]);
         }
     }
@@ -1161,13 +1206,13 @@ impl Game {
     pub(super) fn offer_tooltip(&self, ui: &mut Ui, i: usize) {
         let offer = self.enchant_offers()[i];
         let Some((e, level)) = offer.clue else { return };
-        let creative = self.mode.is_creative();
+        let creative = self.session.mode.is_creative();
         let mut lines = vec![(format!("{} . . . ?", e.describe(level)), WHITE)];
         if !creative {
-            let lapis = self.work[1].map_or(0, |s| s.count) as usize;
+            let lapis = self.session.work[1].map_or(0, |s| s.count) as usize;
             let red = [1.0, 0.33, 0.33, 1.0];
             let grey = [0.67, 0.67, 0.67, 1.0];
-            if self.vitals.xp.level < offer.cost {
+            if self.session.vitals.xp.level < offer.cost {
                 lines.push((format!("Enchantment Level Requirement: {}", offer.cost), red));
             } else {
                 let n = i + 1;
@@ -1210,28 +1255,32 @@ impl Game {
     /// effects, red for harmful, grey for none.
     fn potion_tooltip(&self, ui: &mut Ui, name: &str, potion: voxelcraft::potion::Potion) {
         let title = capitalize(name);
-        let detail = potion.describe();
-        let colour = match potion.info().effect {
-            None => [0.6, 0.6, 0.6, 1.0],
-            Some((e, _, _)) if e.is_harmful() => [1.0, 0.33, 0.33, 1.0],
-            Some(_) => [0.33, 0.33, 1.0, 1.0],
-        };
-        let w = Ui::text_width(&title).max(Ui::text_width(&detail));
+        let details = potion.describe_lines();
+        let effects: Vec<_> = potion.effects().collect();
+        let w = details.iter().map(|s| Ui::text_width(s)).fold(Ui::text_width(&title), f32::max);
+        let h = 11.0 * (details.len() + 1) as f32 + 3.0;
         let (sw, sh) = ui.size();
         let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
-        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - 22.0).max(3.0));
-        ui.rect(x - 3.0, y - 3.0, w + 6.0, 25.0, [0.08, 0.02, 0.12, 0.92]);
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h).max(3.0));
+        ui.rect(x - 3.0, y - 3.0, w + 6.0, h, [0.08, 0.02, 0.12, 0.92]);
         ui.text(x, y, &title, WHITE);
-        ui.text(x, y + 11.0, &detail, colour);
+        for (i, detail) in details.iter().enumerate() {
+            let colour = match effects.get(i) {
+                None => [0.6, 0.6, 0.6, 1.0],
+                Some((e, _, _)) if e.is_harmful() => [1.0, 0.33, 0.33, 1.0],
+                Some(_) => [0.33, 0.33, 1.0, 1.0],
+            };
+            ui.text(x, y + 11.0 * (i + 1) as f32, detail, colour);
+        }
     }
 
     /// Draw F3 world/player statistics, including completed gameplay ticks and offline pause state.
     fn debug_ui(&self, ui: &mut Ui) {
-        let p = self.player.pos;
+        let p = self.session.player.pos;
         let b = p.floor().as_ivec3();
         let c = chunk_of(b);
         let l = local_of(b);
-        let f = self.player.forward();
+        let f = self.session.player.forward();
         let facing = if f.x.abs() > f.z.abs() {
             if f.x > 0.0 { "east (+X)" } else { "west (-X)" }
         } else if f.z > 0.0 {
@@ -1260,10 +1309,14 @@ impl Game {
             format!("XYZ: {:.3} / {:.3} / {:.3}", p.x, p.y, p.z),
             format!("Block: {} {} {}", b.x, b.y, b.z),
             format!("Chunk: {} {} {} in {} {} {}", l.x, l.y, l.z, c.x, c.y, c.z),
-            format!("Facing: {facing} ({:.1} / {:.1})", self.player.yaw.to_degrees(), self.player.pitch.to_degrees()),
+            format!(
+                "Facing: {facing} ({:.1} / {:.1})",
+                self.session.player.yaw.to_degrees(),
+                self.session.player.pitch.to_degrees()
+            ),
             match self.dimension {
                 crate::world::terrain::Dimension::Overworld => format!("Biome: {biome:?}"),
-                d if let Some(nether) = self.world.generator.nether_biome(b.x, b.z) => {
+                d if let Some(nether) = self.world.generator.nether_biome_at(b) => {
                     format!("Biome: minecraft:{} ({})", nether.name(), d.name())
                 }
                 d => format!("Dimension: {}", d.name()),
@@ -1273,14 +1326,14 @@ impl Game {
                 if self.weather.raining { "rain" } else { "clear" },
                 self.weather.timer
             ),
-            format!("Game mode: {}", self.mode.name()),
+            format!("Game mode: {}", self.session.mode.name()),
             format!(
                 "Health: {:.1} / {}, air: {:.1} / {}{}",
-                self.vitals.health,
+                self.session.vitals.health,
                 MAX_HEALTH,
-                self.vitals.air,
+                self.session.vitals.air,
                 MAX_AIR,
-                if self.vitals.is_dead() { " (dead)" } else { "" }
+                if self.session.vitals.is_dead() { " (dead)" } else { "" }
             ),
             format!("Time: {:02}:{:02}", hours as u32, (hours.fract() * 60.0) as u32),
             format!(
@@ -1290,9 +1343,9 @@ impl Game {
             ),
             format!(
                 "Mode: {}{}{}",
-                if self.player.flying { "flying" } else { "walking" },
-                if self.player.on_ground { ", on ground" } else { "" },
-                if self.player.in_water { ", swimming" } else { "" },
+                if self.session.player.flying { "flying" } else { "walking" },
+                if self.session.player.on_ground { ", on ground" } else { "" },
+                if self.session.player.in_water { ", swimming" } else { "" },
             ),
             String::new(),
             target,
@@ -1348,6 +1401,25 @@ pub(super) fn eating_bar(ui: &mut Ui, cx: f32, cy: f32, progress: f32) {
     ui.text(cx - Ui::text_width("Eating") / 2.0, cy + 14.0, "Eating", WHITE);
     ui.rect(cx - 30.0, cy + 25.0, 60.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
     ui.rect(cx - 29.0, cy + 26.0, 58.0 * progress.clamp(0.0, 1.0), 3.0, [0.96, 0.72, 0.3, 1.0]);
+}
+
+/// Java's crosshair attack indicator, 16 pixels wide just below the
+/// crosshair at (cx, cy): a bar filling in 17ths, or a small full mark.
+pub(super) fn attack_indicator(ui: &mut Ui, cx: f32, cy: f32, indicator: voxelcraft::session::combat::AttackIndicator) {
+    use voxelcraft::session::combat::AttackIndicator;
+    let (x, y) = (cx - 8.0, cy + 9.0);
+    match indicator {
+        AttackIndicator::Charging(scale) => {
+            let filled = (scale * 17.0).floor().min(16.0);
+            ui.rect(x, y, 16.0, 4.0, [0.15, 0.15, 0.15, 0.7]);
+            ui.rect(x, y, filled, 4.0, [1.0, 1.0, 1.0, 0.85]);
+        }
+        AttackIndicator::Full => {
+            // Original mark: a short bar with a raised centre.
+            ui.rect(x + 2.0, y + 2.0, 12.0, 2.0, [1.0, 1.0, 1.0, 0.85]);
+            ui.rect(x + 7.0, y - 1.0, 2.0, 3.0, [1.0, 1.0, 1.0, 0.85]);
+        }
+    }
 }
 
 /// Bow draw strength under the crosshair at (cx, cy); gold when full.

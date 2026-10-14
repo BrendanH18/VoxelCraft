@@ -3,46 +3,11 @@ use super::hud::draw_stack;
 use super::{Container, Game};
 use crate::render::ui::{Ui, WHITE};
 impl Game {
-    pub(super) fn use_villager(&mut self) -> bool {
-        if self.sneak_building() {
-            return false;
-        }
-        let Some(id) = self.mobs.entities.target_merchant(
-            &self.world,
-            self.player.eye(),
-            self.player.forward().as_dvec3(),
-            super::REACH,
-        ) else {
-            return false;
-        };
-        if self
-            .mobs
-            .entities
-            .merchant(id)
-            .and_then(|m| m.villager.as_ref())
-            .is_none_or(|v| v.offers.iter().all(Option::is_none))
-        {
-            return true;
-        }
-        if self.puppet {
-            self.puppet_merchant = Some(id);
-        } else if !self.inventory_open {
-            self.container = Container::Trading(id);
+    /// Opens trading with a targeted merchant that has offers.
+    pub(super) fn open_merchant(&mut self, id: u64) {
+        if !self.inventory_open {
+            self.body.container = Container::Trading(id);
             self.toggle_inventory();
-        }
-        true
-    }
-    pub(super) fn buy_trade(&mut self, index: usize) {
-        let Container::Trading(id) = self.container else { return };
-        if !self.mobs.entities.merchant_in_reach(id, self.player.eye()) {
-            return;
-        }
-        match self.mobs.entities.trade_for(id, index, &mut self.inventory, self.actor) {
-            Ok(xp) => {
-                self.mobs.entities.spawn_xp(self.player.pos, xp);
-                self.audio.ui_click();
-            }
-            Err(message) => self.show_popup(message),
         }
     }
     pub(super) fn trading_ui(&self, ui: &mut Ui, id: u64, px: f32, py: f32) {
@@ -60,9 +25,9 @@ impl Game {
             let Some(o) = o else { continue };
             let x = px + 8.0 + (i % 2) as f32 * 80.0;
             let y = py + 22.0 + (i / 2) as f32 * 20.0;
-            draw_stack(ui, x, y, v.priced_for(*o, self.actor), true, self.dial_of(&self.player));
+            draw_stack(ui, x, y, v.priced_for(*o, self.session.id), true, self.dial_of(&self.session.player));
             if let Some(s) = o.second {
-                draw_stack(ui, x + 20.0, y, s, true, self.dial_of(&self.player));
+                draw_stack(ui, x + 20.0, y, s, true, self.dial_of(&self.session.player));
             }
             ui.text_flat(
                 x + 40.0,
@@ -92,8 +57,8 @@ impl Game {
             ui.text(x + 100.0, y, v.level_name(), WHITE);
         }
         if let Some(o) = v.offers.get(index).copied().flatten() {
-            let dial = self.dial_of(&self.player);
-            draw_stack(ui, x, y + 12.0, v.priced_for(o, self.actor), true, dial);
+            let dial = self.dial_of(&self.session.player);
+            draw_stack(ui, x, y + 12.0, v.priced_for(o, self.session.id), true, dial);
             ui.text(x + 22.0, y + 16.0, o.cost.item.name(), WHITE);
             let sx = x + 22.0 + Ui::text_width(o.cost.item.name()) + 10.0;
             if let Some(s) = o.second {

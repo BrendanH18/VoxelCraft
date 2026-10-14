@@ -44,6 +44,10 @@ const AVOID_ZOMBIFIED: f64 = 6.0;
 /// Seconds between a nether mob's looks around (Java's sensors run every
 /// 20 ticks; this is a little quicker so thrown gold is noticed promptly).
 const SENSE_INTERVAL: f32 = 0.5;
+/// Java `PiglinAi.CELEBRATION_TIME`: 300 ticks.
+const CELEBRATION_TIME: f32 = 15.0;
+/// Java `PROBABILITY_OF_CELEBRATION_DANCE`.
+const DANCE_CHANCE: f32 = 0.1;
 /// Chance of each piece of golden armor (Java's 0.1), of a baby (0.2) and
 /// of a crossbow instead of a sword (0.5).
 const ARMOR_CHANCE: f32 = 0.1;
@@ -90,7 +94,17 @@ impl Weapon {
         }
     }
 
-    fn name(self) -> &'static str {
+    /// Attack added to the holder's base (Java's `minecraft:attack_damage`
+    /// modifier: sword 3, axe 6; a crossbow adds nothing).
+    pub(super) fn attack_bonus(self) -> f32 {
+        match self {
+            Weapon::GoldenSword => 3.0,
+            Weapon::GoldenAxe => 6.0,
+            Weapon::None | Weapon::Crossbow => 0.0,
+        }
+    }
+
+    pub(super) fn name(self) -> &'static str {
         match self {
             Weapon::None => "none",
             Weapon::GoldenSword => "golden_sword",
@@ -99,7 +113,7 @@ impl Weapon {
         }
     }
 
-    fn from_name(name: &str) -> Self {
+    pub(super) fn from_name(name: &str) -> Self {
         [Weapon::GoldenSword, Weapon::Crossbow, Weapon::GoldenAxe]
             .into_iter()
             .find(|w| w.name() == name)
@@ -176,6 +190,13 @@ pub struct NetherMob {
     pub(super) convert: bool,
     /// This corpse's carried items have already been emitted by death loot.
     loot_dropped: bool,
+    /// Java's `CELEBRATE_LOCATION` memory: seconds left (300 ticks), and where the foe fell.
+    pub(super) celebrate_left: f32,
+    pub(super) celebrate_at: DVec3,
+    /// Java's `DANCING` memory (hoglin kills only, one in ten): the piglin dances there.
+    pub dancing: bool,
+    /// Where the last target stood and whether it was a hoglin, to tell if it died.
+    pub(super) prey: Option<(DVec3, bool)>,
 }
 
 impl NetherMob {
@@ -210,6 +231,10 @@ impl NetherMob {
                     barter: false,
                     convert: false,
                     loot_dropped: false,
+                    celebrate_left: 0.0,
+                    celebrate_at: DVec3::ZERO,
+                    dancing: false,
+                    prey: None,
                 })
             })
     }
@@ -485,15 +510,8 @@ impl Entities {
     /// fight or flee and which dropped items they want. Runs before the
     /// mobs move each update.
     pub(super) fn nether_sense<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx) {
-        let mut any = false;
-        for m in &mut self.mobs {
-            if m.uid == 0 {
-                self.next_uid = self.next_uid.max(1);
-                m.uid = self.next_uid;
-                self.next_uid = self.next_uid.wrapping_add(1).max(1);
-            }
-            any |= m.nether.is_some();
-        }
+        self.ensure_mob_ids();
+        let any = self.mobs.iter().any(|m| m.nether.is_some());
         self.nether_view.clear();
         if !any {
             return;
@@ -547,27 +565,7 @@ impl Entities {
     /// After the mobs have moved: mob-on-mob hits, finished admiring,
     /// item pickups and zombification.
     pub(super) fn nether_upkeep(&mut self, ctx: &Ctx, events: &mut Vec<EntityEvent>) {
-        let hits: Vec<_> = events
-            .iter()
-            .filter_map(|e| match *e {
-                EntityEvent::MobHit { target, attacker, damage, knockback } => {
-                    Some((target, attacker, damage, knockback))
-                }
-                _ => None,
-            })
-            .collect();
-        if !hits.is_empty() {
-            events.retain(|e| !matches!(e, EntityEvent::MobHit { .. }));
-            for (target, attacker, damage, knockback) in hits {
-                let Some(i) = self.mobs.iter().position(|m| m.uid == target && m.alive()) else { continue };
-                let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
-                let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
-                self.nether_hurt(i, Foe::Mob(attacker));
-                if killed {
-                    self.drop_loot_with_fire(kind, pos, 0, burning, false);
-                }
-            }
-        }
+        self.resolve_mob_hits(events);
         if self.nether_view.is_empty() {
             return;
         }
@@ -587,6 +585,37 @@ impl Entities {
                 self.pick_up(i, events);
             }
             i += 1;
+        }
+    }
+
+    /// Mob melee and projectile hits share retaliation and kill attribution.
+    pub(super) fn resolve_mob_hits(&mut self, events: &mut Vec<EntityEvent>) {
+        let hits: Vec<_> = events
+            .iter()
+            .filter_map(|e| match *e {
+                EntityEvent::MobHit { target, attacker, damage, knockback } => {
+                    Some((target, attacker, damage, knockback))
+                }
+                _ => None,
+            })
+            .collect();
+        if !hits.is_empty() {
+            events.retain(|e| !matches!(e, EntityEvent::MobHit { .. }));
+            for (target, attacker, damage, knockback) in hits {
+                let Some(i) = self.mobs.iter().position(|m| m.uid == target && m.alive()) else { continue };
+                let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
+                let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
+                self.nether_hurt(i, Foe::Mob(attacker));
+                if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
+                    self.animals_defend_owner(attacker, owner);
+                }
+                let wolf_kill = self.mobs.iter().any(|m| {
+                    m.uid == attacker && m.kind == MobKind::Wolf && m.animal.as_ref().is_some_and(|a| a.owner.is_some())
+                });
+                if killed {
+                    self.drop_loot_with_fire(kind, pos, 0, burning, wolf_kill);
+                }
+            }
         }
     }
 
@@ -648,6 +677,9 @@ impl Entities {
         if is_piglin_kind(attacker) {
             return;
         }
+        // Java `wasHurtBy` erases `CELEBRATE_LOCATION` and `DANCING`.
+        n.celebrate_left = 0.0;
+        n.dancing = false;
         // Outnumbered by the hoglin's herd, a piglin backs off instead.
         if attacker == Some(MobKind::Hoglin) && !baby {
             let (piglins, hoglins) = adult_counts(&self.nether_view, pos);
@@ -730,6 +762,17 @@ impl Entities {
         let Some(n) = m.nether.as_mut() else { return };
         n.barter = false;
         let Some(stack) = n.offhand.take() else { return };
+        // Java `stopHoldingOffHandItem`: an adult equips an admired item that
+        // fits an empty slot (`equipItemIfPossible`) before pocketing it.
+        if !baby
+            && let Some((piece, ArmorMaterial::Gold)) = stack.item.as_armor()
+            && let Some(slot) = ArmorPiece::ALL.iter().position(|&p| p == piece)
+            && m.armor[slot].is_none()
+        {
+            m.armor[slot] = Some(super::armor::ArmorKind::Gold);
+            return;
+        }
+        let n = m.nether.as_mut().unwrap();
         if baby || !is_barter_currency(stack.item) {
             if let Some(overflow) = pocket(n, stack) {
                 self.throw_from_mob(overflow, pos, None);
@@ -834,6 +877,10 @@ impl Entities {
         mob.vel = old.vel;
         mob.previous_pos = old.previous_pos;
         mob.armor = old.armor;
+        // `convertTo` copies every equipment slot: a crossbow or axe stays.
+        if into == MobKind::ZombifiedPiglin {
+            mob.held = old.nether.as_ref().map(|n| n.weapon);
+        }
         events.push(EntityEvent::Sound { sound: MobSound::Ambient(into), pos: old.pos + DVec3::Y * 1.6 });
         self.mobs[index] = mob;
         for stack in carried {
@@ -887,8 +934,17 @@ impl Entities {
 
     /// Persistent nether mobs, as JSON for the level file.
     pub fn nether_mobs_to_string(&self) -> String {
-        let mobs: Vec<Value> =
-            self.mobs.iter().filter(|m| m.persistent && m.alive() && m.villager.is_none()).map(save_mob).collect();
+        let mobs: Vec<Value> = self
+            .mobs
+            .iter()
+            .filter(|m| {
+                m.persistent
+                    && m.alive()
+                    && m.villager.is_none()
+                    && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)
+            })
+            .map(save_mob)
+            .collect();
         let mut bastions: Vec<[i32; 3]> = self.bastions_populated.iter().map(|p| p.to_array()).collect();
         bastions.sort_unstable();
         let mut structures: Vec<_> = self.structures_populated.iter().map(|p| p.to_array()).collect();
@@ -917,7 +973,14 @@ impl Entities {
             }));
         }
         let Some(mobs) = root["mobs"].as_array() else { return };
-        self.mobs.extend(mobs.iter().filter_map(load_mob));
+        for mut mob in mobs.iter().filter_map(load_mob) {
+            if mob.uid == 0 || self.mobs.iter().any(|m| m.uid == mob.uid) {
+                self.next_uid = self.next_uid.max(1);
+                mob.uid = self.next_uid;
+            }
+            self.next_uid = self.next_uid.max(mob.uid.saturating_add(1));
+            self.mobs.push(mob);
+        }
     }
 }
 
@@ -1084,6 +1147,30 @@ fn sense<W: MobWorld + ?Sized>(
     let eye = pos + DVec3::Y * (m.shape().height * 0.9);
     let n = m.nether.as_mut()?;
     let locate = |foe: Foe| locate(foe, view, ctx);
+    // Java's `StartCelebratingIfTargetDead`: a dead attack target sets the celebrate
+    // location for 300 ticks; hoglin kills sometimes start a dance.
+    if let Goal::Attack { foe, pos: last } = n.goal
+        && !brute
+    {
+        match locate(foe) {
+            Some(at) => {
+                let hoglin = matches!(foe, Foe::Mob(u) if view.iter().any(|s| s.uid == u && s.kind == MobKind::Hoglin));
+                n.prey = Some((at, hoglin));
+            }
+            None => {
+                let (at, hoglin) = n.prey.take().unwrap_or((last, false));
+                let gone = match foe {
+                    Foe::Player(id) => ctx.players.iter().any(|t| t.id == id && !t.alive),
+                    Foe::Mob(_) => true,
+                };
+                if gone && at.distance_squared(pos) <= 32.0 * 32.0 {
+                    n.celebrate_left = CELEBRATION_TIME;
+                    n.celebrate_at = at;
+                    n.dancing = hoglin && rng.chance(DANCE_CHANCE);
+                }
+            }
+        }
+    }
     // Grudges end when the foe is gone or far away.
     if let Some(foe) = n.foe
         && locate(foe).is_none_or(|p| p.distance_squared(pos) > 32.0 * 32.0)
@@ -1145,7 +1232,9 @@ fn sense<W: MobWorld + ?Sized>(
             return None;
         }
         // Wither skeletons are piglins' nemesis.
-        if let Some(s) = view.iter().find(|s| s.kind == MobKind::WitherSkeleton && near(s, ANGER_RANGE)) {
+        // Java reads `NEAREST_VISIBLE_*` memories: both need a clear sight line.
+        let sees = |s: &&Seen| super::mob::line_of_sight(world, eye, s.pos + DVec3::Y * 1.0);
+        if let Some(s) = view.iter().find(|s| s.kind == MobKind::WitherSkeleton && near(s, ANGER_RANGE) && sees(s)) {
             n.goal = Goal::Attack { foe: Foe::Mob(s.uid), pos: s.pos };
             return None;
         }
@@ -1153,14 +1242,22 @@ fn sense<W: MobWorld + ?Sized>(
         if !brute
             && !n.cannot_hunt
             && n.hunt_cooldown <= 0.0
-            && let Some(s) =
-                view.iter().find(|s| s.kind == MobKind::Hoglin && !s.baby && s.huntable && near(s, ANGER_RANGE))
+            && let Some(s) = view
+                .iter()
+                .find(|s| s.kind == MobKind::Hoglin && !s.baby && s.huntable && near(s, ANGER_RANGE) && sees(s))
         {
             n.anger(Foe::Mob(s.uid));
             n.hunt_cooldown = rng.range(30.0, 120.0);
             n.goal = Goal::Attack { foe: Foe::Mob(s.uid), pos: s.pos };
             return Some(s.uid);
         }
+    }
+    // The celebrate activity: walk to where the foe fell (2 blocks of slack, 4 while dancing).
+    if n.celebrate_left > 0.0 && !brute {
+        let slack = if n.dancing { 4.0 } else { 2.0 };
+        n.goal =
+            if n.celebrate_at.distance_squared(pos) > slack * slack { Goal::Walk(n.celebrate_at) } else { Goal::None };
+        return None;
     }
     n.goal = match n.home {
         Some(home) if home.distance_squared(pos) > HOME_RANGE * HOME_RANGE => Goal::Walk(home),
@@ -1301,8 +1398,9 @@ pub(super) fn lava_spot<W: MobWorld + ?Sized>(world: &W, x: i32, z: i32) -> Opti
     (!crate::physics::overlaps_solid(world, pos, MobKind::Strider.shape())).then_some(pos)
 }
 
-/// One look around for the zoglin `m`: anything alive nearby but creepers
-/// and other zoglins is a target (Java's `Zoglin.isTargetable`).
+/// One look around for the zoglin `m`: anything alive within the 16-block
+/// follow range (in all three axes, as the nearest-entities sensor boxes it)
+/// but creepers and other zoglins is a target (Java's `Zoglin.isTargetable`).
 fn sense_zoglin<W: MobWorld + ?Sized>(m: &mut Mob, view: &[Seen], world: &W, ctx: &Ctx) {
     let (pos, uid) = (m.pos, m.uid);
     let eye = pos + DVec3::Y * (m.shape().height * 0.8);
@@ -1319,7 +1417,6 @@ fn sense_zoglin<W: MobWorld + ?Sized>(m: &mut Mob, view: &[Seen], world: &W, ctx
         .filter(|s| {
             s.uid != uid
                 && !matches!(s.kind, MobKind::Zoglin | MobKind::Creeper)
-                && (s.pos.y - pos.y).abs() < 4.0
                 && s.pos.distance_squared(pos) <= ANGER_RANGE * ANGER_RANGE
         })
         .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)))
@@ -1341,16 +1438,26 @@ fn save_mob(m: &Mob) -> Value {
     let n = m.nether.as_deref();
     let armor: Vec<bool> = m.armor.iter().map(|a| a.is_some()).collect();
     json!({
+        "uid": m.uid,
+        "riding": m.riding,
+        "mount": m.mount.as_ref().map(|s|s.save()),
         "variant": m.aquatic.as_ref().map(|a| a.variant),
         "color": m.wool_color as u8,
         "kind": m.kind.name(),
         "pos": m.pos.to_array(),
         "yaw": m.yaw,
         "health": m.health,
+        "effects": m.effects.serialize(),
         "baby": m.baby,
         "grow": m.grow,
+        "age": m.age,
+        "egg_timer": m.egg_timer,
+        "sheared": m.sheared,
+        "animal": m.animal.as_deref().map(super::animals::save),
+        "identity": super::leash::save(m),
         "armor": armor,
         "weapon": n.map_or("none", |n| n.weapon.name()),
+        "held": m.held.map(Weapon::name),
         "offhand": n.and_then(|n| n.offhand).map(|s| crate::inventory::stack_to_string(Some(s))),
         "admire": n.map_or(0.0, |n| n.admire_left),
         "pocket": n.map_or(String::new(), |n| {
@@ -1360,6 +1467,7 @@ fn save_mob(m: &Mob) -> Value {
         "immune": n.is_some_and(|n| n.immune),
         "cannot_hunt": n.is_some_and(|n| n.cannot_hunt),
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
+        "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     })
 }
 
@@ -1372,19 +1480,41 @@ fn load_mob(v: &Value) -> Option<Mob> {
     }
     let mut m = Mob::new(kind, pos, v["yaw"].as_f64().unwrap_or(0.0) as f32);
     m.persistent = true;
+    super::leash::load(&mut m, &v["identity"]);
+    m.uid =
+        v["uid"].as_u64().and_then(|u| u32::try_from(u).ok()).filter(|u| *u < super::mounts::MOB_VEHICLE).unwrap_or(0);
+    m.riding = v["riding"].as_u64().and_then(|u| u32::try_from(u).ok());
+    if v["mount"].is_object() && super::mounts::rideable(kind) {
+        m.mount = Some(Box::new(super::mounts::State::load(kind, &v["mount"])?));
+    }
     if let Some(a) = &mut m.aquatic {
         a.variant = v["variant"].as_u64().unwrap_or(0).min(255) as u8;
     }
     m.baby = v["baby"].as_bool().unwrap_or(false);
+    m.age =
+        v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(-24000, 6000) as i32;
+    if kind == MobKind::Chicken {
+        m.egg_timer =
+            v["egg_timer"].as_f64().filter(|t| t.is_finite() && *t >= 0.0).unwrap_or(m.egg_timer as f64).min(600.0)
+                as f32;
+    }
+    m.sheared = v["sheared"].as_bool().unwrap_or(false);
+    if let Some(a) = m.animal.as_mut() {
+        super::animals::load(a, &v["animal"]);
+    }
+    m.effects = crate::simulation::effects::Effects::deserialize(v["effects"].as_str().unwrap_or(""));
     m.grow = v["grow"].as_f64().filter(|g| g.is_finite() && *g >= 0.0).unwrap_or(0.0) as f32;
     m.wool_color = crate::color::DyeColor::ALL.get(v["color"].as_u64().unwrap_or(0).min(15) as usize).copied().unwrap();
     if let Some(h) = v["health"].as_f64().filter(|h| *h > 0.0) {
-        m.health = (h as f32).min(kind.max_health());
+        m.health = (h as f32).min(m.mount.as_ref().map_or(m.max_health(), |s| s.max_health));
     }
     if let Some(armor) = v["armor"].as_array() {
         for (slot, worn) in m.armor.iter_mut().zip(armor) {
             *slot = worn.as_bool().unwrap_or(false).then_some(super::armor::ArmorKind::Gold);
         }
+    }
+    if kind == MobKind::ZombifiedPiglin {
+        m.held = v["held"].as_str().map(Weapon::from_name);
     }
     if let Some(n) = m.nether.as_mut() {
         n.weapon = Weapon::from_name(v["weapon"].as_str().unwrap_or("none"));
@@ -1407,6 +1537,18 @@ fn load_mob(v: &Value) -> Option<Mob> {
         n.zombify = v["zombify"].as_f64().unwrap_or(0.0) as f32;
         n.immune = v["immune"].as_bool().unwrap_or(false);
         n.cannot_hunt = v["cannot_hunt"].as_bool().unwrap_or(false);
+        if let Some(c) = v["celebrate"].as_array()
+            && let (Some(left), Some(at)) = (c.first().and_then(Value::as_f64), c.get(1).and_then(Value::as_array))
+            && at.len() == 3
+        {
+            let at =
+                DVec3::new(at[0].as_f64().unwrap_or(0.0), at[1].as_f64().unwrap_or(0.0), at[2].as_f64().unwrap_or(0.0));
+            if at.is_finite() {
+                n.celebrate_left = (left as f32).clamp(0.0, CELEBRATION_TIME);
+                n.celebrate_at = at;
+                n.dancing = n.celebrate_left > 0.0 && c.get(2).and_then(Value::as_bool).unwrap_or(false);
+            }
+        }
         n.home = v["home"].as_array().and_then(|h| {
             let h = DVec3::new(h.first()?.as_f64()?, h.get(1)?.as_f64()?, h.get(2)?.as_f64()?);
             h.is_finite().then_some(h)
@@ -1423,7 +1565,14 @@ mod tests {
     use crate::world::terrain::Dimension;
 
     fn nether(players: Vec<Target>) -> Ctx {
-        Ctx { players, daylight: 0.0, spawning: false, raining: false, dimension: Dimension::Nether }
+        Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            players,
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Nether,
+        }
     }
 
     fn player(at: DVec3) -> Target {
@@ -1737,6 +1886,30 @@ mod tests {
     }
 
     #[test]
+    fn adults_equip_admired_gold_armor_into_empty_slots_only() {
+        let mut e = Entities::new(23);
+        let i = swordsman(&mut e);
+        e.mobs[i].armor = [None; 4];
+        let boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Gold), 1);
+        e.mobs[i].nether.as_mut().unwrap().offhand = Some(boots);
+        e.finish_admiring(i, &nether(vec![]));
+        let boots_slot = ArmorPiece::ALL.iter().position(|&p| p == ArmorPiece::Boots).unwrap();
+        assert_eq!(e.mobs[i].armor[boots_slot], Some(super::super::armor::ArmorKind::Gold));
+        assert!(e.mobs[i].nether.as_ref().unwrap().pocket.is_empty() && e.items.is_empty());
+        // The slot is now taken: a second pair goes to the pocket.
+        e.mobs[i].nether.as_mut().unwrap().offhand = Some(boots);
+        e.finish_admiring(i, &nether(vec![]));
+        assert_eq!(e.mobs[i].nether.as_ref().unwrap().pocket, vec![boots]);
+        // Babies never equip.
+        let b = swordsman(&mut e);
+        e.mobs[b].baby = true;
+        e.mobs[b].armor = [None; 4];
+        e.mobs[b].nether.as_mut().unwrap().offhand = Some(boots);
+        e.finish_admiring(b, &nether(vec![]));
+        assert!(e.mobs[b].armor.iter().all(Option::is_none));
+    }
+
+    #[test]
     fn full_piglin_pockets_throw_overflow_without_destroying_older_items() {
         let mut e = Entities::new(22);
         let i = swordsman(&mut e);
@@ -1849,7 +2022,12 @@ mod tests {
         e.mobs[0].baby = true;
         run(&mut e, &world, &nether(vec![far]), 20.0);
         assert_eq!(e.mobs[0].kind, MobKind::Piglin, "safe in the Nether");
-        let overworld = Ctx { dimension: Dimension::Overworld, daylight: 0.0, ..nether(vec![far]) };
+        let overworld = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            dimension: Dimension::Overworld,
+            daylight: 0.0,
+            ..nether(vec![far])
+        };
         run(&mut e, &world, &overworld, 14.5);
         assert_eq!(e.mobs[0].kind, MobKind::Piglin);
         let pocket_stack = Stack::new(Item::CLOCK, 1).with_name("Kept clock").unwrap();
@@ -1871,10 +2049,43 @@ mod tests {
     }
 
     #[test]
+    fn zombified_piglins_keep_the_converted_main_hand_and_its_damage() {
+        let world = Grid::flat(10);
+        let overworld = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            dimension: Dimension::Overworld,
+            daylight: 0.0,
+            ..nether(vec![player(DVec3::new(60.0, 10.0, 0.5))])
+        };
+        // Java's convertTo copies equipment: a crossbow adds no attack, an
+        // axe adds 6 and the spawn sword 3, all on the base 5.
+        for (weapon, attack) in [(Weapon::Crossbow, 5.0), (Weapon::GoldenAxe, 11.0), (Weapon::GoldenSword, 8.0)] {
+            let mut e = Entities::new(2);
+            swordsman(&mut e);
+            let n = e.mobs[0].nether.as_mut().unwrap();
+            n.weapon = weapon;
+            n.zombify = ZOMBIFY_TIME - 0.01;
+            run(&mut e, &world, &overworld, 1.0);
+            assert_eq!(e.mobs[0].kind, MobKind::ZombifiedPiglin);
+            assert_eq!(e.mobs[0].held, Some(weapon));
+            assert_eq!(e.mobs[0].melee_attack().0, attack, "{weapon:?}");
+            e.mobs[0].persistent = true;
+            let text = e.nether_mobs_to_string();
+            let mut back = Entities::new(2);
+            back.load_nether_mobs(&text);
+            assert_eq!(back.mobs[0].held, Some(weapon), "saved with the level");
+        }
+        // Natural zombified piglins (and old saves) default to the sword.
+        let natural = Mob::new(MobKind::ZombifiedPiglin, DVec3::ZERO, 0.0);
+        assert_eq!(natural.held, None);
+        assert_eq!(natural.melee_attack().0, 8.0);
+    }
+
+    #[test]
     fn persistent_piglins_round_trip_through_the_level_file() {
         let mut e = Entities::new(4);
         swordsman(&mut e);
-        e.spawn(MobKind::Pig, DVec3::ZERO);
+        e.spawn(MobKind::Zombie, DVec3::ZERO);
         let m = &mut e.mobs[0];
         m.persistent = true;
         m.health = 11.0;
@@ -1886,6 +2097,9 @@ mod tests {
         n.pocket = vec![Stack::new(Item::GOLD_NUGGET, 12), Stack::new(Item::CLOCK, 1)];
         n.zombify = 4.0;
         n.cannot_hunt = true;
+        n.celebrate_left = 9.0;
+        n.celebrate_at = DVec3::new(3.5, 10.0, -2.5);
+        n.dancing = true;
         let text = e.nether_mobs_to_string();
         let mut loaded = Entities::new(4);
         loaded.load_nether_mobs(&text);
@@ -1898,6 +2112,11 @@ mod tests {
             (nb.weapon, nb.offhand, nb.admire_left, &nb.pocket, nb.zombify, nb.cannot_hunt)
         );
         assert!(b.persistent);
+        assert_eq!(
+            (nb.celebrate_left, nb.celebrate_at, nb.dancing),
+            (9.0, DVec3::new(3.5, 10.0, -2.5), true),
+            "the celebration is saved"
+        );
         // Old levels without the key, and junk, load nothing.
         loaded.load_nether_mobs("");
         loaded.load_nether_mobs("{\"mobs\":[{\"kind\":\"dragon\"},{\"kind\":\"piglin\",\"pos\":[1,\"x\",2]}]}");
@@ -2148,6 +2367,44 @@ mod tests {
     }
 
     #[test]
+    fn piglins_celebrate_where_their_target_fell_and_hoglin_kills_may_start_a_dance() {
+        let world = Grid::flat(10);
+        let mut far = player(DVec3::new(60.0, 10.0, 0.5));
+        far.targetable = false;
+        let ctx = nether(vec![far]);
+        let mut dances = 0;
+        for seed in 0..60 {
+            let mut e = Entities::new(seed);
+            let piglin = swordsman(&mut e);
+            e.spawn(MobKind::Hoglin, DVec3::new(8.5, 10.0, 0.5));
+            let prey = e.mobs.len() - 1;
+            e.ensure_mob_ids();
+            let uid = e.mobs[prey].uid;
+            e.mobs[piglin].nether.as_mut().unwrap().anger(Foe::Mob(uid));
+            e.nether_sense(0.0, &world, &ctx);
+            assert!(matches!(e.mobs[piglin].nether.as_ref().unwrap().goal, Goal::Attack { .. }));
+            e.mobs[piglin].nether.as_mut().unwrap().sense_timer = 0.0;
+            e.nether_sense(0.0, &world, &ctx);
+            // The hoglin dies; the next look finds the target gone.
+            e.mobs[prey].health = 0.0;
+            e.mobs[prey].dying = Some(0.0);
+            e.mobs[piglin].nether.as_mut().unwrap().sense_timer = 0.0;
+            e.nether_sense(0.0, &world, &ctx);
+            let n = e.mobs[piglin].nether.as_ref().unwrap();
+            assert_eq!(n.celebrate_left, 15.0);
+            assert!(n.celebrate_at.distance(DVec3::new(8.5, 10.0, 0.5)) < 1.0);
+            assert!(matches!(n.goal, Goal::Walk(_)), "walks to the spot where it fell");
+            dances += n.dancing as u32;
+            // Being hurt by anything but another piglin ends the party.
+            let mut hurt = e;
+            hurt.nether_hurt(piglin, Foe::Player(PlayerId::HOST));
+            let n = hurt.mobs[piglin].nether.as_ref().unwrap();
+            assert!(n.celebrate_left == 0.0 && !n.dancing);
+        }
+        assert!((1..=20).contains(&dances), "about one hoglin kill in ten starts a dance: {dances}/60");
+    }
+
+    #[test]
     fn hoglins_become_zoglins_that_attack_anything() {
         let world = Grid::flat(10);
         let mut far = player(DVec3::new(60.0, 10.0, 0.5));
@@ -2166,6 +2423,29 @@ mod tests {
         assert!(cow.health < MobKind::Cow.max_health(), "the cow was gored");
         let creeper = e.mobs.iter().find(|m| m.kind == MobKind::Creeper).unwrap();
         assert_eq!(creeper.health, MobKind::Creeper.max_health(), "creepers are left alone");
+    }
+
+    #[test]
+    fn zoglins_target_mobs_anywhere_in_the_sensor_box_not_just_four_blocks_up() {
+        let world = Grid::flat(10);
+        let mut far = player(DVec3::new(60.0, 10.0, 0.5));
+        far.targetable = false;
+        let ctx = Ctx { dimension: Dimension::Overworld, ..nether(vec![far]) };
+        let mut e = Entities::new(8);
+        e.mobs.push(Mob::new(MobKind::Zoglin, DVec3::new(0.5, 10.0, 0.5), 0.0));
+        for (x, y) in [(2.5, 18.0), (2.5, 30.0)] {
+            e.mobs.push(Mob::new(MobKind::Cow, DVec3::new(x, y, 0.5), 0.0));
+        }
+        e.nether_sense(0.0, &world, &ctx);
+        let uid = e.mobs[1].uid;
+        // Eight blocks above is inside the 16-block follow range.
+        assert!(matches!(
+            e.mobs[0].nether.as_ref().unwrap().goal,
+            Goal::Attack { foe: Foe::Mob(id), .. } if id == uid
+        ));
+        e.mobs.remove(1);
+        e.nether_sense(1.0, &world, &ctx);
+        assert_eq!(e.mobs[0].nether.as_ref().unwrap().goal, Goal::None, "twenty blocks up is out of range");
     }
 
     #[test]
@@ -2204,6 +2484,41 @@ mod tests {
         run(&mut e, &world, &ctx, 2.0);
         assert_eq!(e.mobs[hunter].nether.as_ref().unwrap().foe, None);
         assert_eq!(e.mobs[prey].health, 40.0);
+    }
+
+    #[test]
+    fn piglin_hoglin_hunts_and_wither_skeleton_targets_need_a_sight_line() {
+        let mut world = Grid::flat(10);
+        let mut gold = player(DVec3::new(40.0, 10.0, 0.5));
+        gold.gold_armor = true;
+        let ctx = nether(vec![gold]);
+        let mut e = Entities::new(9);
+        let hunter = swordsman(&mut e);
+        // A stone wall between the piglin (x 0.5) and prey (x 6.5).
+        for y in 10..14 {
+            for z in -2..=3 {
+                world.set(IVec3::new(3, y, z), Block::STONE);
+            }
+        }
+        let prey = hoglin_at(&mut e, 6.5, false);
+        run(&mut e, &world, &ctx, 1.0);
+        assert_eq!(e.mobs[hunter].nether.as_ref().unwrap().foe, None, "walled-off hoglin is not hunted");
+        let skeleton = {
+            e.mobs.push(Mob::new(MobKind::WitherSkeleton, DVec3::new(6.5, 10.0, 0.5), 0.0));
+            e.mobs.len() - 1
+        };
+        e.nether_sense(1.0, &world, &ctx);
+        assert_ne!(
+            e.mobs[hunter].nether.as_ref().unwrap().goal,
+            Goal::Attack { foe: Foe::Mob(e.mobs[skeleton].uid), pos: e.mobs[skeleton].pos },
+            "walled-off wither skeleton is not targeted"
+        );
+        let open = Grid::flat(10);
+        e.nether_sense(1.0, &open, &ctx);
+        let uid = e.mobs[skeleton].uid;
+        assert!(
+            matches!(e.mobs[hunter].nether.as_ref().unwrap().goal, Goal::Attack { foe: Foe::Mob(u), .. } if u == uid || u == e.mobs[prey].uid)
+        );
     }
 
     #[test]

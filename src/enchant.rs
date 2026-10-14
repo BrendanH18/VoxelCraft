@@ -43,6 +43,9 @@ pub enum Enchantment {
     FrostWalker,
     Lure,
     LuckOfTheSea,
+    Multishot,
+    Piercing,
+    QuickCharge,
 }
 
 /// Which items an enchantment goes on (Java's item tags).
@@ -58,6 +61,7 @@ enum Fits {
     /// Pickaxes, shovels, axes and hoes.
     Mining,
     Bow,
+    Crossbow,
     FishingRod,
     /// Anything that wears out.
     Durable,
@@ -74,6 +78,7 @@ impl Fits {
             (Fits::Weapon, ItemKind::Tool(k, _)) => matches!(k, ToolKind::Sword | ToolKind::Axe),
             (Fits::Mining, ItemKind::Tool(k, _)) => k != ToolKind::Sword,
             (Fits::Bow, ItemKind::Bow) => true,
+            (Fits::Crossbow, _) => matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW),
             (Fits::FishingRod, ItemKind::FishingRod) => true,
             (Fits::Durable, _) => item.durability().is_some(),
             _ => false,
@@ -89,6 +94,8 @@ enum Group {
     Damage,
     Mining,
     Bow,
+    /// Multishot and piercing (`#exclusive_set/crossbow`).
+    Crossbow,
 }
 
 /// One enchantment's definition (Java's `Enchantment.definition`).
@@ -184,10 +191,14 @@ static DEFS: [Def; Enchantment::COUNT] = [
     treasure(def("frost walker", 2, 2, (10, 10), (25, 10), 4, Fits::Feet)),
     def("lure", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
     def("luck of the sea", 3, 2, (15, 9), (65, 9), 4, Fits::FishingRod),
+    // Java 26.3 `data/minecraft/enchantment/{multishot,piercing,quick_charge}.json`.
+    in_group(def("multishot", 1, 2, (20, 0), (50, 0), 4, Fits::Crossbow), Group::Crossbow),
+    in_group(def("piercing", 4, 10, (1, 10), (50, 0), 1, Fits::Crossbow), Group::Crossbow),
+    def("quick charge", 3, 5, (12, 20), (50, 0), 2, Fits::Crossbow),
 ];
 
 impl Enchantment {
-    pub const COUNT: usize = 30;
+    pub const COUNT: usize = 33;
     pub const ALL: [Enchantment; Enchantment::COUNT] = {
         let mut all = [Enchantment::Protection; Enchantment::COUNT];
         let mut i = 0;
@@ -379,6 +390,7 @@ pub fn enchantability(item: Item) -> u32 {
         ItemKind::Tool(_, tier) => match tier {
             Tier::Wood => 15,
             Tier::Stone => 5,
+            Tier::Copper => 13,
             Tier::Iron => 14,
             Tier::Gold => 22,
             Tier::Diamond => 10,
@@ -390,6 +402,8 @@ pub fn enchantability(item: Item) -> u32 {
             ArmorMaterial::Gold => 25,
             ArmorMaterial::Diamond => 10,
             ArmorMaterial::Netherite => 15,
+            ArmorMaterial::Turtle => 9,
+            ArmorMaterial::Copper => 8,
         },
         ItemKind::Bow | ItemKind::FishingRod => 1,
         _ if matches!(item, Item::CROSSBOW | Item::CHARGED_CROSSBOW) => 1,
@@ -441,14 +455,24 @@ fn offer_cost(rng: &mut JavaRandom, slot: usize, bookshelves: u32, item: Item) -
     cost as u32
 }
 
+/// The enchantment set a roll draws from (the `options` holder set).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Options {
+    /// `#minecraft:in_enchanting_table` (= `#non_treasure`).
+    Table,
+    /// `#minecraft:on_random_loot`: `#non_treasure` plus both curses, frost
+    /// walker and mending, i.e. every enchantment VoxelCraft registers.
+    RandomLoot,
+}
+
 /// Java's `getAvailableEnchantmentResults`: the best level of each
-/// table enchantment that a modified level of `power` can roll on `item`.
-fn available(power: u32, item: Item) -> Vec<(Enchantment, u8)> {
+/// enchantment in `options` that a modified level of `power` can roll on `item`.
+fn available(power: u32, item: Item, options: Options) -> Vec<(Enchantment, u8)> {
     let book = item == Item::BOOK;
     let mut out = Vec::new();
     for e in Enchantment::ALL {
         let d = e.def();
-        if d.treasure || !(book || d.primary.accepts(item)) {
+        if (d.treasure && options == Options::Table) || !(book || d.primary.accepts(item)) {
             continue;
         }
         if let Some(level) = (1..=d.max_level).rev().find(|&l| {
@@ -479,7 +503,7 @@ fn weighted_pick(rng: &mut JavaRandom, list: &[(Enchantment, u8)]) -> Option<(En
 
 /// Java's `selectEnchantment`: rolls the enchantments for an offer of
 /// `cost` levels.
-fn select(rng: &mut JavaRandom, item: Item, cost: u32) -> Vec<(Enchantment, u8)> {
+fn select(rng: &mut JavaRandom, item: Item, cost: u32, options: Options) -> Vec<(Enchantment, u8)> {
     let ench = enchantability(item) as i32;
     let mut picked = Vec::new();
     if ench == 0 {
@@ -488,7 +512,7 @@ fn select(rng: &mut JavaRandom, item: Item, cost: u32) -> Vec<(Enchantment, u8)>
     let mut level = cost as i32 + 1 + rng.next_bounded(ench / 4 + 1) + rng.next_bounded(ench / 4 + 1);
     let f = (rng.next_float() + rng.next_float() - 1.0) * 0.15;
     level = ((level as f32 + level as f32 * f + 0.5).floor() as i32).max(1);
-    let mut options = available(level as u32, item);
+    let mut options = available(level as u32, item, options);
     if let Some(first) = weighted_pick(rng, &options) {
         picked.push(first);
         while rng.next_bounded(50) <= level {
@@ -512,11 +536,23 @@ pub fn offer_enchants(seed: i32, item: Item, slot: usize, cost: u32) -> Vec<(Enc
 }
 
 fn offer_list(rng: &mut JavaRandom, item: Item, cost: u32) -> Vec<(Enchantment, u8)> {
-    let mut list = select(rng, item, cost);
+    let mut list = select(rng, item, cost, Options::Table);
     if item == Item::BOOK && list.len() > 1 {
         list.remove(rng.next_bounded(list.len() as i32) as usize);
     }
     list
+}
+
+/// Java's `EnchantWithLevelsFunction` with `options: #minecraft:on_random_loot`
+/// (`EnchantmentHelper.enchantItem`): `selectEnchantment` at `levels`, every
+/// pick applied, and a book turned into an enchanted book. Unlike the table,
+/// no enchantment is removed from a book.
+pub fn enchant_with_levels(rng: &mut JavaRandom, item: Item, levels: u32) -> (Item, Enchants) {
+    let mut enchants = Enchants::NONE;
+    for (e, level) in select(rng, item, levels, Options::RandomLoot) {
+        enchants.set(e, level);
+    }
+    (if item == Item::BOOK { Item::ENCHANTED_BOOK } else { item }, enchants)
 }
 
 /// The table's three offers: level cost (0 = none) and the one
@@ -673,6 +709,7 @@ pub fn repairs(item: Item, material: Item) -> bool {
             }),
             Tier::Stone => material == Item::from(Block::COBBLESTONE),
             Tier::Iron => material == Item::IRON_INGOT,
+            Tier::Copper => material == Item::COPPER_INGOT,
             Tier::Gold => material == Item::GOLD_INGOT,
             Tier::Diamond => material == Item::DIAMOND,
             Tier::Netherite => material == Item::NETHERITE_INGOT,
@@ -683,6 +720,8 @@ pub fn repairs(item: Item, material: Item) -> bool {
             ArmorMaterial::Gold => material == Item::GOLD_INGOT,
             ArmorMaterial::Diamond => material == Item::DIAMOND,
             ArmorMaterial::Netherite => material == Item::NETHERITE_INGOT,
+            ArmorMaterial::Turtle => material == Item::TURTLE_SCUTE,
+            ArmorMaterial::Copper => material == Item::COPPER_INGOT,
         },
         _ => false,
     }
@@ -900,26 +939,34 @@ mod tests {
     }
 
     #[test]
-    fn crossbows_enchant_as_durable_gear_without_bow_enchantments() {
+    fn crossbows_enchant_with_crossbow_and_durability_enchantments_without_bow_ones() {
         for item in [Item::CROSSBOW, Item::CHARGED_CROSSBOW] {
             assert!(table_accepts(Stack::new(item, 1)));
             assert!(!table_accepts(Stack {
                 enchants: Enchants::NONE.with(Enchantment::Unbreaking, 1),
                 ..Stack::new(item, 1)
             }));
-            let mut saw_unbreaking = false;
-            for seed in 0..100 {
-                for (slot, offer) in offers(seed, item, 15).into_iter().enumerate() {
+            let mut seen = std::collections::BTreeSet::new();
+            for seed in 0..400 {
+                for (slot, offer) in offers(seed, item, 30).into_iter().enumerate() {
                     if let Some((clue, _)) = offer.clue {
-                        assert_eq!(clue, Enchantment::Unbreaking);
+                        assert!(clue.fits(item), "{clue:?}");
                         let list = offer_enchants(seed, item, slot, offer.cost);
                         assert!(!list.is_empty());
-                        assert!(list.iter().all(|(e, _)| *e == Enchantment::Unbreaking));
-                        saw_unbreaking = true;
+                        assert!(list.iter().all(|(e, _)| e.fits(item)));
+                        // Multishot and piercing never share a crossbow.
+                        assert!(
+                            !(list.iter().any(|(e, _)| *e == Enchantment::Multishot)
+                                && list.iter().any(|(e, _)| *e == Enchantment::Piercing))
+                        );
+                        seen.extend(list.iter().map(|(e, _)| *e as u8));
                     }
                 }
             }
-            assert!(saw_unbreaking);
+            for e in [Enchantment::Unbreaking, Enchantment::Multishot, Enchantment::Piercing, Enchantment::QuickCharge]
+            {
+                assert!(seen.contains(&(e as u8)), "{e:?} never rolled on {item:?}");
+            }
             for e in [Enchantment::Power, Enchantment::Punch, Enchantment::Flame, Enchantment::Infinity] {
                 assert!(!e.fits(item));
             }

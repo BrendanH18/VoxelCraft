@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 fn hash(mut seed: u64) -> u64 {
     crate::world::noise::splitmix64(&mut seed)
 }
-use super::{Entities, Mob, MobKind, MobWorld};
+use super::{Entities, EntityEvent, Mob, MobKind, MobWorld};
 #[path = "villager_trades.rs"]
 mod tables;
 
@@ -250,7 +250,40 @@ pub struct Villager {
     restock_day: i64,
     restocks: u8,
     last_restock: u32,
+    /// Java `updateMerchantTimer`: seconds until a pending promotion lands.
+    promote_left: f32,
+    promote_pending: bool,
 }
+impl Mob {
+    /// What a LAN client's trading screen shows: merchant id, profession, level, xp and offers.
+    pub fn trade_view(&self) -> Option<Value> {
+        let v = self.villager.as_ref()?;
+        Some(json!({
+            "id": v.id,
+            "profession": Profession::ALL.iter().position(|p| *p == v.profession).unwrap_or(0),
+            "level": v.level,
+            "xp": v.xp,
+            "wandering": v.wandering,
+            "offers": v.offers.map(|o| o.map(Offer::save)),
+        }))
+    }
+    /// Applies [`Mob::trade_view`] to a client's copy of the merchant.
+    pub fn apply_trade_view(&mut self, t: &Value) {
+        let Some(v) = self.villager.as_mut() else { return };
+        v.id = t["id"].as_u64().unwrap_or(v.id);
+        v.profession =
+            t["profession"].as_u64().and_then(|i| Profession::ALL.get(i as usize).copied()).unwrap_or(v.profession);
+        v.level = t["level"].as_u64().unwrap_or(1).clamp(1, 5) as u8;
+        v.xp = t["xp"].as_u64().unwrap_or(0).min(u16::MAX as u64) as u16;
+        v.wandering = t["wandering"] == true;
+        if let Some(offers) = t["offers"].as_array() {
+            for (slot, o) in v.offers.iter_mut().zip(offers) {
+                *slot = Offer::load(o);
+            }
+        }
+    }
+}
+
 impl Villager {
     pub fn new(id: u64, seed: u64) -> Self {
         Self {
@@ -280,6 +313,8 @@ impl Villager {
             restock_day: -1,
             restocks: 0,
             last_restock: 0,
+            promote_left: 0.0,
+            promote_pending: false,
         }
     }
     pub fn observation(&self) -> Value {
@@ -299,13 +334,16 @@ impl Villager {
     pub fn priced(&self, offer: Offer) -> Stack {
         self.priced_for(offer, super::PlayerId::HOST)
     }
+    /// Java `getPlayerReputation`: the gossip total (plus the host-only legacy discount).
+    pub fn reputation_of(&self, owner: super::PlayerId) -> i16 {
+        self.gossip.reputation(owner) + if owner == super::PlayerId::HOST { self.reputation } else { 0 }
+    }
     pub fn priced_for(&self, offer: Offer, owner: super::PlayerId) -> Stack {
         if self.wandering {
             return offer.price();
         }
         let base = offer.price();
-        let reputation =
-            self.gossip.reputation(owner) + if owner == super::PlayerId::HOST { self.reputation } else { 0 };
+        let reputation = self.reputation_of(owner);
         let cut = (reputation as f32 * offer.multiplier).floor() as i32;
         Stack { count: (base.count as i32 - cut).clamp(1, offer.cost.item.max_stack() as i32) as u8, ..base }
     }
@@ -339,6 +377,23 @@ impl Villager {
             let slot = (self.level as usize - 1) * 2 + i;
             self.offers[slot] = d.and_then(|d| d.offer(hash(seed ^ slot as u64)));
         }
+    }
+    /// Counts the merchant timer down (paused while trading); true when it ends,
+    /// which also grants Java's Regeneration. A pending promotion lands first.
+    pub(super) fn tick_promotion(&mut self, dt: f32) -> bool {
+        if self.trading || self.promote_left <= 0.0 {
+            return false;
+        }
+        self.promote_left -= dt;
+        if self.promote_left > 0.0 {
+            return false;
+        }
+        self.promote_left = 0.0;
+        if std::mem::take(&mut self.promote_pending) && self.level < 5 {
+            self.level += 1;
+            self.unlock();
+        }
+        true
     }
     pub fn restock(&mut self, day: i64, tick: u32, at_work: bool) -> bool {
         if self.restock_day != day {
@@ -419,24 +474,71 @@ impl Villager {
         }
         self.gossip.add(owner, 4, 2);
         self.xp = self.xp.saturating_add(offer.xp);
+        // Java `rewardTradeXp`: the 5 bonus XP is immediate, the new tier waits for the
+        // 40-tick merchant timer (`customServerAiStep`).
         let promoted = self.level < 5 && self.xp >= [0, 10, 70, 150, 250][self.level as usize];
         if promoted {
-            self.level += 1;
-            self.unlock();
+            self.promote_left = 2.0;
+            self.promote_pending = true;
         }
         Ok(3 + (hash(self.seed ^ self.xp as u64 ^ self.offers[index].unwrap().uses as u64) % 4) as u32
             + if promoted { 5 } else { 0 })
     }
 }
 
+/// How close (blocks) a farmer must be to cut a crop.
+const HARVEST_REACH: f64 = 1.5;
+/// Farmers look for ripe crops this far from their job site.
+const HARVEST_RADIUS: i32 = 5;
+/// The ripe crop closest to `from` around a farmer's job site (wheat, carrots, potatoes; stage 7).
+fn ripe_crop<W: MobWorld + ?Sized>(world: &W, job: IVec3, from: DVec3) -> Option<IVec3> {
+    let mut best: Option<(f64, IVec3)> = None;
+    for dy in -1..=1 {
+        for dz in -HARVEST_RADIUS..=HARVEST_RADIUS {
+            for dx in -HARVEST_RADIUS..=HARVEST_RADIUS {
+                let cell = job + IVec3::new(dx, dy, dz);
+                let ripe = world.block(cell).is_some_and(|b| b.as_crop().is_some_and(|(_, stage)| stage == 7));
+                if ripe && world.block(cell - IVec3::Y).is_some_and(|b| b.is_farmland()) {
+                    let d = (cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)).distance_squared(from);
+                    if best.is_none_or(|(bd, _)| d < bd) {
+                        best = Some((d, cell));
+                    }
+                }
+            }
+        }
+    }
+    best.map(|(_, cell)| cell)
+}
+
+/// Where a sleeping villager lies: the head half's centre on top of the mattress, turned so
+/// the body stretches toward the foot (Java's `SLEEPING` pose; the renderer lays the head
+/// toward the pillow). `None` if the bed's foot half cannot be found.
+fn bed_pose<W: MobWorld + ?Sized>(world: &W, head: IVec3) -> Option<(DVec3, f32)> {
+    let color = world.block(head)?.bed_color()?;
+    let foot = crate::world::block::Block::colored_bed(color, false);
+    let toward = crate::world::block::Facing::ALL
+        .into_iter()
+        .map(crate::world::block::Facing::offset)
+        .find(|o| o.y == 0 && world.block(head + *o) == Some(foot))?;
+    let at = DVec3::new(
+        head.x as f64 + 0.5,
+        head.y as f64 + crate::world::block::Block::BED_FOOT.height(),
+        head.z as f64 + 0.5,
+    );
+    // The model lies with its head along (-sin yaw, cos yaw); the pillow end is away from the foot.
+    Some((at, (toward.x as f32).atan2(-(toward.z as f32))))
+}
 impl Entities {
     pub fn merchant(&self, id: u64) -> Option<&Mob> {
         self.mobs.iter().find(|m| m.alive() && m.villager.as_ref().is_some_and(|v| v.id == id))
     }
-    pub fn merchant_in_reach(&self, id: u64, eye: DVec3) -> bool {
+    /// Java `AbstractVillager.stillValid`: alive, able to trade, and its box
+    /// within `range` of the eye.
+    pub fn merchant_in_reach(&self, id: u64, eye: DVec3, range: f64) -> bool {
         self.merchant(id).is_some_and(|m| {
+            let (min, max) = m.aabb();
             matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader)
-                && eye.distance(m.pos + DVec3::Y) < 6.0
+                && crate::physics::box_distance_squared(eye, min, max) < range * range
                 && m.age >= 0
                 && !m.villager.as_ref().unwrap().sleeping
         })
@@ -482,6 +584,15 @@ impl Entities {
         (matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader) && m.age >= 0 && !v.sleeping).then_some(v.id)
     }
     pub(super) fn village_upkeep<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W) {
+        for m in &mut self.mobs {
+            if let Some(v) = &mut m.villager
+                && v.promote_left > 0.0
+                && m.kind == MobKind::Villager
+                && v.tick_promotion(dt)
+            {
+                m.effects.add(crate::simulation::effects::Effect::Regeneration, 0, 200);
+            }
+        }
         self.village_timer -= dt;
         if self.village_timer > 0.0 {
             return;
@@ -494,6 +605,12 @@ impl Entities {
                 m.villager.as_mut().unwrap().home = Some(home);
                 if hash(world.seed() ^ home.x as u64 ^ ((home.z as u64) << 32)).is_multiple_of(5) {
                     m.age = -24000;
+                }
+                // Java's desert village houses sometimes keep a camel; here one home in four.
+                if world.biome(home.x, home.z) == crate::world::terrain::Biome::Desert
+                    && hash(world.seed() ^ 0xCA3E1 ^ home.x as u64 ^ ((home.z as u64) << 32)).is_multiple_of(4)
+                {
+                    self.spawn(MobKind::Camel, spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
                 }
             }
         });
@@ -602,6 +719,26 @@ impl Entities {
             } else {
                 None
             };
+            // Java's `HarvestFarmland`: farmers on shift cut ripe crops near their composter.
+            if v.profession == Profession::Farmer
+                && self.villager_griefing
+                && m.age >= 0
+                && !v.fleeing
+                && !v.trading
+                && v.bell_hide <= 0.0
+                && (2000..9000).contains(&tick)
+                && let Some(job) = v.job
+                && let Some(cell) = ripe_crop(world, job, m.pos)
+            {
+                let at = cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+                if ((at - m.pos) * DVec3::new(1.0, 0.0, 1.0)).length_squared() < HARVEST_REACH * HARVEST_REACH
+                    && (at.y - m.pos.y).abs() < 2.0
+                {
+                    self.pending_sounds.push(EntityEvent::VillagerHarvest { cell });
+                } else {
+                    v.goal = Some(at);
+                }
+            }
             if tick >= 12000
                 && !v.fleeing
                 && v.bell_hide <= 0.0
@@ -612,6 +749,14 @@ impl Entities {
             }
             if v.sleeping {
                 v.last_slept = Some(self.village_day * 24000 + tick as i64);
+                if let Some(bed) = v.home
+                    && let Some((at, yaw)) = bed_pose(world, bed)
+                {
+                    m.pos = at;
+                    m.previous_pos = at;
+                    m.yaw = yaw;
+                    m.vel = DVec3::ZERO;
+                }
             }
             v.restock(
                 self.village_day,
@@ -629,16 +774,16 @@ impl Entities {
             .filter(|m| m.alive())
             .filter_map(|m| match m.kind {
                 MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama => Some(json!({
-                    "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
-                    "health": m.health, "built": m.built, "anger": m.player_hit_left, "anger_player":m.angry_player.map(|p|p.0), "trader": m.trader.as_ref().map(|t|t.save()),
+                    "identity":super::leash::save(m), "kind": m.kind.name(), "p": m.pos.to_array(), "yaw": m.yaw,
+                    "health": m.health, "effects":m.effects.serialize(), "built": m.built, "anger": m.player_hit_left, "anger_player":m.angry_player.map(|p|p.0), "trader": m.trader.as_ref().map(|t|t.save()),
                 })),
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
                     let v = m.villager.as_ref()?;
-                    Some(json!({"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
-                    "health":m.health,"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
+                    Some(json!({"identity":super::leash::save(m),"trader":m.trader.as_ref().map(|t|t.save()),"kind":m.kind.name(),"id":v.id,"seed":v.seed,"p":m.pos.to_array(),"yaw":m.yaw,
+                    "health":m.health,"effects":m.effects.serialize(),"age":m.age,"built":m.built,"armor":m.armor.map(|a|a.map(|a|a as u8)),"glint":m.armor_glint,"profession":v.profession as u8,"level":v.level,"xp":v.xp,
                     "job":v.job.map(|p|p.to_array()),"home":v.home.map(|p|p.to_array()),
                     "offers":v.offers.map(|o|o.map(Offer::save)),"day":v.restock_day,"restocks":v.restocks,
-                    "last":v.last_restock,"slept":v.last_slept,"golem_seen":v.golem_seen,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_tick":m.convert_tick,"convert_by":m.convert_by.map(|p|p.0)}))
+                    "last":v.last_restock,"slept":v.last_slept,"golem_seen":v.golem_seen,"gossip":v.gossip.save(),"food":v.food.map(stack_to_string),"food_level":v.food_level,"bell_hide":v.bell_hide,"promote":v.promote_left,"promote_pending":v.promote_pending,"reputation":v.reputation,"weakness":m.weakness_left,"convert":m.convert_left,"convert_tick":m.convert_tick,"convert_by":m.convert_by.map(|p|p.0)}))
                 }
                 _ => None,
             })
@@ -747,6 +892,8 @@ impl Entities {
                 v.golem_seen = a["golem_seen"].as_f64().unwrap_or(0.0).clamp(0.0, 30.0) as f32;
                 v.gossip = super::villager_gossip::Gossip::load(&a["gossip"]);
                 v.reputation = i16::try_from(a["reputation"].as_i64().unwrap_or(0)).unwrap_or(0);
+                v.promote_left = a["promote"].as_f64().unwrap_or(0.0).clamp(0.0, 2.0) as f32;
+                v.promote_pending = a["promote_pending"].as_bool().unwrap_or(false) && v.promote_left > 0.0;
                 let mut m = Mob::new(kind, p, yaw);
                 m.health = health.min(kind.max_health());
                 m.age = i32::try_from(a["age"].as_i64()?).ok()?.clamp(-24000, 6000);
@@ -772,7 +919,9 @@ impl Entities {
                 m.villager = Some(Box::new(v));
                 Some(m)
             };
-            if let Some(m) = load() {
+            if let Some(mut m) = load() {
+                m.effects = crate::simulation::effects::Effects::deserialize(a["effects"].as_str().unwrap_or(""));
+                super::leash::load(&mut m, &a["identity"]);
                 if let Some(v) = m.villager.as_ref() {
                     self.next_villager_id = self.next_villager_id.max(v.id.saturating_add(1));
                 }
@@ -853,7 +1002,15 @@ mod tests {
             let xp = v.trade(0, &mut inv).unwrap();
             assert!((3..=6).contains(&xp) || i == 4 && (8..=11).contains(&xp));
         }
-        assert_eq!((v.level, v.xp), (2, 10));
+        assert_eq!((v.level, v.xp), (1, 10), "promotion waits for the 40-tick timer");
+        assert!(v.offers[2].is_none());
+        v.trading = true;
+        assert!(!v.tick_promotion(5.0), "the timer pauses while trading");
+        v.trading = false;
+        assert!(!v.tick_promotion(1.9) && v.level == 1);
+        assert!(v.tick_promotion(0.2), "40 ticks later the tier unlocks and Regeneration is due");
+        assert_eq!(v.level, 2);
+        assert!(!v.tick_promotion(1.0));
         assert_eq!(v.offers[0].unwrap().uses, 5);
         assert!(v.offers[2].is_some());
         assert_eq!(
@@ -953,6 +1110,56 @@ mod tests {
         assert!(!e.mobs[0].villager.as_ref().unwrap().sleeping);
     }
     #[test]
+    fn farmers_walk_to_ripe_crops_near_their_composter_and_harvest_them() {
+        let mut w = grid();
+        let job = IVec3::new(0, 1, 0);
+        w.blocks.insert(job, Block::COMPOSTER);
+        let ripe = IVec3::new(4, 1, 1);
+        let young = IVec3::new(-3, 1, 0);
+        for (cell, stage) in [(ripe, 7), (young, 3)] {
+            w.blocks.insert(cell - IVec3::Y, Block::FARMLAND);
+            w.blocks.insert(cell, Block::wheat(stage));
+        }
+        let mut e = Entities::new(1);
+        e.spawn(MobKind::Villager, DVec3::new(0.5, 1.0, 0.5));
+        e.village_time = 0.2;
+        let events = |e: &mut Entities| {
+            step(e, &w);
+            std::mem::take(&mut e.pending_sounds)
+        };
+        assert!(events(&mut e).is_empty(), "claims the composter first; the crop is out of reach");
+        let v = e.mobs[0].villager.as_ref().unwrap();
+        assert_eq!(v.profession, Profession::Farmer);
+        assert_eq!(v.goal, Some(ripe.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)), "heads for the ripe wheat only");
+        e.mobs[0].pos = DVec3::new(3.7, 1.0, 1.5);
+        assert!(matches!(events(&mut e)[..], [EntityEvent::VillagerHarvest { cell }] if cell == ripe));
+        // Off shift or with mobGriefing off, the crops are left alone.
+        e.village_time = 0.6;
+        assert!(events(&mut e).is_empty());
+        e.village_time = 0.2;
+        e.villager_griefing = false;
+        assert!(events(&mut e).is_empty());
+    }
+    #[test]
+    fn sleeping_villagers_lie_on_the_head_half_with_their_head_on_the_pillow() {
+        let color = crate::color::DyeColor::Red;
+        for (foot, pillow) in [(IVec3::Z, DVec3::NEG_Z), (IVec3::NEG_X, DVec3::X), (IVec3::X, DVec3::NEG_X)] {
+            let mut w = grid();
+            w.blocks.insert(IVec3::ZERO, Block::colored_bed(color, true));
+            w.blocks.insert(foot, Block::colored_bed(color, false));
+            let mut e = Entities::new(1);
+            e.spawn(MobKind::Villager, DVec3::new(0.7, 0.6, 0.4));
+            e.village_time = 0.6;
+            step(&mut e, &w);
+            let m = &e.mobs[0];
+            assert!(m.villager.as_ref().unwrap().sleeping);
+            assert_eq!(m.pos, DVec3::new(0.5, Block::BED_FOOT.height(), 0.5));
+            // The model's head points along (-sin yaw, cos yaw) once laid down.
+            let head = DVec3::new(-m.yaw.sin() as f64, 0.0, m.yaw.cos() as f64);
+            assert!((head - pillow).length() < 1e-5, "{foot:?}: {head:?}");
+        }
+    }
+    #[test]
     fn saved_stock_claims_and_natural_birth_receipts_survive_unloading() {
         let mut w = grid();
         let bed = IVec3::ZERO;
@@ -977,6 +1184,7 @@ mod tests {
         assert_eq!(loaded.count(MobKind::Villager), 1);
         assert_eq!(loaded.mobs[0].villager.as_ref().unwrap().offers, e.mobs[0].villager.as_ref().unwrap().offers);
         let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, DVec3::new(500.0, 0.0, 0.0), false)],
             daylight: 0.0,
             raining: false,
@@ -1042,8 +1250,9 @@ mod tests {
         for seed in 0..100 {
             let offer = def.offer(seed).unwrap();
             assert_eq!(offer.output.item, Item::CROSSBOW);
-            assert!(offer.output.enchants.has(Enchantment::Unbreaking));
-            assert!(offer.output.enchants.iter().all(|(e, _)| e == Enchantment::Unbreaking));
+            // `enchant_with_levels` over `#on_traded_equipment`, discarded unless enchanted.
+            assert!(!offer.output.enchants.is_empty());
+            assert!(offer.output.enchants.iter().all(|(e, _)| e.fits(Item::CROSSBOW)));
         }
     }
 
@@ -1075,6 +1284,7 @@ mod tests {
             1.0,
             &w,
             &Ctx {
+                spawn_light: crate::simulation::lighting::SpawnLight::DAY,
                 players: vec![Target::new(PlayerId::HOST, DVec3::ZERO, false)],
                 daylight: 1.0,
                 spawning: false,
@@ -1121,6 +1331,7 @@ mod tests {
             0.05,
             &w,
             &Ctx {
+                spawn_light: crate::simulation::lighting::SpawnLight::DAY,
                 players: vec![],
                 daylight: 1.0,
                 spawning: false,
@@ -1203,6 +1414,7 @@ mod tests {
             0.05,
             &w,
             &Ctx {
+                spawn_light: crate::simulation::lighting::SpawnLight::DAY,
                 players: vec![Target::new(owner, DVec3::ZERO, false)],
                 daylight: 1.0,
                 spawning: false,

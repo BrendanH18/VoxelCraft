@@ -55,6 +55,8 @@ struct Globals {
     environment: [f32; 4],
     /// x: night vision strength 0..1.
     effects: [f32; 4],
+    /// rgb: `visual/ambient_light_color`; w: use the skyless dimension lightmap.
+    ambient: [f32; 4],
 }
 
 const CLOUD_HEIGHT: f64 = 192.0;
@@ -89,6 +91,9 @@ fn group_mask(faces: u8, pass: usize) -> u8 {
 }
 
 /// Everything the renderer needs to know about the current frame.
+/// Most block-breaking crack decals drawn at once (Java shows every nearby player's).
+pub const MAX_CRACKS: usize = 16;
+
 pub struct FrameParams {
     pub camera: DVec3,
     pub forward: Vec3,
@@ -110,8 +115,8 @@ pub struct FrameParams {
     /// Targeted block and its outline's corners within the cell (beds,
     /// slabs and shaped blocks are smaller).
     pub highlight: Option<(IVec3, [f32; 3], [f32; 3])>,
-    /// Block being broken and the crack texture layer to overlay on it.
-    pub crack: Option<(IVec3, u16)>,
+    /// Blocks being broken (by anyone in view) and the crack texture layer to overlay on each.
+    pub cracks: Vec<(IVec3, u16)>,
     /// Free-standing blocks (falling sand and gravel).
     pub block_models: Vec<BlockModel>,
     /// The first-person hand (`None` in third person or with the HUD hidden).
@@ -271,12 +276,63 @@ pub struct Renderer {
     vsync: bool,
     pub stats: RenderStats,
     pub gpu_name: String,
+    /// The name wgpu reports for the adapter, used to match it to its Metal device.
+    adapter_name: String,
+    backend: wgpu::Backend,
     /// (distance², chunk, camera-relative origin, faces that can face the camera).
     visible: Vec<(f32, IVec3, [f32; 3], u8)>,
     capture: Option<std::path::PathBuf>,
     offscreen: Option<wgpu::Texture>,
     /// Render to `offscreen` instead of the window (benchmarks).
     pub force_offscreen: bool,
+    /// Present modes the surface reports, to resolve the `Auto*` request.
+    present_modes: Vec<wgpu::PresentMode>,
+    /// Frames skipped since startup because no surface image was available
+    /// (hidden, minimized or occluded window).
+    pub skipped_frames: u64,
+}
+
+/// Concrete mode wgpu picks for an `Auto*` request, following its documented
+/// fallback order (wgpu-core `surface_config`); other requests are returned as-is.
+pub fn resolve_present_mode(requested: wgpu::PresentMode, supported: &[wgpu::PresentMode]) -> wgpu::PresentMode {
+    use wgpu::PresentMode as P;
+    let order: &[P] = match requested {
+        P::AutoVsync => &[P::FifoRelaxed, P::Fifo],
+        P::AutoNoVsync => &[P::Immediate, P::Mailbox, P::Fifo],
+        other => return other,
+    };
+    order.iter().copied().find(|mode| supported.contains(mode)).unwrap_or(P::Fifo)
+}
+
+/// GPU memory a report can state; unavailable values are `None`, never zero.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GpuMemory {
+    /// Bytes the device has allocated, where the backend reports them: the
+    /// wgpu allocator report (Vulkan, DX12) or `MTLDevice.currentAllocatedSize`.
+    pub device_allocated: Option<u64>,
+    /// Bytes the allocator has reserved from the driver; Metal has no such figure.
+    pub device_reserved: Option<u64>,
+    /// The chunk quad arena's (used, reserved) bytes, tracked by this renderer.
+    pub chunk_arena: (u64, u64),
+}
+
+/// `MTLDevice.currentAllocatedSize` of the adapter wgpu selected. wgpu 30
+/// has no allocator report on Metal and its HAL keeps the raw device
+/// private, so this looks the system's Metal device up by name; it returns
+/// `None` unless that device is the adapter in use.
+#[cfg(target_vendor = "apple")]
+fn metal_allocated_bytes(backend: wgpu::Backend, adapter_name: &str) -> Option<u64> {
+    use objc2_metal::{MTLCreateSystemDefaultDevice, MTLDevice};
+    if backend != wgpu::Backend::Metal {
+        return None;
+    }
+    let device = MTLCreateSystemDefaultDevice()?;
+    (device.name().to_string() == adapter_name).then(|| device.currentAllocatedSize() as u64)
+}
+
+#[cfg(not(target_vendor = "apple"))]
+fn metal_allocated_bytes(_: wgpu::Backend, _: &str) -> Option<u64> {
+    None
 }
 
 /// Specialize away paging branches on adapters that can hold all block layers.
@@ -627,7 +683,7 @@ impl Renderer {
         });
         let decal_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("crack decal"),
-            size: 36 * 24,
+            size: 36 * 24 * MAX_CRACKS as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -772,10 +828,33 @@ impl Renderer {
             vsync,
             stats: RenderStats::default(),
             gpu_name,
+            adapter_name: info.name.clone(),
+            backend: info.backend,
             visible: Vec::new(),
             capture: None,
             offscreen: None,
             force_offscreen: false,
+            present_modes: caps.present_modes.clone(),
+            skipped_frames: 0,
+        }
+    }
+
+    /// The present mode requested from wgpu and the concrete mode it resolves to.
+    pub fn present_modes(&self) -> (wgpu::PresentMode, wgpu::PresentMode) {
+        let requested = self.config.present_mode;
+        (requested, resolve_present_mode(requested, &self.present_modes))
+    }
+
+    /// Current GPU memory telemetry; device totals are absent on backends without an allocator report.
+    pub fn gpu_memory(&self) -> GpuMemory {
+        let report = self.device.generate_allocator_report();
+        GpuMemory {
+            device_allocated: report
+                .as_ref()
+                .map(|r| r.total_allocated_bytes)
+                .or_else(|| metal_allocated_bytes(self.backend, &self.adapter_name)),
+            device_reserved: report.map(|r| r.total_reserved_bytes),
+            chunk_arena: (self.arena.used_bytes(), self.arena.capacity_bytes()),
         }
     }
 
@@ -1072,6 +1151,7 @@ impl Renderer {
         // spinning.
         if frame.is_none() {
             if !self.force_offscreen && self.capture.is_none() {
+                self.skipped_frames += 1;
                 std::thread::sleep(std::time::Duration::from_millis(8));
                 return None;
             }
@@ -1154,6 +1234,10 @@ impl Renderer {
             sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
             params: [p.fog_start, p.fog_end, p.daylight, p.rain],
             effects: [p.night_vision, 0.0, 0.0, 0.0],
+            ambient: {
+                let [r, g, b] = p.dimension.ambient_light_color();
+                [r, g, b, if p.dimension.has_sky() { 0.0 } else { 1.0 }]
+            },
             clouds: [
                 cloud_origin.x as f32,
                 cloud_origin.z as f32,
@@ -1163,8 +1247,11 @@ impl Renderer {
         };
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 
-        if let Some((b, layer)) = p.crack {
-            self.queue.write_buffer(&self.decal_buf, 0, &Self::decal_vertices(b, p.camera, layer));
+        let cracks = p.cracks.len().min(MAX_CRACKS);
+        if cracks > 0 {
+            let verts: Vec<u8> =
+                p.cracks[..cracks].iter().flat_map(|&(b, layer)| Self::decal_vertices(b, p.camera, layer)).collect();
+            self.queue.write_buffer(&self.decal_buf, 0, &verts);
         }
         if let Some((b, lo, hi)) = p.highlight {
             let verts = self.outline_vertices(b, lo, hi, p.camera);
@@ -1268,10 +1355,10 @@ impl Renderer {
                 pass.draw(0..6, 0..1);
             }
 
-            if p.crack.is_some() {
+            if cracks > 0 {
                 pass.set_pipeline(&self.decal_pipeline);
                 pass.set_vertex_buffer(0, self.decal_buf.slice(..));
-                pass.draw(0..36, 0..1);
+                pass.draw(0..36 * cracks as u32, 0..1);
             }
             if p.highlight.is_some() {
                 pass.set_pipeline(&self.line_pipeline);
@@ -1322,6 +1409,28 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_vendor = "apple")]
+    #[test]
+    fn metal_allocation_is_reported_only_for_the_matching_adapter() {
+        use objc2_metal::{MTLCreateSystemDefaultDevice, MTLDevice};
+        let Some(device) = MTLCreateSystemDefaultDevice() else { return };
+        let name = device.name().to_string();
+        let bytes = metal_allocated_bytes(wgpu::Backend::Metal, &name);
+        assert!(bytes.is_some(), "the default Metal device reports its allocation");
+        assert_eq!(metal_allocated_bytes(wgpu::Backend::Vulkan, &name), None);
+        assert_eq!(metal_allocated_bytes(wgpu::Backend::Metal, "some other gpu"), None);
+    }
+
+    #[test]
+    fn auto_present_modes_resolve_like_wgpu() {
+        use wgpu::PresentMode as P;
+        assert_eq!(resolve_present_mode(P::AutoNoVsync, &[P::Fifo, P::Immediate]), P::Immediate);
+        assert_eq!(resolve_present_mode(P::AutoNoVsync, &[P::Fifo, P::Mailbox]), P::Mailbox);
+        assert_eq!(resolve_present_mode(P::AutoNoVsync, &[P::Fifo]), P::Fifo);
+        assert_eq!(resolve_present_mode(P::AutoVsync, &[P::Fifo, P::FifoRelaxed]), P::FifoRelaxed);
+        assert_eq!(resolve_present_mode(P::Mailbox, &[P::Fifo]), P::Mailbox);
+    }
 
     #[test]
     fn shaders_parse_and_validate() {

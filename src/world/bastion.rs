@@ -701,10 +701,10 @@ const HOGLIN_STABLE_0: &[Loot] = &[
         enchanted: false,
         damage: None,
     }, // ancient_debris
-    Loot { item: None, weight: 12, lo: 1, hi: 1, enchanted: false, damage: None },                       // saddle
+    Loot { item: Some(Item::SADDLE), weight: 12, lo: 1, hi: 1, enchanted: false, damage: None },         // saddle
     Loot { item: Some(Item::from_block(Block::GOLD_BLOCK)), weight: 16, lo: 2, hi: 4, enchanted: false, damage: None }, // gold_block
-    Loot { item: None, weight: 10, lo: 8, hi: 17, enchanted: false, damage: None }, // golden_carrot
-    Loot { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // golden_apple
+    Loot { item: Some(Item::GOLDEN_CARROT), weight: 10, lo: 8, hi: 17, enchanted: false, damage: None }, // golden_carrot
+    Loot { item: Some(Item::GOLDEN_APPLE), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_apple
 ];
 const HOGLIN_STABLE_1: &[Loot] = &[
     Loot { item: Some(Item::tool(ToolKind::Axe, Tier::Gold)), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None }, // golden_axe
@@ -726,15 +726,36 @@ const HOGLIN_STABLE_1: &[Loot] = &[
         damage: None,
     }, // gilded_blackstone
     Loot { item: Some(Item::from_block(Block::SOUL_SAND)), weight: 1, lo: 2, hi: 7, enchanted: false, damage: None }, // soul_sand
-    Loot { item: None, weight: 1, lo: 2, hi: 7, enchanted: false, damage: None }, // crimson_nylium
+    Loot {
+        item: Some(Item::from_block(super::nether_biome_blocks::CRIMSON_NYLIUM)),
+        weight: 1,
+        lo: 2,
+        hi: 7,
+        enchanted: false,
+        damage: None,
+    }, // crimson_nylium
     Loot { item: Some(Item::GOLD_NUGGET), weight: 1, lo: 2, hi: 8, enchanted: false, damage: None }, // gold_nugget
-    Loot { item: Some(Item::LEATHER), weight: 1, lo: 1, hi: 3, enchanted: false, damage: None }, // leather
-    Loot { item: Some(Item::ARROW), weight: 1, lo: 5, hi: 17, enchanted: false, damage: None }, // arrow
-    Loot { item: Some(Item::STRING), weight: 1, lo: 3, hi: 8, enchanted: false, damage: None }, // string
+    Loot { item: Some(Item::LEATHER), weight: 1, lo: 1, hi: 3, enchanted: false, damage: None },     // leather
+    Loot { item: Some(Item::ARROW), weight: 1, lo: 5, hi: 17, enchanted: false, damage: None },      // arrow
+    Loot { item: Some(Item::STRING), weight: 1, lo: 3, hi: 8, enchanted: false, damage: None },      // string
     Loot { item: Some(Item::RAW_PORKCHOP), weight: 1, lo: 2, hi: 5, enchanted: false, damage: None }, // porkchop
     Loot { item: Some(Item::COOKED_PORKCHOP), weight: 1, lo: 2, hi: 5, enchanted: false, damage: None }, // cooked_porkchop
-    Loot { item: None, weight: 1, lo: 2, hi: 7, enchanted: false, damage: None }, // crimson_fungus
-    Loot { item: None, weight: 1, lo: 2, hi: 7, enchanted: false, damage: None }, // crimson_roots
+    Loot {
+        item: Some(Item::from_block(super::nether_biome_blocks::CRIMSON_FUNGUS)),
+        weight: 1,
+        lo: 2,
+        hi: 7,
+        enchanted: false,
+        damage: None,
+    }, // crimson_fungus
+    Loot {
+        item: Some(Item::from_block(super::nether_biome_blocks::CRIMSON_ROOTS)),
+        weight: 1,
+        lo: 2,
+        hi: 7,
+        enchanted: false,
+        damage: None,
+    }, // crimson_roots
 ];
 const OTHER_0: &[Loot] = &[
     Loot {
@@ -766,9 +787,9 @@ const OTHER_0: &[Loot] = &[
     Loot { item: None, weight: 10, lo: 10, hi: 22, enchanted: false, damage: None }, // spectral_arrow
     Loot { item: None, weight: 9, lo: 1, hi: 1, enchanted: false, damage: None },    // piglin_banner_pattern
     Loot { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },    // music_disc_pigstep
-    Loot { item: None, weight: 12, lo: 6, hi: 17, enchanted: false, damage: None },  // golden_carrot
-    Loot { item: None, weight: 9, lo: 1, hi: 1, enchanted: false, damage: None },    // golden_apple
-    Loot { item: Some(Item::BOOK), weight: 10, lo: 1, hi: 1, enchanted: true, damage: None }, // book
+    Loot { item: Some(Item::GOLDEN_CARROT), weight: 12, lo: 6, hi: 17, enchanted: false, damage: None }, // golden_carrot
+    Loot { item: Some(Item::GOLDEN_APPLE), weight: 9, lo: 1, hi: 1, enchanted: false, damage: None },    // golden_apple
+    Loot { item: Some(Item::BOOK), weight: 10, lo: 1, hi: 1, enchanted: true, damage: None },            // book
 ];
 const OTHER_1: &[Loot] = &[
     Loot {
@@ -853,7 +874,14 @@ const OTHER_2: &[Loot] = &[
     }, // gilded_blackstone
     Loot { item: Some(Item::from_block(Block::CHAIN)), weight: 1, lo: 2, hi: 10, enchanted: false, damage: None }, // chain
     Loot { item: Some(Item::MAGMA_CREAM), weight: 2, lo: 2, hi: 6, enchanted: false, damage: None }, // magma_cream
-    Loot { item: None, weight: 1, lo: 3, hi: 6, enchanted: false, damage: None },                    // bone_block
+    Loot {
+        item: Some(Item::from_block(super::nether_biome_blocks::BONE_BLOCK)),
+        weight: 1,
+        lo: 3,
+        hi: 6,
+        enchanted: false,
+        damage: None,
+    }, // bone_block
     Loot { item: Some(Item::IRON_NUGGET), weight: 1, lo: 2, hi: 8, enchanted: false, damage: None }, // iron_nugget
     Loot { item: Some(Item::from_block(Block::OBSIDIAN)), weight: 1, lo: 4, hi: 6, enchanted: false, damage: None }, // obsidian
     Loot { item: Some(Item::GOLD_NUGGET), weight: 1, lo: 2, hi: 8, enchanted: false, damage: None }, // gold_nugget
@@ -872,6 +900,12 @@ pub(super) fn put(chest: &mut Chest, stack: Stack, rng: &mut Rng) {
     *slot = Some(stack);
 }
 pub(super) fn pool(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls: (u32, u32)) {
+    pool_with(chest, rng, table, rolls, None);
+}
+
+/// [`pool`] where `enchanted` entries use `enchant_with_levels` at `levels`
+/// when given, rather than `enchant_randomly`.
+pub(super) fn pool_with(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls: (u32, u32), levels: Option<u32>) {
     let weight: u32 = table.iter().map(|e| e.weight).sum();
     for _ in 0..rng.range(rolls.0, rolls.1) {
         let mut roll = rng.below(weight);
@@ -894,7 +928,14 @@ pub(super) fn pool(chest: &mut Chest, rng: &mut Rng, table: &[Loot], rolls: (u32
             // Java set_damage measures remaining durability, then floors damage.
             stack.damage = ((1.0 - (lo + rng.unit() as f32 * (hi - lo))) * max as f32).floor() as u16;
         }
-        if e.enchanted {
+        if e.enchanted
+            && let Some(levels) = levels
+        {
+            let mut java = crate::enchant::JavaRandom::new(rng.range(0, u32::MAX - 1) as i64);
+            let (item, enchants) = crate::enchant::enchant_with_levels(&mut java, item, levels);
+            stack.item = item;
+            stack.enchants = enchants;
+        } else if e.enchanted {
             use crate::enchant::Enchantment;
             let choices: Vec<_> = Enchantment::ALL.into_iter().filter(|e| e.fits(item)).collect();
             if let Some(e) = choices.get(rng.below(choices.len() as u32) as usize) {
@@ -1073,6 +1114,29 @@ mod generation_tests {
             }
         }
     }
+    /// Items that gained their systems since the tables were written are no
+    /// longer empty rolls in the Java chests that hold them.
+    #[test]
+    fn stable_and_other_chests_hold_saddles_apples_carrots_and_nylium() {
+        let mut seen = std::collections::HashSet::new();
+        for seed in 0..400u64 {
+            for kind in [ChestKind::HoglinStable, ChestKind::Other] {
+                for s in super::loot(seed, kind).slots.iter().flatten() {
+                    seen.insert(s.item);
+                }
+            }
+        }
+        for item in [
+            Item::SADDLE,
+            Item::GOLDEN_APPLE,
+            Item::GOLDEN_CARROT,
+            Item::from_block(super::super::nether_biome_blocks::CRIMSON_NYLIUM),
+            Item::from_block(super::super::nether_biome_blocks::BONE_BLOCK),
+        ] {
+            assert!(seen.contains(&item), "{} never appears", item.name());
+        }
+    }
+
     #[test]
     fn generated_bastion_chests_register_and_saved_loot_wins() {
         let seed = (0..100)

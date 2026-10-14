@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
-use super::bastion::{Loot as L, pool};
+use super::bastion::{Loot as L, pool, pool_with};
 use super::biome::Biome;
 use super::block::{Block, Facing};
 use super::chest::Chest;
@@ -169,9 +169,53 @@ struct Builder {
     blocks: FxHashMap<IVec3, Block>,
     features: Vec<(IVec3, Feature)>,
     residents: Vec<(crate::entity::MobKind, IVec3)>,
+    /// Java's `StructurePiece` frame, for pieces ported from the reference.
+    scattered: Option<Scattered>,
+}
+
+/// A piece placed like Java's `ScatteredFeaturePiece`: an orientation and the
+/// inclusive corners of its bounding box (local `y` counts up from `min.y`).
+#[derive(Clone, Copy)]
+struct Scattered {
+    orient: Facing,
+    min: IVec3,
+    max: IVec3,
+}
+
+/// `Mirror.LEFT_RIGHT` then `Rotation.CLOCKWISE_90` for each piece
+/// orientation (`StructurePiece.setOrientation`): north keeps local
+/// directions, south mirrors north-south, west mirrors and turns, east turns.
+fn piece_direction(orient: Facing, f: Facing) -> Facing {
+    let mirror = |f: Facing| match f {
+        Facing::North => Facing::South,
+        Facing::South => Facing::North,
+        f => f,
+    };
+    let clockwise = |f: Facing| match f {
+        Facing::North => Facing::East,
+        Facing::East => Facing::South,
+        Facing::South => Facing::West,
+        Facing::West => Facing::North,
+    };
+    match orient {
+        Facing::North => f,
+        Facing::South => mirror(f),
+        Facing::West => clockwise(mirror(f)),
+        Facing::East => clockwise(f),
+    }
 }
 
 impl Builder {
+    /// A piece of `width` (local x) by `depth` (local z) blocks whose box starts
+    /// at `(x, y, z)` and extends toward +x and +z, as `makeBoundingBox`.
+    fn scattered(at: IVec3, orient: Facing, width: i32, depth: i32) -> Self {
+        let (dx, dz) = if matches!(orient, Facing::North | Facing::South) { (width, depth) } else { (depth, width) };
+        let max = at + IVec3::new(dx - 1, 0, dz - 1);
+        let mut b = Self::new(at, IVec2::new(width, depth), 0);
+        b.scattered = Some(Scattered { orient, min: at, max });
+        b
+    }
+
     fn new(origin: IVec3, size: IVec2, rot: u8) -> Self {
         // Swapping width/depth must preserve the start's horizontal centre.
         // Otherwise a rotated narrow ship moves entirely off its locate point.
@@ -181,10 +225,32 @@ impl Builder {
         } else {
             origin
         };
-        Self { origin, size, rot, blocks: FxHashMap::default(), features: Vec::new(), residents: Vec::new() }
+        Self {
+            origin,
+            size,
+            rot,
+            blocks: FxHashMap::default(),
+            features: Vec::new(),
+            residents: Vec::new(),
+            scattered: None,
+        }
     }
 
     fn world(&self, x: i32, y: i32, z: i32) -> IVec3 {
+        if let Some(Scattered { orient, min, max }) = self.scattered {
+            // `StructurePiece.getWorldX/Z`.
+            let wx = match orient {
+                Facing::North | Facing::South => min.x + x,
+                Facing::West => max.x - z,
+                Facing::East => min.x + z,
+            };
+            let wz = match orient {
+                Facing::North => max.z - z,
+                Facing::South => min.z + z,
+                Facing::West | Facing::East => min.z + x,
+            };
+            return IVec3::new(wx, min.y + y, wz);
+        }
         let (w, d) = (self.size.x - 1, self.size.y - 1);
         let (dx, dz) = match self.rot {
             0 => (x, z),
@@ -197,6 +263,9 @@ impl Builder {
 
     /// A local facing (south = +z, away from the entrance) in the world.
     fn turn(&self, f: Facing) -> Facing {
+        if let Some(s) = self.scattered {
+            return piece_direction(s.orient, f);
+        }
         let mut f = f;
         for _ in 0..self.rot {
             f = match f {
@@ -236,6 +305,80 @@ impl Builder {
                 }
             }
         }
+    }
+
+    /// `generateBox` with `MossStoneSelector`, in Java's y, x, z order.
+    fn moss_box(&mut self, rng: &mut Rng, [x0, y0, z0, x1, y1, z1]: [i32; 6]) {
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                for z in z0..=z1 {
+                    let block = if rng.unit() < 0.4 { Block::COBBLESTONE } else { Block::MOSSY_COBBLESTONE };
+                    self.set(x, y, z, block);
+                }
+            }
+        }
+    }
+
+    fn fill_box(&mut self, [x0, y0, z0, x1, y1, z1]: [i32; 6], b: Block) {
+        self.fill(x0, y0, z0, x1, y1, z1, b);
+    }
+
+    /// `createDispenser`: a dispenser (facing in the piece's local frame) with arrows.
+    fn dispenser(&mut self, x: i32, y: i32, z: i32, f: Facing, seed: u64) {
+        let code = face_code(self.turn(f));
+        self.set(x, y, z, super::redstone_blocks::dispenser(code, false));
+        let p = self.world(x, y, z);
+        self.features.push((p, Feature::TempleChest(seed, LootTable::Dispenser)));
+    }
+
+    /// `createChest`: facing as `StructurePiece.reorient` chooses from the solid
+    /// blocks beside it (a lone solid side makes it face away; otherwise the
+    /// legacy turn sequence from north).
+    fn java_chest(&mut self, x: i32, y: i32, z: i32, seed: u64, table: LootTable) {
+        let p = self.world(x, y, z);
+        let solid = |b: &Self, d: Facing| b.blocks.get(&(p + d.offset())).is_some_and(|blk| blk.is_opaque());
+        let is_chest =
+            |b: &Self, d: Facing| b.blocks.get(&(p + d.offset())).is_some_and(|blk| super::chest::is_chest(*blk));
+        let clockwise = |f: Facing| match f {
+            Facing::North => Facing::East,
+            Facing::East => Facing::South,
+            Facing::South => Facing::West,
+            Facing::West => Facing::North,
+        };
+        let plane = [Facing::North, Facing::East, Facing::South, Facing::West];
+        let mut found = None;
+        let mut facing = None;
+        for d in plane {
+            if is_chest(self, d) {
+                facing = Some(Facing::North);
+                break;
+            }
+            if solid(self, d) {
+                if found.is_some() {
+                    found = None;
+                    break;
+                }
+                found = Some(d);
+            }
+        }
+        let facing = facing.unwrap_or_else(|| match found {
+            Some(d) => d.opposite(),
+            None => {
+                let mut d = Facing::North;
+                if solid(self, d) {
+                    d = d.opposite();
+                }
+                if solid(self, d) {
+                    d = clockwise(d);
+                }
+                if solid(self, d) {
+                    d = d.opposite();
+                }
+                d
+            }
+        });
+        self.blocks.insert(p, Block::CHEST.with_facing(facing));
+        self.features.push((p, Feature::TempleChest(seed ^ hash3(p.x, p.y, p.z, 0x7E), table)));
     }
 
     fn facing(&self, b: Block, f: Facing) -> Block {
@@ -567,66 +710,198 @@ fn desert_pyramid(g: &Generator, centre: IVec2, ground: i32, rot: u8, seed: u64)
     b.finish(Kind::DesertPyramid, 0)
 }
 
-fn jungle_temple(g: &Generator, centre: IVec2, ground: i32, rot: u8, seed: u64, rng: &mut Rng) -> Built {
-    let origin = IVec3::new(centre.x - 6, ground, centre.y - 7);
-    let mut b = Builder::new(origin, IVec2::new(12, 15), rot);
-    let stone = |rng: &mut Rng| if rng.below(10) < 4 { Block::MOSSY_COBBLESTONE } else { Block::COBBLESTONE };
-    for z in 0..15 {
-        for x in 0..12 {
-            b.foundation(g, x, -5, z, Block::COBBLESTONE, 10);
+/// `JungleTemplePiece` (disassembled from the 26.3 server): a 12×10×15 piece at
+/// its start chunk's corner, in a random orientation, on a solid 12×5×15 block
+/// of moss-streaked cobblestone with an upper temple, the stepped roof, a
+/// stair-fed basement and two tripwire arrow traps, a lever and piston puzzle
+/// guarding the hidden chest, and the main chest behind the first trap.
+/// `JungleTemplePiece$MossStoneSelector` picks cobblestone 40% of the time,
+/// mossy cobblestone otherwise. Differences from Java: chiseled stone bricks
+/// (no such block yet) are stone bricks, and the piece's average ground height
+/// is taken over the whole footprint rather than only the chunk being
+/// generated.
+fn jungle_temple(g: &Generator, centre: IVec2, _ground: i32, rot: u8, seed: u64, rng: &mut Rng) -> Built {
+    use super::redstone_blocks as r;
+    let orient = [Facing::North, Facing::East, Facing::South, Facing::West][rot as usize % 4];
+    let corner = centre - IVec2::splat(8);
+    let (dx, dz) = if matches!(orient, Facing::North | Facing::South) { (12, 15) } else { (15, 12) };
+    // `ScatteredFeaturePiece.updateAverageGroundHeight`: the mean first open
+    // height (`MOTION_BLOCKING_NO_LEAVES`) over the footprint.
+    let (mut sum, mut count) = (0, 0);
+    for z in corner.y..corner.y + dz {
+        for x in corner.x..corner.x + dx {
+            sum += g.column(x, z).height + 1;
+            count += 1;
         }
     }
-    // Basement, two floors and a stepped roof.
-    for y in -4..=9 {
-        for z in 0..15 {
-            for x in 0..12 {
-                let edge = x == 0 || x == 11 || z == 0 || z == 14;
-                let floor = matches!(y, -4 | 0 | 4 | 8);
-                let block = if edge || floor { stone(rng) } else { Block::AIR };
-                b.set(x, y, z, block);
-            }
+    let mut b = Builder::scattered(IVec3::new(corner.x, sum / count, corner.y), orient, 12, 15);
+    let (north, south, east, west) = (Facing::North, Facing::South, Facing::East, Facing::West);
+    let mossy = Block::MOSSY_COBBLESTONE;
+    // Java's `StairBlock.FACING` points at the tall back; the engine's at the low side.
+    let stairs = |b: &Builder, f: Facing| {
+        Block::stairs_of(Block::COBBLESTONE).expect("cobblestone stairs").with_facing(b.turn(f).opposite())
+    };
+    let wire = r::wire(0);
+    let air = Block::AIR;
+
+    b.moss_box(rng, [0, -4, 0, 11, 0, 14]);
+    for bx in [
+        [2, 1, 2, 9, 2, 2],
+        [2, 1, 12, 9, 2, 12],
+        [2, 1, 3, 2, 2, 11],
+        [9, 1, 3, 9, 2, 11],
+        [1, 3, 1, 10, 6, 1],
+        [1, 3, 13, 10, 6, 13],
+        [1, 3, 2, 1, 6, 12],
+        [10, 3, 2, 10, 6, 12],
+        [2, 3, 2, 9, 3, 12],
+        [2, 6, 2, 9, 6, 12],
+        [3, 7, 3, 8, 7, 11],
+        [4, 8, 4, 7, 8, 10],
+    ] {
+        b.moss_box(rng, bx);
+    }
+    for bx in [
+        [3, 1, 3, 8, 2, 11],
+        [4, 3, 6, 7, 3, 9],
+        [2, 4, 2, 9, 5, 12],
+        [4, 6, 5, 7, 6, 9],
+        [5, 7, 6, 6, 7, 8],
+        [5, 1, 2, 6, 2, 2],
+        [5, 2, 12, 6, 2, 12],
+        [5, 5, 1, 6, 5, 1],
+        [5, 5, 13, 6, 5, 13],
+    ] {
+        b.fill_box(bx, air);
+    }
+    for (x, z) in [(1, 5), (10, 5), (1, 9), (10, 9)] {
+        b.set(x, 5, z, air);
+    }
+    for i in [0, 14] {
+        for x in [2, 4, 7, 9] {
+            b.moss_box(rng, [x, 4, i, x, 5, i]);
         }
     }
-    for (y, inset) in [(10, 1), (11, 2), (12, 4)] {
-        for z in inset..15 - inset {
-            for x in inset..12 - inset {
-                b.set(x, y, z, stone(rng));
-            }
+    b.moss_box(rng, [5, 6, 0, 6, 6, 0]);
+    for i in [0, 11] {
+        for j in (2..=12).step_by(2) {
+            b.moss_box(rng, [i, 4, j, i, 5, j]);
         }
+        b.moss_box(rng, [i, 6, 5, i, 6, 5]);
+        b.moss_box(rng, [i, 6, 9, i, 6, 9]);
     }
-    b.fill(5, 1, 0, 6, 3, 0, Block::AIR);
-    // Stairs down to the basement and up between floors.
+    for bx in [
+        [2, 7, 2, 2, 9, 2],
+        [9, 7, 2, 9, 9, 2],
+        [2, 7, 12, 2, 9, 12],
+        [9, 7, 12, 9, 9, 12],
+        [4, 9, 4, 4, 9, 4],
+        [7, 9, 4, 7, 9, 4],
+        [4, 9, 10, 4, 9, 10],
+        [7, 9, 10, 7, 9, 10],
+        [5, 9, 7, 6, 9, 7],
+    ] {
+        b.moss_box(rng, bx);
+    }
+    for (x, y, z, f) in [(5, 9, 6, north), (6, 9, 6, north), (5, 9, 8, south), (6, 9, 8, south)] {
+        let st = stairs(&b, f);
+        b.set(x, y, z, st);
+    }
+    for (x, y, z) in
+        [(4, 0, 0), (5, 0, 0), (6, 0, 0), (7, 0, 0), (4, 1, 8), (4, 2, 9), (4, 3, 10), (7, 1, 8), (7, 2, 9), (7, 3, 10)]
+    {
+        let st = stairs(&b, north);
+        b.set(x, y, z, st);
+    }
+    for bx in [[4, 1, 9, 4, 1, 9], [7, 1, 9, 7, 1, 9], [4, 1, 10, 7, 2, 10], [5, 4, 5, 6, 4, 5]] {
+        b.moss_box(rng, bx);
+    }
+    let st = stairs(&b, east);
+    b.set(4, 4, 5, st);
+    let st = stairs(&b, west);
+    b.set(7, 4, 5, st);
+    // The stair shaft down to the basement.
     for i in 0..4 {
-        b.set(9, -i, 3 + i, Block::AIR);
-        b.set(9, -i + 1, 3 + i, Block::AIR);
-        b.set(2, 1 + i, 9 + i, Block::COBBLESTONE);
-        b.set(2, 4, 9 + i, Block::AIR);
+        let st = stairs(&b, south);
+        b.set(5, -i, 6 + i, st);
+        b.set(6, -i, 6 + i, st);
+        b.fill_box([5, -i, 7 + i, 6, -i, 9 + i], air);
     }
-    // Arrow trap: a tripwire across the side passage fires the dispenser in the wall.
-    b.fill(1, 1, 5, 3, 3, 13, Block::AIR);
-    let east = b.turn(Facing::East);
-    let west = b.turn(Facing::West);
-    b.set(1, 1, 7, super::gadgets::hook(east, true, false));
-    b.set(2, 1, 7, super::gadgets::tripwire(false, true, false));
-    b.set(3, 1, 7, super::gadgets::hook(west, true, false));
-    b.set(4, 1, 7, Block::COBBLESTONE);
-    let dispenser = super::redstone_blocks::dispenser(face_code(east), false);
-    b.set(0, 1, 7, dispenser);
-    let p = b.world(0, 1, 7);
-    b.features.push((p, Feature::TempleChest(seed ^ 1, LootTable::Dispenser)));
-    b.chest(2, 1, 13, Facing::North, seed, LootTable::JungleTemple);
-    b.chest(8, -3, 12, Facing::West, seed ^ 2, LootTable::JungleTemple);
-    // Vines over the walls.
-    for z in 0..15 {
-        for y in 1..9 {
-            if rng.below(4) == 0 {
-                b.set(-1, y, z, ob::vine(b.turn(Facing::East)));
-            }
-            if rng.below(4) == 0 {
-                b.set(12, y, z, ob::vine(b.turn(Facing::West)));
-            }
-        }
+    b.fill_box([1, -3, 12, 10, -1, 13], air);
+    b.fill_box([1, -3, 1, 3, -1, 13], air);
+    b.fill_box([1, -3, 1, 9, -1, 5], air);
+    for i in (1..=13).step_by(2) {
+        b.moss_box(rng, [1, -3, i, 1, -2, i]);
     }
+    for i in (2..=12).step_by(2) {
+        b.moss_box(rng, [1, -1, i, 3, -1, i]);
+    }
+    for bx in [[2, -2, 1, 5, -2, 1], [7, -2, 1, 9, -2, 1], [6, -3, 1, 6, -3, 1], [6, -1, 1, 6, -1, 1]] {
+        b.moss_box(rng, bx);
+    }
+    // Trap one: the tripwire across the stairs' foot fires a dispenser by the main chest's wall.
+    let hook = |b: &Builder, f: Facing| super::gadgets::hook(b.turn(f), true, false);
+    let tripwire = super::gadgets::tripwire(false, true, false);
+    let (h1, h2) = (hook(&b, east), hook(&b, west));
+    b.set(1, -3, 8, h1);
+    b.set(4, -3, 8, h2);
+    b.set(2, -3, 8, tripwire);
+    b.set(3, -3, 8, tripwire);
+    for z in (2..=7).rev() {
+        b.set(5, -3, z, wire);
+    }
+    b.set(5, -3, 1, wire);
+    b.set(4, -3, 1, wire);
+    b.set(3, -3, 1, mossy);
+    b.dispenser(3, -2, 1, north, seed ^ 1);
+    let v = ob::vine(b.turn(south));
+    b.set(3, -2, 2, v);
+    // Trap two.
+    let (h1, h2) = (hook(&b, north), hook(&b, south));
+    b.set(7, -3, 1, h1);
+    b.set(7, -3, 5, h2);
+    for z in 2..=4 {
+        b.set(7, -3, z, tripwire);
+    }
+    b.set(8, -3, 6, wire);
+    b.set(9, -3, 6, wire);
+    b.set(9, -3, 5, wire);
+    b.set(9, -3, 4, mossy);
+    b.set(9, -2, 4, wire);
+    b.dispenser(9, -2, 3, west, seed ^ 3);
+    let v = ob::vine(b.turn(east));
+    b.set(8, -1, 3, v);
+    b.set(8, -2, 3, v);
+    b.java_chest(8, -3, 3, seed, LootTable::JungleTemple);
+    for (x, y, z) in
+        [(9, -3, 2), (8, -3, 1), (4, -3, 5), (5, -2, 5), (5, -1, 5), (6, -3, 5), (7, -2, 5), (7, -1, 5), (8, -3, 5)]
+    {
+        b.set(x, y, z, mossy);
+    }
+    b.moss_box(rng, [9, -1, 1, 9, -1, 5]);
+    // The lever and piston puzzle that opens the hidden chest.
+    b.fill_box([8, -3, 8, 10, -1, 10], air);
+    for x in [8, 9, 10] {
+        b.set(x, -2, 11, Block::STONE_BRICKS);
+    }
+    let lever = r::lever(1 + Facing::ALL.iter().position(|&a| a == b.turn(north)).unwrap() as u8, false);
+    for x in [8, 9, 10] {
+        b.set(x, -2, 12, lever);
+    }
+    b.moss_box(rng, [8, -3, 8, 8, -3, 10]);
+    b.moss_box(rng, [10, -3, 8, 10, -3, 10]);
+    b.set(10, -2, 9, mossy);
+    b.set(8, -2, 9, wire);
+    b.set(8, -2, 10, wire);
+    b.set(10, -1, 9, wire);
+    b.set(9, -2, 8, r::piston(4, true, false));
+    let west_piston = r::piston(face_code(b.turn(west)), true, false);
+    b.set(10, -2, 8, west_piston);
+    b.set(10, -1, 8, west_piston);
+    // Java's repeater `FACING` is its input side; the engine's is its output.
+    let repeater = r::repeater(b.turn(north).opposite(), 1, false);
+    b.set(10, -2, 10, repeater);
+    b.java_chest(9, -3, 10, seed ^ 2, LootTable::JungleTemple);
     b.finish(Kind::JungleTemple, 0)
 }
 
@@ -659,6 +934,12 @@ fn swamp_hut(g: &Generator, centre: IVec2, ground: i32, rot: u8) -> Built {
     b.residents.push((crate::entity::MobKind::Witch, b.world(3, 1, 5)));
     b.residents.push((crate::entity::MobKind::Cat, b.world(2, 1, 4)));
     b.finish(Kind::SwampHut, 2)
+}
+
+/// Extra shaft depth below the original four-piece laboratory: Java's
+/// `nextInt(8) + 4` pieces of three blocks each, minus the four already built.
+fn igloo_basement_drop(rng: &mut Rng) -> i32 {
+    (rng.below(8) as i32) * 3
 }
 
 fn igloo(g: &Generator, centre: IVec2, ground: i32, rot: u8, seed: u64, rng: &mut Rng) -> Built {
@@ -699,31 +980,36 @@ fn igloo(g: &Generator, centre: IVec2, ground: i32, rot: u8, seed: u64, rng: &mu
     }
     if rng.below(2) == 0 {
         // The secret basement: a trapdoor under the carpet, a ladder down
-        // to a stone brick room with a chest and a brewing stand.
+        // to a stone brick room with a chest and a brewing stand. Java's
+        // `IglooPieces.addPieces` stacks `nextInt(8) + 4` three-block shaft
+        // pieces, so the laboratory floor sits `depth * 3` blocks down
+        // (12..=33); `drop` is how far below the original four-piece room.
+        let drop = igloo_basement_drop(rng);
         b.set(4, -1, 4, super::redstone_blocks::WOOD_TRAPDOOR);
         let ladder = b.facing(Block::LADDER, Facing::South);
-        for y in -9..=-2 {
+        for y in (-9 - drop)..=-2 {
             b.set(4, y, 4, ladder);
             b.set(4, y, 3, Block::STONE_BRICKS);
         }
-        b.room(1, -12, 4, 7, -9, 10, Block::STONE_BRICKS, Block::AIR);
-        b.fill(1, -13, 4, 7, -13, 10, Block::STONE_BRICKS);
-        b.fill(1, -8, 4, 7, -8, 10, Block::STONE_BRICKS);
+        b.room(1, -12 - drop, 4, 7, -9 - drop, 10, Block::STONE_BRICKS, Block::AIR);
+        b.fill(1, -13 - drop, 4, 7, -13 - drop, 10, Block::STONE_BRICKS);
+        b.fill(1, -8 - drop, 4, 7, -8 - drop, 10, Block::STONE_BRICKS);
         // Reopen the shaft after the room walls and ceiling have been
         // painted; otherwise two wall blocks seal the basement entrance.
-        b.fill(4, -12, 4, 4, -8, 4, ladder);
-        b.fill(4, -12, 3, 4, -2, 3, Block::STONE_BRICKS);
-        b.chest(2, -12, 9, Facing::North, seed, LootTable::Igloo);
-        b.set(6, -12, 9, Block::BREWING_STAND);
-        b.features.push((b.world(6, -12, 9), Feature::IglooBrewing));
-        b.set(4, -12, 9, Block::TORCH);
-        b.residents.push((crate::entity::MobKind::Villager, b.world(2, -12, 5)));
-        b.residents.push((crate::entity::MobKind::ZombieVillager, b.world(6, -12, 5)));
+        b.fill(4, -12 - drop, 4, 4, -8 - drop, 4, ladder);
+        b.fill(4, -12 - drop, 3, 4, -2, 3, Block::STONE_BRICKS);
+        let floor = -12 - drop;
+        b.chest(2, floor, 9, Facing::North, seed, LootTable::Igloo);
+        b.set(6, floor, 9, Block::BREWING_STAND);
+        b.features.push((b.world(6, floor, 9), Feature::IglooBrewing));
+        b.set(4, floor, 9, Block::TORCH);
+        b.residents.push((crate::entity::MobKind::Villager, b.world(2, floor, 5)));
+        b.residents.push((crate::entity::MobKind::ZombieVillager, b.world(6, floor, 5)));
         for (x0, x1) in [(1, 3), (5, 7)] {
-            b.fill(x0, -12, 6, x1, -10, 6, Block::IRON_BARS);
+            b.fill(x0, floor, 6, x1, floor + 2, 6, Block::IRON_BARS);
         }
-        b.fill(3, -12, 4, 3, -10, 6, Block::IRON_BARS);
-        b.fill(5, -12, 4, 5, -10, 6, Block::IRON_BARS);
+        b.fill(3, floor, 4, 3, floor + 2, 6, Block::IRON_BARS);
+        b.fill(5, floor, 4, 5, floor + 2, 6, Block::IRON_BARS);
     }
     b.finish(Kind::Igloo, 0)
 }
@@ -965,9 +1251,12 @@ fn monument(g: &Generator, centre: IVec2, rot: u8, rng: &mut Rng) -> Built {
     b.finish(Kind::Monument, 4)
 }
 
-// Supported entries retain Java's pool weights, counts and roll ranges.
-// Entries whose systems have not landed yet stay empty at their original
-// weight rather than redistributing their probability to another item.
+// Tables are the Java 26.3 chest loot tables, pinned in
+// `tests/fixtures/java/26.3/world_defects.json` and checked against it by
+// `loot_tables_match_the_java_26_3_fixture`. Entries whose item does not exist
+// yet (trim templates, nautilus and copper horse armor, enchanted golden
+// apples, experience bottles, stews, maps, spears) stay empty at their
+// original weight rather than redistributing their probability.
 const DESERTPYRAMID_0: &[L] = &[
     L { item: Some(Item::DIAMOND), weight: 5, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::IRON_INGOT), weight: 15, lo: 1, hi: 5, enchanted: false, damage: None },
@@ -976,14 +1265,15 @@ const DESERTPYRAMID_0: &[L] = &[
     L { item: Some(Item::BONE), weight: 25, lo: 4, hi: 6, enchanted: false, damage: None },
     L { item: Some(Item::SPIDER_EYE), weight: 25, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::ROTTEN_FLESH), weight: 25, lo: 3, hi: 7, enchanted: false, damage: None },
-    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 15, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: Some(Item::LEATHER), weight: 20, lo: 1, hi: 5, enchanted: false, damage: None },
+    L { item: None, weight: 15, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_horse_armor
+    L { item: Some(Item::IRON_HORSE_ARMOR), weight: 15, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: Some(Item::GOLDEN_HORSE_ARMOR), weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: Some(Item::DIAMOND_HORSE_ARMOR), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::BOOK), weight: 20, lo: 1, hi: 1, enchanted: true, damage: None },
     L { item: Some(Item::GOLDEN_APPLE), weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 15, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // enchanted_golden_apple
+    L { item: None, weight: 15, lo: 1, hi: 1, enchanted: false, damage: None }, // None
 ];
 const DESERTPYRAMID_1: &[L] = &[
     L { item: Some(Item::BONE), weight: 10, lo: 1, hi: 8, enchanted: false, damage: None },
@@ -993,8 +1283,8 @@ const DESERTPYRAMID_1: &[L] = &[
     L { item: Some(Item::from_block(Block::SAND)), weight: 10, lo: 1, hi: 8, enchanted: false, damage: None },
 ];
 const DESERTPYRAMID_2: &[L] = &[
-    L { item: None, weight: 6, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None },
+    L { item: None, weight: 6, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // dune_armor_trim_smithing_template
 ];
 const JUNGLETEMPLE_0: &[L] = &[
     L { item: Some(Item::DIAMOND), weight: 3, lo: 1, hi: 3, enchanted: false, damage: None },
@@ -1004,15 +1294,16 @@ const JUNGLETEMPLE_0: &[L] = &[
     L { item: Some(Item::EMERALD), weight: 2, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::BONE), weight: 20, lo: 4, hi: 6, enchanted: false, damage: None },
     L { item: Some(Item::ROTTEN_FLESH), weight: 16, lo: 3, hi: 7, enchanted: false, damage: None },
-    L { item: None, weight: 3, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: Some(Item::BOOK), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: Some(Item::LEATHER), weight: 3, lo: 1, hi: 5, enchanted: false, damage: None },
+    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // copper_horse_armor
+    L { item: Some(Item::IRON_HORSE_ARMOR), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: Some(Item::GOLDEN_HORSE_ARMOR), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: Some(Item::DIAMOND_HORSE_ARMOR), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: Some(Item::BOOK), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None },
 ];
 const JUNGLETEMPLE_1: &[L] = &[
-    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None },
+    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // wild_armor_trim_smithing_template
 ];
 const IGLOO_0: &[L] = &[
     L { item: Some(Item::APPLE), weight: 15, lo: 1, hi: 3, enchanted: false, damage: None },
@@ -1033,17 +1324,17 @@ const OUTPOST_1: &[L] = &[
 const OUTPOST_2: &[L] =
     &[L { item: Some(Item::from_block(Block::DARK_OAK_LOG)), weight: 1, lo: 2, hi: 3, enchanted: false, damage: None }];
 const OUTPOST_3: &[L] = &[
-    L { item: None, weight: 7, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: None, weight: 7, lo: 1, hi: 1, enchanted: false, damage: None }, // experience_bottle
     L { item: Some(Item::STRING), weight: 4, lo: 1, hi: 6, enchanted: false, damage: None },
     L { item: Some(Item::ARROW), weight: 4, lo: 2, hi: 7, enchanted: false, damage: None },
     L { item: Some(Item::from_block(super::gadgets::HOOK)), weight: 3, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::IRON_INGOT), weight: 3, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::BOOK), weight: 1, lo: 1, hi: 1, enchanted: true, damage: None },
 ];
-const OUTPOST_4: &[L] = &[L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }];
+const OUTPOST_4: &[L] = &[L { item: Some(Item::GOAT_HORN), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }];
 const OUTPOST_5: &[L] = &[
-    L { item: None, weight: 3, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None },
+    L { item: None, weight: 3, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // sentry_armor_trim_smithing_template
 ];
 const SHIPSUPPLY_0: &[L] = &[
     L { item: Some(Item::PAPER), weight: 8, lo: 1, hi: 12, enchanted: false, damage: None },
@@ -1052,7 +1343,7 @@ const SHIPSUPPLY_0: &[L] = &[
     L { item: Some(Item::POISONOUS_POTATO), weight: 7, lo: 2, hi: 6, enchanted: false, damage: None },
     L { item: Some(Item::CARROT), weight: 7, lo: 4, hi: 8, enchanted: false, damage: None },
     L { item: Some(Item::WHEAT), weight: 7, lo: 8, hi: 21, enchanted: false, damage: None },
-    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None }, // suspicious_stew
     L { item: Some(Item::COAL), weight: 6, lo: 2, hi: 8, enchanted: false, damage: None },
     L { item: Some(Item::ROTTEN_FLESH), weight: 5, lo: 5, hi: 24, enchanted: false, damage: None },
     L { item: Some(Item::from_block(Block::PUMPKIN)), weight: 2, lo: 1, hi: 3, enchanted: false, damage: None },
@@ -1093,15 +1384,22 @@ const SHIPSUPPLY_0: &[L] = &[
     },
 ];
 const SHIPSUPPLY_1: &[L] = &[
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None },
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // coast_armor_trim_smithing_template
+];
+const SHIPSUPPLY_2: &[L] = &[
+    L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
+    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
+    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
 ];
 const SHIPTREASURE_0: &[L] = &[
     L { item: Some(Item::IRON_INGOT), weight: 90, lo: 1, hi: 5, enchanted: false, damage: None },
     L { item: Some(Item::GOLD_INGOT), weight: 10, lo: 1, hi: 5, enchanted: false, damage: None },
     L { item: Some(Item::EMERALD), weight: 40, lo: 1, hi: 5, enchanted: false, damage: None },
     L { item: Some(Item::DIAMOND), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // experience_bottle
 ];
 const SHIPTREASURE_1: &[L] = &[
     L { item: Some(Item::IRON_NUGGET), weight: 50, lo: 1, hi: 10, enchanted: false, damage: None },
@@ -1109,25 +1407,42 @@ const SHIPTREASURE_1: &[L] = &[
     L { item: Some(Item::LAPIS_LAZULI), weight: 20, lo: 1, hi: 10, enchanted: false, damage: None },
 ];
 const SHIPTREASURE_2: &[L] = &[
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None },
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // coast_armor_trim_smithing_template
 ];
-const SHIPMAP_0: &[L] = &[L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }];
+const SHIPTREASURE_3: &[L] = &[
+    L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
+    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
+    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
+];
+const SHIPMAP_0: &[L] = &[
+    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // buried_treasure_map
+];
 const SHIPMAP_1: &[L] = &[
     L { item: Some(Item::COMPASS), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: None, weight: 1, lo: 1, hi: 1, enchanted: false, damage: None }, // map
     L { item: Some(Item::CLOCK), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::PAPER), weight: 20, lo: 1, hi: 10, enchanted: false, damage: None },
     L { item: Some(Item::FEATHER), weight: 10, lo: 1, hi: 5, enchanted: false, damage: None },
     L { item: Some(Item::BOOK), weight: 5, lo: 1, hi: 5, enchanted: false, damage: None },
 ];
 const SHIPMAP_2: &[L] = &[
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
-    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None },
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 1, lo: 2, hi: 2, enchanted: false, damage: None }, // coast_armor_trim_smithing_template
+];
+const SHIPMAP_3: &[L] = &[
+    L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
+    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
+    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
 ];
 const RUINSMALL_0: &[L] = &[
     L { item: Some(Item::COAL), weight: 10, lo: 1, hi: 4, enchanted: false, damage: None },
     L { item: Some(Item::tool(ToolKind::Axe, Tier::Stone)), weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // stone_spear
     L { item: Some(Item::ROTTEN_FLESH), weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::EMERALD), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
     L { item: Some(Item::WHEAT), weight: 10, lo: 2, hi: 3, enchanted: false, damage: None },
@@ -1150,12 +1465,20 @@ const RUINSMALL_1: &[L] = &[
         damage: None,
     },
     L { item: Some(Item::FISHING_ROD), weight: 5, lo: 1, hi: 1, enchanted: true, damage: None },
-    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None }, // buried_treasure_map
+];
+const RUINSMALL_2: &[L] = &[
+    L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
+    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
+    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
 ];
 const RUINBIG_0: &[L] = &[
     L { item: Some(Item::COAL), weight: 10, lo: 1, hi: 4, enchanted: false, damage: None },
     L { item: Some(Item::GOLD_NUGGET), weight: 10, lo: 1, hi: 3, enchanted: false, damage: None },
     L { item: Some(Item::EMERALD), weight: 1, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None }, // stone_spear
     L { item: Some(Item::WHEAT), weight: 10, lo: 2, hi: 3, enchanted: false, damage: None },
 ];
 const RUINBIG_1: &[L] = &[
@@ -1178,8 +1501,18 @@ const RUINBIG_1: &[L] = &[
         damage: None,
     },
     L { item: Some(Item::FISHING_ROD), weight: 5, lo: 1, hi: 1, enchanted: true, damage: None },
-    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },
+    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None }, // buried_treasure_map
 ];
+const RUINBIG_2: &[L] = &[
+    L { item: None, weight: 148, lo: 1, hi: 1, enchanted: false, damage: None }, // None
+    L { item: None, weight: 20, lo: 1, hi: 1, enchanted: false, damage: None },  // copper_nautilus_armor
+    L { item: None, weight: 10, lo: 1, hi: 1, enchanted: false, damage: None },  // iron_nautilus_armor
+    L { item: None, weight: 5, lo: 1, hi: 1, enchanted: false, damage: None },   // golden_nautilus_armor
+    L { item: None, weight: 2, lo: 1, hi: 1, enchanted: false, damage: None },   // diamond_nautilus_armor
+];
+
+/// Items in the `#minecraft:regular_goat_horns` tag.
+const REGULAR_GOAT_HORNS: u32 = 4;
 
 /// Fills a structure's chest from its loot table.
 pub fn loot(seed: u64, table: LootTable) -> Chest {
@@ -1198,7 +1531,8 @@ pub fn loot(seed: u64, table: LootTable) -> Chest {
             pool(&mut chest, &mut rng, DESERTPYRAMID_2, (1, 1));
         }
         LootTable::JungleTemple => {
-            pool(&mut chest, &mut rng, JUNGLETEMPLE_0, (2, 6));
+            // The book is `enchant_with_levels` 30, not `enchant_randomly`.
+            pool_with(&mut chest, &mut rng, JUNGLETEMPLE_0, (2, 6), Some(30));
             pool(&mut chest, &mut rng, JUNGLETEMPLE_1, (1, 1));
         }
         LootTable::Igloo => {
@@ -1212,28 +1546,38 @@ pub fn loot(seed: u64, table: LootTable) -> Chest {
             pool(&mut chest, &mut rng, OUTPOST_3, (2, 3));
             pool(&mut chest, &mut rng, OUTPOST_4, (0, 1));
             pool(&mut chest, &mut rng, OUTPOST_5, (1, 1));
+            // `set_instrument` picks from `#minecraft:regular_goat_horns`:
+            // ponder, sing, seek and feel, the first four horn items.
+            for stack in chest.slots.iter_mut().flatten().filter(|s| s.item == Item::GOAT_HORN) {
+                stack.item = Item(Item::GOAT_HORN.0 + rng.below(REGULAR_GOAT_HORNS) as u16);
+            }
         }
         LootTable::ShipSupply => {
             pool(&mut chest, &mut rng, SHIPSUPPLY_0, (3, 10));
             pool(&mut chest, &mut rng, SHIPSUPPLY_1, (1, 1));
+            pool(&mut chest, &mut rng, SHIPSUPPLY_2, (1, 1));
         }
         LootTable::ShipTreasure => {
             pool(&mut chest, &mut rng, SHIPTREASURE_0, (3, 6));
             pool(&mut chest, &mut rng, SHIPTREASURE_1, (2, 5));
             pool(&mut chest, &mut rng, SHIPTREASURE_2, (1, 1));
+            pool(&mut chest, &mut rng, SHIPTREASURE_3, (1, 1));
         }
         LootTable::ShipMap => {
             pool(&mut chest, &mut rng, SHIPMAP_0, (1, 1));
             pool(&mut chest, &mut rng, SHIPMAP_1, (3, 3));
             pool(&mut chest, &mut rng, SHIPMAP_2, (1, 1));
+            pool(&mut chest, &mut rng, SHIPMAP_3, (1, 1));
         }
         LootTable::RuinSmall => {
             pool(&mut chest, &mut rng, RUINSMALL_0, (2, 8));
             pool(&mut chest, &mut rng, RUINSMALL_1, (1, 1));
+            pool(&mut chest, &mut rng, RUINSMALL_2, (1, 1));
         }
         LootTable::RuinBig => {
             pool(&mut chest, &mut rng, RUINBIG_0, (2, 8));
             pool(&mut chest, &mut rng, RUINBIG_1, (1, 1));
+            pool(&mut chest, &mut rng, RUINBIG_2, (1, 1));
         }
     }
     chest
@@ -1357,6 +1701,204 @@ mod tests {
         }
     }
 
+    /// The tables carry exactly the Java 26.3 pools: weights and counts in order,
+    /// every present item named like Java's, and only items the game lacks empty.
+    #[test]
+    fn loot_tables_match_the_java_26_3_fixture() {
+        let facts: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/world_defects.json")).unwrap();
+        let loot = &facts["structure_loot"];
+        let tables: [(&str, &[&[L]]); 9] = [
+            ("desert_pyramid", &[DESERTPYRAMID_0, DESERTPYRAMID_1, DESERTPYRAMID_2]),
+            ("jungle_temple", &[JUNGLETEMPLE_0, JUNGLETEMPLE_1]),
+            ("igloo_chest", &[IGLOO_0, IGLOO_1]),
+            ("pillager_outpost", &[OUTPOST_0, OUTPOST_1, OUTPOST_2, OUTPOST_3, OUTPOST_4, OUTPOST_5]),
+            ("shipwreck_supply", &[SHIPSUPPLY_0, SHIPSUPPLY_1, SHIPSUPPLY_2]),
+            ("shipwreck_treasure", &[SHIPTREASURE_0, SHIPTREASURE_1, SHIPTREASURE_2, SHIPTREASURE_3]),
+            ("shipwreck_map", &[SHIPMAP_0, SHIPMAP_1, SHIPMAP_2, SHIPMAP_3]),
+            ("underwater_ruin_small", &[RUINSMALL_0, RUINSMALL_1, RUINSMALL_2]),
+            ("underwater_ruin_big", &[RUINBIG_0, RUINBIG_1, RUINBIG_2]),
+        ];
+        // Java items the game does not have yet; their entries stay empty.
+        let absent = [
+            "buried_treasure_map",
+            "map",
+            "coast_armor_trim_smithing_template",
+            "dune_armor_trim_smithing_template",
+            "sentry_armor_trim_smithing_template",
+            "wild_armor_trim_smithing_template",
+            "copper_horse_armor",
+            "copper_nautilus_armor",
+            "iron_nautilus_armor",
+            "golden_nautilus_armor",
+            "diamond_nautilus_armor",
+            "enchanted_golden_apple",
+            "experience_bottle",
+            "suspicious_stew",
+            "stone_spear",
+        ];
+        for (name, ours) in tables {
+            let pools = loot[name].as_array().unwrap();
+            assert_eq!(pools.len(), ours.len(), "{name} pools");
+            for (i, (java, ours)) in pools.iter().zip(ours).enumerate() {
+                let entries = java["entries"].as_array().unwrap();
+                assert_eq!(entries.len(), ours.len(), "{name} pool {i}");
+                for (e, o) in entries.iter().zip(ours.iter()) {
+                    let id = e["name"].as_str().map(|n| n.trim_start_matches("minecraft:"));
+                    let at = format!("{name} pool {i} {id:?}");
+                    assert_eq!(o.weight as u64, e["weight"].as_u64().unwrap(), "{at} weight");
+                    assert_eq!(
+                        (o.lo as u64, o.hi as u64),
+                        (e["count"][0].as_u64().unwrap(), e["count"][1].as_u64().unwrap()),
+                        "{at} count"
+                    );
+                    let enchanted = e["modifiers"].as_array().unwrap().iter().any(|m| {
+                        matches!(m.as_str(), Some("minecraft:enchant_randomly" | "minecraft:enchant_with_levels"))
+                    });
+                    assert_eq!(o.enchanted, enchanted, "{at} enchant");
+                    match (id, o.item) {
+                        (None, None) => {}
+                        (Some(id), None) => assert!(absent.contains(&id), "{at} is empty but the item exists"),
+                        (Some(id), Some(item)) => {
+                            assert!(!absent.contains(&id), "{at} is listed absent but present");
+                            let ours = item.name().replace(' ', "_");
+                            let ok = ours == id
+                                || ours == id.replace("golden_", "gold_")
+                                || (id.starts_with("leather_")
+                                    && item.as_armor().is_some_and(|(_, m)| m == ArmorMaterial::Leather))
+                                || (id == "golden_helmet"
+                                    && item.as_armor() == Some((ArmorPiece::Helmet, ArmorMaterial::Gold)))
+                                || (id == "goat_horn" && ours.starts_with("goat_horn"))
+                                || matches!(
+                                    (id, ours.as_str()),
+                                    ("bamboo", _)
+                                        | (
+                                            "sand"
+                                                | "tnt"
+                                                | "pumpkin"
+                                                | "moss_block"
+                                                | "dark_oak_log"
+                                                | "tripwire_hook",
+                                            _
+                                        )
+                                );
+                            assert!(ok, "{at}: item is {}", item.name());
+                        }
+                        (None, Some(_)) => panic!("{at} should be empty"),
+                    }
+                }
+            }
+        }
+        assert_eq!(facts["regular_goat_horns"].as_array().unwrap().len() as u32, REGULAR_GOAT_HORNS);
+    }
+
+    #[test]
+    fn outpost_horns_are_regular_instruments_and_temple_books_use_thirty_levels() {
+        let (mut horns, mut books) = (0, 0);
+        for seed in 0..3000u64 {
+            for stack in loot(seed, LootTable::Outpost).slots.iter().flatten() {
+                if (Item::GOAT_HORN.0..Item::GOAT_HORN.0 + 8).contains(&stack.item.0) {
+                    horns += 1;
+                    assert!(stack.item.0 < Item::GOAT_HORN.0 + REGULAR_GOAT_HORNS as u16, "only regular horns");
+                }
+            }
+            for stack in loot(seed, LootTable::JungleTemple).slots.iter().flatten() {
+                if stack.item == Item::ENCHANTED_BOOK {
+                    books += 1;
+                    assert!(stack.enchants.iter().count() >= 1, "a 30-level book carries enchantments");
+                }
+            }
+        }
+        // Pool 4 rolls 0..=1 horns: about half of the chests have one.
+        assert!((1300..1700).contains(&horns), "{horns}");
+        assert!(books > 0);
+    }
+
+    /// The piece frame of `StructurePiece`: local x/z map to the box by orientation,
+    /// and directions are mirrored/turned per `setOrientation`.
+    #[test]
+    fn scattered_pieces_use_javas_orientation_frame() {
+        let at = IVec3::new(100, 64, 200);
+        // (orientation, local (3, 7) -> world, box size)
+        let cases = [
+            (Facing::North, (103, 200 + 14 - 7), (12, 15)),
+            (Facing::South, (103, 207), (12, 15)),
+            (Facing::West, (100 + 14 - 7, 203), (15, 12)),
+            (Facing::East, (107, 203), (15, 12)),
+        ];
+        for (orient, (wx, wz), (sx, sz)) in cases {
+            let b = Builder::scattered(at, orient, 12, 15);
+            assert_eq!(b.world(3, 5, 7), IVec3::new(wx, 69, wz), "{orient:?}");
+            let corners = [b.world(0, 0, 0), b.world(11, 0, 14)];
+            let (lo, hi) = (corners[0].min(corners[1]), corners[0].max(corners[1]));
+            assert_eq!((lo.x, lo.z, hi.x - lo.x + 1, hi.z - lo.z + 1), (100, 200, sx, sz), "{orient:?} box");
+        }
+        // setOrientation: south mirrors N/S; west mirrors then turns clockwise; east turns.
+        let turned = |o: Facing| Facing::ALL.map(|f| (f, piece_direction(o, f)));
+        for f in Facing::ALL {
+            assert_eq!(piece_direction(Facing::North, f), f);
+        }
+        assert_eq!(piece_direction(Facing::South, Facing::North), Facing::South);
+        assert_eq!(piece_direction(Facing::South, Facing::East), Facing::East);
+        assert_eq!(piece_direction(Facing::West, Facing::North), Facing::West);
+        assert_eq!(piece_direction(Facing::West, Facing::South), Facing::East);
+        assert_eq!(piece_direction(Facing::East, Facing::North), Facing::East);
+        assert_eq!(piece_direction(Facing::East, Facing::West), Facing::North);
+        for o in Facing::ALL {
+            let mut seen: Vec<_> = turned(o).iter().map(|&(_, t)| t).collect();
+            seen.sort_by_key(|f| *f as u8);
+            seen.dedup();
+            assert_eq!(seen.len(), 4, "{o:?} permutes the four directions");
+        }
+    }
+
+    /// `JungleTemplePiece.postProcess`: the whole puzzle and trap set, in every orientation.
+    #[test]
+    fn jungle_temple_follows_the_java_piece() {
+        use super::super::{gadgets, redstone_blocks as r};
+        let g = Generator::new(1);
+        let centre = IVec2::new(-40, -56);
+        for rot in 0..4 {
+            let built = jungle_temple(&g, centre, 70, rot, 9, &mut Rng(3));
+            let at: FxHashMap<IVec3, Block> = built.blocks.iter().copied().collect();
+            let count = |f: &dyn Fn(Block) -> bool| at.values().filter(|&&b| f(b)).count();
+            // Two chests and two dispensers, three levers, three sticky pistons, one repeater.
+            let chests = count(&|b| (53..57).contains(&b.0));
+            assert_eq!(chests, 2, "rot {rot}");
+            let is = |b: Block, c: &dyn Fn(r::Component) -> bool| r::component(b).is_some_and(c);
+            assert_eq!(count(&|b| is(b, &|c| matches!(c, r::Component::Dispenser { .. }))), 2);
+            assert_eq!(count(&|b| is(b, &|c| matches!(c, r::Component::Lever { .. }))), 3);
+            assert_eq!(count(&|b| is(b, &|c| matches!(c, r::Component::Piston { sticky: true, .. }))), 3);
+            assert_eq!(count(&|b| is(b, &|c| matches!(c, r::Component::Repeater { .. }))), 1);
+            assert_eq!(count(&|b| gadgets::hook_state(b).is_some()), 4);
+            assert_eq!(count(&|b| gadgets::is_tripwire(b)), 5);
+            assert_eq!(count(&|b| ob::vine_wall(b).is_some()), 3);
+            assert_eq!(count(&|b| b == Block::STONE_BRICKS), 3);
+            // The 12x5x15 block of rubble is mostly mossy cobblestone (60% per block).
+            let cobble = count(&|b| b == Block::COBBLESTONE);
+            let moss = count(&|b| b == Block::MOSSY_COBBLESTONE);
+            assert!(moss > cobble && moss + cobble > 600, "moss {moss} cobble {cobble}");
+            // The piece spans y -4..=9 above its floor, and 12x15 (or 15x12) blocks.
+            let (lo, hi) = (built.bounds.min, built.bounds.max);
+            assert_eq!(hi.y - lo.y + 1, 14, "rot {rot}");
+            assert_eq!(((hi.x - lo.x + 1) * (hi.z - lo.z + 1)), 12 * 15);
+            // Each chest faces an open cell, never into rock.
+            for (&p, &b) in &at {
+                if (53..57).contains(&b.0) {
+                    let f = Facing::ALL[(b.0 - 53) as usize];
+                    assert!(!at.get(&(p + f.offset())).is_some_and(|b| b.is_opaque()), "chest at {p} faces rock");
+                }
+            }
+            // Both dispensers shoot along open cells.
+            for (&p, &b) in &at {
+                if let Some(r::Component::Dispenser { facing, .. }) = r::component(b) {
+                    let front = p + r::direction(facing);
+                    assert!(!at.get(&front).is_some_and(|b| b.is_opaque()), "dispenser at {p} faces rock");
+                }
+            }
+        }
+    }
+
     #[test]
     fn generated_jungle_tripwire_fires_its_loaded_dispenser() {
         use super::super::chunk::chunk_of;
@@ -1432,6 +1974,36 @@ mod tests {
             let p = IVec3::new(0, y, 0);
             assert_eq!(built.blocks.iter().find(|(q, _)| *q == p).unwrap().1.base(), Block::LADDER);
         }
+    }
+
+    #[test]
+    fn igloo_basement_depth_follows_java_piece_stacking() {
+        // `IglooPieces.addPieces`: half of igloos stack `nextInt(8) + 4` shaft
+        // pieces of three blocks, so the laboratory floor is 12..=33 blocks
+        // below the igloo floor (local y 0, world 71 here), all eight depths
+        // occurring.
+        let g = Generator::new(1);
+        let mut depths = std::collections::BTreeSet::new();
+        let mut basements = 0;
+        for seed in 0..400 {
+            let built = igloo(&g, IVec2::ZERO, 70, 0, seed, &mut Rng(seed));
+            let Some(&(chest, _)) = built.features.iter().find(|(_, f)| matches!(f, Feature::TempleChest(..))) else {
+                continue;
+            };
+            basements += 1;
+            let depth = (71 - chest.y) / 3;
+            assert_eq!(71 - chest.y, depth * 3, "floor is a whole number of pieces down");
+            depths.insert(depth);
+            // The ladder runs unbroken from just under the trapdoor to the
+            // laboratory ceiling, and the brewing stand shares the chest's floor.
+            for y in (chest.y + 4)..=69 {
+                let p = IVec3::new(0, y, 0);
+                assert_eq!(built.blocks.iter().find(|(q, _)| *q == p).unwrap().1.base(), Block::LADDER, "{seed} {y}");
+            }
+            assert!(built.features.iter().any(|&(p, f)| p.y == chest.y && matches!(f, Feature::IglooBrewing)));
+        }
+        assert!((150..250).contains(&basements), "{basements} basements of 400");
+        assert_eq!(depths.into_iter().collect::<Vec<_>>(), (4..=11).collect::<Vec<_>>());
     }
 
     #[test]

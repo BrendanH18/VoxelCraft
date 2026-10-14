@@ -85,6 +85,47 @@ impl Dimension {
         self == Dimension::Overworld
     }
 
+    /// Java's dimension `has_skylight` flag is separate from weather/daylight.
+    /// The End has a skylight layer even though its visual sky has no sun.
+    pub const fn has_skylight(self) -> bool {
+        !matches!(self, Dimension::Nether)
+    }
+
+    /// The dimension type's `visual/sky_light_factor` attribute (default 1.0):
+    /// how much skylight contributes to what is rendered. It scales the
+    /// shader's sky term only; gameplay skylight (`has_skylight`) is unchanged,
+    /// so the End propagates skylight but renders none of it.
+    pub const fn visual_sky_light_factor(self) -> f32 {
+        match self {
+            Dimension::Overworld => 1.0,
+            Dimension::Nether | Dimension::End => 0.0,
+        }
+    }
+
+    /// Legacy dimension type ambient factor, retained as reference metadata.
+    /// Java 26.3's client uses the environment `visual/ambient_light_color`
+    /// directly instead of lifting each light level with this scalar.
+    pub const fn ambient_light(self) -> f32 {
+        match self {
+            Dimension::Overworld => 0.0,
+            Dimension::Nether => 0.1,
+            Dimension::End => 0.25,
+        }
+    }
+
+    /// The dimension type's `visual/ambient_light_color` (`#0a0a0a`,
+    /// `#302821`, `#3f473f`) as RGB fractions: added to the sky and block light in Java 26.3.
+    pub const fn ambient_light_color(self) -> [f32; 3] {
+        const fn rgb(r: u8, g: u8, b: u8) -> [f32; 3] {
+            [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
+        }
+        match self {
+            Dimension::Overworld => rgb(0x0a, 0x0a, 0x0a),
+            Dimension::Nether => rgb(0x30, 0x28, 0x21),
+            Dimension::End => rgb(0x3f, 0x47, 0x3f),
+        }
+    }
+
     /// Lowest block y. Java's Overworld runs from -64; the Nether and the
     /// End start at 0.
     pub const fn min_y(self) -> i32 {
@@ -153,6 +194,8 @@ pub struct Generator {
     pub strongholds: super::stronghold::Strongholds,
     /// Monster rooms are terrain features and can cross chunk boundaries.
     pub dungeons: super::dungeon::Dungeons,
+    /// Amethyst geodes are laid out once and clipped into every chunk.
+    pub geodes: super::geode::Geodes,
     /// Abandoned mineshafts, placed per Java 16×16 chunk.
     pub mineshafts: super::mineshaft::Mineshafts,
     pub villages: super::village::Villages,
@@ -198,6 +241,7 @@ impl Generator {
             end: (dimension == Dimension::End).then(|| super::end::EndGen::new(seed)),
             strongholds: super::stronghold::Strongholds::new(seed),
             dungeons: super::dungeon::Dungeons::new(seed),
+            geodes: super::geode::Geodes::new(seed),
             mineshafts: super::mineshaft::Mineshafts::new(seed),
             villages: super::village::Villages::new(seed),
             temples: super::temples::Temples::new(seed),
@@ -217,6 +261,12 @@ impl Generator {
     /// The Nether biome of column `(x, z)`, when this is a Nether generator.
     pub fn nether_biome(&self, x: i32, z: i32) -> Option<super::nether_biome::NetherBiome> {
         Some(self.nether.as_ref()?.biomes.biome(x, z))
+    }
+
+    /// The Nether biome at block `p` as `BiomeManager.getBiome` returns it
+    /// (fuzzy zoom), for gameplay queries.
+    pub fn nether_biome_at(&self, p: IVec3) -> Option<super::nether_biome::NetherBiome> {
+        Some(self.nether.as_ref()?.biomes.zoomed(p.x, p.y, p.z))
     }
 
     /// Nearest column of a Nether biome (`/locate biome` in the Nether).
@@ -592,6 +642,11 @@ impl Generator {
         self.fill(&mut blocks, base, &columns);
         if base.y <= max_h {
             self.carve(&mut blocks, base, &columns);
+        }
+        // Java places geodes in `local_modifications`, after carvers and
+        // before monster rooms, ores and cave vegetation.
+        self.geodes.paint(self, &mut blocks, base);
+        if base.y <= max_h {
             // Vein origins can lie outside the chunk: use their real biome
             // so both chunks agree on the vein.
             let biome_at = |x: i32, z: i32| {
@@ -636,10 +691,7 @@ impl Generator {
                     .then(|| self.surface_block(col, wx, wz, columns.steepness(x, z)));
                 for wy in base.y..=fill_top {
                     let y = (wy - base.y) as usize;
-                    let below_bedrock = wy - BOTTOM;
-                    let b = if below_bedrock == 0
-                        || (below_bedrock < 5 && hash_f(wx, wy, wz, self.seed) < (5 - below_bedrock) as f32 / 5.0)
-                    {
+                    let b = if self.bedrock_at(IVec3::new(wx, wy, wz)) {
                         Block::BEDROCK
                     } else if wy < col.height - depth {
                         if wy < 0 || (wy < 8 && hash_f(wx, wy, wz, self.seed ^ 0xDEE) < (8 - wy) as f32 / 8.0) {
@@ -989,6 +1041,14 @@ impl Generator {
                 }
             }
         }
+    }
+
+    /// Whether the Overworld floor puts bedrock at `p`: always at the bottom
+    /// layer, thinning out over the four above it.
+    pub(super) fn bedrock_at(&self, p: IVec3) -> bool {
+        let above_bottom = p.y - BOTTOM;
+        above_bottom == 0
+            || ((1..5).contains(&above_bottom) && hash_f(p.x, p.y, p.z, self.seed) < (5 - above_bottom) as f32 / 5.0)
     }
 
     /// Unmodified terrain at one point, used to validate a monster room
@@ -1432,13 +1492,14 @@ mod tests {
     use super::*;
 
     /// Golden block IDs of the generator. The Overworld values were
-    /// re-captured for the 1.18-style generator (v0.6); the Nether and End
-    /// values are unchanged.
+    /// re-captured for the 1.18-style generator (v0.6) and again for amethyst
+    /// geodes (GEN-02; unchanged with geode painting disabled); the Nether
+    /// and End values are unchanged.
     #[test]
     fn generated_chunk_hashes_stay_identical() {
         for (dimension, seed, expected) in [
-            (Dimension::Overworld, 12345, 0xd652_ef08_5c4e_7a1au64),
-            (Dimension::Overworld, 99, 0x496d_1ab6_6454_aa98u64),
+            (Dimension::Overworld, 12345, 0x7226_5ae3_523b_5e82u64),
+            (Dimension::Overworld, 99, 0x0f6d_a0e4_5a69_ed91u64),
             (Dimension::Nether, 12345, 0xb0c9_36c6_81b7_bfd5u64),
             (Dimension::End, 12345, 0xc5aa_2549_4a63_5b2bu64),
         ] {
@@ -1562,5 +1623,25 @@ mod tests {
         let s = g.find_spawn();
         let c = g.column(s.x, s.z);
         assert!(c.height >= SEA_LEVEL && !c.biome.is_watery(), "{s} {:?}", c.biome);
+    }
+
+    #[test]
+    fn dimension_light_attributes_match_the_reference_dimension_types() {
+        let facts: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/lighting_spawning.json")).unwrap();
+        for (dimension, name) in
+            [(Dimension::Overworld, "overworld"), (Dimension::Nether, "the_nether"), (Dimension::End, "the_end")]
+        {
+            let reference = &facts["dimensions"][name];
+            assert_eq!(dimension.ambient_light(), reference["ambient_light"].as_f64().unwrap() as f32, "{name}");
+            assert_eq!(
+                dimension.visual_sky_light_factor(),
+                reference["visual_sky_light_factor"].as_f64().unwrap() as f32,
+                "{name}"
+            );
+            let hex = reference["visual_ambient_light_color"].as_str().unwrap().trim_start_matches('#');
+            let channels = [0, 2, 4].map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap());
+            assert_eq!(dimension.ambient_light_color(), channels.map(|c| f32::from(c) / 255.0), "{name}");
+        }
     }
 }

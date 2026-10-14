@@ -7,7 +7,7 @@ Agents have independent positions, inventories, health, hunger and creative
 flight. Blocks, dropped items, chests, time and weather belong to the host.
 The world continues ticking at 20 Hz while the host uses menus or loses focus.
 Local gamepad players can join split-screen (see "Gamepad players" below);
-joining from another desktop remains on the roadmap.
+other desktops join through [Open to LAN](lan.md).
 
 ## Installed builds
 
@@ -61,11 +61,13 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `move forward right ticks [jump sprint sneak]` | Physics input; axes −1 through 1; sneak also descends in flight |
 | `wait ticks`, `mine ticks` | Wait or hold mining with normal tool speed, harvest rules and wear |
 | `eat` | Eat one of the selected food over 1.6 seconds (32 ticks), when hungry and in survival |
+| `draw [ticks]` | Hold use with the selected bow or crossbow for 1..200 ticks (default 25): a bow shoots at that draw (full power at 20), a crossbow loads at 25 ticks, and a charged crossbow fires at once. Needs an arrow and an aim away from blocks that take use. Emits a shot event |
 | `sleep` | Make the targeted bed the respawn point and lie down in it at night or in rain, with no monsters within 8 blocks; any action other than `observe`, `wait` or a still `move` gets up, as does damage |
 | `select 1..9`, `fly on/off` | Choose hotbar slot or toggle creative flight |
 | `place`, `attack`, `drop` | Place selected block, hit a targeted mob, or drop selected stack |
 | `craft item` | Craft once with available recipe alternatives; larger recipes require targeting a crafting table |
 | `chest take/put slot` | Transfer a stack using chest slot 0–26; put uses selected hotbar slot |
+| `furnace take/put slot` | Slot is `input`, `fuel` or `output`; move items through the aimed furnace; put uses the selected hotbar slot, output is take-only and taking releases stored XP |
 | `anvil 1..9` | On the targeted anvil, combine the selected stack with that hotbar slot (repair with material, merge two of an item, or apply an enchanted book), paying levels; the result replaces the selected stack |
 | `enchanting 1..3` | Take that offer of the targeted enchanting table for one of the selected item, paying 1–3 levels and lapis from the inventory; `observe` lists the offers (cost and clue) under `target.enchanting_offers` |
 | `smithing` | At the targeted smithing table, upgrade the selected diamond tool or armor using one Netherite upgrade template and one Netherite ingot from the inventory |
@@ -202,14 +204,19 @@ Timeouts and host shutdown end outstanding requests.
 Agents share the host's active dimension and relocate alongside it when the
 host travels. Agent simulation pauses during arrival and while its feet or
 supporting terrain are unloaded; timed commands resume after loading.
-Independent simultaneous dimensions and desktop client joining
-are future work. Every player has a stable ID (the host is 0; agent profiles
+Independent simultaneous dimensions remain future work.
+[Desktop LAN joining](lan.md) uses a separate versioned binary transport;
+the JSON-lines agent protocol remains unchanged. Every player has a stable ID (the host is 0; agent profiles
 keep theirs in the save and `players` reports them). Hostile mobs chase the
 nearest survival player, host or agent; melee, skeleton arrows and explosions
 hurt agents with armor, knockback and death drops. Mobs spawn around every
 player with per-player caps and stay loaded while any player is near.
 Environmental survival damage, death drops and pickups work.
-The first CLI supports block placement, crafting, chests, eating and sleeping; doors/ladders,
-bows, buckets, furnaces, armor controls and portal interactions still
-require the desktop player or a controller player. Agents cannot mine
-multi-cell doors/beds.
+The CLI shares the desktop use path for `place`: blocks, doors, levers and other
+usable blocks, buckets and bottles, ender pearls, splash potions, eyes of ender,
+and equipping held armor. It also has crafting, chest and storage-vehicle
+transfers, anvil, enchanting, grindstone, trade, smithing, eating and sleeping
+commands. Blocks that open a screen without a command (furnaces, brewing
+stands, beacons and the like), bows and crossbows, riding controls, the
+inventory screen and portal travel by walking still require the desktop player
+or a controller player. Agents cannot mine multi-cell doors/beds.

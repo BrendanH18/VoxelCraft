@@ -74,9 +74,9 @@ pub fn material(block: Block) -> Material {
         Block::DIRT | Block::FARMLAND | Block::WET_FARMLAND => Material::Dirt,
         b if matches!(b.0, 1900..=1906 | 2021) => Material::Dirt,
         b if matches!(b.0, 1907 | 1908 | 1911 | 1912 | 1940..=1943 | 2029) => Material::Grass,
-        b if matches!(b.0, 1910 | 1909) => Material::Snow,
+        b if matches!(b.0, 1910 | 1909 | 2516..=2522) => Material::Snow,
         b if matches!(b.0, 2022..=2028 | 2062..=2076 | 1950) => Material::Wood,
-        b if matches!(b.0, 1924..=1933) => Material::Glass,
+        b if matches!(b.0, 1924..=1933 | 2400..=2415) => Material::Glass,
         Block::TORCH => Material::Wood,
         b if b == Block::GRASS || b == Block::CACTUS || b.kind() == crate::world::block::RenderKind::Cross => {
             Material::Grass
@@ -206,6 +206,19 @@ impl Sound {
             Sound::DragonDeath => 3 * M + 26,
             Sound::Mob(v, c) => 3 * M + 27 + v as usize * CALLS + c as usize,
         }
+    }
+
+    /// The sound with this [`Sound::key`] (for sounds sent over LAN).
+    pub fn from_key(key: usize) -> Option<Sound> {
+        static TABLE: std::sync::OnceLock<Vec<Option<Sound>>> = std::sync::OnceLock::new();
+        let table = TABLE.get_or_init(|| {
+            let mut t = vec![None; Sound::COUNT];
+            for s in Sound::all() {
+                t[s.key()] = Some(s);
+            }
+            t
+        });
+        table.get(key).copied().flatten()
     }
 
     /// Every material, gameplay and mob sound synthesized into the audio bank.
@@ -391,6 +404,16 @@ impl Bank {
         for (snd, variants) in sounds.iter().zip(rendered) {
             bank.ranges[snd.key()] = (bank.buffers.len() as u16, variants.len() as u16);
             bank.buffers.extend(variants);
+        }
+        if let Some(entry) =
+            voxelcraft::assets::CATALOGUE["resources"].as_array().and_then(|r| r.iter().find(|e| e["sound"] == "pop"))
+        {
+            let key = entry["key"].as_str().expect("audio resource key");
+            let sample = voxelcraft::assets::audio_samples(key).expect("invalid original audio resource");
+            let (first, count) = bank.ranges[Sound::Pop.key()];
+            for index in usize::from(first)..usize::from(first + count) {
+                bank.buffers[index] = sample.clone();
+            }
         }
         bank
     }

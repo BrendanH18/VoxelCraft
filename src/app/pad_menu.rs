@@ -7,8 +7,8 @@
 //! click (take, place, swap or merge, using the inventory cursor), X like a
 //! right click (half a stack, or one item), and Y like a shift-click. LB/RB
 //! switch between inventory, crafting and (in creative) the palette; B closes.
-//! Slot clicks run the host's own container code as the controller player
-//! (see `Game::puppet`), so every rule matches the mouse.
+//! Slot clicks run the same screen transactions as the mouse
+//! (`screen::Screen`) on the controller player's own session.
 
 use glam::IVec3;
 
@@ -43,6 +43,7 @@ pub(super) enum Tab {
     /// Creative players' item palette.
     Palette,
     Chest(IVec3),
+    Vehicle(u32),
     Furnace(IVec3),
     Brewing(IVec3),
     Enchanting(IVec3),
@@ -56,7 +57,7 @@ impl Tab {
     /// Whether the workstation this tab was opened for still exists.
     pub fn matches_block(self, block: Block) -> bool {
         match self {
-            Tab::Chest(_) => crate::world::chest::is_chest(block),
+            Tab::Chest(_) | Tab::Vehicle(_) => crate::world::chest::is_chest(block),
             Tab::Furnace(_) => crate::world::furnace::is_furnace(block),
             Tab::Brewing(_) => block == Block::BREWING_STAND,
             Tab::Enchanting(_) => block == Block::ENCHANTING_TABLE,
@@ -71,6 +72,7 @@ impl Tab {
     pub fn container(self) -> Container {
         match self {
             Tab::Chest(p) => Container::Chest(p),
+            Tab::Vehicle(id) => Container::Minecart(id),
             Tab::Furnace(p) => Container::Furnace(p),
             Tab::Brewing(p) => Container::Brewing(p),
             Tab::Enchanting(p) => Container::Enchanting(p),
@@ -234,7 +236,7 @@ fn rows(tab: Tab, lists: Lists) -> usize {
         | Tab::Grindstone(_)
         | Tab::Smithing(_) => 5,
         Tab::Trading(_) => 6,
-        Tab::Chest(_) => container_rows(lists) + 4,
+        Tab::Chest(_) | Tab::Vehicle(_) => container_rows(lists) + 4,
         Tab::Crafting => lists.crafts.div_ceil(COLS),
         Tab::Palette => lists.palette.div_ceil(COLS),
     }
@@ -243,7 +245,7 @@ fn rows(tab: Tab, lists: Lists) -> usize {
 fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
     let list = match tab {
         Tab::Trading(_) if row < 2 => return 5,
-        Tab::Chest(_) if row < container_rows(lists) => {
+        Tab::Chest(_) | Tab::Vehicle(_) if row < container_rows(lists) => {
             return (lists.container - row * container_cols(lists)).min(container_cols(lists));
         }
         Tab::Inventory if row == 0 => return ArmorPiece::ALL.len(),
@@ -289,9 +291,11 @@ fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
         | Tab::Anvil(_)
         | Tab::Grindstone(_)
         | Tab::Smithing(_) => inv(COLS * row + col),
-        Tab::Chest(_) if row < container_rows(lists) => Slot::Ref(SlotRef::Chest(container_cols(lists) * row + col)),
-        Tab::Chest(_) if row == container_rows(lists) + 3 => inv(col),
-        Tab::Chest(_) => inv(COLS * (row - container_rows(lists) + 1) + col),
+        Tab::Chest(_) | Tab::Vehicle(_) if row < container_rows(lists) => {
+            Slot::Ref(SlotRef::Chest(container_cols(lists) * row + col))
+        }
+        Tab::Chest(_) | Tab::Vehicle(_) if row == container_rows(lists) + 3 => inv(col),
+        Tab::Chest(_) | Tab::Vehicle(_) => inv(COLS * (row - container_rows(lists) + 1) + col),
         Tab::Crafting => Slot::Recipe(COLS * row + col),
         Tab::Palette => Slot::Palette(COLS * row + col),
     }
@@ -314,7 +318,11 @@ impl Game {
         Lists {
             crafts: if tab == Tab::Crafting { self.pad_crafts(name).len() } else { 0 },
             palette: if creative { Item::creative_palette().count() } else { 0 },
-            container: if let Tab::Chest(p) = tab { self.world.container_slots(p) } else { 27 },
+            container: match tab {
+                Tab::Chest(p) => self.world.container_slots(p),
+                Tab::Vehicle(id) => self.mobs.entities.vehicle_slots(id).map_or(0, |s| s.len()),
+                _ => 27,
+            },
         }
     }
 
@@ -350,14 +358,7 @@ impl Game {
                 return true;
             }
         };
-        self.puppet(seat, |g| {
-            g.container = tab.container();
-            if quick {
-                g.quick_move(slot);
-            } else {
-                g.click_slot(slot, right);
-            }
-        });
+        self.pad_click(seat, name, tab.container(), slot, quick, right);
         self.audio.ui_click();
         true
     }
@@ -368,10 +369,10 @@ impl Game {
         let work = self.take_pad_work(name);
         let Some(bot) = self.agents.players.get_mut(name) else { return };
         let agent = &mut bot.agent;
-        let cursor = agent.inventory.cursor.take();
-        agent.inventory.return_stacks(cursor.into_iter().chain(work));
-        for stack in agent.inventory.take_spill() {
-            self.mobs.entities.throw(stack, agent.player.eye(), agent.player.forward().as_dvec3());
+        let cursor = agent.session.inventory.cursor.take();
+        agent.session.inventory.return_stacks(cursor.into_iter().chain(work));
+        for stack in agent.session.inventory.take_spill() {
+            self.mobs.entities.throw(stack, agent.session.player.eye(), agent.session.player.forward().as_dvec3());
         }
     }
 
@@ -380,16 +381,17 @@ impl Game {
         let (sw, sh) = ui.size();
         ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.45]);
         let Some(bot) = self.agents.players.get(name) else { return };
-        let inv = &bot.agent.inventory;
+        let inv = &bot.agent.session.inventory;
         let dial = crate::item::Dial {
-            yaw: bot.agent.player.yaw,
-            x: bot.agent.player.pos.x,
-            z: bot.agent.player.pos.z,
+            yaw: bot.agent.session.player.yaw,
+            x: bot.agent.session.player.pos.x,
+            z: bot.agent.session.player.pos.z,
             spawn_x: self.world_spawn.x as f64 + 0.5,
             spawn_z: self.world_spawn.z as f64 + 0.5,
             overworld: self.dimension == crate::world::terrain::Dimension::Overworld,
             day_time: self.day_time as f32,
-            spin: self.started.elapsed().as_secs_f32(),
+            spin: self.lost_dials().0,
+            clock_spin: self.lost_dials().1,
         };
         let (tab, col, row) = match menu {
             Menu::Pause { choice } => {
@@ -411,7 +413,11 @@ impl Game {
         let lists = Lists {
             crafts: crafts.len(),
             palette: items.len(),
-            container: if let Tab::Chest(p) = tab { self.world.container_slots(p) } else { 27 },
+            container: match tab {
+                Tab::Chest(p) => self.world.container_slots(p),
+                Tab::Vehicle(id) => self.mobs.entities.vehicle_slots(id).map_or(0, |s| s.len()),
+                _ => 27,
+            },
         };
         let n = rows(tab, lists);
         let row = row.min(n.saturating_sub(1));
@@ -430,7 +436,9 @@ impl Game {
             | Tab::Grindstone(_)
             | Tab::Smithing(_) => 4.0 * ((r >= 1) as u8 + (r >= 4) as u8) as f32,
             Tab::Trading(_) => 4.0 * ((r >= 2) as u8 + (r >= 5) as u8) as f32,
-            Tab::Chest(_) => 4.0 * ((r >= container_rows(lists)) as u8 + (r >= container_rows(lists) + 3) as u8) as f32,
+            Tab::Chest(_) | Tab::Vehicle(_) => {
+                4.0 * ((r >= container_rows(lists)) as u8 + (r >= container_rows(lists) + 3) as u8) as f32
+            }
             Tab::Crafting | Tab::Palette => 0.0,
         };
         let pw = COLS as f32 * 18.0 + 12.0;
@@ -444,6 +452,7 @@ impl Game {
             Tab::Crafting => "Crafting  (LB: inventory)",
             Tab::Palette => "Items  (RB: inventory)",
             Tab::Chest(p) => super::hud::container_title(self.world.get_block(p)),
+            Tab::Vehicle(id) => self.mobs.entities.vehicle_title(id),
             Tab::Furnace(_) => "Furnace",
             Tab::Brewing(_) => "Brewing Stand  (fuel, ingredient, bottles)",
             Tab::Enchanting(_) => "Enchant  (item, lapis, offers)",
@@ -469,7 +478,7 @@ impl Game {
         let work = self.pad_work(name);
         let offers = match (tab, work[0]) {
             (Tab::Enchanting(pos), Some(item)) if crate::enchant::table_accepts(item) => crate::enchant::offers(
-                bot.agent.vitals.xp.seed,
+                bot.agent.session.vitals.xp.seed,
                 item.item,
                 crate::enchant::bookshelves(&self.world, pos),
             ),
@@ -488,7 +497,7 @@ impl Game {
         };
         if let Some(r) = anvil.filter(|_| !matches!(tab, Tab::Grindstone(_))) {
             // Java's cost line, beside the anvil's slots.
-            let short = !bot.agent.creative && bot.agent.vitals.xp.level < r.cost;
+            let short = !bot.agent.creative && bot.agent.session.vitals.xp.level < r.cost;
             let (text, colour) = if !bot.agent.creative && r.cost >= crate::enchant::TOO_EXPENSIVE {
                 ("Too Expensive!".to_string(), [1.0, 0.38, 0.38, 1.0])
             } else {
@@ -500,7 +509,7 @@ impl Game {
         let mut clue = None;
         for r in first..first + shown {
             for c in 0..row_len(tab, r, lists) {
-                let offset = if matches!(tab, Tab::Chest(_)) && r < container_rows(lists) {
+                let offset = if matches!(tab, Tab::Chest(_) | Tab::Vehicle(_)) && r < container_rows(lists) {
                     if lists.container == 9 {
                         54.0
                     } else if lists.container == 5 {
@@ -528,7 +537,13 @@ impl Game {
                         }
                     }
                     Slot::Ref(SlotRef::Inventory(i)) => inv.slots[i],
-                    Slot::Ref(SlotRef::Chest(i)) => chest.and_then(|ch| ch.slots[i]),
+                    Slot::Ref(SlotRef::Chest(i)) => {
+                        if let Tab::Vehicle(id) = tab {
+                            self.mobs.entities.vehicle_slots(id).and_then(|s| s.get(i).copied().flatten())
+                        } else {
+                            chest.and_then(|ch| ch.slots[i])
+                        }
+                    }
                     Slot::Ref(SlotRef::FurnaceInput) => furnace.and_then(|f| f.input),
                     Slot::Ref(SlotRef::FurnaceFuel) => furnace.and_then(|f| f.fuel),
                     Slot::Ref(SlotRef::FurnaceOutput) => furnace.and_then(|f| f.output),

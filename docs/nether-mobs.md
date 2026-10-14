@@ -4,7 +4,7 @@
 
 VoxelCraft v0.5 adds the Nether's living mobs. They follow Java Edition 1.21's
 brains (`PiglinAi`, `PiglinBruteAi`, `HoglinAi`, `Zoglin`, `Strider`) as closely as
-the engine allows. The engine has no pathfinding, riding or breeding, so those parts
+the engine allows. The retained v0.7 implementation adds riding and breeding. Full Java navigation remains open; those remaining parts
 are approximated or left out (see [Known gaps](#known-gaps)).
 
 | Mob | Health | Box | Damage | XP | Drops |
@@ -83,7 +83,10 @@ It picks one ingot off a stack and holds it for 119 ticks (`ADMIRE_DURATION`):
   overflow back into the world, keeping the items already stored.
 
 **Zombification.** Outside the Nether, after 300 ticks, a piglin becomes a zombified
-piglin. It keeps its age, armor, persistence and uid. Immune piglins
+piglin. It keeps its age, armor, main-hand weapon (a crossbow or a brute's golden axe
+too, as `convertTo` copies equipment), persistence and uid. A zombified piglin's
+melee is Java's base 5 plus the held item's attack modifier (sword +3, axe +6); a
+natural one holds the spawn golden sword (the 1-in-20 golden spear is a sword here). Immune piglins
 (`IsImmuneToZombification`) stay. The existing zombified piglin carries on: it is
 neutral, angers its whole pack within 32 blocks for 30 s when one is hit, and spawns
 in Nether packs. Conversion drops the pocket contents and the item being admired.
@@ -180,16 +183,16 @@ attack, and none of them hunt again for 30–120 s. A piglin hit by a hoglin who
 herd outnumbers the piglins retreats instead.
 
 **Zoglins** are fire immune and undead, so Smite works on them.
-- They attack the nearest mob or player in reach and sight, except creepers and
-  other zoglins (`Zoglin.isTargetable`).
+- They attack the nearest mob or player within 16 blocks in every axis (the
+  follow-range sensor box) and in sight, except creepers and other zoglins
+  (`Zoglin.isTargetable`).
 - They use the hoglin's tusk attack and throw.
 
 **Spawning.** Hoglins spawn only from the crimson-forest entry (weight 9, groups of
 3–4); see the spawn table. 20% spawn as babies. Bastion stables also contain
 persistent hoglins.
 
-**Breeding** needs animal breeding support, which is not implemented. Crimson
-fungus exists; `nether::breeding_item` identifies it for future breeding support.
+**Breeding** is implemented through the retained shared animal interactions: feed adult hoglins crimson fungus. See [animals](animals.md) for the lifecycle and current acceptance limits.
 
 ## Striders
 
@@ -230,7 +233,18 @@ range.
 - A crossbow has Java's 465 uses.
 - Holding use for 25 ticks loads it. That spends an arrow and turns the held stack
   into the charged form, keeping wear, enchantments and name.
-- Using a charged crossbow shoots at 3.15 blocks a tick and wears it by one.
+- Using a charged crossbow shoots at 3.15 blocks a tick and wears it by one per arrow.
+- Quick Charge (weight 5, levels I-III) shortens loading to `floor((1.25 - 0.25 L) * 20)`
+  ticks: 25, 20, 15 and 10. Multishot (weight 2, one level) looses three arrows, straight
+  ahead and turned 10 degrees to each side about the shooter's up vector
+  (`ProjectileWeaponItem.shoot`); loading still spends one arrow, only the straight one
+  can be picked up, and each arrow wears the crossbow, so the volley stops if it breaks.
+  Piercing (weight 10, levels I-IV) lets an arrow pass through level + 1 mobs and discards
+  it unhurt at the next (`AbstractArrow.onHitEntity`); it applies to mobs, not to PvP hits
+  on players. Multishot and piercing are exclusive. Values come from
+  `data/minecraft/enchantment/{multishot,piercing,quick_charge}.json`; the enchantments
+  append to the save bits (ids 30..=32) and roll on the enchanting table, anvils, books,
+  the master fletcher's crossbow and bastion chests like any other.
 - Piglins drop crossbows as gear, bastion chests that list one now hold it
   (with the table's wear and enchantment roll), and fletcher trades naming the
   crossbow now resolve.
@@ -267,33 +281,49 @@ different pitches.
 
 ## Known gaps
 
-- **Riding**: there is no riding, so no saddles, warped fungus on a stick, strider
-  steering, strider jockeys, baby striders riding adults or piglins riding hoglins.
-- **Breeding**: none for hoglins or striders (there is no animal breeding yet,
-  though the fungi exist); striders can't be tempted.
+- **Riding**: saddled strider riding and warped-fungus-on-a-stick steering are implemented. Strider jockeys, baby riders and piglins riding hoglins remain unassessed.
+- **Breeding**: hoglins and striders use the retained shared breeding/temptation pipeline. Complete selected-reference acceptance remains under MOB-03.
 - **Bartering**: spectral arrows and Soul Speed don't exist (see the table).
 - **Piglin details**:
-  - No celebrating dance after a kill.
-  - Crossbow piglins melee mobs instead of shooting them, because mob arrows only
-    hit players.
-  - Piglins don't pick up and equip better weapons or armor, or golden axes for
-    brutes.
-  - Their pocket holds 8 stacks.
-  - Zombification retains armor but replaces the main-hand weapon with the existing
-    zombified piglin sword model; crossbows and brute axes are not retained.
-- **Zoglins** only pick mob targets within 4 blocks of height, so they don't chase
-  ghasts they could never reach.
-- **Peaceful**: Java keeps piglins and hoglins on Peaceful; here every hostile mob
-  is removed, as before.
+  - Celebration (Java `StartCelebratingIfTargetDead`, `CELEBRATION_TIME` 300 ticks): when
+    a piglin's attack target dies it walks to where the target fell (2 blocks of slack, 4 while
+    dancing), and a dead hoglin starts a dance one time in ten (`wantsToDance`). Being hurt
+    ends it, as `wasHurtBy` erases the memories. The location and dance state are saved. Java's
+    dance pose lives in the client model, which the reference server jar lacks, so the arms-up
+    bob and ear flap are an original approximation; the other celebrate-activity behaviours
+    (look at nearby piglins, stroll, hostile-player scan) use the retained idle code.
+  - Crossbow piglins now use the existing ranged behavior against mob targets,
+    and mob arrows resolve through shared mob-hit retaliation/loot handling.
+    Java 26.3 `CrossbowAttack` consumes any living attack target; it has no
+    player-only restriction. AI and arrow regression tests cover the change.
+  - Adult piglins now equip an admired piece of golden armor into an empty slot
+    (Java `stopHoldingOffHandItem` → `equipItemIfPossible`); otherwise it goes to
+    the pocket. Replacing worn gear by `Mob.canReplaceCurrentItem` comparison, taking a
+    preferred crossbow while armed, and golden axes for brutes are not implemented;
+    piglins always spawn armed, so the crossbow pickup is unreachable in play.
+  - Their pocket already has Java's eight slots, merging compatible stacks
+    and throwing overflow. Existing regression tests cover saved components
+    and full inventories; this inventory size is not a parity gap.
+- **Peaceful**: `Mob.checkDespawn` discards entity types registered `notInPeaceful()`.
+  In Java 26.3 those are piglin brutes, hoglins and zoglins; plain piglins are
+  *not* in the list and stay. Peaceful here follows that list (a regression test
+  pins it). Natural spawning of the Monster category, spawners and bastion
+  residents are still skipped on Peaceful, including piglins.
 - **Bastion residents** are spread over each piece's floor rather than placed at
   Java's exact jigsaw spots. Treasure-room magma cube spawners are still absent.
-- **Crossbow**: crafted with Java's recipe and supports existing durability
-  enchantments, but no Multishot, Piercing or Quick Charge, and no first-person
-  loading pose. Device-free agents have no bow or crossbow use command.
-- **Line of sight** uses the existing block raycast, which treats every solid block
-  as opaque.
-- **Visibility**: anger and hunting counts check distance, not sight lines.
-- **Split-screen fog**: all views share the host camera's blended biome fog.
+- **Crossbow**: crafted with Java's recipe with Multishot, Piercing, Quick Charge and
+  durability enchantments, but no first-person
+  loading pose (client presentation, not implemented). Device-free agents use the `draw [ticks]` command, which holds use through
+  the shared session.
+- **Line of sight** clips the existing collision boxes via bounded voxel traversal,
+  matching Java 26.3 `LivingEntity.hasLineOfSight` (COLLIDER, Fluid.NONE, 128 blocks).
+  Slab gaps and open gates no longer obscure targets; glass still does, as in Java.
+  Thin/corner intersections and over-height fences have regression coverage.
+  The underlying original block-shape catalogue remains an approximation.
+- **Visibility**: hoglin hunts and wither-skeleton targets need a sight line (Java's
+  `NEAREST_VISIBLE_*` memories). Nearby-adult piglin anger counts stay distance-based,
+  as Java's nearby-adult sensor lists are.
+- **Split-screen fog**: each view blends Nether biome fog around its own eye.
 
 ## What to check visually
 
@@ -334,8 +364,15 @@ agent container:
 | 300 | 0.58 ms/update | 0.60–0.68 ms/update |
 
 Sensing costs about as much as a zombie's per-tick player search. The superlinear
-growth from 100 to 300 mobs comes from the existing pairwise mob separation, which
-both kinds pay.
+growth from 100 to 300 mobs came from the pairwise mob separation, which both kinds
+paid: it scanned 8-block buckets within 4 blocks of every mob and recomputed each mob's
+shape per pair. Separation now runs on its own grid sized to the widest mob (cell =
+twice the largest half-width, nine cells per mob, per-mob data gathered once). On the
+same bench on the 10-core Apple M5 (other agents were running) the medians moved from 0.055 → 0.055 (100 zombies),
+0.71 → 0.21 (300 zombies), 0.22 → 0.09 (100 nether mobs) and 0.75 → 0.25 ms/update
+(300 nether mobs), so the 100→300 growth is about 3× instead of 4–12×. The pushes
+equal an all-pairs scan (`separation_matches_an_all_pairs_scan`). A pile of mobs on one
+point is still quadratic, as in Java's `pushEntities`.
 
 `cargo run --release -- --bench --rd 8` (headless terrain) is unaffected: none of
 this runs during generation or meshing, and the quad output is identical. Medians

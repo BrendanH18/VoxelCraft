@@ -90,7 +90,8 @@ a stronghold, and watch the credits roll after the Ender Dragon falls.
       <img src="docs/images/farming.jpg" alt="Rows of wheat at every growth stage on wet and dry farmland, with oak and spruce saplings behind"><br>
       <h3>🌾 Settle down</h3>
       Till soil, sow seeds and bake bread. Saplings grow into trees, grass
-      creeps back over bare dirt, and a bed skips the night.
+      creeps back over bare dirt, and a bed skips the night. Breed animals,
+      feed their babies, and collect eggs from chickens.
     </td>
     <td width="50%" valign="top">
       <img src="docs/images/third-person-armor.jpg" alt="Third-person view of the player wearing a full set of diamond armor"><br>
@@ -128,6 +129,21 @@ a stronghold, and watch the credits roll after the Ender Dragon falls.
       <h3>🎨 Build anything</h3>
       Sixteen dye colours across wool, glass, terracotta and concrete, every
       wood type, plus stairs, slabs, fences, doors and ladders.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/animals.jpg" alt="Horses, a donkey, llamas, a camel, a wolf with a parrot, a goat, a sleeping fox, a rabbit, a chicken and a sheep on a grassy meadow"><br>
+      <h3>🐴 Tame and ride</h3>
+      Tame horses, wolves, cats and parrots, saddle pigs and camels, load
+      llamas and donkeys with chests, and sail boats across the sea. Breed
+      every farm animal, lead them home on a lead, and name your favourites.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/lan.jpg" alt="A second player's view of the host holding a diamond sword between a horse and a llama"><br>
+      <h3>🌐 Open to LAN</h3>
+      Share your world with friends on the same network. They find it under
+      Multiplayer, then mine, build, fight mobs and ride alongside you.
     </td>
   </tr>
 </table>
@@ -303,8 +319,11 @@ The [gameplay guide](docs/gameplay.md) covers survival rules, mobs and every rec
   </tr>
 </table>
 
-See [hosted agents and commands](docs/agents.md) for the protocol, LAN setup
-and current limits. Joining from a second game window is in progress.
+Play with friends on your home network: load a world, press **Esc → Open to
+LAN**, and they'll find it under **Multiplayer** (or type your address into
+Direct Connect). Everyone shares the host's world, with chat, a player list
+(<kbd>Tab</kbd>) and optional PvP. See [LAN play and current
+limits](docs/lan.md) and [hosted agents and commands](docs/agents.md).
 
 <a id="under-the-hood"></a>
 
@@ -341,7 +360,8 @@ These recorded sweeps are separate from the roadmap's
 | [Mob parity](docs/mob-parity.md) | [Performance investigation](docs/performance-2026-10-07.md) |
 | [Player rendering](docs/player-rendering.md) | [Music](docs/music.md) and [particles](docs/particles.md) |
 | [Nether mobs](docs/nether-mobs.md): piglins, bartering, hoglins, striders | [Overworld terrain](docs/overworld-terrain.md): biomes, caves, aquifers |
-| [Overworld structures](docs/overworld-structures.md) and [aquatic mobs](docs/aquatic-mobs.md) | |
+| [Overworld structures](docs/overworld-structures.md) and [aquatic mobs](docs/aquatic-mobs.md) | [LAN play](docs/lan.md) |
+| [Animals](docs/animals.md): breeding, taming, leads; [boats and riding](docs/mounts.md) | |
 
 The [roadmap](docs/roadmap.md) is the source of truth for goals, scope,
 milestones and completion criteria.

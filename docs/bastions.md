@@ -61,6 +61,8 @@ Use `bastion_locations` to reproduce screenshots of all four layouts.
 The first time a player enters the exit portal (saved as `credits_seen` in
 the player's level properties), a skippable scrolling credits screen plays
 with the music system's credits situation, then the player respawns. The
-text is original; Java's End Poem is not copied. Gap: split-screen gamepad
-seats and CLI agents don't see or save the credits flag, and gamepads can't
-skip them.
+text is original; Java's End Poem is not copied. Start or the jump button on
+any connected controller skips them, like Escape and Space. Gap: split-screen
+gamepad seats and CLI agents share the host's dimension and never take the exit
+portal themselves, so they have no credits flag of their own; per-player
+dimensions are a v0.8 item.

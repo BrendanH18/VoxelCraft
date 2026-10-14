@@ -17,6 +17,8 @@ fn settle(world: &mut World, at: DVec3) {
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         world.update(at);
+        // Generated geode cracks leave water and lava to flow in.
+        world.tick_fluids(0.25);
         assert!(world.mesh_uploads.is_empty());
         assert!(world.mesh_removals.is_empty());
         if world.loaded_chunks() > 0 && world.is_idle() {
@@ -58,6 +60,7 @@ fn headless_world_runs_gameplay_without_render_meshes() {
     entities.scatter(Stack::new(Item::DIAMOND, 1), DVec3::new(10.5, 153.0, 10.5));
     entities.prime_tnt(IVec3::new(28, 150, 28), false);
     let ctx = Ctx {
+        spawn_light: voxelcraft::simulation::lighting::SpawnLight::DAY,
         players: vec![Target::new(PlayerId::HOST, at, false)],
         daylight: 1.0,
         raining: false,

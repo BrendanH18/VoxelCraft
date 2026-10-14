@@ -218,23 +218,48 @@ or traced on the baseline above; recheck whether later branch work fixes them.
   incomplete. Relevant sources: [world/forms.rs](../src/world/forms.rs), [crafting.rs](../src/crafting.rs).
 - **ENV-04:** dry sponges do not absorb neighboring water. Wet-sponge smelting
   exists. Relevant sources: [world/mod.rs](../src/world/mod.rs), [world/overworld_blocks.rs](../src/world/overworld_blocks.rs).
+  Follow-up: sponges drain waterlogged live coral and continue the search;
+  wet sponges dry only on Nether placement. Sea pickle draining and dry
+  live-coral states need reserved block states.
 - **PRO-02:** pufferfish is not accepted for brewing Water Breathing.
   Relevant source: [world/brewing.rs](../src/world/brewing.rs).
+  Follow-up: normal/splash brewing and interrupted brewing-save regressions
+  are implemented on the assessment branch; ordinary-player acceptance remains.
 - **BLD-02 / AUT-03:** dried kelp blocks, bamboo and bamboo mosaic lack fuel
   handling; kelp, berries, moss and new flowers lack composter integration.
   Relevant sources: [world/furnace.rs](../src/world/furnace.rs), [world/composter.rs](../src/world/composter.rs).
+  Follow-up: shared fuel metadata and reference-value/save cases now cover the
+  named missing fuels and additional existing wooden forms. Composter coverage
+  and the full fuel catalogue remain incomplete.
 - **FOO-03:** fishing pools still omit existing tropical fish, pufferfish and
   nautilus shells. Relevant source: [entity/bobber.rs](../src/entity/bobber.rs).
+  Follow-up: fishing rolls Java 26.3's complete `gameplay/fishing` tables
+  (fish in closed water, open-water treasure, jungle bamboo, set_damage,
+  enchant_with_levels 30 over `#on_random_loot`), checked against
+  `fishing.json`. Remaining: Java random sequences, the player luck attribute
+  and ordinary-player acceptance.
 - **GEN-02 / BLD-03:** amethyst geodes do not generate; budding amethyst
   incorrectly drops with Silk Touch. Relevant sources: [world/terrain.rs](../src/world/terrain.rs),
   [world/overworld_blocks.rs](../src/world/overworld_blocks.rs).
+  Follow-up: the 26.3 `amethyst_geode` feature now generates (see the
+  [geode evidence](verification/2026-10-13-amethyst-geodes.md)), with six-way
+  bud facings and wall bud states 2400–2415. **Implemented, unverified**: no
+  Java-seed coordinate parity, player acceptance or representative
+  performance acceptance. The Silk Touch drop is already corrected and covered
+  by `tests/plant_integrations.rs`.
 - **FOO-02:** bone meal on mangrove leaves does not create propagules;
   one dark-oak sapling grows a tree without the Java 2x2 requirement.
   Relevant sources: [world/overworld_flora.rs](../src/world/overworld_flora.rs), [world/growth.rs](../src/world/growth.rs).
+  Follow-up: dark and pale oak saplings need a 2x2 (reference search order);
+  bone meal on a lone one is not consumed. Sapling `stage` and spruce/jungle
+  mega trees remain open.
 - **MOB-03:** baby turtle growth runs while the turtle is unloaded/distant.
   Relevant sources: [entity/aquatic.rs](../src/entity/aquatic.rs), [entity/mod.rs](../src/entity/mod.rs).
 - **PLY-04:** CLI water buckets attempt creature capture without a fallback
   for ordinary pouring. Relevant sources: [agent.rs](../src/agent.rs), [app/bucket.rs](../src/app/bucket.rs).
+  Follow-up: shared bucket/bottle execution now provides that fallback and covers
+  pickup, creative, overflow, Nether and payload cases. Full player/session
+  extraction and player acceptance remain open.
 - **FOO-02:** ripe cocoa randomly yields two or three beans instead of the
   reference loot's three. Relevant source: [world/overworld_flora.rs](../src/world/overworld_flora.rs).
 
@@ -245,13 +270,39 @@ fidelity, turtle reproduction, dripstone/dripleaf behavior and complete
 current-version content. The inventory must inspect these rather than trust
 old "done" labels.
 
+The assessment branch now implements the named building recipes, sponge water
+absorption, composting metadata, fish weights, budding-amethyst loot, cocoa
+count and sapling/propagule fixes. Reference, integration and process-restart
+checks are recorded in the [content/resource report](verification/2026-10-12-content-and-assets.md)
+and the [content review fixes](verification/2026-10-13-review-content-fixes.md).
+Armor-equip block checks use the Java block interaction range.
+These are implemented slices; ordinary-player acceptance, remaining state/
+waterlogging fidelity and other identified mechanics remain open. The [complete reference fuel inventory](verification/2026-10-12-fuel-inventory.md)
+now checks all 176 currently registered reference fuels and 48 non-fuel
+exceptions; 171 reference fuel names remain missing registrations under
+M0/BLD-01/02. Turtle helmets and normal/splash
+Turtle Master potions now have reference-derived recipes, equipment/effect
+behavior and persistence checks; see the
+[turtle equipment report](verification/2026-10-12-turtle-equipment.md).
+Their ordinary-player and performance acceptance remains open. Do not interpret the historical
+findings above as either erased evidence or current Verified status.
+
 ### 3.2 Pending v0.7.0 work
 
-The branch `t3/continue-project-build`, inspected at `f5bf0d1` on 2026-10-12,
-contains animals, breeding, companions, leads, mounts, boats, LAN work and
-additional tests. Keep this code and its branch. It is not part of the 0.6
-baseline above and is **Unassessed** against this roadmap's reference and
-acceptance gates. Historical completion reports do not change that state.
+Shipped in v0.7.0; see the [delivery record](#33-v070-delivery-record--2026-10-14).
+
+The former branch `t3/continue-project-build`, inspected at `f5bf0d1` on
+2026-10-12, contains animals, breeding, companions, leads, mounts, boats, LAN
+work and additional tests. All of its commits were merged into
+`work/v0.7-assessment` in `22ad25c`; the branch label was retired on
+2026-10-13 at the owner's request. It is not part of the 0.6 baseline above.
+The [initial assessment](verification/2026-10-12-v0.7-assessment.md) classifies
+reviewed animal/transport work as **Partial**. It found modern lead/saddle
+acquisition failing independent 26.3 cases; the `22ad25c` merge corrected both
+recipes, and `retained_transport_recipes_match_java_26_3_and_consume_the_grid`
+passes. Interaction, persistence and performance acceptance remain. Other
+behaviors remain Unassessed, and none of these groups is Verified. Historical completion
+reports do not override the current acceptance gates.
 
 Review and retain useful single-player work under MOB-03/MOB-06, FOO-02/FOO-04,
 AUT-05 and applicable player/save requirements. Preserve the LAN implementation
@@ -259,7 +310,220 @@ while deferring new multiplayer expansion. Review dependencies before choosing
 a merge or focused cherry-picks. See the
 [pending-work assessment plan](restructuring.md#pending-v07-work-retain-and-assess).
 
+The same assessment delivered the first reference fixtures, shared fuel metadata,
+Water Breathing integration and shared bucket actions. These fixes remain
+Implemented-unverified under full player/performance acceptance. Retain the
+pending branch's turtle activity gating and save-lock improvements for review;
+do not assume every earlier audit gap still needs a duplicate implementation.
+
+### 3.3 v0.7.0 delivery record — 2026-10-14
+
+v0.7.0 is [PR #33](https://github.com/BrendanH18/VoxelCraft/pull/33) from
+`work/v0.7-assessment`: release 1111 and headless 1024 tests pass, the desktop
+LAN harness passes 13/13, and the owner played the release build and reported
+it good (no itemised play-test record). That is integration and play evidence,
+not per-feature acceptance: no requirement below moves to **Verified**, because
+each still lacks its recorded acceptance cases and the M5 performance baseline
+is invalid.
+
+What v0.7.0 moved, by requirement group (details, commits and skip reasons in
+the [defect inventory](verification/2026-10-13-v0.7-defect-inventory.md)):
+
+- **PLY-01/04/05 (Partial):** one shared action contract in `PlayerSession`
+  for every input path (mining, placement, melee, use chain, bows, consumption,
+  container screens); `Game::puppet` removed; Java attack-strength charge,
+  criticals by fall distance, minimum attack charge, Haste/Mining Fatigue attack
+  speed, interaction and screen ranges, crosshair indicator.
+- **ENV-05 / MOB-01 (Partial):** propagated gameplay skylight, cave spawning and
+  torch suppression against fixtures, redstone-conductor start cells, 24-block
+  spawn-point exclusion, Peaceful `notInPeaceful` list, Nether spawn costs and
+  fuzzy biome zoom, light work budgets, End/Nether ambient light (visual review
+  pending). Shape-aware occlusion and Java spawn ring/caps remain.
+- **MOB-02 (Partial):** line of sight clips collision boxes; navigation is still
+  straight-line steering.
+- **BLD / PRO (Partial):** Java tool rules and shear loot, snow layers, sapling
+  stage, hyphae axis, vertical barrels, copper tools/armor/nuggets, nugget
+  smelting, crossbow Multishot/Piercing/Quick Charge, Creative armor equip.
+- **MOB-03..06 / FOO (Partial):** villager beds, doors, farming, promotion delay,
+  gossip and golem hostility; piglin celebration and crossbows; witches; camels;
+  herd coats; fishing tables, luck and hooking; food effects.
+- **AUT (Partial):** hopper cooldown, unloaded scheduled ticks, pressure plates,
+  dispensers, minecart water/fuse/dismount, note and tripwire feedback.
+- **GEN (Partial):** amethyst geodes, jungle temple piece and puzzle, iron-door
+  strongholds, 26.3 structure loot, igloo depth.
+- **M0 remains open:** no valid M5 baseline yet (needs the owner's idle machine;
+  the 120 Hz presentation cap vs the 240 FPS target is an owner decision).
+
+#### v0.7 mob worker corrections — 2026-10-13
+
+Dragon-egg teleport attempts now match Java 26.3's XYZ draw order and require
+non-air support, dimension build height and the default world-border bounds.
+Bytecode fixture and automated End-world coverage are implemented; player,
+particles and Java RNG sequence parity remain unverified. See the
+[mining review](verification/2026-10-13-review-mining-fixes.md).
+
+#### v0.7 redstone defect follow-up (2026-10-13)
+
+Wooden pressure-plate contact regressions now cover XP orbs, primed TNT,
+splash potions, fireballs and bobbers with the Java 26.3 touch column.
+The missing bobber contact and orb/potion box errors are corrected.
+Automated evidence is in the redstone tests; ordinary-player and performance
+acceptance remain open. See [redstone](redstone.md) for scope and reference.
+
+Player defect follow-up (2026-10-13): Creative armor use now follows Java
+26.3 copying/swapping and Binding rules, covered through the shared action.
+Implemented, unverified; no ordinary-player acceptance.
+
+Player combat defect follow-up (2026-10-13): critical eligibility reads tracked
+fall distance in shared melee and LAN PvP, with Java 26.3 bytecode fixtures and
+regression cases. Implemented, unverified; ordinary-player acceptance remains.
+
+Combat charge and its indicator now include Java 26.3 Haste/Mining Fatigue
+attack-speed modifiers. No reference enchantment changes attack speed.
+
+The Java minimum-attack-charge gate is present; all registered items have zero
+minimum. Its only nonzero reference users are the unregistered spears.
+
+Blindness now persists by Java ID and blocks sprinting/criticals across input
+paths, with an appended icon and per-view fog. Ordinary visual acceptance is open.
+
+Player and combat defects (2026-10-13, w2): all implemented and unverified; no
+ordinary-player acceptance. Monster spawn gear scales by local difficulty;
+splash potions add every effect to mobs and effects keep hidden lower instances;
+witches pick potions from the target and drink as Java does; golden apples are
+always edible, Creative eats without using food up, and pufferfish, rotten flesh,
+raw chicken and golden apples give Java's effects (new Nausea, Luck and Bad Luck
+effects have icons only); world-spawn respawns use Java's `PlayerSpawnFinder`;
+the death fall counts from the fatal tick; the fishing hook snags mobs and reads
+luck and biome at the reel; bow and crossbow arm poses exist. Gaps found: no
+Absorption (golden apple), no held spawn weapons for mobs, no abandoned camp,
+copper horse armor, spears or armor equip sounds (so copper gear has no loot or
+equip sound), no `@a`/`@r`/`@e`/`@n` selectors, no LAN jitter buffer, no
+Adventure-world default or world border in the spawn search, hooked item
+entities, and no automated controller-screen/bed/respawn harness.
+
+#### v0.7 building defect follow-up (2026-10-13)
+
+Implemented with automated evidence on `work/fix-w1-building`: mining input
+continues through missed rays and adapter errors; a new re-aimed target starts
+at zero. Ordinary-player input and visual acceptance remain open.
+
+Shared item and bow actions defer to usable blocks (including hunger-dependent
+cake), and Adventure redstone/composter use is implemented with automated
+evidence. Normal input-path acceptance remains open.
+
+Mud collision now uses the pinned Java 14/16 height, matching the existing
+soul-sand shape. Physics landing regression checks pass; ordinary-player and
+performance acceptance remain open.
+
+Hay bales now apply Java 26.3's 0.2f fall multiplier before flooring, through
+the shared player environment for all three bale axes. Reference threshold
+and shared landing regressions cover the calculation; player acceptance is open.
+
 ## 4. Core requirement catalogue
+
+Assessment follow-up (2026-10-13): [shared player-session and consumption work](verification/2026-10-13-player-session.md)
+implements actor ownership for core player state and one fixed-tick food/drink
+transaction path across client and CLI adapters. Dried kelp timing and CLI
+harming-potion death drops were corrected. PLY-03/04 remain **Partial**: full
+food/effect parity, other shared actions, controller/LAN state-swap removal and
+ordinary player/performance acceptance were still open at the time; the shared
+actions and the state-swap removal later landed in v0.7.0 (see the
+[delivery record](#33-v070-delivery-record--2026-10-14)).
+
+The [shared mining follow-up](verification/2026-10-13-shared-mining.md) adds one
+actor-owned destruction path, reference block reach and float progress, corrected
+Mining Fatigue and ice support, and interruption/process-restart evidence.
+PLY-04 and BLD-03 remain **Partial**; other actions, full shape/tool/timing parity
+and player/performance acceptance remain open.
+
+The [shared placement follow-up](verification/2026-10-13-shared-placement.md)
+adds one actor-owned block placement transaction, paired-cell validation,
+low-cube targeting and process-restart evidence. PLY-04 and BLD-02/03 remain
+**Partial**: complete item-use ordering, shape/state/support parity and ordinary
+player/performance acceptance remain open.
+
+The [shared combat follow-up](verification/2026-10-13-shared-combat.md)
+moves player melee into the session, replaces the fixed weapon cooldown with
+Java's attack-strength charge and corrects reach and tool attack attributes
+against a reproducible 26.3 fixture. The desktop shows Java's crosshair attack
+indicator from the session charge, and right-click use is shared. PLY-04/05
+remain **Partial**: copper tools, armor and nuggets are registered (reserved
+ids 1050..=1069), metal gear smelts to nuggets and monster armor rolls the 26.3
+tiers; spears and other weapon families, session-owned container transactions
+and player acceptance remain open.
+
+The [bucket review fixes](verification/2026-10-13-review-bucket-fixes.md) give
+entity and block use priority over bucket actions through one shared ordering
+used by desktop and CLI, deny fluid placement in Adventure, pour on the hit face
+as Java does and drop destroyed plants. PLY-04 remains **Partial**.
+
+The [mining review fixes](verification/2026-10-13-review-mining-fixes.md)
+share Java's five-tick destroy delay through the session for every adapter,
+key progress on position and held item, restrict Creative swords, destroy
+Creative dragon eggs, suppress lower door/double-plant drops without the
+correct tool or in Creative, gate exhaustion on the correct tool and add Haste.
+Open block screens, trading and vehicle storage now close at Java's interaction
+range + 4 (eye to box) on desktop, controller, LAN and CLI paths, covered by
+`tests/shared_screen_ranges.rs`; ordinary-player acceptance remains.
+Right-click use is one shared session chain for the desktop and CLI
+([use evidence](verification/2026-10-13-shared-use.md)); the CLI gained the
+desktop's entity, door, harvest, flint and tool uses, and riders can use items.
+Controller and LAN players no longer borrow the host's state (`Game::puppet` is
+removed); hands and container clicks run on each player's own session.
+PLY-04 remains **Partial**; Conduit Power and
+beacons, server destroy tolerance, a headless desktop-adapter harness and
+remaining cancel-on-item-change sites (pick-block, drop) stay open.
+
+The [lighting and spawning follow-up](verification/2026-10-13-lighting-spawning.md)
+implements propagated gameplay skylight, End skylight, full-height ground-monster
+attempts, cave/torch checks and reference clock/weather darkening. ENV-05 and
+MOB-01 remain **Partial**: shape occlusion, growth integration, spawn caps/ranges,
+structure overrides and ordinary player/performance acceptance are still open.
+The [review fixes](verification/2026-10-13-review-lighting-fixes.md) add the
+24-block spawn-point exclusion, thunder (> 0.9) and rain (> 0.2) thresholds,
+reference daylight-detector output, the `isRedstoneConductor` start-cell check
+and incremental LAN replica relighting (measured microbenchmarks only). The
+chunk, entity, block-model and particle shaders now take the dimension's
+`ambient_light` (Nether 0.1, End 0.25) and `visual/ambient_light_color`, and the
+End and Nether use `visual/sky_light_factor` 0 instead of the old 0.65/0.42
+stand-ins; this is **unverified visually** (see the
+[world fixes](verification/2026-10-13-world-fixes.md#ambient-light-in-the-nether-and-end)).
+Soul sand and mud use Java's 14/16 collision height (regression evidence,
+player acceptance open).
+
+Entities, held items and particles now sample propagated gameplay skylight,
+with the old heightmap estimate restricted to unknown light cells. Wide-roof
+and partly loaded border regressions cover the query; visual/player acceptance
+remains open. See the [world fixes](verification/2026-10-13-world-fixes.md).
+
+Natural Nether spawns now apply Java 26.3 biome spawn costs, including pack
+members and fortress attempts: soul sand valley charges and warped forest
+enderman spacing are covered by extracted data and potential-field tests.
+Ordinary-player and representative scene acceptance remain open.
+
+The day now lasts 24000 ticks (20 minutes), and rain/thunder use independent
+Java 26.3 timer ranges and five-second fades. Saved day fractions and older
+weather entries still load. Reference range, fade and reload regressions pass;
+ordinary-player weather acceptance remains open.
+
+The [amethyst geode follow-up](verification/2026-10-13-amethyst-geodes.md)
+implements the Java 26.3 geode configured/placed feature with order-independent
+chunk painting, adds the missing horizontal bud/cluster states and Java's
+six-way budding growth. GEN-02 remains **Partial** overall; geodes are
+Implemented-unverified (RNG/noise differ from Java, wall buds are drawn as
+boxes, crack fluid ticks and pre-existing structures are not modelled).
+
+The [first M5 scene recording](verification/2026-10-13-m5-baseline.md) is
+invalid: streaming run 3 was paused (0 ticks), 11 of 12 non-streaming runs
+sampled an occluded window rather than rendering, and the entity scene lost
+its undead to daylight. The [harness fixes](verification/2026-10-13-review-bench-fixes.md)
+reject paused, tick-short, unpresented and population-drifting runs, isolate
+benchmark input and disable saves. The five-scene 1080p/256-block baseline
+must be re-measured; no valid baseline or frame-time result exists yet. A smoke
+run presented frames at exactly 8.333 ms, so a 120 Hz display may cap on-screen
+frame rate below the 240 FPS target. Native resolution, profiling, hitch budgets
+and the broader encounter matrix remain open; the performance target is not achieved.
 
 All groups are in scope unless an individual requirement is explicitly
 deferred or has an maintainer-approved fidelity exception. IDs are stable tracking
@@ -462,6 +726,35 @@ representative mobs navigate terrain and hazards; collision/light queries
 agree with placed states; pause/load/unload/death/save tests preserve state;
 simulation outcomes don't change with render frame rate. Existing headless,
 controller and agent regression paths remain functional.
+
+#### Next release scope (proposed, 2026-10-14): finish M0 and M1
+
+No version number is promised; the next release ships when these exit checks
+pass. Work items, each with Java 26.3 fixtures and acceptance cases:
+
+1. **M0 close-out:** a valid five-scene M5 baseline on the reference machine
+   (idle, window visible) and the owner's decision on measuring 240 FPS against
+   a 120 Hz display. Every later change is then measured against it.
+2. **MOB-02 navigation:** Java's `PathNavigation`/node evaluators for walking,
+   swimming and flying mobs, respecting block shapes, hazards, doors and
+   fluids; villagers reach beds and job sites, bastion and structure residents
+   path home. Replaces straight-line steering.
+3. **MOB-01 spawn rules:** Java's `NaturalSpawner` placement, 24/128-block
+   ring, per-category caps scaled by loaded chunks, despawn distances and
+   persistence, structure spawn overrides, and the slime/drowned paths folded in.
+4. **ENV-05 / PLY-02 block shapes:** shape-aware light occlusion (slabs,
+   stairs, snow layers), meshes lit from the authoritative gameplay light
+   arrays, and raycasts/placement against full collision and outline shapes
+   (top/double slabs, cross plants).
+5. **PLY-01 loaded-region activity and save integrity:** tick only simulated
+   chunks as Java does, frame-rate-independent outcomes, and
+   pause/load/unload/death/save regression scenarios across desktop, controller
+   and agent paths.
+
+Carried known issues that belong to later milestones (M2: waterlogging, door
+hinges, wall/ceiling switches; M3: structure templates, mega trees, 3D terrain;
+M6: Java redstone update order) stay listed in the release notes until their
+milestone.
 
 ### M2 — Complete materials and interactions
 

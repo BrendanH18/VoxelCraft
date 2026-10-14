@@ -80,6 +80,8 @@ fn anger_target<'a>(mob: &super::Mob, ctx: &'a Ctx) -> Option<&'a super::Target>
 }
 
 const GOLEM_RANGE: f64 = 16.0;
+/// Java `DefendVillageTargetGoal`: villagers this unpopular with a player make it a target.
+const HOSTILE_REPUTATION: i16 = -100;
 
 /// Remove a finished pumpkin pattern and spawn the golem that was built.
 pub fn finish_golems(world: &mut crate::world::World, entities: &mut Entities) {
@@ -102,6 +104,48 @@ pub fn finish_golems(world: &mut crate::world::World, entities: &mut Entities) {
 }
 
 impl Entities {
+    /// Java `DefendVillageTargetGoal.canUse`: a wild iron golem targets a player within
+    /// `inflate(10, 8, 10)` of itself whom a villager in that box rates at -100 or worse.
+    fn reputation_foe<'a>(&self, i: usize, ctx: &'a Ctx) -> Option<&'a super::Target> {
+        let golem = &self.mobs[i];
+        if golem.kind != MobKind::IronGolem || golem.built || !golem.alive() {
+            return None;
+        }
+        let shape = golem.shape();
+        let reach = DVec3::new(10.0 + shape.half_width, 8.0, 10.0 + shape.half_width);
+        let low = golem.pos - reach;
+        let high = golem.pos + DVec3::new(reach.x, shape.height + 8.0, reach.z);
+        let inside = |p: DVec3| p.cmpge(low).all() && p.cmple(high).all();
+        let mut foe = None;
+        self.mob_index.visit(golem.pos, 11.0, |j| {
+            let m = &self.mobs[j];
+            let (true, true, Some(v)) = (m.kind == MobKind::Villager, m.alive() && inside(m.pos), &m.villager) else {
+                return;
+            };
+            for p in &ctx.players {
+                if p.targetable
+                    && p.alive
+                    && inside(p.pos)
+                    && v.reputation_of(p.id) <= HOSTILE_REPUTATION
+                    && foe.is_none_or(|f: &super::Target| {
+                        p.pos.distance_squared(golem.pos) < f.pos.distance_squared(golem.pos)
+                    })
+                {
+                    foe = Some(p);
+                }
+            }
+        });
+        foe
+    }
+
+    /// The player an iron golem is set on: an unpopular one first, then whoever hit it.
+    fn player_foe<'a>(&self, i: usize, ctx: &'a Ctx) -> Option<&'a super::Target> {
+        self.reputation_foe(i, ctx).or_else(|| {
+            let m = &self.mobs[i];
+            if m.angry_at_player() { anger_target(m, ctx) } else { None }
+        })
+    }
+
     /// Point iron golems at monsters near villagers, or at a player who hit them.
     /// Built golems never retaliate against players.
     pub(super) fn assign_hunts(&mut self, ctx: &Ctx) {
@@ -113,7 +157,8 @@ impl Entities {
                 None
             } else {
                 match m.kind {
-                    MobKind::IronGolem if m.angry_at_player() => anger_target(m, ctx)
+                    MobKind::IronGolem if self.player_foe(i, ctx).is_some() => self
+                        .player_foe(i, ctx)
                         .filter(|p| p.pos.distance_squared(pos) < GOLEM_RANGE * GOLEM_RANGE)
                         .map(|p| p.pos),
                     MobKind::IronGolem => self
@@ -152,8 +197,7 @@ impl Entities {
             let pos = self.mobs[i].pos;
             let kind = self.mobs[i].kind;
             if kind == MobKind::IronGolem
-                && self.mobs[i].angry_at_player()
-                && let Some(player) = anger_target(&self.mobs[i], ctx)
+                && let Some(player) = self.player_foe(i, ctx)
                 && player.pos.distance_squared(pos) < 9.0
             {
                 let dir = (player.pos - pos).normalize_or_zero();
@@ -308,7 +352,7 @@ impl Entities {
             }
             let pos = self.mobs[i].pos;
             let p = pos.floor().as_ivec3();
-            if world.biome(p.x, p.z) == crate::world::terrain::Biome::Desert {
+            if world.snow_golem_melts(p) {
                 let at = self.mobs[i].pos;
                 if self.mobs[i].damage(1.0, None, &mut self.rng) {
                     self.drop_loot_with_fire(MobKind::SnowGolem, at, 0, false, false);
@@ -341,6 +385,7 @@ mod tests {
 
     fn ctx(player: DVec3, targetable: bool) -> Ctx {
         Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players: vec![Target::new(PlayerId::HOST, player, targetable)],
             daylight: 1.0,
             spawning: false,
@@ -372,6 +417,59 @@ mod tests {
             for p in &self.beds {
                 visit(*p, Block::BED_HEAD);
             }
+        }
+    }
+
+    #[test]
+    fn snow_golems_melt_in_hot_biomes_and_the_nether_but_not_cave_biomes() {
+        use crate::world::terrain::Biome;
+        struct ClimateWorld {
+            grid: Grid,
+            surface: Biome,
+            cave: Biome,
+            nether: bool,
+        }
+        impl BlockSource for ClimateWorld {
+            fn block(&self, p: IVec3) -> Option<Block> {
+                self.grid.block(p)
+            }
+        }
+        impl MobWorld for ClimateWorld {
+            fn loaded(&self, _: IVec3) -> bool {
+                true
+            }
+            fn surface(&self, _: i32, _: i32) -> Option<i32> {
+                Some(0)
+            }
+            fn exposed(&self, _: IVec3) -> bool {
+                true
+            }
+            fn biome(&self, _: i32, _: i32) -> Biome {
+                self.surface
+            }
+            fn cave_biome(&self, _: IVec3) -> Biome {
+                self.cave
+            }
+            fn nether_biome(&self, _: i32, _: i32) -> Option<crate::world::nether_biome::NetherBiome> {
+                self.nether.then_some(crate::world::nether_biome::NetherBiome::NetherWastes)
+            }
+        }
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/mob_integrations.json")).unwrap();
+        assert_eq!(fixture["snow_golem_dimension_melts"]["the_nether"], true);
+        for (biome, nether, melts) in [
+            (Biome::Desert, false, true),
+            (Biome::Savanna, false, true),
+            (Biome::WoodedBadlands, false, true),
+            (Biome::LushCaves, false, false),
+            (Biome::StonyPeaks, false, false),
+            (Biome::Plains, true, true),
+        ] {
+            let world = ClimateWorld { grid: Grid::flat(0), surface: Biome::Desert, cave: biome, nether };
+            let mut e = Entities::new(1);
+            e.spawn(MobKind::SnowGolem, DVec3::new(0.5, 1., 0.5));
+            e.snow_golems(&world);
+            assert_eq!(e.mobs[0].health, if melts { 3. } else { 4. }, "{biome:?}, nether={nether}");
         }
     }
 
@@ -455,6 +553,38 @@ mod tests {
         assert!(
             angry.iter().any(|ev| matches!(ev, EntityEvent::PlayerHit { damage, .. } if (7.5..=21.5).contains(damage)))
         );
+    }
+
+    #[test]
+    fn wild_golems_attack_players_a_nearby_villager_rates_at_minus_one_hundred() {
+        let world = Grid::flat(0);
+        let hit = |e: &mut Entities, near: DVec3| {
+            (0..40).any(|_| {
+                e.update(0.05, &world, &ctx(near, true))
+                    .iter()
+                    .any(|ev| matches!(ev, EntityEvent::PlayerHit { cause: "was slain by an iron golem", .. }))
+            })
+        };
+        let mut e = Entities::new(1);
+        e.spawn(MobKind::IronGolem, DVec3::new(0.5, 1.0, 0.5));
+        e.spawn(MobKind::Villager, DVec3::new(6.5, 1.0, 0.5));
+        let near = DVec3::new(2.0, 1.0, 0.5);
+        assert!(!hit(&mut e, near), "a neutral player is left alone");
+        // Major negative gossip weighs 5: 25 * 5 = -125 <= -100.
+        e.mobs[1].villager.as_mut().unwrap().gossip.add(PlayerId::HOST, 0, 25);
+        assert!(hit(&mut e, near), "reputation -125 draws the golem");
+        // A built golem protects its maker; one with the villager out of the 10-block box ignores it.
+        let mut built = Entities::new(1);
+        built.spawn(MobKind::IronGolem, DVec3::new(0.5, 1.0, 0.5));
+        built.mobs[0].built = true;
+        built.spawn(MobKind::Villager, DVec3::new(6.5, 1.0, 0.5));
+        built.mobs[1].villager.as_mut().unwrap().gossip.add(PlayerId::HOST, 0, 25);
+        assert!(!hit(&mut built, near));
+        let mut far = Entities::new(1);
+        far.spawn(MobKind::IronGolem, DVec3::new(0.5, 1.0, 0.5));
+        far.spawn(MobKind::Villager, DVec3::new(30.5, 1.0, 0.5));
+        far.mobs[1].villager.as_mut().unwrap().gossip.add(PlayerId::HOST, 0, 25);
+        assert!(!hit(&mut far, near));
     }
 
     #[test]

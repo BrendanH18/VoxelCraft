@@ -11,7 +11,7 @@ use glam::IVec3;
 use super::World;
 use super::block::Block;
 use crate::inventory::{Stack, stack_from_str, stack_to_string};
-use crate::item::{Item, Tier};
+use crate::item::Item;
 
 /// Seconds to smelt one item.
 pub const COOK_TIME: f32 = 10.0;
@@ -38,7 +38,14 @@ impl FurnaceKind {
         let out = smelt(item)?;
         let food = matches!(
             item,
-            Item::RAW_PORKCHOP | Item::RAW_BEEF | Item::RAW_CHICKEN | Item::POTATO | Item::COD | Item::SALMON
+            Item::RAW_PORKCHOP
+                | Item::RAW_BEEF
+                | Item::RAW_CHICKEN
+                | Item::RAW_RABBIT
+                | Item::RAW_MUTTON
+                | Item::POTATO
+                | Item::COD
+                | Item::SALMON
         );
         let ore = item.block().is_some_and(|b| {
             matches!(
@@ -52,7 +59,8 @@ impl FurnaceKind {
                     | Block::QUARTZ_ORE
                     | Block::ANCIENT_DEBRIS
             )
-        }) || matches!(item, Item::RAW_IRON | Item::RAW_GOLD | Item::RAW_COPPER);
+        }) || matches!(item, Item::RAW_IRON | Item::RAW_GOLD | Item::RAW_COPPER)
+            || nugget_of(item).is_some();
         (self == Self::Normal || self == Self::Smoker && food || self == Self::Blast && ore).then_some(out)
     }
     pub fn cook_time(self) -> f32 {
@@ -91,8 +99,25 @@ fn ore_of(item: Item) -> Option<Block> {
 }
 
 /// What smelting `item` produces.
+/// Java's `*_nugget_from_smelting`/`_blasting`: iron, golden and copper
+/// tools, armor and horse armor melt down to one nugget.
+fn nugget_of(item: Item) -> Option<Item> {
+    use crate::item::{ArmorMaterial, Tier};
+    let tier = item.as_tool().map(|(_, t)| t);
+    let material = item.as_armor().map(|(_, m)| m);
+    Some(match (tier, material, item.name()) {
+        (Some(Tier::Iron), ..) | (_, Some(ArmorMaterial::Iron), _) | (.., "iron horse armor") => Item::IRON_NUGGET,
+        (Some(Tier::Gold), ..) | (_, Some(ArmorMaterial::Gold), _) | (.., "golden horse armor") => Item::GOLD_NUGGET,
+        (Some(Tier::Copper), ..) | (_, Some(ArmorMaterial::Copper), _) => Item::COPPER_NUGGET,
+        _ => return None,
+    })
+}
+
 pub fn smelt(item: Item) -> Option<Item> {
     let b = Item::from_block;
+    if let Some(nugget) = nugget_of(item) {
+        return Some(nugget);
+    }
     Some(match item {
         i if ore_of(i) == Some(Block::IRON_ORE) || i == Item::RAW_IRON => Item::IRON_INGOT,
         i if ore_of(i) == Some(Block::GOLD_ORE) || i == Item::RAW_GOLD => Item::GOLD_INGOT,
@@ -116,6 +141,8 @@ pub fn smelt(item: Item) -> Option<Item> {
         Item::RAW_PORKCHOP => Item::COOKED_PORKCHOP,
         Item::RAW_BEEF => Item::STEAK,
         Item::RAW_CHICKEN => Item::COOKED_CHICKEN,
+        Item::RAW_RABBIT => Item::COOKED_RABBIT,
+        Item::RAW_MUTTON => Item::COOKED_MUTTON,
         Item::POTATO => Item::BAKED_POTATO,
         Item::COD => Item::COOKED_COD,
         Item::SALMON => Item::COOKED_SALMON,
@@ -139,6 +166,8 @@ pub fn smelt_xp(out: Item) -> f32 {
         Item::COOKED_PORKCHOP
         | Item::STEAK
         | Item::COOKED_CHICKEN
+        | Item::COOKED_MUTTON
+        | Item::COOKED_RABBIT
         | Item::BAKED_POTATO
         | Item::COOKED_COD
         | Item::COOKED_SALMON => 0.35,
@@ -152,31 +181,7 @@ pub fn smelt_xp(out: Item) -> f32 {
 
 /// Seconds one of `item` burns as fuel (Minecraft's values / 20).
 pub fn burn_time(item: Item) -> Option<f32> {
-    let b = Item::from_block;
-    match item {
-        Item::LAVA_BUCKET => Some(1000.0),
-        Item::COAL | Item::CHARCOAL => Some(80.0),
-        i if i.block().is_some_and(|b| b.is_log() || b.is_planks()) => Some(15.0),
-        i if [
-            Block::CRAFTING_TABLE,
-            Block::CHEST,
-            Block::SMITHING_TABLE,
-            Block::BARREL,
-            Block::COMPOSTER,
-            Block::CARTOGRAPHY_TABLE,
-            Block::FLETCHING_TABLE,
-            Block::LOOM,
-            Block::LECTERN,
-        ]
-        .map(b)
-        .contains(&i) =>
-        {
-            Some(15.0)
-        }
-        Item::STICK => Some(5.0),
-        i if i.as_tool().is_some_and(|(_, tier)| tier == Tier::Wood) => Some(10.0),
-        _ => None,
-    }
+    crate::content::fuel::ticks(item).map(|ticks| ticks as f32 / 20.0)
 }
 
 impl Furnace {
@@ -214,8 +219,12 @@ impl Furnace {
         while dt > 0.0 {
             if !self.is_lit()
                 && self.product().is_some()
-                && let Some(t) = self.fuel.and_then(|f| burn_time(f.item))
+                && let Some(ticks) = self.fuel.and_then(|f| crate::content::fuel::ticks(f.item))
             {
+                // Java integer-divides fuel ticks for fast furnaces. Our timers
+                // use doubled simulation time there, so retain even ticks only.
+                let ticks = if self.kind == FurnaceKind::Normal { ticks } else { ticks / 2 * 2 };
+                let t = ticks as f32 / 20.0;
                 // A lava bucket burns down to an empty bucket.
                 let bucket = self.fuel.is_some_and(|f| f.item == Item::LAVA_BUCKET);
                 self.fuel = if bucket { Some(Stack::new(Item::BUCKET, 1)) } else { take_one(self.fuel) };

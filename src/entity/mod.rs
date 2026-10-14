@@ -12,20 +12,27 @@
 //! Rendering: [`model`] turns mobs, arrows and smoke into camera-relative
 //! box-model vertices.
 
+pub mod animals;
 pub mod aquatic;
 pub mod armor;
 mod bell;
 mod bobber;
+pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod dragon;
 mod dragon_model;
 pub mod eye;
 pub mod fireball;
 pub mod golem;
 pub mod item;
+pub mod leash;
+mod lifecycle;
+mod look;
 pub mod minecart;
 mod mob;
 mod mob_index;
 pub mod model;
+mod monster_spawns;
+pub mod mounts;
 pub mod nether;
 pub mod orb;
 pub mod pearl;
@@ -33,7 +40,9 @@ pub mod player_model;
 mod player_pose;
 pub mod potion;
 mod projectile;
+mod replica;
 mod slime;
+mod spawning;
 mod thrown;
 pub mod tnt;
 pub mod villager;
@@ -92,6 +101,9 @@ pub const ATTACK_COOLDOWN: f64 = 0.5;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MobSound {
     Bell,
+    /// A wandering trader finished its Invisibility potion (true) or milk (false).
+    TraderDrink(bool),
+    BoatPaddle(bool),
     /// A creeper lit its fuse.
     Fuse,
     /// A skeleton loosed an arrow.
@@ -134,6 +146,11 @@ pub enum EntityEvent {
         damage: f32,
         knockback: Vec3,
         cause: &'static str,
+    },
+    /// An equine's landing applies the same fall damage to its rider.
+    PlayerFall {
+        player: PlayerId,
+        damage: f32,
     },
     /// Guardian laser: apply the armor-reduced physical and armor-bypassing
     /// magic components as one hit, so hurt immunity doesn't discard either.
@@ -192,6 +209,8 @@ pub enum EntityEvent {
         from: DVec3,
         target: DVec3,
         cause: &'static str,
+        /// The shooting mob's uid, so its target's wolves can retaliate.
+        shooter: u32,
     },
     /// A blaze or ghast shot a fireball (turned into a projectile internally).
     /// `large` is a ghast fireball: slower, explosive, and punchable.
@@ -213,6 +232,11 @@ pub enum EntityEvent {
     PearlLanded {
         owner: PlayerId,
         pos: DVec3,
+    },
+    /// Mob `attacker` hurt `player` (handled internally: their wolves retaliate).
+    OwnerHurt {
+        player: PlayerId,
+        attacker: u32,
     },
     /// An arrow or player potion hit a mob (loot is dropped internally).
     MobShot {
@@ -236,7 +260,20 @@ pub enum EntityEvent {
         cell: IVec3,
     },
     /// A villager needs this closed wooden door opened.
+    AnimalBlock {
+        cell: IVec3,
+        from: Block,
+        to: Block,
+    },
     VillagerDoor {
+        cell: IVec3,
+    },
+    /// A farmer villager harvests the ripe crop at `cell` and replants it (Java `HarvestFarmland`).
+    VillagerHarvest {
+        cell: IVec3,
+    },
+    /// No villager is near a door they opened any more: close it again.
+    VillagerDoorClose {
         cell: IVec3,
     },
     /// A chicken laid an egg at its feet.
@@ -321,6 +358,23 @@ pub trait MobWorld: BlockSource {
     fn block_light(&self, _p: IVec3) -> u8 {
         0
     }
+    /// Skylight in this cell, 0..=15 (Java's `LightLayer.SKY`), or `None`
+    /// where it is not known exactly. This default is exact only for open
+    /// test terrain whose unexposed cells are all enclosed; [`World`]
+    /// answers from its authoritative propagated skylight.
+    fn sky_light_level(&self, p: IVec3) -> Option<u8> {
+        Some(if self.exposed(p) { 15 } else { 0 })
+    }
+    /// Whether queued light work is finished; natural spawning waits for it
+    /// because unresolved cells would read darker than they are.
+    fn light_settled(&self) -> bool {
+        true
+    }
+    /// Java's `WORLD_SURFACE` heightmap: the highest non-air block of a
+    /// loaded column. Defaults to the light-blocking surface.
+    fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
+        self.surface(x, z)
+    }
     /// Loaded spawner cages and the mob each makes.
     fn spawners(&self) -> Vec<(IVec3, MobKind)> {
         Vec::new()
@@ -338,6 +392,10 @@ pub trait MobWorld: BlockSource {
     fn nether_biome(&self, _x: i32, _z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
         None
     }
+    /// The Nether biome at a block with Java's fuzzy zoom (`getBiome`).
+    fn nether_biome_at(&self, p: IVec3) -> Option<crate::world::nether_biome::NetherBiome> {
+        self.nether_biome(p.x, p.z)
+    }
     /// Java moon brightness; clients set this from their saved day count.
     /// Inside a Nether fortress piece, where fortress mobs spawn.
     fn in_fortress(&self, _p: IVec3) -> bool {
@@ -346,8 +404,14 @@ pub trait MobWorld: BlockSource {
     fn structures_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
         Vec::new()
     }
-    fn cave_biome(&self, _p: IVec3) -> crate::world::terrain::Biome {
-        crate::world::terrain::Biome::Plains
+    /// The biome at a block, including underground cave biomes; defaults
+    /// to the column's biome.
+    fn cave_biome(&self, p: IVec3) -> crate::world::terrain::Biome {
+        self.biome(p.x, p.z)
+    }
+    /// Java 26.3's gameplay/snow_golem_melts environment attribute.
+    fn snow_golem_melts(&self, p: IVec3) -> bool {
+        self.nether_biome(p.x, p.z).is_some() || self.cave_biome(p).snow_golem_melts()
     }
     /// Bastion remnants near `p`, whose residents spawn once.
     fn bastions_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::bastion::Bastion>> {
@@ -368,8 +432,14 @@ impl MobWorld for World {
     fn biome(&self, x: i32, z: i32) -> crate::world::terrain::Biome {
         self.generator.column(x, z).biome
     }
+    fn snow_golem_melts(&self, p: IVec3) -> bool {
+        self.generator.dimension == Dimension::Nether || self.generator.biome_at(p).snow_golem_melts()
+    }
     fn nether_biome(&self, x: i32, z: i32) -> Option<crate::world::nether_biome::NetherBiome> {
         self.generator.nether_biome(x, z)
+    }
+    fn nether_biome_at(&self, p: IVec3) -> Option<crate::world::nether_biome::NetherBiome> {
+        self.generator.nether_biome_at(p)
     }
     fn rains_on(&self, p: IVec3) -> bool {
         World::rains_on(self, p)
@@ -379,6 +449,15 @@ impl MobWorld for World {
     }
     fn block_light(&self, p: IVec3) -> u8 {
         World::block_light(self, p)
+    }
+    fn sky_light_level(&self, p: IVec3) -> Option<u8> {
+        World::sky_light(self, p)
+    }
+    fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
+        self.world_surface_height(x, z)
+    }
+    fn light_settled(&self) -> bool {
+        World::light_settled(self)
     }
     fn surface(&self, x: i32, z: i32) -> Option<i32> {
         self.surface_height(x, z)
@@ -432,9 +511,22 @@ pub struct Target {
     pub shape: crate::physics::Shape,
     /// Wears a piece of golden armor, which keeps piglins calm.
     pub gold_armor: bool,
+    /// Selected food for animal temptation, shared by every input device.
+    pub held_item: Option<crate::item::Item>,
+    pub on_ground: bool,
+    pub in_water: bool,
+    /// Current health in half hearts (witches choose potions from it).
+    pub health: f32,
+    /// Bit set of the target's active [`crate::simulation::effects::Effect`]s.
+    pub effects: u32,
 }
 
 impl Target {
+    /// Whether the target has `effect` active.
+    pub fn has_effect(&self, effect: crate::simulation::effects::Effect) -> bool {
+        self.effects & (1 << effect as u32) != 0
+    }
+
     /// A living player; set [`Target::alive`] for one waiting to respawn.
     pub fn new(id: PlayerId, pos: DVec3, targetable: bool) -> Self {
         Self {
@@ -447,6 +539,11 @@ impl Target {
             held_enchants: Default::default(),
             shape: crate::player::SHAPE,
             gold_armor: false,
+            held_item: None,
+            on_ground: true,
+            in_water: false,
+            health: crate::simulation::survival::MAX_HEALTH,
+            effects: 0,
         }
     }
 
@@ -471,6 +568,8 @@ pub struct Ctx {
     pub players: Vec<Target>,
     /// Skylight multiplier, 1 at noon.
     pub daylight: f32,
+    /// Gameplay light from the reference day clock and weather attributes.
+    pub spawn_light: crate::simulation::lighting::SpawnLight,
     /// Natural spawning on/off.
     pub spawning: bool,
     /// Rain keeps undead mobs from burning in the sun.
@@ -520,12 +619,21 @@ impl Rng {
         (splitmix64(&mut self.0) >> 40) as f32 / (1u64 << 24) as f32
     }
 
+    pub fn next_u64(&mut self) -> u64 {
+        splitmix64(&mut self.0)
+    }
+
     pub fn range(&mut self, lo: f32, hi: f32) -> f32 {
         lo + (hi - lo) * self.next_f32()
     }
 
     pub fn chance(&mut self, p: f32) -> bool {
         self.next_f32() < p
+    }
+
+    /// Java's `RandomSource.triangle(center, deviation)`.
+    pub fn triangle(&mut self, center: f64, deviation: f64) -> f64 {
+        center + deviation * (self.next_f32() as f64 - self.next_f32() as f64)
     }
 }
 
@@ -554,24 +662,38 @@ pub struct Entities {
     /// Java `doMobLoot`; set by the world before each update.
     pub mob_loot: bool,
     pub moon_brightness: f32,
+    /// The overworld clock in ticks (Java's `getOverworldClockTime`), for local difficulty.
+    pub clock_time: i64,
+    /// The world's difficulty as of the latest update (Java's
+    /// `Level.getDifficulty()`, which equipment rolls read at spawn).
+    pub difficulty: crate::simulation::difficulty::Difficulty,
     pub village_time: f64,
     pub village_day: i64,
     next_villager_id: u64,
     villager_births: rustc_hash::FxHashSet<IVec3>,
     village_timer: f32,
     mob_index: mob_index::MobIndex,
+    separation: mob_index::Separation,
     claimed_beds: rustc_hash::FxHashSet<IVec3>,
     claimed_jobs: rustc_hash::FxHashSet<IVec3>,
     pending_sounds: Vec<EntityEvent>,
+    /// Doors villagers opened, with seconds since a villager was last close by.
+    door_watch: Vec<(IVec3, f32)>,
     trader_spawner: wandering_trader::Spawner,
     trader_leaders: rustc_hash::FxHashMap<u64, (DVec3, f32, bool)>,
     pub trader_spawning: bool,
+    /// The world spawn point when it lies in this dimension (Java's
+    /// `ServerLevel.getRespawnData`); natural spawns keep 24 blocks clear of
+    /// its block centre. Set by the world before each update.
+    pub world_spawn: Option<IVec3>,
     /// The mobGriefing gamerule, shared by villager and piglin item pickup.
     pub villager_griefing: bool,
     /// Seconds until another iron golem may be summoned.
     /// Seconds until the next gossip summon roll.
     gossip_timer: f32,
     rng: Rng,
+    /// Players may hurt each other (a LAN world's PvP setting): their arrows hit players.
+    pub pvp: bool,
     /// Seconds until each active spawner tries again (not saved, like a
     /// fresh Java spawner's short first delay).
     spawner_delays: rustc_hash::FxHashMap<IVec3, f32>,
@@ -616,21 +738,27 @@ impl Entities {
             fight: None,
             mob_loot: true,
             moon_brightness: 1.0,
+            clock_time: 0,
+            difficulty: Default::default(),
             village_time: 0.25,
             village_day: 0,
             next_villager_id: 1,
             villager_births: Default::default(),
             village_timer: 0.0,
             mob_index: Default::default(),
+            separation: Default::default(),
             claimed_beds: Default::default(),
             claimed_jobs: Default::default(),
             pending_sounds: Vec::new(),
+            door_watch: Vec::new(),
             trader_spawner: Default::default(),
             trader_leaders: Default::default(),
             trader_spawning: true,
+            world_spawn: None,
             villager_griefing: true,
             gossip_timer: 60.0,
             rng: Rng::new(seed ^ 0x6d6f_6273),
+            pvp: false,
             spawner_delays: Default::default(),
             spawn_timer: 0.0,
             merge_timer: 0.0,
@@ -659,7 +787,7 @@ impl Entities {
             mob.wool_color = color;
             return Some(false);
         }
-        if item != crate::item::Item::SHEARS || mob.sheared {
+        if item != crate::item::Item::SHEARS || mob.sheared || mob.baby || mob.age < 0 {
             return None;
         }
         mob.sheared = true;
@@ -677,6 +805,11 @@ impl Entities {
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
+        mob.persistent = kind.has_animal_state();
+        if let Some(s) = &mut mob.mount {
+            **s = mounts::State::new(kind, &mut self.rng);
+            mob.health = s.max_health;
+        }
         if matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader) {
             **mob.villager.as_mut().unwrap() =
                 villager::Villager::new(self.next_villager_id, self.rng.next_int(u32::MAX) as u64);
@@ -701,7 +834,17 @@ impl Entities {
             }
         }
         if kind.is_zombie() || kind == MobKind::Skeleton {
-            let (armor, glint) = armor::roll_monster_armor(&mut self.rng);
+            // Java's local difficulty at the spawn; chunk inhabited time is not tracked.
+            let special = crate::simulation::difficulty::special_multiplier(self.difficulty.effective(
+                self.clock_time,
+                0,
+                self.moon_brightness,
+            ));
+            let (armor, glint) = armor::roll_monster_armor(
+                &mut self.rng,
+                self.difficulty == crate::simulation::difficulty::Difficulty::Hard,
+                special,
+            );
             mob.armor = armor;
             mob.armor_glint = glint;
         }
@@ -712,251 +855,18 @@ impl Entities {
         }
         nether::on_spawn(&mut mob, &mut self.rng);
         aquatic::on_spawn(&mut mob, &mut self.rng);
+        animals::on_spawn(&mut mob, &mut self.rng);
         self.mobs.push(mob);
     }
 
-    /// Removes monsters which Java does not allow to exist on Peaceful.
+    /// Removes the mobs Java discards on Peaceful (`Mob.checkDespawn` with a
+    /// `notInPeaceful` entity type); piglins stay.
     pub fn despawn_hostiles(&mut self) {
-        self.mobs.retain(|mob| !mob.kind.is_hostile());
+        self.mobs.retain(|mob| !mob.kind.despawns_in_peaceful());
     }
 
     /// Snapshot positions and advance entity simulation on Normal difficulty.
     /// Return events for the caller to apply world edits, damage, loot and sounds.
-    pub fn update<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, ctx: &Ctx) -> Vec<EntityEvent> {
-        self.update_difficulty(dt, world, ctx, crate::simulation::difficulty::Difficulty::Normal)
-    }
-
-    /// [`Entities::update`] under this world's difficulty.
-    pub fn update_difficulty<W: MobWorld + ?Sized>(
-        &mut self,
-        dt: f64,
-        world: &W,
-        ctx: &Ctx,
-        difficulty: crate::simulation::difficulty::Difficulty,
-    ) -> Vec<EntityEvent> {
-        self.snapshot_positions();
-        let mut events = Vec::new();
-        events.append(&mut self.pending_sounds);
-        if difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
-            self.despawn_hostiles();
-        }
-        if ctx.spawning {
-            self.spawn_timer -= dt as f32;
-            if self.spawn_timer <= 0.0 {
-                self.spawn_timer = SPAWN_INTERVAL;
-                self.natural_spawn(world, ctx, difficulty);
-            }
-        }
-        if difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
-            self.run_spawners(dt as f32, world, ctx);
-            self.populate_bastions(dt as f32, world, ctx);
-        }
-
-        self.populate_structures(dt as f32, world, ctx, difficulty);
-        self.trader_tick(dt as f32, world, ctx);
-        self.village_upkeep(dt as f32, world);
-        self.assign_hunts(ctx);
-        self.trader_upkeep();
-        self.player_spots.clear();
-        self.player_spots.extend(ctx.players.iter().map(|t| (t.id, t.pos)));
-        self.nether_sense(dt as f32, world, ctx);
-        self.aquatic_sense(dt as f32, world);
-        self.grow_turtles(dt as f32);
-        let mut i = 0;
-        while i < self.mobs.len() {
-            let m = &self.mobs[i];
-            let resident = matches!(
-                m.kind,
-                MobKind::Villager
-                    | MobKind::IronGolem
-                    | MobKind::SnowGolem
-                    | MobKind::WanderingTrader
-                    | MobKind::TraderLlama
-            ) || m.persistent
-                || m.built
-                || m.convert_left > 0.0
-                || m.villager.as_ref().is_some_and(|v| v.xp > 0);
-            let gone = m.trader.as_ref().is_some_and(|t| t.despawn <= 0.0)
-                || m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
-                || !resident
-                    && (ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
-                        || !world.loaded(m.pos.floor().as_ivec3()));
-            if resident
-                && !gone
-                && (!world.loaded(m.pos.floor().as_ivec3())
-                    || ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST))
-            {
-                if let Some(v) = &mut self.mobs[i].villager {
-                    v.active = false;
-                }
-                i += 1;
-                continue;
-            }
-            if let Some(v) = &mut self.mobs[i].villager {
-                v.active = true;
-            }
-            let m = &self.mobs[i];
-            if gone {
-                if m.dying.is_some_and(|t| t >= mob::DEATH_TIME) {
-                    let mut burst = crate::particles::Burst::new(
-                        crate::particles::Kind::Poof,
-                        m.pos + DVec3::Y * m.shape().height * 0.5,
-                        20,
-                    );
-                    burst.spread = DVec3::new(m.shape().half_width, m.shape().height * 0.5, m.shape().half_width);
-                    burst.forced = true;
-                    burst.velocity_spread = DVec3::splat(0.02);
-                    self.particles.push(crate::particles::Request::Burst(burst));
-                }
-                let dead = self.mobs.swap_remove(i);
-                if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME) && dead.kind.is_cube() && dead.size > 1 {
-                    let count = 2 + (self.rng.next_f32() * 3.0) as usize;
-                    for n in 0..count {
-                        let offset =
-                            DVec3::new((n % 2) as f64 - 0.5, 0.5, (n / 2) as f64 - 0.5) * dead.size as f64 * 0.25;
-                        let mut child = Mob::new(dead.kind, dead.pos + offset, self.rng.range(0.0, TAU));
-                        child.set_size(dead.size / 2);
-                        self.mobs.push(child);
-                    }
-                }
-                continue;
-            }
-            let grounded = self.mobs[i].on_ground;
-            self.mobs[i].difficulty = difficulty;
-            self.mobs[i].trader_night = (0.5..0.96).contains(&self.village_time);
-            self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);
-            let m = &self.mobs[i];
-            if m.kind == MobKind::MagmaCube && !grounded && m.on_ground && m.alive() {
-                let mut b = crate::particles::Burst::new(crate::particles::Kind::Flame, m.pos, m.size as u16 * 8);
-                b.spread = DVec3::new(m.shape().half_width, 0.0, m.shape().half_width);
-                self.particles.push(crate::particles::Request::Burst(b));
-            }
-            i += 1;
-        }
-        self.mob_index.rebuild(&self.mobs);
-        self.resolve_strikes(ctx, &mut events);
-        self.separate(dt);
-        self.nether_upkeep(ctx, &mut events);
-        if let Some(fight) = &mut self.fight {
-            fight.update(dt, world, ctx, &mut self.rng, &mut events);
-        }
-
-        // Mob bow/crossbow shots become arrows, blaze shots fireballs.
-        for e in &events {
-            match *e {
-                EntityEvent::Shoot { from, target, cause } => {
-                    self.arrows.push(Arrow::aimed(from, target, cause, &mut self.rng));
-                }
-                EntityEvent::ThrowPotion { from, vel, potion } => {
-                    self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
-                }
-                EntityEvent::Fireball { from, dir, large } => {
-                    let ball =
-                        if large { fireball::Fireball::large(from, dir) } else { fireball::Fireball::new(from, dir) };
-                    if large {
-                        let mut burst = crate::particles::Burst::new(crate::particles::Kind::LargeSmoke, from, 6);
-                        burst.spread = DVec3::splat(0.4);
-                        self.particles.push(crate::particles::Request::Burst(burst));
-                    }
-                    self.fireballs.push(ball);
-                }
-                _ => {}
-            }
-        }
-        events.retain(|e| {
-            !matches!(e, EntityEvent::Shoot { .. } | EntityEvent::Fireball { .. } | EntityEvent::ThrowPotion { .. })
-        });
-        {
-            let mobs = &self.mobs;
-            self.fireballs.retain_mut(|f| f.update(dt, world, ctx, mobs, &mut events));
-        }
-        {
-            let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
-            self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
-            self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
-            self.potions.retain_mut(|p| p.update(dt, world, ctx, mobs, rng, &mut events));
-            self.thrown.retain_mut(|t| t.update(dt, world, mobs, &self.mob_index, rng, &mut events));
-        }
-        {
-            let rng = &mut self.rng;
-            let mut i = 0;
-            while i < self.bobbers.len() {
-                if self.bobbers[i].update(dt, world, rng, ctx) {
-                    i += 1;
-                } else {
-                    self.bobbers.swap_remove(i);
-                }
-            }
-        }
-        self.update_eyes(dt, &mut events);
-        for e in &events {
-            match *e {
-                EntityEvent::MobShot { kind, pos, killed, burning, player_kill, owner } => {
-                    if killed && self.mob_loot {
-                        self.drop_loot_with_fire(kind, pos, 0, burning, player_kill);
-                    }
-                    if kind == MobKind::ZombifiedPiglin {
-                        self.anger_piglins(pos);
-                    }
-                    if let Some(owner) = owner
-                        && let Some(i) =
-                            self.mobs.iter().position(|m| m.kind == kind && m.pos == pos && m.nether.is_some())
-                    {
-                        self.nether_hurt(i, nether::Foe::Player(owner));
-                    }
-                }
-                EntityEvent::DragonXp { pos, points } => {
-                    if self.mob_loot {
-                        self.spawn_xp(pos, points);
-                    }
-                }
-                EntityEvent::MobKilled { kind, pos, burning, player_kill, looting } => {
-                    self.drop_loot_with_fire(kind, pos, looting, burning, player_kill);
-                }
-                EntityEvent::LaidEgg { pos } => {
-                    self.drop_from_block(
-                        crate::inventory::Stack::new(crate::item::Item::EGG, 1),
-                        pos.floor().as_ivec3(),
-                    );
-                }
-                EntityEvent::Hatched { pos, count } => {
-                    for _ in 0..count {
-                        self.spawn_baby(MobKind::Chicken, pos);
-                    }
-                }
-                _ => {}
-            }
-        }
-        events.retain(|e| {
-            !matches!(
-                e,
-                EntityEvent::DragonXp { .. }
-                    | EntityEvent::MobKilled { .. }
-                    | EntityEvent::LaidEgg { .. }
-                    | EntityEvent::Hatched { .. }
-            )
-        });
-        self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
-        self.orbs.retain_mut(|orb| !world.loaded(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
-        self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
-        self.merge_timer -= dt as f32;
-        if self.merge_timer <= 0.0 {
-            self.merge_timer = MERGE_INTERVAL;
-            item::merge(&mut self.items);
-            orb::merge(&mut self.orbs);
-        }
-
-        let dtf = dt as f32;
-        self.puffs.retain_mut(|p| {
-            p.age += dtf;
-            p.pos += p.vel * dt;
-            p.vel *= 1.0 - (dt * 3.0).min(1.0);
-            p.vel.y += 1.5 * dt;
-            p.age < p.life
-        });
-        events
-    }
-
     /// Hurts and flings mobs caught in an explosion, and puffs smoke.
     pub fn explode(&mut self, center: DVec3, power: f32) {
         self.blast(center, power, false);
@@ -1013,6 +923,9 @@ impl Entities {
             .find(|m| m.kind == kind && !m.alive() && m.pos.distance_squared(pos) < 0.01)
             .map_or((1, false), |m| (m.size, m.baby));
         let (size, baby) = size;
+        if baby && kind.is_breedable() && kind != MobKind::Hoglin {
+            return;
+        }
         if player_kill {
             let xp = if kind.is_cube() {
                 size as u32
@@ -1041,6 +954,9 @@ impl Entities {
                 .map_or((crate::color::DyeColor::White, false), |m| (m.wool_color, m.sheared))
         });
         let mut drops = kind.drops(&mut self.rng, looting);
+        if kind == MobKind::Rabbit && player_kill && self.rng.chance(0.1 + looting as f32 * 0.03) {
+            drops.push((crate::item::Item::RABBIT_FOOT, 1));
+        }
         if player_kill
             && matches!(kind, MobKind::Guardian | MobKind::ElderGuardian)
             && self.rng.chance(0.025 + 0.01 * looting as f32)
@@ -1060,6 +976,16 @@ impl Entities {
             ));
         }
         for (item, count) in drops {
+            if !player_kill
+                && (matches!(kind, MobKind::Zombie | MobKind::Husk | MobKind::ZombieVillager)
+                    && matches!(
+                        item,
+                        crate::item::Item::IRON_INGOT | crate::item::Item::CARROT | crate::item::Item::POTATO
+                    )
+                    || kind == MobKind::Drowned && item == crate::item::Item::COPPER_INGOT)
+            {
+                continue;
+            }
             let item = if let Some((color, sheared)) = sheep {
                 if item == crate::item::Item::from(Block::WOOL) {
                     if sheared {
@@ -1090,9 +1016,12 @@ impl Entities {
                 match item {
                     crate::item::Item::RAW_PORKCHOP => crate::item::Item::COOKED_PORKCHOP,
                     crate::item::Item::RAW_BEEF => crate::item::Item::STEAK,
+                    crate::item::Item::RAW_MUTTON => crate::item::Item::COOKED_MUTTON,
+                    crate::item::Item::RAW_RABBIT => crate::item::Item::COOKED_RABBIT,
                     crate::item::Item::RAW_CHICKEN => crate::item::Item::COOKED_CHICKEN,
                     crate::item::Item::COD => crate::item::Item::COOKED_COD,
                     crate::item::Item::SALMON => crate::item::Item::COOKED_SALMON,
+                    crate::item::Item::POTATO => crate::item::Item::BAKED_POTATO,
                     i => i,
                 }
             } else {
@@ -1116,6 +1045,46 @@ impl Entities {
         let vel = dir * 6.0 + DVec3::Y * 2.0 + spread;
         let pos = eye - DVec3::Y * 0.3;
         self.items.push(ItemEntity::new(stack, pos, vel, item::THROWN_PICKUP_DELAY, &mut self.rng));
+    }
+
+    /// Java 26.3 `DefaultDispenseItemBehavior.spawnItem` for a dispenser or dropper at
+    /// `block` facing `step`: an item 0.7 blocks out (dropped 0.125/0.15625 lower), pushed
+    /// at 0.2-0.3 blocks per tick along the facing with `triangle` noise of
+    /// `0.0172275 * 6` on every axis, and Java's ordinary 10-tick pickup delay.
+    pub fn dispense_item(&mut self, stack: crate::inventory::Stack, block: IVec3, step: IVec3) {
+        let d = step.as_dvec3();
+        let pos = block.as_dvec3() + DVec3::splat(0.5) + d * 0.7 - DVec3::Y * if step.y != 0 { 0.125 } else { 0.15625 };
+        const NOISE: f64 = 0.0172275 * 6.0;
+        let g = self.rng.next_f32() as f64 * 0.1 + 0.2;
+        let vel = DVec3::new(
+            self.rng.triangle(d.x * g, NOISE),
+            self.rng.triangle(0.2, NOISE),
+            self.rng.triangle(d.z * g, NOISE),
+        ) * 20.0;
+        self.items.push(ItemEntity::new(stack, pos, vel, 0.5, &mut self.rng));
+    }
+
+    /// Java 26.3 `ProjectileDispenseBehavior` for an arrow: spawned at the block centre
+    /// plus 0.7 along the facing and 0.1 up, flying at power 1.1 blocks per tick along the
+    /// facing perturbed by `triangle` noise of `0.0172275 * 6` per axis (no upward bias).
+    pub fn dispense_arrow(&mut self, block: IVec3, step: IVec3) {
+        let heading = self.dispense_heading(step, 6.0);
+        let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3() * 0.7 + DVec3::Y * 0.1;
+        self.arrows.push(Arrow::dispensed(pos, heading * 1.1 * 20.0));
+    }
+
+    /// Java 26.3 `FireChargeItem.asProjectile`: a small fireball one block out whose
+    /// heading is the facing plus `triangle(0.11485)` noise, then normalized.
+    pub fn dispense_fire_charge(&mut self, block: IVec3, step: IVec3) {
+        let heading = self.dispense_heading(step, 6.6666665);
+        let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3();
+        self.fireballs.push(fireball::Fireball::new(pos, heading));
+    }
+
+    fn dispense_heading(&mut self, step: IVec3, uncertainty: f64) -> DVec3 {
+        let noise = 0.0172275 * uncertainty;
+        let d = step.as_dvec3();
+        DVec3::new(self.rng.triangle(d.x, noise), self.rng.triangle(d.y, noise), self.rng.triangle(d.z, noise))
     }
 
     /// Scatters a stack around `pos` in a random direction (a dying
@@ -1174,273 +1143,13 @@ impl Entities {
 
     /// Gently pushes overlapping mobs apart.
     fn separate(&mut self, dt: f64) {
-        let n = self.mobs.len();
-        for i in 0..n {
-            if self.mobs[i].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
-                continue;
-            }
-            self.mob_index.visit(self.mobs[i].pos, 4.0, |j| {
-                if j <= i {
-                    return;
-                }
-                if self.mobs[j].villager.as_ref().is_some_and(|v| !v.active || v.sleeping) {
-                    return;
-                }
-                let (a, b) = (&self.mobs[i], &self.mobs[j]);
-                let d = DVec3::new(b.pos.x - a.pos.x, 0.0, b.pos.z - a.pos.z);
-                let min = a.shape().half_width + b.shape().half_width;
-                let overlap_y = a.pos.y < b.pos.y + b.shape().height && b.pos.y < a.pos.y + a.shape().height;
-                let dist = d.length();
-                if !overlap_y || dist >= min {
-                    return;
-                }
-                let dir = if dist > 1e-4 { d / dist } else { DVec3::X };
-                let push = dir * ((min - dist) * 8.0 * dt).min(0.2) / dt.max(1e-3);
-                self.mobs[i].vel -= push * 0.5;
-                self.mobs[j].vel += push * 0.5;
-            });
-        }
+        self.separation.run(&mut self.mobs, dt);
     }
 
     /// One spawn attempt per mob type around each player whose local cap
     /// isn't full. Like Java Edition's per-player mob caps, mobs only count
     /// against the players they are near, so distant players don't starve
     /// each other's spawns. Mobs never appear close to any player.
-    fn natural_spawn<W: MobWorld + ?Sized>(
-        &mut self,
-        world: &W,
-        ctx: &Ctx,
-        difficulty: crate::simulation::difficulty::Difficulty,
-    ) {
-        for center in ctx.players.iter().map(|t| t.pos) {
-            for kind in MobKind::ALL {
-                let cap = kind.spawn_cap(ctx.dimension);
-                // The Nether picks by its biomes' spawn lists below.
-                let nether = ctx.dimension == Dimension::Nether;
-                if (difficulty == crate::simulation::difficulty::Difficulty::Peaceful && kind.is_hostile())
-                    || self.count_near(kind, center) >= cap
-                    || (nether && nether_mob(kind).is_none())
-                    || (!nether
-                        && (!kind.spawns_in(ctx.dimension) || !self.rng.chance(kind.spawn_chance(ctx.dimension))))
-                {
-                    continue;
-                }
-                let angle = self.rng.range(0.0, TAU) as f64;
-                let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
-                let x = (center.x + angle.cos() * dist).floor() as i32;
-                let z = (center.z + angle.sin() * dist).floor() as i32;
-                if ctx.dimension == Dimension::Overworld
-                    && !self.rng.chance(kind.biome_chance(if kind == MobKind::TropicalFish && center.y < 40.0 {
-                        world.cave_biome(IVec3::new(x, center.y as i32, z))
-                    } else {
-                        world.biome(x, z)
-                    }))
-                {
-                    continue;
-                }
-                let mut group = None;
-                if nether {
-                    let Some((spawn, chance)) = nether_spawn(world, kind, x, z) else { continue };
-                    if !self.rng.chance(chance) {
-                        continue;
-                    }
-                    group = Some(spawn.group);
-                }
-                let spot = match ctx.dimension {
-                    Dimension::Overworld if kind.is_aquatic() => {
-                        aquatic::spawn_spot(world, kind, x, z, center.y as i32, &mut self.rng)
-                    }
-                    Dimension::Overworld if kind == MobKind::Drowned => self.drowned_spot(world, x, z, ctx.daylight),
-                    Dimension::Overworld if kind == MobKind::Slime => self.slime_spot(world, x, z, ctx.daylight),
-                    Dimension::Overworld => spawn_spot(world, kind, x, z, ctx.daylight),
-                    Dimension::Nether if kind == MobKind::Strider => nether::lava_spot(world, x, z),
-                    Dimension::Nether => cavern_spot(world, kind, x, z, self.rng.range(40.0, 118.0) as i32),
-                    Dimension::End => cavern_spot(world, kind, x, z, self.rng.range(30.0, 90.0) as i32),
-                };
-                let Some(pos) = spot else { continue };
-                if !in_spawn_ring(center, pos) || !clear_of_players(ctx, pos) {
-                    continue;
-                }
-                self.spawn(kind, pos);
-                self.note_zombie_villager(kind);
-                // Animals come in small herds, zombified piglins and End
-                // endermen in packs.
-                if !kind.is_hostile() || ctx.dimension != Dimension::Overworld {
-                    // Nether groups follow their biome's spawn list (wastes ghasts and
-                    // magma cubes come in fours, delta ghasts alone).
-                    let extra = match group {
-                        Some((lo, hi)) => lo as i32 - 1 + (self.rng.next_f32() * (hi - lo + 1) as f32) as i32,
-                        None => (self.rng.next_f32() * 3.0) as i32,
-                    };
-                    for _ in 0..extra {
-                        let (dx, dz) = ((self.rng.range(-3.0, 3.0)) as i32, (self.rng.range(-3.0, 3.0)) as i32);
-                        // A group straddling a biome edge stays within its spawn list.
-                        if nether && nether_spawn(world, kind, x + dx, z + dz).is_none() {
-                            continue;
-                        }
-                        let spot = if kind.is_aquatic() {
-                            aquatic::spawn_spot(world, kind, x + dx, z + dz, pos.y as i32, &mut self.rng)
-                        } else if kind == MobKind::Strider {
-                            nether::lava_spot(world, x + dx, z + dz)
-                        } else if ctx.dimension.has_sky() {
-                            spawn_spot(world, kind, x + dx, z + dz, ctx.daylight)
-                        } else {
-                            cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 2)
-                        };
-                        if self.count_near(kind, center) < cap
-                            && let Some(p) = spot
-                            && clear_of_players(ctx, p)
-                        {
-                            self.spawn(kind, p);
-                            self.note_zombie_villager(kind);
-                        }
-                    }
-                }
-            }
-            if ctx.dimension == Dimension::Nether && difficulty != crate::simulation::difficulty::Difficulty::Peaceful {
-                self.fortress_spawn(world, ctx, center);
-            }
-        }
-    }
-
-    /// Java's drowned rules: in water, in rivers one attempt in 15, in oceans
-    /// one in 40 and only deeper than five blocks below sea level. Deep water
-    /// is dark enough in daylight; shallow water needs night.
-    fn drowned_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
-        use crate::world::terrain::SEA_LEVEL;
-        let river = world.biome(x, z).is_river();
-        if !self.rng.chance(if river { 1.0 / 15.0 } else { 1.0 / 40.0 }) {
-            return None;
-        }
-        let top = (SEA_LEVEL - 8..=SEA_LEVEL + 1)
-            .rev()
-            .find(|&y| world.block(IVec3::new(x, y, z)).is_some_and(Block::holds_water))?;
-        let y = if river { top } else { top - 5 - (self.rng.next_f32() * 6.0) as i32 };
-        let dark = daylight < HOSTILE_SPAWN_DAYLIGHT || top - y >= 4;
-        let wet = |dy: i32| world.block(IVec3::new(x, y + dy, z)).is_some_and(Block::holds_water);
-        (dark && wet(0) && wet(1)).then(|| DVec3::new(x as f64 + 0.5, y as f64, z as f64 + 0.5))
-    }
-
-    fn slime_spot<W: MobWorld + ?Sized>(&mut self, world: &W, x: i32, z: i32, daylight: f32) -> Option<DVec3> {
-        if world.biome(x, z).is_swamp() && self.rng.chance(0.5 * self.moon_brightness) {
-            let pos = spawn_spot(world, MobKind::Slime, x, z, 0.0)?;
-            let y = pos.y as i32;
-            let raw = (daylight * 15.0) as u8;
-            let light = world.block_light(pos.floor().as_ivec3()).max(raw);
-            if y > 50 && y < 70 && light <= (self.rng.next_f32() * 8.0) as u8 {
-                return Some(pos);
-            }
-        }
-        if slime::slime_chunk(world.seed(), x.div_euclid(16), z.div_euclid(16)) && self.rng.chance(0.1) {
-            cavern_spot(world, MobKind::Slime, x, z, 39).filter(|p| p.y < 40.0)
-        } else {
-            None
-        }
-    }
-
-    /// Java's fortress spawn list, used for spots inside fortress pieces:
-    /// blazes, wither skeletons, zombified piglins, magma cubes and skeletons in groups.
-    /// Light doesn't matter.
-    fn fortress_spawn<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, center: DVec3) {
-        let total: u32 = FORTRESS_SPAWNS.iter().map(|s| s.1).sum();
-        let mut r = (self.rng.next_f32() * total as f32) as u32;
-        let &(kind, _, lo, hi) = FORTRESS_SPAWNS
-            .iter()
-            .find(|s| {
-                let hit = r < s.1;
-                r = r.saturating_sub(s.1);
-                hit
-            })
-            .unwrap_or(&FORTRESS_SPAWNS[0]);
-        let cap = kind.spawn_cap(Dimension::Nether);
-        if self.count_near(kind, center) >= cap {
-            return;
-        }
-        let angle = self.rng.range(0.0, TAU) as f64;
-        let dist = self.rng.range(SPAWN_MIN_DIST as f32, SPAWN_MAX_DIST as f32) as f64;
-        let x = (center.x + angle.cos() * dist).floor() as i32;
-        let z = (center.z + angle.sin() * dist).floor() as i32;
-        let top = self.rng.range(48.0, 100.0) as i32;
-        let Some(pos) = cavern_spot(world, kind, x, z, top) else { return };
-        if !in_spawn_ring(center, pos) || !clear_of_players(ctx, pos) || !world.in_fortress(pos.floor().as_ivec3()) {
-            return;
-        }
-        self.spawn(kind, pos);
-        let group = self.rng.range(lo as f32, hi as f32 + 1.0) as u32;
-        for _ in 1..group {
-            let (dx, dz) = (self.rng.range(-3.0, 3.0) as i32, self.rng.range(-3.0, 3.0) as i32);
-            if self.count_near(kind, center) < cap
-                && let Some(p) = cavern_spot(world, kind, x + dx, z + dz, pos.y as i32 + 1)
-                && world.in_fortress(p.floor().as_ivec3())
-                && clear_of_players(ctx, p)
-            {
-                self.spawn(kind, p);
-            }
-        }
-    }
-
-    /// Java's spawner logic: a spawner with a player within 16 blocks waits
-    /// out its delay, then tries four spots up to 4 blocks away (and a block
-    /// up or down) with room for its mob, unless six are already around.
-    /// Light and ground don't matter. Nearby cages give off smoke and flame
-    /// on the existing visual roll (about six times a second) so this tick
-    /// does not change the spawner RNG stream.
-    fn run_spawners<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, ctx: &Ctx) {
-        let spawners = world.spawners();
-        self.spawner_delays.retain(|p, _| spawners.iter().any(|(q, _)| q == p));
-        for (cell, kind) in spawners {
-            let centre = cell.as_dvec3() + DVec3::splat(0.5);
-            if !ctx.players.iter().any(|t| t.alive && t.pos.distance_squared(centre) < SPAWNER_RANGE * SPAWNER_RANGE) {
-                continue;
-            }
-            if self.rng.chance(dt * 6.0) {
-                let p = centre + DVec3::new(self.rng.range(-0.4, 0.4) as f64, self.rng.range(-0.4, 0.4) as f64, 0.0);
-                for kind in [crate::particles::Kind::Smoke, crate::particles::Kind::Flame] {
-                    self.particles.push(crate::particles::Request::Burst(crate::particles::Burst::new(kind, p, 1)));
-                }
-            }
-            let delay = self.spawner_delays.entry(cell).or_insert(1.0);
-            *delay -= dt;
-            if *delay > 0.0 {
-                continue;
-            }
-            *delay = 0.0;
-            let reach = SPAWNER_REACH + 0.5;
-            let crowd = self
-                .mobs
-                .iter()
-                .filter(|m| m.kind == kind && m.alive() && (m.pos - centre).abs().cmple(DVec3::splat(reach)).all())
-                .count();
-            let mut spawned = crowd >= SPAWNER_CROWD;
-            for _ in 0..SPAWNER_TRIES.min(SPAWNER_CROWD.saturating_sub(crowd)) {
-                let mut r = || (self.rng.next_f32() - self.rng.next_f32()) as f64 * SPAWNER_REACH;
-                let (dx, dz) = (r(), r());
-                let dy = (self.rng.next_f32() * 3.0).floor() as f64 - 1.0;
-                let pos = DVec3::new(centre.x + dx, cell.y as f64 + dy, centre.z + dz);
-                let shape = kind.shape();
-                if !world.loaded(pos.floor().as_ivec3())
-                    || physics::overlaps_solid(world, pos, shape)
-                    || physics::is_fluid_at(world, pos)
-                {
-                    continue;
-                }
-                self.spawn(kind, pos);
-                spawned = true;
-            }
-            if spawned {
-                let next = self.rng.range(SPAWNER_DELAY.0, SPAWNER_DELAY.1);
-                self.spawner_delays.insert(cell, next);
-            }
-        }
-    }
-
-    /// Living mobs of `kind` that count against the cap of a player at
-    /// `center` (those within despawn range).
-    fn count_near(&self, kind: MobKind, center: DVec3) -> usize {
-        let r2 = DESPAWN_DIST * DESPAWN_DIST;
-        self.mobs.iter().filter(|m| m.kind == kind && m.alive() && m.pos.distance_squared(center) <= r2).count()
-    }
-
     /// Capture positions before a game tick, or snap them while paused.
     pub fn snapshot_positions(&mut self) {
         for m in &mut self.mobs {
@@ -1613,10 +1322,26 @@ impl Entities {
 
     /// Reels this player's bobber, spawning the catch and its experience.
     /// The number is how many uses the rod spends.
-    pub fn reel(&mut self, owner: PlayerId, player_pos: DVec3) -> Option<u16> {
+    /// `owner_luck` is the player's Luck attribute (the Luck and Bad Luck
+    /// effects); the biome at the hook is read now, as Java's loot context does.
+    pub fn reel<W: MobWorld + ?Sized>(
+        &mut self,
+        owner: PlayerId,
+        player_pos: DVec3,
+        owner_luck: i32,
+        world: &W,
+    ) -> Option<u16> {
         let index = self.bobbers.iter().position(|b| b.owner == owner)?;
         let bobber = self.bobbers.swap_remove(index);
-        let got = bobber.retrieve(&mut self.rng);
+        let jungle = world.cave_biome(bobber.pos.floor().as_ivec3()).is_jungle();
+        let got = bobber.retrieve(&mut self.rng, owner_luck, jungle);
+        // Java's `pullEntity`: a snagged mob gains a tenth of the way to the
+        // owner a tick, in blocks a second here.
+        if let Some(uid) = bobber.hooked_mob()
+            && let Some(mob) = self.mobs.iter_mut().find(|m| m.uid == uid && m.alive())
+        {
+            mob.vel += (player_pos - bobber.pos) * 2.0;
+        }
         if let Some(stack) = got.catch {
             let delta = player_pos - bobber.pos;
             let lift = delta.length().sqrt() * 0.08;
@@ -1647,6 +1372,8 @@ impl Entities {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);
         mob.age = -24000;
+        mob.baby = true;
+        mob.persistent = kind.is_breedable();
         self.mobs.push(mob);
     }
 
@@ -1714,7 +1441,17 @@ impl Entities {
         let mut arrow = Arrow::shot(eye, dir, power, pickup);
         arrow.enchants = enchants;
         arrow.owner = Some(owner);
+        arrow.pvp = self.pvp;
         self.arrows.push(arrow);
+    }
+
+    /// A shared random roll (`p` chance), for host rules outside the entity simulation.
+    pub fn roll_chance(&mut self, p: f32) -> bool {
+        self.rng.chance(p)
+    }
+    /// A shared uniform draw in `lo..hi`.
+    pub fn roll_range(&mut self, lo: f32, hi: f32) -> f32 {
+        self.rng.range(lo, hi)
     }
 
     /// Stuck player arrows within reach of a player at `feet`, removed.
@@ -1734,14 +1471,14 @@ impl Entities {
     /// Player melee hit for `damage` on mob `index`, pushed along `dir`.
     /// Returns the kind of mob if this killed it.
     pub fn attack(&mut self, index: usize, dir: DVec3, damage: f32) -> Option<MobKind> {
-        self.knock(index, dir, damage, 0, PlayerId::HOST)
+        self.knock(index, dir, damage, 0.0, PlayerId::HOST)
     }
 
     /// Hits mob `index` for `damage`, pushing it along `dir` harder for
     /// each `extra` knockback level (Java: 0.4 + 0.5 per level).
-    fn knock(&mut self, index: usize, dir: DVec3, damage: f32, extra: u8, owner: PlayerId) -> Option<MobKind> {
+    fn knock(&mut self, index: usize, dir: DVec3, damage: f32, extra: f64, owner: PlayerId) -> Option<MobKind> {
         let flat = DVec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
-        let knockback = flat * 6.0 * (1.0 + 1.25 * extra as f64) + DVec3::Y * 5.0;
+        let knockback = flat * 6.0 * (1.0 + 1.25 * extra) + DVec3::Y * 5.0;
         let mob = self.mobs.get_mut(index)?;
         let (kind, pos) = (mob.kind, mob.pos);
         mob.player_hit();
@@ -1777,6 +1514,7 @@ impl Entities {
         self.melee_for(index, dir, held, bonus, critical, sweep, PlayerId::HOST)
     }
 
+    /// A fully charged [`Entities::melee`] by player `owner`.
     #[allow(clippy::too_many_arguments)]
     pub fn melee_for(
         &mut self,
@@ -1788,15 +1526,27 @@ impl Entities {
         sweep: Option<DVec3>,
         owner: PlayerId,
     ) -> Option<MobKind> {
+        let hit = PlayerMelee { held, bonus, strength: 1.0, critical, sprint_knockback: false, sweep, owner };
+        self.player_melee(index, dir, hit)
+    }
+
+    /// A player's melee hit following Java 26.3 `Player.attack`: the base
+    /// damage is scaled by `0.2 + 0.8 * strength^2` and the enchantment bonus
+    /// by `strength`; a sprint knockback adds half a Knockback level.
+    pub fn player_melee(&mut self, index: usize, dir: DVec3, hit: PlayerMelee) -> Option<MobKind> {
         use crate::enchant::Enchantment;
+        let PlayerMelee { held, bonus, strength, critical, sprint_knockback, sweep, owner } = hit;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
         let spiked = matches!(target.kind, MobKind::Guardian | MobKind::ElderGuardian)
             && target.aquatic.as_ref().is_some_and(|a| a.beam.is_some() || target.vel.length_squared() < 0.1);
         let (kind, pos, shape) = (target.kind, target.pos, target.shape());
-        let base = (crate::mining::attack_damage(held.map(|s| s.item)) + bonus).max(0.0);
+        let base = (crate::mining::attack_damage(held.map(|s| s.item)) + bonus).max(0.0)
+            * (0.2 + strength * strength * 0.8)
+            * if critical { 1.5 } else { 1.0 };
         let enchants = held.map_or(Default::default(), |s| s.active_enchants());
-        let damage = base * if critical { 1.5 } else { 1.0 } + crate::enchant::damage_bonus(enchants, kind.creature());
+        let damage = base + crate::enchant::damage_bonus(enchants, kind.creature()) * strength;
         let (knockback, fire) = crate::mining::weapon_extras(held);
+        let knockback = f64::from(knockback) + if sprint_knockback { 0.5 } else { 0.0 };
         if fire > 0.0 {
             self.mobs[index].ignite(fire);
         }
@@ -1807,11 +1557,18 @@ impl Entities {
                 cause: "was pricked by a guardian",
             });
         }
+        self.animals_owner_attack(index, owner);
         let old_health = self.mobs[index].health;
         let killed = self.knock(index, dir, damage, knockback, owner);
         if self.mobs[index].health < old_health {
             self.note_villager_hurt(index, owner, killed.is_some());
+            if kind == MobKind::Wolf && self.mobs[index].animal.as_ref().is_some_and(|a| a.owner != Some(owner)) {
+                self.mobs[index].angry_player = Some(owner);
+            }
             if kind == MobKind::IronGolem && !self.mobs[index].built {
+                self.mobs[index].angry_player = Some(owner);
+            }
+            if kind == MobKind::Llama {
                 self.mobs[index].angry_player = Some(owner);
             }
         }
@@ -1863,12 +1620,12 @@ impl Entities {
                 })
                 .collect();
             for i in near {
-                let away = self.mobs[i].pos - pos;
-                let damage = swept + crate::enchant::damage_bonus(enchants, self.mobs[i].kind.creature());
+                // Java pushes swept mobs along the attacker's facing.
+                let damage = (swept + crate::enchant::damage_bonus(enchants, self.mobs[i].kind.creature())) * strength;
                 if fire > 0.0 {
                     self.mobs[i].ignite(fire);
                 }
-                let killed = self.knock(i, away, damage, 0, owner);
+                let killed = self.knock(i, dir, damage, 0.0, owner);
                 if let Some(kind) = killed {
                     let at = self.mobs[i].pos;
                     self.drop_loot_with_fire(
@@ -1894,10 +1651,29 @@ impl Entities {
     }
 }
 
+/// A player's melee hit on a mob; see [`Entities::player_melee`].
+#[derive(Clone, Copy, Debug)]
+pub struct PlayerMelee {
+    pub held: Option<crate::inventory::Stack>,
+    /// Strength/Weakness attack-damage change.
+    pub bonus: f32,
+    /// Attack-strength charge, 0..=1.
+    pub strength: f32,
+    pub critical: bool,
+    pub sprint_knockback: bool,
+    /// The player's feet when a sweep is allowed.
+    pub sweep: Option<DVec3>,
+    pub owner: PlayerId,
+}
+
 /// Whether `kind` may spawn standing on `ground` at this daylight level.
 pub fn can_spawn_on(kind: MobKind, ground: Block, daylight: f32) -> bool {
     if kind.is_hostile() {
         daylight < HOSTILE_SPAWN_DAYLIGHT && ground.is_solid() && ground.is_opaque()
+    } else if kind == MobKind::Goat {
+        matches!(ground, Block::GRASS | Block::STONE | Block::SNOW | crate::world::gadgets::PACKED_ICE)
+    } else if kind == MobKind::Rabbit {
+        ground == Block::GRASS || ground == Block::SAND || ground == Block::SNOW
     } else if kind == MobKind::Turtle {
         ground == Block::SAND
     } else {
@@ -1911,9 +1687,24 @@ pub fn in_spawn_ring(player: DVec3, pos: DVec3) -> bool {
     (SPAWN_MIN_DIST * SPAWN_MIN_DIST..=SPAWN_MAX_DIST * SPAWN_MAX_DIST).contains(&d2)
 }
 
-/// No player is closer than [`SPAWN_MIN_DIST`] to `pos`.
-fn clear_of_players(ctx: &Ctx, pos: DVec3) -> bool {
+/// No player is closer than [`SPAWN_MIN_DIST`] to `pos`, and `pos` is not
+/// within 24 blocks of the world spawn point.
+fn clear_of_players(ctx: &Ctx, world_spawn: Option<IVec3>, pos: DVec3) -> bool {
     ctx.nearest_player_dist2(pos).is_none_or(|d| d >= SPAWN_MIN_DIST * SPAWN_MIN_DIST)
+        && !near_world_spawn(world_spawn, pos)
+}
+
+/// Java's minimum distance of natural spawns from the world spawn point.
+pub const SPAWN_POINT_MIN_DIST: f64 = 24.0;
+
+/// The spawn-point half of Java's
+/// `NaturalSpawner.isRightDistanceToPlayerAndSpawnPoint`:
+/// `spawn.closerToCenterThan(pos, 24.0)`, i.e. the squared distance from the
+/// spawn block's centre (each axis + 0.5) to `pos` is strictly below 24².
+pub fn near_world_spawn(world_spawn: Option<IVec3>, pos: DVec3) -> bool {
+    world_spawn.is_some_and(|s| {
+        (s.as_dvec3() + DVec3::splat(0.5)).distance_squared(pos) < SPAWN_POINT_MIN_DIST * SPAWN_POINT_MIN_DIST
+    })
 }
 
 /// Feet position for a mob on the sky-exposed surface of column (x, z),
@@ -1954,15 +1745,42 @@ fn nether_spawn<W: MobWorld + ?Sized>(
     world: &W,
     kind: MobKind,
     x: i32,
+    y: i32,
     z: i32,
 ) -> Option<(crate::world::nether_biome::Spawn, f32)> {
     use crate::world::nether_biome::NetherBiome;
-    let biome = world.nether_biome(x, z).unwrap_or(NetherBiome::NetherWastes);
+    let biome = world.nether_biome_at(IVec3::new(x, y, z)).unwrap_or(NetherBiome::NetherWastes);
     let mob = nether_mob(kind)?;
     if let Some(s) = biome.creatures().iter().find(|s| s.mob == mob) {
         return Some((*s, s.weight as f32 / 100.0));
     }
     biome.monster_spawn(mob)
+}
+
+impl Entities {
+    /// Java's `NaturalSpawner.SpawnState.canSpawn` spawn-cost test. Every
+    /// non-persistent mob whose biome has a cost for its type contributes
+    /// `charge / distance` to the potential at `at`; a new mob with a cost of
+    /// its own may spawn only if its charge times that potential stays within
+    /// the biome's energy budget. This is what spaces out soul sand valley
+    /// skeletons, ghasts, endermen and striders (and warped forest endermen).
+    fn nether_cost_allows<W: MobWorld + ?Sized>(&self, world: &W, kind: MobKind, at: IVec3) -> bool {
+        use crate::world::nether_biome::NetherBiome;
+        let biome_at = |p: IVec3| world.nether_biome_at(p).unwrap_or(NetherBiome::NetherWastes);
+        let Some(cost) = nether_mob(kind).and_then(|mob| biome_at(at).spawn_cost(mob)) else { return true };
+        let mut potential = 0.0;
+        for m in &self.mobs {
+            if m.persistent {
+                continue;
+            }
+            let p = m.pos.floor().as_ivec3();
+            let Some(other) = nether_mob(m.kind).and_then(|mob| biome_at(p).spawn_cost(mob)) else { continue };
+            let d = p - at;
+            let d2 = f64::from(d.x).powi(2) + f64::from(d.y).powi(2) + f64::from(d.z).powi(2);
+            potential += if d2 == 0.0 { f64::INFINITY } else { other.charge / d2.sqrt() };
+        }
+        potential * cost.charge <= cost.energy_budget
+    }
 }
 
 fn cavern_spot<W: MobWorld + ?Sized>(world: &W, kind: MobKind, x: i32, z: i32, top: i32) -> Option<DVec3> {
@@ -2004,12 +1822,35 @@ mod tests {
 
     fn ctx(player: DVec3) -> Ctx {
         Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players: vec![Target::new(PlayerId::HOST, player, false)],
             daylight: 1.0,
             spawning: false,
             raining: false,
             dimension: Dimension::Overworld,
         }
+    }
+
+    #[test]
+    fn spawned_monster_gear_follows_the_local_difficulty() {
+        use crate::simulation::difficulty::Difficulty;
+        let armored = |difficulty: Difficulty, clock: i64| {
+            let mut e = Entities::new(11);
+            e.difficulty = difficulty;
+            e.clock_time = clock;
+            e.moon_brightness = 1.0;
+            for _ in 0..4000 {
+                e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
+            }
+            e.mobs.iter().filter(|m| m.armor.iter().any(Option::is_some)).count()
+        };
+        assert_eq!(armored(Difficulty::Normal, 0), 0, "effective difficulty 1.5 is below Java's threshold");
+        assert_eq!(armored(Difficulty::Peaceful, 10_000_000), 0);
+        // Hard at the start: 3 * 0.75 = 2.25, a special multiplier of 0.125.
+        let hard = armored(Difficulty::Hard, 0) as f64 / 4000.0;
+        assert!((hard - 0.15 * 0.125).abs() < 0.008, "{hard}");
+        let late = armored(Difficulty::Normal, 10_000_000) as f64 / 4000.0;
+        assert!((late - 0.15 * 0.25).abs() < 0.01, "{late}");
     }
 
     #[test]
@@ -2082,6 +1923,9 @@ mod tests {
                 if let EntityEvent::PlayerMagic { amount, .. } | EntityEvent::PlayerHit { damage: amount, .. } = ev {
                     hits.push(amount);
                 }
+                if let EntityEvent::PlayerEffect { ticks, .. } = ev {
+                    hits.push(ticks as f32);
+                }
             }
         }
         assert!(e.mobs[0].aabb().0.x < 2.0, "witches stand off at range");
@@ -2101,6 +1945,104 @@ mod tests {
         );
         let drops: Vec<_> = (0..50).flat_map(|_| MobKind::Witch.drops(&mut Rng::new(4), 0)).collect();
         assert!(drops.iter().any(|d| d.0 == crate::item::Item::GLASS_BOTTLE || d.0 == crate::item::Item::SUGAR));
+    }
+
+    /// Java's `Witch.performRangedAttack` picks the potion from the target's
+    /// distance, health and effects.
+    /// Java's `FishingHook.onHitEntity`: the hook snags the first mob it
+    /// touches, follows it at 80% of its height, and reeling pulls it in
+    /// (and costs five uses of the rod).
+    #[test]
+    fn a_hook_snags_a_mob_and_reeling_pulls_it_toward_the_player() {
+        let world = Grid::flat(10);
+        let player = DVec3::new(0.5, 10.0, 0.5);
+        let c = ctx(player);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Cow, DVec3::new(0.5, 10.0, 6.5));
+        e.mobs[0].persistent = true;
+        e.update(0.05, &world, &c);
+        let uid = e.mobs[0].uid;
+        assert_ne!(uid, 0);
+        e.cast_bobber(PlayerId::HOST, player + DVec3::Y * 1.62, DVec3::Z, 0, 0);
+        let mut hooked = None;
+        for _ in 0..60 {
+            e.update(0.05, &world, &c);
+            e.mobs[0].vel = DVec3::ZERO;
+            hooked = e.bobbers.first().and_then(|b| b.hooked_mob());
+            if hooked.is_some() {
+                break;
+            }
+        }
+        assert_eq!(hooked, Some(uid), "the cast flew into the cow");
+        let (min, max) = e.mobs[0].aabb();
+        let hook = e.bobbers[0].pos;
+        assert!((hook.y - (min.y + (max.y - min.y) * 0.8)).abs() < 1e-9 && (hook.z - e.mobs[0].pos.z).abs() < 1e-9);
+        let wear = e.reel(PlayerId::HOST, player, 0, &world);
+        assert_eq!(wear, Some(5));
+        assert!(e.mobs[0].vel.z < -0.5, "pulled toward the owner: {:?}", e.mobs[0].vel);
+        assert!(e.bobbers.is_empty());
+    }
+
+    #[test]
+    fn witches_choose_potions_from_the_target_state() {
+        use crate::simulation::effects::{Effect, Effects};
+        let world = Grid::flat(10);
+        let first_throw = |seed: u64, distance: f64, health: f32, have: &[Effect]| {
+            let mut c = ctx(DVec3::new(0.5 + distance, 10.0, 0.5));
+            c.daylight = 0.0;
+            let mut effects = Effects::default();
+            for &e in have {
+                effects.add(e, 0, 600);
+            }
+            c.players[0].targetable = true;
+            c.players[0].health = health;
+            c.players[0].effects = effects.mask();
+            let mut e = Entities::new(seed);
+            e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+            e.mobs[0].effects.add(Effect::Speed, 0, 6000);
+            for _ in 0..80 {
+                e.update(0.05, &world, &c);
+                if let Some(thrown) = e.potions.first() {
+                    return thrown.potion.info().id;
+                }
+            }
+            panic!("no throw")
+        };
+        assert_eq!(first_throw(1, 9.5, 20.0, &[]), "slowness");
+        assert_eq!(first_throw(1, 9.5, 20.0, &[Effect::Slowness]), "poison");
+        assert_eq!(first_throw(1, 9.5, 20.0, &[Effect::Slowness, Effect::Poison]), "harming");
+        assert_eq!(first_throw(1, 6.0, 6.0, &[]), "harming", "low health skips poison");
+        assert_eq!(first_throw(1, 6.0, 20.0, &[Effect::Poison]), "harming");
+        let close: Vec<_> = (0..40).map(|seed| first_throw(seed, 2.0, 6.0, &[])).collect();
+        assert!(close.contains(&"weakness") && close.contains(&"harming"), "{close:?}");
+        assert!((0..40).all(|seed| first_throw(seed, 2.0, 6.0, &[Effect::Weakness]) == "harming"));
+    }
+
+    /// A witch with a far target drinks Swiftness (Java: 50% a tick beyond 11
+    /// blocks); a burning one drinks Fire Resistance.
+    #[test]
+    fn witches_drink_swiftness_and_fire_resistance() {
+        use crate::simulation::effects::Effect;
+        let world = Grid::flat(10);
+        let mut c = ctx(DVec3::new(20.5, 10.0, 0.5));
+        c.daylight = 0.0;
+        c.players[0].targetable = true;
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+        for _ in 0..60 {
+            e.update(0.05, &world, &c);
+        }
+        assert!(e.mobs[0].effects.has(Effect::Speed));
+        assert_eq!(e.mobs[0].effects.get(Effect::Speed).map(|a| a.amplifier), Some(0));
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Witch, DVec3::new(0.5, 10.0, 0.5));
+        e.mobs[0].burning = true;
+        let far = ctx(DVec3::new(90.5, 10.0, 0.5));
+        for _ in 0..120 {
+            e.mobs[0].burning = true;
+            e.update(0.05, &world, &far);
+        }
+        assert!(e.mobs[0].effects.has(Effect::FireResistance));
     }
 
     #[test]
@@ -2359,6 +2301,60 @@ mod tests {
     }
 
     #[test]
+    fn undead_rare_loot_uses_one_reference_pool_and_requires_player_credit() {
+        use crate::item::Item;
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/undead_loot.json")).unwrap();
+        for kind in [MobKind::Zombie, MobKind::Husk, MobKind::ZombieVillager, MobKind::Drowned] {
+            let pool = &fixture["rare_pools"][kind.name().replace(' ', "_")];
+            let items: Vec<Item> = pool["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| Item::from_name(v.as_str().unwrap()).unwrap())
+                .collect();
+            assert_eq!(pool["rolls"], 1);
+            assert_eq!(pool["requires_player_kill"], true);
+            let mut rng = Rng::new(72);
+            for looting in [0, 3] {
+                let mut counts = vec![0; items.len()];
+                let samples = 20000;
+                for _ in 0..samples {
+                    let rare: Vec<_> =
+                        kind.drops(&mut rng, looting).into_iter().filter(|(i, _)| items.contains(i)).collect();
+                    assert!(rare.len() <= 1, "{kind:?} produces at most one rare drop");
+                    for (item, count) in rare {
+                        assert_eq!(count, 1);
+                        counts[items.iter().position(|i| *i == item).unwrap()] += 1;
+                    }
+                }
+                let chance =
+                    pool["chance"].as_f64().unwrap() + looting as f64 * pool["looting_per_level"].as_f64().unwrap();
+                for count in counts {
+                    let observed = count as f64 / samples as f64;
+                    assert!((observed - chance / items.len() as f64).abs() < 0.01, "{kind:?}: {observed}, {chance}");
+                }
+            }
+            let mut e = Entities::new(13);
+            for _ in 0..40 {
+                e.drop_loot_with_fire(kind, DVec3::ZERO, 255, true, false);
+            }
+            assert!(e.items.iter().all(|i| i.stack.item == Item::ROTTEN_FLESH), "environment kills have no rare pool");
+            e.items.clear();
+            for _ in 0..80 {
+                e.drop_loot_with_fire(kind, DVec3::ZERO, 255, true, true);
+            }
+            if kind != MobKind::Drowned {
+                assert!(e.items.iter().any(|i| i.stack.item == Item::BAKED_POTATO));
+                assert!(e.items.iter().any(|i| i.stack.item == Item::IRON_INGOT));
+                assert!(e.items.iter().all(|i| i.stack.item != Item::POTATO));
+            } else {
+                assert!(e.items.iter().any(|i| i.stack.item == Item::COPPER_INGOT));
+            }
+        }
+    }
+
+    #[test]
     fn huge_looting_saturates_drop_counts() {
         // Before the clamp, 255 levels overflowed the u8 count.
         let mut rng = Rng::new(3);
@@ -2367,17 +2363,12 @@ mod tests {
             let extra = (u8::MAX as f32 * expected_rng.next_f32()).round() as u32;
             let base = (expected_rng.next_f32() * 3.0) as u32;
             let drops = MobKind::Zombie.drops(&mut rng, u8::MAX);
-            // Looting 255 makes the separate carrot and potato rolls certain.
-            let _ = (expected_rng.next_f32(), expected_rng.next_f32());
+            // Looting 255 guarantees one entry from the single rare pool.
+            let _ = expected_rng.next_f32();
+            let rare = [crate::item::Item::IRON_INGOT, crate::item::Item::CARROT, crate::item::Item::POTATO]
+                [expected_rng.next_int(3) as usize];
             assert!(!drops.is_empty(), "maximum looting produces a drop for these rolls");
-            assert_eq!(
-                drops,
-                vec![
-                    (crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8),
-                    (crate::item::Item::CARROT, 1),
-                    (crate::item::Item::POTATO, 1),
-                ]
-            );
+            assert_eq!(drops, vec![(crate::item::Item::ROTTEN_FLESH, (base + extra).min(255) as u8), (rare, 1),]);
         }
     }
 
@@ -2480,7 +2471,14 @@ mod tests {
     #[test]
     fn looting_does_not_increase_sheep_wool() {
         for seed in 0..100 {
-            assert_eq!(MobKind::Sheep.drops(&mut Rng::new(seed), 7), vec![(crate::item::Item::from(Block::WOOL), 1)]);
+            assert_eq!(
+                MobKind::Sheep
+                    .drops(&mut Rng::new(seed), 7)
+                    .iter()
+                    .find(|(i, _)| *i == crate::item::Item::from(Block::WOOL))
+                    .map(|s| s.1),
+                Some(1)
+            );
         }
     }
 
@@ -2566,6 +2564,7 @@ mod tests {
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         e.mobs[0].health = 0.5;
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             // Thorns III on all four pieces: a hit back is near certain.
             players: vec![Target {
                 thorns: [3; 4],
@@ -2592,6 +2591,7 @@ mod tests {
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         let player = DVec3::new(1.5, 10.0, 0.5);
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, player, true)],
             daylight: 0.1,
             spawning: false,
@@ -2623,6 +2623,7 @@ mod tests {
         let mut e = Entities::new(8);
         e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, DVec3::new(8.5, 10.0, 0.5), true)],
             daylight: 0.1,
             spawning: false,
@@ -2666,7 +2667,11 @@ mod tests {
         world.set(at.floor().as_ivec3(), Block::FIRE);
         let mut e = Entities::new(5);
         e.spawn(MobKind::Pig, at);
-        let c = Ctx { daylight: 0.0, ..ctx(DVec3::new(30.0, 10.0, 0.0)) };
+        let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            daylight: 0.0,
+            ..ctx(DVec3::new(30.0, 10.0, 0.0))
+        };
         e.update(1.0 / 60.0, &world, &c);
         assert!(e.mobs[0].burning);
         assert_eq!(e.mobs[0].health, 9.0, "contact hit does not apply every frame");
@@ -2734,6 +2739,7 @@ mod tests {
         let mut e = Entities::new(11);
         let player = DVec3::new(0.0, 64.0, 0.0);
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, player, false)],
             daylight: 0.12,
             spawning: true,
@@ -2817,7 +2823,10 @@ mod tests {
         assert_eq!(e.mobs.len(), 1, "kept by the nearby agent");
         let c = Ctx { players: vec![far_host], ..c };
         e.update(0.05, &world, &c);
-        assert!(e.mobs.is_empty(), "despawns once nobody is near");
+        assert_eq!(e.mobs.len(), 1, "Java farm animals persist while inactive");
+        let before = e.mobs[0].pos;
+        e.update(1.0, &world, &c);
+        assert_eq!(e.mobs[0].pos, before, "distant persistent mobs stop ticking");
     }
 
     #[test]
@@ -2826,6 +2835,7 @@ mod tests {
         let mut e = Entities::new(11);
         let (a, b) = (DVec3::new(0.0, 64.0, 0.0), DVec3::new(1000.0, 64.0, 0.0));
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, a, false), Target::new(PlayerId(1), b, false)],
             daylight: 0.12,
             spawning: true,
@@ -2855,6 +2865,7 @@ mod tests {
         let world = Grid::flat(64);
         // A second player stands in the first one's spawn ring.
         let c = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![
                 Target::new(PlayerId::HOST, DVec3::new(0.0, 64.0, 0.0), false),
                 Target::new(PlayerId(1), DVec3::new(40.0, 64.0, 0.0), false),
@@ -2881,6 +2892,7 @@ mod tests {
 
     fn night(player: DVec3) -> Ctx {
         Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
             players: vec![Target::new(PlayerId::HOST, player, true)],
             daylight: 0.1,
             spawning: false,
@@ -2950,6 +2962,32 @@ mod tests {
         assert_eq!(fight.crystals.len(), 10, "the crystal behind the cow survives");
     }
 
+    /// `AbstractArrow.onHitEntity`: a piercing arrow passes through `level + 1`
+    /// mobs, and the next one discards it without damage.
+    #[test]
+    fn piercing_arrows_pass_through_level_plus_one_mobs() {
+        use crate::enchant::{Enchantment, Enchants};
+        let world = Grid::flat(10);
+        let c = night(DVec3::new(0.5, 10.0, 0.5));
+        for (level, hurt) in [(0u8, 1usize), (1, 2), (2, 3), (4, 4)] {
+            let mut e = Entities::new(4);
+            for x in [4.5, 6.5, 8.5, 10.5] {
+                e.spawn(MobKind::Cow, DVec3::new(x, 10.0, 0.5));
+            }
+            e.shoot_enchanted_for(
+                DVec3::new(0.5, 11.0, 0.5),
+                DVec3::X,
+                1.0,
+                false,
+                Enchants::NONE.with(Enchantment::Piercing, level),
+                PlayerId::HOST,
+            );
+            run(&mut e, &world, &c, 0.5);
+            let damaged = e.mobs.iter().filter(|m| m.health < MobKind::Cow.max_health()).count();
+            assert_eq!(damaged, hurt, "piercing {level}");
+        }
+    }
+
     #[test]
     fn skeleton_arrows_hit_the_player() {
         let world = Grid::flat(10);
@@ -2972,6 +3010,21 @@ mod tests {
             arrow.update(1.0 / 60.0, &world, &c, &mut [], None, &mut Rng::new(1), &mut Vec::new());
         }
         assert!(arrow.is_stuck() && (9.5..10.5).contains(&arrow.pos.y), "{:?}", arrow.pos);
+    }
+
+    #[test]
+    fn arrows_a_player_looses_at_villagers_cost_reputation() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(4);
+        e.spawn(MobKind::Villager, DVec3::new(10.5, 10.0, 0.5));
+        e.spawn(MobKind::Villager, DVec3::new(10.5, 10.0, 6.5));
+        let c = night(DVec3::new(0.5, 10.0, 0.5));
+        e.shoot_arrow(DVec3::new(0.5, 11.6, 0.5), DVec3::X, 1.0, true);
+        run(&mut e, &world, &c, 0.5);
+        let rep = |e: &Entities, i: usize| e.mobs[i].villager.as_ref().unwrap().gossip.reputation(PlayerId::HOST);
+        assert!(e.mobs[0].health < MobKind::Villager.max_health());
+        assert_eq!(rep(&e, 0), -25, "minor negative gossip for the villager that was hurt");
+        assert_eq!(rep(&e, 1), 0, "a bystander only learns of kills");
     }
 
     #[test]
@@ -3009,7 +3062,11 @@ mod tests {
     #[test]
     fn spiders_hunt_at_night_or_when_hit_and_climb_walls() {
         let world = Grid::flat(10);
-        let day = Ctx { daylight: 1.0, ..night(DVec3::new(5.5, 10.0, 0.5)) };
+        let day = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            daylight: 1.0,
+            ..night(DVec3::new(5.5, 10.0, 0.5))
+        };
         let mut e = Entities::new(6);
         e.spawn(MobKind::Spider, DVec3::new(0.5, 10.0, 0.5));
         run(&mut e, &world, &day, 1.0);
@@ -3034,6 +3091,39 @@ mod tests {
         assert!(spider.pos.y > 13.9 && spider.pos.x > 2.5, "spider at {:?}", spider.pos);
         let pig = walk_east(&world, Mob::new(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5), 0.0), 4.0);
         assert!(pig.pos.x < 3.0);
+    }
+
+    #[test]
+    fn mobs_climb_vines_and_ladders_but_only_while_pushing_against_a_wall() {
+        // Java `LivingEntity.onClimbable`: any mob in a CLIMBABLE block climbs at 0.2 blocks per
+        // tick while it presses a wall and otherwise slides at no more than 0.15.
+        let mut world = Grid::flat(10);
+        for y in 10..14 {
+            for z in -3..=3 {
+                world.set(IVec3::new(3, y, z), Block::STONE);
+                world.set(IVec3::new(2, y, z), crate::world::overworld_blocks::VINE);
+            }
+        }
+        let pig = walk_east(&world, Mob::new(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5), 0.0), 3.0);
+        assert!(pig.pos.y > 13.0, "a pig climbs the vines: {:?}", pig.pos);
+        let mut bare = Grid::flat(10);
+        for y in 10..14 {
+            for z in -3..=3 {
+                bare.set(IVec3::new(3, y, z), Block::STONE);
+            }
+        }
+        let pig = walk_east(&bare, Mob::new(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5), 0.0), 3.0);
+        assert!(pig.pos.y < 11.5, "without vines it only hops at the wall: {:?}", pig.pos);
+        // Falling through a vine column is slowed to 3 blocks per second.
+        let mut fall = Grid::flat(10);
+        for y in 10..30 {
+            fall.set(IVec3::new(0, y, 0), crate::world::overworld_blocks::VINE);
+        }
+        let mut pig = Mob::new(MobKind::Pig, DVec3::new(0.5, 29.0, 0.5), 0.0);
+        for _ in 0..40 {
+            pig.physics_step(0.05, &fall, None, 0.0);
+        }
+        assert!(pig.vel.y >= -3.0 - 1e-9, "sliding speed {}", pig.vel.y);
     }
 
     #[test]
@@ -3180,6 +3270,23 @@ mod tests {
     }
 
     #[test]
+    fn peaceful_keeps_piglins_but_discards_brutes_hoglins_and_zoglins() {
+        // Java 26.3 registers piglin brutes, hoglins and zoglins `notInPeaceful()`
+        // and plain piglins without it.
+        let world = Grid::flat(10);
+        let mut e = Entities::new(5);
+        for kind in [MobKind::Piglin, MobKind::PiglinBrute, MobKind::Hoglin, MobKind::Zoglin, MobKind::Zombie] {
+            e.spawn(kind, DVec3::new(2.5, 11.0, 0.5));
+        }
+        let c = ctx(DVec3::new(10.5, 10.0, 0.5));
+        e.update_difficulty(0.05, &world, &c, crate::simulation::difficulty::Difficulty::Peaceful);
+        assert_eq!(e.count(MobKind::Piglin), 1);
+        for kind in [MobKind::PiglinBrute, MobKind::Hoglin, MobKind::Zoglin, MobKind::Zombie] {
+            assert_eq!(e.count(kind), 0, "{kind:?}");
+        }
+    }
+
+    #[test]
     fn spawners_work_near_players_up_to_six_mobs() {
         // A closed room around the cage, so nothing wanders off.
         let mut room = Grid::flat(10);
@@ -3285,6 +3392,44 @@ mod tests {
         fn nether_biome(&self, _: i32, _: i32) -> Option<crate::world::nether_biome::NetherBiome> {
             Some(self.1)
         }
+    }
+
+    #[test]
+    fn spawn_costs_space_out_soul_sand_valley_and_warped_forest_mobs() {
+        // Java `SpawnState.canSpawn`: the new mob's charge times the sum of
+        // charge / distance over existing mobs must stay within the energy
+        // budget (soul sand valley 0.7 against 0.15, warped forest endermen 1.0
+        // against 0.12). The values come from the biome JSON pinned in the
+        // Nether biome source.
+        use crate::world::nether_biome::{NetherBiome, NetherMob};
+        let at = |x: i32| IVec3::new(x, 41, 0);
+        let valley = Biomed(Grid::flat(41), NetherBiome::SoulSandValley);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Skeleton, DVec3::new(0.5, 41.0, 0.5));
+        // 0.7 * 0.7 / 3 = 0.163 is over budget; at four blocks 0.1225 is within it.
+        assert!(!e.nether_cost_allows(&valley, MobKind::Ghast, at(3)));
+        assert!(e.nether_cost_allows(&valley, MobKind::Ghast, at(4)));
+        // A third charged mob at eight blocks tips a spot four blocks from the first.
+        e.spawn(MobKind::Strider, DVec3::new(8.5, 41.0, 0.5));
+        e.spawn(MobKind::Enderman, DVec3::new(-8.5, 41.0, 0.5));
+        assert!(!e.nether_cost_allows(&valley, MobKind::Skeleton, at(4)));
+        // Mobs with no cost in the biome are never refused, nor are persistent ones counted.
+        assert!(e.nether_cost_allows(&valley, MobKind::ZombifiedPiglin, at(0)));
+        let mut persistent = Entities::new(4);
+        persistent.spawn(MobKind::Skeleton, DVec3::new(0.5, 41.0, 0.5));
+        persistent.mobs[0].persistent = true;
+        assert!(persistent.nether_cost_allows(&valley, MobKind::Ghast, at(1)));
+        // The wastes charge nothing.
+        let wastes = Biomed(Grid::flat(41), NetherBiome::NetherWastes);
+        assert!(e.nether_cost_allows(&wastes, MobKind::Skeleton, at(1)));
+        // Warped forests only charge endermen: 1.0 / d <= 0.12 needs nine blocks.
+        let warped = Biomed(Grid::flat(41), NetherBiome::WarpedForest);
+        let mut w = Entities::new(5);
+        w.spawn(MobKind::Enderman, DVec3::new(0.5, 41.0, 0.5));
+        assert!(!w.nether_cost_allows(&warped, MobKind::Enderman, at(8)));
+        assert!(w.nether_cost_allows(&warped, MobKind::Enderman, at(9)));
+        assert!(w.nether_cost_allows(&warped, MobKind::Hoglin, at(1)));
+        assert_eq!(NetherBiome::SoulSandValley.spawn_cost(NetherMob::Piglin), None);
     }
 
     #[test]
@@ -3480,7 +3625,8 @@ mod colored_sheep_tests {
         e.items.clear();
         e.mobs[0].dying = Some(0.0);
         e.drop_loot(MobKind::Sheep, DVec3::ZERO);
-        assert!(e.items.is_empty(), "sheared sheep drop no wool");
+        assert!(e.items.iter().all(|i| i.stack.item == Item::RAW_MUTTON), "sheared sheep drop mutton, no wool");
+        e.items.clear();
         e.mobs[0].sheared = false;
         e.drop_loot(MobKind::Sheep, DVec3::ZERO);
         assert_eq!(e.items[0].stack.item, Item::from(Block::wool(DyeColor::Black)));

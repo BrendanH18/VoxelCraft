@@ -56,6 +56,11 @@ pub fn rings_loaded(frame: IVec3, get: impl Fn(IVec3) -> Option<Block>) -> bool 
     })
 }
 
+/// Java draws X, Y, then Z, each as the difference of two bounded draws.
+fn egg_offset(mut draw: impl FnMut(u32) -> i32) -> IVec3 {
+    IVec3::new(draw(16) - draw(16), draw(8) - draw(8), draw(16) - draw(16))
+}
+
 impl World {
     /// Builds an End gateway centred on `origin`.
     pub fn build_gateway(&mut self, origin: IVec3) {
@@ -126,11 +131,16 @@ impl World {
             return None;
         }
         for _ in 0..1000 {
-            let mut d = || (self.roll() % 16) as i32 - (self.roll() % 16) as i32;
-            let (x, z) = (d(), d());
-            let y = (self.roll() % 8) as i32 - (self.roll() % 8) as i32;
-            let to = pos + IVec3::new(x, y, z);
-            if to != pos && self.get_block(to) == Some(Block::AIR) {
+            let to = pos + egg_offset(|bound| (self.roll() % u64::from(bound)) as i32);
+            // Java 26.3 also rejects unsupported air, outside the default
+            // world border, and positions outside this dimension's height.
+            // Unknown/unloaded support never counts as a non-air block.
+            if self.contains_y(to.y)
+                && (-29_999_984..29_999_984).contains(&to.x)
+                && (-29_999_984..29_999_984).contains(&to.z)
+                && self.get_block(to) == Some(Block::AIR)
+                && self.get_block(to - IVec3::Y).is_some_and(|b| b != Block::AIR)
+            {
                 self.set_block(pos, Block::AIR);
                 self.set_block(to, Block::DRAGON_EGG);
                 return Some(to);
@@ -184,6 +194,24 @@ impl World {
 mod tests {
     use super::*;
     use rustc_hash::FxHashMap;
+
+    #[test]
+    fn egg_draws_match_the_java_fixture_in_xyz_order() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/mob_integrations.json")).unwrap();
+        assert_eq!(fixture["dragon_egg"]["attempts"], 1000);
+        assert_eq!(fixture["dragon_egg"]["requires_non_air_below"], true);
+        let mut bounds = Vec::new();
+        let mut values = [15, 0, 0, 7, 5, 2].into_iter();
+        assert_eq!(
+            egg_offset(|bound| {
+                bounds.push(bound);
+                values.next().unwrap()
+            }),
+            IVec3::new(15, -7, 3)
+        );
+        assert_eq!(serde_json::json!(bounds), fixture["dragon_egg"]["draw_bounds_xyz"]);
+    }
 
     fn eyed(facing: Facing) -> Block {
         Block(Block::END_PORTAL_FRAME.0 + 4).with_facing(facing)

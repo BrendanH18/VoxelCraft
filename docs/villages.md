@@ -18,11 +18,16 @@ Taking the result consumes inputs once and releases XP orbs.
 
 Craftable: job sites, hay bales and fast furnaces. Bells are village loot /
 creative only, as in Java. A shovel makes dirt paths; paths are 15/16 high
-and drop dirt. Hay bales support three placement axes.
+and drop dirt. Hay bales support three placement axes and multiply fall damage
+by Java 26.3's 0.2f before flooring (shared player environment and landing tests).
+
+Barrels face `getNearestLookingDirection().getOpposite()`, so placing one while
+looking mostly down or up opens it upward or downward (ids 2523 and 2524,
+`barrels_open_vertically_when_placed_looking_up_or_down`).
 
 Current simplifications: lectern books, loom banners, cartography maps,
-stonecutter UI, wall/ceiling grindstones, vertical barrel facings and
-hay-bale fall cushioning are not implemented.
+stonecutter UI and wall/ceiling grindstones (twelve attach/facing states and
+rotated shapes) are not implemented. Hay-bale player and performance acceptance remain open.
 Blast-furnace equipment recycling is not yet implemented.
 
 ## Java references
@@ -57,13 +62,14 @@ chest; farms have wheat/carrot/potato rows, irrigation, hay and composters.
 Generated containers register immediately; saved entries override seeded
 loot, including empty looted chests. House loot follows Java 1.21 biome
 weights, 3–8 rolls and item counts. Unsupported loot remains weighted
-empty rolls (berries, some seeds, saddles, signs, blue ice, beetroot soup).
+empty rolls (berries, some seeds, signs, blue ice, beetroot soup). Saddles are
+registered and the existing loot resolver includes them.
 
 The compact house/street/farm/meeting pools are original geometry inspired
 by Java's jigsaw pools. They do not reproduce the full vanilla NBT template
 catalogue, pool weights, processor lists, abandoned variants, decorative
 pools, terrain beard blending or specialized profession chest tables.
-Snow roofs currently use full snow blocks because snow layers are absent.
+Snow roofs still use full snow blocks; snow layers now exist (1 to 8) but the village pieces have not been changed to place them.
 
 Baseline on Apple M5, `--bench --rd 4`: 0.228 ms/generated chunk,
 0.678 ms/dense chunk for light+mesh. Overlap painting, signed placement,
@@ -111,23 +117,32 @@ and price multipliers. Two distinct supported offers unlock per tier where
 available. Novice/Apprentice/Journeyman/Expert/Master thresholds are 0/10/70/150/250
 XP. Enchanted gear and librarian books use Java enchantment levels and price
 ranges; treasure books cost double. Successful trades release 3–6 player XP,
-plus 5 on a promotion. At most two restocks occur per day, while near the job
+plus 5 on a promotion. The new tier unlocks 40 ticks (2 s) after the
+trade that crosses the XP threshold, paused while a screen is open, and then
+grants Regeneration for 200 ticks (Java `updateMerchantTimer`). At most two restocks occur per day, while near the job
 site during work hours, separated by 2400 day ticks. Restocking updates Java's
 supply/demand term and resets uses. Offers, enchantments, demand, stock, rank,
 XP, bed/job claims, age, identity and restock counters survive dimension saves.
 Older saves without the additive `villagers` property remain valid.
 
+Villagers that reach their bed snap onto the head half, face along it and lie with the
+head on the pillow (Java's sleeping pose: feet slid back `eyeHeight - 0.1`; the lying-down
+animation is not interpolated, and the render is covered by a pose test, not a screenshot).
+Villager-opened doors close again one second after no villager is within 1.6 blocks.
+
 Simplifications: procedural house templates/resident ages rather than vanilla
 NBT assets; straight-line navigation with obstacle sidesteps rather than full
-brain/pathfinding; sleep near a bed rather than snapping to its exact facing;
-doors remain open. Trade selection uses an independent deterministic seed
-stream, promotions unlock immediately rather than after 40 ticks, and the
+brain/pathfinding. Trade selection uses an independent deterministic seed
+stream and the
 restock interval is a fixed day-time interval. Item families absent from the
 engine are filtered from trade pools, so some tiers offer fewer than two trades
 (or none): fish/buckets, campfires, maps, banners, item frames, suspicious stew,
 glazed terracotta, tipped arrows, and unavailable foods/stone variants. The
-leatherworker has no cauldron job site yet. Raids and farmer harvesting remain
-gaps; round 2 implements breeding, gossip, reputation, golems, zombie
+leatherworker has no cauldron job site yet (there is no cauldron block). Raids remain
+a gap; farmers on shift walk to ripe wheat, carrot or potato crops within five blocks of their
+composter and cut and replant them (Java `HarvestFarmland`, gated by mobGriefing; replanting
+is free instead of using seeds from the villager's inventory, and they do not compost or
+use bone meal); round 2 implements breeding, gossip, reputation, golems, zombie
 villagers and wandering traders below. Profession
 aprons share an original base model across biomes; level badges are in the UI.
 
@@ -147,15 +162,19 @@ crack stages and 25-health ingot repairs. Player-built golems never attack
 players; other golems retaliate. They target nearby hostiles except creepers.
 Creepers do not flee golems in Java. Snow golems throw snowballs that leave
 their source correctly and do not award player-kill loot/XP; they suffer water
-and desert damage. Snow-layer trails await a snow-layer block implementation.
+and heat damage. Snow layers now exist (1 to 8), but snow golems do not yet
+leave snow-layer trails.
 
 Village summoning requires recent sleep, three eligible villagers panicking
 or five on a gossip check, no nearby golem, and a supported unobstructed spawn
 position. Each resident remembers detecting a golem for 30 seconds; the
 memory survives saves and distant villages summon independently. Remaining
 simplifications: spherical sensors and minute gossip checks rather than the complete Java
-brain memory/sensor scheduling. Snow golems' heat damage currently uses the
-desert biome rather than the complete biome temperature system.
+brain memory/sensor scheduling. Snow golem melting now follows Java 26.3's biome environment attribute: deserts,
+all badlands and savanna variants, plus the Nether dimension. Cave biomes override
+the surface biome. The extracted `mob_integrations.json` fixture and damage tests
+cover the heat locations; the retained once-a-second heat damage cadence still
+differs from Java's per-tick hurt attempts.
 
 Zombies/husks/drowned attack villagers. Fatal attacks infect on Normal (50%)
 and Hard (100%); Easy/Peaceful never infect. Natural zombies everywhere have
@@ -224,14 +243,19 @@ Traders offer five distinct common and one rare supported Java 1.21 offer,
 with exact quantities/prices/stock caps, no leveling or restocking, through
 the shared merchant UI/controller/CLI transaction. They disappear after
 48000 loaded ticks (paused while trading), drink for 32 ticks to become
-invisible at night, and drink milk to reappear by day. Offers, remaining
+invisible when it is dark (Invisibility lasts 3600 ticks, after which they drink
+again), and drink milk to reappear by day (Java `UseItemGoal`; the finish sounds are
+procedural stand-ins). Offers, remaining
 lifetime, destination, potion state, llama links and attempt progression
 survive saves. Models and robes are original procedural geometry.
 
 Remaining simplifications: trade pools filter absent items, shared resident
-navigation, llama following without physical/rendered leads, no llama
-spitting/taming/riding, and no held potion/milk model or drinking sound.
-Biome exclusions await the unsupported void/deep-dark biome tags. A trader
+navigation, merchant-linked trader llamas now render the existing procedural lead rope
+(including after save/reload and through mob replicas); physical merchant-lead
+breaking remains simplified. Trader llamas have no
+spitting/taming/riding, and no held potion/milk model.
+Java 26.3's only excluded trader biome is `the_void` (`without_wandering_trader_spawns`),
+which cannot generate here, so no exclusion is needed. A trader
 can remain frozen in a loaded chunk beyond the common 128-block activation
 radius, as other persistent village entities currently do.
 
@@ -247,8 +271,11 @@ cure gossip. Host, controller and CLI prices/payments use the same player's
 reputation, and gossip/cure identity survive saves. Older single-number
 reputation migrates as a host-only legacy discount. Sharing currently visits
 the closest resident and transfers all eligible entries rather than Java's
-weighted selection of ten. Golem reputation-based hostility and gossip from
-projectile/magic damage are still absent.
+weighted selection of ten. Arrow and splash-potion damage from a player adds the same
+hurt/kill gossip as melee (Java `VILLAGER_HURT`/`VILLAGER_KILLED`). A wild iron golem
+targets a player within its `inflate(10, 8, 10)` box whom a villager in that box rates
+at -100 or worse (`DefendVillageTargetGoal`); player-built golems still never do.
+Gossip sensors keep the retained spherical radii.
 
 Round 2 Java references:
 - [Breeding behavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java)

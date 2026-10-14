@@ -31,6 +31,22 @@ impl Level for Planting<'_> {
 }
 
 impl World {
+    /// Roll head age only after a placement request has passed validation.
+    /// All input adapters use the same world RNG, rather than wall-clock time.
+    pub(crate) fn placed_vine_age(&mut self, cell: IVec3, block: Block) -> Result<Block, &'static str> {
+        let mut next = self.rng;
+        let candidate = if matches!(Vine::of(block), Some((_, Some(_)))) {
+            nb::placed_vine(block, super::noise::splitmix64(&mut next))
+        } else {
+            block
+        };
+        if self.get_block(cell) == Some(candidate) {
+            return Err("block is unchanged");
+        }
+        self.rng = next;
+        Ok(candidate)
+    }
+
     fn flora_rng(&mut self) -> Rng {
         Rng(self.roll())
     }

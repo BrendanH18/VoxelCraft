@@ -30,6 +30,13 @@ const WART_GROWTH: u64 = 10;
 /// One in this many random ticks grows a sapling into a tree.
 const SAPLING_GROWTH: u64 = 7;
 
+/// Java 26.3 `TreeGrower.DARK_OAK` and `PALE_OAK` have only a 2x2 (mega)
+/// feature, so a lone sapling of either can never grow.
+fn needs_two_by_two(sapling: Block) -> bool {
+    let sapling = sapling.base();
+    sapling == super::overworld_blocks::DARK_OAK_SAPLING || sapling == super::overworld_blocks::PALE_OAK_SAPLING
+}
+
 impl World {
     pub(super) fn roll(&mut self) -> u64 {
         splitmix64(&mut self.rng)
@@ -58,18 +65,25 @@ impl World {
     pub fn spill_with_item(&mut self, p: IVec3, block: Block, held: Option<Stack>) {
         if self.tile_drops
             && held.is_some_and(|s| s.item == Item::SHEARS)
-            && (block.is_leaves()
-                || block == Block::COBWEB
-                || super::nether_biome_blocks::sheared_drop(block).is_some()
-                || super::overworld_blocks::sheared_drop(block).is_some())
+            && let Some(stack) = Self::shear_loot(block)
         {
-            let item = super::nether_biome_blocks::sheared_drop(block)
-                .or_else(|| super::overworld_blocks::sheared_drop(block))
-                .unwrap_or(block.base().into());
-            self.drops.push((p, Stack::new(item, 1)));
+            self.drops.push((p, stack));
         } else {
             self.spill_mined(p, block, held.map_or(Default::default(), |s| s.active_enchants()));
         }
+    }
+
+    /// What Java's loot tables give `block` under `tool/can_shear` instead of
+    /// the usual roll: the plant or leaf itself, and two for the tall grass,
+    /// large fern and tall seagrass pools (`tests/fixtures/java/26.3/mining.json`).
+    fn shear_loot(block: Block) -> Option<Stack> {
+        let count = if matches!(block.0, 1963 | 1964 | 2049..=2052) { 2 } else { 1 };
+        let item = match block {
+            Block::TALL_GRASS | Block::FERN | Block::DEAD_BUSH | Block::COBWEB => block.into(),
+            b if b.is_leaves() => b.base().into(),
+            b => super::nether_biome_blocks::sheared_drop(b).or_else(|| super::overworld_blocks::sheared_drop(b))?,
+        };
+        Some(Stack::new(item, count))
     }
 
     pub fn spill_mined(&mut self, p: IVec3, block: Block, tool: crate::enchant::Enchants) {
@@ -80,13 +94,18 @@ impl World {
         if tool.has(Enchantment::SilkTouch)
             && let Some(item) = crate::mining::silk_drop(block)
         {
-            self.drops.push((p, Stack::new(item, 1)));
+            // A silk-touched snow block keeps every layer.
+            let count = super::overworld_blocks::snow_layers(block).unwrap_or(1);
+            self.drops.push((p, Stack::new(item, count)));
             return;
         }
         let fortune = tool.level(Enchantment::Fortune) as u64;
         let mut out = Vec::new();
         out.extend(block.drop().map(|item| Stack::new(item, 1)));
-        if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0) {
+        if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
+            || super::overworld_blocks::snow_layers(block).is_some()
+            || super::overworld_blocks::bud_facing(block).is_some()
+        {
             self.overworld_drops(block, fortune, &mut out);
         }
         match block.as_stone_ore() {
@@ -258,13 +277,32 @@ impl World {
             Block::FARMLAND | Block::WET_FARMLAND => self.tick_farmland(p, b),
             b if b.is_sapling() => {
                 if self.grows_here(p) && self.one_in(SAPLING_GROWTH) {
-                    self.grow_tree(p);
+                    self.advance_tree(p);
                 }
+            }
+            // `SnowLayerBlock.randomTick`: block light above 11 melts it, with drops.
+            b if super::overworld_blocks::snow_layers(b).is_some() => {
+                self.update_block_light();
+                if self.block_light(p) > 11 {
+                    self.spill_block(p, b);
+                    self.edit(p, Block::AIR, true);
+                }
+            }
+            // `RedStoneOreBlock.randomTick`: a lit ore goes dark.
+            b if matches!(
+                super::redstone_blocks::component(b),
+                Some(super::redstone_blocks::Component::GlowingOre(_))
+            ) =>
+            {
+                self.extinguish_ore(p, b);
             }
             Block::SUGAR_CANE => self.tick_cane(p),
             b if b.is_mushroom() => self.tick_mushroom(p, b),
             b if (1600..=1687).contains(&b.0) => self.tick_nether_flora(p, b),
-            b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.0) => {
+            b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.0)
+                || (2150..=2157).contains(&b.0)
+                || (2160..=2164).contains(&b.0) =>
+            {
                 self.tick_overworld_flora(p, b);
             }
             b if b.crop_stage().is_some_and(|s| s < 7) => {
@@ -282,27 +320,66 @@ impl World {
         }
     }
 
-    /// Java crops need light >=9 in their cell; saplings sample above it.
-    /// Preserve the current open-sky approximation for skylight.
-    fn grows_here(&mut self, p: IVec3) -> bool {
+    /// Brightness for growth rules on the gameplay light arrays (block light
+    /// and propagated skylight), not the heightmap. `darkened` selects Java's
+    /// `getMaxLocalRawBrightness(p)`, which subtracts the time-of-day and
+    /// weather `skyDarken`; otherwise `getRawBrightness(p, 0)`, the stored
+    /// skylight at any hour. Where skylight is not exact yet (a partly loaded
+    /// border) only block light counts.
+    pub(super) fn growth_light(&mut self, p: IVec3, darkened: bool) -> u8 {
         self.update_block_light();
-        let light_at = if self.get_block(p).is_some_and(Block::is_sapling) { p + IVec3::Y } else { p };
-        self.sky_exposed(light_at) || self.block_light(light_at) >= 9
+        let darken = if darkened { self.sky_darken() } else { 0 };
+        self.raw_brightness(p, darken).unwrap_or_else(|| self.block_light(p))
     }
 
-    /// Grass dies under opaque blocks and spreads to lit dirt nearby (one
-    /// block across, three down or one up).
-    fn tick_grass(&mut self, p: IVec3) {
-        let covered = |w: &World, q: IVec3| w.get_block(q + IVec3::Y).is_some_and(|a| a.is_opaque() || a.is_fluid());
-        if covered(self, p) {
+    /// Java `CropBlock.randomTick`: `getRawBrightness(pos, 0) >= 9` in the
+    /// crop's cell, so open sky counts at night too. `SaplingBlock.randomTick`
+    /// instead samples `getMaxLocalRawBrightness(pos.above())`, which night
+    /// and storms darken.
+    fn grows_here(&mut self, p: IVec3) -> bool {
+        if self.get_block(p).is_some_and(Block::is_sapling) {
+            self.growth_light(p + IVec3::Y, true) >= 9
+        } else {
+            self.growth_light(p, false) >= 9
+        }
+    }
+
+    /// Whether a grass-like block under `above` survives: Java's
+    /// `SpreadingSnowyBlock.canStayAlive` (a full fluid kills it; otherwise
+    /// the block above must not dampen light completely).
+    fn spreader_stays(&self, above: Option<Block>) -> bool {
+        above.is_none_or(|a| a.light_opacity() < 15 && !a.is_fluid())
+    }
+
+    /// Java `SpreadingSnowyBlock.randomTick` for grass and mycelium: it dies
+    /// to dirt when covered; otherwise, if `getMaxLocalRawBrightness(above)`
+    /// is at least 9, four attempts pick a cell in x/z -1..=1 and y -3..=1
+    /// and turn dirt there into `spread` when it could stay alive and has no
+    /// water above.
+    pub(super) fn tick_spreader(&mut self, p: IVec3, spread: Block) {
+        if !self.spreader_stays(self.get_block(p + IVec3::Y)) {
             self.edit(p, Block::DIRT, false);
             return;
         }
-        let r = self.roll();
-        let q = p + IVec3::new((r % 3) as i32 - 1, (r / 3 % 5) as i32 - 3, (r / 15 % 3) as i32 - 1);
-        if self.get_block(q) == Some(Block::DIRT) && !covered(self, q) && self.sky_exposed(q + IVec3::Y) {
-            self.edit(q, Block::GRASS, false);
+        if self.growth_light(p + IVec3::Y, true) < 9 {
+            return;
         }
+        for _ in 0..4 {
+            let r = self.roll();
+            let q = p + IVec3::new((r % 3) as i32 - 1, (r / 3 % 5) as i32 - 3, (r / 15 % 3) as i32 - 1);
+            let above = self.get_block(q + IVec3::Y);
+            if self.get_block(q) == Some(Block::DIRT)
+                && self.spreader_stays(above)
+                && !above.is_some_and(Block::is_water)
+            {
+                self.edit(q, spread, false);
+            }
+        }
+    }
+
+    /// Grass spreads like Java's `SpreadingSnowyBlock` (see [`World::tick_spreader`]).
+    fn tick_grass(&mut self, p: IVec3) {
+        self.tick_spreader(p, Block::GRASS);
     }
 
     /// Farmland is wet with water within 4 blocks across (at its level or
@@ -334,17 +411,36 @@ impl World {
         }
     }
 
+    /// Java's `SaplingBlock.advanceTree`: a stage-0 sapling becomes stage 1,
+    /// and a stage-1 sapling grows its tree. Returns whether a tree grew.
+    pub fn advance_tree(&mut self, p: IVec3) -> bool {
+        let Some(sapling) = self.get_block(p) else { return false };
+        if let Some(next) = super::overworld_blocks::sapling_stage_one(sapling) {
+            self.edit(p, next, false);
+            return false;
+        }
+        self.grow_tree(p)
+    }
+
     /// Grows the sapling at `p` into a tree if there's room for its trunk.
     /// Leaves only fill air, like world generation. Returns whether it grew.
-    pub fn grow_tree(&mut self, p: IVec3) -> bool {
+    pub fn grow_tree(&mut self, mut p: IVec3) -> bool {
         let Some(sapling) = self.get_block(p) else { return false };
+        if needs_two_by_two(sapling) {
+            let Some(corner) = self.two_by_two_corner(p, sapling) else { return false };
+            p = corner;
+        }
         let v = self.roll() as u32;
         let mut blocks = Vec::new();
         let ground = p - IVec3::Y;
         let Some(wood) = sapling.wood().filter(|_| sapling.is_sapling()) else { return false };
+        let sapling = sapling.base();
         super::trees::tree(wood, ground, v, &mut |q, b| blocks.push((q, b)));
         let room = blocks.iter().filter(|(_, b)| b.is_log()).all(|&(q, _)| {
-            q == p || self.get_block(q).is_some_and(|b| b == Block::AIR || b.is_replaceable() || b.is_leaves())
+            q == p
+                || self
+                    .get_block(q)
+                    .is_some_and(|b| b.base() == sapling || b == Block::AIR || b.is_replaceable() || b.is_leaves())
         });
         if !room {
             return false;
@@ -359,6 +455,17 @@ impl World {
             self.edit(ground, Block::DIRT, false);
         }
         true
+    }
+
+    /// Java's `TreeGrower.findTwoByTwoSaplingPos`: the north-west corner of
+    /// the first complete 2x2 of `sapling` containing `p`, trying x and then
+    /// z offsets from 0 down to -1.
+    fn two_by_two_corner(&self, p: IVec3, sapling: Block) -> Option<IVec3> {
+        [0, -1].into_iter().flat_map(|x| [0, -1].map(move |z| p + IVec3::new(x, 0, z))).find(|&q| {
+            [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z]
+                .into_iter()
+                .all(|d| self.get_block(q + d).is_some_and(|b| b.base() == sapling.base()))
+        })
     }
 
     /// Bone meal on the block at `p`: crops grow 2-5 stages, saplings have a
@@ -379,9 +486,14 @@ impl World {
                 self.edit(p, Block::crop(crop, stage), true);
                 true
             }
+            // Java's `SaplingBlock.isValidBonemealTarget` is `TreeGrower.canGrow`:
+            // a dark or pale oak sapling outside a 2x2 keeps the bone meal.
             b if b.is_sapling() => {
+                if needs_two_by_two(b) && self.two_by_two_corner(p, b).is_none() {
+                    return false;
+                }
                 if self.roll() % 100 < 45 {
-                    self.grow_tree(p);
+                    self.advance_tree(p);
                 }
                 true
             }
@@ -600,17 +712,33 @@ mod tests {
         assert_eq!(union.rng, overlapping.rng, "overlapping regions must tick once");
     }
 
+    /// Three by three lit flat columns (stone to y 63) with the player-modified
+    /// chunks the gameplay light arrays need, optionally under a stone roof
+    /// wide enough that its centre is more than six steps from open sky.
+    fn growth_world(roofed: bool) -> World {
+        let mut world = crate::world::lighting::flat_test_world(
+            (-1..=1).flat_map(|x| (-1..=1).map(move |z| glam::IVec2::new(x, z))),
+            63,
+        );
+        if roofed {
+            for x in 4..=28 {
+                for z in 4..=28 {
+                    world.set_block(IVec3::new(x, 67, z), Block::STONE);
+                }
+            }
+        }
+        world.update_block_light();
+        world
+    }
+
     #[test]
     fn covered_crops_need_nine_block_light_and_saplings_sample_above() {
-        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
-        for y in world.generator.dimension.chunk_rows() {
-            world.insert_chunk(IVec3::new(0, y, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
-        }
-        let crop = IVec3::new(15, 150, 16);
+        let mut world = growth_world(true);
+        let crop = IVec3::new(16, 64, 16);
         world.set_block(crop - IVec3::Y, Block::WET_FARMLAND);
         world.set_block(crop, Block::wheat(0));
-        world.set_block(crop + IVec3::Y * 2, Block::STONE);
-        assert!(!world.sky_exposed(crop));
+        world.update_block_light();
+        assert!(world.sky_light(crop).unwrap() < 9, "{:?}", world.sky_light(crop));
         assert!(!world.grows_here(crop));
         let near = crop - IVec3::X * 5;
         let far = crop - IVec3::X * 6;
@@ -638,6 +766,79 @@ mod tests {
         world.set_block(near + IVec3::Y, Block::GLOWSTONE);
         assert!(world.grows_here(crop));
         assert!(world.mesh_uploads.is_empty());
+    }
+
+    #[test]
+    fn crops_read_stored_skylight_at_night_and_saplings_the_darkened_value() {
+        // Java: CropBlock uses getRawBrightness(pos, 0) (no time of day) while
+        // SaplingBlock uses getMaxLocalRawBrightness(pos.above()), which
+        // subtracts skyDarken (11 at midnight, 5 on a clear dusk).
+        let mut world = growth_world(false);
+        let crop = IVec3::new(16, 64, 16);
+        world.set_block(crop - IVec3::Y, Block::WET_FARMLAND);
+        world.set_block(crop, Block::wheat(0));
+        world.update_block_light();
+        assert_eq!(world.sky_light(crop), Some(15));
+        world.set_redstone_daylight(0.75, 11, 0.0);
+        assert!(world.grows_here(crop), "wheat grows under a night sky");
+        world.set_block(crop - IVec3::Y, Block::DIRT);
+        world.set_block(crop, Block::OAK_SAPLING);
+        assert!(!world.grows_here(crop), "15 - 11 = 4 darkens the sapling's sample");
+        world.set_redstone_daylight(0.52, 6, 0.0);
+        assert!(world.grows_here(crop), "15 - 6 = 9 is enough");
+        world.set_redstone_daylight(0.55, 7, 0.0);
+        assert!(!world.grows_here(crop));
+        // A lamp beside it counts at any hour.
+        world.set_block(crop + IVec3::new(1, 1, 0), Block::GLOWSTONE);
+        assert!(world.grows_here(crop));
+    }
+
+    #[test]
+    fn berries_and_bamboo_test_the_cell_above_with_stored_skylight() {
+        let mut world = growth_world(true);
+        let bush = IVec3::new(16, 64, 16);
+        world.set_block(bush - IVec3::Y, Block::DIRT);
+        world.update_block_light();
+        assert!(!world.lit_enough(bush + IVec3::Y), "dark under the wide roof");
+        let mut open = growth_world(false);
+        open.update_block_light();
+        assert!(open.lit_enough(bush + IVec3::Y));
+        open.set_redstone_daylight(0.75, 11, 0.0);
+        assert!(open.lit_enough(bush + IVec3::Y), "stored skylight, no night darkening");
+    }
+
+    #[test]
+    fn grass_spreads_only_with_brightness_nine_above_and_dies_when_covered() {
+        // Java SpreadingSnowyBlock.randomTick: getMaxLocalRawBrightness(above) >= 9
+        // (skyDarken applies) before four spread attempts at dirt; a
+        // light-opaque block above turns it to dirt.
+        let spread = |darken: u8, roofed: bool| {
+            let mut world = growth_world(roofed);
+            let grass = IVec3::new(16, 63, 16);
+            world.set_block(grass, Block::GRASS);
+            for d in [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z] {
+                world.set_block(grass + d, Block::DIRT);
+            }
+            world.update_block_light();
+            world.set_redstone_daylight(0.5, darken, 0.0);
+            for _ in 0..600 {
+                world.random_tick(grass);
+            }
+            let n = [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z]
+                .into_iter()
+                .filter(|&d| world.get_block(grass + d) == Some(Block::GRASS))
+                .count();
+            (n, world.get_block(grass))
+        };
+        assert_eq!(spread(0, false), (4, Some(Block::GRASS)), "day spreads");
+        assert_eq!(spread(11, false), (0, Some(Block::GRASS)), "15 - 11 < 9: night does not");
+        assert_eq!(spread(0, true), (0, Some(Block::GRASS)), "dark under a roof, but not covered");
+        let mut world = growth_world(false);
+        let grass = IVec3::new(16, 63, 16);
+        world.set_block(grass, Block::GRASS);
+        world.set_block(grass + IVec3::Y, Block::STONE);
+        world.random_tick(grass);
+        assert_eq!(world.get_block(grass), Some(Block::DIRT));
     }
 
     #[test]

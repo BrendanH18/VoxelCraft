@@ -93,7 +93,7 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
     if suffocating {
         a.damage_tick += dt;
         if a.damage_tick >= 1.0 {
-            m.health -= 2.0;
+            m.health -= 2.0 * m.effects.resistance_factor();
             a.damage_tick %= 1.0;
         }
     } else {
@@ -265,7 +265,12 @@ pub(super) fn pillager<W: MobWorld + ?Sized>(
     let visible = super::mob::line_of_sight(w, from, t.pos + DVec3::Y);
     m.charged = visible && delta.length_squared() < 225.0;
     if m.charged && m.attack_cooldown <= 0.0 {
-        events.push(EntityEvent::Shoot { from, target: t.pos + DVec3::Y, cause: "was shot by a pillager" });
+        events.push(EntityEvent::Shoot {
+            from,
+            target: t.pos + DVec3::Y,
+            cause: "was shot by a pillager",
+            shooter: m.uid,
+        });
         m.attack_cooldown = 2.5;
         m.attack_anim = 0.4;
     }
@@ -357,13 +362,25 @@ pub const TURTLE_GROW_SECS: f32 = 1200.0;
 
 impl Entities {
     /// Baby turtles grow up after twenty minutes and shed a scute.
+    #[cfg(test)]
     pub(super) fn grow_turtles(&mut self, dt: f32) {
+        self.grow_turtles_matching(dt, |_| true);
+    }
+    pub(super) fn grow_loaded_turtles<W: MobWorld + ?Sized>(&mut self, dt: f32, w: &W, ctx: &Ctx) {
+        self.grow_turtles_matching(dt, |m| {
+            w.loaded(m.pos.floor().as_ivec3())
+                && ctx.nearest_player_dist2(m.pos).is_none_or(|d| d <= super::DESPAWN_DIST.powi(2))
+        });
+    }
+    fn grow_turtles_matching(&mut self, dt: f32, mut active: impl FnMut(&Mob) -> bool) {
         let mut scutes = Vec::new();
         for m in &mut self.mobs {
-            if m.kind == MobKind::Turtle && m.baby && m.alive() {
+            if m.kind == MobKind::Turtle && m.baby && m.alive() && active(m) {
                 m.grow += dt;
+                m.age = -((TURTLE_GROW_SECS - m.grow).max(0.0) * 20.0) as i32;
                 if m.grow >= TURTLE_GROW_SECS {
                     m.baby = false;
+                    m.age = 0;
                     scutes.push(m.pos);
                 }
             }
@@ -380,16 +397,19 @@ impl Entities {
             self.spawn(MobKind::Turtle, pos);
             let m = self.mobs.last_mut().unwrap();
             m.baby = true;
+            m.age = -24000;
             m.persistent = true;
         }
     }
 
-    /// Shared bucket action for keyboard, controller and CLI players. Source
-    /// raycasts stop through walls; entity capture is limited by the same reach.
+    /// Java `Bucketable.bucketMobPickup`: a water bucket used on a bucketable
+    /// creature stores its variant and health in the filled bucket. It is an
+    /// entity interaction, so it has no build-permission check. Walls stop the
+    /// capture ray; the shared bucket action releases payloads.
     #[allow(clippy::too_many_arguments)]
-    pub fn use_water_creature_bucket(
+    pub fn capture_water_creature(
         &mut self,
-        world: &mut World,
+        world: &World,
         inventory: &mut Inventory,
         slot: usize,
         creative: bool,
@@ -397,40 +417,23 @@ impl Entities {
         dir: DVec3,
         reach: f64,
     ) -> bool {
-        let Some(stack) = inventory.get(slot) else { return false };
-        if stack.item == Item::WATER_BUCKET {
-            let distance =
-                world.raycast(eye, dir, reach).map_or(reach, |(p, _)| (p.as_dvec3() + DVec3::splat(0.5)).distance(eye));
-            let Some((i, _)) = self.raycast(eye, dir, distance) else { return false };
-            let m = &self.mobs[i];
-            let Some(item) = bucket_item(m.kind) else { return false };
-            let mut filled = Stack::new(item, 1);
-            filled.entity_data = 1
-                | ((m.aquatic.as_ref().unwrap().variant as u32) << 1)
-                | (((m.health.clamp(0.0, 255.0) * 100.0).round() as u32) << 9);
-            self.mobs.swap_remove(i);
-            if !creative {
-                inventory.slots[slot] = Some(filled);
-            } else if inventory.add_stack(filled) > 0 {
-                self.throw(filled, eye, dir);
-            }
-            return true;
-        }
-        if bucket_kind(stack.item).is_none() {
+        if inventory.get(slot).is_none_or(|stack| stack.item != Item::WATER_BUCKET) {
             return false;
         }
-        let Some((p, n)) = world.raycast_sources(eye, dir, reach) else { return false };
-        let at = if world.get_block(p).is_some_and(|b| b.is_replaceable() || b.holds_water()) { p } else { p + n };
-        if !world.get_block(at).is_some_and(|b| b.is_replaceable() || b.holds_water()) {
-            return false;
-        }
-        // Waterlogged plants already hold the water.
-        if world.generator.dimension != Dimension::Nether && !world.get_block(at).is_some_and(Block::holds_water) {
-            world.set_block(at, Block::WATER);
-        }
-        self.release_water_creature(stack, at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+        let distance =
+            world.raycast(eye, dir, reach).map_or(reach, |(p, _)| (p.as_dvec3() + DVec3::splat(0.5)).distance(eye));
+        let Some((i, _)) = self.raycast(eye, dir, distance) else { return false };
+        let m = &self.mobs[i];
+        let Some(item) = bucket_item(m.kind) else { return false };
+        let mut filled = Stack::new(item, 1);
+        filled.entity_data = 1
+            | ((m.aquatic.as_ref().unwrap().variant as u32) << 1)
+            | (((m.health.clamp(0.0, 255.0) * 100.0).round() as u32) << 9);
+        self.mobs.swap_remove(i);
         if !creative {
-            inventory.slots[slot] = Some(Stack::new(Item::BUCKET, 1));
+            inventory.slots[slot] = Some(filled);
+        } else if inventory.add_stack(filled) > 0 {
+            self.throw(filled, eye, dir);
         }
         true
     }
@@ -533,7 +536,7 @@ impl Entities {
                             let p = b.residents.iter().find(|(k, _)| *k == kind).map(|(_, p)| *p);
                             if count < cap
                                 && let Some(p) = p
-                                && super::clear_of_players(ctx, p.as_dvec3())
+                                && super::clear_of_players(ctx, self.world_spawn, p.as_dvec3())
                                 && w.loaded(p)
                                 && !physics::overlaps_solid(w, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), kind.shape())
                             {
@@ -609,6 +612,7 @@ mod tests {
     }
     fn ctx(p: DVec3) -> Ctx {
         Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players: vec![Target::new(PlayerId(7), p, true)],
             daylight: 1.0,
             spawning: false,
@@ -745,19 +749,17 @@ mod tests {
         let mut inv = Inventory::default();
         inv.slots[0] = Some(Stack::new(Item::WATER_BUCKET, 1));
         w.set_block(IVec3::new(1, 151, 0), Block::STONE);
-        assert!(!e.use_water_creature_bucket(&mut w, &mut inv, 0, false, eye, DVec3::X, 6.0));
+        assert!(!e.capture_water_creature(&w, &mut inv, 0, false, eye, DVec3::X, 6.0));
         w.set_block(IVec3::new(1, 151, 0), Block::AIR);
-        assert!(e.use_water_creature_bucket(&mut w, &mut inv, 0, false, eye, DVec3::X, 6.0));
+        assert!(e.capture_water_creature(&w, &mut inv, 0, false, eye, DVec3::X, 6.0));
         assert!(e.mobs.is_empty());
         let encoded = crate::inventory::stack_to_string(inv.get(0));
         assert_eq!(crate::inventory::stack_from_str(&encoded), Some(inv.get(0)));
-        w.set_block(IVec3::new(4, 151, 0), Block::STONE);
-        assert!(e.use_water_creature_bucket(&mut w, &mut inv, 0, false, eye, DVec3::X, 6.0));
+        assert!(e.release_water_creature(inv.get(0).unwrap(), DVec3::new(3.5, 151.0, 0.5)));
         let m = &e.mobs[0];
         assert!(m.persistent);
         assert_eq!(m.health, 6.25);
         assert_eq!(m.aquatic.as_ref().unwrap().variant, 3);
-        assert_eq!(inv.get(0).unwrap().item, Item::BUCKET);
         let saved = e.nether_mobs_to_string();
         let mut restored = Entities::new(2);
         restored.load_nether_mobs(&saved);

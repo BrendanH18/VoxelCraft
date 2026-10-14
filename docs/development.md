@@ -45,21 +45,26 @@ mouse look and the hand animation update each frame. Jump and mining taps
 are retained until the next game tick. Offline pause clears
 fractional clock time. Catch-up is bounded to five ticks per frame; a longer
 stall discards excess elapsed time instead of taking one large physics step.
-The existing ten-minute VoxelCraft day is preserved.
+A day is Java's 24000 ticks, 20 minutes (the saved `time` is a day fraction, so older
+ten-minute-day worlds load at the same time of day).
 
 This is a foundation for LAN and split-screen. The client still owns the
 singleplayer session, action validation, damage/death handling, dimension
 travel and saves. The example is not a dedicated or multiplayer server.
 
-Gameplay block light is maintained by `World` in both feature configurations.
+Gameplay sky and block light are maintained by `World` in both feature configurations.
 `set_block`, `explode`, terrain streaming and `simulation::tick_world` resolve
 pending light changes before returning. When calling individual batched
 world systems directly, call `update_block_light` before querying their
 light. Dark chunks allocate no light arrays; lit chunks store two levels per
 byte. Worker meshes carry geometry only and cannot overwrite gameplay light.
 Covered crops require level 9 in their cell; saplings sample the cell above.
-Skylight for growth still uses the existing open-sky approximation, and
+Growth reads propagated gameplay skylight, and
 slabs/stairs retain their current opaque-cell lighting approximation.
+`World::sky_light` returns an optional propagated level; incomplete neighboring
+columns are unknown. `Ctx::spawn_light` takes explicit gameplay clock/weather
+brightness from `simulation::lighting::SpawnLight`, separately from visual
+daylight. See the [lighting/spawning evidence](verification/2026-10-13-lighting-spawning.md).
 
 ## Benchmarks
 
@@ -133,3 +138,58 @@ cargo run --release -- --help
 
 `--help` and `--version` exit successfully when used alone. Flags and defaults
 are defined in [src/main.rs](../src/main.rs).
+
+## Live performance scene suite
+
+The initial scene definitions are in `benchmarks/scenes.json`. Run
+`python3 tools/benchmark_scenes.py` for three measured runs per scene, with ten
+seconds of warm-up and sixty measured seconds (streaming uses 180 seconds).
+The tool builds a release executable with a runtime source fingerprint, records
+hardware and executable identity, and writes per-frame samples and summaries
+under ignored `target/benchmarks/`. Set `CARGO_TARGET_DIR` normally if you use a
+shared build cache. Run benchmarks without concurrent builds or GPU workloads.
+
+Use `--quick --repeats 1` only to smoke-test the runner. Such results are always
+ineligible for acceptance. `--native-resolution WIDTHxHEIGHT` writes a separate
+native-resolution run; use a separate `--output` folder. The normal reference
+configuration requests 1920 x 1080 physical pixels and rd=8. Each report records
+the actual surface dimensions. VSync is disabled and the normal renderer,
+world streaming and 20 Hz simulation remain active. Controlled camera flight
+and initial health are explicit fixture overrides; these scenes do not replace
+ordinary-player tests or the full roadmap biome/encounter matrix.
+Survival and streaming cameras fly 24 blocks above the generator's surface along
+their routes and face their direction of travel. The entity scene holds dawn with
+no daylight cycle or natural spawning, so its 160 mobs do not burn.
+
+A benchmark run ignores keyboard, pointer, controller and focus input. It never
+autosaves or saves, including when its window is closed. Keep its window
+visible and unobstructed. Frames skipped because the surface is hidden or
+occluded are counted, and any skipped frame makes the run invalid.
+
+Reports include average FPS, the reciprocal of the mean of the slowest 1% of
+frames, p50/p95/p99/worst frame time, stalls over 50 ms, cold load and process
+RSS. They also include completed versus expected simulation ticks, paused and
+discarded simulation time, unpresented frames and entity populations at sample
+start and end. Present mode is reported as requested and as resolved from the
+surface's supported modes, along with the relevant options. GPU memory is
+reported in two forms. The chunk quad arena's used and reserved bytes are always
+recorded. Device-allocator totals are `null` where the backend provides no
+allocator report, including Metal on macOS; `null` never means zero.
+GPU timestamp costs are currently reported as unavailable; surface intervals
+measure presented throughput.
+
+Each report has `acceptance_eligible_configuration`, `run_valid` and
+`ineligible_reasons`. A run is valid only with zero paused time, completed ticks
+within max(2, 0.5%) of 20 per sampled second, zero unpresented frames and, for
+the entity scene, start and end populations within 5% of 160. The runner's
+`reference_gate_passed` also requires enhanced graphics, an uncapped resolved
+present mode, a matching source fingerprint, M5 hardware, all scenes and three
+repeats. The fingerprint covers the files embedded by `build.rs`, including
+`packaging/icons/*`. `reference_gate_problems` lists each failure. Run
+`python3 -m unittest tools/test_benchmark_scenes.py` after changing the gate.
+Neither this suite nor the older offscreen sweep alone proves 1.0 performance
+acceptance.
+
+The low-level flags are `--benchmark-scene`, `--benchmark-output`,
+`--benchmark-warmup`, `--benchmark-duration` and `--size WIDTHxHEIGHT`.
+The legacy `--bench-render` remains available for historical comparisons.

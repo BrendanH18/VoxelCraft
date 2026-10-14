@@ -77,6 +77,14 @@ fn cell_boxes<W: BlockSource + ?Sized>(world: &W, p: IVec3, mut f: impl FnMut(DV
     }
 }
 
+/// Height of the highest collision box in cell `p`, relative to the cell's floor
+/// (`None` when the cell has no collision; unloaded cells count as full blocks).
+pub fn collision_top<W: BlockSource + ?Sized>(world: &W, p: IVec3) -> Option<f64> {
+    let mut top: Option<f64> = None;
+    cell_boxes(world, p, |_, max| top = Some(top.map_or(max.y, |t| t.max(max.y))));
+    top.map(|t| t - p.y as f64)
+}
+
 /// Calls `f` with every solid box that could touch the box (min, max):
 /// those in the cells it covers, and in the row below (fences reach up
 /// into the next cell).
@@ -206,6 +214,12 @@ pub fn touches_block<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shap
         .any(|y| (lo.z..=hi.z).any(|z| (lo.x..=hi.x).any(|x| world.block(IVec3::new(x, y, z)).is_some_and(test))))
 }
 
+/// Squared distance from `p` to the nearest point of a box (0 inside), as
+/// Java's `AABB.distanceToSqr`.
+pub fn box_distance_squared(p: DVec3, min: DVec3, max: DVec3) -> f64 {
+    p.clamp(min, max).distance_squared(p)
+}
+
 /// Slab test: distance along `dir` (not necessarily normalised; the result
 /// is in units of `dir`) at which the ray enters the box, or `None` if it
 /// misses. A ray starting inside the box hits at 0.
@@ -243,6 +257,18 @@ pub fn ray_aabb_face(origin: DVec3, dir: DVec3, min: DVec3, max: DVec3) -> Optio
         }
     }
     Some((t_near, normal))
+}
+
+/// First hit on a cell's collision boxes, in units of `dir`.
+/// Shares the exact low-block and shaped collision boxes used by movement.
+pub fn ray_collision<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DVec3, dir: DVec3) -> Option<f64> {
+    let mut first: Option<f64> = None;
+    cell_boxes(world, cell, |min, max| {
+        if let Some(t) = ray_aabb(origin, dir, min, max) {
+            first = Some(first.map_or(t, |f| f.min(t)));
+        }
+    });
+    first
 }
 
 /// Where a ray first hits the boxes of the shaped block at `cell`: the
@@ -357,6 +383,43 @@ mod tests {
         // Walking off the bed isn't blocked by the bed itself.
         let c = move_box(&grid, &mut pos, &mut vel, DVec3::new(1.0, 0.0, 0.0), shape);
         assert!(!c.horizontal);
+    }
+
+    /// `SnowLayerBlock.getCollisionShape` is `SHAPES[layers - 1]`: a single layer
+    /// is walked through and each further layer stands two sixteenths taller.
+    #[test]
+    fn snow_layers_are_stood_on_one_layer_below_their_outline() {
+        use crate::world::overworld_blocks::snow_layer;
+        let shape = Shape::new(0.3, 1.8);
+        for layers in 1..=8u8 {
+            let mut grid = Grid::flat(10);
+            grid.set(IVec3::new(0, 10, 0), snow_layer(layers));
+            let (mut pos, mut vel) = (DVec3::new(0.5, 12.0, 0.5), DVec3::ZERO);
+            for _ in 0..50 {
+                move_box(&grid, &mut pos, &mut vel, DVec3::new(0.0, -0.1, 0.0), shape);
+            }
+            // `Grid::flat(10)` fills y < 10, so the floor is y = 10.
+            let expected = 10.0 + f64::from(layers - 1) * 0.125;
+            assert!((pos.y - expected).abs() < 1e-3, "{layers} layers: y = {}", pos.y);
+        }
+    }
+
+    #[test]
+    fn soul_sand_and_mud_are_stood_on_at_java_collision_height() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/java/26.3/building.json")).unwrap();
+        let shape = Shape::new(0.3, 1.8);
+        for (name, block) in [("soul_sand", Block::SOUL_SAND), ("mud", crate::world::overworld_blocks::MUD)] {
+            let expected = fixture["collision_height"][name].as_f64().unwrap();
+            assert_eq!(block.height(), expected, "{name}");
+            let mut grid = Grid::flat(10);
+            grid.set(IVec3::new(0, 10, 0), block);
+            let (mut pos, mut vel) = (DVec3::new(0.5, 12.0, 0.5), DVec3::ZERO);
+            for _ in 0..50 {
+                move_box(&grid, &mut pos, &mut vel, DVec3::new(0.0, -0.1, 0.0), shape);
+            }
+            assert!((pos.y - (10.0 + expected)).abs() < 1e-3, "{name} y = {}", pos.y);
+        }
     }
 
     #[test]

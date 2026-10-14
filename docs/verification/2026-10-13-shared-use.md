@@ -1,0 +1,97 @@
+# Shared right-click use chain — 2026-10-13
+
+STR-03 step: one actor-owned use chain, `PlayerSession::use_held`
+([src/session/interact.rs](../../src/session/interact.rs)), replaces the desktop's
+`Game::place_block` body and the CLI's separate `place` handlers. Desktop,
+controller and LAN hands reach it through `hands::Actor` on each player's own
+session (no state swap); the headless LAN server reaches it through CLI
+commands. Nothing here is Verified.
+
+Moving hands off the swap also fixes a latent defect: a controller player
+killed by consumed magic damage (a harming potion) ran the host's death
+handling. Requests now route damage to that player's own agent. Controller
+drops use the controller player's selected slot rather than the host's
+inventory-cursor state.
+
+## Behavior
+
+The order is the desktop chain retained from 0.6, which tracks Java's entity
+interaction, then item use, then block use:
+
+1. **Entities.** Boosting a ridden mount, opening ridden or targeted vehicle
+   storage (boats only while sneaking), animal items (leads, name tags, food,
+   taming), mounting animals and carts, placing carts and boats, villagers
+   (skipped while sneaking), sheep dye/shears and other mob items.
+2. **Items**, unless the targeted block takes right-clicks (containers, beds):
+   buckets and bottles, ender pearls (one-second cooldown), splash potions, eyes
+   of ender (Overworld), snowballs/eggs and fishing rods.
+3. **Blocks** (not while riding): eyes into portal frames, redstone components,
+   composters, workstation/container screens, the dragon egg, cake, beds,
+   right-click harvests, doors and gates, then (build modes only) flint and
+   steel, shovel paths, axe stripping, hoe tilling, pumpkin carving, bone meal,
+   and finally validated placement.
+
+Screens, beds, vehicle storage and trading are reported as outcomes; adapters
+open their own screens or apply sleeping rules. Tool breakage is reported with
+the outcome.
+
+Bows and crossbows are session state too ([src/session/ranged.rs](../../src/session/ranged.rs)):
+drawing counts fixed ticks (20 for full power, 25 to load a crossbow) with
+Java's `BowItem.getPowerForTime` curve. The desktop already advanced them once
+per tick, so timing is unchanged. A draw belongs to its hotbar slot; selecting
+another slot lets the string go for every player. The CLI's `draw [ticks]`
+command (added on `work/fix-w1-building`) holds use through this state and is
+covered by `the_cli_draw_command_shoots_bows_loads_crossbows_and_fires_charged_ones`.
+
+## Behavior changes
+
+- **CLI order and coverage.** `place` previously tried held items first (armor,
+  rod, throwables, pearl, potion, eye) and lacked vehicle storage, villagers,
+  sheep, doors, harvests, the dragon egg, flint and steel, tilling, paths,
+  stripping, carving and bone meal. It now runs the shared chain. Armor equipping
+  stays first, as on the desktop. Aiming at a screen block, bed, vehicle storage
+  or villager returns an error that names the matching command (sneak to build
+  against a screen block). Buckets, bottles, pearls and splash potions keep their
+  previous cooldown exemptions.
+- **Riders.** The desktop now lets riders use items such as buckets and
+  throwables (Java's `Item.use` has no vehicle check), as the CLI already did.
+  Block use while riding remains unavailable on every path.
+- **Ignition sound** plays at the lit cell instead of the clicked block.
+
+Implemented with automated evidence on `work/fix-w1-building`: Adventure
+players can use redstone components and composters. All held items and bow
+drawing defer to the shared block-use predicate; cake claims use only when
+edible and otherwise passes to item use. Ordinary-player acceptance is open.
+
+## No state swapping
+
+`Game::puppet`, which swapped a controller or LAN player's session, hands and
+screen state into the host's fields, is removed. Each player's hands run on
+their own state through `hands::Actor`; container clicks run through
+`screen::Screen` with that player's container and crafting grid (controller
+screens have no grid because controller crafting uses recipe slots). Beds,
+respawn points, pick-block (now `PlayerSession::pick_block`), drops, cursor
+tosses and LAN screen open/close act on the named player.
+
+This also removes swap-only defects: consumed magic damage on a controller
+player ran host death handling; a LAN peer's screen open/close changed the
+host's search focus and key state; LAN and controller drops read the host's
+inventory-cursor state. Controller and LAN players can now hit the host in
+PvP without the host's session sitting in their agent slot.
+
+Validated after the removal: release **967 passed, zero failed**; headless
+**885 passed, zero failed**; desktop LAN harness **13/13**, including the chest
+race (LAN chest open, clicks and screen transactions) and PvP. Controller-path
+screens, beds and respawn have no automated device harness and remain
+unverified with real controllers.
+
+## Evidence
+
+`tests/shared_use.rs` covers screen outcomes and sneaking placement, door
+toggling through the session and the CLI, flint and steel on fire and TNT with
+Survival-only wear, tilling and paths, the CLI's screen-block error, bow
+draw/release/slot-change and crossbow load/fire. The
+existing bucket, placement, mining, combat and CLI suites pass unchanged except
+for the intended cooldown exemptions. With the bow move, release tests: **967 passed, zero
+failed**; headless: **885 passed, zero failed**; desktop LAN harness **13/13** on one Mac. Ordinary keyboard/controller play, LAN play and performance
+acceptance remain unverified.

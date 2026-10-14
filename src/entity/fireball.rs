@@ -38,6 +38,11 @@ pub struct Fireball {
 }
 
 impl Fireball {
+    /// A LAN client's copy: drawn only, never simulated.
+    pub(super) fn replica(pos: DVec3, previous_pos: DVec3, large: bool) -> Self {
+        Self { previous_pos, large, ..Self::new(pos, DVec3::X) }
+    }
+
     /// Launches from `from` with a normalized heading, falling back to +X for zero.
     pub fn new(from: DVec3, dir: DVec3) -> Self {
         let dir = dir.normalize_or(DVec3::X);
@@ -143,7 +148,14 @@ mod tests {
     use crate::world::terrain::Dimension;
 
     fn ctx(players: Vec<Target>) -> Ctx {
-        Ctx { players, daylight: 0.0, spawning: false, raining: false, dimension: Dimension::Nether }
+        Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::NIGHT,
+            players,
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Nether,
+        }
     }
 
     #[test]

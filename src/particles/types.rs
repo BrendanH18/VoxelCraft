@@ -36,9 +36,38 @@ pub enum Kind {
     WhiteAsh,
     /// The blue flame of soul torches (`soul_fire_flame`).
     SoulFlame,
+    /// Java's `NoteParticle`, tinted by the note's pitch (`note / 24`).
+    Note,
 }
 
 impl Kind {
+    pub const ALL: [Kind; 24] = [
+        Kind::Smoke,
+        Kind::LargeSmoke,
+        Kind::Rain,
+        Kind::Flame,
+        Kind::Crit,
+        Kind::MagicCrit,
+        Kind::Poof,
+        Kind::Lava,
+        Kind::LavaDrip,
+        Kind::Splash,
+        Kind::Bubble,
+        Kind::Explosion,
+        Kind::Portal,
+        Kind::Glyph,
+        Kind::Effect,
+        Kind::DragonBreath,
+        Kind::Heart,
+        Kind::Angry,
+        Kind::CrimsonSpore,
+        Kind::WarpedSpore,
+        Kind::Ash,
+        Kind::WhiteAsh,
+        Kind::SoulFlame,
+        Kind::Note,
+    ];
+
     pub fn sprite(self) -> u16 {
         match self {
             Self::Smoke | Self::LargeSmoke | Self::Poof => 0,
@@ -56,6 +85,7 @@ impl Kind {
             Self::LavaDrip => 12,
             Self::CrimsonSpore | Self::WarpedSpore | Self::Ash | Self::WhiteAsh => 13,
             Self::SoulFlame => 14,
+            Self::Note => 15,
         }
     }
 }
@@ -406,6 +436,15 @@ impl System {
                 p.color = [rng.range(0.7176471, 0.8745098), 0.0, rng.range(0.8235294, 0.9764706), 1.0];
                 p.size *= 0.75;
                 p.lifetime = (20.0 / rng.range(0.2, 1.0)) as u16;
+            }
+            Kind::Note => {
+                // NoteParticle: the base random drift at a hundredth plus a 0.2 rise, friction
+                // 0.66, no collisions, 1.5 times the base size and six ticks of life.
+                p.physics = false;
+                p.friction = 0.66;
+                p.velocity = java_velocity(rng, DVec3::ZERO) * 0.01 + DVec3::new(0.0, 0.2, 0.0);
+                p.size *= 1.5;
+                p.lifetime = 6;
             }
             Kind::Heart | Kind::Angry => {
                 p.velocity *= 0.01;

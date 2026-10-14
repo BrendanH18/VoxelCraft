@@ -1,4 +1,5 @@
 //! Shared everyday item actions for desktop, controller and device-free players.
+pub mod bucket;
 use crate::{
     entity::{Entities, PlayerId},
     inventory::Inventory,
@@ -7,6 +8,89 @@ use crate::{
     world::World,
 };
 
+/// The same held-armor validation and transaction for every player adapter.
+pub fn equip_armor(
+    player: &Player,
+    inventory: &mut Inventory,
+    slot: usize,
+    mode: crate::rules::GameMode,
+    world: &World,
+) -> bool {
+    if !mode.can_interact() || inventory.get(slot).is_none_or(|s| s.item.as_armor().is_none()) {
+        return false;
+    }
+    // Only a block the player could actually use (Java's block interaction
+    // range) takes the click instead of the armor.
+    if world.raycast(player.eye(), player.forward().as_dvec3(), mode.block_reach()).is_some_and(|(pos, _)| {
+        crate::content::interaction::block_use_precedes_item(
+            world,
+            pos,
+            inventory.get(slot).map(|s| s.item),
+            player.sneaking,
+            (player.eye(), player.forward().as_dvec3()),
+        )
+    }) {
+        return false;
+    }
+    inventory.equip_in_mode(slot, mode.is_creative())
+}
+
+/// How far a player's clicks reach: Java's block interaction range and the
+/// (shorter) entity interaction range, which a nearer block also bounds.
+#[derive(Clone, Copy, Debug)]
+pub struct Reach {
+    pub block: f64,
+    pub entity: f64,
+}
+
+impl Reach {
+    /// The distance an entity can be clicked at along a ray: its range,
+    /// shortened to a block that is hit first.
+    fn entity_distance(self, world: &World, eye: glam::DVec3, dir: glam::DVec3) -> f64 {
+        world
+            .raycast(eye, dir, self.block)
+            .map_or(self.entity, |(p, _)| eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5)).min(self.entity))
+    }
+}
+
+/// Fence knots, leads, name tags and animal feeding/taming/sitting under the crosshair.
+/// Every input path (desktop, controller, LAN, CLI agent) runs this before mounting, so
+/// a carrot breeds a saddled pig and a name tag names a tamed horse instead of seating you.
+#[allow(clippy::too_many_arguments)]
+pub fn use_animal_target(
+    player: &Player,
+    inventory: &mut Inventory,
+    slot: usize,
+    creative: bool,
+    world: &World,
+    entities: &mut Entities,
+    owner: PlayerId,
+    reach: Reach,
+) -> bool {
+    let held = inventory.get(slot);
+    let eye = player.eye();
+    let dir = player.forward().as_dvec3();
+    let range = reach.entity_distance(world, eye, dir);
+    if let Some((p, _)) = world.raycast(eye, dir, reach.block)
+        && world.get_block(p).is_some_and(crate::entity::leash::fence)
+        && entities.raycast(eye, dir, range).is_none()
+        && entities.use_fence_knot(owner, p)
+    {
+        return true;
+    }
+    let Some((index, _)) = entities.raycast(eye, dir, range) else { return false };
+    let Some(result) = entities.use_animal(index, held, owner) else { return false };
+    if result && !creative {
+        if held.is_some_and(|s| s.item == Item::TROPICAL_FISH_BUCKET) {
+            exchange(inventory, slot, Item::WATER_BUCKET, false, entities, player);
+        } else {
+            inventory.take_one(slot);
+        }
+    }
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn use_mob(
     player: &Player,
     inventory: &mut Inventory,
@@ -15,12 +99,16 @@ pub fn use_mob(
     world: &World,
     entities: &mut Entities,
     owner: PlayerId,
+    reach: Reach,
 ) -> bool {
-    let Some(held) = inventory.get(slot) else { return false };
+    if use_animal_target(player, inventory, slot, creative, world, entities, owner, reach) {
+        return true;
+    }
+    let held = inventory.get(slot);
     let eye = player.eye();
     let dir = player.forward().as_dvec3();
-    let reach = world.raycast(eye, dir, 6.0).map_or(6.0, |(p, _)| eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5)));
-    let Some((index, _)) = entities.raycast(eye, dir, reach) else { return false };
+    let Some((index, _)) = entities.raycast(eye, dir, reach.entity_distance(world, eye, dir)) else { return false };
+    let Some(held) = held else { return false };
     if (held.item.dye_color().is_some() || held.item == Item::SHEARS)
         && let Some(shears) = entities.use_on_sheep(index, held.item)
     {
@@ -58,6 +146,7 @@ pub fn use_mob(
 
 /// Casts or reels a fishing rod. `Some` means the rod was used; the bool is
 /// whether that use broke it.
+#[allow(clippy::too_many_arguments)]
 pub fn use_rod(
     player: &Player,
     inventory: &mut Inventory,
@@ -65,13 +154,15 @@ pub fn use_rod(
     creative: bool,
     owner: PlayerId,
     entities: &mut Entities,
+    world: &crate::world::World,
+    owner_luck: i32,
 ) -> Option<bool> {
     let held = inventory.get(slot)?;
     if held.item != Item::FISHING_ROD {
         return None;
     }
     if entities.has_bobber(owner) {
-        let wear = entities.reel(owner, player.pos).unwrap_or(0);
+        let wear = entities.reel(owner, player.pos, owner_luck, world).unwrap_or(0);
         let broke = !creative && inventory.wear(slot, wear);
         return Some(broke);
     }
@@ -171,6 +262,18 @@ pub fn use_composter(
         return true;
     }
     false
+}
+
+/// The fence cell whose knot is the first entity target along the look ray
+/// within `reach`, in front of any mob.
+pub fn knot_target(player: &Player, world: &World, entities: &Entities, reach: f64) -> Option<glam::IVec3> {
+    let (eye, dir) = (player.eye(), player.forward().as_dvec3());
+    let (p, _) = world.raycast(eye, dir, reach)?;
+    let distance = eye.distance(p.as_dvec3() + glam::DVec3::splat(0.5));
+    (world.get_block(p).is_some_and(crate::entity::leash::fence)
+        && entities.has_fence_knot(p)
+        && entities.raycast(eye, dir, distance).is_none())
+    .then_some(p)
 }
 
 #[cfg(test)]

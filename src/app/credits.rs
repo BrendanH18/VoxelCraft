@@ -66,8 +66,10 @@ impl Game {
         }
         self.credits_seen = true;
         self.credits = Some(0.0);
-        self.player.vel = glam::DVec3::ZERO;
-        self.actions.reset();
+        self.session.player.vel = glam::DVec3::ZERO;
+        self.body.actions.reset();
+        self.session.cancel_mining();
+        self.session.cancel_consumption();
         self.keys.clear();
         self.set_grab(false);
         self.audio.play(Sound::PortalSpawn, None, 0.4, (0.6, 0.6));

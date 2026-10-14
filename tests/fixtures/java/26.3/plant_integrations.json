@@ -1,0 +1,436 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.item.Items compostable registrations",
+    "data/minecraft/context_int_provider/compostable/*.json",
+    "data/minecraft/loot_table/blocks/cocoa.json",
+    "data/minecraft/loot_table/blocks/budding_amethyst.json",
+    "data/minecraft/loot_table/gameplay/fishing/fish.json"
+  ],
+  "compost": [
+    {
+      "item": "minecraft:acacia_leaves",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:acacia_sapling",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:allium",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:apple",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:azalea",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:azalea_leaves",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:azure_bluet",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:baked_potato",
+      "chance_percent": 85
+    },
+    {
+      "item": "minecraft:beetroot",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:beetroot_seeds",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:big_dripleaf",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:birch_leaves",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:birch_sapling",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:blue_orchid",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:bread",
+      "chance_percent": 85
+    },
+    {
+      "item": "minecraft:brown_mushroom",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:brown_mushroom_block",
+      "chance_percent": 85
+    },
+    {
+      "item": "minecraft:cactus",
+      "chance_percent": 50
+    },
+    {
+      "item": "minecraft:cake",
+      "chance_percent": 100
+    },
+    {
+      "item": "minecraft:carrot",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:carved_pumpkin",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:cherry_leaves",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:cherry_sapling",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:cocoa_beans",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:cookie",
+      "chance_percent": 85
+    },
+    {
+      "item": "minecraft:cornflower",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:crimson_fungus",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:crimson_roots",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:dandelion",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:dark_oak_leaves",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:dark_oak_sapling",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:dried_kelp",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:dried_kelp_block",
+      "chance_percent": 50
+    },
+    {
+      "item": "minecraft:fern",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:flowering_azalea",
+      "chance_percent": 85
+    },
+    {
+      "item": "minecraft:flowering_azalea_leaves",
+      "chance_percent": 50
+    },
+    {
+      "item": "minecraft:glow_berries",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:hanging_roots",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:hay_block",
+      "chance_percent": 85
+    },
+    {
+      "item": "minecraft:jungle_leaves",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:jungle_sapling",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:kelp",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:large_fern",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:lilac",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:lily_of_the_valley",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:lily_pad",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:mangrove_leaves",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:mangrove_propagule",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:mangrove_roots",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:melon",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:melon_seeds",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:melon_slice",
+      "chance_percent": 50
+    },
+    {
+      "item": "minecraft:moss_block",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:moss_carpet",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:mushroom_stem",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:nether_sprouts",
+      "chance_percent": 50
+    },
+    {
+      "item": "minecraft:nether_wart",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:nether_wart_block",
+      "chance_percent": 85
+    },
+    {
+      "item": "minecraft:oak_sapling",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:orange_tulip",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:oxeye_daisy",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:pale_hanging_moss",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:pale_moss_block",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:pale_moss_carpet",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:pale_oak_leaves",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:pale_oak_sapling",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:peony",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:pink_petals",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:pink_tulip",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:poppy",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:potato",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:pumpkin",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:pumpkin_pie",
+      "chance_percent": 100
+    },
+    {
+      "item": "minecraft:pumpkin_seeds",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:red_mushroom",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:red_mushroom_block",
+      "chance_percent": 85
+    },
+    {
+      "item": "minecraft:red_tulip",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:rose_bush",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:sea_pickle",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:seagrass",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:short_grass",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:shroomlight",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:small_dripleaf",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:spore_blossom",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:spruce_leaves",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:spruce_sapling",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:sugar_cane",
+      "chance_percent": 50
+    },
+    {
+      "item": "minecraft:sunflower",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:sweet_berries",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:tall_grass",
+      "chance_percent": 50
+    },
+    {
+      "item": "minecraft:twisting_vines",
+      "chance_percent": 50
+    },
+    {
+      "item": "minecraft:vine",
+      "chance_percent": 50
+    },
+    {
+      "item": "minecraft:warped_fungus",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:warped_roots",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:warped_wart_block",
+      "chance_percent": 85
+    },
+    {
+      "item": "minecraft:weeping_vines",
+      "chance_percent": 50
+    },
+    {
+      "item": "minecraft:wheat",
+      "chance_percent": 65
+    },
+    {
+      "item": "minecraft:wheat_seeds",
+      "chance_percent": 30
+    },
+    {
+      "item": "minecraft:white_tulip",
+      "chance_percent": 65
+    }
+  ],
+  "cocoa": {
+    "unripe": 1,
+    "ripe": 3,
+    "fortune_bonus": 0
+  },
+  "budding_amethyst": {
+    "ordinary": 0,
+    "silk_touch": 0
+  },
+  "fish": [
+    {
+      "item": "minecraft:cod",
+      "weight": 60
+    },
+    {
+      "item": "minecraft:salmon",
+      "weight": 25
+    },
+    {
+      "item": "minecraft:tropical_fish",
+      "weight": 2
+    },
+    {
+      "item": "minecraft:pufferfish",
+      "weight": 13
+    }
+  ]
+}

@@ -11,13 +11,15 @@ The client renders camera-relative billboards in one instanced draw from a
 fixed GPU buffer. Terrain particles resolve block icons at render time,
 without depending on the block ID width or packed chunk quad format. Other
 particles use original procedural 16-pixel sprites with eight age stages.
-Light samples use authoritative block light and the existing skylight query.
+Light samples use authoritative block light and propagated skylight.
 
 Particles alpha-test and write depth before translucent water. Water thus
 tints particles behind it and cannot paint over nearer particles. Fractional
 particle alpha uses screen-door dithering instead of sorted alpha blending;
-this is a deliberate simplification for ambient effect particles. The
-skylight query has the same heightmap approximation as entities. No external
+this is a deliberate simplification for ambient effect particles. Particles
+and entities light from the propagated skylight of their cell (the heightmap
+estimate remains only where that light is not exact yet, such as the border of
+a partly loaded column). No external
 Minecraft textures or source code are included.
 
 Reference rules: [Minecraft Wiki particles](https://minecraft.wiki/w/Particles),
@@ -98,7 +100,9 @@ hit. Explosions replace cube smoke with six fullbright billboards per tick
 for eight ticks (or a single small explosion below power 2).
 
 Providers also exist for flame, smoke, lava, lava drip, splash, bubble,
-portal, enchantment glyph, colored effect, dragon breath, heart and angry.
+portal, enchantment glyph, colored effect, dragon breath, heart, angry and the
+note block's `NoteParticle` (a quaver tinted by `note / 24`, six ticks, friction
+0.66; procedural sprite 15 of the particle sheet).
 The provider lifetimes, friction, gravity and color curves follow the Java
 classes. Water drops remove themselves on about half of ground contacts, matching
 `WaterDropParticle`. Heart and angry are ready for future breeding and

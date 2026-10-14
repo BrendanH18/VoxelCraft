@@ -16,6 +16,7 @@ mod automation;
 pub mod bastion;
 pub mod bell;
 pub mod biome;
+pub mod biome_zoom;
 pub mod block;
 pub mod brewing;
 pub mod caves;
@@ -35,6 +36,7 @@ pub mod forms;
 pub mod fortress;
 pub mod furnace;
 pub mod gadgets;
+pub mod geode;
 mod growth;
 pub(crate) mod lighting;
 pub mod mineshaft;
@@ -57,7 +59,9 @@ pub mod redstone;
 pub mod redstone_blocks;
 mod redstone_contacts;
 pub mod shape;
+pub mod spawn_finder;
 mod spawner;
+mod sponge;
 pub mod storage;
 pub mod stronghold;
 pub mod structure;
@@ -87,6 +91,9 @@ pub struct ChunkSlot {
     mesh_in_flight: bool,
     /// Authoritative block light; dark chunks allocate no light array.
     block_light: Option<lighting::BlockLight>,
+    /// Authoritative skylight below the column heightmap; cells above it are
+    /// implied sources. Absent until the column is lit, and for dark chunks.
+    sky_light: Option<lighting::BlockLight>,
 }
 
 /// Per chunk-column state: skylight heightmap and how many of its chunks
@@ -98,6 +105,8 @@ struct Column {
     foliage: Option<Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>>,
     /// Snow lines (see `Generator::snow_lines`), worked out with the colours.
     snow: Option<Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>>,
+    /// Gameplay skylight has been seeded from the complete heightmap.
+    sky_lit: bool,
 }
 
 pub struct World {
@@ -115,13 +124,20 @@ pub struct World {
     load_cursor: usize,
     center: Option<IVec3>,
     agent_centers: Vec<IVec3>,
+    /// Remote replicas evict nothing until the host has placed the player: a
+    /// placeholder centre would drop chunks the host already counts as delivered.
+    hold_unloads: bool,
+    /// Chunk radius kept loaded around agent and LAN players (4 unless a LAN host widens it).
+    agent_radius: i32,
     /// Chunks of other players shown in split-screen: loaded and meshed at
     /// the full render distance, like the host's.
     view_centers: Vec<IVec3>,
     render_distance: i32,
     region: Option<Box<Region>>,
     meshes_enabled: bool,
+    remote: bool,
     light_updates: lighting::LightUpdates,
+    sky_updates: lighting::LightUpdates,
     fluids: fluid::FluidState,
     fire: fire::FireState,
     redstone: redstone::RedstoneState,
@@ -161,6 +177,8 @@ pub struct World {
     pub primed_tnt: Vec<(IVec3, bool)>,
     /// Note blocks that played this tick: position, pitch 0..=24, instrument.
     pub notes: Vec<(IVec3, u8, u8)>,
+    /// Tripwire hook clicks and attach sounds since the last frame.
+    pub trip_sounds: Vec<(IVec3, gadgets::TripSound)>,
     /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
     pub golem_heads: Vec<IVec3>,
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
@@ -191,6 +209,147 @@ impl World {
         Self::with_meshing(generator, saved, distance, false)
     }
 
+    /// Rendering replica: terrain only arrives from the LAN authority.
+    pub fn new_remote(generator: Arc<Generator>, distance: i32) -> Self {
+        let mut world = Self::new(generator, FxHashMap::default(), distance);
+        world.remote = true;
+        world.hold_unloads = true;
+        world
+    }
+
+    /// Immutable subscription snapshots; pointer identity detects even nonvisual edits.
+    pub fn network_chunks(&self, center: IVec3, radius: i32) -> Vec<(IVec3, Arc<ChunkData>)> {
+        let mut chunks: Vec<_> = self
+            .chunks
+            .iter()
+            .filter(|(p, _)| {
+                let d = (**p - center).with_y(0);
+                d.length_squared() <= radius * radius
+            })
+            .map(|(&p, s)| (p, s.data.clone()))
+            .collect();
+        chunks.sort_unstable_by_key(|(p, _)| {
+            let d = *p - center;
+            d.with_y(0).length_squared() * 2 + d.y * d.y
+        });
+        chunks
+    }
+
+    /// Largest host edit batch a replica applies cell by cell.
+    const REPLICA_INCREMENTAL_EDITS: usize = 64;
+
+    /// Applies a host's cell edits to a chunk this replica already holds.
+    /// Light, heightmaps and meshes update incrementally, as for a local edit,
+    /// without running simulation side effects.
+    pub fn receive_edits(&mut self, pos: IVec3, cells: &[(u16, Block)]) {
+        if !self.remote || cells.is_empty() || !self.chunks.contains_key(&pos) {
+            return;
+        }
+        // Measured crossover (`lighting::tests::skylight_cost`): past roughly
+        // a hundred cells, relighting the column from a snapshot is cheaper.
+        if cells.len() > Self::REPLICA_INCREMENTAL_EDITS {
+            let Some(data) = self.chunks.get(&pos).map(|s| s.data.with_edits(cells)) else { return };
+            self.receive_chunk(pos, Arc::new(data));
+        } else {
+            self.apply_replica_edits(pos, cells);
+        }
+    }
+
+    /// Set replica cells one at a time through the shared light, heightmap and
+    /// remesh bookkeeping.
+    pub(crate) fn apply_replica_edits(&mut self, pos: IVec3, cells: &[(u16, Block)]) {
+        let base = pos * CHUNK_SIZE_I;
+        for &(i, block) in cells {
+            let i = i as i32;
+            let l = IVec3::new(
+                i & (CHUNK_SIZE_I - 1),
+                i >> (2 * chunk::CHUNK_BITS),
+                (i >> chunk::CHUNK_BITS) & (CHUNK_SIZE_I - 1),
+            );
+            let p = base + l;
+            let Some(slot) = self.chunks.get_mut(&pos) else { return };
+            let (x, y, z) = (l.x as usize, l.y as usize, l.z as usize);
+            let old = slot.data.get(x, y, z);
+            if old == block {
+                continue;
+            }
+            let old_light = slot.block_light.as_ref().map_or(0, |light| light.get(x, y, z));
+            Arc::make_mut(&mut slot.data).set(x, y, z, block);
+            self.light_block_changed(p, old, block, old_light);
+            self.reheight_and_remesh(p, old, block, false);
+        }
+        self.update_block_light();
+    }
+
+    /// Install an exact authoritative snapshot, invalidate stale meshes and heightmaps.
+    /// This does not settle blocks, generate decoration or create simulation drops.
+    pub fn receive_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>) {
+        if !self.remote || !self.generator.dimension.chunk_rows().contains(&pos.y) {
+            return;
+        }
+        // Replaced data invalidates the column's heightmap and skylight.
+        self.unlight_sky_column(column_of(pos));
+        // Light the old data spread into neighbours must be removed as on unload,
+        // or it floods back into the replacement from their border cells.
+        let old_light = self.chunks.get_mut(&pos).and_then(|s| s.block_light.take());
+        self.unload_block_light(pos, old_light.as_ref());
+        let version = self.chunks.get(&pos).map_or(0, |s| s.version.wrapping_add(1));
+        let in_flight = self.chunks.get(&pos).is_some_and(|s| s.mesh_in_flight);
+        let existed = self.chunks.contains_key(&pos);
+        self.chunks.insert(
+            pos,
+            ChunkSlot {
+                data,
+                modified: false,
+                version,
+                meshed_version: None,
+                mesh_in_flight: in_flight,
+                block_light: None,
+                sky_light: None,
+            },
+        );
+        let key = column_of(pos);
+        let col = self.columns.entry(key).or_insert_with(|| {
+            self.workers.submit(Job::Foliage(key));
+            Column {
+                heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]),
+                loaded: 0,
+                foliage: None,
+                snow: None,
+                sky_lit: false,
+            }
+        });
+        if !existed {
+            col.loaded += 1;
+        }
+        col.heights.fill(NO_HEIGHT);
+        if self.generator.dimension.has_skylight() {
+            for (p, s) in &self.chunks {
+                if column_of(*p) == key {
+                    let heights = mesh::chunk_heights(&s.data, p.y * CHUNK_SIZE_I);
+                    for (h, new) in col.heights.iter_mut().zip(heights) {
+                        *h = (*h).max(new);
+                    }
+                }
+            }
+        }
+        self.load_block_light(pos);
+        self.light_sky_column(key);
+        // A heightmap change affects every vertical chunk of the neighboring
+        // columns; a data change also affects their block-light margins.
+        let affected: Vec<_> = self
+            .chunks
+            .keys()
+            .copied()
+            .filter(|p| (p.x - pos.x).abs() <= 1 && (p.z - pos.z).abs() <= 1 && self.in_mesh_range(*p))
+            .collect();
+        for p in affected {
+            let slot = self.chunks.get_mut(&p).unwrap();
+            slot.version = slot.version.wrapping_add(1);
+            self.dirty.insert(p);
+        }
+    }
+
     /// Initialize shared world state and workers, selecting whether streaming also builds render meshes.
     fn with_meshing(
         generator: Arc<Generator>,
@@ -212,11 +371,15 @@ impl World {
             load_cursor: 0,
             center: None,
             agent_centers: Vec::new(),
+            hold_unloads: false,
+            agent_radius: 4,
             view_centers: Vec::new(),
             render_distance,
             region: None,
             meshes_enabled,
+            remote: false,
             light_updates: Default::default(),
+            sky_updates: Default::default(),
             fluids: Default::default(),
             fire: Default::default(),
             redstone: Default::default(),
@@ -238,6 +401,7 @@ impl World {
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
             notes: Vec::new(),
+            trip_sounds: Vec::new(),
             golem_heads: Vec::new(),
             hatched_turtles: Vec::new(),
             compost_sequence: 0,
@@ -287,6 +451,23 @@ impl World {
         }
     }
 
+    /// A remote replica's player now has its authoritative position: allow evictions.
+    pub fn release_unloads(&mut self) {
+        if self.hold_unloads {
+            self.hold_unloads = false;
+            self.center = None;
+        }
+    }
+
+    /// Widens (or restores) the radius loaded around agent and LAN players.
+    pub fn set_agent_radius(&mut self, radius: i32) {
+        let radius = radius.clamp(4, 32);
+        if radius != self.agent_radius {
+            self.agent_radius = radius;
+            self.center = None;
+        }
+    }
+
     pub fn loaded_chunks(&self) -> usize {
         self.chunks.len()
     }
@@ -298,6 +479,7 @@ impl World {
             && self.active_fluids() == 0
             && self.falling.is_empty()
             && self.light_updates.is_empty()
+            && self.sky_updates.is_empty()
     }
 
     pub fn pending_jobs(&self) -> usize {
@@ -340,7 +522,7 @@ impl World {
         (self.horizontal_dist2(pos) as f32) <= r * r
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
-                d.length_squared() <= 16
+                d.length_squared() <= self.agent_radius * self.agent_radius
             })
     }
 
@@ -351,7 +533,7 @@ impl World {
         self.horizontal_dist2(pos) <= r * r
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
-                d.length_squared() <= 25
+                d.length_squared() <= (self.agent_radius + 1) * (self.agent_radius + 1)
             })
     }
 
@@ -451,7 +633,7 @@ impl World {
 
     /// Changes a block and schedules remeshing of every chunk whose geometry
     /// or lighting depends on it (synchronously for geometry if `sync`).
-    fn edit(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
+    pub(crate) fn edit(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
         if !self.contains_y(p.y) {
             return false;
         }
@@ -487,11 +669,23 @@ impl World {
             self.log_removed(p);
         }
         self.extinguish_unsupported_fire(p);
+        self.reheight_and_remesh(p, old, block, sync);
+        true
+    }
 
-        // Keep the column heightmap current.
+    /// Keep the column heightmap and skylight current after a cell changed
+    /// from `old` to `block`, and schedule remeshing of every chunk whose
+    /// geometry or lighting depends on it.
+    fn reheight_and_remesh(&mut self, p: IVec3, old: Block, block: Block, sync: bool) {
+        let cpos = chunk_of(p);
+        let l = local_of(p);
+        let old_height = self.raw_height(p);
         let (old_h, new_h) = self.update_height(p, block);
+        if let (Some(before), Some(after)) = (old_height, self.raw_height(p)) {
+            self.sky_block_changed(p, old, block, before, after);
+        }
         if !self.meshes_enabled {
-            return true;
+            return;
         }
 
         // Light reaches 15 blocks, plus 1 for the face-adjacent sample cell;
@@ -528,12 +722,39 @@ impl World {
                 }
             }
         }
-        true
+    }
+
+    /// A column's raw heightmap entry (`NO_HEIGHT` when clear), if the column exists.
+    fn raw_height(&self, p: IVec3) -> Option<i32> {
+        let col = self.columns.get(&column_of(chunk_of(p)))?;
+        let l = local_of(p);
+        Some(col.heights[(l.x + l.z * CHUNK_SIZE_I) as usize] as i32)
+    }
+
+    /// Java's `WORLD_SURFACE` heightmap: the highest non-air block of a fully
+    /// loaded column, `None` when the column is not loaded or holds only air.
+    pub fn world_surface_height(&self, x: i32, z: i32) -> Option<i32> {
+        if !self.column_loaded(x, z) {
+            return None;
+        }
+        let l = local_of(IVec3::new(x, 0, z));
+        for cy in self.generator.dimension.chunk_rows().rev() {
+            let slot = self.chunks.get(&IVec3::new(x >> chunk::CHUNK_BITS, cy, z >> chunk::CHUNK_BITS))?;
+            if slot.data.uniform() == Some(Block::AIR) {
+                continue;
+            }
+            for ly in (0..CHUNK_SIZE).rev() {
+                if slot.data.get(l.x as usize, ly, l.z as usize) != Block::AIR {
+                    return Some(cy * CHUNK_SIZE_I + ly as i32);
+                }
+            }
+        }
+        None
     }
 
     /// Updates the heightmap for an edited block; returns (old, new) heights.
     fn update_height(&mut self, p: IVec3, block: Block) -> (i32, i32) {
-        if !self.generator.dimension.has_sky() {
+        if !self.generator.dimension.has_skylight() {
             return (p.y, p.y);
         }
         let key = column_of(chunk_of(p));
@@ -640,7 +861,11 @@ impl World {
         self.center = Some(center);
 
         // Unload far chunks; keep player edits around in memory.
-        let far: Vec<IVec3> = self.chunks.keys().copied().filter(|&p| !self.in_keep_range(p)).collect();
+        let far: Vec<IVec3> = if self.hold_unloads {
+            Vec::new()
+        } else {
+            self.chunks.keys().copied().filter(|&p| !self.in_keep_range(p)).collect()
+        };
         for pos in far {
             self.remove_chunk(pos);
         }
@@ -672,10 +897,11 @@ impl World {
                 }
             }
         }
+        let r = self.agent_radius;
         for c in &self.agent_centers {
-            for dz in -4..=4 {
-                for dx in -4..=4 {
-                    if dx * dx + dz * dz > 16 {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    if dx * dx + dz * dz > r * r {
                         continue;
                     }
                     for y in self.generator.dimension.chunk_rows() {
@@ -702,27 +928,47 @@ impl World {
             self.load_fires(pos, &data);
         } else {
             self.register_structure_features(pos, &data);
+            if self.generator.dimension == terrain::Dimension::Overworld {
+                for p in self.generator.geodes.fluid_ticks(&self.generator, pos * CHUNK_SIZE_I) {
+                    self.wake_fluids(p);
+                }
+            }
         }
         self.register_village_life(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
             workers.submit(Job::Foliage(column_of(pos)));
-            Column { heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]), loaded: 0, foliage: None, snow: None }
+            Column {
+                heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]),
+                loaded: 0,
+                foliage: None,
+                snow: None,
+                sky_lit: false,
+            }
         });
         col.loaded += 1;
         // Without a sky (the Nether) every cell counts as open: the
         // dimension's dim, even light is daylight at a fixed low level.
-        if self.generator.dimension.has_sky() {
+        if self.generator.dimension.has_skylight() {
             for (h, new) in col.heights.iter_mut().zip(heights) {
                 *h = (*h).max(new);
             }
         }
         self.chunks.insert(
             pos,
-            ChunkSlot { data, modified, version: 0, meshed_version: None, mesh_in_flight: false, block_light: None },
+            ChunkSlot {
+                data,
+                modified,
+                version: 0,
+                meshed_version: None,
+                mesh_in_flight: false,
+                block_light: None,
+                sky_light: None,
+            },
         );
         self.load_block_light(pos);
+        self.light_sky_column(column_of(pos));
         self.load_redstone_chunk(pos);
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
@@ -732,6 +978,7 @@ impl World {
     /// Unload a present chunk, retaining edited data and queuing removal of its outgoing light.
     /// Only graphical worlds emit a renderer removal message.
     fn remove_chunk(&mut self, pos: IVec3) {
+        self.unlight_sky_column(column_of(pos));
         let slot = self.chunks.remove(&pos).unwrap();
         self.village_pois.retain(|p, _| chunk_of(*p) != pos);
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
@@ -817,7 +1064,7 @@ impl World {
         }
 
         // Generate the nearest missing chunks.
-        while self.gen_in_flight.len() < cap && self.load_cursor < self.load_list.len() {
+        while !self.remote && self.gen_in_flight.len() < cap && self.load_cursor < self.load_list.len() {
             let pos = self.load_list[self.load_cursor];
             self.load_cursor += 1;
             if self.chunks.contains_key(&pos) || self.gen_in_flight.contains(&pos) {
@@ -891,7 +1138,9 @@ impl World {
                 return (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
             }
         }
-        ([0.0; 3], [1.0, b.height() as f32, 1.0])
+        // The outline follows the visual top, not the collision height (snow
+        // layers collide one layer lower, soul sand and mud sink under their top).
+        ([0.0; 3], [1.0, 1.0 - f32::from(b.top_drop()) / 16.0, 1.0])
     }
 
     /// Like [`World::raycast`], but also stops at water and lava sources
@@ -907,17 +1156,32 @@ impl World {
         max_dist: f64,
         hits: impl Fn(Block) -> bool,
     ) -> Option<(IVec3, IVec3)> {
+        if !origin.is_finite() || !dir.is_finite() || !max_dist.is_finite() || max_dist < 0.0 || dir == DVec3::ZERO {
+            return None;
+        }
         let mut cell = origin.floor().as_ivec3();
-        let step = IVec3::new(dir.x.signum() as i32, dir.y.signum() as i32, dir.z.signum() as i32);
+        let axis_step = |v: f64| {
+            if v > 0. {
+                1
+            } else if v < 0. {
+                -1
+            } else {
+                0
+            }
+        };
+        let step = IVec3::new(axis_step(dir.x), axis_step(dir.y), axis_step(dir.z));
         let inv = DVec3::new(
             if dir.x != 0.0 { 1.0 / dir.x.abs() } else { f64::INFINITY },
             if dir.y != 0.0 { 1.0 / dir.y.abs() } else { f64::INFINITY },
             if dir.z != 0.0 { 1.0 / dir.z.abs() } else { f64::INFINITY },
         );
         let frac = origin - origin.floor();
-        let first = |f: f64, s: i32| if s > 0 { 1.0 - f } else { f };
+        let first = |f: f64, s: i32, inverse: f64| {
+            // An axis-parallel ray on an integer plane must not produce 0*inf.
+            if s == 0 { f64::INFINITY } else { (if s > 0 { 1.0 - f } else { f }) * inverse }
+        };
         let mut t_max =
-            DVec3::new(first(frac.x, step.x) * inv.x, first(frac.y, step.y) * inv.y, first(frac.z, step.z) * inv.z);
+            DVec3::new(first(frac.x, step.x, inv.x), first(frac.y, step.y, inv.y), first(frac.z, step.z, inv.z));
         let mut normal = IVec3::ZERO;
         let mut t = 0.0;
         while t <= max_dist {
@@ -925,11 +1189,19 @@ impl World {
                 && hits(b)
                 && cell.y >= self.min_y()
             {
-                if b.kind() != RenderKind::Shaped {
+                if b.kind() != RenderKind::Shaped && b.top_drop() == 0 {
                     return Some((cell, normal));
                 }
-                // Shaped blocks only count where the ray meets their boxes.
-                if let Some((hit, face)) = crate::physics::ray_shape(self, cell, origin, dir)
+                // Low cube forms (including bottom slabs) are selected at
+                // their visual top, not at the full voxel's boundary.
+                let intersection = if b.kind() == RenderKind::Shaped {
+                    crate::physics::ray_shape(self, cell, origin, dir)
+                } else {
+                    let lo = cell.as_dvec3();
+                    let height = 1.0 - f64::from(b.top_drop()) / 16.0;
+                    crate::physics::ray_aabb_face(origin, dir, lo, lo + DVec3::new(1.0, height, 1.0))
+                };
+                if let Some((hit, face)) = intersection
                     && hit <= max_dist
                 {
                     return Some((cell, if face == IVec3::ZERO { normal } else { face }));
@@ -979,6 +1251,28 @@ mod tests {
     }
 
     #[test]
+    fn installing_a_chunk_wakes_fluid_beside_geode_cracks() {
+        let generator = Arc::new(Generator::new(5));
+        let mut wet = None;
+        'find: for cz in -12..12 {
+            for cx in -12..12 {
+                for g in generator.geodes.source(&generator, IVec2::new(cx, cz)).iter() {
+                    if let Some(&p) = g.fluid_ticks.first() {
+                        wet = Some(p);
+                        break 'find;
+                    }
+                }
+            }
+        }
+        let p = wet.expect("a geode cracked open beside fluid");
+        let cpos = chunk_of(p);
+        let mut world = World::new_headless(generator.clone(), Default::default(), 4);
+        assert_eq!(world.active_fluids(), 0);
+        world.insert_chunk(cpos, Arc::new(generator.generate(cpos)), false);
+        assert!(world.active_fluids() > 0, "the cracked geode's fluid is scheduled to tick");
+    }
+
+    #[test]
     fn generated_jungle_fluids_settle_after_neighbor_updates() {
         let pos = DVec3::new(1882.0, 99.0, 682.0);
         let mut world = World::new_headless(Arc::new(Generator::new(1)), Default::default(), 4);
@@ -1023,6 +1317,12 @@ mod tests {
         let to = world.teleport_egg(egg).expect("the egg should find room");
         assert_eq!(world.get_block(egg), Some(Block::AIR));
         assert!((to - egg).abs().max_element() <= 15);
+        assert!((to.y - egg.y).abs() <= 7);
+        assert!(
+            world.get_block(to - IVec3::Y).is_some_and(|b| b != Block::AIR),
+            "Java 26.3 rejects unsupported destinations"
+        );
+        assert!(world.contains_y(to.y));
     }
 
     fn surface_y(world: &World, x: i32, z: i32) -> i32 {
@@ -1455,6 +1755,36 @@ mod tests {
         assert_eq!(world.get_block(IVec3::new(0, y + 1, 0)), Some(Block::AIR));
         let falling = world.falling_blocks().len();
         assert!((3..=4).contains(&falling), "{falling} sand blocks falling");
+    }
+
+    #[test]
+    fn snow_layers_melt_only_in_bright_block_light() {
+        use super::overworld_blocks as ob;
+        let mut world = settled_world(DVec3::new(0.0, 200.0, 0.0));
+        let y = 200;
+        for x in -8..=8 {
+            for z in -8..=8 {
+                world.edit(IVec3::new(x, y, z), Block::DIRT, false);
+            }
+        }
+        // Far from any torch the layers stay put.
+        let far = IVec3::new(-6, y + 1, -6);
+        world.set_block(far, ob::snow_layer(3));
+        for _ in 0..50 {
+            world.random_tick(far);
+        }
+        assert_eq!(world.get_block(far), Some(ob::snow_layer(3)));
+        // Beside a torch (block light 13 > 11) they melt and drop their snowballs.
+        let near = IVec3::new(2, y + 1, 2);
+        world.set_block(near, ob::snow_layer(3));
+        world.set_block(near + IVec3::X, Block::TORCH);
+        world.drops.clear();
+        world.random_tick(near);
+        assert_eq!(world.get_block(near), Some(Block::AIR));
+        assert_eq!(
+            world.drops.iter().map(|(_, s)| (s.item, s.count)).collect::<Vec<_>>(),
+            [(crate::item::Item::SNOWBALL, 3)]
+        );
     }
 
     #[test]

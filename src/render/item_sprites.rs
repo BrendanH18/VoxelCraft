@@ -56,6 +56,7 @@ fn tier_colour(tier: Tier) -> [u8; 3] {
         Tier::Gold => [246, 208, 62],
         Tier::Diamond => [70, 222, 210],
         Tier::Netherite => [104, 94, 102],
+        Tier::Copper => [200, 118, 86],
     }
 }
 
@@ -131,6 +132,8 @@ fn armor_colour(material: ArmorMaterial) -> [u8; 3] {
         ArmorMaterial::Gold => [246, 208, 62],
         ArmorMaterial::Diamond => [70, 222, 210],
         ArmorMaterial::Netherite => [96, 88, 94],
+        ArmorMaterial::Turtle => [58, 140, 83],
+        ArmorMaterial::Copper => [200, 118, 86],
     }
 }
 
@@ -219,7 +222,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 d < 4.6 + noise(x / 2, y / 2, 3) * 1.8
             };
             let fleck = noise(x, y, 4) < 0.12;
-            shaded(&lump, x, y, if fleck { [c[0] + 40, c[1] + 40, c[2] + 40] } else { c }, 0.1)
+            shaded(&lump, x, y, if fleck { c.map(|channel| channel.saturating_add(40)) } else { c }, 0.1)
         }
         Sprite::Ingot(c) => {
             // A bar seen from above at an angle: a lighter top face and a
@@ -539,7 +542,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 Some([255, 250, 190, 255])
             } else if p[3] == 0 {
                 None
-            } else if p[1] > p[0] + 30 {
+            } else if u16::from(p[1]) > u16::from(p[0]) + 30 {
                 Some(tint([246, 206, 60], p[1] as f32 / 140.0))
             } else {
                 Some(p)
@@ -664,6 +667,33 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             let slice = |x: i32, y: i32| (4..=13).contains(&y) && (3..=12).contains(&x);
             shaded(&slice, x, y, [150, 96, 52], 0.04).map(|p| if y <= 7 { tint([248, 248, 244], 1.0) } else { p })
         }
+        Sprite::Boat(c, chest) => {
+            let hull = |x: i32, y: i32| (7..=12).contains(&y) && (x - 8).abs() <= (15 - y);
+            shaded(&hull, x, y, c, 0.06).or_else(|| {
+                if chest && (5..=10).contains(&x) && (3..=7).contains(&y) {
+                    Some(tint([135, 88, 40], 1.0))
+                } else if x + y == 15 && (2..=7).contains(&x) {
+                    Some(tint(c, 0.85))
+                } else {
+                    None
+                }
+            })
+        }
+        Sprite::Saddle => {
+            let leather =
+                |x: i32, y: i32| (4..=11).contains(&y) && (3..=12).contains(&x) && (y >= 7 || x <= 5 || x >= 10);
+            shaded(&leather, x, y, [145, 80, 40], 0.04)
+                .or_else(|| ((x == 3 || x == 12) && (11..=14).contains(&y)).then_some(tint([185, 185, 185], 1.0)))
+        }
+        Sprite::SteeringStick(c) => {
+            if x + y == 16 && (2..=13).contains(&x) {
+                Some(tint([150, 104, 60], 1.0))
+            } else if (2..=5).contains(&x) && (4..=8).contains(&y) {
+                Some(tint(c, 1.0))
+            } else {
+                None
+            }
+        }
         Sprite::FishingRod => {
             let stick = (x + y).abs_diff(16) <= 1 && (2..=13).contains(&x);
             let line = (x - 4).abs() + (y - 4).abs() <= 3 && y < 7 && x < 8;
@@ -757,6 +787,9 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         Effect::Poison => {
             ["...##...", "...##...", "..####..", ".######.", ".######.", "########", ".######.", "..####.."]
         }
+        Effect::Resistance => {
+            ["########", "#......#", "#..##..#", "#..##..#", ".#....#.", "..#..#..", "...##...", "........"]
+        }
         Effect::FireResistance => {
             ["...#....", "..##..#.", "..###.#.", ".#####..", ".######.", "########", "########", ".######."]
         }
@@ -783,6 +816,18 @@ fn effect_glyph(effect: Effect) -> [&'static str; 8] {
         }
         Effect::SlowFalling => {
             ["......##", ".....###", "....###.", "...###..", "..###...", ".###....", "##......", "#......."]
+        }
+        Effect::Blindness => {
+            ["........", "..####..", ".######.", "########", "###..###", ".######.", "..####..", "........"]
+        }
+        Effect::Nausea => {
+            ["..####..", ".#....#.", "#..##..#", "#.#..#.#", "#.#..#.#", "#..##.##", ".#....#.", "..####.."]
+        }
+        Effect::Luck | Effect::BadLuck => {
+            [".##..##.", "########", "########", "########", ".######.", "..####..", "...##...", "........"]
+        }
+        Effect::Haste => {
+            ["...###..", "..###...", ".#######", "######..", "...##...", "..##....", ".##.....", "##......"]
         }
     }
 }

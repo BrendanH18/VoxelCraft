@@ -37,17 +37,21 @@ pub enum Tier {
     Gold,
     Diamond,
     Netherite,
+    /// Java 26.3 copper tools (appended; not in the original `FIRST_TOOL` block).
+    Copper,
 }
 
 impl Tier {
-    pub const ALL: [Tier; 6] = [Tier::Wood, Tier::Stone, Tier::Iron, Tier::Gold, Tier::Diamond, Tier::Netherite];
+    pub const ALL: [Tier; 7] =
+        [Tier::Wood, Tier::Stone, Tier::Iron, Tier::Gold, Tier::Diamond, Tier::Netherite, Tier::Copper];
 
     /// Which blocks the tier can harvest: 0 wood/gold, 1 stone, 2 iron, 3
     /// diamond, 4 Netherite (everything diamond can).
     pub fn level(self) -> u8 {
         match self {
             Tier::Wood | Tier::Gold => 0,
-            Tier::Stone => 1,
+            // Java's `incorrect_for_copper_tool` matches the stone tag.
+            Tier::Stone | Tier::Copper => 1,
             Tier::Iron => 2,
             Tier::Diamond => 3,
             Tier::Netherite => 4,
@@ -59,6 +63,7 @@ impl Tier {
         match self {
             Tier::Wood => 2.0,
             Tier::Stone => 4.0,
+            Tier::Copper => 5.0,
             Tier::Iron => 6.0,
             Tier::Diamond => 8.0,
             Tier::Netherite => 9.0,
@@ -71,6 +76,7 @@ impl Tier {
         match self {
             Tier::Wood => 59,
             Tier::Stone => 131,
+            Tier::Copper => 190,
             Tier::Iron => 250,
             Tier::Diamond => 1561,
             Tier::Netherite => 2031,
@@ -100,22 +106,28 @@ pub enum ArmorMaterial {
     Gold,
     Diamond,
     Netherite,
+    Turtle,
+    /// Java 26.3 copper armor (appended; ids in the copper equipment range).
+    Copper,
 }
 
 impl ArmorMaterial {
-    pub const ALL: [ArmorMaterial; 5] = [
+    pub const ALL: [ArmorMaterial; 6] = [
         ArmorMaterial::Leather,
         ArmorMaterial::Iron,
         ArmorMaterial::Gold,
         ArmorMaterial::Diamond,
         ArmorMaterial::Netherite,
+        ArmorMaterial::Copper,
     ];
 
     /// Armor points (half chestplates on the HUD) per piece, as in Minecraft.
     pub fn defense(self, piece: ArmorPiece) -> u8 {
         let points = match self {
             ArmorMaterial::Leather => [1, 3, 2, 1],
+            ArmorMaterial::Copper => [2, 4, 3, 1],
             ArmorMaterial::Gold => [2, 5, 3, 1],
+            ArmorMaterial::Turtle => [2, 6, 5, 2],
             ArmorMaterial::Iron => [2, 6, 5, 2],
             ArmorMaterial::Diamond | ArmorMaterial::Netherite => [3, 8, 6, 3],
         };
@@ -127,9 +139,11 @@ impl ArmorMaterial {
         let base = match self {
             ArmorMaterial::Leather => 5,
             ArmorMaterial::Gold => 7,
+            ArmorMaterial::Copper => 11,
             ArmorMaterial::Iron => 15,
             ArmorMaterial::Diamond => 33,
             ArmorMaterial::Netherite => 37,
+            ArmorMaterial::Turtle => 25,
         };
         base * [11, 16, 15, 13][piece as usize]
     }
@@ -218,6 +232,9 @@ pub enum Sprite {
     String,
     /// A minecart, tinted for chest, hopper and TNT carts.
     Minecart([u8; 3]),
+    Boat([u8; 3], bool),
+    Saddle,
+    SteeringStick([u8; 3]),
     Feather,
     Powder([u8; 3]),
     Leather,
@@ -278,6 +295,10 @@ const fn food(name: &'static str, hunger: u8, saturation: f32, sprite: Sprite) -
     ItemInfo { name, kind: ItemKind::Food { hunger, saturation }, max_stack: 64, sprite }
 }
 
+const fn copper_tool(name: &'static str, kind: ToolKind) -> ItemInfo {
+    ItemInfo { name, kind: ItemKind::Tool(kind, Tier::Copper), max_stack: 1, sprite: Sprite::Tool(kind, Tier::Copper) }
+}
+
 const fn netherite_tool(name: &'static str, kind: ToolKind) -> ItemInfo {
     ItemInfo {
         name,
@@ -285,6 +306,11 @@ const fn netherite_tool(name: &'static str, kind: ToolKind) -> ItemInfo {
         max_stack: 1,
         sprite: Sprite::Tool(kind, Tier::Netherite),
     }
+}
+
+const fn copper_armor(name: &'static str, piece: ArmorPiece) -> ItemInfo {
+    let (kind, sprite) = (ItemKind::Armor(piece, ArmorMaterial::Copper), Sprite::Armor(piece, ArmorMaterial::Copper));
+    ItemInfo { name, kind, max_stack: 1, sprite }
 }
 
 const fn netherite_armor(name: &'static str, piece: ArmorPiece) -> ItemInfo {
@@ -445,10 +471,77 @@ static OVERWORLD_ITEMS: [ItemInfo; 19] = [
     bucket_of("bucket of axolotl", [240, 150, 190]),
 ];
 const _: () = assert!(OVERWORLD_ITEM as usize + OVERWORLD_ITEMS.len() <= 960);
+/// Mount items use the reserved append-only 960..=999 range.
+const MOUNT_ITEM: u16 = 960;
+const fn single(name: &'static str, sprite: Sprite) -> ItemInfo {
+    ItemInfo { name, kind: ItemKind::Material, max_stack: 1, sprite }
+}
+static MOUNT_ITEMS: [ItemInfo; 28] = [
+    single("oak boat", Sprite::Boat([162, 130, 79], false)),
+    single("spruce boat", Sprite::Boat([104, 78, 46], false)),
+    single("birch boat", Sprite::Boat([214, 204, 153], false)),
+    single("jungle boat", Sprite::Boat([166, 119, 83], false)),
+    single("acacia boat", Sprite::Boat([176, 91, 53], false)),
+    single("dark oak boat", Sprite::Boat([66, 43, 20], false)),
+    single("mangrove boat", Sprite::Boat([118, 56, 48], false)),
+    single("cherry boat", Sprite::Boat([226, 174, 174], false)),
+    single("pale oak boat", Sprite::Boat([228, 218, 214], false)),
+    single("bamboo raft", Sprite::Boat([196, 176, 82], false)),
+    single("oak chest boat", Sprite::Boat([162, 130, 79], true)),
+    single("spruce chest boat", Sprite::Boat([104, 78, 46], true)),
+    single("birch chest boat", Sprite::Boat([214, 204, 153], true)),
+    single("jungle chest boat", Sprite::Boat([166, 119, 83], true)),
+    single("acacia chest boat", Sprite::Boat([176, 91, 53], true)),
+    single("dark oak chest boat", Sprite::Boat([66, 43, 20], true)),
+    single("mangrove chest boat", Sprite::Boat([118, 56, 48], true)),
+    single("cherry chest boat", Sprite::Boat([226, 174, 174], true)),
+    single("pale oak chest boat", Sprite::Boat([228, 218, 214], true)),
+    single("bamboo chest raft", Sprite::Boat([196, 176, 82], true)),
+    single("saddle", Sprite::Saddle),
+    single("carrot on a stick", Sprite::SteeringStick([214, 112, 28])),
+    single("warped fungus on a stick", Sprite::SteeringStick([30, 150, 140])),
+    single("leather horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Leather)),
+    single("iron horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Iron)),
+    single("golden horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Gold)),
+    single("diamond horse armor", Sprite::Armor(ArmorPiece::Chestplate, ArmorMaterial::Diamond)),
+    food("golden carrot", 6, 14.4, Sprite::Lump([235, 192, 52])),
+];
+const _: () = assert!(MOUNT_ITEM as usize + MOUNT_ITEMS.len() <= 1000);
+/// v0.7 animal items. Reserved ids 1000..=1039; do not relocate older ranges.
+const ANIMAL_ITEM: u16 = 1000;
+static ANIMAL_ITEMS: [ItemInfo; 21] = [
+    item("lead", Sprite::Lump([151, 113, 68])),
+    item("name tag", Sprite::Lump([222, 211, 169])),
+    food("raw rabbit", 3, 1.8, Sprite::Lump([205, 146, 142])),
+    food("cooked rabbit", 5, 6.0, Sprite::Lump([170, 100, 61])),
+    item("rabbit hide", Sprite::Lump([150, 117, 88])),
+    item("rabbit foot", Sprite::Lump([207, 199, 178])),
+    ItemInfo {
+        name: "rabbit stew",
+        kind: ItemKind::Food { hunger: 10, saturation: 12.0 },
+        max_stack: 1,
+        sprite: Sprite::Lump([161, 109, 62]),
+    },
+    food("cookie", 2, 0.4, Sprite::Lump([190, 128, 61])),
+    item("goat horn ponder", Sprite::Lump([191, 185, 170])),
+    item("goat horn sing", Sprite::Lump([191, 185, 170])),
+    item("goat horn seek", Sprite::Lump([191, 185, 170])),
+    item("goat horn feel", Sprite::Lump([191, 185, 170])),
+    item("goat horn admire", Sprite::Lump([191, 185, 170])),
+    item("goat horn call", Sprite::Lump([191, 185, 170])),
+    item("goat horn yearn", Sprite::Lump([191, 185, 170])),
+    item("goat horn dream", Sprite::Lump([191, 185, 170])),
+    item("melon seeds", Sprite::Seeds),
+    item("beetroot seeds", Sprite::Seeds),
+    food("raw mutton", 2, 1.2, Sprite::Lump([198, 88, 90])),
+    food("cooked mutton", 6, 9.6, Sprite::Lump([148, 81, 45])),
+    item("phantom membrane", Sprite::Lump([194, 185, 170])),
+];
+const _: () = assert!(ANIMAL_ITEM as usize + ANIMAL_ITEMS.len() <= 1040);
 /// Splash potions: `SPLASH_POTION + potion index`.
 const SPLASH_POTION: u16 = 436;
-const _: () = assert!(FIRST_POTION + POTION_COUNT <= SPLASH_POTION);
-const _: () = assert!(SPLASH_POTION + POTION_COUNT <= SURVIVAL_ITEM);
+const _: () = assert!(FIRST_POTION + LEGACY_POTION_COUNT <= SPLASH_POTION);
+const _: () = assert!(SPLASH_POTION + LEGACY_POTION_COUNT <= SURVIVAL_ITEM);
 
 /// Uses before a bow breaks.
 pub const BOW_DURABILITY: u16 = 384;
@@ -536,10 +629,30 @@ const NETHERITE_TOOLS: u16 = 311;
 const NETHERITE_ARMOR: u16 = NETHERITE_TOOLS + TOOL_KINDS.len() as u16;
 /// Potions start at this id: `FIRST_POTION + potion index`.
 const FIRST_POTION: u16 = 400;
+const LEGACY_POTION_COUNT: u16 = 36;
+const AUDIT_POTION: u16 = 1041;
+/// Java 26.3 copper equipment. Reserved ids 1050..=1069 (tools, nugget, and
+/// later copper armor and spears); 1047..=1049 stay free.
+const COPPER_ITEM: u16 = 1050;
+const COPPER_ITEMS: &[ItemInfo] = &[
+    copper_tool("copper pickaxe", ToolKind::Pickaxe),
+    copper_tool("copper shovel", ToolKind::Shovel),
+    copper_tool("copper axe", ToolKind::Axe),
+    copper_tool("copper hoe", ToolKind::Hoe),
+    copper_tool("copper sword", ToolKind::Sword),
+    item("copper nugget", Sprite::Nugget([200, 118, 86])),
+    copper_armor("copper helmet", ArmorPiece::Helmet),
+    copper_armor("copper chestplate", ArmorPiece::Chestplate),
+    copper_armor("copper leggings", ArmorPiece::Leggings),
+    copper_armor("copper boots", ArmorPiece::Boots),
+];
+const _: () = assert!(COPPER_ITEM as usize + COPPER_ITEMS.len() <= 1070);
+const AUDIT_SPLASH_POTION: u16 = 1044;
 /// Raw metals and gems. 360 is diamond boots (`FIRST_ARMOR` ends there),
 /// so these start at 361.
 const EXTRA_ITEM: u16 = 361;
 const POTION_COUNT: u16 = crate::potion::Potion::COUNT as u16;
+const _: () = assert!(POTION_COUNT - LEGACY_POTION_COUNT <= 3);
 
 impl Item {
     pub const MILK_BUCKET: Item = Item(513);
@@ -547,6 +660,20 @@ impl Item {
     pub const MUSHROOM_STEW: Item = Item(515);
     pub const SNOWBALL: Item = Item(516);
     pub const EGG: Item = Item(517);
+    pub const LEAD: Item = Item(1000);
+    pub const NAME_TAG: Item = Item(1001);
+    pub const RAW_RABBIT: Item = Item(1002);
+    pub const COOKED_RABBIT: Item = Item(1003);
+    pub const RABBIT_HIDE: Item = Item(1004);
+    pub const RABBIT_FOOT: Item = Item(1005);
+    pub const RABBIT_STEW: Item = Item(1006);
+    pub const COOKIE: Item = Item(1007);
+    pub const GOAT_HORN: Item = Item(1008);
+    pub const MELON_SEEDS: Item = Item(1016);
+    pub const BEETROOT_SEEDS: Item = Item(1017);
+    pub const RAW_MUTTON: Item = Item(1018);
+    pub const COOKED_MUTTON: Item = Item(1019);
+    pub const PHANTOM_MEMBRANE: Item = Item(1020);
     pub const COMPASS: Item = Item(518);
     pub const CLOCK: Item = Item(519);
     pub const CARROT: Item = Item(520);
@@ -600,6 +727,18 @@ impl Item {
     pub const MAGMA_CREAM: Item = Item(608);
     pub const IRON_NUGGET: Item = Item(609);
     pub const FIRE_CHARGE: Item = Item(760);
+    pub const SADDLE: Item = Item(980);
+    pub const CARROT_ON_A_STICK: Item = Item(981);
+    pub const WARPED_FUNGUS_ON_A_STICK: Item = Item(982);
+    pub const LEATHER_HORSE_ARMOR: Item = Item(983);
+    pub const IRON_HORSE_ARMOR: Item = Item(984);
+    pub const GOLDEN_HORSE_ARMOR: Item = Item(985);
+    pub const DIAMOND_HORSE_ARMOR: Item = Item(986);
+    pub const GOLDEN_CARROT: Item = Item(987);
+    /// Wood index follows Wood::ALL; index 9 is bamboo.
+    pub const fn boat(wood: u8, chest: bool) -> Item {
+        Item(960 + wood as u16 + if chest { 10 } else { 0 })
+    }
     pub const MINECART: Item = Item(761);
     pub const CHEST_MINECART: Item = Item(762);
     pub const HOPPER_MINECART: Item = Item(763);
@@ -656,6 +795,9 @@ impl Item {
     pub const PRISMARINE_SHARD: Item = Item(905);
     pub const PRISMARINE_CRYSTALS: Item = Item(906);
     pub const TURTLE_SCUTE: Item = Item(907);
+    /// Standalone append-only audit gear ID; v0.7 reserves 1000..1039.
+    pub const TURTLE_HELMET: Item = Item(1040);
+    pub const COPPER_NUGGET: Item = Item(COPPER_ITEM + 5);
     pub const NAUTILUS_SHELL: Item = Item(908);
     pub const HEART_OF_THE_SEA: Item = Item(909);
     pub const INK_SAC: Item = Item(910);
@@ -673,6 +815,7 @@ impl Item {
     pub const fn tool(kind: ToolKind, tier: Tier) -> Item {
         match tier {
             Tier::Netherite => Item(NETHERITE_TOOLS + kind as u16),
+            Tier::Copper => Item(COPPER_ITEM + kind as u16),
             _ => Item(FIRST_TOOL + tier as u16 * 5 + kind as u16),
         }
     }
@@ -680,27 +823,50 @@ impl Item {
     pub const fn armor(piece: ArmorPiece, material: ArmorMaterial) -> Item {
         match material {
             ArmorMaterial::Netherite => Item(NETHERITE_ARMOR + piece as u16),
+            ArmorMaterial::Copper => Item(COPPER_ITEM + 6 + piece as u16),
+            ArmorMaterial::Turtle => {
+                assert!(matches!(piece, ArmorPiece::Helmet), "turtle material has only a helmet");
+                Self::TURTLE_HELMET
+            }
             _ => Item(FIRST_ARMOR + material as u16 * 4 + piece as u16),
         }
     }
 
     pub const fn potion(potion: crate::potion::Potion) -> Item {
-        Item(FIRST_POTION + potion.0 as u16)
+        let index = potion.0 as u16;
+        Item(if index < LEGACY_POTION_COUNT {
+            FIRST_POTION + index
+        } else {
+            AUDIT_POTION + index - LEGACY_POTION_COUNT
+        })
     }
 
     pub const fn splash_potion(potion: crate::potion::Potion) -> Item {
-        Item(SPLASH_POTION + potion.0 as u16)
+        let index = potion.0 as u16;
+        Item(if index < LEGACY_POTION_COUNT {
+            SPLASH_POTION + index
+        } else {
+            AUDIT_SPLASH_POTION + index - LEGACY_POTION_COUNT
+        })
     }
 
     /// The potion of a throwable splash potion item.
     pub fn as_splash_potion(self) -> Option<crate::potion::Potion> {
-        let i = self.0.checked_sub(SPLASH_POTION).filter(|&i| i < POTION_COUNT)?;
+        let i = if (AUDIT_SPLASH_POTION..AUDIT_SPLASH_POTION + POTION_COUNT - LEGACY_POTION_COUNT).contains(&self.0) {
+            LEGACY_POTION_COUNT + self.0 - AUDIT_SPLASH_POTION
+        } else {
+            self.0.checked_sub(SPLASH_POTION).filter(|&i| i < LEGACY_POTION_COUNT)?
+        };
         Some(crate::potion::Potion(i as u8))
     }
 
     /// The potion this item is (a water bottle is one too).
     pub fn as_potion(self) -> Option<crate::potion::Potion> {
-        let i = self.0.checked_sub(FIRST_POTION).filter(|&i| i < POTION_COUNT)?;
+        let i = if (AUDIT_POTION..AUDIT_POTION + POTION_COUNT - LEGACY_POTION_COUNT).contains(&self.0) {
+            LEGACY_POTION_COUNT + self.0 - AUDIT_POTION
+        } else {
+            self.0.checked_sub(FIRST_POTION).filter(|&i| i < LEGACY_POTION_COUNT)?
+        };
         Some(crate::potion::Potion(i as u8))
     }
 
@@ -760,6 +926,14 @@ impl Item {
 
     pub fn info(self) -> ItemInfo {
         match self {
+            Self::TURTLE_HELMET => {
+                return ItemInfo {
+                    name: "turtle helmet",
+                    kind: ItemKind::Armor(ArmorPiece::Helmet, ArmorMaterial::Turtle),
+                    max_stack: 1,
+                    sprite: Sprite::Armor(ArmorPiece::Helmet, ArmorMaterial::Turtle),
+                };
+            }
             Self::FIRE_CHARGE => return item("fire charge", Sprite::Lump([241, 126, 27])),
             Self::MINECART => {
                 return ItemInfo {
@@ -855,6 +1029,9 @@ impl Item {
         if let Some(info) = self.0.checked_sub(SURVIVAL_ITEM).and_then(|i| SURVIVAL_ITEMS.get(i as usize)) {
             return *info;
         }
+        if let Some(info) = self.0.checked_sub(COPPER_ITEM).and_then(|i| COPPER_ITEMS.get(i as usize)) {
+            return *info;
+        }
         // Saves from the integration branch stored shears at 607.
         if self.0 == 607 {
             return SURVIVAL_ITEMS[0];
@@ -870,6 +1047,12 @@ impl Item {
         }
         if let Some(info) = self.0.checked_sub(OVERWORLD_ITEM).and_then(|i| OVERWORLD_ITEMS.get(i as usize)) {
             return *info;
+        }
+        if let Some(info) = self.0.checked_sub(MOUNT_ITEM).and_then(|i| MOUNT_ITEMS.get(i as usize)) {
+            return *info;
+        }
+        if let Some(info) = self.0.checked_sub(ANIMAL_ITEM).and_then(|i| ANIMAL_ITEMS.get(i as usize)) {
+            return ItemInfo { max_stack: if (1008..=1015).contains(&self.0) { 1 } else { info.max_stack }, ..*info };
         }
         ItemInfo { name: "unknown", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Stick }
     }
@@ -912,6 +1095,12 @@ impl Item {
 
     /// Uses before breaking, for tools and armor.
     pub fn durability(self) -> Option<u16> {
+        if self == Self::CARROT_ON_A_STICK {
+            return Some(25);
+        }
+        if self == Self::WARPED_FUNGUS_ON_A_STICK {
+            return Some(100);
+        }
         if self == Self::SHEARS {
             return Some(238);
         }
@@ -929,29 +1118,46 @@ impl Item {
         }
     }
 
-    /// The status effect eating this gives (Java's spider eye: Poison I for
-    /// 5 s).
-    pub fn food_effect(self) -> Option<(crate::simulation::effects::Effect, u8, u32)> {
+    /// The status effects eating this can give, as Java 26.3 `Consumables`
+    /// registers them (pinned in `consumption.json`). Golden apples also give
+    /// Absorption, which the game has no hearts for yet.
+    pub fn food_effects(self) -> &'static [(crate::simulation::effects::Effect, u8, u32)] {
+        use crate::simulation::effects::Effect;
         match self {
-            Item::SPIDER_EYE | Item::POISONOUS_POTATO => Some((crate::simulation::effects::Effect::Poison, 0, 100)),
-            // Java's pufferfish also brings nausea and hunger; poison is the dangerous part.
-            Item::PUFFERFISH => Some((crate::simulation::effects::Effect::Poison, 1, 1200)),
-            _ => None,
+            Item::SPIDER_EYE | Item::POISONOUS_POTATO => &[(Effect::Poison, 0, 100)],
+            Item::PUFFERFISH => &[(Effect::Poison, 1, 1200), (Effect::Hunger, 2, 300), (Effect::Nausea, 0, 300)],
+            Item::ROTTEN_FLESH | Item::RAW_CHICKEN => &[(Effect::Hunger, 0, 600)],
+            Item::GOLDEN_APPLE => &[(Effect::Regeneration, 1, 100)],
+            _ => &[],
         }
     }
 
-    /// Applies the food effect when `unit` (0..1) falls under its chance.
-    /// A poisonous potato poisons 60% of the time; a spider eye always does.
-    pub fn food_effect_roll(self, unit: f32) -> Option<(crate::simulation::effects::Effect, u8, u32)> {
-        let effect = self.food_effect()?;
-        let chance = if self == Item::POISONOUS_POTATO { 0.6 } else { 1.0 };
-        (unit < chance).then_some(effect)
+    /// Probability that eating applies [`Item::food_effects`] (one roll for all).
+    pub fn food_effect_chance(self) -> f32 {
+        match self {
+            Item::POISONOUS_POTATO => 0.6,
+            Item::ROTTEN_FLESH => 0.8,
+            Item::RAW_CHICKEN => 0.3,
+            _ => 1.0,
+        }
+    }
+
+    /// The food effects when `unit` (0..1) falls under their chance.
+    pub fn food_effect_roll(self, unit: f32) -> &'static [(crate::simulation::effects::Effect, u8, u32)] {
+        if unit < self.food_effect_chance() { self.food_effects() } else { &[] }
+    }
+
+    /// Java's `FoodProperties.canAlwaysEat`: edible even when full. The
+    /// reference also lists chorus fruit, the enchanted golden apple, honey
+    /// bottles and suspicious stew, none of which are registered here.
+    pub fn always_edible(self) -> bool {
+        self == Item::GOLDEN_APPLE
     }
 
     pub fn remainder(self) -> Option<Item> {
         match self {
             Self::MILK_BUCKET => Some(Self::BUCKET),
-            Self::MUSHROOM_STEW => Some(Self::BOWL),
+            Self::MUSHROOM_STEW | Self::RABBIT_STEW => Some(Self::BOWL),
             _ => None,
         }
     }
@@ -983,6 +1189,11 @@ impl Item {
     }
 
     pub fn from_name(name: &str) -> Option<Item> {
+        let name = name.strip_prefix("minecraft:").unwrap_or(name);
+        // Keep the original player-facing label, while resolving the reference ID.
+        if name == "bamboo_block" {
+            return Some(Item::from_block(crate::world::overworld_blocks::BAMBOO_BLOCK));
+        }
         if name.replace('_', " ") == "red bed" {
             return Some(Item::BED);
         }
@@ -1004,7 +1215,7 @@ impl Item {
     pub fn all_items() -> impl Iterator<Item = Item> {
         let materials = (0..ITEMS.len() as u16).map(|i| Item(FIRST_ITEM + i));
         let tools = (0..TOOL_COUNT + ARMOR_COUNT).map(|i| Item(FIRST_TOOL + i));
-        let potions = (0..POTION_COUNT).map(|i| Item(FIRST_POTION + i));
+        let potions = (0..POTION_COUNT).map(|i| Self::potion(crate::potion::Potion(i as u8)));
         let extra = (0..EXTRA_ITEMS.len() as u16).map(|i| Item(EXTRA_ITEM + i));
         materials
             .chain(tools)
@@ -1014,11 +1225,15 @@ impl Item {
             .chain((576..607).map(Item))
             .chain((608..611).map(Item))
             .chain((0..MOB_ITEMS.len() as u16).map(|i| Item(MOB_ITEM + i)))
-            .chain((0..POTION_COUNT).map(|i| Item(SPLASH_POTION + i)))
+            .chain((0..POTION_COUNT).map(|i| Self::splash_potion(crate::potion::Potion(i as u8))))
             .chain((0..VILLAGE_ITEMS.len() as u16).map(|i| Item(VILLAGE_ITEM + i)))
             .chain([Self::FIRE_CHARGE, Self::MINECART, Self::CHEST_MINECART, Self::HOPPER_MINECART, Self::TNT_MINECART])
             .chain([Self::CROSSBOW, Self::CHARGED_CROSSBOW])
             .chain((0..OVERWORLD_ITEMS.len() as u16).map(|i| Item(OVERWORLD_ITEM + i)))
+            .chain((0..MOUNT_ITEMS.len() as u16).map(|i| Item(MOUNT_ITEM + i)))
+            .chain((0..ANIMAL_ITEMS.len() as u16).map(|i| Item(ANIMAL_ITEM + i)))
+            .chain([Self::TURTLE_HELMET])
+            .chain((0..COPPER_ITEMS.len() as u16).map(|i| Item(COPPER_ITEM + i)))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1055,9 +1270,15 @@ fn splash_names() -> &'static [&'static str] {
 fn sprite_index(item: Item) -> Option<u16> {
     let materials = ITEMS.len() as u16;
     match item.0 {
+        1040 => Some(turtle_icon()),
+        i if (COPPER_ITEM..COPPER_ITEM + COPPER_ITEMS.len() as u16).contains(&i) => {
+            Some(turtle_icon() + 1 + i - COPPER_ITEM)
+        }
         i if (FIRST_ITEM..FIRST_ITEM + materials).contains(&i) => Some(i - FIRST_ITEM),
         i if item.as_tool().is_some() || item.as_armor().is_some() => Some(materials + i - FIRST_TOOL),
-        i if item.as_potion().is_some() => Some(materials + TOOL_COUNT + ARMOR_COUNT + i - FIRST_POTION),
+        _ if item.as_potion().is_some() => {
+            Some(materials + TOOL_COUNT + ARMOR_COUNT + item.as_potion().unwrap().0 as u16)
+        }
         i if (EXTRA_ITEM..EXTRA_ITEM + EXTRA_ITEMS.len() as u16).contains(&i) => {
             Some(materials + TOOL_COUNT + ARMOR_COUNT + POTION_COUNT + i - EXTRA_ITEM)
         }
@@ -1085,7 +1306,7 @@ fn sprite_index(item: Item) -> Option<u16> {
                 - MOB_ITEM,
         ),
         // Splash potions come last, after every mob item.
-        i if item.as_splash_potion().is_some() => Some(
+        _ if item.as_splash_potion().is_some() => Some(
             materials
                 + TOOL_COUNT
                 + ARMOR_COUNT
@@ -1094,8 +1315,7 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + SURVIVAL_ITEMS.len() as u16
                 + 34
                 + MOB_ITEMS.len() as u16
-                + i
-                - SPLASH_POTION,
+                + item.as_splash_potion().unwrap().0 as u16,
         ),
         i if (VILLAGE_ITEM..VILLAGE_ITEM + VILLAGE_ITEMS.len() as u16).contains(&i) => Some(
             materials
@@ -1119,13 +1339,24 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if (OVERWORLD_ITEM..OVERWORLD_ITEM + OVERWORLD_ITEMS.len() as u16).contains(&i) => {
             Some(base_icon_count() as u16 + i - OVERWORLD_ITEM)
         }
+        i if (MOUNT_ITEM..MOUNT_ITEM + MOUNT_ITEMS.len() as u16).contains(&i) => {
+            Some(base_icon_count() as u16 + OVERWORLD_ITEMS.len() as u16 + i - MOUNT_ITEM)
+        }
+        i if (ANIMAL_ITEM..ANIMAL_ITEM + ANIMAL_ITEMS.len() as u16).contains(&i) => {
+            Some(base_icon_count() as u16 + OVERWORLD_ITEMS.len() as u16 + MOUNT_ITEMS.len() as u16 + i - ANIMAL_ITEM)
+        }
         _ => None,
     }
 }
 
 /// How many item icons there are (layers of the item texture array).
 pub const fn icon_count() -> u32 {
-    base_icon_count() + OVERWORLD_ITEMS.len() as u32
+    turtle_icon() as u32 + 1 + COPPER_ITEMS.len() as u32
+}
+
+/// The turtle helmet's icon follows the animal items; copper equipment follows it.
+const fn turtle_icon() -> u16 {
+    (base_icon_count() + OVERWORLD_ITEMS.len() as u32 + MOUNT_ITEMS.len() as u32 + ANIMAL_ITEMS.len() as u32) as u16
 }
 
 /// Icons up to and including the Nether-mob items.
@@ -1164,25 +1395,61 @@ pub struct Dial {
     pub overworld: bool,
     /// 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     pub day_time: f32,
-    /// Seconds since the view started, so a lost compass can spin.
+    /// Wobbling needle turn (0..1) a compass shows where it has no natural target.
     pub spin: f32,
+    /// Wobbling dial turn (0..1) a clock shows outside natural dimensions.
+    pub clock_spin: f32,
+}
+
+/// The client's `NeedleDirectionHelper.Wobbler`: eases a needle toward a target turn once
+/// per game tick. A compass or clock outside the Overworld chases a fresh random target
+/// every tick, which makes it jitter around the dial.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Wobbler {
+    rotation: f64,
+    velocity: f64,
+    tick: Option<u64>,
+}
+
+impl Wobbler {
+    /// Steps once for game tick `tick` (later reads in the same tick change nothing) and
+    /// returns the current turn in `0..1`.
+    pub fn update(&mut self, tick: u64, target: f64) -> f64 {
+        if self.tick != Some(tick) {
+            self.tick = Some(tick);
+            let toward = (target - self.rotation + 0.5).rem_euclid(1.0) - 0.5;
+            self.velocity = (self.velocity + toward * 0.1) * 0.8;
+            self.rotation = (self.rotation + self.velocity).rem_euclid(1.0);
+        }
+        self.rotation
+    }
+}
+
+/// A uniform random number in `0..1` for visual-only effects (`Math.random()` on the client).
+pub fn visual_random() -> f64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static STATE: AtomicU64 = AtomicU64::new(0x9E37_79B9_7F4A_7C15);
+    let mut z = STATE.fetch_add(0x9E37_79B9_7F4A_7C15, Ordering::Relaxed).wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    ((z ^ (z >> 31)) >> 11) as f64 / (1u64 << 53) as f64
 }
 
 impl Dial {
-    /// Java's compass angle, as one of 32 frames. Outside the overworld it spins.
+    /// Java's compass angle, as one of 32 frames. Outside the overworld it wobbles at random.
     pub fn compass_frame(self) -> u16 {
         if !self.overworld {
-            return (self.spin * 8.0).rem_euclid(COMPASS_FRAMES as f32) as u16 % COMPASS_FRAMES;
+            return (self.spin.rem_euclid(1.0) * COMPASS_FRAMES as f32).round() as u16 % COMPASS_FRAMES;
         }
         let bearing = (self.spawn_z - self.z).atan2(self.spawn_x - self.x) as f32;
         let relative = (self.yaw - bearing).rem_euclid(std::f32::consts::TAU);
         ((relative / std::f32::consts::TAU) * COMPASS_FRAMES as f32).round() as u16 % COMPASS_FRAMES
     }
 
-    /// Java's celestial angle: frame 0 is noon. Outside the overworld it spins.
+    /// Java's celestial angle: frame 0 is noon. Outside the overworld it wobbles at random.
     pub fn clock_frame(self) -> u16 {
         if !self.overworld {
-            return (self.spin * 8.0).rem_euclid(CLOCK_FRAMES as f32) as u16 % CLOCK_FRAMES;
+            return (self.clock_spin.rem_euclid(1.0) * CLOCK_FRAMES as f32).round() as u16 % CLOCK_FRAMES;
         }
         let celestial = (self.day_time - 0.25).rem_euclid(1.0);
         (celestial * CLOCK_FRAMES as f32).round() as u16 % CLOCK_FRAMES
@@ -1392,19 +1659,51 @@ mod tests {
 
     #[test]
     fn compass_points_at_spawn_and_clock_reads_noon() {
-        let looking =
-            Dial { yaw: 0.0, x: 0.0, z: 0.0, spawn_x: 10.0, spawn_z: 0.0, overworld: true, day_time: 0.25, spin: 0.0 };
+        let looking = Dial {
+            yaw: 0.0,
+            x: 0.0,
+            z: 0.0,
+            spawn_x: 10.0,
+            spawn_z: 0.0,
+            overworld: true,
+            day_time: 0.25,
+            spin: 0.0,
+            clock_spin: 0.0,
+        };
         assert_eq!(looking.compass_frame(), 0, "yaw 0 looks +X, where the spawn is");
         assert_eq!(Item::COMPASS.dial_layer(looking), Some(tex::item_layer(icon_count() as u16)));
         let right = Dial { spawn_z: -10.0, spawn_x: 0.0, ..looking };
         assert_eq!(right.compass_frame(), 8, "spawn on the right is a quarter turn");
-        let lost = Dial { overworld: false, spin: 1.0, ..looking };
-        assert_ne!(lost.compass_frame(), looking.compass_frame());
+        let lost = Dial { overworld: false, spin: 0.5, clock_spin: 0.25, ..looking };
+        assert_eq!(lost.compass_frame(), 16);
+        assert_eq!(lost.clock_frame(), 16);
         assert_eq!(looking.clock_frame(), 0, "noon is frame 0");
         let sunrise = Dial { day_time: 0.0, ..looking };
         assert_eq!(sunrise.clock_frame(), 48);
         assert_eq!(Item::from_name("compass"), Some(Item::COMPASS));
         assert_eq!(Item::from_name("clock"), Some(Item::CLOCK));
         assert_eq!(Item::COMPASS.max_stack(), 64);
+    }
+
+    #[test]
+    fn wobbler_eases_toward_each_new_random_target_once_per_tick() {
+        // Client `Wobbler.update`: velocity = (velocity + shortest_delta * 0.1) * 0.8 per tick.
+        let mut w = Wobbler::default();
+        let a = w.update(1, 0.25);
+        assert!((a - 0.02).abs() < 1e-12, "first step {a}");
+        assert_eq!(w.update(1, 0.9), a, "the same tick does not step again");
+        let mut still = Wobbler::default();
+        assert_eq!(still.update(1, 0.0), 0.0);
+        // The shortest way round: from 0.95 toward 0.05 moves forward across the wrap.
+        let mut wrap = Wobbler { rotation: 0.95, ..Wobbler::default() };
+        assert!(wrap.update(1, 0.05) > 0.95);
+        let mut spread = std::collections::BTreeSet::new();
+        let mut lost = Wobbler::default();
+        for tick in 0..400 {
+            let r = lost.update(tick, visual_random());
+            assert!((0.0..1.0).contains(&r));
+            spread.insert((r * 8.0) as u8);
+        }
+        assert!(spread.len() >= 3, "a lost needle moves around the dial: {spread:?}");
     }
 }

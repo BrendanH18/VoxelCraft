@@ -39,6 +39,8 @@ pub(super) struct RedstoneState {
     queued: FxHashSet<IVec3>,
     pending: FxHashMap<IVec3, (u64, u16, u64)>,
     scheduled: BinaryHeap<ScheduledTick>,
+    /// Due work in unloaded chunks. Woken only by a chunk load, never retried each tick.
+    suspended: FxHashMap<IVec3, Vec<ScheduledTick>>,
     /// Detector-rail comparator output, filled by the minecart tick.
     pub(super) cart_signal: FxHashMap<IVec3, u8>,
     pub(super) trip_pulse: FxHashMap<IVec3, u64>,
@@ -49,7 +51,10 @@ pub(super) struct RedstoneState {
     powered: FxHashSet<IVec3>,
     pub last_updates: usize,
     day_time: f64,
+    /// Java's `Level.skyDarken`, shared with spawning.
     sky_darken: u8,
+    /// Java's `visual/sun_angle` in degrees.
+    sun_angle: f32,
 }
 
 fn conductor(b: Block) -> bool {
@@ -100,6 +105,9 @@ impl World {
     }
 
     pub(super) fn load_redstone_chunk(&mut self, c: IVec3) {
+        if let Some(ticks) = self.redstone.suspended.remove(&c) {
+            self.redstone.scheduled.extend(ticks);
+        }
         // Saved state needs its connections refreshed once when loaded, including
         // adjacent chunks. Generation never places redstone components.
         let Some(slot) = self.chunks.get(&c) else { return };
@@ -584,12 +592,15 @@ impl World {
             Some(Component::Target(_)) => {
                 self.edit(p, r::TARGET, false);
             }
+            // Older saves scheduled the former fixed expiry; Java extinguishes on a random tick.
             Some(Component::GlowingOre(deep)) => {
                 self.edit(p, if deep { Block::DEEPSLATE_REDSTONE_ORE } else { Block::REDSTONE_ORE }, false);
             }
             Some(Component::Daylight { power, inverted }) => {
-                let value = self.daylight_power(p, inverted);
-                if value != power {
+                // Unknown skylight beside unloaded terrain keeps the output.
+                if let Some(value) = self.daylight_power(p, inverted)
+                    && value != power
+                {
                     self.edit(p, r::daylight(value, inverted), false);
                 }
                 self.schedule_redstone(p, 20, 0);
@@ -619,35 +630,44 @@ impl World {
             if self.redstone.pending.get(&p) != Some(&(due, family, sequence)) {
                 continue;
             }
-            self.redstone.pending.remove(&p);
+            self.redstone.last_updates += 1;
             if self.get_block(p).is_none() {
-                let next = self.redstone.tick + 1;
-                self.redstone.pending.insert(p, (next, family, sequence));
-                self.redstone.scheduled.push(Reverse((next, priority, sequence, xyz, family)));
-            } else if self.get_block(p).map(self::family) == Some(Block(family)) {
-                self.redstone.last_updates += 1;
+                self.redstone
+                    .suspended
+                    .entry(super::chunk::chunk_of(p))
+                    .or_default()
+                    .push(Reverse((due, priority, sequence, xyz, family)));
+                continue;
+            }
+            self.redstone.pending.remove(&p);
+            if self.get_block(p).map(self::family) == Some(Block(family)) {
                 self.redstone_scheduled_tick(p);
                 self.drain_redstone_updates();
             }
         }
     }
 
-    pub fn set_redstone_daylight(&mut self, time: f64, sky_darken: u8) {
+    pub(super) fn turtle_hatching_time(&self) -> bool {
+        (0.9..=0.94).contains(&self.redstone.day_time)
+    }
+    /// Clock inputs for detectors and hatching: the day fraction, Java's
+    /// shared `skyDarken` and the `visual/sun_angle` in degrees.
+    pub fn set_redstone_daylight(&mut self, time: f64, sky_darken: u8, sun_angle: f32) {
         self.redstone.day_time = time.rem_euclid(1.0);
         self.redstone.sky_darken = sky_darken.min(15);
+        self.redstone.sun_angle = sun_angle;
     }
 
-    fn daylight_power(&self, p: IVec3, inverted: bool) -> u8 {
-        if !self.generator.dimension.has_sky() {
-            return 0;
-        }
-        let sky = if self.sky_exposed(p) { 15u8.saturating_sub(self.redstone.sky_darken) } else { 0 };
-        if inverted {
-            return 15 - sky;
-        }
-        let angle = (self.redstone.day_time - 0.25).rem_euclid(1.0) * std::f64::consts::TAU;
-        let target = if angle < std::f64::consts::PI { 0.0 } else { std::f64::consts::TAU };
-        (sky as f64 * (angle + (target - angle) * 0.2).cos()).round().clamp(0.0, 15.0) as u8
+    /// Java's `Level.skyDarken` as last supplied by the clock.
+    pub(super) fn sky_darken(&self) -> u8 {
+        self.redstone.sky_darken
+    }
+
+    /// Java's `DaylightDetectorBlock.updateSignalStrength` on the gameplay
+    /// skylight at the detector; `None` while that light is unknown.
+    fn daylight_power(&self, p: IVec3, inverted: bool) -> Option<u8> {
+        let effective = self.sky_light(p)?.saturating_sub(self.redstone.sky_darken);
+        Some(crate::simulation::lighting::daylight_detector_power(effective, self.redstone.sun_angle, inverted))
     }
 
     fn redstone_open(&mut self, p: IVec3, b: Block) {
@@ -679,6 +699,12 @@ impl World {
         }
     }
 
+    pub(super) fn extinguish_ore(&mut self, p: IVec3, b: Block) {
+        if let Some(Component::GlowingOre(deep)) = r::component(b) {
+            self.edit(p, if deep { Block::DEEPSLATE_REDSTONE_ORE } else { Block::REDSTONE_ORE }, false);
+        }
+    }
+
     pub fn touch_redstone_ore(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
         let deep = b.base() == Block::DEEPSLATE_REDSTONE_ORE;
@@ -688,7 +714,6 @@ impl World {
         if !matches!(r::component(b), Some(Component::GlowingOre(_))) {
             self.edit(p, Block(if deep { 1436 } else { 1435 }), false);
         }
-        self.schedule_redstone(p, 30, 0);
         true
     }
 
@@ -765,6 +790,29 @@ impl World {
     }
 
     /// Device-independent right click; callers handle reach and build permission.
+    /// Whether a hand use at `p` acts in Java before the held item's own use:
+    /// note blocks, bells, levers, buttons, wooden trapdoors, daylight
+    /// detectors, repeaters, comparators and toggleable wire. Iron doors and
+    /// trapdoors pass (`useWithoutItem` returns PASS without a redstone signal).
+    pub fn redstone_usable(&self, p: IVec3) -> bool {
+        let Some(b) = self.get_block(p) else { return false };
+        if super::gadgets::is_note(b) || b.base() == Block::BELL {
+            return true;
+        }
+        match r::component(b) {
+            Some(Component::Wire(_)) => matches!(self.wire_connections(p), [1, 1, 1, 1] | [0, 0, 0, 0]),
+            Some(Component::Trapdoor { iron, .. }) => !iron,
+            Some(
+                Component::Daylight { .. }
+                | Component::Lever { .. }
+                | Component::Button { .. }
+                | Component::Repeater { .. }
+                | Component::Comparator { .. },
+            ) => true,
+            _ => false,
+        }
+    }
+
     pub fn use_redstone(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
         if super::gadgets::is_note(b) {
@@ -808,6 +856,7 @@ impl World {
             .redstone
             .scheduled
             .iter()
+            .chain(self.redstone.suspended.values().flatten())
             .filter(|Reverse((due, _, seq, xyz, family))| {
                 self.redstone.pending.get(&IVec3::from_array(*xyz)) == Some(&(*due, *family, *seq))
             })
@@ -1037,6 +1086,41 @@ mod tests {
     }
 
     #[test]
+    fn unloaded_due_ticks_sleep_until_chunk_load_and_keep_v1_saves() {
+        let mut w = world();
+        supported(&mut w, AT, r::STONE_BUTTON);
+        assert!(w.use_redstone(AT));
+        let chunk = super::super::chunk::chunk_of(AT);
+        let data = w.chunks[&chunk].data.clone();
+        let deadline = w.redstone.pending[&AT];
+        w.remove_chunk(chunk);
+        ticks(&mut w, 20);
+        assert_eq!(w.redstone.pending[&AT], deadline);
+        assert!(w.redstone.scheduled.is_empty());
+        assert_eq!(w.redstone.suspended[&chunk].len(), 1);
+        ticks(&mut w, 100);
+        assert_eq!(w.redstone.last_updates, 0, "idle unloaded ticks do no work");
+        assert_eq!(w.redstone.pending[&AT], deadline);
+        let saved = w.redstone_to_string();
+        assert!(saved.contains("t,8,145,8,0,0,"), "overdue work retains the old save encoding: {saved}");
+        let mut restored = world();
+        restored.remove_chunk(chunk);
+        restored.load_redstone(&saved);
+        ticks(&mut restored, 50);
+        assert!(restored.redstone.scheduled.is_empty());
+        restored.insert_chunk(chunk, data.clone(), true);
+        ticks(&mut restored, 1);
+        assert_eq!(restored.get_block(AT), Some(r::STONE_BUTTON));
+        assert!(!restored.redstone.pending.contains_key(&AT));
+        assert!(restored.redstone.suspended.is_empty());
+        w.insert_chunk(chunk, data, true);
+        // Replacing the button invalidates the suspended tick's family/sequence.
+        put(&mut w, AT, r::LAMP);
+        ticks(&mut w, 1);
+        assert_eq!(w.get_block(AT), Some(r::LAMP));
+    }
+
+    #[test]
     fn comparators_compare_subtract_and_read_container_fullness() {
         let mut w = world();
         supported(&mut w, AT, r::comparator(Facing::East, false, false));
@@ -1125,6 +1209,14 @@ mod tests {
         ticks(&mut w, 1);
         assert_eq!(w.get_block(AT), Some(r::STONE_BUTTON));
         put(&mut w, AT, r::WOOD_BUTTON);
+        // An arrow inside the cell but above the thin button model does not touch it.
+        let high = AT.as_dvec3() + glam::DVec3::new(0.5, 0.6, 0.5);
+        entities.arrows.push(crate::entity::Arrow::shot(high, glam::DVec3::X, 0.1, false));
+        entities.arrows[0].pos = high;
+        w.redstone_contacts([], &entities);
+        ticks(&mut w, 2);
+        assert_eq!(w.get_block(AT), Some(r::WOOD_BUTTON));
+        entities.arrows.clear();
         let pos = AT.as_dvec3() + glam::DVec3::new(0.5, 0.04, 0.5);
         entities.arrows.push(crate::entity::Arrow::shot(pos, glam::DVec3::X, 0.1, false));
         entities.arrows[0].pos = pos;
@@ -1140,6 +1232,73 @@ mod tests {
         entities.arrows[0].pos = pos;
         w.redstone_contacts([], &entities);
         assert_eq!(w.get_block(AT), Some(r::STONE_BUTTON));
+    }
+
+    #[test]
+    fn wooden_plates_feel_orbs_tnt_potions_bobbers_and_other_projectiles_but_stone_plates_do_not() {
+        use crate::entity::{Entities, PlayerId, Rng, fireball::Fireball, orb::XpOrb, potion::ThrownPotion};
+        let mid = AT.as_dvec3() + glam::DVec3::new(0.5, 0.0, 0.5);
+        let mut rng = Rng::new(3);
+        type AddEntity = Box<dyn Fn(&mut Entities, &mut Rng)>;
+        let cases: [(&str, AddEntity); 5] = [
+            ("orb", Box::new(move |e, r| e.orbs.push(XpOrb::new(3, mid + glam::DVec3::Y * 0.1, r)))),
+            ("tnt", Box::new(move |e, _| e.tnt.push(crate::entity::tnt::PrimedTnt::new(mid, glam::DVec3::ZERO, 4.0)))),
+            (
+                "potion",
+                Box::new(move |e, _| {
+                    e.potions.push(ThrownPotion::new(
+                        crate::potion::Potion::from_id("harming").unwrap(),
+                        None,
+                        mid,
+                        glam::DVec3::ZERO,
+                    ))
+                }),
+            ),
+            (
+                "bobber",
+                Box::new(move |e, _| {
+                    e.cast_bobber(PlayerId::HOST, mid + glam::DVec3::Y * 0.1, glam::DVec3::ZERO, 0, 0);
+                    e.bobbers[0].pos = mid + glam::DVec3::Y * 0.1;
+                }),
+            ),
+            (
+                "fireball",
+                Box::new(move |e, _| e.fireballs.push(Fireball::new(mid + glam::DVec3::Y * 0.1, glam::DVec3::X))),
+            ),
+        ];
+        for (name, add) in &cases {
+            let mut entities = Entities::new(7);
+            add(&mut entities, &mut rng);
+            let mut w = world();
+            supported(&mut w, AT, r::WOOD_PLATE);
+            w.redstone_contacts([], &entities);
+            assert_eq!(w.get_block(AT), Some(r::plate(1, 15)), "wooden plate ignores {name}");
+            let mut w = world();
+            supported(&mut w, AT, r::STONE_PLATE);
+            w.redstone_contacts([], &entities);
+            assert_eq!(w.get_block(AT), Some(r::STONE_PLATE), "stone plate counts {name}");
+        }
+        let reference: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/redstone_contacts.json")).unwrap();
+        let orb_width = reference["entity_sizes"]["experience_orb"][0].as_f64().unwrap();
+        let touch_edge = reference["touch_max"][0].as_f64().unwrap();
+        // Place an orb 0.01 blocks inside/outside the reference's far overlap edge.
+        // Java's touch box runs x 1/16..15/16: a 0.5-wide orb centred at 1.15 touches it, at 1.2 it does not.
+        let mut entities = Entities::new(7);
+        entities.orbs.push(XpOrb::new(
+            3,
+            AT.as_dvec3() + glam::DVec3::new(touch_edge + orb_width / 2.0 - 0.01, 0.1, 0.5),
+            &mut rng,
+        ));
+        let mut w = world();
+        supported(&mut w, AT, r::WOOD_PLATE);
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::plate(1, 15)));
+        entities.orbs[0].pos = AT.as_dvec3() + glam::DVec3::new(touch_edge + orb_width / 2.0 + 0.01, 0.1, 0.5);
+        let mut w = world();
+        supported(&mut w, AT, r::WOOD_PLATE);
+        w.redstone_contacts([], &entities);
+        assert_eq!(w.get_block(AT), Some(r::WOOD_PLATE));
     }
 
     #[test]
@@ -1229,25 +1388,59 @@ mod tests {
 
     #[test]
     fn daylight_detectors_sample_periodically_and_ore_keeps_mining_rules() {
-        let mut w = world();
-        put(&mut w, AT, r::DAYLIGHT);
-        w.set_redstone_daylight(0.25, 0);
+        use crate::simulation::lighting::{SpawnLight, sun_angle};
+        // Detectors read propagated gameplay skylight, which needs lit columns.
+        let mut w = super::super::lighting::flat_test_world(
+            (-1..=1).flat_map(|x| (-1..=1).map(move |z| glam::IVec2::new(x, z))),
+            63,
+        );
+        let at = IVec3::new(8, 64, 8);
+        put(&mut w, at, r::DAYLIGHT);
+        w.update_block_light();
+        let clock = |w: &mut World, tick: u32| {
+            let darken = SpawnLight::at(tick, 0., 0.).sky_darken;
+            w.set_redstone_daylight(tick as f64 / 24000.0, darken, sun_angle(tick));
+        };
+        clock(&mut w, 6000);
         ticks(&mut w, 21);
-        assert_eq!(w.get_block(AT), Some(r::daylight(15, false)));
-        w.set_redstone_daylight(0.75, 11);
+        assert_eq!(w.get_block(at), Some(r::daylight(15, false)));
+        // At dusk the shared darkening is still 0 (sky 15), but the sun angle
+        // already halves the output: 15 * cos(0.8 * 77.6 degrees) rounds to 7.
+        clock(&mut w, 12000);
         ticks(&mut w, 20);
-        assert_eq!(w.get_block(AT), Some(r::daylight(0, false)));
-        assert!(w.use_redstone(AT));
+        assert_eq!(SpawnLight::at(12000, 0., 0.).sky_darken, 0);
+        assert_eq!(w.get_block(at), Some(r::daylight(7, false)));
+        clock(&mut w, 18000);
         ticks(&mut w, 20);
-        assert_eq!(w.get_block(AT), Some(r::daylight(11, true)));
+        assert_eq!(w.get_block(at), Some(r::daylight(0, false)));
+        assert!(w.use_redstone(at));
+        ticks(&mut w, 20);
+        assert_eq!(w.get_block(at), Some(r::daylight(11, true)), "15 - (15 - 11)");
+        // A roof removes the sky light the inverted detector compares.
+        put(&mut w, at + IVec3::Y * 3, Block::STONE);
+        w.update_block_light();
+        ticks(&mut w, 20);
+        let sky = w.sky_light(at).unwrap();
+        assert!(sky < 15, "{sky}");
+        assert_eq!(w.get_block(at), Some(r::daylight(15 - sky.saturating_sub(11), true)));
+
+        let mut w = world();
         put(&mut w, AT, Block::DEEPSLATE_REDSTONE_ORE);
         assert!(w.touch_redstone_ore(AT));
         let glowing = w.get_block(AT).unwrap();
         assert_eq!(glowing.emission(), 9);
         assert_eq!(glowing.harvest_level(), Some(2));
         assert_eq!(glowing.as_stone_ore(), Block::REDSTONE_ORE);
-        ticks(&mut w, 30);
+        // Java: no fixed expiry, and re-touching a lit ore schedules nothing.
+        assert!(w.touch_redstone_ore(AT));
+        ticks(&mut w, 100);
+        assert_eq!(w.get_block(AT), Some(glowing));
+        // `RedStoneOreBlock.randomTick` turns LIT off.
+        w.random_tick(AT);
         assert_eq!(w.get_block(AT), Some(Block::DEEPSLATE_REDSTONE_ORE));
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/building.json")).unwrap();
+        assert_eq!(fixture["redstone_ore_extinguishes_on_random_tick"], true);
     }
 
     #[test]

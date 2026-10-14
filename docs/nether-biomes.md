@@ -38,10 +38,22 @@ regions are large: in tests the mean run along a line is roughly a
 kilometre, wastes are the most common biome and warped forests the rarest.
 
 Lookups: `Generator::nether_biome(x, z)` (gameplay), `/locate biome
-<name>` (32-block ring search like Java, keeping the caller's height), the
+<name>` (32-block ring search like Java; the result keeps the caller's height, which is what Java's 3D search returns here because the Nether noise router sets `y_scale` 0 for temperature and vegetation, pinned in the lighting fixture), the
 F3 screen (`Biome: minecraft:crimson_forest (nether)`) and per-biome music
 (`Situation::nether`). Bastion remnants skip regions whose start chunk
 centre is in a basalt delta (`#has_structure/bastion_remnant`).
+
+## Spawn costs
+
+Java biomes carry `spawn_costs` (the `natural_mob_spawns` attribute): soul sand
+valleys charge 0.7 with a budget of 0.15 for endermen, ghasts, skeletons and
+striders, and warped forests charge endermen 1.0 against 0.12. `Entities` applies
+`NaturalSpawner.SpawnState.canSpawn` to natural Nether spawns (pack leaders, pack
+members and fortress spawns): each non-persistent mob with a cost in its own biome
+adds `charge / distance`, and a new mob needs `charge x potential <= budget`.
+A skeleton therefore keeps other charged mobs about 3.3 blocks away in a soul sand
+valley, and warped forest endermen need nine blocks. Java rebuilds the field once
+per spawn pass from every loaded mob; VoxelCraft sums the live mobs per attempt.
 
 ## Surfaces
 
@@ -111,7 +123,8 @@ column and every feature reaching it scan each column once.
 |---|---|
 | 1600–1601 | crimson and warped nylium |
 | 1602–1613 | crimson, warped and stripped stems (Y, X, Z axes) |
-| 1614–1617 | crimson, warped and stripped hyphae |
+| 1614–1617 | crimson, warped and stripped hyphae (Y axis) |
+| 2500–2507 | the same four hyphae on the X then Z axis (reserved range; bark on every face, so they look alike) |
 | 1618–1622 | crimson and warped planks, nether and warped wart blocks, shroomlight |
 | 1623–1627 | crimson and warped fungus and roots, nether sprouts |
 | 1628–1633 | soul soil, soul fire, soul torch, bone block (3 axes) |
@@ -174,7 +187,8 @@ block; coal or charcoal + stick + soul sand or soil → 4 soul torches;
 
 The fog colour is blended like Java's `FogRenderer`: a cubic Gaussian
 (`CubicSampler`, kernel 1-4-6-4-1) over the 6×6 quarts around the camera,
-cached until the camera changes quart. Particles follow Java's providers
+cached until the camera changes quart. Every split-screen view keeps its own cache and
+samples around its own eye. Particles follow Java's providers
 (see [particles](particles.md)); soul torches burn with the blue soul fire
 flame. Music uses the existing procedural Nether palettes.
 
@@ -213,13 +227,32 @@ The patches were centered at (-2560, -4480), (-4096, -4480),
 12345. Biome lookup was outside the timer. Basalt feature generation is
 a performance hotspot; the ordinary benchmark origin understates its cost.
 
+v0.7.0 fix: a profile (macOS `sample`) of the delta patch put nearly all decoration time in
+`Probe::terrain` reads: 117k reads and 214 feature runs per chunk, 71% of the reads from
+large basalt columns. Features still replay for every chunk they can reach, but now skip
+work that only decides blocks outside the chunk being painted: a column cell outside the
+chunk's x/z range is skipped (it reads and writes only its own column) and a delta cell
+is skipped unless the chain `p, p + r, p + 2r, …` of its rim/pool writes reaches the chunk
+(a cell's outcome depends on earlier cells having written those blocks). A test
+(`culling_features_to_the_chunk_changes_nothing`) paints 56 chunks in the delta patches and
+other biomes with and without the culling and compares every block. Reads per delta chunk fell
+from 11.7M to under 5M per 100 chunks, and `cargo run --release --example nether_patch_bench`
+(same patches as the table above, seven fresh generators each) measured the delta patch 1.7–1.9×
+faster than the previous build, interleaved on the same loaded machine (best of seven: 4.7 → 2.6,
+4.8 → 2.9 and 5.4 → 3.2 ms/chunk at load average ~20; the unloaded figure was 2.16 ms before
+and ≈1.2 ms after on an earlier quiet run). The other four biomes are unchanged. Basalt deltas
+remain the most expensive biome because Java's feature counts (40 deltas and 6 column
+clusters per 16×16 cell and layer) are fixed.
+
 ## Known gaps
 
-- Biome layouts are statistically Java's but not seed-for-seed copies;
-  Java's fuzzy biome zoom is not applied, so borders follow the 4×4 quart
-  grid.
-- Hyphae store no axis (their bark texture is the same on every face here,
-  as textures are never rotated).
+- Biome layouts are statistically Java's but not seed-for-seed copies.
+  Java's fuzzy biome zoom (`BiomeManager.getBiome`: the nearest of the eight
+  surrounding quarts after a seed-hashed jitter) is applied to gameplay
+  queries (mob spawn lists and costs, the F3 biome line, music). Terrain
+  surfaces, feature placement, fog (Java's fog reads plain quarts) and the
+  ambient-particle window still use the plain 4×4 quart grid, so a nylium
+  border and the spawn-list border can differ by a few blocks.
 - Features see only undecorated terrain, so later features don't react to
   earlier ones as in Java (painting order keeps fungi and vines whole).
 - Fossils are procedural skeletons, not Java's fourteen templates.
@@ -228,10 +261,11 @@ a performance hotspot; the ordinary benchmark origin understates its cost.
   block yet), and the gravel and lava edges of soul sand valley and delta
   floors near the lava sea.
 - Soul lanterns (no lanterns yet), signs, Soul Speed, the soul fire HUD
-  overlay and wall torches are absent; vines are climbable for players
-  only.
-- `/locate biome` keeps the caller's height rather than searching in 3D.
-- Java's spawn costs (soul sand valley's charge per mob) aren't modelled.
+  overlay (the Java client code is not in the reference jar to check) and wall
+  torches are absent. Every mob inside a ladder or vine slides at most 0.15
+  blocks per tick and climbs at 0.2 while pressing a wall (Java
+  `LivingEntity.handleOnClimbable`); mobs still have no pathfinding to seek
+  vines.
 - Worlds saved before v0.5 keep their generated Nether chunks; chunks
   generated next to them use the biomes, so old areas meet new terrain at a
   seam.

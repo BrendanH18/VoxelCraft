@@ -1,4 +1,5 @@
-//! Append-only village blocks, 900..=958. Oriented workstations use four states.
+//! Append-only village blocks, 900..=958. Oriented workstations use four states;
+//! barrels add the vertical `facing=up` and `facing=down` states at 2523 and 2524.
 use super::block::{Block, Facing, RenderKind, Shaped, tex};
 use crate::item::ToolKind;
 
@@ -37,8 +38,13 @@ const NAMES: [&str; 15] = [
     "bell",
 ];
 
+/// A barrel whose open top faces up or down (Java `BarrelBlock.FACING`).
+pub const BARREL_UP: Block = Block(2523);
+pub const BARREL_DOWN: Block = Block(2524);
+
 pub const fn index(id: u16) -> Option<usize> {
     match id {
+        2523 | 2524 => Some(3),
         900 => Some(0),
         901..=903 => Some(1),
         904 | 961..=968 => Some(2),
@@ -50,7 +56,9 @@ pub fn oriented(id: u16) -> Option<(Block, Facing)> {
     (905..=952).contains(&id).then(|| (Block(905 + (id - 905) / 4 * 4), Facing::ALL[((id - 905) % 4) as usize]))
 }
 pub fn base(id: u16) -> Option<Block> {
-    if (961..=968).contains(&id) {
+    if matches!(id, 2523 | 2524) {
+        Some(Block::BARREL)
+    } else if (961..=968).contains(&id) {
         Some(Block::COMPOSTER)
     } else if (901..=903).contains(&id) {
         Some(Block::HAY_BALE)
@@ -72,6 +80,15 @@ pub fn placed(b: Block, normal: glam::IVec3) -> Block {
     } else {
         b
     }
+}
+/// Java's barrel faces `getNearestLookingDirection().getOpposite()`: looking
+/// mostly down opens it upward, mostly up opens it downward; any other look
+/// keeps the horizontal facing chosen from the yaw.
+pub fn placed_with_look(b: Block, forward: glam::Vec3) -> Block {
+    if b.base() != Block::BARREL || forward.y.abs() <= forward.x.abs().max(forward.z.abs()) {
+        return b;
+    }
+    if forward.y < 0.0 { BARREL_UP } else { BARREL_DOWN }
 }
 pub fn shaped(id: u16) -> Option<Shaped> {
     let i = index(id)?;
@@ -107,6 +124,11 @@ pub const fn registry(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     let mut t = [layer, layer, layer + 1, layer + 2, layer, layer];
     if id >= 905 && id <= 952 {
         t[Facing::ALL[((id - 905) % 4) as usize].face()] = layer + 2;
+    }
+    if id == 2523 || id == 2524 {
+        // The open end faces up or down; the other end and the sides are plain.
+        t = [layer, layer, layer + 1, layer + 1, layer, layer];
+        t[if id == 2523 { 2 } else { 3 }] = layer + 2;
     }
     if id >= 961 && id <= 968 {
         t[2] = if id == 968 { tex::COMPOST_READY } else { tex::COMPOST };

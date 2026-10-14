@@ -259,6 +259,8 @@ impl<'a> Probe<'a> {
 struct Canvas<'p, 'a> {
     probe: &'p Probe<'a>,
     own: FxHashMap<IVec3, Block>,
+    /// The chunk being painted: the only blocks whose writes are kept.
+    chunk: Option<(IVec3, IVec3)>,
 }
 
 impl Level for Canvas<'_, '_> {
@@ -268,10 +270,19 @@ impl Level for Canvas<'_, '_> {
     fn place(&mut self, p: IVec3, b: Block) {
         self.own.insert(p, b);
     }
+    fn write_bounds(&self) -> Option<(IVec3, IVec3)> {
+        self.chunk
+    }
 }
 
 /// Paints every biome feature that reaches the chunk at `base`.
 pub(super) fn decorate(nether: &NetherGen, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
+    decorate_within(nether, blocks, base, true);
+}
+
+/// [`decorate`], where `cull` lets features skip work that only decides
+/// blocks outside the chunk (off, every feature runs in full: the same chunk).
+fn decorate_within(nether: &NetherGen, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, cull: bool) {
     let probe = Probe::new(nether, base);
     let lo = (IVec2::new(base.x, base.z) - REACH).div_euclid(IVec2::splat(CELL));
     let hi = (IVec2::new(base.x, base.z) + CHUNK_SIZE_I - 1 + REACH).div_euclid(IVec2::splat(CELL));
@@ -279,7 +290,11 @@ pub(super) fn decorate(nether: &NetherGen, blocks: &mut [Block; CHUNK_VOLUME], b
         base,
         blocks,
         touched: vec![0u64; CHUNK_VOLUME / 64],
-        canvas: Canvas { probe: &probe, own: FxHashMap::default() },
+        canvas: Canvas {
+            probe: &probe,
+            own: FxHashMap::default(),
+            chunk: cull.then_some((base, base + IVec3::splat(CHUNK_SIZE_I - 1))),
+        },
     };
     for cz in lo.y..=hi.y {
         for cx in lo.x..=hi.x {
@@ -463,7 +478,11 @@ mod tests {
             base,
             blocks: &mut blocks,
             touched: vec![0u64; CHUNK_VOLUME / 64],
-            canvas: Canvas { probe: &probe, own: FxHashMap::default() },
+            canvas: Canvas {
+                probe: &probe,
+                own: FxHashMap::default(),
+                chunk: Some((base, base + IVec3::splat(CHUNK_SIZE_I - 1))),
+            },
         };
         let mut recorded = Recorded { flat: Flat::new(40, 100, Block::BASALT), canvas: &mut painter.canvas };
         // Seed 2 replaces 28 earlier magma writes with lava inside one delta.
@@ -544,6 +563,33 @@ mod tests {
             (0..CHUNK_SIZE).all(|z| (0..CHUNK_SIZE).all(|y| (0..CHUNK_SIZE).all(|x| a.get(x, y, z) == b.get(x, y, z))))
         };
         assert!(same(&a, &b));
+    }
+
+    /// Skipping work that only decides blocks outside the chunk must leave every
+    /// painted block as it was, in the biomes with the heaviest culling (deltas,
+    /// whose pools and columns straddle chunk borders) and in the others.
+    #[test]
+    fn culling_features_to_the_chunk_changes_nothing() {
+        let g = NetherGen::new(12345);
+        let mut compared = 0;
+        for (cx, cz) in [(-32, -140), (-33, -141), (-128, -140), (-140, -140), (0, 0), (-80, -140), (36, -111)] {
+            for dx in 0..2 {
+                for cy in 0..4 {
+                    let base = IVec3::new(cx + dx, cy, cz) * CHUNK_SIZE_I;
+                    let paint = |cull| {
+                        let mut blocks = ChunkData::new_dense(Block::AIR);
+                        decorate_within(&g, &mut blocks, base, cull);
+                        blocks
+                    };
+                    let (culled, full) = (paint(true), paint(false));
+                    for i in 0..CHUNK_VOLUME {
+                        assert_eq!(culled[i], full[i], "{base} cell {i}: {} vs {}", culled[i].name(), full[i].name());
+                    }
+                    compared += full.iter().filter(|&&b| b != Block::AIR).count();
+                }
+            }
+        }
+        assert!(compared > 2000, "only {compared} feature blocks compared");
     }
 
     #[test]

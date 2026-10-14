@@ -1,0 +1,241 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "DragonEggBlock.teleport",
+    "SnowGolem.aiStep",
+    "worldgen/biome/*.json"
+  ],
+  "nether_spawns": {
+    "basalt_deltas": {
+      "monster": [
+        [
+          "ghast",
+          40,
+          1,
+          1
+        ],
+        [
+          "magma_cube",
+          100,
+          2,
+          5
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "crimson_forest": {
+      "monster": [
+        [
+          "zombified_piglin",
+          1,
+          2,
+          4
+        ],
+        [
+          "hoglin",
+          9,
+          3,
+          4
+        ],
+        [
+          "piglin",
+          5,
+          3,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "nether_wastes": {
+      "monster": [
+        [
+          "ghast",
+          50,
+          4,
+          4
+        ],
+        [
+          "zombified_piglin",
+          100,
+          4,
+          4
+        ],
+        [
+          "magma_cube",
+          2,
+          4,
+          4
+        ],
+        [
+          "enderman",
+          1,
+          4,
+          4
+        ],
+        [
+          "piglin",
+          15,
+          4,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "soul_sand_valley": {
+      "monster": [
+        [
+          "skeleton",
+          20,
+          5,
+          5
+        ],
+        [
+          "ghast",
+          50,
+          4,
+          4
+        ],
+        [
+          "enderman",
+          1,
+          4,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    },
+    "warped_forest": {
+      "monster": [
+        [
+          "enderman",
+          1,
+          4,
+          4
+        ]
+      ],
+      "creature": [
+        [
+          "strider",
+          60,
+          1,
+          2
+        ]
+      ]
+    }
+  },
+  "dragon_egg": {
+    "attempts": 1000,
+    "draw_bounds_xyz": [
+      16,
+      16,
+      8,
+      8,
+      16,
+      16
+    ],
+    "requires_non_air_below": true
+  },
+  "snow_golem_melts": {
+    "badlands": true,
+    "bamboo_jungle": false,
+    "basalt_deltas": false,
+    "beach": false,
+    "birch_forest": false,
+    "cherry_grove": false,
+    "cold_ocean": false,
+    "crimson_forest": false,
+    "dappled_forest": false,
+    "dark_forest": false,
+    "deep_cold_ocean": false,
+    "deep_dark": false,
+    "deep_frozen_ocean": false,
+    "deep_lukewarm_ocean": false,
+    "deep_ocean": false,
+    "desert": true,
+    "dripstone_caves": false,
+    "end_barrens": false,
+    "end_highlands": false,
+    "end_midlands": false,
+    "eroded_badlands": true,
+    "flower_forest": false,
+    "forest": false,
+    "frozen_ocean": false,
+    "frozen_peaks": false,
+    "frozen_river": false,
+    "grove": false,
+    "ice_spikes": false,
+    "jagged_peaks": false,
+    "jungle": false,
+    "lukewarm_ocean": false,
+    "lush_caves": false,
+    "mangrove_swamp": false,
+    "meadow": false,
+    "mushroom_fields": false,
+    "nether_wastes": false,
+    "ocean": false,
+    "old_growth_birch_forest": false,
+    "old_growth_pine_taiga": false,
+    "old_growth_spruce_taiga": false,
+    "pale_garden": false,
+    "plains": false,
+    "river": false,
+    "savanna": true,
+    "savanna_plateau": true,
+    "small_end_islands": false,
+    "snowy_beach": false,
+    "snowy_plains": false,
+    "snowy_slopes": false,
+    "snowy_taiga": false,
+    "soul_sand_valley": false,
+    "sparse_jungle": false,
+    "stony_peaks": false,
+    "stony_shore": false,
+    "sulfur_caves": false,
+    "sunflower_plains": false,
+    "swamp": false,
+    "taiga": false,
+    "the_end": false,
+    "the_void": false,
+    "warm_ocean": false,
+    "warped_forest": false,
+    "windswept_forest": false,
+    "windswept_gravelly_hills": false,
+    "windswept_hills": false,
+    "windswept_savanna": true,
+    "wooded_badlands": true
+  },
+  "snow_golem_dimension_melts": {
+    "overworld": false,
+    "the_nether": true,
+    "the_end": false
+  }
+}

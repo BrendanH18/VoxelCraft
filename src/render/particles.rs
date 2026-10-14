@@ -12,7 +12,7 @@ use crate::world::{
     block::{Block, tex},
 };
 
-const SPRITES: usize = 15;
+const SPRITES: usize = 16;
 const FRAMES: usize = 8;
 
 #[repr(C)]
@@ -254,6 +254,12 @@ fn sprites() -> Vec<u8> {
                                 && dy < 7.0
                         }
                         8 => (dx.abs() - dy.abs()).abs() < 1.5 && r < 6.0,
+                        // A quaver: note head, stem and flag.
+                        15 => {
+                            (dx + 1.5).powi(2) + (dy - 4.0).powi(2) * 1.4 < 7.0
+                                || (dx - 1.0).abs() < 0.8 && (-6.0..4.0).contains(&dy)
+                                || dx > 1.0 && dx < 5.5 && (dy + 5.0 - (dx - 1.0) * 0.9).abs() < 1.2
+                        }
                         9 => r < 6.0 && r > 3.0 && (dx > 0.0 || dy > 0.0) || (dy + 3.0).abs() < 1.5 && dx.abs() < 4.0,
                         _ => dx.abs() < 2.5 && dy.abs() < 4.0,
                     };

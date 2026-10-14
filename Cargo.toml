@@ -1,7 +1,7 @@
 [package]
 name = "voxelcraft"
 default-run = "voxelcraft"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "A Minecraft-style voxel game written from scratch in Rust, built for performance"
@@ -21,7 +21,7 @@ path = "src/bin/voxelcraft-agent.rs"
 
 [features]
 default = ["client"]
-client = ["dep:cpal", "dep:dirs", "dep:env_logger", "dep:font8x8", "dep:gilrs", "dep:png", "dep:pollster", "dep:wgpu", "dep:winit"]
+client = ["dep:cpal", "dep:dirs", "dep:env_logger", "dep:font8x8", "dep:gilrs", "dep:objc2-metal", "dep:png", "dep:pollster", "dep:wgpu", "dep:winit"]
 
 [dependencies]
 bytemuck = { version = "1.25.2", features = ["derive"] }
@@ -40,11 +40,16 @@ serde_json = "1.0"
 wgpu = { version = "30.0.1", optional = true }
 winit = { version = "0.30.13", optional = true }
 
+# Metal reports no allocator report through wgpu; read the device total directly.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+objc2-metal = { version = "0.3.2", default-features = false, features = ["std", "MTLDevice"], optional = true }
+
 [dev-dependencies]
 # Validates the WGSL shaders in tests (the same version wgpu uses).
 naga = { version = "30.0.1", features = ["wgsl-in"] }
 
 [build-dependencies]
+serde_json = "1.0"
 winresource = "0.1.31"
 
 # Keep dependencies optimized even in debug builds so the game is playable while iterating.

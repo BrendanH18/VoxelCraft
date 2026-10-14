@@ -272,11 +272,26 @@ impl Inventory {
     /// there. Returns `false` if the slot holds no armor, or the worn piece
     /// is bound.
     pub fn equip(&mut self, slot: usize) -> bool {
-        let Some((piece, _)) = self.slots[slot].and_then(|s| s.item.as_armor()) else { return false };
-        if !self.can_unequip(piece, false) {
+        self.equip_in_mode(slot, false)
+    }
+
+    /// Java `Equippable.swapWithEquipmentSlot`: Creative copies into an
+    /// empty equipment slot and may remove Binding; otherwise the old piece
+    /// becomes the held stack. Identical components do not swap.
+    pub fn equip_in_mode(&mut self, slot: usize, creative: bool) -> bool {
+        let Some(held) = self.get(slot) else { return false };
+        let Some((piece, _)) = held.item.as_armor() else { return false };
+        let worn = self.armor[piece as usize];
+        if !self.can_unequip(piece, creative)
+            || worn.is_some_and(|mut worn| {
+                worn.count = held.count;
+                worn == held
+            })
+        {
             return false;
         }
-        std::mem::swap(&mut self.slots[slot], &mut self.armor[piece as usize]);
+        self.armor[piece as usize] = Some(held);
+        self.slots[slot] = if creative && worn.is_none() { Some(held) } else { worn };
         true
     }
 

@@ -32,14 +32,20 @@ pub struct Arrow {
     pub from_player: bool,
     /// The actual player who fired this arrow, independent of pickup rights.
     pub owner: Option<PlayerId>,
+    /// The mob that shot it (`uid`), if any.
+    pub shooter: Option<u32>,
+    /// A player's arrow in a world with PvP on: it can hit other players.
+    pub pvp: bool,
     /// Death message for players hit by this projectile.
     cause: &'static str,
     /// The player can collect it once stuck (not arrows shot in creative).
     pub pickup: bool,
     /// A fully drawn shot: deals a random bonus on hit.
     pub critical: bool,
-    /// The bow's enchantments: power, punch and flame.
+    /// The bow's enchantments: power, punch and flame; a crossbow's piercing.
     pub enchants: crate::enchant::Enchants,
+    /// Mobs (`Mob::uid`) this piercing arrow already passed through.
+    pierced: Vec<u32>,
 }
 
 impl Arrow {
@@ -60,10 +66,13 @@ impl Arrow {
             stuck: false,
             from_player: false,
             owner: None,
+            shooter: None,
+            pvp: false,
             cause,
             pickup: false,
             critical: false,
             enchants: Default::default(),
+            pierced: Vec::new(),
         }
     }
 
@@ -81,17 +90,24 @@ impl Arrow {
             stuck: false,
             from_player: true,
             owner: Some(PlayerId::HOST),
+            shooter: None,
+            pvp: false,
             cause: "was shot by an arrow",
             pickup,
             critical: power >= 1.0,
             enchants: Default::default(),
+            pierced: Vec::new(),
         }
     }
 
-    /// A recoverable dispenser arrow has no player owner and travels at Java's
-    /// 1.1 blocks per game tick before drag/gravity.
-    pub fn dispensed(pos: DVec3, dir: DVec3) -> Self {
-        let mut arrow = Self::shot(pos - dir * 0.3, dir, (22.0 / BOW_SPEED) as f32, true);
+    /// A recoverable dispenser arrow has no player owner. `vel` is its launch velocity in
+    /// blocks per second (Java's 1.1 blocks per game tick plus the dispenser's inaccuracy).
+    pub fn dispensed(pos: DVec3, vel: DVec3) -> Self {
+        let mut arrow = Self::shot(pos, vel, 0.0, true);
+        arrow.pos = pos;
+        arrow.previous_pos = pos;
+        arrow.vel = vel;
+        arrow.critical = false;
         arrow.from_player = false;
         arrow.owner = None;
         arrow
@@ -136,13 +152,13 @@ impl Arrow {
             // and hides anything behind it.
             let block = first_solid(world, from, step);
             let reach = block.unwrap_or(1.0);
-            if self.from_player || self.pickup {
+            if self.from_player || self.pickup || self.shooter.is_some() {
                 // Whatever the step enters first: a mob, or a crystal or
                 // dragon part (fractions of the step).
                 let mob = mobs
                     .iter()
                     .enumerate()
-                    .filter(|(_, m)| m.alive())
+                    .filter(|(_, m)| m.alive() && self.shooter != Some(m.uid) && !self.pierced.contains(&m.uid))
                     .filter_map(|(i, m)| {
                         let (min, max) = m.aabb();
                         crate::physics::ray_aabb(from, step, min, max).filter(|&t| t <= reach).map(|t| (i, t))
@@ -167,6 +183,15 @@ impl Arrow {
                         mob.teleport_pending = true;
                     } else {
                         use crate::enchant::Enchantment;
+                        // `AbstractArrow.onHitEntity`: a piercing arrow passes through
+                        // `pierce level + 1` mobs, and the next one discards it unhurt.
+                        let pierce = usize::from(self.enchants.level(Enchantment::Piercing));
+                        if pierce > 0 {
+                            if self.pierced.len() > pierce {
+                                return false;
+                            }
+                            self.pierced.push(mob.uid);
+                        }
                         let speed = self.vel.length();
                         let mut damage = (speed / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
                         if self.critical {
@@ -182,6 +207,17 @@ impl Arrow {
                         if self.from_player {
                             mob.player_hit();
                         }
+                        if let Some(attacker) = self.shooter {
+                            // Resolve through the shared mob-on-mob path so
+                            // retaliation and loot attribution retain the shooter.
+                            events.push(EntityEvent::MobHit {
+                                target: mob.uid,
+                                attacker,
+                                damage: (speed / SPEED * 3.0).ceil() as f32,
+                                knockback: push,
+                            });
+                            return false;
+                        }
                         let killed = mob.damage(damage, Some(push), rng);
                         events.push(EntityEvent::MobShot {
                             kind: mob.kind,
@@ -191,7 +227,9 @@ impl Arrow {
                             player_kill: self.from_player,
                             owner: self.owner,
                         });
-                        return false;
+                        if pierce == 0 {
+                            return false;
+                        }
                     }
                 }
             }
@@ -226,18 +264,41 @@ impl Arrow {
                 self.age = 0.0;
                 return true;
             }
-            if self.from_player {
+            if self.from_player && !self.pvp {
                 continue;
             }
-            if let Some(hit) = ctx.players.iter().find(|t| t.targetable && t.contains(self.pos)) {
-                let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0;
-                let damage = (self.vel.length() / SPEED * 3.0).ceil() as f32;
+            if let Some(hit) = ctx
+                .players
+                .iter()
+                .find(|t| t.targetable && t.contains(self.pos) && !(self.from_player && Some(t.id) == self.owner))
+            {
+                let (damage, push) = if self.from_player {
+                    // Another player's bow: the same damage, criticals, Punch and Flame as on mobs.
+                    use crate::enchant::Enchantment;
+                    let mut damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
+                    if self.critical {
+                        damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
+                    }
+                    let punch = 1.0 + 3.0 * self.enchants.level(Enchantment::Punch) as f64;
+                    if self.enchants.has(Enchantment::Flame) {
+                        events.push(EntityEvent::Ignite { player: hit.id, secs: 5.0 });
+                    }
+                    (damage, DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 * punch + DVec3::Y * 3.0)
+                } else {
+                    (
+                        (self.vel.length() / SPEED * 3.0).ceil() as f32,
+                        DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0,
+                    )
+                };
                 events.push(EntityEvent::PlayerHit {
                     player: hit.id,
                     damage,
                     knockback: push.as_vec3(),
-                    cause: self.cause,
+                    cause: if self.from_player { "was shot by a player" } else { self.cause },
                 });
+                if let Some(attacker) = self.shooter {
+                    events.push(EntityEvent::OwnerHurt { player: hit.id, attacker });
+                }
                 return false;
             }
         }
@@ -245,6 +306,16 @@ impl Arrow {
             self.dir = self.vel.normalize().as_vec3();
         }
         self.age < MAX_FLIGHT && self.pos.y > -64.0
+    }
+
+    /// Current velocity in blocks per second.
+    pub fn velocity(&self) -> DVec3 {
+        self.vel
+    }
+
+    /// A piercing arrow needs the mobs' ids to remember what it passed through.
+    pub(super) fn piercing(&self) -> bool {
+        self.enchants.has(crate::enchant::Enchantment::Piercing)
     }
 
     pub fn is_stuck(&self) -> bool {
@@ -294,6 +365,41 @@ mod tests {
     use glam::IVec3;
 
     #[test]
+    fn mob_arrows_hit_other_mobs_skip_the_shooter_and_keep_mob_credit() {
+        let world = Grid::flat(0);
+        let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![],
+            daylight: 1.,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Nether,
+        };
+        let mut e = crate::entity::Entities::new(3);
+        e.spawn(MobKind::Piglin, DVec3::new(0.5, 1., 0.5));
+        e.spawn(MobKind::Cow, DVec3::new(5.5, 1., 0.5));
+        e.ensure_mob_ids();
+        let (shooter, victim) = (e.mobs[0].uid, e.mobs[1].uid);
+        let before = e.mobs[0].health;
+        let mut arrow =
+            Arrow::aimed(e.mobs[0].pos + DVec3::Y, e.mobs[1].pos + DVec3::Y, "was shot by a piglin", &mut e.rng);
+        arrow.shooter = Some(shooter);
+        let mut events = Vec::new();
+        for _ in 0..20 {
+            if !arrow.update(0.05, &world, &ctx, &mut e.mobs, None, &mut e.rng, &mut events) {
+                break;
+            }
+        }
+        assert!(events.iter().any(
+            |ev| matches!(ev, EntityEvent::MobHit { target, attacker, .. } if *target == victim && *attacker == shooter)
+        ));
+        e.resolve_mob_hits(&mut events);
+        assert_eq!(e.mobs[0].health, before);
+        assert!(e.mobs[1].health < MobKind::Cow.max_health());
+        assert!(e.orbs.is_empty(), "mob shots award no player kill XP");
+    }
+
+    #[test]
     fn a_clipped_block_corner_stops_the_arrow_before_a_mob_behind_it() {
         let mut world = Grid::flat(10);
         world.set(IVec3::new(0, 20, 0), Block::STONE);
@@ -310,6 +416,7 @@ mod tests {
         arrow.pos = from;
         arrow.vel = (to - from) / dt + DVec3::Y * GRAVITY * dt;
         let ctx = Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
             players: vec![Target::new(PlayerId::HOST, DVec3::new(50.0, 10.0, 0.0), true)],
             daylight: 1.0,
             spawning: false,
@@ -327,11 +434,12 @@ mod tests {
     fn dispenser_arrows_hurt_mobs_and_players_without_player_kill_credit() {
         let world = Grid::flat(10);
         for player in [false, true] {
-            let mut arrow = Arrow::dispensed(DVec3::new(0.5, 11.0, 0.5), DVec3::X);
+            let mut arrow = Arrow::dispensed(DVec3::new(0.5, 11.0, 0.5), DVec3::X * 22.0);
             assert!((arrow.vel.length() - 22.0).abs() < 0.001);
             let mut mobs =
                 if player { Vec::new() } else { vec![Mob::new(MobKind::Cow, DVec3::new(2.0, 10.0, 0.5), 0.0)] };
             let ctx = Ctx {
+                spawn_light: crate::simulation::lighting::SpawnLight::DAY,
                 players: vec![Target::new(
                     PlayerId::HOST,
                     DVec3::new(if player { 2.0 } else { 50.0 }, 10.0, 0.5),

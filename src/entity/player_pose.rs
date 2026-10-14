@@ -19,7 +19,9 @@ impl PlayerPose {
     pub const STANDING_HEIGHT: f64 = 1.8;
     pub const CROUCH_HEIGHT: f64 = 1.5;
     pub const SWIM_HEIGHT: f64 = 0.6;
-    pub const HALF_WIDTH: f64 = 0.3;
+    // Java stores entity width as a float before constructing the double AABB.
+    // Preserving that conversion matters at splash-duration rounding boundaries.
+    pub const HALF_WIDTH: f64 = 0.6_f32 as f64 / 2.0;
 
     pub const STANDING_EYE: f64 = 1.62;
     pub const CROUCH_EYE: f64 = 1.27;
@@ -61,6 +63,9 @@ pub fn fits_at<W: BlockSource + ?Sized>(world: &W, pos: DVec3, pose: PlayerPose)
 
 /// Java `Player.updatePlayerPose` when the swimming box fits at the feet.
 pub fn resolve_pose<W: BlockSource + ?Sized>(player: &Player, world: &W, shift: bool) -> PlayerPose {
+    if player.vehicle.is_some() {
+        return PlayerPose::Standing;
+    }
     if !fits_at(world, player.pos, PlayerPose::Swimming) {
         return player.pose;
     }

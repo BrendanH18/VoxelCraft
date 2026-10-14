@@ -332,7 +332,11 @@ pub mod tex {
     // Nether mobs reserve layers 1400..=1449.
     pub const CRYING_OBSIDIAN: u16 = 1400;
     // v0.6 Overworld blocks use 1450.. (see `world::overworld_blocks::t`).
-    pub const COUNT: u32 = super::super::overworld_blocks::TEX_END as u32;
+    /// Append-only pale oak and bamboo door/trapdoor textures.
+    pub const BUILDING_DOORS: u16 = 1753;
+    pub const BUILDING_TRAPDOORS: u16 = 1757;
+    pub const COUNT: u32 = 1759;
+    const _: () = assert!(super::super::overworld_blocks::TEX_END <= 1750);
     const _: () = assert!(super::super::overworld_blocks::TEX == 1450);
     const _: () = assert!((CRYING_OBSIDIAN as u32) < COUNT);
     /// Eleven bits in the 12-byte quad record; eight portable 256-layer GPU pages.
@@ -873,6 +877,11 @@ impl Block {
         matches!(self.shaped(), Some(Shaped::Ladder(_)))
     }
 
+    /// Java's `BlockTags.CLIMBABLE`: ladders and every kind of vine.
+    pub fn is_climbable(self) -> bool {
+        self.is_ladder() || super::nether_biome_blocks::climbable(self) || super::overworld_blocks::climbable(self)
+    }
+
     pub fn is_door(self) -> bool {
         matches!(self.shaped(), Some(Shaped::Door { .. }))
     }
@@ -922,7 +931,8 @@ impl Block {
 
     /// The kind of wood a log, leaves, planks or sapling block is made of.
     pub fn wood(self) -> Option<Wood> {
-        Wood::ALL.into_iter().find(|w| [w.log(), w.leaves(), w.planks(), w.sapling()].contains(&self))
+        let block = self.base();
+        Wood::ALL.into_iter().find(|w| [w.log(), w.leaves(), w.planks(), w.sapling()].contains(&block))
     }
 
     pub fn is_log(self) -> bool {
@@ -1222,9 +1232,12 @@ impl Block {
 
     /// Height of the block's collision box.
     pub fn height(self) -> f64 {
-        // Soul sand looks like a full block, but you sink into it a little.
-        let sink = if self == Block::SOUL_SAND { 2.0 } else { 0.0 };
-        1.0 - (self.top_drop() as f64 + sink) / 16.0
+        // Soul sand and mud look like full blocks, but you sink into them: Java
+        // collides with a 14/16 column.
+        let sink = if self == Block::SOUL_SAND || self == super::overworld_blocks::MUD { 2.0 } else { 0.0 };
+        // `SnowLayerBlock.getCollisionShape` is one layer lower than its outline.
+        let layer = super::overworld_blocks::snow_layers(self).map_or(0.0, |_| 2.0);
+        1.0 - (self.top_drop() as f64 + sink + layer) / 16.0
     }
 
     /// What breaking this block yields in survival.
@@ -1362,8 +1375,8 @@ impl Block {
         if let Some((hardness, ..)) = super::nether_biome_blocks::mining(self.material()) {
             return if self.is_door() { 3.0 } else { hardness };
         }
-        if let Some((hardness, ..)) = super::overworld_blocks::mining(self) {
-            return hardness;
+        if let Some((hardness, ..)) = super::overworld_blocks::mining(self.material()) {
+            return if self.is_door() { 3.0 } else { hardness };
         }
         if super::nether_blocks::registry(self.material().0).is_some() {
             return match self.material() {
@@ -1505,7 +1518,7 @@ impl Block {
         if let Some((_, tool, _)) = super::nether_biome_blocks::mining(self.material()) {
             return tool;
         }
-        if let Some((_, tool, _)) = super::overworld_blocks::mining(self) {
+        if let Some((_, tool, _)) = super::overworld_blocks::mining(self.material()) {
             return tool;
         }
         if super::nether_blocks::registry(self.material().0).is_some() {
@@ -1641,7 +1654,7 @@ impl Block {
         if let Some((.., level)) = super::nether_biome_blocks::mining(self.material()) {
             return level;
         }
-        if let Some((.., level)) = super::overworld_blocks::mining(self) {
+        if let Some((.., level)) = super::overworld_blocks::mining(self.material()) {
             return level;
         }
         if super::nether_blocks::registry(self.material().0).is_some() {
@@ -1747,6 +1760,24 @@ impl Block {
             || self == Block::FERN
             || super::nether_biome_blocks::replaceable(self)
             || super::overworld_blocks::replaceable(self)
+    }
+
+    /// Java `BlockBehaviour.canBeReplaced(state, fluid)`: replaceable, or not
+    /// solid. The retained non-solid set includes plants, rails and fragile
+    /// redstone controls (cobwebs are forced solid in Java).
+    pub fn fluid_replaceable(self) -> bool {
+        self.is_replaceable()
+            || (self.kind() == RenderKind::Cross && self != Block::COBWEB)
+            || self.is_rail()
+            || matches!(
+                super::redstone_blocks::component(self),
+                Some(
+                    super::redstone_blocks::Component::Wire(_)
+                        | super::redstone_blocks::Component::Lever { .. }
+                        | super::redstone_blocks::Component::Button { .. }
+                        | super::redstone_blocks::Component::Plate { .. }
+                )
+            )
     }
 
     /// Colour index of a terracotta block (see [`Block::terracotta`]).
@@ -2212,7 +2243,7 @@ const fn make(id: u16) -> BlockInfo {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
-        900..=952 | 961..=968 => match super::village_blocks::registry(id) {
+        900..=952 | 961..=968 | 2523 | 2524 => match super::village_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
@@ -2224,15 +2255,25 @@ const fn make(id: u16) -> BlockInfo {
             None => ("unknown", Invisible, all(0)),
         },
         id if super::colors::definition(id).is_some() => super::colors::definition(id).unwrap(),
-        1600..=1687 => match super::nether_biome_blocks::registry(id) {
+        1600..=1687 | 2500..=2507 => match super::nether_biome_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
         },
         1800 => ("crying obsidian", Opaque, all(tex::CRYING_OBSIDIAN)),
-        1900..=2076 => match super::overworld_blocks::registry(id) {
-            Some(info) => info,
-            None => ("unknown", Invisible, all(0)),
-        },
+        1900..=2076 | 2150..=2157 | 2160..=2164 | 2400..=2415 | 2516..=2522 => {
+            match super::overworld_blocks::registry(id) {
+                Some(info) => info,
+                None => ("unknown", Invisible, all(0)),
+            }
+        }
+        super::overworld_blocks::SAPLING_STAGE_ONE..=super::overworld_blocks::SAPLING_STAGE_ONE_LAST => {
+            // The same sapling, stage 1: identical name and textures.
+            let stage_zero = make(match super::overworld_blocks::sapling_stage_zero(id) {
+                Some(b) => b.0,
+                None => 0,
+            });
+            (stage_zero.name, stage_zero.kind, stage_zero.tex)
+        }
         #[cfg(test)]
         4095 => ("test high cube", Opaque, all(2047)),
         #[cfg(test)]
@@ -2547,7 +2588,7 @@ static EMISSION: [u8; STATE_CAPACITY] = {
             812 => 3,                                   // magma
             1600..=1687 => super::nether_biome_blocks::emission(i as u16),
             1800 => 10, // crying obsidian
-            1900..=2076 => super::overworld_blocks::emission(i as u16),
+            1900..=2076 | 2400..=2415 => super::overworld_blocks::emission(i as u16),
             _ => 0,
         };
         i += 1;
@@ -2611,7 +2652,7 @@ mod tests {
                 Some(super::super::redstone_blocks::Component::GlowingOre(_)) => return 9,
                 _ => {}
             }
-            if (1900..=2076).contains(&block.0) {
+            if (1900..=2076).contains(&block.0) || (2400..=2415).contains(&block.0) {
                 return super::super::overworld_blocks::emission(block.0);
             }
             {

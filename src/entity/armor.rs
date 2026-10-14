@@ -8,7 +8,7 @@ use crate::inventory::Stack;
 use crate::item::{ArmorMaterial, ArmorPiece};
 
 /// Materials with a generated 64×64 armor sheet. Indexed like Java's
-/// equipment table: leather, gold, chain, iron, diamond, plus netherite.
+/// equipment table: leather, gold, chain, iron, diamond, plus netherite and turtle.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ArmorKind {
     Leather = 0,
@@ -17,16 +17,20 @@ pub enum ArmorKind {
     Gold = 3,
     Diamond = 4,
     Netherite = 5,
+    Turtle = 6,
+    Copper = 7,
 }
 
 impl ArmorKind {
-    pub const ALL: [ArmorKind; 6] = [
+    pub const ALL: [ArmorKind; 8] = [
         ArmorKind::Leather,
         ArmorKind::Chain,
         ArmorKind::Iron,
         ArmorKind::Gold,
         ArmorKind::Diamond,
         ArmorKind::Netherite,
+        ArmorKind::Turtle,
+        ArmorKind::Copper,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -37,6 +41,8 @@ impl ArmorKind {
             "gold" | "golden" => Self::Gold,
             "diamond" => Self::Diamond,
             "netherite" => Self::Netherite,
+            "turtle" => Self::Turtle,
+            "copper" => Self::Copper,
             _ => return None,
         })
     }
@@ -48,6 +54,8 @@ impl ArmorKind {
             ArmorMaterial::Gold => Self::Gold,
             ArmorMaterial::Diamond => Self::Diamond,
             ArmorMaterial::Netherite => Self::Netherite,
+            ArmorMaterial::Turtle => Self::Turtle,
+            ArmorMaterial::Copper => Self::Copper,
         }
     }
 }
@@ -70,10 +78,14 @@ pub struct Equipped {
 pub const LEATHER_DYE: [u8; 3] = [160, 101, 64];
 
 /// Skin occupies array layer 0. Two sheets per material, then leather overlays.
-pub const ARRAY_LAYERS: u32 = 15;
+pub const ARRAY_LAYERS: u32 = 19;
 
 pub fn layer(kind: ArmorKind, inner: bool) -> u16 {
-    1 + kind as u16 * 2 + u16::from(inner)
+    match kind {
+        ArmorKind::Turtle => 15 + u16::from(inner),
+        ArmorKind::Copper => 17 + u16::from(inner),
+        _ => 1 + kind as u16 * 2 + u16::from(inner),
+    }
 }
 
 pub fn leather_overlay(inner: bool) -> u16 {
@@ -97,42 +109,50 @@ pub fn worn_pieces(armor: [Option<ArmorKind>; 4], glint: u8) -> [Option<Worn>; 4
     std::array::from_fn(|i| armor[i].map(|kind| Worn { kind, glint: glint & (1 << i) != 0 }))
 }
 
-/// Java Mob.populateDefaultEquipmentSlots at regional difficulty 1, without
-/// a held weapon. Feet are equipped first; each later piece is skipped 25%
-/// of the time. The tier starts at leather or gold and climbs toward diamond.
-pub fn roll_monster_armor(rng: &mut super::Rng) -> ([Option<ArmorKind>; 4], u8) {
-    const TIERS: [ArmorKind; 5] =
-        [ArmorKind::Leather, ArmorKind::Gold, ArmorKind::Chain, ArmorKind::Iron, ArmorKind::Diamond];
+/// Java 26.3 Mob.populateDefaultEquipmentSlots: the 15% roll scales with the
+/// local difficulty's special multiplier `special`, and each piece is then
+/// enchanted (glint) with probability `0.5 * special`. Feet are equipped first; each later piece is
+/// skipped 25% of the time, or 10% on Hard (Java reads
+/// `Level.getDifficulty()`). The tier starts at leather, copper or gold and
+/// climbs toward diamond.
+pub fn roll_monster_armor(rng: &mut super::Rng, hard: bool, special: f32) -> ([Option<ArmorKind>; 4], u8) {
+    const TIERS: [ArmorKind; 6] =
+        [ArmorKind::Leather, ArmorKind::Copper, ArmorKind::Gold, ArmorKind::Chain, ArmorKind::Iron, ArmorKind::Diamond];
     let mut armor = [None; 4];
     let mut glint = 0u8;
-    if !rng.chance(0.15) {
+    if !rng.chance(0.15 * special) {
         return (armor, glint);
     }
-    let mut tier = usize::from(!rng.chance(0.5));
+    let mut tier = rng.next_int(3) as usize;
     for _ in 0..3 {
-        if rng.chance(0.095) {
+        if rng.chance(0.1087) {
             tier += 1;
         }
     }
     let kind = TIERS[tier.min(TIERS.len() - 1)];
+    let skip = if hard { 0.1 } else { 0.25 };
     let mut first = true;
     for slot in [ArmorPiece::Boots, ArmorPiece::Leggings, ArmorPiece::Chestplate, ArmorPiece::Helmet] {
-        if !first && rng.chance(0.25) {
+        if !first && rng.chance(skip) {
             break;
         }
         first = false;
         let i = slot as usize;
         armor[i] = Some(kind);
-        if rng.chance(0.25) {
+    }
+    // `populateDefaultEquipmentEnchantments` runs after every slot is filled.
+    for piece in [ArmorPiece::Boots, ArmorPiece::Leggings, ArmorPiece::Chestplate, ArmorPiece::Helmet] {
+        let i = piece as usize;
+        if armor[i].is_some() && rng.chance(0.5 * special) {
             glint |= 1 << i;
         }
     }
     (armor, glint)
 }
 
-/// Armor sheets packed after the skin layer: 14 × 64 × 64 RGBA.
+/// Armor sheets packed after the skin layer: 16 × 64 × 64 RGBA.
 pub fn layer_pixels() -> Vec<u8> {
-    let mut pixels = vec![0u8; 14 * 64 * 64 * 4];
+    let mut pixels = vec![0u8; (ARRAY_LAYERS as usize - 1) * 64 * 64 * 4];
     for kind in ArmorKind::ALL {
         paint(&mut pixels, layer(kind, false), kind, false, false);
         paint(&mut pixels, layer(kind, true), kind, true, false);
@@ -245,7 +265,9 @@ fn texel(kind: ArmorKind, part: Part, overlay: bool, face: usize, at: [usize; 2]
             let facet = (x / 2 + y / 2).is_multiple_of(2);
             plate(if facet { [56, 206, 198] } else { [132, 232, 224] }, [24, 120, 118], [168, 244, 236], edge, face)
         }
+        ArmorKind::Turtle => plate([58, 140, 83], [32, 82, 51], [101, 172, 94], edge, face),
         ArmorKind::Netherite => plate([48, 40, 44], [24, 18, 22], [96, 52, 56], edge, face),
+        ArmorKind::Copper => plate([196, 112, 76], [128, 64, 40], [232, 156, 112], edge, face),
     })
 }
 
@@ -288,7 +310,9 @@ mod tests {
             seen[i] = true;
         }
         assert!(seen.iter().all(|s| *s));
-        assert_eq!(layer_pixels().len(), 14 * 64 * 64 * 4);
+        assert_eq!(layer_pixels().len(), 18 * 64 * 64 * 4);
+        assert_eq!((leather_overlay(false), leather_overlay(true)), (13, 14));
+        assert_eq!((layer(ArmorKind::Turtle, false), layer(ArmorKind::Turtle, true)), (15, 16));
     }
 
     #[test]
@@ -321,10 +345,10 @@ mod tests {
     #[test]
     fn monster_rolls_match_java_slot_order() {
         let mut any = 0;
-        let mut counts = [0; 6];
+        let mut counts = [0; ArmorKind::ALL.len()];
         for seed in 0..2000 {
             let mut rng = super::super::Rng::new(seed);
-            let (armor, glint) = roll_monster_armor(&mut rng);
+            let (armor, glint) = roll_monster_armor(&mut rng, false, 1.0);
             let equipped: Vec<_> = armor.iter().enumerate().filter_map(|(i, k)| k.map(|k| (i, k))).collect();
             if equipped.is_empty() {
                 assert_eq!(glint, 0);
@@ -343,6 +367,46 @@ mod tests {
         }
         assert!((200..450).contains(&any), "{any}");
         assert!(counts[ArmorKind::Chain as usize] > 0);
+        assert!(counts[ArmorKind::Copper as usize] > 0, "26.3 monsters roll copper armor");
         assert_eq!(counts[ArmorKind::Netherite as usize], 0);
+    }
+
+    /// `Mob.populateDefaultEquipmentSlots`: after the boots, each further piece is
+    /// skipped with probability 0.25, or 0.1 when the level difficulty is Hard.
+    #[test]
+    fn hard_difficulty_skips_later_pieces_one_time_in_ten() {
+        let full_sets = |hard: bool| {
+            let (mut armored, mut full) = (0u32, 0u32);
+            for seed in 0..60000 {
+                let (armor, _) = roll_monster_armor(&mut super::super::Rng::new(seed), hard, 1.0);
+                let pieces = armor.iter().flatten().count();
+                armored += u32::from(pieces > 0);
+                full += u32::from(pieces == 4);
+            }
+            f64::from(full) / f64::from(armored)
+        };
+        // Four pieces need three passed checks: 0.75^3 = 0.422 against 0.9^3 = 0.729.
+        assert!((full_sets(false) - 0.422).abs() < 0.05, "{}", full_sets(false));
+        assert!((full_sets(true) - 0.729).abs() < 0.05, "{}", full_sets(true));
+    }
+
+    /// The 15% roll and the per-piece enchantment scale with the special multiplier.
+    #[test]
+    fn local_difficulty_scales_spawn_gear() {
+        let rate = |special: f32| {
+            let (mut armored, mut pieces, mut glints) = (0u32, 0u32, 0u32);
+            for seed in 0..40000 {
+                let (armor, glint) = roll_monster_armor(&mut super::super::Rng::new(seed), false, special);
+                armored += u32::from(armor.iter().any(Option::is_some));
+                pieces += armor.iter().flatten().count() as u32;
+                glints += glint.count_ones();
+            }
+            (f64::from(armored) / 40000.0, f64::from(glints) / f64::from(pieces.max(1)))
+        };
+        assert_eq!(rate(0.0), (0.0, 0.0), "a new Normal world spawns plain mobs");
+        let (armored, glinted) = rate(0.5);
+        assert!((armored - 0.075).abs() < 0.01, "{armored}");
+        assert!((glinted - 0.25).abs() < 0.03, "{glinted}");
+        assert!((rate(1.0).1 - 0.5).abs() < 0.03);
     }
 }

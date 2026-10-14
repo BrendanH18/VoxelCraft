@@ -1,0 +1,586 @@
+{
+  "source": "official Java 26.3 server artifact, SHA-1 33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "player": {
+    "attack_damage": 1.0,
+    "attack_speed": 4.0,
+    "default_block_interaction_range": 4.5,
+    "default_entity_interaction_range": 3.0,
+    "creative_entity_interaction_range_modifier_value": 2.0
+  },
+  "attack_strength": {
+    "delay_ticks": "20 / attack_speed",
+    "scale": "clamp((ticker + 0.5) / delay, 0, 1)",
+    "base_damage_factor": "0.2 + 0.8 * scale^2",
+    "enchantment_damage_factor": "scale",
+    "strong_threshold": 0.9,
+    "critical_multiplier": 1.5,
+    "sprint_knockback_bonus": 0.5,
+    "food_exhaustion": 0.1,
+    "sweep_max_speed_factor": 2.5
+  },
+  "criticals": {
+    "needs": [
+      "fall_distance > 0",
+      "not on ground",
+      "not on climbable",
+      "not in water",
+      "not mobility restricted (Blindness)",
+      "not a passenger",
+      "living target",
+      "not sprinting"
+    ],
+    "strong_threshold": 0.9
+  },
+  "minimum_attack_charge": {
+    "default": 0.0,
+    "set_only_by": "Item$Properties.spear",
+    "spear_value": 1.0,
+    "spear_items": [
+      "copper_spear",
+      "diamond_spear",
+      "golden_spear",
+      "iron_spear",
+      "netherite_spear",
+      "stone_spear",
+      "wooden_spear"
+    ],
+    "server_lead_ticks": 5
+  },
+  "attack_speed_effects": {
+    "haste": {
+      "attribute": "attack_speed",
+      "amount_per_level": 0.10000000149011612,
+      "operation": "add_multiplied_total"
+    },
+    "mining_fatigue": {
+      "attribute": "attack_speed",
+      "amount_per_level": -0.10000000149011612,
+      "operation": "add_multiplied_total"
+    }
+  },
+  "attack_speed_range": [
+    0.0,
+    1024.0
+  ],
+  "attack_speed_enchantments": [],
+  "vehicle_hurt": {
+    "damage_factor": 10.0,
+    "destroy_above": 40.0
+  },
+  "dragon_part_hurt": {
+    "full_damage_parts": [
+      "head",
+      "neck"
+    ],
+    "other_parts": "damage / 4 + min(damage, 1)",
+    "minimum_damage": 0.01
+  },
+  "screen_ranges": {
+    "check": "eye-to-box squared distance < (interaction range + extra)^2",
+    "block_interaction_range_extra": {
+      "block_container": 4.0
+    },
+    "entity_interaction_range_extra": {
+      "vehicle_container": 4.0,
+      "merchant": 4.0
+    }
+  },
+  "materials": {
+    "copper": {
+      "speed": 5.0,
+      "attack_damage_bonus": 1.0,
+      "durability": 190,
+      "enchantability": 13,
+      "incorrect_blocks": "incorrect_for_copper_tool",
+      "repair_items": "copper_tool_materials",
+      "incorrect_block_tag_values": [
+        "#minecraft:needs_diamond_tool",
+        "#minecraft:needs_iron_tool"
+      ]
+    },
+    "diamond": {
+      "speed": 8.0,
+      "attack_damage_bonus": 3.0,
+      "durability": 1561,
+      "enchantability": 10,
+      "incorrect_blocks": "incorrect_for_diamond_tool",
+      "repair_items": "diamond_tool_materials",
+      "incorrect_block_tag_values": []
+    },
+    "gold": {
+      "speed": 12.0,
+      "attack_damage_bonus": 0.0,
+      "durability": 32,
+      "enchantability": 22,
+      "incorrect_blocks": "incorrect_for_gold_tool",
+      "repair_items": "gold_tool_materials",
+      "incorrect_block_tag_values": [
+        "#minecraft:needs_diamond_tool",
+        "#minecraft:needs_iron_tool",
+        "#minecraft:needs_stone_tool"
+      ]
+    },
+    "iron": {
+      "speed": 6.0,
+      "attack_damage_bonus": 2.0,
+      "durability": 250,
+      "enchantability": 14,
+      "incorrect_blocks": "incorrect_for_iron_tool",
+      "repair_items": "iron_tool_materials",
+      "incorrect_block_tag_values": [
+        "#minecraft:needs_diamond_tool"
+      ]
+    },
+    "netherite": {
+      "speed": 9.0,
+      "attack_damage_bonus": 4.0,
+      "durability": 2031,
+      "enchantability": 15,
+      "incorrect_blocks": "incorrect_for_netherite_tool",
+      "repair_items": "netherite_tool_materials",
+      "incorrect_block_tag_values": []
+    },
+    "stone": {
+      "speed": 4.0,
+      "attack_damage_bonus": 1.0,
+      "durability": 131,
+      "enchantability": 5,
+      "incorrect_blocks": "incorrect_for_stone_tool",
+      "repair_items": "stone_tool_materials",
+      "incorrect_block_tag_values": [
+        "#minecraft:needs_diamond_tool",
+        "#minecraft:needs_iron_tool"
+      ]
+    },
+    "wood": {
+      "speed": 2.0,
+      "attack_damage_bonus": 0.0,
+      "durability": 59,
+      "enchantability": 15,
+      "incorrect_blocks": "incorrect_for_wooden_tool",
+      "repair_items": "wooden_tool_materials",
+      "incorrect_block_tag_values": [
+        "#minecraft:needs_diamond_tool",
+        "#minecraft:needs_iron_tool",
+        "#minecraft:needs_stone_tool"
+      ]
+    }
+  },
+  "armor_durability_units": {
+    "helmet": 11,
+    "chestplate": 16,
+    "leggings": 15,
+    "boots": 13,
+    "body": 16
+  },
+  "armor_materials": {
+    "armadillo_scute": {
+      "durability_multiplier": 4,
+      "defense": {
+        "helmet": 3,
+        "chestplate": 8,
+        "leggings": 6,
+        "boots": 3,
+        "body": 11
+      },
+      "enchantability": 10,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_wolf_armor"
+    },
+    "chainmail": {
+      "durability_multiplier": 15,
+      "defense": {
+        "helmet": 2,
+        "chestplate": 5,
+        "leggings": 4,
+        "boots": 1,
+        "body": 4
+      },
+      "enchantability": 12,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_chain_armor"
+    },
+    "copper": {
+      "durability_multiplier": 11,
+      "defense": {
+        "helmet": 2,
+        "chestplate": 4,
+        "leggings": 3,
+        "boots": 1,
+        "body": 4
+      },
+      "enchantability": 8,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_copper_armor"
+    },
+    "diamond": {
+      "durability_multiplier": 33,
+      "defense": {
+        "helmet": 3,
+        "chestplate": 8,
+        "leggings": 6,
+        "boots": 3,
+        "body": 11
+      },
+      "enchantability": 10,
+      "toughness": 2.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_diamond_armor"
+    },
+    "gold": {
+      "durability_multiplier": 7,
+      "defense": {
+        "helmet": 2,
+        "chestplate": 5,
+        "leggings": 3,
+        "boots": 1,
+        "body": 7
+      },
+      "enchantability": 25,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_gold_armor"
+    },
+    "iron": {
+      "durability_multiplier": 15,
+      "defense": {
+        "helmet": 2,
+        "chestplate": 6,
+        "leggings": 5,
+        "boots": 2,
+        "body": 5
+      },
+      "enchantability": 9,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_iron_armor"
+    },
+    "leather": {
+      "durability_multiplier": 5,
+      "defense": {
+        "helmet": 1,
+        "chestplate": 3,
+        "leggings": 2,
+        "boots": 1,
+        "body": 3
+      },
+      "enchantability": 15,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_leather_armor"
+    },
+    "netherite": {
+      "durability_multiplier": 37,
+      "defense": {
+        "helmet": 3,
+        "chestplate": 8,
+        "leggings": 6,
+        "boots": 3,
+        "body": 19
+      },
+      "enchantability": 15,
+      "toughness": 3.0,
+      "knockback_resistance": 0.1,
+      "repair_items": "repairs_netherite_armor"
+    },
+    "turtle_scute": {
+      "durability_multiplier": 25,
+      "defense": {
+        "helmet": 2,
+        "chestplate": 6,
+        "leggings": 5,
+        "boots": 2,
+        "body": 5
+      },
+      "enchantability": 9,
+      "toughness": 0.0,
+      "knockback_resistance": 0.0,
+      "repair_items": "repairs_turtle_helmet"
+    }
+  },
+  "tools": [
+    {
+      "id": "wooden_sword",
+      "tool": "sword",
+      "material": "wood",
+      "attack_damage_modifier": 3.0,
+      "attack_speed_modifier": -2.4,
+      "attack_damage_with_material": 3.0
+    },
+    {
+      "id": "wooden_shovel",
+      "tool": "shovel",
+      "material": "wood",
+      "attack_damage_modifier": 1.5,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 1.5
+    },
+    {
+      "id": "wooden_pickaxe",
+      "tool": "pickaxe",
+      "material": "wood",
+      "attack_damage_modifier": 1.0,
+      "attack_speed_modifier": -2.8,
+      "attack_damage_with_material": 1.0
+    },
+    {
+      "id": "wooden_axe",
+      "tool": "axe",
+      "material": "wood",
+      "attack_damage_modifier": 6.0,
+      "attack_speed_modifier": -3.2,
+      "attack_damage_with_material": 6.0
+    },
+    {
+      "id": "wooden_hoe",
+      "tool": "hoe",
+      "material": "wood",
+      "attack_damage_modifier": 0.0,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 0.0
+    },
+    {
+      "id": "copper_sword",
+      "tool": "sword",
+      "material": "copper",
+      "attack_damage_modifier": 3.0,
+      "attack_speed_modifier": -2.4,
+      "attack_damage_with_material": 4.0
+    },
+    {
+      "id": "copper_shovel",
+      "tool": "shovel",
+      "material": "copper",
+      "attack_damage_modifier": 1.5,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 2.5
+    },
+    {
+      "id": "copper_pickaxe",
+      "tool": "pickaxe",
+      "material": "copper",
+      "attack_damage_modifier": 1.0,
+      "attack_speed_modifier": -2.8,
+      "attack_damage_with_material": 2.0
+    },
+    {
+      "id": "copper_axe",
+      "tool": "axe",
+      "material": "copper",
+      "attack_damage_modifier": 7.0,
+      "attack_speed_modifier": -3.2,
+      "attack_damage_with_material": 8.0
+    },
+    {
+      "id": "copper_hoe",
+      "tool": "hoe",
+      "material": "copper",
+      "attack_damage_modifier": -1.0,
+      "attack_speed_modifier": -2.0,
+      "attack_damage_with_material": 0.0
+    },
+    {
+      "id": "stone_sword",
+      "tool": "sword",
+      "material": "stone",
+      "attack_damage_modifier": 3.0,
+      "attack_speed_modifier": -2.4,
+      "attack_damage_with_material": 4.0
+    },
+    {
+      "id": "stone_shovel",
+      "tool": "shovel",
+      "material": "stone",
+      "attack_damage_modifier": 1.5,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 2.5
+    },
+    {
+      "id": "stone_pickaxe",
+      "tool": "pickaxe",
+      "material": "stone",
+      "attack_damage_modifier": 1.0,
+      "attack_speed_modifier": -2.8,
+      "attack_damage_with_material": 2.0
+    },
+    {
+      "id": "stone_axe",
+      "tool": "axe",
+      "material": "stone",
+      "attack_damage_modifier": 7.0,
+      "attack_speed_modifier": -3.2,
+      "attack_damage_with_material": 8.0
+    },
+    {
+      "id": "stone_hoe",
+      "tool": "hoe",
+      "material": "stone",
+      "attack_damage_modifier": -1.0,
+      "attack_speed_modifier": -2.0,
+      "attack_damage_with_material": 0.0
+    },
+    {
+      "id": "golden_sword",
+      "tool": "sword",
+      "material": "gold",
+      "attack_damage_modifier": 3.0,
+      "attack_speed_modifier": -2.4,
+      "attack_damage_with_material": 3.0
+    },
+    {
+      "id": "golden_shovel",
+      "tool": "shovel",
+      "material": "gold",
+      "attack_damage_modifier": 1.5,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 1.5
+    },
+    {
+      "id": "golden_pickaxe",
+      "tool": "pickaxe",
+      "material": "gold",
+      "attack_damage_modifier": 1.0,
+      "attack_speed_modifier": -2.8,
+      "attack_damage_with_material": 1.0
+    },
+    {
+      "id": "golden_axe",
+      "tool": "axe",
+      "material": "gold",
+      "attack_damage_modifier": 6.0,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 6.0
+    },
+    {
+      "id": "golden_hoe",
+      "tool": "hoe",
+      "material": "gold",
+      "attack_damage_modifier": 0.0,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 0.0
+    },
+    {
+      "id": "iron_sword",
+      "tool": "sword",
+      "material": "iron",
+      "attack_damage_modifier": 3.0,
+      "attack_speed_modifier": -2.4,
+      "attack_damage_with_material": 5.0
+    },
+    {
+      "id": "iron_shovel",
+      "tool": "shovel",
+      "material": "iron",
+      "attack_damage_modifier": 1.5,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 3.5
+    },
+    {
+      "id": "iron_pickaxe",
+      "tool": "pickaxe",
+      "material": "iron",
+      "attack_damage_modifier": 1.0,
+      "attack_speed_modifier": -2.8,
+      "attack_damage_with_material": 3.0
+    },
+    {
+      "id": "iron_axe",
+      "tool": "axe",
+      "material": "iron",
+      "attack_damage_modifier": 6.0,
+      "attack_speed_modifier": -3.1,
+      "attack_damage_with_material": 8.0
+    },
+    {
+      "id": "iron_hoe",
+      "tool": "hoe",
+      "material": "iron",
+      "attack_damage_modifier": -2.0,
+      "attack_speed_modifier": -1.0,
+      "attack_damage_with_material": 0.0
+    },
+    {
+      "id": "diamond_sword",
+      "tool": "sword",
+      "material": "diamond",
+      "attack_damage_modifier": 3.0,
+      "attack_speed_modifier": -2.4,
+      "attack_damage_with_material": 6.0
+    },
+    {
+      "id": "diamond_shovel",
+      "tool": "shovel",
+      "material": "diamond",
+      "attack_damage_modifier": 1.5,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 4.5
+    },
+    {
+      "id": "diamond_pickaxe",
+      "tool": "pickaxe",
+      "material": "diamond",
+      "attack_damage_modifier": 1.0,
+      "attack_speed_modifier": -2.8,
+      "attack_damage_with_material": 4.0
+    },
+    {
+      "id": "diamond_axe",
+      "tool": "axe",
+      "material": "diamond",
+      "attack_damage_modifier": 5.0,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 8.0
+    },
+    {
+      "id": "diamond_hoe",
+      "tool": "hoe",
+      "material": "diamond",
+      "attack_damage_modifier": -3.0,
+      "attack_speed_modifier": 0.0,
+      "attack_damage_with_material": 0.0
+    },
+    {
+      "id": "netherite_sword",
+      "tool": "sword",
+      "material": "netherite",
+      "attack_damage_modifier": 3.0,
+      "attack_speed_modifier": -2.4,
+      "attack_damage_with_material": 7.0
+    },
+    {
+      "id": "netherite_shovel",
+      "tool": "shovel",
+      "material": "netherite",
+      "attack_damage_modifier": 1.5,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 5.5
+    },
+    {
+      "id": "netherite_pickaxe",
+      "tool": "pickaxe",
+      "material": "netherite",
+      "attack_damage_modifier": 1.0,
+      "attack_speed_modifier": -2.8,
+      "attack_damage_with_material": 5.0
+    },
+    {
+      "id": "netherite_axe",
+      "tool": "axe",
+      "material": "netherite",
+      "attack_damage_modifier": 5.0,
+      "attack_speed_modifier": -3.0,
+      "attack_damage_with_material": 9.0
+    },
+    {
+      "id": "netherite_hoe",
+      "tool": "hoe",
+      "material": "netherite",
+      "attack_damage_modifier": -4.0,
+      "attack_speed_modifier": 0.0,
+      "attack_damage_with_material": 0.0
+    }
+  ]
+}

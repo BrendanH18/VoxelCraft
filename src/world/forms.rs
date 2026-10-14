@@ -27,10 +27,12 @@ pub const WOOD_ORIGIN: u16 = 339;
 pub const WOOD_STRIDE: u16 = 23;
 /// Woods laid out from [`WOOD_ORIGIN`]; the rest start at `NETHER_WOOD_ORIGIN`.
 const OVERWORLD_WOODS: u16 = 7;
-const WOODS: u16 = 9;
+const WOODS: u16 = 12;
+const EXTRA_WOOD_ORIGIN: u16 = 2200;
+const EXTRA_STONE_ORIGIN: u16 = 2360;
 const NETHER_WOOD_ORIGIN: u16 = super::nether_biome_blocks::WOOD_ORIGIN;
 
-const STONE_BASES: [Block; 13] = [
+const STONE_BASES: [Block; 19] = [
     Block::MOSSY_COBBLESTONE,
     Block::GRANITE,
     Block::POLISHED_GRANITE,
@@ -44,9 +46,15 @@ const STONE_BASES: [Block; 13] = [
     Block::DEEPSLATE,
     Block::COBBLED_DEEPSLATE,
     Block::POLISHED_DEEPSLATE,
+    Block::COBBLESTONE,
+    Block::STONE_BRICKS,
+    super::overworld_blocks::MUD_BRICKS,
+    super::overworld_blocks::PRISMARINE,
+    super::overworld_blocks::PRISMARINE_BRICKS,
+    super::overworld_blocks::DARK_PRISMARINE,
 ];
 
-const STAIR_NAMES: [&str; 13] = [
+const STAIR_NAMES: [&str; 19] = [
     "mossy cobblestone stairs",
     "granite stairs",
     "polished granite stairs",
@@ -60,9 +68,15 @@ const STAIR_NAMES: [&str; 13] = [
     "deepslate stairs",
     "cobbled deepslate stairs",
     "polished deepslate stairs",
+    "cobblestone stairs",
+    "stone brick stairs",
+    "mud brick stairs",
+    "prismarine stairs",
+    "prismarine brick stairs",
+    "dark prismarine stairs",
 ];
 
-const SLAB_NAMES: [&str; 13] = [
+const SLAB_NAMES: [&str; 19] = [
     "mossy cobblestone slab",
     "granite slab",
     "polished granite slab",
@@ -76,9 +90,15 @@ const SLAB_NAMES: [&str; 13] = [
     "deepslate slab",
     "cobbled deepslate slab",
     "polished deepslate slab",
+    "cobblestone slab",
+    "stone brick slab",
+    "mud brick slab",
+    "prismarine slab",
+    "prismarine brick slab",
+    "dark prismarine slab",
 ];
 
-const WALL_NAMES: [&str; 15] = [
+const WALL_NAMES: [&str; 19] = [
     "mossy cobblestone wall",
     "granite wall",
     "polished granite wall",
@@ -94,9 +114,13 @@ const WALL_NAMES: [&str; 15] = [
     "polished deepslate wall",
     "cobblestone wall",
     "stone brick wall",
+    "mud brick wall",
+    "prismarine wall",
+    "",
+    "",
 ];
 
-const WOOD_STAIRS: [&str; 9] = [
+const WOOD_STAIRS: [&str; 12] = [
     "dark oak stairs",
     "spruce stairs",
     "birch stairs",
@@ -106,8 +130,11 @@ const WOOD_STAIRS: [&str; 9] = [
     "cherry stairs",
     "crimson stairs",
     "warped stairs",
+    "pale oak stairs",
+    "bamboo stairs",
+    "bamboo mosaic stairs",
 ];
-const WOOD_SLABS: [&str; 9] = [
+const WOOD_SLABS: [&str; 12] = [
     "dark oak slab",
     "spruce slab",
     "birch slab",
@@ -117,8 +144,11 @@ const WOOD_SLABS: [&str; 9] = [
     "cherry slab",
     "crimson slab",
     "warped slab",
+    "pale oak slab",
+    "bamboo slab",
+    "bamboo mosaic slab",
 ];
-const WOOD_FENCES: [&str; 9] = [
+const WOOD_FENCES: [&str; 12] = [
     "dark oak fence",
     "spruce fence",
     "birch fence",
@@ -128,8 +158,11 @@ const WOOD_FENCES: [&str; 9] = [
     "cherry fence",
     "crimson fence",
     "warped fence",
+    "pale oak fence",
+    "bamboo fence",
+    "bamboo mosaic fence",
 ];
-const WOOD_GATES: [&str; 9] = [
+const WOOD_GATES: [&str; 12] = [
     "dark oak fence gate",
     "spruce fence gate",
     "birch fence gate",
@@ -139,8 +172,11 @@ const WOOD_GATES: [&str; 9] = [
     "cherry fence gate",
     "crimson fence gate",
     "warped fence gate",
+    "pale oak fence gate",
+    "bamboo fence gate",
+    "bamboo mosaic fence gate",
 ];
-const WOOD_DOORS: [&str; 9] = [
+const WOOD_DOORS: [&str; 12] = [
     "dark oak door",
     "spruce door",
     "birch door",
@@ -150,9 +186,12 @@ const WOOD_DOORS: [&str; 9] = [
     "cherry door",
     "crimson door",
     "warped door",
+    "pale oak door",
+    "bamboo door",
+    "bamboo mosaic door",
 ];
 
-const DOOR_TEX: [(u16, u16); 9] = [
+const DOOR_TEX: [(u16, u16); 12] = [
     (tex::DARK_OAK_DOOR_BOTTOM, tex::DARK_OAK_DOOR_TOP),
     (tex::SPRUCE_DOOR_BOTTOM, tex::SPRUCE_DOOR_TOP),
     (tex::BIRCH_DOOR_BOTTOM, tex::BIRCH_DOOR_TOP),
@@ -162,6 +201,9 @@ const DOOR_TEX: [(u16, u16); 9] = [
     (tex::CHERRY_DOOR_BOTTOM, tex::CHERRY_DOOR_TOP),
     (tex::NETHER_DOORS, tex::NETHER_DOORS + 1),
     (tex::NETHER_DOORS + 2, tex::NETHER_DOORS + 3),
+    (tex::BUILDING_DOORS, tex::BUILDING_DOORS + 1),
+    (tex::BUILDING_DOORS + 2, tex::BUILDING_DOORS + 3),
+    (super::overworld_blocks::t::BAMBOO_MOSAIC, super::overworld_blocks::t::BAMBOO_MOSAIC),
 ];
 
 #[derive(Clone, Copy)]
@@ -189,14 +231,20 @@ pub enum WoodForm {
 }
 
 pub const fn stone_id(index: u16, local: u16) -> Block {
-    Block(STONE_ORIGIN + index * STONE_STRIDE + local)
+    if index < 15 {
+        Block(STONE_ORIGIN + index * STONE_STRIDE + local)
+    } else {
+        Block(EXTRA_STONE_ORIGIN + (index - 15) * STONE_STRIDE + local)
+    }
 }
 
 pub const fn wood_id(index: u16, local: u16) -> Block {
     if index < OVERWORLD_WOODS {
         Block(WOOD_ORIGIN + index * WOOD_STRIDE + local)
-    } else {
+    } else if index < 9 {
         Block(NETHER_WOOD_ORIGIN + (index - OVERWORLD_WOODS) * WOOD_STRIDE + local)
+    } else {
+        Block(EXTRA_WOOD_ORIGIN + (index - 9) * WOOD_STRIDE + local)
     }
 }
 
@@ -222,7 +270,10 @@ pub const fn wood_planks(index: u16) -> Block {
         5 => Block::MANGROVE_PLANKS,
         6 => Block::CHERRY_PLANKS,
         7 => super::nether_biome_blocks::CRIMSON_PLANKS,
-        _ => super::nether_biome_blocks::WARPED_PLANKS,
+        8 => super::nether_biome_blocks::WARPED_PLANKS,
+        9 => super::overworld_blocks::PALE_OAK_PLANKS,
+        10 => super::overworld_blocks::BAMBOO_PLANKS,
+        _ => super::overworld_blocks::BAMBOO_MOSAIC,
     }
 }
 
@@ -241,6 +292,16 @@ pub const fn stone_form(id: u16) -> Option<StoneForm> {
             _ => StoneForm::Wall { index },
         });
     }
+    if id >= EXTRA_STONE_ORIGIN && id < EXTRA_STONE_ORIGIN + 4 * STONE_STRIDE {
+        let index = 15 + (id - EXTRA_STONE_ORIGIN) / STONE_STRIDE;
+        let local = (id - EXTRA_STONE_ORIGIN) % STONE_STRIDE;
+        return match local {
+            0..=3 => Some(StoneForm::Stairs { index, facing: facing_at(local) }),
+            4 => Some(StoneForm::Slab { index }),
+            _ if index < 17 => Some(StoneForm::Wall { index }),
+            _ => None,
+        };
+    }
     match id {
         COBBLE_WALL => Some(StoneForm::Wall { index: 13 }),
         BRICK_WALL => Some(StoneForm::Wall { index: 14 }),
@@ -251,13 +312,18 @@ pub const fn stone_form(id: u16) -> Option<StoneForm> {
 pub const fn wood_form(id: u16) -> Option<WoodForm> {
     let (i, first) = if id >= WOOD_ORIGIN && id < WOOD_ORIGIN + OVERWORLD_WOODS * WOOD_STRIDE {
         (id - WOOD_ORIGIN, 0)
-    } else if id >= NETHER_WOOD_ORIGIN && id < NETHER_WOOD_ORIGIN + (WOODS - OVERWORLD_WOODS) * WOOD_STRIDE {
+    } else if id >= NETHER_WOOD_ORIGIN && id < NETHER_WOOD_ORIGIN + 2 * WOOD_STRIDE {
         (id - NETHER_WOOD_ORIGIN, OVERWORLD_WOODS)
+    } else if id >= EXTRA_WOOD_ORIGIN && id < EXTRA_WOOD_ORIGIN + (WOODS - 9) * WOOD_STRIDE {
+        (id - EXTRA_WOOD_ORIGIN, 9)
     } else {
         return None;
     };
     let index = first + i / WOOD_STRIDE;
     let local = i % WOOD_STRIDE;
+    if index == 11 && local > 4 {
+        return None;
+    }
     Some(match local {
         0..=3 => WoodForm::Stairs { index, facing: facing_at(local) },
         4 => WoodForm::Slab { index },
@@ -330,6 +396,20 @@ pub fn palette_ids() -> impl Iterator<Item = u16> {
             let b = STONE_ORIGIN + i * STONE_STRIDE;
             [b, b + 4, b + 5]
         })
+        .chain(
+            (15..19).flat_map(|i| {
+                [stone_id(i, 0).0, stone_id(i, 4).0].into_iter().chain((i < 17).then(|| stone_id(i, 5).0))
+            }),
+        )
+        .chain((9..12).flat_map(|i| {
+            [0, 4, 5, 6, 14]
+                .into_iter()
+                .filter(move |&local| i != 11 || local <= 4)
+                .map(move |local| wood_id(i, local).0)
+        }))
+        .chain((2..4).flat_map(|wood| {
+            [1437, 1140, 1215].map(|oak| super::nether_biome_blocks::switch_reskin(Block(oak), wood).0)
+        }))
         .chain([COBBLE_WALL, BRICK_WALL])
         .chain(LOG_ORIGIN..WOOD_ORIGIN)
         .chain((0..OVERWORLD_WOODS).flat_map(|i| {

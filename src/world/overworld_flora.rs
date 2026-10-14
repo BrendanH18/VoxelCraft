@@ -23,7 +23,7 @@ impl World {
     pub(super) fn update_overworld_plants(&mut self, p: IVec3) {
         for q in [p, p - IVec3::Y, p + IVec3::Y, p + IVec3::X, p - IVec3::X, p + IVec3::Z, p - IVec3::Z] {
             let Some(b) = self.get_block(q) else { continue };
-            if !(ob::FIRST..=ob::LAST).contains(&b.0) {
+            if !(ob::FIRST..=ob::LAST).contains(&b.0) && ob::propagule_age(b).is_none() && ob::bud_facing(b).is_none() {
                 continue;
             }
             // Ceiling plants: the whole run below drops when unsupported.
@@ -95,6 +95,9 @@ impl World {
     /// belongs here.
     pub(super) fn tick_overworld_flora(&mut self, p: IVec3, b: Block) -> bool {
         match b.0 {
+            2160..=2163 => {
+                self.edit(p, ob::hanging_propagule(ob::propagule_age(b).unwrap() + 1), true);
+            }
             // Kelp grows up through water, 14% of ticks (Java's 0.14).
             1960 => {
                 if self.roll() % 100 < 14
@@ -116,9 +119,9 @@ impl World {
                     self.edit(p, if b.0 == 1945 { ob::CAVE_VINES_PLANT_LIT } else { ob::CAVE_VINES_PLANT }, true);
                 }
             }
-            // Sweet berry bushes age 20% of ticks in light 9 or more.
+            // Sweet berry bushes age 20% of ticks in light 9 or more in the cell above.
             2058..=2060 => {
-                if self.roll().is_multiple_of(5) && self.lit_enough(p) {
+                if self.roll().is_multiple_of(5) && self.lit_enough(p + IVec3::Y) {
                     self.edit(p, ob::berry_bush(ob::berry_age(b).unwrap() + 1), true);
                 }
             }
@@ -140,21 +143,24 @@ impl World {
                     }
                 }
             }
-            // Budding amethyst grows buds on a free face one tick in five.
+            // Budding amethyst (Java `BuddingAmethystBlock.randomTick`): one
+            // tick in five, a random one of the six faces starts a small bud
+            // facing out of it or grows the bud already facing that way.
             1925 => {
                 if self.one_in(5) {
-                    let face = [IVec3::Y, IVec3::NEG_Y][(self.roll() % 2) as usize];
+                    const FACES: [IVec3; 6] = [IVec3::NEG_Y, IVec3::Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
+                    let face = FACES[(self.roll() % 6) as usize];
                     let q = p + face;
                     match self.get_block(q) {
                         Some(Block::AIR) | Some(Block::WATER) => {
-                            self.edit(q, ob::amethyst_bud(0, face.y < 0), true);
+                            self.edit(q, ob::amethyst_bud_facing(0, face), true);
                         }
                         Some(bud)
-                            if let Some((size, down)) = ob::bud_of(bud)
+                            if let Some((size, facing)) = ob::bud_facing(bud)
                                 && size < 3
-                                && down == (face.y < 0) =>
+                                && facing == face =>
                         {
-                            self.edit(q, ob::amethyst_bud(size + 1, down), true);
+                            self.edit(q, ob::amethyst_bud_facing(size + 1, face), true);
                         }
                         _ => {}
                     }
@@ -171,20 +177,21 @@ impl World {
                     self.edit(p, ob::coral(kind, colour, true), true);
                 }
             }
-            // Mycelium spreads like grass onto lit dirt.
-            1903 => {
-                let r = self.roll();
-                let q = p + IVec3::new((r % 3) as i32 - 1, (r / 3 % 5) as i32 - 3, (r / 15 % 3) as i32 - 1);
-                if self.get_block(q) == Some(Block::DIRT) && self.get_block(q + IVec3::Y) == Some(Block::AIR) {
-                    self.edit(q, ob::MYCELIUM, false);
-                }
-            }
-            // Turtle eggs on sand hatch (Java cracks them over three stages,
-            // mostly at night; one roll in 40 stands in for that).
-            1976..=1979 => {
-                if self.get_block(p - IVec3::Y) == Some(Block::SAND) && self.one_in(40) {
-                    self.edit(p, Block::AIR, true);
-                    self.hatched_turtles.push((p, ob::egg_count(b).unwrap()));
+            // Mycelium is a `SpreadingSnowyBlock` like grass.
+            1903 => self.tick_spreader(p, ob::MYCELIUM),
+            // Java: three random-tick stages, always progressing in the
+            // narrow pre-dawn window (21600..22560), otherwise 1/500.
+            1976..=1979 | 2150..=2157 => {
+                let sand = self.get_block(p - IVec3::Y).is_some_and(|b| b == Block::SAND || b == Block::RED_SAND);
+                if sand && (self.turtle_hatching_time() || self.one_in(500)) {
+                    let count = ob::egg_count(b).unwrap();
+                    let stage = ob::egg_stage(b).unwrap();
+                    if stage == 2 {
+                        self.edit(p, Block::AIR, true);
+                        self.hatched_turtles.push((p, count));
+                    } else {
+                        self.edit(p, ob::turtle_eggs_stage(count, stage + 1), true);
+                    }
                 }
             }
             _ => return (ob::FIRST..=ob::LAST).contains(&b.0),
@@ -192,9 +199,10 @@ impl World {
         true
     }
 
-    fn lit_enough(&mut self, p: IVec3) -> bool {
-        self.update_block_light();
-        self.sky_exposed(p) || self.block_light(p) >= 9
+    /// Java `getRawBrightness(p, 0) >= 9`, as bamboo and sweet berries test
+    /// the cell above them.
+    pub(super) fn lit_enough(&mut self, p: IVec3) -> bool {
+        self.growth_light(p, false) >= 9
     }
 
     /// Adds one stalk on top of the bamboo at `p`, moving its leaves up.
@@ -214,6 +222,16 @@ impl World {
     /// Bone meal on one of this module's blocks (`None`: not ours).
     pub(super) fn overworld_bone_meal(&mut self, p: IVec3, b: Block) -> Option<bool> {
         Some(match b.0 {
+            2011 if self.get_block(p - IVec3::Y) == Some(Block::AIR) => {
+                self.edit(p - IVec3::Y, ob::hanging_propagule(0), true);
+                true
+            }
+            2011 => false,
+            2160..=2163 => {
+                self.edit(p, ob::hanging_propagule(ob::propagule_age(b).unwrap() + 1), true);
+                true
+            }
+            2164 => false,
             // Azaleas grow into azalea trees 45% of the time.
             1940 | 1941 => {
                 if self.roll() % 100 < 45 {
@@ -340,12 +358,8 @@ impl World {
                 self.drops.push((p, Stack::new(ob::PINK_PETALS, 1)));
                 true
             }
-            2014..=2017 => {
-                if self.roll() % 100 < 45 {
-                    self.grow_tree(p);
-                }
-                true
-            }
+            // Saplings (2014..=2017) use the shared `apply_bone_meal` arm,
+            // including Java's 2x2 bone-meal target check.
             _ => return None,
         })
     }
@@ -374,8 +388,8 @@ impl World {
     /// saplings from the new leaves). Pushes onto `out`.
     pub(super) fn overworld_drops(&mut self, b: Block, fortune: u64, out: &mut Vec<Stack>) {
         match b.0 {
-            1910 => out.push(Stack::new(Item::SNOWBALL, 1)),
-            1929 | 1933 => {
+            1910 | 2516..=2522 => out.push(Stack::new(Item::SNOWBALL, ob::snow_layers(b).unwrap_or(1))),
+            1929 | 1933 | 2403 | 2407 | 2411 | 2415 => {
                 // Clusters: 4 shards, times Java's ore bonus with fortune.
                 let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1);
                 out.push(Stack::new(Item::AMETHYST_SHARD, (4 * times).min(64) as u8));
@@ -393,7 +407,7 @@ impl World {
             2058 | 2059 => out.push(Stack::new(Item::SWEET_BERRIES, 1)),
             2062..=2073 => {
                 let (age, _) = ob::cocoa_of(b).unwrap();
-                let n = if age == 2 { 2 + self.roll() % 2 } else { 1 };
+                let n = if age == 2 { 3 } else { 1 };
                 out.push(Stack::new(Item::COCOA_BEANS, n as u8));
             }
             2074 | 2075 => {
@@ -435,7 +449,7 @@ impl World {
     /// Whether a block placed into `at` against `normal` stays: hanging
     /// plants need a ceiling, wall plants a wall, waterlogged plants water.
     pub fn overworld_placement_ok(&self, at: IVec3, block: Block) -> Option<bool> {
-        if !(ob::FIRST..=ob::LAST).contains(&block.0) {
+        if !(ob::FIRST..=ob::LAST).contains(&block.0) && ob::bud_facing(block).is_none() {
             return None;
         }
         if block.is_waterlogged() && self.get_block(at) != Some(Block::WATER) {
@@ -544,5 +558,28 @@ mod tests {
         assert_eq!(w.overworld_placement_ok(vine, ob::vine(Facing::North)), Some(true));
         w.set_block(wall, Block::AIR);
         assert_eq!(w.get_block(vine), Some(Block::AIR));
+    }
+    #[test]
+    fn turtle_eggs_crack_twice_then_hatch_all_babies_before_dawn() {
+        let mut w = world();
+        let p = IVec3::new(6, 80, 6);
+        w.set_block(p - IVec3::Y * 2, Block::STONE);
+        w.set_block(p - IVec3::Y, Block::SAND);
+        w.set_block(p, ob::turtle_eggs(4));
+        w.set_redstone_daylight(0.92, 11, 0.0);
+        for stage in 1..=2 {
+            w.random_tick(p);
+            assert_eq!(ob::egg_stage(w.get_block(p).unwrap()), Some(stage));
+            assert_eq!(ob::egg_count(w.get_block(p).unwrap()), Some(4));
+        }
+        w.random_tick(p);
+        assert_eq!(w.get_block(p), Some(Block::AIR));
+        assert_eq!(w.hatched_turtles, vec![(p, 4)]);
+        w.set_block(p - IVec3::Y, Block::DIRT);
+        w.set_block(p, ob::TURTLE_EGG);
+        for _ in 0..100 {
+            w.random_tick(p);
+        }
+        assert_eq!(w.get_block(p), Some(ob::TURTLE_EGG));
     }
 }

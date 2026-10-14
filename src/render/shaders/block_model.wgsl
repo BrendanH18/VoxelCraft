@@ -13,6 +13,8 @@ struct Globals {
     environment: vec4<f32>,
     // x: night vision strength 0..1.
     effects: vec4<f32>,
+    // rgb: visual/ambient_light_color; w: use the skyless dimension lightmap.
+    ambient: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -119,6 +121,15 @@ fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
     return mix(tint * (0.62 + 0.38 * diffuse), vec3<f32>(0.85), g.params.w);
 }
 
+// Java 26.3 adds the environment ambient colour to sky and block light.
+// The Overworld retains its existing daylight presentation in this scoped fix.
+fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
+    if g.ambient.w > 0.0 {
+        return clamp(g.ambient.rgb + sky + torch, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    return max(sky, torch) * 0.96 + 0.04;
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let area_normal = cross(dpdx(in.rel), dpdy(in.rel));
@@ -137,7 +148,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     }
     let l = in.light.xz / (4.0 - 3.0 * in.light.xz);
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
-    let lit = night_vision(max(l.x * g.params.z * daylight_tint(normal), torch) * 0.96 + 0.04) * in.light.y;
+    let lit = night_vision(dimension_light(l.x * g.params.z * daylight_tint(normal), torch)) * in.light.y;
     let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
     let c = mix(tex.rgb * lit, g.fog_color.rgb, f * f * (3.0 - 2.0 * f));
     return vec4<f32>(c, 1.0);

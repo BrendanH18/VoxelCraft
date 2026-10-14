@@ -87,6 +87,9 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    if let Some(pixel) = voxelcraft::assets::texture_pixel(layer, x, y) {
+        return pixel;
+    }
     let r = rnd(layer, x, y, 0);
     if layer == tex::COMPOST || layer == tex::COMPOST_READY {
         return noisy(layer, x, y, if layer == tex::COMPOST_READY { [139, 119, 90] } else { [99, 72, 42] }, 0.22);
@@ -99,6 +102,43 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if (tex::SOUL_FIRE_0..=1399).contains(&layer) {
         return nether::pixel(layer, x, y);
+    }
+    if (1750..=1752).contains(&layer) {
+        let speckle = rnd(layer, x, y, 1) < 0.14;
+        let crack = layer > 1750 && ((x + y * 2).is_multiple_of(13) || layer == 1752 && (x * 3 + y).is_multiple_of(11));
+        return shade(
+            if crack {
+                [69, 83, 60]
+            } else if speckle {
+                [100, 150, 90]
+            } else {
+                [236, 232, 212]
+            },
+            0.92 + rnd(layer, x, y, 0) * 0.08,
+        );
+    }
+    if (tex::BUILDING_DOORS..tex::BUILDING_DOORS + 4).contains(&layer) {
+        let index = (layer - tex::BUILDING_DOORS) / 2;
+        let bottom = tex::BUILDING_DOORS + index * 2;
+        return wooden_door(
+            layer,
+            x,
+            y,
+            rnd(layer, x, y, 0),
+            if index == 0 { [211, 207, 194] } else { [193, 180, 77] },
+            bottom + 1,
+            bottom,
+        );
+    }
+    if (tex::BUILDING_TRAPDOORS..tex::BUILDING_TRAPDOORS + 2).contains(&layer) {
+        let frame = x < 2 || y < 2 || x > 13 || y > 13 || x == 7 || y == 7;
+        if !frame {
+            return [0, 0, 0, 0];
+        }
+        return shade(
+            if layer == tex::BUILDING_TRAPDOORS { [211, 207, 194] } else { [193, 180, 77] },
+            0.9 + rnd(layer, x, y, 0) * 0.15,
+        );
     }
     if (crate::world::overworld_blocks::TEX..crate::world::overworld_blocks::TEX_END).contains(&layer) {
         return overworld::pixel(layer, x, y);

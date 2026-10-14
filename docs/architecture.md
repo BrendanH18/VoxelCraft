@@ -103,23 +103,31 @@ independently, with position interpolation for the camera, mobs, arrows,
 smoke, dropped items, falling blocks and primed TNT. Collision substeps remain
 at most 1/120 second. Offline menus pause the game clock.
 
-Gameplay block light belongs to `World`, with incremental removal and
+Gameplay sky and block light belong to `World`, with incremental removal and
 increase queues. Edits, streaming and fixed world steps resolve it without
 waiting for meshes. Render jobs still compute their own light snapshots;
-their results cannot replace gameplay light. Crops and saplings use this
-light even in headless worlds.
+their results cannot replace gameplay light. Crops, saplings and other growth
+read this gameplay sky and block light, including in headless worlds.
+Complete column heightmaps seed gameplay skylight, including in the End.
+Uncertain light at incomplete loaded borders is explicitly unknown.
 
 The optional desktop agent host accepts bounded, versioned JSON-lines TCP
 requests. Network workers enqueue commands; the game thread validates and
-executes them. Device-free agent sessions own independent movement, vitals and
-inventory. Streaming, fire and growth use the union of active player ranges;
+executes them. Desktop and device-free agents use the same `PlayerSession` for
+identity, movement, inventory, vitals, mode, workstation inputs and personal
+spawn data. The session owns validated fixed-tick food/drink and mining transactions;
+adapters handle sounds, hand animation and damage/death presentation. Streaming,
+fire and growth use the union of active player ranges;
 agent-only chunks outside the host view stay unmeshed. Named agent profiles
 persist in the root level file. See [the CLI protocol and limitations](agents.md).
 
-Full client/session action extraction, mob target identities, independent
-simultaneous dimensions, authoritative skylight, shape-aware light occlusion
-and desktop networking remain future work. Split-screen is implemented; all views currently share the
-host's biome fog colour.
+Controller and LAN players run the shared actions on their own session
+(`hands::Actor` for hands, `screen::Screen` for container clicks); no player's
+state is swapped into the host's. Independent simultaneous dimensions and
+shape-aware light occlusion remain future work. A first desktop LAN slice uses
+bounded binary-framed TCP and authoritative chunk snapshots; see [LAN](lan.md).
+Split-screen is implemented, and each view blends Nether biome fog around its
+own eye.
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
 
 ## Code layout
@@ -128,13 +136,24 @@ See [the headless smoke run and checks](development.md#headless-simulation-found
 src/
   lib.rs             reusable engine exports (no device dependencies)
   main.rs            desktop argument parsing, event loop
+  session.rs         actor-owned core state, personal spawn selection
+  session/
+    consumption.rs   fixed-tick food/drink validation and transactions
+    mining.rs        actor-owned progress, validated destruction and outcomes
+  content/
+    mod.rs           shared plank ingredient tag (including explicit Nether fuel exceptions)
+    fuel.rs          first furnace fuel definitions, in Java ticks
+    mining.rs        build-embedded ice support tag and bounded state lookup
+  survival_items/
+    bucket.rs        shared fluid-bucket/bottle execution and client presentation effects
   simulation/
     mod.rs           fixed 20 Hz clock, world/player steps, interpolation
     survival.rs      health, hunger, exhaustion, regeneration (unit tested)
     weather.rs       weather state and precipitation queries
+    lighting.rs      reference day/weather brightness supplied to entity rules
   app/
     mod.rs           window, input, fixed game ticks, rendering, damage entry point
-    actions.rs       hotbar selection, mining and eating progress (unit tested)
+    actions.rs       hotbar/mining state and consumption presentation mirror
     recipe_book.rs   recipe navigation, responsive layout and hit testing
     hud.rs           HUD: hotbar, hearts/food/bubbles, containers, death and F3
     menu.rs          pause menu and options screen
@@ -235,3 +254,58 @@ runs silently.
 wgpu and winit (graphics and windowing), cpal (audio output), glam (math),
 bytemuck, crossbeam-channel, rustc-hash, font8x8, png, pollster, log and
 env_logger.
+
+## Assessment branch ID reservations
+
+The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
+these ranges. Preserve their meanings; do not reuse the unused patterned slots.
+
+| Block states | Meaning |
+| --- | --- |
+| 2160–2164 | Hanging mangrove propagule ages 0–4 |
+| 2200–2222 | Pale oak stairs/slab/fence/gate/door states |
+| 2223–2245 | Bamboo stairs/slab/fence/gate/door states |
+| 2246–2268 | Bamboo mosaic layout; only stairs/slab 2246–2250 are registered |
+| 2269–2298 | Pale oak trapdoor/button/pressure plate states |
+| 2299–2328 | Bamboo trapdoor/button/pressure plate states |
+| 2360–2365 | Mud brick stairs/slab/wall |
+| 2366–2371 | Prismarine stairs/slab/wall |
+| 2372–2377 | Prismarine brick stairs/slab; 2377 is reserved, unregistered |
+| 2378–2383 | Dark prismarine stairs/slab; 2383 is reserved, unregistered |
+| 2400–2415 | Wall amethyst buds/clusters (GEN-02): facing south, north, east, west × small, medium, large, cluster |
+
+| Item ids | Meaning |
+| --- | --- |
+| 1000–1039 | Retained v0.7 animal items |
+| 1040 | Turtle helmet |
+| 1041–1046 | Audit potion and splash-potion slots |
+| 1047–1049 | Unallocated; keep free |
+| 1050–1069 | Java 26.3 copper equipment: tools 1050–1054 (pickaxe, shovel, axe, hoe, sword), copper nugget 1055, armor 1056–1059 (helmet, chestplate, leggings, boots); 1060–1069 reserved (spears) |
+
+Texture layers 1753–1758 append pale oak/bamboo doors and trapdoors; existing
+layer meanings remain intact. These definitions inherit the existing shaped
+block representation; adding the family is not proof of complete Java state,
+lighting or waterlogging parity. See the [content/resource evidence](verification/2026-10-12-content-and-assets.md).
+
+## Focused application and simulation modules
+
+`src/agent/command.rs` owns syntax, coordinates and completion;
+`src/agent.rs` owns execution and timed inputs. Entity tick coordination is in
+`src/entity/lifecycle.rs` and population/cage activation in
+`src/entity/spawning.rs`; individual AI/animal/mount systems retain their
+existing modules. Application startup, disk-save assembly, fixed gameplay
+steps and client action adapters are in `src/app/startup.rs`, `save.rs`,
+`tick.rs` and `player_actions.rs`. Window events and frame rendering remain
+in the coordinator. Controller/CLI/desktop action ownership is a separate,
+ongoing extraction; moving a file alone does not complete STR-03.
+`src/session/placement.rs` owns validated block placement and actor outcomes;
+`src/content/placement.rs` maps existing door-family states without adding IDs.
+Client/CLI adapters retain other item interactions and presentation. See the
+[placement evidence and remaining boundaries](verification/2026-10-13-shared-placement.md).
+
+Turtle equipment uses standalone item **1040** for the turtle helmet.
+The retained v0.7 animal reservation 1000–1039 remains untouched. Potion indices
+36–38 append normal/long/strong Turtle Master. Their normal items reserve
+1041–1043 and splash items 1044–1046, because the old ranges are full. Existing potion/item meanings
+stay unchanged. The [turtle equipment report](verification/2026-10-12-turtle-equipment.md)
+records the accompanying implementation and acceptance evidence.

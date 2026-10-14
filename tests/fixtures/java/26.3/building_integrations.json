@@ -1,0 +1,391 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "recipes": [
+    {
+      "path": "data/minecraft/recipe/pale_oak_stairs.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "#  ",
+        "## ",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:pale_oak_planks"
+      },
+      "result": "minecraft:pale_oak_stairs",
+      "count": 4
+    },
+    {
+      "path": "data/minecraft/recipe/pale_oak_slab.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:pale_oak_planks"
+      },
+      "result": "minecraft:pale_oak_slab",
+      "count": 6
+    },
+    {
+      "path": "data/minecraft/recipe/pale_oak_fence.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "W#W",
+        "W#W"
+      ],
+      "ingredients": {
+        "#": "minecraft:stick",
+        "W": "minecraft:pale_oak_planks"
+      },
+      "result": "minecraft:pale_oak_fence",
+      "count": 3
+    },
+    {
+      "path": "data/minecraft/recipe/pale_oak_fence_gate.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "#W#",
+        "#W#"
+      ],
+      "ingredients": {
+        "#": "minecraft:stick",
+        "W": "minecraft:pale_oak_planks"
+      },
+      "result": "minecraft:pale_oak_fence_gate",
+      "count": 1
+    },
+    {
+      "path": "data/minecraft/recipe/pale_oak_door.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "##",
+        "##",
+        "##"
+      ],
+      "ingredients": {
+        "#": "minecraft:pale_oak_planks"
+      },
+      "result": "minecraft:pale_oak_door",
+      "count": 3
+    },
+    {
+      "path": "data/minecraft/recipe/pale_oak_trapdoor.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:pale_oak_planks"
+      },
+      "result": "minecraft:pale_oak_trapdoor",
+      "count": 2
+    },
+    {
+      "path": "data/minecraft/recipe/pale_oak_button.json",
+      "type": "minecraft:crafting_shapeless",
+      "pattern": [
+        "#"
+      ],
+      "ingredients": {
+        "#": "minecraft:pale_oak_planks"
+      },
+      "result": "minecraft:pale_oak_button",
+      "count": 1
+    },
+    {
+      "path": "data/minecraft/recipe/pale_oak_pressure_plate.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "##"
+      ],
+      "ingredients": {
+        "#": "minecraft:pale_oak_planks"
+      },
+      "result": "minecraft:pale_oak_pressure_plate",
+      "count": 1
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_stairs.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "#  ",
+        "## ",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:bamboo_planks"
+      },
+      "result": "minecraft:bamboo_stairs",
+      "count": 4
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_slab.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:bamboo_planks"
+      },
+      "result": "minecraft:bamboo_slab",
+      "count": 6
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_fence.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "W#W",
+        "W#W"
+      ],
+      "ingredients": {
+        "#": "minecraft:stick",
+        "W": "minecraft:bamboo_planks"
+      },
+      "result": "minecraft:bamboo_fence",
+      "count": 3
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_fence_gate.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "#W#",
+        "#W#"
+      ],
+      "ingredients": {
+        "#": "minecraft:stick",
+        "W": "minecraft:bamboo_planks"
+      },
+      "result": "minecraft:bamboo_fence_gate",
+      "count": 1
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_door.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "##",
+        "##",
+        "##"
+      ],
+      "ingredients": {
+        "#": "minecraft:bamboo_planks"
+      },
+      "result": "minecraft:bamboo_door",
+      "count": 3
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_trapdoor.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:bamboo_planks"
+      },
+      "result": "minecraft:bamboo_trapdoor",
+      "count": 2
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_button.json",
+      "type": "minecraft:crafting_shapeless",
+      "pattern": [
+        "#"
+      ],
+      "ingredients": {
+        "#": "minecraft:bamboo_planks"
+      },
+      "result": "minecraft:bamboo_button",
+      "count": 1
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_pressure_plate.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "##"
+      ],
+      "ingredients": {
+        "#": "minecraft:bamboo_planks"
+      },
+      "result": "minecraft:bamboo_pressure_plate",
+      "count": 1
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_mosaic.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "#",
+        "#"
+      ],
+      "ingredients": {
+        "#": "minecraft:bamboo_slab"
+      },
+      "result": "minecraft:bamboo_mosaic",
+      "count": 1
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_mosaic_stairs.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "#  ",
+        "## ",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:bamboo_mosaic"
+      },
+      "result": "minecraft:bamboo_mosaic_stairs",
+      "count": 4
+    },
+    {
+      "path": "data/minecraft/recipe/bamboo_mosaic_slab.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:bamboo_mosaic"
+      },
+      "result": "minecraft:bamboo_mosaic_slab",
+      "count": 6
+    },
+    {
+      "path": "data/minecraft/recipe/mud_brick_stairs.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "#  ",
+        "## ",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:mud_bricks"
+      },
+      "result": "minecraft:mud_brick_stairs",
+      "count": 4
+    },
+    {
+      "path": "data/minecraft/recipe/mud_brick_slab.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:mud_bricks"
+      },
+      "result": "minecraft:mud_brick_slab",
+      "count": 6
+    },
+    {
+      "path": "data/minecraft/recipe/prismarine_stairs.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "#  ",
+        "## ",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:prismarine"
+      },
+      "result": "minecraft:prismarine_stairs",
+      "count": 4
+    },
+    {
+      "path": "data/minecraft/recipe/prismarine_slab.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:prismarine"
+      },
+      "result": "minecraft:prismarine_slab",
+      "count": 6
+    },
+    {
+      "path": "data/minecraft/recipe/prismarine_brick_stairs.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "#  ",
+        "## ",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:prismarine_bricks"
+      },
+      "result": "minecraft:prismarine_brick_stairs",
+      "count": 4
+    },
+    {
+      "path": "data/minecraft/recipe/prismarine_brick_slab.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:prismarine_bricks"
+      },
+      "result": "minecraft:prismarine_brick_slab",
+      "count": 6
+    },
+    {
+      "path": "data/minecraft/recipe/dark_prismarine_stairs.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "#  ",
+        "## ",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:dark_prismarine"
+      },
+      "result": "minecraft:dark_prismarine_stairs",
+      "count": 4
+    },
+    {
+      "path": "data/minecraft/recipe/dark_prismarine_slab.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:dark_prismarine"
+      },
+      "result": "minecraft:dark_prismarine_slab",
+      "count": 6
+    },
+    {
+      "path": "data/minecraft/recipe/mud_brick_wall.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:mud_bricks"
+      },
+      "result": "minecraft:mud_brick_wall",
+      "count": 6
+    },
+    {
+      "path": "data/minecraft/recipe/prismarine_wall.json",
+      "type": "minecraft:crafting_shaped",
+      "pattern": [
+        "###",
+        "###"
+      ],
+      "ingredients": {
+        "#": "minecraft:prismarine"
+      },
+      "result": "minecraft:prismarine_wall",
+      "count": 6
+    }
+  ],
+  "intentionally_absent": [
+    "bamboo_mosaic_fence",
+    "bamboo_mosaic_door",
+    "prismarine_brick_wall",
+    "dark_prismarine_wall"
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "data/minecraft/recipe/turtle_helmet.json",
+    "data/minecraft/tags/item/repairs_turtle_helmet.json",
+    "net.minecraft.world.item.equipment.ArmorMaterials.TURTLE_SCUTE",
+    "net.minecraft.world.item.equipment.ArmorType.HELMET",
+    "net.minecraft.world.entity.player.Player.turtleHelmetTick",
+    "net.minecraft.world.item.alchemy.Potions turtle registrations",
+    "net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownSplashPotion default duration scale"
+  ],
+  "helmet": {
+    "pattern": [
+      "XXX",
+      "X X"
+    ],
+    "ingredients": {
+      "X": "minecraft:turtle_scute"
+    },
+    "result": "minecraft:turtle_helmet",
+    "durability": 275,
+    "defense": 2,
+    "enchantability": 9,
+    "repair_items": [
+      "minecraft:turtle_scute"
+    ],
+    "water_breathing_ticks": 200
+  },
+  "potions": [
+    {
+      "id": "turtle_master",
+      "effects": [
+        {
+          "effect": "slowness",
+          "amplifier": 3,
+          "ticks": 400
+        },
+        {
+          "effect": "resistance",
+          "amplifier": 2,
+          "ticks": 400
+        }
+      ]
+    },
+    {
+      "id": "long_turtle_master",
+      "effects": [
+        {
+          "effect": "slowness",
+          "amplifier": 3,
+          "ticks": 800
+        },
+        {
+          "effect": "resistance",
+          "amplifier": 2,
+          "ticks": 800
+        }
+      ]
+    },
+    {
+      "id": "strong_turtle_master",
+      "effects": [
+        {
+          "effect": "slowness",
+          "amplifier": 5,
+          "ticks": 400
+        },
+        {
+          "effect": "resistance",
+          "amplifier": 3,
+          "ticks": 400
+        }
+      ]
+    }
+  ],
+  "brewing": [
+    {
+      "path": "data/minecraft/recipe/brewing/potion_awkward_turtle_helmet.json",
+      "bottle": "potion",
+      "input": "minecraft:awkward",
+      "ingredient": "minecraft:turtle_helmet",
+      "output": "minecraft:turtle_master"
+    },
+    {
+      "path": "data/minecraft/recipe/brewing/potion_turtle_master_redstone.json",
+      "bottle": "potion",
+      "input": "minecraft:turtle_master",
+      "ingredient": "minecraft:redstone",
+      "output": "minecraft:long_turtle_master"
+    },
+    {
+      "path": "data/minecraft/recipe/brewing/potion_turtle_master_glowstone_dust.json",
+      "bottle": "potion",
+      "input": "minecraft:turtle_master",
+      "ingredient": "minecraft:glowstone_dust",
+      "output": "minecraft:strong_turtle_master"
+    },
+    {
+      "path": "data/minecraft/recipe/brewing/splash_potion_awkward_turtle_helmet.json",
+      "bottle": "splash_potion",
+      "input": "minecraft:awkward",
+      "ingredient": "minecraft:turtle_helmet",
+      "output": "minecraft:turtle_master"
+    },
+    {
+      "path": "data/minecraft/recipe/brewing/splash_potion_turtle_master_redstone.json",
+      "bottle": "splash_potion",
+      "input": "minecraft:turtle_master",
+      "ingredient": "minecraft:redstone",
+      "output": "minecraft:long_turtle_master"
+    },
+    {
+      "path": "data/minecraft/recipe/brewing/splash_potion_turtle_master_glowstone_dust.json",
+      "bottle": "splash_potion",
+      "input": "minecraft:turtle_master",
+      "ingredient": "minecraft:glowstone_dust",
+      "output": "minecraft:strong_turtle_master"
+    }
+  ],
+  "splash_default_duration_scale": 1
+}

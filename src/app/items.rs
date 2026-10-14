@@ -32,27 +32,33 @@ impl Game {
         for (cell, xp) in std::mem::take(&mut self.world.xp_drops) {
             self.mobs.entities.spawn_xp(cell.as_dvec3() + DVec3::splat(0.5), xp);
         }
-        for stack in self.inventory.take_spill() {
-            self.mobs.entities.throw(stack, self.player.eye(), self.player.forward().as_dvec3());
+        for stack in self.session.inventory.take_spill() {
+            self.mobs.entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());
         }
-        if !self.vitals.is_dead() {
+        if !self.session.vitals.is_dead() {
             self.pick_up_items();
         }
-        let gone = match self.container {
-            Container::Furnace(pos) => self.world.furnace(pos).is_none(),
-            Container::Chest(pos) => self.world.chest(pos).is_none(),
+        let session = &self.session;
+        let far = |pos: glam::IVec3| !session.can_keep_using_block(pos);
+        let gone = match self.body.container {
+            Container::Furnace(pos) => self.world.furnace(pos).is_none() || far(pos),
+            Container::Chest(pos) => self.world.chest(pos).is_none() || far(pos),
             Container::Minecart(id) => {
-                self.mobs.entities.cart(id).is_none_or(|c| c.pos.distance(self.player.pos) > 8.0)
+                !self.mobs.entities.vehicle_in_reach(id, session.player.eye(), session.entity_screen_range())
             }
-            Container::Brewing(pos) => self.world.brewing_stand(pos).is_none(),
+            Container::Brewing(pos) => self.world.brewing_stand(pos).is_none() || far(pos),
             Container::Enchanting(pos) => {
-                self.world.get_block(pos) != Some(crate::world::block::Block::ENCHANTING_TABLE)
+                self.world.get_block(pos) != Some(crate::world::block::Block::ENCHANTING_TABLE) || far(pos)
             }
             // An anvil can break in use, or fall away.
-            Container::Anvil(pos) => !self.world.get_block(pos).is_some_and(|b| b.is_anvil()),
-            Container::Grindstone(pos) => self.world.get_block(pos).is_none_or(|b| b.base() != Block::GRINDSTONE),
-            Container::Trading(id) => !self.mobs.entities.merchant_in_reach(id, self.player.eye()),
-            Container::Smithing(pos) => self.world.get_block(pos) != Some(Block::SMITHING_TABLE),
+            Container::Anvil(pos) => !self.world.get_block(pos).is_some_and(|b| b.is_anvil()) || far(pos),
+            Container::Grindstone(pos) => {
+                self.world.get_block(pos).is_none_or(|b| b.base() != Block::GRINDSTONE) || far(pos)
+            }
+            Container::Trading(id) => {
+                !self.mobs.entities.merchant_in_reach(id, session.player.eye(), session.entity_screen_range())
+            }
+            Container::Smithing(pos) => self.world.get_block(pos) != Some(Block::SMITHING_TABLE) || far(pos),
             _ => false,
         };
         if gone && self.inventory_open {
@@ -61,13 +67,13 @@ impl Game {
     }
 
     fn pick_up_items(&mut self) {
-        let player = self.player.pos;
+        let player = self.session.player.pos;
         let mut picked = false;
         self.mobs.entities.items.retain_mut(|item| {
             if item.pickup_delay > 0.0 || !item.touches_player(player) {
                 return true;
             }
-            let left = self.inventory.add_stack(item.stack);
+            let left = self.session.inventory.add_stack(item.stack);
             picked |= left < item.stack.count;
             item.stack.count = left;
             left > 0
@@ -75,7 +81,7 @@ impl Game {
         let arrows = self.mobs.entities.collect_arrows(player);
         if arrows > 0 {
             picked = true;
-            let left = self.inventory.add(crate::item::Item::ARROW, arrows);
+            let left = self.session.inventory.add(crate::item::Item::ARROW, arrows);
             if left > 0 {
                 self.mobs.entities.scatter(Stack::new(crate::item::Item::ARROW, left), player);
             }
@@ -86,145 +92,31 @@ impl Game {
         if let Some(chime) = crate::entity::orb::absorb(
             &mut self.mobs.entities.orbs,
             player,
-            &mut self.vitals.xp,
-            &mut self.inventory,
-            self.actions.selected,
+            &mut self.session.vitals.xp,
+            &mut self.session.inventory,
+            self.body.actions.selected,
         ) {
             xp_sounds(&mut self.audio, None, chime);
         }
-    }
-
-    /// Right-click with an ender pearl throws it (Java's one-second
-    /// cooldown applies). Returns whether one was thrown.
-    pub(super) fn throw_pearl(&mut self) -> bool {
-        if self.held_item() != Some(crate::item::Item::ENDER_PEARL) || self.vitals.pearl_cooldown > 0.0 {
-            return false;
-        }
-        self.vitals.pearl_cooldown = crate::entity::pearl::COOLDOWN;
-        let p = &self.player;
-        // Java adds the thrower's motion, vertical only while airborne.
-        let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
-        self.mobs.entities.throw_pearl(self.actor, p.eye(), p.forward().as_dvec3(), carry);
-        // Java's throw is the bow sound, pitched well down.
-        self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
-        if self.mode.is_survival() {
-            self.inventory.take_one(self.actions.selected);
-        }
-        true
-    }
-
-    /// Right-click with a fishing rod casts its bobber, or reels it in.
-    pub(super) fn use_rod(&mut self) -> bool {
-        let slot = self.actions.selected;
-        let Some(broke) = voxelcraft::survival_items::use_rod(
-            &self.player,
-            &mut self.inventory,
-            slot,
-            self.mode.is_creative(),
-            self.actor,
-            &mut self.mobs.entities,
-        ) else {
-            return false;
-        };
-        if broke {
-            self.show_popup("Fishing rod broke");
-            self.audio.play(
-                Sound::Break(crate::audio::sounds::Material::Wood),
-                Some(self.player.eye()),
-                0.8,
-                (1.3, 1.5),
-            );
-        } else {
-            self.audio.play(Sound::Bow, Some(self.player.eye()), 0.5, (0.42, 0.62));
-        }
-        true
-    }
-
-    /// Right-click with a snowball or egg throws one (Java's stack of 16).
-    pub(super) fn throw_projectile(&mut self) -> bool {
-        let slot = self.actions.selected;
-        let thrown = voxelcraft::survival_items::throw_held(
-            &self.player,
-            &mut self.inventory,
-            slot,
-            self.mode.is_creative(),
-            self.actor,
-            &mut self.mobs.entities,
-        );
-        if thrown {
-            let p = &self.player;
-            self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
-        }
-        thrown
-    }
-
-    /// Right-click with a splash potion throws it (Java has no cooldown).
-    /// Returns whether one was thrown.
-    pub(super) fn throw_splash_potion(&mut self) -> bool {
-        let Some(potion) = self.held_item().and_then(crate::item::Item::as_splash_potion) else { return false };
-        let p = &self.player;
-        let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
-        self.mobs.entities.throw_potion(self.actor, potion, p.eye(), p.forward().as_dvec3(), carry);
-        self.audio.play(Sound::Bow, Some(p.eye()), 0.5, (0.42, 0.62));
-        if self.mode.is_survival() {
-            self.inventory.take_one(self.actions.selected);
-        }
-        true
-    }
-
-    /// Right-click with an eye of ender in the overworld releases it toward
-    /// the nearest stronghold (not while aiming at a portal frame).
-    pub(super) fn throw_eye(&mut self) -> bool {
-        if self.held_item() != Some(crate::item::Item::EYE_OF_ENDER)
-            || self.world.generator.dimension != crate::world::terrain::Dimension::Overworld
-            || self
-                .target()
-                .and_then(|(pos, _)| self.world.get_block(pos))
-                .is_some_and(|b| b.base() == Block::END_PORTAL_FRAME)
-        {
-            return false;
-        }
-        let from = self.player.pos + DVec3::Y * (crate::player::SHAPE.height * 0.5);
-        let Some(target) = self.world.generator.strongholds.nearest(from.floor().as_ivec3()) else { return false };
-        self.mobs.entities.release_eye(from, target.as_dvec3());
-        eye_thrown_sound(&mut self.audio, from);
-        if self.mode.is_survival() {
-            self.inventory.take_one(self.actions.selected);
-        }
-        true
-    }
-
-    /// Right-click on an empty End portal frame with an eye of ender puts it
-    /// in, opening the portal if that completes the ring.
-    pub(super) fn insert_eye(&mut self, pos: glam::IVec3) -> bool {
-        if self.held_item() != Some(crate::item::Item::EYE_OF_ENDER) {
-            return false;
-        }
-        let Some(opened) = self.world.insert_eye(pos) else { return false };
-        frame_filled_sounds(&mut self.audio, pos, opened);
-        if self.mode.is_survival() {
-            self.inventory.take_one(self.actions.selected);
-        }
-        true
     }
 
     /// A pearl landed at `pos`: its thrower (if alive, in this world)
     /// teleports there and takes 5 damage, like a fall.
     pub(super) fn pearl_landed(&mut self, owner: PlayerId, pos: DVec3) {
         if owner == PlayerId::HOST {
-            if self.vitals.is_dead() || self.sleeping.is_some() {
+            if self.session.vitals.is_dead() || self.session.sleeping.is_some() {
                 return;
             }
-            self.audio.play(Sound::Teleport, Some(self.player.pos + DVec3::Y), 0.8, (0.9, 1.1));
-            self.player.pos = pos;
-            self.player.vel = DVec3::ZERO;
-            self.vitals.reset_fall();
-            self.previous_eye = self.player.eye();
+            self.audio.play(Sound::Teleport, Some(self.session.player.pos + DVec3::Y), 0.8, (0.9, 1.1));
+            self.session.player.pos = pos;
+            self.session.player.vel = DVec3::ZERO;
+            self.session.vitals.reset_fall();
+            self.previous_eye = self.session.player.eye();
             self.damage_player(crate::entity::pearl::DAMAGE, survival::CAUSE_FALL);
         } else if let Some(bot) = self.agents.by_id_mut(owner)
             && bot.active
         {
-            let from = bot.agent.player.pos;
+            let from = bot.agent.session.player.pos;
             if bot.agent.pearl_teleport(pos, &mut self.mobs.entities) {
                 self.audio.play(Sound::Teleport, Some(from + DVec3::Y), 0.8, (0.9, 1.1));
             }
@@ -235,19 +127,25 @@ impl Game {
     /// Q: drops one of the selected item, or the whole stack with Ctrl.
     /// With the inventory open, drops from the slot under the mouse.
     pub(super) fn drop_selected(&mut self, whole_stack: bool) {
+        if self.lan.client.is_some() {
+            self.lan_command(if whole_stack { "drop_stack" } else { "drop" });
+            return;
+        }
         let slot = if self.inventory_open {
             match self.slot_under_cursor() {
                 Some(super::hud::SlotRef::Inventory(i)) => i,
                 _ => return,
             }
         } else {
-            self.actions.selected
+            self.body.actions.selected
         };
-        let Some(stack) = self.inventory.slots[slot] else { return };
+        let Some(stack) = self.session.inventory.slots[slot] else { return };
         let count = if whole_stack { stack.count } else { 1 };
-        self.inventory.slots[slot] = (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
-        if slot == self.actions.selected {
-            self.actions.reset();
+        self.session.inventory.slots[slot] =
+            (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
+        if slot == self.body.actions.selected {
+            self.body.actions.reset();
+            self.session.cancel_consumption();
         }
         self.throw(Stack { count, ..stack });
     }
@@ -255,33 +153,38 @@ impl Game {
     /// Clicking off the inventory panel throws the held stack (or one of
     /// it with the right button). Returns whether the click was used.
     pub(super) fn throw_cursor(&mut self, one: bool) -> bool {
-        let Some(stack) = self.inventory.cursor else { return false };
         if !self.cursor_off_panel() {
             return false;
         }
+        self.toss_cursor(one)
+    }
+
+    /// Throws the held stack (or one item of it), as a click outside the screen does.
+    pub(super) fn toss_cursor(&mut self, one: bool) -> bool {
+        let Some(stack) = self.session.inventory.cursor else { return false };
         let count = if one { 1 } else { stack.count };
-        self.inventory.cursor = (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
+        self.session.inventory.cursor = (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
         self.throw(Stack { count, ..stack });
         true
     }
 
     fn throw(&mut self, stack: Stack) {
-        self.mobs.entities.throw(stack, self.player.eye(), self.player.forward().as_dvec3());
+        self.mobs.entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());
     }
 
     /// A dying survival player drops their whole inventory, including what
     /// was on the crafting grid and the cursor, and seven points of
     /// experience per level (at most 100); the rest is lost.
     pub(super) fn drop_everything(&mut self) {
-        let mut stacks = self.inventory.take_all();
+        let mut stacks = self.session.inventory.take_all();
         stacks.extend(self.craft.take_all());
         stacks.extend(self.take_work());
         stacks.retain(|s| !s.active_enchants().has(crate::enchant::Enchantment::VanishingCurse));
         for stack in stacks {
-            self.mobs.entities.scatter(stack, self.player.pos);
+            self.mobs.entities.scatter(stack, self.session.player.pos);
         }
-        let xp = self.vitals.xp.die();
-        self.mobs.entities.spawn_xp(self.player.pos, xp);
+        let xp = self.session.vitals.xp.die();
+        self.mobs.entities.spawn_xp(self.session.player.pos, xp);
     }
 
     /// Spinning, bobbing models for nearby dropped items: a small cube for
@@ -290,7 +193,7 @@ impl Game {
     pub(super) fn item_models(&self, alpha: f64) -> Vec<BlockModel> {
         let mut out = Vec::new();
         for item in &self.mobs.entities.items {
-            if item.pos.distance_squared(self.player.pos) > DRAW_DIST * DRAW_DIST {
+            if item.pos.distance_squared(self.session.player.pos) > DRAW_DIST * DRAW_DIST {
                 continue;
             }
             let block = item.stack.item.block().filter(|b| !b.flat_icon());
@@ -301,7 +204,7 @@ impl Game {
                     .item
                     .block()
                     .map(|b| b.info().tex[0])
-                    .or_else(|| item.stack.item.dial_layer(self.dial_of(&self.player)))
+                    .or_else(|| item.stack.item.dial_layer(self.dial_of(&self.session.player)))
                     .or_else(|| item.stack.item.icon_layer()),
             };
             let size = if block.is_some() { 0.25 } else { 0.5 };
@@ -343,6 +246,20 @@ pub(super) fn xp_sounds(audio: &mut Audio, at: Option<DVec3>, chime: Option<f32>
     audio.play(Sound::Orb, at, 0.3, (0.55, 1.25));
     if let Some(volume) = chime {
         audio.play(Sound::LevelUp, at, volume, (1.0, 1.0));
+    }
+}
+
+/// A bow or crossbow being loaded or loosed (shared by every input path).
+pub(super) fn shot_sound(audio: &mut Audio, ranged: voxelcraft::session::ranged::Ranged) {
+    use voxelcraft::session::ranged::Ranged;
+    match ranged {
+        Ranged::Drawing => {}
+        Ranged::CrossbowLoaded { from } => audio.play(Sound::Bow, Some(from), 0.5, (0.55, 0.65)),
+        Ranged::CrossbowFired { from } => audio.play(Sound::Bow, Some(from), 0.9, (1.25, 1.35)),
+        Ranged::ArrowShot { from, power } => {
+            let pitch = (1.0 + 0.2 * (1.0 - power), 1.1 + 0.2 * (1.0 - power));
+            audio.play(Sound::Bow, Some(from), 0.8, pitch);
+        }
     }
 }
 

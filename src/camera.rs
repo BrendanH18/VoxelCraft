@@ -134,7 +134,8 @@ pub fn view_effect(
     bobbing: bool,
 ) -> Mat4 {
     let elapsed = vitals.since_damage() + alpha * 0.05;
-    let hurt = bob_hurt(elapsed, vitals.is_dead().then_some(elapsed), player.animation.hurt_direction);
+    let death = vitals.death_time().map(|t| t + alpha * 0.05);
+    let hurt = bob_hurt(elapsed, death, player.animation.hurt_direction);
     let bob = bobbing && !vitals.is_dead() && !player.swimming && !player.pose.visually_swimming();
     if bob { hurt * bob_view(&player.animation, alpha) } else { hurt }
 }

@@ -9,6 +9,10 @@ use crate::entity::model::PlayerPose;
 use crate::item::Item;
 use crate::player::Player;
 
+/// Default block friction (0.6) times the 0.91 air drag Java applies to
+/// `deltaMovement` at the end of a ground `travel`.
+const GROUND_FRICTION: f32 = 0.6 * 0.91;
+
 #[derive(Default, Debug)]
 pub struct WalkAnimation {
     pub position: f32,
@@ -32,7 +36,10 @@ impl WalkAnimation {
         self.previous_walk_dist = self.walk_dist;
         self.walk_dist += distance * 0.6;
         self.previous_bob = self.bob;
-        let bob_target = if on_ground && !flying { (distance / ticks.max(1e-4)).min(0.1) } else { 0.0 };
+        // Java's `Player.aiStep` bobs toward min(0.1, |deltaMovement|), and a ground
+        // tick leaves deltaMovement at the move scaled by the 0.6 x 0.91 friction.
+        let bob_target =
+            if on_ground && !flying { (distance / ticks.max(1e-4) * GROUND_FRICTION).min(0.1) } else { 0.0 };
         self.bob += (bob_target - self.bob) * (1.0 - 0.6f32.powf(ticks));
         self.previous_speed = self.speed;
         let target = if flying { 0.0 } else { (distance * 4.0 / ticks.max(1e-4)).min(1.0) };
@@ -57,6 +64,19 @@ fn angle(a: f32) -> f32 {
     (a + PI).rem_euclid(TAU) - PI
 }
 
+/// Java's `HumanoidModel.ArmPose` for ranged weapons.
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub enum Aim {
+    #[default]
+    None,
+    /// A bow being drawn: both arms raised toward the target.
+    Bow,
+    /// A crossbow being loaded, 0..1 of the way.
+    CrossbowCharge(f32),
+    /// A loaded crossbow held out to fire.
+    CrossbowHold,
+}
+
 /// Render inputs belong to the view/player, never to a global camera.
 #[derive(Clone, Copy, Default)]
 pub struct PlayerAppearance {
@@ -71,6 +91,7 @@ pub struct PlayerAppearance {
     pub armor: [Option<super::armor::Worn>; 4],
     /// Animated compass or clock layer, when `held` is one of those.
     pub held_icon: Option<u16>,
+    pub aim: Aim,
 }
 
 const PLAYER_SCALE: f32 = 0.9375;
@@ -102,13 +123,38 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
     if appearance.using > 0.0 {
         right_arm = -FRAC_PI_2 - player.pitch;
     }
+    // Java's ranged arm poses (`HumanoidModel.poseRightArm` and `AnimationUtils`),
+    // with its Y rotations negated for this model's flipped axes.
+    let head_yaw = angle(player.animation.body_yaw - player.yaw);
+    let (mut right_yaw, mut left_yaw) = (None, None);
+    match appearance.aim {
+        Aim::None => {}
+        Aim::Bow => {
+            (right_arm, left_arm) = (-FRAC_PI_2 - player.pitch, -FRAC_PI_2 - player.pitch);
+            (right_yaw, left_yaw) = (Some(0.1 + head_yaw), Some(-0.5 + head_yaw));
+        }
+        Aim::CrossbowCharge(done) => {
+            right_arm = -0.97079635;
+            left_arm = -0.97079635 + (-FRAC_PI_2 + 0.97079635) * done;
+            (right_yaw, left_yaw) = (Some(0.8), Some(-(0.4 + (0.85 - 0.4) * done)));
+        }
+        Aim::CrossbowHold => {
+            (right_arm, left_arm) = (-FRAC_PI_2 - player.pitch + 0.1, -1.5 - player.pitch);
+            (right_yaw, left_yaw) = (Some(0.3 + head_yaw), Some(-0.6 + head_yaw));
+        }
+    }
     let attack = appearance.swing.clamp(0.0, 1.0);
     let turn = (attack.sqrt() * TAU).sin() * 0.2;
     let ease = 1.0 - (1.0 - attack).powi(4);
     right_arm -= (ease * PI).sin() * 1.2 + (attack * PI).sin() * (player.pitch + 0.7) * 0.75;
     left_arm += turn;
-    let swim = player.swim_amount;
-    let crouch = player.pose == PlayerPose::Crouching;
+    let riding = player.vehicle.is_some();
+    if riding {
+        right_arm -= std::f32::consts::PI / 5.;
+        left_arm -= std::f32::consts::PI / 5.;
+    }
+    let swim = if riding { 0. } else { player.swim_amount };
+    let crouch = !riding && player.pose == PlayerPose::Crouching;
     if crouch {
         right_arm += 0.4;
         left_arm += 0.4;
@@ -164,28 +210,32 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
             [-3.0, -10.0, -2.0],
             [1.0, 2.0, 2.0],
             [40.0, 16.0],
-            ry(turn * 3.0) * rx(right_arm + idle_x) * rz(-(attack * PI).sin() * 0.4 + idle_z),
+            ry(right_yaw.unwrap_or(turn * 3.0)) * rx(right_arm + idle_x) * rz(-(attack * PI).sin() * 0.4 + idle_z),
         ),
         limb(
             [turn.cos() * 5.0, arm_y, turn.sin() * 5.0],
             [-1.0, -10.0, -2.0],
             [3.0, 2.0, 2.0],
             [32.0, 48.0],
-            ry(turn) * rx(left_arm - idle_x) * rz(-idle_z),
+            ry(left_yaw.unwrap_or(turn)) * rx(left_arm - idle_x) * rz(-idle_z),
         ),
         limb(
             [-1.9, leg_y, leg_z],
             [-2.0, -12.0, -2.0],
             [2.0, 0.0, 2.0],
             [0.0, 16.0],
-            rx(phase.cos() * 1.4 * amount) * ry(0.005) * rz(0.005),
+            rx(if riding { -1.4137167 } else { phase.cos() * 1.4 * amount })
+                * ry(if riding { std::f32::consts::PI / 10. } else { 0.005 })
+                * rz(if riding { 0.07853982 } else { 0.005 }),
         ),
         limb(
             [1.9, leg_y, leg_z],
             [-2.0, -12.0, -2.0],
             [2.0, 0.0, 2.0],
             [16.0, 48.0],
-            rx((phase + PI).cos() * 1.4 * amount) * ry(-0.005) * rz(-0.005),
+            rx(if riding { -1.4137167 } else { (phase + PI).cos() * 1.4 * amount })
+                * ry(if riding { -std::f32::consts::PI / 10. } else { -0.005 })
+                * rz(if riding { -0.07853982 } else { -0.005 }),
         ),
     ]
 }
@@ -463,6 +513,39 @@ mod tests {
         assert!((w.walk_dist - 0.12).abs() < 1e-6);
         w.update(0., 0.05, 0., false, true);
         assert!((w.speed - 0.192).abs() < 1e-6);
+    }
+    /// Sneaking covers about 0.065 blocks a tick, but Java's bob reads the
+    /// post-friction velocity (0.035), not the displacement.
+    #[test]
+    fn bob_target_is_the_post_friction_velocity() {
+        let mut w = WalkAnimation::default();
+        w.update(0.0655, 0.05, 0., false, true);
+        assert!((w.bob - 0.4 * 0.0655 * 0.546).abs() < 1e-6, "{}", w.bob);
+        let mut airborne = WalkAnimation::default();
+        airborne.update(0.2, 0.05, 0., false, false);
+        assert_eq!(airborne.bob, 0.0);
+    }
+    /// Java's bow and crossbow arm poses raise both arms forward and bring the
+    /// hands toward the centre line (the screenshot of the held crossbow agrees).
+    #[test]
+    fn ranged_weapon_poses_raise_both_arms_toward_the_centre() {
+        let p = Player::new(DVec3::ZERO);
+        let toward_front = |aim: Aim| {
+            let parts = pose(&p, &PlayerAppearance { alpha: 1., aim, ..Default::default() }, 0.);
+            (parts[2].rot * Vec3::NEG_Y, parts[3].rot * Vec3::NEG_Y)
+        };
+        let (idle_right, idle_left) = toward_front(Aim::None);
+        assert!(idle_right.z.abs() < 0.2 && idle_left.z.abs() < 0.2, "arms hang at rest");
+        for (aim, forward) in [(Aim::Bow, 0.8), (Aim::CrossbowHold, 0.7), (Aim::CrossbowCharge(1.0), 0.45)] {
+            let (right, left) = toward_front(aim);
+            assert!(right.z > forward && left.z > forward, "{aim:?}: {right} {left}");
+            // The right arm hangs at -x, so pointing at +x is toward the centre.
+            assert!(right.x > 0.0 && left.x < 0.0, "{aim:?}: {right} {left}");
+        }
+        // Loading raises the off hand from 0.97 rad to level and across the body as it completes.
+        let low = toward_front(Aim::CrossbowCharge(0.0)).1;
+        let done = toward_front(Aim::CrossbowCharge(1.0)).1;
+        assert!(low.y < -0.3 && done.y.abs() < 0.05 && done.x < low.x, "{low} {done}");
     }
     #[test]
     fn opposing_limbs_and_sneak_pivots_match_java() {
