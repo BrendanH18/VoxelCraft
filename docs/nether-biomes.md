@@ -225,6 +225,23 @@ The patches were centered at (-2560, -4480), (-4096, -4480),
 12345. Biome lookup was outside the timer. Basalt feature generation is
 a performance hotspot; the ordinary benchmark origin understates its cost.
 
+v0.7.0 fix: a profile (macOS `sample`) of the delta patch put nearly all decoration time in
+`Probe::terrain` reads: 117k reads and 214 feature runs per chunk, 71% of the reads from
+large basalt columns. Features still replay for every chunk they can reach, but now skip
+work that only decides blocks outside the chunk being painted: a column cell outside the
+chunk's x/z range is skipped (it reads and writes only its own column) and a delta cell
+is skipped unless the chain `p, p + r, p + 2r, …` of its rim/pool writes reaches the chunk
+(a cell's outcome depends on earlier cells having written those blocks). A test
+(`culling_features_to_the_chunk_changes_nothing`) paints 56 chunks in the delta patches and
+other biomes with and without the culling and compares every block. Reads per delta chunk fell
+from 11.7M to under 5M per 100 chunks, and `cargo run --release --example nether_patch_bench`
+(same patches as the table above, seven fresh generators each) measured the delta patch 1.7–1.9×
+faster than the previous build, interleaved on the same loaded machine (best of seven: 4.7 → 2.6,
+4.8 → 2.9 and 5.4 → 3.2 ms/chunk at load average ~20; the unloaded figure was 2.16 ms before
+and ≈1.2 ms after on an earlier quiet run). The other four biomes are unchanged. Basalt deltas
+remain the most expensive biome because Java's feature counts (40 deltas and 6 column
+clusters per 16×16 cell and layer) are fixed.
+
 ## Known gaps
 
 - Biome layouts are statistically Java's but not seed-for-seed copies.

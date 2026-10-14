@@ -27,6 +27,13 @@ pub trait Level {
     fn empty(&self, p: IVec3) -> bool {
         self.block(p) == Block::AIR
     }
+
+    /// Inclusive corners of the only blocks whose writes the caller keeps
+    /// (terrain generation paints one chunk), when a feature may skip work
+    /// that only decides writes elsewhere.
+    fn write_bounds(&self) -> Option<(IVec3, IVec3)> {
+        None
+    }
 }
 
 const SIDES: [IVec3; 4] = [IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
@@ -419,6 +426,25 @@ fn delta_clear(level: &impl Level, p: IVec3) -> bool {
     DIRECTIONS.iter().all(|&d| (level.block(p + d) == Block::AIR) == (d == IVec3::Y))
 }
 
+/// Whether `p + k * step` (k ≥ 0, non-negative steps) lies in the inclusive
+/// horizontal box `lo..=hi` for some `k`.
+fn chain_reaches(p: IVec3, step: (i32, i32), lo: IVec3, hi: IVec3) -> bool {
+    debug_assert!(step.0 >= 0 && step.1 >= 0);
+    // The k ≥ 0 keeping one axis inside its interval (`None`: never).
+    let ks = |from: i32, step: i32, lo: i32, hi: i32| -> Option<(i32, i32)> {
+        if step == 0 {
+            return (lo..=hi).contains(&from).then_some((0, i32::MAX));
+        }
+        let first = (lo - from + step - 1).div_euclid(step);
+        let last = (hi - from).div_euclid(step);
+        (first.max(0) <= last).then_some((first.max(0), last))
+    };
+    match (ks(p.x, step.0, lo.x, hi.x), ks(p.z, step.1, lo.z, hi.z)) {
+        (Some((a, b)), Some((c, d))) => a.max(c) <= b.min(d),
+        _ => false,
+    }
+}
+
 /// Offsets in a 15×15 square, nearest (Manhattan) first like Java's
 /// `BlockPos.withinManhattan`.
 fn manhattan_order() -> &'static [IVec3] {
@@ -440,6 +466,10 @@ pub fn delta(level: &mut impl Level, rng: &mut Rng, origin: IVec3) -> bool {
     let (sx, sz) = (between(rng, 3, 7), between(rng, 3, 7));
     let reach = sx.max(sz);
     let mut placed = false;
+    let bounds = level.write_bounds();
+    if bounds.is_some_and(|(lo, hi)| !(lo.y..=hi.y).contains(&origin.y)) {
+        return false;
+    }
     for &d in manhattan_order() {
         if d.x.abs() + d.z.abs() > reach {
             break;
@@ -448,12 +478,18 @@ pub fn delta(level: &mut impl Level, rng: &mut Rng, origin: IVec3) -> bool {
             continue;
         }
         let p = origin + d;
+        let q = p + IVec3::new(rx, 0, rz);
+        // A cell writes `p` (rim) and `q` (pool), and its outcome depends on
+        // whether an earlier cell already wrote `p`: the chain p, p + r, p + 2r…
+        // must reach the kept blocks for the cell to matter.
+        if bounds.is_some_and(|(lo, hi)| !chain_reaches(p, (rx, rz), lo, hi)) {
+            continue;
+        }
         if delta_clear(level, p) {
             if rim {
                 level.place(p, Block::MAGMA);
                 placed = true;
             }
-            let q = p + IVec3::new(rx, 0, rz);
             if delta_clear(level, q) {
                 level.place(q, Block::LAVA);
                 placed = true;
@@ -505,9 +541,14 @@ pub fn basalt_columns(level: &mut impl Level, rng: &mut Rng, origin: IVec3, larg
 
 fn column(level: &mut impl Level, center: IVec3, height: i32, reach: i32) -> bool {
     let mut placed = false;
+    let bounds = level.write_bounds();
     for dx in -reach..=reach {
         for dz in -reach..=reach {
             let p = center + IVec3::new(dx, 0, dz);
+            // Each cell only reads and writes its own vertical column.
+            if bounds.is_some_and(|(lo, hi)| !(lo.x..=hi.x).contains(&p.x) || !(lo.z..=hi.z).contains(&p.z)) {
+                continue;
+            }
             let distance = dx.abs() + dz.abs();
             let start = if air_or_lava_ocean(level, p) {
                 // Down to the surface.
@@ -777,6 +818,22 @@ pub(crate) mod tests {
         }
         let mut bare = Flat::new(40, 60, Block::NETHERRACK);
         assert!(!vegetation(&mut bare, &mut Rng(9), IVec3::new(0, 40, 0), Vegetation::Warped, 8, 4));
+    }
+
+    #[test]
+    fn chain_reaches_matches_stepping_one_block_at_a_time() {
+        let (lo, hi) = (IVec3::new(0, 0, 0), IVec3::new(31, 31, 31));
+        for px in -40..72 {
+            for pz in (-40..72).step_by(3) {
+                for step in [(0, 0), (1, 0), (0, 1), (1, 1), (2, 1), (1, 2), (2, 2), (2, 0), (0, 2)] {
+                    let by_stepping = (0..=60).any(|k| {
+                        let (x, z) = (px + k * step.0, pz + k * step.1);
+                        (0..=31).contains(&x) && (0..=31).contains(&z)
+                    });
+                    assert_eq!(chain_reaches(IVec3::new(px, 5, pz), step, lo, hi), by_stepping, "{px},{pz} {step:?}");
+                }
+            }
+        }
     }
 
     #[test]
