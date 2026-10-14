@@ -1198,6 +1198,14 @@ mod tests {
         ticks(&mut w, 1);
         assert_eq!(w.get_block(AT), Some(r::STONE_BUTTON));
         put(&mut w, AT, r::WOOD_BUTTON);
+        // An arrow inside the cell but above the thin button model does not touch it.
+        let high = AT.as_dvec3() + glam::DVec3::new(0.5, 0.6, 0.5);
+        entities.arrows.push(crate::entity::Arrow::shot(high, glam::DVec3::X, 0.1, false));
+        entities.arrows[0].pos = high;
+        w.redstone_contacts([], &entities);
+        ticks(&mut w, 2);
+        assert_eq!(w.get_block(AT), Some(r::WOOD_BUTTON));
+        entities.arrows.clear();
         let pos = AT.as_dvec3() + glam::DVec3::new(0.5, 0.04, 0.5);
         entities.arrows.push(crate::entity::Arrow::shot(pos, glam::DVec3::X, 0.1, false));
         entities.arrows[0].pos = pos;

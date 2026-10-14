@@ -436,6 +436,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn directional_devices_face_the_player_or_the_look_direction_like_java() {
+        // Java 26.3 `getNearestLookingDirection` (`Direction.orderedByNearest`): the vertical axis
+        // only wins when strictly larger, and an x/z tie resolves to z. Pistons and dispensers
+        // take its opposite; an observer's `getOpposite().getOpposite()` is the look direction.
+        let dir = |b: Block| match component(b) {
+            Some(Component::Piston { facing, .. } | Component::Dispenser { facing, .. }) => direction(facing),
+            Some(Component::Observer { facing, .. }) => direction(facing),
+            other => panic!("not directional: {other:?}"),
+        };
+        let cases: [(glam::Vec3, glam::IVec3); 7] = [
+            (glam::Vec3::new(1.0, 0.2, 0.3), glam::IVec3::NEG_X),
+            (glam::Vec3::new(0.2, 0.0, -1.0), glam::IVec3::Z),
+            (glam::Vec3::new(0.3, -0.9, 0.3), glam::IVec3::Y),
+            (glam::Vec3::new(0.3, 0.9, 0.3), glam::IVec3::NEG_Y),
+            // |y| == |z| is not strictly larger: horizontal.
+            (glam::Vec3::new(0.0, 0.5, -0.5), glam::IVec3::Z),
+            // |x| == |z| tie resolves to z.
+            (glam::Vec3::new(0.5, 0.0, 0.5), glam::IVec3::NEG_Z),
+            (glam::Vec3::new(-0.5, 0.0, -0.5), glam::IVec3::Z),
+        ];
+        for (look, toward) in cases {
+            for b in [piston(0, false, false), dispenser(0, false), dispenser(0, true), piston(0, true, false)] {
+                assert_eq!(dir(placed_with_look(b, glam::IVec3::Y, look)), toward, "{b:?} looking {look}");
+            }
+            let observer = placed_with_look(observer(0, false), glam::IVec3::Y, look);
+            assert_eq!(dir(observer), -toward, "observer looking {look}");
+        }
+    }
+
+    #[test]
     fn wire_connects_to_comparators_on_every_side_but_repeaters_only_on_their_axis() {
         for f in Facing::ALL {
             let across = Facing::ALL.into_iter().find(|g| g.along_x() != f.along_x()).unwrap();
