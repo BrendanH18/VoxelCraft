@@ -317,7 +317,7 @@ pub(super) fn valid_spawn_floor(b: Block, kind: MobKind) -> bool {
     if b == Block::BEDROCK
         || b == Block::GLASS
         || b == redstone_blocks::MOVING
-        || b.is_leaves()
+        || (b.is_leaves() && kind != MobKind::Parrot)
         || name.ends_with("stained glass")
         || matches!(name, "tinted glass" | "barrier" | "scaffolding" | "chorus flower" | "frosted ice")
         || name.contains("trapdoor")
@@ -527,7 +527,8 @@ impl Entities {
                 if super::near_world_spawn(self.world_spawn, pos) {
                     continue;
                 }
-                if !world.loaded(cell) {
+                // `isValidSpawnPostitionForType`: the start chunk or one that can spawn entities.
+                if !world.entity_ticking(cell) {
                     continue;
                 }
                 // Biome lookups sample generator noise, so each step resolves its list once.
@@ -593,11 +594,9 @@ impl Entities {
         } else {
             self.spawn(kind, pos);
         }
-        // Animal.removeWhenFarAway is false, independently of PersistenceRequired.
-        // Natural animals count toward caps; named/bred/tamed ones retain their flag.
-        if kind.category() == MobCategory::Creature {
-            self.mobs.last_mut().unwrap().persistent = false;
-        }
+        // Natural spawns never require persistence (axolotls and hoglins included),
+        // so they count toward caps. Animal.removeWhenFarAway keeps creatures anyway.
+        self.mobs.last_mut().unwrap().persistent = false;
         self.natural_animal(biome);
         self.natural_horse_coat(None);
     }
@@ -609,6 +608,24 @@ mod tests {
     use crate::world::lighting::flat_test_world;
     use glam::IVec2;
     use serde_json::Value;
+
+    #[test]
+    fn natural_spawns_never_require_persistence() {
+        let mut e = Entities::new(1);
+        for kind in [MobKind::Axolotl, MobKind::Hoglin, MobKind::Cow, MobKind::Zombie] {
+            e.spawn_natural(kind, DVec3::new(0.5, 64.0, 0.5), Biome::Plains);
+            assert!(!e.mobs.last().unwrap().persistent, "{kind:?} counts toward its category cap");
+        }
+        e.ensure_mob_ids();
+        let mut restored = Entities::new(2);
+        restored.load_nether_mobs(&e.nether_mobs_to_string());
+        let kinds: Vec<_> = restored.mobs.iter().map(|m| (m.kind, m.persistent)).collect();
+        assert_eq!(
+            kinds,
+            [(MobKind::Axolotl, false), (MobKind::Hoglin, false), (MobKind::Cow, false)],
+            "breedable natural mobs still save; natural zombies never did"
+        );
+    }
 
     fn fixture() -> Value {
         serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/lighting_spawning.json")).unwrap()

@@ -8,7 +8,7 @@ use glam::{DVec3, IVec3};
 
 use super::World;
 use super::block::Block;
-use super::chunk::{CHUNK_SIZE_I, chunk_of};
+use super::chunk::{CHUNK_BITS, CHUNK_SIZE_I, chunk_of};
 use super::noise::splitmix64;
 use crate::inventory::Stack;
 use crate::item::Item;
@@ -231,8 +231,27 @@ impl World {
         // A storage chunk contains eight Java 16³ sections. Tick only the
         // sections whose horizontal Java chunk is block-ticking; the boundary
         // may split a storage chunk in half.
-        let mut chunks: Vec<_> = self.chunks.keys().copied().collect();
+        let mut chunks: Vec<_> = match self.activity.block_columns() {
+            // Only storage columns that reach the block-ticking border, not every loaded chunk.
+            Some(bounds) => {
+                let lo_y = self.generator.dimension.min_y() >> CHUNK_BITS;
+                let hi_y = lo_y + self.generator.dimension.column_chunks();
+                let mut keys = Vec::new();
+                for (lo, hi) in bounds {
+                    for x in lo.x..=hi.x {
+                        for z in lo.y..=hi.y {
+                            keys.extend(
+                                (lo_y..hi_y).map(|y| IVec3::new(x, y, z)).filter(|p| self.chunks.contains_key(p)),
+                            );
+                        }
+                    }
+                }
+                keys
+            }
+            None => self.chunks.keys().copied().collect(),
+        };
         chunks.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+        chunks.dedup();
         for cpos in chunks {
             if self
                 .chunks

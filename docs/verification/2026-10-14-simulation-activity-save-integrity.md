@@ -55,7 +55,10 @@ chunks and of the render distance:
     pacings; a paused clock advances no ticks.
 - Unit tests: fire sleeps outside the region and reschedules after chunk
   reload; random ticks include distant agents once; redstone ticks in an
-  unloaded chunk keep their 20-tick button delay through save/load.
+  unloaded chunk keep their 20-tick button delay through save/load. A tick
+  restored into a chunk that isn't loaded yet keeps its delay until the chunk
+  loads (review fix, 2026-10-15). Random ticks visit only storage chunks inside
+  the block-ticking bounds instead of sorting every loaded chunk each tick.
 - Full `cargo test --release` passed.
 - Tick cost (`representative_tick_cost`, ignored manual benchmark): 81 loaded
   platform chunks, 81 burning furnaces and 160 cows — mean 0.147 ms, p99

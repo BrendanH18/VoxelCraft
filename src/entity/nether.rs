@@ -945,7 +945,9 @@ impl Entities {
             .mobs
             .iter()
             .filter(|m| {
-                (m.persistent || m.kind.never_distance_despawns())
+                // Breedable mobs (natural axolotls and hoglins too) keep being saved
+                // although natural ones no longer require persistence.
+                (m.persistent || m.kind.never_distance_despawns() || m.kind.has_animal_state())
                     && m.alive()
                     && m.villager.is_none()
                     && !matches!(m.kind, MobKind::IronGolem | MobKind::SnowGolem | MobKind::TraderLlama)

@@ -16,8 +16,8 @@ Scope: the rest of MOB-01 on `t3/v0-8-release`. Reference: official Java Edition
   per-tick order. Each tick it builds fresh counts, filters categories by global
   cap once, shuffles the spawn chunks, then tries each category per chunk.
   Creatures run only every 400 ticks. Peaceful allows only friendly categories.
-  Attempts need an entity-ticking chunk, so they follow the simulation distance.
-  Every chunk within eight still counts toward the cap. The Nether and End use
+  Each start and every position a pack walks to needs an entity-ticking chunk
+  (`canSpawnEntitiesInChunk`), so spawns follow the simulation distance. Every chunk within eight still counts toward the cap. The Nether and End use
   the same pass, so the separate fortress spawner is gone.
 - **Spawn lists:** [`entity/spawn_lists.rs`](../../src/entity/spawn_lists.rs)
   holds every Overworld biome's creature, ambient, water creature, water
@@ -52,13 +52,22 @@ Scope: the rest of MOB-01 on `t3/v0-8-release`. Reference: official Java Edition
 - **Generation herds:** `spawn_mobs_for_chunk_generation` gives each new
   16-block Overworld column Java's one-time creature herds. Biome probability,
   group size and up to four placement tries per member come from Java. The herd
-  stays inside its chunk, and horses in a herd share a coat. VoxelCraft doesn't
-  save untouched chunks; it regenerates them. A saved set of populated columns
-  therefore stops herds from coming back after a reload or after they're killed.
-- **Persistence:** natural animals aren't persistence-required and count
-  toward the creature cap of 10. They never despawn by distance, as in
-  `Animal.removeWhenFarAway`. Saves now record `persistence_required`. Older
-  saves default it to true, which keeps their mobs.
+  stays inside its chunk, and horses in a herd share a coat. Each column's herd
+  uses its own random stream seeded from the world seed and column, as Java's
+  `setDecorationSeed` does, so it doesn't depend on exploration order. The
+  `Rng` isn't Java's, so the herds themselves differ from Java's. A column is
+  populated once it and its eight neighbouring storage columns are sky-lit,
+  because herd placement reads skylight. The pass runs even with
+  `doMobSpawning` off, since Java does it at chunk generation. VoxelCraft
+  doesn't save untouched chunks; it regenerates them. A saved set of populated
+  columns therefore stops herds from coming back after a reload or after
+  they're killed.
+- **Persistence:** no natural spawn is persistence-required, so each counts
+  toward its category cap. That includes axolotls and hoglins. Creatures never
+  despawn by distance, as in `Animal.removeWhenFarAway`. Breedable mobs are
+  still saved as before. Saves now record `persistence_required`. Older saves
+  default it to true, which keeps their mobs.
+- **Parrots** may spawn on leaves, as Java's leaves `isValidSpawn` allows.
 - **Spectators** neither create spawn chunks nor stop nearby mobs despawning.
 
 ### Older saves
@@ -79,12 +88,21 @@ animals nearby can still gain a herd; nothing is removed.
   - Glow squid depth and darkness.
   - Lush-cave tropical fish.
   - Axolotl clay floor and conductor check.
+  - Parrots on leaves.
+- Unit tests also check:
+  - Natural axolotls, hoglins, cows and zombies don't require persistence.
+  - Breedable ones survive save and reload.
+  - On a real `World`, only columns with lit neighbours populate
+    (`generation_herd_columns_wait_for_lit_neighbours`).
 - `tests/natural_spawning.rs`:
   - Creatures appear only every 400 ticks and stop at the cap of 10, out to
     128 blocks.
   - Generation herds exceed the runtime cap, survive save and reload, never
     distance-despawn, and don't come back to a cleared column.
   - Spectators drive no spawning.
+  - Pack members stay in entity-ticking chunks. The test fails without the check.
+  - Generation herds appear with `doMobSpawning` off and are identical for two
+    sessions with different random states.
   - A save without markers keeps its herd without doubling it, while columns
     farther out still populate.
 - The fortress list test now reads the shared `spawn_list`.
@@ -98,6 +116,10 @@ animals nearby can still gain a herd; nothing is removed.
   | Mobs | 88 (16 animals) | 155 (73 animals, 12 squid and glow squid) |
   | Whole tick | 0.57 ms | 0.76 ms |
   | Entity update | 0.08 ms | 0.27 ms |
+
+  After the review fixes, frontier columns that had been marked before their
+  skylight existed populate too. That raised the run to 186 mobs at 0.86 ms
+  per whole tick.
 
   Temporary instrumentation (not committed) split the spawning cost:
   - **Before the fixes below:** about 30 µs for counts and about 150 µs for

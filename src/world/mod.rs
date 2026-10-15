@@ -560,9 +560,14 @@ impl World {
     }
 
     /// 16-block columns of every fully loaded storage column, for generation herds.
+    /// Herd placement reads skylight, which is only exact once the column and
+    /// its eight neighbours are lit, so frontier columns wait.
     pub(crate) fn visit_spawn_columns(&self, visit: &mut dyn FnMut(IVec2)) {
+        let lit = |c: IVec2| self.columns.get(&c).is_some_and(|c| c.sky_lit);
         for (&c, column) in &self.columns {
-            if column.loaded == self.column_chunks() {
+            if column.loaded == self.column_chunks()
+                && (-1..=1).all(|dz| (-1..=1).all(|dx| lit(c + IVec2::new(dx, dz))))
+            {
                 for dz in 0..2 {
                     for dx in 0..2 {
                         visit(c * 2 + IVec2::new(dx, dz));

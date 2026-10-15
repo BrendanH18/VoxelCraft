@@ -31,6 +31,10 @@ impl Entities {
         self.spawn_timer += dt.max(0.0);
         while self.spawn_timer >= 0.05 - 1e-9 {
             self.spawn_timer -= 0.05;
+            // Generation herds belong to chunk generation, which `doMobSpawning` doesn't gate.
+            if ctx.dimension == Dimension::Overworld && world.light_settled() {
+                self.populate_generation(world);
+            }
             if ctx.spawning {
                 self.natural_spawn(world, ctx, difficulty);
             }

@@ -797,6 +797,23 @@ mod tests {
         world
     }
 
+    #[test]
+    fn generation_herd_columns_wait_for_lit_neighbours() {
+        let generator = Generator::new(7);
+        let mut chunks = Vec::new();
+        for cz in -1..=1 {
+            for cx in -1..=1 {
+                chunks.extend(generator.dimension.chunk_rows().map(|cy| IVec3::new(cx, cy, cz)));
+            }
+        }
+        let world = world(&chunks);
+        let mut seen = Vec::new();
+        world.visit_spawn_columns(&mut |c| seen.push(c));
+        seen.sort_unstable_by_key(|c| (c.y, c.x));
+        // Only the centre storage column has all eight neighbours lit.
+        assert_eq!(seen, [IVec2::new(0, 0), IVec2::new(1, 0), IVec2::new(0, 1), IVec2::new(1, 1)]);
+    }
+
     fn torch(world: &mut World, p: IVec3) {
         world.set_block(p - IVec3::Y, Block::STONE);
         world.set_block(p, Block::TORCH);

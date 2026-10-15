@@ -1034,6 +1034,17 @@ impl World {
                 _ => {}
             }
         }
+        // Saved delays count from when their chunk loads, like a chunk unloaded now.
+        let absent: Vec<_> = self
+            .redstone
+            .pending
+            .keys()
+            .map(|&p| super::chunk::chunk_of(p))
+            .filter(|c| !self.chunks.contains_key(c))
+            .collect();
+        for c in absent {
+            self.redstone.unloaded_at.entry(c).or_insert(tick);
+        }
     }
 }
 
@@ -1187,6 +1198,9 @@ mod tests {
         ticks(&mut restored, 50);
         assert!(restored.redstone.scheduled.is_empty());
         restored.insert_chunk(chunk, data.clone(), true);
+        // The restored tick keeps its 20-tick delay from when the chunk loads.
+        ticks(&mut restored, 19);
+        assert!(restored.redstone.pending.contains_key(&AT), "released early after restore");
         ticks(&mut restored, 1);
         assert_eq!(restored.get_block(AT), Some(r::STONE_BUTTON));
         assert!(!restored.redstone.pending.contains_key(&AT));

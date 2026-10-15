@@ -227,3 +227,67 @@ fn saves_without_generation_markers_keep_their_herds_without_doubling_them() {
     assert_eq!(creatures.iter().filter(near).count(), 1, "the legacy herd's columns stay populated");
     assert!(creatures.len() > 1, "unvisited columns still gain generation herds");
 }
+
+/// `Plain`, but only the strip of Java chunks with x = 2 is entity-ticking.
+struct Bounded;
+impl BlockSource for Bounded {
+    fn block(&self, p: IVec3) -> Option<Block> {
+        Plain.block(p)
+    }
+}
+impl MobWorld for Bounded {
+    fn loaded(&self, _: IVec3) -> bool {
+        true
+    }
+    fn entity_ticking(&self, p: IVec3) -> bool {
+        p.x >> 4 == 2
+    }
+    fn surface(&self, _: i32, _: i32) -> Option<i32> {
+        Some(63)
+    }
+    fn exposed(&self, _: IVec3) -> bool {
+        false
+    }
+    fn sky_light_level(&self, _: IVec3) -> Option<u8> {
+        Some(0)
+    }
+}
+
+#[test]
+fn pack_members_stay_in_entity_ticking_chunks() {
+    let c = night(true);
+    let mut e = Entities::new(8);
+    let mut seen = std::collections::HashSet::new();
+    for _ in 0..400 {
+        e.update(0.05, &Bounded, &c);
+        e.ensure_mob_ids();
+        // Check where each mob first appears; it may wander across afterwards.
+        for m in &e.mobs {
+            if seen.insert(m.uid) {
+                assert!((m.pos.x.floor() as i32) >> 4 == 2, "a pack walked past the simulation edge: {:?}", m.pos);
+            }
+        }
+    }
+    assert!(!seen.is_empty());
+}
+
+#[test]
+fn generation_herds_ignore_do_mob_spawning_and_follow_the_chunk_seed() {
+    let w = Grass { generation: true };
+    let c = night(false);
+    let herd = |seed| {
+        let mut e = Entities::new(seed);
+        e.update(0.05, &w, &c);
+        let mut cells: Vec<_> = e
+            .mobs
+            .iter()
+            .filter(|m| m.kind.category() == MobCategory::Creature)
+            .map(|m| (format!("{:?}", m.kind), m.pos.floor().as_ivec3().to_array()))
+            .collect();
+        cells.sort();
+        cells
+    };
+    let first = herd(1);
+    assert!(!first.is_empty(), "chunk generation spawns herds with doMobSpawning off");
+    assert_eq!(first, herd(99), "a column's herd depends on the world seed, not the session's random state");
+}

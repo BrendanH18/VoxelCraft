@@ -186,6 +186,9 @@ mod tests {
         w.floor = Block::STONE;
         assert!(!ok(&w, MobKind::Cow));
         assert!(ok(&w, MobKind::Goat));
+        w.floor = Block::LEAVES;
+        assert!(ok(&w, MobKind::Parrot), "parrots spawn on canopies");
+        assert!(!ok(&w, MobKind::Cow));
         w.floor = Block::SAND;
         assert!(ok(&w, MobKind::Rabbit));
         assert!(!ok(&w, MobKind::Wolf));

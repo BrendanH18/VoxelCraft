@@ -26,9 +26,6 @@ impl Entities {
         if players.is_empty() {
             return;
         }
-        if ctx.dimension == Dimension::Overworld {
-            self.populate_generation(world);
-        }
         let mut state = category::SpawnState::new(&players, &self.mobs, |c| {
             world.world_surface(c.x * 16 + 8, c.y * 16 + 8).is_some()
         });
@@ -87,7 +84,7 @@ impl Entities {
     /// Generation is asynchronous and uses 32-block voxel chunks. Consume
     /// each 16-block column when it first becomes fully loaded, with a saved
     /// marker so unload/reload and cleared herds cannot regenerate animals.
-    fn populate_generation<W: MobWorld + ?Sized>(&mut self, world: &W) {
+    pub(super) fn populate_generation<W: MobWorld + ?Sized>(&mut self, world: &W) {
         let mut ready = Vec::new();
         world.generation_columns(&mut |c| {
             if !self.generation_populated.contains(&c) {
@@ -111,6 +108,24 @@ impl Entities {
         if list.is_empty() {
             return;
         }
+        // Java seeds each chunk's herds from the world seed (`setDecorationSeed`),
+        // so a column's herd doesn't depend on when or in what order it loaded.
+        let seed = world.seed()
+            ^ (chunk.x as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
+            ^ (chunk.y as u64).wrapping_mul(0xc2b2_ae3d_27d4_eb4f);
+        let shared = std::mem::replace(&mut self.rng, Rng::new(seed));
+        self.generation_herds(world, chunk, biome, list);
+        self.rng = shared;
+    }
+
+    fn generation_herds<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        chunk: glam::IVec2,
+        biome: crate::world::terrain::Biome,
+        list: &'static [monster_spawns::MonsterSpawn],
+    ) {
+        let origin = chunk * 16;
         let rules = monster_spawns::SpawnRules {
             dimension: Dimension::Overworld,
             light: crate::simulation::lighting::SpawnLight::DAY,
