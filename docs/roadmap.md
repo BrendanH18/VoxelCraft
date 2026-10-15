@@ -759,6 +759,12 @@ pass. Work items, each with Java 26.3 fixtures and acceptance cases:
    chunks as Java does, frame-rate-independent outcomes, and
    pause/load/unload/death/save regression scenarios across desktop, controller
    and agent paths.
+   *Simulation distance implemented, unverified*
+   ([evidence](verification/2026-10-14-simulation-activity-save-integrity.md)):
+   Java's entity/block-ticking tickets in 16-block chunks gate random ticks,
+   fluids, fire, containers, redstone, entities and mobs; unloaded scheduled
+   ticks keep their delay; falling blocks save. Desktop/controller/agent
+   pause and death scenarios and save-mid-motion tests remain.
 
 Carried known issues that belong to later milestones (M2: waterlogging, door
 hinges, wall/ceiling switches; M3: structure templates, mega trees, 3D terrain;

@@ -12,7 +12,7 @@ impl Entities {
     ) {
         for i in 0..self.mobs.len() {
             let m = &mut self.mobs[i];
-            if !m.alive() || !w.loaded(m.pos.floor().as_ivec3()) {
+            if !m.alive() || !w.entity_ticking(m.pos.floor().as_ivec3()) {
                 continue;
             }
             let cell = m.pos.floor().as_ivec3();

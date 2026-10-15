@@ -368,7 +368,7 @@ impl Entities {
         let n = self.mobs.len();
         for i in 0..n {
             let m = &mut self.mobs[i];
-            if !m.alive() || !world.loaded(m.pos.floor().as_ivec3()) {
+            if !m.alive() || !world.entity_ticking(m.pos.floor().as_ivec3()) {
                 continue;
             }
             let Some(a) = m.animal.as_mut() else { continue };
@@ -386,7 +386,7 @@ impl Entities {
             }
             let m = &self.mobs[i];
             let Some(j) = self.mob_index.nearest(&self.mobs, m.pos, 8.0, |b| {
-                b.uid != m.uid && b.kind.can_mate_with(m.kind) && b.ready_to_breed()
+                b.simulation_active && b.uid != m.uid && b.kind.can_mate_with(m.kind) && b.ready_to_breed()
             }) else {
                 self.mobs[i].animal.as_mut().unwrap().courtship = 0.0;
                 continue;
@@ -684,7 +684,7 @@ impl Entities {
         self.mob_index.rebuild(&self.mobs);
         let n = self.mobs.len();
         for i in 0..n {
-            if !self.mobs[i].alive() || !w.loaded(self.mobs[i].pos.floor().as_ivec3()) {
+            if !self.mobs[i].alive() || !w.entity_ticking(self.mobs[i].pos.floor().as_ivec3()) {
                 continue;
             }
             let m = &self.mobs[i];

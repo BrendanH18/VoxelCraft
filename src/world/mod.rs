@@ -12,6 +12,7 @@
 //! discarded. Each chunk column also keeps a heightmap of its highest
 //! light-blocking block, which seeds skylight in mesh jobs.
 
+pub mod activity;
 mod automation;
 pub mod bastion;
 pub mod bell;
@@ -133,6 +134,9 @@ pub struct World {
     /// the full render distance, like the host's.
     view_centers: Vec<IVec3>,
     render_distance: i32,
+    activity: activity::Activity,
+    simulation_others: Vec<DVec3>,
+    simulation_host: Option<IVec2>,
     region: Option<Box<Region>>,
     meshes_enabled: bool,
     remote: bool,
@@ -375,6 +379,9 @@ impl World {
             agent_radius: 4,
             view_centers: Vec::new(),
             render_distance,
+            activity: Default::default(),
+            simulation_others: Vec::new(),
+            simulation_host: None,
             region: None,
             meshes_enabled,
             remote: false,
@@ -519,7 +526,8 @@ impl World {
     /// chunk has all of its neighbours.
     fn in_load_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance as f32 + 1.5;
-        (self.horizontal_dist2(pos) as f32) <= r * r
+        self.activity.keeps(pos)
+            || (self.horizontal_dist2(pos) as f32) <= r * r
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
                 d.length_squared() <= self.agent_radius * self.agent_radius
@@ -530,7 +538,8 @@ impl World {
     /// chunk border doesn't thrash.
     fn in_keep_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance + 3;
-        self.horizontal_dist2(pos) <= r * r
+        self.activity.keeps(pos)
+            || self.horizontal_dist2(pos) <= r * r
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
                 d.length_squared() <= (self.agent_radius + 1) * (self.agent_radius + 1)
@@ -910,6 +919,15 @@ impl World {
                 }
             }
         }
+        for (lo, hi) in self.activity.columns() {
+            for z in lo.y..=hi.y {
+                for x in lo.x..=hi.x {
+                    for y in self.generator.dimension.chunk_rows() {
+                        self.load_list.push(IVec3::new(x, y, z));
+                    }
+                }
+            }
+        }
         self.load_list.sort_unstable_by_key(|p| (p.x, p.y, p.z));
         self.load_list.dedup();
         let mut keyed: Vec<(i32, IVec3)> = self.load_list.iter().map(|&p| (self.priority(p), p)).collect();
@@ -979,6 +997,7 @@ impl World {
     /// Only graphical worlds emit a renderer removal message.
     fn remove_chunk(&mut self, pos: IVec3) {
         self.unlight_sky_column(column_of(pos));
+        self.unload_redstone_chunk(pos);
         let slot = self.chunks.remove(&pos).unwrap();
         self.village_pois.retain(|p, _| chunk_of(*p) != pos);
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
@@ -1019,6 +1038,7 @@ impl World {
     }
 
     pub fn update_players(&mut self, player: DVec3, agents: &[DVec3]) {
+        self.set_simulation_players(std::iter::once(player).chain(agents.iter().copied()));
         let mut centers: Vec<_> = agents.iter().map(|p| chunk_of(p.floor().as_ivec3())).collect();
         centers.sort_unstable_by_key(|p| (p.x, p.y, p.z));
         centers.dedup();

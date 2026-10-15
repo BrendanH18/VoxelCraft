@@ -15,10 +15,7 @@ use crate::item::Item;
 
 /// Random block ticks per chunk per second: Minecraft's 3 per 16³ section
 /// per game tick, so each block is picked about once every 68 seconds.
-const TICKS_PER_CHUNK: f64 = 480.0;
-/// Chunks within this many chunks (horizontally) of the player get random
-/// ticks: Minecraft's default simulation distance of 128 blocks.
-pub(super) const TICK_RADIUS: i32 = 4;
+const TICKS_PER_SECTION: f64 = 60.0;
 /// Leaves farther than this (in steps through leaves) from a log decay.
 const LEAF_REACH: i32 = 6;
 
@@ -224,30 +221,18 @@ impl World {
     /// Random block ticks with Java's `doFireTick` controlling fire and lava
     /// ignition while crops and other blocks continue ticking.
     pub fn tick_random_rules(&mut self, dt: f64, player: DVec3, speed: u32, fire_tick: bool) {
-        self.random_ticks += dt * TICKS_PER_CHUNK * speed as f64 / 3.0;
+        self.simulation_player(player);
+        self.random_ticks += dt * TICKS_PER_SECTION * speed as f64 / 3.0;
         let n = self.random_ticks as u32;
         self.random_ticks -= n as f64;
         if n == 0 {
             return;
         }
-        let mut centers = self.agent_centers.clone();
-        centers.push(chunk_of(player.floor().as_ivec3()));
-        // Visit the union once: overlapping sessions never accelerate random ticks.
-        let mut chunks = Vec::new();
-        for c in centers {
-            for dz in -TICK_RADIUS..=TICK_RADIUS {
-                for dx in -TICK_RADIUS..=TICK_RADIUS {
-                    for y in self.generator.dimension.chunk_rows() {
-                        let p = IVec3::new(c.x + dx, y, c.z + dz);
-                        if self.chunks.contains_key(&p) {
-                            chunks.push(p);
-                        }
-                    }
-                }
-            }
-        }
+        // A storage chunk contains eight Java 16³ sections. Tick only the
+        // sections whose horizontal Java chunk is block-ticking; the boundary
+        // may split a storage chunk in half.
+        let mut chunks: Vec<_> = self.chunks.keys().copied().collect();
         chunks.sort_unstable_by_key(|p| (p.x, p.y, p.z));
-        chunks.dedup();
         for cpos in chunks {
             if self
                 .chunks
@@ -256,10 +241,20 @@ impl World {
             {
                 continue;
             }
-            for _ in 0..n {
-                let r = self.roll();
-                let l = IVec3::new((r & 31) as i32, (r >> 5 & 31) as i32, (r >> 10 & 31) as i32);
-                self.random_tick_rules(cpos * CHUNK_SIZE_I + l, fire_tick);
+            for sy in 0..2 {
+                for sz in 0..2 {
+                    for sx in 0..2 {
+                        let base = cpos * CHUNK_SIZE_I + IVec3::new(sx, sy, sz) * 16;
+                        if !self.activity.contains(base, true) {
+                            continue;
+                        }
+                        for _ in 0..n {
+                            let r = self.roll();
+                            let l = IVec3::new((r & 15) as i32, (r >> 4 & 15) as i32, (r >> 8 & 15) as i32);
+                            self.random_tick_rules(base + l, fire_tick);
+                        }
+                    }
+                }
             }
         }
     }
@@ -539,7 +534,12 @@ impl World {
             return;
         }
         let mut due = Vec::new();
+        let activity = &self.activity;
+        let chunks = &self.chunks;
         self.leaf_decay.retain(|&p, t| {
+            if !activity.contains(p, true) || !chunks.contains_key(&chunk_of(p)) {
+                return true;
+            }
             *t -= dt as f32;
             if *t <= 0.0 {
                 due.push(p);
@@ -691,20 +691,22 @@ mod tests {
 
     #[test]
     fn random_ticks_include_distant_agents_without_accelerating_overlaps() {
-        fn world(centers: &[IVec3]) -> World {
+        fn world(others: &[DVec3]) -> World {
             let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
             for x in [0, 10, 100] {
                 let mut data = ChunkData::Uniform(Block::STONE);
                 data.set(0, 0, 0, Block::AIR); // Non-uniform, with no random-tick side effects.
                 world.insert_chunk(IVec3::new(x, 4, 0), Arc::new(data), false);
             }
-            world.agent_centers = centers.to_vec();
+            let host = DVec3::new(1.0, 150.0, 1.0);
+            world.set_simulation_players(std::iter::once(host).chain(others.iter().copied()));
             world
         }
-        let far = IVec3::new(10, 4, 0);
+        // Storage chunk x = 10 starts at block 320, beyond the host's simulation distance.
+        let far = DVec3::new(330.0, 150.0, 5.0);
         let mut host_only = world(&[]);
         let mut union = world(&[far]);
-        let mut overlapping = world(&[IVec3::ZERO, IVec3::X, far, far, far + IVec3::X]);
+        let mut overlapping = world(&[DVec3::new(20.0, 150.0, 3.0), far, far, far + DVec3::X * 4.0]);
         for w in [&mut host_only, &mut union, &mut overlapping] {
             w.tick_random(crate::simulation::TICK_SECONDS, DVec3::new(1.0, 150.0, 1.0));
         }

@@ -152,6 +152,9 @@ impl Entities {
         self.mob_index.rebuild(&self.mobs);
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
+            if !m.simulation_active {
+                continue;
+            }
             let pos = m.pos;
             let hunt = if !m.alive() {
                 None
@@ -346,7 +349,7 @@ impl Entities {
         for i in 0..n {
             if !self.mobs[i].alive()
                 || self.mobs[i].kind != MobKind::SnowGolem
-                || !world.loaded(self.mobs[i].pos.floor().as_ivec3())
+                || !world.entity_ticking(self.mobs[i].pos.floor().as_ivec3())
             {
                 continue;
             }

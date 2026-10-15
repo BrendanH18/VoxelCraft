@@ -163,6 +163,7 @@ impl Game {
             player.flying = true;
         }
         let mut world = World::new(generator, saved, settings.render_distance);
+        world.set_simulation_distance(settings.simulation_distance);
         world.set_tile_drops(gamerules.bool("doTileDrops"));
         log::info!("{} worker threads", world.worker_threads());
 

@@ -348,6 +348,10 @@ pub struct Puff {
 pub trait MobWorld: BlockSource {
     /// Whether the chunk containing `p` is loaded.
     fn loaded(&self, p: IVec3) -> bool;
+    /// Entity-ticking ticket, distinct from terrain loaded for rendering.
+    fn entity_ticking(&self, p: IVec3) -> bool {
+        self.loaded(p)
+    }
     /// Highest light-blocking block in a loaded column.
     fn surface(&self, x: i32, z: i32) -> Option<i32>;
     /// Nothing light-blocking above this cell.
@@ -448,6 +452,9 @@ impl MobWorld for World {
     }
     fn loaded(&self, p: IVec3) -> bool {
         self.is_loaded(p)
+    }
+    fn entity_ticking(&self, p: IVec3) -> bool {
+        self.is_entity_ticking(p)
     }
     fn block_light(&self, p: IVec3) -> u8 {
         World::block_light(self, p)
@@ -1387,10 +1394,10 @@ impl Entities {
     }
 
     /// Flies thrown eyes; those done drop back as an item or shatter.
-    fn update_eyes(&mut self, dt: f64, events: &mut Vec<EntityEvent>) {
+    fn update_eyes<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, events: &mut Vec<EntityEvent>) {
         let mut i = 0;
         while i < self.eyes.len() {
-            if self.eyes[i].update(dt) {
+            if !world.entity_ticking(self.eyes[i].pos.floor().as_ivec3()) || self.eyes[i].update(dt) {
                 i += 1;
                 continue;
             }

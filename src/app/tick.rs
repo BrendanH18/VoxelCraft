@@ -4,6 +4,10 @@ impl Game {
     /// One fixed gameplay step. Rendering and worker polling never
     /// change the amount of simulation time advanced here.
     pub(super) fn tick(&mut self) {
+        self.world.set_simulation_players(
+            std::iter::once(self.session.player.pos)
+                .chain(self.agents.players.values().filter(|b| b.active).map(|b| b.agent.session.player.pos)),
+        );
         self.world.set_tile_drops(self.gamerules.bool("doTileDrops"));
         let dt = crate::simulation::TICK_SECONDS;
         let arriving = self.update_arrival();

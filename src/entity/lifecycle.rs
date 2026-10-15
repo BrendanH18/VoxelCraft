@@ -14,6 +14,12 @@ impl Entities {
         difficulty: crate::simulation::difficulty::Difficulty,
     ) -> Vec<EntityEvent> {
         self.snapshot_positions();
+        for m in &mut self.mobs {
+            m.simulation_active = world.entity_ticking(m.pos.floor().as_ivec3());
+            if let Some(v) = &mut m.villager {
+                v.active = m.simulation_active;
+            }
+        }
         self.difficulty = difficulty;
         let mut events = Vec::new();
         events.append(&mut self.pending_sounds);
@@ -48,6 +54,10 @@ impl Entities {
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
+            if !m.simulation_active {
+                i += 1;
+                continue;
+            }
             let resident = matches!(
                 m.kind,
                 MobKind::Villager
@@ -69,23 +79,9 @@ impl Entities {
             let gone = m.trader.as_ref().is_some_and(|t| t.despawn <= 0.0)
                 || m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                 || !resident
-                    && (near.is_some_and(|d| d > far * far)
-                        || idle_out && self.rng.chance(dt as f32 * 20.0 / 800.0)
-                        || !world.loaded(m.pos.floor().as_ivec3()));
+                    && (near.is_some_and(|d| d > far * far) || idle_out && self.rng.chance(dt as f32 * 20.0 / 800.0));
             if near.is_some_and(|d| d < calm * calm) {
                 self.mobs[i].idle = 0.0;
-            }
-            let m = &self.mobs[i];
-            if resident
-                && !gone
-                && (!world.loaded(m.pos.floor().as_ivec3())
-                    || ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST))
-            {
-                if let Some(v) = &mut self.mobs[i].villager {
-                    v.active = false;
-                }
-                i += 1;
-                continue;
             }
             if let Some(v) = &mut self.mobs[i].villager {
                 v.active = true;
@@ -199,30 +195,44 @@ impl Entities {
         });
         {
             let mobs = &self.mobs;
-            self.fireballs.retain_mut(|f| f.update(dt, world, ctx, mobs, &mut events));
+            self.fireballs.retain_mut(|f| {
+                !world.entity_ticking(f.pos.floor().as_ivec3()) || f.update(dt, world, ctx, mobs, &mut events)
+            });
         }
         if self.arrows.iter().any(|a| a.piercing()) {
             self.ensure_mob_ids();
         }
         {
             let (mobs, rng, fight) = (&mut self.mobs, &mut self.rng, &mut self.fight);
-            self.arrows.retain_mut(|a| a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events));
-            self.pearls.retain_mut(|p| p.update(dt, world, mobs, rng, &mut events));
-            self.potions.retain_mut(|p| p.update(dt, world, ctx, mobs, rng, &mut events));
-            self.thrown.retain_mut(|t| t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events));
+            self.arrows.retain_mut(|a| {
+                !world.entity_ticking(a.pos.floor().as_ivec3())
+                    || a.update(dt, world, ctx, mobs, fight.as_mut(), rng, &mut events)
+            });
+            self.pearls.retain_mut(|p| {
+                !world.entity_ticking(p.pos.floor().as_ivec3()) || p.update(dt, world, mobs, rng, &mut events)
+            });
+            self.potions.retain_mut(|p| {
+                !world.entity_ticking(p.pos.floor().as_ivec3()) || p.update(dt, world, ctx, mobs, rng, &mut events)
+            });
+            self.thrown.retain_mut(|t| {
+                !world.entity_ticking(t.pos.floor().as_ivec3())
+                    || t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events)
+            });
         }
         {
             let (rng, mobs, index) = (&mut self.rng, &self.mobs, &self.mob_index);
             let mut i = 0;
             while i < self.bobbers.len() {
-                if self.bobbers[i].update(dt, world, rng, ctx, mobs, index) {
+                if !world.entity_ticking(self.bobbers[i].pos.floor().as_ivec3())
+                    || self.bobbers[i].update(dt, world, rng, ctx, mobs, index)
+                {
                     i += 1;
                 } else {
                     self.bobbers.swap_remove(i);
                 }
             }
         }
-        self.update_eyes(dt, &mut events);
+        self.update_eyes(dt, world, &mut events);
         self.resolve_mob_hits(&mut events);
         for e in &events {
             match *e {
@@ -290,14 +300,14 @@ impl Entities {
                     | EntityEvent::Hatched { .. }
             )
         });
-        self.items.retain_mut(|item| !world.loaded(item.pos.floor().as_ivec3()) || item.update(dt, world));
-        self.orbs.retain_mut(|orb| !world.loaded(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
-        self.tnt.retain_mut(|t| t.update(dt, world, &mut events));
+        self.items.retain_mut(|item| !world.entity_ticking(item.pos.floor().as_ivec3()) || item.update(dt, world));
+        self.orbs.retain_mut(|orb| !world.entity_ticking(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
+        self.tnt.retain_mut(|t| !world.entity_ticking(t.pos.floor().as_ivec3()) || t.update(dt, world, &mut events));
         self.merge_timer -= dt as f32;
         if self.merge_timer <= 0.0 {
             self.merge_timer = MERGE_INTERVAL;
-            item::merge(&mut self.items);
-            orb::merge(&mut self.orbs);
+            item::merge_active(&mut self.items, |p| world.entity_ticking(p.floor().as_ivec3()));
+            orb::merge_active(&mut self.orbs, |p| world.entity_ticking(p.floor().as_ivec3()));
         }
 
         let dtf = dt as f32;

@@ -121,11 +121,23 @@ impl ItemEntity {
 /// Merges matching stacks lying close together (the older item absorbs the
 /// younger), as long as the result fits in one stack.
 pub fn merge(items: &mut Vec<ItemEntity>) {
+    merge_active(items, |_| true);
+}
+
+pub(super) fn merge_active(items: &mut Vec<ItemEntity>, active: impl Fn(DVec3) -> bool) {
     let mut i = 0;
     while i < items.len() {
+        if !active(items[i].pos) {
+            i += 1;
+            continue;
+        }
         let mut j = i + 1;
         while j < items.len() {
             let (a, b) = (&items[i], &items[j]);
+            if !active(b.pos) {
+                j += 1;
+                continue;
+            }
             let fits =
                 a.stack.stacks_with(&b.stack) && a.stack.count as u16 + b.stack.count as u16 <= a.stack.max() as u16;
             if fits && a.pos.distance_squared(b.pos) < MERGE_DIST * MERGE_DIST {

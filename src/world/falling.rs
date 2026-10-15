@@ -27,6 +27,40 @@ pub fn can_fall_into(b: Block) -> bool {
 }
 
 impl World {
+    /// Optional dimension property. Removed source cells and these in-flight
+    /// blocks are saved in the same world snapshot, preventing loss mid-fall.
+    pub fn falling_to_string(&self) -> String {
+        let mut entries = vec!["v1".to_string()];
+        entries.extend(
+            self.falling.iter().map(|f| format!("{},{},{},{},{}", f.block.0, f.pos.x, f.pos.y, f.pos.z, f.speed)),
+        );
+        entries.join("|")
+    }
+
+    pub fn load_falling(&mut self, text: &str) {
+        let mut entries = text.split('|');
+        if entries.next() != Some("v1") {
+            return;
+        }
+        self.falling.clear();
+        for entry in entries {
+            let fields: Vec<_> = entry.split(',').collect();
+            let parsed = (|| {
+                let &[block, x, y, z, speed] = fields.as_slice() else {
+                    return None;
+                };
+                let block = Block(block.parse().ok()?);
+                let pos = DVec3::new(x.parse().ok()?, y.parse().ok()?, z.parse().ok()?);
+                let speed: f64 = speed.parse().ok()?;
+                (block.has_gravity() && pos.is_finite() && speed.is_finite() && (0.0..=TERMINAL_SPEED).contains(&speed))
+                    .then_some(FallingBlock { block, pos, previous_pos: pos, speed })
+            })();
+            if let Some(block) = parsed {
+                self.falling.push(block);
+            }
+        }
+    }
+
     /// A LAN client's copy of the host's falling blocks: drawn only.
     pub fn set_falling_replica(&mut self, blocks: impl IntoIterator<Item = (Block, DVec3, DVec3)>) {
         self.falling = blocks
@@ -122,6 +156,9 @@ impl World {
         let mut falling = std::mem::take(&mut self.falling);
         falling.retain_mut(|f| {
             f.previous_pos = f.pos;
+            if !self.is_entity_ticking(f.pos.floor().as_ivec3()) {
+                return true;
+            }
             f.speed = (f.speed + GRAVITY * dt).min(TERMINAL_SPEED);
             let target = f.pos.y - f.speed * dt;
             let cell = f.pos.floor().as_ivec3();

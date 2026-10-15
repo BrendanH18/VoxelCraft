@@ -13,7 +13,9 @@ use rustc_hash::FxHashMap;
 
 use super::World;
 use super::block::Block;
-use super::chunk::{CHUNK_SIZE_I, ChunkData, chunk_of};
+#[cfg(test)]
+use super::chunk::chunk_of;
+use super::chunk::{CHUNK_SIZE_I, ChunkData};
 
 const SIDES: [IVec3; 6] = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z];
 const HORIZONTAL: [IVec3; 4] = [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z];
@@ -75,7 +77,8 @@ impl World {
         let ticks = self.fire.remainder as u64;
         self.fire.remainder -= ticks as f64;
         self.fire.tick += ticks;
-        let center = chunk_of(player.floor().as_ivec3());
+        self.simulation_player(player);
+        let mut sleeping = Vec::new();
         for _ in 0..MAX_UPDATES {
             let Some(&Reverse((due, xyz))) = self.fire.queue.peek() else { break };
             if due > self.fire.tick {
@@ -86,23 +89,25 @@ impl World {
             if self.fire.pending.get(&p) != Some(&due) {
                 continue;
             }
+            if !self.is_loaded(p) {
+                // Unloaded fire reschedules when its chunk loads again.
+                self.fire.pending.remove(&p);
+                continue;
+            }
+            if !self.is_block_ticking(p) {
+                sleeping.push(Reverse((due, xyz)));
+                continue;
+            }
             self.fire.pending.remove(&p);
             if !self.get_block(p).is_some_and(|b| b.fire_age().is_some()) {
                 continue;
             }
-            let distance = (chunk_of(p) - center).abs();
-            if (distance.x <= super::growth::TICK_RADIUS && distance.z <= super::growth::TICK_RADIUS)
-                || self.agent_centers.iter().any(|c| {
-                    let d = (chunk_of(p) - *c).abs();
-                    d.x <= super::growth::TICK_RADIUS && d.z <= super::growth::TICK_RADIUS
-                })
-            {
-                self.random_tick(p);
-            }
+            self.random_tick(p);
             if self.get_block(p).is_some_and(|b| b.fire_age().is_some()) {
                 self.schedule_fire(p);
             }
         }
+        self.fire.queue.extend(sleeping);
     }
 
     fn fire_fuel(&self, p: IVec3) -> u8 {

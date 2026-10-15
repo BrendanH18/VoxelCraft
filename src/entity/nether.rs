@@ -527,6 +527,9 @@ impl Entities {
         let allow_pickup = self.villager_griefing;
         let mut hunts = Vec::new();
         for m in mobs.iter_mut() {
+            if !world.entity_ticking(m.pos.floor().as_ivec3()) {
+                continue;
+            }
             let alive = m.alive();
             let Some(n) = m.nether.as_mut() else { continue };
             n.sense_timer -= dt;
@@ -571,6 +574,10 @@ impl Entities {
         }
         let mut i = 0;
         while i < self.mobs.len() {
+            if !self.mobs[i].simulation_active {
+                i += 1;
+                continue;
+            }
             let Some(n) = self.mobs[i].nether.as_mut() else {
                 i += 1;
                 continue;

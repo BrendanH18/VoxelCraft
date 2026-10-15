@@ -469,7 +469,7 @@ impl Entities {
         // Spitting: Java's LlamaSpit, 1.5 blocks a tick with a little spread.
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
-            if m.kind != MobKind::Llama || !m.alive() || m.attack_cooldown > 0.0 || m.baby {
+            if !m.simulation_active || m.kind != MobKind::Llama || !m.alive() || m.attack_cooldown > 0.0 || m.baby {
                 continue;
             }
             let player = m.angry_player.and_then(|id| ctx.players.iter().find(|t| t.id == id && t.targetable));
@@ -512,7 +512,11 @@ impl Entities {
         let llamas: Vec<DVec3> =
             self.mobs.iter().filter(|m| m.kind == MobKind::Llama && m.alive()).map(|m| m.pos).collect();
         for w in &mut self.mobs {
-            if w.kind != MobKind::Wolf || !w.alive() || w.animal.as_ref().is_none_or(|a| a.owner.is_some()) {
+            if !w.simulation_active
+                || w.kind != MobKind::Wolf
+                || !w.alive()
+                || w.animal.as_ref().is_none_or(|a| a.owner.is_some())
+            {
                 continue;
             }
             if let Some(l) = llamas.iter().find(|l| l.distance_squared(w.pos) < 64.0)
@@ -529,7 +533,7 @@ impl Entities {
         let ids: Vec<(u32, DVec3, bool, Option<u32>)> = self
             .mobs
             .iter()
-            .filter(|m| m.kind == MobKind::Llama && m.alive())
+            .filter(|m| m.simulation_active && m.kind == MobKind::Llama && m.alive())
             .map(|m| (m.uid, m.pos, m.leash.is_some(), m.mount.as_ref().and_then(|s| s.caravan)))
             .collect();
         let pos_of = |uid: u32| ids.iter().find(|l| l.0 == uid).map(|l| l.1);
@@ -545,7 +549,7 @@ impl Entities {
             n
         };
         let mut joins = Vec::new();
-        for m in self.mobs.iter().filter(|m| m.kind == MobKind::Llama && m.alive()) {
+        for m in self.mobs.iter().filter(|m| m.simulation_active && m.kind == MobKind::Llama && m.alive()) {
             let Some(s) = m.mount.as_ref() else { continue };
             if m.leash.is_some() || m.baby || s.rider.is_some() || s.caravan.is_some() {
                 continue;
@@ -564,7 +568,7 @@ impl Entities {
                 joins.push((m.uid, h.0));
             }
         }
-        for m in self.mobs.iter_mut().filter(|m| m.kind == MobKind::Llama) {
+        for m in self.mobs.iter_mut().filter(|m| m.simulation_active && m.kind == MobKind::Llama) {
             let Some(s) = m.mount.as_mut() else { continue };
             if let Some((_, head)) = joins.iter().find(|j| j.0 == m.uid) {
                 s.caravan = Some(*head);

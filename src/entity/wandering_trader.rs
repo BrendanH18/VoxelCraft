@@ -245,7 +245,7 @@ impl Entities {
             }
         }
         for m in &mut self.mobs {
-            if m.kind != MobKind::TraderLlama {
+            if !m.simulation_active || m.kind != MobKind::TraderLlama {
                 continue;
             }
             let Some(t) = &mut m.trader else { continue };

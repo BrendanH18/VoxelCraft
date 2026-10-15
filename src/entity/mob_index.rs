@@ -14,7 +14,7 @@ impl MobIndex {
         self.next.clear();
         self.next.resize(mobs.len(), usize::MAX);
         for (i, m) in mobs.iter().enumerate() {
-            if m.alive() && m.villager.as_ref().is_none_or(|v| v.active) {
+            if m.simulation_active && m.alive() && m.villager.as_ref().is_none_or(|v| v.active) {
                 let cell = (m.pos / 8.0).floor().as_ivec3();
                 self.next[i] = self.heads.insert(cell, i).unwrap_or(usize::MAX);
             }
@@ -84,8 +84,8 @@ impl Separation {
         let mut widest = 0.0f64;
         for m in mobs.iter() {
             let shape = m.shape();
-            let asleep = m.villager.as_ref().is_some_and(|v| !v.active || v.sleeping);
-            let indexed = m.alive() && m.villager.as_ref().is_none_or(|v| v.active);
+            let asleep = !m.simulation_active || m.villager.as_ref().is_some_and(|v| !v.active || v.sleeping);
+            let indexed = m.simulation_active && m.alive() && m.villager.as_ref().is_none_or(|v| v.active);
             widest = widest.max(shape.half_width);
             self.parts.push(Part {
                 pos: m.pos,

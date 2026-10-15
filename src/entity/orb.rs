@@ -126,12 +126,24 @@ impl XpOrb {
 /// Merges orbs of the same value lying close together (the older one
 /// absorbs the younger's count).
 pub fn merge(orbs: &mut Vec<XpOrb>) {
+    merge_active(orbs, |_| true);
+}
+
+pub(super) fn merge_active(orbs: &mut Vec<XpOrb>, active: impl Fn(DVec3) -> bool) {
     let reach = SHAPE.half_width * 2.0 + MERGE_DIST;
     let mut i = 0;
     while i < orbs.len() {
+        if !active(orbs[i].pos) {
+            i += 1;
+            continue;
+        }
         let mut j = i + 1;
         while j < orbs.len() {
             let (a, b) = (&orbs[i], &orbs[j]);
+            if !active(b.pos) {
+                j += 1;
+                continue;
+            }
             if a.value == b.value && (a.pos - b.pos).abs().cmplt(DVec3::splat(reach)).all() {
                 let b = orbs.swap_remove(j);
                 let a = &mut orbs[i];

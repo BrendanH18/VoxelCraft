@@ -7,6 +7,8 @@ use std::path::Path;
 pub struct Settings {
     /// In 32-block chunks.
     pub render_distance: i32,
+    /// In Java 16-block chunks.
+    pub simulation_distance: i32,
     /// Vertical field of view, degrees.
     pub fov: f32,
     /// Multiplier on the base mouse sensitivity.
@@ -31,6 +33,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             render_distance: 8,
+            simulation_distance: crate::world::activity::DEFAULT_SIMULATION_DISTANCE,
             fov: 70.0,
             sensitivity: 1.0,
             volume: 1.0,
@@ -70,6 +73,11 @@ impl Settings {
                         s.render_distance = v;
                     }
                 }
+                "simulation_distance" => {
+                    if let Ok(v) = value.parse::<i32>() {
+                        s.simulation_distance = v;
+                    }
+                }
                 "fov" => s.fov = num().unwrap_or(s.fov),
                 "sensitivity" => s.sensitivity = num().unwrap_or(s.sensitivity),
                 "music_volume" => s.music_volume = num().unwrap_or(s.music_volume),
@@ -93,8 +101,9 @@ impl Settings {
 
     pub fn serialize(&self) -> String {
         format!(
-            "render_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nmusic_volume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\nview_bobbing={}\nparticles={}\nfullscreen={}\n",
+            "render_distance={}\nsimulation_distance={}\nfov={}\nsensitivity={:.2}\nvolume={:.2}\nmusic_volume={:.2}\nvsync={}\ngraphics={}\nshow_fps={}\nview_bobbing={}\nparticles={}\nfullscreen={}\n",
             self.render_distance,
+            self.simulation_distance,
             self.fov,
             self.sensitivity,
             self.volume,
@@ -111,6 +120,8 @@ impl Settings {
     /// Every value pulled into its valid range.
     pub fn clamped(mut self) -> Self {
         self.render_distance = self.render_distance.clamp(RENDER_DISTANCE.0, RENDER_DISTANCE.1);
+        let (lo, hi) = crate::world::activity::SIMULATION_DISTANCE_RANGE;
+        self.simulation_distance = self.simulation_distance.clamp(lo, hi);
         self.fov = self.fov.round().clamp(FOV.0, FOV.1);
         self.sensitivity = self.sensitivity.clamp(SENSITIVITY.0, SENSITIVITY.1);
         self.music_volume = self.music_volume.clamp(0.0, 1.0);
@@ -127,6 +138,7 @@ mod tests {
     fn round_trips_and_clamps() {
         let s = Settings {
             render_distance: 12,
+            simulation_distance: 7,
             fov: 90.0,
             sensitivity: 1.5,
             volume: 0.4,

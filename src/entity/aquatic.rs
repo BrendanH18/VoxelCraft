@@ -366,11 +366,8 @@ impl Entities {
     pub(super) fn grow_turtles(&mut self, dt: f32) {
         self.grow_turtles_matching(dt, |_| true);
     }
-    pub(super) fn grow_loaded_turtles<W: MobWorld + ?Sized>(&mut self, dt: f32, w: &W, ctx: &Ctx) {
-        self.grow_turtles_matching(dt, |m| {
-            w.loaded(m.pos.floor().as_ivec3())
-                && ctx.nearest_player_dist2(m.pos).is_none_or(|d| d <= super::DESPAWN_DIST.powi(2))
-        });
+    pub(super) fn grow_loaded_turtles<W: MobWorld + ?Sized>(&mut self, dt: f32, w: &W, _ctx: &Ctx) {
+        self.grow_turtles_matching(dt, |m| w.entity_ticking(m.pos.floor().as_ivec3()));
     }
     fn grow_turtles_matching(&mut self, dt: f32, mut active: impl FnMut(&Mob) -> bool) {
         let mut scutes = Vec::new();
@@ -463,6 +460,9 @@ impl Entities {
             }));
         }
         for m in &mut self.mobs {
+            if !w.entity_ticking(m.pos.floor().as_ivec3()) {
+                continue;
+            }
             let Some(a) = &mut m.aquatic else { continue };
             a.sense_timer -= dt;
             if a.sense_timer > 0.0 {

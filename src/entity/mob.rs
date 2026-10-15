@@ -853,6 +853,8 @@ pub(super) enum Ai {
 }
 
 pub struct Mob {
+    /// Transient activity snapshot, refreshed before every entity tick. Never saved.
+    pub(crate) simulation_active: bool,
     pub kind: MobKind,
     pub name: crate::inventory::StackName,
     pub leash: Option<super::leash::Leash>,
@@ -1006,6 +1008,7 @@ impl Mob {
         });
         let health = mount.as_ref().map_or(kind.max_health(), |s| s.max_health);
         Self {
+            simulation_active: true,
             mount,
             kind,
             name: Default::default(),
