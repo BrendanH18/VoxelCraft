@@ -137,7 +137,7 @@ impl Entities {
             let (mut x, mut z) = (origin.x + self.rng.next_int(16) as i32, origin.y + self.rng.next_int(16) as i32);
             let (start_x, start_z) = (x, z);
             let Some(kind) = entry.mob.kind() else { continue };
-            let mut coat = None;
+            let mut group = None;
             for _ in 0..count {
                 for _ in 0..4 {
                     // MOTION_BLOCKING_NO_LEAVES: leaves don't become the herd's ground.
@@ -159,8 +159,7 @@ impl Entities {
                     let ok = spawn_rules::spot_ok(world, kind, pos.floor().as_ivec3(), rules, &mut self.rng)
                         && !physics::overlaps_solid(world, pos, kind.shape());
                     if ok {
-                        self.spawn_natural(kind, pos, biome);
-                        coat = self.natural_horse_coat(coat);
+                        group = self.spawn_natural(kind, pos, biome, group);
                     }
                     x += self.rng.next_int(5) as i32 - self.rng.next_int(5) as i32;
                     z += self.rng.next_int(5) as i32 - self.rng.next_int(5) as i32;

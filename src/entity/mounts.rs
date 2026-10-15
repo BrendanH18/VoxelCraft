@@ -660,20 +660,6 @@ impl Entities {
             s.input(m.kind, player, input, inventory.get(selected).map(|s| s.item), None);
         }
     }
-    /// Java Horse.finalizeSpawn shares the coat through HorseGroupData,
-    /// while each herd member independently rolls its markings.
-    pub(super) fn natural_horse_coat(&mut self, herd_coat: Option<u8>) -> Option<u8> {
-        let m = self.mobs.last_mut()?;
-        if m.kind != MobKind::Horse {
-            return None;
-        }
-        let s = m.mount.as_mut()?;
-        if let Some(coat) = herd_coat {
-            s.variant = coat;
-        }
-        Some(s.variant)
-    }
-
     /// Use saddle/armor/chest/food or mount an adult under the crosshair.
     /// Returns true when the interaction was handled; callers attach via mount_for_player.
     #[allow(clippy::too_many_arguments)]
@@ -946,13 +932,12 @@ mod tests {
         w
     }
     #[test]
-    fn natural_horse_herds_share_coats_but_keep_independent_markings_and_saved_ids() {
+    fn natural_packs_share_coats_colours_and_rabbit_types_but_keep_independent_markings() {
+        use crate::world::terrain::Biome;
         let mut e = Entities::new(94);
-        e.spawn(MobKind::Horse, DVec3::ZERO);
-        let coat = e.natural_horse_coat(None).unwrap();
+        let coat = e.spawn_natural(MobKind::Horse, DVec3::ZERO, Biome::Plains, None).unwrap();
         for _ in 0..24 {
-            e.spawn(MobKind::Horse, DVec3::ZERO);
-            assert_eq!(e.natural_horse_coat(Some(coat)), Some(coat));
+            assert_eq!(e.spawn_natural(MobKind::Horse, DVec3::ZERO, Biome::Plains, Some(coat)), Some(coat));
         }
         let first = e.mobs[0].mount.as_ref().unwrap().marking;
         assert!(e.mobs.iter().any(|m| m.mount.as_ref().unwrap().marking != first));
@@ -962,9 +947,15 @@ mod tests {
             let reloaded = State::load(MobKind::Horse, &state.save()).unwrap();
             assert_eq!((reloaded.variant, reloaded.marking), (coat, state.marking));
         }
-        e.spawn(MobKind::Donkey, DVec3::ZERO);
-        assert_eq!(e.natural_horse_coat(Some(coat)), None);
+        assert_eq!(e.spawn_natural(MobKind::Donkey, DVec3::ZERO, Biome::Plains, Some(coat)), None);
         assert_eq!(e.mobs.last().unwrap().mount.as_ref().unwrap().variant, 0);
+        for kind in [MobKind::Llama, MobKind::Rabbit] {
+            let group = e.spawn_natural(kind, DVec3::ZERO, Biome::Plains, None);
+            assert!(group.is_some(), "{kind:?}");
+            for _ in 0..12 {
+                assert_eq!(e.spawn_natural(kind, DVec3::ZERO, Biome::Plains, group), group, "{kind:?}");
+            }
+        }
     }
 
     #[test]

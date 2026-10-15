@@ -49,6 +49,8 @@ Scope: the rest of MOB-01 on `t3/v0-8-release`. Reference: official Java Edition
   - **End:** monsters spawn in darkness.
 
   Packs cap at Java's cluster size: 4 by default, 8 for wolves, 1 for ghasts.
+  Members share Java's `SpawnGroupData`: one horse coat, llama colour or rabbit
+  type per pack. Each horse still rolls its own markings.
 - **Generation herds:** `spawn_mobs_for_chunk_generation` gives each new
   16-block Overworld column Java's one-time creature herds. Biome probability,
   group size and up to four placement tries per member come from Java. The herd
@@ -142,6 +144,9 @@ animals nearby can still gain a herd; nothing is removed.
   the remaining spawn cost.
 - Bats, polar bears, mooshrooms, frogs, armadillos, pandas and nautiluses don't
   exist yet, so their list entries spawn nothing.
+- Java's `CatSpawner` isn't implemented. That spawner replaces swamp-hut and
+  village cats. Natural cats use `Animal.checkAnimalSpawnRules` (grass ground)
+  as in Java, so a swamp hut's cat isn't replaced on its plank floor.
 - Structure overrides use VoxelCraft's structure bounds, not Java's per-piece
   boxes. Fortress checks use `in_fortress`.
 - Spawn eggs, spawners and breeding are unchanged.

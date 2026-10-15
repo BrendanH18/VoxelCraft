@@ -510,6 +510,7 @@ impl Entities {
         for _ in 0..3 {
             let (mut x, mut z) = (start.x, start.z);
             let mut entry: Option<&'static MonsterSpawn> = None;
+            let mut group = None;
             let mut steps = (self.rng.next_f32() * 4.0).ceil() as u32;
             let mut step = 0;
             while step < steps {
@@ -570,7 +571,7 @@ impl Entities {
                 {
                     continue;
                 }
-                self.spawn_natural(kind, pos, world.cave_biome(cell));
+                group = self.spawn_natural(kind, pos, world.cave_biome(cell), group);
                 state.add(category, pos);
                 spawned += 1;
                 // Java's default `getMaxSpawnClusterSize` is 4 for these monsters.
@@ -587,7 +588,10 @@ impl Entities {
         }
     }
 
-    pub(super) fn spawn_natural(&mut self, kind: MobKind, pos: DVec3, biome: Biome) {
+    /// Spawns one natural mob. `group` is Java's `SpawnGroupData`: the first
+    /// member of a pack picks the horse coat, llama colour or rabbit type, and
+    /// later members copy it. Returns the pack's value.
+    pub(super) fn spawn_natural(&mut self, kind: MobKind, pos: DVec3, biome: Biome, group: Option<u8>) -> Option<u8> {
         if kind == MobKind::ZombieVillager {
             self.spawn(MobKind::Zombie, pos);
             self.make_zombie_villager();
@@ -598,7 +602,16 @@ impl Entities {
         // so they count toward caps. Animal.removeWhenFarAway keeps creatures anyway.
         self.mobs.last_mut().unwrap().persistent = false;
         self.natural_animal(biome);
-        self.natural_horse_coat(None);
+        let m = self.mobs.last_mut()?;
+        let variant = match m.kind {
+            MobKind::Horse | MobKind::Llama => &mut m.mount.as_mut()?.variant,
+            MobKind::Rabbit => &mut m.animal.as_mut()?.variant,
+            _ => return None,
+        };
+        if let Some(v) = group {
+            *variant = v;
+        }
+        Some(*variant)
     }
 }
 
@@ -613,7 +626,7 @@ mod tests {
     fn natural_spawns_never_require_persistence() {
         let mut e = Entities::new(1);
         for kind in [MobKind::Axolotl, MobKind::Hoglin, MobKind::Cow, MobKind::Zombie] {
-            e.spawn_natural(kind, DVec3::new(0.5, 64.0, 0.5), Biome::Plains);
+            e.spawn_natural(kind, DVec3::new(0.5, 64.0, 0.5), Biome::Plains, None);
             assert!(!e.mobs.last().unwrap().persistent, "{kind:?} counts toward its category cap");
         }
         e.ensure_mob_ids();
