@@ -1610,10 +1610,14 @@ impl Navigation {
     pub fn recompute_path<W: BlockSource + ?Sized>(&mut self, world: &W, caps: &Caps, mover: &Mover) {
         if self.tick - self.last_recompute <= 20 || !caps.evaluator.can_update(mover, caps.can_float) {
             self.delayed_recompute = true;
-        } else if let Some(target) = self.target {
-            self.path = None;
-            self.path = self.create_path(world, caps, mover, target, self.reach);
-            self.last_recompute = self.tick;
+        } else {
+            // Without a target there is nothing to redo; a stale flag would
+            // block every later edit-triggered recompute.
+            if let Some(target) = self.target {
+                self.path = None;
+                self.path = self.create_path(world, caps, mover, target, self.reach);
+                self.last_recompute = self.tick;
+            }
             self.delayed_recompute = false;
         }
     }
@@ -1893,6 +1897,26 @@ mod tests {
         let p = nav.path.as_ref().unwrap();
         assert!(p.reached);
         assert!(!p.nodes.iter().any(|n| n.pos == changed));
+    }
+
+    #[test]
+    fn a_delayed_recompute_without_a_target_clears_instead_of_blocking_later_edits() {
+        let w = flat();
+        let c = zombie();
+        let mover = Mover {
+            pos: DVec3::new(0.5, 64.0, 0.5),
+            on_ground: true,
+            in_water: false,
+            floating: false,
+            riding: false,
+            speed: 2.0,
+        };
+        let mut nav = Navigation { delayed_recompute: true, ..Default::default() };
+        for _ in 0..21 {
+            nav.tick(&w, &c, &mover);
+        }
+        assert!(!nav.delayed_recompute);
+        assert!(nav.path.is_none());
     }
 
     #[test]

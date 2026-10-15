@@ -2230,12 +2230,32 @@ impl Mob {
             self.hop_left = 0.5;
         }
         let target = wish.map_or(DVec3::ZERO, |d| d * speed);
-        if (self.kind.is_aquatic() || matches!(self.kind, MobKind::Drowned | MobKind::Turtle)) && self.in_water {
+        // Java's `Drowned.wantsToSwim` (a target) and `Turtle.travel` (steering):
+        // otherwise they sink or float like other mobs in water below.
+        let amphibious = matches!(self.kind, MobKind::Drowned | MobKind::Turtle);
+        // Corpses take the ordinary water sink.
+        let swims = match self.kind {
+            MobKind::Drowned => self.alive() && (self.ai == Ai::Chase || self.hunt.is_some()),
+            MobKind::Turtle => self.alive() && wish.is_some(),
+            _ => self.kind.is_aquatic(),
+        };
+        if swims && self.in_water {
             self.vel += (target - self.vel) * (dt * 3.0).min(1.0);
             let delta = self.vel * dt;
             let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape);
             self.on_ground = hit.on_ground;
             self.blocked = hit.horizontal;
+            // `travelInWater`: lift onto a bank only when the way ahead is free
+            // 0.6 higher, so underwater walls don't launch them.
+            if amphibious
+                && self.blocked
+                && let Some(w) = wish
+            {
+                let ahead = self.pos + DVec3::new(w.x, 0.0, w.z).normalize_or_zero() * 0.3 + DVec3::Y * 0.6;
+                if !physics::overlaps_solid(world, ahead, shape) {
+                    self.vel.y = self.vel.y.max(4.5);
+                }
+            }
             return;
         }
         if self.kind.is_aquatic() && self.kind != MobKind::Axolotl && self.on_ground && self.alive() {
@@ -2701,6 +2721,35 @@ mod equipment_effect_tests {
             assert!(normal.vel.x > 0.);
             assert!((slowed.vel.x / normal.vel.x - 0.4).abs() < 1e-6, "{kind:?}");
         }
+    }
+
+    #[test]
+    fn swimming_drowned_climb_low_banks_but_not_tall_underwater_walls() {
+        // Water from y = 11 to 20 over a stone floor, a stone wall at x = 1.
+        let mut world = Grid::flat(10);
+        for y in 11..=20 {
+            for z in -2..=2 {
+                world.set(IVec3::new(0, y, z), Block::WATER);
+                world.set(IVec3::new(1, y, z), Block::STONE);
+            }
+        }
+        let mut m = Mob::new(MobKind::Drowned, DVec3::new(0.5, 13., 0.5), 0.);
+        m.ai = Ai::Chase;
+        for _ in 0..20 {
+            m.physics_step(0.05, &world, Some(DVec3::X), 3.);
+        }
+        assert!(m.pos.y < 13.5, "a tall wall launched the drowned to {:?}", m.pos);
+        // Lower the wall to a bank whose top is within 0.6 of its feet: now it climbs.
+        for y in 13..=20 {
+            for z in -2..=2 {
+                world.set(IVec3::new(1, y, z), Block::WATER);
+            }
+        }
+        m.pos.y = 12.6;
+        for _ in 0..20 {
+            m.physics_step(0.05, &world, Some(DVec3::X), 3.);
+        }
+        assert!(m.pos.x > 1.0, "the drowned never climbed the bank: {:?}", m.pos);
     }
 
     #[test]

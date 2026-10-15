@@ -75,6 +75,13 @@ fn drowned_swim_up_to_a_player_instead_of_walking_the_bottom() {
     }
     assert!(hit, "drowned did not reach elevated underwater target: {:?}", entities.mobs[0].pos);
     assert!(entities.mobs[0].pos.y > 4.0);
+    // Killed mid-chase, the body sinks instead of hanging in the water.
+    let y = entities.mobs[0].pos.y;
+    entities.mobs[0].dying = Some(0.0);
+    for _ in 0..10 {
+        entities.update(0.05, &scene, &night(target));
+    }
+    assert!(entities.mobs[0].pos.y < y - 0.1, "corpse hung at {:?}", entities.mobs[0].pos);
 }
 
 #[test]
@@ -156,4 +163,38 @@ fn a_new_wall_on_an_active_path_is_recomputed_before_the_stuck_timeout() {
         went_around |= e.mobs[0].pos.z.abs() > 1.5;
     }
     assert!(went_around, "new wall did not trigger a detour: {:?}", e.mobs[0].pos);
+}
+
+#[test]
+fn idle_drowned_sink_to_the_bottom_instead_of_hovering() {
+    let scene = Scene { water: true, ..Scene::default() };
+    // A distant creative player: nothing to chase.
+    let mut ctx = night(DVec3::new(500.5, 6.0, 0.5));
+    ctx.players[0].targetable = false;
+    let mut entities = Entities::new(5);
+    entities.spawn(MobKind::Drowned, DVec3::new(0.5, 6.0, 0.5));
+    entities.mobs[0].persistent = true;
+    // Java sinks at most 0.02 blocks a tick, so five blocks take over 250 ticks.
+    for _ in 0..400 {
+        entities.update(0.05, &scene, &ctx);
+    }
+    assert!(entities.mobs[0].pos.y < 2.0, "idle drowned hovered at {:?}", entities.mobs[0].pos);
+}
+
+#[test]
+fn drowned_swim_up_after_villagers() {
+    let scene = Scene { water: true, ..Scene::default() };
+    let mut ctx = night(DVec3::new(500.5, 6.0, 0.5));
+    ctx.players[0].targetable = false;
+    let mut entities = Entities::new(9);
+    entities.spawn(MobKind::Drowned, DVec3::new(0.5, 1.0, 0.5));
+    entities.spawn(MobKind::Villager, DVec3::new(4.5, 7.0, 0.5));
+    entities.mobs[0].persistent = true;
+    let mut peak = 0.0f64;
+    for _ in 0..200 {
+        entities.update(0.05, &scene, &ctx);
+        assert_eq!(entities.mobs[0].kind, MobKind::Drowned);
+        peak = peak.max(entities.mobs[0].pos.y);
+    }
+    assert!(peak > 4.0, "drowned hunting a villager stayed on the bottom: {peak}");
 }
