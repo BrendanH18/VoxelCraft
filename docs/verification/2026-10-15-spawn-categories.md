@@ -49,8 +49,13 @@ Scope: the rest of MOB-01 on `t3/v0-8-release`. Reference: official Java Edition
   - **End:** monsters spawn in darkness.
 
   Packs cap at Java's cluster size: 4 by default, 8 for wolves, 1 for ghasts.
-  Members share Java's `SpawnGroupData`: one horse coat, llama colour or rabbit
-  type per pack. Each horse still rolls its own markings.
+  Members share Java's `SpawnGroupData`: one horse coat, llama colour, rabbit
+  or fox type per pack. Each horse still rolls its own markings.
+  `AgeableMobGroupData` sets the babies:
+  - The first member of a pack is always an adult.
+  - Later members are babies at 5%.
+  - Rabbits after the first are always babies.
+  - Foxes are babies from the third on.
 - **Generation herds:** `spawn_mobs_for_chunk_generation` gives each new
   16-block Overworld column Java's one-time creature herds. Biome probability,
   group size and up to four placement tries per member come from Java. The herd

@@ -932,28 +932,43 @@ mod tests {
         w
     }
     #[test]
-    fn natural_packs_share_coats_colours_and_rabbit_types_but_keep_independent_markings() {
+    fn natural_packs_share_variants_and_follow_java_pack_baby_rules() {
+        use crate::entity::monster_spawns::PackGroup;
         use crate::world::terrain::Biome;
         let mut e = Entities::new(94);
-        let coat = e.spawn_natural(MobKind::Horse, DVec3::ZERO, Biome::Plains, None).unwrap();
-        for _ in 0..24 {
-            assert_eq!(e.spawn_natural(MobKind::Horse, DVec3::ZERO, Biome::Plains, Some(coat)), Some(coat));
+        let mut pack = PackGroup::default();
+        for _ in 0..25 {
+            e.spawn_natural(MobKind::Horse, DVec3::ZERO, Biome::Plains, &mut pack);
         }
+        let coat = pack.variant.unwrap();
         let first = e.mobs[0].mount.as_ref().unwrap().marking;
         assert!(e.mobs.iter().any(|m| m.mount.as_ref().unwrap().marking != first));
+        assert!(!e.mobs[0].baby, "a pack's first member is an adult");
         for m in &e.mobs {
             let state = m.mount.as_ref().unwrap();
             assert_eq!(state.variant, coat);
             let reloaded = State::load(MobKind::Horse, &state.save()).unwrap();
             assert_eq!((reloaded.variant, reloaded.marking), (coat, state.marking));
         }
-        assert_eq!(e.spawn_natural(MobKind::Donkey, DVec3::ZERO, Biome::Plains, Some(coat)), None);
+        let mut donkeys = PackGroup::default();
+        e.spawn_natural(MobKind::Donkey, DVec3::ZERO, Biome::Plains, &mut donkeys);
+        assert_eq!(donkeys.variant, None);
         assert_eq!(e.mobs.last().unwrap().mount.as_ref().unwrap().variant, 0);
-        for kind in [MobKind::Llama, MobKind::Rabbit] {
-            let group = e.spawn_natural(kind, DVec3::ZERO, Biome::Plains, None);
-            assert!(group.is_some(), "{kind:?}");
+        // RabbitGroupData: an adult, then babies. FoxGroupData: two adults, then babies.
+        for (kind, babies) in [(MobKind::Llama, None), (MobKind::Rabbit, Some(1)), (MobKind::Fox, Some(2))] {
+            e.mobs.clear();
+            let mut pack = PackGroup::default();
             for _ in 0..12 {
-                assert_eq!(e.spawn_natural(kind, DVec3::ZERO, Biome::Plains, group), group, "{kind:?}");
+                e.spawn_natural(kind, DVec3::ZERO, Biome::Plains, &mut pack);
+            }
+            assert!(pack.variant.is_some(), "{kind:?}");
+            assert!(e.mobs.iter().all(|m| {
+                let v = m.mount.as_ref().map(|s| s.variant).or(m.animal.as_ref().map(|a| a.variant));
+                v == pack.variant
+            }));
+            if let Some(adults) = babies {
+                let pattern: Vec<_> = e.mobs.iter().map(|m| m.baby).collect();
+                assert!(pattern.iter().enumerate().all(|(i, &b)| b == (i >= adults)), "{kind:?}: {pattern:?}");
             }
         }
     }

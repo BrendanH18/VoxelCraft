@@ -510,7 +510,7 @@ impl Entities {
         for _ in 0..3 {
             let (mut x, mut z) = (start.x, start.z);
             let mut entry: Option<&'static MonsterSpawn> = None;
-            let mut group = None;
+            let mut group = PackGroup::default();
             let mut steps = (self.rng.next_f32() * 4.0).ceil() as u32;
             let mut step = 0;
             while step < steps {
@@ -571,7 +571,7 @@ impl Entities {
                 {
                     continue;
                 }
-                group = self.spawn_natural(kind, pos, world.cave_biome(cell), group);
+                self.spawn_natural(kind, pos, world.cave_biome(cell), &mut group);
                 state.add(category, pos);
                 spawned += 1;
                 // Java's default `getMaxSpawnClusterSize` is 4 for these monsters.
@@ -588,10 +588,8 @@ impl Entities {
         }
     }
 
-    /// Spawns one natural mob. `group` is Java's `SpawnGroupData`: the first
-    /// member of a pack picks the horse coat, llama colour or rabbit type, and
-    /// later members copy it. Returns the pack's value.
-    pub(super) fn spawn_natural(&mut self, kind: MobKind, pos: DVec3, biome: Biome, group: Option<u8>) -> Option<u8> {
+    /// Spawns one natural mob as the next member of `group`, Java's `SpawnGroupData`.
+    pub(super) fn spawn_natural(&mut self, kind: MobKind, pos: DVec3, biome: Biome, group: &mut PackGroup) {
         if kind == MobKind::ZombieVillager {
             self.spawn(MobKind::Zombie, pos);
             self.make_zombie_villager();
@@ -601,18 +599,28 @@ impl Entities {
         // Natural spawns never require persistence (axolotls and hoglins included),
         // so they count toward caps. Animal.removeWhenFarAway keeps creatures anyway.
         self.mobs.last_mut().unwrap().persistent = false;
-        self.natural_animal(biome);
-        let m = self.mobs.last_mut()?;
+        self.natural_animal(biome, group.size);
+        group.size += 1;
+        let Some(m) = self.mobs.last_mut() else { return };
+        // The first member picks the horse coat, llama colour, rabbit or fox
+        // type; later members copy it. Horse markings stay per horse.
         let variant = match m.kind {
-            MobKind::Horse | MobKind::Llama => &mut m.mount.as_mut()?.variant,
-            MobKind::Rabbit => &mut m.animal.as_mut()?.variant,
-            _ => return None,
+            MobKind::Horse | MobKind::Llama => m.mount.as_mut().map(|s| &mut s.variant),
+            MobKind::Rabbit | MobKind::Fox => m.animal.as_mut().map(|a| &mut a.variant),
+            _ => None,
         };
-        if let Some(v) = group {
-            *variant = v;
+        if let Some(variant) = variant {
+            *variant = *group.variant.get_or_insert(*variant);
         }
-        Some(*variant)
     }
+}
+
+/// Java's `SpawnGroupData` for one pack or generation herd: the shared variant
+/// and `AgeableMobGroupData`'s count of members spawned so far.
+#[derive(Clone, Copy, Default)]
+pub(super) struct PackGroup {
+    pub variant: Option<u8>,
+    pub size: u32,
 }
 
 #[cfg(test)]
@@ -626,7 +634,7 @@ mod tests {
     fn natural_spawns_never_require_persistence() {
         let mut e = Entities::new(1);
         for kind in [MobKind::Axolotl, MobKind::Hoglin, MobKind::Cow, MobKind::Zombie] {
-            e.spawn_natural(kind, DVec3::new(0.5, 64.0, 0.5), Biome::Plains, None);
+            e.spawn_natural(kind, DVec3::new(0.5, 64.0, 0.5), Biome::Plains, &mut PackGroup::default());
             assert!(!e.mobs.last().unwrap().persistent, "{kind:?} counts toward its category cap");
         }
         e.ensure_mob_ids();
