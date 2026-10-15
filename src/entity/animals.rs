@@ -186,7 +186,7 @@ impl Mob {
     }
     pub(super) fn animal_think<W: MobWorld + ?Sized>(
         &mut self,
-        dt: f32,
+        _dt: f32,
         world: &W,
         ctx: &Ctx,
         rng: &mut Rng,
@@ -212,7 +212,7 @@ impl Mob {
         if flat.length_squared() < 2.25 {
             return Some((None, 0.0));
         }
-        Some((Some(self.steer(flat.normalize(), dt, world, rng)), 2.0))
+        Some((self.pursue(world, goal, 2.0, true, false, rng), 2.0))
     }
 }
 impl Entities {
@@ -554,7 +554,7 @@ impl Mob {
                         cause: "was slain by a wolf",
                     });
                 }
-                return Some((Some(self.steer(flat.normalize_or(DVec3::X), dt, w, rng)), 3.0));
+                return Some((self.pursue(w, t.pos, 3.0, true, true, rng), 3.0));
             }
             self.angry_player = None;
         }
@@ -573,7 +573,7 @@ impl Mob {
                     knockback: flat.normalize_or(DVec3::X) * 4.0 + DVec3::Y * 2.0,
                 });
             }
-            return Some((Some(self.steer(flat.normalize_or(DVec3::X), dt, w, rng)), 3.0));
+            return Some((self.pursue(w, goal, 3.0, true, true, rng), 3.0));
         }
         if self.kind == MobKind::Goat && a.ramming > 0.0 {
             let goal = a.ram_goal?;
@@ -610,12 +610,12 @@ impl Mob {
             return Some((None, 0.0));
         }
         self.look_at(t.pos, 1.2);
-        let dir = if self.kind == MobKind::Parrot {
-            (t.pos + DVec3::Y * 1.5 - self.pos).normalize_or(DVec3::X)
-        } else {
-            ((t.pos - self.pos) * DVec3::new(1.0, 0.0, 1.0)).normalize_or(DVec3::X)
-        };
-        Some((Some(self.steer(dir, dt, w, rng)), 2.5))
+        if self.kind == MobKind::Parrot {
+            let dir = (t.pos + DVec3::Y * 1.5 - self.pos).normalize_or(DVec3::X);
+            return Some((Some(self.steer(dir, dt, w, rng)), 2.5));
+        }
+        // Java's `FollowOwnerGoal` walks a path to the owner.
+        Some((self.pursue(w, t.pos, 2.5, true, false, rng), 2.5))
     }
 }
 impl Entities {

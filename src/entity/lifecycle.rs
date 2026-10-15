@@ -59,11 +59,23 @@ impl Entities {
                 || m.built
                 || m.convert_left > 0.0
                 || m.villager.as_ref().is_some_and(|v| v.xp > 0);
+            // Java's `Mob.checkDespawn`: a despawnable mob goes at once beyond
+            // its category's despawn distance, and at random (1 in 800 a tick)
+            // beyond 32 blocks once it has done nothing for 600 ticks.
+            let near = ctx.nearest_player_dist2(m.pos);
+            let far = m.kind.category().despawn_distance();
+            let calm = category::MobCategory::NO_DESPAWN_DISTANCE;
+            let idle_out = m.idle > 30.0 && near.is_some_and(|d| d > calm * calm);
             let gone = m.trader.as_ref().is_some_and(|t| t.despawn <= 0.0)
                 || m.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                 || !resident
-                    && (ctx.nearest_player_dist2(m.pos).is_some_and(|d| d > DESPAWN_DIST * DESPAWN_DIST)
+                    && (near.is_some_and(|d| d > far * far)
+                        || idle_out && self.rng.chance(dt as f32 * 20.0 / 800.0)
                         || !world.loaded(m.pos.floor().as_ivec3()));
+            if near.is_some_and(|d| d < calm * calm) {
+                self.mobs[i].idle = 0.0;
+            }
+            let m = &self.mobs[i];
             if resident
                 && !gone
                 && (!world.loaded(m.pos.floor().as_ivec3())

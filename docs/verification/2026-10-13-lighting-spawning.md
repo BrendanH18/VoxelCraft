@@ -89,6 +89,9 @@ An isolated temporary fixture check confirmed that change and repeatability.
 
 The existing 24–64-block ring, per-kind caps, quarter-second spawn batching,
 activation/despawn policies and structure overrides still need Java correction.
+(2026-10-14: Overworld monsters now use Java's 128-block spawnable chunks and
+monster category caps, and every despawnable mob Java's `checkDespawn`; see the
+[spawning record](2026-10-14-natural-spawning.md).)
 Missing roster entries (zombie horse, stray, bogged, parched, ocelot) retain their
 reference selection weight but cannot spawn; slimes and drowned now walk the same
 pack cycle (see the v0.7 follow-up below). No unsupported

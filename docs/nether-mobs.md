@@ -4,7 +4,9 @@
 
 VoxelCraft v0.5 adds the Nether's living mobs. They follow Java Edition 1.21's
 brains (`PiglinAi`, `PiglinBruteAi`, `HoglinAi`, `Zoglin`, `Strider`) as closely as
-the engine allows. The retained v0.7 implementation adds riding and breeding. Full Java navigation remains open; those remaining parts
+the engine allows. The retained v0.7 implementation adds riding and breeding. They walk Java ground
+paths ([navigation record](verification/2026-10-14-mob-navigation.md)); striders keep
+their own lava steering. The remaining parts
 are approximated or left out (see [Known gaps](#known-gaps)).
 
 | Mob | Health | Box | Damage | XP | Drops |
@@ -151,7 +153,7 @@ blocks of a player gets its residents once its corners and centre have loaded:
 - They start with Java's 30–120 s pause before hunting.
 - Stable hoglins can't be hunted (`CannotBeHunted`).
 - Residents are persistent. They remember their spot and walk back once 12 blocks
-  away, a stand-in for Java's brute `HOME` memory and the lack of pathfinding.
+  away, a stand-in for Java's brute `HOME` memory.
 - Each bastion rolls from its own seed, so every copy of a world gets the same
   residents.
 - Populated bastions are saved, so residents are neither duplicated nor lost.

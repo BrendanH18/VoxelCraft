@@ -112,6 +112,14 @@ pub fn overlaps_solid<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Sha
     hit
 }
 
+/// Whether the box (min, max) overlaps any solid (or unloaded) block's
+/// collision, as Java's `noCollision` checks for a box.
+pub fn box_overlaps_solid<W: BlockSource + ?Sized>(world: &W, min: DVec3, max: DVec3) -> bool {
+    let mut hit = false;
+    boxes_near(world, min, max, |_, _| hit = true);
+    hit
+}
+
 /// If the box at `pos` overlaps solid blocks, returns `pos` pushed back
 /// against them along `axis` (the direction of travel is the sign of `dir`).
 pub fn collide<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape, axis: usize, dir: f64) -> Option<DVec3> {

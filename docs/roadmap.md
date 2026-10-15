@@ -339,8 +339,8 @@ the [defect inventory](verification/2026-10-13-v0.7-defect-inventory.md)):
   spawn-point exclusion, Peaceful `notInPeaceful` list, Nether spawn costs and
   fuzzy biome zoom, light work budgets, End/Nether ambient light (visual review
   pending). Shape-aware occlusion and Java spawn ring/caps remain.
-- **MOB-02 (Partial):** line of sight clips collision boxes; navigation is still
-  straight-line steering.
+- **MOB-02 (Partial):** line of sight clips collision boxes; navigation was still
+  straight-line steering in v0.7.0 (ground paths followed on 2026-10-14).
 - **BLD / PRO (Partial):** Java tool rules and shear loot, snow layers, sapling
   stage, hyphae axis, vertical barrels, copper tools/armor/nuggets, nugget
   smelting, crossbow Multishot/Piercing/Quick Charge, Creative armor equip.
@@ -739,9 +739,18 @@ pass. Work items, each with Java 26.3 fixtures and acceptance cases:
    swimming and flying mobs, respecting block shapes, hazards, doors and
    fluids; villagers reach beds and job sites, bastion and structure residents
    path home. Replaces straight-line steering.
+   *Ground navigation implemented, unverified* ([evidence](verification/2026-10-14-mob-navigation.md)):
+   `WalkNodeEvaluator`, `PathFinder` and `PathNavigation` ported from 26.3 with
+   per-mob costs; chasers, villagers, strolls, panics and following animals walk
+   paths, and non-swimmers sink in water. Swim/fly/climb evaluators, block-update
+   recomputation and player acceptance remain.
 3. **MOB-01 spawn rules:** Java's `NaturalSpawner` placement, 24/128-block
    ring, per-category caps scaled by loaded chunks, despawn distances and
    persistence, structure spawn overrides, and the slime/drowned paths folded in.
+   *Monster category and despawning implemented, unverified*
+   ([evidence](verification/2026-10-14-natural-spawning.md)): spawnable chunks,
+   global and per-player caps, the 128-block disc and `checkDespawn`. Creature
+   and water categories, chunk-generation spawning and structure overrides remain.
 4. **ENV-05 / PLY-02 block shapes:** shape-aware light occlusion (slabs,
    stairs, snow layers), meshes lit from the authoritative gameplay light
    arrays, and raycasts/placement against full collision and outline shapes

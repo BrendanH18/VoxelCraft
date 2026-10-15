@@ -17,6 +17,8 @@ pub mod aquatic;
 pub mod armor;
 mod bell;
 mod bobber;
+pub mod category;
+pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod dragon;
 mod dragon_model;
@@ -2749,9 +2751,16 @@ mod tests {
         for _ in 0..600 {
             e.update(0.05, &world, &c);
         }
-        // The grid is stone, so only hostile mobs spawn, each up to its cap.
+        // The grid is stone, so only monsters spawn: Java's monster category
+        // fills up to its cap of 70 (one player's 289 counted chunks).
+        let monsters = e.mobs.iter().filter(|m| m.kind.category() == category::MobCategory::Monster).count();
+        // A pack started under the cap may finish a few over it, as in Java.
+        assert!((60..=73).contains(&monsters), "{monsters} monsters");
         for kind in MobKind::ALL {
             let o = Dimension::Overworld;
+            if monster_spawns::cycle_kind(kind) {
+                continue;
+            }
             let expected = if plains_spawner(kind) { kind.spawn_cap(o) } else { 0 };
             // One zombie in twenty spawns as a zombie villager instead.
             if kind == MobKind::ZombieVillager
@@ -2843,20 +2852,20 @@ mod tests {
             dimension: Dimension::Overworld,
         };
         for _ in 0..1200 {
-            let before = e.mobs.len();
+            e.ensure_mob_ids();
+            let old: std::collections::HashSet<u32> = e.mobs.iter().map(|m| m.uid).collect();
             e.update(0.05, &world, &c);
-            // Nothing despawns here, so new mobs are the ones at the end;
-            // they appear outside the spawn radius (and may wander in later).
-            for m in &e.mobs[before..] {
+            e.ensure_mob_ids();
+            // New mobs appear outside the spawn radius (and may wander in later).
+            for m in e.mobs.iter().filter(|m| !old.contains(&m.uid)) {
                 let d = c.nearest_player_dist2(m.pos).unwrap().sqrt();
                 assert!(d >= SPAWN_MIN_DIST, "{:?} spawned {d} from a player", m.kind);
             }
         }
-        let o = Dimension::Overworld;
-        for kind in MobKind::ALL.into_iter().filter(|k| plains_spawner(*k)) {
-            for center in [a, b] {
-                assert_eq!(e.count_near(kind, center), kind.spawn_cap(o), "{kind:?} near {center}");
-            }
+        // Each player fills their own local monster cap of 70.
+        for center in [a, b] {
+            let near = e.mobs.iter().filter(|m| m.pos.distance(center) < 160.0).count();
+            assert!((60..=73).contains(&near), "{near} monsters near {center}");
         }
     }
 
