@@ -128,6 +128,11 @@ animals nearby can still gain a herd; nothing is removed.
   skylight existed populate too. That raised the run to 186 mobs at 0.86 ms
   per whole tick.
 
+  These runs all loaded 2028 chunks, because the simulation ticket was also
+  loading terrain. Java doesn't do that, and the loading was removed on
+  2026-10-15 (see the simulation-activity doc). The same run now loads 444
+  chunks and has 92 mobs at 0.30 ms per whole tick.
+
   Temporary instrumentation (not committed) split the spawning cost:
   - **Before the fixes below:** about 30 µs for counts and about 150 µs for
     pack attempts per tick. Most of that was 200 attempts each for the ambient,

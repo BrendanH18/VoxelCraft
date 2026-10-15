@@ -290,3 +290,22 @@ fn seeded_world_outcomes_match_frame_pacing_and_pause_produces_no_ticks() {
         }
     }
 }
+
+/// Java's `PLAYER_SIMULATION` ticket only simulates; it never loads chunks.
+/// Only the view (render) distance streams terrain in.
+#[test]
+fn simulation_distance_does_not_load_chunks_beyond_the_render_distance() {
+    let mut world = World::new_headless(Arc::new(Generator::new(42)), Default::default(), 2);
+    world.set_simulation_distance(10);
+    let at = DVec3::new(0.5, 150.0, 0.5);
+    let deadline = Instant::now() + std::time::Duration::from_secs(20);
+    while !world.is_loaded(at.floor().as_ivec3()) || world.pending_jobs() > 0 {
+        world.update(at);
+        assert!(Instant::now() < deadline, "streaming did not settle");
+        std::thread::yield_now();
+    }
+    // Java chunk 9 is inside the entity-ticking distance, but 4.5 storage chunks out.
+    let far = IVec3::new(150, 150, 0);
+    assert!(!world.is_loaded(far), "the simulation ticket loaded terrain");
+    assert!(!world.is_entity_ticking(far));
+}

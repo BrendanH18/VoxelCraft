@@ -539,8 +539,7 @@ impl World {
     /// chunk has all of its neighbours.
     fn in_load_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance as f32 + 1.5;
-        self.activity.keeps(pos)
-            || (self.horizontal_dist2(pos) as f32) <= r * r
+        (self.horizontal_dist2(pos) as f32) <= r * r
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
                 d.length_squared() <= self.agent_radius * self.agent_radius
@@ -551,8 +550,7 @@ impl World {
     /// chunk border doesn't thrash.
     fn in_keep_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance + 3;
-        self.activity.keeps(pos)
-            || self.horizontal_dist2(pos) <= r * r
+        self.horizontal_dist2(pos) <= r * r
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
                 d.length_squared() <= (self.agent_radius + 1) * (self.agent_radius + 1)
@@ -1017,15 +1015,6 @@ impl World {
                     }
                     for y in self.generator.dimension.chunk_rows() {
                         self.load_list.push(IVec3::new(c.x + dx, y, c.z + dz));
-                    }
-                }
-            }
-        }
-        for (lo, hi) in self.activity.columns() {
-            for z in lo.y..=hi.y {
-                for x in lo.x..=hi.x {
-                    for y in self.generator.dimension.chunk_rows() {
-                        self.load_list.push(IVec3::new(x, y, z));
                     }
                 }
             }

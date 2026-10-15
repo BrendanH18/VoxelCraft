@@ -32,22 +32,12 @@ impl Activity {
         self.centers.as_ref().is_none_or(|centers| centers.iter().any(|&s| (c - s).abs().max_element() <= radius))
     }
 
-    /// Storage columns intersecting the full ticket border (level 33).
-    pub(super) fn columns(&self) -> impl Iterator<Item = (IVec2, IVec2)> + '_ {
-        let radius = self.distance + 2;
-        self.centers.iter().flatten().map(move |&c| ((c - IVec2::splat(radius)) >> 1, (c + IVec2::splat(radius)) >> 1))
-    }
-
     /// Storage columns reaching the block-ticking border (level 32), or None
     /// while no players are registered and every loaded cell ticks.
     pub(super) fn block_columns(&self) -> Option<Vec<(IVec2, IVec2)>> {
         let radius = self.distance + 1;
         let centers = self.centers.as_ref()?;
         Some(centers.iter().map(|&c| ((c - IVec2::splat(radius)) >> 1, (c + IVec2::splat(radius)) >> 1)).collect())
-    }
-
-    pub(super) fn keeps(&self, chunk: IVec3) -> bool {
-        self.columns().any(|(lo, hi)| chunk.x >= lo.x && chunk.z >= lo.y && chunk.x <= hi.x && chunk.z <= hi.y)
     }
 }
 

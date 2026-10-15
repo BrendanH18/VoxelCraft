@@ -20,8 +20,12 @@ chunks and of the render distance:
   farther. The union of the desktop player and every active agent/controller
   player counts once, so overlapping players never accelerate work.
 - Simulation distance is a saved option (`simulation_distance`, 5–32, default
-  10) with an Options slider. Chunks out to the full ticket border stay loaded
-  even when the render distance is smaller.
+  10) with an Options slider. As in Java, the simulation ticket
+  (`TicketType.PLAYER_SIMULATION`, flags simulation and keep-dimension-active)
+  doesn't load chunks; only the view distance does. A render distance smaller
+  than the simulation distance therefore limits what ticks. (Corrected
+  2026-10-15: the first version also loaded chunks out to the ticket border.
+  That was non-Java and made headless streaming several times slower.)
 - Block-ticking gates: random ticks (now per 16³ section, Java's 3 per section
   per tick, so a storage chunk can be half active), fire, leaf decay, fluids,
   furnaces, brewing stands, hoppers, piston motion, redstone scheduled ticks and
