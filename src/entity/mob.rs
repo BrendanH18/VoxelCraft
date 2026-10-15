@@ -1522,12 +1522,17 @@ impl Mob {
                     return (None, 0.0);
                 }
                 // `MoveToTargetSink`: plan when the walk target changes or the
-                // last path is used up, and walk it.
+                // last path is used up, and walk it. A path that falls short
+                // (`CANT_REACH_WALK_TARGET_SINCE`) or none at all waits a
+                // second before planning again, so an unreachable bed or job
+                // site isn't searched every tick.
                 let cell = goal.floor().as_ivec3();
                 if self.nav.is_done() || self.nav.target() != Some(path::surface_target(world, cell)) {
                     self.repath_in -= 1;
                     if self.repath_in <= 0 {
-                        self.repath_in = if self.walk_to(world, cell, 0, speed, false) { 0 } else { 20 };
+                        let reaches = self.walk_to(world, cell, 0, speed, false)
+                            && self.nav.path.as_ref().is_some_and(|p| p.reached);
+                        self.repath_in = if reaches { 0 } else { 20 };
                     }
                 }
                 // `InteractWithDoor`: open the closed wooden doors on the
@@ -1573,7 +1578,7 @@ impl Mob {
                 }
                 let speed = if self.kind == MobKind::IronGolem { 1.5 } else { self.kind.chase_speed() };
                 let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.85), goal + DVec3::Y);
-                return (self.pursue(world, goal, speed, sees, rng), speed);
+                return (self.pursue(world, goal, speed, sees, true, rng), speed);
             }
         }
         if self.kind == MobKind::Witch && self.witch_upkeep(dt, world, rng) {
@@ -1728,7 +1733,7 @@ impl Mob {
                 let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
                 let sees = matches!(self.kind, MobKind::Spider | MobKind::CaveSpider)
                     || line_of_sight(world, eye, target.pos + DVec3::Y * 1.62);
-                (self.pursue(world, target.pos, speed, sees, rng), speed)
+                (self.pursue(world, target.pos, speed, sees, true, rng), speed)
             }
             Ai::Panic => {
                 if self.ai_timer <= 0.0 {
@@ -2062,7 +2067,7 @@ impl Mob {
         if hdist > SKELETON_FAR {
             let speed = self.kind.chase_speed();
             let sees = line_of_sight(world, eye, target);
-            (self.pursue(world, player, speed, sees, rng), speed)
+            (self.pursue(world, player, speed, sees, true, rng), speed)
         } else if hdist < SKELETON_NEAR {
             (Some((-dir + side * 0.3).normalize()), 2.0)
         } else {

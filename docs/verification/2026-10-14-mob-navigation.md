@@ -42,11 +42,17 @@ costs, and routes movement through paths:
 - Melee chasers, golems and zombies hunting mobs, skeletons closing range,
   piglins and hoglins, tempted, breeding, leashed and owner-following animals
   repath on `MeleeAttackGoal`'s cadence (4–10 ticks, +5/+10 beyond 16/32
-  blocks, +15 without a path; only zombies' seen targets, and unseen ones
-  every 20 ticks once a path is used up). Spiders climb straight at a goal
-  their path can't reach (`WallClimberNavigation`).
+  blocks, +15 without a path). Chasers replan while they see the target and
+  retry an unseen one every 20 ticks once the last path is used up; spiders
+  follow unseen targets (`followingTargetEvenIfNotSeen`) and climb straight
+  at a goal their path can't reach (`WallClimberNavigation`). Only mobs with
+  an attack target risk longer falls (`getMaxFallDistance`); tempted,
+  breeding, leashed and owner-following animals and walking piglins keep the
+  3-block limit.
 - Villagers walk paths to their walk targets and open closed wooden doors on
-  the previous and next path nodes (`InteractWithDoor`).
+  the previous and next path nodes (`InteractWithDoor`). One that can't reach its
+  target walks the partial path, then waits a second before planning again
+  rather than searching every tick.
 - Strolls follow `WaterAvoidingRandomStrollGoal`: a 1-in-120 chance a tick,
   `LandRandomPos`/`DefaultRandomPos` targets weighted by `getWalkTargetValue`
   (animals favour grass and light, monsters darkness), and no strolling more
@@ -68,9 +74,11 @@ Automated (`cargo test --release`, desktop and `--no-default-features`):
   idle drops, fences, bottom slabs as half steps, neighbourhood types, path
   following, stuck give-up, steering limits and surface targets.
 - `tests/mob_navigation.rs`: a zombie reaches a player behind a 13-wide wall,
-  never steps into a lava moat round the player, and wandering cows never walk
-  off a 12-block cliff. With straight-line steering forced back on, the wall and
-  lava scenarios fail, so they detect the old behavior.
+  never steps into a lava moat round the player, wandering cows never walk
+  off a 12-block cliff, and a 40-health tamed wolf following its owner won't
+  jump a 7-block drop. With straight-line steering forced back on, the wall and
+  lava scenarios fail, and the wolf jumps when followers plan with the hunting
+  fall limit, so they detect the old behavior.
 - All existing suites pass. One assertion changed: a zoglin now reaches and
   kills the cow in its 4-second window, so the test accepts a dead cow.
 
@@ -94,8 +102,10 @@ earlier harness reached 26/30, 18/30 and 0/30 on seeds 7, 42 and 1234 against
 28/30, 21/30 and 9/30 with paths (that harness placed the player on a tree top
 for 1234). The max column is the first tick, when every zombie plans at once.
 
-Search cost on a real `World` (`path_search_cost`, ignored): 21 µs for an open
-20-block chase, 137 µs for a search that exhausts a zombie's 560-node budget.
+Search cost on a real `World` (`path_search_cost`, ignored): 16–17 µs for an
+open 20-block chase, 91 µs for a search that exhausts a zombie's 560-node
+budget, with Fx-hashed node, type and collision maps (19–20 µs and 124 µs with
+the default hasher in the same run).
 
 ## Remaining differences and open work
 

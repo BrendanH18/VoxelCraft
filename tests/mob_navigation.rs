@@ -1,7 +1,7 @@
 //! Mobs walk Java 26.3 ground paths (`WalkNodeEvaluator` + `PathFinder`)
 //! through the shared entity update: a zombie works round a wall it can't
 //! jump to reach a player, keeps off a lava moat's edge, and wandering cows
-//! don't stroll off a cliff they can't survive.
+//! and a following wolf don't take a drop they can't survive.
 use std::collections::HashMap;
 
 use glam::{DVec3, IVec3};
@@ -139,6 +139,34 @@ fn wandering_cows_stay_off_a_deadly_drop() {
         assert!(cow.pos.y > 0.5 && cow.pos.x < 6.5, "a cow walked off the cliff: {:?}", cow.pos);
     }
     assert!(e.mobs.iter().any(|c| c.pos.distance(DVec3::new(3.5, 1.0, c.pos.z)) > 0.5), "cows stroll about");
+}
+
+#[test]
+fn a_following_wolf_keeps_the_idle_fall_limit() {
+    let mut scene = Scene::default();
+    // A plateau at y = 1 for x < 6; beyond it a 7-block drop to the owner.
+    for x in 6..30 {
+        for z in -30..30 {
+            for y in -6..1 {
+                scene.set(IVec3::new(x, y, z), Block::AIR);
+            }
+        }
+    }
+    // Close enough that the wolf walks rather than teleporting to its owner.
+    let mut ctx = night(DVec3::new(9.5, -6.0, 0.5));
+    ctx.players[0].targetable = false;
+    let mut e = Entities::new(13);
+    e.spawn(MobKind::Wolf, DVec3::new(3.5, 1.0, 0.5));
+    e.mobs[0].animal.as_mut().unwrap().owner = Some(PlayerId::HOST);
+    // A tamed wolf's 40 health: with a target it could risk a 25-block fall.
+    e.mobs[0].health = 40.0;
+    for _ in 0..20 * 10 {
+        e.update(0.05, &scene, &ctx);
+        let wolf = &e.mobs[0];
+        // `getMaxFallDistance` is 3 without an attack target, however much
+        // health the wolf could spare.
+        assert!(wolf.pos.y > 0.5, "the wolf jumped down to its owner: {:?}", wolf.pos);
+    }
 }
 
 /// Representative-terrain check (run with `--ignored --nocapture`): thirty

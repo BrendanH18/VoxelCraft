@@ -169,7 +169,7 @@ impl Mob {
             return None;
         }
         self.look_at(at, 1.2);
-        Some((self.pursue(w, at, 2.5, true, rng), 2.5))
+        Some((self.pursue(w, at, 2.5, true, false, rng), 2.5))
     }
 }
 pub(super) fn save(m: &Mob) -> Value {

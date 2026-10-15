@@ -212,7 +212,7 @@ impl Mob {
         if flat.length_squared() < 2.25 {
             return Some((None, 0.0));
         }
-        Some((self.pursue(world, goal, 2.0, true, rng), 2.0))
+        Some((self.pursue(world, goal, 2.0, true, false, rng), 2.0))
     }
 }
 impl Entities {
@@ -554,7 +554,7 @@ impl Mob {
                         cause: "was slain by a wolf",
                     });
                 }
-                return Some((self.pursue(w, t.pos, 3.0, true, rng), 3.0));
+                return Some((self.pursue(w, t.pos, 3.0, true, true, rng), 3.0));
             }
             self.angry_player = None;
         }
@@ -573,7 +573,7 @@ impl Mob {
                     knockback: flat.normalize_or(DVec3::X) * 4.0 + DVec3::Y * 2.0,
                 });
             }
-            return Some((self.pursue(w, goal, 3.0, true, rng), 3.0));
+            return Some((self.pursue(w, goal, 3.0, true, true, rng), 3.0));
         }
         if self.kind == MobKind::Goat && a.ramming > 0.0 {
             let goal = a.ram_goal?;
@@ -615,7 +615,7 @@ impl Mob {
             return Some((Some(self.steer(dir, dt, w, rng)), 2.5));
         }
         // Java's `FollowOwnerGoal` walks a path to the owner.
-        Some((self.pursue(w, t.pos, 2.5, true, rng), 2.5))
+        Some((self.pursue(w, t.pos, 2.5, true, false, rng), 2.5))
     }
 }
 impl Entities {

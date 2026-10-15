@@ -92,7 +92,7 @@ impl Mob {
                     return Some((None, 0.0));
                 }
                 self.look_at(at, 0.5);
-                Some((self.pursue(world, at, speed, true, rng), speed))
+                Some((self.pursue(world, at, speed, true, false, rng), speed))
             }
             Goal::Flee(from) => {
                 self.ai = Ai::Panic;
@@ -158,7 +158,7 @@ impl Mob {
                 n.charge = n.charge.min(CROSSBOW_CHARGE);
             }
             return if !sees {
-                (self.pursue(world, at, speed, false, rng), speed)
+                (self.pursue(world, at, speed, false, true, rng), speed)
             } else if hdist < CROSSBOW_NEAR {
                 (Some(-dir), speed * 0.75)
             } else {
@@ -208,7 +208,7 @@ impl Mob {
             return (None, 0.0);
         }
         let sees = line_of_sight(world, eye, aim);
-        (self.pursue(world, at, speed, sees, rng), speed)
+        (self.pursue(world, at, speed, sees, true, rng), speed)
     }
 
     /// Turns the head toward a point, up to `max` radians off the body.

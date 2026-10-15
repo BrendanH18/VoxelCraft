@@ -19,7 +19,7 @@
 //!   part of `hasCollisions`; block collision is.
 //! - Blocks VoxelCraft lacks (powder snow, honey, campfires, cauldrons,
 //!   wither roses) have no path types of their own.
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::OnceLock;
 
 use glam::{DVec3, IVec3};
@@ -454,9 +454,9 @@ struct Search<'a, W: ?Sized> {
     entity_w: i32,
     entity_h: i32,
     nodes: Vec<Node>,
-    index: HashMap<IVec3, u32>,
-    types: HashMap<IVec3, PathType>,
-    collisions: HashMap<BoxKey, bool>,
+    index: FxHashMap<IVec3, u32>,
+    types: FxHashMap<IVec3, PathType>,
+    collisions: FxHashMap<BoxKey, bool>,
     heap: Vec<u32>,
 }
 
@@ -473,9 +473,9 @@ impl<'a, W: BlockSource + ?Sized> Search<'a, W> {
             entity_w: (caps.width + 1.0).floor() as i32,
             entity_h: (caps.height + 1.0).floor() as i32,
             nodes: Vec::with_capacity(512),
-            index: HashMap::with_capacity(1024),
-            types: HashMap::with_capacity(1024),
-            collisions: HashMap::new(),
+            index: FxHashMap::with_capacity_and_hasher(1024, Default::default()),
+            types: FxHashMap::with_capacity_and_hasher(1024, Default::default()),
+            collisions: FxHashMap::default(),
             heap: Vec::with_capacity(128),
         }
     }

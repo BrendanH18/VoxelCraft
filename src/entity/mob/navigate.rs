@@ -206,14 +206,18 @@ impl Mob {
     }
 
     /// Chase a moving goal the way `MeleeAttackGoal.tick` does, returning the
-    /// direction to walk this tick. Spiders climb straight at a goal their
-    /// path can't reach (`WallClimberNavigation`).
+    /// direction to walk this tick. `hunting` is whether the goal is an attack
+    /// target (`getTarget() != null`), which lets `getMaxFallDistance` risk
+    /// spare health; followers without a target keep the 3-block limit.
+    /// Spiders climb straight at a goal their path can't reach
+    /// (`WallClimberNavigation`).
     pub(crate) fn pursue<W: MobWorld + ?Sized>(
         &mut self,
         world: &W,
         goal: DVec3,
         speed: f64,
         sees: bool,
+        hunting: bool,
         rng: &mut Rng,
     ) -> Option<DVec3> {
         if !self.kind.walks_paths() {
@@ -243,14 +247,14 @@ impl Mob {
             } else if d2 > 256.0 {
                 self.repath_in += 5;
             }
-            if !self.walk_to(world, goal.floor().as_ivec3(), 0, speed, true) {
+            if !self.walk_to(world, goal.floor().as_ivec3(), 0, speed, hunting) {
                 self.repath_in += 15;
             }
             if retry {
                 self.repath_in = self.repath_in.max(20);
             }
         }
-        if let Some(dir) = self.follow_path(world, speed, true) {
+        if let Some(dir) = self.follow_path(world, speed, hunting) {
             return Some(dir);
         }
         if matches!(self.kind, MobKind::Spider | MobKind::CaveSpider) {
