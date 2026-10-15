@@ -346,6 +346,12 @@ pub struct Puff {
 
 /// World queries mobs need beyond plain block access.
 pub trait MobWorld: BlockSource {
+    /// Edits since this navigator's cursor, current cursor and history overflow.
+    /// Immutable reads let all navigators consume changes independently.
+    fn navigation_updates(&self, since: u64, _visit: &mut dyn FnMut(IVec3)) -> (u64, bool) {
+        (since, false)
+    }
+
     /// Whether the chunk containing `p` is loaded.
     fn loaded(&self, p: IVec3) -> bool;
     /// Entity-ticking ticket, distinct from terrain loaded for rendering.
@@ -426,6 +432,10 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn navigation_updates(&self, since: u64, visit: &mut dyn FnMut(IVec3)) -> (u64, bool) {
+        World::navigation_updates(self, since, visit)
+    }
+
     fn village_pois(&self, visit: &mut dyn FnMut(IVec3, Block)) {
         self.visit_village_pois(visit);
     }

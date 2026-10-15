@@ -157,6 +157,7 @@ pub(super) fn think<W: MobWorld + ?Sized>(
                 });
                 a.charge = -1.0;
             }
+            m.stop_navigation();
             return (None, 0.0);
         }
         a.target = None;
@@ -213,13 +214,13 @@ pub(super) fn think<W: MobWorld + ?Sized>(
                     knockback: delta.normalize_or_zero() * 0.3,
                 });
             }
-            return (Some(delta.normalize_or_zero()), 2.0);
+            return (m.pursue(w, pos, 2.0, true, true, rng), 2.0);
         }
     }
     if let Some(leader) = a.school {
         let delta = leader - m.pos;
         if delta.length_squared() > 1.5 && delta.length_squared() < 256.0 && wet(w, m.pos + delta.normalize_or_zero()) {
-            return (Some(delta.normalize_or_zero()), 1.4);
+            return (m.pursue(w, leader, 1.4, true, false, rng), 1.4);
         }
     }
     a.wander -= dt;
@@ -237,16 +238,26 @@ pub(super) fn think<W: MobWorld + ?Sized>(
             a.direction = DVec3::ZERO;
         }
     }
-    (
-        Some(a.direction),
-        if m.kind == MobKind::Dolphin {
-            2.8
-        } else if m.kind == MobKind::ElderGuardian {
-            0.65
-        } else {
-            1.2
-        },
-    )
+    let direction = a.direction;
+    let speed = if m.kind == MobKind::Dolphin {
+        2.8
+    } else if m.kind == MobKind::ElderGuardian {
+        0.65
+    } else {
+        1.2
+    };
+    if matches!(m.kind, MobKind::Squid | MobKind::GlowSquid) {
+        // Java squid use SquidRandomMovementGoal/MoveControl, not swimming paths.
+        return (Some(direction), speed);
+    }
+    m.repath_in = (m.repath_in - 1).max(0);
+    if m.nav.is_done() && m.repath_in == 0 {
+        // Failed/finished random destinations must not run a full search every tick.
+        m.repath_in = 40;
+        let goal = m.pos + direction * 8.0;
+        m.walk_to(w, goal.floor().as_ivec3(), 0, speed, false);
+    }
+    (m.follow_path(w, speed, false), speed)
 }
 
 pub(super) fn pillager<W: MobWorld + ?Sized>(

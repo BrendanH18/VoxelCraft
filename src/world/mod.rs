@@ -42,6 +42,7 @@ mod growth;
 mod light_shape;
 pub(crate) mod lighting;
 pub mod mineshaft;
+mod navigation;
 pub mod nether;
 pub mod nether_biome;
 pub mod nether_biome_blocks;
@@ -161,6 +162,7 @@ pub struct World {
     /// Spawner cages and the mob each makes (see `spawner`).
     spawners: FxHashMap<IVec3, crate::entity::MobKind>,
     village_pois: FxHashMap<IVec3, Block>,
+    navigation_updates: navigation::Updates,
     village_homes: FxHashMap<IVec3, IVec3>,
     /// Leaves waiting to decay (seconds left) after a log near them went.
     leaf_decay: FxHashMap<IVec3, f32>,
@@ -284,6 +286,9 @@ impl World {
             }
             let old_light = slot.block_light.as_ref().map_or(0, |light| light.get(x, y, z));
             Arc::make_mut(&mut slot.data).set(x, y, z, block);
+            if old != block && (old.is_solid() || block.is_solid()) {
+                self.navigation_updates.record(p);
+            }
             self.light_block_changed(p, old, block, old_light);
             self.reheight_and_remesh(p, old, block, false);
         }
@@ -404,6 +409,7 @@ impl World {
             brewing_stands: FxHashMap::default(),
             spawners: FxHashMap::default(),
             village_pois: FxHashMap::default(),
+            navigation_updates: navigation::Updates::default(),
             village_homes: FxHashMap::default(),
             leaf_decay: FxHashMap::default(),
             random_ticks: 0.0,
@@ -665,6 +671,10 @@ impl World {
         // and lighting: don't invalidate meshes or copy light snapshots.
         if old.fire_age().is_some() && block.fire_age().is_some() {
             return true;
+        }
+        // Java notifies navigators only when the collision shape changes.
+        if old != block && (old.is_solid() || block.is_solid()) {
+            self.navigation_updates.record(p);
         }
         self.light_block_changed(p, old, block, old_light);
         self.track_fire(p, old, block);

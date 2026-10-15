@@ -530,7 +530,7 @@ impl Mob {
     }
     pub(super) fn companion_think<W: MobWorld + ?Sized>(
         &mut self,
-        dt: f32,
+        _dt: f32,
         w: &W,
         ctx: &Ctx,
         rng: &mut Rng,
@@ -611,8 +611,7 @@ impl Mob {
         }
         self.look_at(t.pos, 1.2);
         if self.kind == MobKind::Parrot {
-            let dir = (t.pos + DVec3::Y * 1.5 - self.pos).normalize_or(DVec3::X);
-            return Some((Some(self.steer(dir, dt, w, rng)), 2.5));
+            return Some((self.pursue(w, t.pos + DVec3::Y * 1.5, 2.5, true, false, rng), 2.5));
         }
         // Java's `FollowOwnerGoal` walks a path to the owner.
         Some((self.pursue(w, t.pos, 2.5, true, false, rng), 2.5))
